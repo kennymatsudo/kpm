@@ -1,0 +1,19 @@
+{
+  "description": "A codebase-aware planning workbench for developers",
+  "scripts": {
+  },
+  "keywords": [
+    "electron",
+    "planning",
+    "developer-tools"
+  ],
+  "author": {
+    "name": "Kenny Matsudo",
+    "email": "kennymatsudo@live.com"
+  },
+  "license": "MIT",
+  "dependencies": {
+  },
+  "devDependencies": {
+  }
+}

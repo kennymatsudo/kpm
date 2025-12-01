@@ -1,0 +1,95 @@
+import path from 'path';
+import fs from 'fs';
+
+let userDataPath: string;
+
+// Simple logger for database operations
+export const dbLog = {
+  error: (operation: string, error: unknown) => {
+    console.error(`[DB Error] ${operation}:`, error instanceof Error ? error.message : String(error));
+  },
+  warn: (operation: string, message: string) => {
+    console.warn(`[DB Warn] ${operation}: ${message}`);
+  },
+};
+
+/**
+ * Wraps a database operation with error handling.
+ * Returns undefined on error for read operations, throws for write operations.
+ */
+export function withErrorHandling<T>(
+  operation: string,
+  fn: () => T,
+  options: { throwOnError: true }
+): T;
+export function withErrorHandling<T>(
+  operation: string,
+  fn: () => T,
+  options: { throwOnError?: false; defaultValue: T }
+): T;
+export function withErrorHandling<T>(
+  operation: string,
+  fn: () => T,
+  options?: { throwOnError?: false; defaultValue?: undefined }
+): T | undefined;
+export function withErrorHandling<T>(
+  operation: string,
+  fn: () => T,
+  options: { throwOnError?: boolean; defaultValue?: T } = {}
+): T | undefined {
+  const { throwOnError = false, defaultValue } = options;
+  try {
+    return fn();
+  } catch (error) {
+    dbLog.error(operation, error);
+    if (throwOnError) {
+      throw error;
+    }
+    return defaultValue;
+  }
+}
+
+/**
+ * Get the database instance. Must be called after initDatabase.
+ */
+  if (!database) {
+    throw new Error('Database not initialized. Call initDatabase() first.');
+  }
+  return database;
+}
+
+/**
+ * Get the user data path. Must be called after initDatabase.
+ */
+export function getUserDataPath(): string {
+  if (!userDataPath) {
+    throw new Error('Database not initialized. Call initDatabase() first.');
+  }
+  return userDataPath;
+}
+
+/**
+ * Initialize database with an explicit path.
+ * Used by MCP server which runs outside Electron.
+ */
+export function initDatabaseWithPath(dbPath: string): void {
+  // Ensure directory exists
+  const dir = path.dirname(dbPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  // Store the userData path (parent of database file)
+  userDataPath = dir;
+
+}
+
+/**
+ * Initialize database using Electron's app path.
+ * Used by the main Electron process.
+ */
+export function initDatabase(): void {
+  // Dynamic import to avoid requiring electron in MCP server context
+  const { app } = require('electron');
+  userDataPath = app.getPath('userData');
+}

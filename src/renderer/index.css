@@ -1,0 +1,429 @@
+@import "tailwindcss";
+
+/* ============================================
+   ============================================ */
+
+
+
+}
+
+/* ============================================
+   Typography
+   ============================================ */
+
+:root {
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-surface-0);
+  color: var(--color-text-primary);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* ============================================
+   App Chrome / Native Feel
+   ============================================ */
+
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.drag-region button,
+.drag-region input,
+.drag-region [data-no-drag] {
+  -webkit-app-region: no-drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* ============================================
+   ============================================ */
+
+::-webkit-scrollbar {
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+}
+
+::-webkit-scrollbar-thumb:hover {
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ============================================
+   Canvas Background
+   ============================================ */
+
+.canvas-bg {
+  background-color: var(--color-surface-0);
+  background-image: radial-gradient(
+    circle at center,
+    transparent 1px
+  );
+}
+
+/* ============================================
+   ============================================ */
+
+.focus-ring:focus-visible {
+  outline: none;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+/* ============================================
+   ============================================ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+}
+
+.btn-primary:hover:not(:disabled) {
+}
+
+.btn-primary:active:not(:disabled) {
+}
+
+.btn-secondary {
+  background: var(--color-surface-3);
+  color: var(--color-text-secondary);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-surface-4);
+  color: var(--color-text-primary);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--color-surface-3);
+  color: var(--color-text-primary);
+}
+
+.btn-danger {
+  background: var(--color-danger-muted);
+  color: var(--color-danger);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--color-danger);
+  color: white;
+}
+
+/* ============================================
+   ============================================ */
+
+.card {
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.card:hover {
+}
+
+.card-elevated {
+  background: var(--color-surface-2);
+}
+
+/* ============================================
+   ============================================ */
+
+.input {
+  width: 100%;
+  color: var(--color-text-primary);
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.input:hover:not(:focus):not(:disabled) {
+}
+
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   Section Headers
+   ============================================ */
+
+.section-header {
+}
+
+/* ============================================
+   ============================================ */
+
+
+.plan-card {
+  position: relative;
+}
+
+}
+
+.plan-card:hover {
+.plan-card.selected {
+}
+
+/* ============================================
+   ============================================ */
+
+.chat-message-assistant {
+}
+
+.chat-message-content {
+  word-break: break-word;
+}
+
+/* ============================================
+   ============================================ */
+
+.sidebar {
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.sidebar-item:hover {
+  background: var(--color-surface-3);
+  color: var(--color-text-primary);
+}
+
+.sidebar-item.active {
+  color: var(--color-text-primary);
+}
+
+/* ============================================
+   ============================================ */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  background: var(--color-surface-3);
+  color: var(--color-text-secondary);
+}
+
+.badge-accent {
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+}
+
+.badge-success {
+  background: var(--color-success-muted);
+  color: var(--color-success);
+}
+
+.badge-warning {
+  background: var(--color-warning-muted);
+  color: var(--color-warning);
+}
+
+.badge-danger {
+  background: var(--color-danger-muted);
+  color: var(--color-danger);
+}
+
+/* ============================================
+   ============================================ */
+
+}
+
+/* ============================================
+   ============================================ */
+
+.dropdown-menu {
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+  background: var(--color-surface-3);
+  color: var(--color-text-primary);
+}
+
+.dropdown-item-danger {
+  color: var(--color-danger);
+}
+
+  background: var(--color-danger-muted);
+  color: var(--color-danger);
+}
+
+.dropdown-separator {
+  height: 1px;
+}
+
+/* ============================================
+   ============================================ */
+
+.tooltip {
+  font-size: 0.75rem;
+  color: var(--color-text-primary);
+}
+
+/* ============================================
+   Loading States
+   ============================================ */
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-2) 0%,
+    var(--color-surface-3) 50%,
+    var(--color-surface-2) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.pulse-dot {
+  background: var(--color-accent);
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+}
+
+/* ============================================
+   ============================================ */
+
+.activity-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--color-surface-3);
+  color: var(--color-text-secondary);
+  position: relative;
+  overflow: hidden;
+}
+
+.activity-chip::before {
+}
+
+.activity-chip-small {
+}
+
+.activity-chip-icon {
+  line-height: 1;
+  z-index: 1;
+}
+
+.activity-chip-small .activity-chip-icon {
+  font-size: 0.75rem;
+}
+
+.activity-chip-label {
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 1;
+}
+
+.activity-chip-overflow {
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+}
+
+.activity-chip-overflow::before {
+  display: none;
+}
+
+@keyframes chip-appear {
+    opacity: 0;
+  }
+    opacity: 1;
+  }
+}
+
+@keyframes chip-shimmer {
+  0% { transform: translateX(-100%); }
+  50%, 100% { transform: translateX(100%); }
+}
+
+/* ============================================
+   ============================================ */
+
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ============================================
+   ============================================ */
+
+}
+
+}
+
+}
