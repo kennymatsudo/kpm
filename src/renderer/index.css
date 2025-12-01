@@ -17,12 +17,14 @@
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
 }
 
 body {
   font-family: var(--font-sans);
   background: var(--color-surface-0);
   color: var(--color-text-primary);
+  overflow: hidden;
 }
 
 .font-mono {
@@ -215,6 +217,20 @@ select:focus-visible {
   word-break: break-word;
 }
 
+.chat-message-user,
+.chat-message-assistant {
+}
+
+@keyframes message-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+
 /* ============================================
    ============================================ */
 
@@ -235,6 +251,15 @@ select:focus-visible {
 
 .sidebar-item.active {
   color: var(--color-text-primary);
+}
+
+/* ============================================
+   ============================================ */
+
+.backlog-item {
+}
+
+.backlog-item:hover {
 }
 
 /* ============================================

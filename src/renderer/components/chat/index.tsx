@@ -10,6 +10,15 @@ import { useChat } from '../../hooks/useChat';
     }
 
   return (
+      <div
+        style={{
+        }}
+      >
+        <button
+        >
+        </button>
+      </div>
+
       {/* Error banner */}
       {error && (
           <svg className="w-4 h-4 text-danger flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

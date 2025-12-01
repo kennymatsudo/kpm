@@ -15,6 +15,7 @@ interface PlanViewProps {
     return (
             </svg>
           </div>
+          </p>
         </div>
       </div>
     );
