@@ -1,1 +1,18 @@
 
+export type {
+  Project,
+  Repo,
+  Attachment,
+  PlanItem,
+  PlanRelation,
+  PlanAction,
+  PlanActionResult,
+  Activity,
+  TrackerCredentialInfo,
+  TrackerConnection,
+  ImportPreview,
+  ImportResult,
+  SyncPreview,
+  SyncResult,
+  ConflictResolution,
+  DeletedItemAction,

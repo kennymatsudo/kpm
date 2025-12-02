@@ -38,6 +38,16 @@
     release_tag: null,
     position_x: null,
     position_y: null,
+    association_id: null,
+    external_key: null,
+    external_id: null,
+    external_type: null,
+    external_status: null,
+    external_url: null,
+    external_parent_key: null,
+    external_epic_key: null,
+    sync_source: 'local',
+    last_synced_at: null,
   });
 }
 
