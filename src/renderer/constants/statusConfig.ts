@@ -69,6 +69,7 @@ export const STATUS_CATEGORY_CONFIG: Record<StatusCategory, {
 /**
  * Resolve a tracker-specific status string to a normalized category.
  * Returns null if status or trackerType is missing.
+ * Uses keyword-based fallback for custom/unmapped statuses.
  */
 export function getStatusCategory(
   status: string | null,
@@ -88,5 +89,19 @@ export function getStatusCategory(
     if (key.toLowerCase() === lowerStatus) return category;
   }
 
+  // Keyword-based fallback for custom/unmapped statuses
+    return 'in_progress';
+  }
+  if (lowerStatus.includes('done') || lowerStatus.includes('complete') || lowerStatus.includes('closed') || lowerStatus.includes('resolved')) {
+    return 'done';
+  }
+  if (lowerStatus.includes('block') || lowerStatus.includes('hold') || lowerStatus.includes('wait')) {
+    return 'blocked';
+  }
+  if (lowerStatus.includes('cancel')) {
+    return 'canceled';
+  }
+
+  // Default: assume not started for truly unknown statuses
   return 'not_started';
 }
