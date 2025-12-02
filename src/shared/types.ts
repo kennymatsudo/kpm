@@ -5,6 +5,7 @@
 // =============================================================================
 
 
+
 // Credentials are now stored in OS keychain via keytar.
 // This interface is for the non-sensitive info returned to renderer.
 export interface TrackerCredentialInfo {

@@ -7,6 +7,7 @@
 export const MAX_DEPTH = 4;
 
 export const CARD_WIDTHS = {
+  2: 260,
 } as const;
 
 /** Auto-layout grid settings */
