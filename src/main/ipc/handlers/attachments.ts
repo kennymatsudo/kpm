@@ -1,10 +1,15 @@
 
 /**
  */
-  });
+    const { projectId, path: sourcePath, filename } = AttachmentSchemas.add.parse(params);
 
   });
 
+    const { attachmentId } = AttachmentSchemas.remove.parse(params);
+
+  });
+
+    const { projectId } = AttachmentSchemas.list.parse(params);
   });
 
     const mainWindow = getMainWindow();

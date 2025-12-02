@@ -26,18 +26,22 @@ interface TrackerState {
   // Error state
   error: string | null;
 
+  // Association actions
   loadAssociations: (projectId: string) => Promise<void>;
   removeAssociation: (associationId: string) => Promise<void>;
   hasAssociationItems: (associationId: string) => Promise<boolean>;
 
+  // Import actions
   applyImport: (projectId: string, associationId: string, selectedTypes: string[]) => Promise<ImportResult | null>;
   clearImport: () => void;
 
+  // UI actions
   setShowAssociationDialog: (show: boolean) => void;
   setShowImportPanel: (show: boolean, associationId?: string) => void;
   clearError: () => void;
 
   // Progress listener setup
+  setupImportProgressListener: () => () => void;
 }
 
   isLoadingAssociations: false,
@@ -129,7 +133,9 @@ interface TrackerState {
     }
   },
 
+  clearError: () => set({ error: null, importError: null }),
 
+  setupImportProgressListener: () => {
       const { phase, fetched, current, total } = data;
       set({
         importProgress: {

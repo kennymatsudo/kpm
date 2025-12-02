@@ -13,6 +13,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
   const {
     syncPreview,
     syncProgress,
+    error: syncError,
     isSyncing,
     resolutions,
     deletedAction,
@@ -22,6 +23,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
     setDeletedDecision,
     applySync,
     discardSync,
+  } = useSyncStore();
 
   const handleClose = () => {
     discardSync();
