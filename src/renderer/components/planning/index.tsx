@@ -29,6 +29,10 @@ interface PlanViewProps {
           x={contextMenu.x}
           y={contextMenu.y}
           selectedCount={selectedItemIds.size}
+          onEdit={() => {
+            const selectedId = Array.from(selectedItemIds)[0];
+            if (selectedId) handleEditItem(selectedId);
+          }}
         />
 
       {/* Bulk Delete Confirmation Dialog */}
