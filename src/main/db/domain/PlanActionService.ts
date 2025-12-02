@@ -115,6 +115,36 @@
 ): void {
 }
 
+): void {
+  // Resolve any placeholder IDs
+  const resolvedIds = action.item_ids.map(id => resolveId(ctx, id) ?? id);
+
+  // Find the association for this project
+  if (associations.length === 0) {
+    return;
+  }
+
+  const association = associations[0]; // Use first association
+
+  let queuedCount = 0;
+  for (const itemId of resolvedIds) {
+    if (!item) {
+      continue;
+    }
+
+    // Determine operation: create if no external_key, update otherwise
+    const operation = item.external_key ? 'update' : 'create';
+
+    // Check if already queued
+      continue; // Already queued, skip silently
+    }
+
+      operation,
+    queuedCount++;
+  }
+
+}
+
 // =============================================================================
 // =============================================================================
 

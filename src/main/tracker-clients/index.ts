@@ -4,6 +4,10 @@ export type {
   ExternalIssue,
   TrackerClient,
   TrackerCredentials,
+  JiraIssueType,
+  CreateIssueParams,
+  CreatedIssue,
+  UpdateIssueParams,
 
 // Errors
 

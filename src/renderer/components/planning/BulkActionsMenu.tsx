@@ -12,6 +12,8 @@
         disabled={selectedCount !== 1}
       >
         Edit
+        >
+      )}
       >
         Delete {selectedCount} item{selectedCount > 1 ? 's' : ''}
   );

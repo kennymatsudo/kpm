@@ -209,6 +209,7 @@ export type PlanAction =
   | { type: 'remove_dependency'; relation_id: string }
   | { type: 'reorder'; item_id: string; after_item_id: string | null }
   | { type: 'delete_item'; item_id: string }
+  | { type: 'set_position'; item_id: string; x: number; y: number }
 
 export interface PlanActionResponse {
   message: string;
@@ -222,4 +223,123 @@ export interface PlanActionResult {
   // Map of placeholder IDs ($1, $2) to real IDs for newly created items
   createdIds?: Record<string, string>;
   // Actions that were skipped due to validation failures (e.g., item not found)
+}
+
+// =============================================================================
+// =============================================================================
+
+  id: string;
+  kpm_project_id: string;
+  scope_id: string;
+  kpm_label: string;
+  created_at: string;
+}
+
+/** Sync queue entry: item staged for push to Jira */
+export interface SyncQueueEntry {
+  id: string;
+  kpm_project_id: string;
+  plan_item_id: string;
+  association_id: string;
+  operation: 'create' | 'update';
+  target_issue_type_id: string | null;
+  target_issue_type_name: string | null;
+  target_parent_key: string | null;
+  queued_by: 'user' | 'claude';
+  queued_at: string;
+  error_message: string | null;
+}
+
+/** Queue entry with joined plan item data for display */
+export interface SyncQueueEntryWithPlanItem extends SyncQueueEntry {
+  plan_item: {
+    id: string;
+    title: string;
+    description: string | null;
+    label: string | null;
+    parent_id: string | null;
+    external_key: string | null;
+    external_type: string | null;
+  };
+}
+
+/** Jira issue type from API */
+export interface JiraIssueType {
+  id: string;
+  name: string;
+  subtask: boolean;
+  description?: string;
+  iconUrl?: string;
+}
+
+/** Export preview item with validation status */
+export interface ExportPreviewItem {
+  queueEntry: SyncQueueEntry;
+  planItem: PlanItem;
+  resolvedType: {
+    id: string;
+    name: string;
+  } | null;
+  resolvedParent: string | null;
+  validationErrors: string[];
+}
+
+/** Full export preview */
+export interface ExportPreview {
+  items: ExportPreviewItem[];
+  warnings: string[];
+  canProceed: boolean;
+}
+
+/** Export result after pushing to Jira */
+export interface ExportResult {
+  success: boolean;
+}
+
+// =============================================================================
+// Sync Review Types (Task-by-Task Review Modal)
+// =============================================================================
+
+/** Character-level diff hunk */
+export interface DiffHunk {
+  type: 'equal' | 'insert' | 'delete';
+  value: string;
+}
+
+/** Computed diff for a single field */
+export interface FieldDiff {
+  hunks: DiffHunk[];
+  hasChanges: boolean;
+}
+
+/** Current values from Jira for comparison */
+export interface JiraCurrentValues {
+  summary: string;
+  description: string | null;
+  updated: string; // ISO timestamp from Jira
+}
+
+/** Extended preview item with Jira comparison data */
+export interface SyncReviewItem extends ExportPreviewItem {
+  /** For updates - fetched from Jira */
+  jiraCurrent: JiraCurrentValues | null;
+
+  /** Computed character-level diffs */
+  diffs: {
+    summary: FieldDiff | null;
+    description: FieldDiff | null;
+  } | null;
+
+  /** User decision during review */
+  decision: 'pending' | 'approved' | 'skipped' | 'removed';
+
+  /** Warning: Jira was updated after last_synced_at */
+  hasConflict: boolean;
+}
+
+/** Full sync review data */
+export interface SyncReviewData {
+  items: SyncReviewItem[];
+  warnings: string[];
+  canProceed: boolean;
 }

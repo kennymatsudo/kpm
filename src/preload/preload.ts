@@ -16,3 +16,7 @@ export type {
   SyncResult,
   ConflictResolution,
   DeletedItemAction,
+  SyncQueueEntryWithPlanItem,
+  ExportPreview,
+  ExportResult,
+  SyncReviewData,

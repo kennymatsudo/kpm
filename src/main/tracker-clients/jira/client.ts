@@ -1,4 +1,11 @@
 import { Version3Client } from 'jira.js';
+import type {
+  TrackerClient,
+  ExternalIssue,
+  JiraIssueType,
+  CreateIssueParams,
+  CreatedIssue,
+  UpdateIssueParams,
 
 export class JiraClient implements TrackerClient {
   readonly type = 'jira' as const;
@@ -197,6 +204,87 @@ export class JiraClient implements TrackerClient {
     try {
       const project = await this.client.projects.getProject({ projectIdOrKey: projectKey });
       return project.components?.map(c => ({ id: c.id!, name: c.name! })) ?? [];
+    } catch (error) {
+      throw TrackerError.fromJiraError(error);
+    }
+  }
+
+  /**
+   * Get available issue types for a project.
+   * Used for type mapping configuration.
+   */
+  async getIssueTypes(projectKey: string): Promise<JiraIssueType[]> {
+    try {
+      const project = await this.client.projects.getProject({
+        projectIdOrKey: projectKey,
+        expand: 'issueTypes',
+      });
+      return (
+        project.issueTypes?.map(it => ({
+          id: it.id!,
+          name: it.name!,
+          subtask: it.subtask ?? false,
+          description: it.description ?? undefined,
+          iconUrl: it.iconUrl ?? undefined,
+        })) ?? []
+      );
+    } catch (error) {
+      throw TrackerError.fromJiraError(error);
+    }
+  }
+
+  /**
+   * Create a new issue in Jira.
+   */
+  async createIssue(params: CreateIssueParams): Promise<CreatedIssue> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fields: any = {
+        project: { key: params.projectKey },
+        issuetype: { id: params.issueTypeId },
+        summary: params.summary,
+      };
+
+      }
+
+      if (params.parentKey) {
+        fields.parent = { key: params.parentKey };
+      }
+
+      if (params.labels?.length) {
+        fields.labels = params.labels;
+      }
+
+      const result = await this.client.issues.createIssue({ fields });
+      return {
+      };
+    } catch (error) {
+      throw TrackerError.fromJiraError(error);
+    }
+  }
+
+  /**
+   * Update an existing issue in Jira.
+   */
+  async updateIssue(issueKey: string, params: UpdateIssueParams): Promise<void> {
+    try {
+      const fields: Record<string, unknown> = {};
+
+      if (params.summary !== undefined) {
+        fields.summary = params.summary;
+      }
+
+      if (params.description !== undefined) {
+      }
+
+      if (params.labels !== undefined) {
+        fields.labels = params.labels;
+      }
+
+      await this.client.issues.editIssue({
+        issueIdOrKey: issueKey,
+        fields,
+      });
     } catch (error) {
       throw TrackerError.fromJiraError(error);
     }
