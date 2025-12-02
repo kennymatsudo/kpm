@@ -81,6 +81,7 @@ interface TrackerState {
     }
   },
 
+  hasAssociationItems: (associationId) => {
   },
 
   applyImport: async (projectId, associationId, selectedTypes) => {

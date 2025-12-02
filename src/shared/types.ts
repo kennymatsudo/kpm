@@ -73,6 +73,7 @@ export interface ImportIssuePreview {
 export interface ImportResult {
   success: boolean;
   created: number;
+  errors: { external_key: string; error: string }[];
 }
 
 // =============================================================================
@@ -120,18 +121,22 @@ export interface SyncNewItem {
 export interface SyncUpdatedItem {
   plan_item_id: string;
   external_key: string;
+  changes: {
     old_value: string | null;
     new_value: string | null;
+  }[];
 }
 
 export interface SyncConflict {
   plan_item_id: string;
   external_key: string;
   title: string;
+  fields: {
     field: 'title' | 'description' | 'label' | 'release_tag';
     your_value: string | null;
     tracker_value: string | null;
     // snapshot_value intentionally NOT included - internal only for detection
+  }[];
 }
 
 export type ConflictResolution = 'keep_mine' | 'use_theirs';
@@ -142,6 +147,7 @@ export interface SyncResult {
   created: number;
   updated: number;
   deleted: number;
+  errors: { external_key: string; error: string }[];
 }
 
 // =============================================================================
@@ -223,6 +229,7 @@ export interface PlanActionResult {
   // Map of placeholder IDs ($1, $2) to real IDs for newly created items
   createdIds?: Record<string, string>;
   // Actions that were skipped due to validation failures (e.g., item not found)
+  skippedActions?: { index: number; type: string; reason: string }[];
 }
 
 // =============================================================================
@@ -294,6 +301,9 @@ export interface ExportPreview {
 /** Export result after pushing to Jira */
 export interface ExportResult {
   success: boolean;
+  created: { plan_item_id: string; jira_key: string }[];
+  updated: { plan_item_id: string; jira_key: string }[];
+  errors: { plan_item_id: string; error: string }[];
 }
 
 // =============================================================================

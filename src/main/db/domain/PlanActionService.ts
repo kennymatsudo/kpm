@@ -2,6 +2,7 @@
 
   projectId: string;
   idMap: Map<string, string>;
+  skippedActions: { index: number; type: string; reason: string }[];
   placeholderCounter: number;
   actionIndex: number;
 }

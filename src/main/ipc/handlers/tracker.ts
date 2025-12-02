@@ -1,3 +1,4 @@
+import { ipcMain, type BrowserWindow } from 'electron';
 import type {
   SyncPreview,
 

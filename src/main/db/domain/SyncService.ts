@@ -110,9 +110,11 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
     const updates: SyncUpdatedItem['changes'] = [];
     const conflicts: SyncConflict['fields'] = [];
 
+    const fields: {
       kpm: string | null;
       external: string | null;
       snapshot: string | null;
+    }[] = [
     ];
 
 
@@ -143,6 +145,8 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
     projectId: string,
     preview: SyncPreview,
     result: SyncResult
+  ): Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] {
+    const snapshotsToUpsert: Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] = [];
 
     for (const item of preview.new_items) {
       try {
@@ -180,6 +184,8 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
    */
   applyUpdates(
     preview: SyncPreview,
+  ): Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] {
+    const snapshotsToUpsert: Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] = [];
 
     for (const item of preview.updated_items) {
       try {
@@ -221,6 +227,8 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
   applyConflictResolutions(
     preview: SyncPreview,
     resolutions: Map<string, ConflictResolution>,
+  ): Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] {
+    const snapshotsToUpsert: Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] = [];
 
     for (const conflict of preview.conflicts) {
       const resolution = resolutions.get(conflict.plan_item_id);

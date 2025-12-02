@@ -20,7 +20,9 @@ import type {
   queueItems(
     kpmProjectId: string,
     itemIds: string[],
+  ): { queued: string[]; skipped: { id: string; reason: string }[] } {
     const queued: string[] = [];
+    const skipped: { id: string; reason: string }[] = [];
 
     const associations = TrackerRepository.getAssociationsByProject(kpmProjectId);
     if (associations.length === 0) {
