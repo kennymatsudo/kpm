@@ -7,12 +7,16 @@ export { MAX_DEPTH };
 interface PlanCardProps {
   item: TreeNode;
   depth: number;
+  focusedItemId?: string | null;  // For checking child focus
+  onEditItem?: (itemId: string) => void;  // For opening edit panel
   onDragEnd?: () => void;
 }
 
   item,
   depth,
+  focusedItemId,
   onSelectItem,
+  onEditItem,
   onDrop,
   onDragStart,
   onDragEnd,

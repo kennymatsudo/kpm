@@ -4,14 +4,18 @@ interface CanvasProps {
   projectId: string;
   items: PlanItem[];
   selectedItemIds: Set<string>;
+  focusedItemId: string | null;
   onSelectItem: (itemId: string | null, addToSelection?: boolean) => void;
+  onEditItem: (itemId: string) => void;
   onUpdatePosition: (itemId: string, x: number, y: number) => void;
 }
 
   projectId,
   items,
   selectedItemIds,
+  focusedItemId,
   onSelectItem,
+  onEditItem,
   onReparent,
   onUpdatePosition,
   onAutoLayout,
