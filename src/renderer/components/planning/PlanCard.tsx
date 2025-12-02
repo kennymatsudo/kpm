@@ -26,6 +26,7 @@ interface PlanCardProps {
   const [isExpanded, setIsExpanded] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
 
+
   const style = getStyleForDepth(depth);
 
   // Root cards (depth 0) use fixed width; nested cards fill their parent
@@ -37,6 +38,9 @@ interface PlanCardProps {
         plan-card plan-card-depth-${Math.min(depth, 4)}
       `}
         e.stopPropagation();
+      }}
+        if (!isSelected) {
+        }
       }}
         e.stopPropagation();
         setIsDragging(true);

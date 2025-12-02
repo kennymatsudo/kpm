@@ -98,6 +98,7 @@ interface ExportState {
     try {
       if (!result.success) {
         set({ error: result.error || 'Failed to remove from queue' });
+        return;
       }
       const entries = get().queueEntries.filter(e => e.id !== queueEntryId);
     } catch (e) {
