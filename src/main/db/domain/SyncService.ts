@@ -79,6 +79,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
           preview.updated_items.push({
             plan_item_id: existing.id,
             external_key: issue.key,
+            title: existing.title,
             changes: analysis.updates,
           });
           preview.stats.updated++;

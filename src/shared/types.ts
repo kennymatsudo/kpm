@@ -121,6 +121,7 @@ export interface SyncNewItem {
 export interface SyncUpdatedItem {
   plan_item_id: string;
   external_key: string;
+  title: string;
   changes: {
     old_value: string | null;
     new_value: string | null;

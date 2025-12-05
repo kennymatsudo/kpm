@@ -34,6 +34,8 @@ export const STATUS_MAPPINGS: Record<TrackerType, Record<string, StatusCategory>
   },
 };
 
+// Category styling - uses distinct hues for clear differentiation
+// Each category has a unique color to avoid confusion
 export const STATUS_CATEGORY_CONFIG: Record<StatusCategory, {
   label: string;
   bgClass: string;
