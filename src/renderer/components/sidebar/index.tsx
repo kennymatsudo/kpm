@@ -10,6 +10,7 @@ interface SidebarProps {
           <div className="p-6 text-center">
               </svg>
             </div>
+            <p className="text-text-muted text-xs mt-1.5 leading-relaxed whitespace-nowrap">
             </p>
           </div>
         )}

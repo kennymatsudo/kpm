@@ -50,6 +50,10 @@ import type {
     const { projectKey } = TrackerSchemas.recentIssues.parse(params);
   });
 
+  // Search issues by JQL (for previewing children, etc.)
+    const { projectKey, jql } = TrackerSchemas.searchIssuesByJql.parse(params);
+  });
+
     const { projectKey } = TrackerSchemas.projectLabels.parse(params);
   });
 

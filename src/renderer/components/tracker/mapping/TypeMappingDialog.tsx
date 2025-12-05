@@ -72,6 +72,7 @@ export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: P
 
           </div>
 
+            <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">
             </p>
           </div>
 

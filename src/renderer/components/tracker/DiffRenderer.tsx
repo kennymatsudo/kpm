@@ -34,6 +34,7 @@ export function DiffRenderer({ diff, className = '' }: DiffRendererProps) {
           case 'equal':
           default:
             return (
+              <span key={index} className="text-text-secondary">
                 {hunk.value}
               </span>
             );
@@ -66,12 +67,14 @@ interface FieldDiffViewProps {
       >
         {isCreate ? (
           // For creates, just show the value
+            {newValue || <span className="text-text-tertiary italic">Empty</span>}
           </span>
         ) : hasChanges && diff ? (
           // For updates with changes, show the diff
           <DiffRenderer diff={diff} />
         ) : (
           // No changes - show current value
+            {oldValue || newValue || <span className="text-text-tertiary italic">Empty</span>}
           </span>
         )}
       </div>
