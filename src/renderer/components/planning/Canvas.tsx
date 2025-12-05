@@ -41,6 +41,7 @@ interface CanvasProps {
       style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
     >
       {/* Toolbar */}
+      <div className="absolute top-3 right-3 z-20 flex items-center gap-1 bg-surface-2 rounded-lg p-1 border border-border-default shadow-sm">
         <button
           onClick={() => setZoom(z => Math.max(ZOOM.MIN, z - ZOOM.STEP))}
           className="p-1.5 hover:bg-surface-3 rounded text-text-tertiary hover:text-text-primary transition-colors"
@@ -65,6 +66,8 @@ interface CanvasProps {
         >
         </button>
         <button
+          onClick={() => {
+          }}
         >
         </button>
       </div>
@@ -78,6 +81,8 @@ interface CanvasProps {
       </div>
 
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-14 h-14 rounded-2xl bg-surface-2 border border-border-subtle flex items-center justify-center mx-auto mb-5">
+              <svg className="w-7 h-7 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
             </div>
@@ -89,6 +94,7 @@ interface CanvasProps {
       )}
 
       {/* Pan hint */}
+        Scroll to pan • ⌘+Scroll to zoom
       </div>
 
       {dragPreview && (

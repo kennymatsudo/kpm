@@ -675,6 +675,17 @@ select:focus-visible {
 }
 
 /* ============================================
+   Resize Handle
+   ============================================ */
+
+.resize-handle {
+  background: transparent;
+  transition: background var(--transition-default);
+}
+
+}
+
+/* ============================================
    Theme Toggle Animation
    ============================================ */
 

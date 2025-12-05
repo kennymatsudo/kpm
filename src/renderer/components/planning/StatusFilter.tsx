@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import type { StatusCategory } from '../../../shared/types';
 
@@ -12,15 +13,37 @@ interface StatusFilterProps {
  * Checkboxes toggle visibility - checked = visible, unchecked = hidden.
  */
   const [isOpen, setIsOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Close on outside click
   useEffect(() => {
+    if (!isOpen) return;
+
     const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        buttonRef.current && !buttonRef.current.contains(target) &&
+        menuRef.current && !menuRef.current.contains(target)
+      ) {
         setIsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const handleToggle = () => {
+    if (!isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setMenuPosition({
+        top: rect.bottom + 4,
+        right: window.innerWidth - rect.right,
+      });
+    }
+    setIsOpen(!isOpen);
+  };
 
   const toggleCategory = (category: StatusCategory) => {
     const next = new Set(hiddenCategories);
@@ -35,7 +58,10 @@ interface StatusFilterProps {
   const hasFilters = hiddenCategories.size > 0;
 
   return (
+    <div className="relative">
       <button
+        ref={buttonRef}
+        onClick={handleToggle}
         className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
           hasFilters
             ? 'bg-accent-subtle text-accent'
@@ -44,6 +70,10 @@ interface StatusFilterProps {
       >
       </button>
 
+      {isOpen && menuPosition && createPortal(
+        <div
+          ref={menuRef}
+        >
             const isVisible = !hiddenCategories.has(category);
             return (
               <button
@@ -66,6 +96,8 @@ interface StatusFilterProps {
               </button>
             );
           })}
+        </div>,
+        document.body
       )}
     </div>
   );

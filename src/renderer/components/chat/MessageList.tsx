@@ -1,6 +1,7 @@
 import { processMessageContent } from '../../utils/messageFormatter';
 
   return (
+    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border-subtle">
       <div className="w-1.5 h-1.5 rounded-full bg-info animate-pulse" />
       <span className="text-xs text-info">Plan update proposed</span>
     </div>

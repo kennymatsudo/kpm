@@ -4,6 +4,8 @@ import { BulkDeleteConfirmDialog } from './BulkDeleteConfirmDialog';
 interface PlanViewProps {
 }
 
+export function PlanView({
+}: PlanViewProps) {
   const {
     planItems,
     executePlanActions,
@@ -16,6 +18,8 @@ interface PlanViewProps {
 
   if (!currentProjectId) {
     return (
+          <div className="w-14 h-14 rounded-2xl bg-surface-2 shadow-sm flex items-center justify-center mx-auto mb-5">
+            <svg className="w-7 h-7 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             </svg>
           </div>
           </p>

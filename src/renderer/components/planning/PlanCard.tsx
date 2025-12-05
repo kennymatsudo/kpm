@@ -67,6 +67,8 @@ interface PlanCardProps {
         e.stopPropagation();
       }}
       onContextMenu={isPreview ? undefined : (e) => {
+
+        // Select this card if not already selected
         if (!isSelected) {
         }
       }}
