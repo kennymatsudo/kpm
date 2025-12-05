@@ -26,7 +26,9 @@ export const AUTO_LAYOUT = {
 export const ZOOM = {
   MIN: 0.25,
   MAX: 2,
+  /** Step size for zoom buttons */
   STEP: 0.25,
+  /** Step size for Cmd/Ctrl+scroll zoom (finer control) */
   SCROLL_STEP: 0.02,
 } as const;
 

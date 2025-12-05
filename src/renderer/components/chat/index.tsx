@@ -15,6 +15,7 @@ import { useChat } from '../../hooks/useChat';
         }}
       >
         <button
+          style={{ color: 'color-mix(in srgb, var(--color-accent) 60%, transparent)' }}
         >
         </button>
       </div>

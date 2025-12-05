@@ -41,6 +41,7 @@ interface Props {
 
   return (
     <div
+      className={`rounded-xl overflow-hidden shadow-sm focus-within:ring-2 focus-within:ring-accent/50 ${!resolution ? 'ring-2 ring-warning/50' : ''}`}
       role="group"
       aria-label={ariaLabel}
       onKeyDown={handleKeyDown}
@@ -59,9 +60,11 @@ interface Props {
         </div>
 
       {/* Resolution buttons */}
+      <div className="px-3 py-2 bg-surface-2 flex gap-2">
         <button
           ref={keepMineRef}
             resolution === 'keep_mine'
+              ? 'bg-success text-white'
               : 'bg-surface-3 text-text-primary hover:bg-surface-3/80'
           }`}
           onClick={() => onResolve('keep_mine')}
@@ -72,6 +75,7 @@ interface Props {
         <button
           ref={useTheirsRef}
             resolution === 'use_theirs'
+              ? 'bg-info text-white'
               : 'bg-surface-3 text-text-primary hover:bg-surface-3/80'
           }`}
           onClick={() => onResolve('use_theirs')}

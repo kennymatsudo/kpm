@@ -53,6 +53,7 @@ export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: P
   // Loading state
     return (
           <div className="flex flex-col items-center">
+            <p className="text-text-primary text-sm text-center">Loading type mappings...</p>
           </div>
         </div>
     );

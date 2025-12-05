@@ -29,24 +29,30 @@ export function SyncItemSkeleton() {
  */
 export function SyncConflictSkeleton() {
   return (
+    <div className="rounded-xl shadow-sm overflow-hidden bg-surface-1">
       {/* Header */}
       <div className="px-3 py-2 bg-surface-2 flex items-center gap-2">
         <Skeleton className="w-16 h-5" />
         <Skeleton className="flex-1 h-5" />
       </div>
       {/* Field row */}
+      <div>
         <div className="px-3 py-1 bg-surface-1">
           <Skeleton className="w-16 h-4" />
         </div>
+        <div className="grid grid-cols-2 gap-px bg-surface-3">
+          <div className="p-3 bg-surface-1">
             <Skeleton className="w-20 h-4 mb-2" />
             <Skeleton className="w-full h-12" />
           </div>
+          <div className="p-3 bg-surface-1">
             <Skeleton className="w-20 h-4 mb-2" />
             <Skeleton className="w-full h-12" />
           </div>
         </div>
       </div>
       {/* Buttons */}
+      <div className="px-3 py-2 bg-surface-2 flex gap-2">
         <Skeleton className="w-20 h-7" />
         <Skeleton className="w-20 h-7" />
       </div>

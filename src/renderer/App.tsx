@@ -1,3 +1,4 @@
+import { ThemeProvider } from './contexts';
 
 export default function App() {
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
