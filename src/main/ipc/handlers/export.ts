@@ -11,6 +11,7 @@ import { ipcMain } from 'electron';
   // Remove item from queue
 
   // Clear entire queue for project
+
   // Get queue count
 
   // ==========================================================================

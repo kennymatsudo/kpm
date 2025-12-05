@@ -10,6 +10,7 @@ import type {
   SyncReviewItem,
   FieldDiff,
   DiffHunk,
+  StatusTransitionInfo,
 /**
  * Manages the sync queue and executes the export.
  */
@@ -215,9 +216,17 @@ import type {
         }
       }
 
+      // Check for status transition
+      let statusTransition: StatusTransitionInfo | null = null;
+      const targetStatusCategory = item.queueEntry.target_status_category;
+
+        }
+      }
+
         ...item,
         jiraCurrent,
         diffs,
+        statusTransition,
         hasConflict,
 
     return {
@@ -281,6 +290,9 @@ import type {
           }
 
 
+          }
+
+          }
         }
       }
 

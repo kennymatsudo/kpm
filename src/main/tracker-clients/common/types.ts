@@ -39,6 +39,20 @@ export interface UpdateIssueParams {
   labels?: string[];
 }
 
+/** Jira workflow transition */
+export interface JiraTransition {
+  id: string;
+  name: string;
+  to: {
+    id: string;
+    name: string;
+    statusCategory: {
+      key: string;  // 'new', 'indeterminate', 'done'
+      name: string; // 'To Do', 'In Progress', 'Done'
+    };
+  };
+}
+
 export interface TrackerClient {
   type: TrackerType;
   testConnection(): Promise<{ success: boolean; error?: string }>;

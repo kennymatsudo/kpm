@@ -1,6 +1,7 @@
 import type { TreeNode } from '../../utils/planHierarchy';
 import { getStyleForDepth, MAX_DEPTH } from '../../constants/planCardStyles';
 import { DragSource } from '../../constants/dragSource';
+import { getStatusCategory } from '../../constants/statusConfig';
 
 export type { TreeNode };
 export { MAX_DEPTH };
@@ -39,6 +40,8 @@ interface PlanCardProps {
   const [showMenu, setShowMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+
+  // Derive effective status: use status_category if set, otherwise derive from external_status
 
 
   const style = getStyleForDepth(depth);
@@ -121,8 +124,18 @@ interface PlanCardProps {
         e.preventDefault();
         // Don't allow nesting beyond max depth
         if (depth >= MAX_DEPTH) return;
+        // Don't show drop indicator on the card being dragged
+        if (isDragging) return;
         // Don't stopPropagation - allow dragOver to bubble so canvas can receive drops
         setIsDragOver(true);
+      }}
+      onDragLeave={isPreview ? undefined : (e) => {
+        // Only set dragOver to false if we're actually leaving this card
+        // (not just moving to a child element within the card)
+        const relatedTarget = e.relatedTarget as Node | null;
+        if (!e.currentTarget.contains(relatedTarget)) {
+          setIsDragOver(false);
+        }
       }}
       onDrop={isPreview ? undefined : (e) => {
         e.preventDefault();

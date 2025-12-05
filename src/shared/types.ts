@@ -186,6 +186,7 @@ export type PlanItemUpdates = Partial<Pick<PlanItem,
   | 'description'
   | 'label'
   | 'status'
+  | 'status_category'
   | 'release_tag'
   | 'parent_id'
   | 'item_order'
@@ -253,6 +254,7 @@ export interface SyncQueueEntry {
   target_issue_type_id: string | null;
   target_issue_type_name: string | null;
   target_parent_key: string | null;
+  target_status_category: StatusCategory | null;  // Status to sync to Jira
   queued_by: 'user' | 'claude';
   queued_at: string;
   error_message: string | null;
@@ -327,7 +329,29 @@ export interface FieldDiff {
 export interface JiraCurrentValues {
   summary: string;
   description: string | null;
+  status: string;  // Current Jira status name
   updated: string; // ISO timestamp from Jira
+}
+
+/** Jira workflow transition */
+export interface JiraTransition {
+  id: string;
+  name: string;
+  to: {
+    id: string;
+    name: string;
+    statusCategory: {
+      key: string;  // 'new', 'indeterminate', 'done'
+      name: string; // 'To Do', 'In Progress', 'Done'
+    };
+  };
+}
+
+/** Status transition info for sync review */
+export interface StatusTransitionInfo {
+  currentStatus: string;           // Current Jira status name
+  availableTransition: JiraTransition | null;  // Best matching transition, null if none
+  warning: string | null;          // Warning message if no valid transition
 }
 
 /** Extended preview item with Jira comparison data */
@@ -340,6 +364,9 @@ export interface SyncReviewItem extends ExportPreviewItem {
     summary: FieldDiff | null;
     description: FieldDiff | null;
   } | null;
+
+  /** Status transition info (if status change queued) */
+  statusTransition: StatusTransitionInfo | null;
 
   /** User decision during review */
   decision: 'pending' | 'approved' | 'skipped' | 'removed';

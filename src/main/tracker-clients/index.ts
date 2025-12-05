@@ -5,6 +5,7 @@ export type {
   TrackerClient,
   TrackerCredentials,
   JiraIssueType,
+  JiraTransition,
   CreateIssueParams,
   CreatedIssue,
   UpdateIssueParams,

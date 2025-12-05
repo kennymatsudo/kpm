@@ -1,3 +1,4 @@
+import { STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 
 interface DiffRendererProps {
   diff: FieldDiff;
@@ -72,6 +73,40 @@ interface FieldDiffViewProps {
         ) : (
           // No changes - show current value
           </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface StatusTransitionViewProps {
+  transition: StatusTransitionInfo;
+}
+
+/**
+ * Displays a status transition for sync review.
+ */
+  const targetConfig = STATUS_CATEGORY_CONFIG[transition.targetCategory];
+
+  return (
+        {transition.warning && (
+          </span>
+        )}
+      </div>
+          {/* Current status */}
+            {transition.currentStatus}
+          </span>
+
+          {/* Arrow */}
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+          </svg>
+
+          </span>
+        </div>
+
+        {/* Warning message */}
+        {transition.warning && (
+          </div>
         )}
       </div>
     </div>

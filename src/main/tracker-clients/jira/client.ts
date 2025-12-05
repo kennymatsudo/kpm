@@ -3,6 +3,7 @@ import type {
   TrackerClient,
   ExternalIssue,
   JiraIssueType,
+  JiraTransition,
   CreateIssueParams,
   CreatedIssue,
   UpdateIssueParams,
@@ -285,6 +286,41 @@ export class JiraClient implements TrackerClient {
         issueIdOrKey: issueKey,
         fields,
       });
+    } catch (error) {
+      throw TrackerError.fromJiraError(error);
+    }
+  }
+
+  /**
+   * Get available workflow transitions for an issue.
+   * Returns only transitions valid from the issue's current status.
+   */
+  async getTransitions(issueKey: string): Promise<JiraTransition[]> {
+    try {
+      const result = await this.client.issues.getTransitions({
+        issueIdOrKey: issueKey,
+      });
+
+      return (result.transitions ?? []).map((t) => ({
+        id: t.id!,
+        name: t.name!,
+        to: {
+          id: t.to!.id!,
+          name: t.to!.name!,
+          statusCategory: {
+            key: t.to!.statusCategory?.key ?? 'undefined',
+            name: t.to!.statusCategory?.name ?? 'Unknown',
+          },
+        },
+      }));
+    } catch (error) {
+      throw TrackerError.fromJiraError(error);
+    }
+  }
+
+  /**
+   * Transition an issue to a new status via workflow transition.
+   */
     } catch (error) {
       throw TrackerError.fromJiraError(error);
     }

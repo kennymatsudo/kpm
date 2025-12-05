@@ -3,6 +3,7 @@ import type {
   SyncQueueEntryWithPlanItem,
   ExportPreview,
   ExportResult,
+  StatusCategory,
 } from '../../../shared/types';
 
 interface ExportState {
@@ -31,6 +32,7 @@ interface ExportState {
   // Queue actions
   loadQueue: (projectId: string) => Promise<void>;
   addToQueue: (projectId: string, itemIds: string[]) => Promise<{ success: boolean; added?: number; skipped?: number; error?: string }>;
+  addToQueueWithStatus: (projectId: string, itemIds: string[], statusCategory: StatusCategory) => Promise<{ success: boolean; error?: string }>;
   removeFromQueue: (queueEntryId: string) => Promise<void>;
   clearQueue: (projectId: string) => Promise<void>;
   refreshQueueCount: (projectId: string) => Promise<void>;
@@ -88,6 +90,33 @@ interface ExportState {
       return { success: false, error: result.error };
     } catch (e) {
       const error = e instanceof Error ? e.message : 'Failed to add to queue';
+      set({ error });
+      return { success: false, error };
+    }
+  },
+
+  addToQueueWithStatus: async (projectId, itemIds, statusCategory) => {
+    set({ error: null });
+    try {
+      // First add items to queue
+      if (!result.success) {
+        return { success: false, error: result.error };
+      }
+
+      // Then update the status category on the queue entries
+      // Get the latest queue to find the entry IDs
+      if (queueResult.success && queueResult.entries) {
+        const itemIdSet = new Set(itemIds);
+        for (const entry of queueResult.entries) {
+          if (itemIdSet.has(entry.plan_item_id)) {
+          }
+        }
+      }
+
+      await get().loadQueue(projectId);
+      return { success: true };
+    } catch (e) {
+      const error = e instanceof Error ? e.message : 'Failed to add to queue with status';
       set({ error });
       return { success: false, error };
     }
