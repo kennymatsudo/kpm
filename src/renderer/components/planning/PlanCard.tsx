@@ -8,13 +8,21 @@ export { MAX_DEPTH };
 interface PlanCardProps {
   item: TreeNode;
   depth: number;
+  /** Card variant: 'default' for interactive canvas cards, 'preview' for drag preview */
+  variant?: 'default' | 'preview';
+  isSelected?: boolean;
+  isFocused?: boolean;
   focusedItemId?: string | null;  // For checking child focus
   onEditItem?: (itemId: string) => void;  // For opening edit panel
+  onDragStart?: (item: TreeNode, x: number, y: number, offsetX: number, offsetY: number, depth: number, selectedIds: string[]) => void;
   onDragEnd?: () => void;
 }
 
   item,
   depth,
+  variant = 'default',
+  isSelected = false,
+  isFocused = false,
   focusedItemId,
   onSelectItem,
   onEditItem,
@@ -22,9 +30,15 @@ interface PlanCardProps {
   onDragStart,
   onDragEnd,
 }: PlanCardProps) {
+  const isPreview = variant === 'preview';
+
+  // State only needed for interactive cards
   const [isDragOver, setIsDragOver] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
 
 
   const style = getStyleForDepth(depth);
@@ -32,16 +46,28 @@ interface PlanCardProps {
   // Root cards (depth 0) use fixed width; nested cards fill their parent
   const cardWidth = depth === 0 ? style.width : '100%';
 
+  const previewClasses = isPreview
+
+  const interactiveClasses = isPreview
+    ? ''
+
   return (
     <div
+      data-plan-card={!isPreview ? true : undefined}
       className={`
         plan-card plan-card-depth-${Math.min(depth, 4)}
+        ${previewClasses}
+        ${interactiveClasses}
       `}
+      draggable={!isPreview}
+      onClick={isPreview ? undefined : (e) => {
         e.stopPropagation();
       }}
+      onContextMenu={isPreview ? undefined : (e) => {
         if (!isSelected) {
         }
       }}
+      onDragStart={isPreview ? undefined : (e) => {
         e.stopPropagation();
         setIsDragging(true);
 
@@ -85,16 +111,20 @@ interface PlanCardProps {
         e.dataTransfer.setData('descendant-ids', JSON.stringify(allDescendantIds));
 
         // Notify parent with position for drag preview (pass offset for accurate preview positioning)
+        onDragStart?.(item, e.clientX, e.clientY, offsetX, offsetY, depth, idsToMove);
       }}
+      onDragEnd={isPreview ? undefined : () => {
         setIsDragging(false);
         onDragEnd?.();
       }}
+      onDragOver={isPreview ? undefined : (e) => {
         e.preventDefault();
         // Don't allow nesting beyond max depth
         if (depth >= MAX_DEPTH) return;
         // Don't stopPropagation - allow dragOver to bubble so canvas can receive drops
         setIsDragOver(true);
       }}
+      onDrop={isPreview ? undefined : (e) => {
         e.preventDefault();
         setIsDragOver(false);
 
@@ -148,6 +178,8 @@ interface PlanCardProps {
 
       )}
 
+      {/* Delete confirmation dialog - not rendered in preview mode */}
+      {!isPreview && showDeleteConfirm && (
         <DeleteConfirmDialog
           itemTitle={item.title}
           descendantCount={descendantCount}
