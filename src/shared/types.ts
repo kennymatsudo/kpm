@@ -5,6 +5,21 @@
 // =============================================================================
 
 
+/** Tracker type constants to avoid magic strings */
+export const TRACKER_TYPES = {
+  JIRA: 'jira',
+  LINEAR: 'linear',
+} as const satisfies Record<string, TrackerType>;
+
+/** Unified progress callback for import/sync operations */
+export type TrackerProgressCallback = (data: {
+  projectId: string;
+  associationId: string;
+  phase: 'fetching' | 'analyzing' | 'importing' | 'complete';
+  current?: number;
+  total?: number;
+}) => void;
+
 
 /**
  * Determines if an external issue type represents a "subtask" that must be nested under a parent.

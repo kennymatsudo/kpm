@@ -11,3 +11,4 @@ export {
   KeytarCredentialProvider,
 
 // Local exports
+export { fetchIssuesWithSubtasks, DEFAULT_BATCH_SIZE, PROGRESS_REPORT_INTERVAL } from './fetchingUtils';
