@@ -13,6 +13,9 @@ import { useEffect, useState } from 'react';
   const {
     loadAssociations,
     hasAssociationItems,
+    importAll,
+    isImporting,
+    importProgress,
     setupImportProgressListener,
   } = useTrackerStore();
 
@@ -55,6 +58,11 @@ import { useEffect, useState } from 'react';
 
   const handleImport = async () => {
     if (!currentProjectId) return;
+    const result = await importAll(currentProjectId, associationId);
+    if (result) {
+      await handleRefresh();
+      setIsImported(true);
+    }
   };
 
   const handleSync = async () => {
@@ -145,6 +153,14 @@ import { useEffect, useState } from 'react';
                     <button
                       className="w-full btn btn-primary"
                     >
+                        <>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          </svg>
+                        </>
+                      )}
                     </button>
                   </>
                 ) : (

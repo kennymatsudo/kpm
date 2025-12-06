@@ -6,6 +6,25 @@
 
 
 
+/**
+ * Determines if an external issue type represents a "subtask" that must be nested under a parent.
+ * This is tracker-agnostic - add patterns for each supported tracker.
+ *
+ * Jira: "Sub-task" is a special issue type that must have a parent
+ * Linear: "sub_issue" or subtask patterns (to be confirmed)
+ */
+export function isSubtaskIssueType(issueType: string | null | undefined): boolean {
+  if (!issueType) return false;
+  const normalized = issueType.toLowerCase();
+  return (
+    normalized === 'sub-task' ||       // Jira standard
+    normalized === 'subtask' ||        // Jira variations
+    normalized === 'sub_task' ||
+    normalized === 'sub-issue' ||      // Linear
+    normalized === 'subissue'
+  );
+}
+
 // Credentials are now stored in OS keychain via keytar.
 // This interface is for the non-sensitive info returned to renderer.
 export interface TrackerCredentialInfo {
@@ -113,6 +132,7 @@ export interface SyncNewItem {
   external_key: string;
   title: string;
   description: string | null;
+  external_issue_type: string;          // Original issue type: 'Story', 'Sub-task', etc.
   external_status: string;
   external_parent_key: string | null;
   external_epic_key: string | null;

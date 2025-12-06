@@ -70,6 +70,9 @@ import type {
     const { projectId, associationId, selectedTypes } = TrackerSchemas.importApply.parse(params);
   });
 
+    const { projectId, associationId } = TrackerSchemas.importPreview.parse(params);
+  });
+
   // ============================================
   // Sync Operations (Subsequent syncs after initial import)
   // ============================================

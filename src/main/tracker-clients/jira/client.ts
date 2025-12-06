@@ -320,8 +320,15 @@ export class JiraClient implements TrackerClient {
 
   /**
    * Transition an issue to a new status via workflow transition.
+   * If transitioning to a "done" category status, includes the "Done" resolution.
    */
+  async transitionIssue(issueKey: string, transitionId: string, toDoneCategory = false): Promise<void> {
+
+
+      await this.client.issues.doTransition(request);
     } catch (error) {
+      // Log the raw error for debugging
+      console.error(`[JiraClient] transitionIssue failed for ${issueKey} with transitionId ${transitionId}:`, JSON.stringify(error, null, 2));
       throw TrackerError.fromJiraError(error);
     }
   }

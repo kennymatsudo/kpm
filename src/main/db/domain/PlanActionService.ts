@@ -43,6 +43,7 @@
     external_key: null,
     external_id: null,
     external_type: null,
+    external_issue_type: null,
     external_status: null,
     external_url: null,
     external_parent_key: null,

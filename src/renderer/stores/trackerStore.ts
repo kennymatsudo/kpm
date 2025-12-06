@@ -33,6 +33,7 @@ interface TrackerState {
 
   // Import actions
   applyImport: (projectId: string, associationId: string, selectedTypes: string[]) => Promise<ImportResult | null>;
+  importAll: (projectId: string, associationId: string) => Promise<ImportResult | null>;
   clearImport: () => void;
 
   // UI actions
@@ -89,6 +90,36 @@ interface TrackerState {
       isImporting: true,
       importProgress: { phase: 'importing' },
       importError: null,
+    });
+
+    try {
+      if (result.success && result.result) {
+        set({
+          importPreview: null,
+          showImportPanel: false,
+          activeAssociationId: null,
+        });
+        // Reload associations to update last_synced_at
+        await get().loadAssociations(projectId);
+        return result.result;
+      } else {
+        set({ importError: result.error || 'Import failed' });
+        return null;
+      }
+    } catch (e) {
+      set({ importError: e instanceof Error ? e.message : 'Import failed' });
+      return null;
+    } finally {
+      set({ isImporting: false, importProgress: null });
+    }
+  },
+
+  importAll: async (projectId, associationId) => {
+    set({
+      isImporting: true,
+      importProgress: { phase: 'fetching' },
+      importError: null,
+      activeAssociationId: associationId,
     });
 
     try {

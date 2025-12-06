@@ -116,6 +116,7 @@ export function isTransitionNeeded(
 /**
  * Uses keyword matching since we don't have status category info from just the name.
  */
+export function inferCategoryFromStatus(statusName: string): StatusCategory {
   const lowerStatus = statusName.toLowerCase();
 
   // Check each category's keywords

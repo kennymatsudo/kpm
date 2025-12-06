@@ -74,14 +74,28 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
             </svg>
           </div>
           </p>
+          {failureCount > 0 && (
+            <p className="text-danger text-sm mb-4">{failureCount} failed</p>
           )}
+
+          {(exportResult.created.length > 0 || exportResult.updated.length > 0) && (
+              {exportResult.created.length > 0 && (
+                  </span>
+                </div>
+              )}
+              {exportResult.updated.length > 0 && (
+                  </span>
+                </div>
+              )}
             </div>
           )}
+
         </div>
     );
   }
 
 
+                </div>
             </div>
 
             </div>
@@ -96,6 +110,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
           </button>
           <button
             onClick={handleExecute}
+                : 'bg-surface-3 text-text-muted cursor-not-allowed'
           >
             {isExporting ? (
               <>
@@ -117,6 +132,9 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
 }
 
   return (
+      <div
+        onClick={onClose}
+      />
               </svg>
           </div>
         {children}

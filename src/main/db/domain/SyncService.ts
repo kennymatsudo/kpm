@@ -36,7 +36,13 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
       stats: { total: 0, new: 0, updated: 0, conflicts: 0, deleted: 0, unchanged: 0 },
     };
 
+    // Fetch external issues including subtasks recursively
     onProgress?.('fetching', 0, 0);
+    const externalIssues = await fetchIssuesWithSubtasks(
+      client,
+      association.jql_filter,
+      (count) => onProgress?.('fetching', count, 0)
+    );
     preview.stats.total = externalIssues.length;
 
     const existingByKey = new Map(existingItems.map(item => [item.external_key!, item]));
@@ -58,6 +64,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
           external_key: issue.key,
           title: issue.title,
           description: issue.description,
+          external_issue_type: issue.issueType,
           external_status: issue.status,
           external_parent_key: issue.parentKey,
           external_epic_key: issue.epicKey,
@@ -135,6 +142,10 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
       updates.push({ field: 'external_status', old_value: kpmItem.external_status, new_value: external.status });
     }
 
+    if (kpmItem.status_category !== expectedCategory) {
+      updates.push({ field: 'status_category', old_value: kpmItem.status_category, new_value: expectedCategory });
+    }
+
     return { updates, conflicts };
   },
 
@@ -158,6 +169,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
           description: item.description,
           external_key: item.external_key,
           external_type: preview.tracker_type,
+          external_issue_type: item.external_issue_type,
           external_status: item.external_status,
           external_parent_key: item.external_parent_key,
           external_epic_key: item.external_epic_key,
@@ -196,6 +208,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
           label?: string | null;
           release_tag?: string | null;
           external_status?: string | null;
+          status_category?: string | null;
         } = {};
 
         for (const change of item.changes) {
@@ -203,6 +216,11 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
           else if (change.field === 'description') updates.description = change.new_value;
           else if (change.field === 'label') updates.label = change.new_value;
           else if (change.field === 'release_tag') updates.release_tag = change.new_value;
+          else if (change.field === 'external_status') {
+            updates.external_status = change.new_value;
+          } else if (change.field === 'status_category') {
+            // Direct status_category update (e.g., fixing out-of-sync state)
+            updates.status_category = change.new_value;
         }
 
         ExternalPlanItemRepository.updateFromExternal(item.plan_item_id, updates);

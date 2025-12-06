@@ -19,6 +19,17 @@ export class TrackerError extends Error {
 
   static fromJiraError(error: unknown): TrackerError {
     // jira.js throws HttpException with status code
+      // Try to extract error message from response - Jira puts it in different places
+
+      let message: string | undefined;
+      if (Array.isArray(errorMessages) && errorMessages.length > 0) {
+        message = errorMessages.join('; ');
+      } else if (errors && typeof errors === 'object') {
+        // errors is often { fieldName: "error message" }
+        message = Object.values(errors).join('; ');
+      } else if (responseMessage) {
+        message = responseMessage;
+      }
 
       switch (status) {
         case 400: return new TrackerError('UNKNOWN', message || 'Bad request - check your query syntax.');
