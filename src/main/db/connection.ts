@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import { runMigrations } from './migrations';
 
 let userDataPath: string;
 
@@ -82,6 +83,7 @@ export function initDatabaseWithPath(dbPath: string): void {
   // Store the userData path (parent of database file)
   userDataPath = dir;
 
+  runMigrations(database);
 }
 
 /**
@@ -92,4 +94,5 @@ export function initDatabase(): void {
   // Dynamic import to avoid requiring electron in MCP server context
   const { app } = require('electron');
   userDataPath = app.getPath('userData');
+  runMigrations(database);
 }

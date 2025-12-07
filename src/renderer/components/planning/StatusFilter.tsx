@@ -6,12 +6,22 @@ import type { StatusCategory } from '../../../shared/types';
 interface StatusFilterProps {
   hiddenCategories: Set<StatusCategory>;
   onChange: (categories: Set<StatusCategory>) => void;
+  totalCount: number;
+  /** Visible work items after filtering */
+  visibleCount: number;
 }
+
+const FILTERABLE_CATEGORIES: StatusCategory[] = [
+  'not_started',
+  'in_progress',
+  'done',
+];
 
 /**
  * Dropdown filter for hiding plan items by status category.
  * Checkboxes toggle visibility - checked = visible, unchecked = hidden.
  */
+export function StatusFilter({ hiddenCategories, onChange, totalCount, visibleCount }: StatusFilterProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -56,6 +66,7 @@ interface StatusFilterProps {
   };
 
   const hasFilters = hiddenCategories.size > 0;
+  const isFiltered = visibleCount < totalCount;
 
   return (
     <div className="relative">
@@ -68,12 +79,15 @@ interface StatusFilterProps {
             : 'text-text-secondary hover:text-text-primary hover:bg-surface-2'
         }`}
       >
+        Status {isFiltered ? `(${visibleCount}/${totalCount})` : totalCount > 0 ? `(${totalCount})` : ''}
       </button>
 
       {isOpen && menuPosition && createPortal(
         <div
           ref={menuRef}
         >
+          {FILTERABLE_CATEGORIES.map((category) => {
+            const config = STATUS_CATEGORY_CONFIG[category];
             const isVisible = !hiddenCategories.has(category);
             return (
               <button

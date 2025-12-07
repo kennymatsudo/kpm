@@ -24,6 +24,7 @@ export function StatusSelector({
         className={`
           inline-flex items-center gap-1 font-medium rounded transition-all duration-150
           ${sizeClasses}
+          }
         `}
       >
         <span>{currentConfig?.label ?? 'Set status'}</span>

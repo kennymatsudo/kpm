@@ -16,6 +16,7 @@ export function useStoreSubscriptions(): void {
   useEffect(() => {
     // Subscribe to status changes to auto-queue tracker-linked items for export
       const { projectId, itemId, statusCategory } = event.payload;
+
       const { addToQueueWithStatus } = useExportStore.getState();
 
       // Fire and forget - errors are handled in the store
