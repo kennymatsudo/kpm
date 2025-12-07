@@ -1,6 +1,9 @@
 {
   "description": "A codebase-aware planning workbench for developers",
   "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
   },
   "keywords": [
     "electron",
