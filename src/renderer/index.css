@@ -47,6 +47,8 @@
   --color-danger-muted: var(--color-danger-muted);
   --color-info: var(--color-info);
   --color-info-muted: var(--color-info-muted);
+  --color-purple: var(--color-purple);
+  --color-purple-subtle: var(--color-purple-subtle);
 }
 
 /* ============================================
