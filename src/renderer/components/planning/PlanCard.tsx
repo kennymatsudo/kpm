@@ -48,6 +48,7 @@ interface PlanCardProps {
   onDragEnd?: () => void;
 }
 
+export const PlanCard = memo(function PlanCard({
   item,
   depth,
   variant = 'default',
@@ -85,7 +86,16 @@ interface PlanCardProps {
 
 
   // Derive effective status: use status_category if set, otherwise derive from external_status
+  const effectiveStatus = useMemo(
+    () => item.status_category ?? getStatusCategory(item.external_status, item.external_type),
+    [item.status_category, item.external_status, item.external_type]
+  );
 
+  const descendantCount = useMemo(() => {
+    const countDescendants = (node: TreeNode): number => {
+      return node.children.reduce((sum, child) => sum + 1 + countDescendants(child), 0);
+    };
+    return countDescendants(item);
 
   const style = getStyleForDepth(depth);
 
@@ -254,3 +264,4 @@ interface PlanCardProps {
       )}
     </div>
   );
+});

@@ -194,11 +194,14 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
 
   /**
    * Returns snapshots to be upserted.
+   * @param itemCache - Pre-fetched items map to avoid N+1 queries
    */
   applyUpdates(
     preview: SyncPreview,
+    result: SyncResult,
   ): Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] {
     const snapshotsToUpsert: Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] = [];
+    const now = new Date().toISOString();
 
     for (const item of preview.updated_items) {
       try {
@@ -225,8 +228,17 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
 
         ExternalPlanItemRepository.updateFromExternal(item.plan_item_id, updates);
 
+        // Use pre-fetched item and apply updates locally for snapshot
+        const cached = itemCache.get(item.plan_item_id);
+        if (cached) {
+          // Build snapshot from cached item with updates applied
           snapshotsToUpsert.push({
             plan_item_id: item.plan_item_id,
+            snapshot_title: updates.title ?? cached.title,
+            snapshot_description: updates.description !== undefined ? updates.description : cached.description,
+            snapshot_label: updates.label !== undefined ? updates.label : cached.label,
+            snapshot_release_tag: updates.release_tag !== undefined ? updates.release_tag : cached.release_tag,
+            external_updated_at: now,
           });
         }
 
@@ -242,17 +254,30 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
   /**
    * Apply user conflict resolutions.
    * Returns snapshots to be upserted.
+   * @param itemCache - Pre-fetched items map to avoid N+1 queries
    */
   applyConflictResolutions(
     preview: SyncPreview,
     resolutions: Map<string, ConflictResolution>,
+    result: SyncResult,
+    itemCache: Map<string, PlanItem>
   ): Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] {
     const snapshotsToUpsert: Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] = [];
+    const now = new Date().toISOString();
 
     for (const conflict of preview.conflicts) {
       const resolution = resolutions.get(conflict.plan_item_id);
+      const cached = itemCache.get(conflict.plan_item_id);
 
+      let updates: {
+        title?: string;
+        description?: string | null;
+        label?: string | null;
+        release_tag?: string | null;
+      } | null = null;
 
+      if (resolution === 'use_theirs') {
+        updates = {};
         for (const field of conflict.fields) {
           if (field.field === 'title') updates.title = field.tracker_value ?? undefined;
           else if (field.field === 'description') updates.description = field.tracker_value;
@@ -265,8 +290,16 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
       }
       // 'keep_mine' - no database change to item
 
+      // Update snapshot to reset conflict detection using cached item
+      if (cached) {
+        // If we applied updates, use those values; otherwise use cached values
         snapshotsToUpsert.push({
           plan_item_id: conflict.plan_item_id,
+          snapshot_title: updates?.title ?? cached.title,
+          snapshot_description: updates?.description !== undefined ? updates.description : cached.description,
+          snapshot_label: updates?.label !== undefined ? updates.label : cached.label,
+          snapshot_release_tag: updates?.release_tag !== undefined ? updates.release_tag : cached.release_tag,
+          external_updated_at: now,
         });
       }
     }
@@ -312,6 +345,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
   /**
    * Apply sync changes within a transaction.
    * Coordinates all sync operations and manages snapshots.
+   * Optimized: Pre-fetches items to avoid N+1 queries during snapshot generation.
    */
   applySyncChanges(
     projectId: string,
@@ -332,6 +366,27 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
 
     try {
       database.transaction(() => {
+        // Pre-fetch all items that will need snapshots (avoid N+1 queries)
+        // Collect IDs from updated items and conflicts
+        const itemIdsForSnapshots = new Set<string>();
+        for (const item of preview.updated_items) {
+          itemIdsForSnapshots.add(item.plan_item_id);
+        }
+        for (const conflict of preview.conflicts) {
+          itemIdsForSnapshots.add(conflict.plan_item_id);
+        }
+
+        // Bulk fetch all items once
+        const itemCache = new Map<string, PlanItem>();
+        if (itemIdsForSnapshots.size > 0) {
+          const allProjectItems = PlanItemRepository.getByProject(projectId);
+          for (const item of allProjectItems) {
+            if (itemIdsForSnapshots.has(item.id)) {
+              itemCache.set(item.id, item);
+            }
+          }
+        }
+
         // Apply all operations
 
 

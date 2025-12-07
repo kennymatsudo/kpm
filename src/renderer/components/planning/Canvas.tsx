@@ -37,6 +37,8 @@ interface CanvasProps {
 
 
 
+  }, [onReparent]);
+
   return (
     <div
       ref={containerRef}

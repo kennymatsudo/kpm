@@ -155,11 +155,15 @@ import type {
       itemMap.set(item.id, item);
     }
 
+    // Create lazy depth calculator (only computes depth when requested)
+    const getDepth = createDepthCalculator(itemMap);
 
     // Set of items being created (for parent resolution)
     const creatingItemIds = new Set(
       queueEntries.filter(e => e.operation === 'create').map(e => e.plan_item_id)
     );
+
+    // Collect queue updates for batch transaction
 
     // Process each queued item
     for (const entry of queueEntries) {
@@ -177,6 +181,7 @@ import type {
       }
 
       const validationErrors: string[] = [];
+      const depth = getDepth(planItem.id);
 
       let resolvedParent: string | null = null;
       if (entry.operation === 'create' && planItem.parent_id) {
@@ -191,7 +196,14 @@ import type {
 
       }
 
+      // Collect queue entry update for batch processing
       if (resolvedType && entry.operation === 'create') {
+        queueUpdates.push({
+          id: entry.id,
+          typeId: resolvedType.id,
+          typeName: resolvedType.name,
+          parentKey: resolvedParent?.startsWith('(pending') ? null : resolvedParent,
+        });
       }
 
       items.push({
@@ -201,6 +213,16 @@ import type {
         resolvedParent,
         validationErrors,
       });
+    }
+
+    // Batch update queue entries in a single transaction
+    if (queueUpdates.length > 0) {
+      const db = getDatabase();
+      db.transaction(() => {
+        for (const update of queueUpdates) {
+          SyncQueueRepository.updateResolvedType(update.id, update.typeId, update.typeName, update.parentKey);
+        }
+      })();
     }
 
     // Add warnings for items using depth fallback
@@ -215,6 +237,7 @@ import type {
   /**
    * Generate sync review data with Jira comparisons for task-by-task review.
    * Fetches current Jira state for update operations and computes character-level diffs.
+   * Optimized: Parallel Jira API calls for better performance.
    */
   async generateSyncReview(
     kpmProjectId: string,
@@ -232,12 +255,74 @@ import type {
 
     }
 
+    const itemsNeedingFetch = client
+      ? preview.items.filter(
+          item => item.queueEntry.operation === 'update' && item.planItem.external_key
+        )
+      : [];
 
+    const jiraFetchResults = await Promise.allSettled(
+      itemsNeedingFetch.map(item => client!.fetchIssue(item.planItem.external_key!))
+    );
 
+    itemsNeedingFetch.forEach((item, index) => {
+      const result = jiraFetchResults[index];
+      if (result.status === 'fulfilled') {
+        const jiraIssue = result.value;
+        jiraDataMap.set(item.planItem.external_key!, {
+          summary: jiraIssue.title,
+          description: jiraIssue.description,
+          status: jiraIssue.status,
+          updated: jiraIssue.updatedAt,
+        });
+      }
+    });
 
+    // Identify items that need transitions (have jira data + target status)
+    const itemsNeedingTransitions = client
+      ? preview.items.filter(item => {
+          const jiraData = jiraDataMap.get(item.planItem.external_key ?? '');
+          return (
+            item.queueEntry.target_status_category &&
+            item.planItem.external_key &&
+            jiraData &&
           );
+        })
+      : [];
 
+    // Parallel fetch all transitions
+    const transitionResults = await Promise.allSettled(
+      itemsNeedingTransitions.map(item => client!.getTransitions(item.planItem.external_key!))
+    );
 
+    // Build a map of external_key -> transitions
+    const transitionsMap = new Map<string, Awaited<ReturnType<JiraClient['getTransitions']>>>();
+    itemsNeedingTransitions.forEach((item, index) => {
+      const result = transitionResults[index];
+      if (result.status === 'fulfilled') {
+        transitionsMap.set(item.planItem.external_key!, result.value);
+      }
+    });
+
+    // Build review items using the pre-fetched data
+    const reviewItems: SyncReviewItem[] = preview.items.map(item => {
+      const jiraCurrent = jiraDataMap.get(item.planItem.external_key ?? '') ?? null;
+      let diffs = null;
+      let hasConflict = false;
+
+      if (jiraCurrent) {
+        const summaryDiff = computeFieldDiff(jiraCurrent.summary, item.planItem.title);
+        const descriptionDiff = computeFieldDiff(
+        );
+
+        diffs = {
+          summary: summaryDiff.hasChanges ? summaryDiff : null,
+          description: descriptionDiff.hasChanges ? descriptionDiff : null,
+        };
+
+        if (item.planItem.last_synced_at && jiraCurrent.updated) {
+          const lastSynced = new Date(item.planItem.last_synced_at).getTime();
+          const jiraUpdated = new Date(jiraCurrent.updated).getTime();
         }
       }
 
@@ -245,14 +330,34 @@ import type {
       let statusTransition: StatusTransitionInfo | null = null;
       const targetStatusCategory = item.queueEntry.target_status_category;
 
+        const transitions = transitionsMap.get(item.planItem.external_key ?? '');
+        if (transitions) {
+          statusTransition = {
+            currentStatus: jiraCurrent.status,
+            targetCategory: targetStatusCategory,
+            availableTransition: bestTransition,
+            warning: bestTransition
+              ? null
+          };
+        } else {
+          statusTransition = {
+            currentStatus: jiraCurrent.status,
+            targetCategory: targetStatusCategory,
+            availableTransition: null,
+            warning: 'Failed to fetch available transitions',
+          };
         }
       }
 
+      return {
         ...item,
         jiraCurrent,
         diffs,
         statusTransition,
+        decision: 'pending' as const,
         hasConflict,
+      };
+    });
 
     return {
       items: reviewItems,
@@ -264,6 +369,7 @@ import type {
   /**
    * Execute export for only approved items.
    * Takes item IDs that were approved in the review flow.
+   * Optimized: Creates run sequentially (parent→child), updates run in parallel.
    */
   async executeApprovedExport(
     kpmProjectId: string,
@@ -298,12 +404,23 @@ import type {
       return result;
     }
 
+    // Separate creates (need sequential for parent resolution) from updates (can parallelize)
+    const createEntries = queueEntries.filter(e => e.operation === 'create');
+    const updateEntries = queueEntries.filter(e => e.operation === 'update');
+
+    // Sort creates by depth (parents first) - use lazy calculator
+    const getDepth = createDepthCalculator(itemMap);
+    const sortedCreateEntries = [...createEntries].sort((a, b) => {
+      const depthA = getDepth(a.plan_item_id);
+      const depthB = getDepth(b.plan_item_id);
       return depthA - depthB;
     });
 
     // Map to track newly created external keys for parent resolution
     const createdKeys = new Map<string, string>();
 
+    // Process creates sequentially (parent must exist before child)
+    for (const entry of sortedCreateEntries) {
       const planItem = itemMap.get(entry.plan_item_id);
       if (!planItem) {
         result.errors.push({ plan_item_id: entry.plan_item_id, error: 'Plan item not found' });
@@ -312,25 +429,136 @@ import type {
       }
 
       try {
+        let parentKey: string | undefined;
+        if (planItem.parent_id) {
+          const parent = itemMap.get(planItem.parent_id);
+          if (parent?.external_key) {
+            parentKey = parent.external_key;
+          } else if (createdKeys.has(planItem.parent_id)) {
+            parentKey = createdKeys.get(planItem.parent_id);
           }
+        }
 
+        const created = await client.createIssue({
+          projectKey: association.project_key,
+          issueTypeId: entry.target_issue_type_id!,
+          parentKey,
+        });
 
+        const syncUpdate: PlanItemSyncUpdates = {
+          external_key: created.key,
+          external_id: created.id,
+          association_id: associationId,
+          sync_source: 'local',
+          last_synced_at: new Date().toISOString(),
+        };
+        PlanItemRepository.update(planItem.id, syncUpdate);
+
+        createdKeys.set(planItem.id, created.key);
+        result.created.push({ plan_item_id: planItem.id, jira_key: created.key });
+        SyncQueueRepository.remove(entry.id);
+      } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : 'Unknown error';
+        result.errors.push({ plan_item_id: planItem.id, error: errorMsg });
+        SyncQueueRepository.setError(entry.id, errorMsg);
+        result.success = false;
+      }
+    }
+
+    // Process updates in parallel (they are independent)
+    const updatePromises = updateEntries.map(async (entry) => {
+      const planItem = itemMap.get(entry.plan_item_id);
+      if (!planItem) {
+        return { success: false, entry, planItem: null, error: 'Plan item not found' };
+      }
+
+      try {
+        await client.updateIssue(planItem.external_key!, {
+        });
+
+        // Execute status transition if queued
+          try {
+          } catch (transitionError) {
+            console.error(`Failed to transition ${planItem.external_key}:`, transitionError);
           }
+        }
 
+      } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : 'Unknown error';
+      }
+    });
+
+    const updateResults = await Promise.all(updatePromises);
+
+    // Batch all database updates in a single transaction for performance
+    const db = getDatabase();
+    db.transaction(() => {
+      const now = new Date().toISOString();
+
+      for (const updateResult of updateResults) {
+        if (!updateResult.planItem) {
+          continue;
+        }
+
+        if (updateResult.success) {
           const updateSyncFields: PlanItemSyncUpdates = {
+            last_synced_at: now,
           };
+          if (updateResult.newExternalStatus) {
+            updateSyncFields.external_status = updateResult.newExternalStatus;
           }
+          PlanItemRepository.update(updateResult.planItem.id, updateSyncFields);
+          SyncQueueRepository.remove(updateResult.entry.id);
+        } else {
+          result.success = false;
         }
       }
 
+      if (result.created.length > 0 || result.updated.length > 0) {
+        TrackerRepository.updateAssociationLastSynced(associationId);
+      }
+    })();
 
     return result;
   },
 };
 
 /**
+ * Create a lazy depth calculator that memoizes results.
+ * Only calculates depth for requested items (and their ancestors as a side effect).
+ * Much more efficient for large projects with small queues.
  */
+function createDepthCalculator(itemMap: Map<string, PlanItem>): (itemId: string) => number {
+  const cache = new Map<string, number>();
 
+  return function getDepth(itemId: string): number {
+    // Check cache first
+    const cached = cache.get(itemId);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const item = itemMap.get(itemId);
+    if (!item) {
+      cache.set(itemId, 0);
+      return 0;
+    }
+
+    // Calculate depth by walking up the tree
+    let depth = 0;
+    let current = item;
+    const visited = new Set<string>();
+
+    while (current.parent_id && !visited.has(current.id)) {
+      visited.add(current.id);
+      const parent = itemMap.get(current.parent_id);
+      if (!parent) break;
+      current = parent;
+    }
+
+    cache.set(itemId, depth);
+    return depth;
+  };
 }
 
 /**

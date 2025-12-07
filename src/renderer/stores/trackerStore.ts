@@ -180,3 +180,6 @@ interface TrackerState {
     });
   },
 }));
+
+// Selector for checking if any associations exist (avoids re-renders on association changes)
+export const useHasAssociations = () => useTrackerStore(state => state.associations.length > 0);
