@@ -1,10 +1,12 @@
 import { create } from 'zustand';
 import type {
+  TrackerAssociationWithScope,
   ImportPreview,
   ImportResult,
 } from '../../shared/types';
 
 interface TrackerState {
+  associations: TrackerAssociationWithScope[];
   isLoadingAssociations: boolean;
 
   // Import state

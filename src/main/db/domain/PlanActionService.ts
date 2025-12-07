@@ -1,5 +1,6 @@
 
 
+interface ExecutorContext {
   projectId: string;
   idMap: Map<string, string>;
   skippedActions: { index: number; type: string; reason: string }[];
@@ -7,6 +8,7 @@
   actionIndex: number;
 }
 
+function resolveId(ctx: ExecutorContext, id: string | null | undefined): string | null {
   if (!id) return null;
   if (id.startsWith('$')) {
     return ctx.idMap.get(id) || null;
@@ -14,17 +16,22 @@
   return id;
 }
 
+function createId(ctx: ExecutorContext): string {
   ctx.placeholderCounter++;
   ctx.idMap.set(`$${ctx.placeholderCounter}`, id);
   return id;
 }
 
+function skip(ctx: ExecutorContext, type: string, reason: string): void {
   ctx.skippedActions.push({ index: ctx.actionIndex, type, reason });
 }
 
 // =============================================================================
+// Individual Action Executors
 // =============================================================================
 
+function executeCreateItem(
+  ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'create_item' }>
 ): void {
   const id = createId(ctx);
@@ -53,14 +60,20 @@
   });
 }
 
+function executeSetLabel(
+  ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'set_label' }>
 ): void {
 }
 
+function executeSetRelease(
+  ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'set_release' }>
 ): void {
 }
 
+function executeAddDependency(
+  ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'add_dependency' }>
 ): void {
   const fromId = resolveId(ctx, action.from_id) || action.from_id;
@@ -73,10 +86,13 @@
   });
 }
 
+function executeRemoveDependency(
   action: Extract<PlanAction, { type: 'remove_dependency' }>
 ): void {
 }
 
+function executeReorder(
+  ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'reorder' }>
 ): void {
   if (!item) {
@@ -101,6 +117,8 @@
 
 }
 
+function executeUpdateItem(
+  ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'update_item' }>
 ): void {
   // Get item before update to check if it's Jira-linked
@@ -109,6 +127,8 @@
   }
 }
 
+function executeDeleteItem(
+  ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'delete_item' }>
 ): void {
   if (!itemToDelete) {
@@ -117,16 +137,21 @@
   }
 }
 
+function executeSetPosition(
   action: Extract<PlanAction, { type: 'set_position' }>
 ): void {
 }
 
+function executeQueueForTracker(
+  ctx: ExecutorContext,
+  action: Extract<PlanAction, { type: 'queue_for_tracker' }>
 ): void {
   // Resolve any placeholder IDs
   const resolvedIds = action.item_ids.map(id => resolveId(ctx, id) ?? id);
 
   // Find the association for this project
   if (associations.length === 0) {
+    skip(ctx, 'queue_for_tracker', 'No tracker association configured for project');
     return;
   }
 

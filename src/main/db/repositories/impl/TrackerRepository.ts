@@ -34,33 +34,45 @@ export class TrackerRepository implements ITrackerRepository {
   }
 
   // ============================================
+  // Tracker Project Scopes (Level 2)
   // ============================================
 
+  getScopes(connectionId: string): TrackerProjectScope[] {
   }
 
+  getScopeById(id: string): TrackerProjectScope | undefined {
   }
 
+  getScopeByKey(connectionId: string, projectKey: string): TrackerProjectScope | undefined {
   }
 
+  createScope(connectionId: string, projectKey: string, projectName?: string): TrackerProjectScope {
   }
 
+  getOrCreateScope(connectionId: string, projectKey: string, projectName?: string): TrackerProjectScope {
     const existing = this.getScopeByKey(connectionId, projectKey);
     if (existing) return existing;
     return this.createScope(connectionId, projectKey, projectName);
   }
 
+  getScopesByConnection(connectionId: string): TrackerProjectScope[] {
     return this.getScopes(connectionId);
   }
 
   // ============================================
+  // Tracker Associations (Level 3)
   // ============================================
 
+  getAssociations(projectId: string): TrackerAssociation[] {
   }
 
+  getAssociationsWithContext(projectId: string): TrackerAssociationWithScope[] {
   }
 
+  getAssociationById(id: string): TrackerAssociationWithScope | undefined {
   }
 
+  getAssociationsByProject(projectId: string): TrackerAssociationWithScope[] {
     return this.getAssociationsWithContext(projectId);
   }
 
@@ -69,6 +81,7 @@ export class TrackerRepository implements ITrackerRepository {
     scopeId: string,
     jqlFilter: string,
     displayName?: string
+  ): TrackerAssociation {
     return this.getAssociationById(id)!;
   }
 

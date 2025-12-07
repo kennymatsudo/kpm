@@ -17,7 +17,11 @@ import type {
   Repo,
   Attachment,
   TrackerConnection,
+  TrackerProjectScope,
+  TrackerAssociation,
+  TrackerAssociationWithScope,
   SyncQueueEntry,
+  TrackerTypeMapping,
   SyncSnapshot,
   SyncNewItem,
   SyncUpdatedItem,
@@ -167,6 +171,9 @@ export function createTrackerConnection(
   };
 }
 
+export function createTrackerProjectScope(
+  options: Partial<TrackerProjectScope> & { connection_id: string }
+): TrackerProjectScope {
   return {
     connection_id: options.connection_id,
     project_key: options.project_key ?? 'TEST',
@@ -175,6 +182,9 @@ export function createTrackerConnection(
   };
 }
 
+export function createTrackerAssociation(
+  options: Partial<TrackerAssociation> & { kpm_project_id: string; scope_id: string }
+): TrackerAssociation {
   return {
     kpm_project_id: options.kpm_project_id,
     scope_id: options.scope_id,
@@ -185,6 +195,10 @@ export function createTrackerConnection(
   };
 }
 
+export function createTrackerAssociationWithScope(
+  options: Partial<TrackerAssociationWithScope> & { kpm_project_id: string; scope_id: string }
+): TrackerAssociationWithScope {
+  const base = createTrackerAssociation(options);
   return {
     ...base,
     project_key: options.project_key ?? 'TEST',
@@ -316,10 +330,15 @@ export function createAttachment(
   };
 }
 
+export function createTrackerTypeMapping(
+  options: Partial<TrackerTypeMapping> & { kpm_project_id: string; scope_id: string }
+): TrackerTypeMapping {
   return {
     kpm_project_id: options.kpm_project_id,
     scope_id: options.scope_id,
     kpm_label: options.kpm_label ?? 'task',
+    tracker_issue_type_id: options.tracker_issue_type_id ?? '10001',
+    tracker_issue_type_name: options.tracker_issue_type_name ?? 'Task',
     created_at: options.created_at ?? new Date().toISOString(),
   };
 }

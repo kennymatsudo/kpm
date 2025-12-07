@@ -32,6 +32,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
     private db: Database,
     private planItemRepository: IPlanItemRepository
 
+  getLinkedItems(projectId: string, externalType: string): PlanItem[] {
     return rows.map(rowToPlanItem);
   }
 
@@ -110,6 +111,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
       // Get all existing external keys per project to avoid duplicates
       const existingKeys = new Map<string, Set<string>>();
       for (const projectId of byProject.keys()) {
+        const existing = this.getLinkedItems(projectId, items[0].external_type);
         const keySet = new Set(existing.map(item => item.external_key!));
         existingKeys.set(projectId, keySet);
       }
@@ -196,6 +198,8 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
     stmt.run(...values);
   }
 
+  linkSubtasksToParentIssues(projectId: string, externalType: string): void {
+    const items = this.getLinkedItems(projectId, externalType);
 
     // Build maps for lookup
     const byExternalKey = new Map<string, string>();  // external_key -> id

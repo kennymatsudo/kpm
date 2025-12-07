@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type {
+  TrackerTypeMapping,
   SyncQueueEntryWithPlanItem,
   ExportPreview,
   ExportResult,
@@ -13,6 +14,7 @@ interface ExportState {
   isLoadingQueue: boolean;
 
   // Type mappings
+  typeMappings: TrackerTypeMapping[];
   isLoadingMappings: boolean;
 
   // Export preview/execute

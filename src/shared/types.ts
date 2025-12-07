@@ -62,6 +62,8 @@ export interface TrackerConnection {
   created_at: string;
 }
 
+/** Level 2: Tracker project authorization scope */
+export interface TrackerProjectScope {
   id: string;
   connection_id: string;
   project_key: string;            // 'PROJ'
@@ -69,6 +71,7 @@ export interface TrackerConnection {
   created_at: string;
 }
 
+export interface TrackerAssociation {
   id: string;
   kpm_project_id: string;
   scope_id: string;
@@ -79,6 +82,7 @@ export interface TrackerConnection {
 }
 
 /** Association with joined scope and connection info for display */
+export interface TrackerAssociationWithScope extends TrackerAssociation {
   project_key: string;            // From scope
   project_name: string | null;    // From scope
   site_url: string;               // From connection
@@ -282,12 +286,16 @@ export interface PlanActionResult {
 }
 
 // =============================================================================
+// Tracker Export Types
 // =============================================================================
 
+export interface TrackerTypeMapping {
   id: string;
   kpm_project_id: string;
   scope_id: string;
   kpm_label: string;
+  tracker_issue_type_id: string;
+  tracker_issue_type_name: string;
   created_at: string;
 }
 

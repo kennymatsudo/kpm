@@ -97,9 +97,12 @@ import { ipcMain } from 'electron';
 
   // Save a type mapping
     ExportSchemas.saveMapping,
+    ({ projectId, scopeId, kpmLabel, trackerIssueTypeId, trackerIssueTypeName }) => {
         projectId,
         scopeId,
         kpmLabel,
+        trackerIssueTypeId,
+        trackerIssueTypeName
       );
       return { mapping };
     },

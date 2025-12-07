@@ -45,6 +45,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
     );
     preview.stats.total = externalIssues.length;
 
+    const existingItems = ExternalPlanItemRepository.getLinkedItems(projectId, client.type);
     const existingByKey = new Map(existingItems.map(item => [item.external_key!, item]));
     const seenKeys = new Set<string>();
 
@@ -388,6 +389,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
         }
 
         // Apply all operations
+        ExternalPlanItemRepository.linkSubtasksToParentIssues(projectId, preview.tracker_type);
 
 
         // Bulk update snapshots

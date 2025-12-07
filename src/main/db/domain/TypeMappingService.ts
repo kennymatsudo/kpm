@@ -1,3 +1,4 @@
+import type { TrackerTypeMapping, JiraIssueType, PlanItem } from '../../../shared/types';
 
 /**
  * Used when creating default mappings for a new project/scope.

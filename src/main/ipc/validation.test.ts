@@ -150,6 +150,8 @@ describe('ExportSchemas', () => {
   });
 
   describe('saveMapping', () => {
+        trackerIssueTypeId: '10001',
+        trackerIssueTypeName: 'Task',
 
     });
   });

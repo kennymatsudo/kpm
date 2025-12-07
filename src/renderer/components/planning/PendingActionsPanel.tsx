@@ -28,6 +28,7 @@ interface PendingActionsPanelProps {
     case 'remove_dependency':
     case 'reorder':
     case 'set_position':
+    case 'queue_for_tracker':
   }
 }
 
