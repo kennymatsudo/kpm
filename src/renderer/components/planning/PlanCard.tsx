@@ -6,6 +6,33 @@ import { getStatusCategory } from '../../constants/statusConfig';
 export type { TreeNode };
 export { MAX_DEPTH };
 
+/**
+ * Check if a node or any of its descendants match the search query.
+ */
+function nodeMatchesSearch(node: TreeNode, query: string): boolean {
+  if (!query.trim()) return true;
+
+  const q = query.toLowerCase();
+  const titleMatch = node.title.toLowerCase().includes(q);
+  const keyMatch = node.external_key?.toLowerCase().includes(q) ?? false;
+
+  if (titleMatch || keyMatch) return true;
+
+  // Check children recursively
+  return node.children.some(child => nodeMatchesSearch(child, q));
+}
+
+/**
+ * Check if this specific item (not descendants) matches the search query.
+ */
+function itemDirectlyMatches(item: TreeNode, query: string): boolean {
+  if (!query.trim()) return true;
+
+  const q = query.toLowerCase();
+  return item.title.toLowerCase().includes(q) ||
+    (item.external_key?.toLowerCase().includes(q) ?? false);
+}
+
 interface PlanCardProps {
   item: TreeNode;
   depth: number;
@@ -14,6 +41,8 @@ interface PlanCardProps {
   isSelected?: boolean;
   isFocused?: boolean;
   focusedItemId?: string | null;  // For checking child focus
+  /** Search query for filtering/highlighting */
+  searchQuery?: string;
   onEditItem?: (itemId: string) => void;  // For opening edit panel
   onDragStart?: (item: TreeNode, x: number, y: number, offsetX: number, offsetY: number, depth: number, selectedIds: string[]) => void;
   onDragEnd?: () => void;
@@ -25,6 +54,7 @@ interface PlanCardProps {
   isSelected = false,
   isFocused = false,
   focusedItemId,
+  searchQuery = '',
   onSelectItem,
   onEditItem,
   onDrop,
@@ -32,6 +62,19 @@ interface PlanCardProps {
   onDragEnd,
 }: PlanCardProps) {
   const isPreview = variant === 'preview';
+
+  // Search matching logic
+  const isSearchActive = searchQuery.trim().length > 0;
+  const directMatch = useMemo(
+    () => itemDirectlyMatches(item, searchQuery),
+    [item, searchQuery]
+  );
+  const hasMatchingDescendant = useMemo(
+    () => !directMatch && nodeMatchesSearch(item, searchQuery),
+    [item, searchQuery, directMatch]
+  );
+  // Dim if search is active and neither this item nor its descendants match
+  const isDimmed = isSearchActive && !directMatch && !hasMatchingDescendant;
 
   // State only needed for interactive cards
   const [isDragOver, setIsDragOver] = useState(false);

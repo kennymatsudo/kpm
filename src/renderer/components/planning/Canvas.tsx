@@ -5,6 +5,8 @@ interface CanvasProps {
   items: PlanItem[];
   selectedItemIds: Set<string>;
   focusedItemId: string | null;
+  /** Search query for filtering/highlighting cards */
+  searchQuery?: string;
   onSelectItem: (itemId: string | null, addToSelection?: boolean) => void;
   onEditItem: (itemId: string) => void;
   onUpdatePosition: (itemId: string, x: number, y: number) => void;
@@ -14,6 +16,7 @@ interface CanvasProps {
   items,
   selectedItemIds,
   focusedItemId,
+  searchQuery = '',
   onSelectItem,
   onEditItem,
   onReparent,
