@@ -20,6 +20,17 @@ interface CanvasProps {
   onUpdatePosition,
   onAutoLayout,
 }: CanvasProps) {
+  const {
+    zoom,
+    setZoom,
+    panOffset,
+    setPanOffset,
+    isPanning,
+    containerRef,
+    resetView,
+    screenToCanvas,
+    panHandlers,
+
 
 
 
@@ -38,6 +49,9 @@ interface CanvasProps {
           onSelectItem(null);
         }
       }}
+      onMouseMove={panHandlers.onMouseMove}
+      onMouseUp={panHandlers.onMouseUp}
+      onMouseLeave={panHandlers.onMouseLeave}
       style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
     >
       {/* Toolbar */}
@@ -98,6 +112,7 @@ interface CanvasProps {
         Scroll to pan • ⌘+Scroll to zoom
       </div>
 
+      {/* Drag preview */}
       {dragPreview && (
         <div
           style={{

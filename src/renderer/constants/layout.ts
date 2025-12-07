@@ -32,3 +32,9 @@ export const ZOOM = {
   SCROLL_STEP: 0.02,
 } as const;
 
+/** Default sidebar widths */
+export const SIDEBAR = {
+  /** Default collapsed sidebar width */
+  /** Default expanded sidebar width */
+  /** Maximum sidebar width */
+} as const;
