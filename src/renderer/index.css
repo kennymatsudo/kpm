@@ -350,6 +350,13 @@ select:focus-visible {
   cursor: text;
 }
 
+.prose,
+.prose * {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
 .chat-message-user,
 .chat-message-assistant {
 }
