@@ -1,6 +1,7 @@
 
 interface SidebarProps {
   onDeleteProject?: () => void;
+  onNewProject?: () => void;
 }
 
   return (
@@ -12,6 +13,15 @@ interface SidebarProps {
             </div>
             <p className="text-text-muted text-xs mt-1.5 leading-relaxed whitespace-nowrap">
             </p>
+            {onNewProject && (
+              <button
+                onClick={onNewProject}
+                className="btn btn-primary mt-4"
+                data-testid="new-project-button"
+              >
+                New Project
+              </button>
+            )}
           </div>
         )}
       </div>

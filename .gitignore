@@ -84,6 +84,9 @@ typings/
 # Vite
 .vite/
 
+# Electron-Builder
+release/
+
 # Build output
 dist/
 

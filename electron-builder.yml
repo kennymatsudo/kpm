@@ -1,0 +1,53 @@
+appId: com.kennymatsudo.kpm
+
+# Directories
+directories:
+  buildResources: assets
+  output: release
+
+# Files to include in the app
+files:
+  - dist/**/*
+  - node_modules/**/*
+  - "!node_modules/**/README*"
+  - "!node_modules/**/CHANGELOG*"
+  - "!node_modules/**/*.md"
+  - "!node_modules/**/.github/**"
+  - "!**/*.map"
+
+# Native modules need to be unpacked from ASAR for proper loading
+asar: true
+asarUnpack:
+  - "node_modules/better-sqlite3/**"
+  - "node_modules/keytar/**"
+  - "node_modules/bindings/**"
+  - "node_modules/file-uri-to-path/**"
+  - "**/*.node"
+
+# Rebuild native modules for Electron
+npmRebuild: true
+nodeGypRebuild: false
+
+# macOS configuration
+mac:
+  category: public.app-category.developer-tools
+  gatekeeperAssess: false
+  target:
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip
+      arch:
+        - arm64
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+  window:
+    width: 540
+    height: 380

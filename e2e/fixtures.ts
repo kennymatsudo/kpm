@@ -1,8 +1,23 @@
+import { chromium } from 'playwright';
+import { findLatestBuild, parseElectronApp } from 'electron-playwright-helpers';
 import * as fs from 'fs';
 import * as path from 'path';
 
+const CDP_PORT = 9222;
+
   window: Page;
 
+
+
+        }
+
+
+
+    const window = pages[0];
+
+    if (!window) {
+      throw new Error('No window found');
+    }
 
     await use(window);
   },
