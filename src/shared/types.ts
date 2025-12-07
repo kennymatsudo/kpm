@@ -230,6 +230,18 @@ export type PlanItemUpdates = Partial<Pick<PlanItem,
   | 'position_y'
 >>;
 
+// Extended updates for sync operations (includes external tracker fields)
+export type PlanItemSyncUpdates = PlanItemUpdates & Partial<Pick<PlanItem,
+  | 'external_key'
+  | 'external_id'
+  | 'external_type'
+  | 'external_status'
+  | 'external_url'
+  | 'association_id'
+  | 'sync_source'
+  | 'last_synced_at'
+>>;
+
 // =============================================================================
 // Chat Activity Types - for showing parallel tool execution in UI
 // =============================================================================
