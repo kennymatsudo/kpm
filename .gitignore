@@ -87,3 +87,8 @@ typings/
 # Build output
 dist/
 
+# Playwright
+/e2e-results/
+/playwright-report/
+/playwright/.cache/
+/test-results/
