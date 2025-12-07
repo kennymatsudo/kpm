@@ -1,9 +1,18 @@
 // Shared types used across main, preload, and renderer processes
 
+import type {
+  StatusCategory,
+  TrackerType as TrackerTypeBase,
+  Project as ProjectBase,
+  PlanItem as PlanItemBase,
+
+
 // =============================================================================
 // External Tracker Types
 // =============================================================================
 
+// Re-export TrackerType from shared package
+export type TrackerType = TrackerTypeBase;
 
 /** Tracker type constants to avoid magic strings */
 export const TRACKER_TYPES = {
@@ -194,6 +203,8 @@ export interface SyncResult {
 // Core Domain Types
 // =============================================================================
 
+// Extend base Project with required session token fields for main app
+export interface Project extends ProjectBase {
   session_tokens: number;
   session_input_tokens: number;
   session_output_tokens: number;
@@ -214,6 +225,12 @@ export interface Attachment {
   created_at?: string;
 }
 
+// Extend base PlanItem with required fields for main app
+export interface PlanItem extends PlanItemBase {
+  association_id: string | null;
+  external_issue_type: string | null;
+  external_parent_key: string | null;
+  external_epic_key: string | null;
   sync_source: 'local' | TrackerType;
   last_synced_at: string | null;
 }

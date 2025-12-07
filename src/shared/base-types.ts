@@ -1,0 +1,67 @@
+/**
+ *
+ * Core domain types shared between the main Electron app and standalone packages
+ * (MCP server, tracker-clients). This package has NO dependencies to avoid
+ * native module conflicts between Electron and system Node.js.
+ */
+
+// =============================================================================
+// Status Types
+// =============================================================================
+
+
+export type TrackerType = 'jira' | 'linear';
+
+// =============================================================================
+// Core Domain Types
+// =============================================================================
+
+export interface Project {
+  id: string;
+  name: string;
+  folder_path: string;
+  phase: 'discovery' | 'high_level' | 'detailed' | 'ready';
+  session_tokens?: number;
+  session_input_tokens?: number;
+  session_output_tokens?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PlanItem {
+  id: string;
+  project_id?: string;
+  parent_id: string | null;
+  title: string;
+  description: string | null;
+  label: string | null;
+  item_order: number;
+  code_refs: string[] | null;
+  release_tag: string | null;
+  position_x: number | null;
+  position_y: number | null;
+  // External tracker fields
+  association_id?: string | null;
+  external_key: string | null;
+  external_id: string | null;
+  external_type: TrackerType | null;
+  external_issue_type?: string | null;
+  external_status: string | null;
+  status_category: StatusCategory | null;
+  external_url: string | null;
+  external_parent_key?: string | null;
+  external_epic_key?: string | null;
+  sync_source?: 'local' | TrackerType;
+  last_synced_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PlanRelation {
+  id: string;
+  project_id: string;
+  from_item_id: string;
+  to_item_id: string;
+  relation_type: 'depends_on' | 'blocks' | 'relates_to';
+  created_at?: string;
+}
