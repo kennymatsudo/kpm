@@ -103,6 +103,10 @@
 
   action: Extract<PlanAction, { type: 'update_item' }>
 ): void {
+  // Get item before update to check if it's Jira-linked
+
+
+  }
 }
 
   action: Extract<PlanAction, { type: 'delete_item' }>

@@ -2,6 +2,7 @@ import { diffWords } from 'diff';
 import type {
   SyncQueueEntryWithPlanItem,
   PlanItem,
+  PlanItemSyncUpdates,
   ExportPreview,
   ExportPreviewItem,
   ExportResult,
@@ -17,14 +18,19 @@ import type {
   /**
    * Add items to the sync queue.
    * Determines operation type (create vs update) based on external_key.
+   * @param associationId - Optional association ID. If not provided and multiple
+   *                        associations exist, all items will be skipped with an error.
    */
   queueItems(
     kpmProjectId: string,
     itemIds: string[],
+    queuedBy: 'user' | 'claude',
+    associationId?: string
   ): { queued: string[]; skipped: { id: string; reason: string }[] } {
     const queued: string[] = [];
     const skipped: { id: string; reason: string }[] = [];
 
+    // Get associations for the project
     const associations = TrackerRepository.getAssociationsByProject(kpmProjectId);
     if (associations.length === 0) {
       // Skip all items if no association
@@ -33,6 +39,25 @@ import type {
       return { queued, skipped };
     }
 
+    // Resolve association
+    let association;
+    if (associationId) {
+      // Use specified association
+      association = associations.find(a => a.id === associationId);
+      if (!association) {
+        for (const id of itemIds) {
+        }
+        return { queued, skipped };
+      }
+    } else if (associations.length === 1) {
+      // Single association - use it
+      association = associations[0];
+    } else {
+      // Multiple associations - require explicit selection
+      for (const id of itemIds) {
+      }
+      return { queued, skipped };
+    }
 
     for (const itemId of itemIds) {
       if (!item) {
@@ -292,6 +317,7 @@ import type {
 
           }
 
+          const updateSyncFields: PlanItemSyncUpdates = {
           };
           }
         }
