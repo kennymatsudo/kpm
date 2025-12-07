@@ -84,6 +84,8 @@ body {
   color: var(--color-text-primary);
   overflow: hidden;
   cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
   transition: background var(--transition-theme), color var(--transition-theme);
 }
 
@@ -162,6 +164,8 @@ input,
 textarea,
 [contenteditable="true"] {
   cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 input:focus-visible,
@@ -341,6 +345,9 @@ select:focus-visible {
 
 .chat-message-content {
   word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 .chat-message-user,
