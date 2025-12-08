@@ -25,6 +25,10 @@ export function StatusSelector({
           inline-flex items-center gap-1 font-medium rounded transition-all duration-150
           ${sizeClasses}
           }
+          ${disabled
+            ? 'opacity-50 cursor-not-allowed'
+            : 'hover:brightness-110 cursor-pointer'
+          }
         `}
       >
         <span>{currentConfig?.label ?? 'Set status'}</span>

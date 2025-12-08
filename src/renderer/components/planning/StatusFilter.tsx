@@ -97,6 +97,7 @@ export function StatusFilter({ hiddenCategories, onChange, totalCount, visibleCo
               >
                 <span
                   className={`w-4 h-4 rounded border flex items-center justify-center ${
+                    isVisible ? 'bg-accent border-accent' : 'border-border-default'
                   }`}
                 >
                   {isVisible && (
