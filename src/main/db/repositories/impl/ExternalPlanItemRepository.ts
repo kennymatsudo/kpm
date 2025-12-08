@@ -81,6 +81,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
     external_id: string;
     external_type: string;
     external_status: string;
+    status_category: string;
     external_url: string;
     external_parent_key: string | null;
     external_epic_key: string | null;
@@ -96,6 +97,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
     const insertStmt = this.db.prepare(`
       INSERT INTO plan_items (
         id, project_id, parent_id, title, description, label, item_order,
+        status, status_category, external_key, external_id, external_type, external_issue_type, external_status,
       )
     `);
 
@@ -134,6 +136,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
             item.description,
             item.label,
             itemOrder++,
+            item.status_category,
             item.external_key,
             item.external_id ?? null,
             item.external_type,
