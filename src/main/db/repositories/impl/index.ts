@@ -15,3 +15,4 @@ export * from './SyncRepository';
 export * from './SyncQueueRepository';
 export * from './TypeMappingRepository';
 export * from './ExternalPlanItemRepository';
+export * from './ChatMessageRepository';

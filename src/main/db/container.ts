@@ -21,6 +21,7 @@ import {
   SyncQueueRepository as SyncQueueRepositoryClass,
   TypeMappingRepository as TypeMappingRepositoryClass,
   ExternalPlanItemRepository as ExternalPlanItemRepositoryClass,
+  ChatMessageRepository as ChatMessageRepositoryClass,
 } from './repositories/impl';
 import type { IFileSystem, IPathUtils } from './repositories/impl/ProjectRepository';
 
@@ -79,6 +80,7 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
     syncQueue: new SyncQueueRepositoryClass(database),
     typeMappings: new TypeMappingRepositoryClass(database),
     externalPlanItems: new ExternalPlanItemRepositoryClass(database, planItems),
+    chatMessages: new ChatMessageRepositoryClass(database),
   };
 }
 

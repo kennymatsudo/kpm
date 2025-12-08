@@ -24,3 +24,4 @@ export type {
   ExportPreview,
   ExportResult,
   SyncReviewData,
+  ChatMessage,
