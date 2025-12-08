@@ -1,6 +1,7 @@
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { useChat } from '../../hooks/useChat';
+import { useShallow } from 'zustand/react/shallow';
 
   const [lastMessage, setLastMessage] = useState<string | null>(null);
 

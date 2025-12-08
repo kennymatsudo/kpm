@@ -1,5 +1,6 @@
 import { Canvas } from './Canvas';
 import { BulkDeleteConfirmDialog } from './BulkDeleteConfirmDialog';
+import { useShallow } from 'zustand/react/shallow';
 
 interface PlanViewProps {
 }

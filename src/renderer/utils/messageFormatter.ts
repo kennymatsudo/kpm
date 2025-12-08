@@ -14,6 +14,7 @@ const PLAN_BLOCK_PATTERNS = [
   /```plan-actions\s*[\s\S]*?```/g,  // plan-actions format (used by claude.ts)
 ];
 
+ * These blocks are processed separately and shown in dedicated UI components.
  */
 export function processMessageContent(content: string): ProcessedMessage {
   // Check if any plan block pattern matches
