@@ -3,6 +3,9 @@ import type { TrackerClient, ExternalIssue } from '../../trackers';
 
       }));
 
+        });
+      }
+
       });
 
 
