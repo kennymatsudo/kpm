@@ -24,6 +24,7 @@ export interface Project {
   session_tokens?: number;
   session_input_tokens?: number;
   session_output_tokens?: number;
+  storybook_url?: string | null;
   created_at?: string;
   updated_at?: string;
 }

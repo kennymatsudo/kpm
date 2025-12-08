@@ -72,6 +72,9 @@ This is your project workspace. Use this file to track context, conventions, and
   resetTokens(projectId: string): void {
   }
 
+  updateStorybookUrl(projectId: string, url: string | null): void {
+  }
+
   delete(id: string): void {
     // Get project folder path before deletion
     const project = this.get(id);
