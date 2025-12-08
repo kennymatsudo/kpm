@@ -4,12 +4,15 @@ interface SearchInputProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  /** Number of matching results, shown when search is active */
+  resultCount?: number;
 }
 
 /**
  * Search input for filtering plan items by title or external key.
  * Supports Cmd+F to focus, Escape to clear and blur.
  */
+export function SearchInput({ value, onChange, placeholder = 'Search...', resultCount }: SearchInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Global Cmd+F handler to focus search
@@ -60,6 +63,12 @@ interface SearchInputProps {
         placeholder={placeholder}
           text-text-primary placeholder:text-text-muted
       />
+
+      {/* Result count */}
+      {value && resultCount !== undefined && (
+          {resultCount}
+        </span>
+      )}
 
       {/* Clear button */}
       {value && (

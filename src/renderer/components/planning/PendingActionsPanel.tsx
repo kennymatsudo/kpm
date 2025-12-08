@@ -5,6 +5,7 @@ interface PendingActionsPanelProps {
   planItems: PlanItem[];
   onApprove: () => void;
   onDismiss: () => void;
+  isApplying?: boolean;
 }
 
 

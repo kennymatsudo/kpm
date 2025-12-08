@@ -44,6 +44,7 @@ interface PlanCardProps {
   /** Search query for filtering/highlighting */
   searchQuery?: string;
   onEditItem?: (itemId: string) => void;  // For opening edit panel
+  onDrop?: (itemIds: string[], targetParentId: string) => void;
   onDragStart?: (item: TreeNode, x: number, y: number, offsetX: number, offsetY: number, depth: number, selectedIds: string[]) => void;
   onDragEnd?: () => void;
 }
@@ -235,7 +236,9 @@ export const PlanCard = memo(function PlanCard({
           return;
         }
 
+        // Reparent all valid items under this card in a single batch
         e.stopPropagation();
+        onDrop?.(validItems, item.id);
       }}
     >
 
