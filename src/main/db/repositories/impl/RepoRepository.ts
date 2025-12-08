@@ -12,6 +12,7 @@ export class RepoRepository implements IRepoRepository {
   add(projectId: string, path: string): Repo {
   }
 
+  getById(id: string): Repo | undefined {
   }
 
   delete(id: string): void {

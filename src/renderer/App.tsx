@@ -6,6 +6,7 @@ export default function App() {
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
 
 
+
   // Delete the current project
   const handleDeleteProject = useCallback(async () => {
   return (
