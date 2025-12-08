@@ -34,6 +34,7 @@ interface TrackerState {
   hasAssociationItems: (associationId: string) => Promise<boolean>;
 
   // Import actions
+  fetchImportPreview: (projectId: string, associationId: string) => Promise<boolean>;
   applyImport: (projectId: string, associationId: string, selectedTypes: string[]) => Promise<ImportResult | null>;
   importAll: (projectId: string, associationId: string) => Promise<ImportResult | null>;
   clearImport: () => void;
@@ -85,6 +86,33 @@ interface TrackerState {
   },
 
   hasAssociationItems: (associationId) => {
+  },
+
+  fetchImportPreview: async (projectId, associationId) => {
+    set({
+      isImporting: true,
+      importProgress: { phase: 'fetching' },
+      importError: null,
+      importPreview: null,
+    });
+
+    try {
+      if (result.success && result.preview) {
+        set({
+          importPreview: result.preview,
+          importError: null,
+        });
+        return true;
+      } else {
+        set({ importError: result.error || 'Failed to load preview' });
+        return false;
+      }
+    } catch (e) {
+      set({ importError: e instanceof Error ? e.message : 'Failed to load preview' });
+      return false;
+    } finally {
+      set({ isImporting: false, importProgress: null });
+    }
   },
 
   applyImport: async (projectId, associationId, selectedTypes) => {

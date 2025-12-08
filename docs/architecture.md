@@ -31,6 +31,8 @@ src/
 |-------|---------|
 | `attachments` | Uploaded files |
 | `plan_relations` | Dependencies (depends_on, blocks, relates_to) |
+| `tracker_project_scopes` | Tracker project authorization (Jira/Linear) |
+| `tracker_type_mappings` | Label → tracker issue type |
 
 ## IPC Pattern
 
