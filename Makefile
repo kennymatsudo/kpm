@@ -3,6 +3,7 @@ help:
 	@echo "Available commands:"
 install:
 
+
 	npm run dev
 
 db\:reset:
