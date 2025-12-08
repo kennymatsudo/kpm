@@ -1,5 +1,19 @@
 import { processMessageContent } from '../../utils/messageFormatter';
 
+/** Parse user message to extract image attachments and clean content */
+function parseUserMessage(content: string): { cleanContent: string; imageCount: number } {
+  const imagePrefix = /^Images attached \(use Read tool to view\):\n((?:- [^\n]+\n)+)\n/;
+
+  if (match) {
+    const imageLines = match[1].trim().split('\n');
+    const imageCount = imageLines.length;
+    const cleanContent = content.slice(match[0].length);
+    return { cleanContent, imageCount };
+  }
+
+  return { cleanContent: content, imageCount: 0 };
+}
+
 const PlanUpdateIndicator = memo(function PlanUpdateIndicator() {
   return (
     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border-subtle">

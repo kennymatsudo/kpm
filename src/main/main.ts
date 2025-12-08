@@ -3,6 +3,10 @@ import { initDatabase } from './db';
 
 
   initDatabase();
+
+  // Initialize temp image service (creates temp directory, cleans up stale files)
+  await TempImageService.init();
+
   createWindow();
 
   app.on('activate', () => {
