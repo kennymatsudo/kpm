@@ -36,10 +36,42 @@ interface CanvasProps {
     panHandlers,
 
 
+  const selectionSignaturesRef = useRef<Map<string, string>>(new Map());
+
+
+  const selectionSignatures = useMemo(() => {
+    const signatures = new Map<string, string>();
+    const buildSignature = (node: TreeNode): string[] => {
+      const collected: string[] = [];
+      if (selectedItemIds.has(node.id)) {
+        collected.push(node.id);
+      }
+
+      for (const child of node.children) {
+        const childIds = buildSignature(child);
+        if (childIds.length) {
+          collected.push(...childIds);
+        }
+      }
+
+      signatures.set(node.id, collected.join('|'));
+      return collected;
+    };
+
+    itemsWithPositions.forEach(buildSignature);
+    return signatures;
+  }, [itemsWithPositions, selectedItemIds]);
+
+  useEffect(() => {
+    selectionSignaturesRef.current = selectionSignatures;
+  }, [selectionSignatures]);
 
 
   const handleCardDrop = useCallback((droppedItemIds: string[], targetParentId: string) => {
   }, [onReparent]);
+
+  const getSelectedIds = useCallback(() => selectionRef.current, []);
+  const getSelectionSignature = useCallback((id: string) => selectionSignaturesRef.current.get(id) ?? '', []);
 
   return (
     <div
@@ -135,6 +167,16 @@ interface CanvasProps {
                 top: relativeY,
               }}
             >
+              <PlanCard
+                item={node}
+                depth={0}
+                variant="preview"
+                isSelected={false}
+                isFocused={false}
+                selectionSignature=""
+                getSelectionSignature={getSelectionSignature}
+                getSelectedIds={getSelectedIds}
+              />
             </div>
           ))}
         </div>

@@ -43,6 +43,10 @@ interface PlanCardProps {
   focusedItemId?: string | null;  // For checking child focus
   /** Search query for filtering/highlighting */
   searchQuery?: string;
+  /** Comma-joined selection fingerprint for this subtree (used to limit re-renders) */
+  selectionSignature: string;
+  getSelectionSignature: (id: string) => string;
+  getSelectedIds: () => Set<string>;
   onEditItem?: (itemId: string) => void;  // For opening edit panel
   onDrop?: (itemIds: string[], targetParentId: string) => void;
   onDragStart?: (item: TreeNode, x: number, y: number, offsetX: number, offsetY: number, depth: number, selectedIds: string[]) => void;
@@ -57,6 +61,9 @@ export const PlanCard = memo(function PlanCard({
   isFocused = false,
   focusedItemId,
   searchQuery = '',
+  selectionSignature,
+  getSelectionSignature,
+  getSelectedIds,
   onSelectItem,
   onEditItem,
   onDrop,
@@ -64,6 +71,7 @@ export const PlanCard = memo(function PlanCard({
   onDragEnd,
 }: PlanCardProps) {
   const isPreview = variant === 'preview';
+  const selectedIds = getSelectedIds();
 
   // Search matching logic
   const isSearchActive = searchQuery.trim().length > 0;
@@ -92,11 +100,14 @@ export const PlanCard = memo(function PlanCard({
     [item.status_category, item.external_status, item.external_type]
   );
 
+  // Count total descendants (children, grandchildren, etc.) - compute only when needed for the delete dialog
   const descendantCount = useMemo(() => {
+    if (!showDeleteConfirm) return 0;
     const countDescendants = (node: TreeNode): number => {
       return node.children.reduce((sum, child) => sum + 1 + countDescendants(child), 0);
     };
     return countDescendants(item);
+  }, [item, showDeleteConfirm]);
 
   const style = getStyleForDepth(depth);
 
@@ -116,6 +127,7 @@ export const PlanCard = memo(function PlanCard({
         ${previewClasses}
         ${interactiveClasses}
       `}
+      data-selection-key={selectionSignature}
       draggable={!isPreview}
       onClick={isPreview ? undefined : (e) => {
         e.stopPropagation();
@@ -159,6 +171,8 @@ export const PlanCard = memo(function PlanCard({
 
         // Store all selected item IDs for batch moves
         // If dragging an unselected item, only move that item
+        const idsToMove = selectedIds.has(item.id)
+          ? Array.from(selectedIds)
           : [item.id];
         e.dataTransfer.setData('selected-ids', JSON.stringify(idsToMove));
 

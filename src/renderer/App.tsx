@@ -9,6 +9,7 @@ export default function App() {
 
   // Delete the current project
   const handleDeleteProject = useCallback(async () => {
+
   return (
   );
 }
