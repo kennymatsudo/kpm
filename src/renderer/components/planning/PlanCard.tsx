@@ -93,6 +93,8 @@ export const PlanCard = memo(function PlanCard({
   const [showMenu, setShowMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  const { addToQueue } = useExportActions();
+
 
   // Derive effective status: use status_category if set, otherwise derive from external_status
   const effectiveStatus = useMemo(

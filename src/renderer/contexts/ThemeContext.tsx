@@ -1,3 +1,4 @@
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, type ReactNode } from 'react';
 
 
 interface ThemeContextValue {
@@ -45,7 +46,13 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     localStorage.setItem(STORAGE_KEY, newPreference);
   }, []);
 
+  const contextValue = useMemo(() => ({
+    preference,
+    resolved,
+    setPreference,
+
   return (
+    <ThemeContext.Provider value={contextValue}>
       {children}
     </ThemeContext.Provider>
   );

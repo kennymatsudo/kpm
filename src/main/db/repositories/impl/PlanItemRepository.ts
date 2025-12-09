@@ -27,7 +27,11 @@ function rowToPlanItem(row: Record<string, unknown>): PlanItem {
 export class PlanItemRepository implements IPlanItemRepository {
 
   /**
+   * Collect all descendant IDs for a given parent using recursive CTE.
+   * Single query instead of O(depth) queries for hierarchical traversal.
    */
+  private collectDescendantIds(parentId: string): string[] {
+    return rows.map(r => r.id);
   }
 
   getByProject(projectId: string): PlanItem[] {
@@ -200,5 +204,41 @@ export class PlanItemRepository implements IPlanItemRepository {
   getNextOrder(projectId: string, parentId: string | null): number {
     const result = parentId
     return (result?.max_order ?? -1) + 1;
+  }
+
+  /**
+   * Get children of a specific parent, optionally filtered by external issue types.
+   */
+  getChildrenByParent(
+    projectId: string,
+    parentId: string,
+    externalIssueTypes?: string[]
+  ): PlanItem[] {
+    if (externalIssueTypes && externalIssueTypes.length > 0) {
+      const placeholders = externalIssueTypes.map(() => '?').join(',');
+      const stmt = this.db.prepare(`
+        SELECT * FROM plan_items
+        WHERE project_id = ? AND parent_id = ? AND external_issue_type IN (${placeholders})
+        ORDER BY item_order
+      `);
+      const rows = stmt.all(projectId, parentId, ...externalIssueTypes) as Record<string, unknown>[];
+      return rows.map(rowToPlanItem);
+    }
+
+    return rows.map(rowToPlanItem);
+  }
+
+  /**
+   * Get siblings of an item (same parent), returning only id and item_order.
+   */
+  getSiblings(
+    projectId: string,
+    parentId: string | null,
+    excludeId?: string
+  ): { id: string; item_order: number }[] {
+    if (parentId && excludeId) {
+    } else if (parentId) {
+    } else if (excludeId) {
+    }
   }
 }

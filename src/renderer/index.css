@@ -335,6 +335,7 @@ select:focus-visible {
 
 }
 
+/* Drop target indicator - moved to bottom of file with animation */
 
 /* ============================================
    Chat Styles
@@ -716,4 +717,39 @@ select:focus-visible {
     color var(--transition-theme),
     box-shadow var(--transition-theme),
     transform var(--transition-theme) !important;
+}
+
+/* ============================================
+   Reduced Motion Support
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================
+   Enhanced Drop Target Indicator
+   ============================================ */
+
+.plan-card.drop-target {
+}
+
+@keyframes drop-target-pulse {
+}
+
+.plan-card.drop-target {
+  animation: drop-target-pulse 1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-card.drop-target {
+    animation: none;
+  }
 }

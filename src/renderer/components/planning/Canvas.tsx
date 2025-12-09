@@ -131,6 +131,33 @@ interface CanvasProps {
         style={{
         }}
       >
+        <AnimatePresence mode="popLayout">
+              key={node.id}
+              initial={{ opacity: 0, scale: 0.9 }}
+              exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
+              className="absolute pointer-events-auto"
+              style={{
+                left: node.position_x ?? 50,
+                top: node.position_y ?? 50,
+              }}
+            >
+              <PlanCard
+                item={node}
+                depth={0}
+                isSelected={selectedItemIds.has(node.id)}
+                isFocused={focusedItemId === node.id}
+                focusedItemId={focusedItemId}
+                searchQuery={searchQuery}
+                selectionSignature={selectionSignatures.get(node.id) ?? ''}
+                getSelectionSignature={getSelectionSignature}
+                getSelectedIds={getSelectedIds}
+                onSelectItem={onSelectItem}
+                onEditItem={onEditItem}
+                onDrop={handleCardDrop}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+              />
+        </AnimatePresence>
       </div>
 
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

@@ -1,3 +1,4 @@
+import type { PlanAction, PlanActionResult, PlanItem } from '../../../shared/types';
 
 
 interface ExecutorContext {
@@ -6,6 +7,8 @@ interface ExecutorContext {
   skippedActions: { index: number; type: string; reason: string }[];
   placeholderCounter: number;
   actionIndex: number;
+  /** Transaction-scoped cache for individual items to avoid repeated fetches */
+  itemCache: Map<string, PlanItem>;
 }
 
 function resolveId(ctx: ExecutorContext, id: string | null | undefined): string | null {
@@ -24,6 +27,28 @@ function createId(ctx: ExecutorContext): string {
 
 function skip(ctx: ExecutorContext, type: string, reason: string): void {
   ctx.skippedActions.push({ index: ctx.actionIndex, type, reason });
+}
+
+/**
+ * Get an item from cache or fetch from database.
+ * Caches the result for subsequent calls within the same transaction.
+ */
+function getItem(ctx: ExecutorContext, itemId: string): PlanItem | undefined {
+  const cached = ctx.itemCache.get(itemId);
+  if (cached) return cached;
+
+  if (item) {
+    ctx.itemCache.set(itemId, item);
+  }
+  return item;
+}
+
+/**
+ * Invalidate a cached item after modification.
+ * Call this after updating an item to ensure fresh data on next access.
+ */
+function invalidateItem(ctx: ExecutorContext, itemId: string): void {
+  ctx.itemCache.delete(itemId);
 }
 
 // =============================================================================
@@ -95,11 +120,13 @@ function executeReorder(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'reorder' }>
 ): void {
+  const item = getItem(ctx, action.item_id);
   if (!item) {
     skip(ctx, 'reorder', `Item not found: ${action.item_id}`);
     return;
   }
 
+  // Use targeted query returning only (id, item_order) for siblings
 
   let newOrder: number;
   if (!action.after_item_id) {
@@ -115,6 +142,7 @@ function executeReorder(
     }
   }
 
+  invalidateItem(ctx, action.item_id);
 }
 
 function executeUpdateItem(
@@ -122,7 +150,9 @@ function executeUpdateItem(
   action: Extract<PlanAction, { type: 'update_item' }>
 ): void {
   // Get item before update to check if it's Jira-linked
+  const item = getItem(ctx, action.item_id);
 
+  invalidateItem(ctx, action.item_id);
 
   }
 }
@@ -131,15 +161,19 @@ function executeDeleteItem(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'delete_item' }>
 ): void {
+  const itemToDelete = getItem(ctx, action.item_id);
   if (!itemToDelete) {
     skip(ctx, 'delete_item', `Item not found: ${action.item_id}`);
     return;
   }
+  invalidateItem(ctx, action.item_id);
 }
 
 function executeSetPosition(
+  ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'set_position' }>
 ): void {
+  invalidateItem(ctx, action.item_id);
 }
 
 function executeQueueForTracker(
@@ -159,6 +193,7 @@ function executeQueueForTracker(
 
   let queuedCount = 0;
   for (const itemId of resolvedIds) {
+    const item = getItem(ctx, itemId);
     if (!item) {
       continue;
     }
@@ -185,6 +220,7 @@ function executeQueueForTracker(
     skippedActions: [],
     placeholderCounter: 0,
     actionIndex: 0,
+    itemCache: new Map<string, PlanItem>(),
   });
 
     });
