@@ -46,3 +46,26 @@ Use `stores/storeEvents.ts` to avoid circular deps:
 ```typescript
 ```
 
+## RepoWatcherService
+
+Tracks git branch changes for connected repositories in real-time.
+
+**Files:**
+
+**How it works:**
+1. When repo connected → `watchRepo()` starts `fs.watch` on `.git/HEAD`
+2. Branch change detected → debounced (100ms) → `repo:branch-changed` IPC event
+3. Renderer updates `repoBranches` store → UI shows new branch
+
+**Lifecycle:**
+- `init()` called on app startup with window getter (avoids timing issues)
+- Watchers created per-repo when repos are loaded/connected
+- `unwatchRepo()` called when repo removed or project switched
+- `unwatchAll()` called on app quit
+
+**Gotchas:**
+- macOS fires `rename` events (not `change`) when git rewrites HEAD—handle both
+- Window getter pattern avoids null reference when IPC registers before window exists
+- Must clean up watchers on project switch to prevent memory leaks
+- Debouncing prevents rapid-fire events from some file systems
+

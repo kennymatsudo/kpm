@@ -15,6 +15,7 @@ interface Migration {
 
 /**
  * All migrations in order. Add new migrations to the end of this array.
+ * Migrations run automatically on app start.
  */
 
 /**
