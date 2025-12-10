@@ -21,6 +21,9 @@ export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: P
   const [selectedTypeForNew, setSelectedTypeForNew] = useState<string>('');
 
 
+  useEffect(() => {
+    void loadMappingsByScope(projectId, scopeId);
+
   const handleSaveMapping = async (kpmLabel: string, jiraTypeId: string) => {
     const jiraType = jiraIssueTypes.find(t => t.id === jiraTypeId);
     if (!jiraType) return;

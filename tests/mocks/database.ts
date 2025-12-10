@@ -5,6 +5,7 @@
  * Each test can get a fresh database instance.
  */
 
+import BetterSqlite from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
 
 // =============================================================================
@@ -15,6 +16,7 @@ import type { Database as DatabaseType } from 'better-sqlite3';
  * Create a fresh in-memory database for testing
  */
 export function createTestDatabase(): DatabaseType {
+  const db = new BetterSqlite(':memory:');
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   return db;

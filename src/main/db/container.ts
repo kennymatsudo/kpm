@@ -61,9 +61,14 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
 
   // Use real implementations by default, allow mocks for testing
   const fileSystem: IFileSystem = config.fileSystem ?? {
+    existsSync: (...args) => fs.existsSync(...args),
+    mkdirSync: (...args) => fs.mkdirSync(...args),
+    writeFileSync: (...args) => fs.writeFileSync(...args),
+    rmSync: (...args) => fs.rmSync(...args),
   };
 
   const pathUtils: IPathUtils = config.pathUtils ?? {
+    join: (...paths) => path.join(...paths),
   };
 
   // Create repository instances

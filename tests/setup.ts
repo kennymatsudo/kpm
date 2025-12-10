@@ -7,6 +7,7 @@
  * - Global test utilities
  */
 
+import { vi, beforeEach, afterEach, expect } from 'vitest';
 
 // =============================================================================
 // Electron Mocks
@@ -102,6 +103,7 @@ afterEach(() => {
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Vi {
+    interface Assertion {
       toBeUUID(): void;
     }
   }

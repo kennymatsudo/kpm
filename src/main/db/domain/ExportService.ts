@@ -164,6 +164,7 @@ import type {
     );
 
     // Collect queue updates for batch transaction
+    const queueUpdates: { id: string; typeId: string; typeName: string; parentKey: string | null }[] = [];
 
     // Process each queued item
     for (const entry of queueEntries) {
@@ -496,7 +497,11 @@ import type {
       const now = new Date().toISOString();
 
       for (const updateResult of updateResults) {
+        const errorMessage = updateResult.error ?? 'Unknown error';
+
         if (!updateResult.planItem) {
+          result.errors.push({ plan_item_id: updateResult.entry.plan_item_id, error: errorMessage });
+          SyncQueueRepository.setError(updateResult.entry.id, errorMessage);
           continue;
         }
 
@@ -508,8 +513,14 @@ import type {
             updateSyncFields.external_status = updateResult.newExternalStatus;
           }
           PlanItemRepository.update(updateResult.planItem.id, updateSyncFields);
+          result.updated.push({
+            plan_item_id: updateResult.planItem.id,
+            jira_key: updateResult.planItem.external_key ?? '',
+          });
           SyncQueueRepository.remove(updateResult.entry.id);
         } else {
+          result.errors.push({ plan_item_id: updateResult.planItem.id, error: errorMessage });
+          SyncQueueRepository.setError(updateResult.entry.id, errorMessage);
           result.success = false;
         }
       }

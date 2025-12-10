@@ -1,4 +1,9 @@
+import { contextBridge } from 'electron';
+import { api } from './api';
 
+contextBridge.exposeInMainWorld('api', api);
+
+export type { API, ClaudeModel } from './api';
 export type {
   Project,
   Repo,
@@ -25,3 +30,4 @@ export type {
   ExportResult,
   SyncReviewData,
   ChatMessage,
+} from './api';

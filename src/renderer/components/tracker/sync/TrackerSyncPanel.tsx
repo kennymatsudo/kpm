@@ -38,6 +38,7 @@ import { useEffect, useState } from 'react';
       setIsImported(hasItems);
       setIsLoading(false);
     };
+    void checkImported();
   }, [associationId, hasAssociationItems]);
 
   // Setup listeners
@@ -53,6 +54,7 @@ import { useEffect, useState } from 'react';
   // Load queue count
   useEffect(() => {
     if (currentProjectId) {
+      void refreshQueueCount(currentProjectId);
     }
   }, [currentProjectId, refreshQueueCount]);
 
@@ -84,6 +86,8 @@ import { useEffect, useState } from 'react';
   const handleRefresh = async () => {
     await refreshPlanItems();
     if (currentProjectId) {
+      void loadAssociations(currentProjectId);
+      void refreshQueueCount(currentProjectId);
     }
   };
 

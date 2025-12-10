@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 
 interface EmptyStateProps {
   /** Icon to display (optional) */

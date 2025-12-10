@@ -1,7 +1,9 @@
+import type { Database as DatabaseType } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { runMigrations } from './migrations';
 
+let database: DatabaseType;
 let userDataPath: string;
 
 // Simple logger for database operations
@@ -53,6 +55,7 @@ export function withErrorHandling<T>(
 /**
  * Get the database instance. Must be called after initDatabase.
  */
+export function getDatabase(): DatabaseType {
   if (!database) {
     throw new Error('Database not initialized. Call initDatabase() first.');
   }

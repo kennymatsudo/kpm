@@ -1,3 +1,4 @@
+import type { Database as BetterSqliteDatabase } from 'better-sqlite3';
 
 /**
  *
@@ -11,6 +12,7 @@
 interface Migration {
   id: number;
   name: string;
+  up: (db: BetterSqliteDatabase) => void;
 }
 
 /**
@@ -21,6 +23,7 @@ interface Migration {
 /**
  * Check if a migration has been applied.
  */
+function isMigrationApplied(db: BetterSqliteDatabase, name: string): boolean {
   const row = db.prepare('SELECT 1 FROM schema_migrations WHERE name = ?').get(name);
   return !!row;
 }
@@ -28,6 +31,7 @@ interface Migration {
 /**
  * Record a migration as applied.
  */
+function recordMigration(db: BetterSqliteDatabase, id: number, name: string): void {
   db.prepare('INSERT INTO schema_migrations (id, name) VALUES (?, ?)').run(id, name);
 }
 
@@ -35,6 +39,7 @@ interface Migration {
  * Run all pending migrations.
  * Call this after setupSchema() to apply any new migrations.
  */
+export function runMigrations(db: BetterSqliteDatabase): void {
   console.log('[Migrations] Checking for pending migrations...');
 
 

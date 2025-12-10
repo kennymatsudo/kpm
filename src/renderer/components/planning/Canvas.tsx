@@ -68,6 +68,7 @@ interface CanvasProps {
 
 
   const handleCardDrop = useCallback((droppedItemIds: string[], targetParentId: string) => {
+    void onReparent(droppedItemIds, targetParentId);
   }, [onReparent]);
 
   const getSelectedIds = useCallback(() => selectionRef.current, []);
@@ -81,6 +82,7 @@ interface CanvasProps {
       onDrop={(e) => {
         e.preventDefault();
         setDragPreview(null);
+        void handleCanvasDrop(e);
       }}
       onDragEnd={() => {
       }}

@@ -76,6 +76,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
   unlinkFromExternal(id: string): void {
   }
 
+  importExternalIssues(items: {
     project_id: string;
     external_key: string;
     external_id: string;
@@ -90,6 +91,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
     description: string | null;
     label: string | null;
     association_id: string;
+  }[]): PlanItem[] {
     if (items.length === 0) return [];
 
     const createdIds: string[] = [];

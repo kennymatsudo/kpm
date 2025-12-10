@@ -3,6 +3,7 @@ import { processMessageContent } from '../../utils/messageFormatter';
 /** Parse user message to extract image attachments and clean content */
 function parseUserMessage(content: string): { cleanContent: string; imageCount: number } {
   const imagePrefix = /^Images attached \(use Read tool to view\):\n((?:- [^\n]+\n)+)\n/;
+  const match = imagePrefix.exec(content);
 
   if (match) {
     const imageLines = match[1].trim().split('\n');

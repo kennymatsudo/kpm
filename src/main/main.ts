@@ -2,6 +2,7 @@ import path from 'path';
 import { initDatabase } from './db';
 
 
+void app.whenReady().then(async () => {
   initDatabase();
 
   // Initialize temp image service (creates temp directory, cleans up stale files)

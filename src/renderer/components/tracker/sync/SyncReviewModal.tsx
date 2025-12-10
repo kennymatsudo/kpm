@@ -22,7 +22,9 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
 
   // Start review on mount
   useEffect(() => {
+    void startReview(projectId, associationId);
     return () => reset();
+  }, [projectId, associationId, startReview, reset]);
 
   const checkedItems = useMemo(
     () => items.filter(i => i.decision === 'approved'),
