@@ -15,7 +15,21 @@ export function PlanView({
 
   // Export store - for queue operations
 
+  const {
+    showBulkDeleteDialog,
+    openBulkDeleteDialog,
+    closeBulkDeleteDialog,
+    handleBulkDeleteAll,
+  } = useBulkActions({
+    selectedItemIds,
+    descendantIds,
+    executePlanActions,
+    setSelectedItemIds,
+  });
 
+  const handleAutoLayout = useAutoLayout({
+    updateItemPosition,
+  });
 
   if (!currentProjectId) {
     return (
@@ -44,6 +58,7 @@ export function PlanView({
             const selectedId = Array.from(selectedItemIds)[0];
             if (selectedId) handleEditItem(selectedId);
           }}
+          onDelete={openBulkDeleteDialog}
         />
 
       {/* Bulk Delete Confirmation Dialog */}
@@ -52,6 +67,7 @@ export function PlanView({
           itemCount={selectedItemIds.size}
           descendantCount={descendantIds.size}
           onDeleteAll={handleBulkDeleteAll}
+          onCancel={closeBulkDeleteDialog}
         />
       )}
     </div>

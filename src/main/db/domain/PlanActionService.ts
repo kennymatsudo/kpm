@@ -1,5 +1,22 @@
+import type { Database } from 'better-sqlite3';
 import type { PlanAction, PlanActionResult, PlanItem } from '../../../shared/types';
+import type {
+  IPlanItemRepository,
+  IPlanRelationRepository,
+  ITrackerRepository,
+  ISyncQueueRepository,
+} from '../interfaces';
 
+type Logger = Pick<Console, 'log' | 'warn'>;
+
+export interface PlanActionExecutorDeps {
+  database: Database;
+  planItems: IPlanItemRepository;
+  planRelations: IPlanRelationRepository;
+  tracker: ITrackerRepository;
+  syncQueue: ISyncQueueRepository;
+  logger?: Logger;
+}
 
 interface ExecutorContext {
   projectId: string;
@@ -9,7 +26,14 @@ interface ExecutorContext {
   actionIndex: number;
   /** Transaction-scoped cache for individual items to avoid repeated fetches */
   itemCache: Map<string, PlanItem>;
+  deps: PlanActionExecutorDeps;
+  logger: Logger;
 }
+
+const defaultLogger: Logger = {
+  log: console.log,
+  warn: console.warn,
+};
 
 function resolveId(ctx: ExecutorContext, id: string | null | undefined): string | null {
   if (!id) return null;
@@ -37,6 +61,7 @@ function getItem(ctx: ExecutorContext, itemId: string): PlanItem | undefined {
   const cached = ctx.itemCache.get(itemId);
   if (cached) return cached;
 
+  const item = ctx.deps.planItems.get(itemId);
   if (item) {
     ctx.itemCache.set(itemId, item);
   }
@@ -62,11 +87,13 @@ function executeCreateItem(
   const id = createId(ctx);
   const parentId = resolveId(ctx, action.parent_id);
 
+  ctx.deps.planItems.add({
     id,
     project_id: ctx.projectId,
     title: action.title,
     description: action.description || null,
     parent_id: parentId,
+    item_order: ctx.deps.planItems.getNextOrder(ctx.projectId, parentId),
     code_refs: null,
     release_tag: null,
     position_x: null,
@@ -89,12 +116,14 @@ function executeSetLabel(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'set_label' }>
 ): void {
+  ctx.deps.planItems.update(action.item_id, { label: action.label });
 }
 
 function executeSetRelease(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'set_release' }>
 ): void {
+  ctx.deps.planItems.update(action.item_id, { release_tag: action.release_tag });
 }
 
 function executeAddDependency(
@@ -104,6 +133,7 @@ function executeAddDependency(
   const fromId = resolveId(ctx, action.from_id) || action.from_id;
   const toId = resolveId(ctx, action.to_id) || action.to_id;
 
+  ctx.deps.planRelations.add({
     project_id: ctx.projectId,
     from_item_id: fromId,
     to_item_id: toId,
@@ -112,8 +142,10 @@ function executeAddDependency(
 }
 
 function executeRemoveDependency(
+  ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'remove_dependency' }>
 ): void {
+  ctx.deps.planRelations.remove(action.relation_id);
 }
 
 function executeReorder(
@@ -127,6 +159,7 @@ function executeReorder(
   }
 
   // Use targeted query returning only (id, item_order) for siblings
+  const siblings = ctx.deps.planItems.getSiblings(ctx.projectId, item.parent_id, item.id);
 
   let newOrder: number;
   if (!action.after_item_id) {
@@ -142,6 +175,7 @@ function executeReorder(
     }
   }
 
+  ctx.deps.planItems.update(action.item_id, { item_order: newOrder });
   invalidateItem(ctx, action.item_id);
 }
 
@@ -152,9 +186,11 @@ function executeUpdateItem(
   // Get item before update to check if it's Jira-linked
   const item = getItem(ctx, action.item_id);
 
+  ctx.deps.planItems.update(action.item_id, action.updates);
   invalidateItem(ctx, action.item_id);
 
   if (item) {
+    ctx.deps.queueTrackerUpdateIfNeeded(item, action.updates, 'claude');
   }
 }
 
@@ -167,6 +203,7 @@ function executeDeleteItem(
     skip(ctx, 'delete_item', `Item not found: ${action.item_id}`);
     return;
   }
+  ctx.deps.planItems.delete(action.item_id);
   invalidateItem(ctx, action.item_id);
 }
 
@@ -174,6 +211,7 @@ function executeSetPosition(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'set_position' }>
 ): void {
+  ctx.deps.planItems.updatePosition(action.item_id, action.x, action.y);
   invalidateItem(ctx, action.item_id);
 }
 
@@ -185,6 +223,7 @@ function executeQueueForTracker(
   const resolvedIds = action.item_ids.map(id => resolveId(ctx, id) ?? id);
 
   // Find the association for this project
+  const associations = ctx.deps.tracker.getAssociationsByProject(ctx.projectId);
   if (associations.length === 0) {
     skip(ctx, 'queue_for_tracker', 'No tracker association configured for project');
     return;
@@ -196,6 +235,7 @@ function executeQueueForTracker(
   for (const itemId of resolvedIds) {
     const item = getItem(ctx, itemId);
     if (!item) {
+      ctx.logger.warn(`[PlanActionService] queue_for_tracker: Item not found: ${itemId}`);
       continue;
     }
 
@@ -213,17 +253,87 @@ function executeQueueForTracker(
 }
 
 // =============================================================================
+// Executor Factory
 // =============================================================================
 
+export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
+  const logger = deps.logger ?? defaultLogger;
 
+  const createContext = (projectId: string): ExecutorContext => ({
     projectId,
     idMap: new Map<string, string>(),
     skippedActions: [],
     placeholderCounter: 0,
     actionIndex: 0,
     itemCache: new Map<string, PlanItem>(),
+    deps,
+    logger,
   });
 
+  /**
+   * Execute a batch of plan actions in a single transaction.
+   * Returns a result with created IDs mapped from placeholders ($1, $2, etc.)
+   */
+  function execute(projectId: string, actions: PlanAction[]): PlanActionResult {
+
+    const ctx = createContext(projectId);
+    const transaction = deps.database.transaction(() => {
+
+        switch (action.type) {
+          case 'create_item':
+            executeCreateItem(ctx, action);
+            break;
+          case 'set_label':
+            executeSetLabel(ctx, action);
+            break;
+          case 'set_release':
+            executeSetRelease(ctx, action);
+            break;
+          case 'add_dependency':
+            executeAddDependency(ctx, action);
+            break;
+          case 'remove_dependency':
+            executeRemoveDependency(ctx, action);
+            break;
+          case 'reorder':
+            executeReorder(ctx, action);
+            break;
+          case 'update_item':
+            executeUpdateItem(ctx, action);
+            break;
+          case 'delete_item':
+            executeDeleteItem(ctx, action);
+            break;
+          case 'set_position':
+            executeSetPosition(ctx, action);
+            break;
+          case 'queue_for_tracker':
+            executeQueueForTracker(ctx, action);
+            break;
+        }
+      }
     });
 
+    try {
+      transaction();
+      const createdIds: Record<string, string> = {};
+      ctx.idMap.forEach((value, key) => {
+        createdIds[key] = value;
+      });
+
+      if (ctx.skippedActions.length > 0) {
+        logger.warn(`[PlanActionService] ${ctx.skippedActions.length} action(s) skipped:`, ctx.skippedActions);
+      }
+
+      return {
+        success: true,
+        createdIds,
+        skippedActions: ctx.skippedActions.length > 0 ? ctx.skippedActions : undefined,
+      };
+    } catch (error) {
+      return { success: false, error: String(error) };
     }
+  }
+
+  return { execute };
+}
