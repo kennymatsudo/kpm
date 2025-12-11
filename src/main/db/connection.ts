@@ -1,3 +1,4 @@
+import BetterSqlite3 from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
@@ -86,6 +87,7 @@ export function initDatabaseWithPath(dbPath: string): void {
   // Store the userData path (parent of database file)
   userDataPath = dir;
 
+  database = new BetterSqlite3(dbPath);
   runMigrations(database);
 }
 
@@ -97,5 +99,6 @@ export function initDatabase(): void {
   // Dynamic import to avoid requiring electron in MCP server context
   const { app } = require('electron');
   userDataPath = app.getPath('userData');
+  database = new BetterSqlite3(dbPath);
   runMigrations(database);
 }

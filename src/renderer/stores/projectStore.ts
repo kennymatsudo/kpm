@@ -4,3 +4,7 @@ import { create, type StoreApi, type UseBoundStore } from 'zustand';
   Attachment,
   PlanItem,
   PlanRelation,
+
+export const createProjectStore = (
+
+export const useProjectStore = createProjectStore();

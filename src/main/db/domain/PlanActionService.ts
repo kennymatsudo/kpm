@@ -154,6 +154,7 @@ function executeUpdateItem(
 
   invalidateItem(ctx, action.item_id);
 
+  if (item) {
   }
 }
 
