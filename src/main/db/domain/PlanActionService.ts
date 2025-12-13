@@ -250,6 +250,9 @@ function executeQueueForTracker(
     queuedCount++;
   }
 
+  if (queuedCount > 0) {
+    ctx.logger.log(`[PlanActionService] Queued ${queuedCount} item(s) for tracker`);
+  }
 }
 
 // =============================================================================
@@ -275,6 +278,7 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
    * Returns a result with created IDs mapped from placeholders ($1, $2, etc.)
    */
   function execute(projectId: string, actions: PlanAction[]): PlanActionResult {
+    logger.log(`[PlanActionService] Executing ${actions.length} action(s): ${actions.map(a => a.type).join(', ')}`);
 
     const ctx = createContext(projectId);
     const transaction = deps.database.transaction(() => {
