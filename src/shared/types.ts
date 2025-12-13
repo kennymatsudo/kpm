@@ -462,3 +462,22 @@ export interface ChatMessage {
   created_at: string;
 }
 
+// =============================================================================
+// Permission System Types
+// =============================================================================
+
+/** Permission request sent from main to renderer */
+export interface PermissionRequest {
+  requestId: string;
+  toolName: string;
+  targetPath: string | null;
+  preview: string;
+}
+
+/** User action for permission request */
+
+/** Permission response sent from renderer to main */
+export interface PermissionResponse {
+  requestId: string;
+  action: PermissionAction;
+}

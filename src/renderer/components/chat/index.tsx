@@ -44,6 +44,7 @@ import { useShallow } from 'zustand/react/shallow';
         </div>
       )}
 
+      <PermissionPrompt />
     </div>
   );
 }

@@ -27,6 +27,8 @@ import type {
   SyncReviewData,
   StatusCategory,
   ChatMessage,
+  PermissionRequest,
+  PermissionAction,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -56,6 +58,8 @@ export type {
   ExportResult,
   SyncReviewData,
   ChatMessage,
+  PermissionRequest,
+  PermissionAction,
 };
 
 const tempImages = {
@@ -245,6 +249,23 @@ const storybook = {
   testConnection: (url: string): Promise<{ success: boolean; componentCount?: number; error?: string }> =>
 };
 
+const settings = {
+  anthropic: {
+    hasKey: (): Promise<{ success: boolean; hasKey?: boolean; error?: string }> =>
+    saveKey: (apiKey: string): Promise<{ success: boolean; error?: string }> =>
+    deleteKey: (): Promise<{ success: boolean; error?: string }> =>
+    testKey: (apiKey: string): Promise<{ success: boolean; valid?: boolean; error?: string }> =>
+  },
+};
+
+const permission = {
+  onRequest: (callback: (request: PermissionRequest) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, request: PermissionRequest) => callback(request);
+    ipcRenderer.on('permission:request', handler);
+    return () => ipcRenderer.removeListener('permission:request', handler);
+  },
+};
+
 export const api = {
   tempImages,
   chat,
@@ -257,6 +278,8 @@ export const api = {
   contextFiles,
   menu,
   storybook,
+  settings,
+  permission,
 };
 
 export type API = typeof api;
