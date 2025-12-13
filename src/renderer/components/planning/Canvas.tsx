@@ -184,6 +184,8 @@ interface CanvasProps {
       {dragPreview && (
         <div
           style={{
+            left: `${dragPreview.x - dragPreview.offsetX}px`,
+            top: `${dragPreview.y - dragPreview.offsetY}px`,
             transformOrigin: 'top left',
           }}
         >

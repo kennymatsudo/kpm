@@ -31,11 +31,17 @@ const baseItem: PlanItem = {
 };
 
 function createMocks(overrides?: Partial<PlanServiceDeps>) {
+  const itemStore = new Map<string, PlanItem>([['1', baseItem]]);
+
   const planItems = {
+    get: vi.fn((id: string) => itemStore.get(id)),
+    getByProject: vi.fn(() => Array.from(itemStore.values())),
     getChildCount: vi.fn(() => 0),
     getNextOrder: vi.fn(() => 1),
     getSiblings: vi.fn(() => [] as { id: string; item_order: number }[]),
+    getChildrenByParent: vi.fn(() => [] as PlanItem[]),
     add: vi.fn(),
+    delete: vi.fn((id: string) => itemStore.delete(id)),
     deleteWithDescendants: vi.fn(),
     update: vi.fn(),
     updatePosition: vi.fn(),
@@ -45,6 +51,8 @@ function createMocks(overrides?: Partial<PlanServiceDeps>) {
     add: vi.fn((relation: Omit<PlanRelation, 'id'>) => ({ ...relation, id: 'r1' })),
     getByProject: vi.fn(() => [] as PlanRelation[]),
     remove: vi.fn(),
+    delete: vi.fn(),
+    deleteByItem: vi.fn(),
   };
 
   const queueTrackerUpdateIfNeeded = vi.fn();
@@ -75,8 +83,10 @@ describe('PlanService', () => {
   });
 
   it('returns failure when item is missing', () => {
+    const baseMocks = createMocks();
     const { deps } = createMocks({
       planItems: {
+        ...baseMocks.deps.planItems,
         get: vi.fn(() => undefined),
       },
     });
