@@ -15,6 +15,8 @@ export function PlanView({
 
   // Export store - for queue operations
 
+
+
   const {
     showBulkDeleteDialog,
     openBulkDeleteDialog,
@@ -30,6 +32,8 @@ export function PlanView({
   const handleAutoLayout = useAutoLayout({
     updateItemPosition,
   });
+
+  // Build tree hierarchy for tree view (using filtered items)
 
   if (!currentProjectId) {
     return (
@@ -48,6 +52,14 @@ export function PlanView({
 
   return (
     <div className="h-full bg-surface-0 flex">
+        <div className="flex-1 overflow-hidden" onContextMenu={handleContextMenu}>
+          {viewMode === 'card' ? (
+                focusedItemId={focusedItemId}
+                searchQuery={searchQuery}
+                onSelectItem={handleSelectItem}
+                onEditItem={handleEditItem}
+              />
+          )}
         </div>
       </div>
 

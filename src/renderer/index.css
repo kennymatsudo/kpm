@@ -736,6 +736,53 @@ select:focus-visible {
 }
 
 /* ============================================
+   Tree View Styles
+   ============================================ */
+
+.tree-branch {
+  /* Subtle animation for expand/collapse */
+}
+
+.tree-node {
+  position: relative;
+}
+
+/* Connecting lines - subtle vertical guides */
+.tree-node::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--tree-depth, 0) * 20px + 20px);
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    var(--color-border-subtle) 10%,
+    var(--color-border-subtle) 90%,
+    transparent 100%
+  );
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.tree-node > div:first-child:hover {
+}
+
+/* Selection highlight animation */
+@keyframes tree-select-pulse {
+  0% {
+    box-shadow: inset 0 0 0 1px var(--color-accent);
+  }
+  50% {
+    box-shadow: inset 0 0 0 2px var(--color-accent);
+  }
+  100% {
+    box-shadow: inset 0 0 0 1px var(--color-accent);
+  }
+}
+
+/* ============================================
    Enhanced Drop Target Indicator
    ============================================ */
 
