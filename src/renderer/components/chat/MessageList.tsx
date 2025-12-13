@@ -34,7 +34,11 @@ const PlanUpdateIndicator = memo(function PlanUpdateIndicator() {
   );
 });
 
+  const isInitialMount = useRef(true);
 
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+    }
 
   if (messages.length === 0 && !isStreaming) {
   }

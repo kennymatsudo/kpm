@@ -348,6 +348,7 @@ select:focus-visible {
 }
 
 .chat-message-content {
+  font-family: var(--font-sans);
   word-break: break-word;
   user-select: text;
   -webkit-user-select: text;
