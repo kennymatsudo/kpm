@@ -74,6 +74,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="relative">
             <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center">
+              <LoadingSpinner className="w-6 h-6" color="accent" />
             </div>
           </div>
           <p className="text-text-secondary text-sm font-medium mt-5">Preparing export review...</p>

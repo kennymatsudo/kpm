@@ -1,4 +1,5 @@
 import { useRef, useEffect } from 'react';
+import { CloseIcon } from '../icons';
 
 interface SearchInputProps {
   value: string;
@@ -80,6 +81,7 @@ export function SearchInput({ value, onChange, placeholder = 'Search...', result
           className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-surface-3 transition-colors"
           title="Clear search (Esc)"
         >
+          <CloseIcon className="w-3.5 h-3.5 text-text-muted" />
         </button>
       )}
     </div>

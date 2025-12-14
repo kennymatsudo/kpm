@@ -16,6 +16,9 @@ const shortcuts: ShortcutGroup[] = [
   },
 ];
 
+  return (
+              </div>
+        </div>
   );
 }
 

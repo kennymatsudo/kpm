@@ -126,6 +126,7 @@ import { useEffect, useState } from 'react';
             onClick={onClose}
             className="text-text-muted hover:text-text-primary p-2 rounded-lg hover:bg-surface-2 transition-colors"
           >
+            <CloseIcon className="w-5 h-5" />
           </button>
         </div>
 
@@ -133,6 +134,7 @@ import { useEffect, useState } from 'react';
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
+              <LoadingSpinner className="w-6 h-6" color="accent" />
             </div>
           ) : (
             <div className="space-y-6">
@@ -158,6 +160,7 @@ import { useEffect, useState } from 'react';
                       className="w-full btn btn-primary"
                     >
                         <>
+                          <LoadingSpinner className="w-4 h-4" color="white" />
                         </>
                       ) : (
                         <>

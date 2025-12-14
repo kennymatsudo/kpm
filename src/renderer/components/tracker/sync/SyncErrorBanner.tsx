@@ -1,3 +1,4 @@
+
 interface Props {
   error: string;
   onRetry?: () => void;
@@ -24,6 +25,7 @@ export function SyncErrorBanner({ error, onRetry, onDismiss, variant = 'inline' 
             className="text-danger hover:text-red-300 p-0.5 rounded transition-colors"
             aria-label="Dismiss"
           >
+            <CloseIcon className="w-4 h-4" />
           </button>
         )}
       </div>

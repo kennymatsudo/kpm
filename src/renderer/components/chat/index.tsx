@@ -2,6 +2,7 @@ import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { useChat } from '../../hooks/useChat';
 import { useShallow } from 'zustand/react/shallow';
+import { CloseIcon } from '../icons';
 
   const [lastMessage, setLastMessage] = useState<string | null>(null);
 
@@ -18,6 +19,7 @@ import { useShallow } from 'zustand/react/shallow';
         <button
           style={{ color: 'color-mix(in srgb, var(--color-accent) 60%, transparent)' }}
         >
+          <CloseIcon className="w-3.5 h-3.5" />
         </button>
       </div>
 
@@ -40,6 +42,7 @@ import { useShallow } from 'zustand/react/shallow';
           <button
             className="text-danger/60 hover:text-danger transition-colors flex-shrink-0"
           >
+            <CloseIcon className="w-4 h-4" />
           </button>
         </div>
       )}

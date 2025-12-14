@@ -15,5 +15,6 @@ export function BulkDeleteConfirmDialog({
   const hasDescendants = descendantCount > 0;
   const totalToDelete = itemCount + descendantCount;
 
+  return (
   );
 }
