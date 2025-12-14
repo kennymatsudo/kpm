@@ -122,6 +122,7 @@ interface Migration {
           external_epic_key TEXT,                -- Epic/project key (metadata only)
           sync_source TEXT DEFAULT 'local',      -- 'local' | 'jira' | 'linear'
           last_synced_at DATETIME,
+          completed_at DATETIME,                 -- When item was marked done (for artifact generation)
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -265,6 +266,12 @@ interface Migration {
           console.error('[Database] Unexpected error creating index:', error);
         }
       }
+    },
+  },
+  {
+    id: 2,
+    name: '002_add_completed_at',
+    up: (db: BetterSqliteDatabase) => {
     },
   },
 ];

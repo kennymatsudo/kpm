@@ -266,6 +266,12 @@ const permission = {
   },
 };
 
+const artifacts = {
+  read: (projectId: string, filename: string): Promise<{ success: boolean; content?: string; error?: string }> =>
+  delete: (projectId: string, filename: string): Promise<{ success: boolean; error?: string }> =>
+  import: (projectId: string, sourcePath: string): Promise<{ success: boolean; filename?: string; error?: string }> =>
+};
+
 export const api = {
   tempImages,
   chat,
@@ -280,6 +286,7 @@ export const api = {
   storybook,
   settings,
   permission,
+  artifacts,
 };
 
 export type API = typeof api;

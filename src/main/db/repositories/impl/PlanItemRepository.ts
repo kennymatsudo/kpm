@@ -105,6 +105,12 @@ export class PlanItemRepository implements IPlanItemRepository {
     if (updates.status_category !== undefined) {
       fields.push('status_category = ?');
       values.push(updates.status_category);
+
+      if (updates.status_category === 'done') {
+      } else if (updates.status_category !== null) {
+        // Clear completed_at if moving away from done state
+        fields.push('completed_at = NULL');
+      }
     }
     if (updates.release_tag !== undefined) {
       fields.push('release_tag = ?');

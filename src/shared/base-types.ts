@@ -54,6 +54,7 @@ export interface PlanItem {
   external_epic_key?: string | null;
   sync_source?: 'local' | TrackerType;
   last_synced_at?: string | null;
+  completed_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }

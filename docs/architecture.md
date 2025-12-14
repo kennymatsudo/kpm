@@ -18,6 +18,14 @@ src/
 │   └── constants/
 ```
 
+## Project Folder Structure
+
+
+```
+{project_folder}/
+├── outputs/                 # Generated artifacts (weekly updates, test plans)
+```
+
 ## Domain Model
 
 **Hierarchy:** project → feature → task
@@ -30,9 +38,11 @@ src/
 | Table | Purpose |
 |-------|---------|
 | `attachments` | Uploaded files |
+| `plan_items` | Plan hierarchy + external tracker fields + `completed_at` |
 | `plan_relations` | Dependencies (depends_on, blocks, relates_to) |
 | `tracker_project_scopes` | Tracker project authorization (Jira/Linear) |
 | `tracker_type_mappings` | Label → tracker issue type |
+
 
 ## IPC Pattern
 
