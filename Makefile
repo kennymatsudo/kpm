@@ -8,6 +8,7 @@ install:
 
 db\:reset:
 	rm -f ~/Library/Application\ Support/KPM\ -\ Planning\ Workbench/planner.db
+	@echo "Database reset. Restart the app."
 
 
 # Build distributable app (DMG, installer, etc.)

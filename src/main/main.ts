@@ -6,6 +6,7 @@ import { initDatabase } from './db';
 void app.whenReady().then(async () => {
   initDatabase();
 
+  // Clean up legacy global MCP registration (from before in-process tools migration)
   // This is idempotent - removing non-existent registration just fails quietly
   try {
     execSync('npx @anthropic-ai/claude-code mcp remove kpm --scope user', { stdio: 'ignore' });
