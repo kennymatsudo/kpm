@@ -25,6 +25,7 @@ src/
 │   ├── services/            # Application services (DI pattern)
 │   │   ├── agents/          # AgentSessionManager, Claude/Codex/Gemini sessions, hooks, auto-review
 │   │   └── PerfLogger.ts    # Performance metrics
+│   ├── trackers/            # Tracker-specific logic
 ├── renderer/                # React frontend
 │   ├── components/
 │   │   ├── development/     # Shared PR/review components used by the board
