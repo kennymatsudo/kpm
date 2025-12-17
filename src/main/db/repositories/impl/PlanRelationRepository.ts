@@ -34,8 +34,18 @@ export class PlanRelationRepository implements IPlanRelationRepository {
     return this.stmts.getByProject.all(projectId) as PlanRelation[];
   }
 
+  getByItemIds(itemIds: string[]): PlanRelation[] {
+    if (itemIds.length === 0) return [];
     // Dynamic query unavoidable due to variable-length IN clause
+    const placeholders = itemIds.map(() => '?').join(',');
+    const stmt = this.db.prepare(`
       SELECT * FROM plan_relations
+      WHERE from_item_id IN (${placeholders}) OR to_item_id IN (${placeholders})
+      ORDER BY created_at
+    `);
+    return stmt.all(...itemIds, ...itemIds) as PlanRelation[];
+  }
+
   add(relation: Omit<PlanRelation, 'created_at'>): PlanRelation {
     // Use RETURNING to get the inserted row in one query
     return this.stmts.insert.get(

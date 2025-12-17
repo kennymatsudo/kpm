@@ -45,6 +45,9 @@ export function createRelationTools(
           itemIds.add(rel.to_item_id);
         }
 
+        // Fetch all items in one pass using efficient batch query
+        const allItems = planItemRepo.getMany(Array.from(itemIds));
+        const itemMap = new Map<string, PlanItem>(allItems.map(i => [i.id, i]));
 
         // Enrich relations with item data
         const enrichedRelations = relations.map((rel) => {
@@ -56,10 +59,34 @@ export function createRelationTools(
             relation_type: rel.relation_type,
             from_item: fromItem
               ? {
+                id: fromItem.id,
+                title: fromItem.title,
+                status: fromItem.status,
+                status_category: fromItem.status_category,
+                external_key: fromItem.external_key,
+              }
               : {
+                id: rel.from_item_id,
+                title: '[deleted]',
+                status: null,
+                status_category: null,
+                external_key: null,
+              },
             to_item: toItem
               ? {
+                id: toItem.id,
+                title: toItem.title,
+                status: toItem.status,
+                status_category: toItem.status_category,
+                external_key: toItem.external_key,
+              }
               : {
+                id: rel.to_item_id,
+                title: '[deleted]',
+                status: null,
+                status_category: null,
+                external_key: null,
+              },
           };
         });
 

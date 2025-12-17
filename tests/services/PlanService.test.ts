@@ -40,6 +40,7 @@ function createMocks(overrides?: Partial<PlanServiceDeps>) {
     getNextOrder: vi.fn(() => 1),
     getSiblings: vi.fn(() => [] as { id: string; item_order: number }[]),
     getChildrenByParent: vi.fn(() => [] as PlanItem[]),
+    getMany: vi.fn((ids: string[]) => ids.map(id => itemStore.get(id)).filter((i): i is PlanItem => !!i)),
     add: vi.fn(),
     delete: vi.fn((id: string) => itemStore.delete(id)),
     deleteWithDescendants: vi.fn(),
@@ -51,6 +52,7 @@ function createMocks(overrides?: Partial<PlanServiceDeps>) {
   const planRelations = {
     add: vi.fn((relation: Omit<PlanRelation, 'id'>) => ({ ...relation, id: 'r1' })),
     getByProject: vi.fn(() => [] as PlanRelation[]),
+    getByItemIds: vi.fn(() => [] as PlanRelation[]),
     remove: vi.fn(),
     delete: vi.fn(),
     deleteByItem: vi.fn(),

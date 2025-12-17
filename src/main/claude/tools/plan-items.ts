@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod';
+import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
 import { getDatabase } from '../../db/connection';
 
 // Status and label enums matching shared types
@@ -216,11 +217,17 @@ interface TreeNode extends PlanItemSummary {
     ),
 
     tool(
+      'Get full details for multiple items in one call. **REPLACES:** multiple get_plan_item calls. Accepts up to 50 item IDs. Can optionally include dependencies (blockers) and parent titles.',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemIds: z.array(z.string().uuid()).max(50).describe('Array of plan item UUIDs (max 50)'),
         includeParentTitle: z.boolean().optional().describe('Include parent title for each item'),
+        includeDependencies: z.boolean().optional().describe('Include dependency info (blockedBy/blocks/relatedTo) for each item'),
       },
+      async ({ projectId, itemIds, includeParentTitle, includeDependencies }) => {
+        // Efficient single query fetch
+        const allItems = planItemRepo.getMany(itemIds);
+        const items = allItems.filter(i => i.project_id === projectId);
 
         const itemMap = new Map(items.map((i) => [i.id, i]));
 
@@ -238,6 +245,54 @@ interface TreeNode extends PlanItemSummary {
           }
         }
 
+        // Get dependencies if requested
+        if (includeDependencies && planRelationRepo && itemIds.length > 0) {
+          // Efficiently fetch all relations involving ANY of the items
+          const relations = planRelationRepo.getByItemIds(itemIds);
+
+          // Must fetch names of related items (some might be outside our initial batch list)
+          const relatedItemIds = new Set<string>();
+          for (const rel of relations) {
+            relatedItemIds.add(rel.from_item_id);
+            relatedItemIds.add(rel.to_item_id);
+          }
+          const allRelatedItems = planItemRepo.getMany(Array.from(relatedItemIds));
+          const relatedItemMap = new Map(allRelatedItems.map(i => [i.id, i]));
+
+          // Initialize map for all requested items
+          for (const id of itemIds) {
+            dependencyMap.set(id, { blockedBy: [], blocks: [], relatedTo: [] });
+          }
+
+          // Populate dependencies
+          for (const rel of relations) {
+            // We only care about relations connected to our specific batch items
+            // Note: A relation might connect two items both in our batch, so proceed carefully
+
+            // Process 'from' side (if 'from' is in our batch)
+            if (itemMap.has(rel.from_item_id)) {
+              const deps = dependencyMap.get(rel.from_item_id)!;
+              const other = relatedItemMap.get(rel.to_item_id);
+              const summary = other ? { id: other.id, title: other.title, status: other.status } : { id: rel.to_item_id, title: '[deleted]' };
+
+              if (rel.relation_type === 'blocks') deps.blocks.push(summary);
+              else if (rel.relation_type === 'depends_on') deps.blockedBy.push(summary);
+              else if (rel.relation_type === 'relates_to') deps.relatedTo.push(summary);
+            }
+
+            // Process 'to' side (if 'to' is in our batch)
+            if (itemMap.has(rel.to_item_id)) {
+              const deps = dependencyMap.get(rel.to_item_id)!;
+              const other = relatedItemMap.get(rel.from_item_id);
+              const summary = other ? { id: other.id, title: other.title, status: other.status } : { id: rel.from_item_id, title: '[deleted]' };
+
+              if (rel.relation_type === 'blocks') deps.blockedBy.push(summary); // If X blocks me (to), I am blocked by X
+              else if (rel.relation_type === 'depends_on') deps.blocks.push(summary); // If X depends on me (to), I block X
+              else if (rel.relation_type === 'relates_to') deps.relatedTo.push(summary);
+            }
+          }
+        }
+
         const notFound: string[] = [];
 
         for (const id of itemIds) {
@@ -245,6 +300,9 @@ interface TreeNode extends PlanItemSummary {
           if (item) {
             if (includeParentTitle && item.parent_id) {
               result.parentTitle = parentTitleMap.get(item.parent_id) ?? '[deleted]';
+            }
+            if (includeDependencies && dependencyMap.has(id)) {
+              result.dependencies = dependencyMap.get(id);
             }
             found.push(result);
           } else {
@@ -268,10 +326,14 @@ interface TreeNode extends PlanItemSummary {
         // Get parent summary
         const parentSummary = item.parent_id
           ? (db
+            .prepare(
+              `
             SELECT id, title, status, status_category, label, external_key
             FROM plan_items
             WHERE id = ?
           `
+            )
+            .get(item.parent_id) as PlanItemSummary | undefined)
           : null;
 
         // Get children
@@ -311,6 +373,10 @@ interface TreeNode extends PlanItemSummary {
           WHERE project_id = ? AND (from_item_id = ? OR to_item_id = ?)
         `
           )
+            id: string;
+            from_item_id: string;
+            to_item_id: string;
+            relation_type: string;
 
         // Collect related item IDs and fetch them
         const relatedIds = new Set<string>();
@@ -354,6 +420,13 @@ interface TreeNode extends PlanItemSummary {
           item,
           parent: parentSummary
             ? {
+              id: parentSummary.id,
+              title: parentSummary.title,
+              status: parentSummary.status,
+              status_category: parentSummary.status_category,
+              label: parentSummary.label,
+              external_key: parentSummary.external_key,
+            }
             : null,
           children,
           childCount: children.length,
