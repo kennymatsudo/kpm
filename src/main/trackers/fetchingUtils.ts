@@ -1,3 +1,4 @@
+import type { TrackerClient, ExternalIssue } from '../tracker-clients';
 import { isSubtaskIssueType } from '../../shared/types';
 
 export const DEFAULT_BATCH_SIZE = 50;

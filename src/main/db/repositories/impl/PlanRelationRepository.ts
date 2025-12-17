@@ -1,19 +1,54 @@
 /**
  * Plan Relation Repository Implementation - Dependency Injection Version
+ * Optimized with prepared statement caching.
  */
 
+import type { Database, Statement } from 'better-sqlite3';
 import type { PlanRelation } from '../../../../shared/types';
 import type { IPlanRelationRepository } from '../../interfaces';
 
-export class PlanRelationRepository implements IPlanRelationRepository {
+interface PreparedStatements {
+  getByProject: Statement;
+  insert: Statement;
+  deleteById: Statement;
+  deleteByItem: Statement;
+}
 
-  getByProject(projectId: string): PlanRelation[] {
+export class PlanRelationRepository implements IPlanRelationRepository {
+  private stmts: PreparedStatements;
+
+  constructor(private db: Database) {
+    this.stmts = {
+      getByProject: db.prepare('SELECT * FROM plan_relations WHERE project_id = ? ORDER BY created_at'),
+      insert: db.prepare(`
+        INSERT INTO plan_relations (id, project_id, from_item_id, to_item_id, relation_type)
+        VALUES (?, ?, ?, ?, ?)
+        RETURNING *
+      `),
+      deleteById: db.prepare('DELETE FROM plan_relations WHERE id = ?'),
+      deleteByItem: db.prepare('DELETE FROM plan_relations WHERE from_item_id = ? OR to_item_id = ?'),
+    };
   }
 
+  getByProject(projectId: string): PlanRelation[] {
+    return this.stmts.getByProject.all(projectId) as PlanRelation[];
+  }
+
+    // Dynamic query unavoidable due to variable-length IN clause
+      SELECT * FROM plan_relations
   add(relation: Omit<PlanRelation, 'created_at'>): PlanRelation {
+    // Use RETURNING to get the inserted row in one query
+    return this.stmts.insert.get(
+      id,
+      relation.project_id,
+      relation.from_item_id,
+      relation.to_item_id,
+      relation.relation_type
+    ) as PlanRelation;
   }
 
   delete(id: string): void {
+    this.stmts.deleteById.run(id);
   }
 
   remove(id: string): void {
@@ -21,5 +56,6 @@ export class PlanRelationRepository implements IPlanRelationRepository {
   }
 
   deleteByItem(itemId: string): void {
+    this.stmts.deleteByItem.run(itemId, itemId);
   }
 }

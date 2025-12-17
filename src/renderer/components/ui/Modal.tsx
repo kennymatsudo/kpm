@@ -31,6 +31,14 @@ interface ModalProps {
 }
 
 const sizeClasses: Record<ModalSize, string> = {
+  sm: 'w-full max-w-lg max-h-[420px]',       // 512px wide, ~420px max height
+  md: 'w-full max-w-2xl max-h-[560px]',      // 672px wide, ~560px max height
+  lg: 'w-full max-w-3xl max-h-[640px]',      // 768px wide, ~640px max height
+  xl: 'w-full max-w-4xl max-h-[720px]',      // 896px wide, ~720px max height
+  '2xl': 'w-full max-w-5xl max-h-[800px]',   // 1024px wide, ~800px max height
+  '3xl': 'w-full max-w-6xl max-h-[880px]',   // 1152px wide, ~880px max height
+  '4xl': 'w-full max-w-7xl max-h-[960px]',   // 1280px wide, ~960px max height
+  full: 'w-full max-w-[90vw] max-h-[85vh]',
 };
 
 /**

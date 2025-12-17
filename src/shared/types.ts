@@ -1,11 +1,15 @@
 // Shared types used across main, preload, and renderer processes
+// Core types are imported from base-types (base domain types)
 
+// Import core types from base types module
 import type {
   StatusCategory,
   TrackerType as TrackerTypeBase,
   Project as ProjectBase,
   PlanItem as PlanItemBase,
+} from './base-types';
 
+// Re-export core types from base types
 
 // =============================================================================
 // External Tracker Types
@@ -481,3 +485,9 @@ export interface PermissionResponse {
   requestId: string;
   action: PermissionAction;
 }
+  | { type: 'document'; id: string; title: string; path: string };
+ * Sessions are normally linked to plan items; null plan_item_id is retained
+ * for historical rows and PR-linked stub sessions.
+ * plan_item is null for historical rows or PR-linked stub sessions.
+
+export type SearchEntityType = 'plan_item' | 'document';

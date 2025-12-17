@@ -108,6 +108,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
             </svg>
           </div>
           <h3 className="text-text-primary font-semibold mb-2">No items to export</h3>
+          <p className="text-text-secondary text-sm text-center mb-6" style={{ maxWidth: '20rem' }}>
           </p>
           <button onClick={handleClose} className="btn btn-secondary">Close</button>
         </div>
@@ -260,6 +261,9 @@ interface ModalShellProps {
       <div
         onClick={onClose}
       />
+      <div
+        className="dialog-content relative flex flex-col overflow-hidden"
+      >
               </svg>
             </div>
             <div>

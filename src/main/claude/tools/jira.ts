@@ -6,6 +6,7 @@
 
 import { z } from 'zod';
 import { tool, jsonResult, toolError } from './index';
+import { TrackerError } from '../../tracker-clients';
 import { getDatabase } from '../../db/connection';
 
 /**

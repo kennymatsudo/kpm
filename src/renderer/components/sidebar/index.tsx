@@ -1,3 +1,5 @@
+import { memo } from 'react';
+import { useProjectDomainStore, useSettingsUIStore } from '../../stores';
 
 interface SidebarProps {
   onDeleteProject?: () => void;
@@ -25,4 +27,5 @@ interface SidebarProps {
           </div>
         )}
       </div>
+      {/* Fixed footer with Settings */}
   );

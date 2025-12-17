@@ -45,6 +45,7 @@ function createMocks(overrides?: Partial<PlanServiceDeps>) {
     deleteWithDescendants: vi.fn(),
     update: vi.fn(),
     updatePosition: vi.fn(),
+    batchReparent: vi.fn((updates: { id: string; parentId: string | null }[]) => updates.map(u => u.id)),
   };
 
   const planRelations = {

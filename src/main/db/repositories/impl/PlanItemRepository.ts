@@ -24,7 +24,97 @@ function rowToPlanItem(row: Record<string, unknown>): PlanItem {
   } as PlanItem;
 }
 
+  // Read operations
+  collectDescendants: Statement;
+  // Children by parent (without filter)
+  getChildrenByParent: Statement;
+  // Siblings (4 variants based on parentId and excludeId combinations)
+  siblingsWithParentWithExclude: Statement;
+  siblingsWithParentNoExclude: Statement;
+  siblingsNoParentWithExclude: Statement;
+  siblingsNoParentNoExclude: Statement;
+
+  // Write operations
+  insert: Statement;
+  reparent: Statement;
+
+  // Common update patterns (optimized for frequent operations)
+  updateTitle: Statement;
+  updateDescription: Statement;
+  updateLabel: Statement;
+  updateStatus: Statement;
+  updateStatusCategory: Statement;
+  updateItemOrder: Statement;
+  updateReleaseTag: Statement;
 export class PlanItemRepository implements IPlanItemRepository {
+      // Read operations
+      getChildrenByParent: db.prepare(`
+        SELECT * FROM plan_items
+        WHERE project_id = ? AND parent_id = ?
+        ORDER BY item_order
+      `),
+      // Siblings: 4 variants for all combinations of parentId/excludeId
+      siblingsWithParentWithExclude: db.prepare(`
+        SELECT id, item_order FROM plan_items
+        WHERE project_id = ? AND parent_id = ? AND id != ?
+        ORDER BY item_order
+      `),
+      siblingsWithParentNoExclude: db.prepare(`
+        SELECT id, item_order FROM plan_items
+        WHERE project_id = ? AND parent_id = ?
+        ORDER BY item_order
+      `),
+      siblingsNoParentWithExclude: db.prepare(`
+        SELECT id, item_order FROM plan_items
+        WHERE project_id = ? AND parent_id IS NULL AND id != ?
+        ORDER BY item_order
+      `),
+      siblingsNoParentNoExclude: db.prepare(`
+        SELECT id, item_order FROM plan_items
+        WHERE project_id = ? AND parent_id IS NULL
+        ORDER BY item_order
+      `),
+
+      // Write operations - use RETURNING to avoid re-query
+      insert: db.prepare(`
+        INSERT INTO plan_items (
+          id, project_id, parent_id, title, description, label, item_order,
+          code_refs, status, status_category, release_tag, position_x, position_y,
+          association_id, external_key, external_id, external_type, external_issue_type,
+          external_status, external_url, external_parent_key, external_epic_key,
+        )
+        RETURNING *
+      `),
+      deleteById: db.prepare('DELETE FROM plan_items WHERE id = ?'),
+      updatePosition: db.prepare(`
+        UPDATE plan_items SET position_x = ?, position_y = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `),
+      reparent: db.prepare(`
+        UPDATE plan_items SET parent_id = ?, status = 'planned', updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `),
+
+      // Common single-field update patterns
+      updateTitle: db.prepare(`
+        UPDATE plan_items SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `),
+      updateDescription: db.prepare(`
+        UPDATE plan_items SET description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `),
+      updateLabel: db.prepare(`
+        UPDATE plan_items SET label = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `),
+      updateStatus: db.prepare(`
+        UPDATE plan_items SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `),
+      updateStatusCategory: db.prepare(`
+        UPDATE plan_items SET status_category = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `),
+      updateItemOrder: db.prepare(`
+        UPDATE plan_items SET item_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `),
+      updateReleaseTag: db.prepare(`
+        UPDATE plan_items SET release_tag = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `),
 
   /**
    * Collect all descendant IDs for a given parent using recursive CTE.
@@ -44,6 +134,8 @@ export class PlanItemRepository implements IPlanItemRepository {
   }
 
   add(item: Omit<PlanItem, 'created_at' | 'updated_at'>): PlanItem {
+    // Use RETURNING to get the inserted row in one query (no re-query needed)
+    const row = this.stmts.insert.get(
       item.id,
       item.project_id,
       item.parent_id,
@@ -67,9 +159,42 @@ export class PlanItemRepository implements IPlanItemRepository {
       item.external_parent_key ?? null,
       item.external_epic_key ?? null,
       item.sync_source ?? 'local',
+    ) as Record<string, unknown>;
+    return rowToPlanItem(row);
   }
 
   update(id: string, updates: PlanItemUpdates | PlanItemSyncUpdates): void {
+    // Fast path: use cached statements for single-field updates (most common case)
+    const keys = Object.keys(updates).filter(k => (updates as Record<string, unknown>)[k] !== undefined);
+
+    if (keys.length === 1) {
+      const key = keys[0];
+      const value = (updates as Record<string, unknown>)[key];
+
+      switch (key) {
+        case 'title':
+          this.stmts.updateTitle.run(value, id);
+          return;
+        case 'description':
+          this.stmts.updateDescription.run(value, id);
+          return;
+        case 'label':
+          this.stmts.updateLabel.run(value, id);
+          return;
+        case 'status':
+          this.stmts.updateStatus.run(value, id);
+          return;
+        case 'item_order':
+          this.stmts.updateItemOrder.run(value, id);
+          return;
+        case 'release_tag':
+          this.stmts.updateReleaseTag.run(value, id);
+          return;
+        // status_category needs special handling for completed_at, fall through to dynamic
+      }
+    }
+
+    // Slow path: dynamic SQL for multi-field updates or special cases
     const fields: string[] = [];
     const values: unknown[] = [];
 
@@ -214,12 +339,14 @@ export class PlanItemRepository implements IPlanItemRepository {
 
   /**
    * Get children of a specific parent, optionally filtered by external issue types.
+   * Uses cached statement for the common case (no filter).
    */
   getChildrenByParent(
     projectId: string,
     parentId: string,
     externalIssueTypes?: string[]
   ): PlanItem[] {
+    // Slow path: dynamic query with IN clause (unavoidable for variable-length filter)
     if (externalIssueTypes && externalIssueTypes.length > 0) {
       const placeholders = externalIssueTypes.map(() => '?').join(',');
       const stmt = this.db.prepare(`
@@ -231,11 +358,14 @@ export class PlanItemRepository implements IPlanItemRepository {
       return rows.map(rowToPlanItem);
     }
 
+    // Fast path: use cached statement
+    const rows = this.stmts.getChildrenByParent.all(projectId, parentId) as Record<string, unknown>[];
     return rows.map(rowToPlanItem);
   }
 
   /**
    * Get siblings of an item (same parent), returning only id and item_order.
+   * Uses cached statements for all 4 variants (parentId × excludeId combinations).
    */
   getSiblings(
     projectId: string,
@@ -243,8 +373,30 @@ export class PlanItemRepository implements IPlanItemRepository {
     excludeId?: string
   ): { id: string; item_order: number }[] {
     if (parentId && excludeId) {
+      return this.stmts.siblingsWithParentWithExclude.all(projectId, parentId, excludeId) as { id: string; item_order: number }[];
     } else if (parentId) {
+      return this.stmts.siblingsWithParentNoExclude.all(projectId, parentId) as { id: string; item_order: number }[];
     } else if (excludeId) {
+      return this.stmts.siblingsNoParentWithExclude.all(projectId, excludeId) as { id: string; item_order: number }[];
     }
+    return this.stmts.siblingsNoParentNoExclude.all(projectId) as { id: string; item_order: number }[];
+  }
+
+  /**
+   * Batch reparent multiple items efficiently.
+   * Uses a single pre-prepared statement, binding once per item.
+   * Much faster than calling update() N times (avoids N statement preparations).
+   */
+  batchReparent(updates: { id: string; parentId: string | null }[]): string[] {
+    if (updates.length === 0) return [];
+
+    const updatedIds: string[] = [];
+    for (const { id, parentId } of updates) {
+      const info = this.stmts.reparent.run(parentId, id);
+      if (info.changes > 0) {
+        updatedIds.push(id);
+      }
+    }
+    return updatedIds;
   }
 }

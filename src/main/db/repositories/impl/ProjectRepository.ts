@@ -1,7 +1,10 @@
 /**
  * Project Repository Implementation - Dependency Injection Version
+ *
+ * Optimized with prepared statement caching and RETURNING clause.
  */
 
+import type { Database, Statement } from 'better-sqlite3';
 import type { Project } from '../../../../shared/types';
 
 /**
@@ -20,12 +23,63 @@ export interface IPathUtils {
   join(...paths: string[]): string;
 }
 
+/**
+ * Prepared statements cache for hot paths.
+ */
+interface PreparedStatements {
+  // Read operations
+  getById: Statement;
+  list: Statement;
+
+  // Write operations
+  insert: Statement;
+  updateTokens: Statement;
+  resetTokens: Statement;
+  updateStorybookUrl: Statement;
+  delete: Statement;
+}
+
 export class ProjectRepository implements IProjectRepository {
+  private stmts: PreparedStatements;
+
   constructor(
     private db: Database,
     private userDataPath: string,
     private fs: IFileSystem,
     private path: IPathUtils
+  ) {
+    this.stmts = {
+      // Read operations
+      getById: db.prepare('SELECT * FROM projects WHERE id = ?'),
+
+      // Write operations - use RETURNING to avoid re-query
+      insert: db.prepare(`
+        INSERT INTO projects (id, name, folder_path, phase)
+        VALUES (?, ?, ?, 'discovery')
+        RETURNING *
+      `),
+      updateTokens: db.prepare(`
+        UPDATE projects SET
+          session_tokens = session_tokens + ?,
+          session_input_tokens = session_input_tokens + ?,
+          session_output_tokens = session_output_tokens + ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `),
+      resetTokens: db.prepare(`
+        UPDATE projects SET
+          session_tokens = 0,
+          session_input_tokens = 0,
+          session_output_tokens = 0,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `),
+      updateStorybookUrl: db.prepare(`
+        UPDATE projects SET storybook_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `),
+      delete: db.prepare('DELETE FROM projects WHERE id = ?'),
+    };
+  }
 
 
     this.fs.mkdirSync(folderPath, { recursive: true });
@@ -35,12 +89,15 @@ export class ProjectRepository implements IProjectRepository {
 This is your project workspace. Use this file to track context, conventions, and learnings.
 `;
 
+    return this.stmts.insert.get(id, name, folderPath) as Project;
   }
 
   get(id: string): Project | undefined {
+    return this.stmts.getById.get(id) as Project | undefined;
   }
 
   list(): Project[] {
+    return this.stmts.list.all() as Project[];
   }
 
     const fields: string[] = [];
@@ -60,6 +117,7 @@ This is your project workspace. Use this file to track context, conventions, and
     fields.push('updated_at = CURRENT_TIMESTAMP');
     values.push(id);
 
+    // Dynamic update (uncommon path, ok to prepare each time)
     const stmt = this.db.prepare(`
       UPDATE projects SET ${fields.join(', ')} WHERE id = ?
     `);
@@ -67,12 +125,15 @@ This is your project workspace. Use this file to track context, conventions, and
   }
 
   updateTokens(projectId: string, tokens: { total: number; input: number; output: number }): void {
+    this.stmts.updateTokens.run(tokens.total, tokens.input, tokens.output, projectId);
   }
 
   resetTokens(projectId: string): void {
+    this.stmts.resetTokens.run(projectId);
   }
 
   updateStorybookUrl(projectId: string, url: string | null): void {
+    this.stmts.updateStorybookUrl.run(url, projectId);
   }
 
   delete(id: string): void {
@@ -87,5 +148,6 @@ This is your project workspace. Use this file to track context, conventions, and
         console.error(`Failed to delete project folder ${folderPath}:`, error);
       }
     }
+    this.stmts.delete.run(id);
   }
 }

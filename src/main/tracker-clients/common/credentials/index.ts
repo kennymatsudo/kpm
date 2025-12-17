@@ -1,3 +1,4 @@
+import type { TrackerType, TrackerCredentials } from '../types';
 
 export interface CredentialProvider {
   saveCredentials(creds: TrackerCredentials): Promise<void>;
@@ -5,3 +6,4 @@ export interface CredentialProvider {
   clearCredentials(type: TrackerType): Promise<void>;
 }
 
+export { KeytarCredentialProvider } from './keytar-provider';

@@ -110,6 +110,7 @@ import { useEffect, useState } from 'react';
   if (!association) return null;
 
   return (
+      <div className="dialog-content flex flex-col" style={{ maxWidth: '42rem', maxHeight: '80vh' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-3">
           <div className="flex items-center gap-3">

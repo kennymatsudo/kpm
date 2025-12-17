@@ -94,6 +94,14 @@ export function createPermissionHandler(
   promptUser: PromptUserFn
 ): CanUseTool {
   return async (toolName, input, options) => {
+    // Debug logging for MCP tools
+    if (toolName.startsWith('mcp__kpm__')) {
+      console.log(`[Permissions] ========== MCP TOOL PERMISSION CHECK ==========`);
+      console.log(`[Permissions] Tool: ${toolName}`);
+      console.log(`[Permissions] Input keys: ${Object.keys(input).join(', ')}`);
+      console.log(`[Permissions] Input: ${JSON.stringify(input).slice(0, 500)}`);
+    }
+
     const targetPath = extractPath(toolName, input);
 
       return { behavior: 'allow', updatedInput: input };
@@ -104,6 +112,7 @@ export function createPermissionHandler(
     }
 
     if (toolName.startsWith('mcp__kpm__')) {
+      console.log(`[Permissions] MCP tool auto-allowed: ${toolName}`);
       return { behavior: 'allow', updatedInput: input };
     }
 

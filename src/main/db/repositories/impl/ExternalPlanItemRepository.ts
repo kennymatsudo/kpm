@@ -1,7 +1,9 @@
 /**
  * External Plan Item Repository Implementation - Dependency Injection Version
+ * Optimized with prepared statement caching and batch operations.
  */
 
+import type { Database, Statement } from 'better-sqlite3';
 import type { PlanItem } from '../../../../shared/types';
 import { isSubtaskIssueType } from '../../../../shared/types';
 import type { IExternalPlanItemRepository, IPlanItemRepository } from '../../interfaces';
@@ -27,12 +29,56 @@ function rowToPlanItem(row: Record<string, unknown>): PlanItem {
   } as PlanItem;
 }
 
+interface PreparedStatements {
+  getLinkedItems: Statement;
+  createFromExternal: Statement;
+  unlinkFromExternal: Statement;
+  updateParentWithStatus: Statement;
+}
+
 export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
+  private stmts: PreparedStatements;
+
   constructor(
     private db: Database,
     private planItemRepository: IPlanItemRepository
+  ) {
+    this.stmts = {
+      getLinkedItems: db.prepare(`
+        SELECT * FROM plan_items
+        WHERE project_id = ? AND external_type = ? AND external_key IS NOT NULL
+        ORDER BY item_order
+      `),
+      createFromExternal: db.prepare(`
+        INSERT INTO plan_items (
+          id, project_id, parent_id, title, description, label, item_order,
+        )
+        RETURNING *
+      `),
+      unlinkFromExternal: db.prepare(`
+        UPDATE plan_items SET
+          external_key = NULL,
+          external_id = NULL,
+          external_type = NULL,
+          external_issue_type = NULL,
+          external_status = NULL,
+          external_url = NULL,
+          external_parent_key = NULL,
+          external_epic_key = NULL,
+          sync_source = 'local',
+          last_synced_at = NULL,
+          association_id = NULL,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `),
+      updateParentWithStatus: db.prepare(`
+        UPDATE plan_items SET parent_id = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `),
+    };
+  }
 
   getLinkedItems(projectId: string, externalType: string): PlanItem[] {
+    const rows = this.stmts.getLinkedItems.all(projectId, externalType) as Record<string, unknown>[];
     return rows.map(rowToPlanItem);
   }
 
@@ -53,6 +99,8 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
   }): PlanItem {
     const itemOrder = this.planItemRepository.getNextOrder(input.project_id, null);
 
+    // Use RETURNING to get the inserted row in one query
+    const row = this.stmts.createFromExternal.get(
       id,
       input.project_id,
       null, // parent_id
@@ -70,10 +118,13 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
       input.external_epic_key,
       input.external_type, // sync_source
       input.association_id
+    ) as Record<string, unknown>;
 
+    return rowToPlanItem(row);
   }
 
   unlinkFromExternal(id: string): void {
+    this.stmts.unlinkFromExternal.run(id);
   }
 
   importExternalIssues(items: {
@@ -216,6 +267,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
       itemById.set(item.id, item);
     }
 
+    // Link sub-tasks to their parents using cached statement
     const transaction = this.db.transaction(() => {
       for (const item of items) {
         // Only link actual subtasks, not Stories under Epics
@@ -225,6 +277,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
             const parent = itemById.get(parentId);
             // Subtask inherits parent's status (if parent is planned, subtask should be too)
             const status = parent?.status ?? 'backlog';
+            this.stmts.updateParentWithStatus.run(parentId, status, item.id);
           }
         }
       }

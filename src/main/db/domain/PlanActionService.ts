@@ -256,6 +256,138 @@ function executeQueueForTracker(
 }
 
 // =============================================================================
+// Batch Execution Helpers
+// =============================================================================
+
+type ReparentAction = Extract<PlanAction, { type: 'reparent' }>;
+
+/**
+ * Collect all item IDs that will be accessed during action execution.
+ * This allows pre-fetching them in a single query.
+ */
+function collectItemIdsForPrefetch(actions: PlanAction[]): Set<string> {
+  const ids = new Set<string>();
+
+  for (const action of actions) {
+    switch (action.type) {
+      case 'reparent':
+        ids.add(action.item_id);
+        // Also need parent for Jira subtask validation
+        if (action.new_parent_id && !action.new_parent_id.startsWith('$')) {
+          ids.add(action.new_parent_id);
+        }
+        break;
+      case 'reorder':
+      case 'update_item':
+      case 'delete_item':
+      case 'set_label':
+      case 'set_release':
+      case 'set_position':
+        ids.add(action.item_id);
+        break;
+      case 'queue_for_tracker':
+        for (const id of action.item_ids) {
+          if (!id.startsWith('$')) ids.add(id);
+        }
+        break;
+      // These actions are handled separately or don't need prefetch
+      case 'create_item':
+      case 'add_dependency':
+      case 'remove_dependency':
+        break;
+    }
+  }
+
+  return ids;
+}
+
+/**
+ * Pre-populate the item cache with all items that will be needed.
+ * This reduces N individual queries to 1 batch query.
+ */
+function prefetchItems(ctx: ExecutorContext, ids: Set<string>): void {
+  if (ids.size === 0) return;
+
+  const items = ctx.deps.planItems.getMany(Array.from(ids));
+  for (const item of items) {
+    ctx.itemCache.set(item.id, item);
+  }
+
+  // Also fetch parent items for Jira subtask validation
+  const parentIds = new Set<string>();
+  for (const item of items) {
+    if (item.parent_id && !ctx.itemCache.has(item.parent_id)) {
+      parentIds.add(item.parent_id);
+    }
+  }
+
+  if (parentIds.size > 0) {
+    const parents = ctx.deps.planItems.getMany(Array.from(parentIds));
+    for (const parent of parents) {
+      ctx.itemCache.set(parent.id, parent);
+    }
+  }
+}
+
+/**
+ * Validate and filter reparent actions, returning only the valid ones.
+ * Returns an array of { action, index, update } for batch execution.
+ */
+function validateReparentActions(
+  ctx: ExecutorContext,
+  actions: { action: ReparentAction; index: number }[]
+): { action: ReparentAction; index: number; update: { id: string; parentId: string | null } }[] {
+  const valid: { action: ReparentAction; index: number; update: { id: string; parentId: string | null } }[] = [];
+
+  for (const { action, index } of actions) {
+    ctx.actionIndex = index;
+    const newParentId = resolveId(ctx, action.new_parent_id);
+
+    // Validation: cannot set item as its own parent
+    if (newParentId === action.item_id) {
+      skip(ctx, 'reparent', 'Cannot set item as its own parent');
+      continue;
+    }
+
+    // Validation: prevent un-nesting Jira subtasks from their actual Jira parent
+    const item = ctx.itemCache.get(action.item_id);
+    if (item?.external_parent_key && newParentId === null && item.parent_id) {
+      const currentParent = ctx.itemCache.get(item.parent_id);
+      if (currentParent?.external_key === item.external_parent_key) {
+        skip(ctx, 'reparent', 'Cannot un-nest Jira subtask from its Jira parent');
+        continue;
+      }
+    }
+
+    valid.push({
+      action,
+      index,
+      update: { id: action.item_id, parentId: newParentId },
+    });
+  }
+
+  return valid;
+}
+
+/**
+ * Execute reparent actions in batch using the optimized batchReparent method.
+ */
+function executeBatchReparent(
+  ctx: ExecutorContext,
+  validActions: { update: { id: string; parentId: string | null } }[]
+): void {
+  if (validActions.length === 0) return;
+
+  const updates = validActions.map(v => v.update);
+  ctx.deps.planItems.batchReparent(updates);
+
+  // Invalidate all modified items from cache
+  for (const { update } of validActions) {
+    invalidateItem(ctx, update.id);
+  }
+}
+
+// =============================================================================
 // Executor Factory
 // =============================================================================
 
@@ -275,13 +407,46 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
 
   /**
    * Execute a batch of plan actions in a single transaction.
+   * Optimizations:
+   * - Pre-fetches all needed items in one query
+   * - Batches reparent operations using prepared statement
    * Returns a result with created IDs mapped from placeholders ($1, $2, etc.)
    */
   function execute(projectId: string, actions: PlanAction[]): PlanActionResult {
     logger.log(`[PlanActionService] Executing ${actions.length} action(s): ${actions.map(a => a.type).join(', ')}`);
 
     const ctx = createContext(projectId);
+
+    // Separate reparent actions for batch optimization
+    const reparentActions: { action: ReparentAction; index: number }[] = [];
+    const otherActions: { action: PlanAction; index: number }[] = [];
+
+    for (let i = 0; i < actions.length; i++) {
+      const action = actions[i];
+      if (action.type === 'reparent') {
+        reparentActions.push({ action, index: i });
+      } else {
+        otherActions.push({ action, index: i });
+      }
+    }
+
+    // Pre-fetch all items that will be accessed (outside transaction for read)
+    const itemIds = collectItemIdsForPrefetch(actions);
+    prefetchItems(ctx, itemIds);
+
     const transaction = deps.database.transaction(() => {
+      // Execute batch reparent if we have multiple reparent actions
+      if (reparentActions.length > 0) {
+        const validReparents = validateReparentActions(ctx, reparentActions);
+        if (validReparents.length > 0) {
+          logger.log(`[PlanActionService] Batch reparenting ${validReparents.length} items`);
+          executeBatchReparent(ctx, validReparents);
+        }
+      }
+
+      // Execute other actions individually (maintaining original order)
+      for (const { action, index } of otherActions) {
+        ctx.actionIndex = index;
 
         switch (action.type) {
           case 'create_item':
@@ -313,6 +478,10 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
             break;
           case 'queue_for_tracker':
             executeQueueForTracker(ctx, action);
+            break;
+          // reparent is handled in the batched reparents section above
+          case 'reparent':
+            // Already processed in batchExecuteReparents
             break;
         }
       }

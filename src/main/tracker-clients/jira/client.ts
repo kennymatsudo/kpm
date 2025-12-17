@@ -7,6 +7,8 @@ import type {
   CreateIssueParams,
   CreatedIssue,
   UpdateIssueParams,
+} from '../common/types';
+import { TrackerError } from '../common/errors';
 
 export class JiraClient implements TrackerClient {
   readonly type = 'jira' as const;

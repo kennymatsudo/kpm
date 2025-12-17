@@ -11,11 +11,30 @@
 ```
 src/
 ├── main/                    # Electron main process
+│   ├── db/
+│   │   ├── connection.ts    # Schema definition
+│   │   ├── migrations.ts    # Database migrations
+│   │   ├── interfaces/      # Repository interfaces
+│   │   ├── repositories/    # CRUD operations
 │   ├── ipc/                 # IPC handlers
+│   │   └── validation/      # Zod schemas by domain
 │   ├── claude/              # Claude SDK integration
+│   │   ├── tools/           # In-process MCP tools
+│   │   ├── prompts/         # System prompt modules
+│   │   └── streaming/       # Streaming session classes
+│   ├── services/            # Application services (DI pattern)
+│   │   ├── agents/          # AgentSessionManager, Claude/Codex/Gemini sessions, hooks, auto-review
+│   │   └── PerfLogger.ts    # Performance metrics
 ├── renderer/                # React frontend
 │   ├── components/
+│   │   ├── development/     # Shared PR/review components used by the board
+│   │   ├── onboarding/      # Project onboarding wizard
+│   │   ├── slack/           # Slack triage UI
+│   ├── stores/              # Zustand state management
+│   │   ├── project/         # Sliced project store
+│   │   └── tracker/         # Tracker-related stores
 │   └── constants/
+├── preload/                 # IPC bridge (security boundary)
 ```
 
 ## Project Folder Structure
@@ -30,6 +49,7 @@ src/
 
 **Hierarchy:** project → feature → task
 
+**Status categories:** `not_started` | `in_progress` | `in_review` | `done` | `blocked` | `canceled`
 
 **Tracker linking:** Connection → Scope → Association (JQL filter)
 
@@ -42,18 +62,90 @@ src/
 | `plan_relations` | Dependencies (depends_on, blocks, relates_to) |
 | `tracker_project_scopes` | Tracker project authorization (Jira/Linear) |
 | `tracker_type_mappings` | Label → tracker issue type |
+| `tool_permissions` | Persisted per-project tool permission grants |
+| `project_briefings` | Cached generated project briefings |
+| `review_ownership` | Review-thread ownership decisions |
+| `review_sync_state` | PR review polling cursors and sync state |
+| `agent_review_runs` | Opposing-agent review run metadata |
+| `agent_review_findings` | Structured findings from opposing-agent reviews |
+| `slack_channel_links` | Slack channel links for project triage |
+| `slack_triage_items` | Triaged Slack messages and suggested actions |
 
+**Key fields for features:**
+- `plan_items.completed_at` - When item marked done (for weekly updates)
+- `chat_sessions.claude_session_id` - Claude SDK session ID for resuming conversations
+- `dev_sessions.merge_order` - Optional user override for merge queue ordering
+- `repos.active_worktree_path` - Active checkout used for repo context and branch watching
+- `agent_review_runs.status` - Latest opposing-agent review freshness (`complete` or `stale`)
 
+**Repository Interfaces** (`src/main/db/interfaces/`):
+- Type definitions separated by domain (plan, project, tracker, etc.)
+- Clean separation between interface and implementation
+- Enables mocking for unit tests
+
+| `CustomThemeRepository` | Imported theme persistence |
+| `ToolPermissionRepository` | Persisted tool permission grants |
+| `ReviewTaskRepository` | GitHub review tasks |
+| `ReviewOwnershipRepository` | Review ownership/routing state |
+| `ReviewSyncStateRepository` | Review polling and reconciliation cursors |
+| `AgentReviewRepository` | Opposing-agent review runs and findings |
+| `SlackChannelLinkRepository` | Slack channel links |
+| `SlackTriageItemRepository` | Slack triage items and action suggestions |
+## Service Architecture
+
+**Two-Layer Service Pattern:**
+
+   - Tightly coupled to database
+   - Handle multi-table transactions
+
+2. **Application Services** (`src/main/services/`):
+   - Testable with dependency injection
+   - Return `ServiceResult<T>` for explicit error handling
+   - Organized by domain:
+     - `PerfLogger.ts` - PerfLogger
+
+**Composition Root** (`src/main/services/appServices.ts`):
+- Wires all services with their dependencies
+- Single point of service instantiation
+
+- `project/projectSlice.ts` - Project CRUD
+- `project/planSlice.ts` - Plan items, actions, relations
+- `project/uiSlice.ts` - UI state (editing, focused resources)
+- `project/resourceSlice.ts` - Repos, attachments, worktrees
+- `devSessions/` - Plan-item dev sessions, PR context, review inbox, merge order
+- `tracker/useSyncStore.ts` - Sync preview & conflicts
+- `tracker/useExportStore.ts` - Export queue
+- `tracker/useCredentialStore.ts` - Tracker credentials
+- `fileTreeStore.ts` - File explorer state
+- `contextRegenerationStore.ts` - Context regeneration modal state
+- `useSlackTriageStore.ts` - Slack triage panel and execution state
+
+Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and are accessed through `useProjectUiDomainStore`.
+- `navigate-to-view` - Navigate between planning/workspace views
+- `file-explorer-changed` - Project file watcher reported create/update/delete/rename
+- `chat-file-updated` - Chat/document flow updated a project file
+| `development/` | Shared PR/review components (CreatePrModal, ReviewTab, etc.) used by the board |
+| `slack/` | Slack triage panel, badge, channel settings |
+| `onboarding/` | Project onboarding and context regeneration |
 ## IPC Pattern
 
 ```
 Renderer → ipcRenderer.invoke (Zod validated) → Handler → Service → Repository → SQLite
 ```
 
+**Validation Organization** (`src/main/ipc/validation/`):
+- Schemas organized by domain (plan, project, chat, tracker, etc.)
+- Shared validators in `shared.ts` (uuid, paths, etc.)
+- `createIpcHandler()` utility for consistent patterns
+
 ## Cross-Store Communication
 
 Use `stores/storeEvents.ts` to avoid circular deps:
 ```typescript
+emit({
+  type: 'status-changed',
+  payload: { projectId, itemId, statusCategory, externalKey, associationId },
+});
 ```
 
 ## RepoWatcherService
@@ -61,6 +153,9 @@ Use `stores/storeEvents.ts` to avoid circular deps:
 Tracks git branch changes for connected repositories in real-time.
 
 **Files:**
+- `services/repo/RepoWatcherService.ts` - Service implementation
+- `stores/project/resourceSlice.ts` - Branch state (`repoBranches`)
+- `components/sidebar-tree/RepoListSection.tsx`, `components/sidebar-tree/RepoItem.tsx` - Branch badge UI
 
 **How it works:**
 1. When repo connected → `watchRepo()` starts `fs.watch` on `.git/HEAD`
@@ -79,3 +174,37 @@ Tracks git branch changes for connected repositories in real-time.
 - Must clean up watchers on project switch to prevent memory leaks
 - Debouncing prevents rapid-fire events from some file systems
 
+## Claude Integration Architecture
+
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  ├─ StreamingSessionService (Claude lifecycle)                  │
+│  │   └─ StreamingSession (Claude SDK wrapper)                   │
+│  │       ├─ Relations tools (dependencies, blockers)            │
+│  Plan-item Dev Sessions (board-driven, isolated worktrees)       │
+```
+
+**Key files:**
+- `src/main/claude/tools/createKpmServer.ts` - MCP server factory
+- `src/main/claude/tools/plan-items.ts` - Plan query tools
+- `src/main/claude/tools/plan-changes.ts` - Plan modification tool
+- `src/main/claude/tools/relations.ts` - Dependency/relation tools
+- `src/main/claude/tools/jira.ts` - Jira integration
+- `src/main/claude/tools/storybook.ts` - Component discovery
+- `src/main/claude/prompts/` - System prompt modules
+- `src/main/services/streaming/StreamingSessionService.ts` - Main chat session management
+- `src/main/services/repo/DevSessionService.ts` - Plan-item dev session management
+- `src/main/services/agents/AgentSessionManager.ts` - Multi-agent lifecycle management
+- `src/main/services/agents/autoReview.ts` - Opposing-agent review pipeline
+
+**System Prompt Organization** (`src/main/claude/prompts/`):
+- `toolDocs.ts` - Tool usage guidance
+- `planFormatting.ts` - Plan display formatting
+- `focusedResources.ts` - Focused resource handling
+
+**Plan-item Dev Sessions:**
+- Launched from the board view by selecting a plan item and starting agent execution
+- Multiple isolated implementation/review agent subprocesses
+- Each runs in a separate git worktree
+- Automatic opposing-agent review can run after implementation completion and feed findings back into the implementation session before the plan item moves to `in_review`

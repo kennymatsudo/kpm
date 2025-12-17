@@ -27,6 +27,7 @@ export interface StatusChangedEvent {
   };
 }
 
+    view: 'planning' | 'workspace';
 
 // =============================================================================
 // Event Emitter

@@ -1,6 +1,7 @@
 import path from 'path';
 import { execSync } from 'child_process';
 import { initDatabase } from './db';
+import { warmupMcpSdk } from './claude/tools/createKpmServer';
 
 
 void app.whenReady().then(async () => {

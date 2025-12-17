@@ -1,12 +1,82 @@
 /**
  * Sync Queue Repository Implementation - Dependency Injection Version
+ *
+ * Optimized with prepared statement caching and RETURNING clause.
  */
 
+import type { Database, Statement } from 'better-sqlite3';
 import type { ISyncQueueRepository } from '../../interfaces';
 
-export class SyncQueueRepository implements ISyncQueueRepository {
+/**
+ * Prepared statements cache for hot paths.
+ */
+interface PreparedStatements {
+  // Read operations
+  getById: Statement;
+  getByProject: Statement;
+  getByProjectWithPlanItems: Statement;
+  getByPlanItem: Statement;
+  getByAssociation: Statement;
+  getQueueCount: Statement;
 
+  // Write operations
+  insert: Statement;
+  remove: Statement;
+  removeByPlanItem: Statement;
+  clearProject: Statement;
+  updateStatusCategory: Statement;
+  updateResolvedType: Statement;
+  setError: Statement;
+}
+
+export class SyncQueueRepository implements ISyncQueueRepository {
+  private stmts: PreparedStatements;
+
+  constructor(private db: Database) {
+    // Column list for consistent SELECT queries
+    const cols = `id, kpm_project_id, plan_item_id, association_id, operation,
              target_issue_type_id, target_issue_type_name, target_parent_key,
+
+    this.stmts = {
+      // Read operations
+      getById: db.prepare(`SELECT ${cols} FROM sync_queue WHERE id = ?`),
+      getByProject: db.prepare(`SELECT ${cols} FROM sync_queue WHERE kpm_project_id = ? ORDER BY queued_at`),
+      getByProjectWithPlanItems: db.prepare(`
+        SELECT
+          sq.id, sq.kpm_project_id, sq.plan_item_id, sq.association_id, sq.operation,
+          sq.target_issue_type_id, sq.target_issue_type_name, sq.target_parent_key,
+          pi.title as plan_item_title,
+          pi.description as plan_item_description,
+          pi.label as plan_item_label,
+          pi.parent_id as plan_item_parent_id,
+          pi.external_key as plan_item_external_key,
+          pi.external_type as plan_item_external_type
+        FROM sync_queue sq
+        JOIN plan_items pi ON sq.plan_item_id = pi.id
+        WHERE sq.kpm_project_id = ?
+        ORDER BY sq.queued_at
+      `),
+      getByPlanItem: db.prepare(`SELECT ${cols} FROM sync_queue WHERE plan_item_id = ?`),
+      getByAssociation: db.prepare(`SELECT ${cols} FROM sync_queue WHERE association_id = ? ORDER BY queued_at`),
+
+      // Write operations - use RETURNING to avoid re-query
+      insert: db.prepare(`
+        RETURNING ${cols}
+      `),
+      remove: db.prepare('DELETE FROM sync_queue WHERE id = ?'),
+      removeByPlanItem: db.prepare('DELETE FROM sync_queue WHERE plan_item_id = ?'),
+      clearProject: db.prepare('DELETE FROM sync_queue WHERE kpm_project_id = ?'),
+      updateStatusCategory: db.prepare(`UPDATE sync_queue SET target_status_category = ? WHERE id = ?`),
+      updateResolvedType: db.prepare(`
+        UPDATE sync_queue
+        SET target_issue_type_id = ?, target_issue_type_name = ?, target_parent_key = ?
+        WHERE id = ?
+      `),
+      setError: db.prepare(`UPDATE sync_queue SET error_message = ? WHERE id = ?`),
+    };
+  }
+
+  getByProject(projectId: string): SyncQueueEntry[] {
   }
 
   getByProjectWithPlanItems(projectId: string): SyncQueueEntryWithPlanItem[] {
@@ -58,6 +128,7 @@ export class SyncQueueRepository implements ISyncQueueRepository {
   }
 
   getQueueCount(projectId: string): number {
+    const result = this.stmts.getQueueCount.get(projectId) as { count: number };
     return result.count;
   }
 
@@ -89,11 +160,19 @@ export class SyncQueueRepository implements ISyncQueueRepository {
       return typeof entryOrProjectId === 'string' ? null : existing;
     }
 
+    // Use RETURNING to get inserted row in one query
+      id,
+      entry.kpm_project_id,
+      entry.plan_item_id,
+      entry.association_id,
+      entry.operation,
+      entry.queued_by
   }
 
   get(id: string): SyncQueueEntry | undefined {
   }
 
+    // Dynamic update for multi-field changes (less common path)
     const fields: string[] = [];
     const values: unknown[] = [];
 
@@ -126,9 +205,11 @@ export class SyncQueueRepository implements ISyncQueueRepository {
   }
 
   remove(id: string): void {
+    this.stmts.remove.run(id);
   }
 
   removeByPlanItem(planItemId: string): void {
+    this.stmts.removeByPlanItem.run(planItemId);
   }
 
   removeByProject(projectId: string): void {
@@ -136,14 +217,18 @@ export class SyncQueueRepository implements ISyncQueueRepository {
   }
 
   clearProject(projectId: string): void {
+    this.stmts.clearProject.run(projectId);
   }
 
   updateStatusCategory(id: string, statusCategory: string | null): void {
+    this.stmts.updateStatusCategory.run(statusCategory, id);
   }
 
   updateResolvedType(id: string, typeId: string, typeName: string, parentKey: string | null): void {
+    this.stmts.updateResolvedType.run(typeId, typeName, parentKey, id);
   }
 
   setError(id: string, errorMessage: string): void {
+    this.stmts.setError.run(errorMessage, id);
   }
 }
