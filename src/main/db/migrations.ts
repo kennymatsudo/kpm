@@ -299,6 +299,31 @@ interface Migration {
     },
   },
   {
+    id: 1004,
+    name: '004_custom_agents',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- CUSTOM BRAINSTORM AGENTS
+        -- User-defined personas for brainstorming
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS custom_agents (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL,
+          persona TEXT NOT NULL,
+          expertise TEXT NOT NULL,
+          conversation_style TEXT NOT NULL,
+          summary_guidance TEXT,
+          empty_state_prompt TEXT,
+          dot_color TEXT DEFAULT '#a78bfa',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+    },
+  },
+  {
     id: 1014,
     name: '014_drop_scratchpad_items',
     up: (db: BetterSqliteDatabase) => {
