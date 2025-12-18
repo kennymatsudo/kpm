@@ -172,14 +172,32 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
   },
 
   deletePlanItem: async (itemId) => {
+    const { refreshPlanItems, planItems } = get();
+
+    // Optimistic delete - remove from UI immediately
+    const deletedItem = planItems.find((item) => item.id === itemId);
+    set({
+      planItems: planItems.filter((item) => item.id !== itemId),
+      error: null,
+    });
+
     try {
       const result = await deps.api.plan.deleteItem(itemId);
       if (!result.success) {
+        // Restore item on failure
+        if (deletedItem) {
+          set((state) => ({ planItems: [...state.planItems, deletedItem] }));
+        }
         set({ error: result.error || 'Failed to delete plan item' });
         return;
       }
+      // Refresh to ensure consistency (sync queue entries, etc.)
       await refreshPlanItems();
     } catch (error) {
+      // Restore item on error
+      if (deletedItem) {
+        set((state) => ({ planItems: [...state.planItems, deletedItem] }));
+      }
       const errorMessage = `Failed to delete plan item: ${String(error)}`;
       console.error(errorMessage);
       set({ error: errorMessage });
@@ -187,14 +205,39 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
   },
 
   deletePlanItemWithDescendants: async (itemId) => {
+    const { refreshPlanItems, planItems } = get();
+
+    // Collect item and all descendants for optimistic delete
+    const idsToDelete = new Set<string>([itemId]);
+    const collectDescendants = (parentId: string) => {
+      for (const item of planItems) {
+        if (item.parent_id === parentId && !idsToDelete.has(item.id)) {
+          idsToDelete.add(item.id);
+          collectDescendants(item.id);
+        }
+      }
+    };
+    collectDescendants(itemId);
+
+    // Optimistic delete
+    const deletedItems = planItems.filter((item) => idsToDelete.has(item.id));
+    set({
+      planItems: planItems.filter((item) => !idsToDelete.has(item.id)),
+      error: null,
+    });
+
     try {
       const result = await deps.api.plan.deleteItemWithDescendants(itemId);
       if (!result.success) {
+        // Restore items on failure
+        set((state) => ({ planItems: [...state.planItems, ...deletedItems] }));
         set({ error: result.error || 'Failed to delete plan item' });
         return;
       }
       await refreshPlanItems();
     } catch (error) {
+      // Restore items on error
+      set((state) => ({ planItems: [...state.planItems, ...deletedItems] }));
       const errorMessage = `Failed to delete plan item with descendants: ${String(error)}`;
       console.error(errorMessage);
       set({ error: errorMessage });

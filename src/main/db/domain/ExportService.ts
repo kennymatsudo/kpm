@@ -185,6 +185,7 @@ import type {
       const depth = getDepth(planItem.id);
 
       let resolvedParent: string | null = null;
+
       if (entry.operation === 'create' && planItem.parent_id) {
         const parent = itemMap.get(planItem.parent_id);
         if (parent) {
@@ -195,6 +196,14 @@ import type {
         }
       }
 
+      // Sub-tasks in Jira require a parent - validate this
+      if (isSubtaskType) {
+        if (!planItem.parent_id) {
+          validationErrors.push('Sub-task type requires a parent item');
+          canProceed = false;
+        } else if (!resolvedParent) {
+          canProceed = false;
+        }
       }
 
       // Collect queue entry update for batch processing
