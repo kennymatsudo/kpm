@@ -80,6 +80,29 @@ class FileWatchServiceClass {
   }
 
   /**
+   * Delete a context file by relative path.
+   */
+    if (!project) {
+      return { success: false, error: 'Project not found' };
+    }
+
+    }
+
+    // Security: ensure the path doesn't escape project folder
+      return { success: false, error: 'Invalid path' };
+    }
+
+    try {
+        return { success: true };
+      } else {
+        return { success: false, error: 'File not found' };
+      }
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
    */
     if (!project) {
       return { success: false, content: null, error: 'Project not found' };

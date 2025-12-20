@@ -1,3 +1,4 @@
+
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
@@ -85,6 +86,7 @@ body {
   font-family: var(--font-sans);
   background: var(--color-surface-0);
   color: var(--color-text-primary);
+  line-height: 1.5;
   overflow: hidden;
   cursor: default;
   user-select: none;
@@ -307,6 +309,9 @@ select:focus-visible {
    ============================================ */
 
 .section-header {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--color-text-secondary);
 }
 
 /* ============================================
@@ -612,6 +617,7 @@ select:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+  font-weight: 500;
   background: var(--color-surface-3);
   border-radius: var(--radius-full);
   color: var(--color-text-secondary);

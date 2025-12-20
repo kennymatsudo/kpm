@@ -10,4 +10,6 @@
   // Read a context file by relative path
 
   // Write a context file by relative path
+
+  // Delete a context file by relative path
 }
