@@ -1,3 +1,4 @@
+import type { PlanItem } from '../../../shared/types';
 import { PlanCard } from './PlanCard';
 
 interface CanvasProps {

@@ -2,6 +2,7 @@
 ];
 
 
+  const handleModelChange = (newModel: ChatClaudeModel, e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
   };

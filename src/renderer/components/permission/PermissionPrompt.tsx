@@ -5,6 +5,7 @@
  * Pattern: Cursor/Claude Code style inline prompt (not a modal).
  */
 
+import { usePermissionStore } from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
 
 export function PermissionPrompt() {
