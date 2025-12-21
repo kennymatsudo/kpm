@@ -49,6 +49,7 @@ interface PlanCardProps {
   getSelectedIds: () => Set<string>;
   onEditItem?: (itemId: string) => void;  // For opening edit panel
   onDrop?: (itemIds: string[], targetParentId: string) => void;
+  onDropFromBacklog?: (itemId: string, parentId: string | null) => void;
   onDragStart?: (item: TreeNode, x: number, y: number, offsetX: number, offsetY: number, depth: number, selectedIds: string[]) => void;
   onDragEnd?: () => void;
 }
@@ -67,6 +68,7 @@ export const PlanCard = memo(function PlanCard({
   onSelectItem,
   onEditItem,
   onDrop,
+  onDropFromBacklog,
   onDragStart,
   onDragEnd,
 }: PlanCardProps) {
@@ -217,6 +219,9 @@ export const PlanCard = memo(function PlanCard({
         const selectedIdsJson = e.dataTransfer.getData('selected-ids');
         const descendantIdsJson = e.dataTransfer.getData('descendant-ids');
         if (!droppedItemId) return;
+
+        // Don't allow nesting beyond max depth
+        if (depth >= MAX_DEPTH) return;
 
         // Get all items being dragged
         const selectedIds: string[] = selectedIdsJson ? JSON.parse(selectedIdsJson) : [droppedItemId];
