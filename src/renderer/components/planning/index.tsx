@@ -55,6 +55,10 @@ export function PlanView({
   // Build tree hierarchy for tree view (using filtered items)
   const treeHierarchy = useMemo(() => buildHierarchyTree(filteredPlannedItems), [filteredPlannedItems]);
 
+  const leafItems = useMemo(
+    [filteredPlannedItems]
+  );
+
   if (!currentProjectId) {
     return (
       <div className="flex items-center justify-center h-full w-full bg-surface-0 text-text-secondary">
@@ -79,6 +83,7 @@ export function PlanView({
 
   return (
     <div className="h-full bg-surface-0 flex">
+        {/* View area - Canvas, Tree, or Board */}
         <div className="flex-1 overflow-hidden" onContextMenu={handleContextMenu}>
           {viewMode === 'card' ? (
                 focusedItemId={focusedItemId}
@@ -86,6 +91,7 @@ export function PlanView({
                 onSelectItem={handleSelectItem}
                 onEditItem={handleEditItem}
               />
+          ) : (
           )}
         </div>
       </div>
