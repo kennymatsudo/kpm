@@ -10,5 +10,6 @@ export const createBaseState = (): ProjectStoreValues => ({
   attachments: [],
   isLoading: false,
   error: null,
+  focusedResources: [],
   editingItemId: null,
 });

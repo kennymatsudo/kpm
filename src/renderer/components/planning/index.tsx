@@ -26,8 +26,11 @@ export function PlanView({
       planItems: state.planItems,
       executePlanActions: state.executePlanActions,
       updateItemPosition: state.updateItemPosition,
+      focusedResources: state.focusedResources,
     }))
   );
+
+  // Derive focusedItemId from focusedResources for backward compatibility with child components
 
 
   // Export store - for queue operations

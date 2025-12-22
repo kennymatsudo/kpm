@@ -8,6 +8,7 @@ import type {
   PlanRelation,
   PlanAction,
   StatusCategory,
+  FocusedResource,
 } from '../../../shared/types';
 import type { API } from '../../../preload/api';
 import type { emit } from '../storeEvents';
@@ -66,6 +67,9 @@ export interface ResourceSlice {
 }
 
 export interface UiSlice {
+  setFocusedResources: (resources: FocusedResource[]) => void;
+  removeFocusedResource: (resource: FocusedResource) => void;
+  clearFocusedResources: () => void;
   setEditingItemId: (itemId: string | null) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;

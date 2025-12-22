@@ -29,6 +29,7 @@ import type {
   ChatMessage,
   PermissionRequest,
   PermissionAction,
+  FocusedResource,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -271,6 +272,15 @@ const artifacts = {
   read: (projectId: string, filename: string): Promise<{ success: boolean; content?: string; error?: string }> =>
   delete: (projectId: string, filename: string): Promise<{ success: boolean; error?: string }> =>
   import: (projectId: string, sourcePath: string): Promise<{ success: boolean; filename?: string; error?: string }> =>
+};
+
+  create: (
+    projectId: string | null,
+    name: string,
+  update: (
+    templateId: string,
+  delete: (templateId: string): Promise<{ success: boolean; error?: string }> =>
+  ensureDefault: (): Promise<{ success: boolean; error?: string }> =>
 };
 
 export const api = {

@@ -33,6 +33,20 @@ export type TrackerProgressCallback = (data: {
   total?: number;
 }) => void;
 
+// =============================================================================
+// =============================================================================
+
+/**
+ * project_id = null means global template.
+ */
+  id: string;
+  project_id: string | null;  // null = global template
+  name: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 
 /**
  * Determines if an external issue type represents a "subtask" that must be nested under a parent.
@@ -485,6 +499,18 @@ export interface PermissionResponse {
   requestId: string;
   action: PermissionAction;
 }
+
+// =============================================================================
+// Focus System Types - for AI chat context
+// =============================================================================
+
+/**
+ * A resource that the user has focused for AI chat context.
+ * Multiple resources can be focused simultaneously.
+ * Claude receives references only and uses tools to read content.
+ */
+export type FocusedResource =
+  | { type: 'plan_item'; id: string; title: string }
   | { type: 'document'; id: string; title: string; path: string };
  * Sessions are normally linked to plan items; null plan_item_id is retained
  * for historical rows and PR-linked stub sessions.

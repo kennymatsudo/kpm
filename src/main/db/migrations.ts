@@ -324,6 +324,42 @@ interface Migration {
     },
   },
   {
+    id: 1005,
+    name: '005_ticket_templates',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- TICKET TEMPLATES: Tracker-agnostic ticket formatting
+        -- Templates for how tickets are created in Jira, Linear, etc.
+        -- project_id = NULL means global template
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS ticket_templates (
+          id TEXT PRIMARY KEY,
+          project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+          name TEXT NOT NULL DEFAULT 'default',
+          title_template TEXT NOT NULL DEFAULT '{{title}}',
+          description_template TEXT NOT NULL DEFAULT '## Context
+
+{{description}}
+
+## Acceptance Criteria
+
+- [ ] TBD
+
+## Technical Notes
+
+',
+          is_default BOOLEAN NOT NULL DEFAULT false,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(project_id, name)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ticket_templates_project ON ticket_templates(project_id);
+      `);
+    },
+  },
+  {
     id: 1014,
     name: '014_drop_scratchpad_items',
     up: (db: BetterSqliteDatabase) => {

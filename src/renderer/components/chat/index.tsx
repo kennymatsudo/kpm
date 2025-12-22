@@ -1,3 +1,4 @@
+import { useState, useCallback, useEffect } from 'react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { useChat } from '../../hooks/useChat';
@@ -11,12 +12,36 @@ import { CloseIcon } from '../icons';
   const handleRetry = useCallback(() => {
     }
 
+  // Helper to get display label for a focused resource
+  const getResourceLabel = (resource: FocusedResource): string => {
+    switch (resource.type) {
+      case 'plan_item':
+        return resource.title;
+    }
+  };
+
+  const hasFocus = focusedResources.length > 0;
+
   return (
+      {/* Focused resources banner - animated height to prevent layout shift */}
       <div
         style={{
+          height: hasFocus ? '36px' : '0px',
+          opacity: hasFocus ? 1 : 0,
         }}
       >
+          {focusedResources.map((resource, idx) => (
+            <button
+              key={`${resource.type}-${idx}`}
+              onClick={() => removeFocusedResource(resource)}
+              title={`Remove: ${getResourceLabel(resource)}`}
+            >
+              <span className="truncate">{getResourceLabel(resource)}</span>
+            </button>
+          ))}
+        </div>
         <button
+          onClick={clearFocusedResources}
           style={{ color: 'color-mix(in srgb, var(--color-accent) 60%, transparent)' }}
         >
           <CloseIcon className="w-3.5 h-3.5" />

@@ -1,10 +1,12 @@
 import { memo } from 'react';
 import { useProjectDomainStore, useSettingsUIStore } from '../../stores';
+import { SettingsIcon } from '../icons';
 
 interface SidebarProps {
   onDeleteProject?: () => void;
   onNewProject?: () => void;
 }
+
 
   return (
     <aside className="flex-1 sidebar flex flex-col overflow-hidden">
@@ -27,5 +29,6 @@ interface SidebarProps {
           </div>
         )}
       </div>
+
       {/* Fixed footer with Settings */}
   );
