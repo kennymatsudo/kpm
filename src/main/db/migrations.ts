@@ -373,6 +373,53 @@ interface Migration {
     },
   },
   {
+    id: 1007,
+    name: '007_agent_worktrees',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- WORKTREES: Git worktrees for agent development
+        -- Links plan items to git worktrees for isolated development
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS worktrees (
+          id TEXT PRIMARY KEY,
+          plan_item_id TEXT NOT NULL REFERENCES plan_items(id) ON DELETE CASCADE,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          worktree_path TEXT NOT NULL,
+          branch_name TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          last_opened_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(plan_item_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_worktrees_project ON worktrees(project_id);
+        CREATE INDEX IF NOT EXISTS idx_worktrees_plan_item ON worktrees(plan_item_id);
+
+        -- Add agent_instructions column to projects
+        ALTER TABLE projects ADD COLUMN agent_instructions TEXT;
+      `);
+    },
+  },
+  {
+    id: 1008,
+    name: '008_app_settings',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- APP SETTINGS: Global key-value preferences
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Set default terminal preference
+        INSERT OR IGNORE INTO app_settings (key, value) VALUES ('terminal_app', 'ghostty');
+      `);
+    },
+  },
+  {
     id: 1014,
     name: '014_drop_scratchpad_items',
     up: (db: BetterSqliteDatabase) => {

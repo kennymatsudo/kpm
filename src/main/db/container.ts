@@ -22,6 +22,8 @@ import {
   TypeMappingRepository as TypeMappingRepositoryClass,
   ExternalPlanItemRepository as ExternalPlanItemRepositoryClass,
   ChatMessageRepository as ChatMessageRepositoryClass,
+  WorktreeRepository as WorktreeRepositoryClass,
+  AppSettingsRepository as AppSettingsRepositoryClass,
 } from './repositories/impl';
 import type { IFileSystem, IPathUtils } from './repositories/impl/ProjectRepository';
 
@@ -86,6 +88,8 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
     typeMappings: new TypeMappingRepositoryClass(database),
     externalPlanItems: new ExternalPlanItemRepositoryClass(database, planItems),
     chatMessages: new ChatMessageRepositoryClass(database),
+    worktrees: new WorktreeRepositoryClass(database),
+    appSettings: new AppSettingsRepositoryClass(database),
   };
 }
 

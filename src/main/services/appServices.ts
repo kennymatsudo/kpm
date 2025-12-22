@@ -15,8 +15,11 @@ export function createAppServices(container: IRepositoryContainer) {
     path,
   });
 
+  });
+
     planService,
     attachmentService,
     repoService,
+    worktreeService,
   };
 }

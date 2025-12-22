@@ -8,6 +8,8 @@ export const createBaseState = (): ProjectStoreValues => ({
   repos: [],
   repoBranches: {},
   attachments: [],
+  worktrees: [],
+  worktreeLoading: {},
   isLoading: false,
   error: null,
   focusedResources: [],

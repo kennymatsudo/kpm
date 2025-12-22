@@ -16,3 +16,5 @@ export * from './SyncQueueRepository';
 export * from './TypeMappingRepository';
 export * from './ExternalPlanItemRepository';
 export * from './ChatMessageRepository';
+export * from './WorktreeRepository';
+export * from './AppSettingsRepository';

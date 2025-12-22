@@ -31,6 +31,9 @@ import type {
   PermissionRequest,
   PermissionAction,
   FocusedResource,
+  Worktree,
+  WorktreeStatus,
+  LaunchResult,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -63,6 +66,9 @@ export type {
   ChatMessage,
   PermissionRequest,
   PermissionAction,
+  Worktree,
+  WorktreeStatus,
+  LaunchResult,
 };
 
 const tempImages = {
@@ -261,6 +267,11 @@ const settings = {
     deleteKey: (): Promise<{ success: boolean; error?: string }> =>
     testKey: (apiKey: string): Promise<{ success: boolean; valid?: boolean; error?: string }> =>
   },
+  app: {
+    get: (key: string): Promise<{ success: boolean; value?: string; error?: string }> =>
+    set: (key: string, value: string): Promise<{ success: boolean; error?: string }> =>
+    getAll: (): Promise<{ success: boolean; settings?: Record<string, string>; error?: string }> =>
+  },
 };
 
 const permission = {
@@ -286,6 +297,15 @@ const artifacts = {
   ensureDefault: (): Promise<{ success: boolean; error?: string }> =>
 };
 
+const worktrees = {
+  getByProject: (projectId: string): Promise<Worktree[]> =>
+  getByPlanItem: (planItemId: string): Promise<Worktree | undefined> =>
+  openEditor: (worktreeId: string): Promise<{ success: boolean; error?: string }> =>
+  getStatus: (worktreeId: string): Promise<WorktreeStatus> =>
+  delete: (worktreeId: string, force?: boolean): Promise<{ success: boolean; error?: string }> =>
+  push: (worktreeId: string): Promise<{ success: boolean; error?: string }> =>
+};
+
 export const api = {
   tempImages,
   chat,
@@ -301,6 +321,7 @@ export const api = {
   settings,
   permission,
   artifacts,
+  worktrees,
 };
 
 export type API = typeof api;

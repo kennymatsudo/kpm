@@ -97,6 +97,8 @@ export const PlanCard = memo(function PlanCard({
 
   const { addToQueue } = useExportActions();
 
+  const isWorktreeLoading = !!worktreeLoadingOp;
+
 
   // Derive effective status: use status_category if set, otherwise derive from external_status
   const effectiveStatus = useMemo(
@@ -286,6 +288,7 @@ export const PlanCard = memo(function PlanCard({
           onCancel={() => setShowDeleteConfirm(false)}
         />
       )}
+
     </div>
   );
 });

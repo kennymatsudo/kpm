@@ -9,6 +9,7 @@ import type {
   PlanAction,
   StatusCategory,
   FocusedResource,
+  Worktree,
 } from '../../../shared/types';
 import type { API } from '../../../preload/api';
 import type { emit } from '../storeEvents';
@@ -20,6 +21,9 @@ export interface ProjectStoreDependencies {
   emit: typeof emit;
 }
 
+/** Worktree operation types for loading state */
+export type WorktreeOperation = 'launch' | 'resume' | 'delete' | 'openEditor';
+
 export interface ProjectStoreValues {
   projects: Project[];
   currentProjectId: string | null;
@@ -28,6 +32,8 @@ export interface ProjectStoreValues {
   repos: Repo[];
   repoBranches: Record<string, string | null>;  // repoId -> branch name
   attachments: Attachment[];
+  worktrees: Worktree[];  // Git worktrees for agent development
+  worktreeLoading: Record<string, WorktreeOperation | null>;  // planItemId or worktreeId -> operation in progress
   isLoading: boolean;
   error: string | null;
   editingItemId: string | null;  // For edit panel - which task is being edited
@@ -64,6 +70,12 @@ export interface ResourceSlice {
   removeAttachment: (attachmentId: string) => void;
   setRepoBranches: (branches: Record<string, string | null>) => void;
   setRepoBranch: (repoId: string, branch: string | null) => void;
+  // Worktree actions
+  setWorktrees: (worktrees: Worktree[]) => void;
+  addWorktree: (worktree: Worktree) => void;
+  removeWorktree: (worktreeId: string) => void;
+  openWorktreeInEditor: (worktreeId: string) => Promise<void>;
+  deleteWorktree: (worktreeId: string, force?: boolean) => Promise<void>;
 }
 
 export interface UiSlice {

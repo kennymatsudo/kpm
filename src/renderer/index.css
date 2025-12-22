@@ -547,6 +547,14 @@ select:focus-visible {
   color: var(--color-danger);
 }
 
+.dropdown-item-accent {
+  color: var(--color-accent);
+}
+
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+}
+
 .dropdown-separator {
   height: 1px;
 }
@@ -1346,5 +1354,51 @@ select:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .plan-card.drop-target {
     animation: none;
+  }
+}
+
+/* ============================================
+   Worktree Indicator - Agent Status Badge
+   ============================================ */
+
+.worktree-indicator {
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.worktree-indicator:hover {
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.light .worktree-indicator {
+  color: #059669;
+  border-color: rgba(5, 150, 105, 0.2);
+}
+
+.light .worktree-indicator:hover {
+}
+
+/* Pulse animation for worktree indicator */
+@media (prefers-reduced-motion: no-preference) {
+  .worktree-pulse .animate-ping {
+    animation: worktree-ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+}
+
+@keyframes worktree-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .worktree-pulse .animate-ping {
+    animation: none;
+    display: none;
   }
 }

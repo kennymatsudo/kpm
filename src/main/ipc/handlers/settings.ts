@@ -29,4 +29,22 @@ import { ipcMain } from 'electron';
       async ({ apiKey }) => {
       },
   );
+
+  ipcMain.handle(
+    'settings:app:get',
+    createIpcHandler(
+      SettingsSchemas.getAppSetting,
+      },
+  );
+
+  ipcMain.handle(
+    'settings:app:set',
+    createIpcHandler(
+      SettingsSchemas.setAppSetting,
+      },
+  );
+
+  ipcMain.handle(
+    'settings:app:get-all',
+  );
 }
