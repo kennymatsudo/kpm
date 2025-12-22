@@ -10,6 +10,27 @@ import type {
 } from '../common/types';
 import { TrackerError } from '../common/errors';
 
+/**
+ * Jira issue shape from API response.
+ * Only includes fields we actually use (jira.js types are overly complex).
+ */
+interface JiraIssueResponse {
+  key: string;
+  id: string;
+  fields: {
+    summary: string;
+    description?: unknown; // ADF format
+    issuetype?: { name?: string };
+    status?: { name?: string };
+    parent?: {
+      key: string;
+      fields?: { issuetype?: { name?: string } };
+    };
+    updated: string;
+    customfield_10014?: string; // Epic link (common field)
+  };
+}
+
 export class JiraClient implements TrackerClient {
   readonly type = 'jira' as const;
   private client: Version3Client;
@@ -100,6 +121,7 @@ export class JiraClient implements TrackerClient {
     }
   }
 
+  private mapIssue(issue: JiraIssueResponse): ExternalIssue {
     return {
       key: issue.key,
       id: issue.id,
@@ -113,6 +135,7 @@ export class JiraClient implements TrackerClient {
     };
   }
 
+  private extractEpicKey(issue: JiraIssueResponse): string | null {
     // Check parent for epic relationship
     if (issue.fields.parent?.fields?.issuetype?.name === 'Epic') {
       return issue.fields.parent.key;

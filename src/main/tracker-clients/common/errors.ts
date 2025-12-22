@@ -7,6 +7,21 @@ export type TrackerErrorCode =
   | 'NETWORK_ERROR'     // fetch failed
   | 'UNKNOWN';
 
+/**
+ * Shape of error responses from Jira API (via jira.js).
+ * Jira puts error info in different places depending on the error type.
+ */
+interface JiraErrorResponse {
+  status: number;
+  errorMessages?: string[];
+  errors?: Record<string, string>;
+  message?: string;
+}
+
+function isJiraErrorResponse(error: unknown): error is JiraErrorResponse {
+  return error !== null && typeof error === 'object' && 'status' in error;
+}
+
 export class TrackerError extends Error {
   constructor(
     public code: TrackerErrorCode,
@@ -19,7 +34,12 @@ export class TrackerError extends Error {
 
   static fromJiraError(error: unknown): TrackerError {
     // jira.js throws HttpException with status code
+    if (isJiraErrorResponse(error)) {
+      const status = error.status;
       // Try to extract error message from response - Jira puts it in different places
+      const errorMessages = error.errorMessages;
+      const errors = error.errors;
+      const responseMessage = error.message;
 
       let message: string | undefined;
       if (Array.isArray(errorMessages) && errorMessages.length > 0) {

@@ -19,6 +19,26 @@ interface TreeNode extends PlanItemSummary {
   children: TreeNode[];
 }
 
+/** Summary of a related item for dependency display */
+interface DependencySummary {
+  id: string;
+  title: string;
+  status?: string;
+}
+
+/** Dependencies grouped by relationship type */
+interface ItemDependencies {
+  blockedBy: DependencySummary[];
+  blocks: DependencySummary[];
+  relatedTo: DependencySummary[];
+}
+
+/** Extended plan item with optional parent title and dependencies */
+interface PlanItemWithExtras extends PlanItem {
+  parentTitle?: string;
+  dependencies?: ItemDependencies;
+}
+
   const db = getDatabase();
 
   /**
@@ -246,6 +266,7 @@ interface TreeNode extends PlanItemSummary {
         }
 
         // Get dependencies if requested
+        const dependencyMap = new Map<string, ItemDependencies>();
         if (includeDependencies && planRelationRepo && itemIds.length > 0) {
           // Efficiently fetch all relations involving ANY of the items
           const relations = planRelationRepo.getByItemIds(itemIds);
@@ -293,11 +314,13 @@ interface TreeNode extends PlanItemSummary {
           }
         }
 
+        const found: PlanItemWithExtras[] = [];
         const notFound: string[] = [];
 
         for (const id of itemIds) {
           const item = itemMap.get(id);
           if (item) {
+            const result: PlanItemWithExtras = { ...item };
             if (includeParentTitle && item.parent_id) {
               result.parentTitle = parentTitleMap.get(item.parent_id) ?? '[deleted]';
             }

@@ -108,6 +108,32 @@ import type {
   },
 
   /**
+   * Update queue entry status category.
+   * If the new status matches what's synced to Jira, removes from queue instead.
+   * @returns { removed: true } if removed, { removed: false } if updated
+   */
+  updateQueueStatus(
+    queueEntryId: string,
+    statusCategory: string | null
+  ): { removed: boolean } {
+    const queueEntry = SyncQueueRepository.get(queueEntryId);
+    if (queueEntry && statusCategory) {
+      const planItem = PlanItemRepository.get(queueEntry.plan_item_id);
+      if (planItem?.external_status) {
+        if (syncedCategory === statusCategory) {
+          // Status matches what's in Jira - remove from queue
+          console.log(`[ExportService] Removing ${planItem.external_key} from queue - status reverted to synced value (${statusCategory})`);
+          SyncQueueRepository.remove(queueEntryId);
+          return { removed: true };
+        }
+      }
+    }
+    // Otherwise, update the target status category
+    SyncQueueRepository.updateStatusCategory(queueEntryId, statusCategory);
+    return { removed: false };
+  },
+
+  /**
    * Generate export preview with validation.
    * Resolves issue types, validates parent relationships, and identifies issues.
    */
