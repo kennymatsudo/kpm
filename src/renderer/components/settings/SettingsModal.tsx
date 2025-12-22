@@ -4,6 +4,15 @@ interface Props {
   currentProjectId?: string | null;
 }
 
+  {
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      </svg>
+    ),
+  },
+  {
+];
+
 
   return (
     <Modal
@@ -20,6 +29,7 @@ interface Props {
 
   active: boolean;
   onClick: () => void;
+  icon: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -30,9 +40,14 @@ interface Props {
       aria-selected={active}
       className={`
         ${active
+          : 'text-text-muted hover:text-text-secondary hover:bg-surface-3/50'
         }
       `}
     >
+      {active && (
+          transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+        />
+      )}
     </button>
   );
 }
