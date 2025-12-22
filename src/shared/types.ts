@@ -98,12 +98,25 @@ export interface TrackerProjectScope {
   created_at: string;
 }
 
+/**
+ * Stored as JSON on tracker_associations.
+ * Used for both pushing status changes to Jira and inferring category from Jira status.
+ */
+export interface StatusMapping {
+  not_started?: string;   // Jira status name for "Not Started" (e.g., "To Do")
+  in_progress?: string;   // Jira status name for "In Progress" (e.g., "In Progress")
+  done?: string;          // Jira status name for "Done" (e.g., "Done")
+  blocked?: string;       // Jira status name for "Blocked" (e.g., "On Hold")
+  canceled?: string;      // Jira status name for "Canceled" (e.g., "Won't Do")
+}
+
 export interface TrackerAssociation {
   id: string;
   kpm_project_id: string;
   scope_id: string;
   jql_filter: string;             // 'parent = PROJ-6224'
   display_name: string | null;    // 'Support Pane Epic'
+  status_mapping: StatusMapping | null;  // Explicit status category → Jira status mapping
   last_synced_at: string | null;
   created_at: string;
 }

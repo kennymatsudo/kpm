@@ -190,6 +190,7 @@ export function createTrackerAssociation(
     scope_id: options.scope_id,
     jql_filter: options.jql_filter ?? 'project = TEST',
     display_name: options.display_name ?? null,
+    status_mapping: options.status_mapping ?? null,
     last_synced_at: options.last_synced_at ?? null,
     created_at: options.created_at ?? new Date().toISOString(),
   };

@@ -15,3 +15,8 @@ export {
 
 // Local exports
 export { fetchIssuesWithSubtasks, DEFAULT_BATCH_SIZE, PROGRESS_REPORT_INTERVAL } from './fetchingUtils';
+export {
+  inferCategoryFromStatus,
+  inferCategoryWithMapping,
+  findTransitionWithMapping,
+} from './statusTransitions';

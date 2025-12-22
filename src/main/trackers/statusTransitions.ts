@@ -129,3 +129,86 @@ export function inferCategoryFromStatus(statusName: string): StatusCategory {
   // Default: assume not started for unknown statuses
   return 'not_started';
 }
+
+// =============================================================================
+// Explicit Mapping Functions
+// =============================================================================
+
+/**
+ * Find a transition that leads to an explicitly mapped Jira status.
+ * Returns the first transition whose destination status name matches the mapped status.
+ *
+ * @param availableTransitions - Available transitions from Jira (from current state)
+ * @param statusMapping - The explicit status mapping (if configured)
+ * @returns The matching transition, or null if none found
+ */
+export function findTransitionByMapping(
+  targetCategory: StatusCategory,
+  availableTransitions: JiraTransition[],
+  statusMapping: StatusMapping | null
+): JiraTransition | null {
+  if (!statusMapping || availableTransitions.length === 0) {
+    return null;
+  }
+
+  // Get the mapped Jira status name for this category
+  if (!mappedStatusName) {
+    return null;
+  }
+
+  // Find a transition that leads to the mapped status (case-insensitive match)
+  return availableTransitions.find(
+  ) ?? null;
+}
+
+/**
+ *
+ * @param statusName - The Jira status name
+ * @param statusMapping - The explicit status mapping (if configured)
+ * @returns The mapped category, or null if not found in mapping
+ */
+export function inferCategoryFromMapping(
+  statusName: string,
+  statusMapping: StatusMapping | null
+): StatusCategory | null {
+  if (!statusMapping) {
+    return null;
+  }
+
+
+  // Check each category in the mapping
+  for (const [category, mappedName] of Object.entries(statusMapping)) {
+      return category as StatusCategory;
+    }
+  }
+
+  return null;
+}
+
+/**
+ *
+ * @param availableTransitions - Available transitions from Jira (from current state)
+ * @param statusMapping - The explicit status mapping (if configured)
+ * @returns The best matching transition, or null if none found
+ */
+export function findTransitionWithMapping(
+  targetCategory: StatusCategory,
+  availableTransitions: JiraTransition[],
+  statusMapping: StatusMapping | null
+): JiraTransition | null {
+}
+
+/**
+ *
+ * @param statusMapping - The explicit status mapping (if configured)
+ */
+export function inferCategoryWithMapping(
+  statusName: string,
+): StatusCategory {
+  const mappedCategory = inferCategoryFromMapping(statusName, statusMapping);
+  if (mappedCategory) {
+    return mappedCategory;
+  }
+
+  return inferCategoryFromStatus(statusName);
+}

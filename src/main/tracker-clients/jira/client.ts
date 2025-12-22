@@ -236,6 +236,33 @@ export class JiraClient implements TrackerClient {
   }
 
   /**
+   * Get all available statuses for a project.
+   * Used for status mapping configuration.
+   */
+    try {
+      const result = await this.client.projects.getAllStatuses({ projectIdOrKey: projectKey });
+      const statusSet = new Map<string, { id: string; name: string; categoryKey: string }>();
+
+      // Statuses are grouped by issue type, dedupe them
+      for (const issueTypeStatus of result) {
+        for (const status of issueTypeStatus.statuses ?? []) {
+          if (!statusSet.has(status.id!)) {
+            statusSet.set(status.id!, {
+              id: status.id!,
+              name: status.name!,
+              categoryKey: status.statusCategory?.key ?? 'undefined',
+            });
+          }
+        }
+      }
+
+      return Array.from(statusSet.values()).sort((a, b) => a.name.localeCompare(b.name));
+    } catch (error) {
+      throw TrackerError.fromJiraError(error);
+    }
+  }
+
+  /**
    * Get available issue types for a project.
    * Used for type mapping configuration.
    */

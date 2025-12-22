@@ -41,6 +41,11 @@ import type {
     const { associationId } = TrackerSchemas.hasImported.parse(params);
   });
 
+    const { associationId, statusMapping } = TrackerSchemas.updateStatusMapping.parse(params);
+  });
+
+  });
+
   });
 
   // Issue search for JQL builder

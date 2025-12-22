@@ -1,4 +1,5 @@
 import type { TrackerClient, ExternalIssue } from '../../trackers';
+import { inferCategoryWithMapping } from '../../trackers/statusTransitions';
 import type {
   PlanItem,
   SyncPreview,
@@ -8,6 +9,7 @@ import type {
   SyncSnapshot,
   ConflictResolution,
   DeletedItemAction,
+  StatusMapping,
 } from '../../../shared/types';
 
 type SyncProgressCallback = (phase: string, current: number, total: number) => void;
@@ -115,6 +117,8 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
   analyzeChanges(
     kpmItem: PlanItem,
     external: ExternalIssue,
+    snapshot: SyncSnapshot | null,
+    statusMapping: StatusMapping | null
   ): { updates: SyncUpdatedItem['changes']; conflicts: SyncConflict['fields'] } {
     const updates: SyncUpdatedItem['changes'] = [];
     const conflicts: SyncConflict['fields'] = [];
@@ -200,6 +204,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
   applyUpdates(
     preview: SyncPreview,
     result: SyncResult,
+    itemCache: Map<string, PlanItem>,
   ): Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] {
     const snapshotsToUpsert: Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] = [];
     const now = new Date().toISOString();
@@ -364,6 +369,10 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
     };
 
     const database = getDatabase();
+
+    // Load association to get status mapping
+    const association = TrackerRepository.getAssociationById(preview.link_id);
+    const statusMapping = association?.status_mapping ?? null;
 
     try {
       database.transaction(() => {

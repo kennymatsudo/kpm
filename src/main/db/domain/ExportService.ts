@@ -289,6 +289,9 @@ import type {
       };
     }
 
+    // Get association for status mapping
+    const association = TrackerRepository.getAssociationById(associationId);
+
     }
 
     const itemsNeedingFetch = client
@@ -368,6 +371,7 @@ import type {
 
         const transitions = transitionsMap.get(item.planItem.external_key ?? '');
         if (transitions) {
+          const bestTransition = findTransitionWithMapping(targetStatusCategory, transitions, statusMapping);
           statusTransition = {
             currentStatus: jiraCurrent.status,
             targetCategory: targetStatusCategory,

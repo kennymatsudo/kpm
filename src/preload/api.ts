@@ -14,6 +14,7 @@ import type {
   TrackerProjectScope,
   TrackerAssociation,
   TrackerAssociationWithScope,
+  StatusMapping,
   ImportPreview,
   ImportResult,
   SyncPreview,
@@ -47,6 +48,7 @@ export type {
   TrackerProjectScope,
   TrackerAssociation,
   TrackerAssociationWithScope,
+  StatusMapping,
   ImportPreview,
   ImportResult,
   SyncPreview,
@@ -147,6 +149,7 @@ const tracker = {
     list: (projectId: string): Promise<TrackerAssociationWithScope[]> =>
     remove: (associationId: string): Promise<{ success: boolean }> =>
     hasImported: (associationId: string): Promise<boolean> =>
+    updateStatusMapping: (associationId: string, statusMapping: StatusMapping | null): Promise<{ success: boolean; error?: string }> =>
   },
   projects: {
     list: (): Promise<{ success: boolean; projects?: { key: string; name: string }[]; error?: string }> =>

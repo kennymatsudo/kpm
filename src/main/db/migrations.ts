@@ -360,6 +360,19 @@ interface Migration {
     },
   },
   {
+    id: 1006,
+    name: '006_association_status_mapping',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- Add status_mapping to tracker associations
+        -- e.g., {"in_progress": "In Progress", "done": "Done"}
+        -- ============================================
+        ALTER TABLE kpm_tracker_associations ADD COLUMN status_mapping TEXT;
+      `);
+    },
+  },
+  {
     id: 1014,
     name: '014_drop_scratchpad_items',
     up: (db: BetterSqliteDatabase) => {

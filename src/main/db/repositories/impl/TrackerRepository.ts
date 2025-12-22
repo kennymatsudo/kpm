@@ -8,6 +8,16 @@ import type { Database, Statement } from 'better-sqlite3';
 } from '../../../../shared/types';
 import type { ITrackerRepository } from '../../interfaces';
 
+// Helper to parse status_mapping JSON from database
+function parseStatusMapping(raw: string | null): StatusMapping | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as StatusMapping;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Prepared statements cache for hot paths.
  */
@@ -170,12 +180,25 @@ export class TrackerRepository implements ITrackerRepository {
   // ============================================
 
   getAssociations(projectId: string): TrackerAssociation[] {
+    return rows.map((row) => ({
+      ...row,
+      status_mapping: parseStatusMapping(row.status_mapping),
+    }));
   }
 
   getAssociationsWithContext(projectId: string): TrackerAssociationWithScope[] {
+    return rows.map((row) => ({
+      ...row,
+      status_mapping: parseStatusMapping(row.status_mapping),
+    }));
   }
 
   getAssociationById(id: string): TrackerAssociationWithScope | undefined {
+    if (!row) return undefined;
+    return {
+      ...row,
+      status_mapping: parseStatusMapping(row.status_mapping),
+    };
   }
 
   getAssociationsByProject(projectId: string): TrackerAssociationWithScope[] {
@@ -201,7 +224,10 @@ export class TrackerRepository implements ITrackerRepository {
     this.stmts.updateLastSynced.run(id);
   }
 
+  updateStatusMapping(id: string, mapping: StatusMapping | null): void {
     this.stmts.updateStatusMapping.run(mapping ? JSON.stringify(mapping) : null, id);
+  }
+
   hasAssociationItems(associationId: string): boolean {
     // Use EXISTS for short-circuit (faster than COUNT(*))
     const result = this.stmts.hasAssociationItems.get(associationId) as { has_items: number };
