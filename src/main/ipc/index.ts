@@ -6,4 +6,5 @@ import type { BrowserWindow } from 'electron';
 export function registerAllIpcHandlers(
   getMainWindow: () => BrowserWindow | null,
 ): void {
+    getMainWindow,
 }

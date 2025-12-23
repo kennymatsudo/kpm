@@ -5,6 +5,9 @@ interface UseProjectLoaderOptions {
   onRequestNewProject?: () => void;
 }
 
+// Track the previously connected project to disconnect on switch
+let previousConnectedProjectId: string | null = null;
+
 /**
  * Centralized controller for loading project data and wiring repo watchers.
  * Keeps App.tsx focused on UI concerns and makes this logic easier to test.
@@ -26,12 +29,17 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
   const loadProjectData = useCallback(async (projectId: string) => {
 
 
+
     addProject(project);
     await loadProjectData(project.id);
     return project;
 
   const deleteCurrentProject = useCallback(async () => {
     if (!currentProjectId) return;
+
+    if (previousConnectedProjectId === currentProjectId) {
+      previousConnectedProjectId = null;
+    }
 
     // Delete via API
 

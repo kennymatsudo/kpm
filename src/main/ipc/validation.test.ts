@@ -10,6 +10,7 @@ import {
   ChatSchemas,
   TrackerSchemas,
   ExportSchemas,
+  StreamingSessionSchemas,
 } from './validation';
 
 describe('ValidationError', () => {
@@ -157,3 +158,10 @@ describe('ExportSchemas', () => {
   });
 });
 
+describe('StreamingSessionSchemas', () => {
+    });
+  });
+
+    });
+  });
+});

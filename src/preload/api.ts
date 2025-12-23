@@ -34,6 +34,7 @@ import type {
   Worktree,
   WorktreeStatus,
   LaunchResult,
+  SessionState,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -69,6 +70,7 @@ export type {
   Worktree,
   WorktreeStatus,
   LaunchResult,
+  SessionState,
 };
 
 const tempImages = {
@@ -92,6 +94,29 @@ const chat = {
     ipcRenderer.on('chat:activity', handler);
     return () => ipcRenderer.removeListener('chat:activity', handler);
   },
+  },
+
+  // ─── Streaming Session Methods ───
+
+  /** Connect streaming session for a project (called on project open) */
+  connectSession: (projectId: string): Promise<{ success: boolean; sessionId?: string; error?: string }> =>
+
+
+  /** Get current session state */
+
+  /** Session connecting event */
+    ipcRenderer.on('chat:session-connecting', handler);
+    return () => ipcRenderer.removeListener('chat:session-connecting', handler);
+  },
+
+  /** Session ready event */
+    ipcRenderer.on('chat:session-ready', handler);
+    return () => ipcRenderer.removeListener('chat:session-ready', handler);
+  },
+
+  /** Session error event */
+    ipcRenderer.on('chat:session-error', handler);
+    return () => ipcRenderer.removeListener('chat:session-error', handler);
   },
 };
 

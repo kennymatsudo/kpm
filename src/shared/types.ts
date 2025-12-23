@@ -525,6 +525,21 @@ export interface PermissionResponse {
 export type FocusedResource =
   | { type: 'plan_item'; id: string; title: string }
   | { type: 'document'; id: string; title: string; path: string };
+
+// =============================================================================
+// Streaming Session Types
+// =============================================================================
+
+/**
+ * State of a streaming Claude session.
+ *
+ * State transitions:
+ * - idle → connecting → ready (project open)
+ * - ready → processing → ready (sending message)
+ * - (any) → error (on failure)
+ * - (any) → closing → idle (on disconnect)
+ */
+export type SessionState = 'idle' | 'connecting' | 'ready' | 'processing' | 'error' | 'closing';
  * Sessions are normally linked to plan items; null plan_item_id is retained
  * for historical rows and PR-linked stub sessions.
  * plan_item is null for historical rows or PR-linked stub sessions.
