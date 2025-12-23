@@ -139,10 +139,21 @@ export const PlanCard = memo(function PlanCard({
         e.stopPropagation();
       }}
       onContextMenu={isPreview ? undefined : (e) => {
+        // Check if a child card already handled this
+        const nativeEvent = e.nativeEvent as Event & { _contextMenuHandled?: boolean };
+        if (nativeEvent._contextMenuHandled) return;
+
+        e.preventDefault();
+        e.stopPropagation();
 
         // Select this card if not already selected
         if (!isSelected) {
         }
+
+        setShowMenu(true);
+
+        // Mark as handled so parent cards don't also open menus
+        nativeEvent._contextMenuHandled = true;
       }}
       onDragStart={isPreview ? undefined : (e) => {
         e.stopPropagation();
