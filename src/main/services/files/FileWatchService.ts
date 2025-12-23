@@ -103,6 +103,43 @@ class FileWatchServiceClass {
   }
 
   /**
+   * Import a file into the project root as a context file.
+   * Copies the file content to the project folder.
+   */
+    projectId: string,
+    sourcePath: string
+    if (!project) {
+      return { success: false, error: 'Project not found' };
+    }
+
+    try {
+      // Get the filename from the source path
+      let filename = path.basename(sourcePath);
+
+      // Ensure it has .md extension
+      if (!filename.endsWith('.md')) {
+        filename = filename + '.md';
+      }
+
+      // Handle filename conflicts by adding a number suffix
+      let targetPath = path.join(project.folder_path, filename);
+      let counter = 1;
+      const baseName = filename.replace(/\.md$/, '');
+        filename = `${baseName} (${counter}).md`;
+        targetPath = path.join(project.folder_path, filename);
+        counter++;
+      }
+
+      // Read the source file and write to target
+
+      return { success: true, filename };
+    } catch (error) {
+      console.error('[FileWatchService] Failed to import context file:', error);
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
    */
     if (!project) {
       return { success: false, content: null, error: 'Project not found' };

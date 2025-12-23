@@ -240,6 +240,7 @@ const contextFiles = {
   read: (projectId: string, path: string): Promise<{ success: boolean; content: string | null; error?: string }> =>
   write: (projectId: string, path: string, content: string): Promise<{ success: boolean; error?: string }> =>
   delete: (projectId: string, path: string): Promise<{ success: boolean; error?: string }> =>
+  import: (projectId: string, sourcePath: string): Promise<{ success: boolean; filename?: string; error?: string }> =>
 };
 
 const menu = {
