@@ -540,8 +540,56 @@ export type FocusedResource =
  * - (any) → closing → idle (on disconnect)
  */
 export type SessionState = 'idle' | 'connecting' | 'ready' | 'processing' | 'error' | 'closing';
+
+// =============================================================================
+// Development Session Types (Plan Item Implementation)
+// =============================================================================
+
+/**
+ * Status of a development session.
+ *
+ * State transitions:
+ */
+export type DevSessionStatus =
+
+/**
+ * Each session runs Claude Code in an isolated git worktree.
  * Sessions are normally linked to plan items; null plan_item_id is retained
  * for historical rows and PR-linked stub sessions.
+ */
+export interface DevSession {
+  id: string;
+  project_id: string;
+  repo_id: string;
+
+  // Git worktree
+  worktree_path: string;
+  branch_name: string;
+  base_branch: string;  // Usually 'master' or 'main'
+
+  // Status
+  status: DevSessionStatus;
+
+  // Context passed to Claude Code
+  initial_instructions: string;
+
+  // Timestamps
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+/**
  * plan_item is null for historical rows or PR-linked stub sessions.
+ */
+export interface DevSessionWithPlanItem extends DevSession {
+  plan_item: {
+    id: string;
+    title: string;
+    description: string | null;
+    label: string | null;
+    external_key: string | null;
+}
+
 
 export type SearchEntityType = 'plan_item' | 'document';

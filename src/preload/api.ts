@@ -35,6 +35,8 @@ import type {
   WorktreeStatus,
   LaunchResult,
   SessionState,
+  DevSession,
+  DevSessionWithPlanItem,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -71,6 +73,8 @@ export type {
   WorktreeStatus,
   LaunchResult,
   SessionState,
+  DevSession,
+  DevSessionWithPlanItem,
 };
 
 const tempImages = {
@@ -332,6 +336,43 @@ const worktrees = {
   push: (worktreeId: string): Promise<{ success: boolean; error?: string }> =>
 };
 
+const devSessions = {
+  // Get all sessions for a project
+  getByProject: (projectId: string): Promise<{ success: boolean; sessions?: DevSession[]; error?: string }> =>
+
+  // Get sessions with plan item data
+  getByProjectWithPlanItems: (projectId: string): Promise<{ success: boolean; sessions?: DevSessionWithPlanItem[]; error?: string }> =>
+
+  // Get active sessions
+  getActive: (projectId: string): Promise<{ success: boolean; sessions?: DevSession[]; error?: string }> =>
+
+  // Get a session by ID
+  get: (sessionId: string): Promise<{ success: boolean; session?: DevSession; error?: string }> =>
+
+  // Check if plan item has active session
+  hasActive: (planItemId: string): Promise<{ success: boolean; hasActive?: boolean; error?: string }> =>
+
+  // Update session status
+  updateStatus: (sessionId: string, status: string): Promise<{ success: boolean; error?: string }> =>
+
+  delete: (sessionId: string, cleanupWorktree?: boolean): Promise<{ success: boolean; error?: string }> =>
+
+  // Get git diff for session
+  getDiff: (sessionId: string): Promise<{ success: boolean; diff?: string; error?: string }> =>
+
+  // Get commits ahead count
+  getCommitsAhead: (sessionId: string): Promise<{ success: boolean; count?: number; error?: string }> =>
+
+  // Session status change event listener (replaces polling)
+  onStatusChanged: (
+    callback: (event: { sessionId: string; projectId: string; status: string }) => void
+  ): (() => void) => {
+    const handler = (
+      _: Electron.IpcRendererEvent,
+      event: { sessionId: string; projectId: string; status: string }
+    ) => callback(event);
+    ipcRenderer.on('dev-session:status-changed', handler);
+    return () => ipcRenderer.removeListener('dev-session:status-changed', handler);
   },
 };
 
@@ -351,6 +392,7 @@ export const api = {
   permission,
   artifacts,
   worktrees,
+  devSessions,
 };
 
 export type API = typeof api;

@@ -75,6 +75,7 @@ src/
 **Key fields for features:**
 - `plan_items.completed_at` - When item marked done (for weekly updates)
 - `chat_sessions.claude_session_id` - Claude SDK session ID for resuming conversations
+- `dev_sessions.worktree_path` - Path to isolated git worktree
 - `dev_sessions.merge_order` - Optional user override for merge queue ordering
 - `repos.active_worktree_path` - Active checkout used for repo context and branch watching
 - `agent_review_runs.status` - Latest opposing-agent review freshness (`complete` or `stale`)
@@ -180,9 +181,19 @@ Tracks git branch changes for connected repositories in real-time.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
+│  Main Chat (Streaming Session)                                  │
 │  ├─ StreamingSessionService (Claude lifecycle)                  │
 │  │   └─ StreamingSession (Claude SDK wrapper)                   │
+│  │       └─ AsyncMessageQueue (push-to-pull adapter)            │
+│  ├─ Claude SDK query() with streaming input                     │
+│  ├─ In-process SDK MCP Server                                   │
+│  │   └─ Tools as direct function calls                          │
+│  │       ├─ Plan tools (get hierarchy, filter, modify)          │
+│  │       ├─ Jira tools (search, get issues, compare)            │
 │  │       ├─ Relations tools (dependencies, blockers)            │
+│  │       └─ Storybook tools (list/search components)            │
+│  └─ Database (single connection)                                │
+└─────────────────────────────────────────────────────────────────┘
 │  Plan-item Dev Sessions (board-driven, isolated worktrees)       │
 ```
 
@@ -193,6 +204,7 @@ Tracks git branch changes for connected repositories in real-time.
 - `src/main/claude/tools/relations.ts` - Dependency/relation tools
 - `src/main/claude/tools/jira.ts` - Jira integration
 - `src/main/claude/tools/storybook.ts` - Component discovery
+- `src/main/claude/streaming/` - Streaming session classes
 - `src/main/claude/prompts/` - System prompt modules
 - `src/main/services/streaming/StreamingSessionService.ts` - Main chat session management
 - `src/main/services/repo/DevSessionService.ts` - Plan-item dev session management
@@ -204,8 +216,15 @@ Tracks git branch changes for connected repositories in real-time.
 - `planFormatting.ts` - Plan display formatting
 - `focusedResources.ts` - Focused resource handling
 
+**Streaming Sessions:**
+- Connects on project open (zero-latency first message)
+- Auto-reconnects after 30min idle timeout
+- Full conversation history via SDK resume
+
 **Plan-item Dev Sessions:**
 - Launched from the board view by selecting a plan item and starting agent execution
 - Multiple isolated implementation/review agent subprocesses
 - Each runs in a separate git worktree
+- User approval required before starting
 - Automatic opposing-agent review can run after implementation completion and feed findings back into the implementation session before the plan item moves to `in_review`
+

@@ -27,7 +27,13 @@ export interface StatusChangedEvent {
   };
 }
 
+export interface NavigateToViewEvent {
+  type: 'navigate-to-view';
+  payload: {
     view: 'planning' | 'workspace';
+  };
+}
+
 
 // =============================================================================
 // Event Emitter

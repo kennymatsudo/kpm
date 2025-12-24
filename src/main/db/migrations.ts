@@ -420,6 +420,66 @@ interface Migration {
     },
   },
   {
+    id: 1009,
+    name: '009_dev_sessions',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- DEV SESSIONS: Plan item implementation sessions
+        -- Each session runs Claude Code in an isolated git worktree
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS dev_sessions (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          plan_item_id TEXT NOT NULL REFERENCES plan_items(id) ON DELETE CASCADE,
+          repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+
+          -- Git worktree
+          worktree_path TEXT NOT NULL,
+          branch_name TEXT NOT NULL,
+          base_branch TEXT NOT NULL DEFAULT 'main',
+
+          -- Status: pending, running, waiting, completed, failed, interrupted, abandoned
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'running', 'waiting', 'completed', 'failed', 'interrupted', 'abandoned')),
+
+          -- Context passed to Claude Code
+          initial_instructions TEXT NOT NULL,
+
+          -- Timestamps
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_dev_sessions_project ON dev_sessions(project_id);
+        CREATE INDEX IF NOT EXISTS idx_dev_sessions_plan_item ON dev_sessions(plan_item_id);
+        CREATE INDEX IF NOT EXISTS idx_dev_sessions_status ON dev_sessions(project_id, status);
+      `);
+    },
+  },
+  {
+    id: 1010,
+    name: '010_cleanup_orphaned_sessions',
+    up: (db: BetterSqliteDatabase) => {
+      // Clean up dev_sessions where the plan_item was deleted
+      // (foreign keys were not enforced before, leaving orphans)
+      // Using NOT EXISTS for better performance on large tables vs NOT IN
+      db.exec(`
+        DELETE FROM dev_sessions
+        WHERE NOT EXISTS (
+          SELECT 1 FROM plan_items WHERE plan_items.id = dev_sessions.plan_item_id
+        );
+      `);
+      // Also clean up worktrees for the same reason
+      db.exec(`
+        DELETE FROM worktrees
+        WHERE NOT EXISTS (
+          SELECT 1 FROM plan_items WHERE plan_items.id = worktrees.plan_item_id
+        );
+      `);
+    },
+  },
+  {
     id: 1014,
     name: '014_drop_scratchpad_items',
     up: (db: BetterSqliteDatabase) => {

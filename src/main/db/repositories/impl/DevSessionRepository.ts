@@ -1,6 +1,15 @@
+/**
+ * DevSession Repository Implementation - Dependency Injection Version
+ *
+ * Manages development sessions for plan item implementation.
+ * Each session runs Claude Code in an isolated git worktree.
  *
  * Optimized with prepared statement caching and RETURNING clause.
+ */
+
 import type { Database, Statement } from 'better-sqlite3';
+import type { IDevSessionRepository } from '../../interfaces';
+
 /**
  * Prepared statements cache for hot paths.
  */
@@ -20,6 +29,7 @@ interface PreparedStatements {
   markActiveAsInactive: Statement;
 }
 
+export class DevSessionRepository implements IDevSessionRepository {
   private stmts: PreparedStatements;
 
     this.stmts = {
@@ -66,14 +76,74 @@ interface PreparedStatements {
       `),
     };
   }
+
+  get(id: string): DevSession | undefined {
     return this.stmts.getById.get(id) as DevSession | undefined;
+  }
+
+  getByProject(projectId: string): DevSession[] {
     return this.stmts.getByProject.all(projectId) as DevSession[];
+  }
+
+  getByProjectWithPlanItems(projectId: string): DevSessionWithPlanItem[] {
+      pi_description: string | null;
+      pi_label: string | null;
+      pi_external_key: string | null;
+
+    return rows.map((row) => ({
+      id: row.id,
+      project_id: row.project_id,
+      plan_item_id: row.plan_item_id,
+      repo_id: row.repo_id,
+      worktree_path: row.worktree_path,
+      branch_name: row.branch_name,
+      base_branch: row.base_branch,
+      status: row.status,
+      initial_instructions: row.initial_instructions,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      completed_at: row.completed_at,
+        id: row.pi_id,
+        description: row.pi_description,
+        label: row.pi_label,
+        external_key: row.pi_external_key,
+    }));
+  }
+
+  getActiveSessions(projectId: string): DevSession[] {
     return this.stmts.getActiveSessions.all(projectId) as DevSession[];
+  }
+
+  getByPlanItem(planItemId: string): DevSession | undefined {
     return this.stmts.getByPlanItem.get(planItemId) as DevSession | undefined;
+  }
+
+  getActiveByPlanItem(planItemId: string): DevSession | undefined {
     return this.stmts.getActiveByPlanItem.get(planItemId) as DevSession | undefined;
+  }
+
+  create(session: Omit<DevSession, 'created_at' | 'updated_at' | 'completed_at'>): DevSession {
     // Use RETURNING to get inserted row in one query
     return this.stmts.insert.get(
+      session.id,
+      session.project_id,
+      session.plan_item_id,
+      session.repo_id,
+      session.worktree_path,
+      session.branch_name,
+      session.base_branch,
+      session.status,
     ) as DevSession;
+  }
+
+  updateStatus(id: string, status: DevSessionStatus): void {
     this.stmts.updateStatus.run(status, id);
+  }
+
+  delete(id: string): void {
     this.stmts.delete.run(id);
+  }
+
     this.stmts.markActiveAsInactive.run();
+  }
+}

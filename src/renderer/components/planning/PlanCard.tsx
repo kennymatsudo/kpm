@@ -3,6 +3,8 @@ import { getStyleForDepth, MAX_DEPTH } from '../../constants/planCardStyles';
 import { DragSource } from '../../constants/dragSource';
 import { getStatusCategory } from '../../constants/statusConfig';
 
+// Hoisted constant for active session status check (avoids array recreation in selector)
+
 export type { TreeNode };
 export { MAX_DEPTH };
 

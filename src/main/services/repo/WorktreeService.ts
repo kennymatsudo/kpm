@@ -21,6 +21,13 @@ export interface WorktreeServiceDeps {
   }
 }
 
+/**
+ * WorktreeService - Manages git worktrees for plan items
+ *
+ * NOTE: Agent launching has been moved to DevSessionService which uses
+ * the integrated terminal. This service now only provides worktree
+ * management utilities (open in editor, delete, status, etc.).
+ */
 export function createWorktreeService(deps: WorktreeServiceDeps) {
   return {
     /**
@@ -113,6 +120,7 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
         const repoPath = repos[0].path;
 
         // Check for unpushed commits if not forcing
+        // Use @{u} (upstream) instead of origin/main to avoid network calls
         if (!force && fs.existsSync(worktree.worktree_path)) {
           try {
               { cwd: worktree.worktree_path }
@@ -125,6 +133,7 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
             if (error instanceof Error && error.message.includes('unpushed commits')) {
               throw error;
             }
+            // Ignore other errors (e.g., no upstream set)
           }
         }
 

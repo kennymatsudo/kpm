@@ -24,6 +24,7 @@ import {
   ChatMessageRepository as ChatMessageRepositoryClass,
   WorktreeRepository as WorktreeRepositoryClass,
   AppSettingsRepository as AppSettingsRepositoryClass,
+  DevSessionRepository as DevSessionRepositoryClass,
 } from './repositories/impl';
 import type { IFileSystem, IPathUtils } from './repositories/impl/ProjectRepository';
 
@@ -90,6 +91,7 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
     chatMessages: new ChatMessageRepositoryClass(database),
     worktrees: new WorktreeRepositoryClass(database),
     appSettings: new AppSettingsRepositoryClass(database),
+    devSessions: new DevSessionRepositoryClass(database),
   };
 }
 

@@ -15,11 +15,13 @@ export function createAppServices(container: IRepositoryContainer) {
     path,
   });
 
+    planItems: container.planItems,
   });
 
     planService,
     attachmentService,
     repoService,
     worktreeService,
+    devSessionService,
   };
 }

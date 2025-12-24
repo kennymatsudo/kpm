@@ -11,6 +11,7 @@ const setWorktreeLoading = (
   }));
 };
 
+export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, get) => ({
   setRepos: (repos) => set({ repos }),
   setAttachments: (attachments) => set({ attachments }),
   addRepo: (repo) => set((state) => ({ repos: [...state.repos, repo] })),

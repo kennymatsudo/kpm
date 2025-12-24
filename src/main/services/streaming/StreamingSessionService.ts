@@ -61,6 +61,7 @@ export interface StreamingSessionServiceDeps {
   ) => SDKOptions;
 
   /** Subscribe to plan actions from MCP tools */
+
 }
 
 // =============================================================================
