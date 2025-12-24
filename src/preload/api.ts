@@ -332,6 +332,9 @@ const worktrees = {
   push: (worktreeId: string): Promise<{ success: boolean; error?: string }> =>
 };
 
+  },
+};
+
 export const api = {
   tempImages,
   chat,

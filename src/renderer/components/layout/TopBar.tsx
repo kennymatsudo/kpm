@@ -9,6 +9,9 @@ interface TopBarProps {
   // Project controls
   onDeleteProject?: () => void;
   // Main view controls (workspace vs planning)
+  mainView: MainView;
+  onMainViewChange: (view: MainView) => void;
+  // View controls (card/tree/board within planning)
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   // Filter controls
@@ -30,6 +33,8 @@ export function TopBar({
   chatCollapsed,
   onToggleChat,
   onDeleteProject,
+  mainView,
+  onMainViewChange,
   viewMode,
   onViewModeChange,
   searchQuery,
@@ -56,6 +61,7 @@ export function TopBar({
     queueCount,
   return (
     <>
+
         {/* Spacer */}
         <div className="flex-1" />
 
@@ -65,6 +71,7 @@ export function TopBar({
             </>
           )}
 
+          )}
         </div>
       </header>
 
