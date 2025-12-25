@@ -170,16 +170,23 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Notify UI that we're connecting
 
+    // Create subscriptions FIRST so we can always clean them up
+    // Store references outside try block to ensure cleanup on any error
+    let unsubscribePlanActions: (() => void) | null = null;
+
     try {
         model,
         resumeSessionId,
         mainWindow,
       });
 
+      // Subscribe to plan actions - store reference for cleanup
       });
 
           });
 
+      // Store managed session BEFORE calling start() to ensure cleanup on timeout/error
+      // State = 'connecting' until start() resolves successfully
       sessions.set(key, {
         key,
         projectId,
@@ -196,10 +203,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
       return success({ sessionId });
     } catch (error) {
+      // Clean up subscriptions - check both the managed session AND our local references
+      // This ensures cleanup even if session storage failed
       const managed = sessions.get(key);
       if (managed) {
         managed.state = 'error';
         managed.unsubscribePlanActions();
+      } else {
+        // Session wasn't stored in map - clean up local references directly
+        unsubscribePlanActions?.();
       }
 
         error: (error as Error).message,

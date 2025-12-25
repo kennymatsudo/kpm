@@ -91,11 +91,15 @@ function getWorktreesDir(repoPath: string): string {
  */
 async function detectDefaultBranch(repoPath: string): Promise<string> {
   try {
+    // Try to get the remote HEAD reference using safe array arguments
+    const { stdout } = await gitExec(
+      ['symbolic-ref', 'refs/remotes/origin/HEAD'],
       { cwd: repoPath }
     );
     const ref = stdout.trim();
     return ref.replace('refs/remotes/origin/', '').replace('refs/heads/', '');
   } catch {
+    // Fallback to 'main' if remote HEAD not found
     return 'main';
   }
 }
@@ -206,11 +210,14 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           const repo = deps.repos.getById(session.repo_id);
           if (repo) {
             try {
+              await gitExec(
+                ['worktree', 'remove', session.worktree_path, '--force'],
                 { cwd: repo.path }
               );
             } catch {
               // If worktree remove fails, try manual cleanup
               fs.rmSync(session.worktree_path, { recursive: true, force: true });
+              await gitExec(['worktree', 'prune'], { cwd: repo.path });
             }
           }
         }
@@ -237,6 +244,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           return failure(`Worktree not found: ${session.worktree_path}`);
         }
 
+        const { stdout } = await gitExec(
           { cwd: session.worktree_path, maxBuffer: 10 * 1024 * 1024 }
         );
 
@@ -259,6 +267,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           return success(0);
         }
 
+        const { stdout } = await gitExec(
           { cwd: session.worktree_path }
         );
 

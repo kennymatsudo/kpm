@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow';
 import type { TreeNode } from '../../utils/planHierarchy';
 import { getStyleForDepth, MAX_DEPTH } from '../../constants/planCardStyles';
 import { DragSource } from '../../constants/dragSource';

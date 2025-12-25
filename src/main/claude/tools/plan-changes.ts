@@ -115,6 +115,7 @@ export function createPlanChangeTools(onPlanActions: PlanActionsCallback) {
 
         try {
         } catch (error) {
+          return toolError(`Failed to emit plan actions: ${error instanceof Error ? error.message : String(error)}`);
         }
 
           success: true,

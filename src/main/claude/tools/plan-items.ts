@@ -169,6 +169,7 @@ interface PlanItemWithExtras extends PlanItem {
           const tree = buildHierarchy(items);
           return jsonResult({ tree, totalItems: items.length });
         } catch (error) {
+          return toolError(`Failed to get plan hierarchy: ${error instanceof Error ? error.message : String(error)}`);
         }
     ),
 
@@ -223,6 +224,7 @@ interface PlanItemWithExtras extends PlanItem {
 
           return jsonResult({ items: results, count: results.length });
         } catch (error) {
+          return toolError(`Failed to filter plan items: ${error instanceof Error ? error.message : String(error)}`);
         }
     ),
 

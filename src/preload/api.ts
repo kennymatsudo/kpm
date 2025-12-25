@@ -37,6 +37,7 @@ import type {
   SessionState,
   DevSession,
   DevSessionWithPlanItem,
+  ClaudeModel,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -75,6 +76,7 @@ export type {
   SessionState,
   DevSession,
   DevSessionWithPlanItem,
+  ClaudeModel,
 };
 
 const tempImages = {

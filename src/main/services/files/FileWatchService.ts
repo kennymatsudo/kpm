@@ -41,6 +41,12 @@ class FileWatchServiceClass {
   }
 
   /**
+   * Validate that a path doesn't escape the project folder (path traversal protection).
+   */
+  private isPathWithinProject(projectFolder: string, relativePath: string): { valid: boolean; fullPath: string } {
+  }
+
+  /**
    * Read a context file by relative path.
    */
     if (!project) {
@@ -48,6 +54,8 @@ class FileWatchServiceClass {
     }
 
     // Security: ensure the path doesn't escape project folder
+    const { valid, fullPath } = this.isPathWithinProject(project.folder_path, relativePath);
+    if (!valid) {
       return { success: false, content: null, error: 'Invalid path' };
     }
 
@@ -69,6 +77,8 @@ class FileWatchServiceClass {
     }
 
     // Security: ensure the path doesn't escape project folder
+    const { valid, fullPath } = this.isPathWithinProject(project.folder_path, relativePath);
+    if (!valid) {
       return { success: false, error: 'Invalid path' };
     }
 
@@ -89,6 +99,8 @@ class FileWatchServiceClass {
     }
 
     // Security: ensure the path doesn't escape project folder
+    const { valid, fullPath } = this.isPathWithinProject(project.folder_path, relativePath);
+    if (!valid) {
       return { success: false, error: 'Invalid path' };
     }
 

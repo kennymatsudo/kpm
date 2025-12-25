@@ -70,6 +70,7 @@ export class StreamingSession {
    * The SDK requires an initial message to initialize the session.
    *
    * @returns Resolves when MCP is connected and session can accept more messages.
+   * @throws If MCP connection fails or timeout is reached.
    */
     if (this._isActive) {
       throw new Error('Session already started');
@@ -84,6 +85,11 @@ export class StreamingSession {
     const readyPromise = new Promise<void>((resolve, reject) => {
       this.readyResolver = resolve;
       this.readyRejecter = reject;
+    });
+
+    // Create timeout promise to prevent indefinite hangs
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        this._isReady = false;
     });
 
     this.messageQueue.push({
@@ -131,6 +137,8 @@ export class StreamingSession {
     try {
       for await (const msg of this.queryInstance) {
         // Handle init message - check MCP status
+        if (isInitMessage(msg)) {
+          this.sessionId = msg.session_id;
 
 
             this._isReady = false;

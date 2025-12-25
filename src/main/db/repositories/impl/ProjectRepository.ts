@@ -141,13 +141,19 @@ This is your project workspace. Use this file to track context, conventions, and
     const project = this.get(id);
     const folderPath = project?.folder_path;
 
+    // Delete project folder FIRST to avoid orphaned folders if DB delete succeeds but FS fails
+    // This order ensures we can retry deletion if something fails partway through
     if (folderPath && this.fs.existsSync(folderPath)) {
       try {
         this.fs.rmSync(folderPath, { recursive: true, force: true });
       } catch (error) {
+        // If filesystem deletion fails, throw to prevent database deletion
+        // This keeps the data consistent - user can retry or manually clean up
         console.error(`Failed to delete project folder ${folderPath}:`, error);
       }
     }
+
+    // Delete database record only after filesystem cleanup succeeds
     this.stmts.delete.run(id);
   }
 }

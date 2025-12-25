@@ -112,6 +112,7 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
         }
 
         if (!project.storybook_url) {
+          return toolError('No Storybook configured for this project. Add a Storybook URL in project settings.');
         }
 
         try {
@@ -129,6 +130,7 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
             totalComponents: components.length,
           });
         } catch (error) {
+          return toolError(`Could not connect to Storybook at ${project.storybook_url}: ${error instanceof Error ? error.message : 'Unknown error'}. Ensure Storybook is running and accessible.`);
         }
     ),
 
@@ -144,6 +146,7 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
         }
 
         if (!project.storybook_url) {
+          return toolError('No Storybook configured for this project.');
         }
 
         try {
@@ -174,6 +177,7 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
             viewUrl: `${project.storybook_url}/?path=/story/${stories[0].id}`,
           });
         } catch (error) {
+          return toolError(`Could not fetch component from Storybook: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     ),
 
@@ -190,6 +194,7 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
         }
 
         if (!project.storybook_url) {
+          return toolError('No Storybook configured for this project.');
         }
 
         try {
@@ -214,6 +219,7 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
             totalComponents: allComponents.length,
           });
         } catch (error) {
+          return toolError(`Could not search Storybook: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     ),
   ];
