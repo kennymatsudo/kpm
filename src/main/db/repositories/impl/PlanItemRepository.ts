@@ -2,6 +2,7 @@
  * Plan Item Repository Implementation - Dependency Injection Version
  */
 
+import type { Database, Statement } from 'better-sqlite3';
 import type { PlanItem, PlanItemUpdates, PlanItemSyncUpdates } from '../../../../shared/types';
 import type { IPlanItemRepository } from '../../interfaces';
 
@@ -24,7 +25,17 @@ function rowToPlanItem(row: Record<string, unknown>): PlanItem {
   } as PlanItem;
 }
 
+/**
+ * Prepared statements cache for hot paths.
+ * Statements are prepared once at construction to avoid repeated parsing overhead.
+ */
+interface PreparedStatements {
   // Read operations
+  getByProject: Statement;
+  getById: Statement;
+  getChildCount: Statement;
+  getNextOrderWithParent: Statement;
+  getNextOrderNoParent: Statement;
   collectDescendants: Statement;
   // Children by parent (without filter)
   getChildrenByParent: Statement;
@@ -36,6 +47,8 @@ function rowToPlanItem(row: Record<string, unknown>): PlanItem {
 
   // Write operations
   insert: Statement;
+  deleteById: Statement;
+  updatePosition: Statement;
   reparent: Statement;
 
   // Common update patterns (optimized for frequent operations)
@@ -46,8 +59,37 @@ function rowToPlanItem(row: Record<string, unknown>): PlanItem {
   updateStatusCategory: Statement;
   updateItemOrder: Statement;
   updateReleaseTag: Statement;
+}
+
 export class PlanItemRepository implements IPlanItemRepository {
+  private stmts: PreparedStatements;
+
+  constructor(private db: Database) {
+    // Prepare statements once for hot paths
+    this.stmts = {
       // Read operations
+      getByProject: db.prepare(`
+        SELECT * FROM plan_items WHERE project_id = ? ORDER BY item_order
+      `),
+      getById: db.prepare('SELECT * FROM plan_items WHERE id = ?'),
+      getChildCount: db.prepare('SELECT COUNT(*) as count FROM plan_items WHERE parent_id = ?'),
+      getNextOrderWithParent: db.prepare(`
+        SELECT MAX(item_order) as max_order FROM plan_items
+        WHERE project_id = ? AND parent_id = ?
+      `),
+      getNextOrderNoParent: db.prepare(`
+        SELECT MAX(item_order) as max_order FROM plan_items
+        WHERE project_id = ? AND parent_id IS NULL
+      `),
+      collectDescendants: db.prepare(`
+        WITH RECURSIVE descendants(id) AS (
+          SELECT id FROM plan_items WHERE parent_id = ?
+          UNION ALL
+          SELECT p.id FROM plan_items p
+          JOIN descendants d ON p.parent_id = d.id
+        )
+        SELECT id FROM descendants
+      `),
       getChildrenByParent: db.prepare(`
         SELECT * FROM plan_items
         WHERE project_id = ? AND parent_id = ?
@@ -115,20 +157,25 @@ export class PlanItemRepository implements IPlanItemRepository {
       updateReleaseTag: db.prepare(`
         UPDATE plan_items SET release_tag = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
       `),
+    };
+  }
 
   /**
    * Collect all descendant IDs for a given parent using recursive CTE.
    * Single query instead of O(depth) queries for hierarchical traversal.
    */
   private collectDescendantIds(parentId: string): string[] {
+    const rows = this.stmts.collectDescendants.all(parentId) as { id: string }[];
     return rows.map(r => r.id);
   }
 
   getByProject(projectId: string): PlanItem[] {
+    const rows = this.stmts.getByProject.all(projectId) as Record<string, unknown>[];
     return rows.map(rowToPlanItem);
   }
 
   get(id: string): PlanItem | undefined {
+    const row = this.stmts.getById.get(id) as Record<string, unknown> | undefined;
     if (!row) return undefined;
     return rowToPlanItem(row);
   }
@@ -316,6 +363,7 @@ export class PlanItemRepository implements IPlanItemRepository {
       }
 
       // Delete the item
+      this.stmts.deleteById.run(id);
     });
     transaction();
   }
@@ -334,14 +382,18 @@ export class PlanItemRepository implements IPlanItemRepository {
   }
 
   getChildCount(itemId: string): number {
+    const result = this.stmts.getChildCount.get(itemId) as { count: number };
     return result.count;
   }
 
   updatePosition(itemId: string, x: number, y: number): void {
+    this.stmts.updatePosition.run(x, y, itemId);
   }
 
   getNextOrder(projectId: string, parentId: string | null): number {
     const result = parentId
+      ? this.stmts.getNextOrderWithParent.get(projectId, parentId) as { max_order: number | null }
+      : this.stmts.getNextOrderNoParent.get(projectId) as { max_order: number | null };
     return (result?.max_order ?? -1) + 1;
   }
 

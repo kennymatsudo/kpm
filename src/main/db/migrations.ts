@@ -480,6 +480,19 @@ interface Migration {
     },
   },
   {
+    id: 1011,
+    name: '011_plan_items_project_order_index',
+    up: (db: BetterSqliteDatabase) => {
+      // Composite index for the most common query pattern:
+      // SELECT * FROM plan_items WHERE project_id = ? ORDER BY item_order
+      // This allows the index to handle both filtering AND sorting without filesort.
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_plan_items_project_order
+        ON plan_items(project_id, item_order);
+      `);
+    },
+  },
+  {
     id: 1014,
     name: '014_drop_scratchpad_items',
     up: (db: BetterSqliteDatabase) => {
