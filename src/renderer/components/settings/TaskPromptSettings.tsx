@@ -4,18 +4,34 @@ interface Props {
   currentProjectId?: string | null;
 }
 
+  // Use Zustand store for persisted state (prevents state loss on navigation)
+
+  // Derived state
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) || null;
+
+  // Local UI state
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Form state
   const [name, setName] = useState('');
 
+  // Load templates when scope or project changes
   const loadTemplates = useCallback(async () => {
+    await loadTemplatesFromStore(scope, currentProjectId ?? null);
+  }, [scope, currentProjectId, loadTemplatesFromStore]);
 
   useEffect(() => {
     void loadTemplates();
   }, [loadTemplates]);
 
+  // Sync form state when selection changes
+  useEffect(() => {
+    if (selectedTemplate) {
+      setName(selectedTemplate.name);
+    }
+
+    setSelectedTemplateId(template.id);
     setName(template.name);
   };
 
@@ -24,6 +40,7 @@ interface Props {
   };
 
 
+    setSelectedTemplateId(null);
     setName('');
   };
 
@@ -50,6 +67,7 @@ interface Props {
 
     try {
       if (result.success) {
+        setSelectedTemplateId(null);
         clearForm();
       } else {
       }
@@ -64,6 +82,7 @@ interface Props {
 
     try {
       if (result.success && result.template) {
+        setSelectedTemplateId(result.template.id);
       } else {
       }
     } catch (e) {

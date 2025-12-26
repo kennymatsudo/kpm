@@ -3,6 +3,7 @@
  *
  * Each session:
  * - Creates an isolated git worktree from master/main
+ * - Tracks status (pending → active → inactive)
  * - Persists across app restarts
  */
 
@@ -176,6 +177,9 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           initial_instructions: instructions,
         });
 
+        // Broadcast new session to UI
+        broadcastSessionStatusChange(session);
+
         return success(session);
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
@@ -196,6 +200,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     },
 
     /**
+     * This is the unified action for stopping/removing sessions.
      */
     async deleteSession(
       sessionId: string,
@@ -278,7 +283,10 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     },
 
     /**
+     * Mark all active sessions as inactive (called on app startup)
      */
+    markActiveAsInactive(): void {
+      deps.devSessions.markActiveAsInactive();
     },
   };
 }

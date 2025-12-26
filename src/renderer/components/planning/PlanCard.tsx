@@ -5,6 +5,7 @@ import { DragSource } from '../../constants/dragSource';
 import { getStatusCategory } from '../../constants/statusConfig';
 
 // Hoisted constant for active session status check (avoids array recreation in selector)
+const ACTIVE_SESSION_STATUSES = ['pending', 'active'] as const;
 
 export type { TreeNode };
 export { MAX_DEPTH };

@@ -357,6 +357,7 @@ const devSessions = {
   // Update session status
   updateStatus: (sessionId: string, status: string): Promise<{ success: boolean; error?: string }> =>
 
+  // Delete a session (stops PTY if running, removes record, optionally cleans worktree)
   delete: (sessionId: string, cleanupWorktree?: boolean): Promise<{ success: boolean; error?: string }> =>
 
   // Get git diff for session

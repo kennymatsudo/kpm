@@ -144,6 +144,7 @@ export class DevSessionRepository implements IDevSessionRepository {
     this.stmts.delete.run(id);
   }
 
+  markActiveAsInactive(): void {
     this.stmts.markActiveAsInactive.run();
   }
 }

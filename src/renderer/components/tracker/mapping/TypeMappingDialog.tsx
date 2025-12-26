@@ -17,12 +17,19 @@ export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: P
     removeMapping,
     clearError,
 
+  // Use Zustand store for issue types (shared across dialogs, cached)
+
+  // Local UI state
   const [newLabel, setNewLabel] = useState('');
   const [selectedTypeForNew, setSelectedTypeForNew] = useState<string>('');
 
+  // Derived state
+  const isLoadingTypes = isLoadingIssueTypes && jiraIssueTypes.length === 0;
 
+  // Load mappings and issue types on mount (uses cached data if available)
   useEffect(() => {
     void loadMappingsByScope(projectId, scopeId);
+  }, [projectId, scopeId, projectKey, loadMappingsByScope, loadIssueTypes]);
 
   const handleSaveMapping = async (kpmLabel: string, jiraTypeId: string) => {
     const jiraType = jiraIssueTypes.find(t => t.id === jiraTypeId);

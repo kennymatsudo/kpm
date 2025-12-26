@@ -553,7 +553,13 @@ export type SessionState = 'idle' | 'connecting' | 'ready' | 'processing' | 'err
 /**
  * Status of a development session.
  *
+ * Simplified model - the system can only reliably detect:
+ * - Is approval pending?
+ * - Is PTY running?
+ *
  * State transitions:
+ * - inactive → active (user resumes)
+ * - (any) → deleted (user deletes session)
  */
 export type DevSessionStatus =
 

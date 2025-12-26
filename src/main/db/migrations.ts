@@ -272,6 +272,17 @@ interface Migration {
     id: 2,
     name: '002_add_completed_at',
     up: (db: BetterSqliteDatabase) => {
+      // Check if column already exists (it's now in initial schema)
+      const columns = db.prepare("PRAGMA table_info(plan_items)").all() as { name: string }[];
+      const hasColumn = columns.some((col) => col.name === 'completed_at');
+
+      if (!hasColumn) {
+        db.exec(`
+          -- Add completed_at column for tracking when items are marked done
+          -- Used for weekly update artifact generation
+          ALTER TABLE plan_items ADD COLUMN completed_at DATETIME;
+        `);
+      }
     },
   },
   {
@@ -489,6 +500,63 @@ interface Migration {
       db.exec(`
         CREATE INDEX IF NOT EXISTS idx_plan_items_project_order
         ON plan_items(project_id, item_order);
+      `);
+    },
+  },
+  {
+    id: 1012,
+    up: (db: BetterSqliteDatabase) => {
+      // Simplify dev session statuses from 7 to 3:
+      // - pending → pending (unchanged)
+      // - running, waiting → active
+      // - completed, failed, interrupted, abandoned → inactive
+      //
+      // SQLite doesn't support modifying CHECK constraints, so we recreate the table.
+      db.exec(`
+        -- Create new table with simplified status constraint
+        CREATE TABLE dev_sessions_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          plan_item_id TEXT NOT NULL REFERENCES plan_items(id) ON DELETE CASCADE,
+          repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+          worktree_path TEXT NOT NULL,
+          branch_name TEXT NOT NULL,
+          base_branch TEXT NOT NULL DEFAULT 'main',
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'active', 'inactive')),
+          initial_instructions TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME
+        );
+
+        -- Copy data with status mapping
+        INSERT INTO dev_sessions_new (
+          id, project_id, plan_item_id, repo_id,
+          worktree_path, branch_name, base_branch,
+          status, initial_instructions,
+          created_at, updated_at, completed_at
+        )
+        SELECT
+          id, project_id, plan_item_id, repo_id,
+          worktree_path, branch_name, base_branch,
+          CASE status
+            WHEN 'pending' THEN 'pending'
+            WHEN 'running' THEN 'active'
+            WHEN 'waiting' THEN 'active'
+            ELSE 'inactive'
+          END,
+          initial_instructions,
+          created_at, updated_at, completed_at
+        FROM dev_sessions;
+
+        -- Drop old table and rename new one
+        DROP TABLE dev_sessions;
+        ALTER TABLE dev_sessions_new RENAME TO dev_sessions;
+
+        -- Recreate indexes
+        CREATE INDEX idx_dev_sessions_project ON dev_sessions(project_id);
+        CREATE INDEX idx_dev_sessions_plan_item ON dev_sessions(plan_item_id);
+        CREATE INDEX idx_dev_sessions_status ON dev_sessions(project_id, status);
       `);
     },
   },
