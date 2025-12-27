@@ -4,6 +4,8 @@ export type { PlanAction } from '../../shared/types';
 export { useTrackerStore, useHasAssociations } from './trackerStore';
 
 
+export { useFileTreeStore } from './fileTreeStore';
+
 export { useArtifactsStore } from './artifactsStore';
 
 export { usePermissionStore } from './permissionStore';

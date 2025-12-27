@@ -71,6 +71,7 @@ export interface CreatePlanItemOptions {
   label?: 'project' | 'feature' | 'task' | null;
   item_order?: number;
   code_refs?: string[] | null;
+  status?: 'planned';
   release_tag?: string | null;
   position_x?: number | null;
   position_y?: number | null;
@@ -98,6 +99,7 @@ export function createPlanItem(options: CreatePlanItemOptions = {}): PlanItem {
     label: options.label ?? null,
     item_order: options.item_order ?? 0,
     code_refs: options.code_refs ?? null,
+    status: options.status ?? 'planned',
     release_tag: options.release_tag ?? null,
     position_x: options.position_x ?? null,
     position_y: options.position_y ?? null,

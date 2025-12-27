@@ -8,6 +8,7 @@ import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/inte
 import { getDatabase } from '../../db/connection';
 
 // Status and label enums matching shared types
+const StatusEnum = z.literal('planned');
 const LabelEnum = z.enum(['project', 'feature', 'task']);
 
 type PlanItemSummary = Pick<

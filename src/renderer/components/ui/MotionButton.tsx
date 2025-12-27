@@ -103,6 +103,7 @@ export const ActionButton = forwardRef<HTMLButtonElement, ActionButtonProps>(
         aria-busy={isLoading}
         {...props}
       >
+        <div className={`font-medium flex items-center gap-2 ${description ? '' : 'justify-center'}`}>
           {isLoading && <LoadingSpinnerSmall />}
           {isLoading && loadingText ? loadingText : label}
         </div>

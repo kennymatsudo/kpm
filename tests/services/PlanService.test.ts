@@ -95,6 +95,7 @@ describe('PlanService', () => {
     });
     const service = createPlanService(deps);
 
+    const result = service.updateItem('missing-id', { title: 'Test' });
 
     expect(result.ok).toBe(false);
     if (!result.ok) {

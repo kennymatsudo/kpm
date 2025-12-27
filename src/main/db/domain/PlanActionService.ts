@@ -92,6 +92,7 @@ function executeCreateItem(
     project_id: ctx.projectId,
     title: action.title,
     description: action.description || null,
+    status: 'planned',
     parent_id: parentId,
     item_order: ctx.deps.planItems.getNextOrder(ctx.projectId, parentId),
     code_refs: null,

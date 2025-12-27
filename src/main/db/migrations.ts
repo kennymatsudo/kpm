@@ -505,7 +505,89 @@ interface Migration {
   },
   {
     id: 1012,
+    name: '012_remove_backlog_status',
     up: (db: BetterSqliteDatabase) => {
+      // Remove backlog status - all items are now 'planned'
+      // 1. Update existing backlog items to planned
+      // 2. Recreate table with new CHECK constraint (SQLite limitation)
+      db.exec(`
+        -- First update all backlog items to planned
+        UPDATE plan_items SET status = 'planned' WHERE status = 'backlog';
+
+        -- Recreate table with simplified status constraint (only 'planned')
+        CREATE TABLE plan_items_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          parent_id TEXT,
+          title TEXT NOT NULL,
+          description TEXT,
+          label TEXT,
+          item_order INTEGER NOT NULL,
+          code_refs TEXT,
+          status TEXT NOT NULL DEFAULT 'planned' CHECK(status = 'planned'),
+          release_tag TEXT,
+          position_x REAL,
+          position_y REAL,
+          association_id TEXT REFERENCES kpm_tracker_associations(id) ON DELETE SET NULL,
+          external_key TEXT,
+          external_id TEXT,
+          external_type TEXT,
+          external_issue_type TEXT,
+          external_status TEXT,
+          status_category TEXT CHECK(status_category IN ('not_started', 'in_progress', 'done', 'blocked', 'canceled', 'none')),
+          external_url TEXT,
+          external_parent_key TEXT,
+          external_epic_key TEXT,
+          sync_source TEXT DEFAULT 'local',
+          last_synced_at DATETIME,
+          completed_at DATETIME,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Copy all data
+        INSERT INTO plan_items_new SELECT * FROM plan_items;
+
+        -- Drop old table and rename new one
+        DROP TABLE plan_items;
+        ALTER TABLE plan_items_new RENAME TO plan_items;
+
+        -- Recreate all indexes
+        CREATE INDEX idx_plan_items_project ON plan_items(project_id);
+        CREATE INDEX idx_plan_items_association ON plan_items(association_id);
+        CREATE INDEX idx_plan_items_parent_project ON plan_items(project_id, parent_id);
+        CREATE INDEX idx_plan_items_status_project ON plan_items(project_id, status);
+        CREATE INDEX idx_plan_items_status_category_project ON plan_items(project_id, status_category);
+        CREATE INDEX idx_plan_items_label_project ON plan_items(project_id, label);
+        CREATE INDEX idx_plan_items_release_tag_project ON plan_items(project_id, release_tag);
+        CREATE INDEX idx_plan_items_project_order ON plan_items(project_id, item_order);
+
+        -- Recreate partial unique index for external key lookups
+        CREATE UNIQUE INDEX idx_plan_items_external_key
+        ON plan_items(project_id, external_type, external_key)
+        WHERE external_key IS NOT NULL;
+      `);
+    },
+  },
+  {
+    id: 1013,
+    name: '013_simplify_dev_session_status',
+    up: (db: BetterSqliteDatabase) => {
+      // Check if dev_sessions table already has simplified status
+      // (may have been migrated earlier or in a different order)
+      const tableInfo = db.prepare("PRAGMA table_info(dev_sessions)").all() as { name: string }[];
+      if (!tableInfo.some((col) => col.name === 'status')) {
+        return; // Table doesn't exist yet or has no status column
+      }
+
+      // Try to detect if already migrated by checking existing statuses
+      const oldStatuses = db.prepare("SELECT DISTINCT status FROM dev_sessions").all() as { status: string }[];
+      const hasOldStatuses = oldStatuses.some((s) => ['running', 'waiting', 'completed', 'failed', 'interrupted', 'abandoned'].includes(s.status));
+
+      if (!hasOldStatuses) {
+        return; // Already migrated or empty
+      }
+
       // Simplify dev session statuses from 7 to 3:
       // - pending → pending (unchanged)
       // - running, waiting → active

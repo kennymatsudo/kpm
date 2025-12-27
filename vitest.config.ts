@@ -11,6 +11,7 @@ export default defineConfig({
     include: [
       'src/**/*.test.ts',
       'src/**/*.test.tsx',
+      'tests/**/*.test.ts',
       'packages/*/src/**/*.test.ts',
     ],
 

@@ -2,6 +2,7 @@
 interface BulkDeleteConfirmDialogProps {
   itemCount: number;
   descendantCount: number;
+  onDeleteOrphan: () => void;
   onDeleteAll: () => void;
   onCancel: () => void;
 }
@@ -9,6 +10,7 @@ interface BulkDeleteConfirmDialogProps {
 export function BulkDeleteConfirmDialog({
   itemCount,
   descendantCount,
+  onDeleteOrphan,
   onDeleteAll,
   onCancel,
 }: BulkDeleteConfirmDialogProps) {
@@ -42,7 +44,10 @@ export function BulkDeleteConfirmDialog({
         onCancel={onCancel}
         dualActions={[
           {
+            label: 'Keep children on canvas',
+            description: `Delete ${itemCount} selected item${itemCount > 1 ? 's' : ''}, children become root items`,
             variant: 'primary',
+            onClick: onDeleteOrphan,
           },
           {
             label: 'Delete all',
@@ -64,6 +69,7 @@ export function BulkDeleteConfirmDialog({
       action={{
         label: `Delete ${itemCount} Item${itemCount > 1 ? 's' : ''}`,
         variant: 'danger',
+        onClick: onDeleteOrphan,
       }}
     />
   );

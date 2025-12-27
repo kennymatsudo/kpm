@@ -38,6 +38,7 @@ import type {
   DevSession,
   DevSessionWithPlanItem,
   ClaudeModel,
+  FileNode,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -77,6 +78,7 @@ export type {
   DevSession,
   DevSessionWithPlanItem,
   ClaudeModel,
+  FileNode,
 };
 
 const tempImages = {
@@ -379,6 +381,49 @@ const devSessions = {
   },
 };
 
+const fileExplorer = {
+  // List directory contents
+  listDirectory: (
+    projectId: string,
+    path?: string,
+    options?: { recursive?: boolean; depth?: number }
+  ): Promise<FileNode[]> =>
+
+  // Create a new folder
+  createFolder: (projectId: string, path: string): Promise<FileNode> =>
+
+  // Create a new file
+  createFile: (projectId: string, path: string, content?: string): Promise<FileNode> =>
+
+  // Create a symlink to external path
+  createSymlink: (projectId: string, targetPath: string, linkPath: string): Promise<FileNode> =>
+
+  // Delete a file or folder
+  delete: (projectId: string, path: string): Promise<{ success: boolean; error?: string }> =>
+
+  // Rename/move a file or folder
+  rename: (projectId: string, oldPath: string, newPath: string): Promise<FileNode> =>
+
+  // Get info about a single file/folder
+  getInfo: (projectId: string, path: string): Promise<FileNode> =>
+
+  // Read file content
+  readFile: (projectId: string, path: string): Promise<string> =>
+
+  // Write file content
+  writeFile: (projectId: string, path: string, content: string): Promise<{ success: boolean; error?: string }> =>
+
+  // Get symlink information
+  getSymlinkInfo: (projectId: string, path: string): Promise<{ isSymlink: boolean; target?: string; isBroken?: boolean }> =>
+
+  // Show folder selection dialog for linking external folders
+  selectFolderDialog: (title?: string): Promise<string | null> =>
+};
+
+// Shell API (for OS-level operations)
+const shell = {
+};
+
 export const api = {
   tempImages,
   chat,
@@ -396,6 +441,8 @@ export const api = {
   artifacts,
   worktrees,
   devSessions,
+  fileExplorer,
+  shell,
 };
 
 export type API = typeof api;

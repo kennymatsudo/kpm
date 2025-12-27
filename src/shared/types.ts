@@ -529,6 +529,7 @@ export interface PermissionResponse {
  */
 export type FocusedResource =
   | { type: 'plan_item'; id: string; title: string }
+  | { type: 'project_file'; path: string; isDirectory: boolean }
   | { type: 'document'; id: string; title: string; path: string };
 
 // =============================================================================
@@ -602,5 +603,31 @@ export interface DevSessionWithPlanItem extends DevSession {
     external_key: string | null;
 }
 
+// File Explorer Types
+// =============================================================================
+
+/**
+ * A node in the file explorer tree.
+ */
+export interface FileNode {
+  /** File or folder name */
+  name: string;
+  /** Relative path from project root */
+  path: string;
+  /** Whether this is a directory */
+  isDirectory: boolean;
+  /** Whether this is a symlink */
+  isSymlink: boolean;
+  /** For symlinks, the target path */
+  symlinkTarget?: string;
+  /** Whether a symlink is broken (target doesn't exist) */
+  isSymlinkBroken?: boolean;
+  /** Children (only populated for directories when expanded) */
+  children?: FileNode[];
+  /** Last modified timestamp (ISO string) */
+  modifiedAt: string;
+  /** File size in bytes (0 for directories) */
+  size: number;
+}
 
 export type SearchEntityType = 'plan_item' | 'document';

@@ -4,6 +4,13 @@ interface Props {
   currentProjectId?: string | null;
 }
 
+const allTabs: { id: SettingsTab; label: string; icon: React.ReactNode; requiresProject?: boolean }[] = [
+  {
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      </svg>
+    ),
+  },
   {
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -18,6 +25,10 @@ interface Props {
   {
 ];
 
+
+  const tabs = useMemo(() => {
+    return allTabs.filter((tab) => !tab.requiresProject || currentProjectId);
+  }, [currentProjectId]);
 
   return (
     <Modal

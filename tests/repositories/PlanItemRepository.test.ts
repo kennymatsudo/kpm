@@ -24,6 +24,7 @@ describe('PlanItemRepository', () => {
         title: 'Test Item',
         description: 'A test description',
         label: 'task',
+        status: 'planned',
       });
 
       const item = ctx.repos.planItems.add(itemData);
@@ -31,6 +32,7 @@ describe('PlanItemRepository', () => {
       expect(item.id).toBe('item-1');
       expect(item.title).toBe('Test Item');
       expect(item.description).toBe('A test description');
+      expect(item.status).toBe('planned');
     });
 
     it('serializes code_refs as JSON', () => {
@@ -121,14 +123,18 @@ describe('PlanItemRepository', () => {
       expect(item?.label).toBe('task');
     });
 
+    it('can update status_category', () => {
       ctx.repos.planItems.add(createPlanItem({
         id: 'item-1',
         project_id: projectId,
         title: 'Test',
+        status: 'planned',
       }));
 
+      ctx.repos.planItems.update('item-1', { status_category: 'in_progress' });
 
       const item = ctx.repos.planItems.get('item-1');
+      expect(item?.status_category).toBe('in_progress');
     });
   });
 
@@ -146,6 +152,7 @@ describe('PlanItemRepository', () => {
       expect(item).toBeUndefined();
     });
 
+    it('orphans descendants when parent is deleted', () => {
       ctx.repos.planItems.add(createPlanItem({
         id: 'parent',
         project_id: projectId,
@@ -168,6 +175,7 @@ describe('PlanItemRepository', () => {
       const child = ctx.repos.planItems.get('child');
       expect(child).toBeDefined();
       expect(child?.parent_id).toBeNull();
+      expect(child?.status).toBe('planned');
     });
   });
 

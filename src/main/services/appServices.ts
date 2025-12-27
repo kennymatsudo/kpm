@@ -23,5 +23,6 @@ export function createAppServices(container: IRepositoryContainer) {
     repoService,
     worktreeService,
     devSessionService,
+    fileExplorerService,
   };
 }

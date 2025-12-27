@@ -356,8 +356,10 @@ export class PlanItemRepository implements IPlanItemRepository {
       const descendantIds = this.collectDescendantIds(id);
 
       if (descendantIds.length > 0) {
+        // Orphan all descendants (parent_id=null, keep status as 'planned')
         const placeholders = descendantIds.map(() => '?').join(',');
         const updateDescendants = this.db.prepare(
+          `UPDATE plan_items SET parent_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`
         );
         updateDescendants.run(...descendantIds);
       }

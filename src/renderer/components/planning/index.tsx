@@ -43,6 +43,7 @@ export function PlanView({
     showBulkDeleteDialog,
     openBulkDeleteDialog,
     closeBulkDeleteDialog,
+    handleBulkDeleteOrphan,
     handleBulkDeleteAll,
   } = useBulkActions({
     selectedItemIds,
@@ -114,6 +115,7 @@ export function PlanView({
         <BulkDeleteConfirmDialog
           itemCount={selectedItemIds.size}
           descendantCount={descendantIds.size}
+          onDeleteOrphan={handleBulkDeleteOrphan}
           onDeleteAll={handleBulkDeleteAll}
           onCancel={closeBulkDeleteDialog}
         />

@@ -38,6 +38,7 @@ export interface PlanItem {
   label: string | null;
   item_order: number;
   code_refs: string[] | null;
+  status: 'planned';
   release_tag: string | null;
   position_x: number | null;
   position_y: number | null;

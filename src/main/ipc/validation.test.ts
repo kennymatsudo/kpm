@@ -89,6 +89,7 @@ describe('PlanSchemas', () => {
             y: 200,
           },
         ],
+          { type: 'create_item', title: 'Item 1', parent_id: null },
         ],
     });
 

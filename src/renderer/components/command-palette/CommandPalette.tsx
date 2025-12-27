@@ -39,11 +39,22 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       },
 
 
+      command.action();
+      return;
+    }
+
     setExecutingCommand(command.id);
     setCommandError(null);
 
     try {
 
+      if (result.success && result.taskId) {
+        closeTimeoutRef.current = setTimeout(() => {
+          onClose();
+        }, 200);
+      } else {
+        setCommandError(result.error || 'Failed to start generation');
+        setExecutingCommand(null);
       }
     } catch (error) {
       setCommandError(error instanceof Error ? error.message : 'An error occurred');
