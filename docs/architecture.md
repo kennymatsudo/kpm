@@ -61,8 +61,11 @@ src/
 | `attachments` | Uploaded files |
 | `plan_items` | Plan hierarchy + external tracker fields + `completed_at` |
 | `plan_relations` | Dependencies (depends_on, blocks, relates_to) |
+| `tracker_connections` | Site-level connections (credentials in OS keychain) |
 | `tracker_project_scopes` | Tracker project authorization (Jira/Linear) |
 | `tracker_type_mappings` | Label → tracker issue type |
+| `sync_snapshots` | Last-synced state for three-way conflict detection |
+| `app_settings` | Global key-value application preferences |
 | `tool_permissions` | Persisted per-project tool permission grants |
 | `project_briefings` | Cached generated project briefings |
 | `review_ownership` | Review-thread ownership decisions |
@@ -80,11 +83,28 @@ src/
 - `repos.active_worktree_path` - Active checkout used for repo context and branch watching
 - `agent_review_runs.status` - Latest opposing-agent review freshness (`complete` or `stale`)
 
+## Repository Architecture
+
+**Dependency Injection Container** (`src/main/db/container.ts`):
+- Singleton pattern with lazy initialization
+- Testable via mock injection
+
 **Repository Interfaces** (`src/main/db/interfaces/`):
 - Type definitions separated by domain (plan, project, tracker, etc.)
 - Clean separation between interface and implementation
 - Enables mocking for unit tests
 
+| Repository | Purpose |
+|------------|---------|
+| `ProjectRepository` | Project CRUD |
+| `PlanItemRepository` | Plan items with hierarchy (cached statements) |
+| `PlanRelationRepository` | Item dependencies |
+| `TrackerRepository` | Three-level tracker config |
+| `SyncRepository` | Conflict detection snapshots |
+| `SyncQueueRepository` | Export queue management |
+| `ExternalPlanItemRepository` | Tracker-linked items |
+| `DevSessionRepository` | Implementation sessions |
+| `ChatMessageRepository` | Unified chat history |
 | `CustomThemeRepository` | Imported theme persistence |
 | `ToolPermissionRepository` | Persisted tool permission grants |
 | `ReviewTaskRepository` | GitHub review tasks |
@@ -93,6 +113,7 @@ src/
 | `AgentReviewRepository` | Opposing-agent review runs and findings |
 | `SlackChannelLinkRepository` | Slack channel links |
 | `SlackTriageItemRepository` | Slack triage items and action suggestions |
+
 ## Service Architecture
 
 **Two-Layer Service Pattern:**
@@ -110,25 +131,41 @@ src/
 - Wires all services with their dependencies
 - Single point of service instantiation
 
+## Frontend Architecture
+
+**Zustand Store Organization** (`src/renderer/stores/`):
+
+**Sliced Project Store** - Main state management:
 - `project/projectSlice.ts` - Project CRUD
 - `project/planSlice.ts` - Plan items, actions, relations
 - `project/uiSlice.ts` - UI state (editing, focused resources)
 - `project/resourceSlice.ts` - Repos, attachments, worktrees
+
 - `devSessions/` - Plan-item dev sessions, PR context, review inbox, merge order
+- `trackerStore.ts` - Tracker associations
 - `tracker/useSyncStore.ts` - Sync preview & conflicts
 - `tracker/useExportStore.ts` - Export queue
 - `tracker/useCredentialStore.ts` - Tracker credentials
+- `artifactsStore.ts` - Generated artifacts
+- `permissionStore.ts` - Permission requests
 - `fileTreeStore.ts` - File explorer state
 - `contextRegenerationStore.ts` - Context regeneration modal state
 - `useSlackTriageStore.ts` - Slack triage panel and execution state
 
 Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and are accessed through `useProjectUiDomainStore`.
+
+**Cross-Store Events** (`storeEvents.ts`):
+- `status-changed` - Plan item status updated
 - `navigate-to-view` - Navigate between planning/workspace views
 - `file-explorer-changed` - Project file watcher reported create/update/delete/rename
 - `chat-file-updated` - Chat/document flow updated a project file
+
+| Component | Purpose |
+|-----------|---------|
 | `development/` | Shared PR/review components (CreatePrModal, ReviewTab, etc.) used by the board |
 | `slack/` | Slack triage panel, badge, channel settings |
 | `onboarding/` | Project onboarding and context regeneration |
+
 ## IPC Pattern
 
 ```
