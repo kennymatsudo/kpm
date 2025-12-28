@@ -4,9 +4,11 @@
  * Implements fine-grained permission rules:
  * - Auto-allow: All tools in project directory, read tools anywhere, MCP tools
  * - Prompt: Write tools outside project directory (Edit, Write, Bash)
+ * - Session cache: "Allow Always" decisions persist per session (via clientManager)
  */
 
 import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import { clientManager } from './clientManager';
 const READ_TOOLS = ['Read', 'Grep', 'Glob'];
 const WRITE_TOOLS = ['Edit', 'Write', 'Bash'];
 
@@ -116,7 +118,9 @@ export function createPermissionHandler(
       return { behavior: 'allow', updatedInput: input };
     }
 
+    // Rule 4: Check "Allow Always" cache (stored in clientManager)
     const cacheKey = `${toolName}:${targetPath || 'no-path'}`;
+    if (clientManager.hasPermissionCached(context.projectId, cacheKey)) {
       return { behavior: 'allow', updatedInput: input };
     }
 
@@ -124,6 +128,8 @@ export function createPermissionHandler(
     if (WRITE_TOOLS.includes(toolName)) {
       const result = await promptUser(toolName, input, options);
 
+      // If "Allow Always" was selected, cache it via clientManager
+        clientManager.cachePermission(context.projectId, cacheKey);
       }
 
       return result;
@@ -140,6 +146,7 @@ export function createPermissionHandler(
  * Called from chat:new-session handler.
  */
 export function clearSessionCache(projectId: string): void {
+  clientManager.clearPermissionCache(projectId);
 }
 
 /**

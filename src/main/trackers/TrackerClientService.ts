@@ -1,6 +1,7 @@
 import {
   JiraClient,
   KeytarCredentialProvider,
+} from '../tracker-clients';
 
 const provider = new KeytarCredentialProvider();
 

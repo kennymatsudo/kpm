@@ -9,11 +9,13 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+} from '../../../shared/types';
 import type {
   IDevSessionRepository,
   IPlanItemRepository,
   IProjectRepository,
   IRepoRepository,
+} from '../../db/interfaces';
 
 interface AgentContextInput {
   item: PlanItem;
@@ -289,6 +291,12 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       deps.devSessions.markActiveAsInactive();
     },
   };
+
+  return service;
 }
+
+// =============================================================================
+// Type Export
+// =============================================================================
 
 export type DevSessionService = ReturnType<typeof createDevSessionService>;

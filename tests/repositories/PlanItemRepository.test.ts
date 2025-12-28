@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { createTestRepositoryContext, createPlanItem, type TestRepositoryContext } from '../';
 
 describe('PlanItemRepository', () => {
   let ctx: TestRepositoryContext;

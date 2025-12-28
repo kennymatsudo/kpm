@@ -1,3 +1,5 @@
+import type { Attachment } from '../../../shared/types';
+import type { IAttachmentRepository, IProjectRepository } from '../../db/interfaces';
 
 export interface AttachmentFs {
   access: typeof fs.access;
@@ -97,3 +99,8 @@ export function createAttachmentService(deps: AttachmentServiceDeps) {
   };
 }
 
+// =============================================================================
+// Type Export
+// =============================================================================
+
+export type AttachmentService = ReturnType<typeof createAttachmentService>;

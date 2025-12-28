@@ -1,3 +1,5 @@
+import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
+import { failure, success, type ServiceResult } from '../result';
 
 export interface PlanServiceDeps {
   planItems: IPlanItemRepository;
@@ -68,3 +70,8 @@ export function createPlanService(deps: PlanServiceDeps) {
   };
 }
 
+// =============================================================================
+// Type Export
+// =============================================================================
+
+export type PlanService = ReturnType<typeof createPlanService>;

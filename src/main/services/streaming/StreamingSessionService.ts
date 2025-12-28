@@ -10,6 +10,7 @@
  */
 
 import type { BrowserWindow } from 'electron';
+import type { PlanContext } from '../../claude/prompts';
 
 // =============================================================================
 // Types

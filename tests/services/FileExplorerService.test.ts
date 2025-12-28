@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { createFileExplorerService } from '../../src/main/services/files/FileExplorerService';
 
 // Create a temp directory for each test
 let tempDir: string;

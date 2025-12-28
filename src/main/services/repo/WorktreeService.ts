@@ -1,9 +1,11 @@
 import * as fs from 'fs';
+import type { Worktree, WorktreeStatus } from '../../../shared/types';
 import type {
   IWorktreeRepository,
   IPlanItemRepository,
   IProjectRepository,
   IRepoRepository,
+} from '../../db/interfaces';
 
 export interface WorktreeServiceDeps {
   worktrees: IWorktreeRepository;
@@ -13,6 +15,7 @@ export interface WorktreeServiceDeps {
 }
 
 // Re-export types for consumers
+export type { WorktreeStatus } from '../../../shared/types';
 
   try {
     return success(await fn());
@@ -178,3 +181,9 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
     },
   };
 }
+
+// =============================================================================
+// Type Export
+// =============================================================================
+
+export type WorktreeService = ReturnType<typeof createWorktreeService>;

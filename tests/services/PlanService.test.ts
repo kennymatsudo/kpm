@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { createPlanService, type PlanServiceDeps } from '../../src/main/services/core/PlanService';
 import type { PlanItem, PlanRelation } from '../../src/shared/types';
 
 const baseItem: PlanItem = {

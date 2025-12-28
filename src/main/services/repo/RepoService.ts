@@ -1,6 +1,8 @@
+import type { IRepoRepository } from '../../db/interfaces';
 
 export interface RepoServiceDeps {
   repos: IRepoRepository;
+  watcher: RepoWatcherService;
 }
 
 export function createRepoService(deps: RepoServiceDeps) {
@@ -72,3 +74,8 @@ export function createRepoService(deps: RepoServiceDeps) {
   };
 }
 
+// =============================================================================
+// Type Export
+// =============================================================================
+
+export type RepoService = ReturnType<typeof createRepoService>;

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { createRepoService, type RepoServiceDeps } from '../../src/main/services/repo/RepoService';
 import type { Repo } from '../../src/shared/types';
 
 function createRepo(id: string, projectId: string, path: string): Repo {

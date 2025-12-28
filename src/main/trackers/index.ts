@@ -20,3 +20,4 @@ export {
   inferCategoryWithMapping,
   findTransitionWithMapping,
 } from './statusTransitions';
+export { TrackerClientService } from './TrackerClientService';

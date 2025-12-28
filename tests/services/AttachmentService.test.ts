@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { createAttachmentService, type AttachmentServiceDeps } from '../../src/main/services/core/AttachmentService';
 import type { Attachment, Project } from '../../src/shared/types';
 
 function createProject(id: string): Project {

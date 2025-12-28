@@ -41,6 +41,13 @@ class ClaudeClientManager {
   private static instance: ClaudeClientManager;
   private idleCheckInterval?: NodeJS.Timeout;
 
+  /**
+   * Permission cache for "Allow Always" decisions.
+   * Key: projectId -> Set<cacheKey>
+   * Cache keys are formatted as "toolName:targetPath"
+   */
+  private permissionCache = new Map<string, Set<string>>();
+
   /** Idle timeout: 30 minutes */
   private static readonly IDLE_TIMEOUT_MS = 30 * 60 * 1000;
   /** Check for idle sessions every 5 minutes */
@@ -147,6 +154,45 @@ class ClaudeClientManager {
     if (keysToDispose.length > 0) {
       console.log(`[ClientManager] Cleaning up ${keysToDispose.length} idle sessions`);
     }
+  }
+
+  // ============================================
+  // Permission Cache Management
+  // ============================================
+
+  /**
+   * Check if a permission has been cached for "Allow Always".
+   */
+  hasPermissionCached(projectId: string, cacheKey: string): boolean {
+    return this.permissionCache.get(projectId)?.has(cacheKey) ?? false;
+  }
+
+  /**
+   * Cache a permission decision for "Allow Always".
+   */
+  cachePermission(projectId: string, cacheKey: string): void {
+    if (!this.permissionCache.has(projectId)) {
+      this.permissionCache.set(projectId, new Set());
+    }
+    this.permissionCache.get(projectId)!.add(cacheKey);
+    console.log(`[ClientManager] Cached permission: ${projectId} -> ${cacheKey}`);
+  }
+
+  /**
+   * Clear permission cache for a project.
+   * Called when starting a new session.
+   */
+  clearPermissionCache(projectId: string): void {
+    this.permissionCache.delete(projectId);
+    console.log(`[ClientManager] Cleared permission cache for project ${projectId}`);
+  }
+
+  /**
+   * Clear all permission caches.
+   */
+  clearAllPermissionCaches(): void {
+    this.permissionCache.clear();
+    console.log(`[ClientManager] Cleared all permission caches`);
   }
 }
 
