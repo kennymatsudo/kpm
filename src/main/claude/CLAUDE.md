@@ -41,8 +41,14 @@ Tools are direct function calls registered with the SDK at startup—no subproce
 ### 3. Plan Modification Workflow
 
 
+
 ```
+  ↓ Tool validates input via Zod
+  ↓ Tool emits PlanAction[] via onPlanActions callback
 ```
+
+
+**Exception (immediate execution):**
 
 ## Adding New Tools
 
@@ -69,7 +75,9 @@ Tools are direct function calls registered with the SDK at startup—no subproce
 - Undocumented behavior = Claude guesses (add concrete examples)
 
 ### Plan Modifications
+- **ALL modification tools MUST emit PlanAction[] via onPlanActions callback**
 - Actions are atomic (all succeed or all fail)
+- If adding a new bulk modification tool, pass `onPlanActions` callback and emit actions
 
 ## File Organization
 

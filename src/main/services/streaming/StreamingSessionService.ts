@@ -264,6 +264,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
   /**
    * Interrupt the current execution in a session.
+   * Resets state to 'ready' so new messages can be sent.
    */
     const managed = sessions.get(sessionKey);
     if (!managed) {
@@ -271,6 +272,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
 
     try {
+      // Reset state to ready so new messages can be sent
+      managed.state = 'ready';
       return success(undefined);
     } catch (error) {
     }

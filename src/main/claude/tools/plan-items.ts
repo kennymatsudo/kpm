@@ -1,11 +1,16 @@
 /**
  * Plan Item Tools
  *
+ * Query tools for reading plan items, and bulk modification tools that emit
+ *
+ * IMPORTANT: All modification tools MUST emit actions via onPlanActions callback.
  */
 
 import { z } from 'zod';
 import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
+import type { PlanItem, PlanAction } from '../../../shared/types';
 import { getDatabase } from '../../db/connection';
+
 
 // Status and label enums matching shared types
 const StatusEnum = z.literal('planned');
@@ -40,6 +45,11 @@ interface PlanItemWithExtras extends PlanItem {
   dependencies?: ItemDependencies;
 }
 
+export function createPlanItemTools(
+  planItemRepo: IPlanItemRepository,
+  planRelationRepo: IPlanRelationRepository | undefined,
+  onPlanActions: PlanActionsCallback
+) {
   const db = getDatabase();
 
   /**
@@ -463,6 +473,460 @@ interface PlanItemWithExtras extends PlanItem {
             relatedTo,
           },
         });
+    ),
+
+    tool(
+      {
+        projectId: z.string().uuid().describe('The project UUID'),
+      },
+      async ({ projectId }) => {
+        try {
+          const nestedItems = db
+            .prepare(
+              `
+            `
+            )
+              id: string;
+              title: string;
+              parent_id: string;
+              external_parent_key: string | null;
+
+          if (nestedItems.length === 0) {
+            return jsonResult({ message: 'No nested items to flatten', count: 0 });
+          }
+
+
+
+          if (itemsToFlatten.length === 0) {
+            return jsonResult({
+              message: 'All nested items are Jira subtasks and cannot be unnested',
+              count: 0,
+            });
+          }
+
+          const actions: PlanAction[] = itemsToFlatten.map((item) => ({
+            type: 'reparent' as const,
+            item_id: item.id,
+            new_parent_id: null,
+          }));
+
+          onPlanActions(actions);
+
+          return jsonResult({
+            success: true,
+            actionCount: actions.length,
+          });
+        } catch (error) {
+          return toolError(`Failed to flatten hierarchy: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    ),
+
+    tool(
+      {
+        projectId: z.string().uuid().describe('The project UUID'),
+        itemIds: z.array(z.string().uuid()).optional().describe('Specific item IDs to update'),
+        filter: z
+          .object({
+            parentId: z.string().uuid().optional().describe('Update children of this parent'),
+            currentStatusCategory: StatusCategoryEnum.optional().describe('Only update items with this status'),
+            label: LabelEnum.optional().describe('Only update items with this label'),
+          })
+          .optional()
+          .describe('Filter criteria (ignored if itemIds provided)'),
+        newStatusCategory: StatusCategoryEnum.describe('The new status category to set'),
+      },
+      async ({ projectId, itemIds, filter, newStatusCategory }) => {
+        try {
+          let idsToUpdate: string[];
+
+          if (itemIds && itemIds.length > 0) {
+            idsToUpdate = itemIds;
+          } else if (filter) {
+            // Build query based on filter
+            const where: string[] = ['project_id = ?'];
+            const params: unknown[] = [projectId];
+
+            if (filter.parentId) {
+              where.push('parent_id = ?');
+              params.push(filter.parentId);
+            }
+            if (filter.currentStatusCategory) {
+              where.push('status_category = ?');
+              params.push(filter.currentStatusCategory);
+            }
+            if (filter.label) {
+              where.push('label = ?');
+              params.push(filter.label);
+            }
+
+            const rows = db
+              .prepare(`SELECT id FROM plan_items WHERE ${where.join(' AND ')}`)
+            idsToUpdate = rows.map((r) => r.id);
+          } else {
+            return toolError('Must provide either itemIds or filter criteria');
+          }
+
+          if (idsToUpdate.length === 0) {
+            return jsonResult({ message: 'No items matched criteria', count: 0 });
+          }
+
+          const actions: PlanAction[] = idsToUpdate.map((id) => ({
+            type: 'update_item' as const,
+            item_id: id,
+            updates: { status_category: newStatusCategory },
+          }));
+
+          onPlanActions(actions);
+
+          return jsonResult({
+            success: true,
+            actionCount: actions.length,
+          });
+        } catch (error) {
+          return toolError(`Failed to bulk update status: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    ),
+
+    tool(
+      {
+        projectId: z.string().uuid().describe('The project UUID'),
+        itemIds: z.array(z.string().uuid()).optional().describe('Specific item IDs to delete'),
+        filter: z
+          .object({
+            statusCategory: StatusCategoryEnum.optional().describe('Delete items with this status'),
+            label: LabelEnum.optional().describe('Delete items with this label'),
+            parentId: z.string().uuid().optional().describe('Delete children of this parent'),
+          })
+          .optional()
+          .describe('Filter criteria (ignored if itemIds provided)'),
+      },
+      async ({ projectId, itemIds, filter }) => {
+        try {
+          let idsToDelete: string[];
+
+          if (itemIds && itemIds.length > 0) {
+            idsToDelete = itemIds;
+          } else if (filter) {
+            const where: string[] = ['project_id = ?'];
+            const params: unknown[] = [projectId];
+
+            if (filter.statusCategory) {
+              where.push('status_category = ?');
+              params.push(filter.statusCategory);
+            }
+            if (filter.label) {
+              where.push('label = ?');
+              params.push(filter.label);
+            }
+            if (filter.parentId) {
+              where.push('parent_id = ?');
+              params.push(filter.parentId);
+            }
+
+            const rows = db
+              .prepare(`SELECT id FROM plan_items WHERE ${where.join(' AND ')}`)
+            idsToDelete = rows.map((r) => r.id);
+          } else {
+            return toolError('Must provide either itemIds or filter criteria');
+          }
+
+          if (idsToDelete.length === 0) {
+            return jsonResult({ message: 'No items matched criteria', count: 0 });
+          }
+
+          // Get all descendants too (will be deleted via CASCADE when parent is deleted)
+          const allIds = new Set(idsToDelete);
+          const getDescendants = db.prepare(`
+            WITH RECURSIVE descendants(id) AS (
+              SELECT id FROM plan_items WHERE parent_id = ?
+              UNION ALL
+              SELECT p.id FROM plan_items p JOIN descendants d ON p.parent_id = d.id
+            )
+            SELECT id FROM descendants
+          `);
+
+          for (const id of idsToDelete) {
+            for (const d of descendants) {
+              allIds.add(d.id);
+            }
+          }
+
+          const actions: PlanAction[] = idsToDelete.map((id) => ({
+            type: 'delete_item' as const,
+            item_id: id,
+          }));
+
+          onPlanActions(actions);
+
+          return jsonResult({
+            success: true,
+            actionCount: actions.length,
+            totalAffected: allIds.size,
+          });
+        } catch (error) {
+          return toolError(`Failed to bulk delete: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    ),
+
+    tool(
+      {
+        projectId: z.string().uuid().describe('The project UUID'),
+        itemIds: z.array(z.string().uuid()).describe('Item IDs to move'),
+        newParentId: z.string().uuid().nullable().describe('New parent ID, or null to move to root'),
+      },
+      async ({ projectId, itemIds, newParentId }) => {
+        try {
+          if (itemIds.length === 0) {
+            return jsonResult({ message: 'No items to reparent', count: 0 });
+          }
+
+          const placeholders = itemIds.map(() => '?').join(',');
+          const items = db
+
+          if (items.length === 0) {
+            return toolError('No valid items found in project');
+          }
+
+          // Check for Jira subtasks if moving to root
+          const skipped: string[] = [];
+          const toUpdate: { id: string; parentId: string | null }[] = [];
+
+          if (newParentId === null) {
+            for (const item of items) {
+              }
+              toUpdate.push({ id: item.id, parentId: null });
+            }
+          } else {
+            // Moving under a parent - no Jira restrictions
+            for (const item of items) {
+              if (item.id === newParentId) continue; // Can't be own parent
+              toUpdate.push({ id: item.id, parentId: newParentId });
+            }
+          }
+
+          if (toUpdate.length === 0) {
+            return jsonResult({
+              message: 'No items could be reparented (Jira subtasks cannot be moved from their parent)',
+              count: 0,
+              skippedJiraSubtasks: skipped.length,
+            });
+          }
+
+          const actions: PlanAction[] = toUpdate.map((item) => ({
+            type: 'reparent' as const,
+            item_id: item.id,
+            new_parent_id: item.parentId,
+          }));
+
+          onPlanActions(actions);
+
+          return jsonResult({
+            success: true,
+            actionCount: actions.length,
+            skippedJiraSubtasks: skipped.length > 0 ? skipped.length : undefined,
+          });
+        } catch (error) {
+          return toolError(`Failed to bulk reparent: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    ),
+
+    tool(
+      {
+        projectId: z.string().uuid().describe('The project UUID'),
+        itemIds: z.array(z.string().uuid()).optional().describe('Specific item IDs to update'),
+        filter: z
+          .object({
+            parentId: z.string().uuid().optional().describe('Update children of this parent'),
+            currentLabel: LabelEnum.optional().describe('Only update items with this label'),
+          })
+          .optional()
+          .describe('Filter criteria (ignored if itemIds provided)'),
+        newLabel: LabelEnum.describe('The new label to set'),
+      },
+      async ({ projectId, itemIds, filter, newLabel }) => {
+        try {
+          let idsToUpdate: string[];
+
+          if (itemIds && itemIds.length > 0) {
+            idsToUpdate = itemIds;
+          } else if (filter) {
+            const where: string[] = ['project_id = ?'];
+            const params: unknown[] = [projectId];
+
+            if (filter.parentId) {
+              where.push('parent_id = ?');
+              params.push(filter.parentId);
+            }
+            if (filter.currentLabel) {
+              where.push('label = ?');
+              params.push(filter.currentLabel);
+            }
+
+            const rows = db
+              .prepare(`SELECT id FROM plan_items WHERE ${where.join(' AND ')}`)
+            idsToUpdate = rows.map((r) => r.id);
+          } else {
+            return toolError('Must provide either itemIds or filter criteria');
+          }
+
+          if (idsToUpdate.length === 0) {
+            return jsonResult({ message: 'No items matched criteria', count: 0 });
+          }
+
+          const actions: PlanAction[] = idsToUpdate.map((id) => ({
+            type: 'set_label' as const,
+            item_id: id,
+            label: newLabel,
+          }));
+
+          onPlanActions(actions);
+
+          return jsonResult({
+            success: true,
+            actionCount: actions.length,
+          });
+        } catch (error) {
+          return toolError(`Failed to bulk set label: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    ),
+
+    tool(
+      {
+        projectId: z.string().uuid().describe('The project UUID'),
+        itemIds: z.array(z.string().uuid()).optional().describe('Specific item IDs to update'),
+        filter: z
+          .object({
+            parentId: z.string().uuid().optional().describe('Update children of this parent'),
+            statusCategory: StatusCategoryEnum.optional().describe('Only update items with this status'),
+            label: LabelEnum.optional().describe('Only update items with this label'),
+          })
+          .optional()
+          .describe('Filter criteria (ignored if itemIds provided)'),
+        releaseTag: z.string().nullable().describe('The release tag to set (null to clear)'),
+      },
+      async ({ projectId, itemIds, filter, releaseTag }) => {
+        try {
+          let idsToUpdate: string[];
+
+          if (itemIds && itemIds.length > 0) {
+            idsToUpdate = itemIds;
+          } else if (filter) {
+            const where: string[] = ['project_id = ?'];
+            const params: unknown[] = [projectId];
+
+            if (filter.parentId) {
+              where.push('parent_id = ?');
+              params.push(filter.parentId);
+            }
+            if (filter.statusCategory) {
+              where.push('status_category = ?');
+              params.push(filter.statusCategory);
+            }
+            if (filter.label) {
+              where.push('label = ?');
+              params.push(filter.label);
+            }
+
+            const rows = db
+              .prepare(`SELECT id FROM plan_items WHERE ${where.join(' AND ')}`)
+            idsToUpdate = rows.map((r) => r.id);
+          } else {
+            return toolError('Must provide either itemIds or filter criteria');
+          }
+
+          if (idsToUpdate.length === 0) {
+            return jsonResult({ message: 'No items matched criteria', count: 0 });
+          }
+
+          const actions: PlanAction[] = idsToUpdate.map((id) => ({
+            type: 'set_release' as const,
+            item_id: id,
+            release_tag: releaseTag,
+          }));
+
+          onPlanActions(actions);
+
+          return jsonResult({
+            success: true,
+            message: releaseTag
+            actionCount: actions.length,
+          });
+        } catch (error) {
+          return toolError(`Failed to bulk set release: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    ),
+
+    tool(
+      'Clear canvas positions for all items in the project. NOTE: This is a UI-only operation that executes immediately (no approval needed) since it only affects canvas layout, not plan structure. Use when user asks to "reset layout", "clear positions", "reset canvas".',
+      {
+        projectId: z.string().uuid().describe('The project UUID'),
+      },
+      async ({ projectId }) => {
+        try {
+          const result = db
+            .prepare(`UPDATE plan_items SET position_x = NULL, position_y = NULL, updated_at = CURRENT_TIMESTAMP WHERE project_id = ? AND (position_x IS NOT NULL OR position_y IS NOT NULL)`)
+            .run(projectId);
+
+          return jsonResult({
+            message: `Cleared positions for ${result.changes} item(s)`,
+            count: result.changes,
+          });
+        } catch (error) {
+          return toolError(`Failed to clear positions: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    ),
+
+    tool(
+      {
+        projectId: z.string().uuid().describe('The project UUID'),
+        itemIds: z.array(z.string().uuid()).describe('Item IDs to clear dependencies from'),
+        direction: z
+          .enum(['all', 'incoming', 'outgoing'])
+          .optional()
+          .describe('Which dependencies to clear: all (default), incoming (blocked by), or outgoing (blocks)'),
+      },
+      async ({ projectId, itemIds, direction = 'all' }) => {
+        try {
+          if (itemIds.length === 0) {
+            return jsonResult({ message: 'No items specified', count: 0 });
+          }
+
+          // First, find the relation IDs to remove
+          const placeholders = itemIds.map(() => '?').join(',');
+          let query: string;
+
+          if (direction === 'incoming') {
+            query = `SELECT id FROM plan_relations WHERE project_id = ? AND to_item_id IN (${placeholders})`;
+          } else if (direction === 'outgoing') {
+            query = `SELECT id FROM plan_relations WHERE project_id = ? AND from_item_id IN (${placeholders})`;
+          } else {
+            query = `SELECT id FROM plan_relations WHERE project_id = ? AND (from_item_id IN (${placeholders}) OR to_item_id IN (${placeholders}))`;
+          }
+
+          const params = direction === 'all' ? [projectId, ...itemIds, ...itemIds] : [projectId, ...itemIds];
+
+          if (relations.length === 0) {
+            return jsonResult({ message: 'No dependencies found to remove', count: 0 });
+          }
+
+          const actions: PlanAction[] = relations.map((rel) => ({
+            type: 'remove_dependency' as const,
+            relation_id: rel.id,
+          }));
+
+          onPlanActions(actions);
+
+          return jsonResult({
+            success: true,
+            actionCount: actions.length,
+          });
+        } catch (error) {
+          return toolError(`Failed to clear dependencies: ${error instanceof Error ? error.message : String(error)}`);
+        }
     ),
   ];
 }

@@ -35,6 +35,7 @@ function emitPlanActions(actions: PlanAction[]): void {
  */
 
 
+  const planItemTools = createPlanItemTools(planItemRepo, planRelationRepo, emitPlanActions);
   const planChangeTools = createPlanChangeTools(emitPlanActions);
   const storybookTools = createStorybookTools(projectRepo);
 
