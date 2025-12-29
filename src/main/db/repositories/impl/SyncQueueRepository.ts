@@ -5,7 +5,29 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import type { CustomFieldValues, SyncQueueEntry, SyncQueueEntryWithPlanItem } from '../../../../shared/types';
 import type { ISyncQueueRepository } from '../../interfaces';
+
+function parseCustomFieldOverrides(raw: string | null): CustomFieldValues | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+
+    const overrides: CustomFieldValues = {};
+    for (const [fieldId, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'string') {
+        overrides[fieldId] = value;
+      }
+    }
+
+    return Object.keys(overrides).length > 0 ? overrides : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Prepared statements cache for hot paths.
@@ -29,6 +51,14 @@ interface PreparedStatements {
   setError: Statement;
 }
 
+type SyncQueueRow = Omit<SyncQueueEntry, 'custom_field_overrides'> & {
+  custom_field_overrides: string | null;
+};
+
+type SyncQueueEntryInsert = Omit<SyncQueueEntry, 'id' | 'queued_at' | 'error_message' | 'custom_field_overrides'> & {
+  custom_field_overrides?: CustomFieldValues | null;
+};
+
 export class SyncQueueRepository implements ISyncQueueRepository {
   private stmts: PreparedStatements;
 
@@ -36,6 +66,7 @@ export class SyncQueueRepository implements ISyncQueueRepository {
     // Column list for consistent SELECT queries
     const cols = `id, kpm_project_id, plan_item_id, association_id, operation,
              target_issue_type_id, target_issue_type_name, target_parent_key,
+             target_status_category, custom_field_overrides, queued_by, queued_at, error_message`;
 
     this.stmts = {
       // Read operations
@@ -45,6 +76,7 @@ export class SyncQueueRepository implements ISyncQueueRepository {
         SELECT
           sq.id, sq.kpm_project_id, sq.plan_item_id, sq.association_id, sq.operation,
           sq.target_issue_type_id, sq.target_issue_type_name, sq.target_parent_key,
+          sq.target_status_category, sq.custom_field_overrides, sq.queued_by, sq.queued_at, sq.error_message,
           pi.title as plan_item_title,
           pi.description as plan_item_description,
           pi.label as plan_item_label,
@@ -58,6 +90,11 @@ export class SyncQueueRepository implements ISyncQueueRepository {
       `),
       getByPlanItem: db.prepare(`SELECT ${cols} FROM sync_queue WHERE plan_item_id = ?`),
       getByAssociation: db.prepare(`SELECT ${cols} FROM sync_queue WHERE association_id = ? ORDER BY queued_at`),
+      getQueueCount: db.prepare(`
+        SELECT COUNT(*) as count FROM sync_queue sq
+        JOIN plan_items pi ON sq.plan_item_id = pi.id
+        WHERE sq.kpm_project_id = ? AND (pi.status_category IS NULL OR pi.status_category != 'none')
+      `),
 
       // Write operations - use RETURNING to avoid re-query
       insert: db.prepare(`
@@ -77,9 +114,15 @@ export class SyncQueueRepository implements ISyncQueueRepository {
   }
 
   getByProject(projectId: string): SyncQueueEntry[] {
+    const rows = this.stmts.getByProject.all(projectId) as SyncQueueRow[];
+    return rows.map((row) => ({
+      ...row,
+      custom_field_overrides: parseCustomFieldOverrides(row.custom_field_overrides),
+    }));
   }
 
   getByProjectWithPlanItems(projectId: string): SyncQueueEntryWithPlanItem[] {
+    const rows = this.stmts.getByProjectWithPlanItems.all(projectId) as (SyncQueueRow & {
       plan_item_title: string;
       plan_item_description: string | null;
       plan_item_label: string | null;
@@ -98,6 +141,7 @@ export class SyncQueueRepository implements ISyncQueueRepository {
       target_issue_type_name: row.target_issue_type_name,
       target_parent_key: row.target_parent_key,
       target_status_category: row.target_status_category,
+      custom_field_overrides: parseCustomFieldOverrides(row.custom_field_overrides ?? null),
       queued_by: row.queued_by,
       queued_at: row.queued_at,
       error_message: row.error_message,
@@ -114,6 +158,12 @@ export class SyncQueueRepository implements ISyncQueueRepository {
   }
 
   getByPlanItem(planItemId: string): SyncQueueEntry | undefined {
+    const row = this.stmts.getByPlanItem.get(planItemId) as SyncQueueRow | undefined;
+    if (!row) return undefined;
+    return {
+      ...row,
+      custom_field_overrides: parseCustomFieldOverrides(row.custom_field_overrides),
+    };
   }
 
   getByItemId(planItemId: string): SyncQueueEntry | undefined {
@@ -121,6 +171,11 @@ export class SyncQueueRepository implements ISyncQueueRepository {
   }
 
   getByAssociation(associationId: string): SyncQueueEntry[] {
+    const rows = this.stmts.getByAssociation.all(associationId) as SyncQueueRow[];
+    return rows.map((row) => ({
+      ...row,
+      custom_field_overrides: parseCustomFieldOverrides(row.custom_field_overrides),
+    }));
   }
 
   getQueuedItemsWithPlanData(projectId: string): SyncQueueEntryWithPlanItem[] {
@@ -133,14 +188,24 @@ export class SyncQueueRepository implements ISyncQueueRepository {
   }
 
   // Overload signatures to match interface
+  add(entry: SyncQueueEntryInsert): SyncQueueEntry;
   add(projectId: string, planItemId: string, associationId: string, operation: 'create' | 'update', queuedBy: 'user' | 'claude'): SyncQueueEntry | null;
   add(
+    entryOrProjectId: SyncQueueEntryInsert | string,
     planItemId?: string,
     associationId?: string,
     operation?: 'create' | 'update',
     queuedBy?: 'user' | 'claude'
   ): SyncQueueEntry | null {
     // Handle overloaded signature
+    let entry: {
+      kpm_project_id: string;
+      plan_item_id: string;
+      association_id: string;
+      operation: 'create' | 'update';
+      queued_by: 'user' | 'claude';
+      custom_field_overrides?: CustomFieldValues | null;
+    };
 
     if (typeof entryOrProjectId === 'string') {
       entry = {
@@ -149,6 +214,7 @@ export class SyncQueueRepository implements ISyncQueueRepository {
         association_id: associationId!,
         operation: operation!,
         queued_by: queuedBy!,
+        custom_field_overrides: null,
       };
     } else {
       entry = entryOrProjectId;
@@ -161,17 +227,31 @@ export class SyncQueueRepository implements ISyncQueueRepository {
     }
 
     // Use RETURNING to get inserted row in one query
+    const inserted = this.stmts.insert.get(
       id,
       entry.kpm_project_id,
       entry.plan_item_id,
       entry.association_id,
       entry.operation,
       entry.queued_by
+    ) as SyncQueueRow;
+
+    return {
+      ...inserted,
+      custom_field_overrides: overrides,
+    };
   }
 
   get(id: string): SyncQueueEntry | undefined {
+    const row = this.stmts.getById.get(id) as SyncQueueRow | undefined;
+    if (!row) return undefined;
+    return {
+      ...row,
+      custom_field_overrides: parseCustomFieldOverrides(row.custom_field_overrides),
+    };
   }
 
+  update(id: string, updates: Partial<Pick<SyncQueueEntry, 'target_issue_type_id' | 'target_issue_type_name' | 'target_parent_key' | 'target_status_category' | 'custom_field_overrides' | 'error_message'>>): void {
     // Dynamic update for multi-field changes (less common path)
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -195,6 +275,10 @@ export class SyncQueueRepository implements ISyncQueueRepository {
     if (updates.error_message !== undefined) {
       fields.push('error_message = ?');
       values.push(updates.error_message);
+    }
+    if (updates.custom_field_overrides !== undefined) {
+      fields.push('custom_field_overrides = ?');
+      values.push(updates.custom_field_overrides ? JSON.stringify(updates.custom_field_overrides) : null);
     }
 
     if (fields.length === 0) return;

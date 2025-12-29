@@ -151,6 +151,13 @@ describe('ExportSchemas', () => {
     });
   });
 
+  describe('updateQueueCustomFields', () => {
+          customfield_123: 'value',
+          customfield_456: '999',
+        },
+    });
+  });
+
   describe('saveMapping', () => {
         trackerIssueTypeId: '10001',
         trackerIssueTypeName: 'Task',

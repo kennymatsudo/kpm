@@ -115,6 +115,18 @@ export interface StatusMapping {
   canceled?: string;      // Jira status name for "Canceled" (e.g., "Won't Do")
 }
 
+/** Custom field values stored as JSON { fieldId: value }. Applied project-wide to all issue types. */
+export type CustomFieldValues = Record<string, string>;
+
+/** Jira custom field definition (for configuration UI) */
+export interface JiraCustomField {
+  id: string;              // 'customfield_10697'
+  name: string;            // 'R&D Team'
+  type: 'string' | 'option' | 'array' | 'number' | 'date' | 'user' | 'other';
+  required: boolean;
+  defaultValue?: string;   // Default value (option ID for selects, text for strings)
+}
+
 export interface TrackerAssociation {
   id: string;
   kpm_project_id: string;
@@ -122,6 +134,7 @@ export interface TrackerAssociation {
   jql_filter: string;             // 'parent = PROJ-6224'
   display_name: string | null;    // 'Support Pane Epic'
   status_mapping: StatusMapping | null;  // Explicit status category → Jira status mapping
+  custom_field_values: CustomFieldValues | null;  // Static custom field values for export, applied to all issue types
   last_synced_at: string | null;
   created_at: string;
 }
@@ -196,6 +209,7 @@ export interface SyncNewItem {
   external_key: string;
   title: string;
   description: string | null;
+  label?: string | null;                // Optional - we use external_issue_type directly
   external_issue_type: string;          // Original issue type: 'Story', 'Sub-task', etc.
   external_status: string;
   external_parent_key: string | null;
@@ -363,6 +377,7 @@ export interface SyncQueueEntry {
   target_issue_type_name: string | null;
   target_parent_key: string | null;
   target_status_category: StatusCategory | null;  // Status to sync to Jira
+  custom_field_overrides: CustomFieldValues | null; // Per-item field overrides for export
   queued_by: 'user' | 'claude';
   queued_at: string;
   error_message: string | null;

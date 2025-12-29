@@ -1,4 +1,5 @@
 import type { TrackerClient, ExternalIssue } from '../../trackers';
+import { fetchIssuesWithSubtasks } from '../../trackers';
 import { inferCategoryWithMapping } from '../../trackers/statusTransitions';
 import type {
   PlanItem,
@@ -63,6 +64,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
       const existing = existingByKey.get(issue.key);
 
       if (!existing) {
+        // New item - label not set, we use external_issue_type directly
         preview.new_items.push({
           external_key: issue.key,
           title: issue.title,
@@ -113,6 +115,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
   },
 
   /**
+   * Note: label is no longer synced - we use external_issue_type directly.
    */
   analyzeChanges(
     kpmItem: PlanItem,
@@ -124,6 +127,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
     const conflicts: SyncConflict['fields'] = [];
 
     const fields: {
+      field: 'title' | 'description' | 'release_tag';
       kpm: string | null;
       external: string | null;
       snapshot: string | null;
@@ -184,6 +188,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
           plan_item_id: created.id,
           snapshot_title: item.title,
           snapshot_description: item.description,
+          snapshot_label: null, // Label is no longer synced
           snapshot_release_tag: null,
           external_updated_at: new Date().toISOString(),
         });

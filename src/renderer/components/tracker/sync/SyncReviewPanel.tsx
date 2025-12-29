@@ -173,6 +173,9 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
                     <span className="text-xs px-1.5 py-0.5 bg-surface-3 rounded text-text-muted font-mono">
                       {item.external_key}
                     </span>
+                    {item.external_issue_type && (
+                      <span className="text-xs px-1.5 py-0.5 bg-accent/10 text-accent rounded">
+                        {item.external_issue_type}
                       </span>
                     )}
                     <span className="font-medium text-sm text-text-primary truncate">{item.title}</span>

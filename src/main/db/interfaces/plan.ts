@@ -62,6 +62,7 @@ export interface IExternalPlanItemRepository {
     association_id: string;
     title: string;
     description: string | null;
+    label?: string | null; // Optional - we now use external_issue_type directly
     external_key: string;
     external_id?: string;
     external_type: string;
@@ -84,6 +85,7 @@ export interface IExternalPlanItemRepository {
     external_issue_type: string;
     title: string;
     description: string | null;
+    label?: string | null; // Optional - we now use external_issue_type directly
     association_id: string;
   }[]): PlanItem[];
   updateFromExternal(

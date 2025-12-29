@@ -22,6 +22,7 @@ export function PlanView({
     planItems,
     executePlanActions,
     updateItemPosition,
+    updatePlanItem,
     useShallow((state) => ({
       planItems: state.planItems,
       executePlanActions: state.executePlanActions,
@@ -53,6 +54,7 @@ export function PlanView({
   });
 
   const handleAutoLayout = useAutoLayout({
+    plannedItems: filteredPlannedItems, // Use filtered items so new items are placed near visible content
     updateItemPosition,
   });
 
@@ -119,6 +121,10 @@ export function PlanView({
           onDeleteAll={handleBulkDeleteAll}
           onCancel={closeBulkDeleteDialog}
         />
+      )}
+
+      {/* Task Edit Modal */}
+      {editingItem && (
       )}
     </div>
   );

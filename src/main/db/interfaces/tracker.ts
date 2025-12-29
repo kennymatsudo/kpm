@@ -5,8 +5,15 @@
  */
 
 import type {
+  CustomFieldValues,
+  StatusMapping,
   SyncQueueEntry,
   SyncQueueEntryWithPlanItem,
+  SyncSnapshot,
+  TrackerAssociation,
+  TrackerAssociationWithScope,
+  TrackerConnection,
+  TrackerProjectScope,
   TrackerTypeMapping,
 } from '../../../shared/types';
 
@@ -45,6 +52,8 @@ export interface ITrackerRepository {
   deleteAssociation(id: string): void;
   updateAssociationLastSynced(id: string): void;
   updateStatusMapping(id: string, mapping: StatusMapping | null): void;
+  updateCustomFieldValues(id: string, values: CustomFieldValues | null): void;
+  getCustomFieldValues(id: string): CustomFieldValues | null;
   hasAssociationItems(associationId: string): boolean;
   getItemsByAssociation(associationId: string): { id: string; external_key: string }[];
 }
@@ -74,7 +83,9 @@ export interface ISyncQueueRepository {
   getByAssociation(associationId: string): SyncQueueEntry[];
   getQueuedItemsWithPlanData(projectId: string): SyncQueueEntryWithPlanItem[];
   getQueueCount(projectId: string): number;
+  add(entry: Omit<SyncQueueEntry, 'id' | 'queued_at' | 'error_message' | 'custom_field_overrides'> & { custom_field_overrides?: CustomFieldValues | null }): SyncQueueEntry;
   add(projectId: string, planItemId: string, associationId: string, operation: 'create' | 'update', queuedBy: 'user' | 'claude'): SyncQueueEntry | null;
+  update(id: string, updates: Partial<Pick<SyncQueueEntry, 'target_issue_type_id' | 'target_issue_type_name' | 'target_parent_key' | 'target_status_category' | 'custom_field_overrides' | 'error_message'>>): void;
   updateStatusCategory(id: string, statusCategory: string | null): void;
   updateResolvedType(id: string, typeId: string, typeName: string, parentKey: string | null): void;
   setError(id: string, errorMessage: string): void;

@@ -12,6 +12,22 @@ import type {
   FieldDiff,
   DiffHunk,
   StatusTransitionInfo,
+
+/**
+ * Merge per-item custom field overrides with association-level defaults.
+ * Overrides take precedence over defaults.
+ */
+function mergeCustomFieldValues(
+  overrides: CustomFieldValues | null,
+  defaults: CustomFieldValues | null
+): CustomFieldValues | null {
+  if (!defaults && !overrides) return null;
+  return {
+    ...(defaults ?? {}),
+    ...(overrides ?? {}),
+  };
+}
+
 /**
  * Manages the sync queue and executes the export.
  */
@@ -134,6 +150,19 @@ import type {
   },
 
   /**
+   * Update custom field overrides for a queue entry.
+   */
+  updateQueueCustomFieldOverrides(
+    queueEntryId: string,
+    customFieldOverrides: CustomFieldValues | null
+  ): void {
+    const cleaned = customFieldOverrides && Object.keys(customFieldOverrides).length > 0
+      ? customFieldOverrides
+      : null;
+    SyncQueueRepository.update(queueEntryId, { custom_field_overrides: cleaned });
+  },
+
+  /**
    * Generate export preview with validation.
    * Resolves issue types, validates parent relationships, and identifies issues.
    */
@@ -210,17 +239,40 @@ import type {
       const validationErrors: string[] = [];
       const depth = getDepth(planItem.id);
 
+      // Determine if item has a syncable parent (for subtask resolution)
+      // Check this BEFORE resolving type so we can use it as a hint
+      let hasSyncableParent = false;
       let resolvedParent: string | null = null;
 
       if (entry.operation === 'create' && planItem.parent_id) {
         const parent = itemMap.get(planItem.parent_id);
         if (parent) {
             resolvedParent = parent.external_key;
+            hasSyncableParent = true;
           } else if (creatingItemIds.has(parent.id)) {
             resolvedParent = `(pending: ${parent.title})`;
+            hasSyncableParent = true;
           }
         }
       }
+
+      // Resolve issue type - pass hasSyncableParent to prefer subtask type when nested
+      // Also pass hasEpicKey to shift depth mapping (root = Story instead of Epic)
+      const resolvedType = TypeMappingService.resolveIssueType(
+        planItem,
+        kpmProjectId,
+        association.scope_id,
+        depth,
+        availableTypes,
+        hasSyncableParent,
+        !!association.epic_key
+      );
+
+      if (!resolvedType) {
+        canProceed = false;
+      }
+
+      const isSubtaskType = resolvedType?.name.toLowerCase().includes('sub-task');
 
       // Sub-tasks in Jira require a parent - validate this
       if (isSubtaskType) {
@@ -479,10 +531,18 @@ import type {
           }
         }
 
+        const rawCustomFields = mergeCustomFieldValues(
+          entry.custom_field_overrides,
+          association.custom_field_values
+        );
+        const customFields = rawCustomFields && Object.keys(rawCustomFields).length > 0
+          : undefined;
+
         const created = await client.createIssue({
           projectKey: association.project_key,
           issueTypeId: entry.target_issue_type_id!,
           parentKey,
+          customFields,
         });
 
         const syncUpdate: PlanItemSyncUpdates = {
@@ -492,6 +552,7 @@ import type {
           sync_source: 'local',
           last_synced_at: new Date().toISOString(),
         };
+        console.log('[ExportService] Updating plan item with external_key:', { planItemId: planItem.id, external_key: created.key, external_url: syncUpdate.external_url });
         PlanItemRepository.update(planItem.id, syncUpdate);
 
         createdKeys.set(planItem.id, created.key);
@@ -513,7 +574,11 @@ import type {
       }
 
       try {
+        const overrideFields = entry.custom_field_overrides && Object.keys(entry.custom_field_overrides).length > 0
+          : undefined;
+
         await client.updateIssue(planItem.external_key!, {
+          customFields: overrideFields,
         });
 
         // Execute status transition if queued

@@ -108,6 +108,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
       input.description,
       input.label,
       itemOrder,
+      'planned', // Synced items go directly to canvas (backlog UI removed)
       input.external_key,
       input.external_id ?? null,
       input.external_type,
@@ -189,6 +190,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
             item.description,
             item.label,
             itemOrder++,
+            'planned', // Synced items go directly to canvas (backlog UI removed)
             item.status_category,
             item.external_key,
             item.external_id ?? null,

@@ -144,6 +144,7 @@ export type ExportAddToQueueInput = z.infer<typeof ExportSchemas.addToQueue>;
 export type ExportRemoveFromQueueInput = z.infer<typeof ExportSchemas.removeFromQueue>;
 export type ExportClearQueueInput = z.infer<typeof ExportSchemas.clearQueue>;
 export type ExportUpdateQueueStatusInput = z.infer<typeof ExportSchemas.updateQueueStatus>;
+export type ExportUpdateQueueCustomFieldsInput = z.infer<typeof ExportSchemas.updateQueueCustomFields>;
 export type ExportPreviewInput = z.infer<typeof ExportSchemas.preview>;
 export type ExportExecuteApprovedInput = z.infer<typeof ExportSchemas.executeApproved>;
 export type ExportGetMappingsInput = z.infer<typeof ExportSchemas.getMappings>;

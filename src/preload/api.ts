@@ -15,6 +15,8 @@ import type {
   TrackerAssociation,
   TrackerAssociationWithScope,
   StatusMapping,
+  CustomFieldValues,
+  JiraCustomField,
   ImportPreview,
   ImportResult,
   SyncPreview,
@@ -190,6 +192,10 @@ const tracker = {
     remove: (associationId: string): Promise<{ success: boolean }> =>
     hasImported: (associationId: string): Promise<boolean> =>
     updateStatusMapping: (associationId: string, statusMapping: StatusMapping | null): Promise<{ success: boolean; error?: string }> =>
+    updateCustomFieldValues: (associationId: string, customFieldValues: CustomFieldValues | null): Promise<{ success: boolean; error?: string }> =>
+  },
+  customFields: {
+    getAvailable: (projectKey: string, issueTypeId: string): Promise<{ success: boolean; fields?: JiraCustomField[]; error?: string }> =>
   },
   projects: {
     list: (): Promise<{ success: boolean; projects?: { key: string; name: string }[]; error?: string }> =>
@@ -231,6 +237,7 @@ const tracker = {
     add: (projectId: string, itemIds: string[]): Promise<{ success: boolean; added?: number; skipped?: number; error?: string }> =>
     remove: (queueEntryId: string): Promise<{ success: boolean; error?: string }> =>
     updateStatus: (queueEntryId: string, statusCategory: StatusCategory | null): Promise<{ success: boolean; error?: string }> =>
+    updateCustomFieldOverrides: (queueEntryId: string, customFieldOverrides: CustomFieldValues | null): Promise<{ success: boolean; error?: string }> =>
     clear: (projectId: string): Promise<{ success: boolean; error?: string }> =>
     count: (projectId: string): Promise<{ success: boolean; count?: number; error?: string }> =>
   },

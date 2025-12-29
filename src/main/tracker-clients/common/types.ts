@@ -18,6 +18,15 @@ export interface JiraIssueType {
   iconUrl?: string;
 }
 
+/** Jira custom field definition */
+export interface JiraCustomField {
+  id: string;              // 'customfield_10697'
+  name: string;            // 'R&D Team'
+  type: 'string' | 'option' | 'array' | 'number' | 'date' | 'user' | 'other';
+  required: boolean;
+  defaultValue?: string;   // Default value (option ID for selects, text for strings)
+}
+
 export interface CreateIssueParams {
   projectKey: string;
   issueTypeId: string;
@@ -25,6 +34,7 @@ export interface CreateIssueParams {
   description?: string;
   parentKey?: string;         // For sub-tasks or stories under epics
   labels?: string[];
+  customFields?: Record<string, unknown>;  // Custom field values
 }
 
 export interface CreatedIssue {
@@ -37,6 +47,7 @@ export interface UpdateIssueParams {
   summary?: string;
   description?: string | null;  // null clears the description
   labels?: string[];
+  customFields?: Record<string, unknown>;  // Custom field values
 }
 
 /** Jira workflow transition */

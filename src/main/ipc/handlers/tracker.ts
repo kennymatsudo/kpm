@@ -44,6 +44,12 @@ import type {
     const { associationId, statusMapping } = TrackerSchemas.updateStatusMapping.parse(params);
   });
 
+    const { associationId, customFieldValues } = TrackerSchemas.updateCustomFieldValues.parse(params);
+  });
+
+    const { projectKey, issueTypeId } = TrackerSchemas.getCustomFields.parse(params);
+  });
+
   });
 
   });

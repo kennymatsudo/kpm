@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { CustomFieldValues, SyncReviewData, SyncReviewItem, ExportResult } from '../../../shared/types';
 
 type ReviewPhase = 'idle' | 'loading' | 'reviewing' | 'summary' | 'exporting' | 'complete';
 
@@ -20,6 +21,7 @@ interface SyncReviewState {
   setDecision: (itemId: string, decision: SyncReviewItem['decision']) => void;
   executeApproved: (projectId: string, associationId: string) => Promise<ExportResult | null>;
   removeFromReview: (itemId: string) => Promise<void>;
+  updateCustomFieldOverrides: (queueEntryId: string, overrides: CustomFieldValues | null) => Promise<void>;
   reset: () => void;
 }
 
@@ -93,6 +95,17 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
       items: state.items.filter((i) => i.planItem.id !== itemId),
       // Adjust currentIndex if needed
       currentIndex: Math.min(state.currentIndex, state.items.length - 2),
+    }));
+  },
+
+  updateCustomFieldOverrides: async (queueEntryId, overrides) => {
+
+    set((state) => ({
+      items: state.items.map((item) =>
+        item.queueEntry.id === queueEntryId
+          ? { ...item, queueEntry: { ...item.queueEntry, custom_field_overrides: overrides } }
+          : item
+      ),
     }));
   },
 

@@ -8,6 +8,7 @@
 import { z } from 'zod';
 
 // Zod schemas matching the PlanAction type
+const LabelEnum = z.enum(['project', 'story', 'feature', 'task']);
 const RelationTypeEnum = z.enum(['depends_on', 'blocks', 'relates_to']);
 
 const CreateItemAction = z.object({

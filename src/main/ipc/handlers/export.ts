@@ -40,6 +40,13 @@ import { ipcMain } from 'electron';
     'Failed to update queue entry status'
   ));
 
+  // Update queue entry custom field overrides
+    ExportSchemas.updateQueueCustomFields,
+    ({ queueEntryId, customFieldOverrides }) => {
+    },
+    'Failed to update queue entry custom fields'
+  ));
+
   // Get queue count
     ExportSchemas.getQueue,
     ({ projectId }) => {

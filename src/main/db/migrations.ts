@@ -664,6 +664,34 @@ interface Migration {
     },
   },
   {
+    id: 1016,
+    name: '016_association_custom_field_values',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- Add custom_field_values to tracker associations
+        -- JSON blob storing static values for Jira custom fields
+        -- e.g., {"customfield_10697": "option-id-123", "customfield_10100": "some text"}
+        -- ============================================
+        ALTER TABLE kpm_tracker_associations ADD COLUMN custom_field_values TEXT;
+      `);
+    },
+  },
+  {
+    id: 1017,
+    name: '017_sync_queue_custom_field_overrides',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- Add custom_field_overrides to sync queue
+        -- JSON blob storing per-item overrides for custom fields
+        -- e.g., {"customfield_10697": "option-id-999"}
+        -- ============================================
+        ALTER TABLE sync_queue ADD COLUMN custom_field_overrides TEXT;
+      `);
+    },
+  },
+  {
     id: 1020,
     name: '020_inbox_items',
     up: (db: BetterSqliteDatabase) => {
@@ -706,6 +734,59 @@ interface Migration {
         CREATE INDEX IF NOT EXISTS idx_inbox_items_project ON inbox_items(project_id);
         CREATE INDEX IF NOT EXISTS idx_inbox_items_project_status ON inbox_items(project_id, status);
       `);
+    },
+  },
+  {
+    id: 1025,
+    name: '025_flatten_custom_field_values',
+    up: (db: BetterSqliteDatabase) => {
+      // Flatten custom_field_values from per-issue-type structure to project-wide.
+      // Old format: { "10001": { fieldId: value }, "__default__": { fieldId: value } }
+      // New format: { fieldId: value }
+      // Strategy: merge all values, preferring __default__ then first type found
+      const associations = db.prepare(`
+        SELECT id, custom_field_values FROM kpm_tracker_associations
+        WHERE custom_field_values IS NOT NULL
+      `).all() as { id: string; custom_field_values: string }[];
+
+      const updateStmt = db.prepare(`
+        UPDATE kpm_tracker_associations SET custom_field_values = ? WHERE id = ?
+      `);
+
+      for (const assoc of associations) {
+        try {
+          const parsed = JSON.parse(assoc.custom_field_values);
+
+          // Skip if already flat (no nested objects)
+          const values = Object.values(parsed);
+          if (values.length > 0 && typeof values[0] !== 'object') {
+            continue; // Already flat format
+          }
+
+          // Merge all values into flat structure
+          // Priority: __default__ values, then merge from other types
+          const flattened: Record<string, string> = {};
+
+          // First, collect values from all issue types (except __default__)
+          for (const [key, typeValues] of Object.entries(parsed)) {
+            if (key !== '__default__' && typeof typeValues === 'object' && typeValues !== null) {
+              Object.assign(flattened, typeValues);
+            }
+          }
+
+          // Then overlay __default__ values (they take priority)
+          }
+
+          // Update with flattened structure (or null if empty)
+          const newValue = Object.keys(flattened).length > 0
+            ? JSON.stringify(flattened)
+            : null;
+          updateStmt.run(newValue, assoc.id);
+        } catch {
+          // Skip invalid JSON
+          console.warn(`[Migration 025] Skipping invalid JSON for association ${assoc.id}`);
+        }
+      }
     },
   },
         -- Backfill: sessions without plan items get first 60 chars of instructions

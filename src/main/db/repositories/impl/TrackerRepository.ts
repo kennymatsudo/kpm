@@ -5,6 +5,13 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import type {
+  CustomFieldValues,
+  StatusMapping,
+  TrackerAssociation,
+  TrackerAssociationWithScope,
+  TrackerConnection,
+  TrackerProjectScope,
 } from '../../../../shared/types';
 import type { ITrackerRepository } from '../../interfaces';
 
@@ -13,6 +20,30 @@ function parseStatusMapping(raw: string | null): StatusMapping | null {
   if (!raw) return null;
   try {
     return JSON.parse(raw) as StatusMapping;
+  } catch {
+    return null;
+  }
+}
+
+// Helper to parse custom_field_values JSON from database
+// Now a flat structure: { fieldId: value }
+function parseCustomFieldValues(raw: string | null): CustomFieldValues | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+
+    // Validate all values are strings (flat structure)
+    const result: CustomFieldValues = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'string') {
+        result[key] = value;
+      }
+    }
+
+    return Object.keys(result).length > 0 ? result : null;
   } catch {
     return null;
   }
@@ -42,6 +73,8 @@ interface PreparedStatements {
   deleteAssociation: Statement;
   updateLastSynced: Statement;
   updateStatusMapping: Statement;
+  updateCustomFieldValues: Statement;
+  getCustomFieldValues: Statement;
 
   // Plan items by association
   hasAssociationItems: Statement;
@@ -106,6 +139,8 @@ export class TrackerRepository implements ITrackerRepository {
       deleteAssociation: db.prepare('DELETE FROM kpm_tracker_associations WHERE id = ?'),
       updateLastSynced: db.prepare(`UPDATE kpm_tracker_associations SET last_synced_at = CURRENT_TIMESTAMP WHERE id = ?`),
       updateStatusMapping: db.prepare(`UPDATE kpm_tracker_associations SET status_mapping = ? WHERE id = ?`),
+      updateCustomFieldValues: db.prepare(`UPDATE kpm_tracker_associations SET custom_field_values = ? WHERE id = ?`),
+      getCustomFieldValues: db.prepare(`SELECT custom_field_values FROM kpm_tracker_associations WHERE id = ?`),
 
       // Plan items by association - use EXISTS for short-circuit
       hasAssociationItems: db.prepare(`SELECT EXISTS (SELECT 1 FROM plan_items WHERE association_id = ? LIMIT 1) as has_items`),
@@ -183,6 +218,7 @@ export class TrackerRepository implements ITrackerRepository {
     return rows.map((row) => ({
       ...row,
       status_mapping: parseStatusMapping(row.status_mapping),
+      custom_field_values: parseCustomFieldValues(row.custom_field_values),
     }));
   }
 
@@ -190,14 +226,17 @@ export class TrackerRepository implements ITrackerRepository {
     return rows.map((row) => ({
       ...row,
       status_mapping: parseStatusMapping(row.status_mapping),
+      custom_field_values: parseCustomFieldValues(row.custom_field_values),
     }));
   }
 
   getAssociationById(id: string): TrackerAssociationWithScope | undefined {
+    const row = this.stmts.getAssociationById.get(id) as (Omit<TrackerAssociationWithScope, 'status_mapping' | 'custom_field_values'> & { status_mapping: string | null; custom_field_values: string | null }) | undefined;
     if (!row) return undefined;
     return {
       ...row,
       status_mapping: parseStatusMapping(row.status_mapping),
+      custom_field_values: parseCustomFieldValues(row.custom_field_values),
     };
   }
 
@@ -226,6 +265,17 @@ export class TrackerRepository implements ITrackerRepository {
 
   updateStatusMapping(id: string, mapping: StatusMapping | null): void {
     this.stmts.updateStatusMapping.run(mapping ? JSON.stringify(mapping) : null, id);
+  }
+
+  updateCustomFieldValues(id: string, values: CustomFieldValues | null): void {
+    // Clean up empty values before saving
+    const cleaned = values && Object.keys(values).length > 0 ? values : null;
+    this.stmts.updateCustomFieldValues.run(cleaned ? JSON.stringify(cleaned) : null, id);
+  }
+
+  getCustomFieldValues(id: string): CustomFieldValues | null {
+    const row = this.stmts.getCustomFieldValues.get(id) as { custom_field_values: string | null } | undefined;
+    return row ? parseCustomFieldValues(row.custom_field_values) : null;
   }
 
   hasAssociationItems(associationId: string): boolean {

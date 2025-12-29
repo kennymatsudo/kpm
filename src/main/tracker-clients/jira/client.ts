@@ -3,6 +3,7 @@ import type {
   TrackerClient,
   ExternalIssue,
   JiraIssueType,
+  JiraCustomField,
   JiraTransition,
   CreateIssueParams,
   CreatedIssue,
@@ -287,6 +288,98 @@ export class JiraClient implements TrackerClient {
   }
 
   /**
+   * Get available custom fields for a project and issue type.
+   * Returns fields with their allowed values (for select/option types).
+   */
+  async getCustomFields(projectKey: string, issueTypeId: string): Promise<JiraCustomField[]> {
+    try {
+      // Use the createmeta endpoint to get field info including allowed values
+      const result = await this.client.issues.getCreateIssueMeta({
+        projectKeys: [projectKey],
+        issuetypeIds: [issueTypeId],
+        expand: 'projects.issuetypes.fields',
+      });
+
+      const fields: JiraCustomField[] = [];
+      const project = result.projects?.find(p => p.key === projectKey);
+      const issueType = project?.issuetypes?.find(it => it.id === issueTypeId);
+
+      if (!issueType?.fields) {
+        return [];
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fieldMap = issueType.fields as Record<string, any>;
+
+      for (const [fieldId, fieldData] of Object.entries(fieldMap)) {
+        // Only include custom fields (start with 'customfield_')
+        if (!fieldId.startsWith('customfield_')) continue;
+
+        const schemaType = fieldData.schema?.type ?? 'string';
+        const customType = fieldData.schema?.custom ?? '';
+
+        // Determine field type
+        let type: JiraCustomField['type'] = 'other';
+        if (schemaType === 'string') {
+          type = 'string';
+        } else if (schemaType === 'number') {
+          type = 'number';
+        } else if (schemaType === 'date' || schemaType === 'datetime') {
+          type = 'date';
+        } else if (schemaType === 'user') {
+          type = 'user';
+        } else if (schemaType === 'option' || customType.includes('select')) {
+          type = 'option';
+        } else if (schemaType === 'array') {
+          // Check if it's a multi-select
+          if (fieldData.schema?.items === 'option' || customType.includes('multiselect')) {
+            type = 'array';
+          } else {
+            type = 'other';
+          }
+        }
+
+        // Extract allowed values for select/option fields
+        let allowedValues: JiraCustomField['allowedValues'];
+        if (fieldData.allowedValues && Array.isArray(fieldData.allowedValues)) {
+          allowedValues = fieldData.allowedValues.map((v: { id?: string; value?: string; name?: string }) => ({
+            id: v.id ?? '',
+            value: v.value ?? v.name ?? v.id ?? '',
+          }));
+        }
+
+        // Extract default value if present
+        let defaultValue: string | undefined;
+        if (fieldData.defaultValue !== undefined && fieldData.defaultValue !== null) {
+          if (typeof fieldData.defaultValue === 'string') {
+            defaultValue = fieldData.defaultValue;
+          } else if (typeof fieldData.defaultValue === 'object' && fieldData.defaultValue.id) {
+            // Option fields return { id: "...", value: "..." }
+            defaultValue = fieldData.defaultValue.id;
+          }
+        }
+
+        fields.push({
+          id: fieldId,
+          name: fieldData.name ?? fieldId,
+          type,
+          required: fieldData.required ?? false,
+          allowedValues,
+          defaultValue,
+        });
+      }
+
+      // Sort by required first, then by name
+      return fields.sort((a, b) => {
+        if (a.required !== b.required) return a.required ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+    } catch (error) {
+      throw TrackerError.fromJiraError(error);
+    }
+  }
+
+  /**
    * Create a new issue in Jira.
    */
   async createIssue(params: CreateIssueParams): Promise<CreatedIssue> {
@@ -308,10 +401,18 @@ export class JiraClient implements TrackerClient {
         fields.labels = params.labels;
       }
 
+      // Apply custom fields
+      if (params.customFields) {
+        Object.assign(fields, params.customFields);
+      }
+
+      console.log('[JiraClient] Creating issue with fields:', JSON.stringify(fields, null, 2));
       const result = await this.client.issues.createIssue({ fields });
+      console.log('[JiraClient] Issue created successfully:', result?.key);
       return {
       };
     } catch (error) {
+      console.error('[JiraClient] createIssue failed. Full error:', JSON.stringify(error, null, 2));
       throw TrackerError.fromJiraError(error);
     }
   }
@@ -334,11 +435,19 @@ export class JiraClient implements TrackerClient {
         fields.labels = params.labels;
       }
 
+      // Apply custom fields
+      if (params.customFields) {
+        Object.assign(fields, params.customFields);
+      }
+
+      console.log('[JiraClient] Updating issue:', issueKey, 'with fields:', JSON.stringify(fields, null, 2));
       await this.client.issues.editIssue({
         issueIdOrKey: issueKey,
         fields,
       });
+      console.log('[JiraClient] Issue updated successfully:', issueKey);
     } catch (error) {
+      console.error('[JiraClient] updateIssue failed for', issueKey, '. Full error:', JSON.stringify(error, null, 2));
       throw TrackerError.fromJiraError(error);
     }
   }

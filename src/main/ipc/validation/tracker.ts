@@ -199,6 +199,17 @@ export const TrackerSchemas = {
       canceled: optionalString,
     }).nullable(),
   }),
+
+  // Custom Fields
+  getCustomFields: z.object({
+    projectKey: jiraProjectKey,
+    issueTypeId: nonEmptyString('Issue type ID'),
+  }),
+
+  updateCustomFieldValues: z.object({
+    associationId: uuid,
+    customFieldValues: z.record(z.string(), z.string()).nullable(),
+  }),
 };
 
 // =============================================================================
@@ -228,6 +239,11 @@ export const ExportSchemas = {
   updateQueueStatus: z.object({
     queueEntryId: uuid,
     statusCategory: statusCategory.nullable(),
+  }),
+
+  updateQueueCustomFields: z.object({
+    queueEntryId: uuid,
+    customFieldOverrides: z.record(z.string(), z.string()).nullable(),
   }),
 
   // Preview and execute

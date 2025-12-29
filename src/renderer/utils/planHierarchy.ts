@@ -73,6 +73,7 @@ export function buildHierarchy(items: PlanItem[]): HierarchyResult {
 
 /**
  */
+  itemMap: Map<string, PlanItem>;
 } {
   const childrenMap = new Map<string, string[]>();
   const itemMap = new Map<string, PlanItem>();

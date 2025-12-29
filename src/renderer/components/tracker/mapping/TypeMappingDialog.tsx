@@ -85,6 +85,7 @@ export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: P
         </button>
       </div>
       <p className="text-text-muted text-xs mt-1.5">
+        Configure Jira issue types for {projectKey}
       </p>
     </div>
   );
@@ -136,8 +137,13 @@ export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: P
       {renderHeader()}
 
       <ModalBody className="flex-1 overflow-y-auto">
+        {/* No mappings state - show info about depth-based defaults */}
         {typeMappings.length === 0 && (
           <div className="text-center py-6">
+            <p className="text-text-muted text-sm mb-2">No custom type mappings</p>
+            <p className="text-text-tertiary text-xs">
+              Synced items preserve their Jira type. Local items use depth-based defaults.
+            </p>
           </div>
         )}
 
@@ -180,6 +186,7 @@ export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: P
               type="text"
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
+              placeholder="Label (e.g., story, bug)..."
               className="w-full bg-surface-3 text-text-primary text-sm rounded-lg px-3 py-2 border border-border-default focus:border-info focus:outline-none placeholder:text-text-muted"
             />
             >
@@ -200,14 +207,23 @@ export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: P
           </div>
         </div>
 
+        {/* Info about how type resolution works */}
         <div className="mt-4 p-3 rounded-xl bg-surface-2 border border-border-default">
           <div className="flex items-start gap-2">
             <svg className="w-4 h-4 text-text-tertiary flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div>
+              <p className="text-text-muted text-xs font-medium mb-1">
+                How Jira types are resolved:
               </p>
+              <ul className="text-text-tertiary text-xs space-y-0.5">
+                <li><span className="text-text-muted">Synced items:</span> Use original Jira type</li>
+                <li><span className="text-text-muted">Local items:</span> Depth-based default</li>
               </ul>
+              <p className="text-text-tertiary text-xs mt-2">
+                Depth defaults: Root = Epic, Level 1 = Story, Level 2+ = Task
+              </p>
             </div>
           </div>
         </div>

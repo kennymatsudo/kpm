@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 
 interface Props {
   projectId: string;
@@ -16,6 +17,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
     setDecision,
     executeApproved,
     removeFromReview,
+    updateCustomFieldOverrides,
     reset,
   } = useSyncReviewStore();
 
@@ -58,8 +60,16 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
   };
 
   const handleExecute = async () => {
+    console.log('[SyncReviewModal] Starting export...');
     const result = await executeApproved(projectId, associationId);
+    console.log('[SyncReviewModal] Export result:', result);
+    // Always refresh plan items after export, even if some items failed
+    // Items that succeeded have their external_key updated in DB
+    if (result) {
+      console.log('[SyncReviewModal] Calling onExportComplete...');
       onExportComplete();
+    } else {
+      console.log('[SyncReviewModal] No result, skipping refresh');
     }
   };
 
@@ -201,6 +211,15 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
             <DetailPanel
               item={selectedItem}
               onRemove={() => handleRemove(selectedItem.planItem.id)}
+              hasIssueType={!!selectedIssueTypeId}
+              customFields={customFields}
+              isLoadingCustomFields={isLoadingCustomFields}
+              customFieldsError={customFieldsError}
+              customFieldDraft={customFieldDraft}
+              customFieldDirty={customFieldDirty}
+              onCustomFieldChange={handleCustomFieldChange}
+              onSaveCustomFields={handleSaveCustomFields}
+              onClearCustomFields={handleClearCustomFields}
             />
           ) : (
               Select an item to view details
@@ -344,10 +363,35 @@ interface ItemRowProps {
 interface DetailPanelProps {
   item: SyncReviewItem;
   onRemove: () => void;
+  hasIssueType: boolean;
+  customFields: JiraCustomField[];
+  customFieldDefaults: CustomFieldValues | null;
+  isLoadingCustomFields: boolean;
+  customFieldsError: string | null;
+  customFieldDraft: CustomFieldValues;
+  customFieldDirty: boolean;
+  onCustomFieldChange: (fieldId: string, value: string) => void;
+  onSaveCustomFields: () => void;
+  onClearCustomFields: () => void;
 }
 
+function DetailPanel({
+  item,
+  onRemove,
+  hasIssueType,
+  customFields,
+  isLoadingCustomFields,
+  customFieldsError,
+  customFieldDraft,
+  customFieldDirty,
+  onCustomFieldChange,
+  onSaveCustomFields,
+  onClearCustomFields,
+}: DetailPanelProps) {
   const isCreate = item.queueEntry.operation === 'create';
   const hasErrors = item.validationErrors.length > 0;
+  // Get the default value for a field (project-wide defaults)
+    return customFieldDefaults?.[fieldId];
 
   return (
           <div className="min-w-0 flex-1">
@@ -378,6 +422,18 @@ interface DetailPanelProps {
         </div>
       )}
 
+          </div>
+
+            </div>
+            </div>
+
+          )}
+
+              </div>
+                  </div>
+
+              </div>
+        </div>
       </div>
 
         <button
