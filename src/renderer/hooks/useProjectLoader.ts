@@ -52,6 +52,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
 
       // Track project for session cleanup on switch
       previousConnectedProjectId = projectId;
+
     } finally {
       }
     }
@@ -91,6 +92,12 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       setProjects(projects);
 
       if (projects.length > 0) {
+        // Try to load the last opened project
+        const projectToLoad = lastProjectId && projects.some((p: { id: string }) => p.id === lastProjectId)
+          ? lastProjectId
+          : projects[0].id;
+
+        await loadProjectData(projectToLoad);
       }
     };
 
