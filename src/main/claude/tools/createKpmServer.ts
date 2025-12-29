@@ -16,6 +16,8 @@ import { createStorybookTools } from './storybook';
 // Event emitter for plan actions - allows per-message callbacks with singleton server
 const planActionsEmitter = new EventEmitter();
 
+const claudeMdUpdateEmitter = new EventEmitter();
+
 /**
  * Subscribe to plan actions for the current message context.
  * Returns an unsubscribe function.
@@ -26,9 +28,22 @@ export function subscribeToPlanActions(callback: PlanActionsCallback): () => voi
 }
 
 /**
+ * Returns an unsubscribe function.
+ */
+export function subscribeToClaudeMdUpdate(callback: ClaudeMdUpdateCallback): () => void {
+  claudeMdUpdateEmitter.on('claudeMdUpdate', callback);
+  return () => claudeMdUpdateEmitter.off('claudeMdUpdate', callback);
+}
+
+/**
  * Internal callback that emits to all subscribers
  */
 function emitPlanActions(actions: PlanAction[]): void {
+}
+
+/**
+ */
+function emitClaudeMdUpdate(update: ClaudeMdUpdatePayload): void {
 }
 
 /**

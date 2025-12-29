@@ -10,6 +10,7 @@
  */
 
 import type { BrowserWindow } from 'electron';
+import type { ClaudeMdUpdatePayload } from '../../claude/tools/claudemd-update';
 import type { PlanContext } from '../../claude/prompts';
 
 // =============================================================================
@@ -28,7 +29,9 @@ interface ManagedSession {
   model: ModelType;
   lastActivity: number;
   sessionId?: string; // SDK session ID for resume
+  processingStartTime?: number; // Timestamp when processing started (for timeout detection)
   unsubscribePlanActions: () => void;
+  unsubscribeClaudeMdUpdate: () => void;
 }
 
 // =============================================================================
@@ -63,6 +66,8 @@ export interface StreamingSessionServiceDeps {
   ) => SDKOptions;
 
   /** Subscribe to plan actions from MCP tools */
+
+  subscribeToClaudeMdUpdate: (callback: (update: ClaudeMdUpdatePayload) => void) => () => void;
 
 }
 
@@ -136,6 +141,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
 
     managed.state = 'processing';
+    managed.processingStartTime = Date.now();
     managed.lastActivity = Date.now();
 
     try {
@@ -175,6 +181,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // Create subscriptions FIRST so we can always clean them up
     // Store references outside try block to ensure cleanup on any error
     let unsubscribePlanActions: (() => void) | null = null;
+    let unsubscribeClaudeMdUpdate: (() => void) | null = null;
 
     try {
         model,
@@ -186,6 +193,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       });
 
       // Subscribe to plan actions - store reference for cleanup
+      });
+
+      unsubscribeClaudeMdUpdate = deps.subscribeToClaudeMdUpdate((update) => {
+        }
       });
 
           });
@@ -200,6 +211,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         model,
         lastActivity: Date.now(),
         unsubscribePlanActions,
+        unsubscribeClaudeMdUpdate,
       });
 
 
@@ -214,9 +226,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       if (managed) {
         managed.state = 'error';
         managed.unsubscribePlanActions();
+        managed.unsubscribeClaudeMdUpdate();
       } else {
         // Session wasn't stored in map - clean up local references directly
         unsubscribePlanActions?.();
+        unsubscribeClaudeMdUpdate?.();
       }
 
         error: (error as Error).message,
@@ -278,6 +292,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     try {
       // Reset state to ready so new messages can be sent
       managed.state = 'ready';
+      managed.processingStartTime = undefined;
       return success(undefined);
     } catch (error) {
     }
@@ -320,6 +335,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     if (!managed) return;
     managed.state = 'closing';
     managed.unsubscribePlanActions();
+    managed.unsubscribeClaudeMdUpdate();
 
     try {
       await managed.session.close();
@@ -363,6 +379,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     if (!managed) return;
 
     managed.unsubscribePlanActions();
+    managed.unsubscribeClaudeMdUpdate();
     sessions.delete(key);
 
     const mainWindow = deps.getMainWindow();

@@ -14,7 +14,11 @@ const PLAN_BLOCK_PATTERNS = [
   /```plan-actions\s*[\s\S]*?```/g,  // plan-actions format (used by claude.ts)
 ];
 
+/**
+ * Strip plan-related blocks from message content.
  * These blocks are processed separately and shown in dedicated UI components.
+ *
+ * instead of text blocks, so no text stripping is needed for those.
  */
 export function processMessageContent(content: string): ProcessedMessage {
   // Check if any plan block pattern matches
