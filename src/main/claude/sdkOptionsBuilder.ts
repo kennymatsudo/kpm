@@ -12,6 +12,7 @@ export interface BuildSdkOptionsParams {
   model: ModelType;
   resumeSessionId?: string;
   mainWindow: BrowserWindow | null;
+  onClaudeMdEdit?: ClaudeMdInterceptFn;
 }
 
 /**
@@ -22,6 +23,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   const permissionContext: PermissionContext = {
     projectPath: context.project.folder_path,
     projectId: context.project.id,
+    onClaudeMdEdit,
   };
 
   // Get MCP server

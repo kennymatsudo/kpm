@@ -58,6 +58,7 @@ export interface StreamingSessionServiceDeps {
       model: ModelType;
       resumeSessionId?: string;
       mainWindow: BrowserWindow | null;
+      onClaudeMdEdit?: (projectId: string, newContent: string) => void;
     }
   ) => SDKOptions;
 
@@ -179,6 +180,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         model,
         resumeSessionId,
         mainWindow,
+        onClaudeMdEdit: (editProjectId: string, newContent: string) => {
+          });
+        },
       });
 
       // Subscribe to plan actions - store reference for cleanup
@@ -339,6 +343,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       const content = sdkMsg.message?.content || [];
       for (const block of content) {
         if (block.type === 'tool_use') {
+          // Track tool activity with rich context
+          const activity = getToolActivity(block.name, block.input as Record<string, unknown>);
+          if (activity) {
+          }
         }
       }
     }

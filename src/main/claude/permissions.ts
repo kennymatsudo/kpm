@@ -18,10 +18,18 @@ export type PromptUserFn = (
   input: Record<string, unknown>,
 ) => Promise<PermissionResult>;
 
+/** Callback for intercepted CLAUDE.md edits */
+export type ClaudeMdInterceptFn = (
+  projectId: string,
+  newContent: string
+) => void;
+
 /** Context for permission checks */
 export interface PermissionContext {
   projectPath: string;
   projectId: string;
+  /** Optional callback to intercept CLAUDE.md edits */
+  onClaudeMdEdit?: ClaudeMdInterceptFn;
 }
 
 /**
@@ -67,6 +75,19 @@ function isWithinDirectory(targetPath: string, baseDir: string): boolean {
 }
 
 /**
+ * Check if a path targets CLAUDE.md in the project directory.
+ */
+  if (!targetPath) return false;
+  try {
+    const normalizedTarget = normalize(targetPath);
+    const normalizedBase = normalize(projectPath);
+    const rel = relative(normalizedBase, normalizedTarget);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Generate preview text for permission prompt.
  */
 function getToolPreview(toolName: string, input: Record<string, unknown>): string {
@@ -86,6 +107,7 @@ function getToolPreview(toolName: string, input: Record<string, unknown>): strin
  * Create permission handler for Claude SDK.
  *
  * Rules:
+ * 1. Auto-allow: All other tools in project directory
  * 2. Auto-allow: Read tools anywhere
  * 3. Auto-allow: MCP tools (read-only)
  * 4. Check session cache for "Allow Always" decisions
@@ -105,6 +127,35 @@ export function createPermissionHandler(
     }
 
     const targetPath = extractPath(toolName, input);
+
+    // Debug logging for Write/Edit tools targeting files
+    if ((toolName === 'Write' || toolName === 'Edit') && targetPath) {
+      console.log(`[Permissions] ${toolName} tool called for: ${targetPath}`);
+    }
+
+      if ((toolName === 'Write' || toolName === 'Edit') && context.onClaudeMdEdit) {
+        // Extract content from Write/Edit tool input
+        let newContent: string | null = null;
+
+        if (toolName === 'Write' && typeof input.content === 'string') {
+          newContent = input.content;
+        } else if (toolName === 'Edit') {
+          // For Edit tool, we need the new_string content
+          // However, Edit is a partial replacement - we should encourage Write for full content
+          // For now, log and deny, guiding Claude to use a different approach
+          return {
+            behavior: 'deny',
+          };
+        }
+
+        if (newContent) {
+          context.onClaudeMdEdit(context.projectId, newContent);
+          return {
+            behavior: 'deny',
+          };
+        }
+      }
+    }
 
       return { behavior: 'allow', updatedInput: input };
     }
