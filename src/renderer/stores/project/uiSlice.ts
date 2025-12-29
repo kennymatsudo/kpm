@@ -11,6 +11,7 @@ export const createUiSlice: SliceCreator<UiSlice> = (_deps) => (set, get) => ({
 
   setEditingItemId: (itemId) => set({ editingItemId: itemId }),
   setLoading: (isLoading) => set({ isLoading }),
+  setSwitchingProject: (isSwitchingProject) => set({ isSwitchingProject }),
   setError: (error) => set({ error }),
   clearError: () => set({ error: null }),
 });

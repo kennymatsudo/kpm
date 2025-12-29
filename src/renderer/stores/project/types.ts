@@ -35,6 +35,7 @@ export interface ProjectStoreValues {
   worktrees: Worktree[];  // Git worktrees for agent development
   worktreeLoading: Record<string, WorktreeOperation | null>;  // planItemId or worktreeId -> operation in progress
   isLoading: boolean;
+  isSwitchingProject: boolean;  // True while loading a different project
   error: string | null;
   editingItemId: string | null;  // For edit panel - which task is being edited
 }
@@ -84,6 +85,7 @@ export interface UiSlice {
   clearFocusedResources: () => void;
   setEditingItemId: (itemId: string | null) => void;
   setLoading: (loading: boolean) => void;
+  setSwitchingProject: (switching: boolean) => void;
   setError: (error: string | null) => void;
   clearError: () => void;
 }

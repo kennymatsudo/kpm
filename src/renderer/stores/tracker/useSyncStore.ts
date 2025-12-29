@@ -32,10 +32,25 @@ interface SyncState {
 
   // Progress listener setup
   setupProgressListener: () => () => void;
+
+  // Reset
+  reset: () => void;
 }
 
+const initialState = {
   isSyncing: false,
+  syncProgress: null as SyncState['syncProgress'],
+  syncPreview: null as SyncPreview | null,
+  error: null as string | null,
+  resolutions: {} as Record<string, ConflictResolution>,
+  deletedAction: 'decide_each' as DeletedItemAction,
+  deletedDecisions: {} as Record<string, 'keep' | 'delete'>,
   showPanel: false,
+  activeAssociationId: null as string | null,
+};
+
+export const useSyncStore = create<SyncState>((set, get) => ({
+  ...initialState,
 
   startSync: async (projectId, associationId) => {
     set({
@@ -144,4 +159,5 @@ interface SyncState {
       });
     });
   },
+
 }));

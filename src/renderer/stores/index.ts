@@ -17,3 +17,6 @@ export { emit, subscribe } from './storeEvents';
 export type { StoreEvent, StatusChangedEvent } from './storeEvents';
 
 // Tracker sub-stores (re-export from tracker/index.ts)
+
+// Project-scoped store management
+export { resetAllProjectScopedStores, getRegisteredStoreNames } from './projectScopedStores';

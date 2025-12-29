@@ -11,6 +11,7 @@ export const createBaseState = (): ProjectStoreValues => ({
   worktrees: [],
   worktreeLoading: {},
   isLoading: false,
+  isSwitchingProject: false,
   error: null,
   focusedResources: [],
   editingItemId: null,

@@ -7,6 +7,7 @@ export default function App() {
 
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
 
+  const { createProject, deleteCurrentProject, loadProjectData } = useProjectLoader({
   });
 
 

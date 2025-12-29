@@ -346,6 +346,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // Handle result message (final stats)
     if (sdkMsg.type === 'result') {
 
+
       }
     }
   }

@@ -139,6 +139,7 @@ const repos = {
   add: (projectId: string, path: string): Promise<Repo> =>
   remove: (repoId: string): Promise<{ success: boolean }> =>
   list: (projectId: string): Promise<Repo[]> =>
+  selectDialog: (): Promise<string[]> =>
   getBranch: (path: string): Promise<string | null> =>
   getBranches: (paths: string[]): Promise<Record<string, string | null>> =>
   watch: (repoId: string, path: string): Promise<{ success: boolean }> =>

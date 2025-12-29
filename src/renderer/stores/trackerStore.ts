@@ -46,12 +46,26 @@ interface TrackerState {
 
   // Progress listener setup
   setupImportProgressListener: () => () => void;
+
+  // Reset
+  reset: () => void;
 }
 
+const initialState = {
+  associations: [] as TrackerAssociationWithScope[],
   isLoadingAssociations: false,
   isImporting: false,
+  importProgress: null as TrackerState['importProgress'],
+  importPreview: null as ImportPreview | null,
+  importError: null as string | null,
   showAssociationDialog: false,
   showImportPanel: false,
+  activeAssociationId: null as string | null,
+  error: null as string | null,
+};
+
+export const useTrackerStore = create<TrackerState>((set, get) => ({
+  ...initialState,
 
   loadAssociations: async (projectId) => {
     set({ isLoadingAssociations: true, error: null });
@@ -209,6 +223,8 @@ interface TrackerState {
       });
     });
   },
+
+  reset: () => set(initialState),
 }));
 
 // Selector for checking if any associations exist (avoids re-renders on association changes)

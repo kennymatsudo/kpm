@@ -59,14 +59,29 @@ interface ExportState {
   setShowQueuePanel: (show: boolean, associationId?: string) => void;
   setShowMappingDialog: (show: boolean, scopeId?: string) => void;
   clearError: () => void;
+
+  // Reset
+  reset: () => void;
 }
 
+const initialState = {
+  queueEntries: [] as SyncQueueEntryWithPlanItem[],
   queueCount: 0,
   isLoadingQueue: false,
+  typeMappings: [] as TrackerTypeMapping[],
   isLoadingMappings: false,
+  exportPreview: null as ExportPreview | null,
   isExporting: false,
+  exportResult: null as ExportResult | null,
   showQueuePanel: false,
   showMappingDialog: false,
+  activeAssociationId: null as string | null,
+  activeScopeId: null as string | null,
+  error: null as string | null,
+};
+
+export const useExportStore = create<ExportState>((set, get) => ({
+  ...initialState,
 
   loadQueue: async (projectId) => {
     set({ isLoadingQueue: true, error: null });
@@ -262,4 +277,5 @@ interface ExportState {
   },
 
   clearError: () => set({ error: null }),
+
 }));

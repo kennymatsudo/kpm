@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { resetAllProjectScopedStores } from '../stores/projectScopedStores';
 
 interface UseProjectLoaderOptions {
   onRequestNewProject?: () => void;
@@ -27,11 +28,39 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
     watchedRepoPathsRef.current = [];
 
   const loadProjectData = useCallback(async (projectId: string) => {
+    const isSwitching = previousConnectedProjectId !== null && previousConnectedProjectId !== projectId;
 
+    try {
+      // 1. Fetch all new project data first (while old project is still visible)
 
+        for (const repo of repos) {
+        }
+
+      // 2. Tear down old project resources
+      await teardownWatchers();
+
+      if (previousConnectedProjectId && previousConnectedProjectId !== projectId) {
+        // Reset all project-scoped stores when switching projects to prevent memory leaks
+        // See projectScopedStores.ts to add new stores that need cleanup
+        resetAllProjectScopedStores();
+      }
+
+      // 3. Batch update all store state at once (atomic swap)
+        }
+      } else {
+      }
+
+      // Track project for session cleanup on switch
+      previousConnectedProjectId = projectId;
+    } finally {
+      }
+    }
 
     addProject(project);
     await loadProjectData(project.id);
+
+    }
+
     return project;
 
   const deleteCurrentProject = useCallback(async () => {
