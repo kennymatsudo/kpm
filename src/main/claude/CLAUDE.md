@@ -43,12 +43,22 @@ Tools are direct function calls registered with the SDK at startup—no subproce
 
 
 ```
+Claude calls modification tool (modify_plan, bulk_reparent, etc.)
   ↓ Tool validates input via Zod
   ↓ Tool emits PlanAction[] via onPlanActions callback
 ```
 
+- `modify_plan` - General plan modifications
+- `flatten_hierarchy` - Move nested items to root
+- `bulk_update_status` - Update status for multiple items
+- `bulk_delete` - Delete multiple items
+- `bulk_reparent` - Move items under new parent
+- `bulk_set_label` - Set label for multiple items
+- `bulk_set_release` - Set release tag for multiple items
+- `clear_dependencies` - Remove dependencies from items
 
 **Exception (immediate execution):**
+- `clear_positions` - Only affects canvas layout, not plan structure
 
 ## Adding New Tools
 

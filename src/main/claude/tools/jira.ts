@@ -27,6 +27,7 @@ function formatJiraError(error: unknown) {
 
   return [
     tool(
+      'jira_list_projects',
       {},
       async () => {
         try {
@@ -46,6 +47,7 @@ function formatJiraError(error: unknown) {
     ),
 
     tool(
+      'jira_search',
       'Search issues in Jira project. Returns issues matching JQL query.',
       {
         projectKey: z.string().describe('Jira project key (e.g., "AUTH")'),
@@ -75,6 +77,7 @@ function formatJiraError(error: unknown) {
     ),
 
     tool(
+      'jira_get_issue',
       'Get a single Jira issue by key',
       {
         issueKey: z.string().describe('Jira issue key (e.g., "AUTH-123")'),
@@ -97,6 +100,7 @@ function formatJiraError(error: unknown) {
     ),
 
     tool(
+      'jira_compare_plan',
       {
         jiraProjectKey: z.string().describe('Jira project key (e.g., "AUTH")'),
       },

@@ -83,6 +83,7 @@ describe('permissions', () => {
       });
 
       it('auto-allows MCP tools', async () => {
+        const result = await handler('mcp__kpm__get_plan_hierarchy', { projectId: 'test' }, createTestOptions());
         expect(result.behavior).toBe('allow');
         expect(mockPromptUser).not.toHaveBeenCalled();
       });

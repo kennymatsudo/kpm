@@ -108,6 +108,7 @@ export function createPlanChangeTools(onPlanActions: PlanActionsCallback) {
 
   return [
     tool(
+      'modify_plan',
       {
         message: z.string().describe('Brief description of the proposed changes'),
         actions: z.array(PlanActionSchema).describe('The plan actions to propose'),

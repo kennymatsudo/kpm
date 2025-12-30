@@ -16,6 +16,8 @@ export function createRelationTools(
 
   return [
     tool(
+      'get_enriched_relations',
+      'Get dependency relations (blocks, depends_on, relates_to) with item details included. Returns relation type plus from/to item summaries (id, title, status, external_key) in one call. **USE FOR:** "What blocks X?", "Show dependencies for X". **USE get_item_context INSTEAD** for delete/move decisions (it includes relations plus children).',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemId: z.string().uuid().optional().describe('Filter to relations involving this item'),

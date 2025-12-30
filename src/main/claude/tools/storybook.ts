@@ -101,6 +101,7 @@ function extractComponentsFromIndex(index: StorybookIndex): StorybookComponent[]
 export function createStorybookTools(projectRepo: IProjectRepository) {
   return [
     tool(
+      'storybook_list_components',
       'List all components in the project Storybook. Use this to discover what UI components already exist before proposing new ones during planning. Returns component names, story counts, and available variants.',
       {
         projectId: z.string().uuid().describe('The project UUID'),
@@ -135,6 +136,8 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
     ),
 
     tool(
+      'storybook_get_component',
+      'Get details for a specific component including all its stories (variants). Use after storybook_list_components to see what variants exist for a component.',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         componentTitle: z.string().describe('Component title from list_components (e.g., "Components/Button")'),
@@ -162,6 +165,7 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
             }));
 
           if (stories.length === 0) {
+            return toolError(`Component "${componentTitle}" not found. Use storybook_list_components to see available components.`);
           }
 
           // Collect all unique tags
@@ -182,6 +186,7 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
     ),
 
     tool(
+      'storybook_search',
       'Search for components by name. Use when looking for a specific type of component (e.g., "modal", "button", "form").',
       {
         projectId: z.string().uuid().describe('The project UUID'),

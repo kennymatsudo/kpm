@@ -169,6 +169,7 @@ export function createPlanItemTools(
 
   return [
     tool(
+      'get_plan_hierarchy',
       'Get the full plan as a nested tree structure. Returns summary data (id, title, status, status_category, label, release_tag, external_key) with children nested. **BEST FOR:** Understanding plan structure, seeing parent-child relationships, displaying the whole plan. **USE filter_plan_items INSTEAD when:** You just need to find specific items without needing the tree structure.',
       {
         projectId: z.string().uuid().describe('The project UUID'),
@@ -185,6 +186,7 @@ export function createPlanItemTools(
     ),
 
     tool(
+      'filter_plan_items',
       'Query and filter plan items. Returns summary data with child counts. **BEST FOR:** Finding items by external key (e.g., "PROJ-7012"), filtering by status/label/category, searching by title. Omit status param to get all items (canvas + backlog) in one call.',
       {
         projectId: z.string().uuid().describe('The project UUID'),
@@ -240,6 +242,7 @@ export function createPlanItemTools(
     ),
 
     tool(
+      'get_plan_item',
       { itemId: z.string().uuid().describe('The plan item UUID') },
       async ({ itemId }) => {
         const item = planItemRepo.get(itemId);
@@ -250,6 +253,7 @@ export function createPlanItemTools(
     ),
 
     tool(
+      'batch_get_items',
       'Get full details for multiple items in one call. **REPLACES:** multiple get_plan_item calls. Accepts up to 50 item IDs. Can optionally include dependencies (blockers) and parent titles.',
       {
         projectId: z.string().uuid().describe('The project UUID'),
@@ -350,6 +354,7 @@ export function createPlanItemTools(
     ),
 
     tool(
+      'get_item_context',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemId: z.string().uuid().describe('The plan item UUID'),
@@ -476,6 +481,7 @@ export function createPlanItemTools(
     ),
 
     tool(
+      'flatten_hierarchy',
       {
         projectId: z.string().uuid().describe('The project UUID'),
       },
@@ -522,6 +528,7 @@ export function createPlanItemTools(
     ),
 
     tool(
+      'bulk_update_status',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemIds: z.array(z.string().uuid()).optional().describe('Specific item IDs to update'),
@@ -589,6 +596,7 @@ export function createPlanItemTools(
     ),
 
     tool(
+      'bulk_delete',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemIds: z.array(z.string().uuid()).optional().describe('Specific item IDs to delete'),
@@ -670,6 +678,7 @@ export function createPlanItemTools(
     ),
 
     tool(
+      'bulk_reparent',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemIds: z.array(z.string().uuid()).describe('Item IDs to move'),
@@ -733,6 +742,7 @@ export function createPlanItemTools(
     ),
 
     tool(
+      'bulk_set_label',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemIds: z.array(z.string().uuid()).optional().describe('Specific item IDs to update'),
@@ -794,6 +804,7 @@ export function createPlanItemTools(
     ),
 
     tool(
+      'bulk_set_release',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemIds: z.array(z.string().uuid()).optional().describe('Specific item IDs to update'),
@@ -861,6 +872,7 @@ export function createPlanItemTools(
     ),
 
     tool(
+      'clear_positions',
       'Clear canvas positions for all items in the project. NOTE: This is a UI-only operation that executes immediately (no approval needed) since it only affects canvas layout, not plan structure. Use when user asks to "reset layout", "clear positions", "reset canvas".',
       {
         projectId: z.string().uuid().describe('The project UUID'),
@@ -881,6 +893,7 @@ export function createPlanItemTools(
     ),
 
     tool(
+      'clear_dependencies',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemIds: z.array(z.string().uuid()).describe('Item IDs to clear dependencies from'),

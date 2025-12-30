@@ -43,5 +43,6 @@ ${hasAttachments ? buildAttachmentsSection(attachments) : ''}
 # Current Plan
 ${hasPlan
     ? planItems.length <= FULL_HIERARCHY_THRESHOLD
+      : `${planItems.length} items. Root items below. Query \`filter_plan_items\` for others.`
     : 'Empty.'}
 }
