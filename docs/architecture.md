@@ -16,7 +16,9 @@ src/
 │   │   ├── migrations.ts    # Database migrations
 │   │   ├── interfaces/      # Repository interfaces
 │   │   ├── repositories/    # CRUD operations
+│   │   └── domain/          # Domain services (Sync, Export, Import)
 │   ├── ipc/                 # IPC handlers
+│   │   ├── handlers/        # Handler implementations by domain
 │   │   └── validation/      # Zod schemas by domain
 │   ├── claude/              # Claude SDK integration
 │   │   ├── tools/           # In-process MCP tools
@@ -28,7 +30,15 @@ src/
 │   ├── trackers/            # Tracker-specific logic
 ├── renderer/                # React frontend
 │   ├── components/
+│   │   ├── ui/              # Shared primitives (Modal, Button, StatusBadge)
+│   │   ├── layout/          # App shell (Layout, TopBar) + hooks
+│   │   ├── planning/        # Plan views (Canvas, TreeView, BoardView, PlanCard)
+│   │   ├── chat/            # Chat interface
+│   │   ├── tracker/         # Jira integration
 │   │   ├── development/     # Shared PR/review components used by the board
+│   │   ├── sidebar/         # Left sidebar components
+│   │   ├── settings/        # Settings dialogs
+│   │   ├── command-palette/ # Command palette
 │   │   ├── onboarding/      # Project onboarding wizard
 │   │   ├── slack/           # Slack triage UI
 │   ├── stores/              # Zustand state management
@@ -118,6 +128,7 @@ src/
 
 **Two-Layer Service Pattern:**
 
+1. **Domain Services** (`src/main/db/domain/`):
    - Tightly coupled to database
    - Handle multi-table transactions
 
@@ -162,7 +173,13 @@ Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and
 
 | Component | Purpose |
 |-----------|---------|
+| `layout/` | Three-panel design (sidebar, main, chat) with resize hooks |
+| `planning/` | Card/Tree/Board views for plan items |
+| `chat/` | Claude chat interface with streaming |
 | `development/` | Shared PR/review components (CreatePrModal, ReviewTab, etc.) used by the board |
+| `sidebar/` | Project list, sources, context editor |
+| `command-palette/` | Cmd+K command interface |
+| `ui/` | Shared UI primitives (Modal, Button, StatusBadge) |
 | `slack/` | Slack triage panel, badge, channel settings |
 | `onboarding/` | Project onboarding and context regeneration |
 
@@ -193,6 +210,7 @@ Tracks git branch changes for connected repositories in real-time.
 
 **Files:**
 - `services/repo/RepoWatcherService.ts` - Service implementation
+- `ipc/handlers/repos.ts` - IPC handlers for watch/unwatch
 - `stores/project/resourceSlice.ts` - Branch state (`repoBranches`)
 - `components/sidebar-tree/RepoListSection.tsx`, `components/sidebar-tree/RepoItem.tsx` - Branch badge UI
 

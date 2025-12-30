@@ -1,3 +1,4 @@
+import type { SyncConflict, ConflictResolution } from '../../../../shared/types';
 
 interface Props {
   conflict: SyncConflict;

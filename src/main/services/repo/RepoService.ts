@@ -1,4 +1,5 @@
 import type { IRepoRepository } from '../../db/interfaces';
+import type { RepoWatcherService } from './RepoWatcherService';
 
 export interface RepoServiceDeps {
   repos: IRepoRepository;

@@ -303,6 +303,7 @@ export function createSyncQueueEntry(
     target_issue_type_name: options.target_issue_type_name ?? null,
     target_parent_key: options.target_parent_key ?? null,
     target_status_category: options.target_status_category ?? null,
+    custom_field_overrides: options.custom_field_overrides ?? null,
     queued_by: options.queued_by ?? 'user',
     queued_at: options.queued_at ?? new Date().toISOString(),
     error_message: options.error_message ?? null,

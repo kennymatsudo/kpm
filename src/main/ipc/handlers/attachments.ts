@@ -1,10 +1,15 @@
+import type { AttachmentService } from '../../services/core/AttachmentService';
+import { unwrapOrThrow } from '../../services/result';
+import { toIpcResponse } from '../response';
 
 /**
  * Register attachment handlers.
  * @param getMainWindow window getter for dialogs
+ * @param attachmentService injectable service
  */
 export function registerAttachmentHandlers(
   getMainWindow: () => BrowserWindow | null,
+  attachmentService: AttachmentService
 ): void {
     const { projectId, path: sourcePath, filename } = AttachmentSchemas.add.parse(params);
 
@@ -14,6 +19,7 @@ export function registerAttachmentHandlers(
     const { attachmentId } = AttachmentSchemas.remove.parse(params);
 
     const result = await attachmentService.remove(attachmentId);
+    return toIpcResponse(result);
   });
 
     const { projectId } = AttachmentSchemas.list.parse(params);

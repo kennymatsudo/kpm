@@ -7,6 +7,7 @@
 
 import BetterSqlite from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
+import { runMigrations } from '../../src/main/db/migrations';
 
 // =============================================================================
 // Test Database Factory
@@ -14,11 +15,16 @@ import type { Database as DatabaseType } from 'better-sqlite3';
 
 /**
  * Create a fresh in-memory database for testing
+ * Each call returns a new isolated database instance with all migrations applied
  */
 export function createTestDatabase(): DatabaseType {
   const db = new BetterSqlite(':memory:');
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
+
+  // Run all migrations to ensure test schema matches production
+  runMigrations(db);
+
   return db;
 }
 

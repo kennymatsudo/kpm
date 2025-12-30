@@ -1,3 +1,4 @@
+import { HighlightedText } from '../planning/HighlightedText';
 
 export interface Breadcrumb {
   title: string;

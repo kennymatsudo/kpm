@@ -1,4 +1,7 @@
 import { FileExplorerSchemas } from '../validation';
+import type { FileExplorerService } from '../../services/files/FileExplorerService';
+import { unwrapOrThrow } from '../../services/result';
+import { toIpcResponse } from '../response';
 
 export function registerFileExplorerHandlers(
   fileExplorerService: FileExplorerService,

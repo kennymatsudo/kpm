@@ -1,4 +1,7 @@
 import { ipcMain } from 'electron';
+import { WorktreeSchemas } from '../validation';
+import type { createWorktreeService } from '../../services/repo/WorktreeService';
+import { unwrapOrThrow } from '../../services/result';
 
 type WorktreeService = ReturnType<typeof createWorktreeService>;
 
@@ -19,8 +22,10 @@ export function registerWorktreeHandlers(worktreeService: WorktreeService): void
   });
 
     const { worktreeId, force } = WorktreeSchemas.delete.parse(params);
+    return toIpcResponse(await worktreeService.deleteWorktree(worktreeId, force));
   });
 
     const { worktreeId } = WorktreeSchemas.push.parse(params);
+    return toIpcResponse(await worktreeService.pushBranch(worktreeId));
   });
 }

@@ -148,6 +148,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     async createPendingSession(
       planItemId: string,
       repoId: string,
+    ): AsyncResult<DevSession> {
       try {
         // Validate plan item exists
         const item = deps.planItems.get(planItemId);
@@ -206,6 +207,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
      */
     async deleteSession(
       sessionId: string,
+    ): AsyncResult<void> {
       try {
         const session = deps.devSessions.get(sessionId);
         if (!session) {
@@ -241,6 +243,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     /**
      * Get git diff for a session's worktree
      */
+    async getSessionDiff(sessionId: string): AsyncResult<string> {
       try {
         const session = deps.devSessions.get(sessionId);
         if (!session) {
@@ -264,6 +267,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     /**
      * Get commit count ahead of base branch
      */
+    async getCommitsAhead(sessionId: string): AsyncResult<number> {
       try {
         const session = deps.devSessions.get(sessionId);
         if (!session) {

@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react';
+import { CloseIcon } from '../../icons';
+import { LoadingSpinner } from '../../ui/LoadingButton';
 
 interface Props {
   isLoading: boolean;

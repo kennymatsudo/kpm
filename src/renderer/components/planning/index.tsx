@@ -1,5 +1,7 @@
 import { Canvas } from './Canvas';
 import { BulkDeleteConfirmDialog } from './BulkDeleteConfirmDialog';
+import { TreeView } from '../tree-view';
+import { BoardView } from '../board-view';
 import { useShallow } from 'zustand/react/shallow';
 import type { ViewMode } from './ViewSwitcher';
 

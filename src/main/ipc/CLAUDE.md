@@ -13,6 +13,18 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## Directory Structure
+
+```
+src/main/ipc/
+├── index.ts              # Handler registration (composition root)
+├── response.ts           # IpcResponse type and helpers
+├── validation.ts         # Re-export from validation/
+├── validation/           # Zod schemas by domain
+│   ├── index.ts
+│   ├── shared.ts
+```
+
 ## Channel Registry
 
 
@@ -29,8 +41,10 @@ export const IPC_CHANNELS = {
 
 ```typescript
 
+  // Data-returning handlers: use unwrapOrThrow (throws on error, returns data directly)
   });
 
+  // Void/action handlers: use toIpcResponse (returns { success, data?, error? })
   });
 }
 ```
@@ -48,6 +62,11 @@ ipcMain.handle(
 ## Validation Schemas
 
 
+
+| Handler Type | Use | Example |
+|--------------|-----|---------|
+| Returns data | `unwrapOrThrow()` | `list`, `get`, `create` |
+| Returns void/action result | `toIpcResponse()` | `delete`, `update`, `remove` |
 
 ## Adding a New IPC Handler
 

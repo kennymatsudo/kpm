@@ -1,3 +1,4 @@
+import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 
 interface BulkDeleteConfirmDialogProps {
   itemCount: number;

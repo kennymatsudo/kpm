@@ -1,3 +1,5 @@
+import { STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
+import type { StatusCategory } from '../../../shared/types';
 
 interface StatusSelectorProps {
   value: StatusCategory | null;

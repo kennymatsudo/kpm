@@ -1,4 +1,5 @@
 import type { TreeNode } from '../../utils/planHierarchy';
+import { StatusSelector } from '../ui/StatusSelector';
 import { getStatusCategory } from '../../constants/statusConfig';
 import { MAX_DEPTH } from '../../constants/planCardStyles';
 

@@ -1,4 +1,8 @@
 import { useState } from 'react';
+import { useCredentialStore } from '../../../stores';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '../../ui/Modal';
+import { LoadingSpinner } from '../../ui/LoadingButton';
+import type { TrackerCredentialInfo } from '../../../../shared/types';
 
 interface Props {
   credential: TrackerCredentialInfo | null;

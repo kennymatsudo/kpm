@@ -1,3 +1,4 @@
+import { CloseIcon } from '../../icons';
 
 interface Props {
   error: string;

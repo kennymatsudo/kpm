@@ -4,6 +4,9 @@
  * Handles renderer <-> main process communication for development sessions.
  */
 
+import type { DevSessionService } from '../../services/repo/DevSessionService';
+import { DevSessionSchemas, createIpcHandler } from '../validation';
+import { IPC_CHANNELS } from '../channels';
 
 /**
  * Register dev session IPC handlers

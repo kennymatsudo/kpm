@@ -1,7 +1,10 @@
+import { useSyncStore } from '../../../stores';
 import { SyncConflictCard } from './SyncConflictCard';
 import { SyncDeletedSection } from './SyncDeletedSection';
 import { SyncErrorBanner } from './SyncErrorBanner';
 import { SyncReviewSkeleton } from './SyncSkeleton';
+import { Modal, ModalHeader, ModalFooter } from '../../ui/Modal';
+import { LoadingSpinner } from '../../ui/LoadingButton';
 
 interface Props {
   projectId: string;

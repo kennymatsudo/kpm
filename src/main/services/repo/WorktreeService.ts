@@ -17,6 +17,7 @@ export interface WorktreeServiceDeps {
 // Re-export types for consumers
 export type { WorktreeStatus } from '../../../shared/types';
 
+async function wrapAsync<T>(fn: () => Promise<T>): AsyncResult<T> {
   try {
     return success(await fn());
   } catch (error) {
@@ -65,6 +66,7 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
     /**
      * Get worktree status (commits ahead, etc.)
      */
+    async getStatus(worktreeId: string): AsyncResult<WorktreeStatus> {
       return wrapAsync(async () => {
         const worktree = deps.worktrees.get(worktreeId);
         if (!worktree) {
@@ -165,6 +167,7 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
     /**
      * Push worktree branch to remote
      */
+    async pushBranch(worktreeId: string): AsyncResult<void> {
       return wrapAsync(async () => {
         const worktree = deps.worktrees.get(worktreeId);
         if (!worktree) {

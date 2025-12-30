@@ -1,3 +1,4 @@
+import { Layout } from './components/layout';
 import { ThemeProvider } from './contexts';
 import { useProjectLoader } from './hooks/useProjectLoader';
 

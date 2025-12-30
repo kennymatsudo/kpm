@@ -11,7 +11,9 @@
 
 import type { BrowserWindow } from 'electron';
 import type { ClaudeMdUpdatePayload } from '../../claude/tools/claudemd-update';
+import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../claude/prompts';
+import { getConfig } from '../../config';
 
 // =============================================================================
 // Types
@@ -35,8 +37,11 @@ interface ManagedSession {
 }
 
 // =============================================================================
+// Configuration (accessed via getConfig().session)
 // =============================================================================
 
+// Helper to get session config values
+const getSessionConfig = () => getConfig().session;
 
 // =============================================================================
 // Dependencies
@@ -88,6 +93,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   /**
    * Wait for a session to become ready.
    */
+  async function waitForSessionReady(key: string, timeoutMs: number): AsyncResult<void> {
     const startTime = Date.now();
 
     while (Date.now() - startTime < timeoutMs) {
@@ -118,6 +124,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   async function sendMessageToSession(
     key: string,
     createSession: () => Promise<ServiceResult<{ sessionId: string }>>
+  ): AsyncResult<void> {
     let managed = sessions.get(key);
 
     // Create new session with this message if none exists or error state
@@ -132,6 +139,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Wait for connecting session to become ready (with timeout)
     if (managed.state === 'connecting') {
+      const waitResult = await waitForSessionReady(key, getSessionConfig().sessionReadyTimeoutMs);
       if (!waitResult.ok) {
         return failure(waitResult.error);
       }
@@ -162,6 +170,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   /**
    * Create and start a streaming session with an initial message.
    */
+  async function createSession(config: SessionCreationConfig): AsyncResult<{ sessionId: string }> {
     const {
       key,
       projectId,
@@ -257,11 +266,13 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
    */
     projectId: string,
     message: string,
+  ): AsyncResult<void> {
   }
 
   /**
    */
     projectId: string,
+  ): AsyncResult<{ sessionId: string }> {
     const project = deps.projectRepository.get(projectId);
     if (!project) {
       return failure('Project not found');
@@ -284,6 +295,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
    * Interrupt the current execution in a session.
    * Resets state to 'ready' so new messages can be sent.
    */
+  async function interrupt(sessionKey: string): AsyncResult<void> {
     const managed = sessions.get(sessionKey);
     if (!managed) {
       return failure('No active session');
@@ -301,6 +313,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   /**
    * Change the model for a session.
    */
+  async function setModel(sessionKey: string, model: ModelType): AsyncResult<void> {
     const managed = sessions.get(sessionKey);
     if (!managed) {
       return failure('No active session');
@@ -390,8 +403,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     console.log(`[StreamingSessionService] Session ended: ${key} (${reason})`);
   }
 
+    const sessionConfig = getSessionConfig();
+
 
       }
+    }, sessionConfig.cleanupIntervalMs);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────

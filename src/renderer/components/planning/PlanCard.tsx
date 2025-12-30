@@ -2,6 +2,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { TreeNode } from '../../utils/planHierarchy';
 import { getStyleForDepth, MAX_DEPTH } from '../../constants/planCardStyles';
 import { DragSource } from '../../constants/dragSource';
+import { DeleteConfirmDialog } from '../ui/DeleteConfirmDialog';
 import { getStatusCategory } from '../../constants/statusConfig';
 
 // Hoisted constant for active session status check (avoids array recreation in selector)
@@ -285,6 +286,13 @@ export const PlanCard = memo(function PlanCard({
         </div>
       )}
 
+      {/* Context menu */}
+        <PlanCardMenu
+          isOpen={showMenu}
+          position={menuPosition}
+          onClose={() => setShowMenu(false)}
+          onDelete={() => setShowDeleteConfirm(true)}
+        />
       )}
 
       {/* Delete confirmation dialog - not rendered in preview mode */}

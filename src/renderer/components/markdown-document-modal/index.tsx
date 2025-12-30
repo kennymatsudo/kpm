@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { MotionButton } from '../ui/MotionButton';
 
 // Toolbar button component
 interface ToolbarButtonProps {

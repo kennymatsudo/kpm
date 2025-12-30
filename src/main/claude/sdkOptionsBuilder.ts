@@ -5,6 +5,7 @@
  * This is used by both the per-query and streaming session patterns.
  */
 
+import { getConfig } from '../config';
 
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
 
@@ -29,6 +30,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   // Get MCP server
 
   // Build options
+  const claudeConfig = getConfig().claude;
   const sdkOptions: SDKOptions = {
     systemPrompt,
     model,

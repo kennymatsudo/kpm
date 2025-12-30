@@ -6,6 +6,8 @@
  */
 
 import { ipcMain } from 'electron';
+import * as TempImageService from '../../services/files/TempImageService';
+import { TempImageSchemas } from '../validation';
 
 export function registerTempImageHandlers(): void {
   /**

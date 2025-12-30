@@ -1,5 +1,8 @@
+import type * as fs from 'fs/promises';
+import type * as path from 'path';
 import type { Attachment } from '../../../shared/types';
 import type { IAttachmentRepository, IProjectRepository } from '../../db/interfaces';
+import { failure, success, type ServiceResult, type AsyncResult } from '../result';
 
 export interface AttachmentFs {
   access: typeof fs.access;
@@ -46,6 +49,7 @@ async function getUniqueFilename(fsImpl: AttachmentFs, pathImpl: AttachmentPath,
 
 export function createAttachmentService(deps: AttachmentServiceDeps) {
   return {
+    async add(projectId: string, sourcePath: string, filename: string): AsyncResult<Attachment> {
       const project = deps.projects.get(projectId);
       if (!project) {
         return failure('Project not found');
@@ -75,6 +79,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps) {
       }
     },
 
+    async remove(attachmentId: string): AsyncResult<void> {
       try {
         const attachment = deps.attachments.get(attachmentId);
 

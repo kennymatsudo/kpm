@@ -1,6 +1,8 @@
 import { ipcMain, type BrowserWindow } from 'electron';
+import { TrackerSchemas } from '../validation';
 import type {
   SyncPreview,
+} from '../../../shared/types';
 
   // ============================================
   // Credentials (stored in OS keychain via keytar)

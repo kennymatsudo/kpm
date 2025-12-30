@@ -2,12 +2,37 @@
  * Global test setup file
  *
  * This file runs before each test file and sets up:
+ * - sql.js initialization (WASM-based SQLite for tests)
+ * - Mock for better-sqlite3 (uses sql.js adapter)
  * - Mocks for Electron APIs
  * - Mocks for Node.js modules that don't work in test environment
  * - Global test utilities
  */
 
 import { vi, beforeEach, afterEach, expect } from 'vitest';
+
+// =============================================================================
+// sql.js Initialization (MUST be first)
+// =============================================================================
+
+// Import and initialize sql.js before any better-sqlite3 usage
+import { initializeSqlJs, Database } from './mocks/sqljs-adapter';
+
+// Initialize sql.js synchronously at module load time using top-level await
+await initializeSqlJs();
+
+// =============================================================================
+// better-sqlite3 Mock (uses sql.js adapter)
+// =============================================================================
+
+// Mock better-sqlite3 to use our sql.js adapter
+// This allows all code that imports better-sqlite3 to work without native compilation
+vi.mock('better-sqlite3', () => {
+  return {
+    default: Database,
+    Database: Database,
+  };
+});
 
 // =============================================================================
 // Electron Mocks

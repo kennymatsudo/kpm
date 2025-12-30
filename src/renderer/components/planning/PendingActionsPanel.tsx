@@ -1,4 +1,6 @@
 import type { PlanAction, PlanItem } from '../../../shared/types';
+import { LoadingSpinner } from '../ui/LoadingButton';
+import { MotionButton } from '../ui/MotionButton';
 
 interface PendingActionsPanelProps {
   actions: PlanAction[];

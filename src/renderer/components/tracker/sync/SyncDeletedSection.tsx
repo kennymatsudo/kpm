@@ -1,3 +1,4 @@
+import type { PlanItem, DeletedItemAction } from '../../../../shared/types';
 
 interface Props {
   items: PlanItem[];
