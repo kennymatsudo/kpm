@@ -30,6 +30,13 @@ export const ZOOM = {
   STEP: 0.25,
   /** Step size for Cmd/Ctrl+scroll zoom (finer control) */
   SCROLL_STEP: 0.02,
+  /**
+   * Base scale factor applied to zoom.
+   * When user sees "100%", actual canvas scale = 1 * BASE = 0.75.
+   * This allows more cards to fit at the default view while preserving
+   * card proportions and readability.
+   */
+  BASE: 0.75,
 } as const;
 
 /** Default sidebar widths */

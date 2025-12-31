@@ -5,6 +5,7 @@
  * Extracted from Canvas.tsx for better separation of concerns.
  */
 
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 
 /** Debounce delay for persisting canvas state (ms) */
 const PERSIST_DEBOUNCE_MS = 300;
@@ -23,7 +24,10 @@ interface UseCanvasViewportOptions {
 }
 
 interface UseCanvasViewportReturn {
+  /** User-facing zoom value (1 = 100% displayed) */
   zoom: number;
+  /** Actual rendering scale (zoom * ZOOM.BASE) */
+  effectiveZoom: number;
   setZoom: React.Dispatch<React.SetStateAction<number>>;
   panOffset: { x: number; y: number };
   setPanOffset: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
@@ -45,6 +49,10 @@ export function useCanvasViewport({
   const [zoom, setZoom] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
+
+  // Effective zoom = user zoom * base scale factor
+  // When user sees "100%", actual rendering scale is 0.75
+  const effectiveZoom = useMemo(() => zoom * ZOOM.BASE, [zoom]);
 
   const panStartRef = useRef({ x: 0, y: 0 });
   const panOffsetStartRef = useRef({ x: 0, y: 0 });
@@ -86,10 +94,14 @@ export function useCanvasViewport({
   }, [projectId, zoom, panOffset]);
 
   // Calculate canvas coordinates from screen coordinates
+  // Uses effectiveZoom (actual rendering scale) for accurate conversion
   const screenToCanvas = useCallback((screenX: number, screenY: number) => {
     if (!containerRef.current) return { x: 0, y: 0 };
     const rect = containerRef.current.getBoundingClientRect();
+    const x = (screenX - rect.left - panOffset.x) / effectiveZoom;
+    const y = (screenY - rect.top - panOffset.y) / effectiveZoom;
     return { x, y };
+  }, [panOffset, effectiveZoom]);
 
   // Pan handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -120,6 +132,7 @@ export function useCanvasViewport({
 
   return {
     zoom,
+    effectiveZoom,
     setZoom,
     panOffset,
     setPanOffset,

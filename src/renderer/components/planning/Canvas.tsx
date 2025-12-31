@@ -27,6 +27,7 @@ interface CanvasProps {
 }: CanvasProps) {
   const {
     zoom,
+    effectiveZoom,
     setZoom,
     panOffset,
     setPanOffset,
@@ -120,11 +121,14 @@ interface CanvasProps {
           onClick={resetView}
           className="px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-surface-3 rounded transition-colors"
         >
+          Reset View
         </button>
         <button
           onClick={() => {
           }}
+          className="px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-surface-3 rounded transition-colors"
         >
+          Auto Layout
         </button>
       </div>
 
@@ -132,6 +136,7 @@ interface CanvasProps {
       <div
         className="absolute origin-top-left pointer-events-none"
         style={{
+          transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${effectiveZoom})`,
         }}
       >
         <AnimatePresence mode="popLayout">
@@ -188,6 +193,7 @@ interface CanvasProps {
           style={{
             left: `${dragPreview.x - dragPreview.offsetX}px`,
             top: `${dragPreview.y - dragPreview.offsetY}px`,
+            transform: `scale(${effectiveZoom})`,
             transformOrigin: 'top left',
           }}
         >
