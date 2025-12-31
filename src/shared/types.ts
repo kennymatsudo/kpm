@@ -508,8 +508,17 @@ export interface SyncReviewData {
 
 export interface ChatMessage {
   id: string;
+  chat_session_id: string | null;  // Groups messages into distinct sessions within a project
   role: 'user' | 'assistant';
   content: string;
+  created_at: string;
+}
+
+/** Summary of a chat session for history display */
+export interface ChatSessionSummary {
+  chat_session_id: string;
+  first_message: string;  // First user message (truncated for display)
+  message_count: number;
   created_at: string;
 }
 
@@ -618,6 +627,7 @@ export interface DevSessionWithPlanItem extends DevSession {
     external_key: string | null;
 }
 
+// =============================================================================
 // File Explorer Types
 // =============================================================================
 

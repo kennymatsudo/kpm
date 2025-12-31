@@ -13,12 +13,19 @@ export function useLayoutShortcuts({
 }: UseLayoutShortcutsOptions): void {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isEditableElement = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
       // Cmd+K (Mac) or Ctrl+K (Windows/Linux) to toggle command palette
+      // Skip if focused on editable element (let editor handle formatting shortcuts)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k' && !isEditableElement) {
         e.preventDefault();
         e.stopPropagation();
         onOpenCommandPalette();
       }
       // Cmd+B (Mac) or Ctrl+B (Windows/Linux) to toggle left sidebar
+      // Skip if focused on editable element (let editor handle bold)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'b' && !isEditableElement) {
         e.preventDefault();
         e.stopPropagation();
         onToggleSidebar();

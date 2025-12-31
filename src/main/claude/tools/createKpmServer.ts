@@ -18,6 +18,9 @@ const planActionsEmitter = new EventEmitter();
 
 const claudeMdUpdateEmitter = new EventEmitter();
 
+// Event emitter for document updates
+const documentUpdateEmitter = new EventEmitter();
+
 /**
  * Subscribe to plan actions for the current message context.
  * Returns an unsubscribe function.
@@ -36,6 +39,15 @@ export function subscribeToClaudeMdUpdate(callback: ClaudeMdUpdateCallback): () 
 }
 
 /**
+ * Subscribe to document update proposals.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToDocumentUpdate(callback: DocumentUpdateCallback): () => void {
+  documentUpdateEmitter.on('documentUpdate', callback);
+  return () => documentUpdateEmitter.off('documentUpdate', callback);
+}
+
+/**
  * Internal callback that emits to all subscribers
  */
 function emitPlanActions(actions: PlanAction[]): void {
@@ -44,6 +56,11 @@ function emitPlanActions(actions: PlanAction[]): void {
 /**
  */
 function emitClaudeMdUpdate(update: ClaudeMdUpdatePayload): void {
+}
+
+/**
+ */
+function emitDocumentUpdate(update: DocumentUpdatePayload): void {
 }
 
 /**

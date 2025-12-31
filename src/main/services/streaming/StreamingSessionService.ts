@@ -11,6 +11,7 @@
 
 import type { BrowserWindow } from 'electron';
 import type { ClaudeMdUpdatePayload } from '../../claude/tools/claudemd-update';
+import type { DocumentUpdatePayload } from '../../claude/tools/document-update';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../claude/prompts';
 import { getConfig } from '../../config';
@@ -34,6 +35,7 @@ interface ManagedSession {
   processingStartTime?: number; // Timestamp when processing started (for timeout detection)
   unsubscribePlanActions: () => void;
   unsubscribeClaudeMdUpdate: () => void;
+  unsubscribeDocumentUpdate: () => void;
 }
 
 // =============================================================================
@@ -73,6 +75,9 @@ export interface StreamingSessionServiceDeps {
   /** Subscribe to plan actions from MCP tools */
 
   subscribeToClaudeMdUpdate: (callback: (update: ClaudeMdUpdatePayload) => void) => () => void;
+
+  /** Subscribe to document update proposals from MCP tools */
+  subscribeToDocumentUpdate: (callback: (update: DocumentUpdatePayload) => void) => () => void;
 
 }
 
@@ -191,6 +196,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // Store references outside try block to ensure cleanup on any error
     let unsubscribePlanActions: (() => void) | null = null;
     let unsubscribeClaudeMdUpdate: (() => void) | null = null;
+    let unsubscribeDocumentUpdate: (() => void) | null = null;
 
     try {
         model,
@@ -208,6 +214,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         }
       });
 
+      // Subscribe to document update proposals from the tool
+      unsubscribeDocumentUpdate = deps.subscribeToDocumentUpdate((update) => {
+        }
+      });
+
           });
 
       // Store managed session BEFORE calling start() to ensure cleanup on timeout/error
@@ -221,6 +232,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         lastActivity: Date.now(),
         unsubscribePlanActions,
         unsubscribeClaudeMdUpdate,
+        unsubscribeDocumentUpdate,
       });
 
 
@@ -236,10 +248,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         managed.state = 'error';
         managed.unsubscribePlanActions();
         managed.unsubscribeClaudeMdUpdate();
+        managed.unsubscribeDocumentUpdate();
       } else {
         // Session wasn't stored in map - clean up local references directly
         unsubscribePlanActions?.();
         unsubscribeClaudeMdUpdate?.();
+        unsubscribeDocumentUpdate?.();
       }
 
         error: (error as Error).message,
@@ -349,6 +363,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     managed.state = 'closing';
     managed.unsubscribePlanActions();
     managed.unsubscribeClaudeMdUpdate();
+    managed.unsubscribeDocumentUpdate();
 
     try {
       await managed.session.close();
@@ -393,6 +408,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     managed.unsubscribePlanActions();
     managed.unsubscribeClaudeMdUpdate();
+    managed.unsubscribeDocumentUpdate();
     sessions.delete(key);
 
     const mainWindow = deps.getMainWindow();

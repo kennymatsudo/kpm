@@ -28,6 +28,8 @@ export const tempImagePath = absolutePath.refine(
 /** Schema for FocusedResource type */
 const focusedResourceSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('plan_item'), id: z.string(), title: z.string() }),
+  z.object({ type: z.literal('project_file'), path: z.string(), isDirectory: z.boolean() }),
+  z.object({ type: z.literal('document'), id: z.string(), title: z.string(), path: z.string() }),
 ]);
 
 // =============================================================================
@@ -54,6 +56,16 @@ export const ChatSchemas = {
 
   getMessages: z.object({
     projectId: uuid,
+  }),
+
+  getSessionHistory: z.object({
+    projectId: uuid,
+    limit: z.number().int().min(1).max(20).optional().default(5),
+  }),
+
+  loadSession: z.object({
+    projectId: uuid,
+    chatSessionId: uuid,
   }),
 };
 

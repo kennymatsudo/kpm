@@ -8,8 +8,18 @@ interface LayoutProps {
   onDeleteProject?: () => void;
   onNewProject?: () => void;
   onOpenProject?: (projectId: string) => void;
+  /** When true, sidebar floats over content instead of pushing it */
+  sidebarOverlay?: boolean;
+  /** When true, chat panel floats over content instead of pushing it */
+  chatOverlay?: boolean;
 }
 
+  onDeleteProject,
+  onNewProject,
+  onOpenProject,
+  sidebarOverlay = false,
+  chatOverlay = false,
+}: LayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Command palette state from artifacts store
@@ -45,6 +55,8 @@ interface LayoutProps {
           searchResultCount={searchResultCount}
         />
 
+        {/* Main content area - flex row with sidebar pushing content (or relative for overlay mode) */}
+        <div className={`flex flex-1 overflow-hidden ${sidebarOverlay || chatOverlay ? 'relative' : ''}`}>
           {/* Project switching overlay */}
           {isSwitchingProject && (
                 <div className="w-5 h-5 rounded-full border-2 border-accent/30 border-t-accent spinner-refined" />
@@ -52,8 +64,16 @@ interface LayoutProps {
             </div>
           )}
 
+          {/* Left sidebar - pushes content by default, floats over when overlay mode */}
             <div
+              className={
+                sidebarOverlay
+              }
             >
+              <div className="flex-1 flex flex-col min-h-0">
+                <ErrorBoundary name="Sidebar">
+                </ErrorBoundary>
+              </div>
               {/* Sidebar resize handle */}
               <div
                 onMouseDown={handleSidebarResizeStart}
@@ -63,11 +83,18 @@ interface LayoutProps {
             </div>
           )}
 
+          {/* Main content area - fills remaining space between panels */}
           <main className="flex-1 flex flex-col overflow-hidden min-w-0">
 
+              </ErrorBoundary>
+            )}
           </main>
 
             <div
+              className={
+                chatOverlay
+                  : 'sidebar-panel flex bg-surface-0 flex-shrink-0'
+              }
             >
               {/* Chat resize handle */}
                 <div className="absolute inset-y-0 -left-1 -right-1" />

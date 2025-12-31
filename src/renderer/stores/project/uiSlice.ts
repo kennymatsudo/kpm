@@ -1,3 +1,5 @@
+import type { SliceCreator, UiSlice } from './types';
+import { resourceEquals } from '../../utils/focusedResources';
 
 export const createUiSlice: SliceCreator<UiSlice> = (_deps) => (set, get) => ({
 

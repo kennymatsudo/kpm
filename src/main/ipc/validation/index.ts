@@ -78,6 +78,7 @@ export { SettingsSchemas } from './settings';
 // Shell
 export { ShellSchemas } from './shell';
 
+
 // =============================================================================
 // Inferred Types (for type-safe IPC communication)
 // =============================================================================
@@ -215,3 +216,5 @@ export type {
   TempImageDeleteInput,
   // Shell
 } from './types';
+
+export type {

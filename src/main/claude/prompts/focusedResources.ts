@@ -10,6 +10,7 @@ export function formatFocusedResource(resource: FocusedResource): string {
     case 'plan_item':
     case 'project_file':
     case 'repo':
+    case 'document':
   }
 }
 

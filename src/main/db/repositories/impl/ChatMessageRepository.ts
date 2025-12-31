@@ -14,7 +14,9 @@ import type { IChatMessageRepository } from '../../interfaces';
  */
 interface PreparedStatements {
   getMessages: Statement;
+  getMessagesByChatSession: Statement;
   insert: Statement;
+  getRecentSessions: Statement;
 }
 
 export class ChatMessageRepository implements IChatMessageRepository {
@@ -24,11 +26,22 @@ export class ChatMessageRepository implements IChatMessageRepository {
     this.stmts = {
       getMessages: db.prepare(`
       `),
+      getMessagesByChatSession: db.prepare(`
+        SELECT * FROM chat_messages
+        ORDER BY created_at ASC
+      `),
       // Use RETURNING to get inserted row in one query
       insert: db.prepare(`
         RETURNING *
       `),
+      getRecentSessions: db.prepare(`
+        SELECT
+          COUNT(*) as message_count,
+        LIMIT ?
+      `),
     };
+  }
+
   }
 
   }
@@ -36,8 +49,17 @@ export class ChatMessageRepository implements IChatMessageRepository {
   addMessage(
     sessionId: string,
     role: 'user' | 'assistant',
+    content: string,
   ): ChatMessage {
     // Use RETURNING to get inserted row in one query
   }
 
+  }
+
+  /**
+   * Delete old sessions beyond the keep limit to prevent unbounded database growth.
+   * Keeps the N most recent sessions and deletes all messages from older ones.
+   */
+    return result.changes;
+  }
 }

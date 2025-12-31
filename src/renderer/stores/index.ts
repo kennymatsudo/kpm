@@ -20,3 +20,4 @@ export type { StoreEvent, StatusChangedEvent } from './storeEvents';
 
 // Project-scoped store management
 export { resetAllProjectScopedStores, getRegisteredStoreNames } from './projectScopedStores';
+

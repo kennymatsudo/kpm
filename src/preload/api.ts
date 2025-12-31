@@ -30,6 +30,7 @@ import type {
   SyncReviewData,
   StatusCategory,
   ChatMessage,
+  ChatSessionSummary,
   PermissionRequest,
   PermissionAction,
   FocusedResource,
@@ -71,6 +72,7 @@ export type {
   ExportResult,
   SyncReviewData,
   ChatMessage,
+  ChatSessionSummary,
   PermissionRequest,
   PermissionAction,
   Worktree,
@@ -104,6 +106,8 @@ const chat = {
     ipcRenderer.on('chat:activity', handler);
     return () => ipcRenderer.removeListener('chat:activity', handler);
   },
+    ipcRenderer.on('chat:file-update', handler);
+    return () => ipcRenderer.removeListener('chat:file-update', handler);
   },
 
   // ─── Streaming Session Methods ───

@@ -692,6 +692,46 @@ interface Migration {
     },
   },
   {
+    id: 1018,
+    name: '018_documents',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- DOCUMENTS: Project documentation metadata
+        -- Content stored as markdown files in project folder
+        -- ============================================
+        CREATE TABLE documents (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          type TEXT NOT NULL CHECK(type IN ('architecture', 'dev_guide', 'custom')),
+          title TEXT NOT NULL,
+          file_path TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX idx_documents_project ON documents(project_id);
+      `);
+    },
+  },
+  {
+    id: 1019,
+    name: '019_chat_session_tracking',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- Add chat_session_id for tracking session boundaries
+        -- Allows users to browse/resume from previous sessions
+        -- ============================================
+        ALTER TABLE chat_messages ADD COLUMN chat_session_id TEXT;
+
+        -- Index for querying sessions by project
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_session
+          ON chat_messages(session_type, session_id, chat_session_id);
+      `);
+    },
+  },
+  {
     id: 1020,
     name: '020_inbox_items',
     up: (db: BetterSqliteDatabase) => {

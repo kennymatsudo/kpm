@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 // Panel size constraints
+const SIDEBAR_MIN = 240;
 const SIDEBAR_MAX = 480;
+const SIDEBAR_DEFAULT = 240;
 const CHAT_MIN = 280;
 const CHAT_DEFAULT = 384; // 24rem = 384px
 
