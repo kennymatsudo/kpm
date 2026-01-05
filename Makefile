@@ -3,7 +3,11 @@ help:
 	@echo "Available commands:"
 
 # Install all dependencies (run once after clone or adding new packages)
+# Cleans native module builds first to avoid NODE_MODULE_VERSION mismatch
 install:
+	rm -rf node_modules/.cache
+	rm -rf node_modules/better-sqlite3/build
+	rm -rf node_modules/better-sqlite3/prebuilds
 
 
 # Start dev server
