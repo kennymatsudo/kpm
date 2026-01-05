@@ -23,6 +23,13 @@ import { getConfig } from '../../config';
 export type SessionState = 'idle' | 'connecting' | 'ready' | 'processing' | 'error' | 'closing';
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
 
+/** Segment state for tracking message boundaries */
+interface SegmentState {
+  currentSegmentId: number;
+  hasTextInCurrentSegment: boolean;
+  pendingActivities: Activity[];
+}
+
 /** Managed session with metadata */
 interface ManagedSession {
   key: string;
@@ -33,6 +40,7 @@ interface ManagedSession {
   lastActivity: number;
   sessionId?: string; // SDK session ID for resume
   processingStartTime?: number; // Timestamp when processing started (for timeout detection)
+  segmentState: SegmentState; // Track message segments for splitting bubbles
   unsubscribePlanActions: () => void;
   unsubscribeClaudeMdUpdate: () => void;
   unsubscribeDocumentUpdate: () => void;
@@ -240,6 +248,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         state: 'connecting',
         model,
         lastActivity: Date.now(),
+        segmentState: {
+          currentSegmentId: 0,
+          hasTextInCurrentSegment: false,
+          pendingActivities: [],
+        },
         unsubscribePlanActions,
         unsubscribeClaudeMdUpdate,
         unsubscribeDocumentUpdate,
@@ -395,18 +408,43 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // Handle assistant messages (text chunks)
     if (sdkMsg.type === 'assistant') {
       const content = sdkMsg.message?.content || [];
+      const segState = managed.segmentState;
+
       for (const block of content) {
         if (block.type === 'tool_use') {
+          // Tool use after text = new segment boundary
+          if (segState.hasTextInCurrentSegment) {
+            segState.currentSegmentId++;
+            segState.hasTextInCurrentSegment = false;
+          }
+
           // Track tool activity with rich context
           const activity = getToolActivity(block.name, block.input as Record<string, unknown>);
           if (activity) {
+            // Queue activity for the next text segment
+            segState.pendingActivities.push(activity);
           }
+        }
+
+        if (block.type === 'text') {
+          segState.hasTextInCurrentSegment = true;
+
+
+          // Clear pending activities after attaching to text
+          segState.pendingActivities = [];
         }
       }
     }
 
     // Handle result message (final stats)
     if (sdkMsg.type === 'result') {
+
+      // Reset segment state for next turn
+      managed.segmentState = {
+        currentSegmentId: 0,
+        hasTextInCurrentSegment: false,
+        pendingActivities: [],
+      };
 
 
       }

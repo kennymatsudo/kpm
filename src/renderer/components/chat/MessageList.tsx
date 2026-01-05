@@ -1,4 +1,5 @@
 import { processMessageContent } from '../../utils/messageFormatter';
+import { CopyIcon, CheckIcon } from '../icons';
 
 /** Parse user message to extract image attachments and clean content */
 function parseUserMessage(content: string): { cleanContent: string; imageCount: number } {
@@ -21,6 +22,20 @@ const PlanUpdateIndicator = memo(function PlanUpdateIndicator() {
       <div className="w-1.5 h-1.5 rounded-full bg-info animate-pulse" />
       <span className="text-xs text-info">Plan update proposed</span>
     </div>
+  );
+});
+
+/** Copy button that appears on hover */
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    await navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
   );
 });
 

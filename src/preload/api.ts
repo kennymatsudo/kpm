@@ -91,6 +91,18 @@ const tempImages = {
 };
 
 const chat = {
+  onChunk: (callback: (data: {
+    projectId: string;
+    text: string;
+    segmentId?: number;
+    precedingActivities?: Activity[];
+  }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: {
+      projectId: string;
+      text: string;
+      segmentId?: number;
+      precedingActivities?: Activity[];
+    }) => callback(data);
     ipcRenderer.on('chat:chunk', handler);
     return () => ipcRenderer.removeListener('chat:chunk', handler);
   },

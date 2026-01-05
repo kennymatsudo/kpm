@@ -15,6 +15,17 @@ interface ChatInputProps {
     }
   }, [message]);
 
+  // Escape key to cancel streaming
+  useEffect(() => {
+    const handleKeyDown = (e: globalThis.KeyboardEvent) => {
+        onCancel();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isStreaming, onCancel]);
+
   const handlePaste = async (e: ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items;
     if (!items) return;
