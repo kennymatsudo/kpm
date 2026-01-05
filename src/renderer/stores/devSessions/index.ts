@@ -23,6 +23,7 @@
 
   // Reset
   reset: () => void;
+  resetProjectState: () => void;
 }
 
 const initialState = {
@@ -42,6 +43,13 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
   setIsLoading: (isLoading) => set({ isLoading }),
 
   reset: () => {
+    set({
+      ...initialState,
+      deletingSessionIds: new Set<string>(),
+    });
+  },
+
+  resetProjectState: () => {
     set({
       ...initialState,
       deletingSessionIds: new Set<string>(),

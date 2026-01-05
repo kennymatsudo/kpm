@@ -40,6 +40,7 @@ const PROJECT_SCOPED_STORES: StoreEntry[] = [
   { name: 'export', store: useExportStore },
   { name: 'sync', store: useSyncStore },
   { name: 'fileTree', store: useFileTreeStore },
+  { name: 'devSessions', store: useDevSessionsStore },
 ];
 
 /**
