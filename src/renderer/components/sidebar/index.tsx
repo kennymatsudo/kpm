@@ -1,16 +1,24 @@
 import { memo } from 'react';
 import { useProjectDomainStore, useSettingsUIStore } from '../../stores';
+import { ReposAndFilesSection } from '../sidebar-tree';
 import { SettingsIcon } from '../icons';
 
 interface SidebarProps {
   onDeleteProject?: () => void;
   onNewProject?: () => void;
+  /**
+   * Optional custom file open handler.
+   * If provided, files are opened via this callback (e.g., workspace editor).
+   * If not provided, markdown files open in viewer, others reveal in Finder.
+   */
+  onFileOpen?: (source: 'project', path: string, isEditable: boolean) => void;
 }
 
 
   return (
     <aside className="flex-1 sidebar flex flex-col overflow-hidden">
         {currentProjectId ? (
+          <ReposAndFilesSection projectId={currentProjectId} onFileOpen={onFileOpen} />
         ) : (
           <div className="p-6 text-center">
               <svg

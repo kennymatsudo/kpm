@@ -74,6 +74,11 @@ interface LayoutProps {
             >
               <div className="flex-1 flex flex-col min-h-0">
                 <ErrorBoundary name="Sidebar">
+                  <Sidebar
+                    onDeleteProject={onDeleteProject}
+                    onNewProject={onNewProject}
+                    onFileOpen={mainView === 'workspace' ? handleFileOpen : undefined}
+                  />
                 </ErrorBoundary>
               </div>
               {/* Sidebar resize handle */}

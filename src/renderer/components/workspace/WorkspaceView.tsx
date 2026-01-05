@@ -6,8 +6,12 @@ interface WorkspaceViewProps {
 }
 
 /**
+ * Workspace View - Chat-first interface with document editing.
+ * Sidebar is rendered by Layout, this component handles editor and chat panels.
  *
  * Adaptive layout:
+ * - Default: Chat (full width)
+ * - Editing: Editor (center) + Chat (right, narrower)
  */
   const {
     editingFile,
@@ -49,11 +53,23 @@ interface WorkspaceViewProps {
   }, [closeEditor]);
 
   return (
+      {/* Editor Panel (only shown when editing) */}
+      {isEditing && (
         <div
           className={`
+            flex-1 min-w-0 bg-surface-1 relative
             transition-all duration-300 ease-out
+            ${editorVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'}
           `}
+          style={{
+            boxShadow: 'inset -1px 0 0 var(--color-border-subtle)',
+          }}
         >
+          <ErrorBoundary name="FileEditor">
+          </ErrorBoundary>
+        </div>
+      )}
+
 
     </div>
   );

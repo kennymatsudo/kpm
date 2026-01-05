@@ -10,6 +10,7 @@ interface RepoItemProps {
 }
 
 /**
+ * Repository item in the sidebar with explicit focus toggle.
  */
 export const RepoItem = memo(function RepoItem({
   id,
