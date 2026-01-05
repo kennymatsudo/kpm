@@ -132,6 +132,8 @@ interface MarkdownDocumentModalProps {
   placeholder?: string;
   icon: React.ReactNode;
   initialEditMode?: boolean;
+  /** Show Accept button in preview mode (for proposed documents) */
+  showAcceptButton?: boolean;
 }
 
 export function MarkdownDocumentModal({
@@ -146,6 +148,7 @@ export function MarkdownDocumentModal({
   placeholder,
   icon,
   initialEditMode = false,
+  showAcceptButton = false,
 }: MarkdownDocumentModalProps) {
   const [draft, setDraft] = useState(content);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -386,6 +389,14 @@ export function MarkdownDocumentModal({
                   onClick={onClose}
                 >
                 </MotionButton>
+                  <MotionButton
+                    variant="primary"
+                    onClick={() => onSave(draft)}
+                  >
+                    Accept
+                  </MotionButton>
+                )}
+                {/* Save button for edit mode */}
                   <MotionButton
                     variant="primary"
                     onClick={() => onSave(draft)}

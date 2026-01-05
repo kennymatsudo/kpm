@@ -59,6 +59,7 @@ const PlanUpdateIndicator = memo(function PlanUpdateIndicator() {
   }
 
   return (
+          </div>
 
 
     </div>

@@ -361,6 +361,46 @@ select:focus-visible {
   cursor: text;
 }
 
+/* Override prose-themed defaults for chat messages -
+   ensure consistent font sizing with user messages */
+.chat-message-content.prose-themed {
+  white-space: normal;
+}
+
+/* Compact heading sizes for chat messages */
+.chat-message-content.prose-themed h1 {
+  font-size: 1.05em;
+  margin-top: 0.4em;
+  margin-bottom: 0.15em;
+}
+
+.chat-message-content.prose-themed h2 {
+  font-size: 1em;
+  margin-top: 0.35em;
+  margin-bottom: 0.1em;
+}
+
+.chat-message-content.prose-themed h3,
+.chat-message-content.prose-themed h4 {
+  font-size: 0.95em;
+  margin-top: 0.3em;
+  margin-bottom: 0.1em;
+}
+
+/* Tighter list spacing for chat */
+.chat-message-content.prose-themed ul,
+.chat-message-content.prose-themed ol {
+  margin-top: 0.15em;
+  margin-bottom: 0.15em;
+}
+
+.chat-message-content.prose-themed li + li {
+  margin-top: 0.08em;
+}
+
+.chat-message-content.prose-themed p {
+}
+
 .prose,
 .prose * {
   user-select: text;
@@ -863,14 +903,29 @@ select:focus-visible {
 
 .prose-themed {
   color: var(--color-text-primary);
+  line-height: 1.5;
   max-width: none;
 }
 
 .prose-themed :where(p):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.35em;
+  margin-bottom: 0.35em;
+}
+
+.prose-themed :where(p:first-child):not(:where([class~="not-prose"] *)) {
+  margin-top: 0;
+}
+
+.prose-themed :where(p:last-child):not(:where([class~="not-prose"] *)) {
+  margin-bottom: 0;
 }
 
 .prose-themed :where([class~="lead"]):not(:where([class~="not-prose"] *)) {
   color: var(--color-text-secondary);
+  font-size: 1.1em;
+  line-height: 1.5;
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
 }
 
 .prose-themed :where(a):not(:where([class~="not-prose"] *)) {
@@ -903,6 +958,14 @@ select:focus-visible {
 
 .prose-themed :where(ol):not(:where([class~="not-prose"] *)) {
   list-style-type: decimal;
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+  padding-left: 1.5em;
+  line-height: 1.5;
+}
+
+.prose-themed :where(ol > li + li):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.15em;
 }
 
 .prose-themed :where(ol[type="A"]):not(:where([class~="not-prose"] *)) {
@@ -927,10 +990,39 @@ select:focus-visible {
 
 .prose-themed :where(ul):not(:where([class~="not-prose"] *)) {
   list-style-type: disc;
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+  padding-left: 1.5em;
+  line-height: 1.5;
+}
+
+.prose-themed :where(ul > li + li):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.1em;
 }
 
 .prose-themed :where(li):not(:where([class~="not-prose"] *)) {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
   color: var(--color-text-primary);
+}
+
+/* Ensure paragraphs inside list items render inline with no extra spacing */
+.prose-themed :where(li p):not(:where([class~="not-prose"] *)),
+.prose-themed :where(li > p):not(:where([class~="not-prose"] *)) {
+  margin: 0;
+  padding: 0;
+  display: inline;
+}
+
+/* Handle any block elements that might sneak in */
+.prose-themed :where(li > *:first-child):not(:where([class~="not-prose"] *)) {
+  margin-top: 0;
+}
+
+.prose-themed :where(li > *:last-child):not(:where([class~="not-prose"] *)) {
+  margin-bottom: 0;
 }
 
 .prose-themed :where(ol > li):not(:where([class~="not-prose"] *))::marker {
@@ -945,19 +1037,31 @@ select:focus-visible {
 .prose-themed :where(dt):not(:where([class~="not-prose"] *)) {
   color: var(--color-text-primary);
   font-weight: 600;
+  margin-top: 0.35em;
 }
 
 .prose-themed :where(dd):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.1em;
+  padding-left: 1em;
 }
 
 .prose-themed :where(hr):not(:where([class~="not-prose"] *)) {
   border-color: var(--color-border-default);
   border-top-width: 1px;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
 }
 
 .prose-themed :where(blockquote):not(:where([class~="not-prose"] *)) {
   font-weight: 400;
+  font-style: normal;
   color: var(--color-text-secondary);
+  border-left-width: 2px;
+  border-left-color: var(--color-border-default);
+  margin-top: 0.35em;
+  margin-bottom: 0.35em;
+  padding: 0.25em 0.75em;
+  background: transparent;
 }
 
 .prose-themed :where(blockquote p:first-of-type):not(:where([class~="not-prose"] *))::before {
@@ -970,17 +1074,33 @@ select:focus-visible {
 
 .prose-themed :where(h1):not(:where([class~="not-prose"] *)) {
   color: var(--color-text-primary);
+  font-weight: 600;
+  font-size: 1.15em;
+  margin-top: 0.5em;
+  margin-bottom: 0.2em;
+  line-height: 1.3;
+}
+
+.prose-themed :where(h1:first-child):not(:where([class~="not-prose"] *)) {
   margin-top: 0;
 }
 
 .prose-themed :where(h1 strong):not(:where([class~="not-prose"] *)) {
+  font-weight: 700;
   color: inherit;
 }
 
 .prose-themed :where(h2):not(:where([class~="not-prose"] *)) {
   color: var(--color-text-primary);
   font-weight: 600;
+  font-size: 1.05em;
+  margin-top: 0.5em;
+  margin-bottom: 0.15em;
   line-height: 1.3;
+}
+
+.prose-themed :where(h2:first-child):not(:where([class~="not-prose"] *)) {
+  margin-top: 0;
 }
 
 .prose-themed :where(h2 strong):not(:where([class~="not-prose"] *)) {
@@ -991,7 +1111,14 @@ select:focus-visible {
 .prose-themed :where(h3):not(:where([class~="not-prose"] *)) {
   color: var(--color-text-primary);
   font-weight: 600;
+  font-size: 1em;
+  margin-top: 0.4em;
+  margin-bottom: 0.1em;
   line-height: 1.4;
+}
+
+.prose-themed :where(h3:first-child):not(:where([class~="not-prose"] *)) {
+  margin-top: 0;
 }
 
 .prose-themed :where(h3 strong):not(:where([class~="not-prose"] *)) {
@@ -1002,6 +1129,14 @@ select:focus-visible {
 .prose-themed :where(h4):not(:where([class~="not-prose"] *)) {
   color: var(--color-text-primary);
   font-weight: 600;
+  font-size: 1em;
+  margin-top: 0.4em;
+  margin-bottom: 0.1em;
+  line-height: 1.4;
+}
+
+.prose-themed :where(h4:first-child):not(:where([class~="not-prose"] *)) {
+  margin-top: 0;
 }
 
 .prose-themed :where(h4 strong):not(:where([class~="not-prose"] *)) {
@@ -1012,18 +1147,38 @@ select:focus-visible {
 .prose-themed :where(h5):not(:where([class~="not-prose"] *)) {
   color: var(--color-text-primary);
   font-weight: 600;
+  font-size: 0.9em;
+  margin-top: 0.4em;
+  margin-bottom: 0.1em;
+}
+
+.prose-themed :where(h5:first-child):not(:where([class~="not-prose"] *)) {
+  margin-top: 0;
 }
 
 .prose-themed :where(h6):not(:where([class~="not-prose"] *)) {
   color: var(--color-text-secondary);
   font-weight: 600;
+  font-size: 0.9em;
+  margin-top: 0.4em;
+  margin-bottom: 0.1em;
+}
+
+.prose-themed :where(h6:first-child):not(:where([class~="not-prose"] *)) {
+  margin-top: 0;
 }
 
 .prose-themed :where(img):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  border-radius: var(--radius-md);
+  max-width: 100%;
 }
 
 .prose-themed :where(picture):not(:where([class~="not-prose"] *)) {
   display: block;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
 }
 
 .prose-themed :where(picture > img):not(:where([class~="not-prose"] *)) {
@@ -1032,6 +1187,9 @@ select:focus-visible {
 }
 
 .prose-themed :where(video):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  border-radius: var(--radius-md);
 }
 
 .prose-themed :where(kbd):not(:where([class~="not-prose"] *)) {
@@ -1096,6 +1254,12 @@ select:focus-visible {
   color: var(--color-text-primary);
   overflow-x: auto;
   font-weight: 400;
+  font-size: 0.85em;
+  line-height: 1.5;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  border-radius: var(--radius-md);
+  padding: 0.6em 0.8em;
   border: 1px solid var(--color-border-subtle);
 }
 
@@ -1123,7 +1287,12 @@ select:focus-visible {
   width: 100%;
   table-layout: auto;
   text-align: left;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  font-size: 0.85em;
+  line-height: 1.4;
   border-collapse: collapse;
+  border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid var(--color-border-default);
 }
@@ -1138,8 +1307,10 @@ select:focus-visible {
   color: var(--color-text-primary);
   font-weight: 600;
   vertical-align: bottom;
+  padding: 0.4em 0.6em;
   text-transform: uppercase;
   font-size: 0.75em;
+  letter-spacing: 0.02em;
 }
 
 .prose-themed :where(tbody tr):not(:where([class~="not-prose"] *)) {
@@ -1158,6 +1329,7 @@ select:focus-visible {
 
 .prose-themed :where(tbody td):not(:where([class~="not-prose"] *)) {
   vertical-align: baseline;
+  padding: 0.35em 0.6em;
   color: var(--color-text-primary);
 }
 
@@ -1169,6 +1341,7 @@ select:focus-visible {
 
 .prose-themed :where(tfoot td):not(:where([class~="not-prose"] *)) {
   vertical-align: top;
+  padding: 0.35em 0.6em;
 }
 
 .prose-themed :where(figure > *):not(:where([class~="not-prose"] *)) {
@@ -1178,6 +1351,9 @@ select:focus-visible {
 
 .prose-themed :where(figcaption):not(:where([class~="not-prose"] *)) {
   color: var(--color-text-tertiary);
+  font-size: 0.8em;
+  line-height: 1.3;
+  margin-top: 0.25em;
   text-align: center;
   font-style: italic;
 }
@@ -1195,6 +1371,21 @@ select:focus-visible {
 
 /* Nested list spacing */
 .prose-themed :where(li ul, li ol):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.15em;
+  margin-bottom: 0.15em;
+}
+
+/* Tighter spacing when headings are followed by lists */
+.prose-themed :where(h1 + ul, h1 + ol):not(:where([class~="not-prose"] *)),
+.prose-themed :where(h2 + ul, h2 + ol):not(:where([class~="not-prose"] *)),
+.prose-themed :where(h3 + ul, h3 + ol):not(:where([class~="not-prose"] *)),
+.prose-themed :where(h4 + ul, h4 + ol):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.15em;
+}
+
+/* Tighter spacing when paragraphs are followed by lists */
+.prose-themed :where(p + ul, p + ol):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.15em;
 }
 
 /* First/last child margin resets */
