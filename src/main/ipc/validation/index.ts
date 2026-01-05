@@ -78,6 +78,8 @@ export { SettingsSchemas } from './settings';
 // Shell
 export { ShellSchemas } from './shell';
 
+// Repo Files (workspace file browser for connected repos)
+export { RepoFileSchemas } from './repoFiles';
 
 // =============================================================================
 // Inferred Types (for type-safe IPC communication)
@@ -218,3 +220,9 @@ export type {
 } from './types';
 
 export type {
+  // Repo Files
+  RepoFileListDirectoryInput,
+  RepoFileReadFileInput,
+  RepoFileWriteFileInput,
+  RepoFileGetInfoInput,
+} from './repoFiles';

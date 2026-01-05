@@ -36,6 +36,7 @@ src/
 │   │   ├── chat/            # Chat interface
 │   │   ├── tracker/         # Jira integration
 │   │   ├── development/     # Shared PR/review components used by the board
+│   │   ├── workspace/       # Workspace view (chat-first with file browser)
 │   │   ├── sidebar/         # Left sidebar components
 │   │   ├── settings/        # Settings dialogs
 │   │   ├── command-palette/ # Command palette
@@ -153,6 +154,7 @@ src/
 - `project/resourceSlice.ts` - Repos, attachments, worktrees
 
 - `devSessions/` - Plan-item dev sessions, PR context, review inbox, merge order
+- `workspaceStore.ts` - Workspace file tree, editor state
 - `trackerStore.ts` - Tracker associations
 - `tracker/useSyncStore.ts` - Sync preview & conflicts
 - `tracker/useExportStore.ts` - Export queue
@@ -177,6 +179,7 @@ Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and
 | `planning/` | Card/Tree/Board views for plan items |
 | `chat/` | Claude chat interface with streaming |
 | `development/` | Shared PR/review components (CreatePrModal, ReviewTab, etc.) used by the board |
+| `workspace/` | Chat-first view with file browser and editor (default view) |
 | `sidebar/` | Project list, sources, context editor |
 | `command-palette/` | Cmd+K command interface |
 | `ui/` | Shared UI primitives (Modal, Button, StatusBadge) |

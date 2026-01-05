@@ -3,12 +3,14 @@ import { useEffect } from 'react';
 export interface UseLayoutShortcutsOptions {
   onToggleSidebar: () => void;
   onToggleChat: () => void;
+  onMainViewChange: (view: MainView) => void;
   onOpenCommandPalette: () => void;
 }
 
 export function useLayoutShortcuts({
   onToggleSidebar,
   onToggleChat,
+  onMainViewChange,
   onOpenCommandPalette,
 }: UseLayoutShortcutsOptions): void {
   useEffect(() => {

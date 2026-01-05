@@ -1,6 +1,7 @@
 import { memo, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { PlanView } from '../planning';
+import { WorkspaceView } from '../workspace';
 import { TopBar } from './TopBar';
 import { CommandPalette } from '../command-palette';
 
@@ -86,10 +87,14 @@ interface LayoutProps {
           {/* Main content area - fills remaining space between panels */}
           <main className="flex-1 flex flex-col overflow-hidden min-w-0">
 
+            {mainView === 'workspace' && currentProjectId && (
+              <ErrorBoundary name="WorkspaceView">
               </ErrorBoundary>
             )}
           </main>
 
+          {/* Right chat panel - only shown for planning view (workspace manages its own chat) */}
+          {!chatCollapsed && mainView === 'planning' && (
             <div
               className={
                 chatOverlay

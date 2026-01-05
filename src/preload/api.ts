@@ -432,6 +432,25 @@ const fileExplorer = {
   selectFolderDialog: (title?: string): Promise<string | null> =>
 };
 
+// Repo Files API (Workspace file browser for connected repos)
+const repoFiles = {
+  // List directory contents within a repo
+  listDirectory: (
+    repoId: string,
+    path?: string,
+    options?: { recursive?: boolean; depth?: number }
+  ): Promise<FileNode[]> =>
+
+  // Read file content from a repo
+  readFile: (repoId: string, path: string): Promise<string> =>
+
+  // Write file content to a repo (markdown/text files only)
+  writeFile: (repoId: string, path: string, content: string): Promise<{ success: boolean; error?: string }> =>
+
+  // Get info about a single file/folder
+  getInfo: (repoId: string, path: string): Promise<FileNode> =>
+};
+
 // Shell API (for OS-level operations)
 const shell = {
 };
@@ -454,6 +473,7 @@ export const api = {
   worktrees,
   devSessions,
   fileExplorer,
+  repoFiles,
   shell,
 };
 

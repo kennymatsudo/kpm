@@ -554,6 +554,7 @@ export interface PermissionResponse {
 export type FocusedResource =
   | { type: 'plan_item'; id: string; title: string }
   | { type: 'project_file'; path: string; isDirectory: boolean }
+  | { type: 'repo'; id: string; path?: string }  // path optional - omit to focus whole repo
   | { type: 'document'; id: string; title: string; path: string };
 
 // =============================================================================

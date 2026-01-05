@@ -23,6 +23,7 @@ import { useTrackerStore } from './trackerStore';
 import { useFileTreeStore } from './fileTreeStore';
 import { useExportStore } from './tracker/useExportStore';
 import { useSyncStore } from './tracker/useSyncStore';
+import { useWorkspaceStore } from './workspaceStore';
 
 
 interface StoreEntry {
@@ -41,6 +42,7 @@ const PROJECT_SCOPED_STORES: StoreEntry[] = [
   { name: 'sync', store: useSyncStore },
   { name: 'fileTree', store: useFileTreeStore },
   { name: 'devSessions', store: useDevSessionsStore },
+  { name: 'workspace', store: useWorkspaceStore },
 ];
 
 /**

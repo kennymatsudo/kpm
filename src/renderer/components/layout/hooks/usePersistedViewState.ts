@@ -29,6 +29,8 @@ export function usePersistedViewState(projectId: string | null): UsePersistedVie
     [projectId]
   );
 
+  // Main view state (planning vs development vs workspace) - persisted per project
+  // Default to 'workspace' for chat-first experience
 
   // Update main view when project changes
   useEffect(() => {

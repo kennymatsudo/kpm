@@ -21,3 +21,6 @@ export type { StoreEvent, StatusChangedEvent } from './storeEvents';
 // Project-scoped store management
 export { resetAllProjectScopedStores, getRegisteredStoreNames } from './projectScopedStores';
 
+// Workspace
+export { useWorkspaceStore, isEditableFile, useHasUnsavedChanges } from './workspaceStore';
+export type { FileSource, SelectedFile, EditingFile } from './workspaceStore';

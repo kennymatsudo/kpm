@@ -25,6 +25,7 @@ Plan items, projects, attachments, tracker connections, and groups—the domain 
 
 
 - `FileExplorerService` — List, create, delete files (with path traversal protection)
+- `RepoFileService` — Read/write files in connected repositories (markdown/text editable, code read-only)
 
 ### Streaming Services (`services/streaming/`)
 

@@ -9,6 +9,7 @@ interface MainViewSwitcherProps {
 
 /**
  *
+ * Workspace: Chat-first interface with file browser and editor
  */
 export const MainViewSwitcher = memo(function MainViewSwitcher({
   value,
