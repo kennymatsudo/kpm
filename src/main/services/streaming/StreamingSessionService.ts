@@ -41,6 +41,8 @@ interface ManagedSession {
   sessionId?: string; // SDK session ID for resume
   processingStartTime?: number; // Timestamp when processing started (for timeout detection)
   segmentState: SegmentState; // Track message segments for splitting bubbles
+  chatSessionId?: string; // For persisting main chat messages
+  accumulatedResponse: string; // Accumulate assistant response for persistence
   unsubscribePlanActions: () => void;
   unsubscribeClaudeMdUpdate: () => void;
   unsubscribeDocumentUpdate: () => void;
@@ -62,6 +64,15 @@ export interface StreamingSessionServiceDeps {
   projectRepository: {
     get(id: string): Project | undefined;
     updateTokens(id: string, tokens: { input: number; output: number; total: number }): void;
+  };
+
+  /** Chat message repository for persisting messages */
+  chatMessageRepository: {
+    addMessage(
+      sessionId: string,
+      role: 'user' | 'assistant',
+      content: string,
+    ): void;
   };
 
   /** Function to get the main window for IPC */
@@ -186,6 +197,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   interface SessionCreationConfig {
     key: string;
     projectId: string;
+    chatSessionId?: string;
     model: ModelType;
     resumeSessionId?: string;
   }
@@ -197,6 +209,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const {
       key,
       projectId,
+      chatSessionId,
       initialMessage,
       model,
       resumeSessionId,
@@ -244,6 +257,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       sessions.set(key, {
         key,
         projectId,
+        chatSessionId,
         session,
         state: 'connecting',
         model,
@@ -253,6 +267,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           hasTextInCurrentSegment: false,
           pendingActivities: [],
         },
+        accumulatedResponse: '',
         unsubscribePlanActions,
         unsubscribeClaudeMdUpdate,
         unsubscribeDocumentUpdate,
@@ -296,6 +311,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   }
 
     model?: ModelType;
+    chatSessionId?: string;
   }
 
   /**
@@ -429,6 +445,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         if (block.type === 'text') {
           segState.hasTextInCurrentSegment = true;
 
+          managed.accumulatedResponse += block.text;
+
 
           // Clear pending activities after attaching to text
           segState.pendingActivities = [];
@@ -438,6 +456,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Handle result message (final stats)
     if (sdkMsg.type === 'result') {
+
+      }
+
+      // Reset accumulated response for next turn
+      managed.accumulatedResponse = '';
 
       // Reset segment state for next turn
       managed.segmentState = {

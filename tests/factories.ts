@@ -237,6 +237,7 @@ export function createSyncNewItem(options: Partial<SyncNewItem> = {}): SyncNewIt
     label: options.label ?? null,
     external_issue_type: options.external_issue_type ?? 'Story',
     external_status: options.external_status ?? 'To Do',
+    external_url: options.external_url ?? 'https://jira.example.com/browse/TEST-123',
     external_parent_key: options.external_parent_key ?? null,
     external_epic_key: options.external_epic_key ?? null,
   };

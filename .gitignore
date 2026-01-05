@@ -95,3 +95,8 @@ dist/
 /playwright-report/
 /playwright/.cache/
 /test-results/
+
+# SQLite databases (real db is in Electron userData, not project root)
+*.db
+*.db-wal
+*.db-shm

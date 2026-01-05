@@ -212,6 +212,7 @@ export interface SyncNewItem {
   label?: string | null;                // Optional - we use external_issue_type directly
   external_issue_type: string;          // Original issue type: 'Story', 'Sub-task', etc.
   external_status: string;
+  external_url: string;                 // Direct link to issue in tracker
   external_parent_key: string | null;
   external_epic_key: string | null;
 }

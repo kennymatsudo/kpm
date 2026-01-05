@@ -9,9 +9,13 @@ import type { PlanItem } from '../../../shared/types';
 
 
 
+
 }
 
 /**
  */
+export function buildResponseModesSection(
+  hasRepos: boolean,
+): string {
 
 }

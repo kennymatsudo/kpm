@@ -71,6 +71,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
           description: issue.description,
           external_issue_type: issue.issueType,
           external_status: issue.status,
+          external_url: issue.url,
           external_parent_key: issue.parentKey,
           external_epic_key: issue.epicKey,
         });
@@ -180,6 +181,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
           external_type: preview.tracker_type,
           external_issue_type: item.external_issue_type,
           external_status: item.external_status,
+          external_url: item.external_url,
           external_parent_key: item.external_parent_key,
           external_epic_key: item.external_epic_key,
         });

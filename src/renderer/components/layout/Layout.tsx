@@ -1,5 +1,6 @@
 import { memo, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { Sidebar } from '../sidebar';
 import { PlanView } from '../planning';
 import { WorkspaceView } from '../workspace';
 import { TopBar } from './TopBar';

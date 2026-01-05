@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
+import { PermissionPrompt } from '../permission/PermissionPrompt';
 import { useChat } from '../../hooks/useChat';
 import { useShallow } from 'zustand/react/shallow';
 import { CloseIcon } from '../icons';
