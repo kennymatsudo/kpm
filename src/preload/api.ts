@@ -144,6 +144,7 @@ const chat = {
     ipcRenderer.on('chat:session-error', handler);
     return () => ipcRenderer.removeListener('chat:session-error', handler);
   },
+
 };
 
 const projects = {

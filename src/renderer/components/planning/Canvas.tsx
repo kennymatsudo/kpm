@@ -10,6 +10,7 @@ interface CanvasProps {
   searchQuery?: string;
   onSelectItem: (itemId: string | null, addToSelection?: boolean) => void;
   onEditItem: (itemId: string) => void;
+  onAddToContext?: (itemId: string) => void;
   onReparent: (itemIds: string[], newParentId: string | null) => Promise<void>;
   onUpdatePosition: (itemId: string, x: number, y: number) => void;
 }
@@ -21,6 +22,7 @@ interface CanvasProps {
   searchQuery = '',
   onSelectItem,
   onEditItem,
+  onAddToContext,
   onReparent,
   onUpdatePosition,
   onAutoLayout,
@@ -161,6 +163,7 @@ interface CanvasProps {
                 getSelectedIds={getSelectedIds}
                 onSelectItem={onSelectItem}
                 onEditItem={onEditItem}
+                onAddToContext={onAddToContext}
                 onDrop={handleCardDrop}
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}

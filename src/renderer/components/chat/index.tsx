@@ -9,6 +9,10 @@ import { CloseIcon } from '../icons';
 export { SessionHistory } from './SessionHistory';
 export { NewSessionButton } from './NewSessionButton';
 
+interface ChatProps {
+}
+
+
   const [lastMessage, setLastMessage] = useState<string | null>(null);
 
     setLastMessage(message);

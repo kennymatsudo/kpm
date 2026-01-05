@@ -3,6 +3,7 @@
   y: number;
   selectedCount: number;
   onEdit: () => void;
+  onAddToContext: () => void;
   onDelete: () => void;
   onClose: () => void;
 }
@@ -13,6 +14,9 @@
         title={selectedCount !== 1 ? 'Select a single item to edit' : undefined}
       >
         Edit
+      {/* Add to Chat Context */}
+      >
+        Add to Chat Context
         >
       )}
       >

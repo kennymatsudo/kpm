@@ -310,6 +310,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     return success(undefined);
   }
 
+  interface SendChatMessageOptions {
     model?: ModelType;
     chatSessionId?: string;
   }
@@ -319,12 +320,14 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
    */
     projectId: string,
     message: string,
+    options: SendChatMessageOptions = {}
   ): AsyncResult<void> {
   }
 
   /**
    */
     projectId: string,
+    options: SendChatMessageOptions = {}
   ): AsyncResult<{ sessionId: string }> {
     const project = deps.projectRepository.get(projectId);
     if (!project) {
@@ -336,6 +339,17 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       return failure('Failed to build context');
     }
 
+    }
+
+    return createSession({
+      projectId,
+      initialMessage,
+      model: options.model ?? 'sonnet',
+      context,
+    });
+  }
+
+  /**
    */
     return sessions.get(key)?.state ?? 'idle';
   }
@@ -412,6 +426,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
   }
 
+  /**
+   */
     const mainWindow = deps.getMainWindow();
     const managed = sessions.get(key);
 

@@ -60,6 +60,7 @@ export function PlanView({
     updateItemPosition,
   });
 
+
   // Build tree hierarchy for tree view (using filtered items)
   const treeHierarchy = useMemo(() => buildHierarchyTree(filteredPlannedItems), [filteredPlannedItems]);
 

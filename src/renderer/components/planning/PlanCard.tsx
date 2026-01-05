@@ -53,6 +53,7 @@ interface PlanCardProps {
   getSelectionSignature: (id: string) => string;
   getSelectedIds: () => Set<string>;
   onEditItem?: (itemId: string) => void;  // For opening edit panel
+  onAddToContext?: (itemId: string) => void;  // For adding to chat context
   onDrop?: (itemIds: string[], targetParentId: string) => void;
   onDropFromBacklog?: (itemId: string, parentId: string | null) => void;
   onDragStart?: (item: TreeNode, x: number, y: number, offsetX: number, offsetY: number, depth: number, selectedIds: string[]) => void;
@@ -72,6 +73,7 @@ export const PlanCard = memo(function PlanCard({
   getSelectedIds,
   onSelectItem,
   onEditItem,
+  onAddToContext,
   onDrop,
   onDropFromBacklog,
   onDragStart,
@@ -142,6 +144,10 @@ export const PlanCard = memo(function PlanCard({
       draggable={!isPreview}
       onClick={isPreview ? undefined : (e) => {
         e.stopPropagation();
+      }}
+      onDoubleClick={isPreview ? undefined : (e) => {
+        e.stopPropagation();
+        onEditItem?.(item.id);
       }}
       onContextMenu={isPreview ? undefined : (e) => {
         // Check if a child card already handled this
@@ -292,6 +298,7 @@ export const PlanCard = memo(function PlanCard({
           position={menuPosition}
           onClose={() => setShowMenu(false)}
           onDelete={() => setShowDeleteConfirm(true)}
+          onAddToContext={() => onAddToContext?.(item.id)}
         />
       )}
 

@@ -777,6 +777,44 @@ interface Migration {
     },
   },
   {
+    id: 1022,
+    name: '022_separate_chat_session_types',
+    up: (db: BetterSqliteDatabase) => {
+      // Separate chat sessions between Workspace and Plan views.
+      // Existing 'main' sessions are migrated to 'workspace'.
+      // SQLite requires table recreation to change CHECK constraints.
+      db.exec(`
+        -- ============================================
+        -- Update chat_messages session_type constraint
+        -- 'main' → 'workspace', add 'plan'
+        -- ============================================
+        CREATE TABLE chat_messages_new (
+          id TEXT PRIMARY KEY,
+          session_type TEXT NOT NULL CHECK (session_type IN ('workspace', 'plan', 'brainstorm')),
+          session_id TEXT NOT NULL,
+          role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+          content TEXT NOT NULL,
+          chat_session_id TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Migrate data: 'main' → 'workspace'
+        INSERT INTO chat_messages_new (id, session_type, session_id, role, content, chat_session_id, created_at)
+        SELECT id,
+               CASE WHEN session_type = 'main' THEN 'workspace' ELSE session_type END,
+               session_id, role, content, chat_session_id, created_at
+        FROM chat_messages;
+
+        DROP TABLE chat_messages;
+        ALTER TABLE chat_messages_new RENAME TO chat_messages;
+
+        -- Recreate indexes
+        CREATE INDEX idx_chat_messages_session ON chat_messages(session_type, session_id);
+        CREATE INDEX idx_chat_messages_chat_session ON chat_messages(session_type, session_id, chat_session_id);
+      `);
+    },
+  },
+  {
     id: 1025,
     name: '025_flatten_custom_field_values',
     up: (db: BetterSqliteDatabase) => {
