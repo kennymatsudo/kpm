@@ -69,6 +69,7 @@ interface LayoutProps {
             <div
               className={
                 sidebarOverlay
+                  : 'flex flex-col bg-surface-0 flex-shrink-0 relative'
               }
             >
               <div className="flex-1 flex flex-col min-h-0">
