@@ -153,6 +153,16 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     }
 
+    // Check if underlying session is still usable (may have ended after interrupt/abort)
+    if (!managed.session.isReady()) {
+      // Session ended - clean up and create new session with this message
+      const createResult = await createSession();
+      if (!createResult.ok) {
+        return failure(createResult.error);
+      }
+      return success(undefined);
+    }
+
     managed.state = 'processing';
     managed.processingStartTime = Date.now();
     managed.lastActivity = Date.now();
