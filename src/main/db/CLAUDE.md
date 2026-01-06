@@ -6,6 +6,8 @@ Owns database schema, migrations, repositories (data access), and domain service
 
 ```
 src/main/db/
+├── connection.ts              # Database initialization & pragmas
+├── container.ts               # DI container for repositories
 ├── interfaces/                # Repository & container type definitions
 ├── repositories/
 ```
@@ -93,3 +95,4 @@ getMany(ids: string[]): Item[] {
 5. **Recursive CTEs** — Hierarchical queries use SQL `WITH RECURSIVE`
 7. **DI for complex services** — Business logic accepts dependencies
 8. **Foreign key constraints** — `ON DELETE CASCADE` cleans up related rows
+

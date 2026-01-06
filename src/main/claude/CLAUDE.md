@@ -14,6 +14,8 @@ createKpmServer() (singleton MCP server)
     ├─ plan-changes.ts (modification tool + callbacks)
     ├─ jira.ts (Jira integration)
     ├─ relations.ts (dependency tools)
+    ├─ storybook.ts (component discovery)
+    ├─ document-update.ts (document update tools)
     ↓
 System prompts (prompts/ directory)
 ```
@@ -96,4 +98,6 @@ Claude calls modification tool (modify_plan, bulk_reparent, etc.)
 | `clientManager.ts` | Singleton Claude client |
 | `contextBuilders.ts` | Context fetching for sessions |
 | `auth.ts` | API key management |
+| `activity.ts` | Activity tracking |
+| `sdkTypeGuards.ts` | Type guard utilities |
 | `streaming/` | Session management |

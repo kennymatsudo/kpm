@@ -23,6 +23,8 @@ src/main/ipc/
 ├── validation/           # Zod schemas by domain
 │   ├── index.ts
 │   ├── shared.ts
+│   ├── utils.ts          # createIpcHandler helper
+│   └── [domain].ts       # Domain-specific schemas
 ```
 
 ## Channel Registry

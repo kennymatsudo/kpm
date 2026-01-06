@@ -74,7 +74,9 @@ src/
 | `plan_relations` | Dependencies (depends_on, blocks, relates_to) |
 | `tracker_connections` | Site-level connections (credentials in OS keychain) |
 | `tracker_project_scopes` | Tracker project authorization (Jira/Linear) |
+| `kpm_tracker_associations` | Tracker sync filters (JQL for Jira) + status/custom field mappings |
 | `tracker_type_mappings` | Label → tracker issue type |
+| `sync_queue` | Items staged for export (with custom field overrides) |
 | `sync_snapshots` | Last-synced state for three-way conflict detection |
 | `app_settings` | Global key-value application preferences |
 | `tool_permissions` | Persisted per-project tool permission grants |
@@ -92,6 +94,7 @@ src/
 - `dev_sessions.worktree_path` - Path to isolated git worktree
 - `dev_sessions.merge_order` - Optional user override for merge queue ordering
 - `repos.active_worktree_path` - Active checkout used for repo context and branch watching
+- `chat_messages.chat_session_id` - Session boundary tracking for history browsing
 - `agent_review_runs.status` - Latest opposing-agent review freshness (`complete` or `stale`)
 
 ## Repository Architecture
@@ -108,14 +111,19 @@ src/
 | Repository | Purpose |
 |------------|---------|
 | `ProjectRepository` | Project CRUD |
+| `RepoRepository` | Connected git repositories |
+| `AttachmentRepository` | File attachments |
 | `PlanItemRepository` | Plan items with hierarchy (cached statements) |
 | `PlanRelationRepository` | Item dependencies |
 | `TrackerRepository` | Three-level tracker config |
+| `TypeMappingRepository` | Label → tracker type mappings |
 | `SyncRepository` | Conflict detection snapshots |
 | `SyncQueueRepository` | Export queue management |
 | `ExternalPlanItemRepository` | Tracker-linked items |
 | `DevSessionRepository` | Implementation sessions |
+| `WorktreeRepository` | Git worktree persistence |
 | `ChatMessageRepository` | Unified chat history |
+| `AppSettingsRepository` | Global preferences |
 | `CustomThemeRepository` | Imported theme persistence |
 | `ToolPermissionRepository` | Persisted tool permission grants |
 | `ReviewTaskRepository` | GitHub review tasks |
@@ -142,6 +150,10 @@ src/
 **Composition Root** (`src/main/services/appServices.ts`):
 - Wires all services with their dependencies
 - Single point of service instantiation
+
+**Service Container** (`src/main/services/container.ts`):
+- Global access to services via `getServices()`
+- Test injection via `setServices()` / `resetServices()`
 
 ## Frontend Architecture
 
@@ -173,6 +185,10 @@ Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and
 - `file-explorer-changed` - Project file watcher reported create/update/delete/rename
 - `chat-file-updated` - Chat/document flow updated a project file
 
+**Project-Scoped Store Management** (`projectScopedStores.ts`):
+- Manages store lifecycle tied to project switching
+- Clears relevant stores when project changes
+
 | Component | Purpose |
 |-----------|---------|
 | `layout/` | Three-panel design (sidebar, main, chat) with resize hooks |
@@ -182,7 +198,11 @@ Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and
 | `workspace/` | Chat-first view with file browser and editor (default view) |
 | `sidebar/` | Project list, sources, context editor |
 | `command-palette/` | Cmd+K command interface |
+| `tracker/` | Jira config, sync UI, type/status mapping |
+| `settings/` | Application settings dialogs |
+| `permission/` | Permission request UI |
 | `ui/` | Shared UI primitives (Modal, Button, StatusBadge) |
+| `icons/` | SVG icon components |
 | `slack/` | Slack triage panel, badge, channel settings |
 | `onboarding/` | Project onboarding and context regeneration |
 
@@ -262,6 +282,8 @@ Tracks git branch changes for connected repositories in real-time.
 - `src/main/claude/tools/relations.ts` - Dependency/relation tools
 - `src/main/claude/tools/jira.ts` - Jira integration
 - `src/main/claude/tools/storybook.ts` - Component discovery
+- `src/main/claude/tools/document-update.ts` - Document update tools
+- `src/main/claude/tools/claudemd-update.ts` - Project context updates
 - `src/main/claude/streaming/` - Streaming session classes
 - `src/main/claude/prompts/` - System prompt modules
 - `src/main/services/streaming/StreamingSessionService.ts` - Main chat session management

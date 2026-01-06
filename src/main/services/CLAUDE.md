@@ -20,16 +20,22 @@ Plan items, projects, attachments, tracker connections, and groups—the domain 
 
 - `RepoService` — Add/remove repos, watch for changes
 - `WorktreeService` — Manage git worktrees
+- `RepoWatcherService` — Watch git branch changes (fs.watch on .git/HEAD)
 
 ### File Services (`services/files/`)
 
+Project file system operations, repo file access.
 
 - `FileExplorerService` — List, create, delete files (with path traversal protection)
 - `RepoFileService` — Read/write files in connected repositories (markdown/text editable, code read-only)
+- `TempImageService` — Handle temporary images
+- `FileWatchService` — File change watching
 
 ### Streaming Services (`services/streaming/`)
 
+Terminal/PTY and Claude session management.
 
+- `StreamingSessionService` — Main chat session lifecycle
 
 ### Generation Services (`services/generation/`)
 
