@@ -94,6 +94,7 @@ function executeCreateItem(
     description: action.description || null,
     label: action.label || 'story',
     status: 'planned',
+    status_category: 'not_started',
     parent_id: parentId,
     item_order: ctx.deps.planItems.getNextOrder(ctx.projectId, parentId),
     code_refs: null,
@@ -112,6 +113,13 @@ function executeCreateItem(
     sync_source: 'local',
     last_synced_at: null,
   });
+
+  // Auto-queue for Jira sync if project has exactly one tracker association
+  ctx.deps.queueTrackerUpdateIfNeeded(
+    { id, project_id: ctx.projectId, external_key: null, association_id: null, status_category: null },
+    { status_category: 'not_started' },
+    'claude'
+  );
 }
 
 function executeSetLabel(

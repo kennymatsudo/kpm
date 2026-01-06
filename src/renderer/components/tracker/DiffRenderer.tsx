@@ -104,15 +104,20 @@ interface StatusTransitionViewProps {
   const targetConfig = STATUS_CATEGORY_CONFIG[transition.targetCategory];
 
   return (
+    <div>
+      <div className="flex items-center gap-2 mb-1.5">
         {transition.warning && (
           </span>
         )}
       </div>
+      <div className="p-3 rounded-lg bg-surface-1 border border-border-subtle">
+        <div className="flex items-center gap-2">
           {/* Current status */}
             {transition.currentStatus}
           </span>
 
           {/* Arrow */}
+          <svg className="w-4 h-4 text-text-tertiary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
           </svg>
 
@@ -123,6 +128,7 @@ interface StatusTransitionViewProps {
 
         {/* Warning message */}
         {transition.warning && (
+          <div className="mt-2 p-2 rounded bg-warning/8 border border-warning/15">
           </div>
         )}
       </div>
