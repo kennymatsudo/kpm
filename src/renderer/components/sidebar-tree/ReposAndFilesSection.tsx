@@ -37,6 +37,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     setRenamingPath,
     deleteEntry,
     rename,
+    moveEntry,
     getNodeByPath,
   } = useFileTreeStore();
 
@@ -141,6 +142,14 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
       }
 
     },
+  );
+
+  // Internal move handler (drag-and-drop within tree)
+  const handleInternalMove = useCallback(
+    async (sourcePath: string, targetFolderPath: string) => {
+      await moveEntry(sourcePath, targetFolderPath);
+    },
+    [moveEntry]
   );
 
   // ==========================================================================

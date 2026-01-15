@@ -32,6 +32,7 @@ interface FileTreeState {
   createSymlink: (targetPath: string, linkPath: string) => Promise<FileNode | null>;
   deleteEntry: (path: string) => Promise<boolean>;
   rename: (oldPath: string, newPath: string) => Promise<FileNode | null>;
+  moveEntry: (sourcePath: string, targetFolderPath: string) => Promise<FileNode | null>;
 
   // Utility
   getNodeByPath: (path: string) => FileNode | null;
@@ -367,6 +368,44 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       return node;
     } catch (error) {
       console.error('[FileTreeStore] Failed to rename:', error);
+      return null;
+    }
+  },
+
+  moveEntry: async (sourcePath, targetFolderPath) => {
+    const { projectId } = get();
+    if (!projectId) return null;
+
+    // Calculate new path
+    const newPath = targetFolderPath
+      ? `${targetFolderPath}/${fileName}`
+      : fileName;
+
+    // Don't move if already in target folder
+    if (sourcePath === newPath) return null;
+
+    try {
+
+      // Remove old node and add new one
+      let updatedNodes = removeNodeByPath(get().nodes, sourcePath);
+      updatedNodes = addNodeToTree(updatedNodes, node);
+      set({ nodes: updatedNodes });
+
+      // Update selection if moved item was selected
+      }
+
+      // Update focused paths if needed
+      const { focusedPaths } = get();
+      if (focusedPaths.has(sourcePath)) {
+        const newFocused = new Set(focusedPaths);
+        newFocused.delete(sourcePath);
+        newFocused.add(newPath);
+        set({ focusedPaths: newFocused });
+      }
+
+      return node;
+    } catch (error) {
+      console.error('[FileTreeStore] Failed to move:', error);
       return null;
     }
   },
