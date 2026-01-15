@@ -53,6 +53,7 @@ export interface ITrackerRepository {
   updateAssociationLastSynced(id: string): void;
   updateStatusMapping(id: string, mapping: StatusMapping | null): void;
   updateCustomFieldValues(id: string, values: CustomFieldValues | null): void;
+  updateEpicKey(id: string, epicKey: string | null): void;
   getCustomFieldValues(id: string): CustomFieldValues | null;
   hasAssociationItems(associationId: string): boolean;
   getItemsByAssociation(associationId: string): { id: string; external_key: string }[];

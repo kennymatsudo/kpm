@@ -75,6 +75,11 @@ export interface StreamingSessionServiceDeps {
     ): void;
   };
 
+  /** Chat session repository for Claude SDK session ID storage */
+  chatSessionRepository: {
+    updateClaudeSessionId(id: string, claudeSessionId: string): void;
+  };
+
   /** Function to get the main window for IPC */
   getMainWindow: () => BrowserWindow | null;
 
@@ -341,10 +346,18 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     }
 
+    // Get or create chat session for Claude SDK session tracking
+    let resumeSessionId: string | undefined;
+
+
+    }
+
     return createSession({
       projectId,
+      chatSessionId,
       initialMessage,
       model: options.model ?? 'sonnet',
+      resumeSessionId,
       context,
     });
   }
@@ -361,6 +374,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   /**
    * Interrupt the current execution in a session.
    * Resets state to 'ready' so new messages can be sent.
+   * If interrupt hangs, force-disconnects after timeout.
    */
   async function interrupt(sessionKey: string): AsyncResult<void> {
     const managed = sessions.get(sessionKey);
@@ -368,12 +382,31 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       return failure('No active session');
     }
 
+    const INTERRUPT_TIMEOUT_MS = 5000; // 5 seconds max for interrupt
+
     try {
+      // Race interrupt against timeout
+      const interruptPromise = managed.session.interrupt();
+      const timeoutPromise = new Promise<'timeout'>((resolve) =>
+        setTimeout(() => resolve('timeout'), INTERRUPT_TIMEOUT_MS)
+      );
+
+      const result = await Promise.race([interruptPromise, timeoutPromise]);
+
+      if (result === 'timeout') {
+        console.warn(`[StreamingSessionService] Interrupt timed out for ${sessionKey}, force disconnecting`);
+        // Force disconnect since interrupt hung
+        return success(undefined);
+      }
+
       // Reset state to ready so new messages can be sent
       managed.state = 'ready';
       managed.processingStartTime = undefined;
       return success(undefined);
     } catch (error) {
+      // If interrupt fails, try to disconnect the session
+      console.error(`[StreamingSessionService] Interrupt failed for ${sessionKey}:`, error);
+      return success(undefined); // Return success since we cleaned up
     }
   }
 
@@ -436,6 +469,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sdkMsg = msg as any;
 
+    // Note: Claude SDK session ID is captured in onReady callback and stored in chat_sessions table
 
     // Handle assistant messages (text chunks)
     if (sdkMsg.type === 'assistant') {

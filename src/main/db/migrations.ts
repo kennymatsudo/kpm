@@ -815,6 +815,77 @@ interface Migration {
     },
   },
   {
+    id: 1023,
+    name: '023_chat_sessions_table',
+    up: (db: BetterSqliteDatabase) => {
+      // Create chat_sessions table to store Claude SDK session ID per conversation.
+      // This enables proper session resume when loading from chat history.
+      // Previously, session_id was stored per-project which meant only one
+      // conversation could be resumed at a time.
+      //
+      // ⚠️ BUG: This migration had a critical flaw - it dropped the projects table
+      // without disabling foreign keys first, which triggered ON DELETE CASCADE
+      // and deleted all plan_items. The migration has already run so we can't fix it,
+      // but future migrations that recreate tables MUST use:
+      //   PRAGMA foreign_keys = OFF;
+      //   ... drop/rename operations ...
+      //   PRAGMA foreign_keys = ON;
+      db.exec(`
+        -- ============================================
+        -- Create chat_sessions table
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          session_type TEXT NOT NULL CHECK (session_type IN ('workspace', 'plan')),
+          claude_session_id TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX idx_chat_sessions_project ON chat_sessions(project_id);
+        CREATE INDEX idx_chat_sessions_project_type ON chat_sessions(project_id, session_type);
+
+        -- ============================================
+        -- Remove session_id from projects table
+        -- SQLite requires table recreation to drop columns
+        -- ============================================
+        CREATE TABLE projects_new (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          folder_path TEXT NOT NULL,
+          phase TEXT NOT NULL DEFAULT 'discovery',
+          session_tokens INTEGER DEFAULT 0,
+          session_input_tokens INTEGER DEFAULT 0,
+          session_output_tokens INTEGER DEFAULT 0,
+          storybook_url TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        INSERT INTO projects_new (id, name, folder_path, phase, session_tokens, session_input_tokens, session_output_tokens, storybook_url, created_at, updated_at)
+        SELECT id, name, folder_path, phase, session_tokens, session_input_tokens, session_output_tokens, storybook_url, created_at, updated_at
+        FROM projects;
+
+        DROP TABLE projects;
+        ALTER TABLE projects_new RENAME TO projects;
+      `);
+    },
+  },
+  {
+    id: 1024,
+    name: '024_association_epic_key',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- Add epic_key to tracker associations
+        -- Jira issue key to use as parent Epic when creating new issues
+        -- e.g., 'PROJ-6224'
+        -- ============================================
+        ALTER TABLE kpm_tracker_associations ADD COLUMN epic_key TEXT;
+      `);
+    },
+  },
+  {
     id: 1025,
     name: '025_flatten_custom_field_values',
     up: (db: BetterSqliteDatabase) => {

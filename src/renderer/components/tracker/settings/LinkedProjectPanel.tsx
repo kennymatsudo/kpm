@@ -77,6 +77,13 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
           {association.jql_filter}
         </p>
 
+            </div>
+          </div>
+            <button
+            >
+            </button>
+        </div>
+
       {/* Tab content */}
         key={activeTab}
         initial={{ opacity: 0, y: 4 }}

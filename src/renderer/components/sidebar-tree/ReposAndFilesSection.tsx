@@ -126,6 +126,23 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     },
   );
 
+  // External file drop handler
+  const handleExternalDrop = useCallback(
+    async (files: FileList, targetPath: string) => {
+      if (!projectId) return;
+
+      for (const file of Array.from(files)) {
+        try {
+          const newPath = targetPath ? `${targetPath}/${file.name}` : file.name;
+
+        } catch (err) {
+          console.error(`Failed to copy file ${file.name}:`, err);
+        }
+      }
+
+    },
+  );
+
   // ==========================================================================
   // Computed values
   // ==========================================================================

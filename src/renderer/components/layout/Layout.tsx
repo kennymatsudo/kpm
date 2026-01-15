@@ -5,6 +5,7 @@ import { PlanView } from '../planning';
 import { WorkspaceView } from '../workspace';
 import { TopBar } from './TopBar';
 import { CommandPalette } from '../command-palette';
+import { ApprovalOverlays } from './ApprovalOverlays';
 
 interface LayoutProps {
   onDeleteProject?: () => void;
@@ -122,5 +123,6 @@ interface LayoutProps {
       </div>
       <KeyboardShortcuts />
       <CommandPalette isOpen={isCommandPaletteOpen} onClose={closeCommandPalette} />
+      <ApprovalOverlays />
     </>
   );

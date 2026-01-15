@@ -1,3 +1,4 @@
+import { ModelSelector } from './ModelSelector';
 
 interface ChatInputProps {
   onCancel: () => void;

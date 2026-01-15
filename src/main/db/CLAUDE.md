@@ -35,6 +35,32 @@ src/main/db/
 
 **Once a migration is deployed, NEVER modify it.** Create a new one instead.
 
+### Table Recreation (DROP/RENAME) - CRITICAL
+
+When recreating a table (e.g., to drop a column), you MUST disable foreign keys first. Otherwise, `DROP TABLE` will trigger `ON DELETE CASCADE` on all referencing tables:
+
+```typescript
+// CORRECT: Disable FK constraints during table recreation
+db.exec(`
+  PRAGMA foreign_keys = OFF;
+
+  CREATE TABLE foo_new (...);
+  INSERT INTO foo_new SELECT ... FROM foo;
+  DROP TABLE foo;
+  ALTER TABLE foo_new RENAME TO foo;
+
+  PRAGMA foreign_keys = ON;
+`);
+
+// WRONG: This will CASCADE DELETE all referencing rows!
+db.exec(`
+  CREATE TABLE foo_new (...);
+  INSERT INTO foo_new SELECT ... FROM foo;
+  DROP TABLE foo;  -- ⚠️ Triggers ON DELETE CASCADE!
+  ALTER TABLE foo_new RENAME TO foo;
+`);
+```
+
 ## Repository Pattern
 
 

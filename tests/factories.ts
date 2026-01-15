@@ -194,6 +194,7 @@ export function createTrackerAssociation(
     display_name: options.display_name ?? null,
     status_mapping: options.status_mapping ?? null,
     custom_field_values: options.custom_field_values ?? null,
+    epic_key: options.epic_key ?? null,
     last_synced_at: options.last_synced_at ?? null,
     created_at: options.created_at ?? new Date().toISOString(),
   };

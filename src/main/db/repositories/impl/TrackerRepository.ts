@@ -74,6 +74,7 @@ interface PreparedStatements {
   updateLastSynced: Statement;
   updateStatusMapping: Statement;
   updateCustomFieldValues: Statement;
+  updateEpicKey: Statement;
   getCustomFieldValues: Statement;
 
   // Plan items by association
@@ -87,6 +88,7 @@ export class TrackerRepository implements ITrackerRepository {
     // Column lists for consistent queries
     const connCols = 'id, tracker_type, site_url, display_name, created_at';
     const scopeCols = 'id, connection_id, project_key, project_name, created_at';
+    const assocCols = 'id, kpm_project_id, scope_id, jql_filter, display_name, status_mapping, custom_field_values, epic_key, last_synced_at, created_at';
 
     this.stmts = {
       // Connections
@@ -114,6 +116,7 @@ export class TrackerRepository implements ITrackerRepository {
       getAssociationsWithContext: db.prepare(`
         SELECT
           a.id, a.kpm_project_id, a.scope_id, a.jql_filter, a.display_name,
+          a.status_mapping, a.custom_field_values, a.epic_key, a.last_synced_at, a.created_at,
           s.project_key, s.project_name,
           c.site_url
         FROM kpm_tracker_associations a
@@ -125,6 +128,7 @@ export class TrackerRepository implements ITrackerRepository {
       getAssociationById: db.prepare(`
         SELECT
           a.id, a.kpm_project_id, a.scope_id, a.jql_filter, a.display_name,
+          a.status_mapping, a.custom_field_values, a.epic_key, a.last_synced_at, a.created_at,
           s.project_key, s.project_name,
           c.site_url
         FROM kpm_tracker_associations a
@@ -140,6 +144,7 @@ export class TrackerRepository implements ITrackerRepository {
       updateLastSynced: db.prepare(`UPDATE kpm_tracker_associations SET last_synced_at = CURRENT_TIMESTAMP WHERE id = ?`),
       updateStatusMapping: db.prepare(`UPDATE kpm_tracker_associations SET status_mapping = ? WHERE id = ?`),
       updateCustomFieldValues: db.prepare(`UPDATE kpm_tracker_associations SET custom_field_values = ? WHERE id = ?`),
+      updateEpicKey: db.prepare(`UPDATE kpm_tracker_associations SET epic_key = ? WHERE id = ?`),
       getCustomFieldValues: db.prepare(`SELECT custom_field_values FROM kpm_tracker_associations WHERE id = ?`),
 
       // Plan items by association - use EXISTS for short-circuit
@@ -271,6 +276,10 @@ export class TrackerRepository implements ITrackerRepository {
     // Clean up empty values before saving
     const cleaned = values && Object.keys(values).length > 0 ? values : null;
     this.stmts.updateCustomFieldValues.run(cleaned ? JSON.stringify(cleaned) : null, id);
+  }
+
+  updateEpicKey(id: string, epicKey: string | null): void {
+    this.stmts.updateEpicKey.run(epicKey, id);
   }
 
   getCustomFieldValues(id: string): CustomFieldValues | null {

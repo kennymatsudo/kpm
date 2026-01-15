@@ -152,10 +152,14 @@ export function MarkdownDocumentModal({
 }: MarkdownDocumentModalProps) {
   const [draft, setDraft] = useState(content);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
 
   useEffect(() => {
     if (isOpen) {
       setDraft(content);
+    }
 
   // Keyboard shortcuts
 
@@ -240,6 +244,90 @@ export function MarkdownDocumentModal({
                 </span>
               </button>
             </div>
+
+            {/* Search bar */}
+            <AnimatePresence>
+              {showSearch && (
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="px-6 py-2 bg-surface-2 border-b border-border-subtle overflow-hidden"
+                >
+                  <div className="flex items-center gap-2">
+                    {/* Search icon */}
+                    <svg className="w-4 h-4 text-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+
+                    {/* Search input */}
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (e.shiftKey) {
+                            goToPrevMatch();
+                          } else {
+                            goToNextMatch();
+                          }
+                        }
+                      }}
+                      placeholder="Search in document..."
+                      className="flex-1 bg-surface-1 border border-border-subtle rounded-md px-3 py-1.5 text-sm
+                                 text-text-primary placeholder-text-muted
+                                 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/30"
+                    />
+
+                    {/* Match count */}
+                    {searchQuery && (
+                      <span className="text-xs text-text-muted whitespace-nowrap">
+                        {totalMatches === 0
+                          ? 'No matches'
+                          : `${currentMatchIndex + 1} of ${totalMatches}`}
+                      </span>
+                    )}
+
+                    {/* Navigation buttons */}
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        onClick={goToPrevMatch}
+                        disabled={totalMatches === 0}
+                        className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-1
+                                   transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="Previous match (Shift+Enter)"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={goToNextMatch}
+                        disabled={totalMatches === 0}
+                        className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-1
+                                   transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="Next match (Enter)"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    </div>
+
+                    {/* Close button */}
+                    <button
+                      onClick={closeSearch}
+                      className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-1 transition-colors"
+                      title="Close search (Esc)"
+                    >
+                      <CloseIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+              )}
+            </AnimatePresence>
 
             {/* Toolbar (only in edit mode) */}
             <AnimatePresence>
@@ -369,6 +457,9 @@ export function MarkdownDocumentModal({
             </div>
 
             {/* Footer */}
+                <span className="flex items-center gap-1.5">
+                  <span>search</span>
+                </span>
                 <span className="flex items-center gap-1.5">
                 </span>
                   <>

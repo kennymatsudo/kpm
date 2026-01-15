@@ -210,6 +210,7 @@ const tracker = {
     hasImported: (associationId: string): Promise<boolean> =>
     updateStatusMapping: (associationId: string, statusMapping: StatusMapping | null): Promise<{ success: boolean; error?: string }> =>
     updateCustomFieldValues: (associationId: string, customFieldValues: CustomFieldValues | null): Promise<{ success: boolean; error?: string }> =>
+    updateEpicKey: (associationId: string, epicKey: string | null): Promise<{ success: boolean; error?: string }> =>
   },
   customFields: {
     getAvailable: (projectKey: string, issueTypeId: string): Promise<{ success: boolean; fields?: JiraCustomField[]; error?: string }> =>
@@ -466,6 +467,8 @@ const repoFiles = {
 
 // Shell API (for OS-level operations)
 const shell = {
+  // Open URL in default browser
+  openExternal: (url: string): Promise<{ success: boolean; error?: string }> =>
 };
 
 export const api = {

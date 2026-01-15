@@ -25,6 +25,7 @@ export interface IRepositoryContainer {
   typeMappings: ITypeMappingRepository;
   externalPlanItems: IExternalPlanItemRepository;
   chatMessages: IChatMessageRepository;
+  chatSessions: IChatSessionRepository;
   worktrees: IWorktreeRepository;
   appSettings: IAppSettingsRepository;
   devSessions: IDevSessionRepository;

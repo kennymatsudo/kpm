@@ -75,7 +75,34 @@ function mergeCustomFieldValues(
       return { queued, skipped };
     }
 
+    // Build item cache and collect all items to queue (including unsynced parents)
+    const allItems = PlanItemRepository.getByProject(kpmProjectId);
+    const itemMap = new Map(allItems.map(item => [item.id, item]));
+
+    // Collect all items to queue, walking up parent chains to include unsynced parents
+    const itemsToQueue = new Set<string>(itemIds);
+    const processedParents = new Set<string>();
+
     for (const itemId of itemIds) {
+      let currentId: string | null = itemMap.get(itemId)?.parent_id ?? null;
+
+      // Walk up the parent chain
+      while (currentId && !processedParents.has(currentId)) {
+        processedParents.add(currentId);
+        const parent = itemMap.get(currentId);
+
+        if (parent) {
+            itemsToQueue.add(currentId);
+          }
+          currentId = parent.parent_id;
+        } else {
+          break;
+        }
+      }
+    }
+
+    for (const itemId of itemsToQueue) {
+      const item = itemMap.get(itemId);
       if (!item) {
         skipped.push({ id: itemId, reason: 'Item not found' });
         continue;
@@ -529,6 +556,10 @@ function mergeCustomFieldValues(
           } else if (createdKeys.has(planItem.parent_id)) {
             parentKey = createdKeys.get(planItem.parent_id);
           }
+        }
+
+        if (!parentKey && association.epic_key) {
+          parentKey = association.epic_key;
         }
 
         const rawCustomFields = mergeCustomFieldValues(

@@ -49,6 +49,9 @@ import type {
     const { associationId, customFieldValues } = TrackerSchemas.updateCustomFieldValues.parse(params);
   });
 
+    const { associationId, epicKey } = TrackerSchemas.updateEpicKey.parse(params);
+  });
+
     const { projectKey, issueTypeId } = TrackerSchemas.getCustomFields.parse(params);
   });
 

@@ -9,4 +9,7 @@ import { z } from 'zod';
 // =============================================================================
 
 export const ShellSchemas = {
+  /** Open URL in default browser */
+  openExternal: z.object({
+  }),
 };

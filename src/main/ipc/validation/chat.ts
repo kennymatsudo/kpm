@@ -29,6 +29,7 @@ export const tempImagePath = absolutePath.refine(
 const focusedResourceSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('plan_item'), id: z.string(), title: z.string() }),
   z.object({ type: z.literal('project_file'), path: z.string(), isDirectory: z.boolean() }),
+  z.object({ type: z.literal('repo'), id: z.string(), path: z.string().optional() }),
   z.object({ type: z.literal('document'), id: z.string(), title: z.string(), path: z.string() }),
 ]);
 

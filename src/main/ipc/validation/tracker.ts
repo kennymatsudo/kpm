@@ -212,6 +212,11 @@ export const TrackerSchemas = {
     associationId: uuid,
     customFieldValues: z.record(z.string(), z.string()).nullable(),
   }),
+
+  updateEpicKey: z.object({
+    associationId: uuid,
+    epicKey: z.string().nullable(),
+  }),
 };
 
 // =============================================================================

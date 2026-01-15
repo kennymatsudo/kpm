@@ -135,6 +135,7 @@ export interface TrackerAssociation {
   display_name: string | null;    // 'Support Pane Epic'
   status_mapping: StatusMapping | null;  // Explicit status category → Jira status mapping
   custom_field_values: CustomFieldValues | null;  // Static custom field values for export, applied to all issue types
+  epic_key: string | null;        // Jira Epic key to assign new issues to (e.g., 'PROJ-6224')
   last_synced_at: string | null;
   created_at: string;
 }
@@ -520,6 +521,14 @@ export interface ChatSessionSummary {
   chat_session_id: string;
   first_message: string;  // First user message (truncated for display)
   message_count: number;
+  created_at: string;
+}
+
+/** Chat session entity - stores Claude SDK session ID for resume functionality */
+export interface ChatSession {
+  id: string;  // Same as chat_session_id in chat_messages
+  project_id: string;
+  claude_session_id: string | null;  // Claude SDK session ID for resume
   created_at: string;
 }
 

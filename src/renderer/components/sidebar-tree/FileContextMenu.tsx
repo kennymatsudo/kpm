@@ -10,6 +10,8 @@ interface FileContextMenuProps {
   onToggleFocus: () => void;
   onRename: () => void;
   onRevealInFinder: () => void;
+  onCopyFullPath: () => void;
+  onCopyRelativePath: () => void;
   onView?: () => void;
   onDelete: () => void;
 }
@@ -23,6 +25,8 @@ export function FileContextMenu({
   onToggleFocus,
   onRename,
   onRevealInFinder,
+  onCopyFullPath,
+  onCopyRelativePath,
   onView,
   onDelete,
 }: FileContextMenuProps) {
@@ -53,6 +57,12 @@ export function FileContextMenu({
 
       {/* Reveal in Finder */}
         Reveal in Finder
+
+      {/* Copy Full Path */}
+        Copy Full Path
+
+      {/* Copy Relative Path */}
+        Copy Relative Path
 
 
       {/* Delete */}
