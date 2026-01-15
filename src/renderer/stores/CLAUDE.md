@@ -37,6 +37,9 @@ export const createProjectStore = (deps?: ProjectStoreDependencies) => {
 
 Simpler domains use `create()` directly. See `briefingStore.ts` or `searchStore.ts` for a typical example.
 
+## Chat Store (Unified Sessions)
+
+
 ## Cross-Store Communication
 
 

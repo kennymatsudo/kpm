@@ -938,6 +938,89 @@ interface Migration {
       }
     },
   },
+  {
+    id: 1026,
+    name: '026_remove_brainstorm',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- Remove brainstorm data and tables
+        -- ============================================
+        DROP TABLE IF EXISTS brainstorm_sessions;
+        DROP TABLE IF EXISTS custom_agents;
+
+        -- ============================================
+        -- Update chat_messages schema and clear history
+        -- ============================================
+        CREATE TABLE chat_messages_new (
+          id TEXT PRIMARY KEY,
+          session_type TEXT NOT NULL CHECK (session_type IN ('workspace')),
+          session_id TEXT NOT NULL,
+          role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+          content TEXT NOT NULL,
+          chat_session_id TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        DROP TABLE chat_messages;
+        ALTER TABLE chat_messages_new RENAME TO chat_messages;
+
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_type, session_id);
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_session ON chat_messages(session_type, session_id, chat_session_id);
+
+        -- ============================================
+        -- Update chat_sessions schema and clear history
+        -- ============================================
+        CREATE TABLE chat_sessions_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          session_type TEXT NOT NULL CHECK (session_type IN ('workspace')),
+          claude_session_id TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        DROP TABLE chat_sessions;
+        ALTER TABLE chat_sessions_new RENAME TO chat_sessions;
+
+        CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_id);
+        CREATE INDEX IF NOT EXISTS idx_chat_sessions_project_type ON chat_sessions(project_id, session_type);
+      `);
+    },
+  },
+  {
+    id: 1027,
+    name: '027_remove_chat_session_type',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- Remove session_type from chat tables and clear history
+        -- ============================================
+        DROP TABLE IF EXISTS chat_messages;
+        DROP TABLE IF EXISTS chat_sessions;
+
+        CREATE TABLE IF NOT EXISTS chat_messages (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+          content TEXT NOT NULL,
+          chat_session_id TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_session_chat_session ON chat_messages(session_id, chat_session_id);
+
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          claude_session_id TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_id);
+      `);
+    },
+  },
         -- Backfill: sessions without plan items get first 60 chars of instructions
   {
     id: 1075,

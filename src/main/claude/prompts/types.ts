@@ -9,4 +9,6 @@ export interface PlanContext {
   attachments: Attachment[];
   planItems: PlanItem[];
   focusedResources: FocusedResource[];
+  /** Current UI view - used for context-aware suggestions */
+  currentView?: ChatViewMode;
 }

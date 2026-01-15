@@ -1,6 +1,7 @@
 /**
  * Client manager for Claude SDK sessions.
  *
+ * Provides centralized lifecycle management for main chat sessions,
  * including session disposal, cleanup on app quit, and session isolation.
  */
 
@@ -8,6 +9,7 @@ import type { BrowserWindow } from 'electron';
 
 /**
  * Session metadata tracked by the client manager.
+ * Sessions are identified by keys: "main:{projectId}"
  */
 interface ManagedSession {
   sessionId: string;
@@ -32,6 +34,8 @@ export interface SessionOptions {
 /**
  * Singleton manager for Claude SDK sessions.
  *
+ * Manages lifecycle of main chat sessions:
+ * - Tracks active sessions by project ID
  * - Stores session IDs for resumption
  * - Provides cleanup on app quit and manual disposal
  * - Implements idle timeout (30 minutes)
@@ -110,6 +114,7 @@ class ClaudeClientManager {
 
   /**
    * Dispose a single session by key.
+   * Key format: "main:{projectId}"
    */
     const session = this.sessions.get(key);
     if (session) {

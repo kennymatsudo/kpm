@@ -1,3 +1,5 @@
+import { useChatStore } from '../../stores';
+import { useShallow } from 'zustand/react/shallow';
 import { ModelSelector } from './ModelSelector';
 
 interface ChatInputProps {

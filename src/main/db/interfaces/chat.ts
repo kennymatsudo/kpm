@@ -1,6 +1,7 @@
 /**
  * Chat Domain Repository Interfaces
  *
+ * Interfaces for chat messages and chat sessions.
  */
 
 import type {
@@ -10,10 +11,15 @@ import type {
 } from '../../../shared/types';
 
 // =============================================================================
+// Chat Message Repository
 // =============================================================================
 
 export interface IChatMessageRepository {
+  getMessages(sessionId: string): ChatMessage[];
+  getMessagesByChatSession(sessionId: string, chatSessionId: string): ChatMessage[];
+  getRecentSessions(sessionId: string, limit?: number): ChatSessionSummary[];
   /** Delete sessions beyond the keep limit (default 10), returns count deleted */
+  pruneOldSessions(sessionId: string, keepCount?: number): number;
 }
 
 // =============================================================================

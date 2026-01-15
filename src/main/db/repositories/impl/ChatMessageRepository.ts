@@ -1,6 +1,7 @@
 /**
  * Chat Message Repository Implementation
  *
+ * Unified message storage for main project chat sessions.
  * Enables session recovery after app restart or crash.
  *
  * Optimized with prepared statement caching.
@@ -28,6 +29,7 @@ export class ChatMessageRepository implements IChatMessageRepository {
       `),
       getMessagesByChatSession: db.prepare(`
         SELECT * FROM chat_messages
+        WHERE session_id = ? AND chat_session_id = ?
         ORDER BY created_at ASC
       `),
       // Use RETURNING to get inserted row in one query
@@ -42,8 +44,12 @@ export class ChatMessageRepository implements IChatMessageRepository {
     };
   }
 
+  getMessages(sessionId: string): ChatMessage[] {
+    return this.stmts.getMessages.all(sessionId) as ChatMessage[];
   }
 
+  getMessagesByChatSession(sessionId: string, chatSessionId: string): ChatMessage[] {
+    return this.stmts.getMessagesByChatSession.all(sessionId, chatSessionId) as ChatMessage[];
   }
 
   addMessage(
@@ -54,6 +60,7 @@ export class ChatMessageRepository implements IChatMessageRepository {
     // Use RETURNING to get inserted row in one query
   }
 
+    return this.stmts.getRecentSessions.all(sessionId, limit) as ChatSessionSummary[];
   }
 
   /**

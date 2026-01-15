@@ -1,10 +1,12 @@
 /**
  * StreamingSessionService - Application service for streaming Claude sessions.
  *
+ * This service manages the lifecycle of streaming sessions for main project chat.
  *
  * Key features:
  * - Connect on project open (zero-latency first message)
  * - Auto-reconnect on timeout or crash
+ * - Unified chat session for Plan and Workspace views (shared history)
  *
  * Session keys:
  */
@@ -22,7 +24,9 @@ import { clientManager } from '../../claude/clientManager';
 // =============================================================================
 
 export type SessionState = 'idle' | 'connecting' | 'ready' | 'processing' | 'error' | 'closing';
+export type SessionType = 'chat';
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
+/** UI view mode - passed to prompts for context-aware suggestions */
 
 /** Segment state for tracking message boundaries */
 interface SegmentState {
@@ -40,6 +44,7 @@ interface ManagedSession {
   model: ModelType;
   lastActivity: number;
   sessionId?: string; // SDK session ID for resume
+  currentView?: ViewMode;
   processingStartTime?: number; // Timestamp when processing started (for timeout detection)
   segmentState: SegmentState; // Track message segments for splitting bubbles
   chatSessionId?: string; // For persisting main chat messages
@@ -89,6 +94,7 @@ export interface StreamingSessionServiceDeps {
 
   /** Build SDK options from context */
   buildSdkOptions: (
+    context: PlanContext,
     options: {
       model: ModelType;
       resumeSessionId?: string;
@@ -118,6 +124,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   function getSessionKeysForProject(projectId: string): string[] {
     return getSessionKeysForProject(projectId).length;
   // ─────────────────────────────────────────────────────────────────────────────
+  // Core Session Operations (main chat)
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
@@ -150,6 +157,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
   /**
    * Send a message to an existing session, creating it if necessary.
+   * Shared logic for main chat sessions.
    */
   async function sendMessageToSession(
     key: string,
@@ -206,6 +214,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     chatSessionId?: string;
     model: ModelType;
     resumeSessionId?: string;
+    context: PlanContext;
+    currentView?: ViewMode;
   }
 
   /**
@@ -220,6 +230,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       model,
       resumeSessionId,
       context,
+      currentView,
       onMessage,
     } = config;
 
@@ -262,12 +273,14 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // State = 'connecting' until start() resolves successfully
       sessions.set(key, {
         key,
+        type: 'chat',
         projectId,
         chatSessionId,
         session,
         state: 'connecting',
         model,
         lastActivity: Date.now(),
+        currentView,
         segmentState: {
           currentSegmentId: 0,
           hasTextInCurrentSegment: false,
@@ -300,6 +313,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         unsubscribeDocumentUpdate?.();
       }
 
+      mainWindow?.webContents.send('chat:session-error', {
+        projectId,
         error: (error as Error).message,
       });
 
@@ -308,6 +323,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Main Chat Sessions (unified for Plan and Workspace views)
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
@@ -316,22 +332,33 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     return success(undefined);
   }
 
+  /** Options for sending a chat message */
   interface SendChatMessageOptions {
     model?: ModelType;
     chatSessionId?: string;
+    /** Current UI view - used for prompt customization */
+    currentView?: ViewMode;
   }
 
   /**
+   * Send a message in the main chat session.
    * Creates session with the message if no active session exists.
+   * Used by both Plan and Workspace views (shared session/history).
    */
+  async function sendChatMessage(
     projectId: string,
     message: string,
     options: SendChatMessageOptions = {}
   ): AsyncResult<void> {
+    const managed = sessions.get(key);
+    }
   }
 
   /**
+   * Create and start a main chat session with an initial message.
+   * Shared between Plan and Workspace views.
    */
+  async function createChatSession(
     projectId: string,
     options: SendChatMessageOptions = {}
   ): AsyncResult<{ sessionId: string }> {
@@ -345,6 +372,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       return failure('Failed to build context');
     }
 
+    // Add current view to context for prompt customization
+    if (options.currentView) {
+      (context as PlanContext & { currentView?: ViewMode }).currentView = options.currentView;
     }
 
     // Get or create chat session for Claude SDK session tracking
@@ -360,6 +390,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       model: options.model ?? 'sonnet',
       resumeSessionId,
       context,
+      currentView: options.currentView,
     });
   }
 
@@ -461,6 +492,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   }
 
   /**
+   * Handle messages from main chat session (unified for Plan and Workspace views).
+   * Uses 'chat:*' IPC channels and persists to unified chat history.
    */
     const mainWindow = deps.getMainWindow();
     const managed = sessions.get(key);
@@ -539,6 +572,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const mainWindow = deps.getMainWindow();
 
     if (reason === 'error' && error) {
+      mainWindow?.webContents.send('chat:session-error', {
+        projectId: managed.projectId,
+        error: error.message,
+      });
     }
 
     console.log(`[StreamingSessionService] Session ended: ${key} (${reason})`);
@@ -556,6 +593,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   // ─────────────────────────────────────────────────────────────────────────────
 
   return {
+    disconnectChatSession,
+    sendChatMessage,
+    getChatSessionState,
     disposeAll,
   };
 }

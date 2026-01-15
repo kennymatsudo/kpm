@@ -2,6 +2,7 @@
  * Tool activity tracking for Claude SDK.
  *
  * Generates structured activity data for UI display when Claude uses tools.
+ * Used by main chat sessions.
  */
 
 import { randomUUID } from 'crypto';

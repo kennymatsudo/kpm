@@ -1,4 +1,5 @@
 /**
+ * Chat and Streaming Session Validation Schemas
  */
 
 import { z } from 'zod';
@@ -11,6 +12,7 @@ import {
 } from './shared';
 
 // =============================================================================
+// Temp Image Path Validation (used by chat)
 // =============================================================================
 
 export const tempImagePath = absolutePath.refine(
@@ -34,8 +36,10 @@ const focusedResourceSchema = z.discriminatedUnion('type', [
 ]);
 
 // =============================================================================
+// Chat View Mode Schema
 // =============================================================================
 
+/** Current UI view mode - used for prompt customization, not session separation */
 
 // =============================================================================
 // Chat Schemas

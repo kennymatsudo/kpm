@@ -10,8 +10,11 @@ export { SessionHistory } from './SessionHistory';
 export { NewSessionButton } from './NewSessionButton';
 
 interface ChatProps {
+  /** Current view mode for prompt customization (optional) */
+  currentView?: ChatViewMode;
 }
 
+export function Chat({ currentView }: ChatProps) {
 
   const [lastMessage, setLastMessage] = useState<string | null>(null);
 

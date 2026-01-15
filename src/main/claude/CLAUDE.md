@@ -8,6 +8,7 @@ StreamingSession (SDK wrapper)
     ↓
 StreamingSessionService (lifecycle management)
     ↓
+IPC handlers (chat.ts)
     ↓
 createKpmServer() (singleton MCP server)
     ├─ plan-items.ts (query tools)
@@ -24,6 +25,11 @@ System prompts (prompts/ directory)
 
 ### 1. Streaming Sessions
 
+
+
+- Single session carries over when switching between Plan and Workspace views
+- `currentView` parameter ('plan' | 'workspace') passed for context-aware prompts
+- History persists across view switches - no session reset
 
 **Flow:**
 1. `StreamingSession` wraps the SDK `query()` function
@@ -69,6 +75,7 @@ Claude calls modification tool (modify_plan, bulk_reparent, etc.)
 ## Modifying Prompts
 
 ### System Prompts (Main Chat)
+
 
 
 ## Common Pitfalls

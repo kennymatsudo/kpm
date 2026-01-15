@@ -12,6 +12,7 @@
  * RESET METHODS:
  * - `reset()` - Full reset to initial state. Used by TESTS only.
  * - `resetProjectState()` - Clears project data but preserves global settings
+ *   (e.g., model preference). Used at RUNTIME when switching projects.
  *
  * For stores without global settings, `resetProjectState()` can just call `reset()`.
  *

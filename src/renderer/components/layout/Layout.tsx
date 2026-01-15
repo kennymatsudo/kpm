@@ -114,6 +114,7 @@ interface LayoutProps {
               </div>
               <div className="flex-1 panel-right flex flex-col min-w-0">
                   <ErrorBoundary name="Chat">
+                    <Chat currentView="plan" />
                   </ErrorBoundary>
                 </div>
               </div>

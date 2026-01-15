@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 /**
  * Session history dropdown showing recent chat sessions.
  */
+export function SessionHistory() {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -14,7 +15,9 @@ import { useShallow } from 'zustand/react/shallow';
   // Load session history when dropdown opens
   useEffect(() => {
     if (isOpen && currentProjectId) {
+      void loadSessionHistory(currentProjectId);
     }
+  }, [isOpen, currentProjectId, loadSessionHistory]);
 
   // Close dropdown when clicking outside
   useEffect(() => {

@@ -15,6 +15,20 @@ import { FULL_HIERARCHY_THRESHOLD, buildItemReferenceTable } from './planFormatt
 import { buildResponseModesSection } from './modes';
 
 /**
+ * Build view context section for mode-aware suggestions.
+ * This is additive to existing response modes, providing UI context.
+ */
+function buildViewContextSection(currentView?: ChatViewMode): string {
+  if (!currentView) return '';
+
+  if (currentView === 'plan') {
+    return `## Current View: Plan Mode
+  }
+
+  return `## Current View: Workspace
+}
+
+/**
  * Build the system prompt.
  *
  * Structure follows context engineering best practices:
@@ -33,6 +47,7 @@ export function buildSystemPrompt(context: PlanContext): string {
 
 ID: \`${project.id}\` (use for all tool calls)
 Phase: ${project.phase}
+${buildViewContextSection(currentView)}
 
 
 

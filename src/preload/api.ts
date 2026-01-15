@@ -41,6 +41,7 @@ import type {
   DevSession,
   DevSessionWithPlanItem,
   ClaudeModel,
+  ChatViewMode,
   FileNode,
 } from '../shared/types';
 
@@ -91,6 +92,9 @@ const tempImages = {
 };
 
 const chat = {
+  newSession: (projectId: string): Promise<{ success: boolean }> =>
+  getMessages: (projectId: string): Promise<{ success: boolean; messages?: ChatMessage[]; error?: string }> =>
+  getSessionHistory: (projectId: string, limit?: number): Promise<{ success: boolean; sessions?: ChatSessionSummary[]; error?: string }> =>
   onChunk: (callback: (data: {
     projectId: string;
     text: string;
@@ -127,6 +131,7 @@ const chat = {
   /** Connect streaming session for a project (called on project open) */
   connectSession: (projectId: string): Promise<{ success: boolean; sessionId?: string; error?: string }> =>
 
+  disconnectSession: (projectId: string): Promise<{ success: boolean; error?: string }> =>
 
   /** Get current session state */
 

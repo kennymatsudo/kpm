@@ -1,6 +1,8 @@
+import { useChatStore, type ChatClaudeModel } from '../../stores';
 
 ];
 
+export function ModelSelector() {
 
   const handleModelChange = (newModel: ChatClaudeModel, e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();

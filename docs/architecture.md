@@ -78,6 +78,7 @@ src/
 | `tracker_type_mappings` | Label → tracker issue type |
 | `sync_queue` | Items staged for export (with custom field overrides) |
 | `sync_snapshots` | Last-synced state for three-way conflict detection |
+| `chat_messages` | Persistent message history |
 | `app_settings` | Global key-value application preferences |
 | `tool_permissions` | Persisted per-project tool permission grants |
 | `project_briefings` | Cached generated project briefings |

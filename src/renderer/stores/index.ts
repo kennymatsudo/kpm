@@ -3,6 +3,7 @@ export type { PlanAction } from '../../shared/types';
 
 export { useTrackerStore, useHasAssociations } from './trackerStore';
 
+export type { Activity, ChatViewMode } from '../../shared/types';
 
 export { useFileTreeStore } from './fileTreeStore';
 

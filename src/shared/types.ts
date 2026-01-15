@@ -14,6 +14,7 @@ import type {
 // =============================================================================
 // =============================================================================
 
+/** Available Claude models for chat sessions */
 export type ClaudeModel = 'opus' | 'sonnet';
 
 // =============================================================================
@@ -507,9 +508,12 @@ export interface SyncReviewData {
   canProceed: boolean;
 }
 
+/** UI view mode - indicates which view the user is currently in (for prompt customization) */
 
+/** Persisted chat message for session recovery */
 export interface ChatMessage {
   id: string;
+  session_id: string;  // project_id for main chat
   chat_session_id: string | null;  // Groups messages into distinct sessions within a project
   role: 'user' | 'assistant';
   content: string;

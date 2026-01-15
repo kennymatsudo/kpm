@@ -401,6 +401,7 @@ select:focus-visible {
 .chat-message-content.prose-themed p {
 }
 
+/* Allow text selection in prose/markdown content */
 .prose,
 .prose * {
   user-select: text;

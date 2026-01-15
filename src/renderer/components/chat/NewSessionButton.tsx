@@ -6,6 +6,7 @@ import { useShallow } from 'zustand/react/shallow';
  * to avoid registering duplicate event listeners when both Chat and NewSessionButton
  * are mounted simultaneously.
  */
+export function NewSessionButton() {
     currentProjectId: state.currentProjectId,
   })));
 

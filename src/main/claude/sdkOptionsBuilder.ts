@@ -10,6 +10,7 @@ import { getConfig } from '../config';
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
 
 export interface BuildSdkOptionsParams {
+  context: PlanContext;
   model: ModelType;
   resumeSessionId?: string;
   mainWindow: BrowserWindow | null;

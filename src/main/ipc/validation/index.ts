@@ -60,6 +60,8 @@ export { ProjectSchemas, RepoSchemas, AttachmentSchemas, StorybookSchemas } from
 // Plan Items and Actions
 export { PlanSchemas, planActionSchema } from './plan';
 
+// Chat, Streaming Sessions
+export { ChatSchemas, StreamingSessionSchemas, tempImagePath } from './chat';
 
 // Files, File Explorer
 export { FileSchemas, FileExplorerSchemas } from './files';

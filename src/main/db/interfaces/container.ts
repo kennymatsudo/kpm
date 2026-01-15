@@ -7,6 +7,7 @@
 import type { IProjectRepository, IRepoRepository, IAttachmentRepository } from './project';
 import type { IPlanItemRepository, IPlanRelationRepository, IExternalPlanItemRepository } from './plan';
 import type { ITrackerRepository, ISyncRepository, ISyncQueueRepository, ITypeMappingRepository } from './tracker';
+import type { IChatMessageRepository, IChatSessionRepository } from './chat';
 import type { IDevSessionRepository, IWorktreeRepository } from './dev';
 
 /**
