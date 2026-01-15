@@ -34,6 +34,7 @@ export function PermissionPrompt() {
           </div>
         )}
 
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => respond('deny')}
           >
@@ -43,6 +44,11 @@ export function PermissionPrompt() {
             onClick={() => respond('allow')}
           >
             Allow
+          </button>
+          <button
+            onClick={() => respond('allow-all-remaining')}
+          >
+            Allow All Remaining
           </button>
           <button
             onClick={() => respond('allow-always')}

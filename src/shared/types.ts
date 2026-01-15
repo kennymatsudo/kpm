@@ -539,16 +539,19 @@ export interface ChatSession {
 /** Permission request sent from main to renderer */
 export interface PermissionRequest {
   requestId: string;
+  projectId: string;
   toolName: string;
   targetPath: string | null;
   preview: string;
 }
 
 /** User action for permission request */
+export type PermissionAction = 'allow' | 'deny' | 'allow-always' | 'allow-all-remaining';
 
 /** Permission response sent from renderer to main */
 export interface PermissionResponse {
   requestId: string;
+  projectId: string;
   action: PermissionAction;
 }
 

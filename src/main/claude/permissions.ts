@@ -175,6 +175,12 @@ export function createPermissionHandler(
       return { behavior: 'allow', updatedInput: input };
     }
 
+    // Rule 4.5: Check "Allow All Remaining" flag (batch approval for current response)
+    if (clientManager.hasAllowAllRemaining(context.projectId)) {
+      console.log(`[Permissions] Auto-allowing ${toolName} (Allow All Remaining active)`);
+      return { behavior: 'allow', updatedInput: input };
+    }
+
     // Rule 5: Prompt for writes outside project directory
     if (WRITE_TOOLS.includes(toolName)) {
       const result = await promptUser(toolName, input, options);

@@ -15,6 +15,7 @@ import type { DocumentUpdatePayload } from '../../claude/tools/document-update';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../claude/prompts';
 import { getConfig } from '../../config';
+import { clientManager } from '../../claude/clientManager';
 
 // =============================================================================
 // Types
@@ -506,6 +507,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Handle result message (final stats)
     if (sdkMsg.type === 'result') {
+
+      // Clear "Allow All Remaining" flag when response completes
+      clientManager.clearAllowAllRemaining(projectId);
 
       }
 

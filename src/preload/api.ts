@@ -335,6 +335,7 @@ const settings = {
 };
 
 const permission = {
+  respond: (requestId: string, projectId: string, action: PermissionAction): Promise<{ success: boolean; error?: string }> =>
   onRequest: (callback: (request: PermissionRequest) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, request: PermissionRequest) => callback(request);
     ipcRenderer.on('permission:request', handler);

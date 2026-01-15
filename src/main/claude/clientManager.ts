@@ -48,6 +48,13 @@ class ClaudeClientManager {
    */
   private permissionCache = new Map<string, Set<string>>();
 
+  /**
+   * "Allow All Remaining" flags for batch approval.
+   * When set, auto-approves all remaining tools in the current response.
+   * Cleared when response completes.
+   */
+  private allowAllRemainingFlags = new Map<string, boolean>();
+
   /** Idle timeout: 30 minutes */
   private static readonly IDLE_TIMEOUT_MS = 30 * 60 * 1000;
   /** Check for idle sessions every 5 minutes */
@@ -193,6 +200,38 @@ class ClaudeClientManager {
   clearAllPermissionCaches(): void {
     this.permissionCache.clear();
     console.log(`[ClientManager] Cleared all permission caches`);
+  }
+
+  // ============================================
+  // "Allow All Remaining" Flag Management
+  // ============================================
+
+  /**
+   * Check if "Allow All Remaining" is active for a project.
+   * Used by permission handler to auto-approve remaining tools in current response.
+   */
+  hasAllowAllRemaining(projectId: string): boolean {
+    return this.allowAllRemainingFlags.get(projectId) ?? false;
+  }
+
+  /**
+   * Enable "Allow All Remaining" for a project.
+   * Called when user clicks "Allow All Remaining" button.
+   */
+  setAllowAllRemaining(projectId: string): void {
+    this.allowAllRemainingFlags.set(projectId, true);
+    console.log(`[ClientManager] Allow All Remaining enabled for project ${projectId}`);
+  }
+
+  /**
+   * Clear "Allow All Remaining" flag for a project.
+   * Called when response completes (sdkMsg.type === 'result').
+   */
+  clearAllowAllRemaining(projectId: string): void {
+    if (this.allowAllRemainingFlags.has(projectId)) {
+      this.allowAllRemainingFlags.delete(projectId);
+      console.log(`[ClientManager] Allow All Remaining cleared for project ${projectId}`);
+    }
   }
 }
 
