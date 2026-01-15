@@ -59,6 +59,18 @@ import { LoadingSpinner } from '../../ui/LoadingButton';
     }
   }, [currentProjectId, refreshQueueCount]);
 
+  // Handle Escape key to close
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const handleImport = async () => {
     if (!currentProjectId) return;
     const result = await importAll(currentProjectId, associationId);

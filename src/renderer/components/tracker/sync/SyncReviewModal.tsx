@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { DiffRenderer, StatusTransitionView } from '../DiffRenderer';
 import { CloseIcon } from '../../icons';
 import { LoadingSpinner } from '../../ui/LoadingButton';
+import { useFocusTrap } from '../../../hooks/useFocusTrap';
 
 interface Props {
   projectId: string;
@@ -30,6 +31,16 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
     void startReview(projectId, associationId);
     return () => reset();
   }, [projectId, associationId, startReview, reset]);
+
+  // Auto-close modal after export completes successfully
+  useEffect(() => {
+    if (phase === 'complete' && exportResult) {
+      const timer = setTimeout(() => {
+        handleClose();
+      }, 1500); // Brief delay to show success message
+      return () => clearTimeout(timer);
+    }
+  }, [phase, exportResult]);
 
   const checkedItems = useMemo(
     () => items.filter(i => i.decision === 'approved'),
@@ -168,6 +179,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
             </div>
           )}
 
+          <p className="text-text-muted text-xs">Closing automatically...</p>
         </div>
       </ModalShell>
     );
@@ -301,12 +313,19 @@ interface ModalShellProps {
   wide?: boolean;
 }
 
+  const { containerRef } = useFocusTrap<HTMLDivElement>({
+    isOpen: true,
+    onEscape: onClose,
+    restoreFocus: true,
+  });
+
   return (
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-[2px]"
         onClick={onClose}
       />
       <div
+        ref={containerRef}
         className="dialog-content relative flex flex-col overflow-hidden"
         style={{
           maxWidth: wide ? '60rem' : '32rem',
