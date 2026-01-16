@@ -16,14 +16,18 @@ interface WorkspaceViewProps {
   const {
     editingFile,
     closeEditor,
+    openFile,
     setCurrentProjectId,
   } = useWorkspaceStore(
     useShallow((state) => ({
       editingFile: state.editingFile,
       closeEditor: state.closeEditor,
+      openFile: state.openFile,
       setCurrentProjectId: state.setCurrentProjectId,
     }))
   );
+
+  const hasUnsavedChanges = useHasUnsavedChanges();
 
   // Animation state for editor panel
   const [editorVisible, setEditorVisible] = useState(false);
@@ -33,6 +37,14 @@ interface WorkspaceViewProps {
     setCurrentProjectId(projectId);
     return () => setCurrentProjectId(null);
   }, [projectId, setCurrentProjectId]);
+
+  useEffect(() => {
+        }
+
+
+      }
+    return unsubscribe;
+  }, [projectId, editingFile, hasUnsavedChanges, openFile, closeEditor]);
 
   // Track if we're in editing mode for layout transitions
   const isEditing = editingFile !== null;

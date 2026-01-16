@@ -45,6 +45,11 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     if (projectId) {
     }
 
+  useEffect(() => {
+        }
+      }
+    return unsubscribe;
+
   // ==========================================================================
   // Repo handlers
   // ==========================================================================

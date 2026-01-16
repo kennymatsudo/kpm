@@ -450,6 +450,30 @@ const fileExplorer = {
 
   // Show folder selection dialog for linking external folders
   selectFolderDialog: (title?: string): Promise<string | null> =>
+
+  // Listen for file change events (real-time updates when files are created/updated/deleted)
+  onFileChange: (
+    callback: (data: {
+      projectId: string;
+      type: 'created' | 'updated' | 'deleted' | 'renamed';
+      path: string;
+      newPath?: string;
+      isDirectory: boolean;
+    }) => void
+  ): (() => void) => {
+    const handler = (
+      _: Electron.IpcRendererEvent,
+      data: {
+        projectId: string;
+        type: 'created' | 'updated' | 'deleted' | 'renamed';
+        path: string;
+        newPath?: string;
+        isDirectory: boolean;
+      }
+    ) => callback(data);
+    ipcRenderer.on('file-explorer:file-changed', handler);
+    return () => ipcRenderer.removeListener('file-explorer:file-changed', handler);
+  },
 };
 
 // Repo Files API (Workspace file browser for connected repos)

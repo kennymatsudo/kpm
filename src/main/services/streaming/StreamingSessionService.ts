@@ -97,6 +97,7 @@ export interface StreamingSessionServiceDeps {
     context: PlanContext,
     options: {
       model: ModelType;
+      currentView?: ViewMode;
       resumeSessionId?: string;
       mainWindow: BrowserWindow | null;
       onClaudeMdEdit?: (projectId: string, newContent: string) => void;
@@ -248,6 +249,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     try {
         model,
+        currentView,
         resumeSessionId,
         mainWindow,
         onClaudeMdEdit: (editProjectId: string, newContent: string) => {

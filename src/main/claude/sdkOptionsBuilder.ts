@@ -5,6 +5,7 @@
  * This is used by both the per-query and streaming session patterns.
  */
 
+import type { ChatViewMode } from '../../shared/types';
 import { getConfig } from '../config';
 
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
@@ -12,6 +13,7 @@ export type ModelType = 'opus' | 'sonnet' | 'haiku';
 export interface BuildSdkOptionsParams {
   context: PlanContext;
   model: ModelType;
+  currentView?: ChatViewMode;
   resumeSessionId?: string;
   mainWindow: BrowserWindow | null;
   onClaudeMdEdit?: ClaudeMdInterceptFn;
