@@ -177,6 +177,22 @@ class FileWatchServiceClass {
     }
   }
 
+  /**
+   * Returns null content if file doesn't exist (new document).
+   */
+    if (!project) {
+      return { success: false, content: null, error: 'Project not found' };
+    }
+
+    try {
+        return { success: true, content };
+      } else {
+        return { success: true, content: null };
+      }
+    } catch (error) {
+      return { success: false, content: null, error: String(error) };
+    }
+  }
 }
 
 export const FileWatchService = new FileWatchServiceClass();

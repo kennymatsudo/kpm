@@ -1,6 +1,33 @@
+/**
+ * PendingActionsPanel - Review and approve proposed plan changes from Claude.
+ *
+ * Two states:
+ * 1. Collapsed: Floating panel at bottom with summary and quick actions
+ * 2. Expanded: Full modal with split-view (action list + detail view)
+ *
+ * Uses all-or-nothing approval: approve all actions or dismiss all.
+ */
+
+import { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import type { PlanAction, PlanItem } from '../../../shared/types';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { MotionButton } from '../ui/MotionButton';
+import { CloseIcon } from '../icons';
+import {
+  ActionCard,
+  CreateItemDetail,
+  UpdateItemDetail,
+  DeleteItemDetail,
+  ReparentDetail,
+  AddDependencyDetail,
+  RemoveDependencyDetail,
+  SetLabelDetail,
+  SetReleaseDetail,
+  SetPositionDetail,
+  ReorderDetail,
+  QueueForTrackerDetail,
+} from './action-details';
 
 interface PendingActionsPanelProps {
   actions: PlanAction[];
@@ -10,29 +37,329 @@ interface PendingActionsPanelProps {
   isApplying?: boolean;
 }
 
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [selectedActionIndex, setSelectedActionIndex] = useState(0);
+
+  // Build placeholder map for resolving $N references to items being created
+  const placeholderMap = useMemo(() => buildPlaceholderMap(actions), [actions]);
+
+  // Get action summary for collapsed view
+  const actionSummary = useMemo(() => {
+    const counts: Record<string, number> = {};
+    actions.forEach(action => {
+      const type = getActionTypeLabel(action.type);
+      counts[type] = (counts[type] || 0) + 1;
+    });
+    return counts;
+  }, [actions]);
 
   // Check if any action references a missing item
+  const hasMissingItems = useMemo(() => {
+    return actions.some(action => {
+      if ('item_id' in action && typeof action.item_id === 'string') {
+      }
+      if ('from_id' in action && typeof action.from_id === 'string') {
+      }
+      if ('to_id' in action && typeof action.to_id === 'string') {
+      }
+      return false;
+    });
 
-    <AnimatePresence>
+  // Keep selected index in bounds
+  const safeSelectedIndex = Math.min(selectedActionIndex, actions.length - 1);
+  const selectedAction = actions[safeSelectedIndex];
+
+  if (actions.length === 0) return null;
+
+  // Collapsed panel (floating at bottom)
+  const collapsedPanel = (
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 20, scale: 0.95 }}
+      transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <div className="pulse-dot" />
+        <span className="text-sm font-medium text-accent">
+          Proposed Changes ({actions.length})
+        </span>
+      </div>
+
+      {/* Action type summary */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {Object.entries(actionSummary).map(([type, count]) => (
+          <span
+            key={type}
+          >
+            {count} {type}
+          </span>
+        ))}
+      </div>
+
+      {/* Warning for missing items */}
+      {hasMissingItems && (
+        <div className="bg-warning/10 border border-warning/30 rounded-lg px-3 py-2 mb-3 text-xs text-warning">
+          Some actions reference items that no longer exist. These will be skipped when applied.
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex gap-2">
+        <MotionButton
+          variant="secondary"
+          onClick={() => setIsExpanded(true)}
+          className="flex-1"
         >
+          Review Details
+        </MotionButton>
+        <MotionButton
+          variant="primary"
+          onClick={onApprove}
+          disabled={isApplying}
+          className="flex-1 disabled:opacity-70"
+        >
+          {isApplying ? (
+            <span className="flex items-center gap-2">
+              <LoadingSpinner className="w-3.5 h-3.5" color="white" />
+              Applying...
+            </span>
+          ) : (
+            'Apply Changes'
+          )}
+        </MotionButton>
+        <MotionButton
+          variant="secondary"
+          onClick={onDismiss}
+          disabled={isApplying}
+          className="disabled:opacity-50"
+        >
+          Dismiss
+        </MotionButton>
+      </div>
+  );
 
+  // Expanded modal with split-view
+  const expandedModal = createPortal(
+    <AnimatePresence>
+      {isExpanded && (
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isApplying) setIsExpanded(false);
+          }}
+        >
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="dialog-content w-[900px] max-w-[90vw] h-[75vh] max-h-[800px] min-h-[500px] flex flex-col"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-border-subtle bg-surface-2 flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-lg bg-accent/12 flex items-center justify-center">
+                  <svg className="w-3.5 h-3.5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-text-primary leading-tight">Review Proposed Changes</h2>
+                </div>
+              </div>
+              <MotionButton
+                scalePreset="default"
+                onClick={() => setIsExpanded(false)}
+                disabled={isApplying}
+                className="text-text-muted hover:text-text-primary transition-colors p-1 hover:bg-surface-3 rounded disabled:opacity-50"
+              >
+                <CloseIcon className="w-5 h-5" />
+              </MotionButton>
             </div>
 
+            {/* Split view container */}
+            <div className="flex-1 flex min-h-0 overflow-hidden">
+              {/* Left panel - Action list */}
+              <div className="w-64 flex-shrink-0 border-r border-border-subtle flex flex-col" style={{ background: 'var(--bg-canvas)' }}>
+                <div className="px-3 py-3 border-b border-border-subtle">
+                  <div className="flex items-center justify-between">
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto py-1.5 px-1.5">
+                  <div className="space-y-0.5">
+                    {actions.map((action, index) => (
+                      <ActionCard
+                        key={index}
+                        action={action}
+                        index={index}
+                        isActive={index === safeSelectedIndex}
+                        planItems={planItems}
+                        placeholderMap={placeholderMap}
+                        onSelect={() => setSelectedActionIndex(index)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right panel - Detail view */}
+              <div className="flex-1 flex flex-col min-w-0 overflow-hidden" style={{ background: 'var(--surface-0)' }}>
+                <div className="flex-1 overflow-y-auto p-4">
+                  {selectedAction ? (
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-text-muted text-xs">
+                      Select an action to view details
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-4 py-3 border-t border-border-subtle flex items-center justify-between flex-shrink-0" style={{ background: 'var(--surface-1)' }}>
+              <div className="flex items-center gap-3">
+                {hasMissingItems && (
+                  <p className="text-xs text-warning">Some items missing - will be skipped</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => {
+                    onDismiss();
+                    setIsExpanded(false);
+                  }}
+                  disabled={isApplying}
+                  className="px-3.5 py-2 text-xs font-medium text-text-muted hover:text-text-primary rounded-lg transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-2"
+                >
+                  Dismiss
+                </button>
+                <button
+                  onClick={() => {
+                    onApprove();
+                    setIsExpanded(false);
+                  }}
+                  disabled={isApplying}
+                  className={`
+                    px-4 py-2 text-xs font-semibold rounded-lg transition-all duration-150 flex items-center gap-2
+                    ${!isApplying
+                      : 'bg-surface-3 text-text-muted cursor-not-allowed'
+                    }
+                  `}
+                >
+                  {isApplying ? (
+                    <>
+                      <LoadingSpinner className="w-3.5 h-3.5" color="white" />
+                      <span>Applying...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>Apply All Changes</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
       )}
+    </AnimatePresence>,
+    document.body
   );
+
+  return (
+    <>
+      <AnimatePresence>
+        {!isExpanded && collapsedPanel}
+      </AnimatePresence>
+      {expandedModal}
+    </>
+  );
+}
+
+// ============================================================================
+// Helper Components
+// ============================================================================
+
+interface ActionDetailViewProps {
+  action: PlanAction;
+  planItems: PlanItem[];
+  placeholderMap: Map<string, { title: string; description?: string; label?: string }>;
 }
 
   switch (action.type) {
     case 'create_item':
+      return <CreateItemDetail action={action} planItems={planItems} placeholderMap={placeholderMap} />;
+    case 'update_item':
+      return <UpdateItemDetail action={action} planItems={planItems} />;
+    case 'delete_item':
+      return <DeleteItemDetail action={action} planItems={planItems} />;
     case 'reparent':
+      return <ReparentDetail action={action} planItems={planItems} placeholderMap={placeholderMap} />;
     case 'set_label':
+      return <SetLabelDetail action={action} planItems={planItems} />;
     case 'set_release':
+      return <SetReleaseDetail action={action} planItems={planItems} />;
     case 'add_dependency':
+      return <AddDependencyDetail action={action} planItems={planItems} placeholderMap={placeholderMap} />;
     case 'remove_dependency':
+      return <RemoveDependencyDetail action={action} />;
     case 'reorder':
+      return <ReorderDetail action={action} planItems={planItems} />;
     case 'set_position':
+      return <SetPositionDetail action={action} planItems={planItems} />;
     case 'queue_for_tracker':
+      return <QueueForTrackerDetail action={action} planItems={planItems} />;
+    default:
+      return (
+        <div className="p-4 rounded-lg bg-surface-1 border border-border-subtle">
+          <p className="text-xs text-text-muted">Unknown action type</p>
+        </div>
+      );
   }
 }
 
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Build a map of placeholder IDs ($1, $2, etc.) to their created item info.
+ * Placeholders are 1-indexed based on the position of create_item actions.
+ */
+function buildPlaceholderMap(actions: PlanAction[]): Map<string, { title: string; description?: string; label?: string }> {
+  const map = new Map<string, { title: string; description?: string; label?: string }>();
+  let createIndex = 1;
+
+  actions.forEach((action) => {
+    if (action.type === 'create_item') {
+      map.set(`$${createIndex}`, {
+        title: action.title,
+        description: action.description,
+        label: action.label,
+      });
+      createIndex++;
+    }
+  });
+
+  return map;
+}
+
+function getActionTypeLabel(type: PlanAction['type']): string {
+  switch (type) {
+    case 'create_item': return 'create';
+    case 'update_item': return 'update';
+    case 'delete_item': return 'delete';
+    case 'reparent': return 'move';
+    case 'set_label': return 'label';
+    case 'set_release': return 'release';
+    case 'add_dependency': return 'link';
+    case 'remove_dependency': return 'unlink';
+    case 'reorder': return 'reorder';
+    case 'set_position': return 'position';
+    case 'queue_for_tracker': return 'queue';
+    default: return 'action';
+  }
 }

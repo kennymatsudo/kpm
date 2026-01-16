@@ -111,6 +111,8 @@ export interface StreamingSessionServiceDeps {
   /** Subscribe to document update proposals from MCP tools */
   subscribeToDocumentUpdate: (callback: (update: DocumentUpdatePayload) => void) => () => void;
 
+
+  /** Read a document file from the docs/ directory */
 }
 
 // =============================================================================

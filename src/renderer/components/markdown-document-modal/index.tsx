@@ -120,6 +120,8 @@ const HorizontalRuleIcon = () => (
   </svg>
 );
 
+type ViewMode = 'diff' | 'preview' | 'edit';
+
 interface MarkdownDocumentModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -134,6 +136,8 @@ interface MarkdownDocumentModalProps {
   initialEditMode?: boolean;
   /** Show Accept button in preview mode (for proposed documents) */
   showAcceptButton?: boolean;
+  /** Original content for diff view (null for new documents) */
+  oldContent?: string | null;
 }
 
 export function MarkdownDocumentModal({
@@ -149,16 +153,24 @@ export function MarkdownDocumentModal({
   icon,
   initialEditMode = false,
   showAcceptButton = false,
+  oldContent,
 }: MarkdownDocumentModalProps) {
+  // Determine initial view mode based on oldContent
+  const initialViewMode: ViewMode = oldContent !== undefined ? 'diff' : initialEditMode ? 'edit' : 'preview';
+  const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
   const [draft, setDraft] = useState(content);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  // Compute diff stats for display
+
 
   useEffect(() => {
     if (isOpen) {
       setDraft(content);
+      const newViewMode: ViewMode = oldContent !== undefined ? 'diff' : initialEditMode ? 'edit' : 'preview';
+      setViewMode(newViewMode);
     }
 
   // Keyboard shortcuts
@@ -216,8 +228,40 @@ export function MarkdownDocumentModal({
             </div>
 
             {/* Tab bar */}
+              {/* Diff tab - only shown if oldContent exists */}
+              {oldContent !== undefined && (
+                <button
+                  onClick={() => setViewMode('diff')}
+                  className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
+                    viewMode === 'diff'
+                      ? 'text-text-primary bg-surface-2 shadow-sm'
+                      : 'text-text-muted hover:text-text-secondary hover:bg-surface-2/50'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    Diff
+                    {diffStats && (
+                      <span className="flex items-center gap-1.5 text-xs font-semibold">
+                        <span className="text-success bg-success/10 px-1.5 py-0.5 rounded">
+                          +{diffStats.addedCount}
+                        </span>
+                        <span className="text-danger bg-danger/10 px-1.5 py-0.5 rounded">
+                          −{diffStats.removedCount}
+                        </span>
+                      </span>
+                    )}
+                  </span>
+                </button>
+              )}
+
+              {/* Preview tab */}
               <button
+                onClick={() => setViewMode('preview')}
                 className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
+                  viewMode === 'preview'
                     ? 'text-text-primary bg-surface-2 shadow-sm'
                     : 'text-text-muted hover:text-text-secondary hover:bg-surface-2/50'
                 }`}
@@ -230,8 +274,12 @@ export function MarkdownDocumentModal({
                   Preview
                 </span>
               </button>
+
+              {/* Edit tab */}
               <button
+                onClick={() => setViewMode('edit')}
                 className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
+                  viewMode === 'edit'
                     ? 'text-text-primary bg-surface-2 shadow-sm'
                     : 'text-text-muted hover:text-text-secondary hover:bg-surface-2/50'
                 }`}
@@ -331,6 +379,7 @@ export function MarkdownDocumentModal({
 
             {/* Toolbar (only in edit mode) */}
             <AnimatePresence>
+              {viewMode === 'edit' && (
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
@@ -404,6 +453,17 @@ export function MarkdownDocumentModal({
             {/* Content area */}
             <div className="flex-1 overflow-hidden bg-surface-2">
               <AnimatePresence mode="wait">
+                {viewMode === 'diff' && oldContent !== undefined ? (
+                    key="diff"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ duration: 0.15 }}
+                    className="h-full overflow-y-auto p-6"
+                  >
+                    <div className="max-w-4xl mx-auto">
+                    </div>
+                ) : viewMode === 'edit' ? (
                     key="edit"
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -445,6 +505,7 @@ export function MarkdownDocumentModal({
                           </div>
                           <p className="text-text-muted text-sm">No content yet</p>
                           <button
+                            onClick={() => setViewMode('edit')}
                             className="text-accent text-sm hover:underline"
                           >
                             Start writing
@@ -461,7 +522,9 @@ export function MarkdownDocumentModal({
                   <span>search</span>
                 </span>
                 <span className="flex items-center gap-1.5">
+                  <span>toggle view</span>
                 </span>
+                {viewMode === 'edit' && (
                   <>
                     <span className="flex items-center gap-1.5">
                       <span>save</span>
@@ -479,7 +542,10 @@ export function MarkdownDocumentModal({
                   variant="secondary"
                   onClick={onClose}
                 >
+                  {viewMode === 'edit' && hasChanges ? 'Discard' : 'Close'}
                 </MotionButton>
+                {/* Accept button for proposals (visible in non-edit modes) */}
+                {viewMode !== 'edit' && showAcceptButton && (
                   <MotionButton
                     variant="primary"
                     onClick={() => onSave(draft)}
@@ -488,6 +554,7 @@ export function MarkdownDocumentModal({
                   </MotionButton>
                 )}
                 {/* Save button for edit mode */}
+                {viewMode === 'edit' && (
                   <MotionButton
                     variant="primary"
                     onClick={() => onSave(draft)}
