@@ -57,6 +57,8 @@ export function useCanvasViewport({
   const panStartRef = useRef({ x: 0, y: 0 });
   const panOffsetStartRef = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const panRafRef = useRef<number | null>(null);
+  const lastMouseRef = useRef<{ x: number; y: number } | null>(null);
 
   // Ref for debounced state persistence
   const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -119,16 +121,49 @@ export function useCanvasViewport({
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isPanning) return;
 
+    lastMouseRef.current = { x: e.clientX, y: e.clientY };
+
+    if (!panRafRef.current) {
+      panRafRef.current = requestAnimationFrame(() => {
+        panRafRef.current = null;
+        const last = lastMouseRef.current;
+        if (!last) return;
+        const dx = last.x - panStartRef.current.x;
+        const dy = last.y - panStartRef.current.y;
+        setPanOffset({
+          x: panOffsetStartRef.current.x + dx,
+          y: panOffsetStartRef.current.y + dy,
+        });
+      });
+    }
   }, [isPanning]);
 
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
+    lastMouseRef.current = null;
+    if (panRafRef.current) {
+      cancelAnimationFrame(panRafRef.current);
+      panRafRef.current = null;
+    }
 
   const handleMouseLeave = useCallback(() => {
     setIsPanning(false);
+    lastMouseRef.current = null;
+    if (panRafRef.current) {
+      cancelAnimationFrame(panRafRef.current);
+      panRafRef.current = null;
+    }
 
   const resetView = useCallback(() => {
     setZoom(1);
+
+  useEffect(() => {
+    return () => {
+      if (panRafRef.current) {
+        cancelAnimationFrame(panRafRef.current);
+      }
+    };
+  }, []);
 
   return {
     zoom,

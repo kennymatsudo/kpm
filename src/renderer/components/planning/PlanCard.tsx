@@ -52,6 +52,7 @@ interface PlanCardProps {
   selectionSignature: string;
   getSelectionSignature: (id: string) => string;
   getSelectedIds: () => Set<string>;
+  onSelectItem?: (itemId: string, addToSelection: boolean) => void;  // Selection handler
   onEditItem?: (itemId: string) => void;  // For opening edit panel
   onAddToContext?: (itemId: string) => void;  // For adding to chat context
   onDrop?: (itemIds: string[], targetParentId: string) => void;
@@ -144,6 +145,7 @@ export const PlanCard = memo(function PlanCard({
       draggable={!isPreview}
       onClick={isPreview ? undefined : (e) => {
         e.stopPropagation();
+        onSelectItem?.(item.id, e.metaKey || e.ctrlKey);
       }}
       onDoubleClick={isPreview ? undefined : (e) => {
         e.stopPropagation();
@@ -159,6 +161,7 @@ export const PlanCard = memo(function PlanCard({
 
         // Select this card if not already selected
         if (!isSelected) {
+          onSelectItem?.(item.id, false);
         }
 
         setShowMenu(true);
