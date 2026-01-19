@@ -12,6 +12,9 @@ interface WorkspaceViewProps {
  * Adaptive layout:
  * - Default: Chat (full width)
  * - Editing: Editor (center) + Chat (right, narrower)
+ *
+ * Note: Pending file approvals (from Claude-generated content) are now handled
+ * by ApprovalOverlays via the unified approval queue.
  */
   const {
     editingFile,

@@ -25,3 +25,11 @@ export { resetAllProjectScopedStores, getRegisteredStoreNames } from './projectS
 // Workspace
 export { useWorkspaceStore, isEditableFile, useHasUnsavedChanges } from './workspaceStore';
 export type { FileSource, SelectedFile, EditingFile } from './workspaceStore';
+
+// Approval Queue
+export type {
+  ApprovalItem,
+  PendingPlanActionsItem,
+  PendingClaudeMdItem,
+  PendingDocumentItem,
+} from './approvalQueueStore';

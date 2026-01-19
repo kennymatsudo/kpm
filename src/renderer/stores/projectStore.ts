@@ -5,6 +5,7 @@ import { createProjectSlice } from './project/projectSlice';
 import { createResourceSlice } from './project/resourceSlice';
 import { createUiSlice } from './project/uiSlice';
 import { createPlanSlice } from './project/planSlice';
+import type { ProjectStoreDependencies, ProjectState, Project, Repo, Attachment, PlanItem, PlanRelation } from './project/types';
 
 // Re-export types for component consumers
 export type {
