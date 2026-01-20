@@ -17,6 +17,7 @@ import type {
 export interface IProjectRepository {
   get(id: string): Project | undefined;
   list(): Project[];
+  update(id: string, updates: Partial<Pick<Project, 'name' | 'phase'>>): void;
   updateTokens(projectId: string, tokens: { total: number; input: number; output: number }): void;
   resetTokens(projectId: string): void;
   updateStorybookUrl(projectId: string, url: string | null): void;

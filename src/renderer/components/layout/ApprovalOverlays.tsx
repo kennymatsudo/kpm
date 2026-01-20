@@ -30,7 +30,15 @@ export function ApprovalOverlays() {
   );
 
   // Get project store data needed for panels
+
+  const {
+    executePlanActions,
+    executeClaudeMdWrite,
+    executeFileWrite,
+    useShallow((state) => ({
       executePlanActions: state.executePlanActions,
+      executeClaudeMdWrite: state.executeClaudeMdWrite,
+      executeFileWrite: state.executeFileWrite,
     }))
   );
 
@@ -46,6 +54,12 @@ export function ApprovalOverlays() {
   const handleApprovePlanActions = useCallback(async (item: ApprovalItem & { type: 'plan-actions' }) => {
     setIsApplying(true);
     try {
+      const result = await executePlanActions(item.actions);
+      if (result.success) {
+        removeById(item.id);
+      } else {
+        toast.error(`Failed to apply changes: ${result.error}`);
+      }
     } finally {
       setIsApplying(false);
     }
@@ -56,15 +70,23 @@ export function ApprovalOverlays() {
     try {
       if (result.success) {
         removeById(item.id);
+      } else {
       }
     } finally {
       setIsApplying(false);
     }
+  }, [currentProjectId, executeClaudeMdWrite, removeById]);
 
   const handleAcceptDocument = useCallback(async (item: ApprovalItem & { type: 'document' }, content: string) => {
     if (!currentProjectId) return;
     setIsApplying(true);
     try {
+      const result = await executeFileWrite(currentProjectId, item.filePath, content);
+      if (result.success) {
+        removeById(item.id);
+      } else {
+        toast.error(`Failed to update ${item.filePath}: ${result.error}`);
+      }
     } finally {
       setIsApplying(false);
     }

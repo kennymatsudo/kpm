@@ -27,6 +27,7 @@ interface AgentContextInput {
 /**
  * Build agent context from plan item data
  */
+  const { item, children, parent } = input;
   const sections: string[] = [];
 
   // Task title

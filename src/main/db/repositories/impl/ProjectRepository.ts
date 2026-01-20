@@ -100,6 +100,7 @@ This is your project workspace. Use this file to track context, conventions, and
     return this.stmts.list.all() as Project[];
   }
 
+  update(id: string, updates: Partial<Pick<Project, 'name' | 'phase'>>): void {
     const fields: string[] = [];
     const values: unknown[] = [];
 

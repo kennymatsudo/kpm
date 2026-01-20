@@ -1183,6 +1183,48 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1049,
+    name: '049_remove_agent_instructions_from_projects',
+    up: (db: BetterSqliteDatabase) => {
+      // Remove agent_instructions column - feature deprecated in favor of CLAUDE.md files
+      // Check if column exists first (migration 022 may have already removed it)
+      const hasAgentInstructions = tableInfo.some((col) => col.name === 'agent_instructions');
+
+      if (!hasAgentInstructions) {
+        console.log('[Migration 049] Column agent_instructions does not exist, skipping.');
+        return;
+      }
+
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+
+        CREATE TABLE projects_new (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          folder_path TEXT NOT NULL,
+          phase TEXT NOT NULL DEFAULT 'discovery' CHECK(phase IN ('discovery', 'high_level', 'detailed', 'ready')),
+          session_tokens INTEGER NOT NULL DEFAULT 0,
+          session_input_tokens INTEGER NOT NULL DEFAULT 0,
+          session_output_tokens INTEGER NOT NULL DEFAULT 0,
+          storybook_url TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        INSERT INTO projects_new SELECT
+          id, name, folder_path, phase,
+          session_tokens, session_input_tokens, session_output_tokens,
+          storybook_url, created_at, updated_at
+        FROM projects;
+
+        DROP TABLE projects;
+        ALTER TABLE projects_new RENAME TO projects;
+
+        PRAGMA foreign_keys = ON;
+      `);
+    },
+  },
         -- Backfill: sessions without plan items get first 60 chars of instructions
   {
     id: 1075,

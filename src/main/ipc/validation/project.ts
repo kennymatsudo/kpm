@@ -32,6 +32,7 @@ export const ProjectSchemas = {
         name: projectName.optional(),
         phase: projectPhase.optional(),
       })
+      .refine((u) => u.name !== undefined || u.phase !== undefined, 'At least one update field is required'),
   }),
 
   delete: z.object({
