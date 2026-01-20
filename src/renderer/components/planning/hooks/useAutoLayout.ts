@@ -40,8 +40,15 @@ interface AutoLayoutDeps {
 
       const screenWidth = options.dimensions?.width ?? window.innerWidth;
       const effectiveZoom = options.effectiveZoom ?? 1;
+      const canvasWidth = screenWidth / effectiveZoom;
 
 
+
+      const centeredPositions = rawPositions.map(pos => ({
+        id: pos.id,
+        x: pos.x + offsetX,
+        y: pos.y + offsetY,
+      }));
 
     },
   );

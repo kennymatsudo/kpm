@@ -19,8 +19,15 @@ interface CanvasState {
   panY: number;
 }
 
+interface ItemPosition {
+  position_x: number | null;
+  position_y: number | null;
+}
+
 interface UseCanvasViewportOptions {
   projectId: string;
+  /** Items with positions - used by resetView to center on content */
+  items?: ItemPosition[];
 }
 
 interface UseCanvasViewportReturn {
@@ -45,6 +52,7 @@ interface UseCanvasViewportReturn {
 
 export function useCanvasViewport({
   projectId,
+  items = [],
 }: UseCanvasViewportOptions): UseCanvasViewportReturn {
   const [zoom, setZoom] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -62,19 +70,44 @@ export function useCanvasViewport({
 
   // Ref for debounced state persistence
   const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track if we've initialized viewport for no-saved-state case
+  const hasInitializedRef = useRef<string | null>(null);
 
   // Load persisted canvas state on mount or project change
   useEffect(() => {
+    // Only run once per project
+    if (hasInitializedRef.current === projectId) return;
+
     try {
       const saved = localStorage.getItem(getStorageKey(projectId));
       if (saved) {
         const state: CanvasState = JSON.parse(saved);
         setZoom(state.zoom);
         setPanOffset({ x: state.panX, y: state.panY });
+        hasInitializedRef.current = projectId;
       } else {
+        const positionedItems = items.filter(
+          (item): item is { position_x: number; position_y: number } =>
+            item.position_x !== null && item.position_y !== null
+        );
+
+
+          const screenWidth = containerRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+          const screenHeight = containerRef.current?.getBoundingClientRect().height ?? window.innerHeight;
+
+          setZoom(1);
+          setPanOffset({
+          });
+          hasInitializedRef.current = projectId;
+          setZoom(1);
+          setPanOffset({ x: 0, y: 0 });
+          hasInitializedRef.current = projectId;
+        }
+        // If items exist but none have positions, wait for auto-layout to position them
       }
     } catch {
       // Ignore parse errors
+      hasInitializedRef.current = projectId;
     }
 
   // Persist canvas state on changes (debounced)
@@ -156,6 +189,21 @@ export function useCanvasViewport({
 
   const resetView = useCallback(() => {
     setZoom(1);
+
+    );
+
+      setPanOffset({ x: 0, y: 0 });
+      return;
+    }
+
+
+
+
+    // At zoom=1, effectiveZoom = ZOOM.BASE
+    const effectiveZoom = ZOOM.BASE;
+
+    setPanOffset({
+    });
 
   useEffect(() => {
     return () => {

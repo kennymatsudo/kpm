@@ -18,6 +18,7 @@ interface CanvasProps {
   onCreateItem?: (canvasPosition: { x: number; y: number }) => void;
   onReparent: (itemIds: string[], newParentId: string | null) => Promise<void>;
   onUpdatePosition: (itemId: string, x: number, y: number) => void;
+  onAutoLayout: (options?: AutoLayoutOptions) => Promise<void>;
 }
 
   projectId,
@@ -152,6 +153,8 @@ interface CanvasProps {
         </button>
         <button
           onClick={() => {
+                effectiveZoom,
+              });
           }}
           className="px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-surface-3 rounded transition-colors"
         >
