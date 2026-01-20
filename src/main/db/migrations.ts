@@ -1133,6 +1133,56 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1029,
+    name: '029_fix_orphaned_children_from_none_containers',
+    up: (db: BetterSqliteDatabase) => {
+      // Migration 028 deleted containers (status_category='none') but left their children
+      // with dangling parent_id references. This migration:
+      // 1. Creates groups from any containers that existed (using orphan parent_ids)
+      // 2. Assigns orphaned children to those groups
+      // 3. Clears the dangling parent_id references
+
+      db.exec(`
+        -- ============================================
+        -- Step 1: Find orphaned items (parent_id points to non-existent item)
+        -- and create groups for each unique missing parent
+        -- ============================================
+        INSERT OR IGNORE INTO groups (id, project_id, name, color, position_x, position_y, width, height, created_at, updated_at)
+        SELECT DISTINCT
+          pi.parent_id as id,
+          pi.project_id,
+          'Recovered Group' as name,
+          '#6366f1' as color,
+          100 as position_x,
+          100 as position_y,
+          400 as width,
+          300 as height,
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP
+        FROM plan_items pi
+        LEFT JOIN plan_items parent ON pi.parent_id = parent.id
+        WHERE pi.parent_id IS NOT NULL
+          AND parent.id IS NULL;
+
+        -- ============================================
+        -- Step 2: Assign orphaned items to their recovered groups
+        -- ============================================
+        UPDATE plan_items
+        SET group_id = parent_id
+        WHERE parent_id IS NOT NULL
+          AND parent_id IN (SELECT id FROM groups);
+
+        -- ============================================
+        -- Step 3: Clear dangling parent_id references
+        -- ============================================
+        UPDATE plan_items
+        SET parent_id = NULL
+        WHERE parent_id IS NOT NULL
+          AND parent_id NOT IN (SELECT id FROM plan_items);
+      `);
+    },
+  },
         -- Backfill: sessions without plan items get first 60 chars of instructions
   {
     id: 1075,
