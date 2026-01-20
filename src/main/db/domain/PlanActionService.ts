@@ -96,6 +96,7 @@ function executeCreateItem(
     status: 'planned',
     status_category: 'not_started',
     parent_id: parentId,
+    group_id: null,
     item_order: ctx.deps.planItems.getNextOrder(ctx.projectId, parentId),
     code_refs: null,
     release_tag: null,

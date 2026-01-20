@@ -11,6 +11,7 @@ const baseItem: PlanItem = {
   status: 'planned',
   status_category: null,
   parent_id: null,
+  group_id: null,
   item_order: 0,
   code_refs: null,
   release_tag: null,

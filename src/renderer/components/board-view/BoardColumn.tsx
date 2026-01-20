@@ -14,6 +14,7 @@ interface BoardColumnProps {
   onDragStart: (itemId: string) => void;
   onDragEnd: () => void;
   onDrop: (itemId: string, newStatus: StatusCategory) => void;
+  onCreateItem?: (status: StatusCategory) => void;
 }
 
 /**
@@ -35,6 +36,7 @@ export const BoardColumn = memo(function BoardColumn({
   onDragStart,
   onDragEnd,
   onDrop,
+  onCreateItem,
 }: BoardColumnProps) {
   const config = STATUS_CATEGORY_CONFIG[status];
   const [isDragOver, setIsDragOver] = useState(false);
@@ -130,6 +132,19 @@ export const BoardColumn = memo(function BoardColumn({
           />
         ))}
 
+        {/* Add card button */}
+        {onCreateItem && (
+          <button
+            onClick={() => onCreateItem(status)}
+            className="w-full mt-1 px-3 py-2 text-left text-sm text-text-muted hover:text-text-secondary
+                       hover:bg-surface-2 rounded-lg flex items-center gap-2 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add card
+          </button>
+        )}
       </div>
     </div>
   );

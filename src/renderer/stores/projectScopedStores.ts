@@ -24,6 +24,7 @@ import { useTrackerStore } from './trackerStore';
 import { useFileTreeStore } from './fileTreeStore';
 import { useExportStore } from './tracker/useExportStore';
 import { useSyncStore } from './tracker/useSyncStore';
+import { useGroupStore } from './groupStore';
 import { useWorkspaceStore } from './workspaceStore';
 
 
@@ -42,6 +43,7 @@ const PROJECT_SCOPED_STORES: StoreEntry[] = [
   { name: 'export', store: useExportStore },
   { name: 'sync', store: useSyncStore },
   { name: 'fileTree', store: useFileTreeStore },
+  { name: 'groups', store: useGroupStore },
   { name: 'devSessions', store: useDevSessionsStore },
   { name: 'workspace', store: useWorkspaceStore },
 ];
@@ -53,9 +55,12 @@ const PROJECT_SCOPED_STORES: StoreEntry[] = [
 export function resetAllProjectScopedStores(): void {
   for (const { name, store } of PROJECT_SCOPED_STORES) {
     try {
+      const state = store.getState() as Record<string, unknown>;
       if (typeof state.resetProjectState === 'function') {
+        (state.resetProjectState as () => void)();
       } else if (typeof state.reset === 'function') {
         // Fallback for stores without global state
+        (state.reset as () => void)();
       } else {
         console.warn(`[ProjectScopedStores] ${name} missing resetProjectState()`);
       }

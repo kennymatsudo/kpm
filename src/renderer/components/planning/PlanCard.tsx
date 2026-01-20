@@ -302,6 +302,12 @@ export const PlanCard = memo(function PlanCard({
           onClose={() => setShowMenu(false)}
           onDelete={() => setShowDeleteConfirm(true)}
           onAddToContext={() => onAddToContext?.(item.id)}
+            if (currentProjectId) {
+              const result = await addToQueue(currentProjectId, [item.id]);
+                toast.error(result.error);
+              }
+            }
+          }}
         />
       )}
 

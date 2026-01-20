@@ -302,6 +302,7 @@ export type PlanItemUpdates = Partial<Pick<PlanItem,
   | 'code_refs'
   | 'position_x'
   | 'position_y'
+  | 'group_id'
 >>;
 
 // Extended updates for sync operations (includes external tracker fields)

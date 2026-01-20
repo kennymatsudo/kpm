@@ -109,6 +109,7 @@ export function ConfirmActionDialog({
     <Modal
       isOpen={true}
       onClose={onCancel}
+      size="sm"
       preventClose={isProcessing}
       role="alertdialog"
       aria-labelledby={`${dialogId}-title`}

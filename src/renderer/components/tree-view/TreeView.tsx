@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import type { TreeNode } from '../../utils/planHierarchy';
 import { StatusSelector } from '../ui/StatusSelector';
 import { getStatusCategory } from '../../constants/statusConfig';
@@ -83,13 +84,26 @@ const TreeRow = memo(function TreeRow({
   const keyMatches = isSearchActive && node.external_key?.toLowerCase().includes(searchQuery.toLowerCase());
   const directMatch = titleMatches || keyMatches;
 
+  // Memoize the regex pattern to avoid creating it on every render
+  const highlightRegex = useMemo(() => {
+    if (!searchQuery.trim()) return null;
+    const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(${escaped})`, 'gi');
+  }, [searchQuery]);
+
   // Highlight matching text
+  const highlightText = useCallback((text: string, query: string) => {
+    if (!query.trim() || !highlightRegex) return text;
+    const parts = text.split(highlightRegex);
     return parts.map((part, i) =>
       part.toLowerCase() === query.toLowerCase()
         ? <mark key={i} className="bg-warning/30 text-warning rounded px-0.5">{part}</mark>
         : part
     );
+  }, [highlightRegex]);
 
+  // Count children
+  const countableChildren = node.children.length;
 
   // Determine drop position from mouse Y within element
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -137,6 +151,7 @@ const TreeRow = memo(function TreeRow({
         className={`
           group flex items-center gap-2 px-3 py-1.5 cursor-grab active:cursor-grabbing
           border-l-2 ${depthColors[clampedDepth]}
+          transition-all duration-150 ease-out overflow-hidden
           ${isDragging ? 'opacity-40' : ''}
           ${dropPosition === 'inside' && canDrop
             ? 'bg-accent/15 border-l-accent ring-1 ring-inset ring-accent/30'
@@ -210,6 +225,7 @@ const TreeRow = memo(function TreeRow({
 
         {/* Title */}
         <span className={`
+          flex-1 min-w-0 text-sm truncate
           ${isSelected ? 'text-text-primary font-medium' : 'text-text-secondary'}
         `}>
           {isSearchActive && directMatch ? highlightText(node.title, searchQuery) : node.title}
@@ -239,8 +255,12 @@ const TreeRow = memo(function TreeRow({
             className="
               bg-info-muted text-info
               hover:bg-info/20 transition-colors
+              flex items-center gap-1 max-w-[100px]
             "
           >
+            <span className="truncate">
+              {isSearchActive && keyMatches ? highlightText(node.external_key, searchQuery) : node.external_key}
+            </span>
           </a>
         )}
 
@@ -251,6 +271,7 @@ const TreeRow = memo(function TreeRow({
             onEdit(node.id);
           }}
           className="
+            flex-shrink-0 opacity-0 group-hover:opacity-100
             p-1 hover:bg-surface-3 rounded
             transition-opacity
           "
@@ -295,6 +316,7 @@ interface TreeBranchProps {
 const TreeBranch = memo(function TreeBranch({
   nodes,
   depth,
+  parentId: _parentId,
   selectedIds,
   focusedItemId,
   expandedIds,
@@ -413,6 +435,8 @@ export interface TreeViewProps {
   onEditItem: (id: string) => void;
   onContextMenu?: (e: React.MouseEvent, selectedIds: Set<string>) => void;
   onReparent?: (itemIds: string[], newParentId: string | null) => void;
+  /** Callback for creating a new item (parentId = null for root item) */
+  onCreateItem?: (parentId: string | null) => void;
 }
 
   items,
@@ -423,6 +447,7 @@ export interface TreeViewProps {
   onEditItem,
   onContextMenu,
   onReparent,
+  onCreateItem,
 }: TreeViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -492,6 +517,20 @@ export interface TreeViewProps {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9V4.5M9 9H4.5M9 9L3.5 3.5m0 17L9 15m0 0V19.5M9 15H4.5m11 0h4.5m-4.5 0V19.5m0-4.5l5.5 5.5M15 9h4.5M15 9V4.5M15 9l5.5-5.5" />
           </svg>
         </button>
+        {onCreateItem && (
+          <>
+            <div className="w-px h-4 bg-border-subtle" />
+            <button
+              onClick={() => onCreateItem(null)}
+              className="text-xs text-text-tertiary hover:text-text-secondary transition-colors"
+              title="Create item"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          </>
+        )}
         <span className="text-xs text-text-muted ml-auto">
           {items.length} root item{items.length !== 1 ? 's' : ''}
           {dragState && <span className="ml-2 text-accent">• Drag to reparent</span>}
@@ -547,5 +586,55 @@ export interface TreeViewProps {
           )
         )}
       </div>
+
+      {/* Local context menu for Add Child */}
+      {localContextMenu && createPortal(
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={handleAddChild}
+            className="w-full px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-3 flex items-center gap-2 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Child
+          </button>
+          <button
+            onClick={handleEditFromContextMenu}
+            className="w-full px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-3 flex items-center gap-2 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            Edit
+          </button>
+          {onContextMenu && (
+            <button
+              onClick={handleMoreOptions}
+              className="w-full px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-3 flex items-center gap-2 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
+              </svg>
+              More options...
+            </button>
+          )}
+        </div>,
+        document.body
+      )}
+
+      {/* Click outside to close local context menu */}
+      {localContextMenu && createPortal(
+        <div
+          onClick={() => setLocalContextMenu(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setLocalContextMenu(null);
+          }}
+        />,
+        document.body
+      )}
     </div>
   );

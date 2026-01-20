@@ -5,6 +5,7 @@ export interface UseLayoutShortcutsOptions {
   onToggleChat: () => void;
   onMainViewChange: (view: MainView) => void;
   onOpenCommandPalette: () => void;
+  onCreateItem?: () => void;
 }
 
 export function useLayoutShortcuts({
@@ -12,6 +13,7 @@ export function useLayoutShortcuts({
   onToggleChat,
   onMainViewChange,
   onOpenCommandPalette,
+  onCreateItem,
 }: UseLayoutShortcutsOptions): void {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -36,6 +38,12 @@ export function useLayoutShortcuts({
         e.preventDefault();
         e.stopPropagation();
         onToggleChat();
+      }
+      // Cmd+Shift+I (Mac) or Ctrl+Shift+I (Windows/Linux) to create plan item
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'I' || e.key === 'i')) {
+        e.preventDefault();
+        e.stopPropagation();
+        onCreateItem?.();
       }
       // Cmd+1-9 - Context-aware: Settings tabs (when open) or Main views (1-2)
           // Navigate main views (only 1-2)

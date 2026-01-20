@@ -92,6 +92,8 @@ function mergeCustomFieldValues(
         const parent = itemMap.get(currentId);
 
         if (parent) {
+          // Only auto-queue parents that don't already have an external_key (not synced)
+          if (!parent.external_key) {
             itemsToQueue.add(currentId);
           }
           currentId = parent.parent_id;
@@ -274,6 +276,7 @@ function mergeCustomFieldValues(
       if (entry.operation === 'create' && planItem.parent_id) {
         const parent = itemMap.get(planItem.parent_id);
         if (parent) {
+          if (parent.external_key) {
             resolvedParent = parent.external_key;
             hasSyncableParent = true;
           } else if (creatingItemIds.has(parent.id)) {
@@ -699,6 +702,7 @@ function createDepthCalculator(itemMap: Map<string, PlanItem>): (itemId: string)
       visited.add(current.id);
       const parent = itemMap.get(current.parent_id);
       if (!parent) break;
+      depth++;
       current = parent;
     }
 

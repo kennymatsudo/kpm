@@ -1,5 +1,7 @@
 import type { PlanItem } from '../../../shared/types';
 import { PlanCard } from './PlanCard';
+import { GroupContainer } from './GroupContainer';
+import { CanvasContextMenu } from './CanvasContextMenu';
 
 interface CanvasProps {
   projectId: string;
@@ -11,6 +13,7 @@ interface CanvasProps {
   onSelectItem: (itemId: string | null, addToSelection?: boolean) => void;
   onEditItem: (itemId: string) => void;
   onAddToContext?: (itemId: string) => void;
+  onCreateItem?: (canvasPosition: { x: number; y: number }) => void;
   onReparent: (itemIds: string[], newParentId: string | null) => Promise<void>;
   onUpdatePosition: (itemId: string, x: number, y: number) => void;
 }
@@ -23,10 +26,18 @@ interface CanvasProps {
   onSelectItem,
   onEditItem,
   onAddToContext,
+  onCreateItem,
   onReparent,
   onUpdatePosition,
   onAutoLayout,
 }: CanvasProps) {
+  const {
+    groups,
+    createGroup,
+    updateGroupPosition,
+    saveGroupUpdates,
+    deleteGroup,
+
   const {
     zoom,
     effectiveZoom,
@@ -78,6 +89,10 @@ interface CanvasProps {
   const getSelectedIds = useCallback(() => selectionRef.current, []);
   const getSelectionSignature = useCallback((id: string) => selectionSignaturesRef.current.get(id) ?? '', []);
 
+  const handleGroupNameChange = useCallback((groupId: string, name: string) => {
+    void saveGroupUpdates(groupId, { name });
+  }, [saveGroupUpdates]);
+
   return (
     <div
       ref={containerRef}
@@ -92,6 +107,7 @@ interface CanvasProps {
       }}
       onClick={(e) => {
           onSelectItem(null);
+          setSelectedGroupId(null);
         }
       }}
       onMouseMove={panHandlers.onMouseMove}
@@ -141,6 +157,15 @@ interface CanvasProps {
           transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${effectiveZoom})`,
         }}
       >
+        {/* Groups - rendered first so they appear behind cards */}
+            <GroupContainer
+              zoom={effectiveZoom}
+              isSelected={selectedGroupId === group.id}
+              onSelect={handleGroupSelect}
+              onNameChange={handleGroupNameChange}
+              onDelete={handleGroupDelete}
+            />
+
         <AnimatePresence mode="popLayout">
               key={node.id}
               initial={{ opacity: 0, scale: 0.9 }}
@@ -171,6 +196,8 @@ interface CanvasProps {
         </AnimatePresence>
       </div>
 
+      {/* Empty state - hide when there are items OR groups */}
+      {itemsWithPositions.length === 0 && groups.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center w-80">
             <div className="w-14 h-14 rounded-2xl bg-surface-2 border border-border-subtle flex items-center justify-center mx-auto mb-5">
@@ -222,6 +249,16 @@ interface CanvasProps {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Canvas context menu */}
+      {canvasContextMenu && (
+        <CanvasContextMenu
+          x={canvasContextMenu.x}
+          y={canvasContextMenu.y}
+          onCreateItem={handleCreateItem}
+          onCreateGroup={handleCreateGroup}
+        />
       )}
     </div>
   );

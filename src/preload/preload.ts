@@ -30,4 +30,5 @@ export type {
   ExportResult,
   SyncReviewData,
   ChatMessage,
+  Group,
 } from './api';

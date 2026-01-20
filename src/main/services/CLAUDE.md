@@ -1,5 +1,6 @@
 # Services Layer
 
+Business logic layer with dependency injection. Services accept dependencies via factory functions, return `ServiceResult<T>` for explicit error handling, and delegate to repositories for data access.
 
 
 

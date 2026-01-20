@@ -11,6 +11,9 @@ export type { IProjectRepository, IRepoRepository, IAttachmentRepository } from 
 // Plan domain
 export type { IPlanItemRepository, IPlanRelationRepository, IExternalPlanItemRepository } from './plan';
 
+// Group domain
+export type { IGroupRepository, GroupUpdates } from './group';
+
 // Tracker domain
 export type { ITrackerRepository, ISyncRepository, ISyncQueueRepository, ITypeMappingRepository } from './tracker';
 

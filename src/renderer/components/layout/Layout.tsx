@@ -6,6 +6,7 @@ import { WorkspaceView } from '../workspace';
 import { TopBar } from './TopBar';
 import { CommandPalette } from '../command-palette';
 import { ApprovalOverlays } from './ApprovalOverlays';
+import { ToastContainer } from '../ui';
 
 interface LayoutProps {
   onDeleteProject?: () => void;
@@ -25,16 +26,32 @@ interface LayoutProps {
 }: LayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  // Create item handler registered by PlanView (for Cmd+Shift+I)
+  const [createItemHandler, setCreateItemHandler] = useState<(() => void) | null>(null);
+
   // Command palette state from artifacts store
 
   // Extracted hooks
   const { sidebarWidth, chatWidth, handleSidebarResizeStart, handleChatResizeStart } = usePanelResize();
   const { mainView, viewMode, setMainView, setViewMode } = usePersistedViewState(currentProjectId);
+  // Register create item handler from PlanView
+  const registerCreateItemHandler = useCallback((handler: (() => void) | null) => {
+    setCreateItemHandler(() => handler);
+  }, []);
+
+  // Open create item modal (Cmd+Shift+I) - only when in planning view
+  const handleOpenCreateItem = useCallback(() => {
+    if (mainView === 'planning' && createItemHandler) {
+      createItemHandler();
+    }
+  }, [mainView, createItemHandler]);
+
     openGlobalSearch(mainView === 'planning' ? 'plan_item' : 'document');
   // Keyboard shortcuts
   useLayoutShortcuts({
     onToggleSidebar: () => setSidebarCollapsed((prev) => !prev),
     onOpenCommandPalette: openCommandPalette,
+    onCreateItem: handleOpenCreateItem,
   });
 
   return (
@@ -125,5 +142,6 @@ interface LayoutProps {
       <KeyboardShortcuts />
       <CommandPalette isOpen={isCommandPaletteOpen} onClose={closeCommandPalette} />
       <ApprovalOverlays />
+      <ToastContainer />
     </>
   );

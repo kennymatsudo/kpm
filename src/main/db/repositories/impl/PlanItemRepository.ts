@@ -22,6 +22,7 @@ function rowToPlanItem(row: Record<string, unknown>): PlanItem {
   return {
     ...row,
     status: (row.status as 'backlog' | 'planned') || 'planned',
+    group_id: row.group_id as string | null ?? null,
   } as PlanItem;
 }
 
@@ -214,6 +215,7 @@ export class PlanItemRepository implements IPlanItemRepository {
       item.external_parent_key ?? null,
       item.external_epic_key ?? null,
       item.sync_source ?? 'local',
+      item.last_synced_at ?? null,
     ) as Record<string, unknown>;
     return rowToPlanItem(row);
   }
@@ -303,6 +305,10 @@ export class PlanItemRepository implements IPlanItemRepository {
     if (updates.position_y !== undefined) {
       fields.push('position_y = ?');
       values.push(updates.position_y);
+    }
+    if (updates.group_id !== undefined) {
+      fields.push('group_id = ?');
+      values.push(updates.group_id);
     }
 
     // Extended PlanItemSyncUpdates fields (for sync operations)

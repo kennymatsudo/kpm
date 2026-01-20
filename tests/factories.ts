@@ -94,6 +94,7 @@ export function createPlanItem(options: CreatePlanItemOptions = {}): PlanItem {
   return {
     project_id: options.project_id,
     parent_id: options.parent_id ?? null,
+    group_id: null,
     title: options.title ?? 'Test Plan Item',
     description: options.description ?? null,
     label: options.label ?? null,

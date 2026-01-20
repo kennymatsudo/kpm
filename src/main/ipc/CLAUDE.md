@@ -1,4 +1,6 @@
+# IPC Handlers
 
+Bridges Electron's main process and renderer. Pattern: validate with Zod → delegate to services → return response.
 
 ## Architecture
 

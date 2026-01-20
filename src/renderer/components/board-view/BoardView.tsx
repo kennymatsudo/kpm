@@ -1,6 +1,7 @@
 import { BoardColumn } from './BoardColumn';
 import { getStatusCategory, STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 
+// Columns to display
 
 interface BoardViewProps {
   items: PlanItem[];
@@ -11,6 +12,8 @@ interface BoardViewProps {
   onSelectItem: (id: string | null, addToSelection?: boolean) => void;
   onEditItem: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, ids: Set<string>) => void;
+  /** Callback for creating a new item with a given status */
+  onCreateItem?: (status: StatusCategory) => void;
 }
 
 /**
@@ -26,6 +29,7 @@ interface BoardViewProps {
   onSelectItem,
   onEditItem,
   onContextMenu,
+  onCreateItem,
 }: BoardViewProps) {
 
   // Column visibility - persisted per project
@@ -91,6 +95,7 @@ interface BoardViewProps {
     };
 
     for (const item of items) {
+      }
     }
 
 
@@ -139,6 +144,7 @@ interface BoardViewProps {
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
             onDrop={handleDrop}
+            onCreateItem={onCreateItem}
           />
         ))}
       </div>

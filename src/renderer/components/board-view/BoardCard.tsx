@@ -68,8 +68,17 @@ export const BoardCard = memo(function BoardCard({
 
         const dragImage = document.createElement('div');
         dragImage.className =
+          'px-3 py-2 bg-surface-elevated rounded-xl text-sm font-medium text-text-primary max-w-[220px] truncate';
+        dragImage.style.cssText = `
+          position: absolute;
+          top: -1000px;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2), 0 4px 8px rgba(0, 0, 0, 0.1);
+          border: 1px solid var(--color-border-default);
+          transform: rotate(-2deg);
+        `;
         dragImage.textContent = item.title;
         document.body.appendChild(dragImage);
+        e.dataTransfer.setDragImage(dragImage, 10, 10);
         requestAnimationFrame(() => document.body.removeChild(dragImage));
 
         onDragStart();
@@ -80,6 +89,8 @@ export const BoardCard = memo(function BoardCard({
       {breadcrumb.length > 0 && (
           {breadcrumb.map((crumb, index) => (
             <Fragment key={index}>
+              {index > 0 && <span className="flex-shrink-0 text-text-muted/50">/</span>}
+              <span className="truncate min-w-0" title={crumb.title}>
                 {crumb.externalKey || truncateTitle(crumb.title)}
               </span>
             </Fragment>

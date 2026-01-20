@@ -6,11 +6,13 @@ import type { StatusCategory } from '../../../shared/types';
 interface StatusFilterProps {
   hiddenCategories: Set<StatusCategory>;
   onChange: (categories: Set<StatusCategory>) => void;
+  /** Total work items */
   totalCount: number;
   /** Visible work items after filtering */
   visibleCount: number;
 }
 
+/** Status categories that can be filtered */
 const FILTERABLE_CATEGORIES: StatusCategory[] = [
   'not_started',
   'in_progress',

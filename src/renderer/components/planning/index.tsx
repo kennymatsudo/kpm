@@ -11,6 +11,8 @@ interface PlanViewProps {
   searchQuery: string;
   selectedItemIds: Set<string>;
   setSelectedItemIds: (ids: Set<string>) => void;
+  /** Register a callback to open create item modal (for Cmd+Shift+I from Layout) */
+  registerCreateItemHandler?: (handler: (() => void) | null) => void;
 }
 
 export function PlanView({
@@ -19,6 +21,7 @@ export function PlanView({
   searchQuery,
   selectedItemIds,
   setSelectedItemIds,
+  registerCreateItemHandler,
 }: PlanViewProps) {
   const {
     planItems,
@@ -37,6 +40,9 @@ export function PlanView({
 
 
   // Export store - for queue operations
+
+
+
 
 
 
@@ -64,7 +70,9 @@ export function PlanView({
   // Build tree hierarchy for tree view (using filtered items)
   const treeHierarchy = useMemo(() => buildHierarchyTree(filteredPlannedItems), [filteredPlannedItems]);
 
+  // All filtered items for board view
   const leafItems = useMemo(
+    () => filteredPlannedItems,
     [filteredPlannedItems]
   );
 
@@ -130,6 +138,13 @@ export function PlanView({
       {/* Task Edit Modal */}
       {editingItem && (
       )}
+
+      {/* Create Item Modal */}
+      {createItemContext && (
+      )}
     </div>
   );
 }
+
+// Export the openCreateItemModal function for Layout to use
+export { type CreateItemData } from './CreateItemModal';

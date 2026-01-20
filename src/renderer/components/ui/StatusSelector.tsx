@@ -26,6 +26,9 @@ export function StatusSelector({
         className={`
           inline-flex items-center gap-1 font-medium rounded transition-all duration-150
           ${sizeClasses}
+          ${currentConfig
+            ? `${currentConfig.bgClass} ${currentConfig.textClass}`
+            : 'bg-surface-3 text-text-muted'
           }
           ${disabled
             ? 'opacity-50 cursor-not-allowed'

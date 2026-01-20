@@ -1,4 +1,6 @@
+# Renderer
 
+React 19 + TypeScript + Tailwind v4 + Zustand. Extract hooks not components. Use Zustand over Context for fine-grained subscriptions.
 
 
 

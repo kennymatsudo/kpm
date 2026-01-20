@@ -11,6 +11,9 @@ export { useArtifactsStore } from './artifactsStore';
 
 export { usePermissionStore } from './permissionStore';
 
+export { useGroupStore } from './groupStore';
+export type { GroupUpdates } from './groupStore';
+
 export { useStoreSubscriptions } from './useStoreSubscriptions';
 
 // Store events
@@ -33,3 +36,7 @@ export type {
   PendingClaudeMdItem,
   PendingDocumentItem,
 } from './approvalQueueStore';
+
+// Toast notifications
+export { useToastStore, toast } from './toastStore';
+export type { Toast, ToastType } from './toastStore';

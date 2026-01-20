@@ -43,6 +43,7 @@ import type {
   ClaudeModel,
   ChatViewMode,
   FileNode,
+  Group,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -84,6 +85,7 @@ export type {
   DevSessionWithPlanItem,
   ClaudeModel,
   FileNode,
+  Group,
 };
 
 const tempImages = {
@@ -193,6 +195,46 @@ const plan = {
   deleteItem: (itemId: string): Promise<{ success: boolean; error?: string }> =>
   deleteItemWithDescendants: (itemId: string): Promise<{ success: boolean; error?: string }> =>
   getChildCount: (itemId: string): Promise<number> =>
+};
+
+// Groups API (Visual containers - Figma-style frames)
+const groups = {
+  // List all groups for a project
+  list: (projectId: string): Promise<Group[]> =>
+
+  // Get a single group by ID
+  get: (id: string): Promise<Group | undefined> =>
+
+  // Create a new group
+  create: (
+    projectId: string,
+    name: string,
+    options?: {
+      color?: string;
+      position_x?: number;
+      position_y?: number;
+      width?: number;
+      height?: number;
+    }
+  ): Promise<Group> =>
+
+  // Update a group
+  update: (
+    id: string,
+    updates: Partial<Pick<Group, 'name' | 'color' | 'position_x' | 'position_y' | 'width' | 'height'>>
+  ): Promise<{ success: boolean; error?: string }> =>
+
+  // Delete a group (items remain, become ungrouped)
+  delete: (id: string): Promise<{ success: boolean; error?: string }> =>
+
+  // Update group position
+  updatePosition: (id: string, x: number, y: number): Promise<{ success: boolean; error?: string }> =>
+
+  // Update group size
+  updateSize: (id: string, width: number, height: number): Promise<{ success: boolean; error?: string }> =>
+
+  // Assign item to group (or unassign with null)
+  assignItem: (itemId: string, groupId: string | null): Promise<{ success: boolean; error?: string }> =>
 };
 
 const tracker = {
@@ -508,6 +550,7 @@ export const api = {
   repos,
   attachments,
   plan,
+  groups,
   tracker,
   claudeMd,
   contextFiles,

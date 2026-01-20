@@ -1021,6 +1021,118 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1028,
+    name: '028_groups_and_remove_none_status',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- GROUPS: Visual containers for organizing plan items (Figma-style frames)
+        -- Groups are purely visual - they don't affect hierarchy (parent_id)
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS groups (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          color TEXT DEFAULT '#6366f1',
+          position_x REAL DEFAULT 100,
+          position_y REAL DEFAULT 100,
+          width REAL DEFAULT 400,
+          height REAL DEFAULT 300,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_groups_project ON groups(project_id);
+
+        -- ============================================
+        -- Add group_id to plan_items for visual grouping
+        -- ============================================
+        ALTER TABLE plan_items ADD COLUMN group_id TEXT REFERENCES groups(id) ON DELETE SET NULL;
+        CREATE INDEX IF NOT EXISTS idx_plan_items_group ON plan_items(group_id);
+
+        -- ============================================
+        -- Delete items with status_category = 'none' (container items no longer needed)
+        -- ============================================
+        DELETE FROM plan_items WHERE status_category = 'none';
+
+        -- ============================================
+        -- Recreate plan_items with updated CHECK constraint (remove 'none')
+        -- CRITICAL: Disable foreign keys during table recreation
+        -- ============================================
+        PRAGMA foreign_keys = OFF;
+
+        CREATE TABLE plan_items_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          parent_id TEXT,
+          title TEXT NOT NULL,
+          description TEXT,
+          label TEXT,
+          item_order INTEGER NOT NULL,
+          code_refs TEXT,
+          status TEXT NOT NULL DEFAULT 'planned' CHECK(status = 'planned'),
+          release_tag TEXT,
+          position_x REAL,
+          position_y REAL,
+          association_id TEXT REFERENCES kpm_tracker_associations(id) ON DELETE SET NULL,
+          external_key TEXT,
+          external_id TEXT,
+          external_type TEXT,
+          external_issue_type TEXT,
+          external_status TEXT,
+          status_category TEXT CHECK(status_category IN ('not_started', 'in_progress', 'done', 'blocked', 'canceled')),
+          external_url TEXT,
+          external_parent_key TEXT,
+          external_epic_key TEXT,
+          sync_source TEXT DEFAULT 'local',
+          last_synced_at DATETIME,
+          completed_at DATETIME,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          group_id TEXT REFERENCES groups(id) ON DELETE SET NULL
+        );
+
+        -- Copy all data (excluding 'none' status items which were already deleted)
+        INSERT INTO plan_items_new (
+          id, project_id, parent_id, title, description, label, item_order, code_refs,
+          status, release_tag, position_x, position_y, association_id, external_key,
+          external_id, external_type, external_issue_type, external_status, status_category,
+          external_url, external_parent_key, external_epic_key, sync_source, last_synced_at,
+          completed_at, created_at, updated_at, group_id
+        )
+        SELECT
+          id, project_id, parent_id, title, description, label, item_order, code_refs,
+          status, release_tag, position_x, position_y, association_id, external_key,
+          external_id, external_type, external_issue_type, external_status, status_category,
+          external_url, external_parent_key, external_epic_key, sync_source, last_synced_at,
+          completed_at, created_at, updated_at, group_id
+        FROM plan_items;
+
+        DROP TABLE plan_items;
+        ALTER TABLE plan_items_new RENAME TO plan_items;
+
+        -- Recreate all indexes
+        CREATE INDEX idx_plan_items_project ON plan_items(project_id);
+        CREATE INDEX idx_plan_items_association ON plan_items(association_id);
+        CREATE INDEX idx_plan_items_parent_project ON plan_items(project_id, parent_id);
+        CREATE INDEX idx_plan_items_status_project ON plan_items(project_id, status);
+        CREATE INDEX idx_plan_items_status_category_project ON plan_items(project_id, status_category);
+        CREATE INDEX idx_plan_items_label_project ON plan_items(project_id, label);
+        CREATE INDEX idx_plan_items_release_tag_project ON plan_items(project_id, release_tag);
+        CREATE INDEX idx_plan_items_project_order ON plan_items(project_id, item_order);
+        CREATE INDEX idx_plan_items_group ON plan_items(group_id);
+
+        -- Recreate partial unique index for external key lookups
+        CREATE UNIQUE INDEX idx_plan_items_external_key
+        ON plan_items(project_id, external_type, external_key)
+        WHERE external_key IS NOT NULL;
+
+        PRAGMA foreign_keys = ON;
+      `);
+    },
+  },
         -- Backfill: sessions without plan items get first 60 chars of instructions
   {
     id: 1075,

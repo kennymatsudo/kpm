@@ -1,5 +1,6 @@
 # Zustand Stores
 
+UI state management with slice pattern, typed events for cross-store communication, and dependency injection for testing.
 
 ## Store Organization
 
