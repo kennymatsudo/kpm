@@ -1,7 +1,9 @@
+import { useShallow } from 'zustand/react/shallow';
 import type { PlanItem } from '../../../shared/types';
 import { PlanCard } from './PlanCard';
 import { GroupContainer } from './GroupContainer';
 import { CanvasContextMenu } from './CanvasContextMenu';
+import { useGroupStore, useExportStore } from '../../stores';
 
 interface CanvasProps {
   projectId: string;
@@ -37,6 +39,13 @@ interface CanvasProps {
     updateGroupPosition,
     saveGroupUpdates,
     deleteGroup,
+
+  const { queuedItemIds, recentlyImportedIds } = useExportStore(
+    useShallow((state) => ({
+      queuedItemIds: state.queuedItemIds,
+      recentlyImportedIds: state.recentlyImportedIds,
+    }))
+  );
 
   const {
     zoom,
@@ -186,6 +195,8 @@ interface CanvasProps {
                 selectionSignature={selectionSignatures.get(node.id) ?? ''}
                 getSelectionSignature={getSelectionSignature}
                 getSelectedIds={getSelectedIds}
+                queuedItemIds={queuedItemIds}
+                recentlyImportedIds={recentlyImportedIds}
                 onSelectItem={onSelectItem}
                 onEditItem={onEditItem}
                 onAddToContext={onAddToContext}

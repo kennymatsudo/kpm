@@ -52,6 +52,10 @@ interface PlanCardProps {
   selectionSignature: string;
   getSelectionSignature: (id: string) => string;
   getSelectedIds: () => Set<string>;
+  /** Set of plan item IDs currently queued for export */
+  queuedItemIds?: Set<string>;
+  /** Set of recently imported item IDs for temporary highlight */
+  recentlyImportedIds?: Set<string>;
   onSelectItem?: (itemId: string, addToSelection: boolean) => void;  // Selection handler
   onEditItem?: (itemId: string) => void;  // For opening edit panel
   onAddToContext?: (itemId: string) => void;  // For adding to chat context
@@ -72,6 +76,8 @@ export const PlanCard = memo(function PlanCard({
   selectionSignature,
   getSelectionSignature,
   getSelectedIds,
+  queuedItemIds,
+  recentlyImportedIds,
   onSelectItem,
   onEditItem,
   onAddToContext,
@@ -114,6 +120,10 @@ export const PlanCard = memo(function PlanCard({
     [item.status_category, item.external_status, item.external_type]
   );
 
+  // Queue and sync status indicators
+  const isQueued = !isPreview && queuedItemIds?.has(item.id);
+  const isRecentlyImported = !isPreview && recentlyImportedIds?.has(item.id);
+
   // Count total descendants (children, grandchildren, etc.) - compute only when needed for the delete dialog
   const descendantCount = useMemo(() => {
     if (!showDeleteConfirm) return 0;
@@ -129,6 +139,7 @@ export const PlanCard = memo(function PlanCard({
   const cardWidth = depth === 0 ? style.width : '100%';
 
   const previewClasses = isPreview
+
 
   const interactiveClasses = isPreview
     ? ''

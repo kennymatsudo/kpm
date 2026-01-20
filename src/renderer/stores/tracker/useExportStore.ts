@@ -12,6 +12,14 @@ interface ExportState {
   queueEntries: SyncQueueEntryWithPlanItem[];
   queueCount: number;
   isLoadingQueue: boolean;
+  /** Set of plan item IDs currently in the export queue (for O(1) lookup) */
+  queuedItemIds: Set<string>;
+
+  // Recently imported items (for temporary highlight)
+  recentlyImportedIds: Set<string>;
+  /** Clear recently imported IDs after delay */
+  markAsImported: (itemIds: string[]) => void;
+  clearRecentlyImported: () => void;
 
   // Type mappings
   typeMappings: TrackerTypeMapping[];
@@ -68,6 +76,8 @@ const initialState = {
   queueEntries: [] as SyncQueueEntryWithPlanItem[],
   queueCount: 0,
   isLoadingQueue: false,
+  queuedItemIds: new Set<string>(),
+  recentlyImportedIds: new Set<string>(),
   typeMappings: [] as TrackerTypeMapping[],
   isLoadingMappings: false,
   exportPreview: null as ExportPreview | null,
@@ -87,6 +97,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
     set({ isLoadingQueue: true, error: null });
     try {
       if (result.success && result.entries) {
+        const itemIds = new Set<string>(result.entries.map((entry: SyncQueueEntryWithPlanItem) => entry.plan_item_id));
       } else {
         set({ error: result.error || 'Failed to load queue' });
       }
@@ -147,6 +158,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
         return;
       }
       const entries = get().queueEntries.filter(e => e.id !== queueEntryId);
+      const itemIds = new Set(entries.map(e => e.plan_item_id));
     } catch (e) {
       set({ error: e instanceof Error ? e.message : 'Failed to remove from queue' });
     }
@@ -278,4 +290,26 @@ export const useExportStore = create<ExportState>((set, get) => ({
 
   clearError: () => set({ error: null }),
 
+  markAsImported: (itemIds: string[]) => {
+    const newIds = new Set(itemIds);
+    set({ recentlyImportedIds: newIds });
+    // Auto-clear after 5 seconds
+    setTimeout(() => {
+      const { recentlyImportedIds } = get();
+      // Only clear if these are still the same IDs (not replaced by another import)
+      if (recentlyImportedIds === newIds) {
+        set({ recentlyImportedIds: new Set<string>() });
+      }
+    }, 5000);
+  },
+
+  clearRecentlyImported: () => {
+    set({ recentlyImportedIds: new Set<string>() });
+  },
+
+  reset: () => set({
+    ...initialState,
+    queuedItemIds: new Set<string>(),
+    recentlyImportedIds: new Set<string>(),
+  }),
 }));

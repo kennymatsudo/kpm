@@ -1,13 +1,25 @@
 /**
+ * ApprovalOverlays - Non-blocking side panel for pending approval items
  *
  *
  * Uses a unified approval queue to handle multiple pending items from Claude.
  */
 
+import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import type { ApprovalItem } from '../../stores';
+import { toast } from '../../stores/toastStore';
 import { PendingActionsPanel } from '../planning/PendingActionsPanel';
 import { PendingDocumentPanel } from '../planning/PendingDocumentPanel';
+
+/** Get a display label for approval item type */
+function getItemTypeLabel(type: ApprovalItem['type']): string {
+  switch (type) {
+    case 'plan-actions': return 'Plan Changes';
+    case 'document': return 'Document Update';
+    default: return 'Pending Approval';
+  }
+}
 
 export function ApprovalOverlays() {
   // Get queue state
@@ -27,6 +39,7 @@ export function ApprovalOverlays() {
   // Current item to show (first in queue)
   const currentItem = queue.length > 0 ? queue[0] : null;
   const queueLength = queue.length;
+
 
   // Handlers for different approval types
 
@@ -60,12 +73,67 @@ export function ApprovalOverlays() {
     removeById(id);
   }, [removeById]);
 
+  const handleCollapse = useCallback(() => {
+
+  // Collapsed badge (shown when panel is collapsed and there are pending items)
+  const collapsedBadge = useMemo(() => {
 
     return (
+      >
     );
 
+  if (!currentItem && !collapsedBadge) return null;
 
+  // Side panel content - render the appropriate panel based on current item type
+  const panelContent = currentItem ? (
+    <>
+      {currentItem.type === 'plan-actions' && (
+        <PendingActionsPanel
+          actions={currentItem.actions}
+          planItems={planItems}
+          onApprove={() => handleApprovePlanActions(currentItem)}
+          onDismiss={() => handleDismiss(currentItem.id)}
+          isApplying={isApplying}
+        />
+      )}
+
+      {currentItem.type === 'claude-md' && (
+          onDismiss={() => handleDismiss(currentItem.id)}
+          isApplying={isApplying}
+        />
+      )}
+
+      {currentItem.type === 'document' && (
+        <PendingDocumentPanel
+          filePath={currentItem.filePath}
+          content={currentItem.content}
+          oldContent={currentItem.oldContent}
+          onAccept={(content) => handleAcceptDocument(currentItem, content)}
+          onDismiss={() => handleDismiss(currentItem.id)}
+          isApplying={isApplying}
+        />
+      )}
+
+    </>
+  ) : null;
+
+  return createPortal(
+    <>
+      {/* Collapsed badge */}
+      <AnimatePresence>
+        {collapsedBadge}
+      </AnimatePresence>
+
+      <AnimatePresence>
+          >
+
+                    </span>
+                </div>
+              </div>
 
         )}
+      </AnimatePresence>
+    </>,
+    document.body
   );
 }

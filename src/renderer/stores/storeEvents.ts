@@ -27,6 +27,18 @@ export interface StatusChangedEvent {
   };
 }
 
+export interface PlanItemCreatedEvent {
+  type: 'plan-item-created';
+  payload: {
+    projectId: string;
+    itemId: string;
+    /** Status category of the newly created item */
+    statusCategory: StatusCategory | null;
+    /** Origin of the item: 'local' for newly created, or 'jira'/'linear' for imports */
+    syncSource: 'local' | 'jira' | 'linear';
+  };
+}
+
 export interface NavigateToViewEvent {
   type: 'navigate-to-view';
   payload: {

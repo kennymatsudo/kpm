@@ -140,6 +140,12 @@ export function Chat({ currentView }: ChatProps) {
       )}
 
       <PermissionPrompt />
+      <ChatInput
+        onSend={handleSend}
+        onCancel={cancel}
+        disabled={!currentProjectId}
+        addFocusedResource={addFocusedResource}
+      />
     </div>
   );
 }

@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import type { FileNode } from '../../shared/types';
 
+/** Information about a recently changed file */
+interface RecentlyChangedInfo {
+  type: 'created' | 'modified';
+  timestamp: number;
+}
+
 interface FileTreeState {
   // Data
   projectId: string | null;
@@ -8,6 +14,8 @@ interface FileTreeState {
   expandedPaths: Set<string>;
   focusedPaths: Set<string>;
   renamingPath: string | null;
+  /** Tracks recently changed files for visual highlighting */
+  recentlyChangedPaths: Map<string, RecentlyChangedInfo>;
 
   // Loading state
   isLoading: boolean;
@@ -23,6 +31,10 @@ interface FileTreeState {
   setFocused: (paths: string[]) => void;
   clearFocused: () => void;
   setRenamingPath: (path: string | null) => void;
+  /** Mark a path as recently changed (will auto-clear after 3 seconds) */
+  markRecentlyChanged: (path: string, type: 'created' | 'modified') => void;
+  /** Clear recently changed status for a path */
+  clearRecentlyChanged: (path: string) => void;
 
   // File operations
   loadDirectory: (projectId: string, path?: string) => Promise<void>;
@@ -48,6 +60,7 @@ const initialState = {
   expandedPaths: new Set<string>(),
   focusedPaths: new Set<string>(),
   renamingPath: null as string | null,
+  recentlyChangedPaths: new Map<string, RecentlyChangedInfo>(),
   isLoading: false,
   loadingPaths: new Set<string>(),
   error: null as string | null,
@@ -181,6 +194,36 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   },
 
   setRenamingPath: (path) => set({ renamingPath: path }),
+
+  markRecentlyChanged: (path, type) => {
+    const { recentlyChangedPaths } = get();
+    const newMap = new Map(recentlyChangedPaths);
+    newMap.set(path, { type, timestamp: Date.now() });
+    set({ recentlyChangedPaths: newMap });
+
+    // Auto-clear after 3 seconds
+    setTimeout(() => {
+      get().clearRecentlyChanged(path);
+    }, 3000);
+  },
+
+  clearRecentlyChanged: (path) => {
+    const { recentlyChangedPaths } = get();
+    if (recentlyChangedPaths.has(path)) {
+      const newMap = new Map(recentlyChangedPaths);
+      newMap.delete(path);
+      set({ recentlyChangedPaths: newMap });
+    }
+  },
+
+    const parts = path.split('/');
+    let currentPath = '';
+    for (let i = 0; i < parts.length - 1; i++) {
+      currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
+    }
+
+    set({ expandedPaths: newExpanded });
+  },
 
   loadDirectory: async (projectId, path = '') => {
     const isRootLoad = path === '' || path === '.';
@@ -427,5 +470,6 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     expandedPaths: new Set<string>(),
     focusedPaths: new Set<string>(),
     loadingPaths: new Set<string>(),
+    recentlyChangedPaths: new Map<string, RecentlyChangedInfo>(),
   }),
 }));

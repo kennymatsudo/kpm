@@ -1,3 +1,6 @@
+import { memo, useCallback, useEffect, useState, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
+import type { FocusedResource } from '../../../shared/types';
 
 interface FileEditorProps {
   source: string;
@@ -9,8 +12,39 @@ interface FileEditorProps {
  * File editor wrapper for the workspace view.
  * - Markdown files: Full MarkdownEditor with toolbar, shortcuts, side-by-side preview
  */
+export const FileEditor = memo(function FileEditor({ source: _source, path, onClose }: FileEditorProps) {
   const hasUnsavedChanges = useHasUnsavedChanges();
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
+
+  // Context management for chat
+    useShallow((state) => ({
+      focusedResources: state.focusedResources,
+      addFocusedResource: state.addFocusedResource,
+      removeFocusedResource: state.removeFocusedResource,
+    }))
+  );
+
+  // Check if current file is in focused resources
+  const isInContext = useMemo(() => {
+    return focusedResources.some(
+      (r) => r.type === 'project_file' && r.path === path
+    );
+  }, [focusedResources, path]);
+
+  // Toggle context for current file
+  const handleToggleContext = useCallback(() => {
+    const resource: FocusedResource = {
+      type: 'project_file',
+      path,
+      isDirectory: false,
+    };
+
+    if (isInContext) {
+      removeFocusedResource(resource);
+    } else {
+      addFocusedResource(resource);
+    }
+  }, [path, isInContext, addFocusedResource, removeFocusedResource]);
 
   // Auto-save with debounce
   useEffect(() => {
@@ -62,6 +96,32 @@ interface FileEditorProps {
       </svg>
     );
   };
+
+  // Context button for adding file to chat context
+  const ContextButton = () => (
+    <button
+      onClick={handleToggleContext}
+      className={`
+        px-2 py-1 text-xs rounded-md flex items-center gap-1.5 transition-all
+        ${isInContext
+          ? 'bg-accent/15 text-accent hover:bg-accent/25'
+          : 'bg-surface-3 text-text-muted hover:text-text-primary hover:bg-surface-4'
+        }
+      `}
+      title={isInContext ? 'Remove from chat context' : 'Add to chat context'}
+    >
+      {isInContext ? (
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      ) : (
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+      )}
+      <span>{isInContext ? 'In context' : 'Add to context'}</span>
+    </button>
+  );
 
   // For markdown files, use the full-featured MarkdownEditor
   if (isMarkdown && !editingFile.isReadOnly) {
@@ -138,6 +198,17 @@ interface FileEditorProps {
           )}
         </div>
 
+          <ContextButton />
+          <button
+            onClick={handleClose}
+            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-surface-3 text-text-muted hover:text-text-primary transition-all"
+            title="Close editor (Esc)"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div className="divider mx-4" />

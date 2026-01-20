@@ -162,6 +162,31 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
       }
 
       // Emit event for export store to auto-queue for tracker sync
+      // For synced items (with external_key), always emit
+      // For local items (no external_key), emit plan-item-created to allow auto-queue
+      if (currentProjectId) {
+        if (item.external_key && item.association_id) {
+          deps.emit({
+            type: 'status-changed',
+            payload: {
+              projectId: currentProjectId,
+              itemId,
+              statusCategory,
+              externalKey: item.external_key,
+              associationId: item.association_id,
+            },
+          });
+        } else if (!item.external_key) {
+          // Local item without external_key - emit plan-item-created for auto-queue consideration
+          deps.emit({
+            type: 'plan-item-created',
+            payload: {
+              projectId: currentProjectId,
+              itemId,
+              statusCategory,
+            },
+          });
+        }
       }
     } catch (error) {
       const errorMessage = `Failed to update status: ${String(error)}`;

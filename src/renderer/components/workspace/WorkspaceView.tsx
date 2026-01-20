@@ -32,6 +32,15 @@ interface WorkspaceViewProps {
 
   const hasUnsavedChanges = useHasUnsavedChanges();
 
+  // File tree store for highlighting recently changed files
+  const { markRecentlyChanged, expandToPath, refreshDirectory } = useFileTreeStore(
+    useShallow((state) => ({
+      markRecentlyChanged: state.markRecentlyChanged,
+      expandToPath: state.expandToPath,
+      refreshDirectory: state.refreshDirectory,
+    }))
+  );
+
   // Animation state for editor panel
   const [editorVisible, setEditorVisible] = useState(false);
 
@@ -48,6 +57,12 @@ interface WorkspaceViewProps {
       }
     return unsubscribe;
   }, [projectId, editingFile, hasUnsavedChanges, openFile, closeEditor]);
+
+  useEffect(() => {
+
+
+
+    return unsubscribe;
 
   // Track if we're in editing mode for layout transitions
   const isEditing = editingFile !== null;
@@ -81,6 +96,13 @@ interface WorkspaceViewProps {
           }}
         >
           <ErrorBoundary name="FileEditor">
+            {editingFile && (
+              <FileEditor
+                source={editingFile.source}
+                path={editingFile.path}
+                onClose={handleCloseEditor}
+              />
+            )}
           </ErrorBoundary>
         </div>
       )}

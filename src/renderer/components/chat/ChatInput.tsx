@@ -1,3 +1,4 @@
+import { useState, type KeyboardEvent, type ClipboardEvent, type DragEvent, useRef, useEffect, useCallback } from 'react';
 import { useChatStore } from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
 import { ModelSelector } from './ModelSelector';
@@ -5,8 +6,11 @@ import { ModelSelector } from './ModelSelector';
 interface ChatInputProps {
   onCancel: () => void;
   disabled?: boolean;
+  /** Handler for adding files dragged from file tree to chat context */
+  addFocusedResource?: (resource: FocusedResource) => void;
 }
 
+  const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-resize textarea
@@ -81,7 +85,39 @@ interface ChatInputProps {
     }
   };
 
+  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
+    // Only trigger if leaving the actual container (not child elements)
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDragOver(false);
+  }, []);
+
+    e.preventDefault();
+    setIsDragOver(false);
+
+    const data = e.dataTransfer.getData('application/x-kpm-file');
+
+      }
+    }
+  }, [addFocusedResource]);
+
   return (
+    <div
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drop zone indicator */}
+      {isDragOver && (
+        </div>
+      )}
+
         <div className="flex flex-wrap gap-2 mb-2">
           ))}
         </div>

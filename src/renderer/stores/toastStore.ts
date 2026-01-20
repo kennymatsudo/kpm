@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+export type ToastType = 'success' | 'error' | 'info' | 'warning' | 'file';
 
 export interface Toast {
   id: string;
@@ -58,6 +59,10 @@ export const useToastStore = create<ToastState>((set, get) => ({
   },
 }));
 
+/** Extract filename from a path */
+function getFileName(path: string): string {
+}
+
 // Convenience functions for common toast types
 export const toast = {
   success: (message: string, action?: Toast['action']) =>
@@ -67,4 +72,12 @@ export const toast = {
     useToastStore.getState().addToast({ type: 'info', message, action }),
   warning: (message: string, action?: Toast['action']) =>
     useToastStore.getState().addToast({ type: 'warning', message, action }),
+  /** Show a file change toast with optional action */
+  file: (path: string, changeType: 'created' | 'modified', onClick?: () => void) =>
+    useToastStore.getState().addToast({
+      type: 'file',
+      message: `${getFileName(path)} ${changeType}`,
+      action: onClick ? { label: 'Open', onClick } : undefined,
+      duration: 5000,
+    }),
 };

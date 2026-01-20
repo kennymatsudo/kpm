@@ -21,6 +21,11 @@ const iconsByType: Record<ToastVariant, React.ReactNode> = {
     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
     </svg>
   ),
+  file: (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+    </svg>
+  ),
 };
 
 // Subtle icon backgrounds - translucent with semantic colors
@@ -29,6 +34,7 @@ const iconBgByType: Record<ToastVariant, string> = {
   error: 'bg-danger/20 text-danger',
   warning: 'bg-warning/20 text-warning',
   info: 'bg-accent/20 text-accent',
+  file: 'bg-info/20 text-info',
 };
 
 // Subtle text colors matching the theme
@@ -37,6 +43,7 @@ const textByType: Record<ToastVariant, string> = {
   error: 'text-text-primary',
   warning: 'text-text-primary',
   info: 'text-text-primary',
+  file: 'text-text-primary',
 };
 
 // Subtle left accent border
@@ -45,6 +52,7 @@ const accentByType: Record<ToastVariant, string> = {
   error: 'border-l-danger',
   warning: 'border-l-warning',
   info: 'border-l-accent',
+  file: 'border-l-info',
 };
 
 interface ToastItemProps {
