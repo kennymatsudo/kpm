@@ -5,6 +5,7 @@ import type {
   IPlanRelationRepository,
   ITrackerRepository,
   ISyncQueueRepository,
+  IGroupRepository,
 } from '../interfaces';
 
 type Logger = Pick<Console, 'log' | 'warn'>;
@@ -13,6 +14,7 @@ export interface PlanActionExecutorDeps {
   database: Database;
   planItems: IPlanItemRepository;
   planRelations: IPlanRelationRepository;
+  groups: IGroupRepository;
   tracker: ITrackerRepository;
   syncQueue: ISyncQueueRepository;
   logger?: Logger;
@@ -267,6 +269,43 @@ function executeQueueForTracker(
 }
 
 // =============================================================================
+// Group Action Executors
+// =============================================================================
+
+function executeCreateGroup(
+  ctx: ExecutorContext,
+  action: Extract<PlanAction, { type: 'create_group' }>
+): void {
+}
+
+function executeUpdateGroup(
+  ctx: ExecutorContext,
+  action: Extract<PlanAction, { type: 'update_group' }>
+): void {
+  if (!group) {
+    return;
+  }
+}
+
+function executeDeleteGroup(
+  ctx: ExecutorContext,
+  action: Extract<PlanAction, { type: 'delete_group' }>
+): void {
+  if (!group) {
+    return;
+  }
+  // Note: Items in the group will have their group_id set to NULL via ON DELETE SET NULL
+}
+
+function executeAssignToGroup(
+  ctx: ExecutorContext,
+  action: Extract<PlanAction, { type: 'assign_to_group' }>
+): void {
+    return;
+  }
+}
+
+// =============================================================================
 // Batch Execution Helpers
 // =============================================================================
 
@@ -300,6 +339,13 @@ function collectItemIdsForPrefetch(actions: PlanAction[]): Set<string> {
         for (const id of action.item_ids) {
           if (!id.startsWith('$')) ids.add(id);
         }
+        break;
+      case 'assign_to_group':
+        break;
+      // Group actions don't need item prefetch
+      case 'create_group':
+      case 'update_group':
+      case 'delete_group':
         break;
       // These actions are handled separately or don't need prefetch
       case 'create_item':
@@ -489,6 +535,19 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
             break;
           case 'queue_for_tracker':
             executeQueueForTracker(ctx, action);
+            break;
+          // Group actions
+          case 'create_group':
+            executeCreateGroup(ctx, action);
+            break;
+          case 'update_group':
+            executeUpdateGroup(ctx, action);
+            break;
+          case 'delete_group':
+            executeDeleteGroup(ctx, action);
+            break;
+          case 'assign_to_group':
+            executeAssignToGroup(ctx, action);
             break;
           // reparent is handled in the batched reparents section above
           case 'reparent':

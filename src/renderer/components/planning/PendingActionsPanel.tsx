@@ -35,8 +35,11 @@ interface PendingActionsPanelProps {
   onApprove: () => void;
   onDismiss: () => void;
   isApplying?: boolean;
+  /** When true, renders inline content for embedding in a side panel (no floating panel/modal) */
+  embedded?: boolean;
 }
 
+export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, isApplying = false, embedded = false }: PendingActionsPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedActionIndex, setSelectedActionIndex] = useState(0);
 
@@ -269,6 +272,125 @@ interface PendingActionsPanelProps {
     document.body
   );
 
+  // Embedded mode: render inline content for side panel
+  if (embedded) {
+    return (
+      <div className="flex flex-col h-full">
+        {/* Summary header */}
+        <div className="flex-shrink-0 px-4 py-3 bg-surface-0/50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-text-secondary">
+                {actions.length} {actions.length === 1 ? 'change' : 'changes'} to review
+              </span>
+            </div>
+            {/* Action type summary chips */}
+            <div className="flex items-center gap-1.5">
+              {Object.entries(actionSummary).slice(0, 3).map(([type, count]) => (
+                <span
+                  key={type}
+                             px-2 py-0.5 rounded-md
+                             bg-surface-3 text-text-muted"
+                >
+                  {count} {type}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Action list */}
+        <div className="flex-shrink-0 border-y border-border-subtle bg-surface-0">
+          <div className="max-h-52 overflow-y-auto py-2 px-2">
+            <div className="space-y-1">
+              {actions.map((action, index) => (
+                <ActionCard
+                  key={index}
+                  action={action}
+                  index={index}
+                  isActive={index === safeSelectedIndex}
+                  planItems={planItems}
+                  placeholderMap={placeholderMap}
+                  onSelect={() => setSelectedActionIndex(index)}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Detail view */}
+          {selectedAction ? (
+              key={safeSelectedIndex}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              <ActionDetailView
+                action={selectedAction}
+                planItems={planItems}
+                placeholderMap={placeholderMap}
+              />
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-text-muted">
+              <svg className="w-8 h-8 mb-2 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+              </svg>
+              <span className="text-xs">Select an action to view details</span>
+            </div>
+          )}
+        </div>
+
+        {/* Warning for missing items */}
+        {hasMissingItems && (
+          <div className="mx-4 mb-3">
+            <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg
+                            bg-warning/8 border border-warning/20">
+              <svg className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <p className="text-xs text-warning/90 leading-relaxed">
+                Some actions reference items that no longer exist and will be skipped.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Footer actions */}
+            <button
+              onClick={onDismiss}
+              disabled={isApplying}
+                         text-text-secondary hover:text-text-primary
+                         bg-surface-3 hover:bg-surface-4
+                         disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface-3"
+            >
+              Dismiss
+            </button>
+            <button
+              onClick={onApprove}
+              disabled={isApplying}
+                         disabled:opacity-70 disabled:cursor-not-allowed
+                         flex items-center justify-center gap-2"
+            >
+              {isApplying ? (
+                <>
+                  <LoadingSpinner className="w-3.5 h-3.5" color="white" />
+                  <span>Applying...</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Apply All Changes</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <AnimatePresence>
@@ -312,6 +434,53 @@ interface ActionDetailViewProps {
       return <SetPositionDetail action={action} planItems={planItems} />;
     case 'queue_for_tracker':
       return <QueueForTrackerDetail action={action} planItems={planItems} />;
+    case 'create_group':
+      return (
+        <div className="space-y-3">
+          <div className="p-3 rounded-lg bg-surface-1 border border-border-subtle">
+            <h4 className="text-xs font-medium text-text-primary mb-2">Create Group</h4>
+            <div className="space-y-1.5 text-xs">
+              <p><span className="text-text-muted">Name:</span> <span className="text-text-primary">{action.name}</span></p>
+              <p><span className="text-text-muted">Size:</span> <span className="text-text-primary">{action.width} x {action.height}</span></p>
+            </div>
+          </div>
+        </div>
+      );
+    case 'update_group':
+      return (
+        <div className="space-y-3">
+          <div className="p-3 rounded-lg bg-surface-1 border border-border-subtle">
+            <h4 className="text-xs font-medium text-text-primary mb-2">Update Group</h4>
+            <div className="space-y-1.5 text-xs">
+              {action.updates.name && <p><span className="text-text-muted">Name:</span> <span className="text-text-primary">{action.updates.name}</span></p>}
+              {(action.updates.width || action.updates.height) && <p><span className="text-text-muted">Size:</span> <span className="text-text-primary">{action.updates.width} x {action.updates.height}</span></p>}
+            </div>
+          </div>
+        </div>
+      );
+    case 'delete_group':
+      return (
+        <div className="space-y-3">
+          <div className="p-3 rounded-lg bg-danger/8 border border-danger/20">
+            <h4 className="text-xs font-medium text-danger mb-2">Delete Group</h4>
+            <p className="text-xs text-text-secondary">This group container will be removed. Items inside will remain in place.</p>
+          </div>
+        </div>
+      );
+    case 'assign_to_group': {
+      return (
+        <div className="space-y-3">
+          <div className="p-3 rounded-lg bg-surface-1 border border-border-subtle">
+            <h4 className="text-xs font-medium text-text-primary mb-2">{action.group_id ? 'Assign to Group' : 'Remove from Group'}</h4>
+            <p className="text-xs text-text-secondary">
+              {action.group_id
+                ? `Move "${item?.title || 'Item'}" into a group container.`
+                : `Remove "${item?.title || 'Item'}" from its current group.`}
+            </p>
+          </div>
+        </div>
+      );
+    }
     default:
       return (
         <div className="p-4 rounded-lg bg-surface-1 border border-border-subtle">
@@ -360,6 +529,10 @@ function getActionTypeLabel(type: PlanAction['type']): string {
     case 'reorder': return 'reorder';
     case 'set_position': return 'position';
     case 'queue_for_tracker': return 'queue';
+    case 'create_group': return 'group';
+    case 'update_group': return 'group';
+    case 'delete_group': return 'group';
+    case 'assign_to_group': return 'assign';
     default: return 'action';
   }
 }

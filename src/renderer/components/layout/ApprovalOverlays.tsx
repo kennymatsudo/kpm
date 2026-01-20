@@ -21,6 +21,36 @@ function getItemTypeLabel(type: ApprovalItem['type']): string {
   }
 }
 
+/** Get an icon for approval item type */
+function getItemTypeIcon(type: ApprovalItem['type']): React.ReactNode {
+  switch (type) {
+    case 'plan-actions':
+      return (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+        </svg>
+      );
+    case 'claude-md':
+      return (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      );
+    case 'document':
+      return (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+      );
+    default:
+      return (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      );
+  }
+}
+
 export function ApprovalOverlays() {
   // Get queue state
     useShallow((state) => ({
@@ -101,7 +131,23 @@ export function ApprovalOverlays() {
   const collapsedBadge = useMemo(() => {
 
     return (
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        whileHover={{ scale: 1.02, y: -2 }}
+        whileTap={{ scale: 0.98 }}
       >
+          {/* Pulsing indicator */}
+          <div className="relative">
+            <div className="w-2 h-2 rounded-full bg-white" />
+            <div className="absolute inset-0 w-2 h-2 rounded-full bg-white animate-ping opacity-75" />
+          </div>
+          <span className="text-sm font-semibold tracking-tight">
+            {queueLength} pending
+          </span>
+          {/* Chevron hint */}
+          <svg className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
     );
 
   if (!currentItem && !collapsedBadge) return null;
@@ -116,6 +162,7 @@ export function ApprovalOverlays() {
           onApprove={() => handleApprovePlanActions(currentItem)}
           onDismiss={() => handleDismiss(currentItem.id)}
           isApplying={isApplying}
+          embedded
         />
       )}
 

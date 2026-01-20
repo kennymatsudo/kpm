@@ -82,3 +82,20 @@ ipcMain.handle(
 3. **Use result types** — `ServiceResult<T>` makes errors explicit
 4. **Organize by domain** — One handler file per feature
 5. **Return objects** — IPC serializes easily; return `{ data: T }`
+
+## Critical: PlanAction Schema Sync
+
+**IMPORTANT:** The `planActionSchema` in `validation/plan.ts` MUST stay in sync with the `PlanAction` type in `shared/types.ts`.
+
+When adding a new action type:
+1. Add to `PlanAction` union type in `shared/types.ts`
+2. Add matching Zod schema in `validation/plan.ts` → `planActionSchema`
+3. Add handler case in `db/domain/PlanActionService.ts`
+
+Current action types that MUST be in both places:
+- Plan items: `create_item`, `reparent`, `set_label`, `set_release`, `update_item`, `delete_item`, `set_position`, `reorder`
+- Dependencies: `add_dependency`, `remove_dependency`
+- Groups: `create_group`, `update_group`, `delete_group`, `assign_to_group`
+- Tracker: `queue_for_tracker`
+
+**Failure to sync causes:** `ZodError: Invalid input` with "No matching discriminator" when Claude tools emit actions.

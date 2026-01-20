@@ -74,6 +74,14 @@ function getActionStyle(type: PlanAction['type']): { icon: string; color: string
       return { icon: '\u271b', color: 'bg-info/12 text-info', label: 'Position' };
     case 'queue_for_tracker':
       return { icon: '\u2191', color: 'bg-accent/12 text-accent', label: 'Queue' };
+    case 'create_group':
+      return { icon: '\u25a1', color: 'bg-success/12 text-success', label: 'Group' };
+    case 'update_group':
+      return { icon: '\u270e', color: 'bg-info/12 text-info', label: 'Group' };
+    case 'delete_group':
+      return { icon: '\u00d7', color: 'bg-danger/12 text-danger', label: 'Group' };
+    case 'assign_to_group':
+      return { icon: '\u2192', color: 'bg-info/12 text-info', label: 'Assign' };
     default:
       return { icon: '\u2022', color: 'bg-surface-3 text-text-muted', label: 'Action' };
   }
@@ -117,6 +125,14 @@ function describeAction(
       return getTitle(action.item_id);
     case 'queue_for_tracker':
       return `${action.item_ids.length} item${action.item_ids.length !== 1 ? 's' : ''}`;
+    case 'create_group':
+      return action.name;
+    case 'update_group':
+      return `Update group`;
+    case 'delete_group':
+      return `Delete group`;
+    case 'assign_to_group':
+      return `${getTitle(action.item_id)} ${action.group_id ? '\u2192 group' : '\u2192 ungroup'}`;
     default:
       return 'Unknown action';
   }

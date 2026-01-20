@@ -98,6 +98,38 @@ export const planActionSchema = z.discriminatedUnion('type', [
     x: canvasPosition,
     y: canvasPosition,
   }),
+  z.object({
+    type: z.literal('queue_for_tracker'),
+    item_ids: z.array(z.string()),
+  }),
+  // Group actions (visual containers)
+  z.object({
+    type: z.literal('create_group'),
+    project_id: z.string(),
+    name: z.string(),
+    position_x: z.number(),
+    position_y: z.number(),
+    width: z.number(),
+    height: z.number(),
+  }),
+  z.object({
+    type: z.literal('update_group'),
+    group_id: z.string(),
+    updates: z.object({
+      name: z.string().optional(),
+      width: z.number().optional(),
+      height: z.number().optional(),
+    }),
+  }),
+  z.object({
+    type: z.literal('delete_group'),
+    group_id: z.string(),
+  }),
+  z.object({
+    type: z.literal('assign_to_group'),
+    item_id: z.string(),
+    group_id: z.string().nullable(),
+  }),
 ]);
 
 // =============================================================================

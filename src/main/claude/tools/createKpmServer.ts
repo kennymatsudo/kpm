@@ -9,6 +9,7 @@ import { EventEmitter } from 'events';
 
 import { createPlanItemTools } from './plan-items';
 import { createRelationTools } from './relations';
+import { createGroupTools } from './groups';
 import { createJiraTools } from './jira';
 import { createStorybookTools } from './storybook';
 
@@ -68,11 +69,13 @@ function emitDocumentUpdate(update: DocumentUpdatePayload): void {
 
 
   const planItemTools = createPlanItemTools(planItemRepo, planRelationRepo, emitPlanActions);
+  const groupTools = createGroupTools(groupRepo, planItemRepo, emitPlanActions);
   const planChangeTools = createPlanChangeTools(emitPlanActions);
   const storybookTools = createStorybookTools(projectRepo);
 
     ...planItemTools,
     ...relationTools,
+    ...groupTools,
     ...planChangeTools,
     ...jiraTools,
     ...storybookTools,

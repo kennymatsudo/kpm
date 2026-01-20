@@ -7,6 +7,7 @@ import type {
   TrackerType as TrackerTypeBase,
   Project as ProjectBase,
   PlanItem as PlanItemBase,
+  Group,
 } from './base-types';
 
 // Re-export core types from base types
@@ -332,6 +333,7 @@ export interface Activity {
 // =============================================================================
 // Plan Actions - structured commands for AI-driven plan manipulation
 export type PlanAction =
+  // Plan item actions
   | { type: 'reparent'; item_id: string; new_parent_id: string | null }
   | { type: 'set_label'; item_id: string; label: string }
   | { type: 'set_release'; item_id: string; release_tag: string | null }
@@ -340,6 +342,10 @@ export type PlanAction =
   | { type: 'reorder'; item_id: string; after_item_id: string | null }
   | { type: 'delete_item'; item_id: string }
   | { type: 'set_position'; item_id: string; x: number; y: number }
+  | { type: 'queue_for_tracker'; item_ids: string[] }
+  // Group actions (visual containers)
+  | { type: 'delete_group'; group_id: string }
+  | { type: 'assign_to_group'; item_id: string; group_id: string | null };
 
 export interface PlanActionResponse {
   message: string;
