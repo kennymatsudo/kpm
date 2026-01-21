@@ -63,6 +63,7 @@ export function ReparentDetail({ action, planItems, placeholderMap }: ReparentDe
           {/* Arrow */}
           <div className="flex flex-col items-center gap-1 flex-shrink-0">
             <div className="w-8 h-0.5 bg-warning/30 rounded-full" />
+            <span className="text-warning text-lg">{'\u2192'}</span>
             <div className="w-8 h-0.5 bg-warning/30 rounded-full" />
           </div>
 

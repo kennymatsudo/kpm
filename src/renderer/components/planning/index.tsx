@@ -33,6 +33,7 @@ export function PlanView({
       executePlanActions: state.executePlanActions,
       updateItemPosition: state.updateItemPosition,
       focusedResources: state.focusedResources,
+      addFocusedResource: state.addFocusedResource,
     }))
   );
 

@@ -159,6 +159,54 @@ export function buildHierarchyWithHeights(items: PlanItem[]): {
 }
 
 // =============================================================================
+// Group Item Sorting
+// =============================================================================
+
+/**
+ * Sort order for status categories within groups.
+ * Items are sorted to show most actionable work at the top.
+ */
+const STATUS_SORT_ORDER: Record<string, number> = {
+  in_progress: 0,
+  blocked: 1,
+  not_started: 2,
+  done: 3,
+  canceled: 4,
+};
+
+/**
+ * Sort items within a group by status priority.
+ * Sort order (top to bottom):
+ * 1. In Progress - active work (most actionable)
+ * 2. Blocked - needs unblocking
+ * 3. Not Started / null - upcoming work
+ * 4. Done - completed
+ * 5. Canceled - removed from scope
+ *
+ * Within each status:
+ * - Unsynced items first (not yet in Jira)
+ * - Then by most recently updated (updated_at DESC)
+ */
+export function sortGroupItems<T extends PlanItem>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    // Primary: status_category
+    const aOrder = STATUS_SORT_ORDER[a.status_category ?? 'not_started'] ?? 2;
+    const bOrder = STATUS_SORT_ORDER[b.status_category ?? 'not_started'] ?? 2;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+
+    // Secondary: unsynced first
+    const aSync = a.external_key !== null;
+    const bSync = b.external_key !== null;
+    if (aSync !== bSync) return aSync ? 1 : -1;
+
+    // Tertiary: most recently updated
+    const aDate = a.updated_at ?? a.created_at ?? '';
+    const bDate = b.updated_at ?? b.created_at ?? '';
+    return bDate.localeCompare(aDate);
+  });
+}
+
+// =============================================================================
 // Masonry Layout Utilities
 // =============================================================================
 
@@ -271,6 +319,11 @@ export function calculateGroupLayout(
     };
   }
 
+  // Sort items for consistent, priority-based display order
+  const sortedItems = sortGroupItems(assignedItems);
+
+  // Calculate heights for each item (using sorted order)
+  const itemsWithHeights = sortedItems.map(item => ({
     id: item.id,
   }));
 

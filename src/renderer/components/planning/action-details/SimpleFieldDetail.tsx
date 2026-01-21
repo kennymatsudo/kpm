@@ -92,6 +92,7 @@ export function SetPositionDetail({ action, planItems }: SetPositionDetailProps)
             </div>
           </div>
 
+          <div className="text-text-muted text-lg">{'\u2192'}</div>
 
           {/* New position */}
           <div className="flex-1">
@@ -160,6 +161,7 @@ export function QueueForTrackerDetail({ action, planItems }: QueueForTrackerDeta
         <ul className="space-y-1.5">
           {items.map((item) => (
             <li key={item.id} className="text-xs text-text-secondary flex items-center gap-2">
+              <span className="text-accent">{'\u2022'}</span>
               <span className="truncate">{item.title}</span>
               {item.label && (
                   {item.label}
@@ -225,6 +227,7 @@ function FieldChange<T>({ fieldName, oldValue, newValue, renderValue }: FieldCha
         <div className="flex-1">
           {renderValue(oldValue)}
         </div>
+        <div className="text-text-muted text-lg">{'\u2192'}</div>
         <div className="flex-1">
           {renderValue(newValue)}
         </div>

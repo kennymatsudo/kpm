@@ -1,6 +1,8 @@
 /**
  * ApprovalOverlays - Non-blocking side panel for pending approval items
  *
+ * Renders a slide-in panel from the left for approval items (plan actions, CLAUDE.md edits,
+ * chat visible so users can reference Claude's explanations while reviewing changes.
  *
  * Uses a unified approval queue to handle multiple pending items from Claude.
  */
@@ -114,6 +116,8 @@ export function ApprovalOverlays() {
       const result = await executeFileWrite(currentProjectId, item.filePath, content);
       if (result.success) {
         removeById(item.id);
+        // Refresh the parent directory so the new file appears in the tree
+        void useFileTreeStore.getState().refreshDirectory(parentPath);
       } else {
         toast.error(`Failed to update ${item.filePath}: ${result.error}`);
       }
@@ -180,6 +184,7 @@ export function ApprovalOverlays() {
           onAccept={(content) => handleAcceptDocument(currentItem, content)}
           onDismiss={() => handleDismiss(currentItem.id)}
           isApplying={isApplying}
+          embedded
         />
       )}
 
@@ -193,13 +198,48 @@ export function ApprovalOverlays() {
         {collapsedBadge}
       </AnimatePresence>
 
+      {/* Side panel - slides from left, no blocking backdrop */}
       <AnimatePresence>
+            animate={{ x: 0, opacity: 1 }}
+                       flex flex-col overflow-hidden"
           >
+                            border-b border-border-subtle">
 
+              <div className="flex items-center gap-3">
+                {/* Icon with accent background */}
+                <div className="w-8 h-8 rounded-lg bg-accent/12 flex items-center justify-center text-accent">
+                  {getItemTypeIcon(currentItem.type)}
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-sm font-semibold text-text-primary leading-tight">
+                    {getItemTypeLabel(currentItem.type)}
+                  </span>
+                  {queueLength > 1 && (
+                      +{queueLength - 1} more in queue
                     </span>
+                  )}
                 </div>
               </div>
 
+              {/* Minimize button - chevron points left toward panel edge */}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleCollapse}
+                className="w-8 h-8 flex items-center justify-center rounded-lg
+                           bg-surface-3/50 hover:bg-surface-3
+                           text-text-muted hover:text-text-primary
+                           transition-colors duration-150"
+                title="Minimize"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+            </div>
+
+            {/* Panel content */}
+            <div className="flex-1 overflow-hidden">
+              {panelContent}
+            </div>
         )}
       </AnimatePresence>
     </>,

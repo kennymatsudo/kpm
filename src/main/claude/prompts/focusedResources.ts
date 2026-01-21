@@ -8,9 +8,13 @@
 export function formatFocusedResource(resource: FocusedResource): string {
   switch (resource.type) {
     case 'plan_item':
+      return `"${resource.title}" (plan item id: ${resource.id})`;
     case 'project_file':
+      return resource.path;
     case 'repo':
+      return resource.path ?? resource.id;
     case 'document':
+      return resource.path;
   }
 }
 

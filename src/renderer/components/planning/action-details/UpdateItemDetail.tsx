@@ -86,6 +86,7 @@ function FieldChange({ field, oldValue, newValue }: FieldChangeProps) {
       </div>
 
       {/* Arrow */}
+      <div className="text-text-muted text-lg flex-shrink-0">{'\u2192'}</div>
 
       {/* New value */}
       <div className="flex-1 min-w-0">
