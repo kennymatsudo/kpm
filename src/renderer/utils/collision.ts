@@ -141,3 +141,125 @@ export function findEscapeOffset(
   // (This handles edge cases where multiple obstacles surround the rect)
   return { dx: candidates[0].dx, dy: candidates[0].dy };
 }
+
+/**
+ * A positionable group for collision resolution
+ */
+export interface PositionableGroup {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Resolve all collisions between groups by pushing overlapping groups apart.
+ * Uses iterative approach - each iteration pushes one group, then re-checks.
+ *
+ * @param groups - Array of groups with positions and dimensions
+ * @param changedGroupId - Optional ID of the group that changed size (it stays put, others move)
+ * @param gap - Minimum gap between groups
+ * @returns Map of group IDs to their new positions, only for groups that moved
+ */
+export function resolveGroupCollisions(
+  groups: PositionableGroup[],
+  changedGroupId?: string,
+  gap = COLLISION.MIN_GAP
+): Map<string, { x: number; y: number }> {
+  const positionChanges = new Map<string, { x: number; y: number }>();
+
+  if (groups.length < 2) {
+    return positionChanges;
+  }
+
+  // Create working copy of positions
+  const workingPositions = new Map<string, { x: number; y: number }>();
+  for (const group of groups) {
+    workingPositions.set(group.id, { x: group.x, y: group.y });
+  }
+
+  // Build dimension map for quick lookup
+  const dimensionMap = new Map<string, { width: number; height: number }>();
+  for (const group of groups) {
+    dimensionMap.set(group.id, { width: group.width, height: group.height });
+  }
+
+  // Iteratively resolve collisions (max 50 iterations to prevent infinite loops)
+  const maxIterations = 50;
+  for (let iteration = 0; iteration < maxIterations; iteration++) {
+    let foundCollision = false;
+
+    // Check each pair of groups for collision
+    for (let i = 0; i < groups.length; i++) {
+      const groupA = groups[i];
+      const posA = workingPositions.get(groupA.id)!;
+      const dimA = dimensionMap.get(groupA.id)!;
+      const rectA: Rect = { x: posA.x, y: posA.y, width: dimA.width, height: dimA.height };
+
+      for (let j = i + 1; j < groups.length; j++) {
+        const groupB = groups[j];
+        const posB = workingPositions.get(groupB.id)!;
+        const dimB = dimensionMap.get(groupB.id)!;
+        const rectB: Rect = { x: posB.x, y: posB.y, width: dimB.width, height: dimB.height };
+
+        if (rectsIntersect(rectA, rectB, gap)) {
+          foundCollision = true;
+
+          // Decide which group to move:
+          // - If one is the changedGroupId, move the other
+          // - Otherwise, move the one on the right/bottom (preserve earlier positioned items)
+          let moverGroup: PositionableGroup;
+          let stationaryRect: Rect;
+
+          if (changedGroupId === groupA.id) {
+            moverGroup = groupB;
+            stationaryRect = rectA;
+          } else if (changedGroupId === groupB.id) {
+            moverGroup = groupA;
+            stationaryRect = rectB;
+          } else {
+            // Move the one that's further right or down
+            if (posB.x > posA.x || (posB.x === posA.x && posB.y > posA.y)) {
+              moverGroup = groupB;
+              stationaryRect = rectA;
+            } else {
+              moverGroup = groupA;
+              stationaryRect = rectB;
+            }
+          }
+
+          const moverPos = workingPositions.get(moverGroup.id)!;
+          const moverDim = dimensionMap.get(moverGroup.id)!;
+          const moverRect: Rect = { x: moverPos.x, y: moverPos.y, width: moverDim.width, height: moverDim.height };
+
+          // Find escape offset for the mover
+          const offset = findEscapeOffset(moverRect, [stationaryRect], gap);
+
+          if (offset.dx !== 0 || offset.dy !== 0) {
+            workingPositions.set(moverGroup.id, {
+              x: moverPos.x + offset.dx,
+              y: moverPos.y + offset.dy,
+            });
+          }
+        }
+      }
+    }
+
+    if (!foundCollision) {
+      break;
+    }
+  }
+
+  // Build result map with only positions that changed
+  for (const group of groups) {
+    const originalPos = { x: group.x, y: group.y };
+    const newPos = workingPositions.get(group.id)!;
+
+    if (newPos.x !== originalPos.x || newPos.y !== originalPos.y) {
+      positionChanges.set(group.id, newPos);
+    }
+  }
+
+  return positionChanges;
+}

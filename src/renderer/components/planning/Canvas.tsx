@@ -241,6 +241,7 @@ interface CanvasProps {
 
         <AnimatePresence mode="popLayout">
             const isInDraggingGroup = draggingGroupId && node.group_id === draggingGroupId;
+            const isInRecentlyDraggedGroup = recentlyDraggedGroupId && node.group_id === recentlyDraggedGroupId;
             if (draggingGroupId) {
               if (isInDraggingGroup) {
               } else if (node.group_id) {
@@ -249,6 +250,8 @@ interface CanvasProps {
 
             const dragX = isInDraggingGroup ? groupDragOffset.x : 0;
             const dragY = isInDraggingGroup ? groupDragOffset.y : 0;
+
+            const useInstantTransition = isInDraggingGroup || isInRecentlyDraggedGroup;
 
             return (
               key={node.id}
@@ -260,6 +263,7 @@ interface CanvasProps {
                 y: dragY,
               }}
               exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
+              transition={useInstantTransition
               }
               className="absolute pointer-events-auto"
               style={{

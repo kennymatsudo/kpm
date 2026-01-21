@@ -70,8 +70,11 @@ function getGroupDimensions(
         const hasPosition = group.position_x !== null && group.position_y !== null;
 
         if (shouldReposition) {
+        } else if (hasPosition && group.position_x !== null && group.position_y !== null) {
             id: `group:${group.id}`,
             width: dims.width,
+            x: group.position_x,
+            y: group.position_y,
           });
         }
       }
@@ -102,6 +105,37 @@ function getGroupDimensions(
           groupNewPositions.set(groupId, { x, y, ...dims });
         } else {
           updatePromises.push(updateItemPosition(id, x, y));
+        }
+      }
+
+      const allGroupsWithPositions: PositionableGroup[] = groups.map(group => {
+        const newPos = groupNewPositions.get(group.id);
+        const dims = groupDimensionsMap.get(group.id) ?? { width: group.width, height: group.height };
+        return {
+          id: group.id,
+          x: newPos?.x ?? group.position_x ?? 0,
+          y: newPos?.y ?? group.position_y ?? 0,
+          width: dims.width,
+          height: dims.height,
+        };
+      });
+
+      const collisionResolutions = resolveGroupCollisions(allGroupsWithPositions);
+      for (const [groupId, newPos] of collisionResolutions) {
+        const existing = groupNewPositions.get(groupId);
+        const dims = groupDimensionsMap.get(groupId) ?? { width: 300, height: 200 };
+        groupNewPositions.set(groupId, {
+          x: newPos.x,
+          y: newPos.y,
+          width: existing?.width ?? dims.width,
+          height: existing?.height ?? dims.height,
+        });
+      }
+
+      for (const [groupId, pos] of groupNewPositions) {
+        updatePromises.push(updateGroupPosition(groupId, pos.x, pos.y));
+        if (updateGroupSize) {
+          updatePromises.push(updateGroupSize(groupId, pos.width, pos.height));
         }
       }
 

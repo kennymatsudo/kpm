@@ -78,6 +78,51 @@ export function PlanView({
     updateGroupSize,
   });
 
+  // Collision resolution for when items are added to groups
+  const resolveCollisionsForGroup = useGroupCollisionResolution({
+    groups,
+    updateGroupPosition,
+    updateGroupSize,
+  });
+
+  // Track previous group assignments to detect changes (for MCP tool updates)
+  const prevGroupAssignmentsRef = useRef<Map<string, string | null>>(new Map());
+
+  // Watch for group assignment changes (handles MCP tool updates)
+  useEffect(() => {
+    const currentAssignments = new Map<string, string | null>();
+    const affectedGroupIds = new Set<string>();
+
+    // Build current assignments map and detect changes
+      currentAssignments.set(item.id, item.group_id);
+
+      const currentGroupId = item.group_id;
+
+      // If group assignment changed
+      if (prevGroupId !== currentGroupId) {
+        if (currentGroupId) {
+          affectedGroupIds.add(currentGroupId);
+        }
+        if (prevGroupId) {
+          affectedGroupIds.add(prevGroupId);
+        }
+      }
+    }
+
+    // Update ref for next comparison
+    prevGroupAssignmentsRef.current = currentAssignments;
+
+    // Resolve collisions for affected groups (skip on initial render)
+    if (affectedGroupIds.size > 0 && groups.length > 0) {
+      // Resolve collisions for each affected group
+      for (const groupId of affectedGroupIds) {
+        // Check if group still exists
+        if (groups.some(g => g.id === groupId)) {
+          void resolveCollisionsForGroup(groupId);
+        }
+      }
+    }
+
 
   // Build tree hierarchy for tree view (using filtered items)
   const treeHierarchy = useMemo(() => buildHierarchyTree(filteredPlannedItems), [filteredPlannedItems]);
