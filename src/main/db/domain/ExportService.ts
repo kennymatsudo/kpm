@@ -579,12 +579,14 @@ function mergeCustomFieldValues(
           customFields,
         });
 
+
         const syncUpdate: PlanItemSyncUpdates = {
           external_key: created.key,
           external_id: created.id,
           association_id: associationId,
           sync_source: 'local',
           last_synced_at: new Date().toISOString(),
+          status_category: inferredCategory,
         };
         console.log('[ExportService] Updating plan item with external_key:', { planItemId: planItem.id, external_key: created.key, external_url: syncUpdate.external_url });
         PlanItemRepository.update(planItem.id, syncUpdate);
