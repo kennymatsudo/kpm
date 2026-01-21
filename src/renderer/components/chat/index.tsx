@@ -6,6 +6,7 @@ import { useChat } from '../../hooks/useChat';
 import { useShallow } from 'zustand/react/shallow';
 import { CloseIcon } from '../icons';
 
+// Re-export components for use in Layout and other consumers
 export { SessionHistory } from './SessionHistory';
 export { NewSessionButton } from './NewSessionButton';
 

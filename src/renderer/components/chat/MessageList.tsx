@@ -1,5 +1,14 @@
+import { useChatStore, type Activity, type MessageSegment } from '../../stores';
 import { processMessageContent } from '../../utils/messageFormatter';
 import { CopyIcon, CheckIcon } from '../icons';
+
+/** Extract text content from message segments for copy/display */
+function getTextContent(segments: MessageSegment[]): string {
+  return segments
+    .filter((s): s is { type: 'text'; content: string } => s.type === 'text')
+    .map((s) => s.content)
+    .join('');
+}
 
 /** Parse user message to extract image attachments and clean content */
 function parseUserMessage(content: string): { cleanContent: string; imageCount: number } {
@@ -39,6 +48,9 @@ const PlanUpdateIndicator = memo(function PlanUpdateIndicator() {
   );
 });
 
+  return (
+    </div>
+  );
 });
 
   return (
@@ -46,6 +58,43 @@ const PlanUpdateIndicator = memo(function PlanUpdateIndicator() {
         </svg>
       </div>
     </div>
+  );
+});
+
+/** Render assistant message segments within a single bubble */
+const AssistantMessageContent = memo(function AssistantMessageContent({
+  segments,
+}: {
+  segments: MessageSegment[];
+}) {
+
+  return (
+    <>
+        return (
+          </div>
+        );
+      })}
+      <CopyButton content={processed.displayContent} />
+      {processed.hasPlanUpdate && <PlanUpdateIndicator />}
+    </>
+  );
+});
+
+/** Render streaming segments within a single bubble */
+const StreamingContent = memo(function StreamingContent({
+  segments,
+  activities,
+}: {
+  segments: MessageSegment[];
+  activities: Activity[];
+}) {
+  return (
+    <>
+        return (
+          </div>
+        );
+      })}
+    </>
   );
 });
 

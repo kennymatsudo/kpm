@@ -126,6 +126,7 @@ export interface JiraCustomField {
   name: string;            // 'R&D Team'
   type: 'string' | 'option' | 'array' | 'number' | 'date' | 'user' | 'other';
   required: boolean;
+  allowedValues?: { id: string; value: string }[];  // For select/option fields
   defaultValue?: string;   // Default value (option ID for selects, text for strings)
 }
 
@@ -329,6 +330,23 @@ export interface Activity {
   label: string;
   detail?: string;
 }
+
+// =============================================================================
+// Message Segment Types - for single-bubble chat with inline tool indicators
+// =============================================================================
+
+/** Text segment containing markdown content */
+export interface TextSegment {
+  type: 'text';
+  content: string;
+}
+
+/** Activity segment showing tool use indicators inline */
+export interface ActivitySegment {
+  type: 'activity';
+  activities: Activity[];
+}
+
 
 // =============================================================================
 // Plan Actions - structured commands for AI-driven plan manipulation
