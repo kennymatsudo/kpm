@@ -22,6 +22,21 @@ export const AUTO_LAYOUT = {
   /** Grid size for default positioning (items without explicit positions) */
 } as const;
 
+/** Group layout settings - vertical-first with limited columns */
+export const GROUP_LAYOUT = {
+  /** Maximum number of columns within a group */
+  MAX_COLUMNS: 3,
+  /** Horizontal padding inside group container (left/right) */
+  PADDING_X: 16,
+  /** Vertical padding at top of group container (below header) */
+  /** Vertical padding at bottom of group container */
+  /** Space for group header */
+  /** Horizontal gap between items in group */
+  /** Vertical gap between items in group */
+  VERTICAL_GAP: 16,
+  /** Estimated height for grid snapping (base card height) */
+} as const;
+
 /** Canvas zoom limits */
 export const ZOOM = {
   MIN: 0.25,
@@ -44,4 +59,10 @@ export const SIDEBAR = {
   /** Default collapsed sidebar width */
   /** Default expanded sidebar width */
   /** Maximum sidebar width */
+} as const;
+
+/** Collision detection settings */
+export const COLLISION = {
+  /** Minimum gap between groups and other elements */
+  MIN_GAP: 20,
 } as const;

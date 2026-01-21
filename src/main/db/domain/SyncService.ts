@@ -69,6 +69,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
           external_key: issue.key,
           title: issue.title,
           description: issue.description,
+          label: null,
           external_issue_type: issue.issueType,
           external_status: issue.status,
           external_url: issue.url,

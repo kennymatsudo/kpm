@@ -46,6 +46,8 @@ Keep related code together. Don't split files just to meet arbitrary LOC limits.
 
 Don't create abstractions until you have 3+ actual uses of a pattern. Wait until the pattern is proven.
 
+
+
 ## CSS Conventions
 
 - Use Tailwind utilities

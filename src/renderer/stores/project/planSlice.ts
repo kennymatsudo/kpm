@@ -1,4 +1,5 @@
 import type { PlanSlice, SliceCreator } from './types';
+import { useGroupStore } from '../groupStore';
 
 export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => ({
   updatePlanItems: (items) => set({ planItems: items }),
@@ -33,6 +34,17 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
         const hasSkippedActions = skipped.length > 0;
         if (hasNonReparentActions || hasSkippedActions) {
           await refreshPlanItems();
+        }
+
+        // Refresh groups if any group-related actions were executed
+        const hasGroupActions = actions.some(a =>
+          a.type === 'create_group' ||
+          a.type === 'update_group' ||
+          a.type === 'delete_group' ||
+          a.type === 'assign_to_group'
+        );
+        if (hasGroupActions && currentProjectId) {
+          await useGroupStore.getState().loadGroups(currentProjectId);
         }
 
         // Surface skipped actions as warning so user knows why some didn't apply

@@ -110,6 +110,7 @@ export interface Group {
   position_y: number;
   width: number;
   height: number;
+  is_collapsed: boolean;
   created_at: string;
   updated_at: string;
 }

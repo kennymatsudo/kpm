@@ -12,6 +12,7 @@ import type { Group } from '../../shared/types';
 // Types
 // =============================================================================
 
+export type GroupUpdates = Partial<Pick<Group, 'name' | 'color' | 'position_x' | 'position_y' | 'width' | 'height' | 'is_collapsed'>>;
 
 interface GroupState {
   // Groups

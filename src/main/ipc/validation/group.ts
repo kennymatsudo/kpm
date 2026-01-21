@@ -44,6 +44,7 @@ export const GroupSchemas = {
       position_y: z.number().optional(),
       width: z.number().optional(),
       height: z.number().optional(),
+      is_collapsed: z.boolean().optional(),
     }).refine((u) => Object.keys(u).length > 0, 'At least one field required'),
   }),
 

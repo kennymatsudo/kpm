@@ -7,6 +7,7 @@ import { useGroupStore, useExportStore } from '../../stores';
 
 interface CanvasProps {
   projectId: string;
+  /** Items to display (may be filtered by search) */
   items: PlanItem[];
   selectedItemIds: Set<string>;
   focusedItemId: string | null;
@@ -19,6 +20,8 @@ interface CanvasProps {
   onReparent: (itemIds: string[], newParentId: string | null) => Promise<void>;
   onUpdatePosition: (itemId: string, x: number, y: number) => void;
   onAutoLayout: (options?: AutoLayoutOptions) => Promise<void>;
+  /** Assign/unassign items to a group (groupId = null to unassign) */
+  onAssignToGroup?: (itemIds: string[], groupId: string | null) => Promise<void>;
 }
 
   projectId,
@@ -33,6 +36,7 @@ interface CanvasProps {
   onReparent,
   onUpdatePosition,
   onAutoLayout,
+  onAssignToGroup,
 }: CanvasProps) {
   const {
     groups,
@@ -59,10 +63,37 @@ interface CanvasProps {
     resetView,
     screenToCanvas,
     panHandlers,
+  } = useCanvasViewport({ projectId, items, groups });
 
 
   const selectionSignaturesRef = useRef<Map<string, string>>(new Map());
 
+
+  // Apply group layout - items in groups snap to grid positions when not dragging
+  useEffect(() => {
+    if (draggingGroupId) return;
+
+    const { idealPositions } = groupLayoutInfo;
+    if (idealPositions.size === 0) return;
+
+    const itemsToUpdate: { id: string; x: number; y: number }[] = [];
+
+    for (const [itemId, idealPos] of idealPositions) {
+      if (!item) continue;
+
+      const currentX = item.position_x ?? 0;
+      const currentY = item.position_y ?? 0;
+      const dx = Math.abs(currentX - idealPos.x);
+      const dy = Math.abs(currentY - idealPos.y);
+
+      if (dx > 1 || dy > 1) {
+        itemsToUpdate.push({ id: itemId, x: idealPos.x, y: idealPos.y });
+      }
+    }
+
+    for (const { id, x, y } of itemsToUpdate) {
+      onUpdatePosition(id, x, y);
+    }
 
   const selectionSignatures = useMemo(() => {
     const signatures = new Map<string, string>();
@@ -92,6 +123,7 @@ interface CanvasProps {
   }, [selectionSignatures]);
 
 
+
   const handleCardDrop = useCallback((droppedItemIds: string[], targetParentId: string) => {
     void onReparent(droppedItemIds, targetParentId);
   }, [onReparent]);
@@ -103,6 +135,11 @@ interface CanvasProps {
     void saveGroupUpdates(groupId, { name });
   }, [saveGroupUpdates]);
 
+  const handleGroupCollapseChange = useCallback((groupId: string, isCollapsed: boolean) => {
+    void saveGroupUpdates(groupId, { is_collapsed: isCollapsed });
+  }, [saveGroupUpdates]);
+
+
   return (
     <div
       ref={containerRef}
@@ -111,9 +148,11 @@ interface CanvasProps {
       onDrop={(e) => {
         e.preventDefault();
         setDragPreview(null);
+        setHoveredGroupId(null);
         void handleCanvasDrop(e);
       }}
       onDragEnd={() => {
+        setHoveredGroupId(null);
       }}
       onClick={(e) => {
           onSelectItem(null);
@@ -170,22 +209,63 @@ interface CanvasProps {
         }}
       >
         {/* Groups - rendered first so they appear behind cards */}
+        {groups.map(group => {
+          const bounds = groupBounds.get(group.id);
+          const groupWithBounds = bounds ? {
+            ...group,
+            position_x: bounds.x,
+            position_y: bounds.y,
+            width: bounds.width,
+            height: bounds.height,
+          } : group;
+
+          return (
             <GroupContainer
+              key={group.id}
+              group={groupWithBounds}
               zoom={effectiveZoom}
               isSelected={selectedGroupId === group.id}
+              hasCollision={draggingGroupId === group.id && groupHasCollision}
+              isDragOver={hoveredGroupId === group.id && dragPreview !== null}
               onSelect={handleGroupSelect}
+              onDragComplete={handleGroupDragComplete}
               onNameChange={handleGroupNameChange}
+              onCollapseChange={handleGroupCollapseChange}
               onDelete={handleGroupDelete}
+              onDragStart={handleGroupDragStart}
+              onDragEnd={handleGroupDragEnd}
+              checkCollision={checkGroupCollisionDelta}
             />
+          );
+        })}
 
         <AnimatePresence mode="popLayout">
+            const isInDraggingGroup = draggingGroupId && node.group_id === draggingGroupId;
+            if (draggingGroupId) {
+              if (isInDraggingGroup) {
+              } else if (node.group_id) {
+              }
+            }
+
+            const dragX = isInDraggingGroup ? groupDragOffset.x : 0;
+            const dragY = isInDraggingGroup ? groupDragOffset.y : 0;
+
+            return (
               key={node.id}
               initial={{ opacity: 0, scale: 0.9 }}
+              animate={{
+                opacity: 1,
+                scale: 1,
+                x: dragX,
+                y: dragY,
+              }}
               exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
+              }
               className="absolute pointer-events-auto"
               style={{
                 left: node.position_x ?? 50,
                 top: node.position_y ?? 50,
+                zIndex,
               }}
             >
               <PlanCard
@@ -207,6 +287,8 @@ interface CanvasProps {
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
               />
+            );
+          })}
         </AnimatePresence>
       </div>
 

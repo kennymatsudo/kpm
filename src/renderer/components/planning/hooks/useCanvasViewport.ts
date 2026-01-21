@@ -22,12 +22,22 @@ interface CanvasState {
 interface ItemPosition {
   position_x: number | null;
   position_y: number | null;
+  group_id?: string | null;
+}
+
+interface GroupPosition {
+  position_x: number;
+  position_y: number;
+  width: number;
+  height: number;
 }
 
 interface UseCanvasViewportOptions {
   projectId: string;
   /** Items with positions - used by resetView to center on content */
   items?: ItemPosition[];
+  /** Groups with positions and sizes - used by resetView to center on content */
+  groups?: GroupPosition[];
 }
 
 interface UseCanvasViewportReturn {
@@ -53,6 +63,7 @@ interface UseCanvasViewportReturn {
 export function useCanvasViewport({
   projectId,
   items = [],
+  groups = [],
 }: UseCanvasViewportOptions): UseCanvasViewportReturn {
   const [zoom, setZoom] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -86,19 +97,54 @@ export function useCanvasViewport({
         setPanOffset({ x: state.panX, y: state.panY });
         hasInitializedRef.current = projectId;
       } else {
+        // No saved state - calculate viewport to center content (items + groups)
         const positionedItems = items.filter(
           (item): item is { position_x: number; position_y: number } =>
             item.position_x !== null && item.position_y !== null
         );
 
+        const hasItems = positionedItems.length > 0;
+        const hasGroups = groups.length > 0;
+
+        if (hasItems || hasGroups) {
+          // Find bounding box including both items and groups
+          let minX = Infinity;
+          let maxX = -Infinity;
+          let minY = Infinity;
+          let maxY = -Infinity;
+
+          // Include items in bounding box
+          const estimatedItemWidth = 300;
+          const estimatedItemHeight = 150;
+          for (const item of positionedItems) {
+            minX = Math.min(minX, item.position_x);
+            maxX = Math.max(maxX, item.position_x + estimatedItemWidth);
+            minY = Math.min(minY, item.position_y);
+            maxY = Math.max(maxY, item.position_y + estimatedItemHeight);
+          }
+
+          // Include groups in bounding box
+          for (const group of groups) {
+            minX = Math.min(minX, group.position_x);
+            maxX = Math.max(maxX, group.position_x + group.width);
+            minY = Math.min(minY, group.position_y);
+            maxY = Math.max(maxY, group.position_y + group.height);
+          }
+
+          const contentCenterX = (minX + maxX) / 2;
+          const contentCenterY = (minY + maxY) / 2;
 
           const screenWidth = containerRef.current?.getBoundingClientRect().width ?? window.innerWidth;
           const screenHeight = containerRef.current?.getBoundingClientRect().height ?? window.innerHeight;
 
           setZoom(1);
           setPanOffset({
+            x: screenWidth / 2 - contentCenterX * ZOOM.BASE,
+            y: screenHeight / 2 - contentCenterY * ZOOM.BASE,
           });
           hasInitializedRef.current = projectId;
+        } else if (items.length === 0 && groups.length === 0) {
+          // No content yet - use default position
           setZoom(1);
           setPanOffset({ x: 0, y: 0 });
           hasInitializedRef.current = projectId;
@@ -109,6 +155,7 @@ export function useCanvasViewport({
       // Ignore parse errors
       hasInitializedRef.current = projectId;
     }
+  }, [projectId, items, groups]);
 
   // Persist canvas state on changes (debounced)
   useEffect(() => {
@@ -190,20 +237,56 @@ export function useCanvasViewport({
   const resetView = useCallback(() => {
     setZoom(1);
 
+    // Only consider UNGROUPED items with valid positions
+    // Items in groups have their position determined by the group
+    // Items with negative positions are likely stale/corrupted data
+    const ungroupedItems = items.filter(
+      (item): item is { position_x: number; position_y: number; group_id?: string | null } =>
+        item.position_x !== null &&
+        item.position_y !== null &&
+        item.position_x >= 0 &&
+        item.position_y >= 0 &&
+        !item.group_id // Exclude items assigned to groups
     );
 
+    const hasItems = ungroupedItems.length > 0;
+    const hasGroups = groups.length > 0;
+
+    if (!hasItems && !hasGroups) {
+      // No content - reset to origin
       setPanOffset({ x: 0, y: 0 });
       return;
     }
 
+    // Find top-left corner of content
+    let minX = Infinity;
+    let minY = Infinity;
 
+    // Consider ungrouped items
+    for (const item of ungroupedItems) {
+      minX = Math.min(minX, item.position_x);
+      minY = Math.min(minY, item.position_y);
+    }
 
+    // Consider groups (their position determines where their contained items appear)
+    for (const group of groups) {
+      minX = Math.min(minX, group.position_x);
+      minY = Math.min(minY, group.position_y);
+    }
 
     // At zoom=1, effectiveZoom = ZOOM.BASE
     const effectiveZoom = ZOOM.BASE;
 
+    // Position content at same screen position as auto-layout:
+    // Auto-layout places content at canvas x=40, with pan=(0,0) that's screen x=30
+    // We want the leftmost content to appear at screen x=30 regardless of its canvas position
+    const targetScreenX = 30;
+    const targetScreenY = 30;
     setPanOffset({
+      x: targetScreenX - minX * effectiveZoom,
+      y: targetScreenY - minY * effectiveZoom,
     });
+  }, [items, groups]);
 
   useEffect(() => {
     return () => {

@@ -41,6 +41,15 @@ export function PlanView({
 
   // Export store - for queue operations
 
+  // Group store - for groups and layout
+  const { groups, updateGroupPosition, updateGroupSize } = useGroupStore(
+    useShallow((state) => ({
+      groups: state.groups,
+      updateGroupPosition: state.updateGroupPosition,
+      updateGroupSize: state.updateGroupSize,
+    }))
+  );
+
 
 
 
@@ -63,7 +72,10 @@ export function PlanView({
 
   const handleAutoLayout = useAutoLayout({
     plannedItems: filteredPlannedItems, // Use filtered items so new items are placed near visible content
+    groups,
     updateItemPosition,
+    updateGroupPosition,
+    updateGroupSize,
   });
 
 

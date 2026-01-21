@@ -33,6 +33,7 @@ import { IPC_CHANNELS } from '../channels';
       position_y,
       width,
       height,
+      is_collapsed: false,
   });
 
   // Update a group

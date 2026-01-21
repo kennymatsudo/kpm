@@ -11,6 +11,7 @@ import type { Group } from '../../../shared/types';
 // Group Updates Type
 // =============================================================================
 
+export type GroupUpdates = Partial<Pick<Group, 'name' | 'color' | 'position_x' | 'position_y' | 'width' | 'height' | 'is_collapsed'>>;
 
 // =============================================================================
 // Group Repository Interface
@@ -23,6 +24,8 @@ export interface IGroupRepository {
   /** Get a single group by ID */
   getById(id: string): Group | undefined;
 
+  /** Create a new group. If id is provided, use it; otherwise generate a new UUID. */
+  create(group: Omit<Group, 'id' | 'created_at' | 'updated_at'>, id?: string): Group;
 
   /** Update a group */
   update(id: string, updates: GroupUpdates): void;

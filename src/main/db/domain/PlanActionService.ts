@@ -276,33 +276,61 @@ function executeCreateGroup(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'create_group' }>
 ): void {
+  // Use createId() to generate ID and track placeholder for dependent actions
+  const id = createId(ctx);
+  ctx.deps.groups.create(
+    {
+      project_id: action.project_id,
+      name: action.name,
+      position_x: action.position_x,
+      position_y: action.position_y,
+      width: action.width,
+      height: action.height,
+      is_collapsed: false,
+    },
+    id
+  );
 }
 
 function executeUpdateGroup(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'update_group' }>
 ): void {
+  // Resolve placeholder ID for group
+  const groupId = resolveId(ctx, action.group_id) ?? action.group_id;
+  const group = ctx.deps.groups.getById(groupId);
   if (!group) {
+    skip(ctx, 'update_group', `Group not found: ${groupId}`);
     return;
   }
+  ctx.deps.groups.update(groupId, action.updates);
 }
 
 function executeDeleteGroup(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'delete_group' }>
 ): void {
+  // Resolve placeholder ID for group
+  const groupId = resolveId(ctx, action.group_id) ?? action.group_id;
+  const group = ctx.deps.groups.getById(groupId);
   if (!group) {
+    skip(ctx, 'delete_group', `Group not found: ${groupId}`);
     return;
   }
   // Note: Items in the group will have their group_id set to NULL via ON DELETE SET NULL
+  ctx.deps.groups.delete(groupId);
 }
 
 function executeAssignToGroup(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'assign_to_group' }>
 ): void {
+  // Resolve placeholder IDs for both item and group
+  const itemId = resolveId(ctx, action.item_id) ?? action.item_id;
+  const groupId = resolveId(ctx, action.group_id);
     return;
   }
+  invalidateItem(ctx, itemId);
 }
 
 // =============================================================================
@@ -341,6 +369,10 @@ function collectItemIdsForPrefetch(actions: PlanAction[]): Set<string> {
         }
         break;
       case 'assign_to_group':
+        // Skip placeholder IDs (items created in same batch)
+        if (!action.item_id.startsWith('$')) {
+          ids.add(action.item_id);
+        }
         break;
       // Group actions don't need item prefetch
       case 'create_group':

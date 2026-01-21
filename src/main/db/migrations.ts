@@ -1184,6 +1184,16 @@ interface Migration {
     },
   },
   {
+    id: 1030,
+    name: '030_add_group_is_collapsed',
+    up: (db: BetterSqliteDatabase) => {
+      // Add is_collapsed column to groups table for collapse/expand functionality
+      db.exec(`
+        ALTER TABLE groups ADD COLUMN is_collapsed INTEGER NOT NULL DEFAULT 0;
+      `);
+    },
+  },
+  {
     id: 1049,
     name: '049_remove_agent_instructions_from_projects',
     up: (db: BetterSqliteDatabase) => {

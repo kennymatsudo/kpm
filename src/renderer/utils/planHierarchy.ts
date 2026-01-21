@@ -1,4 +1,5 @@
 import type { PlanItem } from '../../shared/types';
+import { CARD_WIDTHS, GROUP_LAYOUT } from '../constants/layout';
 
 /**
  * TreeNode extends PlanItem with children for hierarchical display
@@ -72,8 +73,48 @@ export function buildHierarchy(items: PlanItem[]): HierarchyResult {
 }
 
 /**
+ * Calculate the height of a single card including all nested children.
+ * Used for accurate layout calculations in groups and auto-layout.
+ *
+ * @param item - The plan item to calculate height for
+ * @param childrenMap - Map from parent ID to list of child IDs
+ * @param itemMap - Map from item ID to item
+ * @param depth - Current nesting depth (default 0)
  */
+export function calculateCardHeight(
+  itemId: string,
+  childrenMap: Map<string, string[]>,
+  itemMap: Map<string, PlanItem>,
+  depth = 0
+): number {
+  const children = childrenMap.get(itemId) || [];
+  const hasChildren = children.length > 0;
+
+  // Height components based on actual CSS:
+  let height = padding; // total padding (top + bottom)
+  }
+
+  if (!hasChildren) {
+    return height;
+  }
+
+  // Add children container
+  const childHeights = children.map((childId, index) => {
+    const childHeight = calculateCardHeight(childId, childrenMap, itemMap, depth + 1);
+  });
+  height += childHeights.reduce((sum, h) => sum + h, 0);
+
+  return height;
+}
+
+/**
+ * Build children map and item map from flat items array.
+ * Useful for calculating heights across multiple items.
+ */
+export function buildItemMaps(items: PlanItem[]): {
+  childrenMap: Map<string, string[]>;
   itemMap: Map<string, PlanItem>;
+  itemIds: Set<string>;
 } {
   const childrenMap = new Map<string, string[]>();
   const itemMap = new Map<string, PlanItem>();
@@ -81,18 +122,182 @@ export function buildHierarchy(items: PlanItem[]): HierarchyResult {
 
   for (const item of items) {
     itemMap.set(item.id, item);
+    if (item.parent_id && item.parent_id !== item.id && itemIds.has(item.parent_id)) {
       const siblings = childrenMap.get(item.parent_id) || [];
       siblings.push(item.id);
       childrenMap.set(item.parent_id, siblings);
     }
   }
 
+  return { childrenMap, itemMap, itemIds };
+}
+
+/**
+ * Build hierarchy and calculate layout metadata for root items.
+ * Used for auto-layout calculations.
+ */
+export function buildHierarchyWithHeights(items: PlanItem[]): {
+  rootIds: string[];
+  rootHeights: number[];
+  itemMap: Map<string, PlanItem>;
+  childrenMap: Map<string, string[]>;
+} {
+  const rootIds: string[] = [];
+  const { childrenMap, itemMap, itemIds } = buildItemMaps(items);
+
+  // Find root items
+  for (const item of items) {
+    if (!item.parent_id || item.parent_id === item.id || !itemIds.has(item.parent_id)) {
+      rootIds.push(item.id);
+    }
+  }
+
+  // Calculate heights for all root items
+  const rootHeights = rootIds.map(id => calculateCardHeight(id, childrenMap, itemMap));
+
+  return { rootIds, rootHeights, itemMap, childrenMap };
+}
+
+// =============================================================================
+// Masonry Layout Utilities
+// =============================================================================
+
+/**
+ * Position result from masonry layout calculation
+ */
+export interface MasonryPosition {
+  id: string;
+  x: number;
+  y: number;
+}
+
+/**
+ * Options for masonry layout calculation
+ */
+export interface MasonryLayoutOptions {
+  /** Number of columns (default: 2 for groups, based on item count) */
+  columns?: number;
+  /** Starting X position */
+  startX: number;
+  /** Starting Y position */
+  startY: number;
+  /** Horizontal gap between columns */
+  horizontalGap?: number;
+  /** Vertical gap between rows */
+  verticalGap?: number;
+  /** Width of each item (default: CARD_WIDTHS[0]) */
+  itemWidth?: number;
+}
+
+/**
+ * Calculate masonry layout positions for items.
+ * Places each item in the shortest column (vertical-first layout).
+ *
+ * @param items - Array of items with id and height
+ * @param options - Layout configuration
+ * @returns Array of positions and the final column heights
+ */
+export function calculateMasonryLayout(
+  items: { id: string; height: number }[],
+  options: MasonryLayoutOptions
+): { positions: MasonryPosition[]; columnHeights: number[] } {
+  const {
+    columns = items.length === 1 ? 1 : 2,
+    startX,
+    startY,
+    horizontalGap = GROUP_LAYOUT.HORIZONTAL_GAP,
+    verticalGap = GROUP_LAYOUT.VERTICAL_GAP,
+    itemWidth = CARD_WIDTHS[0],
+  } = options;
+
+  const columnWidth = itemWidth + horizontalGap;
+  const columnHeights: number[] = new Array(columns).fill(0);
+  const positions: MasonryPosition[] = [];
+
+  for (const item of items) {
+    // Find the shortest column
+    let shortestCol = 0;
+    for (let c = 1; c < columns; c++) {
+      if (columnHeights[c] < columnHeights[shortestCol]) {
+        shortestCol = c;
+      }
     }
 
-    }
-
+    positions.push({
+      id: item.id,
+      x: startX + shortestCol * columnWidth,
+      y: startY + columnHeights[shortestCol],
     });
 
+    // Update column height
+    columnHeights[shortestCol] += item.height + verticalGap;
+  }
 
+  return { positions, columnHeights };
+}
 
+/**
+ * Calculate group bounds and item positions for a group's assigned items.
+ * Used by both Canvas.tsx for rendering and useAutoLayout.ts for layout calculations.
+ *
+ * @param groupId - The group ID
+ * @param groupPosition - The group's top-left position
+ * @param assignedItems - Items assigned to this group
+ * @param childrenMap - Map from parent ID to list of child IDs (for height calculation)
+ * @param itemMap - Map from item ID to item (for height calculation)
+ * @returns Group bounds and ideal positions for items
+ */
+export function calculateGroupLayout(
+  groupId: string,
+  groupPosition: { x: number; y: number },
+  assignedItems: PlanItem[],
+  childrenMap: Map<string, string[]>,
+): {
+  bounds: { x: number; y: number; width: number; height: number };
+  itemPositions: Map<string, { x: number; y: number }>;
+} {
+  const itemPositions = new Map<string, { x: number; y: number }>();
+
+  // No items assigned - return minimum bounds
+  if (assignedItems.length === 0) {
+    return {
+      bounds: {
+        x: groupPosition.x,
+        y: groupPosition.y,
+        width: GROUP_LAYOUT.PADDING_X * 2 + CARD_WIDTHS[0],
+        height: GROUP_LAYOUT.HEADER_HEIGHT + GROUP_LAYOUT.PADDING_TOP + GROUP_LAYOUT.PADDING_BOTTOM,
+      },
+      itemPositions,
+    };
+  }
+
+    id: item.id,
+  }));
+
+  const startX = groupPosition.x + GROUP_LAYOUT.PADDING_X;
+  const startY = groupPosition.y + GROUP_LAYOUT.HEADER_HEIGHT + GROUP_LAYOUT.PADDING_TOP;
+
+  // Calculate masonry positions
+  const { positions, columnHeights } = calculateMasonryLayout(itemsWithHeights, {
+    columns: numColumns,
+    startX,
+    startY,
+    horizontalGap: GROUP_LAYOUT.HORIZONTAL_GAP,
+    verticalGap: GROUP_LAYOUT.VERTICAL_GAP,
+    itemWidth: CARD_WIDTHS[0],
+  });
+
+  // Convert to map
+  for (const pos of positions) {
+    itemPositions.set(pos.id, { x: pos.x, y: pos.y });
+  }
+
+  // Calculate bounds from column heights
+  const maxColumnHeight = Math.max(...columnHeights) - GROUP_LAYOUT.VERTICAL_GAP; // Remove trailing gap
+
+  return {
+    bounds: {
+    },
+    itemPositions,
+  };
 }

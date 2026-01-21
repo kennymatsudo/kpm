@@ -10,6 +10,16 @@ import type { Group } from '../../../../shared/types';
 import type { IGroupRepository, GroupUpdates } from '../../interfaces';
 
 /**
+ * SQLite returns booleans as 0/1. Convert to proper boolean.
+ */
+function rowToGroup(row: Record<string, unknown>): Group {
+  return {
+    ...row,
+    is_collapsed: Boolean(row.is_collapsed),
+  } as Group;
+}
+
+/**
  * Prepared statements cache for hot paths.
  */
 interface PreparedStatements {
@@ -35,6 +45,8 @@ export class GroupRepository implements IGroupRepository {
 
       // Write operations - use RETURNING to avoid re-query
       insert: db.prepare(`
+        INSERT INTO groups (id, project_id, name, color, position_x, position_y, width, height, is_collapsed)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *
       `),
       delete: db.prepare('DELETE FROM groups WHERE id = ?'),
@@ -48,17 +60,28 @@ export class GroupRepository implements IGroupRepository {
   }
 
   getByProjectId(projectId: string): Group[] {
+    const rows = this.stmts.getByProjectId.all(projectId) as Record<string, unknown>[];
+    return rows.map(rowToGroup);
   }
 
   getById(id: string): Group | undefined {
+    const row = this.stmts.getById.get(id) as Record<string, unknown> | undefined;
+    return row ? rowToGroup(row) : undefined;
   }
 
+  create(group: Omit<Group, 'id' | 'created_at' | 'updated_at'>, id?: string): Group {
+    const row = this.stmts.insert.get(
+      groupId,
       group.project_id,
       group.name,
       group.color,
       group.position_x,
       group.position_y,
       group.width,
+      group.height,
+      group.is_collapsed ? 1 : 0
+    ) as Record<string, unknown>;
+    return rowToGroup(row);
   }
 
   update(id: string, updates: GroupUpdates): void {
@@ -88,6 +111,10 @@ export class GroupRepository implements IGroupRepository {
     if (updates.height !== undefined) {
       fields.push('height = ?');
       values.push(updates.height);
+    }
+    if (updates.is_collapsed !== undefined) {
+      fields.push('is_collapsed = ?');
+      values.push(updates.is_collapsed ? 1 : 0);
     }
 
     if (fields.length === 0) return;
