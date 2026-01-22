@@ -591,6 +591,17 @@ function mergeCustomFieldValues(
         console.log('[ExportService] Updating plan item with external_key:', { planItemId: planItem.id, external_key: created.key, external_url: syncUpdate.external_url });
         PlanItemRepository.update(planItem.id, syncUpdate);
 
+        // Create sync snapshot using the actual Jira data (after ADF roundtrip)
+        // This ensures subsequent syncs don't show false changes due to markdown conversion
+        SyncRepository.upsertSnapshot({
+          plan_item_id: planItem.id,
+          snapshot_title: createdIssue.title,
+          snapshot_description: createdIssue.description,
+          snapshot_label: planItem.label, // Label is not synced from Jira
+          snapshot_release_tag: planItem.release_tag, // Not synced from Jira
+          external_updated_at: createdIssue.updatedAt,
+        });
+
         createdKeys.set(planItem.id, created.key);
         result.created.push({ plan_item_id: planItem.id, jira_key: created.key });
         SyncQueueRepository.remove(entry.id);
@@ -617,6 +628,8 @@ function mergeCustomFieldValues(
           customFields: overrideFields,
         });
 
+        // Fetch the updated issue to get actual Jira data (after ADF roundtrip)
+
         // Execute status transition if queued
           try {
           } catch (transitionError) {
@@ -624,8 +637,10 @@ function mergeCustomFieldValues(
           }
         }
 
+        return { success: true, entry, planItem, newExternalStatus, updatedIssue };
       } catch (e) {
         const errorMsg = e instanceof Error ? e.message : 'Unknown error';
+        return { success: false, entry, planItem, error: errorMsg, updatedIssue: null };
       }
     });
 
@@ -653,6 +668,20 @@ function mergeCustomFieldValues(
             updateSyncFields.external_status = updateResult.newExternalStatus;
           }
           PlanItemRepository.update(updateResult.planItem.id, updateSyncFields);
+
+          // Create sync snapshot using the actual Jira data (after ADF roundtrip)
+          // This ensures subsequent syncs don't show false changes due to markdown conversion
+          if (updateResult.updatedIssue) {
+            SyncRepository.upsertSnapshot({
+              plan_item_id: updateResult.planItem.id,
+              snapshot_title: updateResult.updatedIssue.title,
+              snapshot_description: updateResult.updatedIssue.description,
+              snapshot_label: updateResult.planItem.label, // Label is not synced from Jira
+              snapshot_release_tag: updateResult.planItem.release_tag, // Not synced from Jira
+              external_updated_at: updateResult.updatedIssue.updatedAt,
+            });
+          }
+
           result.updated.push({
             plan_item_id: updateResult.planItem.id,
             jira_key: updateResult.planItem.external_key ?? '',
