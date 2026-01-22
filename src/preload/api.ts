@@ -391,6 +391,7 @@ const permission = {
 };
 
 const artifacts = {
+  list: (projectId: string): Promise<{ success: boolean; artifacts?: { filename: string; path: string; createdAt: string; modifiedAt: string; size: number }[]; error?: string }> =>
   read: (projectId: string, filename: string): Promise<{ success: boolean; content?: string; error?: string }> =>
   delete: (projectId: string, filename: string): Promise<{ success: boolean; error?: string }> =>
   import: (projectId: string, sourcePath: string): Promise<{ success: boolean; filename?: string; error?: string }> =>

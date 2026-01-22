@@ -7,6 +7,7 @@ interface AdfNode {
   type: string;
   content?: AdfNode[];
   text?: string;
+  marks?: { type: string; attrs?: Record<string, string> }[];
   attrs?: Record<string, unknown>;
 }
 
@@ -20,6 +21,7 @@ interface AdfDocument {
  * Convert markdown text to ADF document structure.
  * Returns null if input is empty/null.
  */
+  if (!markdown?.trim()) return null;
 
   const content: AdfNode[] = [];
   let i = 0;
@@ -48,6 +50,7 @@ interface AdfDocument {
     }
 
     // Heading
+    const headingMatch = /^(#{1,6})\s+(.+)$/.exec(line);
     if (headingMatch) {
       const level = headingMatch[1].length;
       const text = headingMatch[2];
@@ -187,6 +190,7 @@ function parseInlineContent(text: string): AdfNode[] {
 
   while (remaining.length > 0) {
     // Check for inline code first (highest precedence)
+    const codeMatch = /^`([^`]+)`/.exec(remaining);
     if (codeMatch) {
       nodes.push({
         type: 'text',
@@ -198,6 +202,7 @@ function parseInlineContent(text: string): AdfNode[] {
     }
 
     // Check for links [text](url)
+    const linkMatch = /^\[([^\]]+)\]\(([^)]+)\)/.exec(remaining);
     if (linkMatch) {
       nodes.push({
         type: 'text',
@@ -209,6 +214,7 @@ function parseInlineContent(text: string): AdfNode[] {
     }
 
     // Check for bold **text** or __text__
+    const boldMatch = /^(\*\*|__)([^*_]+)\1/.exec(remaining);
     if (boldMatch) {
       nodes.push({
         type: 'text',
@@ -220,6 +226,7 @@ function parseInlineContent(text: string): AdfNode[] {
     }
 
     // Check for italic *text* or _text_ (not preceded by *)
+    const italicMatch = /^(\*|_)([^*_]+)\1/.exec(remaining);
     if (italicMatch) {
       nodes.push({
         type: 'text',
@@ -231,6 +238,7 @@ function parseInlineContent(text: string): AdfNode[] {
     }
 
     // Check for strikethrough ~~text~~
+    const strikeMatch = /^~~([^~]+)~~/.exec(remaining);
     if (strikeMatch) {
       nodes.push({
         type: 'text',
@@ -242,6 +250,7 @@ function parseInlineContent(text: string): AdfNode[] {
     }
 
     // Find the next special character or end of string
+    const nextSpecialIndex = remaining.slice(1).search(/[*_`[~]/);
     const plainTextEnd = nextSpecialIndex === -1 ? remaining.length : nextSpecialIndex + 1;
 
     if (plainTextEnd > 0) {

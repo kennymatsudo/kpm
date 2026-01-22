@@ -3,6 +3,7 @@
  * Shows diff view for each changed field.
  */
 
+import type { PlanAction, PlanItem } from '../../../../shared/types';
 import { DiffViewer } from '../../ui/DiffViewer';
 
 interface UpdateItemDetailProps {

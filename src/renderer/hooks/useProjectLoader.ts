@@ -33,6 +33,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
     try {
       // 1. Fetch all new project data first (while old project is still visible)
 
+      const branchesById: Record<string, string | null> = {};
         for (const repo of repos) {
         }
 

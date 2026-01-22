@@ -30,10 +30,12 @@ export function Chat({ currentView }: ChatProps) {
       case 'plan_item':
         return resource.title;
       case 'project_file':
+      case 'repo': {
         // If path is provided, show file name; otherwise show repo name from store
         if (resource.path) {
         }
         const repo = repos.find((r) => r.id === resource.id);
+      }
       case 'document':
         return resource.title;
     }

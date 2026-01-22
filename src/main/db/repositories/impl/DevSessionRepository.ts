@@ -86,9 +86,11 @@ export class DevSessionRepository implements IDevSessionRepository {
   }
 
   getByProjectWithPlanItems(projectId: string): DevSessionWithPlanItem[] {
+    const rows = this.stmts.getByProjectWithPlanItems.all(projectId) as (DevSession & {
       pi_description: string | null;
       pi_label: string | null;
       pi_external_key: string | null;
+    })[];
 
     return rows.map((row) => ({
       id: row.id,

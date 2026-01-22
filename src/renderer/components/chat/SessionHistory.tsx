@@ -38,6 +38,7 @@ export function SessionHistory() {
     setIsOpen(false);
   };
 
+  const truncateMessage = (message: string | null, maxLength = 60) => {
     if (!message) return 'New conversation';
     // Clean up any image references from the message
     const cleaned = message.replace(/Images attached.*?\n\n/s, '').trim();

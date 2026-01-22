@@ -227,14 +227,17 @@ export function getBranches(repoPaths: string[]): Record<string, string | null> 
 
 /** Start watching a repository for branch changes */
 export function watchRepo(repoId: string, repoPath: string): void {
+  getDefaultService().watchRepo(repoId, repoPath);
 }
 
 /** Stop watching a repository */
 export function unwatchRepo(repoPath: string): void {
+  getDefaultService().unwatchRepo(repoPath);
 }
 
 /** Stop watching all repositories */
 export function unwatchAll(): void {
+  getDefaultService().unwatchAll();
 }
 
 /** Get the cached branch for a repo (if being watched) */

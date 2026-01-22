@@ -4,7 +4,9 @@ import type { FileNode } from '../../shared/types';
 /**
  * File source identifier
  * - 'project': Project folder files
+ * - repo ID (any other string): Files from a connected repository
  */
+export type FileSource = string;
 
 export interface SelectedFile {
   source: FileSource;

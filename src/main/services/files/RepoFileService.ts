@@ -25,6 +25,7 @@ export function createRepoFileService(deps: RepoFileServiceDeps) {
      * List directory contents within a connected repo.
      */
       repoId: string,
+      relativePath = '',
       options: { recursive?: boolean; depth?: number } = {}
       const repo = deps.getRepoById(repoId);
       if (!repo) {

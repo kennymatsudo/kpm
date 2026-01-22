@@ -171,6 +171,7 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
 
 // Type Mappings Tab Component
 interface TypeMappingsTabProps {
+  typeMappings: { id: string; kpm_label: string; tracker_issue_type_id: string }[];
   isLoading: boolean;
   newLabel: string;
   setNewLabel: (v: string) => void;

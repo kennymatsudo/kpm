@@ -8,8 +8,18 @@
  *   import type { ProjectCreateInput, PlanUpdateItemInput } from '@/main/ipc/validation/types';
  */
 
+import type { z } from 'zod';
 
 // Import all schemas
+import type { ProjectSchemas, RepoSchemas, AttachmentSchemas, StorybookSchemas } from './project';
+import type { PlanSchemas, planActionSchema } from './plan';
+import type { ChatSchemas, StreamingSessionSchemas } from './chat';
+import type { FileSchemas, FileExplorerSchemas } from './files';
+import type { TrackerSchemas, ExportSchemas } from './tracker';
+import type { DevSessionSchemas, WorktreeSchemas } from './dev-session';
+import type { SettingsSchemas } from './settings';
+import type { ArtifactSchemas, TempImageSchemas } from './artifacts';
+import type { ShellSchemas } from './shell';
 
 // =============================================================================
 // Project Types

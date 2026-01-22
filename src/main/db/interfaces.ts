@@ -5,3 +5,4 @@
  * @see ./interfaces/ for the source files
  */
 
+export type * from './interfaces/index';

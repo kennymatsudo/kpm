@@ -14,6 +14,7 @@ interface SidebarProps {
   onFileOpen?: (source: 'project', path: string, isEditable: boolean) => void;
 }
 
+export function Sidebar({ onDeleteProject: _onDeleteProject, onNewProject, onFileOpen }: SidebarProps) {
 
   return (
     <aside className="flex-1 sidebar flex flex-col overflow-hidden">

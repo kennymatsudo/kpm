@@ -67,15 +67,22 @@ function createMocks(overrides?: Partial<AttachmentServiceDeps>): AttachmentServ
 
   // Use type assertion because we only need a subset of fs methods
   const fs = {
+    access: vi.fn((filePath: unknown) => {
       if (!existingFiles.has(filePath as string)) {
+        return Promise.reject(new Error('ENOENT'));
       }
+      return Promise.resolve();
     }),
+    mkdir: vi.fn(() => Promise.resolve(undefined)),
+    copyFile: vi.fn(() => Promise.resolve(undefined)),
+    unlink: vi.fn(() => Promise.resolve(undefined)),
   } as unknown as AttachmentServiceDeps['fs'];
 
   const path = {
     join: vi.fn((...paths: string[]) => paths.join('/')),
     basename: vi.fn((p: string) => p.split('/').pop() || p),
     extname: vi.fn((p: string) => {
+      const match = /\.[^.]+$/.exec(p);
       return match ? match[0] : '';
     }),
   } as unknown as AttachmentServiceDeps['path'];

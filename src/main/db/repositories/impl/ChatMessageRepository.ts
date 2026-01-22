@@ -60,6 +60,7 @@ export class ChatMessageRepository implements IChatMessageRepository {
     // Use RETURNING to get inserted row in one query
   }
 
+  getRecentSessions(sessionId: string, limit = 5): ChatSessionSummary[] {
     return this.stmts.getRecentSessions.all(sessionId, limit) as ChatSessionSummary[];
   }
 
@@ -67,6 +68,7 @@ export class ChatMessageRepository implements IChatMessageRepository {
    * Delete old sessions beyond the keep limit to prevent unbounded database growth.
    * Keeps the N most recent sessions and deletes all messages from older ones.
    */
+  pruneOldSessions(sessionId: string, keepCount = 10): number {
     return result.changes;
   }
 }

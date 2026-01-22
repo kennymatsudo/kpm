@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Modal, ModalHeader, ModalBody } from '../../ui/Modal';
 import { useCredentialStore, useTrackerStore } from '../../../stores';
 import { TrackerSidebar } from './TrackerSidebar';
@@ -43,6 +44,7 @@ export function TrackerSettingsModal({ isOpen, onClose, currentProjectId, initia
     setSelectedItem('connection');
   };
 
+  const handleUnlink = (_associationId: string) => {
     // After unlinking, go back to connection
     setSelectedItem('connection');
     if (currentProjectId) {

@@ -24,6 +24,7 @@ function createIssue(key: string, issueType: string, parentKey: string | null = 
 // Helper to create async generator from array
 async function* arrayToAsyncGenerator<T>(items: T[]): AsyncGenerator<T> {
   for (const item of items) {
+    yield await Promise.resolve(item);
   }
 }
 

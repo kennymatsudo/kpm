@@ -1,7 +1,10 @@
+/* eslint-disable @typescript-eslint/require-await */
 /**
  * Relation Tools
  *
  * Tools for querying plan item dependencies and relationships
+ *
+ * Note: Tool handlers are declared async per SDK requirements, though most don't await.
  */
 
 import { z } from 'zod';

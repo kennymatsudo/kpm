@@ -1,6 +1,9 @@
+/* eslint-disable @typescript-eslint/require-await */
 /**
  * Document Update Tool
  *
+ *
+ * Note: Tool handlers are declared async per SDK requirements, though most don't await.
  */
 
 import { z } from 'zod';

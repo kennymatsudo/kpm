@@ -10,6 +10,7 @@ interface AdfNode {
   type: string;
   content?: AdfNode[];
   text?: string;
+  marks?: { type: string; attrs?: Record<string, string> }[];
   attrs?: Record<string, unknown>;
 }
 

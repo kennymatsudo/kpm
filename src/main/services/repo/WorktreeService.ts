@@ -97,6 +97,7 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
     /**
      * Delete a worktree
      */
+    async deleteWorktree(worktreeId: string, force = false): AsyncResult<void> {
       return wrapAsync(async () => {
         const worktree = deps.worktrees.get(worktreeId);
         if (!worktree) {

@@ -1,8 +1,11 @@
+/* eslint-disable @typescript-eslint/require-await */
 /**
  * Plan Changes Tool
  *
  * Allows Claude to propose plan modifications via a structured tool call
  * instead of text-based plan-actions blocks.
+ *
+ * Note: Tool handlers are declared async per SDK requirements, though most don't await.
  */
 
 import { z } from 'zod';

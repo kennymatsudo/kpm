@@ -24,6 +24,7 @@ export interface JiraCustomField {
   name: string;            // 'R&D Team'
   type: 'string' | 'option' | 'array' | 'number' | 'date' | 'user' | 'other';
   required: boolean;
+  allowedValues?: { id: string; value: string }[];  // For select/option fields
   defaultValue?: string;   // Default value (option ID for selects, text for strings)
 }
 
@@ -67,6 +68,7 @@ export interface JiraTransition {
 export interface TrackerClient {
   type: TrackerType;
   testConnection(): Promise<{ success: boolean; error?: string }>;
+  getAvailableProjects(): Promise<{ key: string; name: string }[]>;
   fetchIssues(projectKey: string): AsyncGenerator<ExternalIssue>;
   fetchIssue(issueKey: string): Promise<ExternalIssue>;
 }

@@ -49,8 +49,10 @@ function extractPath(toolName: string, input: Record<string, unknown>): string |
 
   // Bash commands - extract from command string if possible
   if (toolName === 'Bash' && typeof input.command === 'string') {
+    const command = input.command;
     // Try to extract file paths from common commands
     // This is a heuristic - we can't perfectly parse all bash commands
+    const match = /(?:^|\s)(?:\.\/|\/|~\/)?([^\s;|&<>]+(?:\/[^\s;|&<>]+)+)/.exec(command);
     return match ? match[0].trim() : null;
   }
 
@@ -186,6 +188,7 @@ export function createPermissionHandler(
       const result = await promptUser(toolName, input, options);
 
       // If "Allow Always" was selected, cache it via clientManager
+      if (result.behavior === 'allow' && 'allowAlways' in result && result.allowAlways) {
         clientManager.cachePermission(context.projectId, cacheKey);
       }
 

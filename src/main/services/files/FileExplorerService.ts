@@ -11,6 +11,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
      * List directory contents with optional recursion.
      */
       projectId: string,
+      relativePath = '',
       const projectFolder = deps.getProjectFolder(projectId);
       if (!projectFolder) {
         return failure('Project not found');

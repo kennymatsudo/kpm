@@ -116,6 +116,7 @@ class ClaudeClientManager {
    * Dispose a single session by key.
    * Key format: "main:{projectId}"
    */
+  disposeSession(key: string): void {
     const session = this.sessions.get(key);
     if (session) {
       this.sessions.delete(key);
@@ -127,6 +128,7 @@ class ClaudeClientManager {
    * Dispose all sessions.
    * Called on app quit.
    */
+  disposeAll(): void {
     const count = this.sessions.size;
     if (count > 0) {
       console.log(`[ClientManager] Disposing all ${count} sessions`);
@@ -165,6 +167,7 @@ class ClaudeClientManager {
 
     if (keysToDispose.length > 0) {
       console.log(`[ClientManager] Cleaning up ${keysToDispose.length} idle sessions`);
+      keysToDispose.forEach((key) => this.disposeSession(key));
     }
   }
 

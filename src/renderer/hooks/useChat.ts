@@ -14,6 +14,7 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
 
     if (!projectId) return;
 
+  const cancel = useCallback(() => {
     // Backend cleanup happens in background - don't await
       console.error('[useChat] Cancel failed:', err);
     });

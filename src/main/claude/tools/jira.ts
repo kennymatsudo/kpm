@@ -122,6 +122,7 @@ function formatJiraError(error: unknown) {
             ORDER BY item_order
           `
             )
+            .all(projectId) as {
             id: string;
             title: string;
             parent_id: string | null;
@@ -130,6 +131,7 @@ function formatJiraError(error: unknown) {
             label: string | null;
             release_tag: string | null;
             external_key: string | null;
+          }[];
 
           // Get Jira issues
           const client = await TrackerClientService.getJiraClient();
@@ -138,6 +140,7 @@ function formatJiraError(error: unknown) {
           // Find gaps
           const planItemKeys = new Set(
             planItems
+              .map((item) => (/^([A-Z]+-\d+)/.exec(item.title))?.[1])
               .filter(Boolean)
           );
 
@@ -145,6 +148,7 @@ function formatJiraError(error: unknown) {
 
           const inJiraNotInPlan = jiraIssues.filter((issue) => !planItemKeys.has(issue.key));
           const inPlanNotInJira = planItems.filter((item) => {
+            const match = /^([A-Z]+-\d+)/.exec(item.title);
             return match && !jiraKeys.has(match[1]);
           });
 

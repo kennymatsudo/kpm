@@ -187,6 +187,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       managed = sessions.get(key);
     }
 
+    if (managed?.state !== 'ready') {
     }
 
     // Check if underlying session is still usable (may have ended after interrupt/abort)
@@ -339,6 +340,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   /** Options for sending a chat message */
   interface SendChatMessageOptions {
     model?: ModelType;
+    focusedResources?: { type: string; path: string }[];
     chatSessionId?: string;
     /** Current UI view - used for prompt customization */
     currentView?: ViewMode;

@@ -106,6 +106,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
       if (node.isDirectory) {
         toggleProjectExpanded(path);
         if (projectId && !node.children?.length) {
+          void loadProjectDirectory(projectId, path);
         }
       } else if (onFileOpen) {
         const isEditable = isEditableFile(node.name);
@@ -146,6 +147,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         }
       }
 
+      void loadProjectDirectory(projectId, targetPath || undefined);
     },
   );
 

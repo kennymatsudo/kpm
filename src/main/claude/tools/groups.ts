@@ -1,9 +1,12 @@
+/* eslint-disable @typescript-eslint/require-await */
 /**
  * Group Tools
  *
  * Query tools for reading visual group containers (Figma-style frames),
  *
  * Groups are purely visual - they organize plan items without affecting hierarchy.
+ *
+ * Note: Tool handlers are declared async per SDK requirements, though most don't await.
  */
 
 import { z } from 'zod';
@@ -35,6 +38,7 @@ export function createGroupTools(
   /**
    * Get items assigned to a specific group
    */
+  function getGroupItems(groupId: string): { id: string; title: string; status_category: string }[] {
     return db
       .prepare(
         `
@@ -44,6 +48,7 @@ export function createGroupTools(
         ORDER BY item_order
       `
       )
+      .all(groupId) as { id: string; title: string; status_category: string }[];
   }
 
   return [
@@ -119,11 +124,13 @@ export function createGroupTools(
               LIMIT ?
             `
             )
+            .all(projectId, limit) as {
               id: string;
               title: string;
               status_category: string;
               label: string;
               parent_id: string | null;
+            }[];
 
           return jsonResult({ items, count: items.length });
         } catch (error) {
@@ -354,6 +361,7 @@ export function createGroupTools(
               WHERE project_id = ? AND group_id IS NOT NULL
             `
             )
+            .all(projectId) as { id: string }[];
 
           if (assignedItems.length === 0) {
             return jsonResult({ message: 'No items are assigned to groups', count: 0 });

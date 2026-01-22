@@ -104,6 +104,7 @@ interface BoardViewProps {
 
   const handleDrop = useCallback(
     (itemId: string, newStatus: StatusCategory) => {
+      void updateStatusCategory(itemId, newStatus);
       setDraggedItemId(null);
     },
   );

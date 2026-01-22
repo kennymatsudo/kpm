@@ -13,6 +13,7 @@ export function TrackerSettings({ currentProjectId }: Props) {
   const [showFullSettings, setShowFullSettings] = useState(false);
 
   useEffect(() => {
+  }, [currentProjectId, loadCredentials, loadAssociations]);
 
   const isLoading = isLoadingCreds || isLoadingAssociations;
 

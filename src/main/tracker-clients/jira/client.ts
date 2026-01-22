@@ -58,8 +58,10 @@ export class JiraClient implements TrackerClient {
     }
   }
 
+  async getAvailableProjects(): Promise<{ key: string; name: string }[]> {
     try {
       const result = await this.client.projects.searchProjects();
+      return result.values?.map(p => ({ key: p.key, name: p.name })) ?? [];
     } catch (error) {
       throw TrackerError.fromJiraError(error);
     }
@@ -228,6 +230,7 @@ export class JiraClient implements TrackerClient {
   /**
    * Get all components for a project
    */
+  async getProjectComponents(projectKey: string): Promise<{ id: string; name: string }[]> {
     try {
       const project = await this.client.projects.getProject({ projectIdOrKey: projectKey });
       return project.components?.map(c => ({ id: c.id!, name: c.name! })) ?? [];
@@ -240,6 +243,7 @@ export class JiraClient implements TrackerClient {
    * Get all available statuses for a project.
    * Used for status mapping configuration.
    */
+  async getProjectStatuses(projectKey: string): Promise<{ id: string; name: string; categoryKey: string }[]> {
     try {
       const result = await this.client.projects.getAllStatuses({ projectIdOrKey: projectKey });
       const statusSet = new Map<string, { id: string; name: string; categoryKey: string }>();
@@ -410,6 +414,9 @@ export class JiraClient implements TrackerClient {
       const result = await this.client.issues.createIssue({ fields });
       console.log('[JiraClient] Issue created successfully:', result?.key);
       return {
+        id: result.id,
+        key: result.key,
+        self: result.self,
       };
     } catch (error) {
       console.error('[JiraClient] createIssue failed. Full error:', JSON.stringify(error, null, 2));

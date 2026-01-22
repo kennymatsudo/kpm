@@ -136,6 +136,7 @@ class Statement {
  */
 export class Database {
   private db: SqlJsDatabase;
+  private _open = true;
 
   constructor(_filename?: string, _options?: object) {
     if (!SQL) {

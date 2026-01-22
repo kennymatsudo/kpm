@@ -27,6 +27,7 @@ interface StorybookComponent {
   id: string;
   title: string;
   storyCount: number;
+  stories: { id: string; name: string }[];
   tags: string[];
 }
 

@@ -3,6 +3,7 @@ import { SyncConflictCard } from './SyncConflictCard';
 import { SyncDeletedSection } from './SyncDeletedSection';
 import { SyncErrorBanner } from './SyncErrorBanner';
 import { SyncReviewSkeleton } from './SyncSkeleton';
+import { SyncUpdateCard } from './SyncUpdateCard';
 import { Modal, ModalHeader, ModalFooter } from '../../ui/Modal';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 
@@ -208,6 +209,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
             </h3>
             <div className="space-y-2">
               {updated_items.map(item => (
+                <SyncUpdateCard key={item.plan_item_id} item={item} />
               ))}
             </div>
           </section>

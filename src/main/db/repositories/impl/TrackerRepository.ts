@@ -220,6 +220,7 @@ export class TrackerRepository implements ITrackerRepository {
   // ============================================
 
   getAssociations(projectId: string): TrackerAssociation[] {
+    const rows = this.stmts.getAssociations.all(projectId) as (Omit<TrackerAssociation, 'status_mapping' | 'custom_field_values'> & { status_mapping: string | null; custom_field_values: string | null })[];
     return rows.map((row) => ({
       ...row,
       status_mapping: parseStatusMapping(row.status_mapping),
@@ -228,6 +229,7 @@ export class TrackerRepository implements ITrackerRepository {
   }
 
   getAssociationsWithContext(projectId: string): TrackerAssociationWithScope[] {
+    const rows = this.stmts.getAssociationsWithContext.all(projectId) as (Omit<TrackerAssociationWithScope, 'status_mapping' | 'custom_field_values'> & { status_mapping: string | null; custom_field_values: string | null })[];
     return rows.map((row) => ({
       ...row,
       status_mapping: parseStatusMapping(row.status_mapping),

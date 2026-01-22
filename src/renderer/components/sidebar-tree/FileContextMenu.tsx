@@ -19,6 +19,7 @@ interface FileContextMenuProps {
 export function FileContextMenu({
   x,
   y,
+  path: _path,
   node,
   isFocused,
   onClose,

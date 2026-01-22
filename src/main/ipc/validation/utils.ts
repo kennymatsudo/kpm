@@ -4,6 +4,7 @@
  * Provides validation wrappers, error classes, and response types for IPC handlers.
  */
 
+import type { z, ZodError } from 'zod';
 
 /**
  * Custom error class for validation failures.

@@ -451,6 +451,7 @@ function DetailPanel({
   item,
   onRemove,
   hasIssueType,
+  issueTypeId: _issueTypeId,
   customFields,
   customFieldDefaults,
   isLoadingCustomFields,

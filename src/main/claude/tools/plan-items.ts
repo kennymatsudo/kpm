@@ -1,9 +1,12 @@
+/* eslint-disable @typescript-eslint/require-await */
 /**
  * Plan Item Tools
  *
  * Query tools for reading plan items, and bulk modification tools that emit
  *
  * IMPORTANT: All modification tools MUST emit actions via onPlanActions callback.
+ *
+ * Note: Tool handlers are declared async per SDK requirements, though most don't await.
  */
 
 import { z } from 'zod';
@@ -92,6 +95,7 @@ export function createPlanItemTools(
       GROUP BY parent_id
     `
       )
+      .all(projectId) as { parentId: string | null; count: number }[];
 
     const map = new Map<string, number>();
     for (const row of rows) {
@@ -276,6 +280,7 @@ export function createPlanItemTools(
             const placeholders = parentIds.map(() => '?').join(', ');
             const rows = db
               .prepare(`SELECT id, title FROM plan_items WHERE id IN (${placeholders})`)
+              .all(...parentIds) as { id: string; title: string }[];
             for (const row of rows) {
               parentTitleMap.set(row.id, row.title);
             }
@@ -361,6 +366,7 @@ export function createPlanItemTools(
       },
       async ({ projectId, itemId }) => {
         const item = planItemRepo.get(itemId);
+        if (item?.project_id !== projectId) {
           return toolError(`Plan item not found: ${itemId}`);
         }
 
@@ -414,10 +420,12 @@ export function createPlanItemTools(
           WHERE project_id = ? AND (from_item_id = ? OR to_item_id = ?)
         `
           )
+          .all(projectId, itemId, itemId) as {
             id: string;
             from_item_id: string;
             to_item_id: string;
             relation_type: string;
+          }[];
 
         // Collect related item IDs and fetch them
         const relatedIds = new Set<string>();
@@ -432,6 +440,9 @@ export function createPlanItemTools(
         }
 
         // Categorize dependencies
+        const blockedBy: { id: string; title: string; status: string | null; external_key: string | null }[] = [];
+        const blocks: { id: string; title: string; status: string | null; external_key: string | null }[] = [];
+        const relatedTo: { id: string; title: string; external_key: string | null }[] = [];
 
         for (const rel of itemRelations) {
           const otherId = rel.from_item_id === itemId ? rel.to_item_id : rel.from_item_id;
@@ -492,10 +503,12 @@ export function createPlanItemTools(
               `
             `
             )
+            .all(projectId) as {
               id: string;
               title: string;
               parent_id: string;
               external_parent_key: string | null;
+            }[];
 
           if (nestedItems.length === 0) {
             return jsonResult({ message: 'No nested items to flatten', count: 0 });
@@ -568,6 +581,7 @@ export function createPlanItemTools(
 
             const rows = db
               .prepare(`SELECT id FROM plan_items WHERE ${where.join(' AND ')}`)
+              .all(...params) as { id: string }[];
             idsToUpdate = rows.map((r) => r.id);
           } else {
             return toolError('Must provide either itemIds or filter criteria');
@@ -634,6 +648,7 @@ export function createPlanItemTools(
 
             const rows = db
               .prepare(`SELECT id FROM plan_items WHERE ${where.join(' AND ')}`)
+              .all(...params) as { id: string }[];
             idsToDelete = rows.map((r) => r.id);
           } else {
             return toolError('Must provide either itemIds or filter criteria');
@@ -655,6 +670,7 @@ export function createPlanItemTools(
           `);
 
           for (const id of idsToDelete) {
+            const descendants = getDescendants.all(id) as { id: string }[];
             for (const d of descendants) {
               allIds.add(d.id);
             }
@@ -776,6 +792,7 @@ export function createPlanItemTools(
 
             const rows = db
               .prepare(`SELECT id FROM plan_items WHERE ${where.join(' AND ')}`)
+              .all(...params) as { id: string }[];
             idsToUpdate = rows.map((r) => r.id);
           } else {
             return toolError('Must provide either itemIds or filter criteria');
@@ -843,6 +860,7 @@ export function createPlanItemTools(
 
             const rows = db
               .prepare(`SELECT id FROM plan_items WHERE ${where.join(' AND ')}`)
+              .all(...params) as { id: string }[];
             idsToUpdate = rows.map((r) => r.id);
           } else {
             return toolError('Must provide either itemIds or filter criteria');
@@ -921,6 +939,7 @@ export function createPlanItemTools(
           }
 
           const params = direction === 'all' ? [projectId, ...itemIds, ...itemIds] : [projectId, ...itemIds];
+          const relations = db.prepare(query).all(...params) as { id: string }[];
 
           if (relations.length === 0) {
             return jsonResult({ message: 'No dependencies found to remove', count: 0 });

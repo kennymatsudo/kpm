@@ -27,6 +27,7 @@ import { useSyncStore } from './tracker/useSyncStore';
 import { useGroupStore } from './groupStore';
 import { useWorkspaceStore } from './workspaceStore';
 
+interface AnyStore { getState: () => unknown }
 
 interface StoreEntry {
   name: string;

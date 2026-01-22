@@ -4,6 +4,7 @@
  * Handles renderer <-> main process communication for development sessions.
  */
 
+import { ipcMain, type BrowserWindow } from 'electron';
 import type { DevSessionService } from '../../services/repo/DevSessionService';
 import { DevSessionSchemas, createIpcHandler } from '../validation';
 import { IPC_CHANNELS } from '../channels';

@@ -55,7 +55,9 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
     }
 
     setSaveStatus('unsaved');
+    const timer = setTimeout(() => {
       setSaveStatus('saving');
+      void saveFile().then(() => setSaveStatus('saved'));
     }, 1000);
 
     return () => clearTimeout(timer);

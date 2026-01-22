@@ -208,6 +208,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
      */
     async deleteSession(
       sessionId: string,
+      cleanupWorktree = true
     ): AsyncResult<void> {
       try {
         const session = deps.devSessions.get(sessionId);

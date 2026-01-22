@@ -924,6 +924,8 @@ interface Migration {
           }
 
           // Then overlay __default__ values (they take priority)
+          if (parsed.__default__ && typeof parsed.__default__ === 'object') {
+            Object.assign(flattened, parsed.__default__);
           }
 
           // Update with flattened structure (or null if empty)
