@@ -1,4 +1,11 @@
 import { useCallback } from 'react';
+import {
+  resolveGroupCollisions,
+  checkCollisionWithObstacles,
+  findEscapeOffset,
+  type PositionableGroup,
+  type Rect,
+} from '../../../utils/collision';
 import type { PlanItem, Group } from '../../../../shared/types';
 
 // -----------------------------------------------------------------------------
@@ -96,9 +103,38 @@ function getGroupDimensions(
         y: pos.y + offsetY,
       }));
 
+        x: item.x,
+        y: item.y,
+        height: item.height,
+      }));
+
+      const resolvedPositions = centeredPositions.map(pos => {
+
+        const rect: Rect = {
+          x: pos.x,
+          y: pos.y,
+        };
+
+        if (checkCollisionWithObstacles(rect, obstacles)) {
+          const offset = findEscapeOffset(rect, obstacles);
+          const resolvedPos = { ...pos, x: pos.x + offset.dx, y: pos.y + offset.dy };
+          obstacles.push({
+            x: resolvedPos.x,
+            y: resolvedPos.y,
+            width: rect.width,
+            height: rect.height,
+          });
+          return resolvedPos;
+        }
+
+        obstacles.push(rect);
+        return pos;
+      });
+
       const updatePromises: Promise<unknown>[] = [];
       const groupNewPositions = new Map<string, { x: number; y: number; width: number; height: number }>();
 
+      for (const { id, x, y } of resolvedPositions) {
         if (id.startsWith('group:')) {
           const groupId = id.replace('group:', '');
           const dims = groupDimensionsMap.get(groupId) ?? { width: 300, height: 200 };
