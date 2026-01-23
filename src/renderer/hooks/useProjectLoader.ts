@@ -89,6 +89,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
           try {
             await fetchBranches();
             endBranchFetch({ repoCount: repos.length });
+          } catch {
             endBranchFetch({ error: true });
             return;
           }

@@ -173,6 +173,7 @@ export function ApprovalOverlays() {
       {currentItem.type === 'claude-md' && (
           onDismiss={() => handleDismiss(currentItem.id)}
           isApplying={isApplying}
+          embedded
         />
       )}
 

@@ -35,6 +35,7 @@ interface LayoutProps {
   // Extracted hooks
   const { sidebarWidth, chatWidth, handleSidebarResizeStart, handleChatResizeStart } = usePanelResize();
   const { mainView, viewMode, setMainView, setViewMode } = usePersistedViewState(currentProjectId);
+
   const handleMainViewChange = useCallback((view: typeof mainView) => {
     if (view === mainView) return;
     const end = startPerfSpan('view.main.switch', { from: mainView, to: view });

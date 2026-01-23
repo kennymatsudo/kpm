@@ -13,6 +13,10 @@ install:
 # Start dev server
 	npm run dev
 
+# Build and run production build
+start:
+	npm run build && npm run start
+
 db\:reset:
 	rm -f ~/Library/Application\ Support/KPM\ -\ Planning\ Workbench/planner.db
 	@echo "Database reset. Restart the app."

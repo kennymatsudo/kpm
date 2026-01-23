@@ -46,6 +46,13 @@ function createMocks(overrides?: Partial<RepoServiceDeps>): RepoServiceDeps {
       }
       return result;
     }),
+    getBranchesAsync: vi.fn(async (paths: string[]) => {
+      const result: Record<string, string | null> = {};
+      for (const p of paths) {
+        result[p] = 'main';
+      }
+      return result;
+    }),
     getCachedBranch: vi.fn(() => 'main'),
   };
 

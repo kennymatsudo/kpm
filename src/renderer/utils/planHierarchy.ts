@@ -394,6 +394,7 @@ export function calculateGroupLayout(
 
   // Calculate bounds from column heights
   const maxColumnHeight = Math.max(...columnHeights) - GROUP_LAYOUT.VERTICAL_GAP; // Remove trailing gap
+  const contentWidth = CARD_WIDTHS[0] * numColumns + GROUP_LAYOUT.HORIZONTAL_GAP * Math.max(0, numColumns - 1);
 
   const bounds = {
     x: groupPosition.x,

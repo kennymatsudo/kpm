@@ -54,6 +54,7 @@ export function createRepoWatcherService(deps: RepoWatcherServiceDeps) {
       if (stats.isDirectory()) return gitPath;
       if (stats.isFile()) {
         const contents = fs.readFileSync(gitPath, 'utf-8');
+        const match = /^gitdir:\s*(.+)$/m.exec(contents);
         if (!match) return null;
         const gitDirPath = match[1].trim();
         return path.isAbsolute(gitDirPath) ? gitDirPath : path.resolve(repoPath, gitDirPath);
@@ -71,6 +72,7 @@ export function createRepoWatcherService(deps: RepoWatcherServiceDeps) {
       if (stats.isDirectory()) return gitPath;
       if (stats.isFile()) {
         const contents = await fs.promises.readFile(gitPath, 'utf-8');
+        const match = /^gitdir:\s*(.+)$/m.exec(contents);
         if (!match) return null;
         const gitDirPath = match[1].trim();
         return path.isAbsolute(gitDirPath) ? gitDirPath : path.resolve(repoPath, gitDirPath);
