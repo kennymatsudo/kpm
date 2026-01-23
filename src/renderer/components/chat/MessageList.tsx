@@ -67,6 +67,8 @@ const AssistantMessageContent = memo(function AssistantMessageContent({
 }: {
   segments: MessageSegment[];
 }) {
+  const fullText = useMemo(() => getTextContent(segments), [segments]);
+  const processed = useMemo(() => processMessageContent(fullText), [fullText]);
 
   return (
     <>
@@ -95,6 +97,19 @@ const StreamingContent = memo(function StreamingContent({
         );
       })}
     </>
+  );
+});
+
+  const isUser = message.role === 'user';
+  const textContent = useMemo(() => getTextContent(message.segments), [message.segments]);
+  const userParsed = useMemo(
+  );
+
+  return (
+
+        </div>
+      </div>
+    </div>
   );
 });
 

@@ -19,6 +19,7 @@ interface CanvasProps {
   onCreateItem?: (canvasPosition: { x: number; y: number }) => void;
   onReparent: (itemIds: string[], newParentId: string | null) => Promise<void>;
   onUpdatePosition: (itemId: string, x: number, y: number) => void;
+  onUpdatePositions?: (updates: { id: string; x: number; y: number }[]) => Promise<void>;
   onAutoLayout: (options?: AutoLayoutOptions) => Promise<void>;
   /** Assign/unassign items to a group (groupId = null to unassign) */
   onAssignToGroup?: (itemIds: string[], groupId: string | null) => Promise<void>;
@@ -35,6 +36,7 @@ interface CanvasProps {
   onCreateItem,
   onReparent,
   onUpdatePosition,
+  onUpdatePositions,
   onAutoLayout,
   onAssignToGroup,
 }: CanvasProps) {
@@ -69,6 +71,7 @@ interface CanvasProps {
   const selectionSignaturesRef = useRef<Map<string, string>>(new Map());
 
 
+
   // Apply group layout - items in groups snap to grid positions when not dragging
   useEffect(() => {
     if (draggingGroupId) return;
@@ -79,6 +82,7 @@ interface CanvasProps {
     const itemsToUpdate: { id: string; x: number; y: number }[] = [];
 
     for (const [itemId, idealPos] of idealPositions) {
+      const item = itemMap.get(itemId);
       if (!item) continue;
 
       const currentX = item.position_x ?? 0;
@@ -91,9 +95,17 @@ interface CanvasProps {
       }
     }
 
+    if (itemsToUpdate.length === 0) return;
+
+    if (onUpdatePositions) {
+      void onUpdatePositions(itemsToUpdate);
+      return;
+    }
+
     for (const { id, x, y } of itemsToUpdate) {
       onUpdatePosition(id, x, y);
     }
+  }, [groupLayoutInfo, itemMap, onUpdatePosition, onUpdatePositions, draggingGroupId]);
 
   const selectionSignatures = useMemo(() => {
     const signatures = new Map<string, string>();

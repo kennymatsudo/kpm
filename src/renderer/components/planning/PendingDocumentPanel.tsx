@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom';
 import { CloseIcon } from '../icons';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { MotionButton } from '../ui/MotionButton';
+import { DiffViewer, computeDiff, getDiffStatsFromDiff } from '../ui/DiffViewer';
 
 interface PendingDocumentPanelProps {
   filePath: string;
@@ -42,6 +43,18 @@ export function PendingDocumentPanel({
     setIsExpanded(true);
   }, [content]);
 
+  const summaryDiffLines = useMemo(
+    () => computeDiff(oldContent, content),
+    [oldContent, content]
+  );
+  const { addedCount, removedCount } = useMemo(
+    () => getDiffStatsFromDiff(summaryDiffLines),
+    [summaryDiffLines]
+  );
+  const editedDiffLines = useMemo(
+    () => computeDiff(oldContent, editedContent),
+    [oldContent, editedContent]
+  );
 
   // Collapsed panel (floating at bottom)
   const collapsedPanel = (

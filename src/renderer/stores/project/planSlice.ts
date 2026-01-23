@@ -134,6 +134,41 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
     }
   },
 
+  updateItemPositions: async (updates) => {
+    if (updates.length === 0) return;
+
+    // Round to integers and de-dupe by item id.
+    const updateMap = new Map<string, { x: number; y: number }>();
+    for (const update of updates) {
+      updateMap.set(update.id, {
+        x: Math.round(update.x),
+        y: Math.round(update.y),
+      });
+    }
+
+    // Update local state optimistically in a single pass.
+    set((state) => ({
+      planItems: state.planItems.map((item) => {
+        const position = updateMap.get(item.id);
+        return position ? { ...item, position_x: position.x, position_y: position.y } : item;
+      }),
+      error: null,
+    }));
+
+    const { refreshPlanItems } = get();
+    try {
+      );
+
+        await refreshPlanItems();
+      }
+    } catch (error) {
+      const errorMessage = `Failed to update item positions: ${String(error)}`;
+      console.error(errorMessage);
+      await refreshPlanItems();
+      set({ error: errorMessage });
+    }
+  },
+
   updatePlanItem: async (itemId, updates) => {
     const { refreshPlanItems } = get();
     set({ error: null });

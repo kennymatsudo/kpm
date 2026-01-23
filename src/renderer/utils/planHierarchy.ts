@@ -108,6 +108,36 @@ export function calculateCardHeight(
 }
 
 /**
+ * Build a height map for a hierarchy tree.
+ * Assumes each item has a single parent so depth is stable per node.
+ */
+export function buildHeightMapFromTree(nodes: TreeNode[]): Map<string, number> {
+  const heightMap = new Map<string, number>();
+
+  const computeHeight = (node: TreeNode, depth: number): number => {
+    const cached = heightMap.get(node.id);
+    if (cached !== undefined) return cached;
+
+    const hasChildren = node.children.length > 0;
+
+    let height = padding;
+    }
+
+    if (hasChildren) {
+      node.children.forEach((child, index) => {
+        const childHeight = computeHeight(child, depth + 1);
+      });
+    }
+
+    heightMap.set(node.id, height);
+    return height;
+  };
+
+  nodes.forEach((node) => computeHeight(node, 0));
+  return heightMap;
+}
+
+/**
  * Build children map and item map from flat items array.
  * Useful for calculating heights across multiple items.
  */
@@ -293,6 +323,7 @@ export function calculateMasonryLayout(
  * @param assignedItems - Items assigned to this group
  * @param childrenMap - Map from parent ID to list of child IDs (for height calculation)
  * @param itemMap - Map from item ID to item (for height calculation)
+ * @param groupWidth - Optional group width to derive column count
  * @returns Group bounds and ideal positions for items
  */
 export function calculateGroupLayout(
@@ -300,10 +331,16 @@ export function calculateGroupLayout(
   groupPosition: { x: number; y: number },
   assignedItems: PlanItem[],
   childrenMap: Map<string, string[]>,
+  itemMap: Map<string, PlanItem>,
+  heightMap?: Map<string, number>,
+  groupWidth?: number
 ): {
   bounds: { x: number; y: number; width: number; height: number };
   itemPositions: Map<string, { x: number; y: number }>;
 } {
+  const shouldDebug = typeof window !== 'undefined' &&
+    (window as unknown as { __DEBUG_GROUP_LAYOUT?: boolean }).__DEBUG_GROUP_LAYOUT === true;
+
   const itemPositions = new Map<string, { x: number; y: number }>();
 
   // No items assigned - return minimum bounds
@@ -325,8 +362,18 @@ export function calculateGroupLayout(
   // Calculate heights for each item (using sorted order)
   const itemsWithHeights = sortedItems.map(item => ({
     id: item.id,
+    height: heightMap?.get(item.id) ?? calculateCardHeight(item.id, childrenMap, itemMap),
   }));
 
+  // Determine column count based on available width, capped by MAX_COLUMNS
+  const maxColumns = Math.min(GROUP_LAYOUT.MAX_COLUMNS, sortedItems.length);
+
+  if (groupWidth && groupWidth > 0) {
+    const availableWidth = groupWidth - GROUP_LAYOUT.PADDING_X * 2;
+    const columnSpan = CARD_WIDTHS[0] + GROUP_LAYOUT.HORIZONTAL_GAP;
+    const possibleColumns = Math.floor((availableWidth + GROUP_LAYOUT.HORIZONTAL_GAP) / columnSpan);
+    numColumns = Math.max(1, Math.min(maxColumns, possibleColumns || 1));
+  }
   const startX = groupPosition.x + GROUP_LAYOUT.PADDING_X;
   const startY = groupPosition.y + GROUP_LAYOUT.HEADER_HEIGHT + GROUP_LAYOUT.PADDING_TOP;
 
@@ -348,8 +395,29 @@ export function calculateGroupLayout(
   // Calculate bounds from column heights
   const maxColumnHeight = Math.max(...columnHeights) - GROUP_LAYOUT.VERTICAL_GAP; // Remove trailing gap
 
+  const bounds = {
+    x: groupPosition.x,
+    y: groupPosition.y,
+    width: contentWidth + GROUP_LAYOUT.PADDING_X * 2,
+    height: maxColumnHeight + GROUP_LAYOUT.HEADER_HEIGHT + GROUP_LAYOUT.PADDING_TOP + GROUP_LAYOUT.PADDING_BOTTOM,
+  };
+
+  if (shouldDebug) {
+    console.debug('[group-layout]', {
+      groupId,
+      assignedCount: assignedItems.length,
+      groupWidth,
+      numColumns,
+      bounds,
+    });
+  }
+
   return {
     bounds: {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
     },
     itemPositions,
   };

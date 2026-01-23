@@ -1,3 +1,4 @@
+
 /**
  * DiffViewer Component
  *
@@ -14,6 +15,8 @@ interface DiffViewerProps {
   oldContent: string | null;
   /** New content to display */
   newContent: string;
+  /** Optional precomputed diff lines to avoid recomputation */
+  diffLines?: DiffLine[];
 }
 
 export function computeDiff(oldContent: string | null, newContent: string): DiffLine[] {
@@ -21,6 +24,10 @@ export function computeDiff(oldContent: string | null, newContent: string): Diff
 
 /**
  */
+  const diffLines = useMemo(() => {
+    if (diffLinesProp) return diffLinesProp;
+    return computeDiff(oldContent, newContent);
+  }, [diffLinesProp, oldContent, newContent]);
 
   return (
     </div>
@@ -35,6 +42,20 @@ export function getDiffStats(oldContent: string | null, newContent: string): {
   removedCount: number;
   unchangedCount: number;
 } {
+  return getDiffStatsFromDiff(computeDiff(oldContent, newContent));
+}
+
+/**
+ * Get diff statistics from precomputed diff lines.
+ */
+export function getDiffStatsFromDiff(diffLines: DiffLine[]): {
+  addedCount: number;
+  removedCount: number;
+  unchangedCount: number;
+} {
   return {
+    addedCount: diffLines.filter((line) => line.type === 'added').length,
+    removedCount: diffLines.filter((line) => line.type === 'removed').length,
+    unchangedCount: diffLines.filter((line) => line.type === 'unchanged').length,
   };
 }

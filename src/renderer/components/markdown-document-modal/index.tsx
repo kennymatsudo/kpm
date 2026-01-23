@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import { MotionButton } from '../ui/MotionButton';
+import { DiffViewer, computeDiff, getDiffStatsFromDiff } from '../ui/DiffViewer';
 
 // Toolbar button component
 interface ToolbarButtonProps {
@@ -164,6 +165,11 @@ export function MarkdownDocumentModal({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Compute diff stats for display
+  const diffLines = useMemo(() => {
+    if (oldContent === undefined) return null;
+    return computeDiff(oldContent, content);
+  }, [oldContent, content]);
+  const diffStats = diffLines ? getDiffStatsFromDiff(diffLines) : null;
 
 
   useEffect(() => {
@@ -462,6 +468,7 @@ export function MarkdownDocumentModal({
                     className="h-full overflow-y-auto p-6"
                   >
                     <div className="max-w-4xl mx-auto">
+                      <DiffViewer oldContent={oldContent} newContent={content} diffLines={diffLines ?? undefined} />
                     </div>
                 ) : viewMode === 'edit' ? (
                     key="edit"

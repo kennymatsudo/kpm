@@ -27,11 +27,13 @@ export function PlanView({
     planItems,
     executePlanActions,
     updateItemPosition,
+    updateItemPositions,
     updatePlanItem,
     useShallow((state) => ({
       planItems: state.planItems,
       executePlanActions: state.executePlanActions,
       updateItemPosition: state.updateItemPosition,
+      updateItemPositions: state.updateItemPositions,
       focusedResources: state.focusedResources,
       addFocusedResource: state.addFocusedResource,
     }))
@@ -81,6 +83,7 @@ export function PlanView({
 
   // Collision resolution for when items are added to groups
   const resolveCollisionsForGroup = useGroupCollisionResolution({
+    plannedItems: filteredPlannedItems,
     groups,
     updateGroupPosition,
     updateGroupSize,
@@ -88,6 +91,7 @@ export function PlanView({
 
   // Track previous group assignments to detect changes (for MCP tool updates)
   const prevGroupAssignmentsRef = useRef<Map<string, string | null>>(new Map());
+  const prevGroupCollapsedRef = useRef<Map<string, boolean>>(new Map());
 
   // Watch for group assignment changes (handles MCP tool updates)
   useEffect(() => {
@@ -107,6 +111,13 @@ export function PlanView({
         if (prevGroupId) {
           affectedGroupIds.add(prevGroupId);
         }
+        if (shouldDebug) {
+          console.debug('[group-assignment]', {
+            itemId: item.id,
+            from: prevGroupId,
+            to: currentGroupId,
+          });
+        }
       }
     }
 
@@ -123,6 +134,33 @@ export function PlanView({
         }
       }
     }
+
+  // When expanding a group, push overlapping groups out of the way
+  useEffect(() => {
+    const prevCollapsed = prevGroupCollapsedRef.current;
+    const currentIds = new Set(groups.map(group => group.id));
+
+    for (const group of groups) {
+      const wasCollapsed = prevCollapsed.get(group.id);
+      if (wasCollapsed === undefined) {
+        prevCollapsed.set(group.id, group.is_collapsed);
+        continue;
+      }
+
+      if (wasCollapsed && !group.is_collapsed) {
+        void resolveCollisionsForGroup(group.id);
+      }
+
+      prevCollapsed.set(group.id, group.is_collapsed);
+    }
+
+    // Cleanup removed groups
+    for (const id of prevCollapsed.keys()) {
+      if (!currentIds.has(id)) {
+        prevCollapsed.delete(id);
+      }
+    }
+  }, [groups, resolveCollisionsForGroup]);
 
 
   // Build tree hierarchy for tree view (using filtered items)

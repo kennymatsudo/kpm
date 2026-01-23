@@ -18,6 +18,7 @@ import { clientManager } from './clientManager';
 vi.mock('./clientManager', () => ({
   clientManager: {
     hasPermissionCached: vi.fn(),
+    hasAllowAllRemaining: vi.fn(),
     cachePermission: vi.fn(),
     clearPermissionCache: vi.fn(),
   },

@@ -55,6 +55,7 @@ export interface PlanSlice {
   addRelation: (fromId: string, toId: string, type: PlanRelation['relation_type']) => Promise<void>;
   removeRelation: (relationId: string) => Promise<void>;
   updateItemPosition: (itemId: string, x: number, y: number) => Promise<void>;
+  updateItemPositions: (updates: { id: string; x: number; y: number }[]) => Promise<void>;
   updatePlanItem: (itemId: string, updates: PlanItemUpdates) => Promise<void>;
   updateStatusCategory: (itemId: string, statusCategory: StatusCategory) => Promise<void>;
   deletePlanItem: (itemId: string) => Promise<void>;

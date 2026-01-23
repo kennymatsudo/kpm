@@ -122,6 +122,21 @@ export function findEscapeOffset(
     return { dx: 0, dy: 0 };
   }
 
+  const directionWeight: Record<EscapeDirection, number> = {
+    down: 0,
+    right: 1,
+    left: 2,
+    up: 3,
+  };
+
+  // Prefer down/right over up/left even if the move is larger.
+  candidates.sort((a, b) => {
+    const aPreferred = a.direction === 'down' || a.direction === 'right';
+    const bPreferred = b.direction === 'down' || b.direction === 'right';
+    if (aPreferred !== bPreferred) return aPreferred ? -1 : 1;
+    if (a.distance !== b.distance) return a.distance - b.distance;
+    return directionWeight[a.direction] - directionWeight[b.direction];
+  });
 
   // Find the first escape direction that results in a valid position
   for (const candidate of candidates) {

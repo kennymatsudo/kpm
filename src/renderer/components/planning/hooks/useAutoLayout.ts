@@ -58,6 +58,8 @@ function getGroupDimensions(
     group.id,
     assignedItems,
     childrenMap,
+    itemMap,
+    undefined,
   );
 
   return { width: bounds.width, height: bounds.height };
@@ -182,6 +184,8 @@ function getGroupDimensions(
           groupId,
           { x: newGroupPos.x, y: newGroupPos.y },
           groupItems,
+          undefined,
+          newGroupPos.width
         );
 
         for (const [itemId, pos] of itemPositions) {

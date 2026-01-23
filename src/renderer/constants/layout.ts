@@ -31,6 +31,7 @@ export const GROUP_LAYOUT = {
   /** Vertical padding at top of group container (below header) */
   /** Vertical padding at bottom of group container */
   /** Space for group header */
+  /** Height when group is collapsed (header + border padding) */
   /** Horizontal gap between items in group */
   /** Vertical gap between items in group */
   VERTICAL_GAP: 16,

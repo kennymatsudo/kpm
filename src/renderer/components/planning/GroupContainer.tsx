@@ -203,6 +203,7 @@ export const GroupContainer = memo(function GroupContainer({
         left: group.position_x,
         top: group.position_y,
         width: group.width,
+        height: isCollapsed ? GROUP_LAYOUT.COLLAPSED_HEIGHT : group.height,
         // Use CSS transform for visual positioning during drag (no state updates)
         transform: isDragging ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : undefined,
         // Use inline style for solid background when dragging to ensure no transparency
