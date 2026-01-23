@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow';
 
 /**
  * Chat hook for managing unified chat sessions.
@@ -9,6 +10,9 @@
 export function useChat(projectId: string | null, currentView?: ChatViewMode) {
   const {
     addUserMessage,
+  } = useChatStore(useShallow((state) => ({
+    addUserMessage: state.addUserMessage,
+  })));
 
     if (!projectId) return;
 
