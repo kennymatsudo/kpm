@@ -32,13 +32,89 @@ export function createRepoWatcherService(deps: RepoWatcherServiceDeps) {
   /** Debounce timers to prevent rapid-fire events */
   const debounceTimers = new Map<string, NodeJS.Timeout>();
 
+  function parseBranchFromHead(headContents: string): string | null {
+    const trimmed = headContents.trim();
+    if (!trimmed) return null;
+
+    if (trimmed.startsWith('ref:')) {
+      const refPath = trimmed.slice(4).trim();
+      if (!refPath) return null;
+      const headsPrefix = 'refs/heads/';
+      return refPath.startsWith(headsPrefix) ? refPath.slice(headsPrefix.length) : refPath;
+    }
+
+    // Detached HEAD - match `git rev-parse --abbrev-ref HEAD` behavior.
+    return 'HEAD';
+  }
+
+  function resolveGitDirSync(repoPath: string): string | null {
+    const gitPath = path.join(repoPath, '.git');
     try {
+      const stats = fs.statSync(gitPath);
+      if (stats.isDirectory()) return gitPath;
+      if (stats.isFile()) {
+        const contents = fs.readFileSync(gitPath, 'utf-8');
+        if (!match) return null;
+        const gitDirPath = match[1].trim();
+        return path.isAbsolute(gitDirPath) ? gitDirPath : path.resolve(repoPath, gitDirPath);
       }
-
-
     } catch {
       return null;
     }
+    return null;
+  }
+
+  async function resolveGitDir(repoPath: string): Promise<string | null> {
+    const gitPath = path.join(repoPath, '.git');
+    try {
+      const stats = await fs.promises.stat(gitPath);
+      if (stats.isDirectory()) return gitPath;
+      if (stats.isFile()) {
+        const contents = await fs.promises.readFile(gitPath, 'utf-8');
+        if (!match) return null;
+        const gitDirPath = match[1].trim();
+        return path.isAbsolute(gitDirPath) ? gitDirPath : path.resolve(repoPath, gitDirPath);
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  function readBranchFromGitDirSync(gitDir: string): string | null {
+    try {
+      const headPath = path.join(gitDir, 'HEAD');
+      const headContents = fs.readFileSync(headPath, 'utf-8');
+      return parseBranchFromHead(headContents);
+    } catch {
+      return null;
+    }
+  }
+
+  async function readBranchFromGitDir(gitDir: string): Promise<string | null> {
+    try {
+      const headPath = path.join(gitDir, 'HEAD');
+      const headContents = await fs.promises.readFile(headPath, 'utf-8');
+      return parseBranchFromHead(headContents);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Get the current git branch for a repository path.
+   * Returns null if not a git repo or on error.
+   */
+  function getBranch(repoPath: string): string | null {
+    const gitDir = resolveGitDirSync(repoPath);
+    if (!gitDir) return null;
+    return readBranchFromGitDirSync(gitDir);
+  }
+
+  async function getBranchAsync(repoPath: string): Promise<string | null> {
+    const gitDir = await resolveGitDir(repoPath);
+    if (!gitDir) return null;
+    return readBranchFromGitDir(gitDir);
   }
 
   /**
@@ -82,6 +158,13 @@ export function createRepoWatcherService(deps: RepoWatcherServiceDeps) {
         result[repoPath] = getBranch(repoPath);
       }
       return result;
+    },
+
+    async getBranchesAsync(repoPaths: string[]): Promise<Record<string, string | null>> {
+      const entries = await Promise.all(
+        repoPaths.map(async (repoPath) => [repoPath, await getBranchAsync(repoPath)] as const)
+      );
+      return Object.fromEntries(entries);
     },
 
     /**
@@ -223,6 +306,11 @@ export function getBranch(repoPath: string): string | null {
 /** Get branches for multiple repos at once */
 export function getBranches(repoPaths: string[]): Record<string, string | null> {
   return getDefaultService().getBranches(repoPaths);
+}
+
+/** Get branches for multiple repos at once (async) */
+export async function getBranchesAsync(repoPaths: string[]): Promise<Record<string, string | null>> {
+  return getDefaultService().getBranchesAsync(repoPaths);
 }
 
 /** Start watching a repository for branch changes */

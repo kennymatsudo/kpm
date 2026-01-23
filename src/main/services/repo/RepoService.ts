@@ -1,5 +1,6 @@
 import type { IRepoRepository } from '../../db/interfaces';
 import type { RepoWatcherService } from './RepoWatcherService';
+import { failure, success, type ServiceResult, type AsyncResult, wrapAsync } from '../result';
 
 export interface RepoServiceDeps {
   repos: IRepoRepository;
@@ -53,6 +54,10 @@ export function createRepoService(deps: RepoServiceDeps) {
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }
+    },
+
+    async getBranchesAsync(paths: string[]): AsyncResult<Record<string, string | null>> {
+      return wrapAsync(() => deps.watcher.getBranchesAsync(paths), 'Failed to get repo branches');
     },
 
     watch(repoId: string, repoPath: string): ServiceResult<void> {

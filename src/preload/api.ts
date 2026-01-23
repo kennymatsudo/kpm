@@ -544,6 +544,11 @@ const shell = {
   openExternal: (url: string): Promise<{ success: boolean; error?: string }> =>
 };
 
+const perf = {
+  log: (event: { name: string; durationMs?: number; meta?: Record<string, unknown> }): Promise<{ success: boolean; error?: string }> =>
+  getLogInfo: (): Promise<{ success: boolean; enabled?: boolean; logPath?: string; sessionId?: string; error?: string }> =>
+};
+
 export const api = {
   tempImages,
   chat,
@@ -565,6 +570,7 @@ export const api = {
   fileExplorer,
   repoFiles,
   shell,
+  perf,
 };
 
 export type API = typeof api;

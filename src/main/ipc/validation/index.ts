@@ -83,6 +83,9 @@ export { ShellSchemas } from './shell';
 // Repo Files (workspace file browser for connected repos)
 export { RepoFileSchemas } from './repoFiles';
 
+// Performance logging
+export { PerfSchemas } from './perf';
+
 // =============================================================================
 // Inferred Types (for type-safe IPC communication)
 // =============================================================================

@@ -1,5 +1,6 @@
 import type { PlanSlice, SliceCreator } from './types';
 import { useGroupStore } from '../groupStore';
+import { startPerfSpan } from '../../utils/perfLogger';
 
 export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => ({
   updatePlanItems: (items) => set({ planItems: items }),
@@ -321,6 +322,7 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
     if (!currentProjectId) return;
 
     set({ isLoading: true, error: null });
+    const endRefresh = startPerfSpan('plan.refresh', { projectId: currentProjectId });
     try {
       const [items, relations] = await Promise.all([
         deps.api.plan.listItems(currentProjectId),
@@ -335,7 +337,9 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
         })),
         relations,
       });
+      endRefresh({ itemCount: items.length, relationCount: relations.length });
     } catch (error) {
+      endRefresh({ error: true });
       set({ error: `Failed to refresh plan items: ${String(error)}` });
     } finally {
       set({ isLoading: false });

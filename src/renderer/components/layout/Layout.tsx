@@ -7,6 +7,7 @@ import { TopBar } from './TopBar';
 import { CommandPalette } from '../command-palette';
 import { ApprovalOverlays } from './ApprovalOverlays';
 import { ToastContainer } from '../ui';
+import { logPerfEvent, startPerfSpan } from '../../utils/perfLogger';
 
 interface LayoutProps {
   onDeleteProject?: () => void;
@@ -34,6 +35,24 @@ interface LayoutProps {
   // Extracted hooks
   const { sidebarWidth, chatWidth, handleSidebarResizeStart, handleChatResizeStart } = usePanelResize();
   const { mainView, viewMode, setMainView, setViewMode } = usePersistedViewState(currentProjectId);
+  const handleMainViewChange = useCallback((view: typeof mainView) => {
+    if (view === mainView) return;
+    const end = startPerfSpan('view.main.switch', { from: mainView, to: view });
+    setMainView(view);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => end());
+    });
+  }, [mainView, setMainView]);
+
+  const handleViewModeChange = useCallback((mode: typeof viewMode) => {
+    if (mode === viewMode) return;
+    const end = startPerfSpan('view.mode.switch', { from: viewMode, to: mode });
+    setViewMode(mode);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => end());
+    });
+  }, [setViewMode, viewMode]);
+
   // Register create item handler from PlanView
   const registerCreateItemHandler = useCallback((handler: (() => void) | null) => {
     setCreateItemHandler(() => handler);
@@ -42,6 +61,7 @@ interface LayoutProps {
   // Open create item modal (Cmd+Shift+I) - only when in planning view
   const handleOpenCreateItem = useCallback(() => {
     if (mainView === 'planning' && createItemHandler) {
+      logPerfEvent('plan.item.create.open');
       createItemHandler();
     }
   }, [mainView, createItemHandler]);
@@ -50,6 +70,7 @@ interface LayoutProps {
   // Keyboard shortcuts
   useLayoutShortcuts({
     onToggleSidebar: () => setSidebarCollapsed((prev) => !prev),
+    onMainViewChange: handleMainViewChange,
     onOpenCommandPalette: openCommandPalette,
     onCreateItem: handleOpenCreateItem,
   });
@@ -65,7 +86,9 @@ interface LayoutProps {
           onDeleteProject={onDeleteProject}
           onOpenProject={onOpenProject}
           mainView={mainView}
+          onMainViewChange={handleMainViewChange}
           viewMode={viewMode}
+          onViewModeChange={handleViewModeChange}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           hiddenStatusCategories={hiddenStatusCategories}
