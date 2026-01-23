@@ -45,6 +45,7 @@ interface AgentContextInput {
     sections.push(children.map((c) => `- [ ] ${c.title}`).join('\n'));
   }
 
+  // Parent context (only title, not full description - task should be self-contained)
   if (parent) {
     sections.push('## Parent Context');
     sections.push(`This is part of: **${parent.title}**`);
@@ -88,6 +89,41 @@ export interface DevSessionServiceDeps {
 function getWorktreesDir(repoPath: string): string {
   const repoName = path.basename(repoPath);
   return path.join(path.dirname(repoPath), `.kpm-worktrees`, repoName);
+}
+
+/**
+ * Check if a branch exists in the repo
+ */
+async function branchExists(repoPath: string, branchName: string): Promise<boolean> {
+  try {
+    await gitExec(['rev-parse', '--verify', `refs/heads/${branchName}`], { cwd: repoPath });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Generate a unique branch name by appending -v2, -v3, etc. if needed
+ */
+async function generateUniqueBranchName(repoPath: string, baseBranchName: string): Promise<string> {
+  // First check if base name is available
+  if (!(await branchExists(repoPath, baseBranchName))) {
+    return baseBranchName;
+  }
+
+  // Find next available version
+  let version = 2;
+  while (version < 100) {
+    const versionedName = `${baseBranchName}-v${version}`;
+    if (!(await branchExists(repoPath, versionedName))) {
+      return versionedName;
+    }
+    version++;
+  }
+
+  // Fallback to timestamp if somehow we have 100 versions
+  return `${baseBranchName}-${Date.now()}`;
 }
 
 /**
@@ -149,6 +185,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     async createPendingSession(
       planItemId: string,
       repoId: string,
+      instructions: string,
     ): AsyncResult<DevSession> {
       try {
         // Validate plan item exists
@@ -167,6 +204,10 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
 
 
         // Generate branch name and worktree path
+        // If freshStart, generate a unique branch name (adds -v2, -v3, etc.)
+        const branchName = options?.freshStart
+          ? await generateUniqueBranchName(repo.path, baseBranchName)
+          : baseBranchName;
         const worktreesDir = getWorktreesDir(repo.path);
         const worktreePath = path.join(worktreesDir, branchName.replace(/\//g, '-'));
 
