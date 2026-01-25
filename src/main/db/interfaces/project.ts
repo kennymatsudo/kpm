@@ -8,6 +8,7 @@ import type {
   Project,
   Repo,
   Attachment,
+  RepoEnvironmentMode,
 } from '../../../shared/types';
 
 // =============================================================================
@@ -32,6 +33,7 @@ export interface IRepoRepository {
   getByProject(projectId: string): Repo[];
   getById(id: string): Repo | undefined;
   add(projectId: string, path: string): Repo;
+  updateEnvironmentMode(id: string, mode: RepoEnvironmentMode): void;
   delete(id: string): void;
   remove(id: string): void;
 }

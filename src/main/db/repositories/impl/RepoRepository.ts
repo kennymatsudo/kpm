@@ -5,6 +5,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import type { Repo, RepoEnvironmentMode } from '../../../../shared/types';
 import type { IRepoRepository } from '../../interfaces';
 
 /**
@@ -14,6 +15,7 @@ interface PreparedStatements {
   getByProject: Statement;
   getById: Statement;
   insert: Statement;
+  updateEnvironmentMode: Statement;
   delete: Statement;
 }
 
@@ -28,6 +30,7 @@ export class RepoRepository implements IRepoRepository {
         INSERT INTO repos (id, project_id, path) VALUES (?, ?, ?)
         RETURNING *
       `),
+      updateEnvironmentMode: db.prepare('UPDATE repos SET environment_mode = ? WHERE id = ?'),
       delete: db.prepare('DELETE FROM repos WHERE id = ?'),
     };
   }
@@ -43,6 +46,10 @@ export class RepoRepository implements IRepoRepository {
 
   getById(id: string): Repo | undefined {
     return this.stmts.getById.get(id) as Repo | undefined;
+  }
+
+  updateEnvironmentMode(id: string, mode: RepoEnvironmentMode): void {
+    this.stmts.updateEnvironmentMode.run(mode, id);
   }
 
   delete(id: string): void {

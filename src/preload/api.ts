@@ -2,6 +2,7 @@ import { ipcRenderer } from 'electron';
 import type {
   Project,
   Repo,
+  RepoEnvironmentMode,
   Attachment,
   PlanItem,
   PlanRelation,
@@ -50,6 +51,7 @@ import type {
 export type {
   Project,
   Repo,
+  RepoEnvironmentMode,
   Attachment,
   PlanItem,
   PlanRelation,
@@ -170,6 +172,7 @@ const repos = {
   getBranches: (paths: string[]): Promise<Record<string, string | null>> =>
   watch: (repoId: string, path: string): Promise<{ success: boolean }> =>
   unwatch: (path: string): Promise<{ success: boolean }> =>
+  updateEnvironmentMode: (repoId: string, mode: RepoEnvironmentMode): Promise<{ success: boolean; error?: string }> =>
   onBranchChanged: (callback: (data: { repoId: string; repoPath: string; branch: string | null }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, data: { repoId: string; repoPath: string; branch: string | null }) => callback(data);
     ipcRenderer.on('repo:branch-changed', handler);

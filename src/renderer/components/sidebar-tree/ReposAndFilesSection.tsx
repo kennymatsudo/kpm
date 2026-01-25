@@ -77,6 +77,12 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     [isRepoFocused, addFocusedResource, removeFocusedResource]
   );
 
+  const handleRemoveRepo = useCallback(
+    async (repoId: string) => {
+    },
+  );
+
+  const handleRevealRepoInFinder = useCallback(
   // ==========================================================================
   // File tree handlers
   // ==========================================================================

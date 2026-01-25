@@ -1196,6 +1196,17 @@ interface Migration {
     },
   },
   {
+    id: 1031,
+    name: '031_add_repo_environment_mode',
+    up: (db: BetterSqliteDatabase) => {
+      // Add environment_mode column to repos table for nix/direnv support
+      // Values: 'auto' (detect from files), 'direnv', 'nix', 'none'
+      db.exec(`
+        ALTER TABLE repos ADD COLUMN environment_mode TEXT DEFAULT 'auto';
+      `);
+    },
+  },
+  {
     id: 1049,
     name: '049_remove_agent_instructions_from_projects',
     up: (db: BetterSqliteDatabase) => {

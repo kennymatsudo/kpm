@@ -200,6 +200,12 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           return failure(`Repository not found: ${repoId}`);
         }
 
+        // Check for existing active session (unless freshStart is requested)
+        if (!options?.freshStart) {
+          const existing = deps.devSessions.getActiveByPlanItem(planItemId);
+          if (existing) {
+            return failure(`Plan item already has an active session: ${existing.id}`);
+          }
         }
 
 

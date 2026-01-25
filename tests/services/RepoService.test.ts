@@ -29,6 +29,7 @@ function createMocks(overrides?: Partial<RepoServiceDeps>): RepoServiceDeps {
       repoStore.set(repo.id, repo);
       return repo;
     }),
+    updateEnvironmentMode: vi.fn(),
     delete: vi.fn((id: string) => repoStore.delete(id)),
     remove: vi.fn((id: string) => repoStore.delete(id)),
   };

@@ -265,10 +265,14 @@ export interface Project extends ProjectBase {
   session_output_tokens: number;
 }
 
+/** Environment detection/capture mode for repos */
+export type RepoEnvironmentMode = 'auto' | 'direnv' | 'nix' | 'none';
+
 export interface Repo {
   id: string;
   project_id: string;
   path: string;
+  environment_mode?: RepoEnvironmentMode;
   created_at?: string;
 }
 

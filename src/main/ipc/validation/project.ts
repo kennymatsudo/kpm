@@ -48,6 +48,9 @@ export const ProjectSchemas = {
 // Repository Schemas
 // =============================================================================
 
+/** Environment mode for repo direnv/nix support */
+const repoEnvironmentMode = z.enum(['auto', 'direnv', 'nix', 'none']);
+
 export const RepoSchemas = {
   add: z.object({
     projectId: uuid,
@@ -77,6 +80,11 @@ export const RepoSchemas = {
 
   unwatch: z.object({
     path: existingDirectoryPath,
+  }),
+
+  updateEnvironmentMode: z.object({
+    repoId: uuid,
+    mode: repoEnvironmentMode,
   }),
 };
 
