@@ -21,3 +21,4 @@ export * from './ChatSessionRepository';
 export * from './WorktreeRepository';
 export * from './AppSettingsRepository';
 export * from './DevSessionRepository';
+export * from './ConfluenceLinkRepository';

@@ -1207,6 +1207,35 @@ interface Migration {
     },
   },
   {
+    id: 1032,
+    name: '032_confluence_page_links',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- CONFLUENCE PAGE LINKS: Document-to-page sync
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS confluence_page_links (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          document_path TEXT NOT NULL,
+          site_url TEXT NOT NULL,
+          space_key TEXT NOT NULL,
+          page_id TEXT NOT NULL,
+          page_title TEXT,
+          last_synced_at DATETIME,
+          local_content_hash TEXT,
+          remote_content_hash TEXT,
+          remote_version INTEGER,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(project_id, document_path),
+          UNIQUE(page_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_confluence_links_project ON confluence_page_links(project_id);
+      `);
+    },
+  },
+  {
     id: 1049,
     name: '049_remove_agent_instructions_from_projects',
     up: (db: BetterSqliteDatabase) => {

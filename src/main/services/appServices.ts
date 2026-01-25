@@ -16,6 +16,9 @@ import { createRepoWatcherService } from './repo/RepoWatcherService';
 
 // Generation services
 
+// Confluence services
+import { createConfluenceSyncService } from './confluence';
+
 // =============================================================================
 // Application Services Factory
 // =============================================================================
@@ -50,6 +53,15 @@ export function createAppServices(container: IRepositoryContainer) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Confluence Services
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const confluenceSyncService = createConfluenceSyncService({
+    confluenceLinks: container.confluenceLinks,
+    projects: container.projects,
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Return All Services
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -68,6 +80,9 @@ export function createAppServices(container: IRepositoryContainer) {
     repoFileService,
 
     // Generation
+
+    // Confluence
+    confluenceSyncService,
   };
 }
 

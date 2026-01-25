@@ -86,6 +86,19 @@ export { RepoFileSchemas } from './repoFiles';
 // Performance logging
 export { PerfSchemas } from './perf';
 
+// Confluence
+export { ConfluenceSchemas } from './confluence';
+export type {
+  ConfluenceLinkInput,
+  ConfluenceUnlinkInput,
+  ConfluenceGetLinksInput,
+  ConfluenceGetLinkForDocumentInput,
+  ConfluenceSyncPreviewInput,
+  ConfluencePushExecuteInput,
+  ConfluencePullExecuteInput,
+  ConfluenceParseUrlInput,
+} from './confluence';
+
 // =============================================================================
 // Inferred Types (for type-safe IPC communication)
 // =============================================================================

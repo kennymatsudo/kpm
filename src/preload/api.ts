@@ -45,6 +45,8 @@ import type {
   ChatViewMode,
   FileNode,
   Group,
+  ConfluencePageLink,
+  ConfluenceSyncPreview,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -88,6 +90,8 @@ export type {
   ClaudeModel,
   FileNode,
   Group,
+  ConfluencePageLink,
+  ConfluenceSyncPreview,
 };
 
 const tempImages = {
@@ -555,6 +559,47 @@ const perf = {
   getLogInfo: (): Promise<{ success: boolean; enabled?: boolean; logPath?: string; sessionId?: string; error?: string }> =>
 };
 
+const confluence = {
+  // Link a document to a Confluence page
+  link: (
+    projectId: string,
+    documentPath: string,
+    confluenceUrl: string
+  ): Promise<{ success: boolean; data?: ConfluencePageLink; error?: string }> =>
+
+  // Unlink a document from Confluence
+  unlink: (projectId: string, documentPath: string): Promise<{ success: boolean; error?: string }> =>
+
+  // Get all links for a project
+  getLinks: (projectId: string): Promise<{ success: boolean; data?: ConfluencePageLink[]; error?: string }> =>
+
+  // Get link for a specific document
+  getLinkForDocument: (
+    projectId: string,
+    documentPath: string
+  ): Promise<{ success: boolean; data?: ConfluencePageLink | null; error?: string }> =>
+
+  // Generate sync preview
+  getSyncPreview: (
+    projectId: string,
+    documentPath: string
+  ): Promise<{ success: boolean; data?: ConfluenceSyncPreview; error?: string }> =>
+
+  // Push local content to Confluence
+  push: (
+    projectId: string,
+    documentPath: string
+  ): Promise<{ success: boolean; data?: { pageUrl: string }; error?: string }> =>
+
+  // Pull content from Confluence
+  pull: (projectId: string, documentPath: string): Promise<{ success: boolean; error?: string }> =>
+
+  // Parse a Confluence URL (for validation)
+  parseUrl: (
+    url: string
+  ): Promise<{ success: boolean; data?: { siteUrl: string; spaceKey: string; pageId: string }; error?: string }> =>
+};
+
 export const api = {
   tempImages,
   chat,
@@ -577,6 +622,7 @@ export const api = {
   repoFiles,
   shell,
   perf,
+  confluence,
 };
 
 export type API = typeof api;

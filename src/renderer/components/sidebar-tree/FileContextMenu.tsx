@@ -14,6 +14,9 @@ interface FileContextMenuProps {
   onCopyRelativePath: () => void;
   onView?: () => void;
   onDelete: () => void;
+  onLinkToConfluence?: () => void;
+  onSyncConfluence?: () => void;
+  isLinkedToConfluence?: boolean;
 }
 
 export function FileContextMenu({
@@ -30,6 +33,9 @@ export function FileContextMenu({
   onCopyRelativePath,
   onView,
   onDelete,
+  onLinkToConfluence,
+  onSyncConfluence,
+  isLinkedToConfluence,
 }: FileContextMenuProps) {
   const isMarkdown = node.name.endsWith('.md');
 
@@ -48,6 +54,21 @@ export function FileContextMenu({
         }}
       >
         {isFocused ? 'Remove from context' : 'Add to context'}
+
+      {/* Confluence sync options (markdown files) */}
+      {isMarkdown && (
+        <>
+          {isLinkedToConfluence ? (
+          ) : (
+              onClick={() => {
+                onLinkToConfluence?.();
+                onClose();
+              }}
+            >
+              Link to Confluence
+          )}
+        </>
+      )}
 
 
       {/* Rename */}

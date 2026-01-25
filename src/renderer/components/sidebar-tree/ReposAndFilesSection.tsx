@@ -19,6 +19,13 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
 }: ReposAndFilesSectionProps) {
   const [filesCollapsed, setFilesCollapsed] = useState(false);
 
+  // Confluence store
+    useShallow((s) => ({
+      loadLinks: s.loadLinks,
+      getLinkForDocument: s.getLinkForDocument,
+    }))
+  );
+
     useShallow((state) => ({
       focusedResources: state.focusedResources,
       addFocusedResource: state.addFocusedResource,
@@ -43,7 +50,9 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
 
   useEffect(() => {
     if (projectId) {
+      void loadLinks(projectId);
     }
+  }, [projectId, loadProjectDirectory, loadLinks]);
 
   useEffect(() => {
         }
@@ -171,6 +180,13 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
 
   const deleteFilename = deleteNode?.name ?? '';
 
+
+  // Confluence link info for context menu
+
+  // Get Confluence link for sync modal
+
+  // Get document title for link modal
+  const linkDocumentTitle = linkDocumentNode?.name.replace(/\.md$/, '') ?? '';
 
   return (
         isCollapsed={reposCollapsed}

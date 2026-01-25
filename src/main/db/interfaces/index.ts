@@ -25,5 +25,8 @@ export type { IDevSessionRepository, IWorktreeRepository } from './dev';
 
 // Settings domain
 
+// Confluence domain
+export type { IConfluenceLinkRepository, ConfluencePageLink, ConfluenceLinkCreate, SyncState } from './confluence';
+
 // Container
 export type { IRepositoryContainer } from './container';

@@ -702,4 +702,37 @@ export interface FileNode {
   size: number;
 }
 
+// =============================================================================
+// Confluence Integration Types
+// =============================================================================
+
+/**
+ * Enables bidirectional sync of document content.
+ */
+export interface ConfluencePageLink {
+  id: string;
+  project_id: string;
+  document_path: string;
+  site_url: string;
+  space_key: string;
+  page_id: string;
+  page_title: string | null;
+  last_synced_at: string | null;
+  local_content_hash: string | null;
+  remote_content_hash: string | null;
+  remote_version: number | null;
+  created_at: string;
+}
+
+/**
+ * Preview of sync state between local document and Confluence page.
+ */
+export interface ConfluenceSyncPreview {
+  hasConflict: boolean;
+  localChanged: boolean;
+  remoteChanged: boolean;
+  localContent: string;
+  remoteContent: string;
+  remoteVersion: number;
+}
 export type SearchEntityType = 'plan_item' | 'document';

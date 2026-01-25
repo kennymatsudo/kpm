@@ -27,6 +27,7 @@ import {
   WorktreeRepository as WorktreeRepositoryClass,
   AppSettingsRepository as AppSettingsRepositoryClass,
   DevSessionRepository as DevSessionRepositoryClass,
+  ConfluenceLinkRepository as ConfluenceLinkRepositoryClass,
 } from './repositories/impl';
 import type { IFileSystem, IPathUtils } from './repositories/impl/ProjectRepository';
 
@@ -96,6 +97,7 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
     worktrees: new WorktreeRepositoryClass(database),
     appSettings: new AppSettingsRepositoryClass(database),
     devSessions: new DevSessionRepositoryClass(database),
+    confluenceLinks: new ConfluenceLinkRepositoryClass(database),
   };
 }
 

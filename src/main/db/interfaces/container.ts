@@ -10,6 +10,7 @@ import type { IGroupRepository } from './group';
 import type { ITrackerRepository, ISyncRepository, ISyncQueueRepository, ITypeMappingRepository } from './tracker';
 import type { IChatMessageRepository, IChatSessionRepository } from './chat';
 import type { IDevSessionRepository, IWorktreeRepository } from './dev';
+import type { IConfluenceLinkRepository } from './confluence';
 
 /**
  * Container holding all repository instances.
@@ -32,4 +33,5 @@ export interface IRepositoryContainer {
   worktrees: IWorktreeRepository;
   appSettings: IAppSettingsRepository;
   devSessions: IDevSessionRepository;
+  confluenceLinks: IConfluenceLinkRepository;
 }
