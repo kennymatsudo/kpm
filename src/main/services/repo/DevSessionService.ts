@@ -251,6 +251,42 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     },
 
     /**
+     * Check if a session's worktree has uncommitted changes
+     * Used to warn before deletion
+     */
+    async checkDirty(
+      sessionId: string
+    ): AsyncResult<{ isDirty: boolean; files: string[] }> {
+      try {
+        const session = deps.devSessions.get(sessionId);
+        if (!session) {
+          return failure(`Session not found: ${sessionId}`);
+        }
+
+        // If worktree doesn't exist, nothing to lose
+        if (!fs.existsSync(session.worktree_path)) {
+          return success({ isDirty: false, files: [] });
+        }
+
+        // Check for uncommitted changes using git status --porcelain
+        const { stdout } = await gitExec(
+          ['status', '--porcelain'],
+          { cwd: session.worktree_path }
+        );
+
+        const files = stdout
+          .trim()
+          .split('\n')
+          .filter((line) => line.length > 0)
+          .map((line) => line.slice(3)); // Remove status prefix (e.g., " M ", "?? ")
+
+        return success({ isDirty: files.length > 0, files });
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
+    /**
      * This is the unified action for stopping/removing sessions.
      */
     async deleteSession(

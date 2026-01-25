@@ -440,6 +440,9 @@ const devSessions = {
   // Delete a session (stops PTY if running, removes record, optionally cleans worktree)
   delete: (sessionId: string, cleanupWorktree?: boolean): Promise<{ success: boolean; error?: string }> =>
 
+  // Check if session has uncommitted changes (for warning before delete)
+  checkDirty: (sessionId: string): Promise<{ success: boolean; isDirty?: boolean; files?: string[]; error?: string }> =>
+
   // Get git diff for session
   getDiff: (sessionId: string): Promise<{ success: boolean; diff?: string; error?: string }> =>
 

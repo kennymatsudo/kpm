@@ -46,6 +46,11 @@ export const DevSessionSchemas = {
     cleanupWorktree: z.boolean().optional().default(true),
   }),
 
+  /** Check if session has uncommitted changes */
+  checkDirty: z.object({
+    sessionId: uuid,
+  }),
+
   /** Get session diff */
   getDiff: z.object({
     sessionId: uuid,

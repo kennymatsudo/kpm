@@ -106,6 +106,22 @@ export function registerDevSessionHandlers(
     )
   );
 
+  // Check if session has uncommitted changes
+  ipcMain.handle(
+    IPC_CHANNELS.devSession.checkDirty,
+    createIpcHandler(
+      DevSessionSchemas.checkDirty,
+      async ({ sessionId }) => {
+        const result = await devSessionService.checkDirty(sessionId);
+        if (!result.ok) {
+          throw new Error(result.error);
+        }
+        return result.data;
+      },
+      'Failed to check dirty status'
+    )
+  );
+
   // Get git diff for a session
   ipcMain.handle(
     IPC_CHANNELS.devSession.getDiff,
