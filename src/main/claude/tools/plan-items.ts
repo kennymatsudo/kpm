@@ -187,6 +187,8 @@ export function createPlanItemTools(
         } catch (error) {
           return toolError(`Failed to get plan hierarchy: ${error instanceof Error ? error.message : String(error)}`);
         }
+      },
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
 
     tool(
@@ -243,6 +245,8 @@ export function createPlanItemTools(
         } catch (error) {
           return toolError(`Failed to filter plan items: ${error instanceof Error ? error.message : String(error)}`);
         }
+      },
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
 
     tool(
@@ -254,6 +258,8 @@ export function createPlanItemTools(
           return toolError(`Plan item not found: ${itemId}`);
         }
         return jsonResult({ item });
+      },
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
 
     tool(
@@ -356,6 +362,8 @@ export function createPlanItemTools(
         }
 
         return jsonResult({ items: found, notFound, count: found.length });
+      },
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
 
     tool(
@@ -489,6 +497,8 @@ export function createPlanItemTools(
             relatedTo,
           },
         });
+      },
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
 
     tool(
@@ -538,6 +548,8 @@ export function createPlanItemTools(
         } catch (error) {
           return toolError(`Failed to flatten hierarchy: ${error instanceof Error ? error.message : String(error)}`);
         }
+      },
+      { annotations: { destructiveHint: true } }
     ),
 
     tool(
@@ -691,6 +703,8 @@ export function createPlanItemTools(
         } catch (error) {
           return toolError(`Failed to bulk delete: ${error instanceof Error ? error.message : String(error)}`);
         }
+      },
+      { annotations: { destructiveHint: true } }
     ),
 
     tool(
@@ -908,6 +922,8 @@ export function createPlanItemTools(
         } catch (error) {
           return toolError(`Failed to clear positions: ${error instanceof Error ? error.message : String(error)}`);
         }
+      },
+      { annotations: { idempotentHint: true } }
     ),
 
     tool(
@@ -959,6 +975,8 @@ export function createPlanItemTools(
         } catch (error) {
           return toolError(`Failed to clear dependencies: ${error instanceof Error ? error.message : String(error)}`);
         }
+      },
+      { annotations: { destructiveHint: true } }
     ),
   ];
 }

@@ -96,6 +96,8 @@ export function createRelationTools(
         });
 
         return jsonResult({ relations: enrichedRelations, count: enrichedRelations.length });
+      },
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
   ];
 }

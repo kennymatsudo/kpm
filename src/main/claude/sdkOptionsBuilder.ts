@@ -43,6 +43,8 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
       kpm: kpmServer,
     },
     ...(resumeSessionId && { resume: resumeSessionId }),
+    ...(claudeConfig.debug && { debug: true }),
+    ...(claudeConfig.debug && claudeConfig.debugFile && { debugFile: claudeConfig.debugFile }),
   };
 
   // Add connected repos as accessible directories

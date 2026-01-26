@@ -38,6 +38,10 @@ export interface WindowConfig {
 export interface ClaudeConfig {
   /** Setting sources for SDK */
   settingSources: ('project' | 'user')[];
+  /** Enable SDK debug output */
+  debug: boolean;
+  /** Path to debug log file (optional) */
+  debugFile: string | null;
 }
 
 export interface SessionConfig {
@@ -95,6 +99,8 @@ function createDefaultConfig(): AppConfig {
 
     claude: {
       settingSources: ['project'],
+      debug: false,
+      debugFile: null,
     },
 
     session: {

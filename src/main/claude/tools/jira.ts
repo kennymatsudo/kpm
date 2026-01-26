@@ -44,6 +44,8 @@ function formatJiraError(error: unknown) {
         } catch (error) {
           return formatJiraError(error);
         }
+      },
+      { annotations: { readOnlyHint: true, openWorldHint: true } }
     ),
 
     tool(
@@ -74,6 +76,8 @@ function formatJiraError(error: unknown) {
         } catch (error) {
           return formatJiraError(error);
         }
+      },
+      { annotations: { readOnlyHint: true, openWorldHint: true } }
     ),
 
     tool(
@@ -97,6 +101,8 @@ function formatJiraError(error: unknown) {
         } catch (error) {
           return formatJiraError(error);
         }
+      },
+      { annotations: { readOnlyHint: true, openWorldHint: true } }
     ),
 
     tool(
@@ -174,6 +180,8 @@ function formatJiraError(error: unknown) {
         } catch (error) {
           return formatJiraError(error);
         }
+      },
+      { annotations: { readOnlyHint: true, openWorldHint: true } }
     ),
   ];
 }

@@ -16,3 +16,9 @@ export function isInitMessage(msg: SDKMessage): msg is SDKSystemMessage & { subt
   return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'init';
 }
 
+/**
+ * Check if result was truncated due to max tokens.
+ */
+export function isMaxTokensReached(msg: SDKResultMessage): boolean {
+  return 'stop_reason' in msg && msg.stop_reason === 'max_tokens';
+}

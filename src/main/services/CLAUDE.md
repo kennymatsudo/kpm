@@ -44,6 +44,7 @@ Terminal/PTY and Claude session management.
 
 
 
+### Performance (`services/PerfLogger.ts`)
 
 
 

@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { createIpcHandler, createSimpleIpcHandler, PerfSchemas } from '../validation';
+import { getPerfLogger, getPerfLogInfo } from '../../services/PerfLogger';
 
 export function registerPerfHandlers(): void {
   ipcMain.handle(

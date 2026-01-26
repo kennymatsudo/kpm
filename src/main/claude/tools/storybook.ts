@@ -134,6 +134,8 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
         } catch (error) {
           return toolError(`Could not connect to Storybook at ${project.storybook_url}: ${error instanceof Error ? error.message : 'Unknown error'}. Ensure Storybook is running and accessible.`);
         }
+      },
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
 
     tool(
@@ -184,6 +186,8 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
         } catch (error) {
           return toolError(`Could not fetch component from Storybook: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
+      },
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
 
     tool(
@@ -227,6 +231,8 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
         } catch (error) {
           return toolError(`Could not search Storybook: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
+      },
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
   ];
 }

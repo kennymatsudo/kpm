@@ -78,6 +78,8 @@ export function createGroupTools(
         } catch (error) {
           return toolError(`Failed to list groups: ${error instanceof Error ? error.message : String(error)}`);
         }
+      },
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
 
     tool(
@@ -103,6 +105,8 @@ export function createGroupTools(
         } catch (error) {
           return toolError(`Failed to get group: ${error instanceof Error ? error.message : String(error)}`);
         }
+      },
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
 
     tool(
@@ -136,6 +140,8 @@ export function createGroupTools(
         } catch (error) {
           return toolError(`Failed to get ungrouped items: ${error instanceof Error ? error.message : String(error)}`);
         }
+      },
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -234,6 +240,8 @@ export function createGroupTools(
         } catch (error) {
           return toolError(`Failed to delete group: ${error instanceof Error ? error.message : String(error)}`);
         }
+      },
+      { annotations: { destructiveHint: true } }
     ),
 
     tool(
@@ -344,6 +352,8 @@ export function createGroupTools(
         } catch (error) {
           return toolError(`Failed to bulk delete groups: ${error instanceof Error ? error.message : String(error)}`);
         }
+      },
+      { annotations: { destructiveHint: true } }
     ),
 
     tool(
@@ -382,6 +392,8 @@ export function createGroupTools(
         } catch (error) {
           return toolError(`Failed to clear group assignments: ${error instanceof Error ? error.message : String(error)}`);
         }
+      },
+      { annotations: { destructiveHint: true } }
     ),
   ];
 }

@@ -52,6 +52,18 @@ export function unwrapOrThrow<T>(result: ServiceResult<T>): T {
   return result.data;
 }
 
+/**
+ * Wrap a synchronous operation in a ServiceResult.
+ * Catches errors and converts them to failure results.
+ */
+export function wrap<T>(fn: () => T): ServiceResult<T> {
+  try {
+    return success(fn());
+  } catch (error) {
+    return failure(error instanceof Error ? error.message : String(error));
+  }
+}
+
 // =============================================================================
 // Async Utilities
 // =============================================================================

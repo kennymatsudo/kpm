@@ -547,6 +547,13 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // Handle result message (final stats)
     if (sdkMsg.type === 'result') {
 
+      // Check if response was truncated
+        mainWindow?.webContents.send('chat:truncated', {
+          projectId,
+          reason: 'max_tokens',
+        });
+      }
+
       // Clear "Allow All Remaining" flag when response completes
       clientManager.clearAllowAllRemaining(projectId);
 
