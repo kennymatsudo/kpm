@@ -26,8 +26,11 @@ src/
 │   │   └── streaming/       # Streaming session classes
 │   ├── services/            # Application services (DI pattern)
 │   │   ├── agents/          # AgentSessionManager, Claude/Codex/Gemini sessions, hooks, auto-review
+│   │   ├── confluence/      # ConfluenceSyncService
 │   │   └── PerfLogger.ts    # Performance metrics
 │   ├── trackers/            # Tracker-specific logic
+│   ├── tracker-clients/     # Jira/Linear API clients
+│   └── wiki-clients/        # Confluence API client
 ├── renderer/                # React frontend
 │   ├── components/
 │   │   ├── ui/              # Shared primitives (Modal, Button, StatusBadge)
@@ -40,6 +43,7 @@ src/
 │   │   ├── sidebar/         # Left sidebar components
 │   │   ├── settings/        # Settings dialogs
 │   │   ├── command-palette/ # Command palette
+│   │   ├── confluence/      # Confluence sync modals
 │   │   ├── onboarding/      # Project onboarding wizard
 │   │   ├── slack/           # Slack triage UI
 │   ├── stores/              # Zustand state management
@@ -116,6 +120,7 @@ src/
 | `AttachmentRepository` | File attachments |
 | `PlanItemRepository` | Plan items with hierarchy (cached statements) |
 | `PlanRelationRepository` | Item dependencies |
+| `GroupRepository` | Visual group containers |
 | `TrackerRepository` | Three-level tracker config |
 | `TypeMappingRepository` | Label → tracker type mappings |
 | `SyncRepository` | Conflict detection snapshots |
@@ -124,8 +129,10 @@ src/
 | `DevSessionRepository` | Implementation sessions |
 | `WorktreeRepository` | Git worktree persistence |
 | `ChatMessageRepository` | Unified chat history |
+| `ChatSessionRepository` | Chat session metadata |
 | `AppSettingsRepository` | Global preferences |
 | `CustomThemeRepository` | Imported theme persistence |
+| `ConfluenceLinkRepository` | Document ↔ Confluence page links |
 | `ToolPermissionRepository` | Persisted tool permission grants |
 | `ReviewTaskRepository` | GitHub review tasks |
 | `ReviewOwnershipRepository` | Review ownership/routing state |
@@ -146,6 +153,7 @@ src/
    - Testable with dependency injection
    - Return `ServiceResult<T>` for explicit error handling
    - Organized by domain:
+     - `confluence/` - ConfluenceSyncService
      - `PerfLogger.ts` - PerfLogger
 
 **Composition Root** (`src/main/services/appServices.ts`):
@@ -175,6 +183,10 @@ src/
 - `artifactsStore.ts` - Generated artifacts
 - `permissionStore.ts` - Permission requests
 - `fileTreeStore.ts` - File explorer state
+- `confluenceStore.ts` - Confluence sync state
+- `groupStore.ts` - Group management state
+- `approvalQueueStore.ts` - Plan action approval queue
+- `toastStore.ts` - Toast notifications
 - `contextRegenerationStore.ts` - Context regeneration modal state
 - `useSlackTriageStore.ts` - Slack triage panel and execution state
 
@@ -198,7 +210,9 @@ Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and
 | `development/` | Shared PR/review components (CreatePrModal, ReviewTab, etc.) used by the board |
 | `workspace/` | Chat-first view with file browser and editor (default view) |
 | `sidebar/` | Project list, sources, context editor |
+| `sidebar-tree/` | Hierarchical tree navigation (repos, files, context menus) |
 | `command-palette/` | Cmd+K command interface |
+| `confluence/` | Confluence sync modals (link, preview) |
 | `tracker/` | Jira config, sync UI, type/status mapping |
 | `settings/` | Application settings dialogs |
 | `permission/` | Permission request UI |
@@ -285,6 +299,7 @@ Tracks git branch changes for connected repositories in real-time.
 - `src/main/claude/tools/storybook.ts` - Component discovery
 - `src/main/claude/tools/document-update.ts` - Document update tools
 - `src/main/claude/tools/claudemd-update.ts` - Project context updates
+- `src/main/claude/tools/groups.ts` - Group management tools
 - `src/main/claude/streaming/` - Streaming session classes
 - `src/main/claude/prompts/` - System prompt modules
 - `src/main/services/streaming/StreamingSessionService.ts` - Main chat session management

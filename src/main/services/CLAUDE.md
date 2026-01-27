@@ -18,10 +18,12 @@ Plan items, projects, attachments, tracker connections, and groups—the domain 
 
 ### Repo Services (`services/repo/`)
 
+Git repositories, worktrees, development sessions, environment capture.
 
 - `RepoService` — Add/remove repos, watch for changes
 - `WorktreeService` — Manage git worktrees
 - `RepoWatcherService` — Watch git branch changes (fs.watch on .git/HEAD)
+- `EnvironmentService` — Capture environment from direnv/Nix for dev sessions
 
 ### File Services (`services/files/`)
 
@@ -39,6 +41,11 @@ Terminal/PTY and Claude session management.
 - `StreamingSessionService` — Main chat session lifecycle
 
 ### Generation Services (`services/generation/`)
+
+
+### Confluence Services (`services/confluence/`)
+
+Confluence wiki integration.
 
 
 
