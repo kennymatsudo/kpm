@@ -75,11 +75,14 @@ screenshots\:dev:
 
 	@echo "Generating release notes with Claude..."
 
+	git commit -m "Update release notes"
 	npm version patch
 	git push && git push --tags
 
+	git commit -m "Update release notes"
 	npm version minor
 	git push && git push --tags
 
+	git commit -m "Update release notes"
 	npm version major
 	git push && git push --tags
