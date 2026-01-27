@@ -29,9 +29,16 @@ npmRebuild: true
 nodeGypRebuild: false
 
 # macOS configuration
+# Builds are ad-hoc signed and not notarized — no Apple Developer account
+# needed. Locally built apps are never quarantined, so Gatekeeper does not
+# check them.
 mac:
   category: public.app-category.developer-tools
+  hardenedRuntime: true
   gatekeeperAssess: false
+  entitlements: assets/entitlements.mac.plist
+  entitlementsInherit: assets/entitlements.mac.plist
+  notarize: false
   target:
     - target: dmg
       arch:

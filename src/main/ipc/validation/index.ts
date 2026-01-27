@@ -88,6 +88,7 @@ export { PerfSchemas } from './perf';
 
 // Confluence
 export { ConfluenceSchemas } from './confluence';
+
 export type {
   ConfluenceLinkInput,
   ConfluenceUnlinkInput,

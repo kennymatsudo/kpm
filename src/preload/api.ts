@@ -559,6 +559,7 @@ const perf = {
   getLogInfo: (): Promise<{ success: boolean; enabled?: boolean; logPath?: string; sessionId?: string; error?: string }> =>
 };
 
+
 const confluence = {
   // Link a document to a Confluence page
   link: (

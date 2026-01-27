@@ -111,6 +111,7 @@
 
 ---
 
+- Notifications & Updates (1)
 - `../ui/StatusSelector.tsx`: Dropdown for status changes
 - `MergeQueuePanel.tsx`: Open-PR ordering with dependency-derived blockers
   - Features: 99 (Merge Queue)

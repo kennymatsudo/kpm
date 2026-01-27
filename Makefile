@@ -1,6 +1,21 @@
+.PHONY: help dev start check app db db\:reset install package dist test\:e2e test\:e2e\:dev test\:e2e\:ui screenshots screenshots\:dev release-notes release\:patch release\:minor release\:major
 
 help:
 	@echo "Available commands:"
+	@echo "  make install        Install all dependencies (run once after clone)"
+	@echo "  make dev            Start dev server"
+	@echo "  make app            Build the app and install it to /Applications (macOS)"
+	@echo "  make start          Run production build"
+	@echo "  make db:reset       Delete local database (for schema changes)"
+	@echo "  make package        Build and package Electron app (directory only)"
+	@echo "  make dist           Build distributable app (DMG, installer, etc.)"
+	@echo "  make test:e2e       Run Playwright E2E tests (packages app first)"
+	@echo "  make test:e2e:ui    Run E2E tests with interactive UI"
+	@echo "  make screenshots    Regenerate README screenshots in docs/images (packages app first)"
+	@echo "  make screenshots:dev  Regenerate screenshots against the existing package"
+	@echo "  make release:patch  Release patch version (0.1.0 → 0.1.1)"
+	@echo "  make release:minor  Release minor version (0.1.0 → 0.2.0)"
+	@echo "  make release:major  Release major version (0.1.0 → 1.0.0)"
 
 # Install all dependencies (run once after clone or adding new packages)
 # Cleans native module builds first to avoid NODE_MODULE_VERSION mismatch
@@ -11,6 +26,7 @@ install:
 
 
 # Start dev server
+dev:
 	npm run dev
 
 # Build and run production build
@@ -21,7 +37,20 @@ db\:reset:
 	rm -f ~/Library/Application\ Support/KPM\ -\ Planning\ Workbench/planner.db
 	@echo "Database reset. Restart the app."
 
+# Build Electron app with electron-vite then package with electron-builder (directory only).
+# CSC_IDENTITY_AUTO_DISCOVERY=false skips keychain certificate lookup so builds
+# are reproducibly ad-hoc signed — no Apple Developer account needed.
 package:
+	npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false npm run package
+
+# Build the app and install it into /Applications (macOS).
+# Locally built apps are never quarantined, so Gatekeeper does not require
+# signing or notarization. Reinstalling replaces the previous copy; the first
+# tracker-credential access after an update re-prompts for keychain approval.
+app: package
+	rm -rf "/Applications/KPM - Planning Workbench.app"
+	ditto "release/mac-arm64/KPM - Planning Workbench.app" "/Applications/KPM - Planning Workbench.app"
+	@echo "Installed /Applications/KPM - Planning Workbench.app"
 
 # Build distributable app (DMG, installer, etc.)
 dist:
@@ -33,3 +62,24 @@ test\:e2e: package
 
 test\:e2e\:ui: package
 	npx playwright test --ui
+
+# README screenshots (seeds a demo project, captures plan views to docs/images/)
+screenshots: package
+	KPM_SCREENSHOTS=1 npx playwright test e2e/screenshots.spec.ts
+
+screenshots\:dev:
+	KPM_SCREENSHOTS=1 npx playwright test e2e/screenshots.spec.ts
+
+# Release commands - bump version, commit, tag, and push.
+# Tags mark source releases only — no binaries are built or published.
+
+	@echo "Generating release notes with Claude..."
+
+	npm version patch
+	git push && git push --tags
+
+	npm version minor
+	git push && git push --tags
+
+	npm version major
+	git push && git push --tags

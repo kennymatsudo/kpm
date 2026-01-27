@@ -117,6 +117,7 @@ function createDefaultConfig(): AppConfig {
       fetchTimeoutMs: 10 * 1000, // 10 seconds
       gitTimeoutMs: 5 * 1000, // 5 seconds
     },
+
   };
 }
 

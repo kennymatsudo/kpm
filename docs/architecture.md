@@ -156,6 +156,7 @@ src/
      - `confluence/` - ConfluenceSyncService
      - `PerfLogger.ts` - PerfLogger
 
+**Shared polling** (`PollScheduler`): a single timer drives all interval-based work — review polling, repo watching, project file watching, search reindex. Services register tasks instead of holding their own `setInterval`.
 **Composition Root** (`src/main/services/appServices.ts`):
 - Wires all services with their dependencies
 - Single point of service instantiation

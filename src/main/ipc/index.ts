@@ -5,6 +5,7 @@ import type { BrowserWindow } from 'electron';
  */
 export function registerAllIpcHandlers(
   getMainWindow: () => BrowserWindow | null,
+  services: AppServices
 ): void {
     getMainWindow,
 }

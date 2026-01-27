@@ -3,6 +3,13 @@ import { execSync } from 'child_process';
 import { initDatabase } from './db';
 import * as TempImageService from './services/files/TempImageService';
 import { warmupMcpSdk } from './claude/tools/createKpmServer';
+// E2E launches (NODE_ENV=test) pass an isolated --user-data-dir; honor it so tests
+// never touch the real database — the pin would otherwise override the flag.
+const e2eDataDir = process.env.NODE_ENV === 'test'
+  ? app.commandLine.getSwitchValue('user-data-dir')
+  : '';
+app.setPath('userData', e2eDataDir || path.join(app.getPath('appData'), 'KPM - Planning Workbench'));
+
 
 
 void app.whenReady().then(async () => {
@@ -19,6 +26,8 @@ void app.whenReady().then(async () => {
   // Initialize temp image service (creates temp directory, cleans up stale files)
   await TempImageService.init();
 
+
+  registerAllIpcHandlers(getMainWindow, services);
   createWindow();
 
   app.on('activate', () => {
