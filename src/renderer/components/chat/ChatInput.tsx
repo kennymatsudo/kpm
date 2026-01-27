@@ -3,15 +3,39 @@ import { useChatStore } from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
 import { ModelSelector } from './ModelSelector';
 
+const WORKSPACE_PLACEHOLDERS = [
+  'Explain how authentication works...',
+  'Draft a technical spec for...',
+  'Summarize these files...',
+  'Help me understand this codebase...',
+];
+
+const PLAN_PLACEHOLDERS = [
+  'Create a task to refactor the...',
+  'Break this feature into subtasks...',
+  "What's left to do on this project?",
+  'Generate a test plan for...',
+];
+
 interface ChatInputProps {
   onCancel: () => void;
   disabled?: boolean;
   /** Handler for adding files dragged from file tree to chat context */
   addFocusedResource?: (resource: FocusedResource) => void;
+  /** Current view mode for placeholder customization */
+  currentView?: ChatViewMode;
 }
 
+export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, currentView }: ChatInputProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+
+  // Rotate placeholder on focus
+  const handleFocus = useCallback(() => {
+
+  const currentPlaceholder = disabled
+    ? 'Select a project first'
 
   // Auto-resize textarea
   useEffect(() => {
@@ -131,6 +155,8 @@ interface ChatInputProps {
           value={message}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
+          onFocus={handleFocus}
+          placeholder={currentPlaceholder}
           rows={1}
         />
 

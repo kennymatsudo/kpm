@@ -148,6 +148,7 @@ export function Chat({ currentView }: ChatProps) {
         onCancel={cancel}
         disabled={!currentProjectId}
         addFocusedResource={addFocusedResource}
+        currentView={currentView}
       />
     </div>
   );
