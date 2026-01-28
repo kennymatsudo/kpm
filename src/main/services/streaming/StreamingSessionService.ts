@@ -303,6 +303,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
       return success({ sessionId });
     } catch (error) {
+      // Log full error details for debugging
+      console.error('[StreamingSessionService] Chat session connection failed:', error);
+      if (error && typeof error === 'object') {
+      }
+
       // Clean up subscriptions - check both the managed session AND our local references
       // This ensures cleanup even if session storage failed
       const managed = sessions.get(key);

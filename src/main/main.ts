@@ -3,12 +3,29 @@ import { execSync } from 'child_process';
 import { initDatabase } from './db';
 import * as TempImageService from './services/files/TempImageService';
 import { warmupMcpSdk } from './claude/tools/createKpmServer';
+
+// Fix PATH for production builds launched from Finder
+function fixPath(): void {
+
+  const currentPath = process.env.PATH || '';
+  const pathSet = new Set(currentPath.split(path.delimiter));
+
+  // Add paths that don't already exist
+  const newPaths = additionalPaths.filter(p => !pathSet.has(p));
+  if (newPaths.length > 0) {
+    process.env.PATH = [...newPaths, currentPath].join(path.delimiter);
+    console.log('[Main] Extended PATH with:', newPaths.join(', '));
+  }
+}
+
 // E2E launches (NODE_ENV=test) pass an isolated --user-data-dir; honor it so tests
 // never touch the real database — the pin would otherwise override the flag.
 const e2eDataDir = process.env.NODE_ENV === 'test'
   ? app.commandLine.getSwitchValue('user-data-dir')
   : '';
 app.setPath('userData', e2eDataDir || path.join(app.getPath('appData'), 'KPM - Planning Workbench'));
+// Fix PATH immediately at startup
+fixPath();
 
 
 

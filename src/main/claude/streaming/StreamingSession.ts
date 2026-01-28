@@ -158,6 +158,12 @@ export class StreamingSession {
       this._isActive = false;
       this._isReady = false;
     } catch (error) {
+      // Log full error details for debugging
+      console.error('[StreamingSession] Message loop error:', error);
+      if (error && typeof error === 'object') {
+        if ('stderr' in error) console.error('[StreamingSession] stderr:', (error as { stderr: string }).stderr);
+        if ('stdout' in error) console.error('[StreamingSession] stdout:', (error as { stdout: string }).stdout);
+      }
       this._isActive = false;
       this._isReady = false;
       this.readyRejecter?.(error as Error);
