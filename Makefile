@@ -74,15 +74,19 @@ screenshots\:dev:
 # Tags mark source releases only — no binaries are built or published.
 
 	@echo "Generating release notes with Claude..."
+	@cat release-notes.md
 
+	git add release-notes.md
 	git commit -m "Update release notes"
 	npm version patch
 	git push && git push --tags
 
+	git add release-notes.md
 	git commit -m "Update release notes"
 	npm version minor
 	git push && git push --tags
 
+	git add release-notes.md
 	git commit -m "Update release notes"
 	npm version major
 	git push && git push --tags
