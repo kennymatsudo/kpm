@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 
 interface SidebarSectionProps {
   title: string;
@@ -7,6 +8,17 @@ interface SidebarSectionProps {
   children: ReactNode;
   /** Optional action button in header */
   action?: ReactNode;
+  /** Whether the drop zone is active (shows highlight on entire section) */
+  isDropZoneActive?: boolean;
+  /** Props to spread on the section for drop zone handling */
+  dropZoneProps?: {
+    onDragOver: (e: React.DragEvent) => void;
+    onDragEnter: (e: React.DragEvent) => void;
+    onDragLeave: (e: React.DragEvent) => void;
+    onDrop: (e: React.DragEvent) => void;
+  };
+  /** Additional className for the section container */
+  className?: string;
 }
 
 /**
@@ -20,9 +32,19 @@ export function SidebarSection({
   onToggleCollapsed,
   children,
   action,
+  isDropZoneActive = false,
+  dropZoneProps,
+  className = '',
 }: SidebarSectionProps) {
   return (
+    <div
+      className={`flex flex-col rounded-lg transition-all ${
+        isDropZoneActive ? 'bg-accent/10 ring-2 ring-inset ring-accent ring-dashed mx-2' : ''
+      } ${className}`}
+      {...dropZoneProps}
+    >
       {/* Section header */}
+      <div className="flex items-center gap-2 px-4 py-2">
         <button
           onClick={onToggleCollapsed}
           className="flex items-center gap-2 flex-1 hover:bg-surface-2/50 transition-colors rounded -mx-2 -my-1 px-2 py-1"
@@ -47,6 +69,8 @@ export function SidebarSection({
       {/* Collapsible content */}
       <div
         className={`overflow-hidden transition-all duration-200 ${
+          isCollapsed
+            ? 'max-h-0 opacity-0 flex-none'
         }`}
       >
         {children}

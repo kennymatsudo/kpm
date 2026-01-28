@@ -54,6 +54,15 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     }
   }, [projectId, loadProjectDirectory, loadLinks]);
 
+  // Start/stop watching project folder for external file changes
+  useEffect(() => {
+    if (!projectId) return;
+
+
+    return () => {
+    };
+  }, [projectId]);
+
   useEffect(() => {
         }
       }
@@ -123,6 +132,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         if (projectId && !node.children?.length) {
           void loadProjectDirectory(projectId, path);
         }
+      } else if (isImageFile(node.name)) {
       } else if (onFileOpen) {
         const isEditable = isEditableFile(node.name);
         onFileOpen('project', path, isEditable);
@@ -148,6 +158,25 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     },
   );
 
+  // Text file extensions (files we should read as text)
+  const TEXT_EXTENSIONS = new Set([
+    '.txt', '.md', '.json', '.js', '.ts', '.tsx', '.jsx', '.mjs', '.cjs',
+    '.css', '.scss', '.less', '.html', '.htm', '.xml', '.svg',
+    '.yaml', '.yml', '.toml', '.ini', '.conf', '.cfg',
+    '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd',
+    '.py', '.rb', '.php', '.java', '.kt', '.kts', '.scala', '.clj',
+    '.c', '.cpp', '.h', '.hpp', '.cs', '.go', '.rs', '.swift',
+    '.sql', '.graphql', '.gql',
+    '.env', '.gitignore', '.dockerignore', '.editorconfig',
+    '.eslintrc', '.prettierrc', '.babelrc',
+    '.lock', '.sum', // package-lock.json, go.sum, etc.
+  ]);
+
+  const isTextFile = useCallback((filename: string): boolean => {
+    const ext = filename.includes('.') ? '.' + filename.split('.').pop()?.toLowerCase() : '';
+    return TEXT_EXTENSIONS.has(ext);
+  }, []);
+
   // External file drop handler
   const handleExternalDrop = useCallback(
     async (files: FileList, targetPath: string) => {
@@ -157,6 +186,8 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         try {
           const newPath = targetPath ? `${targetPath}/${file.name}` : file.name;
 
+            const content = await file.text();
+          }
         } catch (err) {
           console.error(`Failed to copy file ${file.name}:`, err);
         }
@@ -164,6 +195,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
 
       void loadProjectDirectory(projectId, targetPath || undefined);
     },
+    [projectId, loadProjectDirectory, isTextFile]
   );
 
   // Internal move handler (drag-and-drop within tree)
@@ -189,6 +221,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
   const linkDocumentTitle = linkDocumentNode?.name.replace(/\.md$/, '') ?? '';
 
   return (
+    <div className="flex flex-col h-full min-h-0">
         isCollapsed={reposCollapsed}
         onToggleCollapsed={() => setReposCollapsed(!reposCollapsed)}
 
@@ -198,5 +231,6 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
           }
           }
       />
+    </div>
   );
 });

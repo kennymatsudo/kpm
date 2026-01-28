@@ -50,6 +50,9 @@ export function createAppServices(container: IRepositoryContainer) {
     planItems: container.planItems,
   });
 
+    getProjectFolder,
+  });
+
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -77,6 +80,7 @@ export function createAppServices(container: IRepositoryContainer) {
 
     // Files
     fileExplorerService,
+    projectWatcherService,
     repoFileService,
 
     // Generation

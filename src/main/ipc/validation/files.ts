@@ -64,6 +64,11 @@ export const FileExplorerSchemas = {
     content: z.string().max(10000000).optional(), // 10MB max
   }),
 
+  createBinaryFile: z.object({
+    projectId: uuid,
+    path: relativePath.min(1),
+  }),
+
   createSymlink: z.object({
     projectId: uuid,
     targetPath: z.string().min(1),
@@ -91,6 +96,11 @@ export const FileExplorerSchemas = {
     path: relativePath.min(1),
   }),
 
+  readBinaryFile: z.object({
+    projectId: uuid,
+    path: relativePath.min(1),
+  }),
+
   writeFile: z.object({
     projectId: uuid,
     path: relativePath.min(1),
@@ -105,4 +115,10 @@ export const FileExplorerSchemas = {
   selectFolderDialog: z.object({
     title: z.string().optional(),
   }),
+
+  watchProject: z.object({
+    projectId: uuid,
+  }),
+
+  unwatchProject: z.object({}),
 };

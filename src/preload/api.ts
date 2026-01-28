@@ -480,6 +480,9 @@ const fileExplorer = {
   // Create a new file
   createFile: (projectId: string, path: string, content?: string): Promise<FileNode> =>
 
+  // Create a new binary file (images, PDFs, etc.)
+  createBinaryFile: (projectId: string, path: string, data: Uint8Array): Promise<FileNode> =>
+
   // Create a symlink to external path
   createSymlink: (projectId: string, targetPath: string, linkPath: string): Promise<FileNode> =>
 
@@ -494,6 +497,9 @@ const fileExplorer = {
 
   // Read file content
   readFile: (projectId: string, path: string): Promise<string> =>
+
+  // Read binary file content (images, etc.)
+  readBinaryFile: (projectId: string, path: string): Promise<Uint8Array> =>
 
   // Write file content
   writeFile: (projectId: string, path: string, content: string): Promise<{ success: boolean; error?: string }> =>
@@ -527,6 +533,12 @@ const fileExplorer = {
     ipcRenderer.on('file-explorer:file-changed', handler);
     return () => ipcRenderer.removeListener('file-explorer:file-changed', handler);
   },
+
+  // Watch project folder for external file changes (Finder, terminal, etc.)
+  watchProject: (projectId: string): Promise<{ success: boolean; error?: string }> =>
+
+  // Stop watching project folder
+  unwatchProject: (): Promise<{ success: boolean }> =>
 };
 
 // Repo Files API (Workspace file browser for connected repos)

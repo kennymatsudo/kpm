@@ -193,6 +193,29 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
     },
 
     /**
+     * Read binary file content (images, PDFs, etc.).
+     * Returns a Buffer which serializes to Uint8Array over IPC.
+     */
+      const projectFolder = deps.getProjectFolder(projectId);
+      if (!projectFolder) {
+        return failure('Project not found');
+      }
+
+
+      try {
+        }
+
+        if (stats.isDirectory()) {
+          return failure('Cannot read directory as file');
+        }
+
+        return success(content);
+      } catch (error) {
+        return failure(`Failed to read binary file: ${error}`);
+      }
+    },
+
+    /**
      * Write file content.
      */
       const projectFolder = deps.getProjectFolder(projectId);
