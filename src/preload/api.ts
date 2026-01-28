@@ -613,6 +613,11 @@ const confluence = {
   ): Promise<{ success: boolean; data?: { siteUrl: string; spaceKey: string; pageId: string }; error?: string }> =>
 };
 
+// Usage in console:
+//   await window.api.debug.enable()
+const debug = {
+};
+
 export const api = {
   tempImages,
   chat,
@@ -636,6 +641,7 @@ export const api = {
   shell,
   perf,
   confluence,
+  debug,
 };
 
 export type API = typeof api;
