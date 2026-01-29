@@ -1,4 +1,5 @@
 import type { FileNode } from '../../../shared/types';
+import { DropdownMenu } from '../ui';
 
 interface FileContextMenuProps {
   x: number;
@@ -40,57 +41,210 @@ export function FileContextMenu({
   const isMarkdown = node.name.endsWith('.md');
 
   return (
+    <DropdownMenu
+      isOpen={true}
+      onClose={onClose}
+      position={{ type: 'point', x, y }}
+    >
       {/* View/Edit action (for markdown files) */}
       {isMarkdown && onView && (
         <>
+          <DropdownMenu.Item
+            onClick={onView}
+            icon={
+              <svg
+                className="w-4 h-4 text-text-tertiary"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                />
+              </svg>
+            }
+          >
             View / Edit
+          </DropdownMenu.Item>
+          <DropdownMenu.Separator />
         </>
       )}
 
       {/* Focus action */}
+      <DropdownMenu.Item
         onClick={() => {
           onToggleFocus();
           onClose();
         }}
+        closeOnClick={false}
+        variant={isFocused ? 'accent' : 'default'}
+        icon={
+          <svg
+            className={`w-4 h-4 ${isFocused ? 'text-accent' : 'text-text-tertiary'}`}
+            fill={isFocused ? 'currentColor' : 'none'}
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+            />
+          </svg>
+        }
       >
         {isFocused ? 'Remove from context' : 'Add to context'}
+      </DropdownMenu.Item>
 
       {/* Confluence sync options (markdown files) */}
       {isMarkdown && (
         <>
+          <DropdownMenu.Separator />
           {isLinkedToConfluence ? (
           ) : (
+            <DropdownMenu.Item
               onClick={() => {
                 onLinkToConfluence?.();
                 onClose();
               }}
+              closeOnClick={false}
+              icon={
+                <svg
+                  className="w-4 h-4 text-text-tertiary"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                  />
+                </svg>
+              }
             >
               Link to Confluence
+            </DropdownMenu.Item>
           )}
         </>
       )}
 
+      <DropdownMenu.Separator />
 
       {/* Rename */}
+      <DropdownMenu.Item
         onClick={onRename}
         disabled={isClaudeMd}
+        icon={
+          <svg
+            className="w-4 h-4 text-text-tertiary"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+            />
+          </svg>
+        }
       >
         Rename
+      </DropdownMenu.Item>
 
       {/* Reveal in Finder */}
+      <DropdownMenu.Item
+        onClick={onRevealInFinder}
+        icon={
+          <svg
+            className="w-4 h-4 text-text-tertiary"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+            />
+          </svg>
+        }
+      >
         Reveal in Finder
+      </DropdownMenu.Item>
 
       {/* Copy Full Path */}
+      <DropdownMenu.Item
+        onClick={onCopyFullPath}
+        icon={
+          <svg
+            className="w-4 h-4 text-text-tertiary"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+            />
+          </svg>
+        }
+      >
         Copy Full Path
+      </DropdownMenu.Item>
 
       {/* Copy Relative Path */}
+      <DropdownMenu.Item
+        onClick={onCopyRelativePath}
+        icon={
+          <svg
+            className="w-4 h-4 text-text-tertiary"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+            />
+          </svg>
+        }
+      >
         Copy Relative Path
+      </DropdownMenu.Item>
 
+      <DropdownMenu.Separator />
 
       {/* Delete */}
+      <DropdownMenu.Item
+        variant="danger"
         onClick={onDelete}
         disabled={isClaudeMd}
+        icon={
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+            />
+          </svg>
+        }
       >
         Delete
+      </DropdownMenu.Item>
+    </DropdownMenu>
   );
 }

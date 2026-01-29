@@ -21,6 +21,8 @@ export function PlanCardMenu({
 
 
 
+      onClose();
+
 
   return (
     <>

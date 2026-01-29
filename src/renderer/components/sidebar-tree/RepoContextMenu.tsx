@@ -1,3 +1,4 @@
+import { DropdownMenu } from '../ui';
 
 interface RepoContextMenuProps {
   x: number;
@@ -24,6 +25,21 @@ export function RepoContextMenu({
 }: RepoContextMenuProps) {
 
   return (
+    <DropdownMenu
+      isOpen={true}
+      onClose={onClose}
+      position={{ type: 'point', x, y }}
+      minWidth={180}
+    >
+      {/* Focus action */}
+      <DropdownMenu.Item
+        onClick={() => {
+          onToggleFocus();
+          onClose();
+        }}
+        closeOnClick={false}
+        variant={isFocused ? 'accent' : 'default'}
+        icon={
           <svg
             className={`w-4 h-4 ${isFocused ? 'text-accent' : 'text-text-tertiary'}`}
             fill={isFocused ? 'currentColor' : 'none'}
@@ -37,10 +53,19 @@ export function RepoContextMenu({
               d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
             />
           </svg>
+        }
+      >
+      </DropdownMenu.Item>
+
+      <DropdownMenu.Separator />
 
 
+      <DropdownMenu.Separator />
 
-
+      {/* Reveal in Finder */}
+      <DropdownMenu.Item
+        onClick={onRevealInFinder}
+        icon={
           <svg
             className="w-4 h-4 text-text-tertiary"
             fill="none"
@@ -54,6 +79,18 @@ export function RepoContextMenu({
               d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
             />
           </svg>
+        }
+      >
+        Reveal in Finder
+      </DropdownMenu.Item>
+
+      {/* Copy Path */}
+      <DropdownMenu.Item
+        onClick={() => {
+          onClose();
+        }}
+        closeOnClick={false}
+        icon={
           <svg
             className="w-4 h-4 text-text-tertiary"
             fill="none"
@@ -67,8 +104,18 @@ export function RepoContextMenu({
               d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
             />
           </svg>
+        }
+      >
+        Copy Path
+      </DropdownMenu.Item>
 
+      <DropdownMenu.Separator />
 
+      {/* Remove */}
+      <DropdownMenu.Item
+        variant="danger"
+        onClick={onRemove}
+        icon={
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"
@@ -77,5 +124,10 @@ export function RepoContextMenu({
               d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
             />
           </svg>
+        }
+      >
+        Remove Repository
+      </DropdownMenu.Item>
+    </DropdownMenu>
   );
 }
