@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
+const MAX_BINARY_BYTES = 50 * 1024 * 1024; // 50MB
 
 export interface FileExplorerServiceDeps {
   getProjectFolder: (projectId: string) => string | null;
@@ -230,6 +231,99 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return success(undefined);
       } catch (error) {
         return failure(`Failed to write file: ${error}`);
+      }
+    },
+
+    /**
+     * Create a new binary file (images, PDFs, etc.) asynchronously.
+     * Avoids blocking the main process for large writes.
+     */
+    async createBinaryFileAsync(
+      projectId: string,
+      relativePath: string,
+      data: Buffer
+    ): Promise<ServiceResult<FileNode>> {
+      const projectFolder = deps.getProjectFolder(projectId);
+      if (!projectFolder) {
+        return failure('Project not found');
+      }
+
+
+      try {
+        if (data.byteLength > MAX_BINARY_BYTES) {
+          const sizeMB = (data.byteLength / (1024 * 1024)).toFixed(1);
+          return failure(`File too large (${sizeMB}MB). Max ${MAX_BINARY_BYTES / (1024 * 1024)}MB.`);
+        }
+
+        if (exists) {
+          return failure('Path already exists');
+        }
+
+        await ensureParentDirectory(fullPath);
+        await fs.promises.writeFile(fullPath, data);
+
+        const stats = await fs.promises.stat(fullPath);
+        return success({
+          name: path.basename(relativePath),
+          path: relativePath,
+          isDirectory: false,
+          isSymlink: false,
+          modifiedAt: stats.mtime.toISOString(),
+          size: stats.size,
+        });
+      } catch (error) {
+        return failure(`Failed to create binary file: ${error}`);
+      }
+    },
+
+    /**
+     * Copy an external file into the project without loading it into the renderer.
+     */
+    async copyExternalFile(
+      projectId: string,
+      sourcePath: string,
+      relativePath: string
+    ): Promise<ServiceResult<FileNode>> {
+      const projectFolder = deps.getProjectFolder(projectId);
+      if (!projectFolder) {
+        return failure('Project not found');
+      }
+
+      }
+
+      try {
+        const sourceStats = await fs.promises.stat(sourcePath);
+        if (!sourceStats.isFile()) {
+          return failure('Source path is not a file');
+        }
+
+        if (sourceStats.size > MAX_BINARY_BYTES) {
+          const sizeMB = (sourceStats.size / (1024 * 1024)).toFixed(1);
+          return failure(`File too large (${sizeMB}MB). Max ${MAX_BINARY_BYTES / (1024 * 1024)}MB.`);
+        }
+
+        if (path.resolve(sourcePath) === path.resolve(fullPath)) {
+          return failure('Source and destination paths are the same');
+        }
+
+        if (destExists) {
+          return failure('Path already exists');
+        }
+
+        await ensureParentDirectory(fullPath);
+        await fs.promises.copyFile(sourcePath, fullPath, fs.constants.COPYFILE_EXCL);
+
+        const stats = await fs.promises.stat(fullPath);
+        return success({
+          name: path.basename(relativePath),
+          path: relativePath,
+          isDirectory: false,
+          isSymlink: false,
+          modifiedAt: stats.mtime.toISOString(),
+          size: stats.size,
+        });
+      } catch (error) {
+        return failure(`Failed to copy file: ${error}`);
       }
     },
 

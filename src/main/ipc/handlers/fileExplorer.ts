@@ -64,6 +64,19 @@ export function registerFileExplorerHandlers(
     const { projectId, path, data } = FileExplorerSchemas.createBinaryFile.parse(params);
     // Convert Uint8Array to Buffer for Node.js fs operations
     const buffer = Buffer.from(data);
+    const result = unwrapOrThrow(await fileExplorerService.createBinaryFileAsync(projectId, path, buffer));
+    emitFileChange(getMainWindow(), {
+      projectId,
+      type: 'created',
+      path,
+      isDirectory: false,
+    });
+    return result;
+  });
+
+  // Copy an external file into the project (avoids renderer reads)
+    const { projectId, sourcePath, path } = FileExplorerSchemas.copyExternalFile.parse(params);
+    const result = unwrapOrThrow(await fileExplorerService.copyExternalFile(projectId, sourcePath, path));
     emitFileChange(getMainWindow(), {
       projectId,
       type: 'created',

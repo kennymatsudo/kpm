@@ -1,5 +1,8 @@
 import { useShallow } from 'zustand/react/shallow';
 
+const MAX_EXTERNAL_FILE_BYTES = 50 * 1024 * 1024; // 50MB
+const MAX_TEXT_FILE_BYTES = 10 * 1024 * 1024; // 10MB (matches createFile validation)
+
 interface ReposAndFilesSectionProps {
   projectId: string;
   /**
@@ -185,9 +188,38 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
       for (const file of Array.from(files)) {
         try {
           const newPath = targetPath ? `${targetPath}/${file.name}` : file.name;
+          const filePath = (file as File & { path?: string }).path;
+          const isText = isTextFile(file.name);
+
+          if (file.size > MAX_EXTERNAL_FILE_BYTES) {
+            console.error(
+              `File too large to import (${formatFileSize(file.size)}). Max ${formatFileSize(MAX_EXTERNAL_FILE_BYTES)}.`
+            );
+            continue;
+          }
+
+          if (isText) {
+            if (filePath && file.size > MAX_TEXT_FILE_BYTES) {
+              continue;
+            }
+
+            if (file.size > MAX_TEXT_FILE_BYTES) {
+              console.error(
+                `Text file too large to import (${formatFileSize(file.size)}). Max ${formatFileSize(MAX_TEXT_FILE_BYTES)}.`
+              );
+              continue;
+            }
 
             const content = await file.text();
+            continue;
           }
+
+          if (filePath) {
+            continue;
+          }
+
+          const arrayBuffer = await file.arrayBuffer();
+          const data = new Uint8Array(arrayBuffer);
         } catch (err) {
           console.error(`Failed to copy file ${file.name}:`, err);
         }

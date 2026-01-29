@@ -112,6 +112,7 @@ export type FileImportContextInput = z.infer<typeof FileSchemas.importContext>;
 export type FileExplorerListDirectoryInput = z.infer<typeof FileExplorerSchemas.listDirectory>;
 export type FileExplorerCreateFolderInput = z.infer<typeof FileExplorerSchemas.createFolder>;
 export type FileExplorerCreateFileInput = z.infer<typeof FileExplorerSchemas.createFile>;
+export type FileExplorerCopyExternalFileInput = z.infer<typeof FileExplorerSchemas.copyExternalFile>;
 export type FileExplorerCreateSymlinkInput = z.infer<typeof FileExplorerSchemas.createSymlink>;
 export type FileExplorerDeleteEntryInput = z.infer<typeof FileExplorerSchemas.deleteEntry>;
 export type FileExplorerRenameInput = z.infer<typeof FileExplorerSchemas.rename>;

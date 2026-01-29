@@ -480,6 +480,9 @@ const fileExplorer = {
   // Create a new file
   createFile: (projectId: string, path: string, content?: string): Promise<FileNode> =>
 
+  // Copy an external file into the project
+  copyExternalFile: (projectId: string, sourcePath: string, path: string): Promise<FileNode> =>
+
   // Create a new binary file (images, PDFs, etc.)
   createBinaryFile: (projectId: string, path: string, data: Uint8Array): Promise<FileNode> =>
 

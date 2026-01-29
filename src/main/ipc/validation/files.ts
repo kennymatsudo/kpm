@@ -3,6 +3,9 @@
  */
 
 import { z } from 'zod';
+import { existingFilePath, uuid, relativePath } from './shared';
+
+const MAX_BINARY_BYTES = 50 * 1024 * 1024; // 50MB
 
 // =============================================================================
 // File Schemas (Context Files)
@@ -66,6 +69,16 @@ export const FileExplorerSchemas = {
 
   createBinaryFile: z.object({
     projectId: uuid,
+    path: relativePath.min(1),
+    data: z.instanceof(Uint8Array).refine(
+      (data) => data.byteLength <= MAX_BINARY_BYTES,
+      `File too large (max ${MAX_BINARY_BYTES / (1024 * 1024)}MB)`
+    ),
+  }),
+
+  copyExternalFile: z.object({
+    projectId: uuid,
+    sourcePath: existingFilePath,
     path: relativePath.min(1),
   }),
 
