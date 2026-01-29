@@ -43,6 +43,8 @@ export const planItemStatus = z.literal('planned');
 
 });
 
+/** Plan item label - allows any string to support custom labels from Jira */
+export const planItemLabel = z.string().max(100, 'Label too long');
 
 /** Relation type */
 export const relationType = z.enum(['depends_on', 'blocks', 'relates_to'], {

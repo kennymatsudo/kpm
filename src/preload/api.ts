@@ -628,6 +628,13 @@ const confluence = {
   ): Promise<{ success: boolean; data?: { siteUrl: string; spaceKey: string; pageId: string }; error?: string }> =>
 };
 
+// Testing API - only available when NODE_ENV=test
+// Used by E2E tests for database reset and test isolation
+const testing = {
+  // Reset database - truncates all tables while preserving schema
+  resetDatabase: (): Promise<{ success: boolean; tablesReset?: number; error?: string }> =>
+};
+
 // Usage in console:
 //   await window.api.debug.enable()
 const debug = {
@@ -658,6 +665,7 @@ export const api = {
   perf,
   confluence,
   debug,
+  testing,
 };
 
 export type API = typeof api;

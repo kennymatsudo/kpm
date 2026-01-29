@@ -147,6 +147,9 @@ export const PlanCard = memo(function PlanCard({
   return (
     <div
       data-plan-card={!isPreview ? true : undefined}
+      data-testid={!isPreview ? 'plan-card' : 'plan-card-preview'}
+      role="article"
+      aria-label={item.title}
       className={`
         plan-card plan-card-depth-${Math.min(depth, 4)}
         ${previewClasses}

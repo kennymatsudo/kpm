@@ -157,6 +157,9 @@ interface CanvasProps {
     <div
       ref={containerRef}
       className="w-full h-full relative overflow-hidden"
+      data-testid="canvas-viewport"
+      role="region"
+      aria-label="Plan canvas"
       onDragOver={handleDragOver}
       onDrop={(e) => {
         e.preventDefault();

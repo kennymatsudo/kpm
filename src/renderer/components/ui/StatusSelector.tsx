@@ -23,6 +23,7 @@ export function StatusSelector({
   const currentConfig = value ? STATUS_CATEGORY_CONFIG[value] : null;
 
   return (
+        aria-label={`Status: ${currentConfig?.label ?? 'Not set'}`}
         className={`
           inline-flex items-center gap-1 font-medium rounded transition-all duration-150
           ${sizeClasses}

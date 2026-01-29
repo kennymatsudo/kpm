@@ -1,3 +1,4 @@
+import { test as base, expect as pwExpect } from '@playwright/test';
 import type { Page, Browser, BrowserContext } from '@playwright/test';
 import { chromium } from 'playwright';
 import { findLatestBuild, parseElectronApp } from 'electron-playwright-helpers';
@@ -25,6 +26,8 @@ interface TestFixtures {
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   // Worker scope - app launches once and is shared
   electronApp: [
+    // eslint-disable-next-line no-empty-pattern
+    async ({}, use) => {
       // Use isolated test data directory
       const testDataPath = path.join(os.tmpdir(), 'kpm-e2e-test');
 
@@ -88,7 +91,25 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
       console.log('Electron app launched, connecting via CDP...');
 
+      // Poll for CDP endpoint to be ready (replaces hardcoded 2000ms wait)
+      let browser: Browser | null = null;
+      const maxAttempts = 20;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+          browser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`, {
+            timeout: 5000,
+          });
+          break;
+        } catch (err) {
+          if (attempt === maxAttempts - 1) {
+          }
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
 
+      if (!browser) {
+        throw new Error('Failed to connect to browser');
+      }
 
       const contexts = browser.contexts();
       const context = contexts[0];
@@ -122,7 +143,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       throw new Error('No window found');
     }
 
+    await window.waitForLoadState('domcontentloaded');
+
     await use(window);
   },
 });
 
+export { pwExpect as expect };
