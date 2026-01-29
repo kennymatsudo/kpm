@@ -233,6 +233,26 @@ export class StreamingSession {
   }
 
   /**
+   * Reconnect a disconnected MCP server.
+   * Useful for error recovery if an MCP server drops connection.
+   * @param serverName - The name of the MCP server to reconnect
+   * @returns Resolves when reconnection attempt completes
+   */
+  async reconnectMcpServer(serverName: string): Promise<void> {
+    await this.queryInstance?.reconnectMcpServer(serverName);
+  }
+
+  /**
+   * Enable or disable an MCP server.
+   * Useful for dynamically managing server availability.
+   * @param serverName - The name of the MCP server to toggle
+   * @param enabled - Whether the server should be enabled
+   */
+  async toggleMcpServer(serverName: string, enabled: boolean): Promise<void> {
+    await this.queryInstance?.toggleMcpServer(serverName, enabled);
+  }
+
+  /**
    * Get the session ID (available after start() resolves).
    */
   getSessionId(): string | null {
