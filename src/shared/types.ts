@@ -41,14 +41,18 @@ export type TrackerProgressCallback = (data: {
 }) => void;
 
 // =============================================================================
+// Task Prompt Template Types
 // =============================================================================
 
 /**
+ * Task prompt template for guiding Claude when creating plan items.
  * project_id = null means global template.
  */
+export interface TaskPromptTemplate {
   id: string;
   project_id: string | null;  // null = global template
   name: string;
+  prompt_content: string;
   is_default: boolean;
   created_at: string;
   updated_at: string;

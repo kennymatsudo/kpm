@@ -30,6 +30,7 @@ export interface IRepositoryContainer {
   externalPlanItems: IExternalPlanItemRepository;
   chatMessages: IChatMessageRepository;
   chatSessions: IChatSessionRepository;
+  taskPromptTemplates: ITaskPromptTemplateRepository;
   worktrees: IWorktreeRepository;
   appSettings: IAppSettingsRepository;
   devSessions: IDevSessionRepository;

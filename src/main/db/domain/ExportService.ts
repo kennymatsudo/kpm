@@ -575,6 +575,7 @@ function mergeCustomFieldValues(
         const created = await client.createIssue({
           projectKey: association.project_key,
           issueTypeId: entry.target_issue_type_id!,
+          summary: planItem.title,
           parentKey,
           customFields,
         });
@@ -625,6 +626,7 @@ function mergeCustomFieldValues(
           : undefined;
 
         await client.updateIssue(planItem.external_key!, {
+          summary: planItem.title,
           customFields: overrideFields,
         });
 

@@ -1236,6 +1236,36 @@ interface Migration {
     },
   },
   {
+    id: 1033,
+    name: '033_task_prompt_templates',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- TASK PROMPT TEMPLATES: Configurable Claude prompts for plan item creation
+        -- Replaces ticket_templates - prompts guide Claude, not Jira export
+        -- project_id = NULL means global template
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS task_prompt_templates (
+          id TEXT PRIMARY KEY,
+          project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+          name TEXT NOT NULL DEFAULT 'default',
+          prompt_content TEXT NOT NULL,
+          is_default INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(project_id, name)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_task_prompt_templates_project ON task_prompt_templates(project_id);
+
+        -- ============================================
+        -- Drop ticket_templates table (no longer needed)
+        -- ============================================
+        DROP TABLE IF EXISTS ticket_templates;
+      `);
+    },
+  },
+  {
     id: 1049,
     name: '049_remove_agent_instructions_from_projects',
     up: (db: BetterSqliteDatabase) => {

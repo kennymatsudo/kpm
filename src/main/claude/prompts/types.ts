@@ -11,4 +11,6 @@ export interface PlanContext {
   focusedResources: FocusedResource[];
   /** Current UI view - used for context-aware suggestions */
   currentView?: ChatViewMode;
+  /** Custom task prompt template - if set, overrides default PLAN_STRUCTURE */
+  taskPromptTemplate?: TaskPromptTemplate | null;
 }

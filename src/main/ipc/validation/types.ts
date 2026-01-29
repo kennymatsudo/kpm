@@ -19,6 +19,7 @@ import type { TrackerSchemas, ExportSchemas } from './tracker';
 import type { DevSessionSchemas, WorktreeSchemas } from './dev-session';
 import type { SettingsSchemas } from './settings';
 import type { ArtifactSchemas, TempImageSchemas } from './artifacts';
+import type { TaskPromptTemplateSchemas } from './agents';
 import type { ShellSchemas } from './shell';
 
 // =============================================================================
@@ -223,8 +224,17 @@ export type TempImageDeleteInput = z.infer<typeof TempImageSchemas.delete>;
 
 
 // =============================================================================
+// Task Prompt Template Types
 // =============================================================================
 
+export type TaskPromptTemplateListInput = z.infer<typeof TaskPromptTemplateSchemas.list>;
+export type TaskPromptTemplateGetInput = z.infer<typeof TaskPromptTemplateSchemas.get>;
+export type TaskPromptTemplateGetEffectiveInput = z.infer<typeof TaskPromptTemplateSchemas.getEffective>;
+export type TaskPromptTemplateGetBuiltinDefaultInput = z.infer<typeof TaskPromptTemplateSchemas.getBuiltinDefault>;
+export type TaskPromptTemplateCreateInput = z.infer<typeof TaskPromptTemplateSchemas.create>;
+export type TaskPromptTemplateUpdateInput = z.infer<typeof TaskPromptTemplateSchemas.update>;
+export type TaskPromptTemplateDeleteInput = z.infer<typeof TaskPromptTemplateSchemas.delete>;
+export type TaskPromptTemplateSetDefaultInput = z.infer<typeof TaskPromptTemplateSchemas.setDefault>;
 
 // =============================================================================
 // Shell Types

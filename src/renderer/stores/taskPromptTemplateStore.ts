@@ -1,14 +1,18 @@
 import { create } from 'zustand';
+import type { TaskPromptTemplate } from '../../shared/types';
 
 type TemplateScope = 'global' | 'project';
 
+interface TaskPromptTemplateState {
   // Data
   currentProjectId: string | null;
+  templates: TaskPromptTemplate[];
   selectedTemplateId: string | null;
   isLoading: boolean;
   scope: TemplateScope;
 
   // Actions
+  setTemplates: (templates: TaskPromptTemplate[]) => void;
   setSelectedTemplateId: (id: string | null) => void;
   setScope: (scope: TemplateScope) => void;
   setIsLoading: (isLoading: boolean) => void;
@@ -17,6 +21,7 @@ type TemplateScope = 'global' | 'project';
   loadTemplates: (scope: TemplateScope, currentProjectId: string | null) => Promise<void>;
 
   // Helpers
+  getSelectedTemplate: () => TaskPromptTemplate | null;
 
   // Reset
   reset: () => void;
@@ -24,6 +29,7 @@ type TemplateScope = 'global' | 'project';
 
 const initialState = {
   currentProjectId: null as string | null,
+  templates: [] as TaskPromptTemplate[],
   selectedTemplateId: null as string | null,
   isLoading: false,
   scope: 'global' as TemplateScope,
@@ -31,6 +37,7 @@ const initialState = {
 
 let loadTemplatesRequestId = 0;
 
+export const useTaskPromptTemplateStore = create<TaskPromptTemplateState>((set, get) => ({
   ...initialState,
 
   setTemplates: (templates) => set({ templates }),
@@ -69,6 +76,7 @@ let loadTemplatesRequestId = 0;
       }
       if (result.success && result.templates) {
         // Filter based on scope
+        const filtered = result.templates.filter((t: TaskPromptTemplate) =>
           scope === 'global' ? t.project_id === null : t.project_id === currentProjectId
         );
 
@@ -76,6 +84,7 @@ let loadTemplatesRequestId = 0;
 
         // Auto-select: keep current selection if still valid, otherwise pick first
         let newSelectedId = currentSelectedId;
+        if (!currentSelectedId || !filtered.find((t: TaskPromptTemplate) => t.id === currentSelectedId)) {
           newSelectedId = filtered[0]?.id || null;
         }
 
@@ -90,6 +99,7 @@ let loadTemplatesRequestId = 0;
         set({ isLoading: false });
       }
     } catch (err) {
+      console.error('[TaskPromptTemplateStore] Failed to load templates:', err);
       if (
         requestId !== loadTemplatesRequestId ||
         get().scope !== scope ||

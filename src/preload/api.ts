@@ -35,6 +35,7 @@ import type {
   PermissionRequest,
   PermissionAction,
   FocusedResource,
+  TaskPromptTemplate,
   Worktree,
   WorktreeStatus,
   LaunchResult,
@@ -81,6 +82,7 @@ export type {
   ChatSessionSummary,
   PermissionRequest,
   PermissionAction,
+  TaskPromptTemplate,
   Worktree,
   WorktreeStatus,
   LaunchResult,
@@ -404,12 +406,22 @@ const artifacts = {
   import: (projectId: string, sourcePath: string): Promise<{ success: boolean; filename?: string; error?: string }> =>
 };
 
+const taskPromptTemplates = {
+  list: (projectId?: string | null): Promise<{ success: boolean; templates?: TaskPromptTemplate[]; error?: string }> =>
+  get: (templateId: string): Promise<{ success: boolean; template?: TaskPromptTemplate; error?: string }> =>
+  getEffective: (projectId: string): Promise<{ success: boolean; template?: TaskPromptTemplate; error?: string }> =>
+  getBuiltinDefault: (): Promise<{ success: boolean; promptContent?: string; error?: string }> =>
   create: (
     projectId: string | null,
     name: string,
+    promptContent: string
+  ): Promise<{ success: boolean; template?: TaskPromptTemplate; error?: string }> =>
   update: (
     templateId: string,
+    updates: { name?: string; promptContent?: string }
+  ): Promise<{ success: boolean; template?: TaskPromptTemplate; error?: string }> =>
   delete: (templateId: string): Promise<{ success: boolean; error?: string }> =>
+  setDefault: (templateId: string): Promise<{ success: boolean; template?: TaskPromptTemplate; error?: string }> =>
   ensureDefault: (): Promise<{ success: boolean; error?: string }> =>
 };
 
@@ -637,6 +649,7 @@ export const api = {
   settings,
   permission,
   artifacts,
+  taskPromptTemplates,
   worktrees,
   devSessions,
   fileExplorer,

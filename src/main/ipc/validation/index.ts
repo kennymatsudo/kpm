@@ -76,6 +76,8 @@ export { DevSessionSchemas, WorktreeSchemas } from './dev-session';
 export { SettingsSchemas } from './settings';
 
 
+// Task Prompt Templates
+export { TaskPromptTemplateSchemas } from './agents';
 
 // Shell
 export { ShellSchemas } from './shell';
@@ -235,6 +237,15 @@ export type {
   // Temp Image
   TempImageSaveInput,
   TempImageDeleteInput,
+  // Task Prompt Template
+  TaskPromptTemplateListInput,
+  TaskPromptTemplateGetInput,
+  TaskPromptTemplateGetEffectiveInput,
+  TaskPromptTemplateGetBuiltinDefaultInput,
+  TaskPromptTemplateCreateInput,
+  TaskPromptTemplateUpdateInput,
+  TaskPromptTemplateDeleteInput,
+  TaskPromptTemplateSetDefaultInput,
   // Shell
 } from './types';
 
