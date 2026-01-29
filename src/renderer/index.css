@@ -1399,6 +1399,40 @@ select:focus-visible {
 }
 
 /* ============================================
+   Prose Panel Variant
+   Optimized for narrow panels - ensures content wraps without horizontal scroll
+   ============================================ */
+
+.prose-panel {
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* Tables in panels: allow cell content to wrap and use fixed layout */
+.prose-panel :where(table):not(:where([class~="not-prose"] *)) {
+  table-layout: fixed;
+  word-break: break-word;
+}
+
+.prose-panel :where(td):not(:where([class~="not-prose"] *)),
+.prose-panel :where(th):not(:where([class~="not-prose"] *)) {
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+/* Code blocks in panels: wrap instead of scroll */
+.prose-panel :where(pre):not(:where([class~="not-prose"] *)) {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Inline code: allow breaking */
+.prose-panel :where(code):not(:where(pre code)):not(:where([class~="not-prose"] *)) {
+  word-break: break-word;
+}
+
+/* ============================================
    Document Prose Variant
    More generous spacing for document previews (MarkdownEditor)
    ============================================ */

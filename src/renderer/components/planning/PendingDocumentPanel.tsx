@@ -218,6 +218,7 @@ export function PendingDocumentPanel({
             <div className="flex-1 overflow-auto p-4 bg-surface-1">
               {viewMode === 'diff' ? (
               ) : viewMode === 'preview' ? (
+                <div className="prose-themed prose-panel bg-surface-2 p-4 rounded-lg border border-border-subtle overflow-y-auto overflow-x-hidden">
                   </Markdown>
                 </div>
               ) : (
@@ -335,6 +336,7 @@ export function PendingDocumentPanel({
         <div className="flex-1 overflow-auto p-4 bg-surface-1">
           {viewMode === 'diff' ? (
           ) : viewMode === 'preview' ? (
+            <div className="prose-themed prose-panel bg-surface-2 p-4 rounded-lg border border-border-subtle overflow-y-auto overflow-x-hidden">
               </Markdown>
             </div>
           ) : (

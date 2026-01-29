@@ -5,6 +5,7 @@
  * chat visible so users can reference Claude's explanations while reviewing changes.
  *
  * Uses a unified approval queue to handle multiple pending items from Claude.
+ * Panel auto-expands when items arrive.
  */
 
 import { createPortal } from 'react-dom';
