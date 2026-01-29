@@ -1,3 +1,4 @@
+import { m, AnimatePresence } from 'framer-motion';
 import { useShallow } from 'zustand/react/shallow';
 import type { PlanItem } from '../../../shared/types';
 import { PlanCard } from './PlanCard';
@@ -266,6 +267,7 @@ interface CanvasProps {
             const useInstantTransition = isInDraggingGroup || isInRecentlyDraggedGroup;
 
             return (
+            <m.div
               key={node.id}
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{
@@ -303,6 +305,7 @@ interface CanvasProps {
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
               />
+            </m.div>
             );
           })}
         </AnimatePresence>

@@ -1,5 +1,6 @@
 import { memo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { m, AnimatePresence } from 'framer-motion';
 import { useToastStore, type Toast as ToastType, type ToastType as ToastVariant } from '../../stores/toastStore';
 
 const iconsByType: Record<ToastVariant, React.ReactNode> = {
@@ -66,6 +67,7 @@ const ToastItem = memo(function ToastItem({ toast, onDismiss }: ToastItemProps) 
   }, [onDismiss, toast.id]);
 
   return (
+    <m.div
       layout
       transition={{ type: 'spring', damping: 30, stiffness: 400 }}
       className={`
@@ -109,6 +111,7 @@ const ToastItem = memo(function ToastItem({ toast, onDismiss }: ToastItemProps) 
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>
+    </m.div>
   );
 });
 

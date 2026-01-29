@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { m, AnimatePresence } from 'framer-motion';
 import { Modal, ModalHeader, ModalBody } from '../../ui/Modal';
 import { useCredentialStore, useTrackerStore } from '../../../stores';
 import { TrackerSidebar } from './TrackerSidebar';
@@ -117,6 +118,7 @@ export function TrackerSettingsModal({ isOpen, onClose, currentProjectId, initia
         {/* Main Panel */}
         <div className="flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
+            <m.div
               key={
                 typeof effectiveSelection === 'string'
                   ? effectiveSelection
@@ -129,6 +131,7 @@ export function TrackerSettingsModal({ isOpen, onClose, currentProjectId, initia
               className="p-5"
             >
               {renderPanel()}
+            </m.div>
           </AnimatePresence>
         </div>
       </ModalBody>

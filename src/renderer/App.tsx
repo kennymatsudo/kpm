@@ -19,5 +19,19 @@ export default function App() {
   }, [deleteCurrentProject]);
 
   return (
+    <MotionProvider>
+      <ThemeProvider>
+        <ErrorBoundary name="App">
+          <Layout
+            onDeleteProject={handleDeleteProject}
+            onOpenProject={loadProjectData}
+          />
+
+            isOpen={showNewProjectDialog}
+            onCreate={handleCreateProject}
+          />
+        </ErrorBoundary>
+      </ThemeProvider>
+    </MotionProvider>
   );
 }

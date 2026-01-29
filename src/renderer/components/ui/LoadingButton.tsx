@@ -1,4 +1,5 @@
 import { forwardRef, type ReactNode } from 'react';
+import { m } from 'framer-motion';
 
 interface LoadingButtonProps {
   /** Whether the button is in a loading state */
@@ -115,6 +116,7 @@ export const LoadingButton = forwardRef<HTMLButtonElement, LoadingButtonProps>(
     const isDisabled = disabled || isLoading;
 
     return (
+      <m.button
         ref={ref}
         type={type}
         whileHover={isDisabled ? {} : { scale: 1.02 }}
@@ -129,6 +131,7 @@ export const LoadingButton = forwardRef<HTMLButtonElement, LoadingButtonProps>(
           <LoadingSpinner className={spinnerSizes[size]} />
         )}
         {isLoading && loadingText ? loadingText : children}
+      </m.button>
     );
   }
 );

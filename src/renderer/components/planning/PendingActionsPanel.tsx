@@ -10,6 +10,7 @@
 
 import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { m, AnimatePresence } from 'framer-motion';
 import type { PlanAction, PlanItem } from '../../../shared/types';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { MotionButton } from '../ui/MotionButton';
@@ -76,6 +77,7 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
 
   // Collapsed panel (floating at bottom)
   const collapsedPanel = (
+    <m.div
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 20, scale: 0.95 }}
@@ -139,12 +141,14 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
           Dismiss
         </MotionButton>
       </div>
+    </m.div>
   );
 
   // Expanded modal with split-view
   const expandedModal = createPortal(
     <AnimatePresence>
       {isExpanded && (
+        <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -153,6 +157,7 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
             if (e.target === e.currentTarget && !isApplying) setIsExpanded(false);
           }}
         >
+          <m.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -267,6 +272,8 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
                 </button>
               </div>
             </div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>,
     document.body
@@ -320,6 +327,7 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
 
         {/* Detail view */}
           {selectedAction ? (
+            <m.div
               key={safeSelectedIndex}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -330,6 +338,7 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
                 planItems={planItems}
                 placeholderMap={placeholderMap}
               />
+            </m.div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-text-muted">
               <svg className="w-8 h-8 mb-2 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

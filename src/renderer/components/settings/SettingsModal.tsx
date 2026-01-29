@@ -1,3 +1,4 @@
+import { m } from 'framer-motion';
 
 interface Props {
   onClose: () => void;
@@ -63,6 +64,7 @@ const allTabs: { id: SettingsTab; label: string; icon: React.ReactNode; requires
       `}
     >
       {active && (
+        <m.div
           transition={{ type: 'spring', stiffness: 500, damping: 35 }}
         />
       )}

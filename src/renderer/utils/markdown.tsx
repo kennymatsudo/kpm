@@ -1,9 +1,12 @@
 /**
+ * Shared markdown configuration for external link handling
  *
  * All links in rendered markdown should open in the user's default browser,
  * not navigate within the Electron app.
  */
 
+import type { MarkdownToJSX } from 'markdown-to-jsx';
+import type { JSX } from 'react';
 
 /**
  * Click handler for markdown links - opens in external browser
@@ -18,8 +21,12 @@ function handleLinkClick(e: React.MouseEvent<HTMLAnchorElement>, href: string | 
  *
  * Usage:
  * ```tsx
+ * import Markdown from 'markdown-to-jsx';
  * ```
  */
+export const markdownOverrides: MarkdownToJSX.Overrides = {
+  a: {
+  },
 };
 
 /**
@@ -98,8 +105,45 @@ function highlightSearchMatches(
     return children;
   };
 
+  // Helper to create a component override
+  const createOverride = (Tag: keyof JSX.IntrinsicElements) => ({
+    component: ({ children, ...props }: React.HTMLAttributes<HTMLElement>) => {
+      const Element = Tag as React.ElementType;
+      return <Element {...props}>{processChildren(children)}</Element>;
+    },
+  });
+
   return {
+    a: {
+    },
     // Text elements that can contain searchable content
+    p: createOverride('p'),
+    h1: createOverride('h1'),
+    h2: createOverride('h2'),
+    h3: createOverride('h3'),
+    h4: createOverride('h4'),
+    h5: createOverride('h5'),
+    h6: createOverride('h6'),
+    li: createOverride('li'),
+    td: createOverride('td'),
+    th: createOverride('th'),
+    strong: createOverride('strong'),
+    em: createOverride('em'),
+    blockquote: {
+      component: ({ children, ...props }: React.HTMLAttributes<HTMLQuoteElement>) => (
+        <blockquote {...props}>{children}</blockquote>
+      ),
+    },
+    code: {
+      component: ({ children, className, ...props }: React.HTMLAttributes<HTMLElement>) => {
+        // For inline code, highlight; for code blocks, don't process (preserve syntax highlighting)
+        const isInline = !className;
+        return (
+          <code className={className} {...props}>
+            {isInline ? processChildren(children) : children}
+          </code>
+        );
+      },
     },
   };
 }

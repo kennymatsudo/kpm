@@ -83,6 +83,7 @@ const AssistantMessageContent = memo(function AssistantMessageContent({
   return (
     <>
         return (
+            </Markdown>
           </div>
         );
       })}
@@ -103,6 +104,7 @@ const StreamingContent = memo(function StreamingContent({
   return (
     <>
         return (
+            </Markdown>
           </div>
         );
       })}

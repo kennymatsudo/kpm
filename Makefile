@@ -13,6 +13,7 @@ help:
 	@echo "  make test:e2e:ui    Run E2E tests with interactive UI"
 	@echo "  make screenshots    Regenerate README screenshots in docs/images (packages app first)"
 	@echo "  make screenshots:dev  Regenerate screenshots against the existing package"
+	@echo "  make release-notes  Generate release notes from commits using Claude"
 	@echo "  make release:patch  Release patch version (0.1.0 → 0.1.1)"
 	@echo "  make release:minor  Release minor version (0.1.0 → 0.2.0)"
 	@echo "  make release:major  Release major version (0.1.0 → 1.0.0)"
@@ -73,19 +74,37 @@ screenshots\:dev:
 # Release commands - bump version, commit, tag, and push.
 # Tags mark source releases only — no binaries are built or published.
 
+# Generate release notes from commits since last tag using Claude
+# Can be run standalone with: make release-notes
+release-notes:
 	@echo "Generating release notes with Claude..."
+	@LAST_TAG=$$(git describe --tags --abbrev=0 2>/dev/null || echo ""); \
+	if [ -z "$$LAST_TAG" ]; then \
+	else \
+	fi; \
+	if [ -z "$$COMMITS" ]; then \
+		echo "No commits found since $$LAST_TAG"; \
+		exit 1; \
+	fi; \
+	echo "$$COMMITS"; \
+	echo ""; \
+	@echo ""
+	@echo "=== Generated release-notes.md ==="
 	@cat release-notes.md
 
+release\:patch: release-notes
 	git add release-notes.md
 	git commit -m "Update release notes"
 	npm version patch
 	git push && git push --tags
 
+release\:minor: release-notes
 	git add release-notes.md
 	git commit -m "Update release notes"
 	npm version minor
 	git push && git push --tags
 
+release\:major: release-notes
 	git add release-notes.md
 	git commit -m "Update release notes"
 	npm version major

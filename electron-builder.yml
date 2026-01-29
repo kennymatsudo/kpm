@@ -9,11 +9,29 @@ directories:
 files:
   - dist/**/*
   - node_modules/**/*
+  # Exclude documentation and metadata
   - "!node_modules/**/README*"
   - "!node_modules/**/CHANGELOG*"
   - "!node_modules/**/*.md"
   - "!node_modules/**/.github/**"
   - "!**/*.map"
+  # Exclude TypeScript files (not needed at runtime)
+  - "!node_modules/**/*.ts"
+  - "!node_modules/**/*.d.ts"
+  - "!node_modules/**/*.tsbuildinfo"
+  - "!node_modules/**/tsconfig.json"
+  # Exclude test files
+  - "!node_modules/**/test/**"
+  - "!node_modules/**/tests/**"
+  - "!node_modules/**/__tests__/**"
+  # Exclude documentation directories
+  - "!node_modules/**/docs/**"
+  # Exclude config files
+  - "!node_modules/**/.eslintrc*"
+  - "!node_modules/**/.prettierrc*"
+  # Exclude license files (large text files, not needed for app functionality)
+  - "!node_modules/**/LICENSE*"
+  - "!node_modules/**/LICENCE*"
 
 # Native modules need to be unpacked from ASAR for proper loading
 asar: true

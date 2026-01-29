@@ -177,12 +177,14 @@ export function TaskEditModal({
         {/* Footer */}
           <div className="flex items-center gap-2 text-xs text-text-muted">
             {isDirty && (
+              <m.span
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 className="flex items-center gap-1.5"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-warning animate-pulse" />
                 Unsaved changes
+              </m.span>
             )}
             <span className="opacity-50">
             </span>

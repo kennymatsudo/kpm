@@ -1,3 +1,4 @@
+import { m } from 'framer-motion';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 import { CloseIcon } from '../../icons';
 import type {
@@ -85,6 +86,7 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
         </div>
 
       {/* Tab content */}
+      <m.div
         key={activeTab}
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
@@ -131,6 +133,7 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
             onSave={handleSaveCustomFields}
           />
         )}
+      </m.div>
 
       {/* Footer actions */}
       <div className="pt-4 border-t border-border-subtle">

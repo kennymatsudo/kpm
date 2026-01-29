@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { m, AnimatePresence } from 'framer-motion';
 import { MotionButton } from '../ui/MotionButton';
 import { DiffViewer, computeDiff, getDiffStatsFromDiff } from '../ui/DiffViewer';
 
@@ -186,12 +187,14 @@ export function MarkdownDocumentModal({
   return createPortal(
     <AnimatePresence>
       {isOpen && (
+        <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
           onClick={(e) => e.target === e.currentTarget && onClose()}
         >
+          <m.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -302,6 +305,7 @@ export function MarkdownDocumentModal({
             {/* Search bar */}
             <AnimatePresence>
               {showSearch && (
+                <m.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
@@ -380,12 +384,14 @@ export function MarkdownDocumentModal({
                       <CloseIcon className="w-4 h-4" />
                     </button>
                   </div>
+                </m.div>
               )}
             </AnimatePresence>
 
             {/* Toolbar (only in edit mode) */}
             <AnimatePresence>
               {viewMode === 'edit' && (
+                <m.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
@@ -453,6 +459,7 @@ export function MarkdownDocumentModal({
                       <HorizontalRuleIcon />
                     </ToolbarButton>
                   </div>
+                </m.div>
               )}
             </AnimatePresence>
 
@@ -460,6 +467,7 @@ export function MarkdownDocumentModal({
             <div className="flex-1 overflow-hidden bg-surface-2">
               <AnimatePresence mode="wait">
                 {viewMode === 'diff' && oldContent !== undefined ? (
+                  <m.div
                     key="diff"
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -470,7 +478,9 @@ export function MarkdownDocumentModal({
                     <div className="max-w-4xl mx-auto">
                       <DiffViewer oldContent={oldContent} newContent={content} diffLines={diffLines ?? undefined} />
                     </div>
+                  </m.div>
                 ) : viewMode === 'edit' ? (
+                  <m.div
                     key="edit"
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -489,7 +499,9 @@ export function MarkdownDocumentModal({
                       placeholder={placeholder}
                       autoFocus
                     />
+                  </m.div>
                 ) : (
+                  <m.div
                     key="preview"
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -520,6 +532,7 @@ export function MarkdownDocumentModal({
                         </div>
                       </div>
                     )}
+                  </m.div>
                 )}
               </AnimatePresence>
             </div>
@@ -573,6 +586,8 @@ export function MarkdownDocumentModal({
                 )}
               </div>
             </div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>,
     document.body

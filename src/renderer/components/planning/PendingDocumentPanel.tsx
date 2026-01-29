@@ -7,6 +7,7 @@
  */
 
 import { createPortal } from 'react-dom';
+import { m, AnimatePresence } from 'framer-motion';
 import { CloseIcon } from '../icons';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { MotionButton } from '../ui/MotionButton';
@@ -58,6 +59,7 @@ export function PendingDocumentPanel({
 
   // Collapsed panel (floating at bottom)
   const collapsedPanel = (
+    <m.div
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 20, scale: 0.95 }}
@@ -125,12 +127,14 @@ export function PendingDocumentPanel({
           Dismiss
         </MotionButton>
       </div>
+    </m.div>
   );
 
   // Expanded modal with full diff/edit view
   const expandedModal = createPortal(
     <AnimatePresence>
       {isExpanded && (
+        <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -139,6 +143,7 @@ export function PendingDocumentPanel({
             if (e.target === e.currentTarget && !isApplying) setIsExpanded(false);
           }}
         >
+          <m.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -213,6 +218,7 @@ export function PendingDocumentPanel({
             <div className="flex-1 overflow-auto p-4 bg-surface-1">
               {viewMode === 'diff' ? (
               ) : viewMode === 'preview' ? (
+                  </Markdown>
                 </div>
               ) : (
                 <textarea
@@ -260,6 +266,8 @@ export function PendingDocumentPanel({
                 </MotionButton>
               </div>
             </div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>,
     document.body
@@ -327,6 +335,7 @@ export function PendingDocumentPanel({
         <div className="flex-1 overflow-auto p-4 bg-surface-1">
           {viewMode === 'diff' ? (
           ) : viewMode === 'preview' ? (
+              </Markdown>
             </div>
           ) : (
             <textarea

@@ -8,6 +8,7 @@
  */
 
 import { createPortal } from 'react-dom';
+import { m, AnimatePresence } from 'framer-motion';
 import { useShallow } from 'zustand/react/shallow';
 import type { ApprovalItem } from '../../stores';
 import { toast } from '../../stores/toastStore';
@@ -137,6 +138,7 @@ export function ApprovalOverlays() {
   const collapsedBadge = useMemo(() => {
 
     return (
+      <m.button
         animate={{ opacity: 1, y: 0, scale: 1 }}
         whileHover={{ scale: 1.02, y: -2 }}
         whileTap={{ scale: 0.98 }}
@@ -154,6 +156,7 @@ export function ApprovalOverlays() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
         </div>
+      </m.button>
     );
 
   if (!currentItem && !collapsedBadge) return null;
@@ -207,6 +210,7 @@ export function ApprovalOverlays() {
 
       {/* Side panel - slides from left, no blocking backdrop */}
       <AnimatePresence>
+          <m.div
             animate={{ x: 0, opacity: 1 }}
                        flex flex-col overflow-hidden"
           >
@@ -229,6 +233,7 @@ export function ApprovalOverlays() {
               </div>
 
               {/* Minimize button - chevron points left toward panel edge */}
+              <m.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={handleCollapse}
@@ -241,12 +246,14 @@ export function ApprovalOverlays() {
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                 </svg>
+              </m.button>
             </div>
 
             {/* Panel content */}
             <div className="flex-1 overflow-hidden">
               {panelContent}
             </div>
+          </m.div>
         )}
       </AnimatePresence>
     </>,

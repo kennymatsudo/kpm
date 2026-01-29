@@ -9,6 +9,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { m, AnimatePresence } from 'framer-motion';
 import type { PlanItem, StatusCategory } from '../../../shared/types';
 
 // Type options with visual indicators
@@ -160,6 +161,7 @@ export function CreateItemModal({
         <div className="px-6 pb-3">
           {/* Title field with dynamic border */}
           <div className="relative">
+            <m.div
               className="absolute -inset-px rounded-lg pointer-events-none"
               style={{
                 background: `linear-gradient(135deg, var(--color-accent) 0%, transparent 50%)`,
@@ -183,11 +185,13 @@ export function CreateItemModal({
             {/* Character count hint */}
             <AnimatePresence>
               {title.length > 0 && (
+                <m.div
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.8 }}
                 >
                   {title.length}
+                </m.div>
               )}
             </AnimatePresence>
           </div>
@@ -195,6 +199,7 @@ export function CreateItemModal({
           {/* Quick mode context indicator */}
           <AnimatePresence>
             {!isFullMode && (defaultStatus || canvasPosition) && (
+              <m.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
@@ -215,12 +220,14 @@ export function CreateItemModal({
                     Canvas
                   </span>
                 )}
+              </m.div>
             )}
           </AnimatePresence>
 
           {/* Full mode fields */}
           <AnimatePresence mode="wait">
             {isFullMode && (
+              <m.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
@@ -277,6 +284,7 @@ export function CreateItemModal({
                         ))}
                   </div>
                 </div>
+              </m.div>
             )}
           </AnimatePresence>
         </div>

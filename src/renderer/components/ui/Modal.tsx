@@ -1,5 +1,6 @@
 import { CloseIcon } from '../icons';
 import { createPortal } from 'react-dom';
+import { m, AnimatePresence } from 'framer-motion';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | 'full';
@@ -97,6 +98,7 @@ export function Modal({
   return createPortal(
     <AnimatePresence>
       {isOpen && (
+        <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -119,10 +121,13 @@ export function Modal({
           aria-labelledby={ariaLabelledBy}
           aria-describedby={ariaDescribedBy}
         >
+          <m.div
             ref={containerRef}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             className={`dialog-content ${sizeClasses[size]} mx-4 ${className}`}
           >
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>,
     document.body

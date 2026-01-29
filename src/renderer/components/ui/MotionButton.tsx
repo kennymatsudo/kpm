@@ -1,4 +1,5 @@
 import { forwardRef, type ReactNode, type ButtonHTMLAttributes } from 'react';
+import { m, type MotionProps } from 'framer-motion';
 
 type ScalePreset = 'default' | 'subtle' | 'none';
 
@@ -49,6 +50,7 @@ export const MotionButton = forwardRef<HTMLButtonElement, MotionButtonProps>(
     const shouldAnimate = !disabled && scalePreset !== 'none';
 
     return (
+      <m.button
         ref={ref}
         whileHover={shouldAnimate ? { scale: scale.hover } : {}}
         whileTap={shouldAnimate ? { scale: scale.tap } : {}}
@@ -57,6 +59,7 @@ export const MotionButton = forwardRef<HTMLButtonElement, MotionButtonProps>(
         {...props}
       >
         {children}
+      </m.button>
     );
   }
 );
