@@ -739,4 +739,5 @@ export interface ConfluenceSyncPreview {
   remoteContent: string;
   remoteVersion: number;
 }
+
 export type SearchEntityType = 'plan_item' | 'document';

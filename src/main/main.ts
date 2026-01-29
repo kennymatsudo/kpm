@@ -43,6 +43,11 @@ void app.whenReady().then(async () => {
   // Initialize temp image service (creates temp directory, cleans up stale files)
   await TempImageService.init();
 
+  // The Claude Agent SDK registers process exit handlers per query() call.
+  // With multi-session support (up to 3 concurrent sessions), this exceeds
+  // Node's default limit of 10. Raise it to accommodate concurrent sessions.
+  process.setMaxListeners(20);
+
 
   registerAllIpcHandlers(getMainWindow, services);
   createWindow();

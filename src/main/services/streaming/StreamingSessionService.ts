@@ -585,6 +585,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     managed.unsubscribePlanActions();
     managed.unsubscribeClaudeMdUpdate();
     managed.unsubscribeDocumentUpdate();
+
     sessions.delete(key);
 
     const mainWindow = deps.getMainWindow();

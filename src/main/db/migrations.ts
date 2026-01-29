@@ -1279,6 +1279,72 @@ interface Migration {
     },
   },
   {
+    id: 1035,
+    name: '035_memory_system',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- MEMORIES: Extracted facts/learnings from conversations
+        -- Stores project-specific knowledge, decisions, preferences
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS memories (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          content TEXT NOT NULL,
+          category TEXT NOT NULL CHECK(category IN (
+            'preference', 'decision', 'context', 'learning', 'blocker', 'convention'
+          )),
+          importance INTEGER DEFAULT 5 CHECK(importance BETWEEN 1 AND 10),
+          access_count INTEGER DEFAULT 0,
+          last_accessed_at DATETIME,
+          source_chat_session_id TEXT,
+          source_message_ids TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project_id);
+        CREATE INDEX IF NOT EXISTS idx_memories_importance ON memories(project_id, importance DESC);
+
+        -- ============================================
+        -- MEMORY EMBEDDINGS: Vector storage for semantic search
+        -- 384-dim vectors stored as JSON array
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS memory_embeddings (
+          memory_id TEXT PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE,
+          embedding TEXT NOT NULL,
+          model TEXT NOT NULL DEFAULT 'all-MiniLM-L6-v2'
+        );
+
+        -- ============================================
+        -- EXTRACTION LOG: Track processed chat sessions
+        -- Prevents re-extracting from same messages
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS memory_extraction_log (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          chat_session_id TEXT NOT NULL,
+          last_processed_message_id TEXT,
+          processed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_extraction_log_session
+          ON memory_extraction_log(project_id, chat_session_id);
+      `);
+    },
+  },
+  {
+    id: 1037,
+    name: '037_drop_memory_tables',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        DROP TABLE IF EXISTS memory_extraction_log;
+        DROP TABLE IF EXISTS memory_embeddings;
+        DROP TABLE IF EXISTS memories;
+      `);
+    },
+  },
+  {
     id: 1049,
     name: '049_remove_agent_instructions_from_projects',
     up: (db: BetterSqliteDatabase) => {
