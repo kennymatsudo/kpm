@@ -1266,6 +1266,19 @@ interface Migration {
     },
   },
   {
+    id: 1034,
+    name: '034_cleanup_unused_settings',
+    up: (db: BetterSqliteDatabase) => {
+      // Remove unused agent settings that were never implemented
+      // - terminal_app: Was for external terminal launch (never used)
+      // - dev_view_agent: Was for selecting agent CLI (never used)
+      // - user_initials: Was for branch naming template variable (removed)
+      db.exec(`
+        DELETE FROM app_settings WHERE key IN ('terminal_app', 'dev_view_agent', 'user_initials');
+      `);
+    },
+  },
+  {
     id: 1049,
     name: '049_remove_agent_instructions_from_projects',
     up: (db: BetterSqliteDatabase) => {
