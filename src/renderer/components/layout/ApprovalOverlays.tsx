@@ -97,9 +97,11 @@ export function ApprovalOverlays() {
     }
   }, [executePlanActions, removeById]);
 
+  const handleApplyClaudeMdEdit = useCallback(async (item: ApprovalItem & { type: 'claude-md' }, content: string) => {
     if (!currentProjectId) return;
     setIsApplying(true);
     try {
+      const result = await executeClaudeMdWrite(currentProjectId, content);
       if (result.success) {
         removeById(item.id);
       } else {
@@ -171,6 +173,10 @@ export function ApprovalOverlays() {
       )}
 
       {currentItem.type === 'claude-md' && (
+        <PendingDocumentPanel
+          content={currentItem.newContent}
+          oldContent={currentItem.oldContent}
+          onAccept={(content) => handleApplyClaudeMdEdit(currentItem, content)}
           onDismiss={() => handleDismiss(currentItem.id)}
           isApplying={isApplying}
           embedded

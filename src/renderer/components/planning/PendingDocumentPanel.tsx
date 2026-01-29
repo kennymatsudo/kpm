@@ -327,6 +327,7 @@ export function PendingDocumentPanel({
         <div className="flex-1 overflow-auto p-4 bg-surface-1">
           {viewMode === 'diff' ? (
           ) : viewMode === 'preview' ? (
+            </div>
           ) : (
             <textarea
               value={editedContent}
