@@ -55,6 +55,7 @@ ${hasAttachments ? buildAttachmentsSection(attachments) : ''}
 
 
 
+
 # Current Plan
 ${hasPlan
     ? planItems.length <= FULL_HIERARCHY_THRESHOLD

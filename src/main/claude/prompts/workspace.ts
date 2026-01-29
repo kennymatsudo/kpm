@@ -33,7 +33,10 @@ ${attachments.map(a => `- ${a.filename}`).join('\n')}
 }
 
 /**
+ * Plan system rules - non-configurable behavior injected into every prompt.
  */
+export const PLAN_SYSTEM_RULES = `## Plan Structure
+
 
 
 /**
