@@ -85,6 +85,7 @@ interface LayoutProps {
           onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
           chatCollapsed={chatCollapsed}
           onDeleteProject={onDeleteProject}
+          onNewProject={onNewProject}
           onOpenProject={onOpenProject}
           mainView={mainView}
           onMainViewChange={handleMainViewChange}

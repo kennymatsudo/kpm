@@ -8,6 +8,7 @@ interface TopBarProps {
   onToggleChat: () => void;
   // Project controls
   onDeleteProject?: () => void;
+  onNewProject?: () => void;
   onOpenProject?: (projectId: string) => void;
   // Main view controls (workspace vs planning)
   mainView: MainView;
@@ -34,6 +35,7 @@ export function TopBar({
   chatCollapsed,
   onToggleChat,
   onDeleteProject,
+  onNewProject,
   onOpenProject,
   mainView,
   onMainViewChange,
