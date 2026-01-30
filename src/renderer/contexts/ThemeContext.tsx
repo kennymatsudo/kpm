@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useMemo, t
 
 
 interface ThemeContextValue {
+  /** User's theme preference (includes 'system' option) */
   resolved: ResolvedTheme;
   /** Update the theme preference */
 }
@@ -10,6 +11,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 const STORAGE_KEY = 'kpm-theme-preference';
 
+function getSystemTheme(): 'light' | 'dark' {
   if (typeof window === 'undefined') return 'dark';
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
@@ -19,6 +21,7 @@ const STORAGE_KEY = 'kpm-theme-preference';
 }
 
   const root = document.documentElement;
+
 }
 
 interface ThemeProviderProps {

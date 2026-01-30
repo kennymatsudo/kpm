@@ -51,11 +51,21 @@
   --color-info-muted: var(--color-info-muted);
   --color-purple: var(--color-purple);
   --color-purple-subtle: var(--color-purple-subtle);
+
+  /* Terminal Colors (fixed dark theme for consistent terminal UX) */
+  --color-terminal-bg: var(--terminal-bg);
+  --color-terminal-bg-elevated: var(--terminal-bg-elevated);
+  --color-terminal-fg: var(--terminal-fg);
+  --color-terminal-grid: var(--terminal-grid-color);
 }
 
 /* ============================================
+   Default Theme Variables (Dark)
+   Applied to :root as fallback before JS loads.
+   Actual theme values are set via JS in ThemeContext.
    ============================================ */
 
+:root {
   color-scheme: dark;
 
 
@@ -68,6 +78,9 @@
   /* Overlay */
   --overlay-color: rgba(0, 0, 0, 0.6);
 
+  --terminal-cyan: #22d3ee;
+  --terminal-bright-cyan: #67e8f9;
+  --terminal-bright-white: #ffffff;
 }
 
 /* ============================================
@@ -157,6 +170,14 @@ body {
     transparent 1px
   );
   transition: background-color var(--transition-theme);
+}
+
+/* Terminal grid pattern (forced dark theme) */
+.terminal-grid {
+  background-image:
+    linear-gradient(var(--terminal-grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--terminal-grid-color) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
 /* ============================================
