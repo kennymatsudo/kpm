@@ -31,6 +31,7 @@ export interface IRepositoryContainer {
   chatMessages: IChatMessageRepository;
   chatSessions: IChatSessionRepository;
   taskPromptTemplates: ITaskPromptTemplateRepository;
+  customPrompts: ICustomPromptRepository;
   worktrees: IWorktreeRepository;
   appSettings: IAppSettingsRepository;
   devSessions: IDevSessionRepository;

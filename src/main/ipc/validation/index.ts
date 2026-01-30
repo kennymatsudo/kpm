@@ -79,6 +79,17 @@ export { SettingsSchemas } from './settings';
 // Task Prompt Templates
 export { TaskPromptTemplateSchemas } from './agents';
 
+// Custom Prompts
+export { CustomPromptSchemas } from './customPrompts';
+export type {
+  CustomPromptListInput,
+  CustomPromptGetInput,
+  CustomPromptCreateInput,
+  CustomPromptUpdateInput,
+  CustomPromptDeleteInput,
+  CustomPromptExecuteInput,
+} from './customPrompts';
+
 // Shell
 export { ShellSchemas } from './shell';
 

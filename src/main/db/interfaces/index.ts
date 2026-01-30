@@ -24,6 +24,13 @@ export type { IChatMessageRepository, IChatSessionRepository } from './chat';
 export type { IDevSessionRepository, IWorktreeRepository } from './dev';
 
 // Settings domain
+export type {
+  IAppSettingsRepository,
+  ITaskPromptTemplateRepository,
+  ICustomPromptRepository,
+  CustomPromptCreate,
+  CustomPromptUpdate,
+} from './settings';
 
 // Confluence domain
 export type { IConfluenceLinkRepository, ConfluencePageLink, ConfluenceLinkCreate, SyncState } from './confluence';

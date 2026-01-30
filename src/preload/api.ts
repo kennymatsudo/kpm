@@ -48,6 +48,8 @@ import type {
   Group,
   ConfluencePageLink,
   ConfluenceSyncPreview,
+  CustomPrompt,
+  CustomPromptIcon,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -94,6 +96,8 @@ export type {
   Group,
   ConfluencePageLink,
   ConfluenceSyncPreview,
+  CustomPrompt,
+  CustomPromptIcon,
 };
 
 const tempImages = {
@@ -425,6 +429,68 @@ const taskPromptTemplates = {
   ensureDefault: (): Promise<{ success: boolean; error?: string }> =>
 };
 
+// Custom Prompts API (Command+K palette prompts)
+const customPrompts = {
+  // List all custom prompts
+  list: (): Promise<{ success: boolean; data?: CustomPrompt[]; error?: string }> =>
+
+  // Get a single custom prompt
+  get: (promptId: string): Promise<{ success: boolean; data?: CustomPrompt; error?: string }> =>
+
+  // Create a new custom prompt
+  create: (
+    name: string,
+    promptContent: string,
+    options?: {
+      description?: string | null;
+      icon?: CustomPromptIcon;
+      keywords?: string | null;
+    }
+  ): Promise<{ success: boolean; data?: CustomPrompt; error?: string }> =>
+
+  // Update a custom prompt
+  update: (
+    promptId: string,
+    updates: {
+      name?: string;
+      description?: string | null;
+      promptContent?: string;
+      icon?: CustomPromptIcon;
+      keywords?: string | null;
+    }
+  ): Promise<{ success: boolean; error?: string }> =>
+
+  // Delete a custom prompt (not allowed for built-in prompts)
+  delete: (promptId: string): Promise<{ success: boolean; error?: string }> =>
+
+  // Execute a custom prompt
+  execute: (
+
+  // Ensure built-in prompts exist
+  ensureBuiltins: (): Promise<{ success: boolean; error?: string }> =>
+
+  // Progress callback
+  onProgress: (callback: (data: { taskId: string; message: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; message: string }) => callback(data);
+    ipcRenderer.on('custom-prompt:progress', handler);
+    return () => ipcRenderer.removeListener('custom-prompt:progress', handler);
+  },
+
+  // Complete callback
+  onComplete: (callback: (data: { taskId: string; filePath: string; promptName: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; filePath: string; promptName: string }) => callback(data);
+    ipcRenderer.on('custom-prompt:complete', handler);
+    return () => ipcRenderer.removeListener('custom-prompt:complete', handler);
+  },
+
+  // Error callback
+  onError: (callback: (data: { taskId: string; error: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; error: string }) => callback(data);
+    ipcRenderer.on('custom-prompt:error', handler);
+    return () => ipcRenderer.removeListener('custom-prompt:error', handler);
+  },
+};
+
 const worktrees = {
   getByProject: (projectId: string): Promise<Worktree[]> =>
   getByPlanItem: (planItemId: string): Promise<Worktree | undefined> =>
@@ -657,6 +723,7 @@ export const api = {
   permission,
   artifacts,
   taskPromptTemplates,
+  customPrompts,
   worktrees,
   devSessions,
   fileExplorer,

@@ -1334,6 +1334,33 @@ interface Migration {
     },
   },
   {
+    id: 1036,
+    name: '036_custom_prompts',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- CUSTOM PROMPTS: User-configurable prompts for Command+K
+        -- Replaces hardcoded artifact generation commands
+        -- Global prompts only (no project-specific scope)
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS custom_prompts (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          description TEXT,
+          prompt_content TEXT NOT NULL,
+          icon TEXT DEFAULT 'document' CHECK(icon IN ('chart', 'check', 'document', 'sparkles', 'clipboard')),
+          keywords TEXT,
+          is_builtin INTEGER NOT NULL DEFAULT 0,
+          sort_order INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_custom_prompts_sort_order ON custom_prompts(sort_order);
+      `);
+    },
+  },
+  {
     id: 1037,
     name: '037_drop_memory_tables',
     up: (db: BetterSqliteDatabase) => {

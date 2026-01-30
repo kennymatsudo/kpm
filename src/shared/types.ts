@@ -58,6 +58,31 @@ export interface TaskPromptTemplate {
   updated_at: string;
 }
 
+// =============================================================================
+// Custom Prompt Types
+// =============================================================================
+
+/** Icon types available for custom prompts in Command+K */
+export type CustomPromptIcon = 'chart' | 'check' | 'document' | 'sparkles' | 'clipboard';
+
+/**
+ * Custom prompt for Command+K palette.
+ * All prompts are global (no project-specific scope).
+ * Built-in prompts (Weekly Update, Test Plan) cannot be deleted.
+ */
+export interface CustomPrompt {
+  id: string;
+  name: string;
+  description: string | null;
+  prompt_content: string;
+  icon: CustomPromptIcon;
+  keywords: string | null;  // Comma-separated search keywords
+  is_builtin: boolean;      // Built-in prompts cannot be deleted
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 
 /**
  * Determines if an external issue type represents a "subtask" that must be nested under a parent.

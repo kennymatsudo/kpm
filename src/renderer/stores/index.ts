@@ -47,3 +47,6 @@ export { useConfluenceStore } from './confluenceStore';
 // Settings UI
 export { useSettingsUIStore } from './settingsUIStore';
 export type { SettingsTab } from './settingsUIStore';
+
+// Custom Prompts
+export { useCustomPromptStore } from './customPromptStore';

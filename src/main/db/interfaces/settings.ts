@@ -1,6 +1,7 @@
 /**
  * Settings Domain Repository Interfaces
  *
+ * Interfaces for app settings, task prompt templates, and custom prompts.
  */
 
 
@@ -44,4 +45,46 @@ export interface ITaskPromptTemplateRepository {
   existsInScope(projectId: string | null, name: string): boolean;
   /** Ensure a default global template exists */
   ensureDefaultExists(): void;
+}
+
+// =============================================================================
+// Custom Prompt Repository
+// =============================================================================
+
+/** Input type for creating a custom prompt */
+export interface CustomPromptCreate {
+  name: string;
+  description?: string | null;
+  prompt_content: string;
+  icon?: CustomPromptIcon;
+  keywords?: string | null;
+  is_builtin?: boolean;
+  sort_order?: number;
+}
+
+/** Input type for updating a custom prompt */
+export interface CustomPromptUpdate {
+  name?: string;
+  description?: string | null;
+  prompt_content?: string;
+  icon?: CustomPromptIcon;
+  keywords?: string | null;
+  sort_order?: number;
+}
+
+export interface ICustomPromptRepository {
+  /** List all custom prompts ordered by sort_order */
+  list(): CustomPrompt[];
+  /** Get a custom prompt by ID */
+  get(id: string): CustomPrompt | undefined;
+  /** Get a custom prompt by name */
+  getByName(name: string): CustomPrompt | undefined;
+  /** Create a new custom prompt */
+  create(prompt: CustomPromptCreate): CustomPrompt;
+  /** Update an existing custom prompt */
+  update(id: string, updates: CustomPromptUpdate): void;
+  /** Delete a custom prompt (fails for built-in prompts) */
+  delete(id: string): boolean;
+  /** Ensure built-in prompts exist */
+  ensureBuiltinsExist(): void;
 }
