@@ -93,18 +93,24 @@ release-notes:
 	@cat release-notes.md
 
 release\:patch: release-notes
+	@echo ""
+	@read -p "Proceed with patch release? [y/N] " confirm && [ "$$confirm" = "y" ] || (echo "Release cancelled."; exit 1)
 	git add release-notes.md
 	git commit -m "Update release notes"
 	npm version patch
 	git push && git push --tags
 
 release\:minor: release-notes
+	@echo ""
+	@read -p "Proceed with minor release? [y/N] " confirm && [ "$$confirm" = "y" ] || (echo "Release cancelled."; exit 1)
 	git add release-notes.md
 	git commit -m "Update release notes"
 	npm version minor
 	git push && git push --tags
 
 release\:major: release-notes
+	@echo ""
+	@read -p "Proceed with major release? [y/N] " confirm && [ "$$confirm" = "y" ] || (echo "Release cancelled."; exit 1)
 	git add release-notes.md
 	git commit -m "Update release notes"
 	npm version major
