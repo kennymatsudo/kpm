@@ -28,6 +28,28 @@ app.setPath('userData', e2eDataDir || path.join(app.getPath('appData'), 'KPM - P
 fixPath();
 
 
+  appSettings.set('window_bounds', JSON.stringify(bounds));
+}
+
+function loadWindowBounds(): Electron.Rectangle | null {
+  const saved = appSettings.get('window_bounds');
+  if (!saved) return null;
+
+  try {
+    const bounds = JSON.parse(saved) as Electron.Rectangle;
+    // Validate bounds are on a visible display
+    const displays = screen.getAllDisplays();
+    const isVisible = displays.some(display => {
+      const { x, y, width, height } = display.bounds;
+      return bounds.x >= x && bounds.x < x + width &&
+             bounds.y >= y && bounds.y < y + height;
+    });
+    return isVisible ? bounds : null;
+  } catch {
+    return null;
+  }
+}
+
 
 void app.whenReady().then(async () => {
   initDatabase();
