@@ -157,6 +157,7 @@ export function createGroupTools(
         position_y: z.number().optional().describe('Y position on canvas (defaults to 100)'),
         height: z.number().optional().describe('Group height (defaults to 300)'),
       },
+      async ({ projectId, name, position_x, position_y, width, height }) => {
         try {
           const action: PlanAction = {
             type: 'create_group',

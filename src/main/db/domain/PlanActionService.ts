@@ -272,6 +272,9 @@ function executeQueueForTracker(
 // Group Action Executors
 // =============================================================================
 
+// Default color for groups (not exposed to Claude, just for DB compatibility)
+const DEFAULT_GROUP_COLOR = '#e0e7ff';
+
 function executeCreateGroup(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'create_group' }>
@@ -282,6 +285,7 @@ function executeCreateGroup(
     {
       project_id: action.project_id,
       name: action.name,
+      color: DEFAULT_GROUP_COLOR,
       position_x: action.position_x,
       position_y: action.position_y,
       width: action.width,

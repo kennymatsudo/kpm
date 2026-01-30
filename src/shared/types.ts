@@ -370,6 +370,8 @@ export type PlanAction =
   | { type: 'set_position'; item_id: string; x: number; y: number }
   | { type: 'queue_for_tracker'; item_ids: string[] }
   // Group actions (visual containers)
+  | { type: 'create_group'; project_id: string; name: string; position_x: number; position_y: number; width: number; height: number }
+  | { type: 'update_group'; group_id: string; updates: Partial<Pick<Group, 'name' | 'width' | 'height'>> }
   | { type: 'delete_group'; group_id: string }
   | { type: 'assign_to_group'; item_id: string; group_id: string | null };
 
