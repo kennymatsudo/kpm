@@ -1,4 +1,6 @@
+import { useMemo, useEffect } from 'react';
 import { m } from 'framer-motion';
+import { useSettingsUIStore, type SettingsTab } from '../../stores';
 
 interface Props {
   onClose: () => void;
@@ -27,10 +29,15 @@ const allTabs: { id: SettingsTab; label: string; icon: React.ReactNode; requires
   {
 ];
 
+  const { activeTab, setActiveTab, setVisibleTabCount } = useSettingsUIStore();
 
   const tabs = useMemo(() => {
     return allTabs.filter((tab) => !tab.requiresProject || currentProjectId);
   }, [currentProjectId]);
+
+  useEffect(() => {
+    setVisibleTabCount(tabs.length);
+  }, [tabs.length, setVisibleTabCount]);
 
   return (
     <Modal

@@ -46,8 +46,26 @@ export function useLayoutShortcuts({
         onCreateItem?.();
       }
       // Cmd+1-9 - Context-aware: Settings tabs (when open) or Main views (1-2)
+      if (!isEditableElement && (e.metaKey || e.ctrlKey) && /^[1-9]$/.test(e.key)) {
+        const { isOpen: settingsIsOpen, goToTab, visibleTabCount } = useSettingsUIStore.getState();
+        const keyNum = parseInt(e.key, 10);
+
+        if (settingsIsOpen) {
+          // Navigate settings tabs (1-indexed, up to visibleTabCount)
+          if (keyNum <= visibleTabCount) {
+            e.preventDefault();
+            goToTab(keyNum);
+          }
+        } else {
           // Navigate main views (only 1-2)
           if (keyNum <= 2) {
+            e.preventDefault();
+            if (e.key === '1') {
+              onMainViewChange('workspace');
+            } else if (e.key === '2') {
+              onMainViewChange('planning');
+            }
+          }
         }
       }
     };

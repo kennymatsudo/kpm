@@ -44,3 +44,6 @@ export type { Toast, ToastType } from './toastStore';
 // Confluence
 export { useConfluenceStore } from './confluenceStore';
 
+// Settings UI
+export { useSettingsUIStore } from './settingsUIStore';
+export type { SettingsTab } from './settingsUIStore';
