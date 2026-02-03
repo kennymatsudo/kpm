@@ -17,6 +17,8 @@ import { LoadingSpinner } from '../../ui/LoadingButton';
     importAll,
     isImporting,
     importProgress,
+    importError,
+    clearError,
     setupImportProgressListener,
   } = useTrackerStore();
 
@@ -29,6 +31,14 @@ import { LoadingSpinner } from '../../ui/LoadingButton';
   const [isImported, setIsImported] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+
+  // Epic key state
+  const [epicKey, setEpicKey] = useState(association?.epic_key ?? '');
+  const [isSavingEpicKey, setIsSavingEpicKey] = useState(false);
+
+  // Clear any stale errors when panel opens
+  useEffect(() => {
+    clearError();
 
   // Check if association has imported items
   useEffect(() => {
@@ -93,6 +103,16 @@ import { LoadingSpinner } from '../../ui/LoadingButton';
   const handleOpenMappings = () => {
     if (association?.scope_id) {
       setShowMappingDialog(true, association.scope_id);
+    }
+  };
+
+  const handleSaveEpicKey = async () => {
+    setIsSavingEpicKey(true);
+    try {
+        void loadAssociations(currentProjectId);
+      }
+    } finally {
+      setIsSavingEpicKey(false);
     }
   };
 
@@ -163,23 +183,30 @@ import { LoadingSpinner } from '../../ui/LoadingButton';
                   <label className="text-xs text-text-muted uppercase tracking-wide">Last Synced</label>
                   <p className="text-sm text-text-primary">{formatRelativeTime(association.last_synced_at)}</p>
                 </div>
+                  </div>
               </div>
 
               {/* Actions */}
               <div className="space-y-3">
+                {isImported ? (
                   <>
                     <p className="text-sm text-text-muted">
                     </p>
                     <button
+                      onClick={handleSync}
+                      disabled={isSyncing}
                       className="w-full btn btn-primary"
                     >
+                      {isSyncing ? (
                         <>
                           <LoadingSpinner className="w-4 h-4" color="white" />
                         </>
                       ) : (
                         <>
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                           </svg>
+                          Sync Now
                         </>
                       )}
                     </button>
@@ -189,18 +216,48 @@ import { LoadingSpinner } from '../../ui/LoadingButton';
                     <p className="text-sm text-text-muted">
                     </p>
                     <button
+                      onClick={handleImport}
+                      disabled={isImporting}
+                      className="w-full btn btn-secondary"
                     >
+                      {isImporting ? (
                         <>
+                          <LoadingSpinner className="w-4 h-4" color="accent" />
+                          {importProgress?.phase === 'fetching'
+                            ? `Fetching... ${importProgress.fetched ?? 0}`
+                            : 'Importing...'}
                         </>
                       ) : (
                         <>
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                           </svg>
                         </>
                       )}
                     </button>
+                    {importError && (
+                      <div className="p-3 rounded-lg bg-danger/10 border border-danger/20">
+                        <p className="text-sm text-danger">{importError}</p>
+                      </div>
+                    )}
                   </>
                 )}
+
+                <button
+                  onClick={handleExport}
+                  className={isImported ? "w-full btn btn-secondary" : "w-full btn btn-primary"}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  Export Queue
+                  {queueCount > 0 && (
+                    <span className="bg-accent text-white text-xs px-2 py-0.5 rounded-full">
+                      {queueCount}
+                    </span>
+                  )}
+                </button>
+
               </div>
             </div>
           )}
