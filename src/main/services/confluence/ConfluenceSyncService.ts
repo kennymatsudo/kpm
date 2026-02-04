@@ -155,11 +155,28 @@ export function createConfluenceSyncService(deps: ConfluenceSyncServiceDeps) {
         const localHash = hashContent(localContent);
         const remoteHash = hashContent(remoteContent);
 
+        // Determine if this is initial sync (never synced before)
+        const isInitialSync =
+          link.local_content_hash === null && link.remote_content_hash === null;
+
+        // For initial sync, compare current content directly
+        // For subsequent syncs, compare against last known state
+        const localChanged = isInitialSync
+          ? false // Can't detect "changes" without baseline
+          : localHash !== link.local_content_hash;
+        const remoteChanged = isInitialSync
+          ? false // Can't detect "changes" without baseline
+          : remoteHash !== link.remote_content_hash;
+
+        // Content differs between local and remote (regardless of sync history)
+        const hasContentDifference = localHash !== remoteHash;
 
         return {
           hasConflict: localChanged && remoteChanged,
           localChanged,
           remoteChanged,
+          isInitialSync,
+          hasContentDifference,
           localContent,
           remoteContent,
           remoteVersion: page.version,

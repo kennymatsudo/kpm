@@ -1,6 +1,9 @@
 /**
  * Convert Markdown to Atlassian Document Format (ADF).
  *
+ * This converter handles common markdown elements including headings, lists,
+ * code blocks, blockquotes, tables, and inline formatting (bold, italic, links).
+ * Complex nested structures may not convert perfectly.
  */
 
 interface AdfNode {
@@ -63,6 +66,20 @@ interface AdfDocument {
     if (/^(-{3,}|_{3,}|\*{3,})$/.test(line.trim())) {
       content.push({ type: 'rule' });
       i++;
+      continue;
+    }
+
+    // Table (starts with | and has at least one more |)
+    if (line.trim().startsWith('|') && line.includes('|', 1)) {
+      const tableLines: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      const tableNode = createTable(tableLines);
+      if (tableNode) {
+        content.push(tableNode);
+      }
       continue;
     }
 
@@ -177,6 +194,67 @@ function createOrderedList(items: string[]): AdfNode {
       type: 'listItem',
       content: [createParagraph(item)],
     })),
+  };
+}
+
+/**
+ * Create an ADF table from markdown table lines.
+ * Expects lines in format: | col1 | col2 | col3 |
+ * Second line should be separator: |---|---|---|
+ */
+function createTable(lines: string[]): AdfNode | null {
+  if (lines.length < 2) return null;
+
+  // Parse cells from a line: | cell1 | cell2 | -> ['cell1', 'cell2']
+  const parseCells = (line: string): string[] => {
+    return line
+      .split('|')
+      .slice(1, -1) // Remove empty strings from leading/trailing |
+      .map(cell => cell.trim());
+  };
+
+  // Check if line is a separator row (contains only -, :, |, and spaces)
+  const isSeparator = (line: string): boolean => {
+    return /^\|[\s\-:|]+\|$/.test(line.trim());
+  };
+
+  const rows: AdfNode[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    // Skip separator rows
+    if (isSeparator(line)) {
+      continue;
+    }
+
+    const cells = parseCells(line);
+    if (cells.length === 0) continue;
+
+    // First row becomes header if followed by separator
+    const isHeaderRow = i === 0 && lines.length > 1 && isSeparator(lines[1]);
+
+    const rowNode: AdfNode = {
+      type: 'tableRow',
+      content: cells.map(cellText => ({
+        type: isHeaderRow ? 'tableHeader' : 'tableCell',
+        attrs: {},
+        content: [createParagraph(cellText)],
+      })),
+    };
+
+    rows.push(rowNode);
+  }
+
+  if (rows.length === 0) return null;
+
+  return {
+    type: 'table',
+    attrs: {
+      isNumberColumnEnabled: false,
+      layout: 'default',
+    },
+    content: rows,
   };
 }
 

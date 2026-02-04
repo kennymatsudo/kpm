@@ -4,8 +4,10 @@
  * Shows sync state and allows push/pull operations.
  */
 
+import { useEffect, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { MotionButton } from '../ui/MotionButton';
+import { DiffViewer, getDiffStats } from '../ui/DiffViewer';
 import { useConfluenceStore } from '../../stores/confluenceStore';
 import { useShallow } from 'zustand/react/shallow';
 import type { ConfluencePageLink } from '../../../shared/types';
@@ -25,6 +27,9 @@ export function ConfluenceSyncPreviewModal({
   link,
   onContentUpdated,
 }: Props) {
+  const [showDiff, setShowDiff] = useState(false);
+  const [diffDirection, setDiffDirection] = useState<'push' | 'pull'>('push');
+
   const {
     syncPreview,
     isSyncing,
@@ -54,6 +59,7 @@ export function ConfluenceSyncPreviewModal({
     return () => {
       setSyncPreview(null);
       setSyncError(null);
+      setShowDiff(false);
     };
   }, [isOpen, projectId, link.document_path, loadSyncPreview, setSyncPreview, setSyncError]);
 
@@ -94,6 +100,28 @@ export function ConfluenceSyncPreviewModal({
       );
     }
 
+    // Handle initial sync state (never synced before)
+    if (syncPreview.isInitialSync && syncPreview.hasContentDifference) {
+      const localHasContent = syncPreview.localContent.trim().length > 0;
+      const remoteHasContent = syncPreview.remoteContent.trim().length > 0;
+
+      let description: string;
+      if (localHasContent && !remoteHasContent) {
+        description = 'The local document has content but the Confluence page is empty. Push to populate Confluence.';
+      } else if (!localHasContent && remoteHasContent) {
+        description = 'The Confluence page has content but the local document is empty. Pull to populate the local document.';
+      } else {
+        description = 'The local document and Confluence page have different content. Choose which version to keep.';
+      }
+
+      return (
+        <div className="p-3 bg-orange-500/10 border border-orange-500/30 rounded-md">
+          <div className="font-medium text-orange-500 mb-1">Initial Sync Required</div>
+          <div className="text-sm text-text-secondary">{description}</div>
+        </div>
+      );
+    }
+
     if (syncPreview.localChanged && !syncPreview.remoteChanged) {
       return (
         <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-md">
@@ -130,6 +158,7 @@ export function ConfluenceSyncPreviewModal({
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
+      size="xl"
       preventClose={isSyncing}
       aria-labelledby="sync-preview-title"
     >
@@ -165,6 +194,77 @@ export function ConfluenceSyncPreviewModal({
             </div>
           ) : (
             renderStatus()
+          )}
+
+          {/* Only show diff when there are actionable changes, not just round-trip formatting differences */}
+          {syncPreview && (
+            syncPreview.localChanged ||
+            syncPreview.remoteChanged ||
+            syncPreview.hasConflict ||
+            (syncPreview.isInitialSync && syncPreview.hasContentDifference)
+          ) && (
+            <div className="space-y-3">
+              <button
+                onClick={() => setShowDiff(!showDiff)}
+                className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
+              >
+                <svg
+                  className={`w-4 h-4 transition-transform ${showDiff ? 'rotate-90' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                <span>Preview changes</span>
+                <DiffStats localContent={syncPreview.localContent} remoteContent={syncPreview.remoteContent} direction={diffDirection} />
+              </button>
+
+              {showDiff && (
+                <div className="border border-border-subtle rounded-lg overflow-hidden">
+                  {/* Segmented control header */}
+                  <div className="flex items-center gap-3 px-3 py-2 bg-surface-1 border-b border-border-subtle">
+                    <span className="text-xs text-text-muted">Preview:</span>
+                    <div className="flex rounded-md bg-surface-2 p-0.5">
+                      <button
+                        onClick={() => setDiffDirection('push')}
+                        className={`px-3 py-1 text-xs rounded transition-colors ${
+                          diffDirection === 'push'
+                            ? 'bg-surface-0 text-text-primary shadow-sm'
+                            : 'text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        Push
+                      </button>
+                      <button
+                        onClick={() => setDiffDirection('pull')}
+                        className={`px-3 py-1 text-xs rounded transition-colors ${
+                          diffDirection === 'pull'
+                            ? 'bg-surface-0 text-text-primary shadow-sm'
+                            : 'text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        Pull
+                      </button>
+                    </div>
+                    <span className="text-xs text-text-muted">
+                      {diffDirection === 'push' ? 'Local' : 'Confluence'}
+                      <svg className="inline-block w-3 h-3 mx-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                      </svg>
+                      {diffDirection === 'push' ? 'Confluence' : 'Local'}
+                    </span>
+                  </div>
+                  {/* Diff viewer */}
+                  <div className="max-h-64 overflow-y-auto">
+                    <DiffViewer
+                      oldContent={diffDirection === 'push' ? syncPreview.remoteContent : syncPreview.localContent}
+                      newContent={diffDirection === 'push' ? syncPreview.localContent : syncPreview.remoteContent}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {syncPreview && (
@@ -204,5 +304,38 @@ export function ConfluenceSyncPreviewModal({
         )}
       </ModalFooter>
     </Modal>
+  );
+}
+
+/** Helper component to show diff statistics inline */
+function DiffStats({
+  localContent,
+  remoteContent,
+  direction,
+}: {
+  localContent: string;
+  remoteContent: string;
+  direction: 'push' | 'pull';
+}) {
+  const stats = getDiffStats(
+    direction === 'push' ? remoteContent : localContent,
+    direction === 'push' ? localContent : remoteContent
+  );
+
+  if (stats.addedCount === 0 && stats.removedCount === 0) {
+    return null;
+  }
+
+  return (
+    <span className="text-xs text-text-muted">
+      {stats.addedCount > 0 && (
+        <span className="text-success">+{stats.addedCount}</span>
+      )}
+      {stats.addedCount > 0 && stats.removedCount > 0 && ' / '}
+      {stats.removedCount > 0 && (
+        <span className="text-danger">-{stats.removedCount}</span>
+      )}
+      <span className="ml-1">lines</span>
+    </span>
   );
 }

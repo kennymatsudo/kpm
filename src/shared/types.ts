@@ -762,6 +762,10 @@ export interface ConfluenceSyncPreview {
   hasConflict: boolean;
   localChanged: boolean;
   remoteChanged: boolean;
+  /** True when document has never been synced (no baseline to compare against) */
+  isInitialSync: boolean;
+  /** True when content differs and this is initial sync - user must choose direction */
+  hasContentDifference: boolean;
   localContent: string;
   remoteContent: string;
   remoteVersion: number;

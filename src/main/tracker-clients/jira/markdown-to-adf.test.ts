@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { markdownToAdf } from './markdown-to-adf';
+import { adfToMarkdown } from './adf-to-markdown';
 
 describe('markdownToAdf', () => {
   describe('basic functionality', () => {
@@ -181,6 +182,174 @@ Paragraph
       const result = markdownToAdf('- \n- Item');
       expect(result?.content[0].type).toBe('bulletList');
       expect(result?.content[0].content).toHaveLength(2);
+    });
+  });
+
+  describe('tables', () => {
+    it('converts basic table with header', () => {
+      const markdown = `| Col1 | Col2 |
+|------|------|
+| A    | B    |`;
+      const result = markdownToAdf(markdown);
+      expect(result?.content[0].type).toBe('table');
+      expect(result?.content[0].content).toHaveLength(2); // header + 1 data row
+    });
+
+    it('marks first row as header cells', () => {
+      const markdown = `| Header1 | Header2 |
+|---------|---------|
+| Data1   | Data2   |`;
+      const result = markdownToAdf(markdown);
+      const firstRow = result?.content[0].content?.[0];
+      expect(firstRow?.content?.[0].type).toBe('tableHeader');
+      expect(firstRow?.content?.[1].type).toBe('tableHeader');
+    });
+
+    it('marks data rows as regular cells', () => {
+      const markdown = `| Header |
+|--------|
+| Data   |`;
+      const result = markdownToAdf(markdown);
+      const dataRow = result?.content[0].content?.[1];
+      expect(dataRow?.content?.[0].type).toBe('tableCell');
+    });
+
+    it('handles table with multiple data rows', () => {
+      const markdown = `| Setting | Value |
+|---------|-------|
+| A       | 1     |
+| B       | 2     |
+| C       | 3     |`;
+      const result = markdownToAdf(markdown);
+      expect(result?.content[0].content).toHaveLength(4); // 1 header + 3 data rows
+    });
+
+    it('preserves inline formatting in cells', () => {
+      const markdown = `| Format |
+|--------|
+| **bold** |`;
+      const result = markdownToAdf(markdown);
+      const dataRow = result?.content[0].content?.[1];
+      const cellParagraph = dataRow?.content?.[0].content?.[0];
+      const boldNode = cellParagraph?.content?.find(
+        (n) => n.marks?.some((m) => m.type === 'strong')
+      );
+      expect(boldNode).toBeDefined();
+    });
+
+    it('handles inline code in cells', () => {
+      const markdown = `| Setting | Value |
+|---------|-------|
+| \`ADA_TOKEN\` | secret |`;
+      const result = markdownToAdf(markdown);
+      const dataRow = result?.content[0].content?.[1];
+      const firstCellParagraph = dataRow?.content?.[0].content?.[0];
+      const codeNode = firstCellParagraph?.content?.find(
+        (n) => n.marks?.some((m) => m.type === 'code')
+      );
+      expect(codeNode).toBeDefined();
+      expect(codeNode?.text).toBe('ADA_TOKEN');
+    });
+
+    it('handles varying separator formats', () => {
+      const markdown = `| A | B |
+| --- | --- |
+| 1 | 2 |`;
+      const result = markdownToAdf(markdown);
+      expect(result?.content[0].type).toBe('table');
+    });
+
+    it('handles separator with colons for alignment', () => {
+      const markdown = `| Left | Center | Right |
+|:-----|:------:|------:|
+| L    | C      | R     |`;
+      const result = markdownToAdf(markdown);
+      expect(result?.content[0].type).toBe('table');
+      expect(result?.content[0].content).toHaveLength(2);
+    });
+  });
+
+  describe('round-trip (markdown → ADF → markdown)', () => {
+    it('preserves table data through round-trip', () => {
+      const original = `| Setting | Sandbox | Production |
+| --- | --- | --- |
+| API_KEY | sandbox-key | prod-key |
+| URL | dev.example.com | example.com |`;
+
+      const adf = markdownToAdf(original);
+      expect(adf).not.toBeNull();
+
+      const roundTripped = adfToMarkdown(adf);
+      expect(roundTripped).not.toBeNull();
+
+      // Verify table structure is preserved
+      expect(roundTripped).toContain('| Setting | Sandbox | Production |');
+      expect(roundTripped).toContain('| API_KEY | sandbox-key | prod-key |');
+      expect(roundTripped).toContain('| URL | dev.example.com | example.com |');
+    });
+
+    it('normalizes separator format through round-trip', () => {
+      // Original has varying dash lengths
+      const original = `| A | B |
+|---------|-----|
+| 1 | 2 |`;
+
+      const adf = markdownToAdf(original);
+      const roundTripped = adfToMarkdown(adf);
+
+      // After round-trip, separator should be normalized
+      expect(roundTripped).toContain('| --- | --- |');
+    });
+
+    it('preserves inline code in table cells through round-trip', () => {
+      const original = `| Setting | Value |
+| --- | --- |
+| \`ADA_SUBDOMAIN\` | demo-agent |`;
+
+      const adf = markdownToAdf(original);
+      const roundTripped = adfToMarkdown(adf);
+
+      expect(roundTripped).toContain('`ADA_SUBDOMAIN`');
+      expect(roundTripped).toContain('demo-agent');
+    });
+
+    it('preserves headings and paragraphs through round-trip', () => {
+      const original = `# Title
+
+Some paragraph text.
+
+## Section
+
+More content here.`;
+
+      const adf = markdownToAdf(original);
+      const roundTripped = adfToMarkdown(adf);
+
+      expect(roundTripped).toContain('# Title');
+      expect(roundTripped).toContain('Some paragraph text.');
+      expect(roundTripped).toContain('## Section');
+    });
+
+    it('preserves mixed content with tables through round-trip', () => {
+      const original = `# Config
+
+Overview of settings.
+
+| Setting | Value |
+| --- | --- |
+| Enabled | true |
+
+## Notes
+
+Additional info.`;
+
+      const adf = markdownToAdf(original);
+      const roundTripped = adfToMarkdown(adf);
+
+      expect(roundTripped).toContain('# Config');
+      expect(roundTripped).toContain('| Setting | Value |');
+      expect(roundTripped).toContain('| Enabled | true |');
+      expect(roundTripped).toContain('## Notes');
     });
   });
 });
