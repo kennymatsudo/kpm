@@ -24,12 +24,23 @@ export type ClaudeMdInterceptFn = (
   newContent: string
 ) => void;
 
+/** Callback for intercepted project file writes */
+export type ProjectFileInterceptFn = (
+  projectId: string,
+  filePath: string,
+  content: string
+) => void;
+
 /** Context for permission checks */
 export interface PermissionContext {
   projectPath: string;
   projectId: string;
+  /** Connected repository paths (read-only, writes are denied) */
+  repoPaths?: string[];
   /** Optional callback to intercept CLAUDE.md edits */
   onClaudeMdEdit?: ClaudeMdInterceptFn;
+  /** Optional callback to intercept project file writes for approval */
+  onProjectFileWrite?: ProjectFileInterceptFn;
 }
 
 /**
@@ -159,6 +170,17 @@ export function createPermissionHandler(
       }
     }
 
+    // Rule 0.5: Intercept project file writes for user approval
+      if (toolName === 'Write' && context.onProjectFileWrite && typeof input.content === 'string') {
+        // Compute relative path from project folder
+        const relativePath = relative(normalize(context.projectPath), normalize(targetPath));
+        console.log(`[Permissions] Project file Write intercepted - capturing for approval: ${relativePath}`);
+        context.onProjectFileWrite(context.projectId, relativePath, input.content);
+        return {
+          behavior: 'deny',
+        };
+      }
+      // Allow other tools (Read, Grep, etc.) in project directory
       return { behavior: 'allow', updatedInput: input };
     }
 

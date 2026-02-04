@@ -65,7 +65,14 @@ describe('permissions', () => {
     });
 
     describe('auto-allow rules', () => {
+      it('auto-allows Edit in project directory', async () => {
         const result = await handler('Edit', { file_path: '/test/project/src/file.ts' }, createTestOptions());
+        expect(result.behavior).toBe('allow');
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+      it('auto-allows Read in project directory', async () => {
+        const result = await handler('Read', { file_path: '/test/project/src/file.ts' }, createTestOptions());
         expect(result.behavior).toBe('allow');
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
@@ -168,6 +175,63 @@ describe('permissions', () => {
         const result = await handler('SomeNewTool', { data: 'whatever' }, createTestOptions());
         expect(result.behavior).toBe('allow');
         expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('project file write interception', () => {
+      it('intercepts Write to project directory when callback provided', async () => {
+        const mockOnProjectFileWrite = vi.fn();
+        context = {
+          projectPath: '/test/project',
+          projectId: 'test-project-id',
+          onProjectFileWrite: mockOnProjectFileWrite,
+        };
+        handler = createPermissionHandler(context, mockPromptUser);
+
+        const result = await handler('Write', { file_path: '/test/project/docs/guide.md', content: 'Hello world' }, createTestOptions());
+
+        expect(result.behavior).toBe('deny');
+        expect(mockOnProjectFileWrite).toHaveBeenCalledWith('test-project-id', 'docs/guide.md', 'Hello world');
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+      it('allows Write to project directory when no callback provided', async () => {
+        // No onProjectFileWrite callback
+        const result = await handler('Write', { file_path: '/test/project/docs/guide.md', content: 'Hello world' }, createTestOptions());
+
+        expect(result.behavior).toBe('allow');
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+    });
+
+      beforeEach(() => {
+        context = {
+          projectPath: '/test/project',
+          projectId: 'test-project-id',
+          repoPaths: ['/repos/my-app', '/repos/shared-lib'],
+        };
+        handler = createPermissionHandler(context, mockPromptUser);
+      });
+
+      });
+
+      });
+
+      it('allows Read from connected repo', async () => {
+        const result = await handler('Read', { file_path: '/repos/my-app/src/file.ts' }, createTestOptions());
+        expect(result.behavior).toBe('allow');
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+      it('allows Grep in connected repo', async () => {
+        const result = await handler('Grep', { path: '/repos/my-app', pattern: 'TODO' }, createTestOptions());
+        expect(result.behavior).toBe('allow');
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+      it('still prompts for writes outside project AND repos', async () => {
+        await handler('Write', { file_path: '/some/other/path/file.txt', content: 'hello' }, createTestOptions());
+        expect(mockPromptUser).toHaveBeenCalled();
       });
     });
   });

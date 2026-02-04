@@ -101,6 +101,7 @@ export interface StreamingSessionServiceDeps {
       resumeSessionId?: string;
       mainWindow: BrowserWindow | null;
       onClaudeMdEdit?: (projectId: string, newContent: string) => void;
+      onProjectFileWrite?: (projectId: string, filePath: string, content: string) => void;
     }
   ) => SDKOptions;
 
@@ -256,6 +257,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         resumeSessionId,
         mainWindow,
         onClaudeMdEdit: (editProjectId: string, newContent: string) => {
+          });
+        },
+        // Callback for intercepted project file writes from the permission handler
+        onProjectFileWrite: (writeProjectId: string, filePath: string, content: string) => {
+          // Read current file for diff display
           });
         },
       });

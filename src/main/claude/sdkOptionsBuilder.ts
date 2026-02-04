@@ -6,6 +6,7 @@
  */
 
 import type { ChatViewMode } from '../../shared/types';
+import { createPermissionHandler, type PermissionContext, type ClaudeMdInterceptFn, type ProjectFileInterceptFn } from './permissions';
 import { getConfig } from '../config';
 
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
@@ -17,6 +18,8 @@ export interface BuildSdkOptionsParams {
   resumeSessionId?: string;
   mainWindow: BrowserWindow | null;
   onClaudeMdEdit?: ClaudeMdInterceptFn;
+  /** Callback for intercepted project file writes */
+  onProjectFileWrite?: ProjectFileInterceptFn;
 }
 
 /**
@@ -28,6 +31,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     projectPath: context.project.folder_path,
     projectId: context.project.id,
     onClaudeMdEdit,
+    onProjectFileWrite,
   };
 
   // Get MCP server
