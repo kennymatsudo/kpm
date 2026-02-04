@@ -26,6 +26,7 @@ import { useExportStore } from './tracker/useExportStore';
 import { useSyncStore } from './tracker/useSyncStore';
 import { useGroupStore } from './groupStore';
 import { useWorkspaceStore } from './workspaceStore';
+import { useProjectStore } from './projectStore';
 import { useTaskPromptTemplateStore } from './taskPromptTemplateStore';
 
 interface AnyStore { getState: () => unknown }
@@ -48,6 +49,7 @@ const PROJECT_SCOPED_STORES: StoreEntry[] = [
   { name: 'groups', store: useGroupStore },
   { name: 'devSessions', store: useDevSessionsStore },
   { name: 'workspace', store: useWorkspaceStore },
+  { name: 'project', store: useProjectStore },
   { name: 'taskPromptTemplates', store: useTaskPromptTemplateStore },
 ];
 

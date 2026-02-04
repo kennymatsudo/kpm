@@ -180,6 +180,11 @@ export function createPermissionHandler(
           behavior: 'deny',
         };
       }
+        const relativePath = relative(normalize(context.projectPath), normalize(targetPath));
+        return {
+          behavior: 'deny',
+        };
+      }
       // Allow other tools (Read, Grep, etc.) in project directory
       return { behavior: 'allow', updatedInput: input };
     }

@@ -46,6 +46,7 @@ export interface ProjectSlice {
   removeProject: (projectId: string) => void;
   setCurrentProject: (projectId: string | null) => void;
   reset: () => void;
+  resetProjectState: () => void;  // Clears project-specific state while preserving project list
 }
 
 export interface PlanSlice {
