@@ -23,9 +23,12 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
   const [filesCollapsed, setFilesCollapsed] = useState(false);
 
   // Confluence store
+  const { loadLinks, getLinkForDocument, unlinkDocument, isDocumentLinked } = useConfluenceStore(
     useShallow((s) => ({
       loadLinks: s.loadLinks,
       getLinkForDocument: s.getLinkForDocument,
+      unlinkDocument: s.unlinkDocument,
+      isDocumentLinked: s.isDocumentLinked,
     }))
   );
 
@@ -260,6 +263,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         isCollapsed={filesCollapsed}
         onToggleCollapsed={() => setFilesCollapsed(!filesCollapsed)}
 
+          }
           }
           }
       />
