@@ -334,6 +334,8 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
           ...item,
           status: item.status || 'planned',
           release_tag: item.release_tag || null,
+          position_x: item.position_x ?? null,
+          position_y: item.position_y ?? null,
         })),
         relations,
       });

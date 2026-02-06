@@ -44,6 +44,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       let worktrees: Worktree[] = [];
 
       try {
+          useGroupStore.getState().loadGroups(projectId),
         ]);
         endFetch({
           repoCount: repos.length,
