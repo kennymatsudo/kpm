@@ -67,6 +67,7 @@ interface LayoutProps {
     }
   }, [mainView, createItemHandler]);
 
+
     openGlobalSearch(mainView === 'planning' ? 'plan_item' : 'document');
   // Keyboard shortcuts
   useLayoutShortcuts({

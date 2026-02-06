@@ -13,6 +13,7 @@ import { m, AnimatePresence } from 'framer-motion';
 import { useShallow } from 'zustand/react/shallow';
 import type { ApprovalItem } from '../../stores';
 import { toast } from '../../stores/toastStore';
+import { emit } from '../../stores/storeEvents';
 import { PendingActionsPanel } from '../planning/PendingActionsPanel';
 import { PendingDocumentPanel } from '../planning/PendingDocumentPanel';
 
@@ -122,6 +123,11 @@ export function ApprovalOverlays() {
         removeById(item.id);
         // Refresh the parent directory so the new file appears in the tree
         void useFileTreeStore.getState().refreshDirectory(parentPath);
+        // Navigate to workspace and open the newly created document
+        emit({
+          type: 'navigate-to-view',
+          payload: { view: 'workspace', filePath: item.filePath },
+        });
       } else {
         toast.error(`Failed to update ${item.filePath}: ${result.error}`);
       }

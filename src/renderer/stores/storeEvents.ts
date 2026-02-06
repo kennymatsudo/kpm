@@ -43,6 +43,8 @@ export interface NavigateToViewEvent {
   type: 'navigate-to-view';
   payload: {
     view: 'planning' | 'workspace';
+    /** Optional file path to open after navigation (for workspace view) */
+    filePath?: string;
   };
 }
 
