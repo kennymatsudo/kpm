@@ -18,10 +18,15 @@ export function DeleteWorktreeDialog({
     <Modal isOpen={true} onClose={onCancel} size="sm" preventClose={isDeleting}>
       <ModalHeader onClose={onCancel}>
         <div className="flex items-start gap-4">
+          <div className="p-2.5 rounded-xl bg-surface-3">
+            <svg className="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           </div>
           <div className="flex-1 min-w-0">
+            <h3 className="text-base font-semibold text-text-primary mb-1">Clean Up Worktree</h3>
             <p className="text-sm text-text-secondary">
+              Removes the worktree folder and its local branch, returning to main.
             </p>
           </div>
         </div>
@@ -69,8 +74,10 @@ export function DeleteWorktreeDialog({
             </svg>
           ) : (
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           )}
+          {isDeleting ? 'Cleaning up...' : 'Clean Up'}
         </button>
       </ModalFooter>
     </Modal>

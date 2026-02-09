@@ -28,4 +28,8 @@ export function registerWorktreeHandlers(worktreeService: WorktreeService): void
     const { worktreeId } = WorktreeSchemas.push.parse(params);
     return toIpcResponse(await worktreeService.pushBranch(worktreeId));
   });
+
+    const { worktreeId } = WorktreeSchemas.destroy.parse(params);
+    return toIpcResponse(await worktreeService.destroyWorktree(worktreeId));
+  });
 }

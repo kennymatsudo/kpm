@@ -111,6 +111,7 @@ interface LayoutProps {
           )}
 
           {/* Left sidebar - pushes content by default, floats over when overlay mode */}
+          {!sidebarCollapsed && (
             <div
               className={
                 sidebarOverlay

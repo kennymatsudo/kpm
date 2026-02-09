@@ -52,7 +52,19 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     rename,
     moveEntry,
     getNodeByPath,
+    expandToPath,
   } = useFileTreeStore();
+
+  // Workspace editing state (only relevant when onFileOpen is provided, i.e. workspace mode)
+  const editingFile = useWorkspaceStore((state) => state.editingFile);
+  const editingPath = onFileOpen && editingFile?.source === 'project' ? editingFile.path : null;
+
+  // Auto-expand folders to reveal the currently editing file
+  useEffect(() => {
+    if (editingPath && projectId) {
+      void expandToPath(projectId, editingPath);
+    }
+  }, [editingPath, projectId, expandToPath]);
 
   useEffect(() => {
     if (projectId) {

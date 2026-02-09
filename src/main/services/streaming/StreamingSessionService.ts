@@ -7,8 +7,10 @@
  * - Connect on project open (zero-latency first message)
  * - Auto-reconnect on timeout or crash
  * - Unified chat session for Plan and Workspace views (shared history)
+ * - Multiple concurrent sessions per project (up to MAX_CONCURRENT_SESSIONS)
  *
  * Session keys:
+ * - Main chat: `chat:{projectId}:{chatSessionId}` (unique per session)
  */
 
 import type { BrowserWindow } from 'electron';
@@ -27,6 +29,13 @@ export type SessionState = 'idle' | 'connecting' | 'ready' | 'processing' | 'err
 export type SessionType = 'chat';
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
 /** UI view mode - passed to prompts for context-aware suggestions */
+
+/** Info about an active session (for UI display) */
+export interface ActiveSessionInfo {
+  chatSessionId: string;
+  state: SessionState;
+  isProcessing: boolean;
+}
 
 /** Segment state for tracking message boundaries */
 interface SegmentState {
@@ -125,8 +134,52 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   let cleanupInterval: NodeJS.Timeout | null = null;
 
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Multi-Session Helpers
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Build session key from projectId and chatSessionId.
+   * Key format: `chat:{projectId}:{chatSessionId}`
+   */
+  function buildSessionKey(projectId: string, chatSessionId: string): string {
+    return `chat:${projectId}:${chatSessionId}`;
+  }
+
+  /**
+   * Get all session keys for a project.
+   */
   function getSessionKeysForProject(projectId: string): string[] {
+    const prefix = `chat:${projectId}:`;
+    return Array.from(sessions.keys()).filter(key => key.startsWith(prefix));
+  }
+
+  /**
+   * Get count of active sessions for a project.
+   */
+  function getActiveSessionCount(projectId: string): number {
     return getSessionKeysForProject(projectId).length;
+  }
+
+  /**
+   * Get info about all active sessions for a project.
+   */
+  function getActiveSessions(projectId: string): ActiveSessionInfo[] {
+    const result: ActiveSessionInfo[] = [];
+    const prefix = `chat:${projectId}:`;
+
+    for (const [key, managed] of sessions) {
+        result.push({
+          chatSessionId: managed.chatSessionId,
+          state: managed.state,
+          isProcessing: managed.state === 'processing',
+        });
+      }
+    }
+
+    return result;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Core Session Operations (main chat)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -244,6 +297,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const mainWindow = deps.getMainWindow();
 
     // Notify UI that we're connecting
+    mainWindow?.webContents.send('chat:session-connecting', { projectId, chatSessionId });
 
     // Create subscriptions FIRST so we can always clean them up
     // Store references outside try block to ensure cleanup on any error
@@ -278,6 +332,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         }
       });
 
+            chatSessionId,
           });
 
       // Store managed session BEFORE calling start() to ensure cleanup on timeout/error
@@ -331,6 +386,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
       mainWindow?.webContents.send('chat:session-error', {
         projectId,
+        chatSessionId,
         error: (error as Error).message,
       });
 
@@ -343,8 +399,17 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
+   * Disconnect a specific chat session, or all sessions for a project.
+   * @param projectId - Project ID
+   * @param chatSessionId - Optional session ID. If omitted, disconnects ALL sessions for the project.
    */
+  async function disconnectChatSession(projectId: string, chatSessionId?: string): AsyncResult<void> {
+    if (chatSessionId) {
+      // Disconnect specific session
+      const key = buildSessionKey(projectId, chatSessionId);
+    } else {
       const keys = getSessionKeysForProject(projectId);
+    }
     return success(undefined);
   }
 
@@ -367,13 +432,24 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     message: string,
     options: SendChatMessageOptions = {}
   ): AsyncResult<void> {
-    const managed = sessions.get(key);
+    // chatSessionId is required for multi-session support
+    const chatSessionId = options.chatSessionId;
+    if (!chatSessionId) {
+      return failure('chatSessionId is required');
     }
+
+    const key = buildSessionKey(projectId, chatSessionId);
+    const managed = sessions.get(key);
+
+    // If view changed, disconnect and create new session
+    }
+
   }
 
   /**
    * Create and start a main chat session with an initial message.
    * Shared between Plan and Workspace views.
+   * Enforces maximum concurrent sessions limit per project.
    */
   async function createChatSession(
     projectId: string,
@@ -382,6 +458,24 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const project = deps.projectRepository.get(projectId);
     if (!project) {
       return failure('Project not found');
+    }
+
+    // chatSessionId is required for multi-session support
+    const chatSessionId = options.chatSessionId;
+    if (!chatSessionId) {
+      return failure('chatSessionId is required');
+    }
+
+    const sessionKey = buildSessionKey(projectId, chatSessionId);
+
+    // Check if this specific session already exists (resuming)
+    const existingSession = sessions.get(sessionKey);
+    const isResume = !!existingSession;
+
+    // Enforce session limit only for NEW sessions (not resumes)
+    if (!isResume) {
+      const activeCount = getActiveSessionCount(projectId);
+      }
     }
 
     const context = deps.buildContext(projectId);
@@ -401,6 +495,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
 
     return createSession({
+      key: sessionKey,
       projectId,
       chatSessionId,
       initialMessage,
@@ -412,7 +507,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   }
 
   /**
+   * Get the state of a specific chat session.
    */
+  function getChatSessionState(projectId: string, chatSessionId: string): SessionState {
+    const key = buildSessionKey(projectId, chatSessionId);
     return sessions.get(key)?.state ?? 'idle';
   }
 
@@ -511,8 +609,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   /**
    * Handle messages from main chat session (unified for Plan and Workspace views).
    * Uses 'chat:*' IPC channels and persists to unified chat history.
+   * All events include chatSessionId for routing to the correct session in the UI.
    */
     const mainWindow = deps.getMainWindow();
+    const key = buildSessionKey(projectId, chatSessionId);
     const managed = sessions.get(key);
 
     if (!managed) return;
@@ -559,8 +659,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     if (sdkMsg.type === 'result') {
 
       // Check if response was truncated
+        console.log(`[StreamingSessionService] Response truncated (max_tokens) for ${key}`);
         mainWindow?.webContents.send('chat:truncated', {
           projectId,
+          chatSessionId,
           reason: 'max_tokens',
         });
       }
@@ -596,9 +698,16 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     const mainWindow = deps.getMainWindow();
 
+    // Notify UI that session is deactivated (for multi-session UI updates)
+    mainWindow?.webContents.send('chat:session-deactivated', {
+      projectId: managed.projectId,
+      chatSessionId: managed.chatSessionId,
+    });
+
     if (reason === 'error' && error) {
       mainWindow?.webContents.send('chat:session-error', {
         projectId: managed.projectId,
+        chatSessionId: managed.chatSessionId,
         error: error.message,
       });
     }
@@ -618,9 +727,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   // ─────────────────────────────────────────────────────────────────────────────
 
   return {
+    // Main chat (unified for Plan and Workspace views, multi-session support)
     disconnectChatSession,
     sendChatMessage,
     getChatSessionState,
+    getActiveSessions,
+    interruptChatSession: (projectId: string, chatSessionId: string) =>
+      interrupt(buildSessionKey(projectId, chatSessionId)),
+    setChatModel: (projectId: string, chatSessionId: string, model: ModelType) =>
+      setModel(buildSessionKey(projectId, chatSessionId), model),
     disposeAll,
   };
 }

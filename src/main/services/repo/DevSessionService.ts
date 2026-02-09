@@ -366,6 +366,63 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     },
 
     /**
+     * Destroy a session completely - removes worktree, force-deletes local branch,
+     * and deletes the remote tracking branch. Intended for discarding unwanted work.
+     */
+    async destroySession(sessionId: string): AsyncResult<void> {
+      try {
+        const session = deps.devSessions.get(sessionId);
+        if (!session) {
+          return failure(`Session not found: ${sessionId}`);
+        }
+
+        const repo = deps.repos.getById(session.repo_id);
+        if (repo) {
+          // Force-remove git worktree
+          if (fs.existsSync(session.worktree_path)) {
+            try {
+              await gitExec(
+                ['worktree', 'remove', session.worktree_path, '--force'],
+                { cwd: repo.path }
+              );
+            } catch {
+              // If worktree remove fails, try manual cleanup
+              fs.rmSync(session.worktree_path, { recursive: true, force: true });
+              await gitExec(['worktree', 'prune'], { cwd: repo.path });
+            }
+          }
+
+          // Force-delete local branch (ignores merge status)
+          try {
+            await gitExec(
+              ['branch', '-D', session.branch_name],
+              { cwd: repo.path }
+            );
+          } catch {
+            // Branch may already be deleted
+          }
+
+          // Delete remote tracking branch
+          try {
+            await gitExec(
+              ['push', 'origin', '--delete', session.branch_name],
+              { cwd: repo.path }
+            );
+          } catch {
+            // Remote branch may not exist
+          }
+        }
+
+        // Delete session record
+        deps.devSessions.delete(sessionId);
+
+        return success(undefined);
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
+    /**
      * Get git diff for a session's worktree
      */
     async getSessionDiff(sessionId: string): AsyncResult<string> {

@@ -35,6 +35,8 @@ interface FileTreeState {
   markRecentlyChanged: (path: string, type: 'created' | 'modified') => void;
   /** Clear recently changed status for a path */
   clearRecentlyChanged: (path: string) => void;
+  /** Expand tree to reveal a file path, loading intermediate directories as needed */
+  expandToPath: (projectId: string, path: string) => Promise<void>;
 
   // File operations
   loadDirectory: (projectId: string, path?: string) => Promise<void>;
@@ -216,12 +218,30 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     }
   },
 
+  expandToPath: async (projectId, path) => {
+    // Build list of ancestor directory paths
     const parts = path.split('/');
+    const ancestorPaths: string[] = [];
     let currentPath = '';
     for (let i = 0; i < parts.length - 1; i++) {
       currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
+      ancestorPaths.push(currentPath);
     }
 
+    // Load each ancestor directory sequentially (parent must load before child)
+    for (const dirPath of ancestorPaths) {
+      const node = findNodeByPath(get().nodes, dirPath);
+      if (node?.isDirectory && !node.children) {
+        await get().loadDirectory(projectId, dirPath);
+      }
+    }
+
+    // Expand all ancestors
+    const { expandedPaths } = get();
+    const newExpanded = new Set(expandedPaths);
+    for (const dirPath of ancestorPaths) {
+      newExpanded.add(dirPath);
+    }
     set({ expandedPaths: newExpanded });
   },
 

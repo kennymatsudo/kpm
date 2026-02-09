@@ -27,6 +27,19 @@ interface ChatInputProps {
 }
 
 export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, currentView }: ChatInputProps) {
+  // Draft message and streaming state from viewed session
+    const session = state.viewedSessionId ? state.sessions.get(state.viewedSessionId) : null;
+    return {
+      viewedSessionId: state.viewedSessionId,
+      viewedSession: session,
+      setDraftMessage: state.setDraftMessage,
+      getChatSessionId: state.getChatSessionId,
+    };
+  }));
+
+  const isStreaming = viewedSession?.isStreaming ?? false;
+
+    const sessionId = viewedSessionId ?? getChatSessionId();
   const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 

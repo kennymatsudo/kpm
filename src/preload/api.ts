@@ -111,12 +111,14 @@ const chat = {
   getSessionHistory: (projectId: string, limit?: number): Promise<{ success: boolean; sessions?: ChatSessionSummary[]; error?: string }> =>
   onChunk: (callback: (data: {
     projectId: string;
+    chatSessionId?: string;
     text: string;
     segmentId?: number;
     precedingActivities?: Activity[];
   }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, data: {
       projectId: string;
+      chatSessionId?: string;
       text: string;
       segmentId?: number;
       precedingActivities?: Activity[];
@@ -124,18 +126,25 @@ const chat = {
     ipcRenderer.on('chat:chunk', handler);
     return () => ipcRenderer.removeListener('chat:chunk', handler);
   },
+  onPlanActions: (callback: (data: { projectId: string; chatSessionId?: string; actions: PlanAction[] }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; actions: PlanAction[] }) => callback(data);
     ipcRenderer.on('chat:plan-actions', handler);
     return () => ipcRenderer.removeListener('chat:plan-actions', handler);
   },
     ipcRenderer.on('chat:done', handler);
     return () => ipcRenderer.removeListener('chat:done', handler);
   },
+  onError: (callback: (data: { projectId: string; chatSessionId?: string; error: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; error: string }) => callback(data);
     ipcRenderer.on('chat:error', handler);
     return () => ipcRenderer.removeListener('chat:error', handler);
   },
+  onActivity: (callback: (data: { projectId: string; chatSessionId?: string; activity: Activity }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; activity: Activity }) => callback(data);
     ipcRenderer.on('chat:activity', handler);
     return () => ipcRenderer.removeListener('chat:activity', handler);
   },
+    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; filePath: string; content: string; oldContent?: string | null }) => callback(data);
     ipcRenderer.on('chat:file-update', handler);
     return () => ipcRenderer.removeListener('chat:file-update', handler);
   },
@@ -145,23 +154,43 @@ const chat = {
   /** Connect streaming session for a project (called on project open) */
   connectSession: (projectId: string): Promise<{ success: boolean; sessionId?: string; error?: string }> =>
 
+  /** Disconnect streaming session for a project (all sessions) */
   disconnectSession: (projectId: string): Promise<{ success: boolean; error?: string }> =>
+
+  /** Get all active sessions for a project (multi-session support) */
+  getActiveSessions: (projectId: string): Promise<{
+    success: boolean;
+    error?: string;
+
+  /** Disconnect a specific session (multi-session support) */
+  disconnectSpecificSession: (projectId: string, chatSessionId: string): Promise<{ success: boolean; error?: string }> =>
 
   /** Get current session state */
 
   /** Session connecting event */
+  onSessionConnecting: (callback: (data: { projectId: string; chatSessionId?: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string }) => callback(data);
     ipcRenderer.on('chat:session-connecting', handler);
     return () => ipcRenderer.removeListener('chat:session-connecting', handler);
   },
 
   /** Session ready event */
+  onSessionReady: (callback: (data: { projectId: string; chatSessionId?: string; sessionId?: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; sessionId?: string }) => callback(data);
     ipcRenderer.on('chat:session-ready', handler);
     return () => ipcRenderer.removeListener('chat:session-ready', handler);
   },
 
   /** Session error event */
+  onSessionError: (callback: (data: { projectId: string; chatSessionId?: string; error: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; error: string }) => callback(data);
     ipcRenderer.on('chat:session-error', handler);
     return () => ipcRenderer.removeListener('chat:session-error', handler);
+  },
+
+  /** Session deactivated event (multi-session support) */
+    ipcRenderer.on('chat:session-deactivated', handler);
+    return () => ipcRenderer.removeListener('chat:session-deactivated', handler);
   },
 
 };
@@ -498,6 +527,7 @@ const worktrees = {
   getStatus: (worktreeId: string): Promise<WorktreeStatus> =>
   delete: (worktreeId: string, force?: boolean): Promise<{ success: boolean; error?: string }> =>
   push: (worktreeId: string): Promise<{ success: boolean; error?: string }> =>
+  destroy: (worktreeId: string): Promise<{ success: boolean; error?: string }> =>
 };
 
 const devSessions = {
@@ -521,6 +551,9 @@ const devSessions = {
 
   // Delete a session (stops PTY if running, removes record, optionally cleans worktree)
   delete: (sessionId: string, cleanupWorktree?: boolean): Promise<{ success: boolean; error?: string }> =>
+
+  // Destroy a session completely (force-delete worktree, branch + remote)
+  destroy: (sessionId: string): Promise<{ success: boolean; error?: string }> =>
 
   // Check if session has uncommitted changes (for warning before delete)
   checkDirty: (sessionId: string): Promise<{ success: boolean; isDirty?: boolean; files?: string[]; error?: string }> =>

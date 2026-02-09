@@ -65,4 +65,21 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
       throw error;
     }
   },
+
+  destroyWorktree: async (worktreeId) => {
+    try {
+      const result = await deps.api.worktrees.destroy(worktreeId);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to destroy worktree');
+      }
+      set((state) => {
+        const { [worktreeId]: _, ...remainingLoading } = state.worktreeLoading;
+        return {
+          worktreeLoading: remainingLoading,
+        };
+      });
+    } catch (error) {
+      throw error;
+    }
+  },
 });

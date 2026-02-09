@@ -106,6 +106,21 @@ export function registerDevSessionHandlers(
     )
   );
 
+  // Destroy a session completely (force-delete worktree, branch + remote)
+  ipcMain.handle(
+    IPC_CHANNELS.devSession.destroy,
+    createIpcHandler(
+      DevSessionSchemas.destroy,
+      async ({ sessionId }) => {
+        const result = await devSessionService.destroySession(sessionId);
+        if (!result.ok) {
+          throw new Error(result.error);
+        }
+      },
+      'Failed to destroy session'
+    )
+  );
+
   // Check if session has uncommitted changes
   ipcMain.handle(
     IPC_CHANNELS.devSession.checkDirty,

@@ -132,7 +132,12 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
   const deleteCurrentProject = useCallback(async () => {
     if (!currentProjectId) return;
 
+    // Disconnect ALL streaming sessions before deleting project
     if (previousConnectedProjectId === currentProjectId) {
+      try {
+      } catch {
+        // Best effort - continue with delete
+      }
       previousConnectedProjectId = null;
     }
 

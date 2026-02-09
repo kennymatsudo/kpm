@@ -49,6 +49,7 @@ export const ChatSchemas = {
 
   cancel: z.object({
     projectId: uuid,
+    chatSessionId: uuid, // Required for multi-session support
   }),
 
   newSession: z.object({
@@ -73,6 +74,15 @@ export const ChatSchemas = {
   }),
 
   loadSession: z.object({
+    projectId: uuid,
+    chatSessionId: uuid,
+  }),
+
+  getActiveSessions: z.object({
+    projectId: uuid,
+  }),
+
+  disconnectSpecificSession: z.object({
     projectId: uuid,
     chatSessionId: uuid,
   }),

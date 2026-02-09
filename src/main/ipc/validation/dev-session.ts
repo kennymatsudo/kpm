@@ -46,6 +46,11 @@ export const DevSessionSchemas = {
     cleanupWorktree: z.boolean().optional().default(true),
   }),
 
+  /** Destroy session completely (force-delete worktree, branch + remote) */
+  destroy: z.object({
+    sessionId: uuid,
+  }),
+
   /** Check if session has uncommitted changes */
   checkDirty: z.object({
     sessionId: uuid,
@@ -107,6 +112,11 @@ export const WorktreeSchemas = {
 
   /** Push worktree branch */
   push: z.object({
+    worktreeId: uuid,
+  }),
+
+  /** Destroy worktree completely (force-delete branch + remote) */
+  destroy: z.object({
     worktreeId: uuid,
   }),
 };

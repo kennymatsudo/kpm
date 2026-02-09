@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
+import { SessionList } from './SessionList';
 import { PermissionPrompt } from '../permission/PermissionPrompt';
 import { useChat } from '../../hooks/useChat';
 import { useShallow } from 'zustand/react/shallow';
@@ -9,6 +10,7 @@ import { CloseIcon } from '../icons';
 // Re-export components for use in Layout and other consumers
 export { SessionHistory } from './SessionHistory';
 export { NewSessionButton } from './NewSessionButton';
+export { SessionList } from './SessionList';
 
 interface ChatProps {
   /** Current view mode for prompt customization (optional) */
@@ -16,6 +18,16 @@ interface ChatProps {
 }
 
 export function Chat({ currentView }: ChatProps) {
+  // Access per-session chat state
+    const session = state.viewedSessionId ? state.sessions.get(state.viewedSessionId) : null;
+    return {
+      viewedSessionId: state.viewedSessionId,
+      viewedSession: session,
+      clearError: state.clearError,
+    };
+  }));
+
+  const error = viewedSession?.error ?? null;
 
   const [lastMessage, setLastMessage] = useState<string | null>(null);
 
@@ -76,6 +88,8 @@ export function Chat({ currentView }: ChatProps) {
   const focusCount = focusedResources.length;
 
   return (
+      <SessionList />
+
       {/* Focused resources banner - animated height to prevent layout shift */}
       <div
         style={{
@@ -135,6 +149,7 @@ export function Chat({ currentView }: ChatProps) {
             )}
           </div>
           <button
+            onClick={() => viewedSessionId && clearError(viewedSessionId)}
             className="text-danger/60 hover:text-danger transition-colors flex-shrink-0"
           >
             <CloseIcon className="w-4 h-4" />

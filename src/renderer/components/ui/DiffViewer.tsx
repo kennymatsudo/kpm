@@ -17,6 +17,8 @@ interface DiffViewerProps {
   newContent: string;
   /** Optional precomputed diff lines to avoid recomputation */
   diffLines?: DiffLine[];
+  /** Auto-scroll the nearest scrollable parent to the first changed line on mount */
+  autoScrollToFirstChange?: boolean;
 }
 
 export function computeDiff(oldContent: string | null, newContent: string): DiffLine[] {
@@ -24,10 +26,14 @@ export function computeDiff(oldContent: string | null, newContent: string): Diff
 
 /**
  */
+export function DiffViewer({ oldContent, newContent, diffLines: diffLinesProp, autoScrollToFirstChange }: DiffViewerProps) {
   const diffLines = useMemo(() => {
     if (diffLinesProp) return diffLinesProp;
     return computeDiff(oldContent, newContent);
   }, [diffLinesProp, oldContent, newContent]);
+
+  useEffect(() => {
+  }, [autoScrollToFirstChange, diffLines]);
 
   return (
     </div>

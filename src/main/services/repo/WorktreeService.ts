@@ -166,6 +166,63 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
     },
 
     /**
+     * Destroy a worktree completely - removes directory, force-deletes local branch,
+     * and deletes the remote tracking branch. Intended for discarding unwanted work.
+     */
+    async destroyWorktree(worktreeId: string): AsyncResult<void> {
+      return wrapAsync(async () => {
+        const worktree = deps.worktrees.get(worktreeId);
+        if (!worktree) {
+          throw new Error(`Worktree not found: ${worktreeId}`);
+        }
+
+        const item = deps.planItems.get(worktree.plan_item_id);
+        if (!item) {
+          deps.worktrees.delete(worktreeId);
+          return;
+        }
+
+        const project = deps.projects.get(worktree.project_id);
+        if (!project) {
+          deps.worktrees.delete(worktreeId);
+          return;
+        }
+
+        const repos = deps.repos.getByProject(project.id);
+        if (repos.length === 0) {
+          deps.worktrees.delete(worktreeId);
+          return;
+        }
+
+        const repoPath = repos[0].path;
+
+        // Force-remove git worktree
+        if (fs.existsSync(worktree.worktree_path)) {
+          try {
+          } catch {
+            // Manual cleanup if git worktree remove fails
+            fs.rmSync(worktree.worktree_path, { recursive: true, force: true });
+          }
+        }
+
+        // Force-delete local branch (-D ignores merge status)
+        try {
+        } catch {
+          // Ignore branch deletion errors
+        }
+
+        // Delete remote tracking branch (best-effort, don't fail if remote is gone)
+        try {
+        } catch {
+          // Ignore remote deletion errors (branch may not be pushed)
+        }
+
+        // Remove from database
+        deps.worktrees.delete(worktreeId);
+      });
+    },
+
+    /**
      * Push worktree branch to remote
      */
     async pushBranch(worktreeId: string): AsyncResult<void> {

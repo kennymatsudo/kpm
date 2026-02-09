@@ -79,6 +79,7 @@ export interface ResourceSlice {
   removeWorktree: (worktreeId: string) => void;
   openWorktreeInEditor: (worktreeId: string) => Promise<void>;
   deleteWorktree: (worktreeId: string, force?: boolean) => Promise<void>;
+  destroyWorktree: (worktreeId: string) => Promise<void>;
 }
 
 export interface UiSlice {

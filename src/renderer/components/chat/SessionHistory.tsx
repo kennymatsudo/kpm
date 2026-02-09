@@ -11,6 +11,16 @@ export function SessionHistory() {
     currentProjectId: state.currentProjectId,
   })));
 
+  // Access per-session chat state
+  const { sessionHistory, isStreaming, loadSessionHistory, loadFromHistory } = useChatStore(useShallow((state) => {
+    const session = state.viewedSessionId ? state.sessions.get(state.viewedSessionId) : null;
+    return {
+      sessionHistory: state.sessionHistory,
+      isStreaming: session?.isStreaming ?? false,
+      loadSessionHistory: state.loadSessionHistory,
+      loadFromHistory: state.loadFromHistory,
+    };
+  }));
 
   // Load session history when dropdown opens
   useEffect(() => {

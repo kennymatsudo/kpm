@@ -129,6 +129,13 @@ interface MessageListProps {
   currentView?: ChatViewMode;
 }
 
+  // Access per-session chat state
+
+  const messages = viewedSession?.messages ?? [];
+  const streamingSegments = viewedSession?.streamingSegments ?? [];
+  const streamingContent = viewedSession?.streamingContent ?? '';
+  const isStreaming = viewedSession?.isStreaming ?? false;
+  const activities = viewedSession?.activities ?? [];
   const isInitialMount = useRef(true);
 
     if (isInitialMount.current) {
