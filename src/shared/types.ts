@@ -805,4 +805,34 @@ export interface ConfluenceSyncPreview {
   remoteVersion: number;
 }
 
+// =============================================================================
+// Global Search Types
+// =============================================================================
+
+/** Entity types that can appear in global search results */
 export type SearchEntityType = 'plan_item' | 'document';
+
+/** Tab filter for global search overlay */
+export type SearchTab = 'all' | SearchEntityType;
+
+/** A single search result from the global search */
+export interface SearchResult {
+  id: string;
+  entityType: SearchEntityType;
+  title: string;
+  snippet: string | null;
+  metadata: {
+    statusCategory?: StatusCategory | null;
+    label?: string | null;
+    externalKey?: string | null;
+  };
+  matchedField: string;
+  updatedAt: string | null;
+}
+
+/** Parameters for the global search query */
+export interface SearchParams {
+  projectId: string;
+  query: string;
+  limit?: number;
+}

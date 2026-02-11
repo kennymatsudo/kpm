@@ -7,6 +7,7 @@ export interface UseLayoutShortcutsOptions {
   onOpenCommandPalette: () => void;
   onCreateItem?: () => void;
   onToggleToolLog?: () => void;
+  onOpenGlobalSearch?: () => void;
 }
 
 export function useLayoutShortcuts({
@@ -16,6 +17,7 @@ export function useLayoutShortcuts({
   onOpenCommandPalette,
   onCreateItem,
   onToggleToolLog,
+  onOpenGlobalSearch,
 }: UseLayoutShortcutsOptions): void {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -52,6 +54,12 @@ export function useLayoutShortcuts({
         e.preventDefault();
         e.stopPropagation();
         onToggleToolLog?.();
+      }
+      // Cmd+Shift+F (Mac) or Ctrl+Shift+F (Windows/Linux) to open global search
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
+        e.preventDefault();
+        e.stopPropagation();
+        onOpenGlobalSearch?.();
       }
       // Cmd+1-9 - Context-aware: Settings tabs (when open) or Main views (1-2)
       if (!isEditableElement && (e.metaKey || e.ctrlKey) && /^[1-9]$/.test(e.key)) {

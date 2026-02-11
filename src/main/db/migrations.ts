@@ -1410,6 +1410,261 @@ interface Migration {
     },
   },
   {
+    id: 1040,
+    name: '040_global_search_fts',
+    up: (db: BetterSqliteDatabase) => {
+      const compileOption = db.prepare(
+        "SELECT sqlite_compileoption_used('ENABLE_FTS5') as enabled"
+      ).get() as { enabled: number } | undefined;
+
+        console.warn('[Migrations] Skipping 040_global_search_fts (FTS5 not enabled in SQLite build)');
+        return;
+      }
+
+      db.exec(`
+        -- ============================================
+        -- GLOBAL SEARCH INDEX (materialized metadata + searchable text)
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS global_search_index (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          entity_type TEXT NOT NULL CHECK (entity_type IN ('plan_item', 'document', 'inbox_item')),
+          entity_id TEXT NOT NULL,
+          project_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          body TEXT,
+          status_category TEXT,
+          label TEXT,
+          external_key TEXT,
+          chat_session_id TEXT,
+          suggested_type TEXT,
+          updated_at TEXT,
+          UNIQUE(entity_type, entity_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_global_search_project_type_updated
+          ON global_search_index(project_id, entity_type, updated_at DESC);
+
+        -- ============================================
+        -- FTS5 table (external content)
+        -- ============================================
+        CREATE VIRTUAL TABLE IF NOT EXISTS global_search_fts USING fts5(
+          title,
+          body,
+          content = 'global_search_index',
+          content_rowid = 'id',
+          tokenize = 'unicode61 remove_diacritics 2 tokenchars ''-_'''
+        );
+
+        -- ============================================
+        -- Keep FTS in sync with index table
+        -- ============================================
+        CREATE TRIGGER IF NOT EXISTS trg_global_search_index_ai
+        AFTER INSERT ON global_search_index
+        BEGIN
+          INSERT INTO global_search_fts(rowid, title, body)
+          VALUES (new.id, new.title, COALESCE(new.body, ''));
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_global_search_index_ad
+        AFTER DELETE ON global_search_index
+        BEGIN
+          INSERT INTO global_search_fts(global_search_fts, rowid, title, body)
+          VALUES ('delete', old.id, old.title, COALESCE(old.body, ''));
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_global_search_index_au
+        AFTER UPDATE ON global_search_index
+        BEGIN
+          INSERT INTO global_search_fts(global_search_fts, rowid, title, body)
+          VALUES ('delete', old.id, old.title, COALESCE(old.body, ''));
+          INSERT INTO global_search_fts(rowid, title, body)
+          VALUES (new.id, new.title, COALESCE(new.body, ''));
+        END;
+
+        -- ============================================
+        -- Source table triggers: plan_items
+        -- ============================================
+        CREATE TRIGGER IF NOT EXISTS trg_plan_items_search_ai
+        AFTER INSERT ON plan_items
+        BEGIN
+          DELETE FROM global_search_index WHERE entity_type = 'plan_item' AND entity_id = new.id;
+          INSERT INTO global_search_index (
+            entity_type, entity_id, project_id, title, body, status_category, label, external_key, updated_at
+          )
+          VALUES (
+            'plan_item',
+            new.id,
+            new.project_id,
+            new.title,
+            trim(COALESCE(new.description, '') || ' ' || COALESCE(new.external_key, '')),
+            new.status_category,
+            new.label,
+            new.external_key,
+            new.updated_at
+          );
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_plan_items_search_au
+        AFTER UPDATE ON plan_items
+        BEGIN
+          DELETE FROM global_search_index WHERE entity_type = 'plan_item' AND entity_id = old.id;
+          INSERT INTO global_search_index (
+            entity_type, entity_id, project_id, title, body, status_category, label, external_key, updated_at
+          )
+          VALUES (
+            'plan_item',
+            new.id,
+            new.project_id,
+            new.title,
+            trim(COALESCE(new.description, '') || ' ' || COALESCE(new.external_key, '')),
+            new.status_category,
+            new.label,
+            new.external_key,
+            new.updated_at
+          );
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_plan_items_search_ad
+        AFTER DELETE ON plan_items
+        BEGIN
+          DELETE FROM global_search_index WHERE entity_type = 'plan_item' AND entity_id = old.id;
+        END;
+
+        -- ============================================
+        -- Source table triggers: inbox_items (active only)
+        -- ============================================
+        CREATE TRIGGER IF NOT EXISTS trg_inbox_items_search_ai
+        AFTER INSERT ON inbox_items
+        WHEN new.status = 'active'
+        BEGIN
+          DELETE FROM global_search_index WHERE entity_type = 'inbox_item' AND entity_id = new.id;
+          INSERT INTO global_search_index (
+            entity_type, entity_id, project_id, title, body, suggested_type, updated_at
+          )
+          VALUES (
+            'inbox_item',
+            new.id,
+            new.project_id,
+            substr(COALESCE(new.enhanced_content, new.raw_content), 1, 80),
+            COALESCE(new.enhanced_content, new.raw_content),
+            new.suggested_type,
+            new.updated_at
+          );
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_inbox_items_search_au
+        AFTER UPDATE ON inbox_items
+        BEGIN
+          DELETE FROM global_search_index WHERE entity_type = 'inbox_item' AND entity_id = old.id;
+          INSERT INTO global_search_index (
+            entity_type, entity_id, project_id, title, body, suggested_type, updated_at
+          )
+          SELECT
+            'inbox_item',
+            new.id,
+            new.project_id,
+            substr(COALESCE(new.enhanced_content, new.raw_content), 1, 80),
+            COALESCE(new.enhanced_content, new.raw_content),
+            new.suggested_type,
+            new.updated_at
+          WHERE new.status = 'active';
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_inbox_items_search_ad
+        AFTER DELETE ON inbox_items
+        BEGIN
+          DELETE FROM global_search_index WHERE entity_type = 'inbox_item' AND entity_id = old.id;
+        END;
+      `);
+
+      db.exec(`
+        -- Backfill search index from existing data
+        INSERT OR IGNORE INTO global_search_index (
+          entity_type, entity_id, project_id, title, body, status_category, label, external_key, updated_at
+        )
+        SELECT
+          'plan_item',
+          id,
+          project_id,
+          title,
+          trim(COALESCE(description, '') || ' ' || COALESCE(external_key, '')),
+          status_category,
+          label,
+          external_key,
+          updated_at
+        FROM plan_items;
+
+        INSERT OR IGNORE INTO global_search_index (
+          entity_type, entity_id, project_id, title, body, suggested_type, updated_at
+        )
+        SELECT
+          'inbox_item',
+          id,
+          project_id,
+          substr(COALESCE(enhanced_content, raw_content), 1, 80),
+          COALESCE(enhanced_content, raw_content),
+          suggested_type,
+          updated_at
+        FROM inbox_items
+        WHERE status = 'active';
+      `);
+    },
+  },
+  {
+    id: 1041,
+    name: '041_remove_chat_from_global_search',
+    up: (db: BetterSqliteDatabase) => {
+      const hasSearchIndex = db.prepare(`
+        SELECT EXISTS(
+          SELECT 1 FROM sqlite_master
+          WHERE type = 'table' AND name = 'global_search_index'
+        ) as has_index
+      `).get() as { has_index: number };
+
+      if (hasSearchIndex.has_index !== 1) {
+        return;
+      }
+
+      db.exec(`
+        -- Stop indexing chat rows for global search
+        DROP TRIGGER IF EXISTS trg_chat_messages_search_ai;
+        DROP TRIGGER IF EXISTS trg_chat_messages_search_au;
+        DROP TRIGGER IF EXISTS trg_chat_messages_search_ad;
+
+        -- Remove any previously indexed chat rows
+        DELETE FROM global_search_index
+        WHERE entity_type = 'chat_message';
+      `);
+    },
+  },
+  {
+    id: 1042,
+    name: '042_remove_documents_table_global_search_overlap',
+    up: (db: BetterSqliteDatabase) => {
+      const hasSearchIndex = db.prepare(`
+        SELECT EXISTS(
+          SELECT 1 FROM sqlite_master
+          WHERE type = 'table' AND name = 'global_search_index'
+        ) as has_index
+      `).get() as { has_index: number };
+
+      if (hasSearchIndex.has_index !== 1) {
+        return;
+      }
+
+      db.exec(`
+        -- Filesystem docs are indexed by SearchService; avoid duplicate title-only rows from documents table.
+        DROP TRIGGER IF EXISTS trg_documents_search_ai;
+        DROP TRIGGER IF EXISTS trg_documents_search_au;
+        DROP TRIGGER IF EXISTS trg_documents_search_ad;
+
+        DELETE FROM global_search_index
+        WHERE entity_type = 'document'
+          AND (body IS NULL OR length(trim(body)) = 0);
+      `);
+    },
+  },
+  {
     id: 1049,
     name: '049_remove_agent_instructions_from_projects',
     up: (db: BetterSqliteDatabase) => {

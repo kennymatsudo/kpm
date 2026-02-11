@@ -12,6 +12,7 @@ import type { IRepositoryContainer } from '../db/interfaces';
 // Core services
 import { createPlanService } from './core/PlanService';
 import { createAttachmentService } from './core/AttachmentService';
+import { createSearchService } from './core/SearchService';
 import { createRepoWatcherService } from './repo/RepoWatcherService';
 
 // Generation services
@@ -47,6 +48,10 @@ export function createAppServices(container: IRepositoryContainer) {
     path,
   });
 
+  const searchService = createSearchService({
+    getDatabase,
+  });
+
     planItems: container.planItems,
   });
 
@@ -73,6 +78,7 @@ export function createAppServices(container: IRepositoryContainer) {
     // Core
     planService,
     attachmentService,
+    searchService,
 
     // Repo
     repoService,

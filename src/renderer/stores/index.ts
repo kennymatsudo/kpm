@@ -53,3 +53,6 @@ export { useCustomPromptStore } from './customPromptStore';
 
 // Tool Call Logging
 export { useToolLogStore } from './toolLogStore';
+
+// Global Search
+export { useSearchStore } from './searchStore';

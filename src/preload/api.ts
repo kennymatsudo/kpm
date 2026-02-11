@@ -52,6 +52,7 @@ import type {
   ConfluenceSyncPreview,
   CustomPrompt,
   CustomPromptIcon,
+  SearchResult,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -102,6 +103,7 @@ export type {
   ConfluenceSyncPreview,
   CustomPrompt,
   CustomPromptIcon,
+  SearchResult,
 };
 
 const tempImages = {
@@ -749,6 +751,11 @@ const toolLog = {
   },
 };
 
+// Search API (Global search across project entities)
+const search = {
+  global: (projectId: string, query: string, limit?: number): Promise<SearchResult[]> =>
+};
+
 // Testing API - only available when NODE_ENV=test
 // Used by E2E tests for database reset and test isolation
 const testing = {
@@ -789,6 +796,7 @@ export const api = {
   debug,
   testing,
   toolLog,
+  search,
 };
 
 export type API = typeof api;

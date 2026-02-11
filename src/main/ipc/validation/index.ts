@@ -103,6 +103,10 @@ export { PerfSchemas } from './perf';
 export { ToolLogSchemas } from './toollog';
 export type { ToolLogGetEntriesInput, ToolLogGetSessionStatsInput, ToolLogSetEnabledInput } from './toollog';
 
+// Search
+export { SearchSchemas } from './search';
+export type { SearchGlobalInput } from './search';
+
 // Confluence
 export { ConfluenceSchemas } from './confluence';
 

@@ -6,6 +6,7 @@ import { WorkspaceView } from '../workspace';
 import { Chat, ChatHeader } from '../chat';
 import { TopBar } from './TopBar';
 import { CommandPalette } from '../command-palette';
+import { GlobalSearch } from '../global-search';
 import { ApprovalOverlays } from './ApprovalOverlays';
 import { ToastContainer } from '../ui';
 import { ToolLogPanel } from '../tool-log';
@@ -74,7 +75,12 @@ interface LayoutProps {
     useToolLogStore.getState().togglePanel();
   }, []);
 
+  // Global search
+  const openGlobalSearch = useSearchStore((state) => state.openSearch);
+  const handleOpenGlobalSearch = useCallback(() => {
     openGlobalSearch(mainView === 'planning' ? 'plan_item' : 'document');
+  }, [openGlobalSearch, mainView]);
+
   // Keyboard shortcuts
   useLayoutShortcuts({
     onToggleSidebar: () => setSidebarCollapsed((prev) => !prev),
@@ -82,6 +88,7 @@ interface LayoutProps {
     onOpenCommandPalette: openCommandPalette,
     onCreateItem: handleOpenCreateItem,
     onToggleToolLog: handleToggleToolLog,
+    onOpenGlobalSearch: handleOpenGlobalSearch,
   });
 
   return (
@@ -177,6 +184,7 @@ interface LayoutProps {
       </div>
       <KeyboardShortcuts />
       <CommandPalette isOpen={isCommandPaletteOpen} onClose={closeCommandPalette} />
+      <GlobalSearch />
       <ApprovalOverlays />
       <ToastContainer />
     </>
