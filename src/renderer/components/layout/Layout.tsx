@@ -8,6 +8,7 @@ import { TopBar } from './TopBar';
 import { CommandPalette } from '../command-palette';
 import { ApprovalOverlays } from './ApprovalOverlays';
 import { ToastContainer } from '../ui';
+import { ToolLogPanel } from '../tool-log';
 import { logPerfEvent, startPerfSpan } from '../../utils/perfLogger';
 
 interface LayoutProps {
@@ -69,6 +70,10 @@ interface LayoutProps {
   }, [mainView, createItemHandler]);
 
 
+  const handleToggleToolLog = useCallback(() => {
+    useToolLogStore.getState().togglePanel();
+  }, []);
+
     openGlobalSearch(mainView === 'planning' ? 'plan_item' : 'document');
   // Keyboard shortcuts
   useLayoutShortcuts({
@@ -76,6 +81,7 @@ interface LayoutProps {
     onMainViewChange: handleMainViewChange,
     onOpenCommandPalette: openCommandPalette,
     onCreateItem: handleOpenCreateItem,
+    onToggleToolLog: handleToggleToolLog,
   });
 
   return (
@@ -167,6 +173,7 @@ interface LayoutProps {
             </div>
           )}
         </div>
+
       </div>
       <KeyboardShortcuts />
       <CommandPalette isOpen={isCommandPaletteOpen} onClose={closeCommandPalette} />

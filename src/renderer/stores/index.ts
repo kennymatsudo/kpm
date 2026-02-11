@@ -50,3 +50,6 @@ export type { SettingsTab } from './settingsUIStore';
 
 // Custom Prompts
 export { useCustomPromptStore } from './customPromptStore';
+
+// Tool Call Logging
+export { useToolLogStore } from './toolLogStore';

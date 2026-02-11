@@ -20,6 +20,8 @@ import { type ServiceResult, type AsyncResult, success, failure } from '../resul
 import type { PlanContext } from '../../claude/prompts';
 import { getConfig } from '../../config';
 import { clientManager } from '../../claude/clientManager';
+import { extractFilePaths } from '../toollog/extractFilePaths';
+import { randomUUID } from 'crypto';
 
 // =============================================================================
 // Types
@@ -124,6 +126,13 @@ export interface StreamingSessionServiceDeps {
 
 
   /** Read a document file from the docs/ directory */
+
+  /** Optional tool call logger for observability */
+  toolCallLogger?: {
+    logToolCall(entry: ToolCallLogEntry): void;
+    finalizeTurn(projectId: string, chatSessionId: string): unknown;
+    getCurrentTurnIndex(chatSessionId: string): number;
+  };
 }
 
 // =============================================================================
@@ -642,6 +651,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             // Queue activity for the next text segment
             segState.pendingActivities.push(activity);
           }
+
+          // Tool call logging (additive - does not affect activity flow)
+          if (deps.toolCallLogger) {
+          }
         }
 
         if (block.type === 'text') {
@@ -675,6 +688,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
       // Reset accumulated response for next turn
       managed.accumulatedResponse = '';
+
 
       // Reset segment state for next turn
       managed.segmentState = {

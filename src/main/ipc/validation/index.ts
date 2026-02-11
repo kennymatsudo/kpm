@@ -99,6 +99,10 @@ export { RepoFileSchemas } from './repoFiles';
 // Performance logging
 export { PerfSchemas } from './perf';
 
+// Tool call logging
+export { ToolLogSchemas } from './toollog';
+export type { ToolLogGetEntriesInput, ToolLogGetSessionStatsInput, ToolLogSetEnabledInput } from './toollog';
+
 // Confluence
 export { ConfluenceSchemas } from './confluence';
 

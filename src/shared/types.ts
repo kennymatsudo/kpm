@@ -371,6 +371,34 @@ export interface Activity {
 }
 
 // =============================================================================
+// Tool Call Logging - structured observability for Claude tool usage
+// =============================================================================
+
+export interface ToolCallLogEntry {
+  id: string;
+  projectId: string;
+  chatSessionId: string;
+  turnIndex: number;
+  toolName: string;
+  toolCategory: ActivityType;
+  input: Record<string, unknown>;
+  filePaths: string[];
+  label: string;
+  timestamp: number;
+}
+
+export interface ToolCallTurnSummary {
+  turnIndex: number;
+  chatSessionId: string;
+  totalCalls: number;
+  byCategory: Partial<Record<ActivityType, number>>;
+  uniqueFilePaths: string[];
+  duplicateReads: string[];
+  startTime: number;
+  endTime: number;
+}
+
+// =============================================================================
 // Message Segment Types - for single-bubble chat with inline tool indicators
 // =============================================================================
 

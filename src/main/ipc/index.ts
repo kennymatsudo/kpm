@@ -7,6 +7,7 @@ export function registerAllIpcHandlers(
   getMainWindow: () => BrowserWindow | null,
   services: AppServices
 ): void {
+
     getMainWindow,
 
 }

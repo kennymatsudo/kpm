@@ -10,6 +10,8 @@ import type {
   PlanActionResult,
   PlanItemUpdates,
   Activity,
+  ToolCallLogEntry,
+  ToolCallTurnSummary,
   TrackerCredentialInfo,
   TrackerConnection,
   TrackerProjectScope,
@@ -63,6 +65,8 @@ export type {
   PlanAction,
   PlanActionResult,
   Activity,
+  ToolCallLogEntry,
+  ToolCallTurnSummary,
   TrackerCredentialInfo,
   TrackerConnection,
   TrackerProjectScope,
@@ -727,6 +731,24 @@ const confluence = {
   ): Promise<{ success: boolean; data?: { siteUrl: string; spaceKey: string; pageId: string }; error?: string }> =>
 };
 
+// Tool Call Logging API (DevTools panel)
+const toolLog = {
+  getEntries: (chatSessionId: string): Promise<{ success: boolean; entries?: ToolCallLogEntry[]; error?: string }> =>
+  getSessionStats: (chatSessionId: string): Promise<{ success: boolean; stats?: { totalCalls: number; byCategory: Record<string, number>; topFiles: string[]; duplicateCount: number }; error?: string }> =>
+  getInfo: (): Promise<{ success: boolean; enabled?: boolean; logPath?: string; error?: string }> =>
+  setEnabled: (enabled: boolean): Promise<{ success: boolean; error?: string }> =>
+  onCall: (callback: (entry: ToolCallLogEntry) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, entry: ToolCallLogEntry) => callback(entry);
+    ipcRenderer.on('toollog:call', handler);
+    return () => ipcRenderer.removeListener('toollog:call', handler);
+  },
+  onTurnSummary: (callback: (summary: ToolCallTurnSummary) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, summary: ToolCallTurnSummary) => callback(summary);
+    ipcRenderer.on('toollog:turn-summary', handler);
+    return () => ipcRenderer.removeListener('toollog:turn-summary', handler);
+  },
+};
+
 // Testing API - only available when NODE_ENV=test
 // Used by E2E tests for database reset and test isolation
 const testing = {
@@ -766,6 +788,7 @@ export const api = {
   confluence,
   debug,
   testing,
+  toolLog,
 };
 
 export type API = typeof api;

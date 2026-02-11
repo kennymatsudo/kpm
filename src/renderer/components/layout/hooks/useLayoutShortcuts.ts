@@ -6,6 +6,7 @@ export interface UseLayoutShortcutsOptions {
   onMainViewChange: (view: MainView) => void;
   onOpenCommandPalette: () => void;
   onCreateItem?: () => void;
+  onToggleToolLog?: () => void;
 }
 
 export function useLayoutShortcuts({
@@ -14,6 +15,7 @@ export function useLayoutShortcuts({
   onMainViewChange,
   onOpenCommandPalette,
   onCreateItem,
+  onToggleToolLog,
 }: UseLayoutShortcutsOptions): void {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -44,6 +46,12 @@ export function useLayoutShortcuts({
         e.preventDefault();
         e.stopPropagation();
         onCreateItem?.();
+      }
+      // Cmd+Shift+T (Mac) or Ctrl+Shift+T (Windows/Linux) to toggle tool log panel
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggleToolLog?.();
       }
       // Cmd+1-9 - Context-aware: Settings tabs (when open) or Main views (1-2)
       if (!isEditableElement && (e.metaKey || e.ctrlKey) && /^[1-9]$/.test(e.key)) {
