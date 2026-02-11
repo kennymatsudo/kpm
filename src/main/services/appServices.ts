@@ -50,6 +50,8 @@ export function createAppServices(container: IRepositoryContainer) {
     planItems: container.planItems,
   });
 
+  });
+
     getProjectFolder,
   });
 

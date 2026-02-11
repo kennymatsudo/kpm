@@ -1385,6 +1385,31 @@ interface Migration {
     },
   },
   {
+    id: 1039,
+    name: '039_project_sessions',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- PROJECT SESSIONS: Cross-repo Claude Code sessions
+        -- Independent from plan items, rooted in project directory
+        -- with --add-dir access to all connected repos
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS project_sessions (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK(status IN ('pending', 'active', 'inactive')),
+          name TEXT,
+          initial_instructions TEXT NOT NULL DEFAULT '',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME
+        );
+        CREATE INDEX IF NOT EXISTS idx_project_sessions_project ON project_sessions(project_id);
+      `);
+    },
+  },
+  {
     id: 1049,
     name: '049_remove_agent_instructions_from_projects',
     up: (db: BetterSqliteDatabase) => {

@@ -183,6 +183,7 @@ async function detectDefaultBranch(repoPath: string): Promise<string> {
 }
 
 export function createDevSessionService(deps: DevSessionServiceDeps) {
+  const service = {
     /**
      * Get all sessions for a project
      */
