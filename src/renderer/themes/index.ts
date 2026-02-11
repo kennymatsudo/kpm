@@ -68,6 +68,13 @@ function rgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/** Lighten a hex color by mixing with white. factor 0 = original, 1 = white */
+function lighten(hex: string, factor: number): string {
+  const { r, g, b } = hexToRgb(hex);
+  const l = (v: number) => Math.round(v + (255 - v) * factor);
+  return `#${[l(r), l(g), l(b)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
 // ============================================
 // Theme Definitions
 // ============================================
@@ -93,6 +100,33 @@ export const THEMES: ThemeDefinition[] = [
 export function getThemeById(id: ThemeId): ThemeDefinition | undefined {
   return THEMES.find((t) => t.id === id);
 }
+
+// ============================================
+// Dark Terminal Base (used for light themes)
+// ============================================
+
+/** Standard dark terminal palette — light themes use this so CLI output stays readable. */
+const DARK_TERMINAL_BASE = {
+  bg: '#1a1a1a',
+  bgElevated: '#1f1f1f',
+  fg: '#f5f5f5',
+  black: '#141414',
+  red: '#f87171',
+  green: '#4ade80',
+  yellow: '#fbbf24',
+  blue: '#60a5fa',
+  magenta: '#c084fc',
+  cyan: '#22d3ee',
+  white: '#f5f5f5',
+  brightBlack: '#525252',
+  brightRed: '#fca5a5',
+  brightGreen: '#86efac',
+  brightYellow: '#fde68a',
+  brightBlue: '#93c5fd',
+  brightMagenta: '#d8b4fe',
+  brightCyan: '#67e8f9',
+  brightWhite: '#ffffff',
+};
 
 // ============================================
 // CSS Variable Generation
@@ -169,8 +203,58 @@ export function generateThemeVariables(colors: ThemeColors): Record<string, stri
     // Overlay
     '--overlay-color': isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 0, 0, 0.4)',
 
+    // Terminal — dark themes use their own palette; light themes force dark base
+    ...(isDark
+      ? {
+          '--terminal-bg': colors.surface0,
+          '--terminal-bg-elevated': colors.surfaceElevated,
+          '--terminal-fg': colors.textPrimary,
+          '--terminal-cursor-accent': colors.surface0,
+          '--terminal-black': colors.surface1,
+          '--terminal-red': danger,
+          '--terminal-green': success,
+          '--terminal-yellow': warning,
+          '--terminal-blue': info,
+          '--terminal-magenta': purple,
+          '--terminal-cyan': '#22d3ee',
+          '--terminal-white': colors.textPrimary,
+          '--terminal-bright-black': colors.textMuted,
+          '--terminal-bright-red': lighten(danger, 0.2),
+          '--terminal-bright-green': lighten(success, 0.2),
+          '--terminal-bright-yellow': lighten(warning, 0.2),
+          '--terminal-bright-blue': lighten(info, 0.2),
+          '--terminal-bright-magenta': lighten(purple, 0.2),
+          '--terminal-bright-cyan': '#67e8f9',
+          '--terminal-bright-white': '#ffffff',
+          '--terminal-grid-color': rgba(colors.textPrimary, 0.1),
+        }
+      : {
+          '--terminal-bg': DARK_TERMINAL_BASE.bg,
+          '--terminal-bg-elevated': DARK_TERMINAL_BASE.bgElevated,
+          '--terminal-fg': DARK_TERMINAL_BASE.fg,
+          '--terminal-cursor-accent': DARK_TERMINAL_BASE.bg,
+          '--terminal-black': DARK_TERMINAL_BASE.black,
+          '--terminal-red': DARK_TERMINAL_BASE.red,
+          '--terminal-green': DARK_TERMINAL_BASE.green,
+          '--terminal-yellow': DARK_TERMINAL_BASE.yellow,
+          '--terminal-blue': DARK_TERMINAL_BASE.blue,
+          '--terminal-magenta': DARK_TERMINAL_BASE.magenta,
+          '--terminal-cyan': DARK_TERMINAL_BASE.cyan,
+          '--terminal-white': DARK_TERMINAL_BASE.white,
+          '--terminal-bright-black': DARK_TERMINAL_BASE.brightBlack,
+          '--terminal-bright-red': DARK_TERMINAL_BASE.brightRed,
+          '--terminal-bright-green': DARK_TERMINAL_BASE.brightGreen,
+          '--terminal-bright-yellow': DARK_TERMINAL_BASE.brightYellow,
+          '--terminal-bright-blue': DARK_TERMINAL_BASE.brightBlue,
+          '--terminal-bright-magenta': DARK_TERMINAL_BASE.brightMagenta,
+          '--terminal-bright-cyan': DARK_TERMINAL_BASE.brightCyan,
+          '--terminal-bright-white': DARK_TERMINAL_BASE.brightWhite,
+          '--terminal-grid-color': rgba(DARK_TERMINAL_BASE.fg, 0.1),
+        }),
+    // Cursor + selection always use the theme's accent so the terminal feels connected
     '--terminal-cursor': colors.accent,
     '--terminal-selection-bg': rgba(colors.accent, 0.3),
+    '--terminal-selection-fg': isDark ? colors.textPrimary : DARK_TERMINAL_BASE.fg,
   };
 }
 
