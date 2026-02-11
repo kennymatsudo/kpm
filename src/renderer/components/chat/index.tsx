@@ -8,6 +8,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { CloseIcon } from '../icons';
 
 // Re-export components for use in Layout and other consumers
+export { ChatHeader } from './ChatHeader';
 export { SessionHistory } from './SessionHistory';
 export { NewSessionButton } from './NewSessionButton';
 export { SessionList } from './SessionList';

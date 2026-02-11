@@ -1372,6 +1372,19 @@ interface Migration {
     },
   },
   {
+    id: 1038,
+    name: '038_chat_messages_provider',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- Add provider column to chat_messages
+        -- Defaults to 'claude' for existing messages
+        -- ============================================
+        ALTER TABLE chat_messages ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude';
+      `);
+    },
+  },
+  {
     id: 1049,
     name: '049_remove_agent_instructions_from_projects',
     up: (db: BetterSqliteDatabase) => {

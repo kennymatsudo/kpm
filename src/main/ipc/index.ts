@@ -8,4 +8,5 @@ export function registerAllIpcHandlers(
   services: AppServices
 ): void {
     getMainWindow,
+
 }

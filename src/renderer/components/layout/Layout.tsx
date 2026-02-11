@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Sidebar } from '../sidebar';
 import { PlanView } from '../planning';
 import { WorkspaceView } from '../workspace';
+import { Chat, ChatHeader } from '../chat';
 import { TopBar } from './TopBar';
 import { CommandPalette } from '../command-palette';
 import { ApprovalOverlays } from './ApprovalOverlays';
@@ -157,6 +158,7 @@ interface LayoutProps {
                 <div className="absolute inset-y-0 -left-1 -right-1" />
               </div>
               <div className="flex-1 panel-right flex flex-col min-w-0">
+                <ChatHeader />
                   <ErrorBoundary name="Chat">
                     <Chat currentView="plan" />
                   </ErrorBoundary>

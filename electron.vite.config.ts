@@ -23,6 +23,9 @@ export default defineConfig({
     build: {
       outDir: 'dist/main',
       minify: isProduction ? 'esbuild' : false,
+      // @openai/codex-sdk is ESM-only (no CJS exports) so it must be bundled
+      // rather than externalized, otherwise require() fails at runtime
+      externalizeDeps: { exclude: ['@openai/codex-sdk'] },
       // Compile to V8 bytecode in production for source protection
       bytecode: isProduction,
       rollupOptions: {

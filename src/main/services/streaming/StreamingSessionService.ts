@@ -87,6 +87,7 @@ export interface StreamingSessionServiceDeps {
       sessionId: string,
       role: 'user' | 'assistant',
       content: string,
+      chatSessionId?: string,
     ): void;
   };
 

@@ -18,6 +18,11 @@ import type {
 /** Available Claude models for chat sessions */
 export type ClaudeModel = 'opus' | 'sonnet';
 
+export interface CodexStatus {
+  installed: boolean;
+  authenticated: boolean;
+}
+
 // =============================================================================
 // External Tracker Types
 // =============================================================================
@@ -356,6 +361,7 @@ export type PlanItemSyncUpdates = PlanItemUpdates & Partial<Pick<PlanItem,
 // Chat Activity Types - for showing parallel tool execution in UI
 // =============================================================================
 
+export type ActivityType = 'search' | 'read' | 'glob' | 'command' | 'edit' | 'thinking' | 'other';
 
 export interface Activity {
   id: string;

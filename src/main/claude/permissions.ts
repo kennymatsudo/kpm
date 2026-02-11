@@ -180,6 +180,7 @@ export function createPermissionHandler(
           behavior: 'deny',
         };
       }
+      if (toolName === 'Edit' && context.onProjectFileWrite) {
         const relativePath = relative(normalize(context.projectPath), normalize(targetPath));
         return {
           behavior: 'deny',

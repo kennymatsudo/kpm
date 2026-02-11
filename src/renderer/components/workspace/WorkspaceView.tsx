@@ -1,4 +1,5 @@
 import { useShallow } from 'zustand/react/shallow';
+import { Chat, ChatHeader } from '../chat';
 import { FileEditor } from './FileEditor';
 
 interface WorkspaceViewProps {

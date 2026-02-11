@@ -56,6 +56,7 @@ export class ChatMessageRepository implements IChatMessageRepository {
     sessionId: string,
     role: 'user' | 'assistant',
     content: string,
+    chatSessionId?: string,
   ): ChatMessage {
     // Use RETURNING to get inserted row in one query
   }

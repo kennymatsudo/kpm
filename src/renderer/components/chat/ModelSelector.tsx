@@ -1,5 +1,6 @@
 import { useChatStore, type ChatClaudeModel } from '../../stores';
 
+const MODELS: { value: ChatClaudeModel; label: string; description: string }[] = [
 ];
 
 export function ModelSelector() {
@@ -12,6 +13,7 @@ export function ModelSelector() {
   return (
     <div
       className={`
+        bg-surface-2
         ${isStreaming ? 'opacity-40 pointer-events-none' : ''}
       `}
     >
@@ -27,6 +29,7 @@ export function ModelSelector() {
               cursor-pointer
               disabled:cursor-not-allowed disabled:opacity-50
               ${isSelected
+                : 'text-text-tertiary hover:text-text-secondary'
               }
             `}
             title={m.description}
