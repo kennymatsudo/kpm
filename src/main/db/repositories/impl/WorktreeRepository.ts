@@ -23,6 +23,7 @@ interface PreparedStatements {
 export class WorktreeRepository implements IWorktreeRepository {
   private stmts: PreparedStatements;
 
+  constructor(db: Database) {
     this.stmts = {
       getByProject: db.prepare('SELECT * FROM worktrees WHERE project_id = ? ORDER BY created_at DESC'),
       getById: db.prepare('SELECT * FROM worktrees WHERE id = ?'),

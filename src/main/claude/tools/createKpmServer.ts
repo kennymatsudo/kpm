@@ -69,6 +69,7 @@ function emitDocumentUpdate(update: DocumentUpdatePayload): void {
 
 
   const planItemTools = createPlanItemTools(planItemRepo, planRelationRepo, emitPlanActions);
+  const relationTools = createRelationTools(planItemRepo);
   const groupTools = createGroupTools(groupRepo, planItemRepo, emitPlanActions);
   const planChangeTools = createPlanChangeTools(emitPlanActions);
   const storybookTools = createStorybookTools(projectRepo);

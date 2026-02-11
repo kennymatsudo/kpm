@@ -9,6 +9,7 @@
 
 import { z } from 'zod';
 import { tool, jsonResult } from './index';
+import type { IPlanItemRepository } from '../../db/interfaces';
 import type { PlanItem, PlanRelation } from '../../../shared/types';
 import { getDatabase } from '../../db/connection';
 

@@ -22,6 +22,7 @@ interface PreparedStatements {
 export class RepoRepository implements IRepoRepository {
   private stmts: PreparedStatements;
 
+  constructor(db: Database) {
     this.stmts = {
       getByProject: db.prepare('SELECT * FROM repos WHERE project_id = ? ORDER BY created_at'),
       getById: db.prepare('SELECT * FROM repos WHERE id = ?'),

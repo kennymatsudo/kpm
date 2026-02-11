@@ -21,6 +21,7 @@ interface PreparedStatements {
 export class AttachmentRepository implements IAttachmentRepository {
   private stmts: PreparedStatements;
 
+  constructor(db: Database) {
     this.stmts = {
       getByProject: db.prepare('SELECT * FROM attachments WHERE project_id = ? ORDER BY created_at'),
       getById: db.prepare('SELECT * FROM attachments WHERE id = ?'),

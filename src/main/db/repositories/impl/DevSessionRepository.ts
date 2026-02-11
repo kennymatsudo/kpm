@@ -32,6 +32,7 @@ interface PreparedStatements {
 export class DevSessionRepository implements IDevSessionRepository {
   private stmts: PreparedStatements;
 
+  constructor(db: Database) {
     this.stmts = {
       // Read operations
       getById: db.prepare('SELECT * FROM dev_sessions WHERE id = ?'),

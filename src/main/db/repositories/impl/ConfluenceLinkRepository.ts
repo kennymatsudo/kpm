@@ -30,6 +30,7 @@ interface PreparedStatements {
 export class ConfluenceLinkRepository implements IConfluenceLinkRepository {
   private stmts: PreparedStatements;
 
+  constructor(db: Database) {
     this.stmts = {
       getById: db.prepare('SELECT * FROM confluence_page_links WHERE id = ?'),
       getByProject: db.prepare(

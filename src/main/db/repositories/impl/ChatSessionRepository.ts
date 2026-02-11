@@ -21,6 +21,7 @@ interface PreparedStatements {
 export class ChatSessionRepository implements IChatSessionRepository {
   private stmts: PreparedStatements;
 
+  constructor(db: Database) {
     this.stmts = {
       getById: db.prepare('SELECT * FROM chat_sessions WHERE id = ?'),
       insert: db.prepare(`

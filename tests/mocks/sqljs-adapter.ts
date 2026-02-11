@@ -9,6 +9,7 @@
  * so all imports of better-sqlite3 automatically use this instead.
  */
 
+import initSqlJs, { type Database as SqlJsDatabase, type SqlJsStatic } from 'sql.js';
 
 // Singleton for initialized sql.js
 let SQL: SqlJsStatic | null = null;

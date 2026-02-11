@@ -21,6 +21,7 @@ interface PreparedStatements {
 export class AppSettingsRepository implements IAppSettingsRepository {
   private stmts: PreparedStatements;
 
+  constructor(db: Database) {
     this.stmts = {
       get: db.prepare('SELECT value FROM app_settings WHERE key = ?'),
       // Use ON CONFLICT for upsert

@@ -85,6 +85,7 @@ interface PreparedStatements {
 export class TrackerRepository implements ITrackerRepository {
   private stmts: PreparedStatements;
 
+  constructor(db: Database) {
     // Column lists for consistent queries
     const connCols = 'id, tracker_type, site_url, display_name, created_at';
     const scopeCols = 'id, connection_id, project_key, project_name, created_at';
