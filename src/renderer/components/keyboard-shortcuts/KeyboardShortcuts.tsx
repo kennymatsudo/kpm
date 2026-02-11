@@ -12,6 +12,8 @@ const shortcuts: ShortcutGroup[] = [
     shortcuts: [
       { keys: ['⌘', 'B'], description: 'Toggle sidebar' },
       { keys: ['⌘', 'L'], description: 'Toggle chat panel' },
+      { keys: ['⌘', '⇧', 'I'], description: 'Create plan item' },
+      { keys: ['⌘', '⇧', 'T'], description: 'Toggle tool log' },
     ],
   },
 ];

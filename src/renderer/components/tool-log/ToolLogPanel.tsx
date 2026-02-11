@@ -242,6 +242,7 @@ export function ToolLogPanel() {
       {/* Resize handle */}
       <div
         onMouseDown={handleResizeStart}
+        className="relative h-1 cursor-row-resize hover:bg-accent/30 transition-colors flex-shrink-0"
       >
         <div className="absolute -top-1 -bottom-1 left-0 right-0" />
       </div>

@@ -182,6 +182,7 @@ interface LayoutProps {
         </div>
 
       </div>
+      {isToolLogOpen && <ToolLogPanel />}
       <KeyboardShortcuts />
       <CommandPalette isOpen={isCommandPaletteOpen} onClose={closeCommandPalette} />
       <GlobalSearch />
