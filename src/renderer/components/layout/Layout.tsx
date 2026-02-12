@@ -11,6 +11,7 @@ import { ApprovalOverlays } from './ApprovalOverlays';
 import { ToastContainer } from '../ui';
 import { ToolLogPanel } from '../tool-log';
 import { useToolLog } from '../../hooks/useToolLog';
+import { useChatIpcBridge } from '../../hooks/useChatIpcBridge';
 import { logPerfEvent, startPerfSpan } from '../../utils/perfLogger';
 
 interface LayoutProps {
@@ -60,6 +61,9 @@ interface LayoutProps {
 
   // Tool log subscription - lives at Layout level so it never unmounts during view switches
   useToolLog(currentProjectId);
+
+  // Chat IPC bridge - lives at Layout level so events are captured regardless of active view
+  useChatIpcBridge(currentProjectId);
 
   // Register create item handler from PlanView
   const registerCreateItemHandler = useCallback((handler: (() => void) | null) => {

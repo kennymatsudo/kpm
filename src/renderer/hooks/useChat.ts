@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 /**
@@ -11,15 +12,19 @@ import { useShallow } from 'zustand/react/shallow';
 export function useChat(projectId: string | null, currentView?: ChatViewMode) {
   const {
     addUserMessage,
+    finalizeMessage,
     markSessionInactive,
     viewedSessionId,
     getChatSessionId,
+    getOrCreateSession,
     startNewChatSession,
   } = useChatStore(useShallow((state) => ({
     addUserMessage: state.addUserMessage,
+    finalizeMessage: state.finalizeMessage,
     markSessionInactive: state.markSessionInactive,
     viewedSessionId: state.viewedSessionId,
     getChatSessionId: state.getChatSessionId,
+    getOrCreateSession: state.getOrCreateSession,
     startNewChatSession: state.startNewChatSession,
   })));
 
