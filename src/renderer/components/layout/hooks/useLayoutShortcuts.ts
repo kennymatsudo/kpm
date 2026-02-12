@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useSettingsUIStore, useArtifactsStore, useSearchStore } from '../../../stores';
 
 export interface UseLayoutShortcutsOptions {
   onToggleSidebar: () => void;
@@ -23,6 +24,13 @@ export function useLayoutShortcuts({
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const isEditableElement = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      const isCommandPaletteOpen = useArtifactsStore.getState().isCommandPaletteOpen;
+      const isGlobalSearchOpen = useSearchStore.getState().isOpen;
+
+      // Avoid layout-level shortcut collisions while full-screen overlays are active.
+      if (isCommandPaletteOpen || isGlobalSearchOpen) {
+        return;
+      }
 
       // Cmd+K (Mac) or Ctrl+K (Windows/Linux) to toggle command palette
       // Skip if focused on editable element (let editor handle formatting shortcuts)
@@ -39,6 +47,7 @@ export function useLayoutShortcuts({
         onToggleSidebar();
       }
       // Cmd+L (Mac) or Ctrl+L (Windows/Linux) to toggle chat sidebar
+      if ((e.metaKey || e.ctrlKey) && e.key === 'l' && !isEditableElement) {
         e.preventDefault();
         e.stopPropagation();
         onToggleChat();

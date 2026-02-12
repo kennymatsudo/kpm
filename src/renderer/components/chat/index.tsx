@@ -37,6 +37,11 @@ export function Chat({ currentView }: ChatProps) {
   const handleRetry = useCallback(() => {
     }
 
+  // Keep project store's visible focused resources aligned to the viewed chat session.
+  useEffect(() => {
+    syncFocusedResourcesForSession(viewedSessionId);
+  }, [viewedSessionId, syncFocusedResourcesForSession]);
+
   // Helper to get display label for a focused resource
   const getResourceLabel = (resource: FocusedResource): string => {
     switch (resource.type) {

@@ -62,7 +62,10 @@ export function SearchInput({ value, onChange, placeholder = 'Search...', result
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
+        className="w-full pl-8 pr-14 py-1.5 text-sm bg-surface-2 border border-transparent rounded-md
           text-text-primary placeholder:text-text-muted
+          focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30
+          transition-colors duration-150"
       />
 
       {/* Result count */}
@@ -80,6 +83,7 @@ export function SearchInput({ value, onChange, placeholder = 'Search...', result
           }}
           className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-surface-3 transition-colors"
           title="Clear search (Esc)"
+          aria-label="Clear search"
         >
           <CloseIcon className="w-3.5 h-3.5 text-text-muted" />
         </button>

@@ -147,6 +147,9 @@ export function generateThemeVariables(colors: ThemeColors): Record<string, stri
   const isDark = colors.colorScheme === 'dark';
 
   // Border opacity based on color scheme — borders are primary visual separators
+  const borderSubtleOpacity = isDark ? 0.04 : 0.08;
+  const borderDefaultOpacity = isDark ? 0.08 : 0.12;
+  const borderStrongOpacity = isDark ? 0.14 : 0.18;
   const borderColor = isDark ? '255, 255, 255' : '0, 0, 0';
 
   // Muted color opacity

@@ -10,6 +10,7 @@ import { GlobalSearch } from '../global-search';
 import { ApprovalOverlays } from './ApprovalOverlays';
 import { ToastContainer } from '../ui';
 import { ToolLogPanel } from '../tool-log';
+import { useToolLog } from '../../hooks/useToolLog';
 import { logPerfEvent, startPerfSpan } from '../../utils/perfLogger';
 
 interface LayoutProps {
@@ -56,6 +57,9 @@ interface LayoutProps {
       requestAnimationFrame(() => end());
     });
   }, [setViewMode, viewMode]);
+
+  // Tool log subscription - lives at Layout level so it never unmounts during view switches
+  useToolLog(currentProjectId);
 
   // Register create item handler from PlanView
   const registerCreateItemHandler = useCallback((handler: (() => void) | null) => {
@@ -169,6 +173,9 @@ interface LayoutProps {
               }
             >
               {/* Chat resize handle */}
+              <div
+                onMouseDown={handleChatResizeStart}
+              >
                 <div className="absolute inset-y-0 -left-1 -right-1" />
               </div>
               <div className="flex-1 panel-right flex flex-col min-w-0">

@@ -9,6 +9,9 @@ interface PlanViewProps {
   viewMode: ViewMode;
   filteredPlannedItems: PlanItem[];
   searchQuery: string;
+  onSearchChange: (query: string) => void;
+  hiddenStatusCategories: Set<StatusCategory>;
+  onHiddenStatusCategoriesChange: (categories: Set<StatusCategory>) => void;
   selectedItemIds: Set<string>;
   setSelectedItemIds: (ids: Set<string>) => void;
   /** Register a callback to open create item modal (for Cmd+Shift+I from Layout) */
@@ -91,16 +94,28 @@ export function PlanView({
 
   // Track previous group assignments to detect changes (for MCP tool updates)
   const prevGroupAssignmentsRef = useRef<Map<string, string | null>>(new Map());
+  const hasInitializedGroupAssignmentsRef = useRef(false);
   const prevGroupCollapsedRef = useRef<Map<string, boolean>>(new Map());
+
+  // Reset assignment diff state when project changes to avoid cross-project drift.
+  useEffect(() => {
+    prevGroupAssignmentsRef.current = new Map();
+    hasInitializedGroupAssignmentsRef.current = false;
+  }, [currentProjectId]);
 
   // Watch for group assignment changes (handles MCP tool updates)
   useEffect(() => {
+    const previousAssignments = prevGroupAssignmentsRef.current;
     const currentAssignments = new Map<string, string | null>();
     const affectedGroupIds = new Set<string>();
+    const shouldDebug = typeof window !== 'undefined' &&
+      (window as unknown as { __DEBUG_GROUP_LAYOUT?: boolean }).__DEBUG_GROUP_LAYOUT === true;
 
     // Build current assignments map and detect changes
+    for (const item of plannedItems) {
       currentAssignments.set(item.id, item.group_id);
 
+      const prevGroupId = previousAssignments.get(item.id);
       const currentGroupId = item.group_id;
 
       // If group assignment changed
@@ -121,6 +136,27 @@ export function PlanView({
       }
     }
 
+    // Detect deleted/removed items to shrink/reflow their previous groups.
+    for (const [itemId, prevGroupId] of previousAssignments) {
+      if (!currentAssignments.has(itemId) && prevGroupId) {
+        affectedGroupIds.add(prevGroupId);
+        if (shouldDebug) {
+          console.debug('[group-assignment]', {
+            itemId,
+            from: prevGroupId,
+            to: null,
+          });
+        }
+      }
+    }
+
+    // Seed baseline on first render to avoid startup collision side-effects.
+    if (!hasInitializedGroupAssignmentsRef.current) {
+      prevGroupAssignmentsRef.current = currentAssignments;
+      hasInitializedGroupAssignmentsRef.current = true;
+      return;
+    }
+
     // Update ref for next comparison
     prevGroupAssignmentsRef.current = currentAssignments;
 
@@ -134,6 +170,7 @@ export function PlanView({
         }
       }
     }
+  }, [plannedItems, groups, resolveCollisionsForGroup]);
 
   // When expanding a group, push overlapping groups out of the way
   useEffect(() => {
@@ -171,6 +208,8 @@ export function PlanView({
     () => filteredPlannedItems,
     [filteredPlannedItems]
   );
+
+
 
   if (!currentProjectId) {
     return (

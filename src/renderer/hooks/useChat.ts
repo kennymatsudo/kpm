@@ -31,6 +31,8 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     getOrCreateSession(chatSessionId);
 
 
+    // Resolve context for the specific chat session (session-scoped "Add to context").
+    const sessionFocusedResources = focusedResourcesBySession[chatSessionId] ?? focusedResources;
 
 
   const newSession = useCallback(async (keepCurrentActive = true) => {

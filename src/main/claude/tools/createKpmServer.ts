@@ -6,6 +6,7 @@
 
 import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import { EventEmitter } from 'events';
+import { AsyncLocalStorage } from 'async_hooks';
 
 import { createPlanItemTools } from './plan-items';
 import { createRelationTools } from './relations';
@@ -21,6 +22,24 @@ const claudeMdUpdateEmitter = new EventEmitter();
 
 // Event emitter for document updates
 const documentUpdateEmitter = new EventEmitter();
+
+interface ToolExecutionContext {
+  projectId: string;
+  chatSessionId?: string;
+}
+
+const toolExecutionContext = new AsyncLocalStorage<ToolExecutionContext>();
+
+/**
+ * Run code with a tool execution context so singleton tool callbacks can route
+ * updates to the originating chat session.
+ */
+export function runWithToolExecutionContext<T>(
+  context: ToolExecutionContext,
+  fn: () => T
+): T {
+  return toolExecutionContext.run(context, fn);
+}
 
 /**
  * Subscribe to plan actions for the current message context.
@@ -57,11 +76,19 @@ function emitPlanActions(actions: PlanAction[]): void {
 /**
  */
 function emitClaudeMdUpdate(update: ClaudeMdUpdatePayload): void {
+  const context = toolExecutionContext.getStore();
+  claudeMdUpdateEmitter.emit('claudeMdUpdate', {
+    ...update,
+  });
 }
 
 /**
  */
 function emitDocumentUpdate(update: DocumentUpdatePayload): void {
+  const context = toolExecutionContext.getStore();
+  documentUpdateEmitter.emit('documentUpdate', {
+    ...update,
+  });
 }
 
 /**

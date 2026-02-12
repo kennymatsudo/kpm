@@ -35,6 +35,13 @@ const PlanUpdateIndicator = memo(function PlanUpdateIndicator() {
 });
 
 /** Copy button that appears on hover */
+const CopyButton = memo(function CopyButton({
+  content,
+  className,
+}: {
+  content: string;
+  className?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async (e: React.MouseEvent) => {
@@ -48,6 +55,13 @@ const PlanUpdateIndicator = memo(function PlanUpdateIndicator() {
   );
 });
 
+const ThinkingIndicator = memo(function ThinkingIndicator({
+  activities,
+  elapsedSeconds,
+}: {
+  activities: Activity[];
+  elapsedSeconds: number | null;
+}) {
   return (
     </div>
   );
@@ -98,9 +112,11 @@ const AssistantMessageContent = memo(function AssistantMessageContent({
 const StreamingContent = memo(function StreamingContent({
   segments,
   activities,
+  elapsedSeconds,
 }: {
   segments: MessageSegment[];
   activities: Activity[];
+  elapsedSeconds: number | null;
 }) {
   return (
     <>
@@ -113,6 +129,11 @@ const StreamingContent = memo(function StreamingContent({
   );
 });
 
+const MessageRow = memo(function MessageRow({
+  message,
+}: {
+  message: Message;
+}) {
   const isUser = message.role === 'user';
   const textContent = useMemo(() => getTextContent(message.segments), [message.segments]);
   const userParsed = useMemo(
@@ -137,19 +158,115 @@ interface MessageListProps {
   const streamingContent = viewedSession?.streamingContent ?? '';
   const isStreaming = viewedSession?.isStreaming ?? false;
   const activities = viewedSession?.activities ?? [];
+  const streamStartedAt = viewedSession?.streamStartedAt ?? null;
+  const listRef = useRef<HTMLDivElement>(null);
   const isInitialMount = useRef(true);
+  const [autoFollow, setAutoFollow] = useState(true);
+  const [hasUnseenMessages, setHasUnseenMessages] = useState(false);
+  const [timeNow, setTimeNow] = useState(() => Date.now());
 
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
+  useEffect(() => {
+    if (!isStreaming) return;
+    const interval = setInterval(() => setTimeNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [isStreaming]);
+
+  const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
+    const list = listRef.current;
+    if (!list) return;
+    list.scrollTo({ top: list.scrollHeight, behavior });
+  };
+
+  const isNearBottom = () => {
+    const list = listRef.current;
+    if (!list) return true;
+    const threshold = 48;
+    return list.scrollHeight - (list.scrollTop + list.clientHeight) <= threshold;
+  };
+
+  const handleScroll = () => {
+    const nearBottom = isNearBottom();
+    if (nearBottom) {
+      if (!autoFollow) setAutoFollow(true);
+      if (hasUnseenMessages) setHasUnseenMessages(false);
+      return;
     }
+    if (autoFollow) {
+      setAutoFollow(false);
+    }
+  };
+
+  // Smart autoscroll:
+  // - Follow while user is at bottom
+  // - Stop following when user scrolls up
+  // - Show "Jump to latest" when detached and new content arrives
+    if (isInitialMount.current) {
+      scrollToBottom('auto');
+      isInitialMount.current = false;
+      return;
+    }
+
+    if (autoFollow) {
+      return;
+    }
+
+    setHasUnseenMessages(true);
 
   if (messages.length === 0 && !isStreaming) {
   }
 
   return (
+    <div className="relative flex-1 min-h-0">
+      <div
+        ref={listRef}
+        onScroll={handleScroll}
+        className="h-full overflow-y-auto px-4 py-3"
+        style={{ scrollbarGutter: 'stable' }}
+      >
+
+        {isStreaming && (streamingSegments.length > 0 || streamingContent) && (
+              <StreamingContent
+                segments={streamingSegments}
+                activities={activities}
+                elapsedSeconds={elapsedSeconds}
+              />
+            </div>
           </div>
+        )}
 
+          <ThinkingIndicator
+            activities={activities}
+            elapsedSeconds={elapsedSeconds}
+          />
+        )}
+      </div>
 
+      {!autoFollow && (
+        <div className="absolute bottom-3 right-4 pointer-events-none">
+          <button
+            onClick={() => {
+              scrollToBottom('smooth');
+              setAutoFollow(true);
+              setHasUnseenMessages(false);
+            }}
+            className="pointer-events-auto inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-3/95 border border-border-default shadow-md text-xs text-text-primary hover:bg-surface-3 transition-colors"
+            title="Jump to latest messages"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 14l-7 7-7-7m7 7V3"
+              />
+            </svg>
+            <span>{hasUnseenMessages ? 'Jump to latest' : 'Latest'}</span>
+            {hasUnseenMessages && (
+              <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

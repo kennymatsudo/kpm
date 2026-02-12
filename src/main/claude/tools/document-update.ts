@@ -10,6 +10,7 @@ import { z } from 'zod';
 
 export interface DocumentUpdatePayload {
   projectId: string;
+  chatSessionId?: string;
   filePath: string;
   content: string;
 }

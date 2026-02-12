@@ -271,6 +271,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     <div className="flex flex-col h-full min-h-0">
         isCollapsed={reposCollapsed}
         onToggleCollapsed={() => setReposCollapsed(!reposCollapsed)}
+      <div className="divider mx-4 my-2 flex-none" />
 
         isCollapsed={filesCollapsed}
         onToggleCollapsed={() => setFilesCollapsed(!filesCollapsed)}

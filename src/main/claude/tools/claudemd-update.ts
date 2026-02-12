@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 export interface ClaudeMdUpdatePayload {
   projectId: string;
+  chatSessionId?: string;
   newContent: string;
 }
 

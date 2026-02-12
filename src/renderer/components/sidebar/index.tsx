@@ -18,6 +18,7 @@ export function Sidebar({ onDeleteProject: _onDeleteProject, onNewProject, onFil
 
   return (
     <aside className="flex-1 sidebar flex flex-col overflow-hidden">
+      {/* Main content area (scroll is managed inside section components) */}
         {currentProjectId ? (
           <ReposAndFilesSection projectId={currentProjectId} onFileOpen={onFileOpen} />
         ) : (

@@ -384,6 +384,7 @@ export interface ToolCallLogEntry {
   input: Record<string, unknown>;
   filePaths: string[];
   label: string;
+  detail?: string;
   timestamp: number;
 }
 

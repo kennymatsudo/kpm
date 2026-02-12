@@ -62,6 +62,11 @@ function formatTimestamp(ts: number): string {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
 
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
 function truncatePath(p: string, maxLen = 50): string {
   if (p.length <= maxLen) return p;
   const parts = p.split('/');
@@ -83,6 +88,77 @@ function groupByTurn(entries: ToolCallLogEntry[]): Map<number, ToolCallLogEntry[
   return grouped;
 }
 
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    const nextTs = i < entries.length - 1
+      ? entries[i + 1].timestamp
+      : summary?.endTime;
+    if (nextTs != null) {
+    }
+  }
+}
+
+const SLOW_THRESHOLD_MS = 5000;
+
+interface ToolLogEntryRowProps {
+  entry: ToolCallLogEntry;
+  isDuplicate: boolean;
+}
+
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className={isDuplicate ? 'bg-warning/5' : ''}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 px-3 py-1 text-xs min-w-0 hover:bg-surface-2/30 transition-colors text-left"
+      >
+        <span className="text-text-quaternary w-[4.5rem] flex-shrink-0 font-mono whitespace-nowrap">
+          {formatTimestamp(entry.timestamp)}
+        </span>
+          <span
+                ? 'bg-warning/15 text-warning font-medium'
+                : 'bg-surface-2 text-text-quaternary'
+            }`}
+          >
+          </span>
+        )}
+        <CategoryIcon type={entry.toolCategory} />
+        <span className="text-text-secondary font-medium w-24 flex-shrink-0 truncate" title={entry.toolName}>{entry.toolName}</span>
+        <span className="text-text-tertiary truncate min-w-0" title={entry.label}>
+          {entry.label}
+        </span>
+        {entry.detail && (
+          <span className="text-text-quaternary truncate min-w-0 max-w-[200px]" title={entry.detail}>
+            {entry.detail}
+          </span>
+        )}
+        <div className="flex-1" />
+        {entry.filePaths.length > 0 && (
+          <span
+            title={entry.filePaths.join(', ')}
+          >
+            {truncatePath(entry.filePaths[0])}
+          </span>
+        )}
+        <svg
+          className={`w-3 h-3 flex-shrink-0 text-text-quaternary transition-transform ${expanded ? 'rotate-90' : ''}`}
+          fill="currentColor"
+          viewBox="0 0 20 20"
+        >
+          <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+        </svg>
+      </button>
+      {expanded && (
+        <div className="mx-3 mb-1 rounded bg-surface-2/60 border border-border-subtle/30 overflow-x-auto">
+            {JSON.stringify(entry.input, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface TurnGroupProps {
   turnIndex: number;
   entries: ToolCallLogEntry[];
@@ -93,9 +169,15 @@ interface TurnGroupProps {
 function TurnGroup({ turnIndex, entries, summary, duplicateFiles }: TurnGroupProps) {
   const [expanded, setExpanded] = useState(true);
 
+
   const timeRange = entries.length > 0
     ? `${formatTimestamp(entries[0].timestamp)}${entries.length > 1 ? ' - ' + formatTimestamp(entries[entries.length - 1].timestamp) : ''}`
     : '';
+
+    ? summary.endTime - entries[0].timestamp
+    : entries.length > 1
+      ? entries[entries.length - 1].timestamp - entries[0].timestamp
+      : undefined;
 
   return (
     <div className="border-b border-border-subtle/30 last:border-b-0">
@@ -112,6 +194,8 @@ function TurnGroup({ turnIndex, entries, summary, duplicateFiles }: TurnGroupPro
         </svg>
         <span className="font-medium text-text-secondary">Turn {turnIndex}</span>
         <span className="text-text-tertiary">{entries.length} call{entries.length !== 1 ? 's' : ''}</span>
+          </span>
+        )}
         {summary && summary.duplicateReads.length > 0 && (
             {summary.duplicateReads.length} duplicate{summary.duplicateReads.length !== 1 ? 's' : ''}
           </span>
@@ -123,7 +207,11 @@ function TurnGroup({ turnIndex, entries, summary, duplicateFiles }: TurnGroupPro
           {entries.map((entry) => {
             const isDuplicate = entry.filePaths.some((p) => duplicateFiles.has(p));
             return (
+              <ToolLogEntryRow
                 key={entry.id}
+                entry={entry}
+                isDuplicate={isDuplicate}
+              />
             );
           })}
         </div>
@@ -243,8 +331,10 @@ export function ToolLogPanel() {
   const handleCopyLogs = useCallback(() => {
     const lines: string[] = [];
     for (const [turn, turnEntries] of turnGroups) {
+      const summary = summaryByTurn.get(turn);
       for (const entry of turnEntries) {
         const time = formatTimestamp(entry.timestamp);
+        const detailStr = entry.detail ? ` -- ${entry.detail}` : '';
         const files = entry.filePaths.length > 0 ? ` [${entry.filePaths.join(', ')}]` : '';
       }
       lines.push('');
@@ -254,6 +344,7 @@ export function ToolLogPanel() {
       setCopyFeedback('Copied');
       setTimeout(() => setCopyFeedback(null), 1500);
     });
+  }, [turnGroups, summaryByTurn]);
 
   return (
     <div

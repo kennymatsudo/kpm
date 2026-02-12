@@ -71,7 +71,10 @@ export function useGroupCollisionResolution({
       const currentWidth = changedGroup.width ?? newDims.width;
       const currentHeight = changedGroup.height ?? newDims.height;
       const effectiveDims = {
+        // Preserve manual/previously-persisted width, but allow height to shrink
+        // when filtered/hidden items are removed from the visible layout.
         width: Math.max(currentWidth, newDims.width),
+        height: newDims.height,
       };
       const assignedCount = plannedItems.filter(item => item.group_id === changedGroupId).length;
 

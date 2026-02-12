@@ -121,8 +121,27 @@ interface BoardViewProps {
 
   const handleDrop = useCallback(
     (itemId: string, newStatus: StatusCategory) => {
+      const item = allItems.find((candidate) => candidate.id === itemId);
+      if (!item) {
+        setDraggedItemId(null);
+        return;
+      }
+
+      const previousStatus =
+        item.status_category ?? getStatusCategory(item.external_status, item.external_type) ?? 'not_started';
+        setDraggedItemId(null);
+        return;
+      }
+
       void updateStatusCategory(itemId, newStatus);
       setDraggedItemId(null);
+
+      toast.info(`Moved "${item.title}" to ${STATUS_CATEGORY_CONFIG[newStatus].label}`, {
+        label: 'Undo',
+        onClick: () => {
+          void updateStatusCategory(itemId, previousStatus);
+        },
+      });
     },
   );
 

@@ -14,5 +14,6 @@ export const createBaseState = (): ProjectStoreValues => ({
   isSwitchingProject: false,
   error: null,
   focusedResources: [],
+  focusedResourcesBySession: {},
   editingItemId: null,
 });

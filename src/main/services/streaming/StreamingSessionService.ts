@@ -57,6 +57,7 @@ interface ManagedSession {
   sessionId?: string; // SDK session ID for resume
   currentView?: ViewMode;
   processingStartTime?: number; // Timestamp when processing started (for timeout detection)
+  lastSdkActivity?: number; // Timestamp of most recent SDK message (for idle-while-processing detection)
   segmentState: SegmentState; // Track message segments for splitting bubbles
   chatSessionId?: string; // For persisting main chat messages
   accumulatedResponse: string; // Accumulate assistant response for persistence
@@ -266,9 +267,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     managed.state = 'processing';
     managed.processingStartTime = Date.now();
+    managed.lastSdkActivity = Date.now();
     managed.lastActivity = Date.now();
 
     try {
+        { projectId: managed.projectId, chatSessionId: managed.chatSessionId },
+      );
       return success(undefined);
     } catch (error) {
       return failure(`Failed to send message: ${(error as Error).message}`);
@@ -334,11 +338,25 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       });
 
       unsubscribeClaudeMdUpdate = deps.subscribeToClaudeMdUpdate((update) => {
+        const matchesSession = update.chatSessionId
+          ? update.chatSessionId === chatSessionId
+
+        if (
+          update.projectId === projectId &&
+          matchesSession
+        ) {
         }
       });
 
       // Subscribe to document update proposals from the tool
       unsubscribeDocumentUpdate = deps.subscribeToDocumentUpdate((update) => {
+        const matchesSession = update.chatSessionId
+          ? update.chatSessionId === chatSessionId
+
+        if (
+          update.projectId === projectId &&
+          matchesSession
+        ) {
         }
       });
 
@@ -368,6 +386,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         unsubscribeDocumentUpdate,
       });
 
+      await runWithToolExecutionContext({ projectId, chatSessionId }, () =>
+      );
 
       const managed = sessions.get(key);
       const sessionId = managed?.sessionId ?? '';
@@ -559,6 +579,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // Reset state to ready so new messages can be sent
       managed.state = 'ready';
       managed.processingStartTime = undefined;
+      managed.lastSdkActivity = undefined;
       return success(undefined);
     } catch (error) {
       // If interrupt fails, try to disconnect the session
@@ -626,6 +647,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const managed = sessions.get(key);
 
     if (!managed) return;
+
+    // Track latest SDK activity for idle-while-processing detection
+    managed.lastSdkActivity = Date.now();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sdkMsg = msg as any;
@@ -715,6 +739,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Notify UI that session is deactivated (for multi-session UI updates)
     mainWindow?.webContents.send('chat:session-deactivated', {
+      projectId: managed.projectId,
+      chatSessionId: managed.chatSessionId,
+    });
+
+    // Ensure renderer always clears any pending streaming state for this session.
+    mainWindow?.webContents.send('chat:done', {
       projectId: managed.projectId,
       chatSessionId: managed.chatSessionId,
     });

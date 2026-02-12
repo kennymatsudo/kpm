@@ -55,6 +55,7 @@ export function RepoContextMenu({
           </svg>
         }
       >
+        {isFocused ? 'Remove from this chat' : 'Add to this chat'}
       </DropdownMenu.Item>
 
       <DropdownMenu.Separator />

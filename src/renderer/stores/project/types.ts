@@ -37,6 +37,8 @@ export interface ProjectStoreValues {
   isLoading: boolean;
   isSwitchingProject: boolean;  // True while loading a different project
   error: string | null;
+  focusedResources: FocusedResource[];  // Active chat session context - items user wants to discuss
+  focusedResourcesBySession: Record<string, FocusedResource[]>;  // chatSessionId -> focused resources
   editingItemId: string | null;  // For edit panel - which task is being edited
 }
 
@@ -86,6 +88,7 @@ export interface UiSlice {
   setFocusedResources: (resources: FocusedResource[]) => void;
   removeFocusedResource: (resource: FocusedResource) => void;
   clearFocusedResources: () => void;
+  syncFocusedResourcesForSession: (chatSessionId: string | null) => void;
   setEditingItemId: (itemId: string | null) => void;
   setLoading: (loading: boolean) => void;
   setSwitchingProject: (switching: boolean) => void;

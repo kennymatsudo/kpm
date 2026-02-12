@@ -61,10 +61,61 @@ export function getToolActivity(
     return { id, type: 'command' as ActivityType, label: firstWord, detail: command };
   }
 
+  if (toolName === 'ToolSearch' && typeof input.query === 'string') {
+    if (log) console.log(`[Claude]    ToolSearch: ${input.query}`);
+    return { id, type: 'search' as ActivityType, label: input.query };
+  }
+
+  if (toolName === 'Task') {
+    const subagentType = typeof input.subagent_type === 'string' ? input.subagent_type : 'agent';
+    const detail = typeof input.description === 'string'
+      ? input.description
+      : typeof input.prompt === 'string'
+        ? input.prompt.slice(0, 120)
+        : undefined;
+    if (log) console.log(`[Claude]    Task: ${subagentType}`);
+    return { id, type: 'other' as ActivityType, label: subagentType, detail };
+  }
+
+  if (toolName === 'WebSearch' && typeof input.query === 'string') {
+    if (log) console.log(`[Claude]    WebSearch: ${input.query}`);
+    return { id, type: 'search' as ActivityType, label: input.query };
+  }
+
+  if (toolName === 'WebFetch' && typeof input.url === 'string') {
+    let domain: string;
+    try {
+      domain = new URL(input.url).hostname;
+    } catch {
+      domain = input.url;
+    }
+    const detail = typeof input.prompt === 'string' ? input.prompt.slice(0, 120) : undefined;
+    if (log) console.log(`[Claude]    WebFetch: ${domain}`);
+    return { id, type: 'other' as ActivityType, label: domain, detail };
+  }
+
   if (toolName.startsWith('mcp__kpm__')) {
     const mcpToolName = toolName.replace('mcp__kpm__', '');
     if (log) console.log(`[Claude]    Tool: ${toolName}`);
     return { id, type: 'other' as ActivityType, label: mcpToolName };
+  }
+
+  const mcpPattern = /^mcp__([^_]+(?:_[^_]+)*)__(.+)$/;
+  const mcpMatch = mcpPattern.exec(toolName);
+  if (mcpMatch) {
+    const mcpToolLabel = mcpMatch[2].replace(/_/g, ' ');
+    const detail = Object.keys(input).length > 0
+      ? Object.entries(input)
+          .filter(([, v]) => typeof v === 'string' || typeof v === 'number')
+          .map(([k, v]) => {
+            const val = String(v);
+            return `${k}=${val.length > 40 ? val.slice(0, 40) + '...' : val}`;
+          })
+          .join(', ')
+          .slice(0, 120) || undefined
+      : undefined;
+    if (log) console.log(`[Claude]    MCP: ${toolName}`);
+    return { id, type: 'other' as ActivityType, label: mcpToolLabel, detail };
   }
 
   // Unknown tools

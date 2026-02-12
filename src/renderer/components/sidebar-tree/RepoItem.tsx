@@ -14,6 +14,7 @@ interface RepoItemProps {
 
 /**
  * Repository item in the sidebar with explicit focus toggle.
+ * Click the bookmark button to add/remove from this chat's context.
  * Right-click to open context menu for configuration.
  */
 export const RepoItem = memo(function RepoItem({

@@ -47,7 +47,10 @@ export interface ClaudeConfig {
 export interface SessionConfig {
   /** Main chat idle timeout (ms) - disconnect after inactivity */
   mainIdleTimeoutMs: number;
+  /** Max time for single response processing (ms) - hard cap */
   processingTimeoutMs: number;
+  /** Max time with no SDK activity while processing (ms) - detects hung sessions */
+  processingIdleTimeoutMs: number;
   /** How often to check for stale sessions (ms) */
   cleanupIntervalMs: number;
   /** Timeout waiting for session to become ready (ms) */
@@ -105,6 +108,7 @@ function createDefaultConfig(): AppConfig {
 
     session: {
       mainIdleTimeoutMs: 30 * 60 * 1000, // 30 minutes
+      cleanupIntervalMs: 30 * 1000, // 30 seconds
       sessionReadyTimeoutMs: 30 * 1000, // 30 seconds
     },
 

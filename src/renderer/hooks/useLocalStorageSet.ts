@@ -1,3 +1,4 @@
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 
 const PERSIST_DEBOUNCE_MS = 100;
 
@@ -25,6 +26,10 @@ export function useLocalStorageSet<T>(key: string | null): [Set<T>, (value: Set<
 
   const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Reset when key changes (e.g., project switch).
+  // useLayoutEffect prevents downstream passive effects from observing a stale set
+  // during project startup/switch hydration.
+  useLayoutEffect(() => {
     if (!key) {
       setValue(new Set());
       return;
