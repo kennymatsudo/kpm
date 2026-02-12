@@ -93,6 +93,7 @@
 
 :root {
   color-scheme: dark;
+  --titlebar-height: 48px;
 
 
   /* Inline code background */
@@ -367,6 +368,7 @@ select:focus-visible {
 }
 
 .input:focus {
+  outline: none;
   border-color: var(--color-accent);
 }
 

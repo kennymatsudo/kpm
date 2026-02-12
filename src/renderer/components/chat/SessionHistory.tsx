@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { Z_INDEX } from '../../constants/zIndex';
 
 /**
  * Session history dropdown showing recent chat sessions.
@@ -102,7 +103,9 @@ export function SessionHistory() {
 
       {isOpen && (
         <div
+          className="dropdown-menu absolute right-0 top-full mt-1.5 w-72"
           style={{
+            zIndex: Z_INDEX.dropdown,
             boxShadow: 'var(--shadow-md)',
             border: '1px solid var(--color-border-default)',
           }}

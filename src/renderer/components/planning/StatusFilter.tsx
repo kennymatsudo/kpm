@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import type { StatusCategory } from '../../../shared/types';
+import { Z_INDEX } from '../../constants/zIndex';
 
 interface StatusFilterProps {
   hiddenCategories: Set<StatusCategory>;
@@ -87,6 +88,8 @@ export function StatusFilter({ hiddenCategories, onChange, totalCount, visibleCo
       {isOpen && menuPosition && createPortal(
         <div
           ref={menuRef}
+          className="fixed w-48 bg-surface-2 rounded-xl shadow-xl py-1"
+          style={{ top: menuPosition.top, right: menuPosition.right, zIndex: Z_INDEX.dropdown }}
         >
           {FILTERABLE_CATEGORIES.map((category) => {
             const config = STATUS_CATEGORY_CONFIG[category];

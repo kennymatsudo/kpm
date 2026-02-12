@@ -3,6 +3,7 @@ import { DiffRenderer, StatusTransitionView } from '../DiffRenderer';
 import { CloseIcon } from '../../icons';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 import { useFocusTrap } from '../../../hooks/useFocusTrap';
+import { Z_INDEX } from '../../../constants/zIndex';
 
 interface Props {
   projectId: string;

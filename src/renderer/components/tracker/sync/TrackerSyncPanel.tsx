@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { LoadingSpinner } from '../../ui/LoadingButton';
+import { Z_INDEX } from '../../../constants/zIndex';
   associationId: string;
   onClose: () => void;
 }
@@ -143,6 +144,7 @@ import { LoadingSpinner } from '../../ui/LoadingButton';
   if (!association) return null;
 
   return (
+    <div className="dialog-overlay" style={{ zIndex: Z_INDEX.panel }}>
       <div className="dialog-content flex flex-col" style={{ maxWidth: '42rem', maxHeight: '80vh' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-3">

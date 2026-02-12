@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { MotionButton } from '../ui/MotionButton';
 import { DiffViewer, computeDiff, getDiffStatsFromDiff } from '../ui/DiffViewer';
+import { Z_INDEX } from '../../constants/zIndex';
 
 // Toolbar button component
 interface ToolbarButtonProps {
@@ -192,6 +193,8 @@ export function MarkdownDocumentModal({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
+          className="dialog-overlay flex items-center justify-center"
+          style={{ zIndex: Z_INDEX.modal }}
           onClick={(e) => e.target === e.currentTarget && onClose()}
         >
           <m.div

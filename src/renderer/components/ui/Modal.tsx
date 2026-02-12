@@ -2,6 +2,7 @@ import { CloseIcon } from '../icons';
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
+import { Z_INDEX } from '../../constants/zIndex';
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | 'full';
 
@@ -28,6 +29,7 @@ interface ModalProps {
   'aria-labelledby'?: string;
   /** ARIA describedby ID */
   'aria-describedby'?: string;
+  /** Z-index for the modal (default: Z_INDEX.modal) */
   zIndex?: number;
   /** Whether to disable the close behavior (useful during async operations) */
   preventClose?: boolean;
@@ -75,6 +77,7 @@ export function Modal({
   role = 'dialog',
   'aria-labelledby': ariaLabelledBy,
   'aria-describedby': ariaDescribedBy,
+  zIndex = Z_INDEX.modal,
   preventClose = false,
 }: ModalProps) {
   const handleClose = () => {
@@ -146,12 +149,33 @@ interface ModalHeaderProps {
   className?: string;
   /** ID for aria-labelledby */
   id?: string;
+  /** Optional icon rendered before the title */
+  icon?: ReactNode;
+  /** Optional subtitle rendered below the title */
+  subtitle?: ReactNode;
 }
 
 /**
+ * Modal header with optional icon, subtitle, and close button.
  */
+export function ModalHeader({ children, onClose, className = '', id, icon, subtitle }: ModalHeaderProps) {
   return (
     <div className={`dialog-header px-5 py-4 flex items-center justify-between border-b ${className}`}>
+      <div className="flex items-center gap-3">
+        {icon && (
+          <div className="w-9 h-9 rounded-xl bg-accent-subtle flex items-center justify-center shrink-0">
+            {icon}
+          </div>
+        )}
+        <div>
+          <h2 id={id} className="text-lg font-semibold text-text-primary">
+            {children}
+          </h2>
+          {subtitle && (
+            <p className="text-xs text-text-muted mt-0.5">{subtitle}</p>
+          )}
+        </div>
+      </div>
       {onClose && (
         <button
           onClick={onClose}

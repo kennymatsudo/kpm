@@ -5,6 +5,7 @@ import { PlanCard } from './PlanCard';
 import { GroupContainer } from './GroupContainer';
 import { CanvasContextMenu } from './CanvasContextMenu';
 import { useGroupStore, useExportStore } from '../../stores';
+import { Z_INDEX } from '../../constants/zIndex';
 
 interface CanvasProps {
   projectId: string;
@@ -349,7 +350,9 @@ interface CanvasProps {
       {/* Drag preview */}
       {dragPreview && (
         <div
+          className="fixed pointer-events-none"
           style={{
+            zIndex: Z_INDEX.canvas.dragCard,
             left: `${dragPreview.x - dragPreview.offsetX}px`,
             top: `${dragPreview.y - dragPreview.offsetY}px`,
             transform: `scale(${effectiveZoom})`,

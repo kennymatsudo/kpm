@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useCallback, useEffect, type ReactNode } fro
 import { useShallow } from 'zustand/react/shallow';
 import { useToolLogStore } from '../../stores/toolLogStore';
 import type { ToolCallLogEntry, ToolCallTurnSummary, ActivityType } from '../../../shared/types';
+import { Z_INDEX } from '../../constants/zIndex';
 
 const CATEGORY_LABELS: Record<ActivityType, string> = {
   search: 'Search',
@@ -348,6 +349,8 @@ export function ToolLogPanel() {
 
   return (
     <div
+      className="fixed bottom-0 left-0 right-0 flex flex-col border-t border-border-default bg-surface-0 shadow-lg"
+      style={{ zIndex: Z_INDEX.panel, height: panelHeight }}
     >
       {/* Resize handle */}
       <div

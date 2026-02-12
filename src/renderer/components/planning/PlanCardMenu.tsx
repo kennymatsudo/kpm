@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import { DeleteWorktreeDialog } from './DeleteWorktreeDialog';
+import { Z_INDEX } from '../../constants/zIndex';
 
 interface PlanCardMenuProps {
   isOpen: boolean;
@@ -29,7 +30,9 @@ export function PlanCardMenu({
     <>
         <div
           ref={menuRef}
+          className="dropdown-menu fixed max-w-[200px] max-h-[calc(100vh-32px)] overflow-y-auto"
           style={{
+            zIndex: Z_INDEX.dropdown,
           }}
         >
           <button

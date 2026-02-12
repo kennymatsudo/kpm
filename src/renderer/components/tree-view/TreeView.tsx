@@ -3,6 +3,7 @@ import type { TreeNode } from '../../utils/planHierarchy';
 import { StatusSelector } from '../ui/StatusSelector';
 import { getStatusCategory } from '../../constants/statusConfig';
 import { MAX_DEPTH } from '../../constants/planCardStyles';
+import { Z_INDEX } from '../../constants/zIndex';
 
 /**
  * TreeView - A compact outline view for plan items with drag-and-drop
@@ -590,6 +591,8 @@ export interface TreeViewProps {
       {/* Local context menu for Add Child */}
       {localContextMenu && createPortal(
         <div
+          className="fixed bg-surface-2 rounded-xl shadow-xl py-1 min-w-[160px]"
+          style={{ left: localContextMenu.x, top: localContextMenu.y, zIndex: Z_INDEX.dropdown }}
           onMouseDown={(e) => e.stopPropagation()}
         >
           <button
@@ -628,6 +631,8 @@ export interface TreeViewProps {
       {/* Click outside to close local context menu */}
       {localContextMenu && createPortal(
         <div
+          className="fixed inset-0"
+          style={{ zIndex: Z_INDEX.dropdown - 1 }}
           onClick={() => setLocalContextMenu(null)}
           onContextMenu={(e) => {
             e.preventDefault();

@@ -15,6 +15,7 @@ import type { PlanAction, PlanItem } from '../../../shared/types';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { MotionButton } from '../ui/MotionButton';
 import { CloseIcon } from '../icons';
+import { Z_INDEX } from '../../constants/zIndex';
 import {
   ActionCard,
   CreateItemDetail,
@@ -82,8 +83,10 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 20, scale: 0.95 }}
       transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+      className="fixed bottom-4 left-1/2 -translate-x-1/2
                   bg-surface-2 border-2 border-accent rounded shadow-md
                   p-3 w-[28rem]"
+      style={{ zIndex: Z_INDEX.panel }}
     >
       <div className="flex items-center gap-2 mb-3">
         <div className="pulse-dot" />
@@ -155,6 +158,8 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
+          className="dialog-overlay flex items-center justify-center"
+          style={{ zIndex: Z_INDEX.modal }}
           onClick={(e) => {
             if (e.target === e.currentTarget && !isApplying) setIsExpanded(false);
           }}

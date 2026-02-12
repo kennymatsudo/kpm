@@ -113,9 +113,28 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   }, [isOpen]);
 
   return (
+        <div className="border-t border-border-default px-4 py-3 bg-surface-2">
+          <div className="flex items-center justify-between text-xs text-text-tertiary">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1.5">
+                <kbd className="px-1.5 py-0.5 bg-surface-3 rounded border border-border-subtle">↑</kbd>
+                <kbd className="px-1.5 py-0.5 bg-surface-3 rounded border border-border-subtle">↓</kbd>
+                <span>Navigate</span>
               </div>
+              <div className="flex items-center gap-1.5">
+                <kbd className="px-1.5 py-0.5 bg-surface-3 rounded border border-border-subtle">↵</kbd>
+                <span>Execute</span>
               </div>
             </div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-medium">⌘K</span>
+              <span>to open</span>
             </div>
+          </div>
+        </div>
+
+
+        )}
+      </div>
   );
 }

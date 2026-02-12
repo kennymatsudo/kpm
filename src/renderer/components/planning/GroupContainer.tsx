@@ -13,6 +13,7 @@
 
 import { useState, useRef, useCallback, memo, useEffect } from 'react';
 import type { Group } from '../../../shared/types';
+import { Z_INDEX } from '../../constants/zIndex';
 import { GROUP_LAYOUT } from '../../constants/layout';
 
 interface GroupContainerProps {
@@ -207,6 +208,7 @@ export const GroupContainer = memo(function GroupContainer({
         top: group.position_y,
         width: group.width,
         height: isCollapsed ? GROUP_LAYOUT.COLLAPSED_HEIGHT : group.height,
+        zIndex: isDragging ? Z_INDEX.canvas.dragging : isSelected ? Z_INDEX.canvas.selected : Z_INDEX.canvas.default,
         // Use CSS transform for visual positioning during drag (no state updates)
         transform: isDragging ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : undefined,
         // Use inline style for solid background when dragging to ensure no transparency

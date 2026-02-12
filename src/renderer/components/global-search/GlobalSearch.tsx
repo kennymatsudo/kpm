@@ -10,6 +10,7 @@ import { SearchResultItem } from './SearchResultItem';
 import { SectionHeader } from './SectionHeader';
 import { EntityIcon } from './EntityIcon';
 import { LoadingSpinner } from '../ui/LoadingButton';
+import { PaletteShell } from '../ui/PaletteShell';
 import type { SearchResult, SearchEntityType, SearchTab } from '../../../shared/types';
 
 const SECTION_ORDER: SearchEntityType[] = ['plan_item', 'document'];
@@ -158,15 +159,140 @@ export function GlobalSearch() {
   const showSearching = hasQuery && results.length === 0 && isSearching;
 
   return (
+    <PaletteShell
+      onClose={closeSearch}
       searchPlaceholder="Search tasks, docs..."
+      searchValue={query}
+      onSearchChange={setQuery}
+      inputRef={inputRef}
+      searchExtra={
+        <>
+          {isSearching && <LoadingSpinner className="w-4 h-4" color="accent" />}
+          <kbd className="px-2 py-0.5 bg-surface-3 text-text-muted text-xs font-medium rounded-md border border-border-subtle">
+            ESC
+          </kbd>
+        </>
+      }
+      footer={
+        filteredResults.length > 0 ? (
+          <div className="border-t border-border-default px-4 py-2.5 bg-surface-2">
+            <div className="flex items-center justify-between text-xs text-text-tertiary">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 bg-surface-3 rounded border border-border-subtle">↑</kbd>
+                  <kbd className="px-1.5 py-0.5 bg-surface-3 rounded border border-border-subtle">↓</kbd>
+                  <span>Navigate</span>
                 </div>
+                <div className="flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 bg-surface-3 rounded border border-border-subtle">↵</kbd>
+                  <span>Open</span>
                 </div>
+              </div>
+              <span>{filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}</span>
+            </div>
+          </div>
+        ) : undefined
+      }
+    >
+      {/* Tab bar */}
+      <div className="flex items-center gap-1 px-4 py-2 border-b border-border-default">
+        {TAB_META.map(({ tab, label, entityType }) => {
+          const count = typeCounts[tab] ?? 0;
+          const isActive = activeTab === tab;
+          return (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`
+                flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium
+                transition-all duration-200
+                ${isActive
+                  ? 'bg-surface-3 text-text-primary shadow-sm'
+                  : 'text-text-tertiary hover:text-text-secondary'}
+              `}
+            >
+              {entityType && (
+                <EntityIcon entityType={entityType} className="w-3.5 h-3.5" />
               )}
+              <span>{label}</span>
+              {hasQuery && (
+                <span className={`tabular-nums ${isActive ? 'text-text-secondary' : 'text-text-muted'}`}>
+                  {count}
+                </span>
               )}
+            </button>
+          );
+        })}
+      </div>
 
+      {/* Results */}
+      <div ref={listRef} className="max-h-[55vh] overflow-y-auto py-2">
+        {showEmptyState && (
+          <div className="px-6 py-10 text-center">
+            <svg className="w-8 h-8 mx-auto mb-2 text-text-muted opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+        )}
 
+        {showSearching && (
+          <div className="px-6 py-10 text-center">
+            <LoadingSpinner className="w-5 h-5 mx-auto mb-2" color="accent" />
+            <p className="text-text-muted text-sm font-medium">Searching...</p>
+          </div>
+        )}
+
+        {showNoResults && (
+          <div className="px-6 py-10 text-center">
+            <p className="text-text-tertiary text-xs mt-1">Try different keywords</p>
+          </div>
+        )}
+
+        {showResults && activeTab === 'all' && (
+          <div className="px-2">
+            {(() => {
+              let flatIndex = 0;
+              return grouped.map((group, gi) => (
+                <div key={group.type}>
+                  <SectionHeader type={group.type} count={group.items.length} isFirst={gi === 0} />
+                  <div className="space-y-0.5">
+                    {group.items.map((result) => {
+                      const idx = flatIndex++;
+                      return (
+                        <SearchResultItem
+                          key={`${result.entityType}-${result.id}`}
+                          result={result}
+                          index={idx}
+                          isSelected={idx === selectedIndex}
+                          onSelect={() => navigateToResult(result)}
+                          onHover={() => setSelectedIndex(idx)}
+                          query={query}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
+              ));
+            })()}
           </div>
+        )}
+
+        {showResults && activeTab !== 'all' && (
+          <div className="px-2 space-y-0.5">
+            {filteredResults.map((result, idx) => (
+              <SearchResultItem
+                key={`${result.entityType}-${result.id}`}
+                result={result}
+                index={idx}
+                isSelected={idx === selectedIndex}
+                onSelect={() => navigateToResult(result)}
+                onHover={() => setSelectedIndex(idx)}
+                query={query}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </PaletteShell>
   );
 }

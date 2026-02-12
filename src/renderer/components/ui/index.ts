@@ -1,3 +1,4 @@
+export { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 export { LoadingButton, LoadingSpinner } from './LoadingButton';
 export { MotionButton } from './MotionButton';
 export { StatusSelector } from './StatusSelector';

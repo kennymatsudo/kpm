@@ -10,6 +10,10 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
+import { Modal, ModalHeader } from '../ui/Modal';
+import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
+import { MotionButton } from '../ui/MotionButton';
+import { LoadingSpinner } from '../ui/LoadingButton';
 import type { PlanItem, StatusCategory } from '../../../shared/types';
 
 // Type options with visual indicators
@@ -66,6 +70,7 @@ export function CreateItemModal({
   const [isFullMode, setIsFullMode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [titleFocused, setTitleFocused] = useState(false);
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
 
   const titleInputRef = useRef<HTMLInputElement>(null);
 
@@ -137,14 +142,32 @@ export function CreateItemModal({
     [handleSubmit, isFullMode]
   );
 
+  // Dirty check: in full mode, any field with content counts
+  const isDirty = useMemo(() => {
+    if (!isFullMode) return false;
+    return title.trim().length > 0 || description.trim().length > 0 || label.length > 0;
+  }, [isFullMode, title, description, label]);
+
+  // Close guard: check dirty state before closing
+  const handleRequestClose = useCallback(() => {
+    if (isDirty) {
+      setShowDiscardDialog(true);
+    } else {
+      onClose();
+    }
+  }, [isDirty, onClose]);
+
   const typeColor = TYPE_OPTIONS.find(t => t.value === label)?.color;
 
   return (
+    <>
     <Modal
       isOpen={isOpen}
+      onClose={handleRequestClose}
       size={isFullMode ? 'lg' : 'md'}
       initialFocusRef={titleInputRef}
       preventClose={isSubmitting}
+      closeOnBackdropClick={!isDirty}
     >
       <div className="relative overflow-hidden">
         {/* Subtle gradient accent line */}
@@ -156,6 +179,34 @@ export function CreateItemModal({
           }}
         />
 
+        <ModalHeader
+          onClose={handleRequestClose}
+          icon={
+            <m.svg
+              className="w-5 h-5 text-accent"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              initial={{ rotate: 0 }}
+              animate={{ rotate: isFullMode ? 45 : 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+            </m.svg>
+          }
+          subtitle={
+            <m.span
+              key={isFullMode ? 'full' : 'quick'}
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              {isFullMode ? 'Add details' : 'Quick create'}
+            </m.span>
+          }
+        >
+          New Item
+        </ModalHeader>
 
         {/* Content */}
         <div className="px-6 pb-3">
@@ -181,6 +232,7 @@ export function CreateItemModal({
               placeholder="What needs to be done?"
               disabled={isSubmitting}
               autoComplete="off"
+              className="input relative w-full px-4 py-3 text-base"
             />
             {/* Character count hint */}
             <AnimatePresence>
@@ -247,6 +299,7 @@ export function CreateItemModal({
                       onChange={(e) => setDescription(e.target.value)}
                       rows={4}
                       disabled={isSubmitting}
+                      className="input w-full px-4 py-3 text-sm font-mono leading-relaxed resize-y min-h-[100px]"
                     />
                   </div>
 
@@ -325,15 +378,48 @@ export function CreateItemModal({
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <MotionButton
+              variant="secondary"
+              onClick={handleRequestClose}
               disabled={isSubmitting}
             >
               Cancel
+            </MotionButton>
+            <MotionButton
+              variant="primary"
               onClick={handleSubmit}
               disabled={!canSubmit}
             >
+              {isSubmitting ? (
+                <span className="flex items-center gap-2">
+                  <LoadingSpinner className="w-4 h-4" />
+                  Creating...
+                </span>
+              ) : (
+                'Create'
+              )}
+            </MotionButton>
           </div>
         </div>
       </div>
     </Modal>
+
+    {/* Discard confirmation */}
+    {showDiscardDialog && (
+      <ConfirmActionDialog
+        title="Discard changes?"
+        message="You have unsaved content that will be lost."
+        action={{
+          label: 'Discard',
+          variant: 'danger',
+          onClick: () => {
+            setShowDiscardDialog(false);
+            onClose();
+          },
+        }}
+        onCancel={() => setShowDiscardDialog(false)}
+      />
+    )}
+    </>
   );
 }

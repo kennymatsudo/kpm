@@ -2,6 +2,7 @@ import { memo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { useToastStore, type Toast as ToastType, type ToastType as ToastVariant } from '../../stores/toastStore';
+import { Z_INDEX } from '../../constants/zIndex';
 
 const iconsByType: Record<ToastVariant, React.ReactNode> = {
   success: (
@@ -134,6 +135,7 @@ export function ToastContainer() {
 
   return createPortal(
     <div
+      style={{ top: 'calc(var(--titlebar-height) + 8px)', zIndex: Z_INDEX.toast }}
       aria-label="Notifications"
     >
       <AnimatePresence mode="popLayout">

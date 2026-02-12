@@ -6,6 +6,7 @@ import { SyncReviewSkeleton } from './SyncSkeleton';
 import { SyncUpdateCard } from './SyncUpdateCard';
 import { Modal, ModalHeader, ModalFooter } from '../../ui/Modal';
 import { LoadingSpinner } from '../../ui/LoadingButton';
+import { Z_INDEX } from '../../../constants/zIndex';
 
 interface Props {
   projectId: string;
@@ -52,6 +53,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
         onClose={handleClose}
         size={isAnalyzing ? '2xl' : 'lg'}
         className={isAnalyzing ? 'flex flex-col max-h-[80vh]' : ''}
+        zIndex={Z_INDEX.panel}
       >
         {isAnalyzing ? (
           // Show skeleton layout during analyzing phase
@@ -84,6 +86,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
   // Show error state
   if (syncError && !syncPreview) {
     return (
+      <Modal isOpen={true} onClose={handleClose} size="lg" zIndex={Z_INDEX.panel}>
         <div className="p-5">
           <div className="text-center py-6">
             <div className="w-12 h-12 rounded-xl bg-danger-muted flex items-center justify-center mx-auto mb-3">
@@ -135,6 +138,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
       onClose={handleClose}
       size="2xl"
       className="flex flex-col max-h-[80vh]"
+      zIndex={Z_INDEX.panel}
       preventClose={isSyncing}
       aria-labelledby="sync-review-title"
     >

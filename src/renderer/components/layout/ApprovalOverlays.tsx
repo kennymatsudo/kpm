@@ -16,6 +16,7 @@ import { toast } from '../../stores/toastStore';
 import { emit } from '../../stores/storeEvents';
 import { PendingActionsPanel } from '../planning/PendingActionsPanel';
 import { PendingDocumentPanel } from '../planning/PendingDocumentPanel';
+import { Z_INDEX } from '../../constants/zIndex';
 
 /** Get a display label for approval item type */
 function getItemTypeLabel(type: ApprovalItem['type']): string {
@@ -146,9 +147,12 @@ export function ApprovalOverlays() {
 
     return (
       <m.button
+        initial={{ opacity: 0, y: 12, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 8, scale: 0.97 }}
         whileHover={{ scale: 1.02, y: -2 }}
         whileTap={{ scale: 0.98 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
       >
         <div className="relative flex items-center gap-2.5 px-3 py-2
                         bg-[color-mix(in_srgb,var(--color-accent)_85%,black)]
@@ -223,7 +227,11 @@ export function ApprovalOverlays() {
       {/* Side panel - slides from left, no blocking backdrop */}
       <AnimatePresence>
           <m.div
+            initial={{ x: -24, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -24, opacity: 0 }}
+            transition={{ type: 'tween', duration: 0.25, ease: [0.25, 0.1, 0.25, 1] }}
+                       bg-surface-1
                        border-r border-border-strong
                        flex flex-col overflow-hidden"
           >
