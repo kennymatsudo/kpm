@@ -4,6 +4,9 @@ UI state management with slice pattern, typed events for cross-store communicati
 
 ## Store Organization
 
+- **`projectStore.ts`** — Main store factory (sliced into `project/` subdirectory: projectSlice, planSlice, resourceSlice, uiSlice)
+
+All stores exported from `index.ts`. See the directory for the full list.
 
 ## Slice Pattern (Large Stores)
 
@@ -43,8 +46,15 @@ Simpler domains use `create()` directly. See `briefingStore.ts` or `searchStore.
 
 ## Cross-Store Communication
 
+1. Define event types in `storeEvents.ts`
+2. Emit from store actions: `deps.emit({ type: 'status-changed', payload })`
+3. Listen in `useStoreSubscriptions.ts`
 
+## Key Patterns
 
+- **Dependency Injection:** Stores receive `ProjectStoreDependencies` (api, emit) via factory functions for testability
+- **Optimistic Updates:** Update UI immediately, revert on error. See `planSlice.ts` for examples.
+- **Project-Scoped Lifecycle:** `projectScopedStores.ts` clears relevant stores on project switch
 
 ## Selectors (Prevent Re-renders)
 

@@ -2,9 +2,13 @@
 
 Business logic layer with dependency injection. Services accept dependencies via factory functions, return `ServiceResult<T>` for explicit error handling, and delegate to repositories for data access.
 
+## Key Patterns
 
+**Factory Pattern with DI:** Services are created via factory functions that accept dependencies. See `PlanService.ts` for the canonical example.
 
+**ServiceResult Pattern:** All service methods return `ServiceResult<T>` (`{ ok: true; data: T } | { ok: false; error: string }`). Use `success()` / `failure()` from `result.ts`. In IPC handlers, use `unwrapOrThrow()` for data-returning handlers or `toIpcResponse()` for void/action handlers.
 
+**Async:** Use `AsyncResult<T>` and `wrapAsync()` from `result.ts` for async operations.
 
 ## Service Categories
 
@@ -33,6 +37,7 @@ Project file system operations, repo file access.
 - `RepoFileService` — Read/write files in connected repositories (markdown/text editable, code read-only)
 - `TempImageService` — Handle temporary images
 - `FileWatchService` — File change watching
+- `ProjectWatcherService` — Watch project directory for changes
 
 ### Streaming Services (`services/streaming/`)
 
@@ -42,19 +47,28 @@ Terminal/PTY and Claude session management.
 
 ### Generation Services (`services/generation/`)
 
+- `CustomPromptGenerationService` — Custom prompt generation
 
 ### Confluence Services (`services/confluence/`)
 
 Confluence wiki integration.
 
 
+### Tool Log Services (`services/toollog/`)
 
+Tool call logging and analysis.
 
+- `ToolCallLogger` — Log and track Claude tool calls
+- `extractFilePaths` — Extract file paths from tool call data
 
 ### Performance (`services/PerfLogger.ts`)
 
 
+## Wiring
 
+- **Composition Root:** `appServices.ts` wires all services with dependencies
+- **Service Container:** `container.ts` provides global access via `getServices()`. In tests, use `setServices()` / `resetServices()` to inject mocks.
+- **Testing:** Mock repositories via DI. See existing test files for patterns.
 
 ## When to Use Services vs Direct Repository Calls
 

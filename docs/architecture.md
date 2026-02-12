@@ -27,6 +27,7 @@ src/
 │   ├── services/            # Application services (DI pattern)
 │   │   ├── agents/          # AgentSessionManager, Claude/Codex/Gemini sessions, hooks, auto-review
 │   │   ├── confluence/      # ConfluenceSyncService
+│   │   ├── toollog/         # Tool call logging
 │   │   └── PerfLogger.ts    # Performance metrics
 │   ├── trackers/            # Tracker-specific logic
 │   ├── tracker-clients/     # Jira/Linear API clients
@@ -46,6 +47,9 @@ src/
 │   │   ├── confluence/      # Confluence sync modals
 │   │   ├── onboarding/      # Project onboarding wizard
 │   │   ├── slack/           # Slack triage UI
+│   │   ├── global-search/   # Global search UI
+│   │   ├── image-viewer-modal/ # Image viewer modal
+│   │   └── tool-log/        # Tool call log panel
 │   ├── stores/              # Zustand state management
 │   │   ├── project/         # Sliced project store
 │   │   └── tracker/         # Tracker-related stores
@@ -84,6 +88,9 @@ src/
 | `sync_snapshots` | Last-synced state for three-way conflict detection |
 | `chat_messages` | Persistent message history |
 | `app_settings` | Global key-value application preferences |
+| `confluence_page_links` | Document ↔ Confluence page links |
+| `groups` | Visual group containers |
+| `task_prompt_templates` | Task prompt templates |
 | `tool_permissions` | Persisted per-project tool permission grants |
 | `project_briefings` | Cached generated project briefings |
 | `review_ownership` | Review-thread ownership decisions |
@@ -105,6 +112,7 @@ src/
 ## Repository Architecture
 
 **Dependency Injection Container** (`src/main/db/container.ts`):
+- Factory function creates all repositories with database instance
 - Singleton pattern with lazy initialization
 - Testable via mock injection
 
@@ -113,6 +121,7 @@ src/
 - Clean separation between interface and implementation
 - Enables mocking for unit tests
 
+**All Repositories:**
 | Repository | Purpose |
 |------------|---------|
 | `ProjectRepository` | Project CRUD |
@@ -133,6 +142,8 @@ src/
 | `AppSettingsRepository` | Global preferences |
 | `CustomThemeRepository` | Imported theme persistence |
 | `ConfluenceLinkRepository` | Document ↔ Confluence page links |
+| `CustomPromptRepository` | Custom prompts |
+| `TaskPromptTemplateRepository` | Task prompt templates |
 | `ToolPermissionRepository` | Persisted tool permission grants |
 | `ReviewTaskRepository` | GitHub review tasks |
 | `ReviewOwnershipRepository` | Review ownership/routing state |
@@ -154,6 +165,7 @@ src/
    - Return `ServiceResult<T>` for explicit error handling
    - Organized by domain:
      - `confluence/` - ConfluenceSyncService
+     - `toollog/` - ToolCallLogger, extractFilePaths
      - `PerfLogger.ts` - PerfLogger
 
 **Shared polling** (`PollScheduler`): a single timer drives all interval-based work — review polling, repo watching, project file watching, search reindex. Services register tasks instead of holding their own `setInterval`.
@@ -175,19 +187,26 @@ src/
 - `project/uiSlice.ts` - UI state (editing, focused resources)
 - `project/resourceSlice.ts` - Repos, attachments, worktrees
 
+**Specialized Stores:**
 - `devSessions/` - Plan-item dev sessions, PR context, review inbox, merge order
 - `workspaceStore.ts` - Workspace file tree, editor state
 - `trackerStore.ts` - Tracker associations
 - `tracker/useSyncStore.ts` - Sync preview & conflicts
+- `tracker/useSyncReviewStore.ts` - Sync review state
 - `tracker/useExportStore.ts` - Export queue
 - `tracker/useCredentialStore.ts` - Tracker credentials
 - `artifactsStore.ts` - Generated artifacts
 - `permissionStore.ts` - Permission requests
 - `fileTreeStore.ts` - File explorer state
+- `customPromptStore.ts` - Custom prompts
 - `confluenceStore.ts` - Confluence sync state
 - `groupStore.ts` - Group management state
 - `approvalQueueStore.ts` - Plan action approval queue
+- `searchStore.ts` - Global search state
+- `settingsUIStore.ts` - Settings UI state
+- `taskPromptTemplateStore.ts` - Task prompt templates
 - `toastStore.ts` - Toast notifications
+- `toolLogStore.ts` - Tool call log state
 - `contextRegenerationStore.ts` - Context regeneration modal state
 - `useSlackTriageStore.ts` - Slack triage panel and execution state
 
@@ -203,6 +222,7 @@ Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and
 - Manages store lifecycle tied to project switching
 - Clears relevant stores when project changes
 
+**Key Components:**
 | Component | Purpose |
 |-----------|---------|
 | `layout/` | Three-panel design (sidebar, main, chat) with resize hooks |
@@ -218,6 +238,9 @@ Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and
 | `settings/` | Application settings dialogs |
 | `permission/` | Permission request UI |
 | `ui/` | Shared UI primitives (Modal, Button, StatusBadge) |
+| `global-search/` | Global search UI |
+| `image-viewer-modal/` | Image viewer modal |
+| `tool-log/` | Tool call log panel |
 | `icons/` | SVG icon components |
 | `slack/` | Slack triage panel, badge, channel settings |
 | `onboarding/` | Project onboarding and context regeneration |

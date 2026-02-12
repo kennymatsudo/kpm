@@ -65,7 +65,9 @@ ipcMain.handle(
 
 ## Validation Schemas
 
+Schemas in `validation/` organized by domain (one file per domain). See `validation/plan.ts` for an example.
 
+## Response Patterns
 
 | Handler Type | Use | Example |
 |--------------|-----|---------|
@@ -74,6 +76,7 @@ ipcMain.handle(
 
 ## Adding a New IPC Handler
 
+2. Create Zod schema in `validation/{domain}.ts`
 
 ## Best Practices
 

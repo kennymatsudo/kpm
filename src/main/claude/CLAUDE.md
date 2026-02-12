@@ -71,13 +71,20 @@ Claude calls modification tool (modify_plan, bulk_reparent, etc.)
 
 ## Adding New Tools
 
+1. Create tool in `tools/` directory — see `tools/plan-items.ts` for read-only example, `tools/plan-changes.ts` for modification example
+2. Register in `tools/createKpmServer.ts`
+5. Restart Electron (no rebuild required)
 
+**CRITICAL:** Modification tools MUST emit `PlanAction[]` via `onPlanActions` callback — NEVER modify the database directly from a tool.
 
 ## Modifying Prompts
 
 ### System Prompts (Main Chat)
 
+Files in `prompts/` directory. Entry point is `index.ts` with `buildSystemPrompt()`.
 
+
+The `currentView` parameter ('plan' | 'workspace') adds context-aware suggestions without changing response modes — it hints at UI context, not behavior constraints.
 
 ## Common Pitfalls
 
@@ -107,5 +114,8 @@ Claude calls modification tool (modify_plan, bulk_reparent, etc.)
 | `contextBuilders.ts` | Context fetching for sessions |
 | `auth.ts` | API key management |
 | `activity.ts` | Activity tracking |
+| `findClaude.ts` | Claude binary discovery |
 | `sdkTypeGuards.ts` | Type guard utilities |
 | `streaming/` | Session management |
+| `tools/` | MCP tool implementations |
+| `prompts/` | System prompt builders |

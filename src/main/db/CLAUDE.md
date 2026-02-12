@@ -7,13 +7,17 @@ Owns database schema, migrations, repositories (data access), and domain service
 ```
 src/main/db/
 ├── connection.ts              # Database initialization & pragmas
+├── migrations.ts              # Schema versioning (never modify after deploy)
 ├── container.ts               # DI container for repositories
 ├── interfaces/                # Repository & container type definitions
 ├── repositories/
+│   └── impl/                  # Concrete repository classes
+└── domain/                    # Domain services for multi-table transactions
 ```
 
 ## Schema Evolution
 
+Schema lives in `connection.ts` (initial tables) and `migrations.ts`.
 
 **New install:** Gets full schema + migrations applied.
 
@@ -122,3 +126,6 @@ getMany(ids: string[]): Item[] {
 7. **DI for complex services** — Business logic accepts dependencies
 8. **Foreign key constraints** — `ON DELETE CASCADE` cleans up related rows
 
+## Discovering Repositories and Services
+
+All repositories live in `repositories/impl/`. Domain services live in `domain/`. Read the source files to see the full list — avoid hardcoding counts in documentation.

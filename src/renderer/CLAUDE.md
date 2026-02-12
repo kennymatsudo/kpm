@@ -2,6 +2,7 @@
 
 React 19 + TypeScript + Tailwind v4 + Zustand. Extract hooks not components. Use Zustand over Context for fine-grained subscriptions.
 
+## Component Organization
 
 Components organized by feature in `components/`. Key directories: `app/` (app-shell providers/boundaries), `layout/`, `planning/`, `board-view/`, `chat/`, `workspace/`, `development/` (shared PR/review components used by the board), `tracker/`, `plan-ref/`, `keyboard-shortcuts/`, `sidebar/`, `command-palette/`, `ui/` (shared primitives). Browse the directory for the full list.
 
@@ -47,7 +48,10 @@ Keep related code together. Don't split files just to meet arbitrary LOC limits.
 
 Don't create abstractions until you have 3+ actual uses of a pattern. Wait until the pattern is proven.
 
+## Key Conventions
 
+- **Canvas constants** in `constants/layout.ts` — card widths, grid spacing, zoom limits
+- **Stores** — See `stores/CLAUDE.md` for patterns. Use `useShallow` for multi-value selectors. Stores communicate via typed events.
 
 ## CSS Conventions
 
