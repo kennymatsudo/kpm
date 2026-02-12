@@ -1,3 +1,4 @@
+import { useState, useMemo, useRef, useCallback, useEffect, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useToolLogStore } from '../../stores/toolLogStore';
 import type { ToolCallLogEntry, ToolCallTurnSummary, ActivityType } from '../../../shared/types';
@@ -58,6 +59,7 @@ function CategoryIcon({ type }: { type: ActivityType }) {
 
 function formatTimestamp(ts: number): string {
   const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
 
 function truncatePath(p: string, maxLen = 50): string {
@@ -236,6 +238,23 @@ export function ToolLogPanel() {
 
   const categories: ActivityType[] = ['read', 'search', 'glob', 'edit', 'command', 'other'];
 
+  // Copy logs to clipboard
+  const [copyFeedback, setCopyFeedback] = useState<ReactNode>(null);
+  const handleCopyLogs = useCallback(() => {
+    const lines: string[] = [];
+    for (const [turn, turnEntries] of turnGroups) {
+      for (const entry of turnEntries) {
+        const time = formatTimestamp(entry.timestamp);
+        const files = entry.filePaths.length > 0 ? ` [${entry.filePaths.join(', ')}]` : '';
+      }
+      lines.push('');
+    }
+    const text = lines.join('\n').trimEnd();
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopyFeedback('Copied');
+      setTimeout(() => setCopyFeedback(null), 1500);
+    });
+
   return (
     <div
     >
@@ -267,6 +286,22 @@ export function ToolLogPanel() {
         )}
 
         {/* Enable/disable toggle */}
+
+        {/* Copy button */}
+        <button
+          onClick={handleCopyLogs}
+          className="text-text-quaternary hover:text-text-secondary transition-colors p-0.5"
+        >
+          {copyFeedback ? (
+            <svg className="w-3.5 h-3.5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          )}
+        </button>
 
         {/* Clear button */}
 
