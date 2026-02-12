@@ -45,7 +45,14 @@ export interface NavigateToViewEvent {
     view: 'planning' | 'workspace';
     /** Optional file path to open after navigation (for workspace view) */
     filePath?: string;
+    /** Optional plan item ID to focus after navigation (for planning view) */
+    planItemId?: string;
   };
+}
+
+export interface RevealBoardColumnEvent {
+  type: 'reveal-board-column';
+  payload: { status: StatusCategory };
 }
 
 

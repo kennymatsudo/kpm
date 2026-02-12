@@ -1,5 +1,6 @@
 import { BoardColumn } from './BoardColumn';
 import { getStatusCategory, STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
+import { subscribe } from '../../stores/storeEvents';
 
 // Columns to display
 
@@ -58,6 +59,22 @@ interface BoardViewProps {
         // Invalid JSON, use defaults
       }
     }
+  }, [currentProjectId]);
+
+  // Listen for reveal-board-column events (from global search)
+  useEffect(() => {
+    const unsubscribe = subscribe('reveal-board-column', (event) => {
+      const { status } = event.payload;
+      setColumnVisibility((prev) => {
+        if (prev[status]) return prev;
+        const next = { ...prev, [status]: true };
+        if (currentProjectId) {
+          localStorage.setItem(`kpm-board-columns-${currentProjectId}`, JSON.stringify(next));
+        }
+        return next;
+      });
+    });
+    return unsubscribe;
   }, [currentProjectId]);
 
   // Persist column visibility changes

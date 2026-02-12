@@ -69,6 +69,9 @@ const ToastItem = memo(function ToastItem({ toast, onDismiss }: ToastItemProps) 
   return (
     <m.div
       layout
+      initial={{ opacity: 0, y: -12, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -8, scale: 0.96 }}
       transition={{ type: 'spring', damping: 30, stiffness: 400 }}
       className={`
         bg-surface-elevated backdrop-blur-md
@@ -119,8 +122,11 @@ const ToastItem = memo(function ToastItem({ toast, onDismiss }: ToastItemProps) 
  * Toast container - renders all active toasts in a portal.
  * Place this component once at the app root (e.g., in Layout.tsx).
  *
+ * Design: Error/warning notifications at top-center for visibility.
+ * - Centered at top of viewport, below the title bar
  * - Translucent background with backdrop blur
  * - Soft left accent border for type indication
+ * - Quick drop-in animation
  */
 export function ToastContainer() {
   const toasts = useToastStore((state) => state.toasts);

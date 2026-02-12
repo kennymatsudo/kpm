@@ -43,6 +43,7 @@ export const BoardCard = memo(function BoardCard({
 
   return (
     <div
+      data-plan-item-id={item.id}
       draggable
       className={`
         ${isFocused && !isSelected ? 'ring-1 ring-accent/50' : ''}

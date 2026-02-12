@@ -98,6 +98,7 @@ export function GlobalSearch() {
 
     switch (result.entityType) {
       case 'plan_item':
+        emit({ type: 'navigate-to-view', payload: { view: 'planning', planItemId: result.id } });
         break;
 
       case 'document':

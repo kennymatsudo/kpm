@@ -146,6 +146,7 @@ export const PlanCard = memo(function PlanCard({
 
   return (
     <div
+      data-plan-item-id={!isPreview ? item.id : undefined}
       data-plan-card={!isPreview ? true : undefined}
       data-testid={!isPreview ? 'plan-card' : 'plan-card-preview'}
       role="article"
@@ -318,6 +319,7 @@ export const PlanCard = memo(function PlanCard({
           onAddToContext={() => onAddToContext?.(item.id)}
             if (currentProjectId) {
               const result = await addToQueue(currentProjectId, [item.id]);
+              if (!result.success && result.error) {
                 toast.error(result.error);
               }
             }

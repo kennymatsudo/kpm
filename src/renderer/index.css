@@ -1736,6 +1736,19 @@ select:focus-visible {
 }
 
 /* ============================================
+   Plan Item Reveal Highlight (Global Search)
+   ============================================ */
+
+.plan-item-reveal {
+  animation: plan-item-highlight 0.6s ease-in-out 2;
+}
+
+@keyframes plan-item-highlight {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 3px var(--color-accent); }
+}
+
+/* ============================================
    Tree View Styles
    ============================================ */
 
