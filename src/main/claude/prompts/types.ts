@@ -13,4 +13,5 @@ export interface PlanContext {
   currentView?: ChatViewMode;
   /** Custom task prompt template - if set, overrides default PLAN_STRUCTURE */
   taskPromptTemplate?: TaskPromptTemplate | null;
+  claudeMdContent?: string | null;
 }

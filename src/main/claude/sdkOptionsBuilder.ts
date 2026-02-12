@@ -46,6 +46,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     mcpServers: {
       kpm: kpmServer,
     },
+    maxTurns: claudeConfig.maxTurns,
     ...(resumeSessionId && { resume: resumeSessionId }),
     ...(claudeConfig.debug && { debug: true }),
     ...(claudeConfig.debug && claudeConfig.debugFile && { debugFile: claudeConfig.debugFile }),

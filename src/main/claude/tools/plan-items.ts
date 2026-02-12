@@ -251,6 +251,7 @@ export function createPlanItemTools(
 
     tool(
       'get_plan_item',
+      'Get full details of a single plan item by ID. Use when you need the description, code_refs, or position data. For status/title operations, filter_plan_items summary data is sufficient. For multiple items, use batch_get_items instead of calling this in a loop.',
       { itemId: z.string().uuid().describe('The plan item UUID') },
       async ({ itemId }) => {
         const item = planItemRepo.get(itemId);
@@ -368,6 +369,7 @@ export function createPlanItemTools(
 
     tool(
       'get_item_context',
+      'Get complete context for decision-making about a single item. Call this before delete, reparent, or move operations to check what would be affected. Replaces separate calls to get_plan_item + parent lookup + get_relations + child lookups. Returns item, parent, children (with descendant count), and categorized dependencies (blockedBy, blocks, relatedTo) in one call.',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemId: z.string().uuid().describe('The plan item UUID'),

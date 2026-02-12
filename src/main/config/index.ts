@@ -42,6 +42,8 @@ export interface ClaudeConfig {
   debug: boolean;
   /** Path to debug log file (optional) */
   debugFile: string | null;
+  /** Max agent turns per response to prevent runaway sessions */
+  maxTurns: number;
 }
 
 export interface SessionConfig {

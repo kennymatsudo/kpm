@@ -13,6 +13,7 @@ export type { PlanContext } from './types';
 
 import { FULL_HIERARCHY_THRESHOLD, buildItemReferenceTable } from './planFormatting';
 import { buildResponseModesSection } from './modes';
+import { buildToolDecisionTree } from './toolDocs';
 
 /**
  * Build view context section for mode-aware suggestions.
@@ -43,10 +44,12 @@ export function buildSystemPrompt(context: PlanContext): string {
   const hasAttachments = attachments.length > 0;
   const hasRepos = repos.length > 0;
   const hasPlan = planItems.length > 0;
+  const hasClaudeMd = claudeMdContent && claudeMdContent.trim().length > 0;
 
 
 ID: \`${project.id}\` (use for all tool calls)
 Phase: ${project.phase}
+Project folder: \`${project.folder_path}\`
 ${buildViewContextSection(currentView)}
 
 
@@ -55,10 +58,14 @@ ${hasAttachments ? buildAttachmentsSection(attachments) : ''}
 
 
 
+${hasClaudeMd ? `
 
+${claudeMdContent}
+` : ''}
 # Current Plan
 ${hasPlan
     ? planItems.length <= FULL_HIERARCHY_THRESHOLD
+      ? `${planItems.length} items. IDs listed below — use directly.`
       : `${planItems.length} items. Root items below. Query \`filter_plan_items\` for others.`
     : 'Empty.'}
 }

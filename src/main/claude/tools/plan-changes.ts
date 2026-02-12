@@ -112,6 +112,22 @@ export function createPlanChangeTools(onPlanActions: PlanActionsCallback) {
   return [
     tool(
       'modify_plan',
+
+
+Item actions:
+- update_item: { "type": "update_item", "item_id": "...", "updates": { "status_category": "done" } }
+- delete_item: { "type": "delete_item", "item_id": "..." }
+- reparent: { "type": "reparent", "item_id": "...", "new_parent_id": "..." }
+- add_dependency: { "type": "add_dependency", "from_id": "...", "to_id": "..." }
+
+Group actions (visual containers):
+- assign_to_group: { "type": "assign_to_group", "item_id": "existing-uuid", "group_id": "$1" }
+- update_group: { "type": "update_group", "group_id": "...", "updates": { "name": "New Name" } }
+- delete_group: { "type": "delete_group", "group_id": "..." }
+
+Placeholder references: Use $1, $2 etc. to reference entities created earlier in the same batch. Example: first action creates a group, $1 is that group's ID for subsequent assign_to_group actions.
+
+
       {
         message: z.string().describe('Brief description of the proposed changes'),
         actions: z.array(PlanActionSchema).describe('The plan actions to propose'),

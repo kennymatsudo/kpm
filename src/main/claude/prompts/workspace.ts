@@ -7,9 +7,15 @@
 
 import type { Attachment } from '../../../shared/types';
 
+// Re-export for consumers that import from workspace.ts
+
 /**
  * Core constraints - the non-negotiable rules.
+ * Each constraint explains "why" so Claude can generalize to edge cases.
  */
+export const CONSTRAINTS = `## Constraints
+
+- **Attachments are read-only** reference material provided by the user.
 
 /**
  * Workspace section - what Claude controls and how.
