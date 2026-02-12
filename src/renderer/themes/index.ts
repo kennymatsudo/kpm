@@ -102,6 +102,7 @@ export const THEMES: ThemeDefinition[] = [
   },
   {
   },
+  {
 ];
 
 export function getThemeById(id: ThemeId): ThemeDefinition | undefined {
