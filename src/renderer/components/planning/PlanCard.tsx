@@ -138,11 +138,18 @@ export const PlanCard = memo(function PlanCard({
   // Root cards (depth 0) use fixed width; nested cards fill their parent
   const cardWidth = depth === 0 ? style.width : '100%';
 
+  // Preview mode styling (plan-card CSS handles default bg; preview gets explicit bg)
   const previewClasses = isPreview
+    ? 'bg-surface-2/95 border border-border-strong'
+    : '';
 
+  // CSS class-based indicators (replace ring-based approach)
+  const sessionClass = hasActiveDevSession ? 'plan-card-active-session' : '';
+  const importClass = isRecentlyImported && !hasActiveDevSession ? 'plan-card-imported' : '';
 
   const interactiveClasses = isPreview
     ? ''
+    : `${isDragOver ? 'drop-target' : ''} ${isSelected ? 'selected' : ''} ${isFocused ? 'focused' : ''} ${sessionClass} ${importClass} ${isDragging ? 'opacity-50' : isDimmed ? 'opacity-30' : ''} cursor-pointer group`;
 
   return (
     <div
@@ -153,8 +160,10 @@ export const PlanCard = memo(function PlanCard({
       aria-label={item.title}
       className={`
         plan-card plan-card-depth-${Math.min(depth, 4)}
+        rounded ${style.borderWidth} ${style.padding}
         ${previewClasses}
         ${interactiveClasses}
+        transition-[colors,opacity] duration-150 relative
       `}
       data-selection-key={selectionSignature}
       draggable={!isPreview}
@@ -305,8 +314,66 @@ export const PlanCard = memo(function PlanCard({
       }}
     >
 
+      {/* Description (collapsed for deeper levels, space always reserved at depth 0-1) */}
+      {depth <= 1 && (
+          {item.description || '\u00A0'}
+        </p>
       )}
 
+      {/* Children with inline toggle */}
+      {item.children.length > 0 && (
+        <div className="mt-1.5">
+          {/* Expand/collapse toggle */}
+          {!isPreview ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExpanded(!isExpanded);
+              }}
+            >
+              <svg
+                className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          ) : (
+              <svg className="w-3 h-3 rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          )}
+          {(isPreview || isExpanded) && (
+            <div className="space-y-2">
+              {item.children.map(child => (
+                <PlanCard
+                  key={child.id}
+                  item={child}
+                  depth={depth + 1}
+                  variant={variant}
+                  isSelected={selectedIds.has(child.id)}
+                  isFocused={focusedItemId === child.id}
+                  focusedItemId={focusedItemId}
+                  searchQuery={searchQuery}
+                  selectionSignature={getSelectionSignature(child.id)}
+                  getSelectionSignature={getSelectionSignature}
+                  getSelectedIds={getSelectedIds}
+                  queuedItemIds={queuedItemIds}
+                  recentlyImportedIds={recentlyImportedIds}
+                  onSelectItem={onSelectItem}
+                  onEditItem={onEditItem}
+                  onAddToContext={onAddToContext}
+                  onDrop={onDrop}
+                  onDropFromBacklog={onDropFromBacklog}
+                  onDragStart={onDragStart}
+                  onDragEnd={onDragEnd}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 

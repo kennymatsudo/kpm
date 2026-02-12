@@ -91,7 +91,12 @@ export function calculateCardHeight(
   const hasChildren = children.length > 0;
 
   // Height components based on actual CSS:
+  // - Padding: depth 0 = p-2 (16px), depth 1 = p-2 (16px), depth 2+ = p-1.5 (12px)
+  //   Always reserved at depth <= 1 for consistent card heights (even without description)
+  // - Children container: mt-1.5 (6px) + toggle 16px + children heights + space-y-2 (8px gaps)
+  const padding = depth === 0 ? 16 : depth === 1 ? 16 : 12;
   let height = padding; // total padding (top + bottom)
+  if (depth <= 1) {
   }
 
   if (!hasChildren) {
@@ -99,8 +104,11 @@ export function calculateCardHeight(
   }
 
   // Add children container
+  height += 6; // mt-1.5 margin before children
+  height += 16; // toggle button row
   const childHeights = children.map((childId, index) => {
     const childHeight = calculateCardHeight(childId, childrenMap, itemMap, depth + 1);
+    return childHeight + (index > 0 ? 8 : 0); // space-y-2 = 8px between children
   });
   height += childHeights.reduce((sum, h) => sum + h, 0);
 
@@ -120,12 +128,17 @@ export function buildHeightMapFromTree(nodes: TreeNode[]): Map<string, number> {
 
     const hasChildren = node.children.length > 0;
 
+    const padding = depth === 0 ? 16 : depth === 1 ? 16 : 12;
     let height = padding;
+    if (depth <= 1) {
     }
 
     if (hasChildren) {
+      height += 6; // mt-1.5
+      height += 16; // toggle button
       node.children.forEach((child, index) => {
         const childHeight = computeHeight(child, depth + 1);
+        height += childHeight + (index > 0 ? 8 : 0); // space-y-2
       });
     }
 
@@ -367,6 +380,7 @@ export function calculateGroupLayout(
 
   // Determine column count based on available width, capped by MAX_COLUMNS
   const maxColumns = Math.min(GROUP_LAYOUT.MAX_COLUMNS, sortedItems.length);
+  let numColumns = maxColumns;
 
   if (groupWidth && groupWidth > 0) {
     const availableWidth = groupWidth - GROUP_LAYOUT.PADDING_X * 2;

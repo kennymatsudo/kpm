@@ -31,6 +31,13 @@ export interface ThemeColors {
   danger?: string;
   info?: string;
   purple?: string;
+
+  // Plan card depth colors (optional - defaults provided)
+  depth0?: string;
+  depth1?: string;
+  depth2?: string;
+  depth3?: string;
+  depth4?: string;
 }
 
 export interface ThemeDefinition {
@@ -139,6 +146,7 @@ const DARK_TERMINAL_BASE = {
 export function generateThemeVariables(colors: ThemeColors): Record<string, string> {
   const isDark = colors.colorScheme === 'dark';
 
+  // Border opacity based on color scheme — borders are primary visual separators
   const borderColor = isDark ? '255, 255, 255' : '0, 0, 0';
 
   // Muted color opacity
@@ -151,6 +159,13 @@ export function generateThemeVariables(colors: ThemeColors): Record<string, stri
   const danger = colors.danger ?? (isDark ? '#f87171' : '#dc2626');
   const info = colors.info ?? (isDark ? '#60a5fa' : '#2563eb');
   const purple = colors.purple ?? (isDark ? '#c084fc' : '#9333ea');
+
+  // Depth colors for plan card hierarchy
+  const depth0 = colors.depth0 ?? (isDark ? '#818cf8' : '#6366f1');
+  const depth1 = colors.depth1 ?? (isDark ? '#60a5fa' : '#2563eb');
+  const depth2 = colors.depth2 ?? (isDark ? '#4abe80' : '#16a34a');
+  const depth3 = colors.depth3 ?? (isDark ? '#c084fc' : '#9333ea');
+  const depth4 = colors.depth4 ?? (isDark ? '#f472b6' : '#db2777');
 
   return {
     // Color scheme
@@ -193,8 +208,28 @@ export function generateThemeVariables(colors: ThemeColors): Record<string, stri
     '--color-purple': purple,
     '--color-purple-subtle': rgba(purple, mutedOpacity),
 
+    // Depth colors (plan card hierarchy)
+    '--color-depth-0': depth0,
+    '--color-depth-1': depth1,
+    '--color-depth-2': depth2,
+    '--color-depth-3': depth3,
+    '--color-depth-4': depth4,
+
     // Code background
 
+    // Shadows — minimal, structural only (layers 0-4 use zero shadows)
+    '--shadow-xs': 'none',
+    '--shadow-sm': isDark ? `0 1px 2px rgba(0, 0, 0, 0.15)` : `0 1px 2px rgba(0, 0, 0, 0.06)`,
+    '--shadow-md': isDark ? `0 2px 4px rgba(0, 0, 0, 0.2)` : `0 2px 4px rgba(0, 0, 0, 0.08)`,
+    '--shadow-lg': isDark ? `0 4px 8px rgba(0, 0, 0, 0.25)` : `0 4px 8px rgba(0, 0, 0, 0.1)`,
+    '--shadow-xl': isDark ? `0 4px 8px rgba(0, 0, 0, 0.25)` : `0 4px 8px rgba(0, 0, 0, 0.1)`,
+    '--shadow-glow': 'none',
+    '--shadow-inset': 'none',
+    '--shadow-card': 'none',
+    '--shadow-card-hover': 'none',
+
+    // Canvas dots — subtle orientation cues
+    '--canvas-dot-color': rgba(colors.textPrimary, 0.02),
 
     // Scrollbar
     '--scrollbar-thumb': rgba(colors.textPrimary, isDark ? 0.08 : 0.12),

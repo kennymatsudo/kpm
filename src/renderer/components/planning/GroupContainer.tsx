@@ -189,14 +189,17 @@ export const GroupContainer = memo(function GroupContainer({
     <div
       ref={containerRef}
       className={`
+        group absolute rounded border-[2px] pointer-events-auto
         ${showCollisionWarning
           ? 'border-danger'
           : isDragOver
             ? 'border-accent border-dashed'
             : 'border-border-default'
         }
+        ${isDragOver ? 'bg-accent/10' : !isDragging ? 'bg-surface-0' : ''}
         ${isSelected && !showCollisionWarning && !isDragOver ? 'ring-2 ring-accent ring-offset-2 ring-offset-surface-0' : ''}
         ${isDragging ? 'cursor-grabbing' : ''}
+        transition-[colors,border-color,box-shadow,opacity] duration-150
       `}
       data-group-container
       style={{
@@ -303,6 +306,7 @@ export const GroupContainer = memo(function GroupContainer({
 
       {/* Content area - hidden when collapsed */}
       {!isCollapsed && (
+        <div className="p-4 overflow-hidden" style={{ height: `calc(100% - ${GROUP_LAYOUT.HEADER_HEIGHT}px)` }}>
           {children}
         </div>
       )}

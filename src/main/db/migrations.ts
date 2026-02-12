@@ -1665,6 +1665,17 @@ interface Migration {
     },
   },
   {
+    id: 1043,
+    name: '043_update_default_group_width',
+    up: (db: BetterSqliteDatabase) => {
+      // Update default group width from 400 to 552 (2 columns of 260px cards + 16px gap + 32px padding).
+      // Only updates groups that still have the old default width; auto-layout will recalculate on next run.
+      db.exec(`
+        UPDATE groups SET width = 552 WHERE width = 400;
+      `);
+    },
+  },
+  {
     id: 1049,
     name: '049_remove_agent_instructions_from_projects',
     up: (db: BetterSqliteDatabase) => {

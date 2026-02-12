@@ -103,6 +103,7 @@ export function SessionHistory() {
       {isOpen && (
         <div
           style={{
+            boxShadow: 'var(--shadow-md)',
             border: '1px solid var(--color-border-default)',
           }}
         >

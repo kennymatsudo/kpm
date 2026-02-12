@@ -150,6 +150,11 @@ export function ApprovalOverlays() {
         whileHover={{ scale: 1.02, y: -2 }}
         whileTap={{ scale: 0.98 }}
       >
+        <div className="relative flex items-center gap-2.5 px-3 py-2
+                        bg-[color-mix(in_srgb,var(--color-accent)_85%,black)]
+                        text-white rounded
+                        border border-accent/30
+                        transition-colors duration-100">
           {/* Pulsing indicator */}
           <div className="relative">
             <div className="w-2 h-2 rounded-full bg-white" />
@@ -219,9 +224,14 @@ export function ApprovalOverlays() {
       <AnimatePresence>
           <m.div
             animate={{ x: 0, opacity: 1 }}
+                       border-r border-border-strong
                        flex flex-col overflow-hidden"
           >
+            {/* Panel header */}
+                            bg-surface-2
                             border-b border-border-subtle">
+              {/* Top accent line */}
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-accent/40" />
 
               <div className="flex items-center gap-3">
                 {/* Icon with accent background */}

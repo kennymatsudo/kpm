@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { buildHierarchyWithHeights, buildItemMaps, calculateGroupLayout } from '../../../utils/planHierarchy';
 import {
   resolveGroupCollisions,
   checkCollisionWithObstacles,
@@ -31,7 +32,10 @@ export interface AutoLayoutOptions {
 }
 
 interface AutoLayoutDeps {
+  /** Visible items participating in root-level masonry placement. */
   plannedItems: PlanItem[];
+  /** Full planned item set (including filtered/hidden items) for group sizing/positioning. */
+  allPlannedItems?: PlanItem[];
   groups: Group[];
   updateItemPosition: (itemId: string, x: number, y: number) => Promise<void>;
   updateGroupPosition: (groupId: string, x: number, y: number) => Promise<unknown>;
@@ -54,12 +58,22 @@ function getGroupDimensions(
     return { width: group.width, height: group.height };
   }
 
+  // Collapsed groups use single-column width and collapsed height for layout.
+  // This prevents a collapsed group from reserving multi-column space in the grid.
+  if (group.is_collapsed) {
+    return {
+      width: CARD_WIDTHS[0] + GROUP_LAYOUT.PADDING_X * 2,
+      height: GROUP_LAYOUT.COLLAPSED_HEIGHT,
+    };
+  }
+
   const { bounds } = calculateGroupLayout(
     group.id,
     assignedItems,
     childrenMap,
     itemMap,
     undefined,
+    undefined
   );
 
   return { width: bounds.width, height: bounds.height };
@@ -67,8 +81,20 @@ function getGroupDimensions(
 
 /**
  */
+export function useAutoLayout({
+  plannedItems,
+  allPlannedItems,
+  groups,
+  updateItemPosition,
+  updateGroupPosition,
+  updateGroupSize,
+}: AutoLayoutDeps) {
   return useCallback(
     async (options: AutoLayoutOptions = {}) => {
+      const fullItems = allPlannedItems ?? plannedItems;
+
+      const { rootIds, rootHeights, itemMap } = buildHierarchyWithHeights(plannedItems);
+      const { childrenMap: fullChildrenMap, itemMap: fullItemMap } = buildItemMaps(fullItems);
 
 
       for (let i = 0; i < rootIds.length; i++) {
@@ -184,6 +210,8 @@ function getGroupDimensions(
           groupId,
           { x: newGroupPos.x, y: newGroupPos.y },
           groupItems,
+          fullChildrenMap,
+          fullItemMap,
           undefined,
           newGroupPos.width
         );
@@ -195,5 +223,6 @@ function getGroupDimensions(
 
       await Promise.all(updatePromises);
     },
+    [plannedItems, allPlannedItems, groups, updateItemPosition, updateGroupPosition, updateGroupSize]
   );
 }

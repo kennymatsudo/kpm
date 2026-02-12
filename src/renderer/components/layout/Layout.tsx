@@ -119,6 +119,7 @@ interface LayoutProps {
         <div className={`flex flex-1 overflow-hidden ${sidebarOverlay || chatOverlay ? 'relative' : ''}`}>
           {/* Project switching overlay */}
           {isSwitchingProject && (
+              <div className="project-switch-content flex items-center gap-3 px-4 py-3 bg-surface-elevated rounded border border-border-strong">
                 <div className="w-5 h-5 rounded-full border-2 border-accent/30 border-t-accent spinner-refined" />
               </div>
             </div>

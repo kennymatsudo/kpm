@@ -208,8 +208,18 @@ interface CanvasProps {
         </button>
         <button
           onClick={() => {
+            void (async () => {
+              const dimensions = await getStableViewportDimensions();
+              await onAutoLayout({
+                dimensions,
                 effectiveZoom,
               });
+
+              setTimeout(() => {
+                setZoom(1);
+                setPanOffset({ x: 0, y: 0 });
+              }, 50);
+            })();
           }}
           className="px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-surface-3 rounded transition-colors"
         >
@@ -281,6 +291,7 @@ interface CanvasProps {
               }}
               exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
               transition={useInstantTransition
+                : { type: 'tween', duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }
               }
               className="absolute pointer-events-auto"
               style={{

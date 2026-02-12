@@ -16,6 +16,8 @@ import type { PlanAction } from '../../../shared/types';
 import { getDatabase } from '../../db/connection';
 
 
+// Default group dimensions (2 columns of 260px cards + 16px gap + 32px padding)
+const DEFAULT_GROUP_WIDTH = 552;
 const DEFAULT_GROUP_HEIGHT = 300;
 
 interface GroupSummary {
@@ -155,6 +157,7 @@ export function createGroupTools(
         name: z.string().min(1).max(100).describe('Group name'),
         position_x: z.number().optional().describe('X position on canvas (defaults to 100)'),
         position_y: z.number().optional().describe('Y position on canvas (defaults to 100)'),
+        width: z.number().optional().describe('Group width (defaults to 552)'),
         height: z.number().optional().describe('Group height (defaults to 300)'),
       },
       async ({ projectId, name, position_x, position_y, width, height }) => {

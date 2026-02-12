@@ -31,6 +31,7 @@ export const GroupSchemas = {
     color: hexColor.optional().default('#6366f1'),
     position_x: z.number().optional().default(100),
     position_y: z.number().optional().default(100),
+    width: z.number().optional().default(552),
     height: z.number().optional().default(300),
   }),
 

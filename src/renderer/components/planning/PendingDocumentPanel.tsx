@@ -64,6 +64,8 @@ export function PendingDocumentPanel({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 20, scale: 0.95 }}
       transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                  bg-surface-2 border-2 border-accent rounded shadow-md
+                  p-3 w-[28rem]"
     >
       <div className="flex items-center gap-2 mb-3">
         <div className="pulse-dot" />
@@ -358,11 +360,17 @@ export function PendingDocumentPanel({
         )}
 
         {/* Footer actions */}
+        <div className="flex-shrink-0 px-3 py-2.5 border-t border-border-subtle bg-surface-2">
+          <div className="flex gap-2">
             <button
               onClick={onDismiss}
               disabled={isApplying}
+              className="flex-1 px-3 py-2 text-xs font-medium
                          text-text-secondary hover:text-text-primary
                          bg-surface-3 hover:bg-surface-4
+                         rounded transition-colors duration-100
+                         border border-border-subtle
+                         active:opacity-90
                          disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface-3"
             >
               Dismiss
@@ -370,6 +378,11 @@ export function PendingDocumentPanel({
             <button
               onClick={() => onAccept(editedContent)}
               disabled={isApplying}
+              className="flex-[1.5] px-3 py-2 text-xs font-semibold text-white
+                         bg-[color-mix(in_srgb,var(--color-accent)_85%,black)]
+                         hover:bg-accent
+                         rounded transition-colors duration-100
+                         active:opacity-90
                          disabled:opacity-70 disabled:cursor-not-allowed
                          flex items-center justify-center gap-2"
             >
