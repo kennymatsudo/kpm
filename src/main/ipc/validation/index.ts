@@ -79,6 +79,8 @@ export { SettingsSchemas } from './settings';
 // Task Prompt Templates
 export { TaskPromptTemplateSchemas } from './agents';
 
+// Agent Prompts
+
 // Custom Prompts
 export { CustomPromptSchemas } from './customPrompts';
 export type {

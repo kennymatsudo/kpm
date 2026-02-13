@@ -8,6 +8,11 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import type {
+  DevSession,
+  DevSessionStatus,
+  DevSessionWithPlanItem,
+} from '../../../../shared/types';
 import type { IDevSessionRepository } from '../../interfaces';
 
 /**
@@ -136,6 +141,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       session.branch_name,
       session.base_branch,
       session.status,
+      session.initial_instructions,
     ) as DevSession;
   }
 

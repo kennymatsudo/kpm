@@ -72,6 +72,8 @@ export interface DevSessionServiceDeps {
   projects: IProjectRepository;
   repos: IRepoRepository;
   appSettings: IAppSettingsRepository;
+  userDataPath: string;
+}
 
 /**
  * Generate branch name from plan item using template

@@ -1697,6 +1697,98 @@ interface Migration {
     },
   },
   {
+    id: 1045,
+    name: '045_agent_team_prompts_and_session_modes',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS agent_prompts (
+          id TEXT PRIMARY KEY,
+          project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+          agent_role TEXT NOT NULL CHECK(agent_role IN ('design_reviewer', 'test_reviewer', 'readability_reviewer')),
+          name TEXT NOT NULL DEFAULT 'default',
+          prompt_content TEXT NOT NULL,
+          is_default INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(project_id, agent_role, name)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_agent_prompts_project ON agent_prompts(project_id);
+
+        -- SQLite treats NULL values as distinct for UNIQUE constraints, so add an explicit global unique index.
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_prompts_global_unique
+          ON agent_prompts(agent_role, name)
+          WHERE project_id IS NULL;
+
+        -- Ensure at most one default per role/scope.
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_prompts_default_project_role
+          ON agent_prompts(project_id, agent_role)
+          WHERE is_default = 1 AND project_id IS NOT NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_prompts_default_global_role
+          ON agent_prompts(agent_role)
+          WHERE is_default = 1 AND project_id IS NULL;
+      `);
+
+      const devColumns = db.prepare('PRAGMA table_info(dev_sessions)').all() as { name: string }[];
+      if (!devColumns.some((c) => c.name === 'requested_mode')) {
+        db.exec(`ALTER TABLE dev_sessions ADD COLUMN requested_mode TEXT;`);
+      }
+      if (!devColumns.some((c) => c.name === 'effective_mode')) {
+        db.exec(`ALTER TABLE dev_sessions ADD COLUMN effective_mode TEXT;`);
+      }
+
+      const projectColumns = db.prepare('PRAGMA table_info(project_sessions)').all() as { name: string }[];
+      if (!projectColumns.some((c) => c.name === 'requested_mode')) {
+        db.exec(`ALTER TABLE project_sessions ADD COLUMN requested_mode TEXT;`);
+      }
+      if (!projectColumns.some((c) => c.name === 'effective_mode')) {
+        db.exec(`ALTER TABLE project_sessions ADD COLUMN effective_mode TEXT;`);
+      }
+
+      db.exec(`
+        CREATE TRIGGER IF NOT EXISTS trg_dev_sessions_mode_check_insert
+        BEFORE INSERT ON dev_sessions
+        WHEN (
+          (NEW.requested_mode IS NOT NULL AND NEW.requested_mode NOT IN ('solo', 'reviewed', 'thorough'))
+          OR (NEW.effective_mode IS NOT NULL AND NEW.effective_mode NOT IN ('solo', 'reviewed', 'thorough'))
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'Invalid dev session implementation mode');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_dev_sessions_mode_check_update
+        BEFORE UPDATE ON dev_sessions
+        WHEN (
+          (NEW.requested_mode IS NOT NULL AND NEW.requested_mode NOT IN ('solo', 'reviewed', 'thorough'))
+          OR (NEW.effective_mode IS NOT NULL AND NEW.effective_mode NOT IN ('solo', 'reviewed', 'thorough'))
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'Invalid dev session implementation mode');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_project_sessions_mode_check_insert
+        BEFORE INSERT ON project_sessions
+        WHEN (
+          (NEW.requested_mode IS NOT NULL AND NEW.requested_mode NOT IN ('solo', 'reviewed', 'thorough'))
+          OR (NEW.effective_mode IS NOT NULL AND NEW.effective_mode NOT IN ('solo', 'reviewed', 'thorough'))
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'Invalid project session implementation mode');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_project_sessions_mode_check_update
+        BEFORE UPDATE ON project_sessions
+        WHEN (
+          (NEW.requested_mode IS NOT NULL AND NEW.requested_mode NOT IN ('solo', 'reviewed', 'thorough'))
+          OR (NEW.effective_mode IS NOT NULL AND NEW.effective_mode NOT IN ('solo', 'reviewed', 'thorough'))
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'Invalid project session implementation mode');
+        END;
+      `);
+    },
+  },
+  {
     id: 1049,
     name: '049_remove_agent_instructions_from_projects',
     up: (db: BetterSqliteDatabase) => {

@@ -8,6 +8,7 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import type { IRepositoryContainer } from '../db/interfaces';
+import { getDatabase, getUserDataPath } from '../db/connection';
 
 // Core services
 import { createPlanService } from './core/PlanService';
