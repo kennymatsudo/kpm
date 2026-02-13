@@ -14,6 +14,7 @@ export type { PlanContext } from './types';
 import { FULL_HIERARCHY_THRESHOLD, buildItemReferenceTable } from './planFormatting';
 import { buildResponseModesSection } from './modes';
 import { buildToolDecisionTree } from './toolDocs';
+import { PROMPT_REGISTRY_MAP } from './promptRegistry';
 
 /**
  * Build view context section for mode-aware suggestions.
@@ -46,18 +47,28 @@ export function buildSystemPrompt(context: PlanContext): string {
   const hasPlan = planItems.length > 0;
   const hasClaudeMd = claudeMdContent && claudeMdContent.trim().length > 0;
 
+  // Prompt resolver: user override > registry default > hardcoded constant
+  const getPrompt = (key: string): string => {
+    if (getPromptContent) return getPromptContent(key);
+    return PROMPT_REGISTRY_MAP.get(key)?.defaultContent ?? '';
+  };
+
 
 ID: \`${project.id}\` (use for all tool calls)
 Phase: ${project.phase}
 Project folder: \`${project.folder_path}\`
 ${buildViewContextSection(currentView)}
+${getPrompt('system.constraints')}
 
 
+${getPrompt('system.workspace')}
 
 ${hasAttachments ? buildAttachmentsSection(attachments) : ''}
 
+${getPrompt('system.plan_rules')}
 
 
+${getPrompt('system.response_style')}
 ${hasClaudeMd ? `
 
 ${claudeMdContent}

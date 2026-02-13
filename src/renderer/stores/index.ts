@@ -54,5 +54,8 @@ export { useCustomPromptStore } from './customPromptStore';
 // Tool Call Logging
 export { useToolLogStore } from './toolLogStore';
 
+// Prompt Overrides
+export { usePromptOverrideStore } from './promptOverrideStore';
+
 // Global Search
 export { useSearchStore } from './searchStore';

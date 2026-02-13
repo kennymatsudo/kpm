@@ -15,6 +15,7 @@ import type { IAppSettingsRepository } from '../../interfaces';
 interface PreparedStatements {
   get: Statement;
   set: Statement;
+  delete: Statement;
   getAll: Statement;
 }
 
@@ -30,6 +31,7 @@ export class AppSettingsRepository implements IAppSettingsRepository {
         VALUES (?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
       `),
+      delete: db.prepare('DELETE FROM app_settings WHERE key = ?'),
       getAll: db.prepare('SELECT key, value FROM app_settings'),
     };
   }
@@ -41,6 +43,10 @@ export class AppSettingsRepository implements IAppSettingsRepository {
 
   set(key: string, value: string): void {
     this.stmts.set.run(key, value);
+  }
+
+  delete(key: string): void {
+    this.stmts.delete.run(key);
   }
 
   getAll(): Record<string, string> {

@@ -14,4 +14,6 @@ export interface PlanContext {
   /** Custom task prompt template - if set, overrides default PLAN_STRUCTURE */
   taskPromptTemplate?: TaskPromptTemplate | null;
   claudeMdContent?: string | null;
+  /** Prompt content resolver for configurable prompts (user override > default) */
+  getPromptContent?: (key: string) => string;
 }

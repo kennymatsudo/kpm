@@ -18,6 +18,9 @@ import { createRepoWatcherService } from './repo/RepoWatcherService';
 
 // Generation services
 
+// Prompt override service
+import { createPromptOverrideService } from './core/PromptOverrideService';
+
 // Confluence services
 import { createConfluenceSyncService } from './confluence';
 
@@ -93,6 +96,9 @@ export function createAppServices(container: IRepositoryContainer) {
     repoFileService,
 
     // Generation
+
+    // Prompt overrides
+    promptOverrideService,
 
     // Confluence
     confluenceSyncService,

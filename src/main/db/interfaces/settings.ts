@@ -14,6 +14,8 @@ export interface IAppSettingsRepository {
   get(key: string): string | undefined;
   /** Set a setting value */
   set(key: string, value: string): void;
+  /** Delete a setting by key */
+  delete(key: string): void;
   /** Get all settings */
   getAll(): Record<string, string>;
 }

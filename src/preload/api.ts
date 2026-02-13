@@ -53,6 +53,8 @@ import type {
   CustomPrompt,
   CustomPromptIcon,
   SearchResult,
+  PromptDefinitionInfo,
+  PromptCategory,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -104,6 +106,8 @@ export type {
   CustomPrompt,
   CustomPromptIcon,
   SearchResult,
+  PromptDefinitionInfo,
+  PromptCategory,
 };
 
 const tempImages = {
@@ -884,6 +888,18 @@ const search = {
     ipcRenderer.invoke(IPC_CHANNELS.search.global, { projectId, query, limit }),
 };
 
+// Prompt Overrides API (configurable system prompts)
+const promptOverrides = {
+  list: (category?: PromptCategory): Promise<{ success: boolean; prompts?: PromptDefinitionInfo[]; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.promptOverrides.list, { category }),
+  get: (key: string): Promise<{ success: boolean; prompt?: PromptDefinitionInfo & { defaultContent: string; currentContent: string }; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.promptOverrides.get, { key }),
+  set: (key: string, content: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.promptOverrides.set, { key, content }),
+  reset: (key: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.promptOverrides.reset, { key }),
+};
+
 // Testing API - only available when NODE_ENV=test
 // Used by E2E tests for database reset and test isolation
 const testing = {
@@ -929,6 +945,7 @@ export const api = {
   testing,
   toolLog,
   search,
+  promptOverrides,
 };
 
 export type API = typeof api;

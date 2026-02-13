@@ -109,6 +109,15 @@ export type { ToolLogGetEntriesInput, ToolLogGetSessionStatsInput, ToolLogSetEna
 export { SearchSchemas } from './search';
 export type { SearchGlobalInput } from './search';
 
+// Prompt Overrides
+export { PromptOverrideSchemas } from './promptOverrides';
+export type {
+  PromptOverrideListInput,
+  PromptOverrideGetInput,
+  PromptOverrideSetInput,
+  PromptOverrideResetInput,
+} from './promptOverrides';
+
 // Confluence
 export { ConfluenceSchemas } from './confluence';
 

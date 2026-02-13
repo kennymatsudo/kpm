@@ -838,3 +838,20 @@ export interface SearchParams {
   query: string;
   limit?: number;
 }
+
+
+// =============================================================================
+// Prompt Override Types
+// =============================================================================
+
+/** Prompt categories for the configurable prompts system */
+
+/** Prompt definition info returned to the renderer */
+export interface PromptDefinitionInfo {
+  key: string;
+  name: string;
+  description: string;
+  category: PromptCategory;
+  hasOverride: boolean;
+  variables?: { name: string; description: string }[];
+}
