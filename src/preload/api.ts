@@ -174,6 +174,7 @@ const chat = {
   disconnectSpecificSession: (projectId: string, chatSessionId: string): Promise<{ success: boolean; error?: string }> =>
 
   /** Get current session state */
+  getSessionState: (projectId: string, chatSessionId: string): Promise<{ success: boolean; state?: SessionState; error?: string }> =>
 
   /** Session connecting event */
   onSessionConnecting: (callback: (data: { projectId: string; chatSessionId?: string }) => void): (() => void) => {

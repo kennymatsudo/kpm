@@ -610,6 +610,7 @@ export interface ChatMessage {
   id: string;
   session_id: string;  // project_id for main chat
   chat_session_id: string | null;  // Groups messages into distinct sessions within a project
+  client_message_id?: string | null; // Stable client-generated id for idempotent user retries
   role: 'user' | 'assistant';
   content: string;
   created_at: string;

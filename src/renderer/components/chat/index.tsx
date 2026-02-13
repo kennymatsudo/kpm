@@ -32,11 +32,17 @@ export function Chat({ currentView }: ChatProps) {
   const error = viewedSession?.error ?? null;
 
   const [lastMessage, setLastMessage] = useState<string | null>(null);
+  const [lastClientMessageId, setLastClientMessageId] = useState<string | null>(null);
 
+    const clientMessageId = crypto.randomUUID();
     setLastMessage(message);
+    setLastClientMessageId(clientMessageId);
 
   const handleRetry = useCallback(() => {
+    if (lastMessage && lastClientMessageId && viewedSessionId) {
+      void retry(lastMessage, lastClientMessageId);
     }
+  }, [lastMessage, lastClientMessageId, retry, viewedSessionId]);
 
   // Keep project store's visible focused resources aligned to the viewed chat session.
   useEffect(() => {

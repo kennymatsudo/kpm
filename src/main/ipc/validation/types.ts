@@ -85,6 +85,7 @@ export type ChatNewSessionInput = z.infer<typeof ChatSchemas.newSession>;
 export type ChatDisconnectSessionInput = z.infer<typeof ChatSchemas.disconnectSession>;
 export type ChatGetUsageInput = z.infer<typeof ChatSchemas.getUsage>;
 export type ChatGetMessagesInput = z.infer<typeof ChatSchemas.getMessages>;
+export type ChatGetSessionStateInput = z.infer<typeof ChatSchemas.getSessionState>;
 
 // =============================================================================
 // Streaming Session Types

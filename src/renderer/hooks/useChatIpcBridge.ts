@@ -62,6 +62,83 @@ export function useChatIpcBridge(projectId: string | null): void {
     // Events now include chatSessionId for routing to correct session
     });
 
+    const WATCHDOG_POLL_MS = 15_000;
+    const WATCHDOG_STALE_THRESHOLD_MS = 30_000;
+    const suspectedStaleSessions = new Map<string, number>();
+    let isWatchdogPolling = false;
+
+    const watchdogInterval = setInterval(() => {
+      void (async () => {
+        if (isWatchdogPolling) return;
+        isWatchdogPolling = true;
+
+        try {
+          const { sessions } = useChatStore.getState();
+          const now = Date.now();
+          const currentlyStreaming = new Set<string>();
+
+          for (const [sessionId, session] of sessions.entries()) {
+            currentlyStreaming.add(sessionId);
+
+            const lastStreamUpdateAt = session.lastStreamUpdateAt ?? session.streamStartedAt;
+            if (!lastStreamUpdateAt) {
+              suspectedStaleSessions.delete(sessionId);
+              continue;
+            }
+
+            const previousSuspectedUpdateAt = suspectedStaleSessions.get(sessionId);
+            if (previousSuspectedUpdateAt !== undefined && previousSuspectedUpdateAt !== lastStreamUpdateAt) {
+              // Stream activity resumed; clear stale suspicion.
+              suspectedStaleSessions.delete(sessionId);
+            }
+
+            const elapsedMs = now - lastStreamUpdateAt;
+            if (elapsedMs < WATCHDOG_STALE_THRESHOLD_MS) {
+              suspectedStaleSessions.delete(sessionId);
+              continue;
+            }
+
+            if (!suspectedStaleSessions.has(sessionId)) {
+              // First stale poll: mark suspected and confirm on next poll.
+              suspectedStaleSessions.set(sessionId, lastStreamUpdateAt);
+              continue;
+            }
+
+            const suspectedUpdateAt = suspectedStaleSessions.get(sessionId);
+            if (suspectedUpdateAt !== lastStreamUpdateAt) {
+              suspectedStaleSessions.set(sessionId, lastStreamUpdateAt);
+              continue;
+            }
+
+            const backendState = stateResult.success ? stateResult.state : undefined;
+
+            if (
+              backendState &&
+              backendState !== 'processing' &&
+              backendState !== 'connecting'
+            ) {
+              console.warn(
+                `[Watchdog] Stale streaming confirmed for session ${sessionId}, backend: ${backendState}, idle for ${Math.round(elapsedMs / 1000)}s`
+              );
+              finalizeMessage(sessionId);
+              suspectedStaleSessions.delete(sessionId);
+            }
+          }
+
+          for (const suspectedSessionId of Array.from(suspectedStaleSessions.keys())) {
+            if (!currentlyStreaming.has(suspectedSessionId)) {
+              suspectedStaleSessions.delete(suspectedSessionId);
+            }
+          }
+        } catch (error) {
+          console.warn('[Watchdog] Poll failed:', error);
+        } finally {
+          isWatchdogPolling = false;
+        }
+      })();
+    }, WATCHDOG_POLL_MS);
+
     return () => {
+      clearInterval(watchdogInterval);
     };
 }

@@ -253,6 +253,17 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
 
     if (managed?.state !== 'ready') {
+      switch (managed?.state) {
+        case 'processing':
+        case 'connecting':
+          return failure('Session is still connecting. Please wait a moment.');
+        case 'error':
+          return failure('Session encountered an error. Please try again.');
+        case 'idle':
+        case 'closing':
+        case undefined:
+          return failure('Session is not available. Please try again.');
+      }
     }
 
     // Check if underlying session is still usable (may have ended after interrupt/abort)

@@ -12,6 +12,7 @@ import { useShallow } from 'zustand/react/shallow';
 export function useChat(projectId: string | null, currentView?: ChatViewMode) {
   const {
     addUserMessage,
+    setRetrying,
     finalizeMessage,
     markSessionInactive,
     viewedSessionId,
@@ -20,6 +21,7 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     startNewChatSession,
   } = useChatStore(useShallow((state) => ({
     addUserMessage: state.addUserMessage,
+    setRetrying: state.setRetrying,
     finalizeMessage: state.finalizeMessage,
     markSessionInactive: state.markSessionInactive,
     viewedSessionId: state.viewedSessionId,
@@ -31,10 +33,29 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     if (!projectId) return;
 
     // Get or create chat session ID
+    const effectiveClientMessageId = clientMessageId ?? crypto.randomUUID();
 
     // Ensure session exists in store
     getOrCreateSession(chatSessionId);
 
+
+    // Resolve context for the specific chat session (session-scoped "Add to context").
+    const sessionFocusedResources = focusedResourcesBySession[chatSessionId] ?? focusedResources;
+
+
+    return effectiveClientMessageId;
+
+  const retry = useCallback(async (message: string, clientMessageId: string, tempImages?: string[]) => {
+    if (!projectId) return;
+
+    // Get or create chat session ID
+    const chatSessionId = getChatSessionId();
+
+    // Ensure session exists in store
+    getOrCreateSession(chatSessionId);
+
+    // Re-enter streaming state without adding a duplicate user message
+    setRetrying(chatSessionId);
 
     // Resolve context for the specific chat session (session-scoped "Add to context").
     const sessionFocusedResources = focusedResourcesBySession[chatSessionId] ?? focusedResources;

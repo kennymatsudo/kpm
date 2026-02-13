@@ -86,6 +86,11 @@ export const ChatSchemas = {
     projectId: uuid,
     chatSessionId: uuid,
   }),
+
+  getSessionState: z.object({
+    projectId: uuid,
+    chatSessionId: uuid,
+  }),
 };
 
 // =============================================================================
@@ -106,6 +111,7 @@ export const StreamingSessionSchemas = {
   /** Get main chat session state */
   getSessionState: z.object({
     projectId: uuid,
+    chatSessionId: uuid,
   }),
 
 };

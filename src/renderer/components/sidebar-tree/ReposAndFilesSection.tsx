@@ -45,9 +45,12 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     expandedPaths: projectExpanded,
     loadingPaths: projectLoading,
     renamingPath,
+    creatingItem,
     loadDirectory: loadProjectDirectory,
     toggleExpanded: toggleProjectExpanded,
     setRenamingPath,
+    setCreatingItem,
+    createItemAndSelect,
     deleteEntry,
     rename,
     moveEntry,
@@ -142,6 +145,22 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     },
     [isPathFocused, addFocusedResource, removeFocusedResource]
   );
+
+  const handleStartCreate = useCallback(
+      setFilesCollapsed(false);
+    },
+  );
+
+  const handleCreateSubmit = useCallback(
+    (name: string) => {
+      void createItemAndSelect(name);
+    },
+    [createItemAndSelect]
+  );
+
+  const handleCreateCancel = useCallback(() => {
+    setCreatingItem(null);
+  }, [setCreatingItem]);
 
   const handleFileOpen = useCallback(
     async (path: string, node: FileNode) => {
@@ -276,6 +295,10 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         isCollapsed={filesCollapsed}
         onToggleCollapsed={() => setFilesCollapsed(!filesCollapsed)}
 
+          }
+          }
+          }
+          }
           }
           }
           }

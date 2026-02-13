@@ -166,6 +166,7 @@ export type {
   ChatDisconnectSessionInput,
   ChatGetUsageInput,
   ChatGetMessagesInput,
+  ChatGetSessionStateInput,
   // Streaming Session
   StreamingSessionConnectInput,
   StreamingSessionDisconnectInput,

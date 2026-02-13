@@ -8,6 +8,12 @@ interface RecentlyChangedInfo {
   timestamp: number;
 }
 
+/** Phantom input state for creating a new file or folder */
+interface CreatingItem {
+  type: 'file' | 'folder';
+  parentPath: string;
+}
+
 interface FileTreeState {
   // Data
   projectId: string | null;
@@ -15,6 +21,8 @@ interface FileTreeState {
   expandedPaths: Set<string>;
   focusedPaths: Set<string>;
   renamingPath: string | null;
+  /** Phantom input state for inline file/folder creation */
+  creatingItem: CreatingItem | null;
   /** Tracks recently changed files for visual highlighting */
   recentlyChangedPaths: Map<string, RecentlyChangedInfo>;
 
@@ -32,6 +40,10 @@ interface FileTreeState {
   setFocused: (paths: string[]) => void;
   clearFocused: () => void;
   setRenamingPath: (path: string | null) => void;
+  /** Begin inline creation of a new file or folder */
+  setCreatingItem: (item: CreatingItem | null) => void;
+  /** Create the item on disk and select it in the tree */
+  createItemAndSelect: (name: string) => Promise<void>;
   /** Mark a path as recently changed (will auto-clear after 3 seconds) */
   markRecentlyChanged: (path: string, type: 'created' | 'modified') => void;
   /** Clear recently changed status for a path */
@@ -63,6 +75,7 @@ const initialState = {
   expandedPaths: new Set<string>(),
   focusedPaths: new Set<string>(),
   renamingPath: null as string | null,
+  creatingItem: null as CreatingItem | null,
   recentlyChangedPaths: new Map<string, RecentlyChangedInfo>(),
   isLoading: false,
   loadingPaths: new Set<string>(),
@@ -198,6 +211,27 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   },
 
   setRenamingPath: (path) => set({ renamingPath: path }),
+
+  setCreatingItem: (item) => set({ creatingItem: item, renamingPath: null }),
+
+  createItemAndSelect: async (name) => {
+    const { creatingItem } = get();
+    if (!creatingItem) return;
+
+    const path = creatingItem.parentPath
+      ? `${creatingItem.parentPath}/${name}`
+      : name;
+
+    const node = creatingItem.type === 'folder'
+      ? await get().createFolder(path)
+      : await get().createFile(path);
+
+    if (node) {
+      get().markRecentlyChanged(node.path, 'created');
+    } else {
+      set({ creatingItem: null });
+    }
+  },
 
   markRecentlyChanged: (path, type) => {
     const { recentlyChangedPaths } = get();

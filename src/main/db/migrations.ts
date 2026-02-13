@@ -1417,6 +1417,7 @@ interface Migration {
         "SELECT sqlite_compileoption_used('ENABLE_FTS5') as enabled"
       ).get() as { enabled: number } | undefined;
 
+      if (compileOption?.enabled !== 1) {
         console.warn('[Migrations] Skipping 040_global_search_fts (FTS5 not enabled in SQLite build)');
         return;
       }
@@ -1672,6 +1673,26 @@ interface Migration {
       // Only updates groups that still have the old default width; auto-layout will recalculate on next run.
       db.exec(`
         UPDATE groups SET width = 552 WHERE width = 400;
+      `);
+    },
+  },
+  {
+    id: 1044,
+    name: '044_chat_messages_client_message_id',
+    up: (db: BetterSqliteDatabase) => {
+      const columns = db.prepare('PRAGMA table_info(chat_messages)').all() as { name: string }[];
+      const hasClientMessageId = columns.some((col) => col.name === 'client_message_id');
+
+      if (!hasClientMessageId) {
+        db.exec(`
+          ALTER TABLE chat_messages ADD COLUMN client_message_id TEXT;
+        `);
+      }
+
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_messages_chat_session_client_message
+          ON chat_messages(chat_session_id, client_message_id)
+          WHERE client_message_id IS NOT NULL AND chat_session_id IS NOT NULL;
       `);
     },
   },
