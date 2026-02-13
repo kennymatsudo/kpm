@@ -13,6 +13,7 @@ import { createRelationTools } from './relations';
 import { createGroupTools } from './groups';
 import { createJiraTools } from './jira';
 import { createStorybookTools } from './storybook';
+import { createGitHubTools } from './github';
 
 
 // Event emitter for plan actions - allows per-message callbacks with singleton server
@@ -107,6 +108,7 @@ function emitDocumentUpdate(update: DocumentUpdatePayload): void {
     ...planChangeTools,
     ...jiraTools,
     ...storybookTools,
+    ...githubTools,
   ];
 
 
