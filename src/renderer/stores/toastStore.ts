@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getBaseName } from '../utils/path';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning' | 'file';
 
@@ -61,6 +62,7 @@ export const useToastStore = create<ToastState>((set, get) => ({
 
 /** Extract filename from a path */
 function getFileName(path: string): string {
+  return getBaseName(path, path);
 }
 
 // Convenience functions for common toast types

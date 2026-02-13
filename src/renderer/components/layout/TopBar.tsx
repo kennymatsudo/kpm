@@ -55,6 +55,7 @@ export function TopBar({
     useShallow((state) => ({
       projects: state.projects,
       currentProjectId: state.currentProjectId,
+      setProjects: state.setProjects,
     }))
   );
   const currentProject = projects.find((p) => p.id === currentProjectId) || null;

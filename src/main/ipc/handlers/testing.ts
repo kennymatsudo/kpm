@@ -1,4 +1,5 @@
 import { getDatabase } from '../../db/connection';
+import { IPC_CHANNELS } from '../channels';
 
 /**
  * Register test-only IPC handlers.
@@ -19,6 +20,7 @@ export function registerTestingHandlers(): void {
    * SAFETY: This handler is only registered when NODE_ENV=test,
    * and has an additional runtime check to prevent accidental data loss.
    */
+  ipcMain.handle(IPC_CHANNELS.testing.resetDatabase, () => {
     // Double-check we're in test mode - defense in depth
     if (process.env.NODE_ENV !== 'test') {
       console.error('[Testing] BLOCKED: Attempted to reset database outside test mode');

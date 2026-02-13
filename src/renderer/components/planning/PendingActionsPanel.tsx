@@ -334,6 +334,7 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
         </div>
 
         {/* Detail view */}
+        <div className="flex-1 overflow-y-auto px-4 py-3 bg-surface-1">
           {selectedAction ? (
             <m.div
               key={safeSelectedIndex}

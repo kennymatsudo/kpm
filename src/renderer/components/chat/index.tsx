@@ -6,6 +6,7 @@ import { PermissionPrompt } from '../permission/PermissionPrompt';
 import { useChat } from '../../hooks/useChat';
 import { useShallow } from 'zustand/react/shallow';
 import { CloseIcon } from '../icons';
+import { getBaseName } from '../../utils/path';
 
 // Re-export components for use in Layout and other consumers
 export { ChatHeader } from './ChatHeader';
@@ -48,11 +49,14 @@ export function Chat({ currentView }: ChatProps) {
       case 'plan_item':
         return resource.title;
       case 'project_file':
+        return getBaseName(resource.path, resource.path);
       case 'repo': {
         // If path is provided, show file name; otherwise show repo name from store
         if (resource.path) {
+          return getBaseName(resource.path, resource.path);
         }
         const repo = repos.find((r) => r.id === resource.id);
+        return repo ? getBaseName(repo.path, 'Repository') : 'Repository';
       }
       case 'document':
         return resource.title;

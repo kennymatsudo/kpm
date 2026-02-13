@@ -8,14 +8,28 @@ export interface UsePersistedViewStateReturn {
   setViewMode: (mode: ViewMode) => void;
 }
 
+function readStoredViewMode(projectId: string | null): ViewMode {
+  const saved = localStorage.getItem(`kpm-view-mode-${projectId}`);
+}
+
+function readStoredMainView(projectId: string | null): MainView {
+  if (!projectId) return 'workspace';
+  const saved = localStorage.getItem(`kpm-main-view-${projectId}`);
   // Migrate retired views (documents, development) to workspace.
   if (saved === 'documents' || saved === 'development') {
+    localStorage.setItem(`kpm-main-view-${projectId}`, 'workspace');
+    return 'workspace';
+  }
   return saved === 'workspace' || saved === 'planning' ? saved : 'workspace';
+}
+
 export function usePersistedViewState(projectId: string | null): UsePersistedViewStateReturn {
   // View mode state - persisted per project in localStorage
+  const [viewMode, setViewModeState] = useState<ViewMode>(() => readStoredViewMode(projectId));
 
   // Update view mode when project changes
   useEffect(() => {
+    setViewModeState(readStoredViewMode(projectId));
   }, [projectId]);
 
   // Persist view mode changes
@@ -31,9 +45,11 @@ export function usePersistedViewState(projectId: string | null): UsePersistedVie
 
   // Main view state (planning vs development vs workspace) - persisted per project
   // Default to 'workspace' for chat-first experience
+  const [mainView, setMainViewState] = useState<MainView>(() => readStoredMainView(projectId));
 
   // Update main view when project changes
   useEffect(() => {
+    setMainViewState(readStoredMainView(projectId));
   }, [projectId]);
 
   // Persist main view changes

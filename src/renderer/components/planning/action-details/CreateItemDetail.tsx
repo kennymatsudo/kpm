@@ -15,6 +15,7 @@ export function CreateItemDetail({ action, planItems, placeholderMap }: CreateIt
   const parentTitle = getParentTitle(action.parent_id, planItems, placeholderMap);
 
   return (
+    <div className="space-y-3">
       {/* Header badge */}
       <div className="flex items-center gap-2">
           New Item
@@ -27,11 +28,14 @@ export function CreateItemDetail({ action, planItems, placeholderMap }: CreateIt
 
       {/* Title */}
       <div>
+        <div className="px-2.5 py-2 rounded-lg bg-success/5 border border-success/20">
           <span className="text-sm text-text-primary font-medium">{action.title}</span>
         </div>
       </div>
 
       {/* Description */}
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="px-2.5 py-2 rounded-lg bg-surface-1 border border-border-subtle max-h-[40vh] overflow-y-auto">
           {action.description ? (
           ) : (
             <span className="text-xs text-text-tertiary italic">No description</span>
@@ -41,6 +45,7 @@ export function CreateItemDetail({ action, planItems, placeholderMap }: CreateIt
 
       {/* Parent */}
       <div>
+        <div className="px-2.5 py-2 rounded-lg bg-surface-1 border border-border-subtle">
           {parentTitle ? (
             <span className="text-xs text-text-secondary">{parentTitle}</span>
           ) : (

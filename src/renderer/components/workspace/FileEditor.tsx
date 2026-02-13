@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useState, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { FocusedResource } from '../../../shared/types';
+import { getBaseName } from '../../utils/path';
 
 interface FileEditorProps {
   source: string;
@@ -68,6 +69,7 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
   }
 
   const isMarkdown = editingFile.path.toLowerCase().endsWith('.md');
+  const filename = getBaseName(editingFile.path, 'Untitled');
 
   // Handle content change
   const handleContentChange = useCallback((newContent: string) => {

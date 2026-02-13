@@ -17,6 +17,7 @@ import { emit } from '../../stores/storeEvents';
 import { PendingActionsPanel } from '../planning/PendingActionsPanel';
 import { PendingDocumentPanel } from '../planning/PendingDocumentPanel';
 import { Z_INDEX } from '../../constants/zIndex';
+import { getParentPath } from '../../utils/path';
 
 /** Get a display label for approval item type */
 function getItemTypeLabel(type: ApprovalItem['type']): string {
@@ -236,6 +237,7 @@ export function ApprovalOverlays() {
                        flex flex-col overflow-hidden"
           >
             {/* Panel header */}
+            <div className="relative flex items-center justify-between px-4 py-2.5
                             bg-surface-2
                             border-b border-border-subtle">
               {/* Top accent line */}

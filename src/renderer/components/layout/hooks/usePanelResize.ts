@@ -11,6 +11,15 @@ const CHAT_DEFAULT = 384; // 24rem = 384px
 const STORAGE_KEY_SIDEBAR = 'kpm-sidebar-width';
 const STORAGE_KEY_CHAT = 'kpm-chat-width';
 
+function readStoredWidth(key: string, min: number, max: number, defaultWidth: number): number {
+  const raw = localStorage.getItem(key);
+  if (!raw) return defaultWidth;
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return defaultWidth;
+
+}
+
 export interface UsePanelResizeReturn {
   sidebarWidth: number;
   chatWidth: number;
@@ -20,6 +29,9 @@ export interface UsePanelResizeReturn {
 
 export function usePanelResize(): UsePanelResizeReturn {
   // Panel widths with localStorage persistence
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    readStoredWidth(STORAGE_KEY_SIDEBAR, SIDEBAR_MIN, SIDEBAR_MAX, SIDEBAR_DEFAULT)
+  );
 
   // Resize state
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);

@@ -5,6 +5,7 @@
  */
 
 import { ipcMain, type BrowserWindow } from 'electron';
+import { IPC_CHANNELS } from '../channels';
 
 /**
  * Register all custom prompt IPC handlers
@@ -13,6 +14,7 @@ import { ipcMain, type BrowserWindow } from 'electron';
    * List all custom prompts
    */
   ipcMain.handle(
+    IPC_CHANNELS.customPrompts.list,
     createIpcHandler(
       CustomPromptSchemas.list,
       async () => {
@@ -25,6 +27,7 @@ import { ipcMain, type BrowserWindow } from 'electron';
    * Get a single custom prompt by ID
    */
   ipcMain.handle(
+    IPC_CHANNELS.customPrompts.get,
     createIpcHandler(
       CustomPromptSchemas.get,
       async ({ promptId }) => {
@@ -37,6 +40,7 @@ import { ipcMain, type BrowserWindow } from 'electron';
    * Create a new custom prompt
    */
   ipcMain.handle(
+    IPC_CHANNELS.customPrompts.create,
     createIpcHandler(
       CustomPromptSchemas.create,
           name,
@@ -50,6 +54,7 @@ import { ipcMain, type BrowserWindow } from 'electron';
    * Update an existing custom prompt
    */
   ipcMain.handle(
+    IPC_CHANNELS.customPrompts.update,
     createIpcHandler(
       CustomPromptSchemas.update,
       },
@@ -61,6 +66,7 @@ import { ipcMain, type BrowserWindow } from 'electron';
    * Delete a custom prompt (not allowed for built-in prompts)
    */
   ipcMain.handle(
+    IPC_CHANNELS.customPrompts.delete,
     createIpcHandler(
       CustomPromptSchemas.delete,
       async ({ promptId }) => {
@@ -73,6 +79,7 @@ import { ipcMain, type BrowserWindow } from 'electron';
    * Execute a custom prompt
    */
   ipcMain.handle(
+    IPC_CHANNELS.customPrompts.execute,
     createIpcHandler(
       CustomPromptSchemas.execute,
       async ({ promptId, projectId }) => {

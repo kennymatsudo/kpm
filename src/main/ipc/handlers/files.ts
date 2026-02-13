@@ -1,4 +1,5 @@
 import { ipcMain, dialog, type BrowserWindow } from 'electron';
+import { IPC_CHANNELS } from '../channels';
 
 
 

@@ -13,6 +13,7 @@ import { LoadingSpinner } from '../ui/LoadingButton';
 import { MotionButton } from '../ui/MotionButton';
 import { DiffViewer, computeDiff, getDiffStatsFromDiff } from '../ui/DiffViewer';
 import { Z_INDEX } from '../../constants/zIndex';
+import { getBaseName } from '../../utils/path';
 
 interface PendingDocumentPanelProps {
   filePath: string;
@@ -44,6 +45,7 @@ export function PendingDocumentPanel({
     setEditedContent(content);
     setIsExpanded(true);
   }, [content]);
+  const fileName = getBaseName(filePath, 'Document');
 
   const summaryDiffLines = useMemo(
     () => computeDiff(oldContent, content),

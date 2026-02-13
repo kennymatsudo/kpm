@@ -9,6 +9,7 @@
  * 5. promptUser() resolves with PermissionResult
  */
 
+import { IPC_CHANNELS } from '../channels';
 /**
  * Register permission IPC handlers.
  */

@@ -7,11 +7,13 @@
 
 import { ipcMain } from 'electron';
 import { createIpcHandler, createSimpleIpcHandler, TaskPromptTemplateSchemas } from '../validation';
+import { IPC_CHANNELS } from '../channels';
 
   /**
    * List all templates (optionally filtered by project).
    */
   ipcMain.handle(
+    IPC_CHANNELS.taskPromptTemplates.list,
     createIpcHandler(
       TaskPromptTemplateSchemas.list,
       ({ projectId }) => {
@@ -24,6 +26,7 @@ import { createIpcHandler, createSimpleIpcHandler, TaskPromptTemplateSchemas } f
    * Get a specific template by ID.
    */
   ipcMain.handle(
+    IPC_CHANNELS.taskPromptTemplates.get,
     createIpcHandler(
       TaskPromptTemplateSchemas.get,
       ({ templateId }) => {
@@ -37,6 +40,7 @@ import { createIpcHandler, createSimpleIpcHandler, TaskPromptTemplateSchemas } f
    * Resolution order: project default -> project "default" -> global default -> global "default" -> fallback
    */
   ipcMain.handle(
+    IPC_CHANNELS.taskPromptTemplates.getEffective,
     createIpcHandler(
       TaskPromptTemplateSchemas.getEffective,
       ({ projectId }) => {
@@ -50,6 +54,7 @@ import { createIpcHandler, createSimpleIpcHandler, TaskPromptTemplateSchemas } f
    * Used for "Reset to Default" functionality.
    */
   ipcMain.handle(
+    IPC_CHANNELS.taskPromptTemplates.getBuiltinDefault,
     createIpcHandler(
       TaskPromptTemplateSchemas.getBuiltinDefault,
       () => {
@@ -62,6 +67,7 @@ import { createIpcHandler, createSimpleIpcHandler, TaskPromptTemplateSchemas } f
    * Create a new template.
    */
   ipcMain.handle(
+    IPC_CHANNELS.taskPromptTemplates.create,
     createIpcHandler(
       TaskPromptTemplateSchemas.create,
       ({ projectId, name, promptContent }) => {
@@ -74,6 +80,7 @@ import { createIpcHandler, createSimpleIpcHandler, TaskPromptTemplateSchemas } f
    * Update an existing template.
    */
   ipcMain.handle(
+    IPC_CHANNELS.taskPromptTemplates.update,
     createIpcHandler(
       TaskPromptTemplateSchemas.update,
       ({ templateId, name, promptContent }) => {
@@ -86,6 +93,7 @@ import { createIpcHandler, createSimpleIpcHandler, TaskPromptTemplateSchemas } f
    * Delete a template.
    */
   ipcMain.handle(
+    IPC_CHANNELS.taskPromptTemplates.delete,
     createIpcHandler(
       TaskPromptTemplateSchemas.delete,
       ({ templateId }) => {
@@ -98,6 +106,7 @@ import { createIpcHandler, createSimpleIpcHandler, TaskPromptTemplateSchemas } f
    * Set a template as the default for its scope.
    */
   ipcMain.handle(
+    IPC_CHANNELS.taskPromptTemplates.setDefault,
     createIpcHandler(
       TaskPromptTemplateSchemas.setDefault,
       ({ templateId }) => {
@@ -110,6 +119,7 @@ import { createIpcHandler, createSimpleIpcHandler, TaskPromptTemplateSchemas } f
    * Ensure a default global template exists (called on app start).
    */
   ipcMain.handle(
+    IPC_CHANNELS.taskPromptTemplates.ensureDefault,
     createSimpleIpcHandler(() => {
     }, 'Failed to ensure default template')
   );

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { FileNode } from '../../shared/types';
+import { getBaseName, getParentPath } from '../utils/path';
 
 /** Information about a recently changed file */
 interface RecentlyChangedInfo {
@@ -115,6 +116,7 @@ function removeNodeByPath(nodes: FileNode[], path: string): FileNode[] {
  * Add a node to the tree at the correct location
  */
 function addNodeToTree(nodes: FileNode[], newNode: FileNode): FileNode[] {
+  const parentPath = getParentPath(newNode.path);
 
   if (parentPath === '') {
     // Add to root level
@@ -440,6 +442,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     if (!projectId) return null;
 
     // Calculate new path
+    const fileName = getBaseName(sourcePath, sourcePath);
     const newPath = targetFolderPath
       ? `${targetFolderPath}/${fileName}`
       : fileName;

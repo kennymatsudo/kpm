@@ -3,6 +3,7 @@ import type { FileExplorerService } from '../../services/files/FileExplorerServi
 import type { ProjectWatcherService } from '../../services/files/ProjectWatcherService';
 import { unwrapOrThrow } from '../../services/result';
 import { toIpcResponse } from '../response';
+import { IPC_CHANNELS } from '../channels';
 
 /**
  * File change event types for real-time UI updates
@@ -35,10 +36,12 @@ export function registerFileExplorerHandlers(
   getMainWindow: () => BrowserWindow | null
 ): void {
   // List directory contents
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.listDirectory, async (_event, params: unknown) => {
     const { projectId, path, recursive, depth } = FileExplorerSchemas.listDirectory.parse(params);
   });
 
   // Create a new folder
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.createFolder, async (_event, params: unknown) => {
     const { projectId, path } = FileExplorerSchemas.createFolder.parse(params);
     emitFileChange(getMainWindow(), {
       projectId,
@@ -50,6 +53,7 @@ export function registerFileExplorerHandlers(
   });
 
   // Create a new file
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.createFile, async (_event, params: unknown) => {
     const { projectId, path, content } = FileExplorerSchemas.createFile.parse(params);
     emitFileChange(getMainWindow(), {
       projectId,
@@ -61,6 +65,7 @@ export function registerFileExplorerHandlers(
   });
 
   // Create a new binary file (images, PDFs, etc.)
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.createBinaryFile, async (_event, params: unknown) => {
     const { projectId, path, data } = FileExplorerSchemas.createBinaryFile.parse(params);
     // Convert Uint8Array to Buffer for Node.js fs operations
     const buffer = Buffer.from(data);
@@ -75,6 +80,7 @@ export function registerFileExplorerHandlers(
   });
 
   // Copy an external file into the project (avoids renderer reads)
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.copyExternalFile, async (_event, params: unknown) => {
     const { projectId, sourcePath, path } = FileExplorerSchemas.copyExternalFile.parse(params);
     const result = unwrapOrThrow(await fileExplorerService.copyExternalFile(projectId, sourcePath, path));
     emitFileChange(getMainWindow(), {
@@ -87,10 +93,12 @@ export function registerFileExplorerHandlers(
   });
 
   // Create a symlink to external path
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.createSymlink, async (_event, params: unknown) => {
     const { projectId, targetPath, linkPath } = FileExplorerSchemas.createSymlink.parse(params);
   });
 
   // Delete a file or folder
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.delete, async (_event, params: unknown) => {
     const { projectId, path } = FileExplorerSchemas.deleteEntry.parse(params);
     if (result.ok) {
       emitFileChange(getMainWindow(), {
@@ -104,6 +112,7 @@ export function registerFileExplorerHandlers(
   });
 
   // Rename/move a file or folder
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.rename, async (_event, params: unknown) => {
     const { projectId, oldPath, newPath } = FileExplorerSchemas.rename.parse(params);
     emitFileChange(getMainWindow(), {
       projectId,
@@ -116,18 +125,22 @@ export function registerFileExplorerHandlers(
   });
 
   // Get info about a single file/folder
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.getInfo, async (_event, params: unknown) => {
     const { projectId, path } = FileExplorerSchemas.getInfo.parse(params);
   });
 
   // Read file content
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.readFile, async (_event, params: unknown) => {
     const { projectId, path } = FileExplorerSchemas.readFile.parse(params);
   });
 
   // Read binary file content (images, etc.)
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.readBinaryFile, async (_event, params: unknown) => {
     const { projectId, path } = FileExplorerSchemas.readBinaryFile.parse(params);
   });
 
   // Write file content
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.writeFile, async (_event, params: unknown) => {
     const { projectId, path, content } = FileExplorerSchemas.writeFile.parse(params);
     if (result.ok) {
       emitFileChange(getMainWindow(), {
@@ -141,10 +154,12 @@ export function registerFileExplorerHandlers(
   });
 
   // Get symlink information
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.getSymlinkInfo, async (_event, params: unknown) => {
     const { projectId, path } = FileExplorerSchemas.getSymlinkInfo.parse(params);
   });
 
   // Show folder selection dialog for linking external folders
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.selectFolderDialog, async (_event, params: unknown) => {
     const { title } = FileExplorerSchemas.selectFolderDialog.parse(params);
     const mainWindow = getMainWindow();
     if (!mainWindow) return null;
@@ -162,11 +177,13 @@ export function registerFileExplorerHandlers(
   });
 
   // Watch project folder for external file changes
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.watchProject, async (_event, params: unknown) => {
     const { projectId } = FileExplorerSchemas.watchProject.parse(params);
     return projectWatcherService.watchProject(projectId);
   });
 
   // Stop watching project folder
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.unwatchProject, async (_event, params: unknown) => {
     FileExplorerSchemas.unwatchProject.parse(params);
     return { success: true };
   });
