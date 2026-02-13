@@ -1,4 +1,24 @@
 // Main stores
+export type {
+  ProjectDomainState,
+  PlanDomainState,
+  ResourceDomainState,
+  UiDomainState,
+} from './project/types';
+export {
+  useProjectDomainStore,
+  usePlanDomainStore,
+  useResourceDomainStore,
+  useProjectUiDomainStore,
+} from './projectDomains';
+export {
+  selectProjectSummary,
+  selectNormalizedPlanItems,
+  selectFilteredPlannedItems,
+  selectPlanSearchResultCount,
+  selectFocusedPlanItemId,
+  selectDescendantIds,
+} from './project/selectors';
 export type { PlanAction } from '../../shared/types';
 
 export { useTrackerStore, useHasAssociations } from './trackerStore';

@@ -95,6 +95,18 @@ describe('permissions', () => {
         expect(result.behavior).toBe('allow');
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
+
+      it('does not auto-allow Bash even when extracted path is in project', async () => {
+        vi.mocked(clientManager.hasPermissionCached).mockReturnValue(false);
+
+        await handler(
+          'Bash',
+          { command: 'cat ./README.md; cat ~/.ssh/id_rsa' },
+          createTestOptions()
+        );
+
+        expect(mockPromptUser).toHaveBeenCalled();
+      });
     });
 
     describe('permission cache', () => {

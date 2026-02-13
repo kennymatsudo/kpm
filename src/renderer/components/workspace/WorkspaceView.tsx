@@ -2,6 +2,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Chat, ChatHeader } from '../chat';
 import { FileEditor } from './FileEditor';
 import { getParentPath } from '../../utils/path';
+import { subscribe as subscribeToStoreEvent } from '../../stores/storeEvents';
 
 interface WorkspaceViewProps {
   projectId: string;
@@ -52,19 +53,54 @@ interface WorkspaceViewProps {
     return () => setCurrentProjectId(null);
   }, [projectId, setCurrentProjectId]);
 
+  // Subscribe to bridged file changes for real-time editor updates
   useEffect(() => {
+    const unsubscribe = subscribeToStoreEvent('file-explorer-changed', (event) => {
+      const data = event.payload;
+      if (data.projectId !== projectId) return;
+      if (!editingFile?.source || editingFile.source !== 'project') return;
+
+      // Handle file being updated externally
+      if (data.type === 'updated' && data.path === editingFile.path) {
+        // Only auto-refresh if there are no unsaved changes
+        if (!hasUnsavedChanges) {
+            openFile(editingFile.source, editingFile.path, content, editingFile.isReadOnly);
+          }).catch(console.error);
         }
-
-
+        // If there are unsaved changes, let the user keep editing
+        // They will see the saved status indicator
       }
+
+      // Handle file being deleted - close editor
+      if (data.type === 'deleted' && data.path === editingFile.path) {
+        closeEditor();
+      }
+
+      // Handle file being renamed - update the editing path
+      if (data.type === 'renamed' && data.path === editingFile.path && data.newPath) {
+        // Re-open with the new path
+          openFile(editingFile.source, data.newPath!, content, editingFile.isReadOnly);
+        }).catch(console.error);
+      }
+    });
     return unsubscribe;
   }, [projectId, editingFile, hasUnsavedChanges, openFile, closeEditor]);
 
+  // Subscribe to bridged Claude file updates for file tree highlighting
   useEffect(() => {
+    const unsubscribe = subscribeToStoreEvent('chat-file-updated', (event) => {
+      const data = event.payload;
+      if (data.projectId !== projectId) return;
 
+      // Determine if this is a create or modify
+      const changeType = data.oldContent === null ? 'created' : 'modified';
 
+      // Highlight the file in the tree
+      markRecentlyChanged(data.filePath, changeType);
 
+    });
     return unsubscribe;
+  }, [projectId, markRecentlyChanged, expandToPath, refreshDirectory]);
 
   // Track if we're in editing mode for layout transitions
   const isEditing = editingFile !== null;

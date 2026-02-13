@@ -1,4 +1,13 @@
 import { useShallow } from 'zustand/react/shallow';
+import {
+  useResourceDomainStore,
+  useProjectUiDomainStore,
+  useFileTreeStore,
+  isEditableFile,
+  useConfluenceStore,
+  useWorkspaceStore,
+} from '../../stores';
+import { subscribe as subscribeToStoreEvent } from '../../stores/storeEvents';
 
 const MAX_EXTERNAL_FILE_BYTES = 50 * 1024 * 1024; // 50MB
 const MAX_TEXT_FILE_BYTES = 10 * 1024 * 1024; // 10MB (matches createFile validation)
@@ -32,6 +41,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     }))
   );
 
+  const repos = useResourceDomainStore((state) => state.repos);
     useShallow((state) => ({
       focusedResources: state.focusedResources,
       addFocusedResource: state.addFocusedResource,
@@ -84,9 +94,24 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     };
   }, [projectId]);
 
+  // Subscribe to bridged file system changes to refresh tree and viewer in real-time
   useEffect(() => {
+    const unsubscribe = subscribeToStoreEvent('file-explorer-changed', (event) => {
+      const data = event.payload;
+      if (data.projectId !== projectId) return;
+
+      switch (data.type) {
+        case 'created': {
+          const parentPath = getParentPath(data.path);
+          void loadProjectDirectory(projectId, parentPath || undefined);
+          break;
+        }
+          break;
+        case 'renamed': {
+          break;
         }
       }
+    });
     return unsubscribe;
 
   // ==========================================================================
@@ -122,6 +147,9 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
   );
 
   const handleRevealRepoInFinder = useCallback(
+    },
+  );
+
   // ==========================================================================
   // File tree handlers
   // ==========================================================================

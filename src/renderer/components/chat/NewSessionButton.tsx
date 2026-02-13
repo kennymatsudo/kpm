@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { useProjectDomainStore, useChatStore } from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
 
 /**
@@ -10,6 +11,7 @@ import { useShallow } from 'zustand/react/shallow';
  * are mounted simultaneously.
  */
 export function NewSessionButton() {
+  const { currentProjectId } = useProjectDomainStore(useShallow((state) => ({
     currentProjectId: state.currentProjectId,
   })));
 

@@ -34,22 +34,28 @@ describe('FileExplorerService', () => {
       }
     });
 
+    it('allows valid relative paths', async () => {
       fs.mkdirSync(path.join(tempDir, 'valid-folder'));
+      const result = await service.listDirectory('test-project', 'valid-folder');
       expect(result.ok).toBe(true);
     });
   });
 
   describe('listDirectory', () => {
+    it('returns failure for unknown project', async () => {
+      const result = await service.listDirectory('unknown-project');
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toBe('Project not found');
       }
     });
 
+    it('lists files and folders in directory', async () => {
       fs.mkdirSync(path.join(tempDir, 'folder1'));
       fs.writeFileSync(path.join(tempDir, 'file1.txt'), 'content1');
       fs.writeFileSync(path.join(tempDir, 'file2.txt'), 'content2');
 
+      const result = await service.listDirectory('test-project');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data).toHaveLength(3);
@@ -59,11 +65,13 @@ describe('FileExplorerService', () => {
       }
     });
 
+    it('sorts directories first, then alphabetically', async () => {
       fs.mkdirSync(path.join(tempDir, 'zebra'));
       fs.mkdirSync(path.join(tempDir, 'alpha'));
       fs.writeFileSync(path.join(tempDir, 'aardvark.txt'), '');
       fs.writeFileSync(path.join(tempDir, 'zoo.txt'), '');
 
+      const result = await service.listDirectory('test-project');
       expect(result.ok).toBe(true);
       if (result.ok) {
         const names = result.data.map((n) => n.name);
@@ -77,6 +85,7 @@ describe('FileExplorerService', () => {
       fs.writeFileSync(path.join(tempDir, '.DS_Store'), '');
       fs.writeFileSync(path.join(tempDir, 'visible.txt'), 'content');
 
+      const result = await service.listDirectory('test-project');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data).toHaveLength(1);
@@ -84,9 +93,11 @@ describe('FileExplorerService', () => {
       }
     });
 
+    it('returns correct file metadata', async () => {
       const content = 'test content';
       fs.writeFileSync(path.join(tempDir, 'test.txt'), content);
 
+      const result = await service.listDirectory('test-project');
       expect(result.ok).toBe(true);
       if (result.ok) {
         const file = result.data[0];
@@ -99,16 +110,20 @@ describe('FileExplorerService', () => {
       }
     });
 
+    it('returns empty array for non-existent directory', async () => {
+      const result = await service.listDirectory('test-project', 'nonexistent');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data).toEqual([]);
       }
     });
 
+    it('supports recursive listing with depth limit', async () => {
       fs.mkdirSync(path.join(tempDir, 'level1', 'level2', 'level3'), { recursive: true });
       fs.writeFileSync(path.join(tempDir, 'level1', 'file1.txt'), '');
       fs.writeFileSync(path.join(tempDir, 'level1', 'level2', 'file2.txt'), '');
 
+      const result = await service.listDirectory('test-project', '', { recursive: true, depth: 2 });
       expect(result.ok).toBe(true);
       if (result.ok) {
         const level1 = result.data.find((n) => n.name === 'level1');
@@ -123,6 +138,8 @@ describe('FileExplorerService', () => {
   });
 
   describe('createFolder', () => {
+    it('creates a new folder', async () => {
+      const result = await service.createFolder('test-project', 'new-folder');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data.name).toBe('new-folder');
@@ -131,6 +148,8 @@ describe('FileExplorerService', () => {
       }
     });
 
+    it('creates nested folders recursively', async () => {
+      const result = await service.createFolder('test-project', 'parent/child/grandchild');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data.name).toBe('grandchild');
@@ -138,7 +157,9 @@ describe('FileExplorerService', () => {
       }
     });
 
+    it('rejects if path already exists', async () => {
       fs.mkdirSync(path.join(tempDir, 'existing'));
+      const result = await service.createFolder('test-project', 'existing');
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toBe('Path already exists');
@@ -147,6 +168,8 @@ describe('FileExplorerService', () => {
   });
 
   describe('createFile', () => {
+    it('creates a new file with content', async () => {
+      const result = await service.createFile('test-project', 'test.txt', 'hello world');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data.name).toBe('test.txt');
@@ -155,17 +178,23 @@ describe('FileExplorerService', () => {
       }
     });
 
+    it('creates parent directories if needed', async () => {
+      const result = await service.createFile('test-project', 'nested/path/file.txt', 'content');
       expect(result.ok).toBe(true);
       expect(fs.existsSync(path.join(tempDir, 'nested/path/file.txt'))).toBe(true);
     });
 
+    it('creates empty file when no content provided', async () => {
+      const result = await service.createFile('test-project', 'empty.txt');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data.size).toBe(0);
       }
     });
 
+    it('rejects if file already exists', async () => {
       fs.writeFileSync(path.join(tempDir, 'existing.txt'), 'content');
+      const result = await service.createFile('test-project', 'existing.txt');
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toBe('Path already exists');
@@ -174,17 +203,23 @@ describe('FileExplorerService', () => {
   });
 
   describe('deleteEntry', () => {
+    it('deletes a file', async () => {
       fs.writeFileSync(path.join(tempDir, 'to-delete.txt'), 'content');
+      const result = await service.deleteEntry('test-project', 'to-delete.txt');
       expect(result.ok).toBe(true);
       expect(fs.existsSync(path.join(tempDir, 'to-delete.txt'))).toBe(false);
     });
 
+    it('deletes a folder recursively', async () => {
       fs.mkdirSync(path.join(tempDir, 'folder', 'subfolder'), { recursive: true });
       fs.writeFileSync(path.join(tempDir, 'folder', 'file.txt'), 'content');
+      const result = await service.deleteEntry('test-project', 'folder');
       expect(result.ok).toBe(true);
       expect(fs.existsSync(path.join(tempDir, 'folder'))).toBe(false);
     });
 
+    it('prevents deleting project root', async () => {
+      const result = await service.deleteEntry('test-project', '');
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toBe('Cannot delete project root');
@@ -202,6 +237,8 @@ describe('FileExplorerService', () => {
       }
     });
 
+    it('returns failure for non-existent path', async () => {
+      const result = await service.deleteEntry('test-project', 'nonexistent.txt');
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toBe('Path does not exist');
@@ -210,7 +247,9 @@ describe('FileExplorerService', () => {
   });
 
   describe('rename', () => {
+    it('renames a file', async () => {
       fs.writeFileSync(path.join(tempDir, 'old.txt'), 'content');
+      const result = await service.rename('test-project', 'old.txt', 'new.txt');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data.name).toBe('new.txt');
@@ -219,25 +258,33 @@ describe('FileExplorerService', () => {
       }
     });
 
+    it('moves a file to a different directory', async () => {
       fs.writeFileSync(path.join(tempDir, 'file.txt'), 'content');
       fs.mkdirSync(path.join(tempDir, 'target'));
+      const result = await service.rename('test-project', 'file.txt', 'target/file.txt');
       expect(result.ok).toBe(true);
       expect(fs.existsSync(path.join(tempDir, 'target', 'file.txt'))).toBe(true);
     });
 
+    it('creates parent directories for destination if needed', async () => {
       fs.writeFileSync(path.join(tempDir, 'file.txt'), 'content');
+      const result = await service.rename('test-project', 'file.txt', 'new/nested/file.txt');
       expect(result.ok).toBe(true);
       expect(fs.existsSync(path.join(tempDir, 'new', 'nested', 'file.txt'))).toBe(true);
     });
 
+    it('returns failure if source does not exist', async () => {
+      const result = await service.rename('test-project', 'nonexistent.txt', 'new.txt');
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toBe('Source path does not exist');
       }
     });
 
+    it('returns failure if destination already exists', async () => {
       fs.writeFileSync(path.join(tempDir, 'source.txt'), 'content');
       fs.writeFileSync(path.join(tempDir, 'destination.txt'), 'existing');
+      const result = await service.rename('test-project', 'source.txt', 'destination.txt');
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toBe('Destination path already exists');
@@ -246,44 +293,59 @@ describe('FileExplorerService', () => {
   });
 
   describe('readFile', () => {
+    it('reads file content', async () => {
       fs.writeFileSync(path.join(tempDir, 'test.txt'), 'file content');
+      const result = await service.readFileAsync('test-project', 'test.txt');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data).toBe('file content');
       }
     });
 
+    it('returns failure for non-existent file', async () => {
+      const result = await service.readFileAsync('test-project', 'nonexistent.txt');
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toBe('File does not exist');
       }
     });
 
+    it('returns failure when trying to read a directory', async () => {
       fs.mkdirSync(path.join(tempDir, 'folder'));
+      const result = await service.readFileAsync('test-project', 'folder');
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toBe('Cannot read directory as file');
       }
     });
+
   });
 
   describe('writeFile', () => {
+    it('writes content to existing file', async () => {
       fs.writeFileSync(path.join(tempDir, 'test.txt'), 'old content');
+      const result = await service.writeFile('test-project', 'test.txt', 'new content');
       expect(result.ok).toBe(true);
       expect(fs.readFileSync(path.join(tempDir, 'test.txt'), 'utf-8')).toBe('new content');
     });
 
+    it('creates file if it does not exist', async () => {
+      const result = await service.writeFile('test-project', 'new.txt', 'content');
       expect(result.ok).toBe(true);
       expect(fs.readFileSync(path.join(tempDir, 'new.txt'), 'utf-8')).toBe('content');
     });
 
+    it('creates parent directories if needed', async () => {
+      const result = await service.writeFile('test-project', 'nested/path/file.txt', 'content');
       expect(result.ok).toBe(true);
       expect(fs.existsSync(path.join(tempDir, 'nested', 'path', 'file.txt'))).toBe(true);
     });
   });
 
   describe('getInfo', () => {
+    it('returns file information', async () => {
       fs.writeFileSync(path.join(tempDir, 'test.txt'), 'content');
+      const result = await service.getInfo('test-project', 'test.txt');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data.name).toBe('test.txt');
@@ -292,7 +354,9 @@ describe('FileExplorerService', () => {
       }
     });
 
+    it('returns directory information', async () => {
       fs.mkdirSync(path.join(tempDir, 'folder'));
+      const result = await service.getInfo('test-project', 'folder');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data.name).toBe('folder');
@@ -300,9 +364,30 @@ describe('FileExplorerService', () => {
       }
     });
 
+    it('returns failure for non-existent path', async () => {
+      const result = await service.getInfo('test-project', 'nonexistent');
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toBe('Path does not exist');
+      }
+    });
+  });
+
+  describe('getSymlinkInfo', () => {
+    it('returns failure for non-existent path', async () => {
+      const result = await service.getSymlinkInfo('test-project', 'missing-link');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe('Path does not exist');
+      }
+    });
+
+    it('returns non-symlink metadata for regular files', async () => {
+      fs.writeFileSync(path.join(tempDir, 'regular.txt'), 'content');
+      const result = await service.getSymlinkInfo('test-project', 'regular.txt');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data).toEqual({ isSymlink: false });
       }
     });
   });

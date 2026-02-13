@@ -88,7 +88,42 @@ export const existingFilePath = absolutePath.refine(
   'Source file does not exist'
 );
 
+const WINDOWS_DRIVE_PREFIX = /^[a-zA-Z]:/;
+
+function isSafeRelativePath(input: string): boolean {
+  if (input.includes('\0')) {
+    return false;
+  }
+
+  // Empty path is allowed for APIs that treat it as "project root".
+  if (input === '') {
+    return true;
+  }
+
+  const normalizedInput = input.replace(/\\/g, '/');
+
+  // Reject absolute paths (POSIX and Windows forms).
+  if (normalizedInput.startsWith('/') || WINDOWS_DRIVE_PREFIX.test(normalizedInput)) {
+    return false;
+  }
+
+  // Enforce canonical relative paths (rejects ../, ./, repeated slashes, trailing slash).
+  const normalized = path.posix.normalize(normalizedInput);
+  if (normalized === '.' || normalized === '..' || normalized.startsWith('../')) {
+    return false;
+  }
+
+  return normalized === normalizedInput;
+}
+
 /** Relative path for file explorer */
+export const relativePath = z
+  .string()
+  .max(1000)
+  .refine(
+    isSafeRelativePath,
+    'Path must be a normalized relative path within the project'
+  );
 
 // =============================================================================
 // Tracker Types

@@ -1,3 +1,4 @@
+import { useChatStore, useProjectDomainStore } from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
 import { CloseIcon } from '../icons';
 
@@ -6,6 +7,7 @@ import { CloseIcon } from '../icons';
  * Allows switching between sessions and closing them.
  */
 export function SessionList() {
+  const { currentProjectId } = useProjectDomainStore(useShallow((state) => ({
     currentProjectId: state.currentProjectId,
   })));
 

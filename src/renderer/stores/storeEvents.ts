@@ -55,6 +55,34 @@ export interface RevealBoardColumnEvent {
   payload: { status: StatusCategory };
 }
 
+export interface FileExplorerChangedEvent {
+  type: 'file-explorer-changed';
+  payload: {
+    projectId: string;
+    type: 'created' | 'updated' | 'deleted' | 'renamed';
+    path: string;
+    newPath?: string;
+    isDirectory: boolean;
+  };
+}
+
+export interface ChatFileUpdatedEvent {
+  type: 'chat-file-updated';
+  payload: {
+    projectId: string;
+    chatSessionId?: string;
+    filePath: string;
+    content: string;
+    oldContent?: string | null;
+  };
+}
+
+export type StoreEvent =
+  | StatusChangedEvent
+  | PlanItemCreatedEvent
+  | NavigateToViewEvent
+  | RevealBoardColumnEvent
+  | FileExplorerChangedEvent
 
 // =============================================================================
 // Event Emitter

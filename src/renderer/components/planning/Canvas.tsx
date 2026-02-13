@@ -11,6 +11,8 @@ interface CanvasProps {
   projectId: string;
   /** Items to display (may be filtered by search) */
   items: PlanItem[];
+  /** Optional precomputed hierarchy tree for the provided items */
+  hierarchyTree?: TreeNode[];
   selectedItemIds: Set<string>;
   focusedItemId: string | null;
   /** Search query for filtering/highlighting cards */
@@ -29,6 +31,7 @@ interface CanvasProps {
 
   projectId,
   items,
+  hierarchyTree,
   selectedItemIds,
   focusedItemId,
   searchQuery = '',
@@ -48,6 +51,15 @@ interface CanvasProps {
     updateGroupPosition,
     saveGroupUpdates,
     deleteGroup,
+  } = useGroupStore(
+    useShallow((state) => ({
+      groups: state.groups,
+      createGroup: state.createGroup,
+      updateGroupPosition: state.updateGroupPosition,
+      saveGroupUpdates: state.saveGroupUpdates,
+      deleteGroup: state.deleteGroup,
+    }))
+  );
 
   const { queuedItemIds, recentlyImportedIds } = useExportStore(
     useShallow((state) => ({

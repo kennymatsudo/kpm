@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { emit } from '../stores/storeEvents';
 
 /**
  * Bridge hook that registers ALL chat IPC listeners at the Layout level.

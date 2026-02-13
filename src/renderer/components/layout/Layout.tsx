@@ -10,9 +10,18 @@ import { GlobalSearch } from '../global-search';
 import { ApprovalOverlays } from './ApprovalOverlays';
 import { ToastContainer } from '../ui';
 import { ToolLogPanel } from '../tool-log';
+import {
+  useArtifactsStore,
+  useProjectDomainStore,
+  usePlanDomainStore,
+  useProjectUiDomainStore,
+  useToolLogStore,
+  useSearchStore,
+} from '../../stores';
 import { useToolLog } from '../../hooks/useToolLog';
 import { useChatIpcBridge } from '../../hooks/useChatIpcBridge';
 import { usePermissionIpcBridge } from '../../hooks/usePermissionIpcBridge';
+import { useFileExplorerIpcBridge } from '../../hooks/useFileExplorerIpcBridge';
 import { logPerfEvent, startPerfSpan } from '../../utils/perfLogger';
 
 interface LayoutProps {
@@ -37,6 +46,9 @@ interface LayoutProps {
   const [createItemHandler, setCreateItemHandler] = useState<(() => void) | null>(null);
 
   // Command palette state from artifacts store
+
+  const planItems = usePlanDomainStore((state) => state.planItems);
+  const isSwitchingProject = useProjectUiDomainStore((state) => state.isSwitchingProject);
 
   // Extracted hooks
   const { sidebarWidth, chatWidth, handleSidebarResizeStart, handleChatResizeStart } = usePanelResize();
@@ -68,6 +80,10 @@ interface LayoutProps {
 
   // Permission IPC bridge - lives at Layout level so prompts are captured in all views
   usePermissionIpcBridge();
+
+  // File explorer IPC bridge - centralizes filesystem event listeners
+  useFileExplorerIpcBridge(currentProjectId);
+
 
   // Register create item handler from PlanView
   const registerCreateItemHandler = useCallback((handler: (() => void) | null) => {
@@ -166,6 +182,22 @@ interface LayoutProps {
 
           {/* Main content area - fills remaining space between panels */}
           <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+            {mainView === 'planning' && (
+              <div className="flex-1 flex flex-col min-h-0">
+                <ErrorBoundary name="PlanView">
+                  <PlanView
+                    viewMode={viewMode}
+                    filteredPlannedItems={filteredPlannedItems}
+                    onSearchChange={setSearchQuery}
+                    hiddenStatusCategories={hiddenStatusCategories}
+                    onHiddenStatusCategoriesChange={setHiddenStatusCategories}
+                    selectedItemIds={selectedItemIds}
+                    setSelectedItemIds={setSelectedItemIds}
+                    registerCreateItemHandler={registerCreateItemHandler}
+                  />
+                </ErrorBoundary>
+              </div>
+            )}
 
             {mainView === 'workspace' && currentProjectId && (
               <ErrorBoundary name="WorkspaceView">

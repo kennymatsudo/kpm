@@ -127,6 +127,10 @@ export interface StreamingSessionServiceDeps {
 
 
   /** Read a document file from the docs/ directory */
+  readDocumentFile: (
+    projectId: string,
+    filePath: string
+  ) => Promise<{ success: boolean; content: string | null; error?: string }>;
 
   /** Optional tool call logger for observability */
   toolCallLogger?: {
@@ -336,11 +340,30 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         resumeSessionId,
         mainWindow,
         onClaudeMdEdit: (editProjectId: string, newContent: string) => {
+          void (async () => {
+            const currentContent = await deps.readClaudeMd(editProjectId);
+            mainWindow?.webContents.send('chat:claudemd-update', {
+              projectId: editProjectId,
+              oldContent: currentContent.success ? currentContent.content : null,
+              newContent,
+            });
+          })().catch((error) => {
           });
         },
         // Callback for intercepted project file writes from the permission handler
         onProjectFileWrite: (writeProjectId: string, filePath: string, content: string) => {
           // Read current file for diff display
+          void (async () => {
+            const currentContent = await deps.readDocumentFile(writeProjectId, filePath);
+            mainWindow?.webContents.send('chat:file-update', {
+              projectId: writeProjectId,
+              filePath,
+              content,
+              oldContent: currentContent.success ? currentContent.content : null,
+            });
+            console.log(`[StreamingSessionService] Project file write intercepted and emitted: ${filePath}`);
+          })().catch((error) => {
+            console.error('[StreamingSessionService] Failed to read file for intercepted write:', error);
           });
         },
       });

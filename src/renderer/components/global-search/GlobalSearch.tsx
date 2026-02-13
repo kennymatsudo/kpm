@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useCallback, useRef, useMemo } from 'react';
+import { useSearchStore, useProjectDomainStore } from '../../stores';
 import { emit } from '../../stores/storeEvents';
 import { SearchResultItem } from './SearchResultItem';
 import { SectionHeader } from './SectionHeader';
@@ -36,6 +37,7 @@ function groupResults(results: SearchResult[]) {
 
 export function GlobalSearch() {
   const { isOpen, query, results, selectedIndex, isSearching, activeTab, closeSearch, setQuery, setResults, setSelectedIndex, setIsSearching, setActiveTab } = useSearchStore();
+  const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);

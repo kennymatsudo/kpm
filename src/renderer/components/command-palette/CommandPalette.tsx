@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { LoadingSpinner } from '../ui/LoadingButton';
+import { useShallow } from 'zustand/react/shallow';
 
   id: string;
   label: string;
@@ -54,6 +55,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const [search, setSearch] = useState('');
   const [executingCommand, setExecutingCommand] = useState<string | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
+  const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
+  const { prompts, loadPrompts, isLoading: promptsLoading } = useCustomPromptStore(
+    useShallow((state) => ({
+      prompts: state.prompts,
+      loadPrompts: state.loadPrompts,
+      isLoading: state.isLoading,
+    }))
+  );
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {

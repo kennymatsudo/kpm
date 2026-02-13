@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react';
+import {
+  useSyncStore,
+  useTrackerStore,
+  useExportStore,
+  usePlanDomainStore,
+  useProjectDomainStore,
+} from '../../../stores';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 import { Z_INDEX } from '../../../constants/zIndex';
   associationId: string;
   onClose: () => void;
 }
 
+  const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
+  const refreshPlanItems = usePlanDomainStore((state) => state.refreshPlanItems);
 
   const {
     isSyncing,

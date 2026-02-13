@@ -11,6 +11,8 @@ import {
   TrackerSchemas,
   ExportSchemas,
   StreamingSessionSchemas,
+  ShellSchemas,
+  relativePath,
 } from './validation';
 
 describe('ValidationError', () => {
@@ -34,6 +36,19 @@ describe('ValidationError', () => {
       const error = new ValidationError(result.error);
       expect(error.message).toContain('projectId');
     }
+  });
+});
+
+describe('Shared Path Validation', () => {
+  it('accepts normalized relative paths', () => {
+  });
+
+  it('rejects traversal and absolute paths', () => {
+  });
+});
+
+describe('ShellSchemas', () => {
+
   });
 });
 

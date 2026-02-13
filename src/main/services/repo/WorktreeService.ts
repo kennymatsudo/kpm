@@ -6,6 +6,7 @@ import type {
   IProjectRepository,
   IRepoRepository,
 } from '../../db/interfaces';
+import { gitExec } from './gitUtils';
 
 export interface WorktreeServiceDeps {
   worktrees: IWorktreeRepository;
@@ -81,6 +82,8 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
           branchExists = true;
           try {
             // Check commits ahead of main
+            const { stdout } = await gitExec(
+              ['rev-list', '--count', 'origin/main..HEAD'],
               { cwd: worktree.worktree_path }
             );
             commitsAhead = parseInt(stdout.trim(), 10) || 0;
@@ -129,6 +132,8 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
         // Use @{u} (upstream) instead of origin/main to avoid network calls
         if (!force && fs.existsSync(worktree.worktree_path)) {
           try {
+            const { stdout } = await gitExec(
+              ['rev-list', '--count', '@{u}..HEAD'],
               { cwd: worktree.worktree_path }
             );
             const commitsAhead = parseInt(stdout.trim(), 10) || 0;
@@ -146,16 +151,23 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
         // Remove git worktree
         if (fs.existsSync(worktree.worktree_path)) {
           try {
+            const removeArgs = ['worktree', 'remove', worktree.worktree_path];
+            if (force) {
+              removeArgs.push('--force');
+            }
+            await gitExec(removeArgs, { cwd: repoPath });
           } catch {
             // If worktree remove fails, try manual cleanup
             if (force) {
               fs.rmSync(worktree.worktree_path, { recursive: true, force: true });
+              await gitExec(['worktree', 'prune'], { cwd: repoPath });
             }
           }
         }
 
         // Delete the branch (if it exists and isn't checked out elsewhere)
         try {
+          await gitExec(['branch', '-d', worktree.branch_name], { cwd: repoPath });
         } catch {
           // Ignore branch deletion errors
         }
@@ -199,20 +211,24 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
         // Force-remove git worktree
         if (fs.existsSync(worktree.worktree_path)) {
           try {
+            await gitExec(['worktree', 'remove', worktree.worktree_path, '--force'], { cwd: repoPath });
           } catch {
             // Manual cleanup if git worktree remove fails
             fs.rmSync(worktree.worktree_path, { recursive: true, force: true });
+            await gitExec(['worktree', 'prune'], { cwd: repoPath });
           }
         }
 
         // Force-delete local branch (-D ignores merge status)
         try {
+          await gitExec(['branch', '-D', worktree.branch_name], { cwd: repoPath });
         } catch {
           // Ignore branch deletion errors
         }
 
         // Delete remote tracking branch (best-effort, don't fail if remote is gone)
         try {
+          await gitExec(['push', 'origin', '--delete', worktree.branch_name], { cwd: repoPath });
         } catch {
           // Ignore remote deletion errors (branch may not be pushed)
         }
@@ -236,6 +252,7 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
           throw new Error(`Worktree path does not exist: ${worktree.worktree_path}`);
         }
 
+        await gitExec(['push', '-u', 'origin', worktree.branch_name], {
           cwd: worktree.worktree_path,
         });
       });

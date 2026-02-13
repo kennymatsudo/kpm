@@ -52,6 +52,7 @@ export function createProjectWatcherService(deps: ProjectWatcherServiceDeps) {
 
     projectId: string,
     projectFolder: string,
+  ): Promise<void> {
 
     }
 

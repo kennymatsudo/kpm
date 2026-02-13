@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useChatStore, useProjectDomainStore } from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
 import { Z_INDEX } from '../../constants/zIndex';
 
@@ -9,6 +10,7 @@ export function SessionHistory() {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const { currentProjectId } = useProjectDomainStore(useShallow((state) => ({
     currentProjectId: state.currentProjectId,
   })));
 

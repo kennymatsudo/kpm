@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { relativePath, uuid } from './shared';
 
 /**
  * Validation schemas for repo file operations.
@@ -10,6 +11,7 @@ export const RepoFileSchemas = {
    */
   listDirectory: z.object({
     repoId: uuid,
+    path: relativePath.optional(),
     recursive: z.boolean().optional(),
     depth: z.number().int().min(1).max(20).optional(),
   }),
@@ -19,6 +21,7 @@ export const RepoFileSchemas = {
    */
   readFile: z.object({
     repoId: uuid,
+    path: relativePath.min(1),
   }),
 
   /**
@@ -26,6 +29,7 @@ export const RepoFileSchemas = {
    */
   writeFile: z.object({
     repoId: uuid,
+    path: relativePath.min(1),
     content: z.string(),
   }),
 
@@ -34,6 +38,7 @@ export const RepoFileSchemas = {
    */
   getInfo: z.object({
     repoId: uuid,
+    path: relativePath.min(1),
   }),
 };
 

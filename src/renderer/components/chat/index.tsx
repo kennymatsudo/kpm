@@ -4,6 +4,13 @@ import { ChatInput } from './ChatInput';
 import { SessionList } from './SessionList';
 import { PermissionPrompt } from '../permission/PermissionPrompt';
 import { useChat } from '../../hooks/useChat';
+import {
+  useProjectDomainStore,
+  useProjectUiDomainStore,
+  useResourceDomainStore,
+  useChatStore,
+  type ChatViewMode,
+} from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
 import { CloseIcon } from '../icons';
 import { getBaseName } from '../../utils/path';
@@ -20,6 +27,23 @@ interface ChatProps {
 }
 
 export function Chat({ currentView }: ChatProps) {
+  const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
+  const repos = useResourceDomainStore((state) => state.repos);
+  const {
+    focusedResources,
+    addFocusedResource,
+    removeFocusedResource,
+    clearFocusedResources,
+    syncFocusedResourcesForSession,
+  } = useProjectUiDomainStore(
+    useShallow((state) => ({
+      focusedResources: state.focusedResources,
+      addFocusedResource: state.addFocusedResource,
+      removeFocusedResource: state.removeFocusedResource,
+      clearFocusedResources: state.clearFocusedResources,
+      syncFocusedResourcesForSession: state.syncFocusedResourcesForSession,
+    }))
+  );
   // Access per-session chat state
     const session = state.viewedSessionId ? state.sessions.get(state.viewedSessionId) : null;
     return {

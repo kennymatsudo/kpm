@@ -12,8 +12,17 @@
 
 
 /**
+ * Returns stable references to project-domain actions.
+ * Does not subscribe to store state.
  */
+export function useProjectDomainActions() {
+}
 
+/**
+ * Returns stable references to resource-domain actions.
+ * Does not subscribe to store state.
+ */
+export function useResourceDomainActions() {
 }
 
 /**

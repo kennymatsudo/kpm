@@ -27,15 +27,18 @@ export const FileSchemas = {
 
   readContext: z.object({
     projectId: uuid,
+    path: relativePath.min(1).max(255),
   }),
 
   writeContext: z.object({
     projectId: uuid,
+    path: relativePath.min(1).max(255),
     content: z.string().max(1000000, 'Content too large (max 1MB)'),
   }),
 
   deleteContext: z.object({
     projectId: uuid,
+    path: relativePath.min(1).max(255),
   }),
 
   importContext: z.object({

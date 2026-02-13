@@ -60,11 +60,24 @@ Simpler domains use `create()` directly. See `briefingStore.ts` or `searchStore.
 
 ```typescript
 import { useShallow } from 'zustand/react/shallow';
+import {
+  useProjectDomainStore,
+  usePlanDomainStore,
+  useProjectUiDomainStore,
+} from '../stores';
+
+// Good - scoped by domain and selected fields
+const { projects, currentProjectId } = useProjectDomainStore(
   useShallow((state) => ({ projects: state.projects, currentProjectId: state.currentProjectId }))
 );
 
 // Better - select only what you need
+const projectId = useProjectDomainStore((state) => state.currentProjectId);
+const planItems = usePlanDomainStore((state) => state.planItems);
+const focusedResources = useProjectUiDomainStore((state) => state.focusedResources);
 ```
+
+`useProjectStore` remains the internal aggregate store. New component code should prefer domain stores.
 
 ## Adding a New Store
 

@@ -15,6 +15,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onDeleteProject: _onDeleteProject, onNewProject, onFileOpen }: SidebarProps) {
+  const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
 
   return (
     <aside className="flex-1 sidebar flex flex-col overflow-hidden">

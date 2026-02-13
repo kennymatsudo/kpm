@@ -13,6 +13,7 @@ export const ConfluenceSchemas = {
    */
   link: z.object({
     projectId: uuid,
+    documentPath: relativePath.min(1),
     confluenceUrl: z.string().url(),
   }),
 
@@ -21,6 +22,7 @@ export const ConfluenceSchemas = {
    */
   unlink: z.object({
     projectId: uuid,
+    documentPath: relativePath.min(1),
   }),
 
   /**
@@ -35,6 +37,7 @@ export const ConfluenceSchemas = {
    */
   getLinkForDocument: z.object({
     projectId: uuid,
+    documentPath: relativePath.min(1),
   }),
 
   /**
@@ -42,6 +45,7 @@ export const ConfluenceSchemas = {
    */
   syncPreview: z.object({
     projectId: uuid,
+    documentPath: relativePath.min(1),
   }),
 
   /**
@@ -49,6 +53,7 @@ export const ConfluenceSchemas = {
    */
   pushExecute: z.object({
     projectId: uuid,
+    documentPath: relativePath.min(1),
   }),
 
   /**
@@ -56,6 +61,7 @@ export const ConfluenceSchemas = {
    */
   pullExecute: z.object({
     projectId: uuid,
+    documentPath: relativePath.min(1),
   }),
 
   /**

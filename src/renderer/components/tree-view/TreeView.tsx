@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom';
 import type { TreeNode } from '../../utils/planHierarchy';
 import { StatusSelector } from '../ui/StatusSelector';
 import { getStatusCategory } from '../../constants/statusConfig';
+import { usePlanDomainStore } from '../../stores';
 import { MAX_DEPTH } from '../../constants/planCardStyles';
 import { Z_INDEX } from '../../constants/zIndex';
 
@@ -69,6 +70,7 @@ const TreeRow = memo(function TreeRow({
   onDragLeave,
   onDrop,
 }: TreeRowProps) {
+  const updateStatusCategory = usePlanDomainStore((state) => state.updateStatusCategory);
   const rowRef = useRef<HTMLDivElement>(null);
   const clampedDepth = Math.min(depth, MAX_DEPTH);
   const hasChildren = node.children.length > 0;

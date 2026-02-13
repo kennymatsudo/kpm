@@ -1918,6 +1918,7 @@ interface Migration {
     up: (db: BetterSqliteDatabase) => {
       // Remove agent_instructions column - feature deprecated in favor of CLAUDE.md files
       // Check if column exists first (migration 022 may have already removed it)
+      const tableInfo = db.prepare('PRAGMA table_info(projects)').all() as { name: string }[];
       const hasAgentInstructions = tableInfo.some((col) => col.name === 'agent_instructions');
 
       if (!hasAgentInstructions) {

@@ -1,4 +1,11 @@
 import { useShallow } from 'zustand/react/shallow';
+import {
+  useProjectDomainStore,
+  usePlanDomainStore,
+  useResourceDomainStore,
+  toast,
+} from '../../stores';
+import { useExportActions } from '../../hooks/useStoreActions';
 import type { TreeNode } from '../../utils/planHierarchy';
 import { getStyleForDepth, MAX_DEPTH } from '../../constants/planCardStyles';
 import { DragSource } from '../../constants/dragSource';
@@ -109,8 +116,21 @@ export const PlanCard = memo(function PlanCard({
   const [showMenu, setShowMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  const {
+    deletePlanItem,
+    deletePlanItemWithDescendants,
+    updateStatusCategory,
+  } = usePlanDomainStore(
+    useShallow((state) => ({
+      deletePlanItem: state.deletePlanItem,
+      deletePlanItemWithDescendants: state.deletePlanItemWithDescendants,
+      updateStatusCategory: state.updateStatusCategory,
+    }))
+  );
   const { addToQueue } = useExportActions();
 
+  const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
+    const activeStatuses = ACTIVE_SESSION_STATUSES as readonly string[];
   const isWorktreeLoading = !!worktreeLoadingOp;
 
 

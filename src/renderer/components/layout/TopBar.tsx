@@ -1,4 +1,7 @@
 import { useShallow } from 'zustand/react/shallow';
+import {
+  useProjectDomainStore,
+} from '../../stores';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { Z_INDEX } from '../../constants/zIndex';
 
@@ -52,6 +55,7 @@ export function TopBar({
   statusCounts,
   searchResultCount,
 }: TopBarProps) {
+  const { projects, currentProjectId, setProjects } = useProjectDomainStore(
     useShallow((state) => ({
       projects: state.projects,
       currentProjectId: state.currentProjectId,

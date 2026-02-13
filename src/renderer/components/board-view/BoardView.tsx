@@ -32,6 +32,8 @@ interface BoardViewProps {
   onContextMenu,
   onCreateItem,
 }: BoardViewProps) {
+  const updateStatusCategory = usePlanDomainStore((state) => state.updateStatusCategory);
+  const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
 
   // Column visibility - persisted per project
   const [columnVisibility, setColumnVisibility] = useState<Record<StatusCategory, boolean>>(() => {

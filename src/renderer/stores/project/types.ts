@@ -102,4 +102,29 @@ export type ProjectState = ProjectStoreValues &
   ResourceSlice &
   UiSlice;
 
+// Domain-focused store views. These keep consumers scoped to the state/actions
+// they actually need, instead of depending on the entire project store surface.
+export type ProjectDomainState = Pick<
+  ProjectState,
+  'projects' | 'currentProjectId' |
+>;
+
+export type PlanDomainState = Pick<
+  ProjectState,
+  'planItems' | 'relations' |
+  'updatePlanItems' | 'setRelations' | 'executePlanActions' | 'addRelation' | 'removeRelation' |
+  'updateItemPosition' | 'updateItemPositions' | 'updatePlanItem' | 'updateStatusCategory' |
+  'deletePlanItem' | 'deletePlanItemWithDescendants' | 'refreshPlanItems'
+>;
+
+export type ResourceDomainState = Pick<
+  ProjectState,
+>;
+
+export type UiDomainState = Pick<
+  ProjectState,
+  'isLoading' | 'isSwitchingProject' | 'error' | 'focusedResources' | 'focusedResourcesBySession' | 'editingItemId' |
+  'syncFocusedResourcesForSession' | 'setEditingItemId' | 'setLoading' | 'setSwitchingProject' |
+>;
+
 export type SliceCreator<TSlice> = (deps: ProjectStoreDependencies) => StateCreator<ProjectState, [], [], TSlice>;

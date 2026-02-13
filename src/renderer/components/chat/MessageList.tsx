@@ -147,6 +147,44 @@ const MessageRow = memo(function MessageRow({
   );
 });
 
+const ESTIMATED_MESSAGE_HEIGHT = 132;
+const VIRTUAL_OVERSCAN_PX = 640;
+
+const VirtualizedMessageRow = memo(function VirtualizedMessageRow({
+  message,
+  top,
+  onHeightChange,
+}: {
+  message: Message;
+  top: number;
+  onHeightChange: (id: string, height: number) => void;
+}) {
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const element = rowRef.current;
+    if (!element) return;
+
+    const updateHeight = () => {
+      onHeightChange(message.id, element.getBoundingClientRect().height);
+    };
+
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [message.id, onHeightChange]);
+
+  return (
+    <div
+      ref={rowRef}
+      className="absolute left-0 right-0"
+      style={{ top }}
+    >
+    </div>
+  );
+});
+
 interface MessageListProps {
   currentView?: ChatViewMode;
 }
@@ -160,9 +198,13 @@ interface MessageListProps {
   const activities = viewedSession?.activities ?? [];
   const streamStartedAt = viewedSession?.streamStartedAt ?? null;
   const listRef = useRef<HTMLDivElement>(null);
+  const messageHeightsRef = useRef<Map<string, number>>(new Map());
   const isInitialMount = useRef(true);
   const [autoFollow, setAutoFollow] = useState(true);
   const [hasUnseenMessages, setHasUnseenMessages] = useState(false);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [measurementVersion, setMeasurementVersion] = useState(0);
   const [timeNow, setTimeNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -185,6 +227,10 @@ interface MessageListProps {
   };
 
   const handleScroll = () => {
+    const list = listRef.current;
+    if (list) {
+      setScrollTop(list.scrollTop);
+    }
     const nearBottom = isNearBottom();
     if (nearBottom) {
       if (!autoFollow) setAutoFollow(true);
@@ -195,6 +241,67 @@ interface MessageListProps {
       setAutoFollow(false);
     }
   };
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+
+    const updateViewport = () => {
+      setViewportHeight(list.clientHeight);
+    };
+
+    updateViewport();
+    const observer = new ResizeObserver(updateViewport);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, []);
+
+  const handleMessageHeightChange = useCallback((id: string, height: number) => {
+    const roundedHeight = Math.ceil(height);
+    const previousHeight = messageHeightsRef.current.get(id);
+    if (previousHeight === roundedHeight) return;
+    messageHeightsRef.current.set(id, roundedHeight);
+    setMeasurementVersion((version) => version + 1);
+  }, []);
+
+  useEffect(() => {
+    let removedAny = false;
+    const messageIds = new Set(messages.map((message) => message.id));
+
+    for (const existingId of messageHeightsRef.current.keys()) {
+      if (!messageIds.has(existingId)) {
+        messageHeightsRef.current.delete(existingId);
+        removedAny = true;
+      }
+    }
+
+    if (removedAny) {
+      setMeasurementVersion((version) => version + 1);
+    }
+  }, [messages]);
+
+  const { totalStaticHeight, virtualizedMessages } = useMemo(() => {
+    let runningTop = 0;
+      const measuredHeight = messageHeightsRef.current.get(message.id) ?? ESTIMATED_MESSAGE_HEIGHT;
+      const item = {
+        message,
+        top: runningTop,
+        height: measuredHeight,
+      };
+      runningTop += measuredHeight;
+      return item;
+    });
+
+    const visibleTop = Math.max(0, scrollTop - VIRTUAL_OVERSCAN_PX);
+    const visibleBottom = scrollTop + viewportHeight + VIRTUAL_OVERSCAN_PX;
+    const visibleItems = measurements.filter(
+      (item) => item.top + item.height >= visibleTop && item.top <= visibleBottom
+    );
+
+    return {
+      totalStaticHeight: runningTop,
+      virtualizedMessages: visibleItems,
+    };
 
   // Smart autoscroll:
   // - Follow while user is at bottom
@@ -223,6 +330,16 @@ interface MessageListProps {
         className="h-full overflow-y-auto px-4 py-3"
         style={{ scrollbarGutter: 'stable' }}
       >
+        <div className="relative" style={{ height: totalStaticHeight }}>
+          {virtualizedMessages.map(({ message, top }) => (
+            <VirtualizedMessageRow
+              key={message.id}
+              message={message}
+              top={top}
+              onHeightChange={handleMessageHeightChange}
+            />
+          ))}
+        </div>
 
         {isStreaming && (streamingSegments.length > 0 || streamingContent) && (
               <StreamingContent

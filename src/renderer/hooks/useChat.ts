@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useChatStore, useProjectUiDomainStore } from '../stores';
 import { useShallow } from 'zustand/react/shallow';
 
 /**
@@ -40,6 +41,7 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
 
 
     // Resolve context for the specific chat session (session-scoped "Add to context").
+    const { focusedResources, focusedResourcesBySession } = useProjectUiDomainStore.getState();
     const sessionFocusedResources = focusedResourcesBySession[chatSessionId] ?? focusedResources;
 
 
@@ -58,6 +60,7 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     setRetrying(chatSessionId);
 
     // Resolve context for the specific chat session (session-scoped "Add to context").
+    const { focusedResources, focusedResourcesBySession } = useProjectUiDomainStore.getState();
     const sessionFocusedResources = focusedResourcesBySession[chatSessionId] ?? focusedResources;
 
 

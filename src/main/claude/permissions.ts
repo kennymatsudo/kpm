@@ -171,6 +171,9 @@ export function createPermissionHandler(
     }
 
     // Rule 0.5: Intercept project file writes for user approval
+    // IMPORTANT: Bash path extraction is heuristic and can miss secondary paths
+    // in compound commands. Never auto-allow Bash based on extracted path.
+    if (targetPath && toolName !== 'Bash' && isWithinDirectory(targetPath, context.projectPath)) {
       if (toolName === 'Write' && context.onProjectFileWrite && typeof input.content === 'string') {
         // Compute relative path from project folder
         const relativePath = relative(normalize(context.projectPath), normalize(targetPath));

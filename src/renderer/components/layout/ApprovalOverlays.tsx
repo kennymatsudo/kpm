@@ -11,6 +11,12 @@
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { useShallow } from 'zustand/react/shallow';
+import {
+  useProjectDomainStore,
+  usePlanDomainStore,
+  useApprovalQueueStore,
+  useFileTreeStore,
+} from '../../stores';
 import type { ApprovalItem } from '../../stores';
 import { toast } from '../../stores/toastStore';
 import { emit } from '../../stores/storeEvents';
@@ -67,6 +73,8 @@ export function ApprovalOverlays() {
   );
 
   // Get project store data needed for panels
+  const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
+  const planItems = usePlanDomainStore((state) => state.planItems);
 
   const {
     executePlanActions,

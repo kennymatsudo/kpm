@@ -41,6 +41,9 @@ interface ExistingDocumentIndexRow {
 
 interface DocumentSyncState {
   inFlight: Promise<void> | null;
+  queued: boolean;
+  debounceTimer: NodeJS.Timeout | null;
+  watchedFolderPath: string | null;
 }
 
 const DOCUMENT_EXTENSIONS = new Set(['.md', '.mdx']);
@@ -243,6 +246,8 @@ export function createSearchService(deps: SearchServiceDeps) {
   let cachedFtsStatement: ReturnType<Database['prepare']> | null = null;
   let cachedHasFtsTables: boolean | null = null;
   const documentSyncState = new Map<string, DocumentSyncState>();
+  let watcherReconcileInterval: NodeJS.Timeout | null = null;
+  let backgroundIndexerStarted = false;
 
   function getFtsStatement() {
     const db = deps.getDatabase();
@@ -272,6 +277,49 @@ export function createSearchService(deps: SearchServiceDeps) {
     `).get() as { has_index: number; has_fts: number };
     cachedHasFtsTables = tableCheck.has_index === 1 && tableCheck.has_fts === 1;
     return cachedHasFtsTables;
+  }
+
+  function getProjectFolders(): { id: string; folder_path: string }[] {
+    const db = deps.getDatabase();
+    try {
+      return db.prepare(`
+        SELECT id, folder_path
+        FROM projects
+        WHERE folder_path IS NOT NULL AND length(trim(folder_path)) > 0
+      `).all() as { id: string; folder_path: string }[];
+    } catch {
+      return [];
+    }
+  }
+
+  function getOrCreateSyncState(projectId: string): DocumentSyncState {
+    const existing = documentSyncState.get(projectId);
+    if (existing) {
+      return existing;
+    }
+
+    const initial: DocumentSyncState = {
+      inFlight: null,
+      queued: false,
+      debounceTimer: null,
+      watchedFolderPath: null,
+    };
+    documentSyncState.set(projectId, initial);
+    return initial;
+  }
+
+    const state = documentSyncState.get(projectId);
+    if (!state) {
+      return;
+    }
+    if (state.debounceTimer) {
+      clearTimeout(state.debounceTimer);
+      state.debounceTimer = null;
+    }
+    }
+    state.watchedFolderPath = null;
+  }
+
   }
 
   async function syncProjectDocuments(projectId: string): Promise<void> {
@@ -347,7 +395,11 @@ export function createSearchService(deps: SearchServiceDeps) {
     tx();
   }
 
+  function flushDocumentSync(projectId: string): void {
+    const state = getOrCreateSyncState(projectId);
     if (state.inFlight) {
+      state.queued = true;
+      return;
     }
 
     state.inFlight = syncProjectDocuments(projectId)
@@ -356,14 +408,84 @@ export function createSearchService(deps: SearchServiceDeps) {
       })
       .finally(() => {
         state.inFlight = null;
+        if (state.queued) {
+          state.queued = false;
+          flushDocumentSync(projectId);
+        }
+      });
   }
 
+  function scheduleFilesystemDocumentIndexSync(projectId: string, immediate = false): void {
+    const state = getOrCreateSyncState(projectId);
+
+    if (state.debounceTimer) {
+      clearTimeout(state.debounceTimer);
+      state.debounceTimer = null;
+    }
+
+    if (immediate) {
+      flushDocumentSync(projectId);
       return;
     }
 
+    state.debounceTimer = setTimeout(() => {
+      state.debounceTimer = null;
+      flushDocumentSync(projectId);
+  }
+
+  function watchProjectFolderForDocs(projectId: string, projectFolderPath: string): void {
+    const state = getOrCreateSyncState(projectId);
+      return;
+    }
+
+
+        return;
+      }
+      }
+  }
+
+    const projects = getProjectFolders();
+    const activeProjectIds = new Set(projects.map((project) => project.id));
+
+    for (const existingProjectId of documentSyncState.keys()) {
+      if (!activeProjectIds.has(existingProjectId)) {
+        documentSyncState.delete(existingProjectId);
+      }
+    }
+
+    for (const project of projects) {
+      const state = getOrCreateSyncState(project.id);
+        watchProjectFolderForDocs(project.id, project.folder_path);
+        scheduleFilesystemDocumentIndexSync(project.id, false);
+      }
+    }
+  }
+
+  function startBackgroundIndexing(): void {
+    if (backgroundIndexerStarted) {
+      return;
+    }
+
+    if (!hasFtsTables()) {
+      return;
+    }
+    backgroundIndexerStarted = true;
+
+    reconcileProjectWatchers();
+    watcherReconcileInterval = setInterval(() => {
+  }
+
+    if (watcherReconcileInterval) {
+      clearInterval(watcherReconcileInterval);
+      watcherReconcileInterval = null;
+    }
+
+    backgroundIndexerStarted = false;
   }
 
   return {
+    startBackgroundIndexing,
+    disposeBackgroundIndexing,
     async search(projectId: string, query: string, limit = 50): AsyncResult<SearchResult[]> {
       const normalizedQuery = query.trim();
       if (!normalizedQuery) {
@@ -381,10 +503,12 @@ export function createSearchService(deps: SearchServiceDeps) {
           return success([]);
         }
 
+        const rows = await Promise.resolve(getFtsStatement().all([
           normalizedQuery,
           projectId,
           ftsMatchQuery,
           safeLimit,
+        ]) as RawSearchRow[]);
 
         const results: SearchResult[] = rows.map((row) => ({
           id: row.id,

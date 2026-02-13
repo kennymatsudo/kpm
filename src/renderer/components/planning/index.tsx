@@ -2,6 +2,17 @@ import { Canvas } from './Canvas';
 import { BulkDeleteConfirmDialog } from './BulkDeleteConfirmDialog';
 import { TreeView } from '../tree-view';
 import { BoardView } from '../board-view';
+import {
+  useProjectDomainStore,
+  usePlanDomainStore,
+  useProjectUiDomainStore,
+  useTrackerStore,
+  useExportStore,
+  useGroupStore,
+  selectNormalizedPlanItems,
+  selectFocusedPlanItemId,
+  selectDescendantIds,
+} from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
 import type { ViewMode } from './ViewSwitcher';
 
@@ -32,20 +43,40 @@ export function PlanView({
     updateItemPosition,
     updateItemPositions,
     updatePlanItem,
+  } = usePlanDomainStore(
     useShallow((state) => ({
       planItems: state.planItems,
       executePlanActions: state.executePlanActions,
       updateItemPosition: state.updateItemPosition,
       updateItemPositions: state.updateItemPositions,
+      updatePlanItem: state.updatePlanItem,
+    }))
+  );
+  const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
+  const {
+    focusedResources,
+    addFocusedResource,
+  } = useProjectUiDomainStore(
+    useShallow((state) => ({
       focusedResources: state.focusedResources,
       addFocusedResource: state.addFocusedResource,
     }))
   );
 
-  // Derive focusedItemId from focusedResources for backward compatibility with child components
+  const normalizedPlanItems = useMemo(() => selectNormalizedPlanItems(planItems), [planItems]);
+  const planItemsById = normalizedPlanItems.byId;
+  const plannedItems = normalizedPlanItems.plannedItems;
 
+  // Derive focusedItemId from focusedResources for backward compatibility with child components
+  const focusedItemId = useMemo(
+    () => selectFocusedPlanItemId(focusedResources),
+    [focusedResources]
+  );
+
+  const associations = useTrackerStore((state) => state.associations);
 
   // Export store - for queue operations
+  const addToQueue = useExportStore((state) => state.addToQueue);
 
   // Group store - for groups and layout
   const { groups, updateGroupPosition, updateGroupSize } = useGroupStore(
@@ -62,6 +93,10 @@ export function PlanView({
 
 
   // Descendant tracking for bulk operations
+  const descendantIds = useMemo(
+    () => selectDescendantIds(planItems, selectedItemIds),
+    [planItems, selectedItemIds]
+  );
 
   const {
     showBulkDeleteDialog,

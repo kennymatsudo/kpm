@@ -14,10 +14,20 @@ interface FileEditorProps {
  * - Markdown files: Full MarkdownEditor with toolbar, shortcuts, side-by-side preview
  */
 export const FileEditor = memo(function FileEditor({ source: _source, path, onClose }: FileEditorProps) {
+  const { editingFile, updateContent, saveFile, isSaving: _isSaving, saveError } = useWorkspaceStore(
+    useShallow((state) => ({
+      editingFile: state.editingFile,
+      updateContent: state.updateContent,
+      saveFile: state.saveFile,
+      isSaving: state.isSaving,
+      saveError: state.saveError,
+    }))
+  );
   const hasUnsavedChanges = useHasUnsavedChanges();
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
 
   // Context management for chat
+  const { focusedResources, addFocusedResource, removeFocusedResource } = useProjectUiDomainStore(
     useShallow((state) => ({
       focusedResources: state.focusedResources,
       addFocusedResource: state.addFocusedResource,

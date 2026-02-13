@@ -16,6 +16,7 @@ import type {
 import type { IProjectRepository } from '../../db/interfaces/project';
 import { ConfluenceClient } from '../../wiki-clients/confluence';
 import { TrackerClientService } from '../../trackers/TrackerClientService';
+import { resolveScopedPath } from '../files/scopedFs';
 
 export interface SyncPreview {
   hasConflict: boolean; // Both sides changed since last sync
@@ -63,7 +64,18 @@ export function createConfluenceSyncService(deps: ConfluenceSyncServiceDeps) {
     return createHash('sha256').update(content).digest('hex');
   };
 
+  const resolveDocumentPath = (projectFolder: string, documentPath: string): string => {
+    const scoped = resolveScopedPath(projectFolder, documentPath);
+    if (!scoped.valid) {
+      throw new Error('Invalid document path');
     }
+    return scoped.fullPath;
+  };
+
+  const readLocalDocument = (projectFolder: string, documentPath: string): string | null => {
+    const fullPath = resolveDocumentPath(projectFolder, documentPath);
+    if (!existsSync(fullPath)) return null;
+    return readFileSync(fullPath, 'utf-8');
   };
 
   const writeLocalDocument = (
@@ -71,6 +83,7 @@ export function createConfluenceSyncService(deps: ConfluenceSyncServiceDeps) {
     documentPath: string,
     content: string
   ): void => {
+    const fullPath = resolveDocumentPath(projectFolder, documentPath);
     writeFileSync(fullPath, content, 'utf-8');
   };
 
@@ -89,6 +102,12 @@ export function createConfluenceSyncService(deps: ConfluenceSyncServiceDeps) {
         if (!parsed) {
           throw new Error('Invalid Confluence URL format');
         }
+
+        const projectFolder = getProjectFolder(projectId);
+        if (!projectFolder) {
+          throw new Error('Project folder not found');
+        }
+        resolveDocumentPath(projectFolder, documentPath);
 
         // Check if already linked
         const existing = deps.confluenceLinks.getByDocumentPath(projectId, documentPath);

@@ -38,11 +38,13 @@ export function registerFileExplorerHandlers(
   // List directory contents
   ipcMain.handle(IPC_CHANNELS.fileExplorer.listDirectory, async (_event, params: unknown) => {
     const { projectId, path, recursive, depth } = FileExplorerSchemas.listDirectory.parse(params);
+    return unwrapOrThrow(await fileExplorerService.listDirectory(projectId, path ?? '', { recursive, depth }));
   });
 
   // Create a new folder
   ipcMain.handle(IPC_CHANNELS.fileExplorer.createFolder, async (_event, params: unknown) => {
     const { projectId, path } = FileExplorerSchemas.createFolder.parse(params);
+    const result = unwrapOrThrow(await fileExplorerService.createFolder(projectId, path));
     emitFileChange(getMainWindow(), {
       projectId,
       type: 'created',
@@ -55,6 +57,7 @@ export function registerFileExplorerHandlers(
   // Create a new file
   ipcMain.handle(IPC_CHANNELS.fileExplorer.createFile, async (_event, params: unknown) => {
     const { projectId, path, content } = FileExplorerSchemas.createFile.parse(params);
+    const result = unwrapOrThrow(await fileExplorerService.createFile(projectId, path, content ?? ''));
     emitFileChange(getMainWindow(), {
       projectId,
       type: 'created',
@@ -95,11 +98,13 @@ export function registerFileExplorerHandlers(
   // Create a symlink to external path
   ipcMain.handle(IPC_CHANNELS.fileExplorer.createSymlink, async (_event, params: unknown) => {
     const { projectId, targetPath, linkPath } = FileExplorerSchemas.createSymlink.parse(params);
+    return unwrapOrThrow(await fileExplorerService.createSymlink(projectId, targetPath, linkPath));
   });
 
   // Delete a file or folder
   ipcMain.handle(IPC_CHANNELS.fileExplorer.delete, async (_event, params: unknown) => {
     const { projectId, path } = FileExplorerSchemas.deleteEntry.parse(params);
+    const result = await fileExplorerService.deleteEntry(projectId, path);
     if (result.ok) {
       emitFileChange(getMainWindow(), {
         projectId,
@@ -114,6 +119,7 @@ export function registerFileExplorerHandlers(
   // Rename/move a file or folder
   ipcMain.handle(IPC_CHANNELS.fileExplorer.rename, async (_event, params: unknown) => {
     const { projectId, oldPath, newPath } = FileExplorerSchemas.rename.parse(params);
+    const result = unwrapOrThrow(await fileExplorerService.rename(projectId, oldPath, newPath));
     emitFileChange(getMainWindow(), {
       projectId,
       type: 'renamed',
@@ -127,21 +133,25 @@ export function registerFileExplorerHandlers(
   // Get info about a single file/folder
   ipcMain.handle(IPC_CHANNELS.fileExplorer.getInfo, async (_event, params: unknown) => {
     const { projectId, path } = FileExplorerSchemas.getInfo.parse(params);
+    return unwrapOrThrow(await fileExplorerService.getInfo(projectId, path));
   });
 
   // Read file content
   ipcMain.handle(IPC_CHANNELS.fileExplorer.readFile, async (_event, params: unknown) => {
     const { projectId, path } = FileExplorerSchemas.readFile.parse(params);
+    return unwrapOrThrow(await fileExplorerService.readFileAsync(projectId, path));
   });
 
   // Read binary file content (images, etc.)
   ipcMain.handle(IPC_CHANNELS.fileExplorer.readBinaryFile, async (_event, params: unknown) => {
     const { projectId, path } = FileExplorerSchemas.readBinaryFile.parse(params);
+    return unwrapOrThrow(await fileExplorerService.readBinaryFile(projectId, path));
   });
 
   // Write file content
   ipcMain.handle(IPC_CHANNELS.fileExplorer.writeFile, async (_event, params: unknown) => {
     const { projectId, path, content } = FileExplorerSchemas.writeFile.parse(params);
+    const result = await fileExplorerService.writeFile(projectId, path, content);
     if (result.ok) {
       emitFileChange(getMainWindow(), {
         projectId,
@@ -156,6 +166,7 @@ export function registerFileExplorerHandlers(
   // Get symlink information
   ipcMain.handle(IPC_CHANNELS.fileExplorer.getSymlinkInfo, async (_event, params: unknown) => {
     const { projectId, path } = FileExplorerSchemas.getSymlinkInfo.parse(params);
+    return unwrapOrThrow(await fileExplorerService.getSymlinkInfo(projectId, path));
   });
 
   // Show folder selection dialog for linking external folders

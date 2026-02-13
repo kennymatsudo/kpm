@@ -17,6 +17,9 @@ import type {
   IProjectRepository,
   IRepoRepository,
 } from '../../db/interfaces';
+import {
+  createStatusBroadcaster,
+} from './sessionOrchestration';
 
 interface AgentContextInput {
   item: PlanItem;
@@ -74,6 +77,7 @@ export interface DevSessionServiceDeps {
   appSettings: IAppSettingsRepository;
   userDataPath: string;
 }
+const broadcastSessionStatusChange = createStatusBroadcaster<DevSession>('dev-session:status-changed');
 
 /**
  * Generate branch name from plan item using template

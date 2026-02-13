@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { applyLoadedProjectData, setProjectSwitching } from '../stores/project/domainService';
 import { resetAllProjectScopedStores } from '../stores/projectScopedStores';
+import {
+  useProjectDomainActions,
+  useResourceDomainActions,
+} from './useStoreActions';
 import { logPerfEvent, startPerfSpan } from '../utils/perfLogger';
 
 interface UseProjectLoaderOptions {
@@ -18,10 +23,13 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
   const { onRequestNewProject } = options;
 
   // State we need to react to
+  const { projects, currentProjectId } = useProjectDomainStore(useShallow(selectProjectSummary));
 
+  const { setProjects, addProject, removeProject, reset } = useProjectDomainActions();
   const {
     setRepoBranches,
     setRepoBranch,
+  } = useResourceDomainActions();
 
   const watchedRepoPathsRef = useRef<string[]>([]);
   const loadSequenceRef = useRef(0);
@@ -74,6 +82,13 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       }
 
       // 3. Batch update all store state at once (atomic swap)
+      applyLoadedProjectData({
+        projectId,
+        repos,
+        attachments,
+        planItems,
+        worktrees,
+      });
 
       const scheduleRepoTasks = () => {
 
@@ -118,6 +133,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
         worktreeCount: worktrees.length,
       });
     } finally {
+        setProjectSwitching(false);
       }
       endTotal();
     }
