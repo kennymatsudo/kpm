@@ -6,11 +6,13 @@
   selectedSessionId: string | null;
   isLoading: boolean;
   deletingSessionIds: Set<string>;
+  lastActivityMap: Map<string, number>;
 
   // Actions
   setSessions: (sessions: DevSessionWithPlanItem[]) => void;
   setSelectedSessionId: (sessionId: string | null) => void;
   setIsLoading: (isLoading: boolean) => void;
+  recordActivity: (sessionId: string) => void;
 
   // Delete tracking
   markDeleting: (sessionId: string) => void;
@@ -33,7 +35,11 @@ const initialState = {
   selectedSessionId: null as string | null,
   isLoading: false,
   deletingSessionIds: new Set<string>(),
+  lastActivityMap: new Map<string, number>(),
 };
+
+/** Throttle map for recordActivity — tracks last update time per session */
+const activityThrottleMap = new Map<string, number>();
 
 
 export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
@@ -41,6 +47,18 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
 
   setSelectedSessionId: (sessionId) => set({ selectedSessionId: sessionId }),
   setIsLoading: (isLoading) => set({ isLoading }),
+
+  recordActivity: (sessionId) => {
+    const now = Date.now();
+    const lastUpdate = activityThrottleMap.get(sessionId) || 0;
+    if (now - lastUpdate < 1000) return; // throttle to 1 update per second
+    activityThrottleMap.set(sessionId, now);
+    set((state) => {
+      const next = new Map(state.lastActivityMap);
+      next.set(sessionId, now);
+      return { lastActivityMap: next };
+    });
+  },
 
   reset: () => {
     set({
