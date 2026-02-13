@@ -1,5 +1,6 @@
 import { useMemo, useEffect } from 'react';
 import { m } from 'framer-motion';
+import { PromptsSettings } from './PromptsSettings';
 import { useSettingsUIStore, type SettingsTab } from '../../stores';
 
 interface Props {
@@ -33,6 +34,8 @@ const allTabs: { id: SettingsTab; label: string; icon: React.ReactNode; requires
     ),
   },
   {
+    id: 'prompts',
+    label: 'Prompts',
     requiresProject: false,
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

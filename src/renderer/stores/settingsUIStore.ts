@@ -17,6 +17,7 @@ interface SettingsUIState {
 
 /** Ordered list of tabs for index-based navigation */
 const TAB_ORDER: SettingsTab[] = [
+  'prompts',
 ];
 
 export const useSettingsUIStore = create<SettingsUIState>((set, get) => ({

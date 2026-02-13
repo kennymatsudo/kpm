@@ -7,6 +7,7 @@
 import { create } from 'zustand';
 import type { PromptCategory, PromptDefinitionInfo } from '../../shared/types';
 
+
 interface PromptDetail extends PromptDefinitionInfo {
   defaultContent: string;
   currentContent: string;
@@ -20,6 +21,7 @@ interface PromptOverrideState {
   /** Full detail of the selected prompt (loaded on demand) */
   selectedPrompt: PromptDetail | null;
   /** Active category filter */
+  activeCategory: PromptSubTab;
   /** Content being edited in the textarea */
   editContent: string;
   /** Loading state */
@@ -31,6 +33,7 @@ interface PromptOverrideState {
 
   // Actions
   loadPrompts: () => Promise<void>;
+  setCategory: (category: PromptSubTab) => void;
   selectPrompt: (key: string) => Promise<void>;
   setEditContent: (content: string) => void;
   saveOverride: () => Promise<void>;
