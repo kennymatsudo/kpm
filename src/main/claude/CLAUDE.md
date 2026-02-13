@@ -18,6 +18,7 @@ createKpmServer() (singleton MCP server)
     ├─ relations.ts (dependency tools)
     ├─ storybook.ts (component discovery)
     ├─ document-update.ts (document update tools)
+    ├─ claudemd-update.ts (project context updates)
     ↓
 System prompts (prompts/ directory)
 ```
@@ -65,6 +66,10 @@ Claude calls modification tool (modify_plan, bulk_reparent, etc.)
 - `bulk_set_label` - Set label for multiple items
 - `bulk_set_release` - Set release tag for multiple items
 - `clear_dependencies` - Remove dependencies from items
+- `bulk_create_groups` - Create multiple groups
+- `bulk_delete_groups` - Delete multiple groups
+- `assign_items_to_group` - Assign items to a group
+- `clear_all_group_assignments` - Remove all group assignments
 
 **Exception (immediate execution):**
 - `clear_positions` - Only affects canvas layout, not plan structure

@@ -37,16 +37,22 @@ src/
 │   │   ├── ui/              # Shared primitives (Modal, Button, StatusBadge)
 │   │   ├── layout/          # App shell (Layout, TopBar) + hooks
 │   │   ├── planning/        # Plan views (Canvas, TreeView, BoardView, PlanCard)
+│   │   ├── board-view/      # Board/kanban view components
+│   │   ├── tree-view/       # Tree view components
 │   │   ├── chat/            # Chat interface
 │   │   ├── tracker/         # Jira integration
 │   │   ├── development/     # Shared PR/review components used by the board
 │   │   ├── workspace/       # Workspace view (chat-first with file browser)
 │   │   ├── sidebar/         # Left sidebar components
+│   │   ├── sidebar-tree/    # Hierarchical tree navigation
 │   │   ├── settings/        # Settings dialogs
 │   │   ├── command-palette/ # Command palette
 │   │   ├── confluence/      # Confluence sync modals
+│   │   ├── permission/      # Permission request UI
 │   │   ├── onboarding/      # Project onboarding wizard
 │   │   ├── slack/           # Slack triage UI
+│   │   ├── icons/           # SVG icon components
+│   │   ├── markdown-document-modal/ # Markdown document modal
 │   │   ├── global-search/   # Global search UI
 │   │   ├── image-viewer-modal/ # Image viewer modal
 │   │   └── tool-log/        # Tool call log panel
@@ -99,6 +105,8 @@ src/
 | `agent_review_findings` | Structured findings from opposing-agent reviews |
 | `slack_channel_links` | Slack channel links for project triage |
 | `slack_triage_items` | Triaged Slack messages and suggested actions |
+| `global_search_index` | Full-text search metadata |
+| `global_search_fts` | Virtual FTS5 table for full-text search |
 
 **Key fields for features:**
 - `plan_items.completed_at` - When item marked done (for weekly updates)
@@ -207,6 +215,7 @@ src/
 - `taskPromptTemplateStore.ts` - Task prompt templates
 - `toastStore.ts` - Toast notifications
 - `toolLogStore.ts` - Tool call log state
+- `promptOverrideStore.ts` - Prompt override state
 - `contextRegenerationStore.ts` - Context regeneration modal state
 - `useSlackTriageStore.ts` - Slack triage panel and execution state
 
@@ -214,7 +223,9 @@ Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and
 
 **Cross-Store Events** (`storeEvents.ts`):
 - `status-changed` - Plan item status updated
+- `plan-item-created` - New plan item created (local or imported)
 - `navigate-to-view` - Navigate between planning/workspace views
+- `reveal-board-column` - Scroll board view to a specific status column
 - `file-explorer-changed` - Project file watcher reported create/update/delete/rename
 - `chat-file-updated` - Chat/document flow updated a project file
 
@@ -235,6 +246,8 @@ Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and
 | `command-palette/` | Cmd+K command interface |
 | `confluence/` | Confluence sync modals (link, preview) |
 | `tracker/` | Jira config, sync UI, type/status mapping |
+| `board-view/` | Board/kanban view components |
+| `tree-view/` | Tree view components |
 | `settings/` | Application settings dialogs |
 | `permission/` | Permission request UI |
 | `ui/` | Shared UI primitives (Modal, Button, StatusBadge) |
@@ -324,6 +337,7 @@ Tracks git branch changes for connected repositories in real-time.
 - `src/main/claude/tools/document-update.ts` - Document update tools
 - `src/main/claude/tools/claudemd-update.ts` - Project context updates
 - `src/main/claude/tools/groups.ts` - Group management tools
+- `src/main/claude/tools/github.ts` - GitHub PR description generation
 - `src/main/claude/streaming/` - Streaming session classes
 - `src/main/claude/prompts/` - System prompt modules
 - `src/main/services/streaming/StreamingSessionService.ts` - Main chat session management
@@ -335,6 +349,7 @@ Tracks git branch changes for connected repositories in real-time.
 - `toolDocs.ts` - Tool usage guidance
 - `planFormatting.ts` - Plan display formatting
 - `focusedResources.ts` - Focused resource handling
+- `promptRegistry.ts` - System prompt registry
 
 **Streaming Sessions:**
 - Connects on project open (zero-latency first message)
