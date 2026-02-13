@@ -64,6 +64,7 @@ const allTabs: { id: SettingsTab; label: string; icon: React.ReactNode; requires
 
 
           )}
+        </div>
     </Modal>
   );
 }
