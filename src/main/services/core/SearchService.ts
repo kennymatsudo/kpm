@@ -146,6 +146,7 @@ function toIndexTimestamp(date: Date): string {
 }
 
 function normalizeDocumentContent(content: string): string {
+  // eslint-disable-next-line no-control-regex
   return content.replace(/\u0000/g, '').trim();
 }
 
