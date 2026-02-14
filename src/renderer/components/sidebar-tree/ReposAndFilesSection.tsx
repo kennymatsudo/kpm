@@ -108,6 +108,14 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         }
           break;
         case 'renamed': {
+          const sourceParent = getParentPath(data.path);
+          void loadProjectDirectory(projectId, sourceParent || undefined);
+          if (data.newPath) {
+            const destParent = getParentPath(data.newPath);
+            if (destParent !== sourceParent) {
+              void loadProjectDirectory(projectId, destParent || undefined);
+            }
+          }
           break;
         }
       }

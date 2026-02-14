@@ -16,6 +16,7 @@ import { createStorybookTools } from './storybook';
 import { createGitHubTools } from './github';
 import { createConfluenceTools } from './confluence';
 import { createBriefingTools } from './briefing';
+import { createFileMoveTools } from './file-move';
 
 
 // Event emitter for plan actions - allows per-message callbacks with singleton server
@@ -113,6 +114,7 @@ function emitDocumentUpdate(update: DocumentUpdatePayload): void {
     ...githubTools,
     ...confluenceTools,
     ...briefingTools,
+    ...fileMoveTools,
   ];
 
 
