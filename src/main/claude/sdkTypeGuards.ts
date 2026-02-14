@@ -22,3 +22,10 @@ export function isInitMessage(msg: SDKMessage): msg is SDKSystemMessage & { subt
 export function isMaxTokensReached(msg: SDKResultMessage): boolean {
   return 'stop_reason' in msg && msg.stop_reason === 'max_tokens';
 }
+
+/**
+ * Check if result was truncated due to max turns limit.
+ */
+export function isMaxTurnsReached(msg: SDKResultMessage): boolean {
+  return 'subtype' in msg && msg.subtype === 'error_max_turns';
+}

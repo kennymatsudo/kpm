@@ -374,6 +374,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       unsubscribeClaudeMdUpdate = deps.subscribeToClaudeMdUpdate((update) => {
         const matchesSession = update.chatSessionId
           ? update.chatSessionId === chatSessionId
+          : ['connecting', 'processing'].includes(sessions.get(key)?.state ?? '');
 
         if (
           update.projectId === projectId &&
@@ -386,6 +387,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       unsubscribeDocumentUpdate = deps.subscribeToDocumentUpdate((update) => {
         const matchesSession = update.chatSessionId
           ? update.chatSessionId === chatSessionId
+          : ['connecting', 'processing'].includes(sessions.get(key)?.state ?? '');
 
         if (
           update.projectId === projectId &&
@@ -736,6 +738,17 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           projectId,
           chatSessionId,
           reason: 'max_tokens',
+        });
+      }
+
+      // Check if response hit max turns limit
+      if (isMaxTurnsReached(sdkMsg)) {
+        const numTurns = 'num_turns' in sdkMsg ? sdkMsg.num_turns : undefined;
+        console.log(`[StreamingSessionService] Response truncated (max_turns: ${numTurns}) for ${key}`);
+        mainWindow?.webContents.send('chat:error', {
+          projectId,
+          chatSessionId,
+          error: `Response reached the turn limit (${numTurns ?? 'unknown'} turns). Send another message to continue.`,
         });
       }
 

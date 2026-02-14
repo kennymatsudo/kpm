@@ -195,6 +195,8 @@ interface MessageListProps {
   const streamingSegments = viewedSession?.streamingSegments ?? [];
   const streamingContent = viewedSession?.streamingContent ?? '';
   const isStreaming = viewedSession?.isStreaming ?? false;
+  const error = viewedSession?.error ?? null;
+  const sessionState = viewedSession?.sessionState ?? 'idle';
   const activities = viewedSession?.activities ?? [];
   const streamStartedAt = viewedSession?.streamStartedAt ?? null;
   const listRef = useRef<HTMLDivElement>(null);
@@ -340,6 +342,14 @@ interface MessageListProps {
             />
           ))}
         </div>
+
+        {/* Interrupted response indicator — only show when session is disconnected (genuinely interrupted),
+            not after tool-only responses that completed normally without text output */}
+          <div className="flex items-center gap-2 py-3 text-text-muted">
+            <span className="w-1.5 h-1.5 rounded-full bg-warning flex-shrink-0" />
+            <span className="text-xs">Response was interrupted — send a message to continue</span>
+          </div>
+        )}
 
         {isStreaming && (streamingSegments.length > 0 || streamingContent) && (
               <StreamingContent

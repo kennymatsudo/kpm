@@ -54,6 +54,8 @@ export interface SessionConfig {
   processingTimeoutMs: number;
   /** Max time with no SDK activity while processing (ms) - detects hung sessions */
   processingIdleTimeoutMs: number;
+  /** Timeout waiting for user response to permission prompts (ms) */
+  permissionRequestTimeoutMs: number;
   /** How often to check for stale sessions (ms) */
   cleanupIntervalMs: number;
   /** Timeout waiting for session to become ready (ms) */
@@ -107,6 +109,7 @@ function createDefaultConfig(): AppConfig {
       settingSources: ['project'],
       debug: false,
       debugFile: null,
+      maxTurns: 200,
     },
 
     session: {

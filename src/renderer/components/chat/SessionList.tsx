@@ -22,6 +22,9 @@ export function SessionList() {
     e.stopPropagation();
     if (!currentProjectId) return;
 
+    // If streaming, cancel first (interrupt with timeout + force-disconnect fallback)
+    }
+
 
     // Remove session entirely (handles view switching internally)
     removeSession(chatSessionId);

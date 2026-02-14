@@ -19,6 +19,7 @@ import {
   type Options as SDKOptions,
 } from '@anthropic-ai/claude-agent-sdk';
 import { AsyncMessageQueue, type StreamingUserMessage } from './AsyncMessageQueue';
+import { getConfig } from '../../config';
 
 /**
  * Configuration for creating a StreamingSession.
@@ -88,8 +89,10 @@ export class StreamingSession {
     });
 
     // Create timeout promise to prevent indefinite hangs
+    const startTimeoutMs = getConfig().session.sessionReadyTimeoutMs;
     const timeoutPromise = new Promise<never>((_, reject) => {
         this._isReady = false;
+      }, startTimeoutMs);
     });
 
     this.messageQueue.push({
