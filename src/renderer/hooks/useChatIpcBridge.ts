@@ -21,8 +21,10 @@ export function useChatIpcBridge(projectId: string | null): void {
     setTokens,
     addActivity,
     setSessionState,
+    setRetrying,
     markSessionActive,
     markSessionInactive,
+    setViewedSession,
     getOrCreateSession,
   } = useChatStore(useShallow((state) => ({
     appendChunk: state.appendChunk,
@@ -31,8 +33,10 @@ export function useChatIpcBridge(projectId: string | null): void {
     setTokens: state.setTokens,
     addActivity: state.addActivity,
     setSessionState: state.setSessionState,
+    setRetrying: state.setRetrying,
     markSessionActive: state.markSessionActive,
     markSessionInactive: state.markSessionInactive,
+    setViewedSession: state.setViewedSession,
     getOrCreateSession: state.getOrCreateSession,
   })));
 
@@ -53,14 +57,37 @@ export function useChatIpcBridge(projectId: string | null): void {
     // Load active sessions from backend on mount
     void (async () => {
       if (result.success && result.sessions) {
+        let preferredSessionId: string | null = useChatStore.getState().viewedSessionId;
+
         for (const session of result.sessions) {
           markSessionActive(session.chatSessionId);
+
+          if (session.state === 'processing' || session.state === 'connecting') {
+            setRetrying(session.chatSessionId);
+
+            if (!preferredSessionId) {
+              preferredSessionId = session.chatSessionId;
+            }
+          }
+
+          // Keep renderer state aligned with backend to avoid duplicate sends after reload.
+          setSessionState(session.chatSessionId, session.state);
+
+          if (!preferredSessionId) {
+            preferredSessionId = session.chatSessionId;
+          }
+        }
+
+        if (!useChatStore.getState().viewedSessionId && preferredSessionId) {
+          setViewedSession(preferredSessionId);
         }
       }
     })();
 
     // Subscribe to unified chat IPC events
     // Events now include chatSessionId for routing to correct session
+        }
+
     });
 
     const WATCHDOG_POLL_MS = 15_000;

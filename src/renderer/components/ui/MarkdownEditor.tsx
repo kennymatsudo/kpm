@@ -2,6 +2,7 @@
  *
  */
 
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 export interface MarkdownEditorProps {
   content: string;
@@ -34,6 +35,19 @@ export function MarkdownEditor({
 }: MarkdownEditorProps) {
   const [localContent, setLocalContent] = useState(content);
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('preview');
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+  const [searchNavigationTick, setSearchNavigationTick] = useState(0);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const focusSearchInput = useCallback(() => {
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+  }, []);
 
   useEffect(() => {
     }
@@ -64,6 +78,98 @@ export function MarkdownEditor({
   const formatNumberedList = useCallback(() => applyFormat({ type: 'prefix', prefix: '1. ' }), [applyFormat]);
   const formatQuote = useCallback(() => applyFormat({ type: 'prefix', prefix: '> ' }), [applyFormat]);
   const formatLink = useCallback(() => applyFormat({ type: 'link' }), [applyFormat]);
+
+  const matchIndexes = useMemo(() => {
+    if (!showSearch || !searchQuery) return [];
+
+    const results: number[] = [];
+    const lowerQuery = searchQuery.toLowerCase();
+    let index = lowerContent.indexOf(lowerQuery);
+
+    while (index !== -1) {
+      results.push(index);
+      index = lowerContent.indexOf(lowerQuery, index + 1);
+    }
+
+    return results;
+
+  const totalMatches = matchIndexes.length;
+
+  const closeSearch = useCallback(() => {
+    setShowSearch(false);
+    setSearchQuery('');
+    setCurrentMatchIndex(0);
+    setSearchNavigationTick(0);
+  }, []);
+
+  const openSearch = useCallback(() => {
+    setShowSearch(true);
+    focusSearchInput();
+  }, [focusSearchInput]);
+
+
+  const goToNextMatch = useCallback(() => {
+    if (totalMatches === 0) return;
+    const nextIndex = (currentMatchIndex + 1) % totalMatches;
+    setCurrentMatchIndex(nextIndex);
+    setSearchNavigationTick((prev) => prev + 1);
+
+  const goToPrevMatch = useCallback(() => {
+    if (totalMatches === 0) return;
+    const prevIndex = (currentMatchIndex - 1 + totalMatches) % totalMatches;
+    setCurrentMatchIndex(prevIndex);
+    setSearchNavigationTick((prev) => prev + 1);
+
+  }, [showSearch, searchQuery, currentMatchIndex]);
+
+  useEffect(() => {
+    if (currentMatchIndex >= totalMatches) {
+      setCurrentMatchIndex(Math.max(0, totalMatches - 1));
+    }
+  }, [currentMatchIndex, totalMatches]);
+
+  useEffect(() => {
+    if (!showSearch) return;
+    focusSearchInput();
+  }, [showSearch, focusSearchInput]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showSearch) {
+        e.preventDefault();
+        closeSearch();
+        return;
+      }
+
+        e.preventDefault();
+        openSearch();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+
+  useEffect(() => {
+
+  useEffect(() => {
+    if (activeTab !== 'preview' || !showSearch || !searchQuery || totalMatches === 0) return;
+
+    const timeoutId = setTimeout(() => {
+      const container = previewRef.current;
+      if (!container) return;
+      const allMatches = Array.from(container.querySelectorAll<HTMLElement>('mark[data-search-match]'));
+      const targetMatch =
+        allMatches[currentMatchIndex] ??
+        container.querySelector<HTMLElement>(`[data-search-match="${currentMatchIndex}"]`) ??
+        container.querySelector<HTMLElement>('[data-current="true"]') ??
+        allMatches[0];
+      if (targetMatch) {
+        targetMatch.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      }
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
+  }, [activeTab, showSearch, searchQuery, totalMatches, currentMatchIndex, searchNavigationTick]);
 
   return (
     <div className="flex flex-col h-full bg-surface-0">
@@ -160,7 +266,55 @@ export function MarkdownEditor({
               </svg>
             </ToolbarButton>
           </div>
+
       </div>
+
+        <div className="px-4 py-2 bg-surface-2 border-b border-border-default">
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentMatchIndex(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (e.shiftKey) {
+                    goToPrevMatch();
+                  } else {
+                    goToNextMatch();
+                  }
+                }
+              }}
+              placeholder="Search in document..."
+              className="flex-1 bg-surface-1 border border-border-subtle rounded-md px-3 py-1.5 text-sm
+                         text-text-primary placeholder-text-muted
+                         focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/30"
+            />
+
+            {searchQuery && (
+              <span className="text-xs text-text-muted whitespace-nowrap">
+                {totalMatches === 0 ? 'No matches' : `${currentMatchIndex + 1} of ${totalMatches}`}
+              </span>
+            )}
+
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                </svg>
+              </button>
+          </div>
+        </div>
+      )}
 
             value={localContent}
           />
