@@ -89,14 +89,19 @@ function groupByTurn(entries: ToolCallLogEntry[]): Map<number, ToolCallLogEntry[
   return grouped;
 }
 
+/** Compute inter-event gap for each entry within a turn (not tool runtime). */
+function computeInterEventGaps(entries: ToolCallLogEntry[], summary: ToolCallTurnSummary | undefined): Map<string, number> {
+  const gaps = new Map<string, number>();
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
     const nextTs = i < entries.length - 1
       ? entries[i + 1].timestamp
       : summary?.endTime;
     if (nextTs != null) {
+      gaps.set(entry.id, nextTs - entry.timestamp);
     }
   }
+  return gaps;
 }
 
 const SLOW_THRESHOLD_MS = 5000;
@@ -104,8 +109,10 @@ const SLOW_THRESHOLD_MS = 5000;
 interface ToolLogEntryRowProps {
   entry: ToolCallLogEntry;
   isDuplicate: boolean;
+  interEventGapMs: number | undefined;
 }
 
+function ToolLogEntryRow({ entry, isDuplicate, interEventGapMs }: ToolLogEntryRowProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -117,11 +124,15 @@ interface ToolLogEntryRowProps {
         <span className="text-text-quaternary w-[4.5rem] flex-shrink-0 font-mono whitespace-nowrap">
           {formatTimestamp(entry.timestamp)}
         </span>
+        {interEventGapMs != null && (
           <span
+            title="Inter-event gap (time until the next tool event), not tool runtime"
+              interEventGapMs >= SLOW_THRESHOLD_MS
                 ? 'bg-warning/15 text-warning font-medium'
                 : 'bg-surface-2 text-text-quaternary'
             }`}
           >
+            gap {formatDuration(interEventGapMs)}
           </span>
         )}
         <CategoryIcon type={entry.toolCategory} />
@@ -170,11 +181,14 @@ interface TurnGroupProps {
 function TurnGroup({ turnIndex, entries, summary, duplicateFiles }: TurnGroupProps) {
   const [expanded, setExpanded] = useState(true);
 
+  const interEventGaps = useMemo(() => computeInterEventGaps(entries, summary), [entries, summary]);
 
   const timeRange = entries.length > 0
     ? `${formatTimestamp(entries[0].timestamp)}${entries.length > 1 ? ' - ' + formatTimestamp(entries[entries.length - 1].timestamp) : ''}`
     : '';
 
+  // Total turn span (first event to last event in the turn)
+  const turnSpan = summary && entries.length > 0
     ? summary.endTime - entries[0].timestamp
     : entries.length > 1
       ? entries[entries.length - 1].timestamp - entries[0].timestamp
@@ -195,6 +209,11 @@ function TurnGroup({ turnIndex, entries, summary, duplicateFiles }: TurnGroupPro
         </svg>
         <span className="font-medium text-text-secondary">Turn {turnIndex}</span>
         <span className="text-text-tertiary">{entries.length} call{entries.length !== 1 ? 's' : ''}</span>
+        {turnSpan != null && (
+          <span
+            title="Turn span (first event to last event)"
+          >
+            span {formatDuration(turnSpan)}
           </span>
         )}
         {summary && summary.duplicateReads.length > 0 && (
@@ -212,6 +231,7 @@ function TurnGroup({ turnIndex, entries, summary, duplicateFiles }: TurnGroupPro
                 key={entry.id}
                 entry={entry}
                 isDuplicate={isDuplicate}
+                interEventGapMs={interEventGaps.get(entry.id)}
               />
             );
           })}
@@ -333,10 +353,19 @@ export function ToolLogPanel() {
     const lines: string[] = [];
     for (const [turn, turnEntries] of turnGroups) {
       const summary = summaryByTurn.get(turn);
+      const interEventGaps = computeInterEventGaps(turnEntries, summary);
+      const turnSpanMs = turnEntries.length > 0
+        ? ((summary?.endTime ?? turnEntries[turnEntries.length - 1].timestamp) - turnEntries[0].timestamp)
+        : undefined;
+      const spanStr = turnSpanMs != null ? `, span ${formatDuration(turnSpanMs)}` : '';
+      lines.push(`--- Turn ${turn} (${turnEntries.length} call${turnEntries.length !== 1 ? 's' : ''}${spanStr}) ---`);
       for (const entry of turnEntries) {
         const time = formatTimestamp(entry.timestamp);
+        const gap = interEventGaps.get(entry.id);
+        const gapStr = gap != null ? ` (gap ${formatDuration(gap)})` : '';
         const detailStr = entry.detail ? ` -- ${entry.detail}` : '';
         const files = entry.filePaths.length > 0 ? ` [${entry.filePaths.join(', ')}]` : '';
+        lines.push(`  ${time}${gapStr}  ${entry.toolName}  ${entry.label}${detailStr}${files}`);
       }
       lines.push('');
     }
