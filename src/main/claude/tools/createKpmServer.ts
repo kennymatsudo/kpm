@@ -14,6 +14,7 @@ import { createGroupTools } from './groups';
 import { createJiraTools } from './jira';
 import { createStorybookTools } from './storybook';
 import { createGitHubTools } from './github';
+import { createConfluenceTools } from './confluence';
 
 
 // Event emitter for plan actions - allows per-message callbacks with singleton server
@@ -109,6 +110,7 @@ function emitDocumentUpdate(update: DocumentUpdatePayload): void {
     ...jiraTools,
     ...storybookTools,
     ...githubTools,
+    ...confluenceTools,
   ];
 
 

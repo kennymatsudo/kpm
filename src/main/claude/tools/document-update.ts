@@ -40,6 +40,8 @@ export type DocumentUpdateCallback = (update: DocumentUpdatePayload) => void;
         }
 
           success: true,
+          filePath,
+          contentPreview: preview,
       }
     ),
   ];
