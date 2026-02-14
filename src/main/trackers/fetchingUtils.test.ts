@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { fetchIssuesWithSubtasks } from './fetchingUtils';
 import type { TrackerClient, ExternalIssue } from '../tracker-clients';
 
 // Helper to create mock issues

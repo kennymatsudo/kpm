@@ -39,6 +39,7 @@ export type DocumentUpdateCallback = (update: DocumentUpdatePayload) => void;
         } catch (error) {
         }
 
+        const preview = /^#+ .+$/m.exec(content)?.[0] ?? content.slice(0, 100);
           success: true,
           filePath,
           contentPreview: preview,

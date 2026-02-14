@@ -135,6 +135,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     { scope: 'worker' },
   ],
 
+  // Test scope - provides the page reference without resetting database.
+  // Spec files manage their own setup/teardown via ensureAppReady() in beforeAll.
   window: async ({ electronApp }, use) => {
     const pages = electronApp.context.pages();
     const window = pages[0];
