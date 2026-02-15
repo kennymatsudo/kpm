@@ -118,6 +118,9 @@ export type {
   PromptOverrideResetInput,
 } from './promptOverrides';
 
+// Briefing
+export { BriefingSchemas } from './briefing';
+
 // Confluence
 export { ConfluenceSchemas } from './confluence';
 

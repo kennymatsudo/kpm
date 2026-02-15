@@ -77,5 +77,8 @@ export { useToolLogStore } from './toolLogStore';
 // Prompt Overrides
 export { usePromptOverrideStore } from './promptOverrideStore';
 
+// Briefing
+export { useBriefingStore } from './briefingStore';
+
 // Global Search
 export { useSearchStore } from './searchStore';

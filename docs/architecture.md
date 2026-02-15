@@ -48,6 +48,7 @@ src/
 │   │   ├── settings/        # Settings dialogs
 │   │   ├── command-palette/ # Command palette
 │   │   ├── confluence/      # Confluence sync modals
+│   │   ├── briefing/        # Project briefing modal
 │   │   ├── permission/      # Permission request UI
 │   │   ├── onboarding/      # Project onboarding wizard
 │   │   ├── slack/           # Slack triage UI

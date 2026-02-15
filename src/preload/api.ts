@@ -55,6 +55,7 @@ import type {
   SearchResult,
   PromptDefinitionInfo,
   PromptCategory,
+  BriefingResult,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -108,6 +109,7 @@ export type {
   SearchResult,
   PromptDefinitionInfo,
   PromptCategory,
+  BriefingResult,
 };
 
 const tempImages = {
@@ -900,6 +902,12 @@ const promptOverrides = {
     ipcRenderer.invoke(IPC_CHANNELS.promptOverrides.reset, { key }),
 };
 
+// Briefing API (project state synthesis)
+const briefing = {
+  generate: (projectId: string): Promise<{ success: boolean; data?: BriefingResult; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.briefing.generate, { projectId }),
+};
+
 // Testing API - only available when NODE_ENV=test
 // Used by E2E tests for database reset and test isolation
 const testing = {
@@ -946,6 +954,7 @@ export const api = {
   toolLog,
   search,
   promptOverrides,
+  briefing,
 };
 
 export type API = typeof api;

@@ -19,6 +19,7 @@ createKpmServer() (singleton MCP server)
     ├─ storybook.ts (component discovery)
     ├─ document-update.ts (document update tools)
     ├─ claudemd-update.ts (project context updates)
+    ├─ github.ts (GitHub PR description generation)
     ↓
 System prompts (prompts/ directory)
 ```

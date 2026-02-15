@@ -1,6 +1,7 @@
 import { useShallow } from 'zustand/react/shallow';
 import {
   useProjectDomainStore,
+  useBriefingStore,
 } from '../../stores';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { Z_INDEX } from '../../constants/zIndex';
@@ -79,6 +80,7 @@ export function TopBar({
 
           {currentProject && (
             <>
+
 
             </>
           )}

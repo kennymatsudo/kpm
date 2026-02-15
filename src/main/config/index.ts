@@ -67,6 +67,8 @@ export interface GenerationConfig {
   noteRefinementTimeoutMs: number;
   /** Artifact generation timeout (ms) */
   artifactGenerationTimeoutMs: number;
+  /** Briefing generation timeout per stage (ms) */
+  briefingStageTimeoutMs: number;
 }
 
 export interface NetworkConfig {
@@ -121,6 +123,7 @@ function createDefaultConfig(): AppConfig {
     generation: {
       noteRefinementTimeoutMs: 2 * 60 * 1000, // 2 minutes
       artifactGenerationTimeoutMs: 5 * 60 * 1000, // 5 minutes
+      briefingStageTimeoutMs: 2 * 60 * 1000, // 2 minutes per stage
     },
 
     network: {

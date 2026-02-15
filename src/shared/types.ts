@@ -855,3 +855,22 @@ export interface PromptDefinitionInfo {
   hasOverride: boolean;
   variables?: { name: string; description: string }[];
 }
+
+
+// =============================================================================
+// Briefing Types
+// =============================================================================
+
+/** Result of a briefing generation */
+export interface BriefingResult {
+  /** Markdown briefing text */
+  summary: string;
+  /** ISO timestamp of when the briefing was generated */
+  generatedAt: string;
+  /** Signal counts for UI badges */
+  signalCounts: {
+    blockedCount: number;
+    staleCount: number;
+    readyCount: number;
+  };
+}

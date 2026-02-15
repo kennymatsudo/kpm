@@ -9,6 +9,7 @@ import { CommandPalette } from '../command-palette';
 import { GlobalSearch } from '../global-search';
 import { ApprovalOverlays } from './ApprovalOverlays';
 import { ToastContainer } from '../ui';
+import { BriefingModal } from '../briefing';
 import { ToolLogPanel } from '../tool-log';
 import {
   useArtifactsStore,
@@ -236,6 +237,7 @@ interface LayoutProps {
       <CommandPalette isOpen={isCommandPaletteOpen} onClose={closeCommandPalette} />
       <GlobalSearch />
       <ApprovalOverlays />
+      <BriefingModal />
       <ToastContainer />
     </>
   );

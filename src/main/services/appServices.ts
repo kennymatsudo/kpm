@@ -21,6 +21,9 @@ import { createRepoWatcherService } from './repo/RepoWatcherService';
 // Prompt override service
 import { createPromptOverrideService } from './core/PromptOverrideService';
 
+// Briefing service
+import { createBriefingService } from './core/BriefingService';
+
 // Confluence services
 import { createConfluenceSyncService } from './confluence';
 
@@ -67,6 +70,16 @@ export function createAppServices(container: IRepositoryContainer) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Briefing Service
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const briefingService = createBriefingService({
+    getDatabase,
+    fileExplorerService,
+    projects: container.projects,
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Confluence Services
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -99,6 +112,9 @@ export function createAppServices(container: IRepositoryContainer) {
 
     // Prompt overrides
     promptOverrideService,
+
+    // Briefing
+    briefingService,
 
     // Confluence
     confluenceSyncService,
