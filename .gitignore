@@ -100,3 +100,6 @@ dist/
 *.db
 *.db-wal
 *.db-shm
+
+# Performance profiling output
+scripts/profiles/

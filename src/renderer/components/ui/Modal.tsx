@@ -33,6 +33,8 @@ interface ModalProps {
   zIndex?: number;
   /** Whether to disable the close behavior (useful during async operations) */
   preventClose?: boolean;
+  /** Called when the modal open animation completes */
+  onAnimationComplete?: () => void;
 }
 
 const sizeClasses: Record<ModalSize, string> = {
@@ -79,6 +81,7 @@ export function Modal({
   'aria-describedby': ariaDescribedBy,
   zIndex = Z_INDEX.modal,
   preventClose = false,
+  onAnimationComplete,
 }: ModalProps) {
   const handleClose = () => {
     if (!preventClose) {
@@ -130,6 +133,7 @@ export function Modal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 6 }}
             transition={{ duration: 0.12, ease: [0.2, 0, 0, 1] }}
+            onAnimationComplete={onAnimationComplete}
             className={`dialog-content ${sizeClasses[size]} mx-4 ${className}`}
           >
           </m.div>

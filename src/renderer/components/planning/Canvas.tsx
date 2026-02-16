@@ -78,6 +78,7 @@ interface CanvasProps {
     containerRef,
     resetView,
     screenToCanvas,
+    getVisibleBounds,
     panHandlers,
   } = useCanvasViewport({ projectId, items, groups });
 
@@ -337,7 +338,9 @@ interface CanvasProps {
           );
         })}
 
+        {/* Plan items - viewport culled, items in collapsed groups are hidden */}
         <AnimatePresence mode="popLayout">
+          {viewportItems.map(node => {
             const isInDraggingGroup = draggingGroupId && node.group_id === draggingGroupId;
             const isInRecentlyDraggedGroup = recentlyDraggedGroupId && node.group_id === recentlyDraggedGroupId;
             if (draggingGroupId) {

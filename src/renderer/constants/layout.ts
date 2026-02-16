@@ -85,3 +85,10 @@ export const COLLISION = {
   /** Minimum gap between groups and other elements */
   MIN_GAP: 20,
 } as const;
+
+/**
+ * Viewport culling buffer in canvas units (~375 screen px at default zoom).
+ * Items within this distance of the visible viewport edge are rendered to
+ * prevent pop-in during normal panning.
+ */
+export const VIEWPORT_BUFFER = 500;

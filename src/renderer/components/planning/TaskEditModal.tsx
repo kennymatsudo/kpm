@@ -32,6 +32,10 @@ export function TaskEditModal({
     if (!item.association_id) return null;
   }, [item.association_id, associations]);
 
+  // Get cached issue types + loader in a single subscription
+    useShallow((state) => ({
+      loadIssueTypes: state.loadIssueTypes,
+    }))
   );
   // Load issue types when modal opens (if we have a project key)
   useEffect(() => {
@@ -59,14 +63,23 @@ export function TaskEditModal({
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
 
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const animationCompleteRef = useRef(false);
 
   // Sync state when item changes
   useEffect(() => {
     if (isOpen) {
+      animationCompleteRef.current = false;
       setTitle(item.title);
       setDescription(item.description || '');
       setLabel(item.label || '');
     }
+  // Focus title input when modal open animation finishes
+  const handleAnimationComplete = useCallback(() => {
+    if (animationCompleteRef.current) return;
+    animationCompleteRef.current = true;
+    titleInputRef.current?.focus();
+    titleInputRef.current?.select();
+  }, []);
 
   // Track unsaved changes
   const isDirty = useMemo(() => {
@@ -125,6 +138,7 @@ export function TaskEditModal({
         onClose={handleRequestClose}
         closeOnBackdropClick={!isDirty}
         preventClose={isSaving}
+        onAnimationComplete={handleAnimationComplete}
         aria-labelledby="task-edit-title"
       >
         {/* Accent gradient line */}

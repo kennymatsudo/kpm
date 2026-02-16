@@ -26,6 +26,9 @@ import { create } from 'zustand';
   loadingIssueTypesFor: Set<string>;
   issueTypesErrorByProject: Record<string, string>;
 
+  statusesLastFetchedAt: Record<string, number>;
+  issueTypesLastFetchedAt: Record<string, number>;
+
   loadProjects: (force?: boolean) => Promise<{ success: boolean; error?: string }>;
   loadIssueTypes: (projectKey: string, force?: boolean) => Promise<{ success: boolean; error?: string }>;
 
@@ -44,6 +47,9 @@ const initialState = {
 
   loadingIssueTypesFor: new Set<string>(),
   issueTypesErrorByProject: {} as Record<string, string>,
+
+  statusesLastFetchedAt: {} as Record<string, number>,
+  issueTypesLastFetchedAt: {} as Record<string, number>,
 };
 
   ...initialState,
@@ -85,6 +91,9 @@ const initialState = {
 
     const state = get();
 
+      if (lastFetched && Date.now() - lastFetched < CACHE_TTL_MS) {
+        return { success: true };
+      }
     }
 
       return { success: true };
@@ -115,6 +124,10 @@ const initialState = {
     const state = get();
 
     if (!force && state.issueTypesByProject[projectKey]?.length > 0) {
+      const lastFetched = state.issueTypesLastFetchedAt[projectKey];
+      if (lastFetched && Date.now() - lastFetched < CACHE_TTL_MS) {
+        return { success: true };
+      }
     }
 
     if (state.loadingIssueTypesFor.has(projectKey)) {
@@ -130,6 +143,7 @@ const initialState = {
       if (result.success && result.issueTypes) {
         set((s) => {
           return {
+            issueTypesLastFetchedAt: { ...s.issueTypesLastFetchedAt, [projectKey]: Date.now() },
           };
         });
         return { success: true };

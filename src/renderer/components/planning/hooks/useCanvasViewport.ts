@@ -6,6 +6,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { ZOOM, VIEWPORT_BUFFER } from '../../../constants/layout';
 
 /** Debounce delay for persisting canvas state (ms) */
 const PERSIST_DEBOUNCE_MS = 300;
@@ -40,6 +41,13 @@ interface UseCanvasViewportOptions {
   groups?: GroupPosition[];
 }
 
+export interface VisibleBounds {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
 interface UseCanvasViewportReturn {
   /** User-facing zoom value (1 = 100% displayed) */
   zoom: number;
@@ -52,6 +60,8 @@ interface UseCanvasViewportReturn {
   containerRef: React.RefObject<HTMLDivElement | null>;
   resetView: () => void;
   screenToCanvas: (screenX: number, screenY: number) => { x: number; y: number };
+  /** Returns the visible viewport bounds in canvas coordinates (with buffer), or null if unmounted */
+  getVisibleBounds: () => VisibleBounds | null;
   panHandlers: {
     onMouseDown: (e: React.MouseEvent) => void;
     onMouseMove: (e: React.MouseEvent) => void;
@@ -288,6 +298,19 @@ export function useCanvasViewport({
     });
   }, [items, groups]);
 
+  // Get visible viewport bounds in canvas coordinates (with buffer for culling)
+  const getVisibleBounds = useCallback((): VisibleBounds | null => {
+    const el = containerRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    return {
+      left: (-panOffset.x) / effectiveZoom - VIEWPORT_BUFFER,
+      top: (-panOffset.y) / effectiveZoom - VIEWPORT_BUFFER,
+      right: (rect.width - panOffset.x) / effectiveZoom + VIEWPORT_BUFFER,
+      bottom: (rect.height - panOffset.y) / effectiveZoom + VIEWPORT_BUFFER,
+    };
+  }, [panOffset, effectiveZoom]);
+
   useEffect(() => {
     return () => {
       if (panRafRef.current) {
@@ -306,6 +329,7 @@ export function useCanvasViewport({
     containerRef,
     resetView,
     screenToCanvas,
+    getVisibleBounds,
     panHandlers: {
       onMouseDown: handleMouseDown,
       onMouseMove: handleMouseMove,

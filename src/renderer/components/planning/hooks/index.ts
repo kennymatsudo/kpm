@@ -1,3 +1,4 @@
+export { useCanvasViewport, type VisibleBounds } from './useCanvasViewport';
 export { useCanvasWheel } from './useCanvasWheel';
 export { useBulkActions } from './useBulkActions';
 export { useAutoLayout, type AutoLayoutOptions } from './useAutoLayout';

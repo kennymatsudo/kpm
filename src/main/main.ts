@@ -52,6 +52,14 @@ function loadWindowBounds(): Electron.Rectangle | null {
 
 
 void app.whenReady().then(async () => {
+  // Install React DevTools extension in dev mode
+  if (!app.isPackaged) {
+    try {
+    } catch (err) {
+      console.warn('[Main] Failed to install React DevTools:', err);
+    }
+  }
+
   initDatabase();
 
   // Clean up legacy global MCP registration (from before in-process tools migration)

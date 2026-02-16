@@ -1955,6 +1955,35 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1050,
+    name: '050_query_performance_indexes',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- Standalone parent_id index for plan_items
+        -- Fixes: FULL TABLE SCAN in recursive CTE base query,
+        -- AUTOMATIC INDEX creation in recursive step,
+        -- and covering index SCAN in getChildCount
+        CREATE INDEX IF NOT EXISTS idx_plan_items_parent
+          ON plan_items(parent_id);
+
+        -- Composite index covering childrenByParent + siblings queries
+        -- Satisfies WHERE project_id=? AND parent_id=? ORDER BY item_order
+        CREATE INDEX IF NOT EXISTS idx_plan_items_parent_project_order
+          ON plan_items(project_id, parent_id, item_order);
+
+        -- Composite index eliminating TEMP B-TREE sort on chat message loading
+        -- Satisfies WHERE session_id=? ORDER BY created_at
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_session_created
+          ON chat_messages(session_id, created_at);
+
+        -- Composite index eliminating TEMP B-TREE sort on inbox item loading
+        -- Satisfies WHERE project_id=? AND status=? ORDER BY created_at DESC
+        CREATE INDEX IF NOT EXISTS idx_inbox_items_project_status_created
+          ON inbox_items(project_id, status, created_at DESC);
+      `);
+    },
+  },
         -- Backfill: sessions without plan items get first 60 chars of instructions
   {
     id: 1075,

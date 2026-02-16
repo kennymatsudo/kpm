@@ -5,6 +5,7 @@
  * Two-stage pipeline:
  */
 
+import type { Database, Statement } from 'better-sqlite3';
 import type { BriefingResult, FileNode } from '../../../shared/types';
 import type { AsyncResult } from '../result';
 import { success, failure } from '../result';
@@ -84,8 +85,87 @@ export interface BriefingServiceDeps {
 // =============================================================================
 // =============================================================================
 
+}
+
+
+      statusSummary: db.prepare(`
+        SELECT status_category, COUNT(*) as count
+        FROM plan_items
+        WHERE project_id = ? AND status_category IS NOT NULL
+        GROUP BY status_category
+      `),
+      blockedItems: db.prepare(`
+        SELECT
+          pi.id,
+          pi.title,
+          GROUP_CONCAT(blocker.id) as blocked_by_ids,
+          GROUP_CONCAT(blocker.title, ' | ') as blocked_by_titles
+        FROM plan_items pi
+        LEFT JOIN plan_relations pr ON pr.from_item_id = pi.id AND pr.relation_type = 'depends_on'
+        LEFT JOIN plan_items blocker ON blocker.id = pr.to_item_id AND blocker.status_category != 'done'
+        WHERE pi.project_id = ? AND pi.status_category = 'blocked'
+        GROUP BY pi.id
+      `),
+      staleItems: db.prepare(`
+        SELECT
+          id,
+          title,
+          CAST(julianday('now') - julianday(updated_at) AS INTEGER) as days_since_update
+        FROM plan_items
+        WHERE project_id = ?
+          AND status_category = 'in_progress'
+          AND updated_at < datetime('now', '-7 days')
+        ORDER BY updated_at ASC
+        LIMIT 20
+      `),
+      readyItems: db.prepare(`
+        SELECT pi.id, pi.title
+        FROM plan_items pi
+        WHERE pi.project_id = ?
+          AND pi.status_category = 'not_started'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM plan_relations pr
+            JOIN plan_items dep ON dep.id = pr.to_item_id
+            WHERE pr.from_item_id = pi.id
+              AND pr.relation_type = 'depends_on'
+              AND dep.status_category != 'done'
+          )
+        ORDER BY pi.item_order
+        LIMIT 20
+      `),
+      inProgressItems: db.prepare(`
+        SELECT
+          id,
+          title,
+          CAST(julianday('now') - julianday(updated_at) AS INTEGER) as days_since_update
+        FROM plan_items
+        WHERE project_id = ? AND status_category = 'in_progress'
+        ORDER BY updated_at DESC
+        LIMIT 20
+      `),
+      inactiveDevSessions: db.prepare(`
+        SELECT
+          ds.id,
+          pi.title as plan_item_title,
+          ds.branch_name,
+          CAST(julianday('now') - julianday(ds.updated_at) AS INTEGER) as days_since_update
+        FROM dev_sessions ds
+        JOIN plan_items pi ON pi.id = ds.plan_item_id
+        WHERE ds.project_id = ? AND ds.status = 'inactive'
+        ORDER BY ds.updated_at DESC
+        LIMIT 10
+      `),
+      recentMessages: db.prepare(`
+        SELECT role, content, created_at
+        FROM chat_messages
+        WHERE session_id = ?
+        ORDER BY created_at DESC
+      `),
         INSERT INTO project_briefings (project_id, summary, generated_at, blocked_count, stale_count, ready_count)
         VALUES (?, ?, ?, ?, ?, ?)
+    };
+  }
 
 
   return {
