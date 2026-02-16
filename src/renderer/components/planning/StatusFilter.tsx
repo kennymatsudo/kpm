@@ -111,6 +111,7 @@ export function StatusFilter({ hiddenCategories, onChange, totalCount, visibleCo
                     </svg>
                   )}
                 </span>
+                <span className={`px-1.5 py-0.5 text-xxs font-medium rounded ${config.bgClass} ${config.textClass}`}>
                   {config.label}
                 </span>
               </button>

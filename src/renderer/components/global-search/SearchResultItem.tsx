@@ -86,6 +86,7 @@ export function SearchResultItem({ result, index, isSelected, onSelect, onHover,
             {result.metadata.statusCategory.replace('_', ' ')}
           </span>
         )}
+        <span className={`px-1.5 py-0.5 text-tiny font-medium rounded ${badge.className}`}>
           {badge.label}
         </span>
       </div>

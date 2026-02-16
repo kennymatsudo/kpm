@@ -57,6 +57,7 @@ export function NewSessionButton() {
         <button
           onClick={() => setKeepActive(!keepActive)}
           className={`
+            flex items-center gap-1 px-1.5 py-0.5 rounded text-xxs
             transition-all duration-150
             ${keepActive
               ? 'bg-accent/10 text-accent'

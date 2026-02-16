@@ -191,6 +191,7 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
           </span>
 
           {editingFile.isReadOnly && (
+            <span className="px-2 py-0.5 text-xxs font-medium text-text-muted bg-surface-3 rounded-full shadow-sm">
               Read-only
             </span>
           )}

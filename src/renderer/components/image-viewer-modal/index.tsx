@@ -168,9 +168,12 @@ export function ImageViewerModal({
         <div className="flex items-center justify-between px-5 py-3 border-t border-border-subtle bg-surface-1/50">
           <div className="flex items-center gap-4 text-xs text-text-muted">
             <span className="flex items-center gap-1.5">
+              <kbd className="px-1.5 py-0.5 rounded bg-surface-2 text-xxs font-mono">+</kbd>
+              <kbd className="px-1.5 py-0.5 rounded bg-surface-2 text-xxs font-mono">-</kbd>
               <span>zoom</span>
             </span>
             <span className="flex items-center gap-1.5">
+              <kbd className="px-1.5 py-0.5 rounded bg-surface-2 text-xxs font-mono">0</kbd>
               <span>reset</span>
             </span>
           </div>

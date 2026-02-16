@@ -55,6 +55,8 @@ void app.whenReady().then(async () => {
   // Install React DevTools extension in dev mode
   if (!app.isPackaged) {
     try {
+      await installExtension(REACT_DEVELOPER_TOOLS);
+      console.log('[Main] Installed React DevTools extension');
     } catch (err) {
       console.warn('[Main] Failed to install React DevTools:', err);
     }

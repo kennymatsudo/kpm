@@ -49,6 +49,7 @@ export function BriefingModal() {
 
 
             {/* Markdown briefing content */}
+            <div className="prose-themed">
             </div>
         )}
       </ModalBody>

@@ -71,6 +71,7 @@ export function TrackerSidebar({
       {associations.length > 0 && (
         <div className="my-3 mx-2">
           <div className="h-px bg-gradient-to-r from-transparent via-border-default to-transparent" />
+          <p className="text-xxs font-medium uppercase tracking-wider text-text-muted mt-3 mb-1 px-1">
             Linked Projects
           </p>
         </div>
@@ -108,6 +109,7 @@ export function TrackerSidebar({
                     {association.display_name || association.project_name || association.project_key}
                   </div>
                   <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-xxs font-mono px-1 py-0.5 rounded bg-surface-3 text-text-tertiary">
                       {association.project_key}
                     </span>
                   </div>

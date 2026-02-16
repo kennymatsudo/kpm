@@ -39,8 +39,10 @@ export function SectionHeader({ type, count, isFirst }: SectionHeaderProps) {
         <span className={`${color} opacity-50`}>
           <EntityIcon entityType={type} className="w-3.5 h-3.5" />
         </span>
+        <span className="text-xxs font-semibold uppercase tracking-widest text-text-tertiary">
           {label}
         </span>
+        <span className="text-xxs text-text-muted tabular-nums">
           {count}
         </span>
       </div>

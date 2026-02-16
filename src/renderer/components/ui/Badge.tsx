@@ -83,6 +83,7 @@ const variantStyles: Record<BadgeVariant, { bg: string; text: string; dot: strin
 const sizeStyles: Record<BadgeSize, { padding: string; text: string; gap: string; dot: string }> = {
   sm: {
     padding: 'px-1.5 py-0.5',
+    text: 'text-xxs',
     gap: 'gap-1',
     dot: 'w-1.5 h-1.5',
   },

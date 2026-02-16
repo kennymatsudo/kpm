@@ -31,6 +31,7 @@ export function ReparentDetail({ action, planItems, placeholderMap }: ReparentDe
           Move
         </span>
         {item.label && (
+          <span className="text-xxs font-medium text-text-muted px-1.5 py-0.5 rounded bg-surface-2">
             {item.label}
           </span>
         )}
@@ -38,6 +39,7 @@ export function ReparentDetail({ action, planItems, placeholderMap }: ReparentDe
 
       {/* Item being moved */}
       <div>
+        <div className="text-xxs font-semibold text-text-muted uppercase tracking-wider mb-1.5">Item</div>
         <div className="p-3 rounded-lg bg-surface-1 border border-border-subtle">
           <p className="text-sm font-medium text-text-primary">{item.title}</p>
           {item.description && (

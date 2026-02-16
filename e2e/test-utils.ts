@@ -317,8 +317,11 @@ export async function reparentItem(
   await window.evaluate(async ({ child, parent }) => {
     const w = window as unknown as { api: {
       projects: {
+        list: () => Promise<{ id: string }[]>;
       };
       plan: {
+        listItems: (projectId: string) => Promise<{ id: string; title: string }[]>;
+        executeActions: (projectId: string, actions: { type: string; item_id: string; new_parent_id: string | null }[]) => Promise<unknown>;
       };
     } };
 

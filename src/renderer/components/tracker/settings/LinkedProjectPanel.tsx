@@ -506,9 +506,11 @@ function CustomFieldsTab({
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-text-primary text-sm font-medium">{field.name}</span>
                 {field.required && (
+                  <span className="px-1.5 py-0.5 text-xxs font-medium uppercase tracking-wider bg-danger-muted text-danger rounded">
                     Required
                   </span>
                 )}
+                <span className="px-1.5 py-0.5 text-xxs font-medium uppercase tracking-wider bg-surface-3 text-text-tertiary rounded ml-auto">
                   {field.type === 'option' ? 'Select' : 'Text'}
                 </span>
               </div>

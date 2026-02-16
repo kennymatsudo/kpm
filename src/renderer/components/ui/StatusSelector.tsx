@@ -21,6 +21,7 @@ export function StatusSelector({
   size = 'md',
 }: StatusSelectorProps) {
   const currentConfig = value ? STATUS_CATEGORY_CONFIG[value] : null;
+  const sizeClasses = size === 'sm' ? 'px-1.5 py-0.5 text-xxs' : 'px-2 py-1 text-xs';
 
   return (
         aria-label={`Status: ${currentConfig?.label ?? 'Not set'}`}

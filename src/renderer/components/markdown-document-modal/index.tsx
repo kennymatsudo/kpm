@@ -588,20 +588,25 @@ export function MarkdownDocumentModal({
 
             {/* Footer */}
                 <span className="flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 rounded bg-surface-2 text-xxs font-mono">⌘F</kbd>
                   <span>search</span>
                 </span>
                 <span className="flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 rounded bg-surface-2 text-xxs font-mono">⌘E</kbd>
                   <span>toggle view</span>
                 </span>
                 {viewMode === 'edit' && (
                   <>
                     <span className="flex items-center gap-1.5">
+                      <kbd className="px-1.5 py-0.5 rounded bg-surface-2 text-xxs font-mono">⌘↵</kbd>
                       <span>save</span>
                     </span>
                     <span className="flex items-center gap-1.5">
+                      <kbd className="px-1.5 py-0.5 rounded bg-surface-2 text-xxs font-mono">⌘B</kbd>
                       <span>bold</span>
                     </span>
                     <span className="flex items-center gap-1.5">
+                      <kbd className="px-1.5 py-0.5 rounded bg-surface-2 text-xxs font-mono">⌘I</kbd>
                       <span>italic</span>
                     </span>
                   </>

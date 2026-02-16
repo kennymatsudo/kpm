@@ -120,6 +120,7 @@ export function SessionHistory() {
               </span>
               {sessionHistory.length > 0 && (
                 <span
+                  className="text-xxs font-medium px-1.5 py-0.5 rounded-full"
                   style={{
                     background: 'var(--color-accent-subtle)',
                     color: 'var(--color-accent)'

@@ -145,6 +145,7 @@ export function Chat({ currentView }: ChatProps) {
             Context
           </span>
           {focusCount > 1 && (
+            <span className="text-xxs font-medium px-1.5 py-0.5 rounded-full bg-accent/20 text-accent">
               {focusCount}
             </span>
           )}

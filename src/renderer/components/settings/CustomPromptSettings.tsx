@@ -351,6 +351,7 @@ function PromptListItem({ prompt, isSelected, onClick }: PromptListItemProps) {
           <span className="truncate font-medium">{prompt.name}</span>
         </div>
         {prompt.is_builtin && (
+          <span className="shrink-0 text-xxs text-text-tertiary bg-surface-3 px-1.5 py-0.5 rounded">
             Built-in
           </span>
         )}

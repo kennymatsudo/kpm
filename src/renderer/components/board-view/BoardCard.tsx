@@ -88,6 +88,7 @@ export const BoardCard = memo(function BoardCard({
     >
       {/* Breadcrumb (parent hierarchy) */}
       {breadcrumb.length > 0 && (
+        <div className="flex items-center gap-1 text-tiny text-text-muted mb-1.5 overflow-hidden">
           {breadcrumb.map((crumb, index) => (
             <Fragment key={index}>
               {index > 0 && <span className="flex-shrink-0 text-text-muted/50">/</span>}

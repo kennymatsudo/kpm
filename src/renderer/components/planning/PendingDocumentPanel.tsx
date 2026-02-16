@@ -296,14 +296,17 @@ export function PendingDocumentPanel({
             </svg>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium text-text-primary truncate">{fileName}</p>
+              <p className="text-xxs text-text-muted truncate">{filePath}</p>
             </div>
             {!isNewFile && (
+              <div className="flex items-center gap-2 text-xxs font-medium flex-shrink-0">
                 <span className="text-success">+{addedCount}</span>
                 <span className="text-danger">-{removedCount}</span>
               </div>
             )}
           </div>
           {isNewFile && (
+            <p className="text-xxs text-text-muted mt-1.5">
               New file ({content.split('\n').length} lines)
             </p>
           )}
@@ -314,6 +317,7 @@ export function PendingDocumentPanel({
           <div className="flex bg-surface-3 rounded-lg p-0.5 w-fit">
             <button
               onClick={() => setViewMode('diff')}
+              className={`px-3 py-1 text-xxs font-medium rounded-md transition-colors ${
                 viewMode === 'diff'
                   ? 'bg-surface-1 text-text-primary shadow-sm'
                   : 'text-text-muted hover:text-text-secondary'
@@ -323,6 +327,7 @@ export function PendingDocumentPanel({
             </button>
             <button
               onClick={() => setViewMode('preview')}
+              className={`px-3 py-1 text-xxs font-medium rounded-md transition-colors ${
                 viewMode === 'preview'
                   ? 'bg-surface-1 text-text-primary shadow-sm'
                   : 'text-text-muted hover:text-text-secondary'
@@ -332,6 +337,7 @@ export function PendingDocumentPanel({
             </button>
             <button
               onClick={() => setViewMode('edit')}
+              className={`px-3 py-1 text-xxs font-medium rounded-md transition-colors ${
                 viewMode === 'edit'
                   ? 'bg-surface-1 text-text-primary shadow-sm'
                   : 'text-text-muted hover:text-text-secondary'
@@ -363,6 +369,7 @@ export function PendingDocumentPanel({
         {/* Edit indicator */}
         {viewMode === 'edit' && editedContent !== content && (
           <div className="flex-shrink-0 px-4 py-2 bg-warning/8 border-t border-warning/20">
+            <p className="text-xxs text-warning">Modified from original proposal</p>
           </div>
         )}
 

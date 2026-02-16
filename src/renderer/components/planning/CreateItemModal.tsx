@@ -241,6 +241,7 @@ export function CreateItemModal({
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.8 }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xxs text-text-muted tabular-nums"
                 >
                   {title.length}
                 </m.div>
@@ -293,6 +294,7 @@ export function CreateItemModal({
                       <span className="text-xs font-medium text-text-muted uppercase tracking-wide">
                         Description
                       </span>
+                      <span className="text-xxs text-text-muted opacity-60">Markdown</span>
                     </label>
                     <textarea
                       value={description}
@@ -364,14 +366,17 @@ export function CreateItemModal({
             <span className="opacity-60 hidden sm:inline">
               {isFullMode ? (
                 <span className="flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 rounded bg-surface-3 text-xxs font-mono border border-border-subtle">
                     {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+↵
                   </kbd>
                   <span>to create</span>
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 rounded bg-surface-3 text-xxs font-mono border border-border-subtle">↵</kbd>
                   <span>create</span>
                   <span className="opacity-50 mx-0.5">·</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-surface-3 text-xxs font-mono border border-border-subtle">Tab</kbd>
                   <span>expand</span>
                 </span>
               )}

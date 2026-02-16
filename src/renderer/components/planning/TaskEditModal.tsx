@@ -185,6 +185,7 @@ export function TaskEditModal({
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Add a description... (Markdown supported)"
               />
+              <div className="absolute bottom-2 right-2 text-xxs text-text-muted opacity-60 pointer-events-none">
                 Markdown
               </div>
             </div>
@@ -221,6 +222,7 @@ export function TaskEditModal({
               </m.span>
             )}
             <span className="opacity-50">
+              <kbd className="px-1.5 py-0.5 rounded bg-surface-3 text-xxs font-mono">⌘S</kbd> to save
             </span>
           </div>
           <div className="flex items-center gap-2">

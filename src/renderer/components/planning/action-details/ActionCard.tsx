@@ -31,6 +31,7 @@ export function ActionCard({ action, index, isActive, planItems, placeholderMap,
     >
       {/* Action index badge */}
       <div className="w-5 h-5 rounded-md bg-surface-2 flex items-center justify-center flex-shrink-0">
+        <span className="text-xxs font-medium text-text-muted tabular-nums">{index + 1}</span>
       </div>
 
       {/* Action type badge */}
@@ -41,6 +42,7 @@ export function ActionCard({ action, index, isActive, planItems, placeholderMap,
       </span>
 
       {/* Summary text */}
+      <span className={`text-tiny truncate leading-tight flex-1 min-w-0 ${isActive ? 'text-text-primary font-medium' : 'text-text-secondary'}`}>
         {summary}
       </span>
 

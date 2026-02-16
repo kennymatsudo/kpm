@@ -179,6 +179,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
             <div className="w-full max-w-sm mt-4 mb-6 p-4 rounded-xl bg-surface-2 border border-border-default space-y-3">
               {exportResult.created.length > 0 && (
                 <div className="flex items-start gap-3">
+                  <span className="text-xxs font-semibold uppercase tracking-wide px-2 py-0.5 rounded bg-success/15 text-success">Created</span>
                   <span className="text-sm text-text-secondary font-mono flex-1">
                     {exportResult.created.map(c => c.jira_key).join(', ')}
                   </span>
@@ -186,6 +187,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
               )}
               {exportResult.updated.length > 0 && (
                 <div className="flex items-start gap-3">
+                  <span className="text-xxs font-semibold uppercase tracking-wide px-2 py-0.5 rounded bg-info/15 text-info">Updated</span>
                   <span className="text-sm text-text-secondary font-mono flex-1">
                     {exportResult.updated.map(u => u.jira_key).join(', ')}
                   </span>
@@ -229,9 +231,11 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
                     </svg>
                   )}
                 </div>
+                <span className="text-tiny font-medium text-text-muted group-hover:text-text-secondary transition-colors">
                   Select all
                 </span>
               </button>
+              <span className="text-xxs text-text-muted/70 ml-auto tabular-nums">
                 {checkedItems.length}/{items.length}
               </span>
             </div>
@@ -358,6 +362,7 @@ interface ModalShellProps {
               </svg>
             </div>
             <div>
+              <p className="text-xxs text-text-muted">Review and sync selected items</p>
             </div>
           </div>
         </div>
@@ -419,6 +424,7 @@ interface ItemRowProps {
           `}>
             {isCreate ? 'New' : 'Upd'}
           </span>
+          <span className={`text-tiny truncate leading-tight ${isSelected ? 'text-text-primary font-medium' : 'text-text-secondary'}`}>
             {item.planItem.title}
           </span>
         </div>
@@ -513,8 +519,10 @@ function DetailPanel({
                 {isCreate ? 'Create' : 'Update'}
               </span>
               {item.resolvedType && (
+                <span className="text-xxs text-text-muted">{item.resolvedType.name}</span>
               )}
               {!isCreate && item.planItem.external_key && (
+                <span className="text-xxs font-mono text-text-muted/80">{item.planItem.external_key}</span>
               )}
               {item.hasConflict && (
                 </span>
@@ -522,6 +530,7 @@ function DetailPanel({
             </div>
             <h3 className="text-sm font-semibold text-text-primary leading-snug line-clamp-2">{item.planItem.title}</h3>
             {isCreate && item.resolvedParent && (
+              <p className="text-xxs text-text-muted mt-1">
                 Creating in <span className="text-text-secondary font-mono">{item.resolvedParent}</span>
               </p>
             )}
@@ -538,6 +547,7 @@ function DetailPanel({
             </svg>
             <div className="space-y-0.5">
               {item.validationErrors.map((err, i) => (
+                <p key={i} className="text-tiny text-danger leading-tight">{err}</p>
               ))}
             </div>
           </div>
@@ -550,6 +560,7 @@ function DetailPanel({
           {/* Title Section */}
           <div>
             <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-xxs font-semibold text-text-muted uppercase tracking-wider">Title</span>
               {!isCreate && !item.diffs?.summary?.hasChanges && (
               )}
             </div>
@@ -571,6 +582,7 @@ function DetailPanel({
           {/* Description Section - with proper height constraints */}
           <div>
             <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-xxs font-semibold text-text-muted uppercase tracking-wider">Description</span>
               {!isCreate && !item.diffs?.description?.hasChanges && (
               )}
             </div>
@@ -606,6 +618,7 @@ function DetailPanel({
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
+                <span className="text-xxs font-semibold text-text-muted uppercase tracking-wider">
                   Custom Fields
                 </span>
                 {customFields.length > 0 && (
@@ -620,17 +633,20 @@ function DetailPanel({
             {customFieldsExpanded && (
               <div className="px-3 pb-3 pt-1 border-t border-border-subtle">
                 {customFieldsError && (
+                  <div className="text-xxs text-danger bg-danger/8 border border-danger/15 rounded px-2 py-1.5 mt-2">
                     {customFieldsError}
                   </div>
                 )}
 
                 {!customFieldsError && isLoadingCustomFields && (
+                  <div className="flex items-center gap-2 text-xxs text-text-muted py-2">
                     <LoadingSpinner className="w-3 h-3" />
                     Loading custom fields...
                   </div>
                 )}
 
                 {!customFieldsError && !isLoadingCustomFields && customFields.length === 0 && (
+                  <div className="text-xxs text-text-muted py-2">
                     {hasIssueType ? 'No configurable custom fields for this issue type.' : 'Issue type not resolved yet.'}
                   </div>
                 )}
@@ -646,6 +662,7 @@ function DetailPanel({
                       return (
                         <div key={field.id} className="p-2 rounded bg-surface-2">
                           <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="text-tiny text-text-primary font-medium">{field.name}</span>
                             {field.required && (
                                 Req
                               </span>
@@ -661,6 +678,7 @@ function DetailPanel({
                               value={customFieldDraft[field.id] || ''}
                               onChange={(e) => onCustomFieldChange(field.id, e.target.value)}
                               placeholder={hasDefault ? `Default: ${defaultDisplay}` : 'No default set'}
+                              className="w-full bg-surface-3 text-text-primary text-tiny rounded px-2 py-1 border border-border-subtle focus:border-accent focus:outline-none placeholder:text-text-muted"
                             />
                           )}
                         </div>
@@ -671,6 +689,7 @@ function DetailPanel({
                       <button
                         onClick={onSaveCustomFields}
                         disabled={!customFieldDirty}
+                        className={`px-2.5 py-1 text-xxs font-medium rounded transition-all ${
                           customFieldDirty
                             ? 'bg-accent text-white hover:bg-accent-hover cursor-pointer'
                             : 'bg-surface-2 text-text-muted cursor-not-allowed'
@@ -681,6 +700,7 @@ function DetailPanel({
                       <button
                         onClick={onClearCustomFields}
                         disabled={!customFieldDirty && Object.keys(customFieldDraft).length === 0}
+                        className="px-2.5 py-1 text-xxs font-medium rounded text-text-secondary hover:text-text-primary hover:bg-surface-3 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         Clear
                       </button>
@@ -697,6 +717,7 @@ function DetailPanel({
       <div className="px-4 py-2 border-t border-border-subtle flex-shrink-0" style={{ background: 'var(--surface-1)' }}>
         <button
           onClick={onRemove}
+          className="flex items-center gap-1.5 px-2 py-1 text-xxs font-medium text-danger/70 hover:text-danger hover:bg-danger/8 rounded transition-all cursor-pointer"
         >
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

@@ -261,6 +261,7 @@ export function ApprovalOverlays() {
                     {getItemTypeLabel(currentItem.type)}
                   </span>
                   {queueLength > 1 && (
+                    <span className="text-xxs text-text-muted mt-0.5">
                       +{queueLength - 1} more in queue
                     </span>
                   )}

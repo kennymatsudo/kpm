@@ -89,6 +89,7 @@ function formatFieldName(field: string): string {
         </span>
         <button
           onClick={() => setShowDiff(prev => !prev)}
+          className={`text-xxs px-2 py-1 rounded-md transition-colors ${
             showDiff
               ? 'bg-accent/10 text-accent'
               : 'bg-surface-3 text-text-muted hover:text-text-secondary'
@@ -104,6 +105,7 @@ function formatFieldName(field: string): string {
           <div className="space-y-1.5">
             {conflict.fields.map(field => (
               <div key={field.field}>
+                <span className="text-xxs text-text-muted font-medium">
                   {formatFieldName(field.field)}:
                 </span>
                 <div className="mt-0.5">
@@ -122,6 +124,7 @@ function formatFieldName(field: string): string {
 
         return (
           <div key={field.field}>
+            <div className="px-3 py-1 bg-surface-1 text-xxs text-text-muted font-medium flex items-center justify-between border-t border-border-subtle">
               <span>{formatFieldName(field.field)}</span>
               {isLongContent && (
                 <button
@@ -143,6 +146,7 @@ function formatFieldName(field: string): string {
                 tabIndex={-1}
                 aria-pressed={resolution === 'keep_mine'}
               >
+                <div className="text-xxs font-medium text-text-muted mb-1">Yours</div>
                 <div
                   className={`text-sm text-text-primary whitespace-pre-wrap break-words ${
                     isLongContent && !isExpanded ? 'max-h-16 overflow-hidden relative' : ''
@@ -192,6 +196,7 @@ function formatFieldName(field: string): string {
           onClick={() => onResolve('keep_mine')}
           aria-pressed={resolution === 'keep_mine'}
         >
+          <span className="mr-1.5 text-xxs opacity-60">1</span>
           Keep Mine
         </button>
         <button
@@ -204,8 +209,10 @@ function formatFieldName(field: string): string {
           onClick={() => onResolve('use_theirs')}
           aria-pressed={resolution === 'use_theirs'}
         >
+          <span className="mr-1.5 text-xxs opacity-60">2</span>
         </button>
         {resolution && (
+          <span className="ml-auto text-xxs text-success flex items-center gap-1">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>

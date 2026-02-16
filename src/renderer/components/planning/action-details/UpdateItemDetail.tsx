@@ -58,6 +58,7 @@ export function UpdateItemDetail({ action, planItems }: UpdateItemDetailProps) {
         <div className="space-y-4">
           {changedFields.map(({ field, oldValue, newValue }) => (
             <div key={field}>
+              <div className="text-xxs font-semibold text-text-muted uppercase tracking-wider mb-1.5">
                 {formatFieldName(field)}
               </div>
               {field === 'description' ? (
@@ -105,6 +106,7 @@ function renderFieldValue(field: string, value: string | null, accent: 'danger' 
   if (field === 'label' || field === 'status_category') {
     return (
       <span className={`
+        text-xxs font-medium px-2 py-0.5 rounded
         ${accent === 'success' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}
       `}>
         {formatStatusCategory(value)}
@@ -115,6 +117,7 @@ function renderFieldValue(field: string, value: string | null, accent: 'danger' 
   if (field === 'release_tag') {
     return (
       <span className={`
+        text-xxs font-mono px-2 py-0.5 rounded bg-surface-2
         ${accent === 'success' ? 'text-success' : 'text-danger'}
       `}>
         #{value}

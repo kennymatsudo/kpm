@@ -100,6 +100,7 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
         {Object.entries(actionSummary).map(([type, count]) => (
           <span
             key={type}
+            className="text-xxs font-medium px-2 py-0.5 rounded bg-surface-3 text-text-secondary"
           >
             {count} {type}
           </span>
@@ -181,6 +182,7 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
                 </div>
                 <div>
                   <h2 className="text-sm font-semibold text-text-primary leading-tight">Review Proposed Changes</h2>
+                  <p className="text-xxs text-text-muted">{actions.length} action{actions.length !== 1 ? 's' : ''} to review</p>
                 </div>
               </div>
               <MotionButton
@@ -199,6 +201,8 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
               <div className="w-64 flex-shrink-0 border-r border-border-subtle flex flex-col" style={{ background: 'var(--bg-canvas)' }}>
                 <div className="px-3 py-3 border-b border-border-subtle">
                   <div className="flex items-center justify-between">
+                    <span className="text-tiny font-medium text-text-muted">Actions</span>
+                    <span className="text-xxs text-text-muted/70 tabular-nums">{actions.length}</span>
                   </div>
                 </div>
 

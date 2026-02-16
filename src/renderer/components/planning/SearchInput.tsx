@@ -70,6 +70,7 @@ export function SearchInput({ value, onChange, placeholder = 'Search...', result
 
       {/* Result count */}
       {value && resultCount !== undefined && (
+        <span className="absolute right-7 top-1/2 -translate-y-1/2 text-tiny text-text-muted tabular-nums">
           {resultCount}
         </span>
       )}

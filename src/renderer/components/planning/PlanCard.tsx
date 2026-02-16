@@ -350,6 +350,7 @@ export const PlanCard = memo(function PlanCard({
                 e.stopPropagation();
                 setIsExpanded(!isExpanded);
               }}
+              className="flex items-center gap-1 text-tiny text-text-muted hover:text-text-secondary transition-colors mb-1"
             >
               <svg
                 className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
@@ -361,6 +362,7 @@ export const PlanCard = memo(function PlanCard({
               </svg>
             </button>
           ) : (
+            <div className="flex items-center gap-1 text-tiny text-text-muted mb-1">
               <svg className="w-3 h-3 rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>

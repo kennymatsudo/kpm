@@ -24,6 +24,7 @@ export function AddDependencyDetail({ action, planItems, placeholderMap }: AddDe
       <div className="flex items-center gap-2">
           Add Dependency
         </span>
+        <span className={`text-xxs font-medium px-1.5 py-0.5 rounded ${relationColor}`}>
           {relationLabel}
         </span>
       </div>

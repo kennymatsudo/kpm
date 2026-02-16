@@ -69,7 +69,9 @@ export function FieldDiffView({ label, diff, oldValue, newValue, isCreate, grow 
   return (
     <div className={`mb-4 ${grow ? 'flex-1 flex flex-col min-h-0' : ''}`}>
       <div className="flex items-center gap-2.5 mb-2">
+        <span className="text-tiny font-semibold text-text-muted uppercase tracking-wider">{label}</span>
         {!isCreate && !hasChanges && (
+          <span className="text-xxs text-text-tertiary px-1.5 py-0.5 rounded bg-surface-3">(no changes)</span>
         )}
       </div>
       <div
@@ -106,6 +108,7 @@ interface StatusTransitionViewProps {
   return (
     <div>
       <div className="flex items-center gap-2 mb-1.5">
+        <span className="text-xxs font-semibold text-text-muted uppercase tracking-wider">Status</span>
         {transition.warning && (
           </span>
         )}
@@ -113,6 +116,7 @@ interface StatusTransitionViewProps {
       <div className="p-3 rounded-lg bg-surface-1 border border-border-subtle">
         <div className="flex items-center gap-2">
           {/* Current status */}
+          <span className="px-2 py-1 rounded text-tiny font-medium bg-surface-2 text-text-secondary border border-border-subtle">
             {transition.currentStatus}
           </span>
 
@@ -122,6 +126,7 @@ interface StatusTransitionViewProps {
           </svg>
 
           {/* Target status */}
+          <span className={`px-2 py-1 rounded text-tiny font-medium ${targetConfig.bgClass} ${targetConfig.textClass}`}>
             {transition.availableTransition?.to.name || targetConfig.label}
           </span>
         </div>
@@ -129,6 +134,7 @@ interface StatusTransitionViewProps {
         {/* Warning message */}
         {transition.warning && (
           <div className="mt-2 p-2 rounded bg-warning/8 border border-warning/15">
+            <p className="text-xxs text-text-secondary leading-snug">{transition.warning}</p>
           </div>
         )}
       </div>

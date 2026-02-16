@@ -63,6 +63,7 @@ export function SyncUpdateCard({ item }: Props) {
                 {isLongContent && (
                   <button
                     onClick={() => toggleExpand(change.field)}
+                    className="text-xxs text-accent hover:text-accent/80 transition-colors"
                   >
                     {isExpanded ? 'Less' : 'More'}
                   </button>

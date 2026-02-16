@@ -105,6 +105,7 @@ export function PromptEditorSettings() {
                 <div className="flex items-center gap-2">
                   <h4 className="text-sm font-medium text-text-primary">{selectedPrompt.name}</h4>
                   {selectedPrompt.hasOverride && (
+                    <span className="px-1.5 py-0.5 text-xxs font-medium bg-accent/10 text-accent rounded">
                       Modified
                     </span>
                   )}

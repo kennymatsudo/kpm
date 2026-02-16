@@ -31,6 +31,7 @@ export function DeleteItemDetail({ action, planItems }: DeleteItemDetailProps) {
           Delete
         </span>
         {item.label && (
+          <span className="text-xxs font-medium text-text-muted px-1.5 py-0.5 rounded bg-surface-2">
             {item.label}
           </span>
         )}
@@ -38,6 +39,7 @@ export function DeleteItemDetail({ action, planItems }: DeleteItemDetailProps) {
 
       {/* Item to be deleted */}
       <div>
+        <div className="text-xxs font-semibold text-text-muted uppercase tracking-wider mb-1.5">Item</div>
         <div className="p-3 rounded-lg bg-danger/5 border border-danger/20">
           <p className="text-sm font-medium text-danger">{item.title}</p>
           {item.description && (
@@ -59,11 +61,13 @@ export function DeleteItemDetail({ action, planItems }: DeleteItemDetailProps) {
               </p>
               <ul className="mt-2 space-y-1">
                 {descendants.slice(0, 5).map((child) => (
+                  <li key={child.id} className="text-tiny text-text-muted flex items-center gap-1.5">
                     <span className="text-danger">\u2022</span>
                     <span className="truncate">{child.title}</span>
                   </li>
                 ))}
                 {descendants.length > 5 && (
+                  <li className="text-tiny text-text-tertiary italic">
                     ...and {descendants.length - 5} more
                   </li>
                 )}

@@ -127,6 +127,7 @@ function ToolLogEntryRow({ entry, isDuplicate, interEventGapMs }: ToolLogEntryRo
         {interEventGapMs != null && (
           <span
             title="Inter-event gap (time until the next tool event), not tool runtime"
+            className={`font-mono text-xxs px-1 py-px rounded flex-shrink-0 ${
               interEventGapMs >= SLOW_THRESHOLD_MS
                 ? 'bg-warning/15 text-warning font-medium'
                 : 'bg-surface-2 text-text-quaternary'
@@ -148,6 +149,7 @@ function ToolLogEntryRow({ entry, isDuplicate, interEventGapMs }: ToolLogEntryRo
         <div className="flex-1" />
         {entry.filePaths.length > 0 && (
           <span
+            className={`text-text-quaternary truncate max-w-[200px] font-mono text-xxs flex-shrink-0 ${isDuplicate ? 'text-warning' : ''}`}
             title={entry.filePaths.join(', ')}
           >
             {truncatePath(entry.filePaths[0])}
@@ -163,6 +165,7 @@ function ToolLogEntryRow({ entry, isDuplicate, interEventGapMs }: ToolLogEntryRo
       </button>
       {expanded && (
         <div className="mx-3 mb-1 rounded bg-surface-2/60 border border-border-subtle/30 overflow-x-auto">
+          <pre className="text-xxs font-mono text-text-tertiary p-2 whitespace-pre-wrap break-all">
             {JSON.stringify(entry.input, null, 2)}
           </pre>
         </div>
@@ -211,12 +214,14 @@ function TurnGroup({ turnIndex, entries, summary, duplicateFiles }: TurnGroupPro
         <span className="text-text-tertiary">{entries.length} call{entries.length !== 1 ? 's' : ''}</span>
         {turnSpan != null && (
           <span
+            className="font-mono text-xxs px-1 py-px rounded bg-surface-2 text-text-quaternary"
             title="Turn span (first event to last event)"
           >
             span {formatDuration(turnSpan)}
           </span>
         )}
         {summary && summary.duplicateReads.length > 0 && (
+          <span className="text-warning text-xxs font-medium px-1.5 py-0.5 rounded bg-warning/10">
             {summary.duplicateReads.length} duplicate{summary.duplicateReads.length !== 1 ? 's' : ''}
           </span>
         )}
@@ -392,6 +397,7 @@ export function ToolLogPanel() {
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border-subtle flex-shrink-0">
         <span className="text-xs font-semibold text-text-secondary tracking-wide">Tool Log</span>
+        <span className="text-xxs font-medium px-1.5 py-0.5 rounded-full bg-surface-2 text-text-tertiary">
           {summaryStats.total}
         </span>
 
@@ -401,9 +407,11 @@ export function ToolLogPanel() {
         <div className="flex-1" />
 
         {/* Summary badges */}
+        <span className="text-xxs text-text-tertiary">
           {summaryStats.uniqueFiles} file{summaryStats.uniqueFiles !== 1 ? 's' : ''}
         </span>
         {summaryStats.duplicateCount > 0 && (
+          <span className="text-xxs text-warning font-medium">
             {summaryStats.duplicateCount} duplicate{summaryStats.duplicateCount !== 1 ? 's' : ''}
           </span>
         )}

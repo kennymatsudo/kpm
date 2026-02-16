@@ -81,6 +81,7 @@ export function NewItemInput({ type, onSubmit, onCancel }: NewItemInputProps) {
         onChange={(e) => setValue(e.target.value)}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
+        className="flex-1 bg-surface-2 rounded-md px-2 py-0.5 text-sm text-text-primary
                    focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
         placeholder={type === 'folder' ? 'Folder name' : 'File name'}
         autoFocus

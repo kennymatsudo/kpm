@@ -56,9 +56,11 @@ export function SidebarSection({
           >
             <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" />
           </svg>
+          <span className="text-tiny font-medium text-text-muted uppercase tracking-wider">
             {title}
           </span>
           {count !== undefined && (
+            <span className="text-xxs text-text-muted bg-surface-3 px-1.5 py-0.5 rounded-full ml-auto">
               {count}
             </span>
           )}

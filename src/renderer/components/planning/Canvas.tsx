@@ -418,6 +418,7 @@ interface CanvasProps {
       )}
 
       {/* Pan hint */}
+      <div className="absolute bottom-3 right-3 z-10 text-xxs text-text-muted">
         Scroll to pan • ⌘+Scroll to zoom
       </div>
 

@@ -242,6 +242,7 @@ const TreeRow = memo(function TreeRow({
         {/* Child count badge */}
         {countableChildren > 0 && (
           <span className={`
+            flex-shrink-0 text-xxs px-1.5 py-0.5 rounded-full
             ${depthTextColors[clampedDepth]} bg-surface-3
             opacity-60 group-hover:opacity-100 transition-opacity
           `}>
@@ -261,6 +262,7 @@ const TreeRow = memo(function TreeRow({
               }
             }}
             className="
+              flex-shrink-0 text-xxs px-1.5 py-0.5 rounded
               bg-info-muted text-info
               hover:bg-info/20 transition-colors
               flex items-center gap-1 max-w-[100px]

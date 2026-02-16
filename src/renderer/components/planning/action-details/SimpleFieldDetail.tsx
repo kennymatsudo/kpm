@@ -26,6 +26,7 @@ export function SetLabelDetail({ action, planItems }: SetLabelDetailProps) {
         oldValue={item.label}
         newValue={action.label}
         renderValue={(value) => value ? (
+          <span className="text-tiny font-medium px-2 py-1 rounded bg-accent/10 text-accent">{value}</span>
         ) : (
           <span className="text-xs text-text-tertiary italic">none</span>
         )}
@@ -55,6 +56,7 @@ export function SetReleaseDetail({ action, planItems }: SetReleaseDetailProps) {
         oldValue={item.release_tag}
         newValue={action.release_tag}
         renderValue={(value) => value ? (
+          <span className="text-tiny font-mono px-2 py-1 rounded bg-surface-2 text-text-primary">#{value}</span>
         ) : (
           <span className="text-xs text-text-tertiary italic">none</span>
         )}
@@ -152,6 +154,7 @@ export function QueueForTrackerDetail({ action, planItems }: QueueForTrackerDeta
       <div className="flex items-center gap-2">
           Queue for Export
         </span>
+        <span className="text-xxs text-text-muted">
           {action.item_ids.length} item{action.item_ids.length !== 1 ? 's' : ''}
         </span>
       </div>
@@ -223,6 +226,7 @@ interface FieldChangeProps<T> {
 function FieldChange<T>({ fieldName, oldValue, newValue, renderValue }: FieldChangeProps<T>) {
   return (
     <div>
+      <div className="text-xxs font-semibold text-text-muted uppercase tracking-wider mb-1.5">{fieldName}</div>
       <div className="flex items-center gap-4 p-4 rounded-lg bg-surface-1 border border-border-subtle">
         <div className="flex-1">
           {renderValue(oldValue)}

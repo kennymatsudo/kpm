@@ -11,6 +11,8 @@
    ============================================ */
 
 @theme {
+  --text-lg: 1rem;         /* 16px */
+  --text-xl: 1.125rem;     /* 18px */
 
   /* Spacing Scale — tightened for density */
   --spacing-xs: 0.125rem;
@@ -30,7 +32,9 @@
   /* Transitions — fast, no spring physics */
   --transition-fast: 75ms ease-out;
   --transition-default: 150ms ease-out;
+  --transition-slow: 250ms ease-out;
   --transition-theme: 200ms ease-out;
+  --transition-bounce: 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
 
   /* Depth colors — declared here so Tailwind can resolve depth-* utilities.
      Actual values are set per-theme via JS in generateThemeVariables(). */
@@ -258,6 +262,7 @@ select:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   border-radius: var(--radius-sm);
   border: none;
@@ -352,6 +357,7 @@ select:focus-visible {
 
 .input {
   width: 100%;
+  font-size: var(--text-base);
   background: var(--color-surface-2);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-sm);
@@ -395,6 +401,7 @@ select:focus-visible {
    ============================================ */
 
 .section-header {
+  font-size: var(--text-sm);
   font-weight: 500;
   letter-spacing: 0.01em;
   color: var(--color-text-secondary);
@@ -554,6 +561,7 @@ select:focus-visible {
   gap: 0.5rem;
   padding: 4px 8px;
   min-height: 30px;
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
   border-radius: var(--radius-sm);
   transition: all var(--transition-fast);
@@ -796,6 +804,7 @@ select:focus-visible {
   align-items: center;
   gap: 0.5rem;
   padding: 4px 8px;
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -904,6 +913,7 @@ select:focus-visible {
   align-items: center;
   gap: 0.5rem;
   padding: 0.375rem 0.625rem;
+  font-size: var(--text-xs);
   font-weight: 500;
   background: var(--color-surface-3);
   border-radius: var(--radius-full);
@@ -920,9 +930,11 @@ select:focus-visible {
 
 .activity-chip-small {
   padding: 0.375rem 0.625rem;
+  font-size: var(--text-xs);
 }
 
 .activity-chip-icon {
+  font-size: var(--text-base);
   line-height: 1;
   z-index: 1;
 }
@@ -1049,6 +1061,7 @@ select:focus-visible {
 
 .prose-themed {
   color: var(--color-text-primary);
+  font-size: var(--text-base);
   line-height: 1.5;
   max-width: none;
 }
