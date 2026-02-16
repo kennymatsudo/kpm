@@ -86,6 +86,63 @@ interface CanvasProps {
 
 
 
+  // Drag preview state and handlers
+  const {
+    dragPreview,
+    setDragPreview,
+    handleDragStart,
+    handleDragEnd,
+    handleDragEnter,
+    handleContainerDragEnd,
+  } = useCanvasDragPreview({ itemsWithPositions });
+
+  // Canvas context menu state and handlers
+  const {
+    canvasContextMenu,
+    selectedGroupId,
+    setSelectedGroupId,
+    handleCanvasContextMenu,
+    handleCreateItem,
+    handleCreateGroup,
+    closeContextMenu,
+    handleGroupSelect,
+    handleGroupDelete,
+  } = useCanvasContextMenu({
+    projectId,
+    screenToCanvas,
+    onSelectItem,
+    onCreateItem,
+    createGroup,
+    deleteGroup,
+  });
+
+  // Group drag state and handlers
+  const {
+    draggingGroupId,
+    groupHasCollision,
+    groupDragOffset,
+    recentlyDraggedGroupId,
+    hoveredGroupId,
+    setHoveredGroupId,
+    handleGroupDragStart,
+    handleGroupDragEnd,
+    handleGroupDragComplete,
+    checkGroupCollisionDelta,
+    findGroupAtPoint,
+  } = useGroupDrag({
+    groups,
+    groupBounds,
+    itemsWithPositions,
+    itemsByGroupId,
+    heightMap,
+    childrenMap,
+    itemMap,
+    collapsedGroupIds,
+    updateGroupPosition,
+    onUpdatePosition,
+    onUpdatePositions,
+  });
+
   // Apply group layout - items in groups snap to grid positions when not dragging
   useEffect(() => {
     if (draggingGroupId) return;
@@ -173,6 +230,7 @@ interface CanvasProps {
       data-testid="canvas-viewport"
       role="region"
       aria-label="Plan canvas"
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDrop={(e) => {
         e.preventDefault();
@@ -181,6 +239,7 @@ interface CanvasProps {
         void handleCanvasDrop(e);
       }}
       onDragEnd={() => {
+        handleContainerDragEnd();
         setHoveredGroupId(null);
       }}
       onClick={(e) => {
@@ -402,6 +461,7 @@ interface CanvasProps {
           y={canvasContextMenu.y}
           onCreateItem={handleCreateItem}
           onCreateGroup={handleCreateGroup}
+          onClose={closeContextMenu}
         />
       )}
     </div>

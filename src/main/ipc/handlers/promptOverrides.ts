@@ -8,6 +8,7 @@ import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../channels';
 import { createIpcHandler, PromptOverrideSchemas } from '../validation';
 import type { PromptOverrideService } from '../../services/core/PromptOverrideService';
+import { unwrapOrThrow } from '../../services/result';
 
 export function registerPromptOverrideHandlers(promptOverrideService: PromptOverrideService): void {
   /**
@@ -53,6 +54,7 @@ export function registerPromptOverrideHandlers(promptOverrideService: PromptOver
     createIpcHandler(
       PromptOverrideSchemas.set,
       async ({ key, content }) => {
+        unwrapOrThrow(promptOverrideService.setOverride(key, content));
       },
       'Failed to save prompt override'
     )

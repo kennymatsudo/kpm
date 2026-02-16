@@ -7,6 +7,7 @@
 
 import type { IAppSettingsRepository } from '../../db/interfaces';
 import { PROMPT_REGISTRY, PROMPT_REGISTRY_MAP, type PromptCategory, type PromptDefinition } from '../../claude/prompts/promptRegistry';
+import { success, failure, type ServiceResult } from '../result';
 
 // =============================================================================
 // Types
@@ -39,19 +40,25 @@ export function createPromptOverrideService(deps: PromptOverrideServiceDeps) {
      * Get the effective content for a prompt key.
      * Returns user override if one exists, otherwise the registry default.
      */
+    getContent(key: string): ServiceResult<string> {
       const def = PROMPT_REGISTRY_MAP.get(key);
       if (!def) {
+        return failure(`Unknown prompt key: ${key}`);
       }
 
       const override = appSettings.get(`${KEY_PREFIX}${key}`);
+      return success(override ?? def.defaultContent);
     },
 
     /**
      * Get the registry default for a prompt key.
      */
+    getDefault(key: string): ServiceResult<string> {
       const def = PROMPT_REGISTRY_MAP.get(key);
       if (!def) {
+        return failure(`Unknown prompt key: ${key}`);
       }
+      return success(def.defaultContent);
     },
 
     /**
@@ -64,10 +71,13 @@ export function createPromptOverrideService(deps: PromptOverrideServiceDeps) {
     /**
      * Set a user override for a prompt key.
      */
+    setOverride(key: string, content: string): ServiceResult<void> {
       const def = PROMPT_REGISTRY_MAP.get(key);
       if (!def) {
+        return failure(`Unknown prompt key: ${key}`);
       }
       appSettings.set(`${KEY_PREFIX}${key}`, content);
+      return success(undefined);
     },
 
     /**

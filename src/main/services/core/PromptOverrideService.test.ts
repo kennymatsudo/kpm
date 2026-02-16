@@ -23,21 +23,49 @@ describe('PromptOverrideService', () => {
 
   describe('getContent', () => {
     it('returns default content when no override exists', () => {
+      const result = service.getContent('system.constraints');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data).toContain('Constraints');
+        expect(result.data.length).toBeGreaterThan(0);
+      }
     });
 
     it('returns override content when one exists', () => {
       service.setOverride('system.constraints', 'Custom constraints');
+      const result = service.getContent('system.constraints');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data).toBe('Custom constraints');
+      }
     });
 
+    it('returns failure for unknown prompt key', () => {
+      const result = service.getContent('nonexistent.key');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain('Unknown prompt key');
+      }
     });
   });
 
   describe('getDefault', () => {
     it('returns registry default content', () => {
+      const result = service.getDefault('system.response_style');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data).toContain('Response Style');
+      }
     });
 
     it('returns default even when override exists', () => {
       service.setOverride('system.response_style', 'Custom style');
+      const result = service.getDefault('system.response_style');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data).toContain('Response Style');
+        expect(result.data).not.toBe('Custom style');
+      }
     });
   });
 
@@ -50,17 +78,34 @@ describe('PromptOverrideService', () => {
 
   describe('setOverride', () => {
     it('stores override in app settings', () => {
+      const result = service.setOverride('system.constraints', 'New constraints');
+      expect(result.ok).toBe(true);
       expect(appSettings.get('prompt_override:system.constraints')).toBe('New constraints');
     });
 
+    it('returns failure for unknown prompt key', () => {
+      const result = service.setOverride('bad.key', 'content');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain('Unknown prompt key');
+      }
     });
   });
 
   describe('resetToDefault', () => {
     it('removes override and reverts to default', () => {
       service.setOverride('system.constraints', 'Custom');
+      const overridden = service.getContent('system.constraints');
+      expect(overridden.ok).toBe(true);
+      if (overridden.ok) expect(overridden.data).toBe('Custom');
 
       service.resetToDefault('system.constraints');
+      const result = service.getContent('system.constraints');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data).toContain('Constraints');
+        expect(result.data).not.toBe('Custom');
+      }
     });
 
     it('is safe to call when no override exists', () => {

@@ -1,5 +1,6 @@
 import { Canvas } from './Canvas';
 import { BulkDeleteConfirmDialog } from './BulkDeleteConfirmDialog';
+import { CreateItemModal } from './CreateItemModal';
 import { TreeView } from '../tree-view';
 import { BoardView } from '../board-view';
 import {
@@ -14,6 +15,14 @@ import {
   selectDescendantIds,
 } from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
+import {
+  useBulkActions,
+  useAutoLayout,
+  useGroupCollisionResolution,
+  usePlanTaskEdit,
+  useCreateItemModal,
+  usePlanContextMenu,
+} from './hooks';
 import type { ViewMode } from './ViewSwitcher';
 
 interface PlanViewProps {
@@ -87,10 +96,40 @@ export function PlanView({
     }))
   );
 
+  // --- Extracted hooks ---
 
+  const {
+    editingItem,
+    handleEditItem,
+    handleSaveTask,
+    closeEditModal,
+  } = usePlanTaskEdit({ planItemsById, updatePlanItem });
 
+  const {
+    createItemContext,
+    handleCreateItemFromCanvas,
+    handleCreateItemFromTree,
+    handleCreateItemFromBoard,
+    closeCreateItemModal,
+    handleCreateItemSubmit,
+  } = useCreateItemModal({ executePlanActions, registerCreateItemHandler });
 
+  const {
+    contextMenu,
+    handleContextMenu,
+    closeContextMenu,
+    handleAddToContext,
+    handleAddItemToContext,
+    handleTreeContextMenu,
+  } = usePlanContextMenu({
+    currentProjectId,
+    selectedItemIds,
+    planItemsById,
+    addFocusedResource,
+    addToQueue,
+  });
 
+  // --- Selection & bulk operations ---
 
   // Descendant tracking for bulk operations
   const descendantIds = useMemo(
@@ -110,6 +149,8 @@ export function PlanView({
     executePlanActions,
     setSelectedItemIds,
   });
+
+  // --- Auto layout & collision resolution ---
 
   const handleAutoLayout = useAutoLayout({
     plannedItems: filteredPlannedItems, // Use filtered items so new items are placed near visible content
@@ -234,6 +275,7 @@ export function PlanView({
     }
   }, [groups, resolveCollisionsForGroup]);
 
+  // --- Derived data ---
 
   // Build tree hierarchy for tree view (using filtered items)
   const treeHierarchy = useMemo(() => buildHierarchyTree(filteredPlannedItems), [filteredPlannedItems]);
@@ -292,6 +334,7 @@ export function PlanView({
             if (selectedId) handleEditItem(selectedId);
           }}
           onDelete={openBulkDeleteDialog}
+          onClose={closeContextMenu}
         />
 
       {/* Bulk Delete Confirmation Dialog */}

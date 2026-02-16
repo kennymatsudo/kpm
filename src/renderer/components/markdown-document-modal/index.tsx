@@ -3,6 +3,7 @@ import { m, AnimatePresence } from 'framer-motion';
 import { MotionButton } from '../ui/MotionButton';
 import { DiffViewer, computeDiff, getDiffStatsFromDiff } from '../ui/DiffViewer';
 import { Z_INDEX } from '../../constants/zIndex';
+import { useMarkdownSearch, useMarkdownFormatting, useMarkdownKeyboard } from './hooks';
 
 // Toolbar button component
 interface ToolbarButtonProps {
@@ -173,15 +174,60 @@ export function MarkdownDocumentModal({
   }, [oldContent, content]);
   const diffStats = diffLines ? getDiffStatsFromDiff(diffLines) : null;
 
+  // Search functionality
+  const {
+    showSearch,
+    searchQuery,
+    currentMatchIndex,
+    totalMatches,
+    setShowSearch,
+    setSearchQuery,
+    closeSearch,
+    goToNextMatch,
+    goToPrevMatch,
 
   useEffect(() => {
     if (isOpen) {
       setDraft(content);
       const newViewMode: ViewMode = oldContent !== undefined ? 'diff' : initialEditMode ? 'edit' : 'preview';
       setViewMode(newViewMode);
+      closeSearch();
     }
 
+  // Formatting actions
+  const {
+    formatBold,
+    formatItalic,
+    formatStrikethrough,
+    formatCode,
+    formatCodeBlock,
+    formatH1,
+    formatH2,
+    formatH3,
+    formatBulletList,
+    formatNumberedList,
+    formatTaskList,
+    formatQuote,
+    formatLink,
+    formatHorizontalRule,
+  } = useMarkdownFormatting({ draft, setDraft, viewMode, textareaRef });
+
   // Keyboard shortcuts
+  useMarkdownKeyboard({
+    isOpen,
+    viewMode,
+    draft,
+    showSearch,
+    oldContent,
+    onClose,
+    onSave,
+    setViewMode,
+    setShowSearch,
+    closeSearch,
+    formatBold,
+    formatItalic,
+    formatLink,
+  });
 
   const hasChanges = draft !== content;
 

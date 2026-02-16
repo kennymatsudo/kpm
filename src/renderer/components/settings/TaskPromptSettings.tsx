@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { TaskPromptTemplate } from '../../../shared/types';
 import { useTaskPromptTemplateStore } from '../../stores/taskPromptTemplateStore';
 import { LoadingSpinner } from '../ui/LoadingButton';
+import { toast } from '../../stores/toastStore';
 
 interface Props {
   currentProjectId?: string | null;
@@ -88,9 +89,12 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
     try {
       if (result.success && result.promptContent) {
         setPromptContent(result.promptContent);
+        toast.success('Reset to default');
       } else {
+        toast.error(result.error || 'Failed to get default prompt');
       }
     } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Reset failed');
     } finally {
       setIsResetting(false);
     }
@@ -98,6 +102,7 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
 
   const handleSave = async () => {
     if (!name.trim()) {
+      toast.error('Template name is required');
       return;
     }
 
@@ -107,6 +112,7 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
       } else {
       }
     } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Save failed');
     } finally {
       setIsSaving(false);
     }
@@ -121,9 +127,12 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
       if (result.success) {
         setSelectedTemplateId(null);
         clearForm();
+        toast.success('Template deleted');
       } else {
+        toast.error(result.error || 'Failed to delete template');
       }
     } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Delete failed');
     } finally {
       setIsDeleting(false);
     }
@@ -135,9 +144,12 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
     try {
       if (result.success && result.template) {
         setSelectedTemplateId(result.template.id);
+        toast.success('Set as default');
       } else {
+        toast.error(result.error || 'Failed to set default');
       }
     } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to set default');
     }
   };
 

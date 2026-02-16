@@ -43,6 +43,7 @@ export function resolveScopedPath(basePath: string, targetPath: string): ScopedP
 }
 
 /**
+ * Async variant — ensures parent directory exists for non-blocking write paths.
  */
 export async function ensureParentDirectory(fullPath: string): Promise<void> {
   await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });

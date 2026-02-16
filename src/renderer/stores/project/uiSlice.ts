@@ -1,5 +1,6 @@
 import type { SliceCreator, UiSlice } from './types';
 import { resourceEquals } from '../../utils/focusedResources';
+import { useChatStore } from '../chat';
 
 function getActiveChatSessionId(createIfMissing: boolean): string | null {
   const chatState = useChatStore.getState();

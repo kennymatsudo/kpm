@@ -1,6 +1,14 @@
+import { useState } from 'react';
 import { m } from 'framer-motion';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 import { CloseIcon } from '../../icons';
+import {
+  useJiraDataLoader,
+  useStatusMapping,
+  useEpicKey,
+  useCustomFieldSettings,
+  useUnlinkFlow,
+} from './hooks';
 import type {
   TrackerAssociationWithScope,
   StatusMapping,
@@ -17,6 +25,7 @@ interface Props {
 
 export function LinkedProjectPanel({ association, onUnlink }: Props) {
 
+  // Type mappings state (local to this component, used by TypeMappingsTab)
   const [newLabel, setNewLabel] = useState('');
   const [selectedTypeForNew, setSelectedTypeForNew] = useState('');
 
@@ -24,9 +33,63 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
   const scopeId = association.scope_id;
   const projectId = association.kpm_project_id;
 
+  const {
+    jiraIssueTypes,
+    isLoadingTypes,
+    isLoadingStatuses,
+    typeMappings,
+    isLoadingMappings,
+    saveMapping,
+    removeMapping,
+    statusesByCategory,
 
+  const {
+    statusMapping,
+    isSavingStatus,
+    statusError,
+    handleStatusMappingChange,
+    handleSaveStatusMapping,
+  } = useStatusMapping({
+    associationId: association.id,
+    initialMapping: association.status_mapping,
+  });
 
+  const {
+    epicKey,
+    isSavingEpicKey,
+    epicKeyError,
+    setEpicKey,
+    handleSaveEpicKey,
+  } = useEpicKey({
+    associationId: association.id,
+    initialEpicKey: association.epic_key,
+  });
 
+  const {
+    selectedIssueTypeForFields,
+    customFields,
+    customFieldValues,
+    isLoadingFields,
+    isSavingFields,
+    fieldsError,
+    handleIssueTypeChangeForFields,
+    handleFieldValueChange,
+    handleSaveCustomFields,
+  } = useCustomFieldSettings({
+    associationId: association.id,
+    projectKey,
+    initialValues: association.custom_field_values,
+  });
+
+  const {
+    isUnlinking,
+    showUnlinkConfirm,
+    setShowUnlinkConfirm,
+    handleUnlink,
+  } = useUnlinkFlow({
+    associationId: association.id,
+    onUnlink,
+  });
 
   const handleSaveTypeMapping = async (kpmLabel: string, jiraTypeId: string) => {
     const jiraType = jiraIssueTypes.find((t) => t.id === jiraTypeId);
@@ -51,6 +114,7 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
     }
   };
 
+  function getCategoryLabel(key: string): string {
     switch (key) {
       case 'new':
         return 'To Do';
@@ -61,6 +125,7 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
       default:
         return key;
     }
+  }
 
   return (
     <div className="space-y-5">
@@ -282,6 +347,7 @@ function TypeMappingsTab({
 // Status Mappings Tab Component
 interface StatusMappingsTabProps {
   statusMapping: StatusMapping;
+  statusesByCategory: Record<string, { id: string; name: string; categoryKey: string }[]>;
   isLoading: boolean;
   isSaving: boolean;
   error: string | null;

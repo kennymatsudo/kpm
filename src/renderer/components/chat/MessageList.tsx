@@ -1,4 +1,5 @@
 import { useChatStore, type Activity, type MessageSegment } from '../../stores';
+import type { Message } from '../../stores/chat';
 import { processMessageContent } from '../../utils/messageFormatter';
 import { CopyIcon, CheckIcon } from '../icons';
 

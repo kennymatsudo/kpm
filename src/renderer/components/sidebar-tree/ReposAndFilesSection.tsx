@@ -7,7 +7,14 @@ import {
   useConfluenceStore,
   useWorkspaceStore,
 } from '../../stores';
+import { isImageFile, formatFileSize } from '../../utils/image';
 import { subscribe as subscribeToStoreEvent } from '../../stores/storeEvents';
+import {
+  useFileViewers,
+  useFileContextMenus,
+  useConfluenceLinks,
+  useAddMenu,
+} from './hooks';
 
 const MAX_EXTERNAL_FILE_BYTES = 50 * 1024 * 1024; // 50MB
 const MAX_TEXT_FILE_BYTES = 10 * 1024 * 1024; // 10MB (matches createFile validation)
@@ -72,6 +79,33 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
   const editingFile = useWorkspaceStore((state) => state.editingFile);
   const editingPath = onFileOpen && editingFile?.source === 'project' ? editingFile.path : null;
 
+  // ==========================================================================
+  // Extracted hooks
+  // ==========================================================================
+
+  const fileViewers = useFileViewers({ projectId });
+
+  const fileContextMenus = useFileContextMenus({
+    projectId,
+    deleteEntry,
+    getNodeByPath,
+    removeFocusedResource,
+    closeIfViewing: fileViewers.closeIfViewing,
+  });
+
+  const confluenceLinks = useConfluenceLinks({
+    projectId,
+    contextMenuPath: fileContextMenus.contextMenu?.path ?? null,
+    unlinkDocument,
+    setContextMenu: fileContextMenus.setContextMenu,
+  });
+
+  const addMenu = useAddMenu();
+
+  // ==========================================================================
+  // Effects
+  // ==========================================================================
+
   // Auto-expand folders to reveal the currently editing file
   useEffect(() => {
     if (editingPath && projectId) {
@@ -106,8 +140,11 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
           void loadProjectDirectory(projectId, parentPath || undefined);
           break;
         }
+        case 'deleted':
+          fileViewers.handleFileChange(data.type, data.path);
           break;
         case 'renamed': {
+          fileViewers.handleFileChange(data.type, data.path, data.newPath);
           const sourceParent = getParentPath(data.path);
           void loadProjectDirectory(projectId, sourceParent || undefined);
           if (data.newPath) {
@@ -121,6 +158,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
       }
     });
     return unsubscribe;
+  }, [projectId, fileViewers.handleFileChange, loadProjectDirectory]);
 
   // ==========================================================================
   // Repo handlers
@@ -151,11 +189,14 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
 
   const handleRemoveRepo = useCallback(
     async (repoId: string) => {
+      fileContextMenus.setRepoContextMenu(null);
     },
   );
 
   const handleRevealRepoInFinder = useCallback(
+      fileContextMenus.setRepoContextMenu(null);
     },
+    [fileContextMenus.setRepoContextMenu]
   );
 
   // ==========================================================================
@@ -184,6 +225,8 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
 
   const handleStartCreate = useCallback(
       setFilesCollapsed(false);
+      addMenu.closeAddMenu();
+      fileContextMenus.setEmptySpaceMenu(null);
     },
   );
 
@@ -206,29 +249,38 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
           void loadProjectDirectory(projectId, path);
         }
       } else if (isImageFile(node.name)) {
+        await fileViewers.openImageViewer(path, node);
       } else if (onFileOpen) {
         const isEditable = isEditableFile(node.name);
         onFileOpen('project', path, isEditable);
       } else if (node.name.endsWith('.md')) {
+        await fileViewers.openMarkdownViewer(path);
       } else {
       }
     },
+    [projectId, loadProjectDirectory, toggleProjectExpanded, onFileOpen, fileViewers.openImageViewer, fileViewers.openMarkdownViewer]
   );
 
   // Rename handlers
   const handleStartRename = useCallback(
     (path: string) => {
       setRenamingPath(path);
+      fileContextMenus.setContextMenu(null);
     },
+    [setRenamingPath, fileContextMenus.setContextMenu]
   );
 
   const handleEndRename = useCallback(() => {
     setRenamingPath(null);
   }, [setRenamingPath]);
 
+  // Markdown view handler (from context menu)
   const handleViewMarkdown = useCallback(
     async (path: string) => {
+      await fileViewers.openMarkdownViewer(path);
+      fileContextMenus.setContextMenu(null);
     },
+    [fileViewers.openMarkdownViewer, fileContextMenus.setContextMenu]
   );
 
   // Text file extensions (files we should read as text)
@@ -312,14 +364,29 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
   // Computed values
   // ==========================================================================
 
+  const deleteNode = fileContextMenus.deleteConfirmPath
+    ? getNodeByPath(fileContextMenus.deleteConfirmPath)
+    : null;
   const deleteFilename = deleteNode?.name ?? '';
 
+  const contextNode = fileContextMenus.contextMenu
+    ? getNodeByPath(fileContextMenus.contextMenu.path)
+    : null;
 
   // Confluence link info for context menu
+  const contextMenuConfluenceLink = fileContextMenus.contextMenu?.path
+    ? getLinkForDocument(fileContextMenus.contextMenu.path)
+    : null;
 
   // Get Confluence link for sync modal
+  const syncConfluenceLink = confluenceLinks.confluenceSyncPath
+    ? getLinkForDocument(confluenceLinks.confluenceSyncPath)
+    : null;
 
   // Get document title for link modal
+  const linkDocumentNode = confluenceLinks.confluenceLinkPath
+    ? getNodeByPath(confluenceLinks.confluenceLinkPath)
+    : null;
   const linkDocumentTitle = linkDocumentNode?.name.replace(/\.md$/, '') ?? '';
 
   return (

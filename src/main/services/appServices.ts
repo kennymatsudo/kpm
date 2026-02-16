@@ -26,6 +26,7 @@ import { createBriefingService } from './core/BriefingService';
 
 // Confluence services
 import { createConfluenceSyncService } from './confluence';
+import { unwrapOrThrow } from './result';
 
 // =============================================================================
 // Application Services Factory

@@ -5,6 +5,8 @@ import {
 } from '../../stores';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { Z_INDEX } from '../../constants/zIndex';
+import { useProjectEdit } from './hooks/useProjectEdit';
+import { useProjectMenu } from './hooks/useProjectMenu';
 
 interface TopBarProps {
   // Sidebar controls
@@ -65,12 +67,43 @@ export function TopBar({
   );
   const currentProject = projects.find((p) => p.id === currentProjectId) || null;
 
+  const {
+    isEditing,
+    editName,
+    setEditName,
+    handleStartEdit,
+    handleSaveEdit,
+    handleKeyDown,
+  } = useProjectEdit({ currentProject, currentProjectId, setProjects });
 
   const {
+    showMenu,
+    showDeleteConfirm,
+    setShowMenu,
+    setShowDeleteConfirm,
+    handleDeleteClick,
+    handleConfirmDelete,
+    handleOpenProject,
+    handleNewProject,
+    handleOpenProjectFolder,
+    handleCopyPath,
+    handleCopyRelativePath,
+  } = useProjectMenu({
+    currentProject,
+    currentProjectId,
+    onDeleteProject,
+    onNewProject,
+    onOpenProject,
+  });
 
   const {
+    hasAssociations,
     associations,
+    syncPanelAssociationId,
+    setSyncPanelAssociationId,
     queueCount,
+    handleSyncComplete,
+    handleExportComplete,
 
   return (
     <>

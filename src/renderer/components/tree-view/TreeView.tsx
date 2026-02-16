@@ -1,3 +1,4 @@
+import { useMemo, memo, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { TreeNode } from '../../utils/planHierarchy';
 import { StatusSelector } from '../ui/StatusSelector';
@@ -5,6 +6,10 @@ import { getStatusCategory } from '../../constants/statusConfig';
 import { usePlanDomainStore } from '../../stores';
 import { MAX_DEPTH } from '../../constants/planCardStyles';
 import { Z_INDEX } from '../../constants/zIndex';
+import { useTreeExpansion } from './hooks/useTreeExpansion';
+import { useTreeDragDrop } from './hooks/useTreeDragDrop';
+import { useTreeContextMenu } from './hooks/useTreeContextMenu';
+import type { DragState, DropPosition } from './hooks/useTreeDragDrop';
 
 /**
  * TreeView - A compact outline view for plan items with drag-and-drop
@@ -454,6 +459,38 @@ export interface TreeViewProps {
 }: TreeViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const {
+    expandedIds,
+    handleToggleExpand,
+    handleExpandAll,
+    handleCollapseAll,
+  } = useTreeExpansion({ items });
+
+  const {
+    dragState,
+    setDragState,
+    handleDragStart,
+    handleDragEnd,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    handleContainerDrop,
+    handleContainerDragOver,
+  } = useTreeDragDrop({ items, onReparent });
+
+  const {
+    localContextMenu,
+    setLocalContextMenu,
+    handleContextMenu,
+    handleAddChild,
+    handleEditFromContextMenu,
+    handleMoreOptions,
+  } = useTreeContextMenu({
+    selectedIds,
+    onSelectItem,
+    onEditItem,
+    onContextMenu,
+    onCreateItem,
   });
 
   // Keyboard navigation

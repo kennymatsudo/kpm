@@ -20,6 +20,7 @@
  * intact and is reloaded when opening each project.
  */
 
+import { useChatStore } from './chat';
 import { useTrackerStore } from './trackerStore';
 import { useFileTreeStore } from './fileTreeStore';
 import { useExportStore } from './tracker/useExportStore';

@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ensureBuiltinCustomPrompts } from '../../services/promptService';
 import { useCustomPromptStore } from '../../stores/customPromptStore';
 import { LoadingSpinner } from '../ui/LoadingButton';
+import { toast } from '../../stores/toastStore';
 
 const ICON_OPTIONS: { value: CustomPromptIcon; label: string }[] = [
   { value: 'document', label: 'Document' },
@@ -71,8 +72,10 @@ export function CustomPromptSettings() {
     }
   }, [selectedPrompt, isCreating]);
 
+  // Show store errors as toasts
   useEffect(() => {
     if (storeError) {
+      toast.error(storeError);
     }
   }, [storeError]);
 
@@ -102,10 +105,12 @@ export function CustomPromptSettings() {
 
   const handleSave = async () => {
     if (!name.trim()) {
+      toast.error('Prompt name is required');
       return;
     }
 
     if (!promptContent.trim()) {
+      toast.error('Prompt content is required');
       return;
     }
 
@@ -114,12 +119,15 @@ export function CustomPromptSettings() {
     try {
       if (selectedPrompt && !isCreating) {
         // Update existing prompt
+        const saved = await updatePromptAction(selectedPrompt.id, {
           name: name.trim(),
           description: description.trim() || null,
           promptContent: promptContent.trim(),
           icon,
           keywords: keywords.trim() || null,
         });
+        if (saved) {
+          toast.success('Prompt saved');
           await loadPrompts();
         }
       } else {
@@ -130,11 +138,13 @@ export function CustomPromptSettings() {
           keywords: keywords.trim() || null,
         });
         if (created) {
+          toast.success('Prompt created');
           setIsCreating(false);
           await loadPrompts();
         }
       }
     } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Save failed');
     } finally {
       setIsSaving(false);
     }
@@ -146,10 +156,14 @@ export function CustomPromptSettings() {
     setIsDeleting(true);
 
     try {
+      const deleted = await deletePromptAction(selectedPrompt.id);
+      if (deleted) {
         clearForm();
+        toast.success('Prompt deleted');
         await loadPrompts();
       }
     } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Delete failed');
     } finally {
       setIsDeleting(false);
     }

@@ -4,6 +4,7 @@ import { CloseIcon } from '../../icons';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 import { useFocusTrap } from '../../../hooks/useFocusTrap';
 import { Z_INDEX } from '../../../constants/zIndex';
+import { useAssociationData, useCustomFieldManagement, useSyncItemSelection } from './hooks';
 
 interface Props {
   projectId: string;
@@ -26,6 +27,19 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
     reset,
   } = useSyncReviewStore();
 
+  // Extracted hooks
+  const { selectedItemId, setSelectedItemId, selectedItem } = useSyncItemSelection({ items });
+  const {
+    customFields,
+    isLoadingCustomFields,
+    customFieldsError,
+    customFieldDraft,
+    customFieldDirty,
+    selectedIssueTypeId,
+    handleCustomFieldChange,
+    handleSaveCustomFields,
+    handleClearCustomFields,
+  } = useCustomFieldManagement({ projectKey, selectedItem, updateCustomFieldOverrides });
 
   // Start review on mount
   useEffect(() => {

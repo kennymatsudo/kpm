@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { LoadingSpinner } from '../ui/LoadingButton';
+import { toast } from '../../stores/toastStore';
 
 interface Props {
   onClose: () => void;
@@ -14,6 +15,7 @@ export function ApiKeyDialog({ onClose }: Props) {
 
   const handleTest = async () => {
     if (!apiKey) {
+      toast.error('Please enter an API key');
       return;
     }
 
@@ -22,6 +24,7 @@ export function ApiKeyDialog({ onClose }: Props) {
 
   const handleSave = async () => {
     if (!apiKey) {
+      toast.error('Please enter an API key');
       return;
     }
 
