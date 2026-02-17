@@ -220,8 +220,11 @@ Messages:
 
 
         const briefingPrompt = deps.getPromptContent('generation.briefing_instructions');
+        const today = new Date().toISOString().split('T')[0];
+
         const synthesisContext = `
 ## Project: ${project.name}
+## Current Date: ${today}
 
 ## Plan Status Summary
 ${context.statusSummary.map((s) => `- ${s.status_category}: ${s.count}`).join('\n') || 'No plan items.'}
