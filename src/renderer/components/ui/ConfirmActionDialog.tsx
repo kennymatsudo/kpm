@@ -137,6 +137,7 @@ export function ConfirmActionDialog({
             variant="secondary"
             disabled={isProcessing}
             onClick={onCancel}
+            className="w-full py-2 disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label={`${cancelLabel} and keep items`}
           >
             {cancelLabel}

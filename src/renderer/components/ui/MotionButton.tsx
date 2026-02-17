@@ -103,6 +103,7 @@ export const ActionButton = forwardRef<HTMLButtonElement, ActionButtonProps>(
         ref={ref}
         scalePreset={scalePreset}
         disabled={isDisabled}
+        className={`w-full px-4 py-2 text-sm disabled:opacity-70 disabled:cursor-not-allowed ${description ? 'text-left' : 'text-center'} ${className}`}
         aria-busy={isLoading}
         {...props}
       >
