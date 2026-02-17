@@ -21,4 +21,10 @@ export const useChatStore: UseBoundStore<StoreApi<ChatState>> = create<ChatState
   },
 }));
 
+if (typeof window !== 'undefined') {
+    if (result.value === 'sonnet' || result.value === 'opus') {
+      useChatStore.setState({ model: result.value });
+    }
+  });
+}
 
