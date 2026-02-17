@@ -140,6 +140,17 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
           void loadProjectDirectory(projectId, parentPath || undefined);
           break;
         }
+        case 'updated': {
+          // If the path doesn't exist in the tree, it's a newly created file
+          // that the watcher reported as 'updated' (e.g., editors with atomic saves).
+          const existingNode = getNodeByPath(data.path);
+          if (!existingNode) {
+            const parentPath = getParentPath(data.path);
+            void loadProjectDirectory(projectId, parentPath || undefined);
+          }
+          fileViewers.handleFileChange(data.type, data.path);
+          break;
+        }
         case 'deleted':
           fileViewers.handleFileChange(data.type, data.path);
           break;
