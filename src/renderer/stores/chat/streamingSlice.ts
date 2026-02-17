@@ -133,6 +133,10 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
       set((state) => {
         const sessions = new Map(state.sessions);
         const session = sessions.get(chatSessionId);
+        if (!session) {
+          console.warn(`[finalizeMessage] Session not found: ${chatSessionId}`);
+          return state;
+        }
 
         const segments = [...session.streamingSegments];
 
@@ -160,6 +164,10 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
           });
           return { sessions };
         }
+
+        const textLength = finalSegments
+          .filter((s): s is { type: 'text'; content: string } => s.type === 'text')
+          .reduce((sum, s) => sum + s.content.length, 0);
 
         sessions.set(chatSessionId, {
           ...session,

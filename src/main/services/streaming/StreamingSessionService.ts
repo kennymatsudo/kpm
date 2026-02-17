@@ -660,6 +660,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     const managed = sessions.get(key);
     if (!managed) return;
+
     managed.state = 'closing';
     managed.unsubscribePlanActions();
     managed.unsubscribeClaudeMdUpdate();
@@ -671,6 +672,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // Ignore errors during close
     }
 
+    // If handleSessionEnd already ran during close(), the session is already deleted
+    // from the map and events were already sent. Only send events as a safety net if
+    // close() didn't trigger the normal callback chain.
+    if (sessions.has(key)) {
+      sessions.delete(key);
+
+    } else {
+      console.log(`[StreamingSessionService] Disconnected session (events already sent by handleSessionEnd): ${key}`);
+    }
   }
 
   /**
