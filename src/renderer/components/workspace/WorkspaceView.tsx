@@ -3,6 +3,7 @@ import { Chat, ChatHeader } from '../chat';
 import { FileEditor } from './FileEditor';
 import { getParentPath } from '../../utils/path';
 import { subscribe as subscribeToStoreEvent } from '../../stores/storeEvents';
+import { useWorkspaceResize } from './useWorkspaceResize';
 
 interface WorkspaceViewProps {
   projectId: string;
@@ -102,6 +103,7 @@ interface WorkspaceViewProps {
     return unsubscribe;
   }, [projectId, markRecentlyChanged, expandToPath, refreshDirectory]);
 
+
   // Track if we're in editing mode for layout transitions
   const isEditing = editingFile !== null;
 
@@ -142,6 +144,16 @@ interface WorkspaceViewProps {
               />
             )}
           </ErrorBoundary>
+        </div>
+      )}
+
+      {/* Workspace resize handle (only when editor is open) */}
+      {isEditing && (
+        <div
+          onMouseDown={handleResizeStart}
+          className="relative w-1.5 cursor-col-resize flex-shrink-0 bg-border-subtle/70 hover:bg-accent/35 active:bg-accent/45 transition-colors"
+        >
+          <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-border-default/80" />
         </div>
       )}
 
