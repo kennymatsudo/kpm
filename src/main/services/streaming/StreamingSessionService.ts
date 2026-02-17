@@ -61,6 +61,8 @@ interface ManagedSession {
   segmentState: SegmentState; // Track message segments for splitting bubbles
   chatSessionId?: string; // For persisting main chat messages
   accumulatedResponse: string; // Accumulate assistant response for persistence
+  lastTurnFinalized: boolean; // True after a turn has emitted chat:done
+  suppressLifecycleEventsOnEnd: boolean; // Suppress renderer lifecycle events when session ends
   unsubscribePlanActions: () => void;
   unsubscribeClaudeMdUpdate: () => void;
   unsubscribeDocumentUpdate: () => void;
@@ -273,13 +275,25 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // Check if underlying session is still usable (may have ended after interrupt/abort)
     if (!managed.session.isReady()) {
       // Session ended - clean up and create new session with this message
+      const reconnectMeta = {
+        projectId: managed.projectId,
+        chatSessionId: managed.chatSessionId,
+        reason: 'reconnect_failed',
+        source: 'sendMessageToSession:notReady',
+      };
+      await disconnectSession(key, { silent: true });
       const createResult = await createSession();
       if (!createResult.ok) {
+        // Silent reconnect cleanup skips lifecycle IPC; emit deactivation on reconnect failure
+        // so renderer doesn't keep stale active-session state.
+        const mainWindow = deps.getMainWindow();
+        mainWindow?.webContents.send('chat:session-deactivated', reconnectMeta);
         return failure(createResult.error);
       }
       return success(undefined);
     }
 
+    managed.lastTurnFinalized = false;
     managed.state = 'processing';
     managed.processingStartTime = Date.now();
     managed.lastSdkActivity = Date.now();
@@ -322,6 +336,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     } = config;
 
     // Disconnect existing session
+    await disconnectSession(key, {
+      reason: 'create_session_preflight',
+      source: 'createSession',
+    });
 
     const mainWindow = deps.getMainWindow();
 
@@ -417,6 +435,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           pendingActivities: [],
         },
         accumulatedResponse: '',
+        lastTurnFinalized: false,
+        suppressLifecycleEventsOnEnd: false,
         unsubscribePlanActions,
         unsubscribeClaudeMdUpdate,
         unsubscribeDocumentUpdate,
@@ -473,8 +493,16 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     if (chatSessionId) {
       // Disconnect specific session
       const key = buildSessionKey(projectId, chatSessionId);
+      await disconnectSession(key, {
+        reason: 'user_disconnect_specific',
+        source: 'disconnectChatSession',
+      });
     } else {
       const keys = getSessionKeysForProject(projectId);
+      await Promise.all(keys.map(key => disconnectSession(key, {
+        reason: 'disconnect_all_sessions',
+        source: 'disconnectChatSession',
+      })));
     }
     return success(undefined);
   }
@@ -508,6 +536,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const managed = sessions.get(key);
 
     // If view changed, disconnect and create new session
+      await disconnectSession(key, {
+        reason: 'view_changed',
+        source: 'sendChatMessage',
+      });
     }
 
   }
@@ -569,6 +601,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       resumeSessionId,
       context,
       currentView: options.currentView,
+      onMessage: (session, msg) => handleChatSessionMessage(projectId, chatSessionId, session, msg),
     });
   }
 
@@ -609,6 +642,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       if (result === 'timeout') {
         console.warn(`[StreamingSessionService] Interrupt timed out for ${sessionKey}, force disconnecting`);
         // Force disconnect since interrupt hung
+        await disconnectSession(sessionKey, {
+          reason: 'interrupt_timeout',
+          source: 'interrupt',
+        });
         return success(undefined);
       }
 
@@ -620,6 +657,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     } catch (error) {
       // If interrupt fails, try to disconnect the session
       console.error(`[StreamingSessionService] Interrupt failed for ${sessionKey}:`, error);
+      await disconnectSession(sessionKey, {
+        reason: 'interrupt_error',
+        source: 'interrupt',
+      });
       return success(undefined); // Return success since we cleaned up
     }
   }
@@ -652,19 +693,29 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
 
     const keysToDispose = Array.from(sessions.keys());
+    await Promise.all(keysToDispose.map(key => disconnectSession(key, {
+      reason: 'dispose_all',
+      source: 'disposeAll',
+    })));
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Internal Helpers
   // ─────────────────────────────────────────────────────────────────────────────
 
+  async function disconnectSession(
+    key: string,
+    options: { silent?: boolean; reason?: string; source?: string } = {}
+  ): Promise<void> {
     const managed = sessions.get(key);
     if (!managed) return;
+    const stateBefore = managed.state;
 
     managed.state = 'closing';
     managed.unsubscribePlanActions();
     managed.unsubscribeClaudeMdUpdate();
     managed.unsubscribeDocumentUpdate();
+    managed.suppressLifecycleEventsOnEnd = !!options.silent;
 
     try {
       await managed.session.close();
@@ -678,6 +729,23 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     if (sessions.has(key)) {
       sessions.delete(key);
 
+      if (!options.silent) {
+        const mainWindow = deps.getMainWindow();
+        mainWindow?.webContents.send('chat:session-deactivated', {
+          projectId: managed.projectId,
+          chatSessionId: managed.chatSessionId,
+          reason: options.reason ?? 'disconnect_fallback',
+          source: options.source ?? 'disconnectSession',
+          previousState: stateBefore,
+        });
+        mainWindow?.webContents.send('chat:done', {
+          projectId: managed.projectId,
+          chatSessionId: managed.chatSessionId,
+        });
+        console.log(`[StreamingSessionService] Disconnected session (events sent as fallback): ${key}`);
+      } else {
+        console.log(`[StreamingSessionService] Disconnected session silently for reconnect: ${key}`);
+      }
     } else {
       console.log(`[StreamingSessionService] Disconnected session (events already sent by handleSessionEnd): ${key}`);
     }
@@ -693,6 +761,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const managed = sessions.get(key);
 
     if (!managed) return;
+    if (managed.session !== sourceSession) {
+      console.log(`[StreamingSessionService] Ignoring stale onMessage for ${key}`);
+      return;
+    }
 
     // Track latest SDK activity for idle-while-processing detection
     managed.lastSdkActivity = Date.now();
@@ -811,6 +883,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         pendingActivities: [],
       };
 
+      managed.lastTurnFinalized = true;
 
       try {
         if (sdkMsg.usage) {
@@ -823,6 +896,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     const managed = sessions.get(key);
     if (!managed) return;
+    const stateBefore = managed.state;
+    if (managed.session !== sourceSession) {
+      console.log(`[StreamingSessionService] Ignoring stale onSessionEnd for ${key} (${reason})`);
+      return;
+    }
 
     managed.unsubscribePlanActions();
     managed.unsubscribeClaudeMdUpdate();
@@ -831,11 +909,25 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     sessions.delete(key);
 
     const mainWindow = deps.getMainWindow();
+    const suppressRendererLifecycle =
+      managed.suppressLifecycleEventsOnEnd ||
+      // The turn was already finalized (chat:done emitted from result handler) and
+      // this end callback is a post-turn teardown. Avoid emitting duplicate
+      // deactivation/done events that can flip renderer state mid-recovery.
+      (managed.lastTurnFinalized && stateBefore !== 'closing');
+
+    if (suppressRendererLifecycle) {
+      console.log(`[StreamingSessionService] Session ended after finalized turn; suppressing redundant lifecycle events: ${key} (${reason})`);
+      return;
+    }
 
     // Notify UI that session is deactivated (for multi-session UI updates)
     mainWindow?.webContents.send('chat:session-deactivated', {
       projectId: managed.projectId,
       chatSessionId: managed.chatSessionId,
+      reason: `session_end_${reason}`,
+      source: 'onSessionEnd',
+      previousState: stateBefore,
     });
 
     // Ensure renderer always clears any pending streaming state for this session.

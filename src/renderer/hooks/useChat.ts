@@ -31,9 +31,15 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     startNewChatSession: state.startNewChatSession,
   })));
 
+  const send = useCallback(async (
+    message: string,
+    clientMessageId?: string,
+    targetChatSessionId?: string
+  ) => {
     if (!projectId) return;
 
     // Get or create chat session ID
+    const chatSessionId = targetChatSessionId ?? getChatSessionId();
     const effectiveClientMessageId = clientMessageId ?? crypto.randomUUID();
 
     // Ensure session exists in store

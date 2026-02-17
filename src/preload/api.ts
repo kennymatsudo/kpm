@@ -204,6 +204,20 @@ const chat = {
   },
 
   /** Session deactivated event (multi-session support) */
+  onSessionDeactivated: (callback: (data: {
+    projectId: string;
+    chatSessionId?: string;
+    reason?: string;
+    source?: string;
+    previousState?: string;
+  }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: {
+      projectId: string;
+      chatSessionId?: string;
+      reason?: string;
+      source?: string;
+      previousState?: string;
+    }) => callback(data);
     ipcRenderer.on('chat:session-deactivated', handler);
     return () => ipcRenderer.removeListener('chat:session-deactivated', handler);
   },

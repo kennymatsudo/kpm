@@ -52,6 +52,8 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
               streamingSegments: segments,
               streamingContent: newContent,
               pendingActivities,
+              isStreaming: true,
+              streamStartedAt: session.streamStartedAt ?? now,
               lastStreamUpdateAt: now,
             });
 
@@ -88,6 +90,8 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
             streamingSegments: segments,
             streamingContent: newContent,
             pendingActivities,
+            isStreaming: true,
+            streamStartedAt: session.streamStartedAt ?? now,
             lastStreamUpdateAt: now,
           });
 
@@ -140,6 +144,21 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
 
         const segments = [...session.streamingSegments];
 
+        // Idempotency guard: repeated chat:done/session-deactivated events can
+        if (
+          !session.isStreaming &&
+          segments.length === 0 &&
+          !buffered &&
+          session.pendingActivities.length === 0 &&
+          session.activities.length === 0
+        ) {
+          return state;
+        }
+
+        if (session.pendingActivities.length > 0) {
+          segments.push({ type: 'activity', activities: session.pendingActivities });
+        }
+
         if (buffered) {
           const lastSegment = segments[segments.length - 1];
           if (lastSegment?.type === 'text') {
@@ -149,12 +168,31 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
           }
         }
 
+        let finalSegments = segments.filter((seg) => {
           if (seg.type === 'text') return seg.content.trim().length > 0;
           if (seg.type === 'activity') return seg.activities.length > 0;
           return false;
         });
 
+        // Tool/activity-only turns (no text chunks) should still be committed so
+        // the user sees that the turn completed and what happened.
+        if (finalSegments.length === 0 && session.activities.length > 0) {
+          finalSegments = [{ type: 'activity', activities: session.activities }];
+        }
+
         if (finalSegments.length === 0) {
+          const hasAnyRenderableInput =
+            !!buffered ||
+            segments.length > 0 ||
+            session.streamingContent.length > 0 ||
+            session.pendingActivities.length > 0 ||
+            session.activities.length > 0;
+
+          if (hasAnyRenderableInput) {
+            console.warn(`[finalizeMessage] Empty segments for ${chatSessionId} (wasStreaming: ${session.isStreaming}, streamingContent: ${session.streamingContent.length} chars, pendingActivities: ${session.pendingActivities.length}, activities: ${session.activities.length})`);
+          } else if (session.isStreaming) {
+            console.log(`[finalizeMessage] No assistant output for ${chatSessionId}; clearing streaming state`);
+          }
           sessions.set(chatSessionId, {
             ...session,
             streamingContent: '',
@@ -190,6 +228,8 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
       sessions.set(chatSessionId, {
         ...session,
         activities: [...session.activities.slice(-5), activity],
+        isStreaming: true,
+        streamStartedAt: session.streamStartedAt ?? now,
         lastStreamUpdateAt: now,
       });
 

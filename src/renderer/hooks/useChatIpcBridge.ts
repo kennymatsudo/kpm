@@ -88,6 +88,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     // Events now include chatSessionId for routing to correct session
         }
 
+        }
     });
 
     const WATCHDOG_POLL_MS = 15_000;

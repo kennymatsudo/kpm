@@ -99,6 +99,7 @@ const AssistantMessageContent = memo(function AssistantMessageContent({
   return (
     <>
         return (
+            <Markdown options={markdownOptions}>
             </Markdown>
           </div>
         );
@@ -122,6 +123,7 @@ const StreamingContent = memo(function StreamingContent({
   return (
     <>
         return (
+            <Markdown options={markdownOptions}>
             </Markdown>
           </div>
         );
@@ -150,6 +152,8 @@ const MessageRow = memo(function MessageRow({
 
 const ESTIMATED_MESSAGE_HEIGHT = 132;
 const VIRTUAL_OVERSCAN_PX = 640;
+const VIRTUALIZATION_MIN_MESSAGES = 40;
+const INTERRUPTED_BANNER_DELAY_MS = 1200;
 
 const VirtualizedMessageRow = memo(function VirtualizedMessageRow({
   message,
@@ -209,12 +213,45 @@ interface MessageListProps {
   const [viewportHeight, setViewportHeight] = useState(0);
   const [measurementVersion, setMeasurementVersion] = useState(0);
   const [timeNow, setTimeNow] = useState(() => Date.now());
+  const [showInterruptedBanner, setShowInterruptedBanner] = useState(false);
+  const interruptedBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!isStreaming) return;
     const interval = setInterval(() => setTimeNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, [isStreaming]);
+
+  const interruptedCandidate =
+    !isStreaming &&
+    !error &&
+    sessionState !== 'ready' &&
+    messages.length > 0 &&
+    messages[messages.length - 1].role === 'user';
+
+  useEffect(() => {
+    if (interruptedBannerTimerRef.current) {
+      clearTimeout(interruptedBannerTimerRef.current);
+      interruptedBannerTimerRef.current = null;
+    }
+
+    if (!interruptedCandidate) {
+      setShowInterruptedBanner(false);
+      return;
+    }
+
+    interruptedBannerTimerRef.current = setTimeout(() => {
+      setShowInterruptedBanner(true);
+      interruptedBannerTimerRef.current = null;
+    }, INTERRUPTED_BANNER_DELAY_MS);
+
+    return () => {
+      if (interruptedBannerTimerRef.current) {
+        clearTimeout(interruptedBannerTimerRef.current);
+        interruptedBannerTimerRef.current = null;
+      }
+    };
+  }, [interruptedCandidate, viewedSessionId]);
 
   const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
     const list = listRef.current;
@@ -295,6 +332,15 @@ interface MessageListProps {
       return item;
     });
 
+    // For smaller conversations (or before viewport dimensions are reliable),
+    // render all rows to avoid clipped/missing messages from virtualization math.
+    if (!shouldVirtualize) {
+      return {
+        totalStaticHeight: runningTop,
+        virtualizedMessages: measurements,
+      };
+    }
+
     const visibleTop = Math.max(0, scrollTop - VIRTUAL_OVERSCAN_PX);
     const visibleBottom = scrollTop + viewportHeight + VIRTUAL_OVERSCAN_PX;
     const visibleItems = measurements.filter(
@@ -346,6 +392,7 @@ interface MessageListProps {
 
         {/* Interrupted response indicator — only show when session is disconnected (genuinely interrupted),
             not after tool-only responses that completed normally without text output */}
+        {showInterruptedBanner && (
           <div className="flex items-center gap-2 py-3 text-text-muted">
             <span className="w-1.5 h-1.5 rounded-full bg-warning flex-shrink-0" />
             <span className="text-xs">Response was interrupted — send a message to continue</span>
@@ -362,6 +409,11 @@ interface MessageListProps {
           </div>
         )}
 
+        {/* Waiting for response (no content yet).
+            Also keep the thinking indicator visible during brief session interruptions
+            while we are still waiting on an assistant reply. */}
+        {((isStreaming && streamingSegments.length === 0 && !streamingContent)
+          || (!isStreaming && interruptedCandidate && !showInterruptedBanner)) && (
           <ThinkingIndicator
             activities={activities}
             elapsedSeconds={elapsedSeconds}

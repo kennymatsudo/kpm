@@ -12,6 +12,10 @@ import { clientManager } from './clientManager';
 const READ_TOOLS = ['Read', 'Grep', 'Glob'];
 const WRITE_TOOLS = ['Edit', 'Write', 'Bash'];
 
+/**
+ */
+}
+
 /** Function to prompt user for permission */
 export type PromptUserFn = (
   toolName: string,
@@ -120,6 +124,7 @@ function getToolPreview(toolName: string, input: Record<string, unknown>): strin
  * Create permission handler for Claude SDK.
  *
  * Rules:
+ * -1. Deny: Git write operations (commit, push, merge, etc.) — always blocked
  * 1. Auto-allow: All other tools in project directory
  * 2. Auto-allow: Read tools anywhere
  * 3. Auto-allow: MCP tools (read-only)
@@ -137,6 +142,8 @@ export function createPermissionHandler(
       console.log(`[Permissions] Tool: ${toolName}`);
       console.log(`[Permissions] Input keys: ${Object.keys(input).join(', ')}`);
       console.log(`[Permissions] Input: ${JSON.stringify(input).slice(0, 500)}`);
+    }
+
     }
 
     const targetPath = extractPath(toolName, input);

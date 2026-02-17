@@ -180,6 +180,7 @@ export function MarkdownDocumentModal({
     searchQuery,
     currentMatchIndex,
     totalMatches,
+    searchOptions,
     setShowSearch,
     setSearchQuery,
     closeSearch,

@@ -71,6 +71,18 @@ export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
     setDraftMessage: (chatSessionId, draftMessage) => set((state) => {
       const sessions = new Map(state.sessions);
       const session = sessions.get(chatSessionId);
+      if (!session) {
+        sessions.set(
+          chatSessionId,
+          {
+            draftMessage,
+          }
+        );
+        return {
+          sessions,
+          nextSessionNumber: state.nextSessionNumber + 1,
+        };
+      }
 
       sessions.set(chatSessionId, { ...session, draftMessage });
       return { sessions };

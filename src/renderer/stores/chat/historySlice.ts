@@ -21,6 +21,22 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
 
     getChatSessionId: () => {
       const state = get();
+      if (state.viewedSessionId) {
+        if (state.sessions.has(state.viewedSessionId)) {
+          return state.viewedSessionId;
+        }
+
+        // Heal stale viewedSessionId pointers so input/send state remains stable.
+        const sessions = new Map(state.sessions);
+        sessions.set(
+          state.viewedSessionId,
+        );
+        set({
+          sessions,
+          nextSessionNumber: state.nextSessionNumber + 1,
+        });
+        return state.viewedSessionId;
+      }
       return get().startNewChatSession();
     },
 

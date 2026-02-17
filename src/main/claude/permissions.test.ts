@@ -47,6 +47,11 @@ describe('permissions', () => {
     });
   });
 
+    });
+
+    });
+  });
+
   describe('createPermissionHandler', () => {
     let context: PermissionContext;
     let mockPromptUser: PromptUserFn;
@@ -179,6 +184,16 @@ describe('permissions', () => {
         const result = await handler('Edit', { file_path: '/outside/project/file.ts' }, createTestOptions());
 
         expect(result.behavior).toBe('deny');
+      });
+    });
+
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+        vi.mocked(clientManager.hasPermissionCached).mockReturnValue(true);
+        vi.mocked(clientManager.hasAllowAllRemaining).mockReturnValue(true);
+
+        const result = await handler('Bash', { command: 'git log --oneline' }, createTestOptions());
       });
     });
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, type RefObject } from 'react';
 import type { MarkdownToJSX } from 'markdown-to-jsx';
+import { markdownOptions, createSearchHighlightOptions } from '../../../utils/markdown';
 
 type ViewMode = 'diff' | 'preview' | 'edit';
 
@@ -15,6 +16,7 @@ interface MarkdownSearchResult {
   searchQuery: string;
   currentMatchIndex: number;
   totalMatches: number;
+  searchOptions: MarkdownToJSX.Options;
   setShowSearch: (show: boolean) => void;
   setSearchQuery: (query: string) => void;
   closeSearch: () => void;
@@ -53,6 +55,10 @@ export function useMarkdownSearch({
     }
   }, [totalMatches, currentMatchIndex]);
 
+  // Create search highlight options for preview mode
+  const searchOptions = useMemo(() => {
+    if (!searchQuery || !showSearch) return markdownOptions;
+    return createSearchHighlightOptions(searchQuery, currentMatchIndex);
   }, [searchQuery, currentMatchIndex, showSearch]);
 
   // Scroll to current match in preview mode
@@ -98,6 +104,7 @@ export function useMarkdownSearch({
     searchQuery,
     currentMatchIndex,
     totalMatches,
+    searchOptions,
     setShowSearch,
     setSearchQuery,
     closeSearch,

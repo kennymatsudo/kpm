@@ -120,6 +120,9 @@ export function MarkdownEditor({
     setCurrentMatchIndex(prevIndex);
     setSearchNavigationTick((prev) => prev + 1);
 
+  const searchOptions = useMemo(() => {
+    if (!showSearch || !searchQuery) return markdownOptions;
+    return createSearchHighlightOptions(searchQuery, currentMatchIndex);
   }, [showSearch, searchQuery, currentMatchIndex]);
 
   useEffect(() => {

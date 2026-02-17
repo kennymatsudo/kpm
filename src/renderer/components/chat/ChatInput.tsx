@@ -34,12 +34,14 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
       viewedSession: session,
       setDraftMessage: state.setDraftMessage,
       getChatSessionId: state.getChatSessionId,
+      getOrCreateSession: state.getOrCreateSession,
     };
   }));
 
   const isStreaming = viewedSession?.isStreaming ?? false;
 
     const sessionId = viewedSessionId ?? getChatSessionId();
+    getOrCreateSession(sessionId);
   const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -58,6 +60,20 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
       textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
     }
   }, [message]);
+
+  // Re-focus textarea when streaming ends, but only if the user
+  // hasn't moved focus to another interactive element in the app.
+  const wasStreamingRef = useRef(isStreaming);
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming && !disabled) {
+      const active = document.activeElement;
+      const focusIsIdle = !active || active === document.body;
+      if (focusIsIdle) {
+        textareaRef.current?.focus();
+      }
+    }
+    wasStreamingRef.current = isStreaming;
+  }, [isStreaming, disabled]);
 
   // Escape key to cancel streaming
   useEffect(() => {
@@ -111,6 +127,8 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
 
   const handleSend = () => {
     const trimmed = message.trim();
+      const chatSessionId = viewedSessionId ?? getChatSessionId();
+      getOrCreateSession(chatSessionId);
       setMessage('');
     }
   };

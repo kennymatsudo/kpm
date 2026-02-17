@@ -30,6 +30,16 @@ export const markdownOverrides: MarkdownToJSX.Overrides = {
 };
 
 /**
+ * Base markdown options with external link handling and HTML parsing disabled.
+ * Disabling raw HTML parsing prevents JSX/React code in markdown from being
+ * interpreted as actual React elements (e.g. `<ConfirmationModal />` in code examples).
+ */
+export const markdownOptions: MarkdownToJSX.Options = {
+  overrides: markdownOverrides,
+  disableParsingRawHTML: true,
+};
+
+/**
  * Highlights search matches in a text string.
  * Returns an array of React elements with matches wrapped in <mark>.
  */
@@ -145,5 +155,18 @@ function highlightSearchMatches(
         );
       },
     },
+  };
+}
+
+/**
+ * Creates full markdown options with search highlighting and HTML parsing disabled.
+ */
+export function createSearchHighlightOptions(
+  searchQuery: string,
+  currentMatchIndex: number
+): MarkdownToJSX.Options {
+  return {
+    overrides: createSearchHighlightOverrides(searchQuery, currentMatchIndex),
+    disableParsingRawHTML: true,
   };
 }
