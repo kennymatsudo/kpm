@@ -714,6 +714,25 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
           // Tool call logging (additive - does not affect activity flow)
           if (deps.toolCallLogger) {
+            try {
+              const toolInput = block.input as Record<string, unknown>;
+              const entry: ToolCallLogEntry = {
+                id: randomUUID(),
+                projectId,
+                chatSessionId,
+                turnIndex: deps.toolCallLogger.getCurrentTurnIndex(chatSessionId),
+                toolName: block.name,
+                toolCategory: activity?.type ?? 'other',
+                input: toolInput,
+                filePaths: extractFilePaths(block.name, toolInput),
+                label: activity?.label ?? block.name,
+                detail: activity?.detail,
+                timestamp: Date.now(),
+              };
+              deps.toolCallLogger.logToolCall(entry);
+            } catch (logError) {
+              console.error('[StreamingSessionService] Tool call logging failed:', logError);
+            }
           }
         }
 
@@ -755,11 +774,25 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // Clear "Allow All Remaining" flag when response completes
       clientManager.clearAllowAllRemaining(projectId);
 
+      // Persist and finalize — errors here must not prevent chat:done from being sent
+      try {
+          deps.chatMessageRepository.addMessage(
+            projectId,
+            'assistant',
+          );
+        }
+      } catch (dbError) {
+        console.error('[StreamingSessionService] Failed to persist assistant message:', dbError);
       }
 
       // Reset accumulated response for next turn
       managed.accumulatedResponse = '';
 
+      try {
+        deps.toolCallLogger?.finalizeTurn(projectId, chatSessionId);
+      } catch (logError) {
+        console.error('[StreamingSessionService] Failed to finalize tool call turn:', logError);
+      }
 
       // Reset segment state for next turn
       managed.segmentState = {
@@ -769,6 +802,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       };
 
 
+      try {
+        if (sdkMsg.usage) {
+        }
+      } catch (statsError) {
+        console.error('[StreamingSessionService] Failed to update token stats:', statsError);
       }
     }
   }

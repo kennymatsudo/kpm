@@ -155,6 +155,12 @@ export class StreamingSession {
           this.readyRejecter = null;
         }
 
+        // Dispatch all messages to handler — errors must not kill the SDK message loop
+        try {
+          this.config.onMessage(msg);
+        } catch (callbackError) {
+          console.error('[StreamingSession] onMessage callback error (session continues):', callbackError);
+        }
       }
 
       // Generator exhausted normally
