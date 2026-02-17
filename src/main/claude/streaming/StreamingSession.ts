@@ -144,6 +144,8 @@ export class StreamingSession {
           this.sessionId = msg.session_id;
 
 
+          }
+
             this._isReady = false;
           } else {
             this._isReady = true;
