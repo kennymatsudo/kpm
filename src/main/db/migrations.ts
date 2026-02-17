@@ -1984,6 +1984,23 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1051,
+    name: '051_project_briefings',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS project_briefings (
+          project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+          summary TEXT NOT NULL,
+          generated_at TEXT NOT NULL,
+          blocked_count INTEGER NOT NULL DEFAULT 0,
+          stale_count INTEGER NOT NULL DEFAULT 0,
+          inbox_count INTEGER NOT NULL DEFAULT 0,
+          ready_count INTEGER NOT NULL DEFAULT 0
+        );
+      `);
+    },
+  },
         -- Backfill: sessions without plan items get first 60 chars of instructions
   {
     id: 1075,

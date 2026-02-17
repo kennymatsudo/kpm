@@ -82,6 +82,7 @@ Priority ordering rules:
 4. Items ready to start (all dependencies met)
 5. Idle dev sessions that need cleanup or resuming
 
+Never use emojis, colored circles, or status indicators. Use plain markdown only.
 Keep it under 500 words. Be specific — reference actual item titles, not generic advice.`,
   },
 ];

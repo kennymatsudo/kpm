@@ -1066,6 +1066,13 @@ select:focus-visible {
   max-width: none;
 }
 
+.prose-themed,
+.prose-themed * {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
 .prose-themed :where(p):not(:where([class~="not-prose"] *)) {
   margin-top: 0.35em;
   margin-bottom: 0.35em;

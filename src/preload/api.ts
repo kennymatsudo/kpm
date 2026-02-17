@@ -906,6 +906,8 @@ const promptOverrides = {
 const briefing = {
   generate: (projectId: string): Promise<{ success: boolean; data?: BriefingResult; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.briefing.generate, { projectId }),
+  get: (projectId: string): Promise<{ success: boolean; data?: BriefingResult | null; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.briefing.get, { projectId }),
 };
 
 // Testing API - only available when NODE_ENV=test

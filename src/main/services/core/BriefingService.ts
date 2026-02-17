@@ -87,6 +87,8 @@ export interface BriefingServiceDeps {
 
 }
 
+}
+
 
       statusSummary: db.prepare(`
         SELECT status_category, COUNT(*) as count
@@ -162,8 +164,19 @@ export interface BriefingServiceDeps {
         WHERE session_id = ?
         ORDER BY created_at DESC
       `),
+      upsertBriefing: db.prepare(`
         INSERT INTO project_briefings (project_id, summary, generated_at, blocked_count, stale_count, ready_count)
         VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(project_id) DO UPDATE SET
+          summary = excluded.summary,
+          generated_at = excluded.generated_at,
+          blocked_count = excluded.blocked_count,
+          stale_count = excluded.stale_count,
+          ready_count = excluded.ready_count
+      `),
+      getBriefing: db.prepare(`
+        SELECT * FROM project_briefings WHERE project_id = ?
+      `),
     };
   }
 
@@ -244,6 +257,7 @@ Output a concise, actionable markdown briefing. Use sections like:
 - **Ready to Start**: Items with met dependencies
 - **Idle Dev Sessions**: Branches that might need cleanup or resuming
 
+NEVER use emojis, colored circles, or status indicators. No icons of any kind. Use plain markdown only — headers, bold, lists, and text. Be direct and utilitarian. Lead with actions, not narration.`;
 
         const summary = await callClaude(
           briefingSystemPrompt,
@@ -253,6 +267,7 @@ Output a concise, actionable markdown briefing. Use sections like:
         const elapsed = Date.now() - startTime;
         log(`Briefing complete in ${elapsed}ms`);
 
+        const briefingResult: BriefingResult = {
           summary,
           generatedAt: new Date().toISOString(),
           signalCounts: {
@@ -260,10 +275,44 @@ Output a concise, actionable markdown briefing. Use sections like:
             staleCount: context.staleItems.length,
             readyCount: context.readyItems.length,
           },
+        };
+
+        try {
+            projectId,
+            briefingResult.summary,
+            briefingResult.generatedAt,
+            briefingResult.signalCounts.blockedCount,
+            briefingResult.signalCounts.staleCount,
+            briefingResult.signalCounts.readyCount,
+          );
+        } catch (e) {
+          // Non-critical — log but don't fail the briefing
+          console.error('[BriefingService] Failed to persist briefing:', e);
+        }
+
+        return success(briefingResult);
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Unknown error';
         console.error('[BriefingService] Error:', msg);
         return failure(`Briefing generation failed: ${msg}`);
+      }
+    },
+
+    getBriefing(projectId: string): BriefingResult | null {
+      try {
+        if (!row) return null;
+        return {
+          summary: row.summary,
+          generatedAt: row.generated_at,
+          signalCounts: {
+            blockedCount: row.blocked_count,
+            staleCount: row.stale_count,
+            readyCount: row.ready_count,
+          },
+        };
+      } catch (e) {
+        console.error('[BriefingService] Failed to load briefing:', e);
+        return null;
       }
     },
   };
