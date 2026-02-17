@@ -30,6 +30,7 @@ export function BriefingModal() {
 
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
   const briefing = currentProjectId ? briefings[currentProjectId] ?? null : null;
+
   useEffect(() => {
       void loadBriefing(currentProjectId).then((loaded) => {
         if (!loaded) {

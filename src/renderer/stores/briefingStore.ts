@@ -7,6 +7,13 @@
 import { create } from 'zustand';
 import type { BriefingResult } from '../../shared/types';
 
+/** Returns true if the briefing was generated before the start of today (local time). */
+  const generatedDate = new Date(briefing.generatedAt);
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  return generatedDate < startOfToday;
+}
+
 interface BriefingState {
   briefings: Record<string, BriefingResult>;
   isLoading: boolean;
