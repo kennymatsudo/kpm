@@ -13,6 +13,11 @@ import { createRelationTools } from './relations';
 import { createGroupTools } from './groups';
 import { createJiraTools } from './jira';
 import { createStorybookTools } from './storybook';
+import { createClaudeMdEditTools, type ClaudeMdUpdateCallback, type ClaudeMdUpdatePayload } from './claudemd-update';
+import { createDocumentCreateTools, type DocumentUpdateCallback, type DocumentUpdatePayload } from './document-update';
+import { createDocumentEditTools } from './document-edit';
+import { resolveScopedPath } from '../../services/files/scopedFs';
+import fs from 'fs';
 import { createGitHubTools } from './github';
 import { createConfluenceTools } from './confluence';
 import { createBriefingTools } from './briefing';
@@ -33,6 +38,27 @@ interface ToolExecutionContext {
 }
 
 const toolExecutionContext = new AsyncLocalStorage<ToolExecutionContext>();
+
+/**
+ * Read a project file by projectId and relative path.
+ * Returns file content or null if not found.
+ */
+async function readProjectFile(projectId: string, filePath: string): Promise<string | null> {
+  if (!project) return null;
+
+  const scoped = resolveScopedPath(project.folder_path, filePath);
+  if (!scoped.valid) return null;
+
+  try {
+    return await fs.promises.readFile(scoped.fullPath, 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ */
+}
 
 /**
  * Run code with a tool execution context so singleton tool callbacks can route
@@ -104,6 +130,7 @@ function emitDocumentUpdate(update: DocumentUpdatePayload): void {
   const groupTools = createGroupTools(groupRepo, planItemRepo, emitPlanActions);
   const planChangeTools = createPlanChangeTools(emitPlanActions);
   const storybookTools = createStorybookTools(projectRepo);
+  const documentCreateTools = createDocumentCreateTools(emitDocumentUpdate);
 
     ...planItemTools,
     ...relationTools,
@@ -111,6 +138,9 @@ function emitDocumentUpdate(update: DocumentUpdatePayload): void {
     ...planChangeTools,
     ...jiraTools,
     ...storybookTools,
+    ...claudeMdEditTools,
+    ...documentCreateTools,
+    ...documentEditTools,
     ...githubTools,
     ...confluenceTools,
     ...briefingTools,

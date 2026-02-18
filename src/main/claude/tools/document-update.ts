@@ -22,12 +22,15 @@ export type DocumentUpdateCallback = (update: DocumentUpdatePayload) => void;
 
 
 /**
+ * Create the document create tool.
  *
  * @param onDocumentUpdate - Callback to emit proposed update to the UI for approval
  */
+export function createDocumentCreateTools(onDocumentUpdate: DocumentUpdateCallback) {
 
   return [
     tool(
+      'propose_document_create',
       TOOL_DESCRIPTION,
       {
         projectId: z.string().uuid().describe('The project UUID'),
@@ -41,6 +44,7 @@ export type DocumentUpdateCallback = (update: DocumentUpdatePayload) => void;
 
         try {
         } catch (error) {
+          return toolError(`Failed to propose document create: ${error instanceof Error ? error.message : String(error)}`);
         }
 
         const preview = /^#+ .+$/m.exec(content)?.[0] ?? content.slice(0, 100);

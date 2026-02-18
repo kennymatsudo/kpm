@@ -23,6 +23,7 @@ export const CONSTRAINTS = `## Constraints
 export const WORKSPACE_SECTION = `## Your Workspace
 
 **You control:**
+- Project files — create new (via \`propose_document_create\`), edit existing (via \`propose_document_edit\`)
 
 
 

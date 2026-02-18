@@ -32,6 +32,7 @@ export function toolError(message: string) {
  * Safely converts data to JSON string
  */
 export function toJson(data: unknown): string {
+  return JSON.stringify(data);
 }
 
 /**
