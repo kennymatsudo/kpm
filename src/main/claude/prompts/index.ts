@@ -25,6 +25,7 @@ function buildViewContextSection(currentView?: ChatViewMode): string {
 
   if (currentView === 'plan') {
     return `## Current View: Plan Mode
+The user is on the planning canvas. Use \`modify_plan\` when they ask you to create, update, or reorganize items.`;
   }
 
   return `## Current View: Workspace

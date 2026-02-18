@@ -15,6 +15,7 @@ import type { Attachment } from '../../../shared/types';
  */
 export const CONSTRAINTS = `## Constraints
 
+- **Never create plan items unprompted.** Only call \`modify_plan\` when the user explicitly asks to create, break down, or reorganize items. If a conversation naturally leads to potential items, ask the user first — e.g., "Want me to add these as plan items?" — before calling any modification tool.
 - **Attachments are read-only** reference material provided by the user.
 
 /**
