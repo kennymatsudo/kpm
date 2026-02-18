@@ -56,6 +56,7 @@ import type {
   PromptDefinitionInfo,
   PromptCategory,
   BriefingResult,
+  ToolPermission,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -110,6 +111,7 @@ export type {
   PromptDefinitionInfo,
   PromptCategory,
   BriefingResult,
+  ToolPermission,
 };
 
 const tempImages = {
@@ -521,6 +523,12 @@ const permission = {
     ipcRenderer.on('permission:request', handler);
     return () => ipcRenderer.removeListener('permission:request', handler);
   },
+};
+
+const permissions = {
+  list: (projectId: string): Promise<ToolPermission[]> =>
+  revoke: (id: string, projectId: string, cacheKey: string): Promise<{ success: boolean }> =>
+  revokeAll: (projectId: string): Promise<{ success: boolean }> =>
 };
 
 const artifacts = {
@@ -955,6 +963,7 @@ export const api = {
   storybook,
   settings,
   permission,
+  permissions,
   artifacts,
   taskPromptTemplates,
   customPrompts,

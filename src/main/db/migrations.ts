@@ -2001,6 +2001,25 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1052,
+    name: '052_tool_permissions',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS tool_permissions (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          cache_key TEXT NOT NULL,
+          tool_name TEXT NOT NULL,
+          label TEXT NOT NULL,
+          granted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(project_id, cache_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_tool_permissions_project
+          ON tool_permissions(project_id);
+      `);
+    },
+  },
         -- Backfill: sessions without plan items get first 60 chars of instructions
   {
     id: 1075,

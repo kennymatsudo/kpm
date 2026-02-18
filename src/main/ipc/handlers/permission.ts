@@ -10,10 +10,23 @@
  */
 
 import { IPC_CHANNELS } from '../channels';
+
 /**
  * Register permission IPC handlers.
  */
   /**
    * Handle permission response from renderer.
+   */
+
+  /**
+   * List persisted permissions for a project.
+   */
+
+  /**
+   * Revoke a single permission by ID.
+   */
+
+  /**
+   * Revoke all permissions for a project.
    */
 }

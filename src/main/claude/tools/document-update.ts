@@ -31,6 +31,10 @@ export type DocumentUpdateCallback = (update: DocumentUpdatePayload) => void;
       TOOL_DESCRIPTION,
       {
         projectId: z.string().uuid().describe('The project UUID'),
+        filePath: z.string().min(1)
+        .refine(
+          (p) => !p.startsWith('/') && !/^[a-zA-Z]:/.test(p) && !p.includes('..'),
+        )
         content: z.string().min(1).describe('The complete new document content (not a diff). Must be valid Markdown.'),
       },
       async ({ projectId, filePath, content }) => {

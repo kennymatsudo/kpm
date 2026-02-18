@@ -28,6 +28,7 @@ export type {
   IAppSettingsRepository,
   ITaskPromptTemplateRepository,
   ICustomPromptRepository,
+  IToolPermissionRepository,
   CustomPromptCreate,
   CustomPromptUpdate,
 } from './settings';

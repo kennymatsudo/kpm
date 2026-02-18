@@ -194,6 +194,15 @@ class ClaudeClientManager {
   }
 
   /**
+   * Remove a single cached permission key.
+   * Called when user revokes a specific "Allow Always" permission.
+   */
+  revokePermission(projectId: string, cacheKey: string): void {
+    this.permissionCache.get(projectId)?.delete(cacheKey);
+    console.log(`[ClientManager] Revoked permission: ${projectId} -> ${cacheKey}`);
+  }
+
+  /**
    * Clear permission cache for a project.
    * Called when starting a new session.
    */

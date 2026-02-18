@@ -99,6 +99,12 @@ interface WorkspaceViewProps {
       // Highlight the file in the tree
       markRecentlyChanged(data.filePath, changeType);
 
+      // Only refresh/expand for relative project paths — skip absolute paths
+      // (e.g. when Claude mistakenly proposes a path inside a connected repo)
+      if (!data.filePath.startsWith('/') && !/^[a-zA-Z]:/.test(data.filePath)) {
+        void expandToPath(data.projectId, data.filePath);
+        void refreshDirectory(getParentPath(data.filePath, ''));
+      }
     });
     return unsubscribe;
   }, [projectId, markRecentlyChanged, expandToPath, refreshDirectory]);

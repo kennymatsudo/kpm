@@ -90,3 +90,18 @@ export interface ICustomPromptRepository {
   /** Ensure built-in prompts exist */
   ensureBuiltinsExist(): void;
 }
+
+// =============================================================================
+// Tool Permission Repository
+// =============================================================================
+
+export interface IToolPermissionRepository {
+  /** List all persisted permissions for a project */
+  listByProject(projectId: string): ToolPermission[];
+  /** Upsert a permission (insert or replace by project_id + cache_key) */
+  upsert(permission: Omit<ToolPermission, 'granted_at'>): void;
+  /** Delete a permission by ID */
+  delete(id: string): void;
+  /** Delete all permissions for a project */
+  deleteByProject(projectId: string): void;
+}

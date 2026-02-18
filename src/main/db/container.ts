@@ -30,6 +30,7 @@ import {
   AppSettingsRepository as AppSettingsRepositoryClass,
   DevSessionRepository as DevSessionRepositoryClass,
   ConfluenceLinkRepository as ConfluenceLinkRepositoryClass,
+  ToolPermissionRepository as ToolPermissionRepositoryClass,
 } from './repositories/impl';
 import type { IFileSystem, IPathUtils } from './repositories/impl/ProjectRepository';
 
@@ -102,6 +103,7 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
     appSettings: new AppSettingsRepositoryClass(database),
     devSessions: new DevSessionRepositoryClass(database),
     confluenceLinks: new ConfluenceLinkRepositoryClass(database),
+    toolPermissions: new ToolPermissionRepositoryClass(database),
   };
 }
 

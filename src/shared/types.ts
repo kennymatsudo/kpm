@@ -655,6 +655,16 @@ export interface PermissionResponse {
   action: PermissionAction;
 }
 
+/** A persisted "Allow Always" tool permission for a project */
+export interface ToolPermission {
+  id: string;
+  project_id: string;
+  cache_key: string;
+  tool_name: string;
+  label: string;
+  granted_at: string;
+}
+
 // =============================================================================
 // Focus System Types - for AI chat context
 // =============================================================================

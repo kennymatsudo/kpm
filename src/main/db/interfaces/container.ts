@@ -36,4 +36,5 @@ export interface IRepositoryContainer {
   appSettings: IAppSettingsRepository;
   devSessions: IDevSessionRepository;
   confluenceLinks: IConfluenceLinkRepository;
+  toolPermissions: IToolPermissionRepository;
 }

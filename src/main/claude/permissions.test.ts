@@ -59,6 +59,8 @@ describe('permissions', () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
+      vi.mocked(clientManager.hasPermissionCached).mockReturnValue(false);
+      vi.mocked(clientManager.hasAllowAllRemaining).mockReturnValue(false);
 
       context = {
         projectPath: '/test/project',

@@ -24,3 +24,4 @@ export * from './WorktreeRepository';
 export * from './AppSettingsRepository';
 export * from './DevSessionRepository';
 export * from './ConfluenceLinkRepository';
+export * from './ToolPermissionRepository';
