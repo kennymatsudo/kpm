@@ -13,6 +13,7 @@ import { createRelationTools } from './relations';
 import { createGroupTools } from './groups';
 import { createJiraTools } from './jira';
 import { createStorybookTools } from './storybook';
+import { createPlanChangeTools } from './plan-changes';
 import { createClaudeMdEditTools, type ClaudeMdUpdateCallback, type ClaudeMdUpdatePayload } from './claudemd-update';
 import { createDocumentCreateTools, type DocumentUpdateCallback, type DocumentUpdatePayload } from './document-update';
 import { createDocumentEditTools } from './document-edit';
@@ -36,6 +37,14 @@ interface ToolExecutionContext {
   projectId: string;
   chatSessionId?: string;
 }
+
+export interface PlanActionsEvent {
+  projectId: string;
+  chatSessionId: string;
+  actions: PlanAction[];
+}
+
+export type PlanActionsCallback = (event: PlanActionsEvent) => void;
 
 const toolExecutionContext = new AsyncLocalStorage<ToolExecutionContext>();
 
@@ -101,6 +110,17 @@ export function subscribeToDocumentUpdate(callback: DocumentUpdateCallback): () 
  * Internal callback that emits to all subscribers
  */
 function emitPlanActions(actions: PlanAction[]): void {
+  const context = toolExecutionContext.getStore();
+  if (!context?.projectId || !context?.chatSessionId) {
+    return;
+  }
+
+  const payload: PlanActionsEvent = {
+    projectId: context.projectId,
+    chatSessionId: context.chatSessionId,
+    actions,
+  };
+  planActionsEmitter.emit('planActions', payload);
 }
 
 /**

@@ -29,6 +29,7 @@ The user is on the planning canvas. Use \`modify_plan\` when they ask you to cre
   }
 
   return `## Current View: Workspace
+Default action: \`propose_document_create\` for new documents, \`propose_document_edit\` for existing files.`;
 }
 
 /**

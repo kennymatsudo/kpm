@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserWindow } from 'electron';
+import type {
+  PlanActionsEvent,
+} from '../../claude/tools/createKpmServer';
 import {
   createStreamingSessionService,
   type StreamingSessionServiceDeps,
@@ -121,6 +124,28 @@ function createDeps(sendSpy: (channel: string, payload: unknown) => void): Strea
   };
 }
 
+function createDepsWithToolEvents(sendSpy: (channel: string, payload: unknown) => void) {
+
+  const deps = createDeps(sendSpy);
+  const depsWithEvents: StreamingSessionServiceDeps = {
+    ...deps,
+    subscribeToPlanActions: (callback) => {
+      planActionSubscribers.push(callback);
+      return () => {
+        const index = planActionSubscribers.indexOf(callback);
+        if (index !== -1) planActionSubscribers.splice(index, 1);
+      };
+    },
+  };
+
+  return {
+    deps: depsWithEvents,
+    emitPlanActions: (event: PlanActionsEvent) => {
+      for (const callback of planActionSubscribers) callback(event);
+    },
+  };
+}
+
 describe('StreamingSessionService lifecycle regression coverage', () => {
   let service: ReturnType<typeof createStreamingSessionService> | null = null;
   const sendSpy = vi.fn((channel: string, payload: unknown) => {
@@ -216,5 +241,39 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     expect(mockSessionInstances).toHaveLength(2);
     expect(sentEvents.some((e) => e.channel === 'chat:session-deactivated')).toBe(false);
+  });
+
+  it('routes tool approval events only to their originating chat session', async () => {
+    const toolEvents = createDepsWithToolEvents(sendSpy);
+    service = createStreamingSessionService(toolEvents.deps);
+
+    const firstSend = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    const secondSend = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-2',
+      model: 'sonnet',
+    });
+    expect(firstSend.ok).toBe(true);
+    expect(secondSend.ok).toBe(true);
+
+    sentEvents.length = 0;
+
+    const actions: PlanAction[] = [{ type: 'delete_item', item_id: 'item-1' }];
+    toolEvents.emitPlanActions({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      actions,
+    });
+
+    const planActionEvents = sentEvents.filter((event) => event.channel === 'chat:plan-actions');
+
+    expect(planActionEvents).toHaveLength(1);
+    expect(planActionEvents[0]?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      actions,
+    });
   });
 });

@@ -16,6 +16,10 @@
 import type { BrowserWindow } from 'electron';
 import type { ClaudeMdUpdatePayload } from '../../claude/tools/claudemd-update';
 import type { DocumentUpdatePayload } from '../../claude/tools/document-update';
+import {
+  runWithToolExecutionContext,
+  type PlanActionsEvent,
+} from '../../claude/tools/createKpmServer';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../claude/prompts';
 import { getConfig } from '../../config';
@@ -121,6 +125,7 @@ export interface StreamingSessionServiceDeps {
   ) => SDKOptions;
 
   /** Subscribe to plan actions from MCP tools */
+  subscribeToPlanActions: (callback: (event: PlanActionsEvent) => void) => () => void;
 
   subscribeToClaudeMdUpdate: (callback: (update: ClaudeMdUpdatePayload) => void) => () => void;
 
@@ -387,6 +392,14 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       });
 
       // Subscribe to plan actions - store reference for cleanup
+      unsubscribePlanActions = deps.subscribeToPlanActions((event) => {
+        if (event.projectId !== projectId) return;
+        if (event.chatSessionId !== chatSessionId) return;
+        mainWindow?.webContents.send('chat:plan-actions', {
+          projectId: event.projectId,
+          chatSessionId: event.chatSessionId,
+          actions: event.actions,
+        });
       });
 
       unsubscribeClaudeMdUpdate = deps.subscribeToClaudeMdUpdate((update) => {

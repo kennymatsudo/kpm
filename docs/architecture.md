@@ -356,6 +356,7 @@ Tracks git branch changes for connected repositories in real-time.
 - Connects on project open (zero-latency first message)
 - Auto-reconnects after 30min idle timeout
 - Full conversation history via SDK resume
+- Tool proposal events (`plan-actions`, `pending-implementation`) are scoped by origin `projectId` + `chatSessionId` before renderer delivery to avoid cross-session duplication
 
 **Plan-item Dev Sessions:**
 - Launched from the board view by selecting a plan item and starting agent execution
