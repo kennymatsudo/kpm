@@ -46,6 +46,8 @@ interface ApprovalQueueState {
   /** Queue of pending approval items (FIFO order) */
   queue: ApprovalItem[];
 
+  /**
+   */
   /** Add a plan actions approval to the queue */
   enqueuePlanActions: (actions: PlanAction[]) => void;
 

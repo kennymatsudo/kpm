@@ -18,6 +18,7 @@ import type { ClaudeMdUpdatePayload } from '../../claude/tools/claudemd-update';
 import type { DocumentUpdatePayload } from '../../claude/tools/document-update';
 import {
   runWithToolExecutionContext,
+  clearPendingDocumentContent,
   type PlanActionsEvent,
 } from '../../claude/tools/createKpmServer';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
@@ -297,6 +298,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       }
       return success(undefined);
     }
+
+    // Clear pending document content cache from prior turns so edits
+    // in this new message start fresh against on-disk content.
 
     managed.lastTurnFinalized = false;
     managed.state = 'processing';

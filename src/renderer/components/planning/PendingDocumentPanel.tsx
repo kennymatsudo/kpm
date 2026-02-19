@@ -6,6 +6,7 @@
  * 2. Expanded: Full modal with diff view and edit capability
  */
 
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { CloseIcon } from '../icons';
@@ -39,6 +40,11 @@ export function PendingDocumentPanel({
 }: PendingDocumentPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [editedContent, setEditedContent] = useState(content);
+
+  // Sync editedContent when content prop changes (e.g. accumulated edits replacing queue item)
+  useEffect(() => {
+    setEditedContent(content);
+  }, [content]);
 
   // Reset edited content when content prop changes
   const handleExpand = useCallback(() => {

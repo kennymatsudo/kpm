@@ -25,6 +25,18 @@ import { createBriefingTools } from './briefing';
 import { createFileMoveTools } from './file-move';
 
 
+// Cache for pending document content (proposed but not yet accepted).
+const pendingDocumentContent = new Map<string, string>();
+
+/**
+ */
+  for (const key of pendingDocumentContent.keys()) {
+    if (key.startsWith(prefix)) {
+      pendingDocumentContent.delete(key);
+    }
+  }
+}
+
 // Event emitter for plan actions - allows per-message callbacks with singleton server
 const planActionsEmitter = new EventEmitter();
 
@@ -133,12 +145,25 @@ function emitClaudeMdUpdate(update: ClaudeMdUpdatePayload): void {
 }
 
 /**
+ * Internal callback that emits document update to all subscribers.
+ * Also caches the proposed content so subsequent edits to the same file
+ * accumulate correctly.
  */
 function emitDocumentUpdate(update: DocumentUpdatePayload): void {
   const context = toolExecutionContext.getStore();
+
   documentUpdateEmitter.emit('documentUpdate', {
     ...update,
   });
+}
+
+/**
+ * Read a project file, checking the pending content cache first.
+ * Falls back to disk if no pending content exists for this file.
+ */
+async function readProjectFileWithPending(projectId: string, filePath: string): Promise<string | null> {
+  }
+  return readProjectFile(projectId, filePath);
 }
 
 /**
@@ -151,6 +176,7 @@ function emitDocumentUpdate(update: DocumentUpdatePayload): void {
   const planChangeTools = createPlanChangeTools(emitPlanActions);
   const storybookTools = createStorybookTools(projectRepo);
   const documentCreateTools = createDocumentCreateTools(emitDocumentUpdate);
+  const documentEditTools = createDocumentEditTools(readProjectFileWithPending, emitDocumentUpdate);
 
     ...planItemTools,
     ...relationTools,
