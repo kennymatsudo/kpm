@@ -22,6 +22,7 @@ interface BoardViewProps {
  *
  * Design: Horizontal columns for each status category, drag-and-drop to change status.
  */
+export const BoardView = memo(function BoardView({
   items,
   allItems,
   selectedIds,
@@ -189,3 +190,4 @@ interface BoardViewProps {
       </div>
     </div>
   );
+});

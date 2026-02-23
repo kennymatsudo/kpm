@@ -140,6 +140,18 @@ export function PlanView({
     [planItems, selectedItemIds]
   );
 
+  const handleReparent = useCallback(
+    async (itemIds: string[], newParentId: string | null) => {
+      const actions = itemIds.map((id) => ({
+        type: 'reparent' as const,
+        item_id: id,
+        new_parent_id: newParentId,
+      }));
+      await executePlanActions(actions);
+    },
+    [executePlanActions]
+  );
+
   const {
     showBulkDeleteDialog,
     openBulkDeleteDialog,
@@ -170,6 +182,17 @@ export function PlanView({
     updateGroupPosition,
     updateGroupSize,
   });
+
+  const handleAssignToGroup = useCallback(
+    async (itemIds: string[], groupId: string | null) => {
+      const actions = itemIds.map((id) => ({
+        type: 'assign_to_group' as const,
+        item_id: id,
+        group_id: groupId,
+      }));
+      await executePlanActions(actions);
+    },
+  );
 
   // Track previous group assignments to detect changes (for MCP tool updates)
   const prevGroupAssignmentsRef = useRef<Map<string, string | null>>(new Map());
@@ -323,6 +346,7 @@ export function PlanView({
                 searchQuery={searchQuery}
                 onSelectItem={handleSelectItem}
                 onEditItem={handleEditItem}
+                onReparent={handleReparent}
               />
           ) : (
           )}

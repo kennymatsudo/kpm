@@ -1,3 +1,4 @@
+import { useMemo, useRef, useCallback, useEffect, memo } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import { useShallow } from 'zustand/react/shallow';
 import type { PlanItem } from '../../../shared/types';
@@ -29,6 +30,7 @@ interface CanvasProps {
   onAssignToGroup?: (itemIds: string[], groupId: string | null) => Promise<void>;
 }
 
+export const Canvas = memo(function Canvas({
   projectId,
   items,
   hierarchyTree,
@@ -470,3 +472,4 @@ interface CanvasProps {
       )}
     </div>
   );
+});

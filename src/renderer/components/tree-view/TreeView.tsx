@@ -449,6 +449,7 @@ export interface TreeViewProps {
   onCreateItem?: (parentId: string | null) => void;
 }
 
+export const TreeView = memo(function TreeView({
   items,
   selectedIds,
   focusedItemId,
@@ -684,3 +685,4 @@ export interface TreeViewProps {
       )}
     </div>
   );
+});
