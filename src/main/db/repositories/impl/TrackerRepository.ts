@@ -5,6 +5,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import type {
   CustomFieldValues,
   StatusMapping,
@@ -167,6 +168,7 @@ export class TrackerRepository implements ITrackerRepository {
   }
 
   createConnection(trackerType: string, siteUrl: string, displayName?: string): TrackerConnection {
+    const id = randomUUID();
     // Use RETURNING to get inserted row in one query
     return this.stmts.insertConnection.get(id, trackerType, siteUrl, displayName ?? null) as TrackerConnection;
   }
@@ -202,6 +204,7 @@ export class TrackerRepository implements ITrackerRepository {
   }
 
   createScope(connectionId: string, projectKey: string, projectName?: string): TrackerProjectScope {
+    const id = randomUUID();
     // Use RETURNING to get inserted row in one query
     return this.stmts.insertScope.get(id, connectionId, projectKey, projectName ?? null) as TrackerProjectScope;
   }
@@ -258,6 +261,7 @@ export class TrackerRepository implements ITrackerRepository {
     jqlFilter: string,
     displayName?: string
   ): TrackerAssociation {
+    const id = randomUUID();
     this.stmts.insertAssociation.run(id, projectId, scopeId, jqlFilter, displayName ?? null);
     // Need to fetch with context for full return type
     return this.getAssociationById(id)!;

@@ -5,6 +5,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import type { TrackerTypeMapping } from '../../../../shared/types';
 import type { ITypeMappingRepository } from '../../interfaces';
 
@@ -63,6 +64,7 @@ export class TypeMappingRepository implements ITypeMappingRepository {
   }
 
   save(mapping: Omit<TrackerTypeMapping, 'id' | 'created_at'>): TrackerTypeMapping {
+    const id = randomUUID();
     // Use ON CONFLICT for upsert - single query instead of check + insert/update
     return this.stmts.upsert.get(
       id,

@@ -5,6 +5,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import type { Attachment } from '../../../../shared/types';
 import type { IAttachmentRepository } from '../../interfaces';
 
@@ -39,6 +40,7 @@ export class AttachmentRepository implements IAttachmentRepository {
   }
 
   add(projectId: string, sourcePath: string, filename: string): Attachment {
+    const id = randomUUID();
     // Use RETURNING to get inserted row in one query
     return this.stmts.insert.get(id, projectId, sourcePath, filename) as Attachment;
   }

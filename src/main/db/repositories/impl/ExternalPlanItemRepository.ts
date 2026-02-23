@@ -4,6 +4,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import type { PlanItem } from '../../../../shared/types';
 import { isSubtaskIssueType } from '../../../../shared/types';
 import type { IExternalPlanItemRepository, IPlanItemRepository } from '../../interfaces';
@@ -97,6 +98,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
     external_parent_key: string | null;
     external_epic_key: string | null;
   }): PlanItem {
+    const id = randomUUID();
     const itemOrder = this.planItemRepository.getNextOrder(input.project_id, null);
 
     // Use RETURNING to get the inserted row in one query
@@ -182,6 +184,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
             continue;
           }
 
+          const id = randomUUID();
           insertStmt.run(
             id,
             item.project_id,

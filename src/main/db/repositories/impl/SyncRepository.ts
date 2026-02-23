@@ -5,6 +5,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import type { SyncSnapshot } from '../../../../shared/types';
 import type { ISyncRepository } from '../../interfaces';
 
@@ -84,6 +85,7 @@ export class SyncRepository implements ISyncRepository {
   upsertSnapshot(snapshot: Omit<SyncSnapshot, 'id' | 'snapshot_at'>): void {
     // Use ON CONFLICT for upsert - single query instead of check + insert/update
     this.stmts.upsert.run(
+      randomUUID(),
       snapshot.plan_item_id,
       snapshot.snapshot_title,
       snapshot.snapshot_description,
@@ -98,6 +100,7 @@ export class SyncRepository implements ISyncRepository {
       for (const snapshot of snapshots) {
         // Reuse the cached upsert statement
         this.stmts.upsert.run(
+          randomUUID(),
           snapshot.plan_item_id,
           snapshot.snapshot_title,
           snapshot.snapshot_description,

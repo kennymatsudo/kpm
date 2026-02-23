@@ -8,17 +8,21 @@ import {
   type StreamingSessionServiceDeps,
 } from './StreamingSessionService';
 
+  mockSessionInstances: [] as {
     emitMessage: (msg: unknown) => void;
     emitSessionEnd: (reason: 'completed' | 'error' | 'closed', error?: Error) => void;
     setReady: (value: boolean) => void;
+  }[],
   mockSessionCounter: { nextId: 1 },
 }));
 
 vi.mock('../../claude/streaming', () => {
   type SessionEndReason = 'completed' | 'error' | 'closed';
+  interface MockSessionConfig {
     onMessage: (msg: unknown) => void;
     onSessionEnd?: (reason: SessionEndReason, error?: Error) => void;
     onReady?: (sessionId: string, mcpStatus: unknown[]) => void;
+  }
 
   class MockStreamingSession {
     private readonly config: MockSessionConfig;
@@ -125,6 +129,7 @@ function createDeps(sendSpy: (channel: string, payload: unknown) => void): Strea
 }
 
 function createDepsWithToolEvents(sendSpy: (channel: string, payload: unknown) => void) {
+  const planActionSubscribers: ((event: PlanActionsEvent) => void)[] = [];
 
   const deps = createDeps(sendSpy);
   const depsWithEvents: StreamingSessionServiceDeps = {
@@ -148,6 +153,7 @@ function createDepsWithToolEvents(sendSpy: (channel: string, payload: unknown) =
 
 describe('StreamingSessionService lifecycle regression coverage', () => {
   let service: ReturnType<typeof createStreamingSessionService> | null = null;
+  const sentEvents: { channel: string; payload: unknown }[] = [];
   const sendSpy = vi.fn((channel: string, payload: unknown) => {
     sentEvents.push({ channel, payload });
   });

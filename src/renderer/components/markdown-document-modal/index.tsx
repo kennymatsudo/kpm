@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
+import { Markdown } from 'markdown-to-jsx';
 import { MotionButton } from '../ui/MotionButton';
 import { DiffViewer, computeDiff, getDiffStatsFromDiff } from '../ui/DiffViewer';
 import { Z_INDEX } from '../../constants/zIndex';

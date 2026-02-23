@@ -8,6 +8,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import type { TaskPromptTemplate } from '../../../../shared/types';
 import type { ITaskPromptTemplateRepository } from '../../interfaces';
 
@@ -136,6 +137,7 @@ export class TaskPromptTemplateRepository implements ITaskPromptTemplateReposito
   }
 
   create(template: Omit<TaskPromptTemplate, 'id' | 'is_default' | 'created_at' | 'updated_at'>): TaskPromptTemplate {
+    const id = randomUUID();
     const now = new Date().toISOString();
 
     // Use RETURNING to get inserted row in one query

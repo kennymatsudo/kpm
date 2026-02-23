@@ -5,6 +5,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import type { Repo, RepoEnvironmentMode } from '../../../../shared/types';
 import type { IRepoRepository } from '../../interfaces';
 
@@ -41,6 +42,7 @@ export class RepoRepository implements IRepoRepository {
   }
 
   add(projectId: string, path: string): Repo {
+    const id = randomUUID();
     // Use RETURNING to get inserted row in one query
     return this.stmts.insert.get(id, projectId, path) as Repo;
   }

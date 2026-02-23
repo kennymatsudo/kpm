@@ -102,6 +102,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           break;
         } catch (err) {
           if (attempt === maxAttempts - 1) {
+            throw new Error(`Failed to connect to CDP after ${maxAttempts} attempts: ${String(err)}`, { cause: err });
           }
           await new Promise((resolve) => setTimeout(resolve, 500));
         }

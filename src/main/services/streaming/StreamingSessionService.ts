@@ -431,6 +431,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         }
       });
 
+      // Create streaming session — let required: const can't be referenced in its own initializer closures
+      // eslint-disable-next-line prefer-const
             chatSessionId,
           });
 

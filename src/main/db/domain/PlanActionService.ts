@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import type { PlanAction, PlanActionResult, PlanItem } from '../../../shared/types';
 import type {
   IPlanItemRepository,
@@ -46,6 +47,7 @@ function resolveId(ctx: ExecutorContext, id: string | null | undefined): string 
 }
 
 function createId(ctx: ExecutorContext): string {
+  const id = randomUUID();
   ctx.placeholderCounter++;
   ctx.idMap.set(`$${ctx.placeholderCounter}`, id);
   return id;

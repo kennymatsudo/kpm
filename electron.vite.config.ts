@@ -2,17 +2,22 @@ import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
+import type { Plugin } from 'vite'
 
 const isProduction = process.env.NODE_ENV === 'production'
 const shouldAnalyze = process.env.ANALYZE === 'true'
 
+// Load visualizer plugin conditionally for bundle analysis (top-level await, ESM)
+let visualizerPlugin: Plugin | null = null
 if (shouldAnalyze) {
   try {
+    const { visualizer } = await import('rollup-plugin-visualizer')
     visualizerPlugin = visualizer({
       filename: 'dist/stats.html',
       open: true,
       gzipSize: true,
       brotliSize: true,
+    }) as Plugin
   } catch {
     console.warn('rollup-plugin-visualizer not installed - run: npm install -D rollup-plugin-visualizer')
   }
@@ -81,6 +86,8 @@ export default defineConfig({
       ...(visualizerPlugin ? [visualizerPlugin] : [])
     ].filter(Boolean),
     resolve: {
+      // to prevent duplicate React instances when multiple copies resolve
+      dedupe: ['react', 'react-dom'],
       alias: {
         '@renderer': resolve(__dirname, 'src/renderer'),
         '@shared': resolve(__dirname, 'src/shared')

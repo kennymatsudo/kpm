@@ -24,6 +24,8 @@ import { createConfluenceTools } from './confluence';
 import { createBriefingTools } from './briefing';
 import { createFileMoveTools } from './file-move';
 
+// Cached tools array - collected once at warmup, reused per session
+let cachedTools: Parameters<typeof createSdkMcpServer>[0]['tools'] | null = null;
 
 // Cache for pending document content (proposed but not yet accepted).
 const pendingDocumentContent = new Map<string, string>();
@@ -168,6 +170,8 @@ async function readProjectFileWithPending(projectId: string, filePath: string): 
 
 /**
  */
+function collectTools() {
+  if (cachedTools) return cachedTools;
 
 
   const planItemTools = createPlanItemTools(planItemRepo, planRelationRepo, emitPlanActions);
@@ -193,12 +197,30 @@ async function readProjectFileWithPending(projectId: string, filePath: string): 
     ...fileMoveTools,
   ];
 
-
-
-  const elapsed = Date.now() - startTime;
 }
 
 /**
  */
+  if (cachedTools) {
+    return;
+  }
+
+  const startTime = Date.now();
+  collectTools();
+  const elapsed = Date.now() - startTime;
+}
+
+/**
+ *
+ * Each session needs its own server instance because the SDK binds an
+ * internal Protocol transport to the server on connect. Reusing a server
+ * across sessions causes "Already connected to a transport" errors.
+ */
 export function getKpmServer() {
+  const tools = collectTools();
+  return createSdkMcpServer({
+    name: 'kpm',
+    version: '1.0.0',
+    tools,
+  });
 }

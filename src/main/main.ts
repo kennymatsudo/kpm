@@ -3,6 +3,7 @@ import { execSync } from 'child_process';
 import { initDatabase } from './db';
 import * as TempImageService from './services/files/TempImageService';
 import { warmupMcpSdk } from './claude/tools/createKpmServer';
+import { default as installExtension, REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
 
 // Fix PATH for production builds launched from Finder
 function fixPath(): void {

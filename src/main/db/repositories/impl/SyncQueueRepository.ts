@@ -5,6 +5,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import type { CustomFieldValues, SyncQueueEntry, SyncQueueEntryWithPlanItem } from '../../../../shared/types';
 import type { ISyncQueueRepository } from '../../interfaces';
 
@@ -227,6 +228,7 @@ export class SyncQueueRepository implements ISyncQueueRepository {
     }
 
     // Use RETURNING to get inserted row in one query
+    const id = randomUUID();
     const inserted = this.stmts.insert.get(
       id,
       entry.kpm_project_id,

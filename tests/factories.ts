@@ -5,6 +5,7 @@
  * Use these to create consistent test fixtures across all tests.
  */
 
+import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { createTestDatabase } from './mocks/database';
 import { createRepositoryContainer } from '../src/main/db/container';
@@ -45,6 +46,7 @@ export interface CreateProjectOptions {
 }
 
 export function createProject(options: CreateProjectOptions = {}): Project {
+  const id = options.id ?? randomUUID();
   return {
     id,
     name: options.name ?? 'Test Project',
@@ -92,6 +94,7 @@ export interface CreatePlanItemOptions {
 
 export function createPlanItem(options: CreatePlanItemOptions = {}): PlanItem {
   return {
+    id: options.id ?? randomUUID(),
     project_id: options.project_id,
     parent_id: options.parent_id ?? null,
     group_id: null,
@@ -151,6 +154,7 @@ export interface CreateRelationOptions {
 
 export function createRelation(options: CreateRelationOptions): PlanRelation {
   return {
+    id: options.id ?? randomUUID(),
     project_id: options.project_id,
     from_item_id: options.from_item_id,
     to_item_id: options.to_item_id,
@@ -167,6 +171,7 @@ export function createTrackerConnection(
   options: Partial<TrackerConnection> = {}
 ): TrackerConnection {
   return {
+    id: options.id ?? randomUUID(),
     tracker_type: options.tracker_type ?? 'jira',
     site_url: options.site_url ?? 'test.atlassian.net',
     display_name: options.display_name ?? null,
@@ -178,6 +183,7 @@ export function createTrackerProjectScope(
   options: Partial<TrackerProjectScope> & { connection_id: string }
 ): TrackerProjectScope {
   return {
+    id: options.id ?? randomUUID(),
     connection_id: options.connection_id,
     project_key: options.project_key ?? 'TEST',
     project_name: options.project_name ?? 'Test Project',
@@ -189,6 +195,7 @@ export function createTrackerAssociation(
   options: Partial<TrackerAssociation> & { kpm_project_id: string; scope_id: string }
 ): TrackerAssociation {
   return {
+    id: options.id ?? randomUUID(),
     kpm_project_id: options.kpm_project_id,
     scope_id: options.scope_id,
     jql_filter: options.jql_filter ?? 'project = TEST',
@@ -221,6 +228,7 @@ export function createSyncSnapshot(
   options: Partial<SyncSnapshot> & { plan_item_id: string }
 ): SyncSnapshot {
   return {
+    id: options.id ?? randomUUID(),
     plan_item_id: options.plan_item_id,
     snapshot_title: options.snapshot_title ?? null,
     snapshot_description: options.snapshot_description ?? null,
@@ -270,6 +278,7 @@ export function createSyncConflict(
 export function createSyncPreview(options: Partial<SyncPreview> = {}): SyncPreview {
   return {
     tracker_type: options.tracker_type ?? 'jira',
+    link_id: options.link_id ?? randomUUID(),
     external_project_key: options.external_project_key ?? 'TEST',
     new_items: options.new_items ?? [],
     updated_items: options.updated_items ?? [],
@@ -298,6 +307,7 @@ export function createSyncQueueEntry(
   }
 ): SyncQueueEntry {
   return {
+    id: options.id ?? randomUUID(),
     kpm_project_id: options.kpm_project_id,
     plan_item_id: options.plan_item_id,
     association_id: options.association_id,
@@ -321,6 +331,7 @@ export function createRepo(
   options: Partial<Repo> & { project_id: string }
 ): Repo {
   return {
+    id: options.id ?? randomUUID(),
     project_id: options.project_id,
     path: options.path ?? '/tmp/test-repo',
     created_at: options.created_at ?? new Date().toISOString(),
@@ -331,6 +342,7 @@ export function createAttachment(
   options: Partial<Attachment> & { project_id: string }
 ): Attachment {
   return {
+    id: options.id ?? randomUUID(),
     project_id: options.project_id,
     path: options.path ?? '/tmp/attachments/test.pdf',
     filename: options.filename ?? 'test.pdf',
@@ -342,6 +354,7 @@ export function createTrackerTypeMapping(
   options: Partial<TrackerTypeMapping> & { kpm_project_id: string; scope_id: string }
 ): TrackerTypeMapping {
   return {
+    id: options.id ?? randomUUID(),
     kpm_project_id: options.kpm_project_id,
     scope_id: options.scope_id,
     kpm_label: options.kpm_label ?? 'task',

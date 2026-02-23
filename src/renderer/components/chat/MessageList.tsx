@@ -1,6 +1,7 @@
 import { useChatStore, type Activity, type MessageSegment } from '../../stores';
 import type { Message } from '../../stores/chat';
 import { processMessageContent } from '../../utils/messageFormatter';
+import { Markdown } from 'markdown-to-jsx';
 import { CopyIcon, CheckIcon } from '../icons';
 
 /** Extract text content from message segments for copy/display */

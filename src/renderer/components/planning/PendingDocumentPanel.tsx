@@ -9,6 +9,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
+import { Markdown } from 'markdown-to-jsx';
 import { CloseIcon } from '../icons';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { MotionButton } from '../ui/MotionButton';

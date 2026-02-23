@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { randomUUID } from 'crypto';
 import {
   ValidationError,
   ProjectSchemas,
@@ -100,11 +101,13 @@ describe('PlanSchemas', () => {
         ],
           {
             type: 'set_position',
+            item_id: randomUUID(),
             x: 100,
             y: 200,
           },
         ],
           { type: 'create_item', title: 'Item 1', parent_id: null },
+          { type: 'reparent', item_id: randomUUID(), new_parent_id: null },
         ],
     });
 
@@ -112,10 +115,16 @@ describe('PlanSchemas', () => {
   });
 
   describe('addRelation', () => {
+          project_id: randomUUID(),
+          from_item_id: randomUUID(),
+          to_item_id: randomUUID(),
         });
       }
     });
 
+        project_id: randomUUID(),
+        from_item_id: randomUUID(),
+        to_item_id: randomUUID(),
         relation_type: 'invalid',
       });
     });
@@ -153,7 +162,10 @@ describe('TrackerSchemas', () => {
 
 describe('ExportSchemas', () => {
   describe('addToQueue', () => {
+        projectId: randomUUID(),
+        itemIds: [randomUUID(), randomUUID()],
       });
+        projectId: randomUUID(),
         itemIds: [],
       });
     });
@@ -161,6 +173,7 @@ describe('ExportSchemas', () => {
 
   describe('updateQueueStatus', () => {
 
+        queueEntryId: randomUUID(),
         statusCategory: 'invalid',
       });
     });
@@ -174,6 +187,8 @@ describe('ExportSchemas', () => {
   });
 
   describe('saveMapping', () => {
+        projectId: randomUUID(),
+        scopeId: randomUUID(),
         trackerIssueTypeId: '10001',
         trackerIssueTypeName: 'Task',
 

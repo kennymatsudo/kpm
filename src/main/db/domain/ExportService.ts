@@ -213,6 +213,7 @@ function mergeCustomFieldValues(
       };
     }
 
+    let availableTypes: JiraIssueType[];
     try {
       availableTypes = await client.getIssueTypes(association.project_key);
     } catch (e) {

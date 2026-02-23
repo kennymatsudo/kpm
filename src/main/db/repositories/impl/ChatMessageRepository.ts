@@ -8,6 +8,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import type { IChatMessageRepository } from '../../interfaces';
 
 /**
@@ -81,6 +82,7 @@ export class ChatMessageRepository implements IChatMessageRepository {
         return existing;
       }
 
+      const id = randomUUID();
         id,
         sessionId,
         role,
@@ -91,6 +93,7 @@ export class ChatMessageRepository implements IChatMessageRepository {
       }
     }
 
+    const id = randomUUID();
     // Use RETURNING to get inserted row in one query
     return this.stmts.insert.get(
       id,

@@ -9,6 +9,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 } from '../../../shared/types';
 import type {
   IAppSettingsRepository,
@@ -265,6 +266,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         const worktreePath = path.join(worktreesDir, branchName.replace(/\//g, '-'));
 
         const session = deps.devSessions.create({
+          id: randomUUID(),
           project_id: item.project_id!,
           plan_item_id: planItemId,
           repo_id: repoId,

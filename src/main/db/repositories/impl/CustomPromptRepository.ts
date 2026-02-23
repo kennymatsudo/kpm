@@ -8,6 +8,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import type { ICustomPromptRepository, CustomPromptCreate, CustomPromptUpdate } from '../../interfaces';
 
 // =============================================================================
@@ -83,6 +84,7 @@ export class CustomPromptRepository implements ICustomPromptRepository {
   }
 
   create(prompt: CustomPromptCreate): CustomPrompt {
+    const id = randomUUID();
     const now = new Date().toISOString();
 
     const row = this.stmts.insert.get(

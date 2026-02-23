@@ -6,6 +6,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import type { Group } from '../../../../shared/types';
 import type { IGroupRepository, GroupUpdates } from '../../interfaces';
 
@@ -70,6 +71,7 @@ export class GroupRepository implements IGroupRepository {
   }
 
   create(group: Omit<Group, 'id' | 'created_at' | 'updated_at'>, id?: string): Group {
+    const groupId = id ?? randomUUID();
     const row = this.stmts.insert.get(
       groupId,
       group.project_id,

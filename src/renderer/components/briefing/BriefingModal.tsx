@@ -6,6 +6,7 @@
  */
 
 import { useEffect } from 'react';
+import { Markdown } from 'markdown-to-jsx';
 import { useShallow } from 'zustand/react/shallow';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { useBriefingStore, useProjectDomainStore } from '../../stores';

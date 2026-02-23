@@ -6,6 +6,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import type {
   ConfluencePageLink,
   ConfluenceLinkCreate,
@@ -74,6 +75,7 @@ export class ConfluenceLinkRepository implements IConfluenceLinkRepository {
   }
 
   create(link: ConfluenceLinkCreate): ConfluencePageLink {
+    const id = randomUUID();
     return this.stmts.insert.get(
       id,
       link.project_id,

@@ -4,6 +4,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import type { PlanRelation } from '../../../../shared/types';
 import type { IPlanRelationRepository } from '../../interfaces';
 
@@ -47,6 +48,7 @@ export class PlanRelationRepository implements IPlanRelationRepository {
   }
 
   add(relation: Omit<PlanRelation, 'created_at'>): PlanRelation {
+    const id = relation.id || randomUUID();
     // Use RETURNING to get the inserted row in one query
     return this.stmts.insert.get(
       id,

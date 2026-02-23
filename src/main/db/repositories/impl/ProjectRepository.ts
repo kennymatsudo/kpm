@@ -5,6 +5,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import type { Project } from '../../../../shared/types';
 
 /**
@@ -81,6 +82,7 @@ export class ProjectRepository implements IProjectRepository {
     };
   }
 
+    const id = randomUUID();
 
     this.fs.mkdirSync(folderPath, { recursive: true });
 
@@ -151,6 +153,7 @@ This is your project workspace. Use this file to track context, conventions, and
         // If filesystem deletion fails, throw to prevent database deletion
         // This keeps the data consistent - user can retry or manually clean up
         console.error(`Failed to delete project folder ${folderPath}:`, error);
+        throw new Error(`Failed to delete project folder: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
       }
     }
 

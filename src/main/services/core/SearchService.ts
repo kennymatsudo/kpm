@@ -349,6 +349,7 @@ export function createSearchService(deps: SearchServiceDeps) {
     const existingById = new Map(existing.map((row) => [row.entity_id, row]));
     const docsNeedingUpdate = discovered.filter((doc) => {
       const current = existingById.get(doc.entityId);
+      return current?.title !== doc.title || current?.updated_at !== doc.updatedAt;
     });
 
     const indexedBodies = await mapWithConcurrency(

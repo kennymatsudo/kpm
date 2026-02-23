@@ -3,6 +3,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Markdown } from 'markdown-to-jsx';
 
 export interface MarkdownEditorProps {
   content: string;
