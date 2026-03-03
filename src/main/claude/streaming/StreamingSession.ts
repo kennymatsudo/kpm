@@ -143,6 +143,8 @@ export class StreamingSession {
         if (isInitMessage(msg)) {
           this.sessionId = msg.session_id;
 
+          // Check MCP server status (cast from init message's loose `status: string`)
+          const mcpServers = (msg.mcp_servers ?? []) as McpServerStatus[];
 
           }
 
@@ -241,6 +243,7 @@ export class StreamingSession {
    * Get current MCP server status.
    */
   async mcpServerStatus(): Promise<McpServerStatus[]> {
+    return (await this.queryInstance?.mcpServerStatus()) ?? [];
   }
 
   /**
