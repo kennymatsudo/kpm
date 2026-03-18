@@ -849,6 +849,22 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       }
     }
 
+    // Handle API retry messages — surface to UI as activity
+    if (isApiRetryMessage(sdkMsg)) {
+      const delaySec = Math.round(sdkMsg.retry_delay_ms / 1000);
+      const statusText = sdkMsg.error_status ? `HTTP ${sdkMsg.error_status}` : 'connection error';
+      console.log(`[StreamingSessionService] API retry ${sdkMsg.attempt}/${sdkMsg.max_retries} (${statusText}, retry in ${delaySec}s) for ${key}`);
+      mainWindow?.webContents.send('chat:activity', {
+        projectId,
+        chatSessionId,
+        activity: {
+          type: 'other' as const,
+          label: 'Retrying',
+          detail: `API ${statusText} — retrying in ${delaySec}s (attempt ${sdkMsg.attempt}/${sdkMsg.max_retries})`,
+        },
+      });
+    }
+
     // Handle result message (final stats)
     if (sdkMsg.type === 'result') {
       const maxTokensReached = isMaxTokensReached(sdkMsg);

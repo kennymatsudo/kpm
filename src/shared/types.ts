@@ -643,6 +643,12 @@ export interface PermissionRequest {
   toolName: string;
   targetPath: string | null;
   preview: string;
+  /** SDK-provided human-readable prompt (e.g. "Claude wants to read foo.txt") */
+  title?: string;
+  /** SDK-provided short noun phrase for the action (e.g. "Read file") */
+  displayName?: string;
+  /** SDK-provided subtitle (e.g. "Claude will have read and write access to files in ~/Downloads") */
+  description?: string;
 }
 
 /** User action for permission request */

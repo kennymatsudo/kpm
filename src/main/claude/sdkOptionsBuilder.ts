@@ -42,6 +42,12 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     systemPrompt,
     model,
     canUseTool: createPermissionHandler(permissionContext, async (toolName, input, opts) => {
+      return promptUser(mainWindow, permissionContext.projectId, toolName, input, {
+        signal: opts.signal,
+        title: opts.title,
+        displayName: opts.displayName,
+        description: opts.description,
+      });
     }),
     mcpServers: {
       kpm: kpmServer,

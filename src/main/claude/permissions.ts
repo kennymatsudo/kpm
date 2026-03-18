@@ -20,6 +20,12 @@ const WRITE_TOOLS = ['Edit', 'Write', 'Bash'];
 export type PromptUserFn = (
   toolName: string,
   input: Record<string, unknown>,
+  options: {
+    signal?: AbortSignal;
+    title?: string;
+    displayName?: string;
+    description?: string;
+  }
 ) => Promise<PermissionResult>;
 
 /** Callback for intercepted CLAUDE.md edits */
