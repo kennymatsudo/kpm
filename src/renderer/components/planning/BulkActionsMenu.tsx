@@ -9,6 +9,13 @@ import { DropdownMenu } from '../ui';
   onClose: () => void;
 }
 
+  x,
+  y,
+  selectedCount,
+  onEdit,
+  onAddToContext,
+  onDelete,
+  onClose,
   return (
     <DropdownMenu
       isOpen={true}

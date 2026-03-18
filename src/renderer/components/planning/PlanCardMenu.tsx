@@ -25,6 +25,7 @@ export function PlanCardMenu({
 
       onClose();
 
+  if (!isOpen && !position) return null;
 
   return (
     <>

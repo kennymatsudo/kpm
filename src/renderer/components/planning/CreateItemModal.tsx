@@ -25,6 +25,8 @@ const TYPE_OPTIONS: { value: string; label: string; color?: string }[] = [
   { value: 'epic', label: 'Epic', color: 'var(--color-purple)' },
 ];
 
+const ROOT_PARENT_OPTION = { value: '', label: 'None (root level)' };
+
 export interface CreateItemData {
   title: string;
   description: string | null;
@@ -89,12 +91,40 @@ export function CreateItemModal({
 
   // Build parent options from plan items
   const parentOptions = useMemo((): { value: string; label: string; parentLabel?: string }[] => {
+    if (!isFullMode) {
+      return [ROOT_PARENT_OPTION];
+    }
+
+    const plannedItems = planItems.filter((item) => item.status === 'planned');
+    const plannedItemsById = new Map(plannedItems.map((item) => [item.id, item]));
+    const rootItems: typeof plannedItems = [];
+    const childItems: typeof plannedItems = [];
+
+    for (const item of plannedItems) {
+      if (!item.parent_id) {
+        rootItems.push(item);
+        continue;
+      }
+
+      const parent = plannedItemsById.get(item.parent_id);
+      if (parent && !parent.parent_id) {
+        childItems.push(item);
+      }
+    }
 
     return [
+      ROOT_PARENT_OPTION,
+      ...rootItems.map((item) => ({
         value: item.id,
         label: item.title,
       })),
+      ...childItems.map((item) => ({
+        value: item.id,
+        label: item.title,
+        parentLabel: plannedItemsById.get(item.parent_id!)?.title,
+      })),
     ];
+  }, [isFullMode, planItems]);
 
   // Validation
   const canSubmit = useMemo(() => {

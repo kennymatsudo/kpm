@@ -109,6 +109,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
 
 
+
   useEffect(() => {
     if (!isOpen) {
       setSearch('');

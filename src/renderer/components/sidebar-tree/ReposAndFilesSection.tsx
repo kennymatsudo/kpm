@@ -49,6 +49,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
   );
 
   const repos = useResourceDomainStore((state) => state.repos);
+  const repoBranches = useResourceDomainStore((state) => state.repoBranches);
     useShallow((state) => ({
       focusedResources: state.focusedResources,
       addFocusedResource: state.addFocusedResource,

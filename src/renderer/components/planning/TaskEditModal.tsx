@@ -73,6 +73,14 @@ export function TaskEditModal({
       setDescription(item.description || '');
       setLabel(item.label || '');
     }
+  }, [
+    item.id,
+    item.title,
+    item.description,
+    item.label,
+    isOpen,
+  ]);
+
   // Focus title input when modal open animation finishes
   const handleAnimationComplete = useCallback(() => {
     if (animationCompleteRef.current) return;
@@ -207,6 +215,8 @@ export function TaskEditModal({
 
               </div>
             </div>
+          )}
+
         </div>
 
         {/* Footer */}

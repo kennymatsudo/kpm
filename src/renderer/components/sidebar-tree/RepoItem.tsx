@@ -6,6 +6,7 @@ interface RepoItemProps {
   id: string;
   name: string;
   path: string;
+  branch?: string | null;
   environmentMode?: RepoEnvironmentMode;
   isFocused: boolean;
   onToggleFocus: (repoId: string) => void;
@@ -21,6 +22,7 @@ export const RepoItem = memo(function RepoItem({
   id,
   name,
   path,
+  branch,
   environmentMode,
   isFocused,
   onToggleFocus,
@@ -33,6 +35,13 @@ export const RepoItem = memo(function RepoItem({
       onContextMenu={(e) => onContextMenu(e, id)}
     >
       <RepoIcon />
+        {branch && (
+          <span
+            title={branch}
+          >
+            {branch}
+          </span>
+        )}
     </div>
   );
 });

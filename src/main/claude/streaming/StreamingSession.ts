@@ -90,7 +90,9 @@ export class StreamingSession {
 
     // Create timeout promise to prevent indefinite hangs
     const startTimeoutMs = getConfig().session.sessionReadyTimeoutMs;
+    let timeoutId: NodeJS.Timeout | null = null;
     const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
         this._isReady = false;
       }, startTimeoutMs);
     });
@@ -112,6 +114,14 @@ export class StreamingSession {
     // Start message loop (runs in background)
     this.messageLoopPromise = this.runMessageLoop();
 
+    try {
+      // Wait for init message (MCP connected) OR timeout
+      await Promise.race([readyPromise, timeoutPromise]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
   }
 
   /**

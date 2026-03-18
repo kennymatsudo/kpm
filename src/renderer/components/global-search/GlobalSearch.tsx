@@ -149,8 +149,11 @@ export function GlobalSearch() {
   }, [isOpen, filteredResults, selectedIndex, closeSearch, setSelectedIndex, navigateToResult]);
 
   useEffect(() => {
+    if (!isOpen) return;
+
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, handleKeyDown]);
 
   if (!isOpen) return null;
 

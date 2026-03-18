@@ -8,6 +8,11 @@ import { CanvasContextMenu } from './CanvasContextMenu';
 import { useGroupStore, useExportStore } from '../../stores';
 import { Z_INDEX } from '../../constants/zIndex';
 
+function isCanvasOverlayTarget(target: EventTarget | null): target is HTMLElement {
+  return target instanceof HTMLElement
+    && !!target.closest('[role="dialog"], .dialog-overlay, .dropdown-menu, [data-no-canvas-pan]');
+}
+
 interface CanvasProps {
   projectId: string;
   /** Items to display (may be filtered by search) */
@@ -246,9 +251,27 @@ export const Canvas = memo(function Canvas({
         setHoveredGroupId(null);
       }}
       onClick={(e) => {
+        const target = e.target;
+        if (isCanvasOverlayTarget(target)) {
+          return;
+        }
+        const element = target as HTMLElement;
+        if (!element.closest('[data-plan-card]') && !element.closest('[data-group-container]')) {
           onSelectItem(null);
           setSelectedGroupId(null);
         }
+      }}
+      onContextMenu={(e) => {
+        if (isCanvasOverlayTarget(e.target)) {
+          return;
+        }
+        handleCanvasContextMenu(e);
+      }}
+      onMouseDown={(e) => {
+        if (isCanvasOverlayTarget(e.target)) {
+          return;
+        }
+        panHandlers.onMouseDown(e);
       }}
       onMouseMove={panHandlers.onMouseMove}
       onMouseUp={panHandlers.onMouseUp}

@@ -75,6 +75,7 @@ const ToastItem = memo(function ToastItem({ toast, onDismiss }: ToastItemProps) 
       exit={{ opacity: 0, y: -8, scale: 0.96 }}
       transition={{ type: 'spring', damping: 30, stiffness: 400 }}
       className={`
+        flex w-full items-start gap-2.5 px-3 py-2.5
         bg-surface-elevated backdrop-blur-md
         rounded-lg border border-border-subtle
         border-l-[3px] ${accentByType[toast.type]}
@@ -89,6 +90,7 @@ const ToastItem = memo(function ToastItem({ toast, onDismiss }: ToastItemProps) 
       </div>
 
       {/* Message */}
+      <p className={`min-w-0 flex-1 text-sm leading-5 break-words ${textByType[toast.type]}`}>
         {toast.message}
       </p>
 
@@ -135,11 +137,13 @@ export function ToastContainer() {
 
   return createPortal(
     <div
+      className="fixed right-4 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2 pointer-events-none"
       style={{ top: 'calc(var(--titlebar-height) + 8px)', zIndex: Z_INDEX.toast }}
       aria-label="Notifications"
     >
       <AnimatePresence mode="popLayout">
         {toasts.map((toast) => (
+          <div key={toast.id} className="pointer-events-auto w-full">
             <ToastItem toast={toast} onDismiss={removeToast} />
           </div>
         ))}

@@ -1,5 +1,6 @@
 import { BoardCard, type Breadcrumb } from './BoardCard';
 import { STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
+import type { PlanItem, StatusCategory } from '../../../shared/types';
 
 interface BoardColumnProps {
   status: StatusCategory;

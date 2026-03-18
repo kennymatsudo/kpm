@@ -5,6 +5,7 @@
 import { StreamingSession, type StreamingSessionConfig } from './StreamingSession';
 
 
+
   return {
     onMessage: vi.fn(),
     onSessionEnd: vi.fn(),
@@ -15,6 +16,11 @@ import { StreamingSession, type StreamingSessionConfig } from './StreamingSessio
 }
 
 describe('StreamingSession', () => {
+    const session = new StreamingSession(config);
+
+
+  });
+
 
 
   });

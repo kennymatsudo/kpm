@@ -16,6 +16,14 @@ import {
   mockSessionCounter: { nextId: 1 },
 }));
 
+const { sdkTypeGuardState } = vi.hoisted(() => ({
+  sdkTypeGuardState: {
+    maxTokensReached: false,
+    maxTurnsReached: false,
+    apiRetry: false,
+  },
+}));
+
 vi.mock('../../claude/streaming', () => {
   type SessionEndReason = 'completed' | 'error' | 'closed';
   interface MockSessionConfig {
@@ -162,6 +170,9 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     sentEvents.length = 0;
     mockSessionInstances.length = 0;
     mockSessionCounter.nextId = 1;
+    sdkTypeGuardState.maxTokensReached = false;
+    sdkTypeGuardState.maxTurnsReached = false;
+    sdkTypeGuardState.apiRetry = false;
     sendSpy.mockClear();
   });
 
@@ -280,6 +291,33 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       projectId: 'project-1',
       chatSessionId: 'chat-1',
       actions,
+    });
+  });
+
+    sdkTypeGuardState.maxTokensReached = true;
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(sendResult.ok).toBe(true);
+
+    const session = mockSessionInstances[0];
+    expect(session).toBeDefined();
+
+    sentEvents.length = 0;
+    session.emitMessage({ type: 'result' });
+
+    const doneIndex = sentEvents.findIndex((event) => event.channel === 'chat:done');
+    const errorIndex = sentEvents.findIndex((event) => event.channel === 'chat:error');
+
+    expect(doneIndex).toBeGreaterThanOrEqual(0);
+    expect(errorIndex).toBeGreaterThan(doneIndex);
+    expect(sentEvents[errorIndex]?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      error: 'Response reached the output limit. Send another message to continue.',
     });
   });
 });

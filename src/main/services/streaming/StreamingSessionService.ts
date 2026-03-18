@@ -851,8 +851,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Handle result message (final stats)
     if (sdkMsg.type === 'result') {
+      const maxTokensReached = isMaxTokensReached(sdkMsg);
 
       // Check if response was truncated
+      if (maxTokensReached) {
         console.log(`[StreamingSessionService] Response truncated (max_tokens) for ${key}`);
         mainWindow?.webContents.send('chat:truncated', {
           projectId,
@@ -903,6 +905,13 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       };
 
       managed.lastTurnFinalized = true;
+      if (maxTokensReached) {
+        mainWindow?.webContents.send('chat:error', {
+          projectId,
+          chatSessionId,
+          error: 'Response reached the output limit. Send another message to continue.',
+        });
+      }
 
       try {
         if (sdkMsg.usage) {

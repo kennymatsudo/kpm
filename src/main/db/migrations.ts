@@ -2020,6 +2020,53 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1053,
+    name: '053_vibe_kanban_executions',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS vibe_kanban_executions (
+          id TEXT PRIMARY KEY,
+          plan_item_id TEXT NOT NULL REFERENCES plan_items(id) ON DELETE CASCADE,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          executor TEXT NOT NULL DEFAULT 'CLAUDE_CODE',
+          vk_issue_id TEXT,
+          vk_workspace_id TEXT,
+          vk_execution_id TEXT,
+          vk_repo_id TEXT,
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK(status IN ('pending','running','interrupted','completed','failed','killed','canceled')),
+          final_message TEXT,
+          error TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME
+        );
+        CREATE INDEX IF NOT EXISTS idx_vk_executions_plan_item
+          ON vibe_kanban_executions(plan_item_id);
+        CREATE INDEX IF NOT EXISTS idx_vk_executions_project
+          ON vibe_kanban_executions(project_id);
+        CREATE INDEX IF NOT EXISTS idx_vk_executions_status
+          ON vibe_kanban_executions(status)
+          WHERE status IN ('pending', 'running', 'interrupted');
+      `);
+    },
+  },
+  {
+    id: 1054,
+    name: '054_remove_vibe_kanban',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        DROP TABLE IF EXISTS vibe_kanban_executions;
+        DELETE FROM app_settings
+        WHERE key IN (
+          'vibe_kanban_enabled',
+          'vibe_kanban_repo_mappings',
+          'vibe_kanban_project_mappings'
+        );
+      `);
+    },
+  },
         -- Backfill: sessions without plan items get first 60 chars of instructions
   {
     id: 1075,

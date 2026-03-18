@@ -6,6 +6,7 @@
  */
 
 import { useEffect } from 'react';
+import { subscribe } from './storeEvents';
 import { useExportStore } from './tracker/useExportStore';
 import { useTrackerStore } from './trackerStore';
 

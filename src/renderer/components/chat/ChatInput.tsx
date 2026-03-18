@@ -43,6 +43,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     const sessionId = viewedSessionId ?? getChatSessionId();
     getOrCreateSession(sessionId);
   const [isDragOver, setIsDragOver] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
 
@@ -78,6 +79,17 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   // Escape key to cancel streaming
   useEffect(() => {
     const handleKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.defaultPrevented || e.key !== 'Escape' || !isStreaming) {
+        return;
+      }
+
+      const container = containerRef.current;
+      const activeElement = document.activeElement;
+      const target = e.target instanceof Node ? e.target : null;
+      const eventInsideChat = !!container && !!target && container.contains(target);
+      const focusInsideChat = !!container && !!activeElement && container.contains(activeElement);
+
+      if (eventInsideChat || focusInsideChat) {
         onCancel();
       }
     };
@@ -164,6 +176,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
 
   return (
     <div
+      ref={containerRef}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}

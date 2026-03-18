@@ -47,6 +47,8 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
 
   // Build placeholder map for resolving $N references to items being created
   const placeholderMap = useMemo(() => buildPlaceholderMap(actions), [actions]);
+  const planItemIds = useMemo(() => new Set(planItems.map((item) => item.id)), [planItems]);
+  const planItemsById = useMemo(() => new Map(planItems.map((item) => [item.id, item])), [planItems]);
 
   // Get action summary for collapsed view
   const actionSummary = useMemo(() => {
@@ -62,13 +64,17 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
   const hasMissingItems = useMemo(() => {
     return actions.some(action => {
       if ('item_id' in action && typeof action.item_id === 'string') {
+        return !planItemIds.has(action.item_id);
       }
       if ('from_id' in action && typeof action.from_id === 'string') {
+        if (!action.from_id.startsWith('$') && !planItemIds.has(action.from_id)) return true;
       }
       if ('to_id' in action && typeof action.to_id === 'string') {
+        if (!action.to_id.startsWith('$') && !planItemIds.has(action.to_id)) return true;
       }
       return false;
     });
+  }, [actions, planItemIds]);
 
   // Keep selected index in bounds
   const safeSelectedIndex = Math.min(selectedActionIndex, actions.length - 1);
@@ -227,6 +233,12 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
               <div className="flex-1 flex flex-col min-w-0 overflow-hidden" style={{ background: 'var(--surface-0)' }}>
                 <div className="flex-1 overflow-y-auto p-4">
                   {selectedAction ? (
+                      <ActionDetailView
+                        action={selectedAction}
+                        planItems={planItems}
+                        planItemsById={planItemsById}
+                        placeholderMap={placeholderMap}
+                      />
                   ) : (
                     <div className="flex items-center justify-center h-full text-text-muted text-xs">
                       Select an action to view details
@@ -349,6 +361,7 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
               <ActionDetailView
                 action={selectedAction}
                 planItems={planItems}
+                planItemsById={planItemsById}
                 placeholderMap={placeholderMap}
               />
             </m.div>
@@ -441,9 +454,11 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
 interface ActionDetailViewProps {
   action: PlanAction;
   planItems: PlanItem[];
+  planItemsById: Map<string, PlanItem>;
   placeholderMap: Map<string, { title: string; description?: string; label?: string }>;
 }
 
+function ActionDetailView({ action, planItems, planItemsById, placeholderMap }: ActionDetailViewProps) {
   switch (action.type) {
     case 'create_item':
       return <CreateItemDetail action={action} planItems={planItems} placeholderMap={placeholderMap} />;
@@ -501,6 +516,7 @@ interface ActionDetailViewProps {
         </div>
       );
     case 'assign_to_group': {
+      const item = planItemsById.get(action.item_id);
       return (
         <div className="space-y-3">
           <div className="p-3 rounded-lg bg-surface-1 border border-border-subtle">
