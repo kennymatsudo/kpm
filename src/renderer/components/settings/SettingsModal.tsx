@@ -61,6 +61,7 @@ const allTabs: { id: SettingsTab; label: string; icon: React.ReactNode; requires
       onClose={onClose}
       size="2xl"
       aria-labelledby="settings-title"
+      className="!overflow-hidden flex flex-col !h-[80vh]"
     >
 
 
