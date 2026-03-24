@@ -30,6 +30,7 @@ interface PreparedStatements {
   // Write operations
   insert: Statement;
   updateStatus: Statement;
+  updatePrInfo: Statement;
   delete: Statement;
   markActiveAsInactive: Statement;
 }
@@ -74,6 +75,12 @@ export class DevSessionRepository implements IDevSessionRepository {
         RETURNING *
       `),
       updateStatus: db.prepare('UPDATE dev_sessions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
+      updatePrInfo: db.prepare(`
+        UPDATE dev_sessions
+        SET pr_number = ?, pr_url = ?, pr_state = ?, review_state = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `),
       delete: db.prepare('DELETE FROM dev_sessions WHERE id = ?'),
       markActiveAsInactive: db.prepare(`
         UPDATE dev_sessions
@@ -108,6 +115,10 @@ export class DevSessionRepository implements IDevSessionRepository {
       base_branch: row.base_branch,
       status: row.status,
       initial_instructions: row.initial_instructions,
+      pr_number: row.pr_number ?? null,
+      pr_url: row.pr_url ?? null,
+      pr_state: row.pr_state ?? null,
+      review_state: row.review_state ?? null,
       created_at: row.created_at,
       updated_at: row.updated_at,
       completed_at: row.completed_at,
@@ -147,6 +158,10 @@ export class DevSessionRepository implements IDevSessionRepository {
 
   updateStatus(id: string, status: DevSessionStatus): void {
     this.stmts.updateStatus.run(status, id);
+  }
+
+  updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null): void {
+    this.stmts.updatePrInfo.run(prNumber, prUrl, prState, reviewState, id);
   }
 
   delete(id: string): void {

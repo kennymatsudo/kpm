@@ -118,6 +118,9 @@ export type {
   PromptOverrideResetInput,
 } from './promptOverrides';
 
+// GitHub
+export { GitHubSchemas } from './github';
+
 // Briefing
 export { BriefingSchemas } from './briefing';
 

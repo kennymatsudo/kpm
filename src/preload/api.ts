@@ -57,6 +57,8 @@ import type {
   PromptCategory,
   BriefingResult,
   ToolPermission,
+  PrStatus,
+  PrComment,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -628,6 +630,20 @@ const customPrompts = {
   },
 };
 
+const github = {
+  checkAuth: (sessionId: string): Promise<{ success: boolean; authenticated?: boolean; account?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.github.checkAuth, { sessionId }),
+  createPr: (sessionId: string, title: string, body: string, draft?: boolean): Promise<{ success: boolean; number?: number; url?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.github.createPr, { sessionId, title, body, draft }),
+  getPrStatus: (sessionId: string): Promise<{ success: boolean; status?: PrStatus | null; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.github.getPrStatus, { sessionId }),
+  getPrComments: (sessionId: string): Promise<{ success: boolean; comments?: PrComment[]; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.github.getPrComments, { sessionId }),
+    ipcRenderer.invoke(IPC_CHANNELS.github.buildPrContext, { sessionId }),
+  buildAddressCommentsContext: (sessionId: string): Promise<{ success: boolean; context?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.github.buildAddressCommentsContext, { sessionId }),
+};
+
 const worktrees = {
   getByProject: (projectId: string): Promise<Worktree[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.worktree.getByProject, { projectId }),
@@ -967,6 +983,7 @@ export const api = {
   artifacts,
   taskPromptTemplates,
   customPrompts,
+  github,
   worktrees,
   devSessions,
   fileExplorer,

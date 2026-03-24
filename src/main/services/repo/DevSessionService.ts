@@ -275,6 +275,10 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           base_branch: baseBranch,
           status: 'pending',
           initial_instructions: instructions,
+          pr_number: null,
+          pr_url: null,
+          pr_state: null,
+          review_state: null,
         });
 
         // Broadcast new session to UI

@@ -2067,6 +2067,22 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1055,
+    name: '055_add_pr_columns_to_dev_sessions',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- Add PR tracking columns to dev_sessions
+        -- Stores the associated PR created from the session branch
+        -- ============================================
+        ALTER TABLE dev_sessions ADD COLUMN pr_number INTEGER;
+        ALTER TABLE dev_sessions ADD COLUMN pr_url TEXT;
+        ALTER TABLE dev_sessions ADD COLUMN pr_state TEXT;
+        ALTER TABLE dev_sessions ADD COLUMN review_state TEXT;
+      `);
+    },
+  },
         -- Backfill: sessions without plan items get first 60 chars of instructions
   {
     id: 1075,

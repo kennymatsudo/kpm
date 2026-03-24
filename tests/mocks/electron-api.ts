@@ -192,6 +192,14 @@ export function createMockApi() {
       updateUrl: vi.fn().mockResolvedValue({ success: true }),
       testConnection: vi.fn().mockResolvedValue({ success: true, componentCount: 0 }),
     },
+
+    github: {
+      checkAuth: vi.fn().mockResolvedValue({ success: true, authenticated: true, account: 'test-user' }),
+      createPr: vi.fn().mockResolvedValue({ success: true, number: 1, url: 'https://github.com/test/repo/pull/1' }),
+      getPrStatus: vi.fn().mockResolvedValue({ success: true, status: null }),
+      getPrComments: vi.fn().mockResolvedValue({ success: true, comments: [] }),
+      buildAddressCommentsContext: vi.fn().mockResolvedValue({ success: true, context: '' }),
+    },
   };
 }
 

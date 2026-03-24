@@ -8,11 +8,18 @@
   deletingSessionIds: Set<string>;
   lastActivityMap: Map<string, number>;
 
+  // PR status cache (transient, keyed by sessionId)
+  prStatusCache: Map<string, PrStatus>;
+
   // Actions
   setSessions: (sessions: DevSessionWithPlanItem[]) => void;
   setSelectedSessionId: (sessionId: string | null) => void;
   setIsLoading: (isLoading: boolean) => void;
   recordActivity: (sessionId: string) => void;
+
+  // PR polling
+  pollPrStatuses: () => Promise<void>;
+  updatePrStatus: (sessionId: string, status: PrStatus) => void;
 
   // Delete tracking
   markDeleting: (sessionId: string) => void;
@@ -36,6 +43,7 @@ const initialState = {
   isLoading: false,
   deletingSessionIds: new Set<string>(),
   lastActivityMap: new Map<string, number>(),
+  prStatusCache: new Map<string, PrStatus>(),
 };
 
 /** Throttle map for recordActivity — tracks last update time per session */
@@ -59,6 +67,7 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
       return { lastActivityMap: next };
     });
   },
+
 
   reset: () => {
     set({

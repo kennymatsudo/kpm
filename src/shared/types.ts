@@ -739,6 +739,12 @@ export interface DevSession {
   // Context passed to Claude Code
   initial_instructions: string;
 
+  // PR tracking
+  pr_number: number | null;
+  pr_url: string | null;
+  pr_state: string | null;      // 'OPEN' | 'CLOSED' | 'MERGED'
+  review_state: string | null;  // 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED'
+
   // Timestamps
   created_at: string;
   updated_at: string;
@@ -755,6 +761,33 @@ export interface DevSessionWithPlanItem extends DevSession {
     description: string | null;
     label: string | null;
     external_key: string | null;
+}
+
+// =============================================================================
+// PR / GitHub Types
+// =============================================================================
+
+/** PR status from GitHub, cached per session */
+export interface PrStatus {
+  number: number;
+  url: string;
+  state: 'OPEN' | 'CLOSED' | 'MERGED';
+  reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null;
+  checksStatus: 'SUCCESS' | 'FAILURE' | 'PENDING' | null;
+  additions: number;
+  deletions: number;
+  mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
+}
+
+/** A review comment on a PR (line-level or top-level) */
+export interface PrComment {
+  id: number;
+  author: string;
+  body: string;
+  path: string | null;    // null for top-level review comments
+  line: number | null;
+  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING' | null;
+  createdAt: string;
 }
 
 // =============================================================================
