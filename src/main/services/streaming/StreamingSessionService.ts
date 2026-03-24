@@ -14,6 +14,7 @@
  */
 
 import type { BrowserWindow } from 'electron';
+import { StreamingSession, type McpServerStatus } from '../../claude/streaming';
 import type { ClaudeMdUpdatePayload } from '../../claude/tools/claudemd-update';
 import type { DocumentUpdatePayload } from '../../claude/tools/document-update';
 import {
@@ -139,6 +140,9 @@ export interface StreamingSessionServiceDeps {
     projectId: string,
     filePath: string
   ) => Promise<{ success: boolean; content: string | null; error?: string }>;
+
+  /** Called when MCP server statuses are available from session init */
+  onMcpStatusReady?: (mcpStatus: McpServerStatus[]) => void;
 
   /** Optional tool call logger for observability */
   toolCallLogger?: {

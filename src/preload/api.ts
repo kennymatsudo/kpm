@@ -59,6 +59,9 @@ import type {
   ToolPermission,
   PrStatus,
   PrComment,
+  DiscoveredPlugin,
+  UserMcpServer,
+  DiscoveredMcpServer,
 } from '../shared/types';
 
 // Re-export shared types for renderer consumers
@@ -948,6 +951,21 @@ const briefing = {
     ipcRenderer.invoke(IPC_CHANNELS.briefing.get, { projectId }),
 };
 
+// MCP Servers API
+const mcpServers = {
+  listAvailable: (): Promise<{
+    success: boolean;
+    plugins?: DiscoveredPlugin[];
+    userServers?: UserMcpServer[];
+    managedServers?: DiscoveredMcpServer[];
+    error?: string;
+  }> => ipcRenderer.invoke(IPC_CHANNELS.mcpServers.listAvailable, {}),
+  getPreferences: (): Promise<{ success: boolean; preferences?: Record<string, boolean>; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.mcpServers.getPreferences, {}),
+  setEnabled: (serverName: string, enabled: boolean): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.mcpServers.setEnabled, { serverName, enabled }),
+};
+
 // Testing API - only available when NODE_ENV=test
 // Used by E2E tests for database reset and test isolation
 const testing = {
@@ -997,6 +1015,7 @@ export const api = {
   search,
   promptOverrides,
   briefing,
+  mcpServers,
 };
 
 export type API = typeof api;

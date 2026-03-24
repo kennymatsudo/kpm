@@ -20,6 +20,12 @@ export interface BuildSdkOptionsParams {
   onClaudeMdEdit?: ClaudeMdInterceptFn;
   /** Callback for intercepted project file writes */
   onProjectFileWrite?: ProjectFileInterceptFn;
+  /** External plugin paths to load (for non-managed MCP servers) */
+  enabledPluginPaths?: string[];
+  /** User MCP server configs to load (from ~/.claude.json) */
+  enabledUserMcpConfigs?: Record<string, Record<string, unknown>>;
+  /** Tool names to disallow (for disabled managed MCP servers) */
+  disabledMcpTools?: string[];
 }
 
 /**
@@ -30,6 +36,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   const permissionContext: PermissionContext = {
     projectPath: context.project.folder_path,
     projectId: context.project.id,
+    currentView,
     onClaudeMdEdit,
     onProjectFileWrite,
   };
@@ -51,7 +58,11 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     }),
     mcpServers: {
       kpm: kpmServer,
+      // Merge in user-configured MCP servers (from ~/.claude.json)
     },
+    // Load user-enabled external MCP plugins (Slack, GitHub, etc.)
+      plugins: enabledPluginPaths.map(p => ({ type: 'local' as const, path: p })),
+    }),
     maxTurns: claudeConfig.maxTurns,
     ...(resumeSessionId && { resume: resumeSessionId }),
     ...(claudeConfig.debug && { debug: true }),

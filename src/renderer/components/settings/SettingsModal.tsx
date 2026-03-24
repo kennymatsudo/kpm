@@ -1,5 +1,6 @@
 import { useMemo, useEffect } from 'react';
 import { m } from 'framer-motion';
+import { Modal, ModalHeader } from '../ui/Modal';
 import { PromptsSettings } from './PromptsSettings';
 import { useSettingsUIStore, type SettingsTab } from '../../stores';
 

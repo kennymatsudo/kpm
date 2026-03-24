@@ -121,6 +121,9 @@ export type {
 // GitHub
 export { GitHubSchemas } from './github';
 
+// MCP Servers
+export { McpServerSchemas } from './mcpServers';
+
 // Briefing
 export { BriefingSchemas } from './briefing';
 

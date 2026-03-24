@@ -24,6 +24,9 @@ import { createPromptOverrideService } from './core/PromptOverrideService';
 // Briefing service
 import { createBriefingService } from './core/BriefingService';
 
+// MCP discovery
+import { createMcpDiscoveryService } from './core/McpDiscoveryService';
+
 // Confluence services
 import { createConfluenceSyncService } from './confluence';
 import { unwrapOrThrow } from './result';
@@ -92,6 +95,14 @@ export function createAppServices(container: IRepositoryContainer) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // MCP Discovery Service
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const mcpDiscoveryService = createMcpDiscoveryService({
+    appSettings: container.appSettings,
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Return All Services
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -122,6 +133,9 @@ export function createAppServices(container: IRepositoryContainer) {
 
     // Confluence
     confluenceSyncService,
+
+    // MCP
+    mcpDiscoveryService,
   };
 }
 

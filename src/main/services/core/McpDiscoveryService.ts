@@ -1,0 +1,336 @@
+/**
+ * MCP Discovery Service
+ *
+ *
+ * Does NOT manage MCP server processes — the SDK handles that.
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
+import type { IAppSettingsRepository } from '../../db/interfaces';
+import { success, failure, type ServiceResult } from '../result';
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+/** app_settings key for MCP server preferences */
+const MCP_PREFERENCES_KEY = 'mcp_enabled_servers';
+
+const CLAUDE_DIR = path.join(os.homedir(), '.claude');
+
+/**
+ *
+ * Flow:
+ * 1. Read installed_plugins.json to get installed plugin keys (e.g., "slack@claude-plugins-official")
+ */
+  const installedPath = path.join(CLAUDE_DIR, 'plugins', 'installed_plugins.json');
+  if (!fs.existsSync(installedPath)) return [];
+
+  let installedData: { plugins?: Record<string, unknown> };
+  try {
+    installedData = JSON.parse(fs.readFileSync(installedPath, 'utf-8'));
+  } catch {
+    return [];
+  }
+
+  const installedKeys = Object.keys(installedData.plugins ?? {});
+  if (installedKeys.length === 0) return [];
+
+  // Read enabled state from Claude Code settings
+  let enabledPlugins: Record<string, boolean> = {};
+  try {
+    const settingsPath = path.join(CLAUDE_DIR, 'settings.json');
+    if (fs.existsSync(settingsPath)) {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      enabledPlugins = settings.enabledPlugins ?? {};
+    }
+  } catch { /* ignore */ }
+
+  const plugins: DiscoveredPlugin[] = [];
+
+  for (const key of installedKeys) {
+    // Parse "slack@claude-plugins-official" → name="slack", marketplace="claude-plugins-official"
+    const atIndex = key.indexOf('@');
+    if (atIndex === -1) continue;
+    const name = key.substring(0, atIndex);
+    const marketplace = key.substring(atIndex + 1);
+
+    const pluginDir = path.join(CLAUDE_DIR, 'plugins', 'marketplaces', marketplace, 'external_plugins', name);
+      }
+
+    }
+  }
+
+  return plugins;
+}
+
+/**
+ * Discover user-configured MCP servers from ~/.claude.json mcpServers.
+ * These are servers added via `claude mcp add --scope user`.
+ */
+function discoverUserMcpServers(): UserMcpServer[] {
+  const claudeJsonPath = path.join(os.homedir(), '.claude.json');
+  if (!fs.existsSync(claudeJsonPath)) return [];
+
+  try {
+    const data = JSON.parse(fs.readFileSync(claudeJsonPath, 'utf-8'));
+    const mcpServers = data.mcpServers as Record<string, Record<string, unknown>> | undefined;
+    if (!mcpServers) return [];
+
+    return Object.entries(mcpServers).map(([name, config]) => {
+      let type: 'stdio' | 'sse' | 'http' = 'stdio';
+      if (config.type === 'sse') type = 'sse';
+      else if (config.type === 'http') type = 'http';
+
+      return { name, type, config };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** app_settings key for last-known managed server info */
+const MCP_MANAGED_SERVERS_KEY = 'mcp_managed_servers';
+
+/**
+ * Run `claude mcp list` to discover all MCP servers (managed + user).
+ * Parses the text output to extract server names, sources, and statuses.
+ * Returns managed servers (claude.ai *) separately.
+ */
+async function discoverManagedServersViaCli(): Promise<DiscoveredMcpServer[]> {
+  try {
+    // Find claude executable
+    const claudePath = findClaudeInPath();
+    if (!claudePath) return [];
+
+    const { stdout: output } = await execFileAsync(claudePath, ['mcp', 'list'], {
+      encoding: 'utf-8',
+      timeout: 15000,
+      env: { ...process.env },
+    });
+
+    const servers: DiscoveredMcpServer[] = [];
+    // Each line: "claude.ai Slack: https://mcp.slack.com/mcp - ✓ Connected"
+    // Or: "claude.ai Linear: https://mcp.linear.app/mcp - ! Needs authentication"
+    for (const line of output.split('\n')) {
+      const match = /^(.+?):\s+.+?\s+-\s+(.+)$/.exec(line.trim());
+      if (!match) continue;
+
+      const name = match[1].trim();
+      const statusText = match[2].trim();
+
+      // Only include claude.ai managed servers (user servers come from ~/.claude.json)
+      if (!name.startsWith('claude.ai')) continue;
+
+      let status: DiscoveredMcpServer['status'] = 'failed';
+      if (statusText.includes('Connected')) status = 'connected';
+      else if (statusText.includes('Needs authentication')) status = 'needs-auth';
+      else if (statusText.includes('disabled')) status = 'disabled';
+
+      servers.push({
+        name,
+        source: 'claude-ai',
+        status,
+        tools: [], // Tool names aren't available from CLI output
+      });
+    }
+
+    return servers;
+  } catch {
+    return [];
+  }
+}
+
+/** Find claude executable in PATH */
+function findClaudeInPath(): string | null {
+  const localBin = path.join(os.homedir(), '.local', 'bin', 'claude');
+  if (fs.existsSync(localBin)) return localBin;
+
+  // Check common paths
+  for (const dir of ['/usr/local/bin', '/opt/homebrew/bin']) {
+    const p = path.join(dir, 'claude');
+    if (fs.existsSync(p)) return p;
+  }
+
+  return null;
+}
+
+// =============================================================================
+// Types
+// =============================================================================
+
+export interface McpDiscoveryServiceDeps {
+  appSettings: IAppSettingsRepository;
+}
+
+// =============================================================================
+// Factory Function
+// =============================================================================
+
+export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
+  return {
+    /**
+     */
+    discoverPlugins(): ServiceResult<DiscoveredPlugin[]> {
+      try {
+      } catch (error) {
+      }
+    },
+
+    /**
+     * Discover user-configured MCP servers from ~/.claude.json.
+     */
+    discoverUserServers(): ServiceResult<UserMcpServer[]> {
+      try {
+      } catch (error) {
+        return failure(`Failed to discover user MCP servers: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+
+    /**
+     * Get configs for enabled user MCP servers (to pass to SDK mcpServers option).
+     */
+    getEnabledUserMcpConfigs(): ServiceResult<Record<string, Record<string, unknown>>> {
+      const serversResult = this.discoverUserServers();
+      if (!serversResult.ok) return failure(serversResult.error);
+
+      const prefsResult = this.getPreferences();
+      if (!prefsResult.ok) return failure(prefsResult.error);
+
+      const prefs = prefsResult.data;
+      const configs: Record<string, Record<string, unknown>> = {};
+
+      for (const server of serversResult.data) {
+        if (prefs[`user:${server.name}`] === true) {
+          configs[server.name] = server.config;
+        }
+      }
+
+      return success(configs);
+    },
+
+    /**
+     * Save managed server info from session init (so settings UI can show them).
+     */
+    saveManagedServers(servers: DiscoveredMcpServer[]): ServiceResult<void> {
+      try {
+        const managed = servers.filter(s => s.source === 'claude-ai');
+        return success(undefined);
+      } catch (error) {
+        return failure(`Failed to save managed servers: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+
+    /**
+     * Get cached managed server info (sync, for use during session creation).
+     * Returns empty if no session has run yet.
+     */
+    getCachedManagedServers(): ServiceResult<DiscoveredMcpServer[]> {
+      try {
+        const raw = deps.appSettings.get(MCP_MANAGED_SERVERS_KEY);
+        if (!raw) return success([]);
+        return success(JSON.parse(raw) as DiscoveredMcpServer[]);
+      } catch {
+        return success([]);
+      }
+    },
+
+    /**
+     * Get managed server info for settings UI (async).
+     * Uses cached data if available, falls back to `claude mcp list` CLI.
+     */
+    async getManagedServers(): Promise<ServiceResult<DiscoveredMcpServer[]>> {
+      try {
+        const raw = deps.appSettings.get(MCP_MANAGED_SERVERS_KEY);
+        if (raw) {
+          const cached = JSON.parse(raw) as DiscoveredMcpServer[];
+          if (cached.length > 0) return success(cached);
+        }
+
+        return success(await discoverManagedServersViaCli());
+      } catch {
+        return success([]);
+      }
+    },
+
+    /**
+     */
+    getPreferences(): ServiceResult<Record<string, boolean>> {
+      try {
+        const raw = deps.appSettings.get(MCP_PREFERENCES_KEY);
+        if (!raw) return success({});
+        return success(JSON.parse(raw) as Record<string, boolean>);
+      } catch {
+        return success({});
+      }
+    },
+
+    /**
+     */
+    setServerEnabled(serverName: string, enabled: boolean): ServiceResult<void> {
+      try {
+        const current = deps.appSettings.get(MCP_PREFERENCES_KEY);
+        const prefs: Record<string, boolean> = current ? JSON.parse(current) : {};
+        prefs[serverName] = enabled;
+        deps.appSettings.set(MCP_PREFERENCES_KEY, JSON.stringify(prefs));
+        return success(undefined);
+      } catch (error) {
+        return failure(`Failed to save MCP preference: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+
+    /**
+     * Get plugin paths that should be loaded for the current session.
+     * Returns paths for plugins that are both discovered and enabled by the user.
+     */
+    getEnabledPluginPaths(): ServiceResult<string[]> {
+      const pluginsResult = this.discoverPlugins();
+      if (!pluginsResult.ok) return failure(pluginsResult.error);
+
+      const prefsResult = this.getPreferences();
+      if (!prefsResult.ok) return failure(prefsResult.error);
+
+      const prefs = prefsResult.data;
+      const paths: string[] = [];
+
+      for (const plugin of pluginsResult.data) {
+        if (prefs[plugin.name] === true) {
+          paths.push(plugin.path);
+        }
+      }
+
+      return success(paths);
+    },
+
+    /**
+     * Get tool names that should be disallowed (for disabled claude.ai managed servers).
+     * Takes the list of MCP servers from the last session init and returns tool names
+     * for servers the user has explicitly disabled.
+     */
+    getDisabledMcpTools(knownServers: DiscoveredMcpServer[]): ServiceResult<string[]> {
+      const prefsResult = this.getPreferences();
+      if (!prefsResult.ok) return failure(prefsResult.error);
+
+      const prefs = prefsResult.data;
+      const disabledTools: string[] = [];
+
+      for (const server of knownServers) {
+        // Managed servers use "managed:" prefix in preferences
+        const prefKey = server.source === 'claude-ai' ? `managed:${server.name}` : server.name;
+        if (prefs[prefKey] === false) {
+          disabledTools.push(...server.tools);
+        }
+      }
+
+      return success(disabledTools);
+    },
+  };
+}
+
+export type McpDiscoveryService = ReturnType<typeof createMcpDiscoveryService>;

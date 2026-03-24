@@ -215,6 +215,24 @@ export function createPermissionHandler(
       return { behavior: 'allow', updatedInput: input };
     }
 
+    // Rule 3.5: External MCP tools (e.g., Slack, GitHub) — prompt user
+    // These are from claude.ai managed servers or user-loaded plugins
+    if (toolName.startsWith('mcp__')) {
+      const mcpCacheKey = `${toolName}:mcp-external`;
+        return { behavior: 'allow', updatedInput: input };
+      }
+      if (clientManager.hasAllowAllRemaining(context.projectId)) {
+        console.log(`[Permissions] Auto-allowing external MCP ${toolName} (Allow All Remaining active)`);
+        return { behavior: 'allow', updatedInput: input };
+      }
+      console.log(`[Permissions] External MCP tool requires approval: ${toolName}`);
+      const result = await promptUser(toolName, input, options);
+      if (result.behavior === 'allow' && 'allowAlways' in result && result.allowAlways) {
+        clientManager.cachePermission(context.projectId, mcpCacheKey);
+      }
+      return result;
+    }
+
     // Rule 4: Check "Allow Always" cache (stored in clientManager)
     const cacheKey = `${toolName}:${targetPath || 'no-path'}`;
     if (clientManager.hasPermissionCached(context.projectId, cacheKey)) {

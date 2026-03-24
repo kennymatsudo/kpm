@@ -923,3 +923,53 @@ export interface BriefingResult {
     readyCount: number;
   };
 }
+
+// =============================================================================
+// MCP Server Types
+// =============================================================================
+
+/** Where an MCP server comes from */
+export type McpServerSource = 'claude-ai' | 'user' | 'plugin';
+
+/** An MCP server discovered at session init or from config files */
+export interface DiscoveredMcpServer {
+  /** Server name as reported by SDK (e.g., "claude.ai Slack") or config key (e.g., "ticktick") */
+  name: string;
+  source: McpServerSource;
+  status: 'connected' | 'needs-auth' | 'failed' | 'disabled' | 'pending';
+  /** Tool names registered by this server */
+  tools: string[];
+  /** Plugin directory path (for plugin sources) */
+  pluginPath?: string;
+  /** Human-readable description */
+  description?: string;
+}
+
+/** A user-configured MCP server from ~/.claude.json mcpServers */
+export interface UserMcpServer {
+  /** Server name (key in mcpServers config) */
+  name: string;
+  /** Server type */
+  type: 'stdio' | 'sse' | 'http';
+  /** Raw config from ~/.claude.json (command/args/env for stdio, url for sse/http) */
+  config: Record<string, unknown>;
+}
+
+export interface McpServerPreference {
+  name: string;
+  enabled: boolean;
+}
+
+/** An external plugin discovered from ~/.claude/plugins/ */
+export interface DiscoveredPlugin {
+  /** Plugin name (directory name, e.g., "slack") */
+  name: string;
+  /** Absolute path to the external plugin directory */
+  path: string;
+  /** Human-readable description from .claude-plugin/plugin.json */
+  description?: string;
+  /** MCP server names defined in .mcp.json */
+  serverNames: string[];
+  /** Whether this plugin is enabled in Claude Code settings */
+  enabledInClaudeCode: boolean;
+}

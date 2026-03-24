@@ -17,6 +17,9 @@ import {
   type Query,
   type SDKMessage,
   type Options as SDKOptions,
+  type McpServerStatus,
+  type McpServerConfig,
+  type McpSetServersResult,
 } from '@anthropic-ai/claude-agent-sdk';
 import { AsyncMessageQueue, type StreamingUserMessage } from './AsyncMessageQueue';
 import { getConfig } from '../../config';
@@ -274,6 +277,15 @@ export class StreamingSession {
    */
   async toggleMcpServer(serverName: string, enabled: boolean): Promise<void> {
     await this.queryInstance?.toggleMcpServer(serverName, enabled);
+  }
+
+  /**
+   * Dynamically replace the set of external MCP servers.
+   * Servers not in the new set are disconnected; new ones are connected.
+   * Does not affect the built-in kpm server or servers loaded via plugins.
+   */
+  async setMcpServers(servers: Record<string, McpServerConfig>): Promise<McpSetServersResult | null> {
+    return (await this.queryInstance?.setMcpServers(servers)) ?? null;
   }
 
   /**
