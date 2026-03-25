@@ -58,4 +58,11 @@ export function Sidebar({ onDeleteProject: _onDeleteProject, onNewProject, onFil
       </div>
 
       {/* Fixed footer with Settings */}
+    </aside>
   );
+}
+
+
+  return (
+  );
+});

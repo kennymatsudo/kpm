@@ -20,8 +20,15 @@ export default function App() {
   const isAppReady = currentProjectId !== null || projects.length === 0;
 
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
+  const handleOpenNewProjectDialog = useCallback(() => {
+    setShowNewProjectDialog(true);
+  }, []);
+  const handleCloseNewProjectDialog = useCallback(() => {
+    setShowNewProjectDialog(false);
+  }, []);
 
   const { createProject, deleteCurrentProject, loadProjectData } = useProjectLoader({
+    onRequestNewProject: handleOpenNewProjectDialog,
   });
 
 
@@ -38,10 +45,12 @@ export default function App() {
           <div data-testid={isAppReady ? 'app-ready' : undefined} />
           <Layout
             onDeleteProject={handleDeleteProject}
+            onNewProject={handleOpenNewProjectDialog}
             onOpenProject={loadProjectData}
           />
 
             isOpen={showNewProjectDialog}
+            onClose={handleCloseNewProjectDialog}
             onCreate={handleCreateProject}
           />
         </ErrorBoundary>

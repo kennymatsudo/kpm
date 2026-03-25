@@ -104,10 +104,12 @@ function highlightSearchMatches(
         : <>{highlighted}</>;
     }
     if (Array.isArray(children)) {
+      return Children.toArray(children).map((child, i) => {
         if (typeof child === 'string') {
           const highlighted = highlightSearchMatches(child, searchQuery, currentMatchIndex, matchCounter);
           return highlighted.length === 1 && typeof highlighted[0] === 'string'
             ? highlighted[0]
+            : <Fragment key={`highlight-${i}`}>{highlighted}</Fragment>;
         }
         return child;
       });

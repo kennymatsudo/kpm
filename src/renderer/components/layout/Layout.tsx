@@ -35,6 +35,7 @@ interface LayoutProps {
   chatOverlay?: boolean;
 }
 
+export const Layout = memo(function Layout({
   onDeleteProject,
   onNewProject,
   onOpenProject,
@@ -47,6 +48,7 @@ interface LayoutProps {
   const [createItemHandler, setCreateItemHandler] = useState<(() => void) | null>(null);
 
   // Command palette state from artifacts store
+  const openCommandPalette = useArtifactsStore((state) => state.openCommandPalette);
 
   const planItems = usePlanDomainStore((state) => state.planItems);
   const isSwitchingProject = useProjectUiDomainStore((state) => state.isSwitchingProject);
@@ -233,6 +235,25 @@ interface LayoutProps {
         </div>
 
       </div>
+      <LayoutOverlays currentProjectId={currentProjectId} />
+    </>
+  );
+});
+
+const LayoutOverlays = memo(function LayoutOverlays({
+}: {
+  currentProjectId: string | null;
+}) {
+  const isToolLogOpen = useToolLogStore((state) => state.isPanelOpen);
+  const { isCommandPaletteOpen, closeCommandPalette } = useArtifactsStore(
+    useShallow((state) => ({
+      isCommandPaletteOpen: state.isCommandPaletteOpen,
+      closeCommandPalette: state.closeCommandPalette,
+    }))
+  );
+
+  return (
+    <>
       {isToolLogOpen && <ToolLogPanel />}
       <KeyboardShortcuts />
       <CommandPalette isOpen={isCommandPaletteOpen} onClose={closeCommandPalette} />
@@ -242,3 +263,4 @@ interface LayoutProps {
       <ToastContainer />
     </>
   );
+});

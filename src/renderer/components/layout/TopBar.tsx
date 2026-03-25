@@ -3,9 +3,13 @@ import {
   useProjectDomainStore,
   useBriefingStore,
   useCredentialStore,
+  useExportStore,
+  useSyncStore,
+  useTrackerStore,
 } from '../../stores';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { Z_INDEX } from '../../constants/zIndex';
+import type { StatusCategory, TrackerAssociationWithScope, TrackerCredentialInfo, TrackerType } from '../../../shared/types';
 import { useProjectEdit } from './hooks/useProjectEdit';
 import { useProjectMenu } from './hooks/useProjectMenu';
 import { useTrackerTopBarIntegration } from './hooks/useTrackerTopBarIntegration';
@@ -152,9 +156,81 @@ export function TopBar({
         />
       )}
 
+      <TopBarTrackerOverlays
+        currentProjectId={currentProjectId}
+        selectedTrackerType={selectedTrackerType}
+        trackerCredential={trackerCredential ?? null}
+        associations={associations}
+        syncPanelAssociationId={syncPanelAssociationId}
+        onCloseSyncPanel={() => setSyncPanelAssociationId(null)}
+        onSyncComplete={handleSyncComplete}
+        onExportComplete={handleExportComplete}
+      />
+    </>
+  );
+}
+
+const TopBarTrackerOverlays = memo(function TopBarTrackerOverlays({
+  currentProjectId,
+  selectedTrackerType,
+  trackerCredential,
+  associations,
+  syncPanelAssociationId,
+  onCloseSyncPanel,
+  onSyncComplete,
+  onExportComplete,
+}: {
+  currentProjectId: string | null;
+  selectedTrackerType: TrackerType;
+  trackerCredential: TrackerCredentialInfo | null;
+  associations: TrackerAssociationWithScope[];
+  syncPanelAssociationId: string | null;
+  onCloseSyncPanel: () => void;
+  onSyncComplete: () => Promise<void>;
+  onExportComplete: () => Promise<void>;
+}) {
+  const { showCredentialsDialog, setShowCredentialsDialog } = useCredentialStore(
+    useShallow((state) => ({
+      showCredentialsDialog: state.showDialog,
+      setShowCredentialsDialog: state.setShowDialog,
+    }))
+  );
+  const { showAssociationDialog, setShowAssociationDialog } = useTrackerStore(
+    useShallow((state) => ({
+      showAssociationDialog: state.showAssociationDialog,
+      setShowAssociationDialog: state.setShowAssociationDialog,
+    }))
+  );
+  const { showSyncPanel, discardSync } = useSyncStore(
+    useShallow((state) => ({
+      showSyncPanel: state.showPanel,
+      discardSync: state.discardSync,
+    }))
+  );
+  const {
+    showQueuePanel,
+    showMappingDialog,
+    exportActiveAssociationId,
+    activeScopeId,
+    setShowQueuePanel,
+    setShowMappingDialog,
+  } = useExportStore(
+    useShallow((state) => ({
+      showQueuePanel: state.showQueuePanel,
+      showMappingDialog: state.showMappingDialog,
+      exportActiveAssociationId: state.activeAssociationId,
+      activeScopeId: state.activeScopeId,
+      setShowQueuePanel: state.setShowQueuePanel,
+      setShowMappingDialog: state.setShowMappingDialog,
+    }))
+  );
+
+  return (
+    <>
       {showCredentialsDialog && (
         <TrackerConfigDialog
           trackerType={selectedTrackerType}
+          credential={trackerCredential}
           onClose={() => setShowCredentialsDialog(false)}
         />
       )}
@@ -173,6 +249,7 @@ export function TopBar({
         <SyncReviewPanel
           projectId={currentProjectId}
           onClose={() => discardSync()}
+          onSyncComplete={onSyncComplete}
         />
       )}
 
@@ -181,6 +258,7 @@ export function TopBar({
           projectId={currentProjectId}
           associationId={exportActiveAssociationId}
           onClose={() => setShowQueuePanel(false)}
+          onExportComplete={onExportComplete}
         />
       )}
 
@@ -194,3 +272,4 @@ export function TopBar({
       )}
     </>
   );
+});
