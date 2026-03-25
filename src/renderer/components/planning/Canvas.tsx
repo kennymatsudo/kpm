@@ -8,6 +8,8 @@ import { CanvasContextMenu } from './CanvasContextMenu';
 import { useGroupStore, useExportStore } from '../../stores';
 import { Z_INDEX } from '../../constants/zIndex';
 
+const CARD_MOTION_DISABLE_THRESHOLD = 60;
+
 function isCanvasOverlayTarget(target: EventTarget | null): target is HTMLElement {
   return target instanceof HTMLElement
     && !!target.closest('[role="dialog"], .dialog-overlay, .dropdown-menu, [data-no-canvas-pan]');
@@ -91,6 +93,7 @@ export const Canvas = memo(function Canvas({
     panHandlers,
   } = useCanvasViewport({ projectId, items, groups });
 
+  useCanvasWheel({ projectId, containerRef, setZoom, setPanOffset });
 
   const selectionSignaturesRef = useRef<Map<string, string>>(new Map());
 
@@ -233,6 +236,58 @@ export const Canvas = memo(function Canvas({
   }, [saveGroupUpdates]);
 
 
+  const disableCardMotion = viewportItems.length > CARD_MOTION_DISABLE_THRESHOLD;
+
+  const lastViewportSnapshotRef = useRef<{ at: number; signature: string }>({ at: 0, signature: '' });
+
+  useEffect(() => {
+
+    const now = performance.now();
+    const signature = [
+      positionCorrectedItems.length,
+      viewportItems.length,
+      viewportSubtreeNodeCount,
+      Math.round(panOffset.x),
+      Math.round(panOffset.y),
+      effectiveZoom.toFixed(3),
+      draggingGroupId ?? '',
+    ].join(':');
+
+    if (
+      signature === lastViewportSnapshotRef.current.signature ||
+      now - lastViewportSnapshotRef.current.at < 250
+    ) {
+      return;
+    }
+
+    lastViewportSnapshotRef.current = { at: now, signature };
+    logPerfEvent('plan.canvas.viewport_snapshot', {
+      projectId,
+      totalItems: items.length,
+      candidateRoots: positionCorrectedItems.length,
+      viewportRoots: viewportItems.length,
+      viewportSubtreeNodes: viewportSubtreeNodeCount,
+      culledRoots: Math.max(0, positionCorrectedItems.length - viewportItems.length),
+      selectedCount: selectedItemIds.size,
+      groupCount: groups.length,
+      zoom: Number(effectiveZoom.toFixed(3)),
+      motionDisabled: disableCardMotion,
+    });
+  }, [
+    projectId,
+    items.length,
+    positionCorrectedItems.length,
+    viewportItems.length,
+    viewportSubtreeNodeCount,
+    disableCardMotion,
+    selectedItemIds.size,
+    groups.length,
+    effectiveZoom,
+    panOffset.x,
+    panOffset.y,
+    draggingGroupId,
+  ]);
+
   return (
     <div
       ref={containerRef}
@@ -366,6 +421,55 @@ export const Canvas = memo(function Canvas({
         })}
 
         {/* Plan items - viewport culled, items in collapsed groups are hidden */}
+        {disableCardMotion ? (
+          viewportItems.map(node => {
+            let zIndex = 1;
+            const isInDraggingGroup = draggingGroupId && node.group_id === draggingGroupId;
+            if (draggingGroupId) {
+              if (isInDraggingGroup) {
+                zIndex = 1001;
+              } else if (node.group_id) {
+                zIndex = 0;
+              }
+            }
+
+            return (
+              <div
+                key={node.id}
+                className="absolute pointer-events-auto"
+                style={{
+                  left: node.position_x ?? 50,
+                  top: node.position_y ?? 50,
+                  zIndex,
+                }}
+              >
+                <PlanCard
+                  item={node}
+                  depth={0}
+                  isSelected={selectedItemIds.has(node.id)}
+                  isFocused={focusedItemId === node.id}
+                  focusedItemId={focusedItemId}
+                  searchQuery={searchQuery}
+                  selectionSignature={selectionSignatures.get(node.id) ?? ''}
+                  getSelectionSignature={getSelectionSignature}
+                  getSelectedIds={getSelectedIds}
+                  queuedItemIds={queuedItemIds}
+                  recentlyImportedIds={recentlyImportedIds}
+                  onSelectItem={onSelectItem}
+                  onEditItem={onEditItem}
+                  onPrepareEditItem={onPrepareEditItem}
+                  onAddToContext={onAddToContext}
+                  onDrop={handleCardDrop}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  projectId={projectId}
+                  subtreeHeightMap={heightMap}
+                  enableSubtreeCulling
+                />
+              </div>
+            );
+          })
+        ) : (
         <AnimatePresence mode="popLayout">
           {viewportItems.map(node => {
             const isInDraggingGroup = draggingGroupId && node.group_id === draggingGroupId;
@@ -421,11 +525,15 @@ export const Canvas = memo(function Canvas({
                 onDrop={handleCardDrop}
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
+                projectId={projectId}
+                subtreeHeightMap={heightMap}
+                enableSubtreeCulling
               />
             </m.div>
             );
           })}
         </AnimatePresence>
+        )}
       </div>
 
       {/* Empty state - hide when there are items OR groups */}

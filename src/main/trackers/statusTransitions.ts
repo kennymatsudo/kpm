@@ -20,6 +20,7 @@
 const CATEGORY_TO_JIRA_STATUS_CATEGORY: Record<StatusCategory, string[]> = {
   not_started: ['new', 'undefined'],  // Jira's "To Do" category
   in_progress: ['indeterminate'],      // Jira's "In Progress" category
+  in_review: ['indeterminate'],        // Review is a form of "In Progress" in Jira
   done: ['done'],                       // Jira's "Done" category
   blocked: ['indeterminate'],           // No direct Jira equivalent, maps to "In Progress"
   canceled: ['done'],                   // Usually mapped to Done in Jira workflows
@@ -31,6 +32,8 @@ const CATEGORY_TO_JIRA_STATUS_CATEGORY: Record<StatusCategory, string[]> = {
  */
 const STATUS_KEYWORDS: Record<StatusCategory, string[]> = {
   not_started: ['backlog', 'to do', 'todo', 'open', 'new', 'reopen'],
+  in_progress: ['progress', 'start', 'testing', 'development'],
+  in_review: ['review', 'code review', 'peer review'],
   done: ['done', 'complete', 'resolved', 'closed', 'finish'],
   blocked: ['block', 'hold', 'wait', 'impediment', 'stuck'],
   canceled: ['cancel', 'won\'t', 'wont', 'duplicate', 'invalid', 'reject'],
@@ -85,6 +88,7 @@ export function generateTransitionWarning(
   const categoryLabels: Record<StatusCategory, string> = {
     not_started: 'Not Started',
     in_progress: 'In Progress',
+    in_review: 'In Review',
     done: 'Done',
     blocked: 'Blocked',
     canceled: 'Canceled',

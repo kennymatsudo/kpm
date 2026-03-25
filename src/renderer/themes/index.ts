@@ -1,3 +1,5 @@
+export type ThemeId =
+  | 'system'
 export type ColorScheme = 'light' | 'dark';
 
 /**
@@ -103,6 +105,7 @@ export const THEMES: ThemeDefinition[] = [
   {
   },
   {
+  },
 ];
 
 export function getThemeById(id: ThemeId): ThemeDefinition | undefined {

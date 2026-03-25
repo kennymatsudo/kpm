@@ -2083,6 +2083,62 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1056,
+    name: '056_add_in_review_status_category',
+    up: (db: BetterSqliteDatabase) => {
+      // Add 'in_review' to the status_category CHECK constraint on plan_items.
+      // SQLite doesn't support ALTER TABLE ... DROP/ADD CONSTRAINT, so table
+      // recreation is normally required. However, DROP TABLE inside a transaction
+      // with foreign_keys=ON triggers ON DELETE CASCADE, destroying related data.
+      //
+      // Safe approach: drop the CHECK constraint entirely by recreating the column.
+      // SQLite allows us to rename the old column, add a new one without the CHECK,
+      // copy data, and drop the old column — all without touching the table identity
+      // or triggering cascade deletes.
+      // 1. Capture and drop triggers/indexes that reference status_category.
+      //    RENAME COLUMN updates trigger SQL to use the new name, so DROP COLUMN
+      //    then fails because the trigger references the renamed (now-dropped) column.
+      const triggers = (db.prepare(
+        "SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'plan_items'"
+      ).all() as { name: string; sql: string }[]);
+
+      for (const t of triggers) {
+        db.exec(`DROP TRIGGER IF EXISTS ${t.name};`);
+      }
+
+      db.exec(`DROP INDEX IF EXISTS idx_plan_items_status_category_project;`);
+
+      // 2. Rename old column, add new one with updated CHECK, copy data, drop old
+      db.exec(`ALTER TABLE plan_items RENAME COLUMN status_category TO status_category_old;`);
+      db.exec(`
+        ALTER TABLE plan_items ADD COLUMN status_category TEXT
+          CHECK(status_category IN ('not_started', 'in_progress', 'in_review', 'done', 'blocked', 'canceled'));
+      `);
+      db.exec(`UPDATE plan_items SET status_category = status_category_old;`);
+      db.exec(`ALTER TABLE plan_items DROP COLUMN status_category_old;`);
+
+      // 3. Recreate index
+      db.exec(`CREATE INDEX idx_plan_items_status_category_project ON plan_items(project_id, status_category);`);
+
+      // 4. Recreate triggers using the ORIGINAL sql (which references status_category, not the renamed column)
+      for (const t of triggers) {
+        db.exec(t.sql);
+      }
+
+      // 5. Also update sync_queue's target_status_category CHECK if it exists
+      const syncQueueInfo = db.prepare("PRAGMA table_info(sync_queue)").all() as { name: string }[];
+      if (syncQueueInfo.some((c) => c.name === 'target_status_category')) {
+        db.exec(`ALTER TABLE sync_queue RENAME COLUMN target_status_category TO target_status_category_old;`);
+        db.exec(`
+          ALTER TABLE sync_queue ADD COLUMN target_status_category TEXT
+            CHECK(target_status_category IN ('not_started', 'in_progress', 'in_review', 'done', 'blocked', 'canceled'));
+        `);
+        db.exec(`UPDATE sync_queue SET target_status_category = target_status_category_old;`);
+        db.exec(`ALTER TABLE sync_queue DROP COLUMN target_status_category_old;`);
+      }
+    },
+  },
         -- Backfill: sessions without plan items get first 60 chars of instructions
   {
     id: 1075,

@@ -9,6 +9,7 @@
 // Status Types
 // =============================================================================
 
+export type StatusCategory = 'not_started' | 'in_progress' | 'in_review' | 'done' | 'blocked' | 'canceled';
 
 export type TrackerType = 'jira' | 'linear';
 

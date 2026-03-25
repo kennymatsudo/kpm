@@ -11,6 +11,7 @@ import { ApprovalOverlays } from './ApprovalOverlays';
 import { ToastContainer } from '../ui';
 import { BriefingModal } from '../briefing';
 import { ToolLogPanel } from '../tool-log';
+import { Z_INDEX } from '../../constants/zIndex';
 import {
   useArtifactsStore,
   useProjectDomainStore,
@@ -166,8 +167,10 @@ export const Layout = memo(function Layout({
             <div
               className={
                 sidebarOverlay
+                  ? `sidebar-left absolute left-0 top-0 bottom-0 flex flex-col bg-surface-0`
                   : 'flex flex-col bg-surface-0 flex-shrink-0 relative'
               }
+              style={{ width: sidebarWidth, ...(sidebarOverlay ? { zIndex: Z_INDEX.panel } : {}) }}
             >
               <div className="flex-1 flex flex-col min-h-0">
                 <ErrorBoundary name="Sidebar">
@@ -181,6 +184,8 @@ export const Layout = memo(function Layout({
               {/* Sidebar resize handle */}
               <div
                 onMouseDown={handleSidebarResizeStart}
+                className="absolute right-0 top-0 bottom-0 w-px cursor-col-resize bg-border-subtle hover:bg-accent/50 active:bg-accent/70 transition-colors"
+                style={{ zIndex: Z_INDEX.canvas.dragging }}
               >
                 <div className="absolute inset-y-0 -left-1 -right-1" />
               </div>
@@ -221,8 +226,10 @@ export const Layout = memo(function Layout({
             <div
               className={
                 chatOverlay
+                  ? 'sidebar-panel sidebar-right absolute right-0 top-0 bottom-0 flex bg-surface-0'
                   : 'sidebar-panel flex bg-surface-0 flex-shrink-0'
               }
+              style={{ width: chatWidth, ...(chatOverlay ? { zIndex: Z_INDEX.panel } : {}) }}
             >
               {/* Chat resize handle */}
               <div

@@ -8,6 +8,9 @@ import { getStatusCategory, STATUS_CATEGORY_CONFIG } from '../../constants/statu
 import { subscribe } from '../../stores/storeEvents';
 
 // Columns to display
+const VISIBLE_COLUMNS: StatusCategory[] = ['not_started', 'in_progress', 'in_review', 'done'];
+const CORE_COLUMNS: StatusCategory[] = ['not_started', 'in_progress', 'in_review', 'done'];
+const TOGGLE_COLUMNS: StatusCategory[] = [];
 
 interface BoardViewProps {
   items: PlanItem[];
@@ -46,6 +49,7 @@ export const BoardView = memo(function BoardView({
   // Column visibility - persisted per project
   const [columnVisibility, setColumnVisibility] = useState<Record<StatusCategory, boolean>>(() => {
     if (!currentProjectId) {
+      return { not_started: true, in_progress: true, in_review: true, done: true, blocked: true, canceled: false };
     }
     const saved = localStorage.getItem(`kpm-board-columns-${currentProjectId}`);
     if (saved) {
@@ -55,6 +59,7 @@ export const BoardView = memo(function BoardView({
         // Invalid JSON, use defaults
       }
     }
+    return { not_started: true, in_progress: true, in_review: true, done: true, blocked: true, canceled: false };
   });
 
   // Update column visibility when project changes
@@ -69,6 +74,7 @@ export const BoardView = memo(function BoardView({
         // Invalid JSON, use defaults
       }
     }
+    setColumnVisibility({ not_started: true, in_progress: true, in_review: true, done: true, blocked: true, canceled: false });
   }, [currentProjectId]);
 
   // Listen for reveal-board-column events (from global search)
@@ -116,6 +122,7 @@ export const BoardView = memo(function BoardView({
   const itemsByStatus = useMemo(() => {
       not_started: [],
       in_progress: [],
+      in_review: [],
       done: [],
       blocked: [],
       canceled: [],
@@ -128,6 +135,7 @@ export const BoardView = memo(function BoardView({
 
   // Count items in toggle columns (for showing count even when hidden)
   const toggleColumnCounts = useMemo(() => {
+  }, []);
 
   const handleDrop = useCallback(
     (itemId: string, newStatus: StatusCategory) => {

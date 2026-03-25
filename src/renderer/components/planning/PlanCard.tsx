@@ -1,3 +1,4 @@
+import { useState, useMemo, memo, useEffect, type CSSProperties } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
   useProjectDomainStore,
@@ -14,6 +15,101 @@ import { getStatusCategory } from '../../constants/statusConfig';
 
 // Hoisted constant for active session status check (avoids array recreation in selector)
 const ACTIVE_SESSION_STATUSES = ['pending', 'active'] as const;
+const PLAN_CARD_PERF_FLUSH_MS = 250;
+
+interface PlanCardPerfCounters {
+  projectId: string | null;
+  rootRenders: number;
+  nestedRenders: number;
+  rootMounts: number;
+  nestedMounts: number;
+  depth0Renders: number;
+  depth1Renders: number;
+  depth2Renders: number;
+  depth3PlusRenders: number;
+  depth0Mounts: number;
+  depth1Mounts: number;
+  depth2Mounts: number;
+  depth3PlusMounts: number;
+}
+
+let pendingPlanCardPerf: PlanCardPerfCounters | null = null;
+let planCardPerfTimer: ReturnType<typeof setTimeout> | null = null;
+
+function getDepthBucket(depth: number): 'depth0' | 'depth1' | 'depth2' | 'depth3Plus' {
+  if (depth <= 0) return 'depth0';
+  if (depth === 1) return 'depth1';
+  if (depth === 2) return 'depth2';
+  return 'depth3Plus';
+}
+
+function schedulePlanCardPerfFlush(): void {
+  if (planCardPerfTimer !== null) return;
+  planCardPerfTimer = setTimeout(() => {
+    planCardPerfTimer = null;
+    const counters = pendingPlanCardPerf;
+    pendingPlanCardPerf = null;
+    if (!counters) return;
+
+    logPerfEvent('plan.canvas.card_commit_batch', {
+      projectId: counters.projectId,
+      rootRenders: counters.rootRenders,
+      nestedRenders: counters.nestedRenders,
+      rootMounts: counters.rootMounts,
+      nestedMounts: counters.nestedMounts,
+      depth0Renders: counters.depth0Renders,
+      depth1Renders: counters.depth1Renders,
+      depth2Renders: counters.depth2Renders,
+      depth3PlusRenders: counters.depth3PlusRenders,
+      depth0Mounts: counters.depth0Mounts,
+      depth1Mounts: counters.depth1Mounts,
+      depth2Mounts: counters.depth2Mounts,
+      depth3PlusMounts: counters.depth3PlusMounts,
+    });
+  }, PLAN_CARD_PERF_FLUSH_MS);
+}
+
+function recordPlanCardPerf(
+  kind: 'render' | 'mount',
+  depth: number,
+  projectId: string | undefined,
+  variant: 'default' | 'preview'
+): void {
+  if (variant !== 'default') return;
+
+  if (!pendingPlanCardPerf) {
+    pendingPlanCardPerf = {
+      projectId: projectId ?? null,
+      rootRenders: 0,
+      nestedRenders: 0,
+      rootMounts: 0,
+      nestedMounts: 0,
+      depth0Renders: 0,
+      depth1Renders: 0,
+      depth2Renders: 0,
+      depth3PlusRenders: 0,
+      depth0Mounts: 0,
+      depth1Mounts: 0,
+      depth2Mounts: 0,
+      depth3PlusMounts: 0,
+    };
+  } else if (pendingPlanCardPerf.projectId === null && projectId) {
+    pendingPlanCardPerf.projectId = projectId;
+  }
+
+  const bucket = getDepthBucket(depth);
+  if (kind === 'render') {
+    if (depth === 0) pendingPlanCardPerf.rootRenders += 1;
+    else pendingPlanCardPerf.nestedRenders += 1;
+    pendingPlanCardPerf[`${bucket}Renders`] += 1;
+  } else {
+    if (depth === 0) pendingPlanCardPerf.rootMounts += 1;
+    else pendingPlanCardPerf.nestedMounts += 1;
+    pendingPlanCardPerf[`${bucket}Mounts`] += 1;
+  }
+
+  schedulePlanCardPerfFlush();
+}
 
 export type { TreeNode };
 export { MAX_DEPTH };
@@ -71,6 +167,11 @@ interface PlanCardProps {
   onDropFromBacklog?: (itemId: string, parentId: string | null) => void;
   onDragStart?: (item: TreeNode, x: number, y: number, offsetX: number, offsetY: number, depth: number, selectedIds: string[]) => void;
   onDragEnd?: () => void;
+  projectId?: string;
+  /** Estimated expanded subtree heights, used for browser-level nested canvas culling */
+  subtreeHeightMap?: Map<string, number>;
+  /** When enabled, allow the browser to skip rendering nested offscreen subtrees */
+  enableSubtreeCulling?: boolean;
 }
 
 export const PlanCard = memo(function PlanCard({
@@ -94,6 +195,9 @@ export const PlanCard = memo(function PlanCard({
   onDropFromBacklog,
   onDragStart,
   onDragEnd,
+  projectId,
+  subtreeHeightMap,
+  enableSubtreeCulling = false,
 }: PlanCardProps) {
   const isPreview = variant === 'preview';
   const selectedIds = getSelectedIds();
@@ -159,6 +263,26 @@ export const PlanCard = memo(function PlanCard({
 
   // Root cards (depth 0) use fixed width; nested cards fill their parent
   const cardWidth = depth === 0 ? style.width : '100%';
+  const subtreeHeight = subtreeHeightMap?.get(item.id);
+
+  const cardStyle = useMemo<CSSProperties>(() => {
+    const nextStyle: CSSProperties = { width: cardWidth };
+
+    // Root cards are already JS-culled by the canvas. This optimization is for
+    // nested descendants inside visible roots, where full recursive rendering
+    // would otherwise stay on the hot path during pan/zoom.
+    if (
+      enableSubtreeCulling &&
+      !isPreview &&
+      depth > 0 &&
+      subtreeHeight !== undefined
+    ) {
+      nextStyle.contentVisibility = 'auto';
+      nextStyle.containIntrinsicSize = `${Math.ceil(subtreeHeight)}px`;
+    }
+
+    return nextStyle;
+  }, [cardWidth, depth, enableSubtreeCulling, isPreview, subtreeHeight]);
 
   // Preview mode styling (plan-card CSS handles default bg; preview gets explicit bg)
   const previewClasses = isPreview
@@ -172,6 +296,14 @@ export const PlanCard = memo(function PlanCard({
   const interactiveClasses = isPreview
     ? ''
     : `${isDragOver ? 'drop-target' : ''} ${isSelected ? 'selected' : ''} ${isFocused ? 'focused' : ''} ${sessionClass} ${importClass} ${isDragging ? 'opacity-50' : isDimmed ? 'opacity-30' : ''} cursor-pointer group`;
+
+  useEffect(() => {
+    recordPlanCardPerf('render', depth, projectId, variant);
+  });
+
+  useEffect(() => {
+    recordPlanCardPerf('mount', depth, projectId, variant);
+  }, [depth, projectId, variant]);
 
   return (
     <div
@@ -188,6 +320,7 @@ export const PlanCard = memo(function PlanCard({
         transition-[colors,opacity] duration-150 relative
       `}
       data-selection-key={selectionSignature}
+      style={cardStyle}
       draggable={!isPreview}
       onClick={isPreview ? undefined : (e) => {
         e.stopPropagation();
@@ -339,6 +472,7 @@ export const PlanCard = memo(function PlanCard({
 
       {/* Description (collapsed for deeper levels, space always reserved at depth 0-1) */}
       {depth <= 1 && (
+        <p className={`text-xs mt-1.5 line-clamp-1 ${item.description ? 'text-text-secondary' : 'invisible'}`}>
           {item.description || '\u00A0'}
         </p>
       )}
@@ -396,6 +530,9 @@ export const PlanCard = memo(function PlanCard({
                   onDropFromBacklog={onDropFromBacklog}
                   onDragStart={onDragStart}
                   onDragEnd={onDragEnd}
+                  projectId={projectId}
+                  subtreeHeightMap={subtreeHeightMap}
+                  enableSubtreeCulling={enableSubtreeCulling}
                 />
               ))}
             </div>

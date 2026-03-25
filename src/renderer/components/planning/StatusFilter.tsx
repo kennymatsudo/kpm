@@ -17,6 +17,7 @@ interface StatusFilterProps {
 const FILTERABLE_CATEGORIES: StatusCategory[] = [
   'not_started',
   'in_progress',
+  'in_review',
   'done',
 ];
 

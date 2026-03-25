@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo, type ReactNode } from 'react';
 
 
+
 interface ThemeContextValue {
   /** User's theme preference (includes 'system' option) */
   resolved: ResolvedTheme;
@@ -21,6 +22,7 @@ function getSystemTheme(): 'light' | 'dark' {
 }
 
   const root = document.documentElement;
+  root.classList.remove(...ALL_THEME_CLASSES);
 
 }
 

@@ -262,6 +262,7 @@ select:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  padding: 6px 12px;
   font-size: var(--text-sm);
   font-weight: 500;
   border-radius: var(--radius-sm);
@@ -357,6 +358,7 @@ select:focus-visible {
 
 .input {
   width: 100%;
+  padding: 6px 12px;
   font-size: var(--text-base);
   background: var(--color-surface-2);
   border: 1px solid var(--color-border-default);
@@ -619,6 +621,7 @@ select:focus-visible {
 .badge {
   display: inline-flex;
   align-items: center;
+  padding: 2px 6px;
   font-weight: 500;
   border-radius: var(--radius-full);
   background: var(--color-surface-3);
@@ -686,6 +689,7 @@ select:focus-visible {
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border-strong);
   box-shadow: var(--shadow-md);
+  padding: 0.25rem;
   min-width: 180px;
   animation: dropdown-in 100ms ease-out;
 }

@@ -9,7 +9,9 @@ export const STATUS_MAPPINGS: Record<TrackerType, Record<string, StatusCategory>
     'Open': 'not_started',
     'New': 'not_started',
     'In Progress': 'in_progress',
+    'In Review': 'in_review',
     'In Development': 'in_progress',
+    'Code Review': 'in_review',
     'Testing': 'in_progress',
     'Done': 'done',
     'Closed': 'done',
@@ -25,6 +27,7 @@ export const STATUS_MAPPINGS: Record<TrackerType, Record<string, StatusCategory>
     'Triage': 'not_started',
     'Unstarted': 'not_started',
     'In Progress': 'in_progress',
+    'In Review': 'in_review',
     'Started': 'in_progress',
     'Done': 'done',
     'Completed': 'done',
@@ -50,6 +53,11 @@ export const STATUS_CATEGORY_CONFIG: Record<StatusCategory, {
     label: 'In Progress',
     bgClass: 'bg-info-muted',
     textClass: 'text-info',
+  },
+  in_review: {
+    label: 'In Review',
+    bgClass: 'bg-accent-subtle',
+    textClass: 'text-accent',
   },
   done: {
     label: 'Done',
@@ -92,6 +100,10 @@ export function getStatusCategory(
   }
 
   // Keyword-based fallback for custom/unmapped statuses
+  if (lowerStatus.includes('review')) {
+    return 'in_review';
+  }
+  if (lowerStatus.includes('progress') || lowerStatus.includes('test')) {
     return 'in_progress';
   }
   if (lowerStatus.includes('done') || lowerStatus.includes('complete') || lowerStatus.includes('closed') || lowerStatus.includes('resolved')) {

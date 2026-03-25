@@ -80,6 +80,8 @@ test.describe.serial('Plan views and canvas interactions', () => {
     // Create a second project
     await createProject(window, 'Second Project');
 
+    // New project should start in Board view (default)
+    await expect(window.getByText('0 items')).toBeVisible();
 
     // Switch back to first project via TopBar menu
     await switchToProject(window, PROJECT_NAME);

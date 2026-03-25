@@ -37,6 +37,20 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
   projectId,
   onFileOpen,
 }: ReposAndFilesSectionProps) {
+  // Section collapse state — repos collapse is persisted per project
+  const [reposCollapsed, setReposCollapsedRaw] = useState(() => {
+    try {
+      return localStorage.getItem(`kpm-repos-collapsed-${projectId}`) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const setReposCollapsed = (collapsed: boolean) => {
+    setReposCollapsedRaw(collapsed);
+    try {
+      localStorage.setItem(`kpm-repos-collapsed-${projectId}`, String(collapsed));
+    } catch { /* ignore */ }
+  };
   const [filesCollapsed, setFilesCollapsed] = useState(false);
 
   // Confluence store

@@ -7,14 +7,17 @@
 
 import { useEffect, useRef } from 'react';
 import { ZOOM } from '../../../constants/layout';
+import { startPerfSpan } from '../../../utils/perfLogger';
 
 interface UseCanvasWheelOptions {
+  projectId: string;
   containerRef: React.RefObject<HTMLDivElement | null>;
   setZoom: React.Dispatch<React.SetStateAction<number>>;
   setPanOffset: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
 }
 
 export function useCanvasWheel({
+  projectId,
   containerRef,
   setZoom,
   setPanOffset,
@@ -27,15 +30,57 @@ export function useCanvasWheel({
   // Anchor point for zoom gestures - stored in canvas coordinates
   const zoomAnchorRef = useRef<{ canvasX: number; canvasY: number } | null>(null);
   const zoomGestureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wheelPanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const zoomSpanEndRef = useRef<((extraMeta?: Record<string, unknown>) => void) | null>(null);
+  const zoomFrameCountRef = useRef(0);
+  const zoomTickCountRef = useRef(0);
+  const wheelPanSpanEndRef = useRef<((extraMeta?: Record<string, unknown>) => void) | null>(null);
+  const wheelPanFrameCountRef = useRef(0);
+  const wheelPanTickCountRef = useRef(0);
+  const wheelPanDeltaRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    const finishZoomGesture = () => {
+      const endZoom = zoomSpanEndRef.current;
+      zoomSpanEndRef.current = null;
+      if (endZoom) {
+        endZoom({
+          frames: zoomFrameCountRef.current,
+          ticks: zoomTickCountRef.current,
+        });
+      }
+      zoomFrameCountRef.current = 0;
+      zoomTickCountRef.current = 0;
+    };
+
+    const finishWheelPanGesture = () => {
+      const endPan = wheelPanSpanEndRef.current;
+      wheelPanSpanEndRef.current = null;
+      if (endPan) {
+        endPan({
+          frames: wheelPanFrameCountRef.current,
+          ticks: wheelPanTickCountRef.current,
+          deltaX: Math.round(wheelPanDeltaRef.current.x),
+          deltaY: Math.round(wheelPanDeltaRef.current.y),
+        });
+      }
+      wheelPanFrameCountRef.current = 0;
+      wheelPanTickCountRef.current = 0;
+      wheelPanDeltaRef.current = { x: 0, y: 0 };
+    };
+
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
 
       if (e.metaKey || e.ctrlKey) {
+        if (!zoomSpanEndRef.current) {
+          zoomSpanEndRef.current = startPerfSpan('plan.canvas.zoom', { projectId, source: 'wheel' });
+        }
+        zoomTickCountRef.current += 1;
+
         // Cmd/Ctrl + scroll = zoom toward cursor
         const rect = container.getBoundingClientRect();
         const screenX = e.clientX - rect.left;
@@ -47,6 +92,7 @@ export function useCanvasWheel({
         }
         zoomGestureTimeoutRef.current = setTimeout(() => {
           zoomAnchorRef.current = null;
+          finishZoomGesture();
         }, 150);
 
         // Accumulate zoom delta
@@ -59,6 +105,7 @@ export function useCanvasWheel({
           zoomRafRef.current = requestAnimationFrame(() => {
             const pending = pendingZoomRef.current;
             if (pending) {
+              zoomFrameCountRef.current += 1;
               const { delta, screenX: sx, screenY: sy } = pending;
               pendingZoomRef.current = null;
 
@@ -91,6 +138,20 @@ export function useCanvasWheel({
           });
         }
       } else {
+        if (!wheelPanSpanEndRef.current) {
+          wheelPanSpanEndRef.current = startPerfSpan('plan.canvas.wheel_pan', { projectId, source: 'wheel' });
+        }
+        wheelPanTickCountRef.current += 1;
+        wheelPanDeltaRef.current.x += e.deltaX;
+        wheelPanDeltaRef.current.y += e.deltaY;
+
+        if (wheelPanTimeoutRef.current) {
+          clearTimeout(wheelPanTimeoutRef.current);
+        }
+        wheelPanTimeoutRef.current = setTimeout(() => {
+          finishWheelPanGesture();
+        }, 150);
+
         // Pan - accumulate deltas and apply via RAF for smooth 60fps updates
         if (!pendingPanRef.current) {
           pendingPanRef.current = { x: 0, y: 0 };
@@ -102,6 +163,7 @@ export function useCanvasWheel({
           rafRef.current = requestAnimationFrame(() => {
             const pending = pendingPanRef.current;
             if (pending) {
+              wheelPanFrameCountRef.current += 1;
               pendingPanRef.current = null;
               setPanOffset(offset => ({
                 x: offset.x + pending.x,
@@ -126,5 +188,11 @@ export function useCanvasWheel({
       if (zoomGestureTimeoutRef.current) {
         clearTimeout(zoomGestureTimeoutRef.current);
       }
+      if (wheelPanTimeoutRef.current) {
+        clearTimeout(wheelPanTimeoutRef.current);
+      }
+      finishZoomGesture();
+      finishWheelPanGesture();
     };
+  }, [containerRef, projectId, setZoom, setPanOffset]);
 }

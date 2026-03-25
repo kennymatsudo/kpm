@@ -24,6 +24,7 @@ function ThemePreview({ theme }: ThemePreviewProps) {
       style={{ backgroundColor: preview.surface }}
     >
       <div
+        className="w-6 h-6 rounded-md border border-border-subtle"
         style={{ backgroundColor: preview.surface }}
         title="Surface"
       />

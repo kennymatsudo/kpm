@@ -7,6 +7,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { ZOOM, VIEWPORT_BUFFER } from '../../../constants/layout';
+import { startPerfSpan } from '../../../utils/perfLogger';
 
 /** Debounce delay for persisting canvas state (ms) */
 const PERSIST_DEBOUNCE_MS = 300;
@@ -85,9 +86,12 @@ export function useCanvasViewport({
 
   const panStartRef = useRef({ x: 0, y: 0 });
   const panOffsetStartRef = useRef({ x: 0, y: 0 });
+  const currentPanOffsetRef = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const panRafRef = useRef<number | null>(null);
   const lastMouseRef = useRef<{ x: number; y: number } | null>(null);
+  const panSpanEndRef = useRef<((extraMeta?: Record<string, unknown>) => void) | null>(null);
+  const panFrameCountRef = useRef(0);
 
   // Ref for debounced state persistence
   const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -169,6 +173,8 @@ export function useCanvasViewport({
 
   // Persist canvas state on changes (debounced)
   useEffect(() => {
+    currentPanOffsetRef.current = panOffset;
+
     if (persistTimeoutRef.current) {
       clearTimeout(persistTimeoutRef.current);
     }
@@ -204,9 +210,12 @@ export function useCanvasViewport({
     if (e.button === 1 || (e.button === 0 && !isOnCard)) {
       e.preventDefault();
       setIsPanning(true);
+      panFrameCountRef.current = 0;
+      panSpanEndRef.current = startPerfSpan('plan.canvas.pan', { projectId, source: 'mouse' });
       panStartRef.current = { x: e.clientX, y: e.clientY };
       panOffsetStartRef.current = { ...panOffset };
     }
+  }, [panOffset, projectId]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isPanning) return;
@@ -220,6 +229,7 @@ export function useCanvasViewport({
         if (!last) return;
         const dx = last.x - panStartRef.current.x;
         const dy = last.y - panStartRef.current.y;
+        panFrameCountRef.current += 1;
         setPanOffset({
           x: panOffsetStartRef.current.x + dx,
           y: panOffsetStartRef.current.y + dy,
@@ -228,6 +238,19 @@ export function useCanvasViewport({
     }
   }, [isPanning]);
 
+  const finishPan = useCallback(() => {
+    const endPan = panSpanEndRef.current;
+    panSpanEndRef.current = null;
+    if (endPan) {
+      endPan({
+        frames: panFrameCountRef.current,
+        finalPanX: Math.round(currentPanOffsetRef.current.x),
+        finalPanY: Math.round(currentPanOffsetRef.current.y),
+      });
+    }
+    panFrameCountRef.current = 0;
+  }, []);
+
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
     lastMouseRef.current = null;
@@ -235,6 +258,8 @@ export function useCanvasViewport({
       cancelAnimationFrame(panRafRef.current);
       panRafRef.current = null;
     }
+    finishPan();
+  }, [finishPan]);
 
   const handleMouseLeave = useCallback(() => {
     setIsPanning(false);
@@ -243,6 +268,8 @@ export function useCanvasViewport({
       cancelAnimationFrame(panRafRef.current);
       panRafRef.current = null;
     }
+    finishPan();
+  }, [finishPan]);
 
   const resetView = useCallback(() => {
     setZoom(1);

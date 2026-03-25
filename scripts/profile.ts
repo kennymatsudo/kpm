@@ -237,6 +237,7 @@ async function runUserFlows(page: Page): Promise<string[]> {
   }
 
   // Flow 4: Switch view modes
+  for (const mode of ['Board', 'Cards', 'Tree'] as const) {
     const titleMap = {
       Cards: 'Card view (spatial canvas)',
       Tree: 'Tree view (outline)',
