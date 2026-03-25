@@ -13,6 +13,7 @@ export interface PlanContext {
   currentView?: ChatViewMode;
   /** Custom task prompt template - if set, overrides default PLAN_STRUCTURE */
   taskPromptTemplate?: TaskPromptTemplate | null;
+  /** Project context file content (AGENTS.md or CLAUDE.md), if it exists */
   claudeMdContent?: string | null;
   /** Prompt content resolver for configurable prompts (user override > default) */
   getPromptContent?: (key: string) => string;

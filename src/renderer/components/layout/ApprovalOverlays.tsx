@@ -29,6 +29,7 @@ import { getParentPath } from '../../utils/path';
 function getItemTypeLabel(type: ApprovalItem['type']): string {
   switch (type) {
     case 'plan-actions': return 'Plan Changes';
+    case 'claude-md': return 'Project Context Update';
     case 'document': return 'Document Update';
     default: return 'Pending Approval';
   }
@@ -118,6 +119,7 @@ export function ApprovalOverlays() {
       if (result.success) {
         removeById(item.id);
       } else {
+        toast.error(`Failed to update project context file: ${result.error}`);
       }
     } finally {
       setIsApplying(false);
@@ -202,6 +204,7 @@ export function ApprovalOverlays() {
 
       {currentItem.type === 'claude-md' && (
         <PendingDocumentPanel
+          filePath="Project Context"
           content={currentItem.newContent}
           oldContent={currentItem.oldContent}
           onAccept={(content) => handleApplyClaudeMdEdit(currentItem, content)}

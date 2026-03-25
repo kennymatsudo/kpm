@@ -26,6 +26,7 @@ import { type ServiceResult, type AsyncResult, success, failure } from '../resul
 import type { PlanContext } from '../../claude/prompts';
 import { getConfig } from '../../config';
 import { clientManager } from '../../claude/clientManager';
+import { DEFAULT_CONTEXT_FILENAME } from '../../../shared/contextFile';
 import { extractFilePaths } from '../toollog/extractFilePaths';
 import { randomUUID } from 'crypto';
 
@@ -129,11 +130,13 @@ export interface StreamingSessionServiceDeps {
   /** Subscribe to plan actions from MCP tools */
   subscribeToPlanActions: (callback: (event: PlanActionsEvent) => void) => () => void;
 
+  /** Subscribe to project context file update proposals from MCP tools */
   subscribeToClaudeMdUpdate: (callback: (update: ClaudeMdUpdatePayload) => void) => () => void;
 
   /** Subscribe to document update proposals from MCP tools */
   subscribeToDocumentUpdate: (callback: (update: DocumentUpdatePayload) => void) => () => void;
 
+  /** Read project context file (AGENTS.md or CLAUDE.md) content for a project */
 
   /** Read a document file from the docs/ directory */
   readDocumentFile: (
@@ -370,7 +373,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         currentView,
         resumeSessionId,
         mainWindow,
+        // Callback for intercepted context file edits from the permission handler
         onClaudeMdEdit: (editProjectId: string, newContent: string) => {
+          // Read current context file for diff display
           void (async () => {
             const currentContent = await deps.readClaudeMd(editProjectId);
             mainWindow?.webContents.send('chat:claudemd-update', {
@@ -378,7 +383,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
               oldContent: currentContent.success ? currentContent.content : null,
               newContent,
             });
+            console.log(`[StreamingSessionService] Context file edit intercepted and emitted for project ${editProjectId}`);
           })().catch((error) => {
+            console.error('[StreamingSessionService] Failed to read context file for intercepted edit:', error);
           });
         },
         // Callback for intercepted project file writes from the permission handler
@@ -410,6 +417,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         });
       });
 
+      // Subscribe to project context file update proposals from the tool
       unsubscribeClaudeMdUpdate = deps.subscribeToClaudeMdUpdate((update) => {
         const matchesSession = update.chatSessionId
           ? update.chatSessionId === chatSessionId

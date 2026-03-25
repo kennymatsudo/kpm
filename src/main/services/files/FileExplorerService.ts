@@ -156,7 +156,10 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Cannot delete project root');
       }
 
+      // Prevent deleting protected paths (project context files)
       const baseName = path.basename(relativePath);
+      if (baseName === 'AGENTS.md' || baseName === 'CLAUDE.md') {
+        return failure(`Cannot delete ${baseName}`);
       }
 
       try {

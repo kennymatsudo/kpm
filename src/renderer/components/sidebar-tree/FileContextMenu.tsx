@@ -1,3 +1,4 @@
+import { isContextFile } from '../../../shared/contextFile';
 import type { FileNode } from '../../../shared/types';
 import { DropdownMenu } from '../ui';
 
@@ -40,6 +41,7 @@ export function FileContextMenu({
   onUnlinkFromConfluence,
   isLinkedToConfluence,
 }: FileContextMenuProps) {
+  const isClaudeMd = isContextFile(node.name);
   const isMarkdown = node.name.endsWith('.md');
 
   return (

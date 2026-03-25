@@ -17,6 +17,7 @@ export interface BuildSdkOptionsParams {
   currentView?: ChatViewMode;
   resumeSessionId?: string;
   mainWindow: BrowserWindow | null;
+  /** Callback for intercepted project context file edits */
   onClaudeMdEdit?: ClaudeMdInterceptFn;
   /** Callback for intercepted project file writes */
   onProjectFileWrite?: ProjectFileInterceptFn;

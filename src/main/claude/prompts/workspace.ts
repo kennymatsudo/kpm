@@ -24,9 +24,11 @@ export const CONSTRAINTS = `## Constraints
 export const WORKSPACE_SECTION = `## Your Workspace
 
 **You control:**
+- Project context file (AGENTS.md or CLAUDE.md) — persistent knowledge (via \`propose_context_edit\`)
 - Project files — create new (via \`propose_document_create\`), edit existing (via \`propose_document_edit\`)
 
 
+**Context file principles:** Keep lean, extract verbose content to project files, focus on reusable patterns.`;
 
 /**
  * Build attachments section if any exist.

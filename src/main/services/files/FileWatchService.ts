@@ -8,6 +8,7 @@ export interface ContextFile {
   path: string;
   /** File name */
   name: string;
+  /** Whether this is a project context file (AGENTS.md / CLAUDE.md) */
   isClaudeMd: boolean;
   /** Last modified timestamp */
   modifiedAt: string;
@@ -107,6 +108,7 @@ class FileWatchServiceClass {
 
   /**
    * Delete a context file by relative path.
+   * Cannot delete the project context file (AGENTS.md / CLAUDE.md) - that requires special handling.
    */
   async deleteContextFile(
     projectId: string,
@@ -116,6 +118,9 @@ class FileWatchServiceClass {
       return { success: false, error: 'Project not found' };
     }
 
+    // Prevent deleting project context files through this method
+    if (isContextFile(relativePath)) {
+      return { success: false, error: `Cannot delete ${relativePath} through this method` };
     }
 
     // Security: ensure the path doesn't escape project folder
@@ -179,19 +184,29 @@ class FileWatchServiceClass {
   }
 
   /**
+   * Read the project context file (AGENTS.md or CLAUDE.md) for a project.
+   * Checks AGENTS.md first, then falls back to CLAUDE.md.
    */
     if (!project) {
       return { success: false, content: null, error: 'Project not found' };
     }
 
     try {
+      for (const filename of CONTEXT_FILE_NAMES) {
+        const filePath = path.join(project.folder_path, filename);
+        if (await pathExists(filePath)) {
+          const content = await fs.promises.readFile(filePath, 'utf-8');
+        }
       }
+      return { success: true, content: null };
     } catch (error) {
       return { success: false, content: null, error: String(error) };
     }
   }
 
   /**
+   * Write content to the project context file for a project.
+   * Writes to the first existing context file, or creates AGENTS.md if none exist.
    */
   async writeClaudeMd(projectId: string, content: string): Promise<{ success: boolean; error?: string }> {
     if (!project) {

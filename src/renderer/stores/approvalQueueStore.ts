@@ -3,6 +3,7 @@
  *
  * Manages a unified queue for all pending approvals from Claude:
  * - Plan actions (create/update/delete plan items)
+ * - Project context file edits (AGENTS.md / CLAUDE.md)
  *
  */
 
@@ -51,6 +52,7 @@ interface ApprovalQueueState {
   /** Add a plan actions approval to the queue */
   enqueuePlanActions: (actions: PlanAction[]) => void;
 
+  /** Add a project context file edit to the queue */
   enqueueClaudeMdEdit: (oldContent: string | null, newContent: string) => void;
 
   /** Add a document update to the queue */

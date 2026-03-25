@@ -18,6 +18,7 @@ const PLAN_BLOCK_PATTERNS = [
  * Strip plan-related blocks from message content.
  * These blocks are processed separately and shown in dedicated UI components.
  *
+ * Note: Context file updates now use tool calls (kpm_propose_context_edit)
  * instead of text blocks, so no text stripping is needed for those.
  */
 export function processMessageContent(content: string): ProcessedMessage {

@@ -72,6 +72,7 @@ ${getPrompt('system.plan_rules')}
 
 ${getPrompt('system.response_style')}
 ${hasClaudeMd ? `
+# Project Context
 
 ${claudeMdContent}
 ` : ''}

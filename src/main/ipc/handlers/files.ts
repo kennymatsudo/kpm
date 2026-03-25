@@ -1,6 +1,7 @@
 import { ipcMain, dialog, type BrowserWindow } from 'electron';
 import { IPC_CHANNELS } from '../channels';
 
+  // Project context file operations (AGENTS.md / CLAUDE.md)
 
 
   // ==========================================================================

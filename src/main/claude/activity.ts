@@ -6,6 +6,7 @@
  */
 
 import { randomUUID } from 'crypto';
+import { isContextFile } from '../../shared/contextFile';
 import type { Activity, ActivityType } from '../../shared/types';
 
 export interface ToolActivityOptions {
@@ -25,9 +26,14 @@ export function getToolActivity(
   const { log = false } = options;
   const id = randomUUID();
 
+  // Check if Claude is updating the project context file
   if ((toolName === 'Edit' || toolName === 'Write') && typeof input.file_path === 'string') {
     const filePath = input.file_path;
     const filename = filePath.split('/').pop() ?? filePath;
+    if (isContextFile(filename)) {
+      if (log) console.log(`[Claude]    Updating project context file`);
+      return { id, type: 'edit' as ActivityType, label: 'Project Context', detail: 'Updating learnings' };
+    }
     if (log) console.log(`[Claude]    Editing: ${filePath}`);
     return { id, type: 'edit' as ActivityType, label: filename, detail: filePath };
   }

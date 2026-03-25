@@ -217,6 +217,7 @@ interface LayoutProps {
               {/* Chat resize handle */}
               <div
                 onMouseDown={handleChatResizeStart}
+                className="relative w-px cursor-col-resize flex-shrink-0 bg-border-subtle hover:bg-accent/50 active:bg-accent/70 transition-colors"
               >
                 <div className="absolute inset-y-0 -left-1 -right-1" />
               </div>

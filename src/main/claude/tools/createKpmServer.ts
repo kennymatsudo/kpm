@@ -7,6 +7,7 @@
 import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import { EventEmitter } from 'events';
 import { AsyncLocalStorage } from 'async_hooks';
+import { CONTEXT_FILE_NAMES } from '../../../shared/contextFile';
 
 import { createPlanItemTools } from './plan-items';
 import { createRelationTools } from './relations';
@@ -42,6 +43,7 @@ const pendingDocumentContent = new Map<string, string>();
 // Event emitter for plan actions - allows per-message callbacks with singleton server
 const planActionsEmitter = new EventEmitter();
 
+// Event emitter for project context file updates
 const claudeMdUpdateEmitter = new EventEmitter();
 
 // Event emitter for document updates
@@ -80,7 +82,12 @@ async function readProjectFile(projectId: string, filePath: string): Promise<str
 }
 
 /**
+ * Read the project context file (AGENTS.md or CLAUDE.md).
  */
+  for (const filename of CONTEXT_FILE_NAMES) {
+    const content = await readProjectFile(projectId, filename);
+  }
+  return null;
 }
 
 /**
@@ -104,6 +111,7 @@ export function subscribeToPlanActions(callback: PlanActionsCallback): () => voi
 }
 
 /**
+ * Subscribe to project context file update proposals.
  * Returns an unsubscribe function.
  */
 export function subscribeToClaudeMdUpdate(callback: ClaudeMdUpdateCallback): () => void {

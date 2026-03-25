@@ -8,6 +8,7 @@
  */
 
 import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import { isContextFile } from '../../shared/contextFile';
 import { clientManager } from './clientManager';
 const READ_TOOLS = ['Read', 'Grep', 'Glob'];
 const WRITE_TOOLS = ['Edit', 'Write', 'Bash'];
@@ -100,11 +101,13 @@ function isWithinDirectory(targetPath: string, baseDir: string): boolean {
 /**
  * Check if a path targets CLAUDE.md in the project directory.
  */
+function isContextFilePath(targetPath: string, projectPath: string): boolean {
   if (!targetPath) return false;
   try {
     const normalizedTarget = normalize(targetPath);
     const normalizedBase = normalize(projectPath);
     const rel = relative(normalizedBase, normalizedTarget);
+    return isContextFile(rel);
   } catch {
     return false;
   }
@@ -131,6 +134,7 @@ function getToolPreview(toolName: string, input: Record<string, unknown>): strin
  *
  * Rules:
  * -1. Deny: Git write operations (commit, push, merge, etc.) — always blocked
+ * 0. Intercept: Context file (AGENTS.md/CLAUDE.md) edits are captured and sent for user approval
  * 1. Auto-allow: All other tools in project directory
  * 2. Auto-allow: Read tools anywhere
  * 3. Auto-allow: MCP tools (read-only)
@@ -159,6 +163,8 @@ export function createPermissionHandler(
       console.log(`[Permissions] ${toolName} tool called for: ${targetPath}`);
     }
 
+    // Rule 0: Intercept project context file edits (AGENTS.md / CLAUDE.md) for user approval
+    if (targetPath && isContextFilePath(targetPath, context.projectPath)) {
       if ((toolName === 'Write' || toolName === 'Edit') && context.onClaudeMdEdit) {
         // Extract content from Write/Edit tool input
         let newContent: string | null = null;
@@ -169,12 +175,14 @@ export function createPermissionHandler(
           // For Edit tool, we need the new_string content
           // However, Edit is a partial replacement - we should encourage Write for full content
           // For now, log and deny, guiding Claude to use a different approach
+          console.log('[Permissions] Context file Edit intercepted - guiding to use tool');
           return {
             behavior: 'deny',
           };
         }
 
         if (newContent) {
+          console.log(`[Permissions] Context file Write intercepted - capturing for approval (${newContent.length} chars)`);
           context.onClaudeMdEdit(context.projectId, newContent);
           return {
             behavior: 'deny',

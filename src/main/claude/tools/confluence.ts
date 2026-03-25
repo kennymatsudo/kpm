@@ -16,6 +16,7 @@ export function createConfluenceTools(confluenceLinkRepo: IConfluenceLinkReposit
       'Get the Confluence URL for a project document. Use when referencing a document that may be published to Confluence.',
       {
         projectId: z.string().uuid().describe('The project UUID'),
+        documentPath: z.string().min(1).describe('Relative path of the document (e.g. "design-spec.md")'),
       },
       ({ projectId, documentPath }) => {
         const link = confluenceLinkRepo.getByDocumentPath(projectId, documentPath);

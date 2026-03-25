@@ -11,6 +11,7 @@
 
 import path from 'path';
 import { z } from 'zod';
+import { isContextFile } from '../../../shared/contextFile';
 import { tool, jsonResult, toolError } from './index';
 
 const TOOL_DESCRIPTION = `Move a file or folder to a different location within the project files.
@@ -20,12 +21,16 @@ Use when the user asks to reorganize, move, or relocate files/folders in the pro
 
 ## Parameters
 - \`projectId\`: The project UUID
+- \`sourcePath\`: Current relative path of the file/folder (e.g., "old-location/spec.md")
 - \`targetFolder\`: Destination folder relative path. Use "" (empty string) for the project root.
 
 ## Examples
+- Move "spec.md" to "archive/": sourcePath="spec.md", targetFolder="archive"
 - Move "notes/todo.md" to root: sourcePath="notes/todo.md", targetFolder=""
+- Move folder "drafts" into "specs/": sourcePath="drafts", targetFolder="specs"
 
 ## Restrictions
+- Cannot move the project context file (AGENTS.md or CLAUDE.md)
 - Cannot move a file to its current location (no-op)`;
 
 
@@ -39,7 +44,10 @@ Use when the user asks to reorganize, move, or relocate files/folders in the pro
         targetFolder: z.string().describe('Destination folder relative path. Use "" for project root.'),
       },
       async ({ projectId, sourcePath, targetFolder }) => {
+        // Protect project context files from being moved
         const basename = path.basename(sourcePath);
+        if (isContextFile(basename)) {
+          return toolError(`Cannot move ${basename} — it is a protected project context file.`);
         }
 
         // Compute new path

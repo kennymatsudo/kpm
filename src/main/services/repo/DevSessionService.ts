@@ -31,6 +31,7 @@ interface AgentContextInput {
 
 /**
  * Build agent context from plan item data
+ * Note: Claude Code automatically reads CLAUDE.md/AGENTS.md from the worktree, so we don't include it here
  */
   const { item, children, parent } = input;
   const sections: string[] = [];

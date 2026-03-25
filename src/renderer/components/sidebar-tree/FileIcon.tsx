@@ -1,3 +1,4 @@
+import { isContextFile } from '../../../shared/contextFile';
 import type { FileNode } from '../../../shared/types';
 
 interface FileIconProps {
@@ -7,8 +8,11 @@ interface FileIconProps {
 
 /**
  * File/folder icon based on file type.
+ * Project context files (AGENTS.md / CLAUDE.md) get special accent styling.
  */
 export function FileIcon({ node, isExpanded = false }: FileIconProps) {
+  // Project context file special treatment
+  if (isContextFile(node.name)) {
     return (
       <svg
         className="w-4 h-4 text-accent flex-shrink-0"

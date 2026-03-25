@@ -7,6 +7,7 @@ import {
   useConfluenceStore,
   useWorkspaceStore,
 } from '../../stores';
+import { useResourceDomainActions } from '../../hooks/useStoreActions';
 import { isImageFile, formatFileSize } from '../../utils/image';
 import { subscribe as subscribeToStoreEvent } from '../../stores/storeEvents';
 import {
@@ -56,6 +57,10 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
       removeFocusedResource: state.removeFocusedResource,
     }))
   );
+  const {
+    addReposFromDialog,
+    removeRepoFromProject,
+  } = useResourceDomainActions();
 
   // File tree store
   const {
@@ -178,6 +183,8 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
 
   const handleAddRepo = useCallback(async () => {
     if (!projectId) return;
+    await addReposFromDialog(projectId);
+  }, [projectId, addReposFromDialog]);
 
   const isRepoFocused = useCallback(
     (repoId: string): boolean => {
@@ -201,8 +208,11 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
 
   const handleRemoveRepo = useCallback(
     async (repoId: string) => {
+      if (!projectId) return;
+      await removeRepoFromProject(projectId, repoId);
       fileContextMenus.setRepoContextMenu(null);
     },
+    [projectId, removeRepoFromProject, fileContextMenus.setRepoContextMenu]
   );
 
   const handleRevealRepoInFinder = useCallback(
