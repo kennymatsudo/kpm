@@ -13,6 +13,7 @@ interface BoardCardProps {
   searchQuery: string;
   onSelect: (addToSelection: boolean) => void;
   onEdit: () => void;
+  onPrepareEdit?: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
@@ -30,6 +31,7 @@ export const BoardCard = memo(function BoardCard({
   searchQuery,
   onSelect,
   onEdit,
+  onPrepareEdit,
   onContextMenu,
   onDragStart,
   onDragEnd,
@@ -56,6 +58,7 @@ export const BoardCard = memo(function BoardCard({
       }}
       onDoubleClick={(e) => {
         e.stopPropagation();
+        onPrepareEdit?.();
         onEdit();
       }}
       onContextMenu={(e) => {

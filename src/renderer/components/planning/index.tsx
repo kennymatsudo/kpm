@@ -104,6 +104,7 @@ export function PlanView({
   const {
     editingItem,
     handleEditItem,
+    prefetchEditItem,
     handleSaveTask,
     closeEditModal,
   } = usePlanTaskEdit({ planItemsById, updatePlanItem });
@@ -346,6 +347,7 @@ export function PlanView({
                 searchQuery={searchQuery}
                 onSelectItem={handleSelectItem}
                 onEditItem={handleEditItem}
+                onPrepareEditItem={prefetchEditItem}
                 onReparent={handleReparent}
               />
           ) : (

@@ -17,6 +17,7 @@ interface BoardViewProps {
   searchQuery: string;
   onSelectItem: (id: string | null, addToSelection?: boolean) => void;
   onEditItem: (id: string) => void;
+  onPrepareEditItem?: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, ids: Set<string>) => void;
   /** Callback for creating a new item with a given status */
   onCreateItem?: (status: StatusCategory) => void;
@@ -35,6 +36,7 @@ export const BoardView = memo(function BoardView({
   searchQuery,
   onSelectItem,
   onEditItem,
+  onPrepareEditItem,
   onContextMenu,
   onCreateItem,
 }: BoardViewProps) {
@@ -185,6 +187,7 @@ export const BoardView = memo(function BoardView({
             searchQuery={searchQuery}
             draggedItemId={draggedItemId}
             onEditItem={onEditItem}
+            onPrepareEditItem={onPrepareEditItem}
             onContextMenu={onContextMenu}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}

@@ -25,6 +25,7 @@ interface CanvasProps {
   searchQuery?: string;
   onSelectItem: (itemId: string | null, addToSelection?: boolean) => void;
   onEditItem: (itemId: string) => void;
+  onPrepareEditItem?: (itemId: string) => void;
   onAddToContext?: (itemId: string) => void;
   onCreateItem?: (canvasPosition: { x: number; y: number }) => void;
   onReparent: (itemIds: string[], newParentId: string | null) => Promise<void>;
@@ -44,6 +45,7 @@ export const Canvas = memo(function Canvas({
   searchQuery = '',
   onSelectItem,
   onEditItem,
+  onPrepareEditItem,
   onAddToContext,
   onCreateItem,
   onReparent,
@@ -414,6 +416,7 @@ export const Canvas = memo(function Canvas({
                 recentlyImportedIds={recentlyImportedIds}
                 onSelectItem={onSelectItem}
                 onEditItem={onEditItem}
+                onPrepareEditItem={onPrepareEditItem}
                 onAddToContext={onAddToContext}
                 onDrop={handleCardDrop}
                 onDragStart={handleDragStart}

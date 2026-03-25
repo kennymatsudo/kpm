@@ -1,3 +1,4 @@
+import { useProjectUiDomainStore, useTrackerMetadataStore, useTrackerStore } from '../../../stores';
 
 interface PlanTaskEditDeps {
   planItemsById: Map<string, PlanItem>;
@@ -6,11 +7,21 @@ interface PlanTaskEditDeps {
 
 export function usePlanTaskEdit({ planItemsById, updatePlanItem }: PlanTaskEditDeps) {
   const [editingItem, setEditingItem] = useState<PlanItem | null>(null);
+  const associations = useTrackerStore((state) => state.associations);
+  const loadIssueTypes = useTrackerMetadataStore((state) => state.loadIssueTypes);
+
+  const prefetchEditItem = useCallback((itemId: string) => {
+    if (!item?.association_id) return;
+
+    if (!association?.project_key) return;
+
+    void loadIssueTypes(association.project_key);
 
   // Watch for editingItemId set by global search or other navigation
   const editingItemId = useProjectUiDomainStore((state) => state.editingItemId);
   useEffect(() => {
     if (editingItemId) {
+      prefetchEditItem(editingItemId);
       if (item) {
         setEditingItem(item);
       }
@@ -19,6 +30,7 @@ export function usePlanTaskEdit({ planItemsById, updatePlanItem }: PlanTaskEditD
 
   const handleEditItem = useCallback(
     (itemId: string) => {
+      prefetchEditItem(itemId);
       if (item) {
         setEditingItem(item);
       }
@@ -42,6 +54,7 @@ export function usePlanTaskEdit({ planItemsById, updatePlanItem }: PlanTaskEditD
   return {
     editingItem,
     handleEditItem,
+    prefetchEditItem,
     handleSaveTask,
     closeEditModal,
   };

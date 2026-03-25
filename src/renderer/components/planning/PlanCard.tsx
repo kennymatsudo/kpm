@@ -65,6 +65,7 @@ interface PlanCardProps {
   recentlyImportedIds?: Set<string>;
   onSelectItem?: (itemId: string, addToSelection: boolean) => void;  // Selection handler
   onEditItem?: (itemId: string) => void;  // For opening edit panel
+  onPrepareEditItem?: (itemId: string) => void;  // For warming modal data before open
   onAddToContext?: (itemId: string) => void;  // For adding to chat context
   onDrop?: (itemIds: string[], targetParentId: string) => void;
   onDropFromBacklog?: (itemId: string, parentId: string | null) => void;
@@ -87,6 +88,7 @@ export const PlanCard = memo(function PlanCard({
   recentlyImportedIds,
   onSelectItem,
   onEditItem,
+  onPrepareEditItem,
   onAddToContext,
   onDrop,
   onDropFromBacklog,
@@ -193,6 +195,7 @@ export const PlanCard = memo(function PlanCard({
       }}
       onDoubleClick={isPreview ? undefined : (e) => {
         e.stopPropagation();
+        onPrepareEditItem?.(item.id);
         onEditItem?.(item.id);
       }}
       onContextMenu={isPreview ? undefined : (e) => {
@@ -387,6 +390,7 @@ export const PlanCard = memo(function PlanCard({
                   recentlyImportedIds={recentlyImportedIds}
                   onSelectItem={onSelectItem}
                   onEditItem={onEditItem}
+                  onPrepareEditItem={onPrepareEditItem}
                   onAddToContext={onAddToContext}
                   onDrop={onDrop}
                   onDropFromBacklog={onDropFromBacklog}
@@ -404,6 +408,10 @@ export const PlanCard = memo(function PlanCard({
           isOpen={showMenu}
           position={menuPosition}
           onClose={() => setShowMenu(false)}
+          onEditItem={() => {
+            onPrepareEditItem?.(item.id);
+            onEditItem?.(item.id);
+          }}
           onDelete={() => setShowDeleteConfirm(true)}
           onAddToContext={() => onAddToContext?.(item.id)}
             if (currentProjectId) {

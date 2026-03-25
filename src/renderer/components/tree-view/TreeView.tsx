@@ -46,6 +46,7 @@ interface TreeRowProps {
   canDrop: boolean;
   onSelect: (id: string, addToSelection: boolean) => void;
   onEdit: (id: string) => void;
+  onPrepareEdit?: (id: string) => void;
   onToggleExpand: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, id: string) => void;
   onDragStart: (e: React.DragEvent, node: TreeNode) => void;
@@ -67,6 +68,7 @@ const TreeRow = memo(function TreeRow({
   canDrop,
   onSelect,
   onEdit,
+  onPrepareEdit,
   onToggleExpand,
   onContextMenu,
   onDragStart,
@@ -176,6 +178,7 @@ const TreeRow = memo(function TreeRow({
         }}
         onDoubleClick={(e) => {
           e.stopPropagation();
+          onPrepareEdit?.(node.id);
           onEdit(node.id);
         }}
         onContextMenu={(e) => onContextMenu(e, node.id)}
@@ -278,8 +281,11 @@ const TreeRow = memo(function TreeRow({
         <button
           onClick={(e) => {
             e.stopPropagation();
+            onPrepareEdit?.(node.id);
             onEdit(node.id);
           }}
+          onMouseEnter={() => onPrepareEdit?.(node.id)}
+          onFocus={() => onPrepareEdit?.(node.id)}
           className="
             flex-shrink-0 opacity-0 group-hover:opacity-100
             p-1 hover:bg-surface-3 rounded
@@ -314,6 +320,7 @@ interface TreeBranchProps {
   dragState: DragState | null;
   onSelect: (id: string, addToSelection: boolean) => void;
   onEdit: (id: string) => void;
+  onPrepareEdit?: (id: string) => void;
   onToggleExpand: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, id: string) => void;
   onDragStart: (e: React.DragEvent, node: TreeNode) => void;
@@ -334,6 +341,7 @@ const TreeBranch = memo(function TreeBranch({
   dragState,
   onSelect,
   onEdit,
+  onPrepareEdit,
   onToggleExpand,
   onContextMenu,
   onDragStart,
@@ -392,6 +400,7 @@ const TreeBranch = memo(function TreeBranch({
               canDrop={canDrop}
               onSelect={onSelect}
               onEdit={onEdit}
+              onPrepareEdit={onPrepareEdit}
               onToggleExpand={onToggleExpand}
               onContextMenu={onContextMenu}
               onDragStart={onDragStart}
@@ -443,6 +452,7 @@ export interface TreeViewProps {
   focusedItemId: string | null;
   searchQuery: string;
   onEditItem: (id: string) => void;
+  onPrepareEditItem?: (id: string) => void;
   onContextMenu?: (e: React.MouseEvent, selectedIds: Set<string>) => void;
   onReparent?: (itemIds: string[], newParentId: string | null) => void;
   /** Callback for creating a new item (parentId = null for root item) */
@@ -456,6 +466,7 @@ export const TreeView = memo(function TreeView({
   searchQuery,
   onSelectItem,
   onEditItem,
+  onPrepareEditItem,
   onContextMenu,
   onReparent,
   onCreateItem,

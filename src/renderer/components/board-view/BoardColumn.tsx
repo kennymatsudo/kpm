@@ -11,6 +11,7 @@ interface BoardColumnProps {
   draggedItemId: string | null;
   onSelectItem: (id: string | null, addToSelection?: boolean) => void;
   onEditItem: (id: string) => void;
+  onPrepareEditItem?: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, ids: Set<string>) => void;
   onDragStart: (itemId: string) => void;
   onDragEnd: () => void;
@@ -33,6 +34,7 @@ export const BoardColumn = memo(function BoardColumn({
   draggedItemId,
   onSelectItem,
   onEditItem,
+  onPrepareEditItem,
   onContextMenu,
   onDragStart,
   onDragEnd,
