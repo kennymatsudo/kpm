@@ -10,6 +10,7 @@
     "sourceMap": true,
     "strict": true,
     "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "outDir": "dist",
     "resolveJsonModule": true,
     "jsx": "react-jsx",

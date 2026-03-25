@@ -24,6 +24,7 @@ install:
 	rm -rf node_modules/.cache
 	rm -rf node_modules/better-sqlite3/build
 	rm -rf node_modules/better-sqlite3/prebuilds
+	CPPFLAGS="" npm install
 
 
 # Start dev server
