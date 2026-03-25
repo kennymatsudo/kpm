@@ -35,10 +35,13 @@ import { Z_INDEX } from '../../../constants/zIndex';
   } = useTrackerStore();
 
   const {
+    getQueueCountForAssociation,
     setShowQueuePanel,
     setShowMappingDialog,
     refreshQueueCount,
   } = useExportStore();
+
+  const queueCount = getQueueCountForAssociation(associationId);
 
   const [isImported, setIsImported] = useState(false);
   const [isLoading, setIsLoading] = useState(true);

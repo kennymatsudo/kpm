@@ -8,10 +8,19 @@ import type {
   StatusCategory,
 } from '../../../shared/types';
 
+function getQueueCountsByAssociation(entries: SyncQueueEntryWithPlanItem[]): Record<string, number> {
+  return entries.reduce<Record<string, number>>((counts, entry) => {
+    if (!entry.association_id) return counts;
+    counts[entry.association_id] = (counts[entry.association_id] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
 interface ExportState {
   // Queue state
   queueEntries: SyncQueueEntryWithPlanItem[];
   queueCount: number;
+  queueCountsByAssociation: Record<string, number>;
   isLoadingQueue: boolean;
   /** Set of plan item IDs currently in the export queue (for O(1) lookup) */
   queuedItemIds: Set<string>;
@@ -48,6 +57,7 @@ interface ExportState {
   updateQueueCustomFieldOverrides: (queueEntryId: string, overrides: CustomFieldValues | null) => Promise<void>;
   clearQueue: (projectId: string) => Promise<void>;
   refreshQueueCount: (projectId: string) => Promise<void>;
+  getQueueCountForAssociation: (associationId: string) => number;
 
   // Type mapping actions
   loadMappings: (projectId: string) => Promise<void>;
@@ -77,6 +87,7 @@ interface ExportState {
 const initialState = {
   queueEntries: [] as SyncQueueEntryWithPlanItem[],
   queueCount: 0,
+  queueCountsByAssociation: {} as Record<string, number>,
   isLoadingQueue: false,
   queuedItemIds: new Set<string>(),
   recentlyImportedIds: new Set<string>(),
@@ -100,6 +111,12 @@ export const useExportStore = create<ExportState>((set, get) => ({
     try {
       if (result.success && result.entries) {
         const itemIds = new Set<string>(result.entries.map((entry: SyncQueueEntryWithPlanItem) => entry.plan_item_id));
+        set({
+          queueEntries: result.entries,
+          queueCount: result.entries.length,
+          queueCountsByAssociation: getQueueCountsByAssociation(result.entries),
+          queuedItemIds: itemIds,
+        });
       } else {
         set({ error: result.error || 'Failed to load queue' });
       }
@@ -161,6 +178,12 @@ export const useExportStore = create<ExportState>((set, get) => ({
       }
       const entries = get().queueEntries.filter(e => e.id !== queueEntryId);
       const itemIds = new Set(entries.map(e => e.plan_item_id));
+      set({
+        queueEntries: entries,
+        queueCount: entries.length,
+        queueCountsByAssociation: getQueueCountsByAssociation(entries),
+        queuedItemIds: itemIds,
+      });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : 'Failed to remove from queue' });
     }
@@ -193,6 +216,12 @@ export const useExportStore = create<ExportState>((set, get) => ({
     set({ error: null });
     try {
       if (result.success) {
+        set({
+          queueEntries: [],
+          queueCount: 0,
+          queueCountsByAssociation: {},
+          queuedItemIds: new Set<string>(),
+        });
       } else {
         set({ error: result.error || 'Failed to clear queue' });
       }
@@ -202,6 +231,11 @@ export const useExportStore = create<ExportState>((set, get) => ({
   },
 
   refreshQueueCount: async (projectId) => {
+    await get().loadQueue(projectId);
+  },
+
+  getQueueCountForAssociation: (associationId) => {
+    return get().queueCountsByAssociation[associationId] ?? 0;
   },
 
   loadMappings: async (projectId) => {

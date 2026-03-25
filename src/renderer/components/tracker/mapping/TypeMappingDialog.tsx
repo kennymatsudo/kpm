@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useExportStore, useTrackerMetadataStore } from '../../../stores';
+import type { TrackerIssueTypeOption } from '../../../stores/tracker/useMetadataStore';
 import { Modal, ModalBody, ModalFooter } from '../../ui/Modal';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 import { CloseIcon } from '../../icons';
@@ -11,6 +13,8 @@ interface Props {
   onClose: () => void;
 }
 
+const EMPTY_ISSUE_TYPES: TrackerIssueTypeOption[] = [];
+
 export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: Props) {
   const {
     typeMappings,
@@ -20,8 +24,34 @@ export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: P
     saveMapping,
     removeMapping,
     clearError,
+  } = useExportStore(
+    useShallow((state) => ({
+      typeMappings: state.typeMappings,
+      isLoadingMappings: state.isLoadingMappings,
+      error: state.error,
+      loadMappingsByScope: state.loadMappingsByScope,
+      saveMapping: state.saveMapping,
+      removeMapping: state.removeMapping,
+      clearError: state.clearError,
+    }))
+  );
 
   // Use Zustand store for issue types (shared across dialogs, cached)
+  const {
+    jiraIssueTypes,
+    isLoadingIssueTypes,
+    typesError,
+    loadIssueTypes,
+  } = useTrackerMetadataStore(
+    useShallow((state) => ({
+      jiraIssueTypes: projectKey
+        ? state.issueTypesByProject[projectKey] ?? EMPTY_ISSUE_TYPES
+        : EMPTY_ISSUE_TYPES,
+      isLoadingIssueTypes: Boolean(projectKey) && state.loadingIssueTypesFor.has(projectKey),
+      typesError: projectKey ? state.issueTypesErrorByProject[projectKey] || null : null,
+      loadIssueTypes: state.loadIssueTypes,
+    }))
+  );
 
   // Local UI state
   const [newLabel, setNewLabel] = useState('');
@@ -33,6 +63,9 @@ export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: P
   // Load mappings and issue types on mount (uses cached data if available)
   useEffect(() => {
     void loadMappingsByScope(projectId, scopeId);
+    if (projectKey) {
+      void loadIssueTypes(projectKey);
+    }
   }, [projectId, scopeId, projectKey, loadMappingsByScope, loadIssueTypes]);
 
   const handleSaveMapping = async (kpmLabel: string, jiraTypeId: string) => {

@@ -59,17 +59,26 @@ export function useTrackerTopBarIntegration({
     associations,
     loadAssociations,
     setShowAssociationDialog,
+    hasAssociationItems,
   } = useTrackerStore(
     useShallow((state) => ({
       associations: state.associations,
       loadAssociations: state.loadAssociations,
       setShowAssociationDialog: state.setShowAssociationDialog,
+      hasAssociationItems: state.hasAssociationItems,
     }))
   );
 
   // Sync store
+  const {
+    discardSync,
+    checkForUpdates,
+    clearSyncAvailability,
+  } = useSyncStore(
     useShallow((state) => ({
       discardSync: state.discardSync,
+      checkForUpdates: state.checkForUpdates,
+      clearSyncAvailability: state.clearSyncAvailability,
     }))
   );
 
@@ -107,6 +116,67 @@ export function useTrackerTopBarIntegration({
       void refreshQueueCount(currentProjectId);
     }
   }, [currentProjectId, loadAssociations, refreshQueueCount]);
+
+  useEffect(() => {
+
+    let disposed = false;
+
+    const runCheck = async () => {
+      if (disposed || document.visibilityState !== 'visible') return;
+
+      const importedResults = await Promise.all(
+        trackerAssociations.map(async (association) => ({
+          association,
+          isImported: await hasAssociationItems(association.id),
+        }))
+      );
+
+      if (disposed) return;
+
+      await Promise.all(
+        importedResults.map(async ({ association, isImported }) => {
+          if (!isImported) {
+            clearSyncAvailability(association.id);
+            return;
+          }
+
+          await checkForUpdates(currentProjectId, association.id);
+        })
+      );
+    };
+
+    void runCheck();
+
+    const intervalId = window.setInterval(() => {
+      void runCheck();
+    }, 120000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void runCheck();
+      }
+    };
+
+    const handleFocus = () => {
+      void runCheck();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [
+    currentProjectId,
+    trackerAssociations,
+    hasAssociationItems,
+    checkForUpdates,
+    clearSyncAvailability,
+  ]);
 
   // Handle tracker button click
   const handleTrackerClick = useCallback(() => {

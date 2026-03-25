@@ -1,0 +1,88 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { installMockApi, type MockApi } from '../../../../tests/mocks/electron-api';
+import { useSyncStore } from './useSyncStore';
+describe('useSyncStore', () => {
+  let api: MockApi;
+
+  beforeEach(() => {
+    api = installMockApi();
+    useSyncStore.getState().reset();
+    vi.clearAllMocks();
+  });
+
+  it('records incoming Jira updates without opening the review panel', async () => {
+    api.tracker.sync.getPreview.mockResolvedValue({
+      success: true,
+      preview: {
+        tracker_type: 'jira',
+        link_id: 'assoc-1',
+        external_project_key: 'PROJ',
+        new_items: [],
+        updated_items: [
+          {
+            plan_item_id: 'plan-1',
+            external_key: 'PROJ-1',
+            title: 'Update',
+            changes: [
+              {
+                field: 'title',
+                old_value: 'Old',
+                new_value: 'New',
+              },
+            ],
+          },
+        ],
+        conflicts: [],
+        deleted_in_tracker: [],
+        stats: {
+          total: 1,
+          new: 0,
+          updated: 1,
+          conflicts: 0,
+          deleted: 0,
+          unchanged: 0,
+        },
+      },
+    });
+
+    const result = await useSyncStore.getState().checkForUpdates('project-1', 'assoc-1');
+
+    expect(result?.hasIncomingChanges).toBe(true);
+    expect(result?.changeCount).toBe(1);
+    expect(useSyncStore.getState().showPanel).toBe(false);
+    expect(useSyncStore.getState().syncPreview).toBeNull();
+    expect(useSyncStore.getState().syncAvailability['assoc-1']?.stats?.updated).toBe(1);
+  });
+
+  it('does not open review when Jira is already up to date', async () => {
+    api.tracker.sync.getPreview.mockResolvedValue({
+      success: true,
+      preview: {
+        tracker_type: 'jira',
+        link_id: 'assoc-1',
+        external_project_key: 'PROJ',
+        new_items: [],
+        updated_items: [],
+        conflicts: [],
+        deleted_in_tracker: [],
+        stats: {
+          total: 3,
+          new: 0,
+          updated: 0,
+          conflicts: 0,
+          deleted: 0,
+          unchanged: 3,
+        },
+      },
+    });
+
+    await useSyncStore.getState().startSync('project-1', 'assoc-1');
+
+    expect(useSyncStore.getState().showPanel).toBe(false);
+    expect(useSyncStore.getState().syncPreview).toBeNull();
+    expect(useSyncStore.getState().syncAvailability['assoc-1']).toMatchObject({
+      hasIncomingChanges: false,
+      changeCount: 0,
+    });
+  });
+});

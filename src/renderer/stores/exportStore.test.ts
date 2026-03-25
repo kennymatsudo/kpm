@@ -40,6 +40,7 @@ describe('export store', () => {
         },
       ],
       queueCount: 1,
+      queueCountsByAssociation: { 'assoc-1': 1 },
       queuedItemIds: new Set(['plan-1']),
     });
     api.tracker.exportQueue.updateCustomFieldOverrides.mockResolvedValue({ success: true });
@@ -54,5 +55,91 @@ describe('export store', () => {
     expect(useExportStore.getState().queueEntries[0]?.custom_field_overrides).toEqual({
       'custom-field': 'value-1',
     });
+  });
+
+  it('tracks queue counts per association when loading the queue', async () => {
+    api.tracker.exportQueue.get.mockResolvedValue({
+      success: true,
+      entries: [
+        {
+          id: 'queue-1',
+          kpm_project_id: 'project-1',
+          plan_item_id: 'plan-1',
+          association_id: 'assoc-1',
+          operation: 'create',
+          target_issue_type_id: 'epic',
+          target_issue_type_name: 'Epic',
+          target_parent_key: null,
+          target_status_category: null,
+          custom_field_overrides: null,
+          queued_by: 'user',
+          queued_at: '2024-01-01T00:00:00.000Z',
+          error_message: null,
+          plan_item: {
+            id: 'plan-1',
+            title: 'Plan item 1',
+            description: null,
+            label: null,
+            parent_id: null,
+            external_key: null,
+            external_type: null,
+          },
+        },
+        {
+          id: 'queue-2',
+          kpm_project_id: 'project-1',
+          plan_item_id: 'plan-2',
+          association_id: 'assoc-2',
+          operation: 'create',
+          target_issue_type_id: 'story',
+          target_issue_type_name: 'Story',
+          target_parent_key: null,
+          target_status_category: null,
+          custom_field_overrides: null,
+          queued_by: 'user',
+          queued_at: '2024-01-01T00:00:00.000Z',
+          error_message: null,
+          plan_item: {
+            id: 'plan-2',
+            title: 'Plan item 2',
+            description: null,
+            label: null,
+            parent_id: null,
+            external_key: null,
+            external_type: null,
+          },
+        },
+        {
+          id: 'queue-3',
+          kpm_project_id: 'project-1',
+          plan_item_id: 'plan-3',
+          association_id: 'assoc-1',
+          operation: 'update',
+          target_issue_type_id: 'epic',
+          target_issue_type_name: 'Epic',
+          target_parent_key: null,
+          target_status_category: null,
+          custom_field_overrides: null,
+          queued_by: 'user',
+          queued_at: '2024-01-01T00:00:00.000Z',
+          error_message: null,
+          plan_item: {
+            id: 'plan-3',
+            title: 'Plan item 3',
+            description: null,
+            label: null,
+            parent_id: null,
+            external_key: null,
+            external_type: null,
+          },
+        },
+      ],
+    });
+
+    await useExportStore.getState().loadQueue('project-1');
+
+    expect(useExportStore.getState().queueCount).toBe(3);
+    expect(useExportStore.getState().getQueueCountForAssociation('assoc-1')).toBe(2);
+    expect(useExportStore.getState().getQueueCountForAssociation('assoc-2')).toBe(1);
   });
 });

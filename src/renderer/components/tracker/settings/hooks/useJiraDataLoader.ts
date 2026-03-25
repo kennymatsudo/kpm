@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useExportStore } from '../../../../stores';
 import {
   useTrackerMetadataStore,
@@ -34,6 +35,9 @@ interface JiraDataLoaderResult {
   statusesByCategory: Record<string, TrackerStatusOption[]>;
 }
 
+const EMPTY_ISSUE_TYPES: TrackerIssueTypeOption[] = [];
+const EMPTY_STATUSES: TrackerStatusOption[] = [];
+
 export function useJiraDataLoader({
   projectId,
   scopeId,
@@ -46,12 +50,33 @@ export function useJiraDataLoader({
     saveMapping,
     removeMapping,
   } = useExportStore();
+  const {
+    jiraIssueTypes,
+    jiraStatuses,
+    isLoadingTypesForProject,
+    isLoadingStatusesForProject,
+    typesError,
+    statusesError,
+    loadIssueTypes,
+    loadStatuses,
+  } = useTrackerMetadataStore(
+    useShallow((state) => ({
+      jiraIssueTypes: projectKey
+        ? state.issueTypesByProject[projectKey] ?? EMPTY_ISSUE_TYPES
+        : EMPTY_ISSUE_TYPES,
+      isLoadingTypesForProject: Boolean(projectKey) && state.loadingIssueTypesFor.has(projectKey),
+      typesError: projectKey ? state.issueTypesErrorByProject[projectKey] || null : null,
+      loadIssueTypes: state.loadIssueTypes,
+      loadStatuses: state.loadStatuses,
+    }))
   );
   const isLoadingTypes = isLoadingTypesForProject && jiraIssueTypes.length === 0;
   const isLoadingStatuses = isLoadingStatusesForProject && jiraStatuses.length === 0;
 
   useEffect(() => {
     void loadMappingsByScope(projectId, scopeId);
+    if (projectKey) {
+    }
 
   const statusesByCategory = jiraStatuses.reduce<Record<string, TrackerStatusOption[]>>((acc, status) => {
     const cat = status.categoryKey;
