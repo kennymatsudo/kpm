@@ -16,9 +16,11 @@ interface ReviewTabProps {
   );
 }
 
+export function ReviewTab({ session }: ReviewTabProps) {
   const hasPr = session.pr_number != null;
 
   useEffect(() => {
+    if (!hasPr) return;
     }
 
   return (

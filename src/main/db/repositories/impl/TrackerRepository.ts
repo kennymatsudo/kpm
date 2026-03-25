@@ -119,6 +119,7 @@ export class TrackerRepository implements ITrackerRepository {
         SELECT
           a.id, a.kpm_project_id, a.scope_id, a.jql_filter, a.display_name,
           a.status_mapping, a.custom_field_values, a.epic_key, a.last_synced_at, a.created_at,
+          c.tracker_type,
           s.project_key, s.project_name,
           c.site_url
         FROM kpm_tracker_associations a
@@ -131,6 +132,7 @@ export class TrackerRepository implements ITrackerRepository {
         SELECT
           a.id, a.kpm_project_id, a.scope_id, a.jql_filter, a.display_name,
           a.status_mapping, a.custom_field_values, a.epic_key, a.last_synced_at, a.created_at,
+          c.tracker_type,
           s.project_key, s.project_name,
           c.site_url
         FROM kpm_tracker_associations a

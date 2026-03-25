@@ -8,6 +8,12 @@ interface Props {
 }
 
 export function TrackerSettings({ currentProjectId }: Props) {
+  const {
+    credentials,
+    isLoading: isLoadingCreds,
+    loadCredentials,
+    selectedTrackerType,
+  } = useCredentialStore();
   const { associations, isLoadingAssociations, loadAssociations } = useTrackerStore();
 
   const [showFullSettings, setShowFullSettings] = useState(false);

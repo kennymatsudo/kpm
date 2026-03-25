@@ -23,6 +23,8 @@ import { Z_INDEX } from '../../../constants/zIndex';
 
   const {
     loadAssociations,
+    getAssociationById,
+    updateAssociationEpicKey,
     hasAssociationItems,
     importAll,
     isImporting,
@@ -41,6 +43,7 @@ import { Z_INDEX } from '../../../constants/zIndex';
   const [isImported, setIsImported] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  const association = getAssociationById(associationId);
 
   // Epic key state
   const [epicKey, setEpicKey] = useState(association?.epic_key ?? '');
@@ -119,6 +122,8 @@ import { Z_INDEX } from '../../../constants/zIndex';
   const handleSaveEpicKey = async () => {
     setIsSavingEpicKey(true);
     try {
+      const result = await updateAssociationEpicKey(associationId, epicKey.trim() || null);
+      if (!result.success && currentProjectId) {
         void loadAssociations(currentProjectId);
       }
     } finally {

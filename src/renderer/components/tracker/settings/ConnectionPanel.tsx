@@ -1,11 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useCredentialStore } from '../../../stores';
 import { LoadingSpinner } from '../../ui/LoadingButton';
+import type { TrackerType } from '../../../../shared/types';
 
+interface Props {
+  trackerType: TrackerType;
+}
+
+export function ConnectionPanel({ trackerType }: Props) {
   const {
     credentials,
     isLoading,
     error,
+    testCredentials,
+    saveCredentials,
     deleteCredentials,
     clearError,
   } = useCredentialStore();
@@ -18,6 +26,8 @@ import { LoadingSpinner } from '../../ui/LoadingButton';
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+
+  const hasCredentials = Boolean(currentCredential);
 
   useEffect(() => {
     if (currentCredential) {
@@ -61,6 +71,7 @@ import { LoadingSpinner } from '../../ui/LoadingButton';
 
   const handleDisconnect = async () => {
     setIsSaving(true);
+    await deleteCredentials('jira');
     setSiteUrl('');
     setEmail('');
     setApiToken('');

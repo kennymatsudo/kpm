@@ -179,6 +179,7 @@ export interface TrackerAssociation {
 
 /** Association with joined scope and connection info for display */
 export interface TrackerAssociationWithScope extends TrackerAssociation {
+  tracker_type: TrackerType;      // From connection
   project_key: string;            // From scope
   project_name: string | null;    // From scope
   site_url: string;               // From connection

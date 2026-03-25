@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTrackerConfigStore } from '../../../../stores';
 import type { CustomFieldValues, JiraCustomField, SyncReviewItem } from '../../../../../shared/types';
 
 interface CustomFieldManagementDeps {
@@ -29,11 +30,13 @@ export function useCustomFieldManagement({
   const [customFieldsError, setCustomFieldsError] = useState<string | null>(null);
   const [customFieldDraft, setCustomFieldDraft] = useState<CustomFieldValues>({});
   const [customFieldDirty, setCustomFieldDirty] = useState(false);
+  const loadAvailableCustomFields = useTrackerConfigStore((state) => state.loadCustomFields);
 
   const selectedIssueTypeId = useMemo(() => {
     if (!selectedItem) return null;
     return selectedItem.queueEntry.target_issue_type_id ?? selectedItem.resolvedType?.id ?? null;
   }, [selectedItem]);
+  const selectedOverrides = selectedItem?.queueEntry.custom_field_overrides ?? null;
 
   // Reset custom field draft when selection changes
   useEffect(() => {
@@ -43,6 +46,7 @@ export function useCustomFieldManagement({
 
   // Load custom fields for the selected issue type
   useEffect(() => {
+    const loadFields = async () => {
       if (!projectKey || !selectedIssueTypeId) {
         setCustomFields([]);
         setCustomFieldsError(null);
@@ -53,16 +57,27 @@ export function useCustomFieldManagement({
       setIsLoadingCustomFields(true);
       setCustomFieldsError(null);
       try {
+        const result = await loadAvailableCustomFields(
+          projectKey,
+          selectedIssueTypeId,
+          selectedOverrides
+        );
+        if (result.success) {
+          setCustomFields(result.fields || []);
         } else {
+          setCustomFields([]);
           setCustomFieldsError(result.error || 'Failed to load custom fields');
         }
       } catch (e) {
+        setCustomFields([]);
         setCustomFieldsError(e instanceof Error ? e.message : 'Failed to load custom fields');
       } finally {
         setIsLoadingCustomFields(false);
       }
     };
 
+    void loadFields();
+  }, [loadAvailableCustomFields, projectKey, selectedIssueTypeId, selectedOverrides]);
 
   const handleCustomFieldChange = (fieldId: string, value: string) => {
     setCustomFieldDraft((prev) => {

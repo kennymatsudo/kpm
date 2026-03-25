@@ -137,6 +137,7 @@ export interface StreamingSessionServiceDeps {
   subscribeToDocumentUpdate: (callback: (update: DocumentUpdatePayload) => void) => () => void;
 
   /** Read project context file (AGENTS.md or CLAUDE.md) content for a project */
+  readClaudeMd: (projectId: string) => Promise<{ success: boolean; content: string | null; filename?: string; error?: string }>;
 
   /** Read a document file from the docs/ directory */
   readDocumentFile: (

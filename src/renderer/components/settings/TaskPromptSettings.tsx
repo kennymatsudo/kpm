@@ -17,6 +17,10 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
   const setScope = useTaskPromptTemplateStore((state) => state.setScope);
   const setSelectedTemplateId = useTaskPromptTemplateStore((state) => state.setSelectedTemplateId);
   const loadTemplatesFromStore = useTaskPromptTemplateStore((state) => state.loadTemplates);
+  const loadBuiltinDefault = useTaskPromptTemplateStore((state) => state.loadBuiltinDefault);
+  const saveTemplate = useTaskPromptTemplateStore((state) => state.saveTemplate);
+  const deleteSelectedTemplate = useTaskPromptTemplateStore((state) => state.deleteSelectedTemplate);
+  const setSelectedTemplateAsDefault = useTaskPromptTemplateStore((state) => state.setSelectedTemplateAsDefault);
 
   // Derived state
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) || null;
@@ -53,6 +57,7 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
   useEffect(() => {
     const loadDefaultIfEmpty = async () => {
       if (!isLoading && templates.length === 0 && !selectedTemplate) {
+        const result = await loadBuiltinDefault();
         if (result.success && result.promptContent) {
           setPromptContent(result.promptContent);
           setName('');
@@ -61,6 +66,7 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
       }
     };
     void loadDefaultIfEmpty();
+  }, [isLoading, templates.length, selectedTemplate, loadBuiltinDefault]);
 
   const selectTemplate = (template: TaskPromptTemplate) => {
     setSelectedTemplateId(template.id);
@@ -76,6 +82,7 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
 
   const handleCreate = async () => {
     // Get the default prompt content
+    const result = await loadBuiltinDefault();
     const defaultContent = result.success && result.promptContent ? result.promptContent : '';
 
     setSelectedTemplateId(null);
@@ -87,6 +94,7 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
   const handleResetToDefault = async () => {
     setIsResetting(true);
     try {
+      const result = await loadBuiltinDefault();
       if (result.success && result.promptContent) {
         setPromptContent(result.promptContent);
         toast.success('Reset to default');
@@ -109,7 +117,13 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
     setIsSaving(true);
 
     try {
+      const result = await saveTemplate(name, promptContent);
+      if (result.success && result.template) {
+        toast.success(selectedTemplate ? 'Template saved' : 'Template created');
+        setSelectedTemplateId(result.template.id);
+        setShowingBuiltinDefault(false);
       } else {
+        toast.error(result.error || 'Failed to save template');
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Save failed');
@@ -124,6 +138,7 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
     setIsDeleting(true);
 
     try {
+      const result = await deleteSelectedTemplate();
       if (result.success) {
         setSelectedTemplateId(null);
         clearForm();
@@ -142,6 +157,7 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
     if (!selectedTemplate) return;
 
     try {
+      const result = await setSelectedTemplateAsDefault();
       if (result.success && result.template) {
         setSelectedTemplateId(result.template.id);
         toast.success('Set as default');

@@ -3,3 +3,4 @@ export { useLayoutShortcuts, type UseLayoutShortcutsOptions } from './useLayoutS
 export { usePersistedViewState, type UsePersistedViewStateReturn } from './usePersistedViewState';
 export { useProjectEdit } from './useProjectEdit';
 export { useProjectMenu } from './useProjectMenu';
+export { useTrackerTopBarIntegration } from './useTrackerTopBarIntegration';

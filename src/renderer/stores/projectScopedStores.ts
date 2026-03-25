@@ -24,11 +24,13 @@ import { useChatStore } from './chat';
 import { useTrackerStore } from './trackerStore';
 import { useFileTreeStore } from './fileTreeStore';
 import { useExportStore } from './tracker/useExportStore';
+import { useTrackerConfigStore } from './tracker/useConfigStore';
 import { useSyncStore } from './tracker/useSyncStore';
 import { useGroupStore } from './groupStore';
 import { useWorkspaceStore } from './workspaceStore';
 import { useProjectStore } from './projectStore';
 import { useTaskPromptTemplateStore } from './taskPromptTemplateStore';
+import { useToolPermissionStore } from './toolPermissionStore';
 
 interface AnyStore { getState: () => unknown }
 
@@ -45,6 +47,7 @@ const PROJECT_SCOPED_STORES: StoreEntry[] = [
   { name: 'chat', store: useChatStore },
   { name: 'tracker', store: useTrackerStore },
   { name: 'export', store: useExportStore },
+  { name: 'trackerConfig', store: useTrackerConfigStore },
   { name: 'sync', store: useSyncStore },
   { name: 'fileTree', store: useFileTreeStore },
   { name: 'groups', store: useGroupStore },
@@ -52,6 +55,7 @@ const PROJECT_SCOPED_STORES: StoreEntry[] = [
   { name: 'workspace', store: useWorkspaceStore },
   { name: 'project', store: useProjectStore },
   { name: 'taskPromptTemplates', store: useTaskPromptTemplateStore },
+  { name: 'toolPermissions', store: useToolPermissionStore },
 ];
 
 /**

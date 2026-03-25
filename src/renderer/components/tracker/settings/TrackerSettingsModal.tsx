@@ -6,6 +6,7 @@ import { TrackerSidebar } from './TrackerSidebar';
 import { ConnectionPanel } from './ConnectionPanel';
 import { LinkedProjectPanel } from './LinkedProjectPanel';
 import { LinkNewProjectPanel } from './LinkNewProjectPanel';
+import type { TrackerType } from '../../../../shared/types';
 
 type SelectedItem = 'connection' | 'link-new' | { type: 'project'; associationId: string };
 
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export function TrackerSettingsModal({ isOpen, onClose, currentProjectId, initialSelection }: Props) {
+  const { credentials, selectedTrackerType, setSelectedTrackerType } = useCredentialStore();
   const { associations, loadAssociations } = useTrackerStore();
 
   const [selectedItem, setSelectedItem] = useState<SelectedItem>(
@@ -27,10 +29,14 @@ export function TrackerSettingsModal({ isOpen, onClose, currentProjectId, initia
   // We don't reload here to avoid triggering parent's loading state which would unmount this modal.
 
   // If no credentials, force connection panel
+  const hasCredentials = credentials.some((credential) => credential.type === activeTrackerType);
   const effectiveSelection = hasCredentials ? selectedItem : 'connection';
 
   // Filter associations to current project
   const projectAssociations = currentProjectId
+    ? associations.filter(
+        (a) => a.kpm_project_id === currentProjectId && a.tracker_type === activeTrackerType
+      )
     : [];
 
   const handleSelectItem = (item: SelectedItem) => {
@@ -55,6 +61,7 @@ export function TrackerSettingsModal({ isOpen, onClose, currentProjectId, initia
 
   const renderPanel = () => {
     if (effectiveSelection === 'connection') {
+      return <ConnectionPanel key={`connection-${activeTrackerType}`} trackerType={activeTrackerType} />;
     }
 
     if (effectiveSelection === 'link-new') {
@@ -62,6 +69,7 @@ export function TrackerSettingsModal({ isOpen, onClose, currentProjectId, initia
         <LinkNewProjectPanel
           key="link-new"
           projectId={currentProjectId!}
+          trackerType={activeTrackerType}
           onComplete={handleLinkComplete}
           onCancel={() => setSelectedItem('connection')}
         />
@@ -73,6 +81,12 @@ export function TrackerSettingsModal({ isOpen, onClose, currentProjectId, initia
         (a) => a.id === effectiveSelection.associationId
       );
       if (!association) {
+        return (
+          <ConnectionPanel
+            key={`connection-fallback-${activeTrackerType}`}
+            trackerType={activeTrackerType}
+          />
+        );
       }
       return (
         <LinkedProjectPanel
@@ -108,10 +122,12 @@ export function TrackerSettingsModal({ isOpen, onClose, currentProjectId, initia
       <ModalBody className="p-0 flex min-h-[480px]">
         {/* Sidebar */}
         <TrackerSidebar
+          trackerType={activeTrackerType}
           hasCredentials={hasCredentials}
           associations={projectAssociations}
           selectedItem={effectiveSelection}
           onSelectItem={handleSelectItem}
+          onSelectTrackerType={setSelectedTrackerType}
           canLinkNew={hasCredentials && !!currentProjectId}
         />
 

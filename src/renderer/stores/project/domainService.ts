@@ -4,6 +4,7 @@ import type {
   Repo,
   Worktree,
 } from '../../../shared/types';
+import { useProjectStore } from '../projectStore';
 
 export interface LoadedProjectData {
   projectId: string;
@@ -18,8 +19,16 @@ export interface LoadedProjectData {
  * This keeps project loading orchestration outside components/hooks.
  */
 export function applyLoadedProjectData(data: LoadedProjectData): void {
+  const state = useProjectStore.getState();
 
+  state.setCurrentProject(data.projectId);
+  state.setRepos(data.repos);
+  state.setAttachments(data.attachments);
+  state.updatePlanItems(data.planItems);
+  state.setWorktrees(data.worktrees);
+  state.setRepoBranches({});
 }
 
 export function setProjectSwitching(switching: boolean): void {
+  useProjectStore.getState().setSwitchingProject(switching);
 }

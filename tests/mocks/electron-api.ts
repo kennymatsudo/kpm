@@ -78,9 +78,11 @@ export function createMockApi() {
     repos: {
       list: vi.fn().mockResolvedValue([] as Repo[]),
       remove: vi.fn().mockResolvedValue({ success: true }),
+      selectDialog: vi.fn().mockResolvedValue([] as string[]),
       getBranch: vi.fn().mockResolvedValue(null as string | null),
       watch: vi.fn().mockResolvedValue({ success: true }),
       unwatch: vi.fn().mockResolvedValue({ success: true }),
+      updateEnvironmentMode: vi.fn().mockResolvedValue({ success: true }),
       onBranchChanged: noopUnsub,
     },
 
@@ -124,9 +126,13 @@ export function createMockApi() {
         add: vi.fn().mockResolvedValue({ success: true }),
         remove: vi.fn().mockResolvedValue({ success: true }),
         hasImported: vi.fn().mockResolvedValue(false),
+        updateStatusMapping: vi.fn().mockResolvedValue({ success: true }),
+        updateCustomFieldValues: vi.fn().mockResolvedValue({ success: true }),
+        updateEpicKey: vi.fn().mockResolvedValue({ success: true }),
       },
       projects: {
         list: vi.fn().mockResolvedValue({ success: true, projects: [] }),
+        getStatuses: vi.fn().mockResolvedValue({ success: true, statuses: [] }),
         getLabels: vi.fn().mockResolvedValue({ success: true, labels: [] }),
         getComponents: vi.fn().mockResolvedValue({ success: true, components: [] }),
       },
@@ -148,6 +154,7 @@ export function createMockApi() {
         add: vi.fn().mockResolvedValue({ success: true }),
         remove: vi.fn().mockResolvedValue({ success: true }),
         updateStatus: vi.fn().mockResolvedValue({ success: true }),
+        updateCustomFieldOverrides: vi.fn().mockResolvedValue({ success: true }),
         clear: vi.fn().mockResolvedValue({ success: true }),
         count: vi.fn().mockResolvedValue({ success: true, count: 0 }),
       },
@@ -165,6 +172,9 @@ export function createMockApi() {
       },
       issueTypes: {
         get: vi.fn().mockResolvedValue({ success: true, issueTypes: [] }),
+      },
+      customFields: {
+        getAvailable: vi.fn().mockResolvedValue({ success: true, fields: [] }),
       },
     },
 
@@ -188,9 +198,61 @@ export function createMockApi() {
       onOpenProject: noopUnsub,
     },
 
+    settings: {
+      anthropic: {
+        hasKey: vi.fn().mockResolvedValue({ success: true, hasKey: false }),
+        testKey: vi.fn().mockResolvedValue({ success: true, valid: true }),
+        saveKey: vi.fn().mockResolvedValue({ success: true }),
+        deleteKey: vi.fn().mockResolvedValue({ success: true }),
+      },
+      app: {
+        get: vi.fn().mockResolvedValue({ success: true, value: undefined }),
+        set: vi.fn().mockResolvedValue({ success: true }),
+      },
+    },
+
+    mcpServers: {
+      listAvailable: vi.fn().mockResolvedValue({ success: true, plugins: [] }),
+      getPreferences: vi.fn().mockResolvedValue({ success: true, preferences: {} }),
+      setEnabled: vi.fn().mockResolvedValue({ success: true }),
+    },
+
+    permissions: {
+      list: vi.fn().mockResolvedValue([]),
+      revoke: vi.fn().mockResolvedValue({ success: true }),
+      revokeAll: vi.fn().mockResolvedValue({ success: true }),
+    },
+
     storybook: {
       updateUrl: vi.fn().mockResolvedValue({ success: true }),
       testConnection: vi.fn().mockResolvedValue({ success: true, componentCount: 0 }),
+    },
+
+    taskPromptTemplates: {
+      list: vi.fn().mockResolvedValue({ success: true, templates: [] }),
+      get: vi.fn().mockResolvedValue({ success: true, template: null }),
+      getEffective: vi.fn().mockResolvedValue({ success: true, template: null }),
+      getBuiltinDefault: vi.fn().mockResolvedValue({ success: true, promptContent: 'Default task prompt' }),
+      create: vi.fn().mockResolvedValue({ success: true, template: null }),
+      update: vi.fn().mockResolvedValue({ success: true, template: null }),
+      delete: vi.fn().mockResolvedValue({ success: true }),
+      setDefault: vi.fn().mockResolvedValue({ success: true, template: null }),
+      ensureDefault: vi.fn().mockResolvedValue({ success: true }),
+    },
+
+    devSessions: {
+      getByProject: vi.fn().mockResolvedValue({ success: true, sessions: [] }),
+      getByProjectWithPlanItems: vi.fn().mockResolvedValue({ success: true, sessions: [] }),
+      getActive: vi.fn().mockResolvedValue({ success: true, sessions: [] }),
+      get: vi.fn().mockResolvedValue({ success: true, session: null }),
+      hasActive: vi.fn().mockResolvedValue({ success: true, hasActive: false }),
+      updateStatus: vi.fn().mockResolvedValue({ success: true }),
+      delete: vi.fn().mockResolvedValue({ success: true }),
+      destroy: vi.fn().mockResolvedValue({ success: true }),
+      checkDirty: vi.fn().mockResolvedValue({ success: true, isDirty: false, files: [] }),
+      getDiff: vi.fn().mockResolvedValue({ success: true, diff: '' }),
+      getCommitsAhead: vi.fn().mockResolvedValue({ success: true, count: 0 }),
+      onStatusChanged: noopUnsub,
     },
 
     github: {

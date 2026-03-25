@@ -2,11 +2,13 @@ import { useShallow } from 'zustand/react/shallow';
 import {
   useProjectDomainStore,
   useBriefingStore,
+  useCredentialStore,
 } from '../../stores';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { Z_INDEX } from '../../constants/zIndex';
 import { useProjectEdit } from './hooks/useProjectEdit';
 import { useProjectMenu } from './hooks/useProjectMenu';
+import { useTrackerTopBarIntegration } from './hooks/useTrackerTopBarIntegration';
 
 interface TopBarProps {
   // Sidebar controls
@@ -66,6 +68,10 @@ export function TopBar({
     }))
   );
   const currentProject = projects.find((p) => p.id === currentProjectId) || null;
+  const { selectedTrackerType } = useCredentialStore(
+    useShallow((state) => ({ selectedTrackerType: state.selectedTrackerType }))
+  );
+  const trackerLabel = selectedTrackerType === 'jira' ? 'Jira' : 'Linear';
 
   const {
     isEditing,
@@ -97,13 +103,17 @@ export function TopBar({
   });
 
   const {
+    hasTrackerCredentials,
+    trackerCredential,
     hasAssociations,
     associations,
     syncPanelAssociationId,
     setSyncPanelAssociationId,
     queueCount,
+    handleTrackerClick,
     handleSyncComplete,
     handleExportComplete,
+  } = useTrackerTopBarIntegration({ currentProjectId, trackerType: selectedTrackerType });
 
   return (
     <>
@@ -143,8 +153,16 @@ export function TopBar({
       )}
 
       {showCredentialsDialog && (
+        <TrackerConfigDialog
+          trackerType={selectedTrackerType}
+          onClose={() => setShowCredentialsDialog(false)}
+        />
       )}
 
+      {showAssociationDialog && trackerCredential && (
+        <TrackerLinkProjectDialog
+          trackerType={selectedTrackerType}
+          siteUrl={trackerCredential.site_url ?? ''}
           onClose={() => setShowAssociationDialog(false)}
         />
       )}

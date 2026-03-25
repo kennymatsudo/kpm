@@ -1,3 +1,4 @@
+import type { Project, PlanItem, FocusedResource, StatusCategory } from '../../../shared/types';
 import { getStatusCategory } from '../../constants/statusConfig';
 import type { ProjectDomainState } from './types';
 
@@ -5,6 +6,11 @@ export const selectProjectSummary = (state: ProjectDomainState) => ({
   projects: state.projects,
   currentProjectId: state.currentProjectId,
 });
+
+export function selectProjectById(projects: readonly Project[], projectId: string | null): Project | undefined {
+  if (!projectId) return undefined;
+  return projects.find((project) => project.id === projectId);
+}
 
 const ROOT_PARENT_ID = '__root__';
 

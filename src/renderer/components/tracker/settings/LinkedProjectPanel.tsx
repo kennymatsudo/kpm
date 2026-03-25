@@ -8,6 +8,7 @@ import {
   useEpicKey,
   useCustomFieldSettings,
   useUnlinkFlow,
+  type TrackerIssueTypeOption,
 } from './hooks';
 import type {
   TrackerAssociationWithScope,
@@ -240,6 +241,7 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
 // Type Mappings Tab Component
 interface TypeMappingsTabProps {
   typeMappings: { id: string; kpm_label: string; tracker_issue_type_id: string }[];
+  jiraIssueTypes: TrackerIssueTypeOption[];
   isLoading: boolean;
   newLabel: string;
   setNewLabel: (v: string) => void;
@@ -352,6 +354,7 @@ interface StatusMappingsTabProps {
   isSaving: boolean;
   error: string | null;
   onMappingChange: (category: keyof StatusMapping, value: string) => void;
+  onSave: () => Promise<unknown>;
   getCategoryLabel: (key: string) => string;
 }
 
@@ -423,6 +426,7 @@ function StatusMappingsTab({
 
 // Custom Fields Tab Component
 interface CustomFieldsTabProps {
+  jiraIssueTypes: TrackerIssueTypeOption[];
   selectedIssueType: string;
   customFields: JiraCustomField[];
   activeFieldValues: CustomFieldValues;
@@ -432,6 +436,7 @@ interface CustomFieldsTabProps {
   error: string | null;
   onIssueTypeChange: (typeId: string) => void;
   onFieldValueChange: (fieldId: string, value: string) => void;
+  onSave: () => Promise<unknown>;
 }
 
 function CustomFieldsTab({

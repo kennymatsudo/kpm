@@ -1,8 +1,12 @@
 import { useState, useMemo } from 'react';
 import { CloseIcon } from '../../icons';
 import { LoadingSpinner } from '../../ui/LoadingButton';
+import type { TrackerProjectRef } from '../../../stores/tracker/useMetadataStore';
 
 interface Props {
+  projects: TrackerProjectRef[];
+  selectedProject: TrackerProjectRef | null;
+  onSelect: (project: TrackerProjectRef | null) => void;
   isLoading: boolean;
   error: string | null;
   onRetry: () => void;

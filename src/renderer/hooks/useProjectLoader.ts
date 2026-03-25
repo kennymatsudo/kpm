@@ -27,6 +27,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
 
   const { setProjects, addProject, removeProject, reset } = useProjectDomainActions();
   const {
+    addReposToProject,
     setRepoBranches,
     setRepoBranch,
   } = useResourceDomainActions();
@@ -65,6 +66,9 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
         throw error;
       }
 
+        return;
+      }
+
       // Load branches for repos (deferred to avoid blocking initial UI swap)
       const branchesById: Record<string, string | null> = {};
       const fetchBranches = async () => {
@@ -75,10 +79,16 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       // 2. Tear down old project resources
       await teardownWatchers();
 
+        return;
+      }
+
       if (previousConnectedProjectId && previousConnectedProjectId !== projectId) {
         // Reset all project-scoped stores when switching projects to prevent memory leaks
         // See projectScopedStores.ts to add new stores that need cleanup
         resetAllProjectScopedStores();
+      }
+
+        return;
       }
 
       // 3. Batch update all store state at once (atomic swap)
@@ -144,6 +154,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
     }
 
     return project;
+  }, [addProject, addReposToProject, loadProjectData]);
 
   const deleteCurrentProject = useCallback(async () => {
     if (!currentProjectId) return;

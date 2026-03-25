@@ -2,6 +2,7 @@ import type { StateCreator } from 'zustand';
 import type {
   Project,
   Repo,
+  RepoEnvironmentMode,
   Attachment,
   PlanItem,
   PlanItemUpdates,
@@ -47,6 +48,9 @@ export interface ProjectSlice {
   addProject: (project: Project) => void;
   removeProject: (projectId: string) => void;
   setCurrentProject: (projectId: string | null) => void;
+  refreshProjects: () => Promise<Project[]>;
+  updateProjectStorybookUrl: (projectId: string, storybookUrl: string | null) => Promise<Project[]>;
+  testStorybookConnection: (url: string) => Promise<{ success: boolean; componentCount?: number; error?: string }>;
   reset: () => void;
   resetProjectState: () => void;  // Clears project-specific state while preserving project list
 }
@@ -70,11 +74,16 @@ export interface ResourceSlice {
   setRepos: (repos: Repo[]) => void;
   setAttachments: (attachments: Attachment[]) => void;
   addRepo: (repo: Repo) => void;
+  addReposToProject: (projectId: string, repoPaths: string[]) => Promise<Repo[]>;
+  addReposFromDialog: (projectId: string) => Promise<Repo[]>;
   removeRepo: (repoId: string) => void;
+  removeRepoFromProject: (projectId: string, repoId: string) => Promise<void>;
   addAttachment: (attachment: Attachment) => void;
   removeAttachment: (attachmentId: string) => void;
+  refreshRepos: (projectId: string) => Promise<Repo[]>;
   setRepoBranches: (branches: Record<string, string | null>) => void;
   setRepoBranch: (repoId: string, branch: string | null) => void;
+  updateRepoEnvironmentMode: (projectId: string, repoId: string, mode: RepoEnvironmentMode) => Promise<boolean>;
   // Worktree actions
   setWorktrees: (worktrees: Worktree[]) => void;
   addWorktree: (worktree: Worktree) => void;
@@ -107,6 +116,9 @@ export type ProjectState = ProjectStoreValues &
 export type ProjectDomainState = Pick<
   ProjectState,
   'projects' | 'currentProjectId' |
+  'setProjects' | 'addProject' | 'removeProject' | 'setCurrentProject' |
+  'refreshProjects' | 'updateProjectStorybookUrl' | 'testStorybookConnection' |
+  'reset' | 'resetProjectState'
 >;
 
 export type PlanDomainState = Pick<
@@ -119,6 +131,9 @@ export type PlanDomainState = Pick<
 
 export type ResourceDomainState = Pick<
   ProjectState,
+  'setRepos' | 'setAttachments' | 'addRepo' | 'addReposToProject' | 'addReposFromDialog' |
+  'removeRepo' | 'removeRepoFromProject' | 'addAttachment' | 'removeAttachment' | 'refreshRepos' |
+  'setWorktrees' | 'addWorktree' | 'removeWorktree' |
 >;
 
 export type UiDomainState = Pick<

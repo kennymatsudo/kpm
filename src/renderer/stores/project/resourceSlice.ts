@@ -15,6 +15,26 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
   setRepos: (repos) => set({ repos }),
   setAttachments: (attachments) => set({ attachments }),
   addRepo: (repo) => set((state) => ({ repos: [...state.repos, repo] })),
+  addReposToProject: async (projectId, repoPaths) => {
+    if (repoPaths.length === 0) return [];
+
+    const repos = await Promise.all(repoPaths.map((path) => deps.api.repos.add(projectId, path)));
+
+
+    set((state) => ({
+      repos: [...state.repos, ...repos],
+      repoBranches: {
+        ...state.repoBranches,
+      },
+    }));
+
+    return repos;
+  },
+  addReposFromDialog: async (projectId) => {
+    const repoPaths = await deps.api.repos.selectDialog();
+    if (repoPaths.length === 0) return [];
+    return get().addReposToProject(projectId, repoPaths);
+  },
   removeRepo: (repoId) => set((state) => {
     // Also remove the branch entry when removing a repo
     const { [repoId]: _, ...remainingBranches } = state.repoBranches;
@@ -23,16 +43,46 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
       repoBranches: remainingBranches,
     };
   }),
+  removeRepoFromProject: async (_projectId, repoId) => {
+    const repo = get().repos.find((entry) => entry.id === repoId);
+
+    await deps.api.repos.remove(repoId);
+
+    if (repo) {
+    }
+
+    get().removeRepo(repoId);
+  },
   addAttachment: (attachment) => set((state) => ({
     attachments: [...state.attachments, attachment],
   })),
   removeAttachment: (attachmentId) => set((state) => ({
     attachments: state.attachments.filter((a) => a.id !== attachmentId),
   })),
+  refreshRepos: async (projectId) => {
+    const repos = await deps.api.repos.list(projectId);
+    const branchesByPath = repos.length > 0
+      : {};
+
+    set({
+      repos,
+    });
+
+    return repos;
+  },
   setRepoBranches: (branches) => set({ repoBranches: branches }),
   setRepoBranch: (repoId, branch) => set((state) => ({
     repoBranches: { ...state.repoBranches, [repoId]: branch },
   })),
+  updateRepoEnvironmentMode: async (projectId, repoId, mode) => {
+    const result = await deps.api.repos.updateEnvironmentMode(repoId, mode);
+    if (!result.success) {
+      return false;
+    }
+
+    await get().refreshRepos(projectId);
+    return true;
+  },
   // Worktree actions
   addWorktree: (worktree) => set((state) => ({
   })),

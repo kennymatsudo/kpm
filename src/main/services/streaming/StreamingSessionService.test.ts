@@ -132,6 +132,7 @@ function createDeps(sendSpy: (channel: string, payload: unknown) => void): Strea
     subscribeToPlanActions: () => () => {},
     subscribeToClaudeMdUpdate: () => () => {},
     subscribeToDocumentUpdate: () => () => {},
+    readClaudeMd: async () => ({ success: true, content: '', filename: 'AGENTS.md' }),
     readDocumentFile: async () => ({ success: true, content: '' }),
   };
 }
@@ -149,12 +150,21 @@ function createDepsWithToolEvents(sendSpy: (channel: string, payload: unknown) =
         if (index !== -1) planActionSubscribers.splice(index, 1);
       };
     },
+    subscribeToClaudeMdUpdate: (callback) => {
+      contextFileSubscribers.push(callback);
+      return () => {
+        const index = contextFileSubscribers.indexOf(callback);
+        if (index !== -1) contextFileSubscribers.splice(index, 1);
+      };
+    },
   };
 
   return {
     deps: depsWithEvents,
     emitPlanActions: (event: PlanActionsEvent) => {
       for (const callback of planActionSubscribers) callback(event);
+    },
+      for (const callback of contextFileSubscribers) callback(update);
     },
   };
 }
@@ -291,6 +301,33 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       projectId: 'project-1',
       chatSessionId: 'chat-1',
       actions,
+    });
+  });
+
+    const toolEvents = createDepsWithToolEvents(sendSpy);
+    service = createStreamingSessionService(toolEvents.deps);
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(sendResult.ok).toBe(true);
+
+    sentEvents.length = 0;
+    toolEvents.emitContextFileUpdate({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      newContent: '# Updated context',
+    });
+    await Promise.resolve();
+
+    const fileUpdate = sentEvents.find((event) => event.channel === 'chat:file-update');
+    expect(fileUpdate?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      filePath: 'CLAUDE.md',
+      content: '# Updated context',
+      oldContent: '# Existing context',
     });
   });
 

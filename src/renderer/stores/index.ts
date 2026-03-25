@@ -13,6 +13,7 @@ export {
 } from './projectDomains';
 export {
   selectProjectSummary,
+  selectProjectById,
   selectNormalizedPlanItems,
   selectFilteredPlannedItems,
   selectPlanSearchResultCount,
@@ -31,6 +32,7 @@ export { useFileTreeStore } from './fileTreeStore';
 export { useArtifactsStore } from './artifactsStore';
 
 export { usePermissionStore } from './permissionStore';
+export { useToolPermissionStore } from './toolPermissionStore';
 
 export { useGroupStore } from './groupStore';
 export type { GroupUpdates } from './groupStore';
@@ -42,6 +44,14 @@ export { emit, subscribe } from './storeEvents';
 export type { StoreEvent, StatusChangedEvent } from './storeEvents';
 
 // Tracker sub-stores (re-export from tracker/index.ts)
+export {
+  useCredentialStore,
+  useTrackerConfigStore,
+  useTrackerMetadataStore,
+  useSyncStore,
+  useExportStore,
+  useSyncReviewStore,
+} from './tracker';
 
 // Project-scoped store management
 export { resetAllProjectScopedStores, getRegisteredStoreNames } from './projectScopedStores';
@@ -68,6 +78,8 @@ export { useConfluenceStore } from './confluenceStore';
 // Settings UI
 export { useSettingsUIStore } from './settingsUIStore';
 export type { SettingsTab } from './settingsUIStore';
+export { useGeneralSettingsStore } from './generalSettingsStore';
+export { useMcpServersStore } from './mcpServersStore';
 
 // Custom Prompts
 export { useCustomPromptStore } from './customPromptStore';

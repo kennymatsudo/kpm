@@ -11,12 +11,25 @@
  */
 
 import { useExportStore } from '../stores';
+import { useProjectStore } from '../stores/projectStore';
 
 /**
  * Returns stable references to project-domain actions.
  * Does not subscribe to store state.
  */
 export function useProjectDomainActions() {
+  const state = useProjectStore.getState();
+  return {
+    setProjects: state.setProjects,
+    addProject: state.addProject,
+    removeProject: state.removeProject,
+    setCurrentProject: state.setCurrentProject,
+    refreshProjects: state.refreshProjects,
+    updateProjectStorybookUrl: state.updateProjectStorybookUrl,
+    testStorybookConnection: state.testStorybookConnection,
+    reset: state.reset,
+    resetProjectState: state.resetProjectState,
+  };
 }
 
 /**
@@ -24,6 +37,28 @@ export function useProjectDomainActions() {
  * Does not subscribe to store state.
  */
 export function useResourceDomainActions() {
+  const state = useProjectStore.getState();
+  return {
+    setRepos: state.setRepos,
+    setAttachments: state.setAttachments,
+    addRepo: state.addRepo,
+    addReposToProject: state.addReposToProject,
+    addReposFromDialog: state.addReposFromDialog,
+    removeRepo: state.removeRepo,
+    removeRepoFromProject: state.removeRepoFromProject,
+    addAttachment: state.addAttachment,
+    removeAttachment: state.removeAttachment,
+    refreshRepos: state.refreshRepos,
+    setRepoBranches: state.setRepoBranches,
+    setRepoBranch: state.setRepoBranch,
+    updateRepoEnvironmentMode: state.updateRepoEnvironmentMode,
+    setWorktrees: state.setWorktrees,
+    addWorktree: state.addWorktree,
+    removeWorktree: state.removeWorktree,
+    openWorktreeInEditor: state.openWorktreeInEditor,
+    deleteWorktree: state.deleteWorktree,
+    destroyWorktree: state.destroyWorktree,
+  };
 }
 
 /**

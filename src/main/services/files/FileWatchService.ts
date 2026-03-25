@@ -1,5 +1,11 @@
 import fs from 'fs';
 import path from 'path';
+import {
+  isContextFile,
+  CONTEXT_FILE_NAMES,
+  DEFAULT_CONTEXT_FILENAME,
+  getContextFilePriority,
+} from '../../../shared/contextFile';
 import { pathExists, resolveScopedPath } from './scopedFs';
 
 /** Context file from the project folder */
@@ -34,6 +40,13 @@ class FileWatchServiceClass {
         }
 
       files.sort((a, b) => {
+        if (a.isClaudeMd && b.isClaudeMd) {
+          if (priorityDiff !== 0) return priorityDiff;
+        } else if (a.isClaudeMd) {
+          return -1;
+        } else if (b.isClaudeMd) {
+          return 1;
+        }
       });
 
       return { success: true, files };
@@ -187,6 +200,7 @@ class FileWatchServiceClass {
    * Read the project context file (AGENTS.md or CLAUDE.md) for a project.
    * Checks AGENTS.md first, then falls back to CLAUDE.md.
    */
+  async readClaudeMd(projectId: string): Promise<{ success: boolean; content: string | null; filename?: string; error?: string }> {
     if (!project) {
       return { success: false, content: null, error: 'Project not found' };
     }
@@ -196,6 +210,7 @@ class FileWatchServiceClass {
         const filePath = path.join(project.folder_path, filename);
         if (await pathExists(filePath)) {
           const content = await fs.promises.readFile(filePath, 'utf-8');
+          return { success: true, content, filename };
         }
       }
       return { success: true, content: null };

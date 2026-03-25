@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { CustomFieldValues, SyncReviewData, SyncReviewItem, ExportResult } from '../../../shared/types';
+import { useExportStore } from './useExportStore';
 
 type ReviewPhase = 'idle' | 'loading' | 'reviewing' | 'summary' | 'exporting' | 'complete';
 
@@ -89,6 +90,7 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
     const item = items.find((i) => i.planItem.id === itemId);
     if (!item) return;
 
+    await useExportStore.getState().removeFromQueue(item.queueEntry.id);
 
     // Remove from the review list entirely (not just mark as removed)
     set((state) => ({
@@ -99,6 +101,7 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
   },
 
   updateCustomFieldOverrides: async (queueEntryId, overrides) => {
+    await useExportStore.getState().updateQueueCustomFieldOverrides(queueEntryId, overrides);
 
     set((state) => ({
       items: state.items.map((item) =>

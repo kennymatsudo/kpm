@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type {
+  CustomFieldValues,
   TrackerTypeMapping,
   SyncQueueEntryWithPlanItem,
   ExportPreview,
@@ -44,6 +45,7 @@ interface ExportState {
   addToQueue: (projectId: string, itemIds: string[]) => Promise<{ success: boolean; added?: number; skipped?: number; error?: string }>;
   addToQueueWithStatus: (projectId: string, itemIds: string[], statusCategory: StatusCategory) => Promise<{ success: boolean; error?: string }>;
   removeFromQueue: (queueEntryId: string) => Promise<void>;
+  updateQueueCustomFieldOverrides: (queueEntryId: string, overrides: CustomFieldValues | null) => Promise<void>;
   clearQueue: (projectId: string) => Promise<void>;
   refreshQueueCount: (projectId: string) => Promise<void>;
 
@@ -161,6 +163,29 @@ export const useExportStore = create<ExportState>((set, get) => ({
       const itemIds = new Set(entries.map(e => e.plan_item_id));
     } catch (e) {
       set({ error: e instanceof Error ? e.message : 'Failed to remove from queue' });
+    }
+  },
+
+  updateQueueCustomFieldOverrides: async (queueEntryId, overrides) => {
+    set({ error: null });
+    try {
+        queueEntryId,
+        overrides
+      );
+      if (!result.success) {
+        set({ error: result.error || 'Failed to update custom field overrides' });
+        return;
+      }
+
+      set((state) => ({
+        queueEntries: state.queueEntries.map((entry) =>
+          entry.id === queueEntryId
+            ? { ...entry, custom_field_overrides: overrides }
+            : entry
+        ),
+      }));
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : 'Failed to update custom field overrides' });
     }
   },
 

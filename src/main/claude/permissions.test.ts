@@ -208,6 +208,28 @@ describe('permissions', () => {
     });
 
     describe('project file write interception', () => {
+
+          const result = await handler(
+            'Write',
+            { file_path: `/test/project/${filename}`, content: '# Updated context' },
+            createTestOptions()
+          );
+
+          expect(result.behavior).toBe('deny');
+          expect(mockOnClaudeMdEdit).toHaveBeenCalledWith('test-project-id', '# Updated context');
+        }
+
+          const result = await handler(
+            'Edit',
+            { file_path: `/test/project/${filename}`, old_string: 'a', new_string: 'b' },
+            createTestOptions()
+          );
+
+          expect(result).toMatchObject({
+            behavior: 'deny',
+          });
+        }
+
       it('intercepts Write to project directory when callback provided', async () => {
         const mockOnProjectFileWrite = vi.fn();
         context = {

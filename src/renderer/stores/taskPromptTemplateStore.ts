@@ -19,6 +19,10 @@ interface TaskPromptTemplateState {
 
   // Load function
   loadTemplates: (scope: TemplateScope, currentProjectId: string | null) => Promise<void>;
+  loadBuiltinDefault: () => Promise<{ success: boolean; promptContent?: string; error?: string }>;
+  saveTemplate: (name: string, promptContent: string) => Promise<{ success: boolean; template?: TaskPromptTemplate; error?: string }>;
+  deleteSelectedTemplate: () => Promise<{ success: boolean; error?: string }>;
+  setSelectedTemplateAsDefault: () => Promise<{ success: boolean; template?: TaskPromptTemplate; error?: string }>;
 
   // Helpers
   getSelectedTemplate: () => TaskPromptTemplate | null;
@@ -109,6 +113,60 @@ export const useTaskPromptTemplateStore = create<TaskPromptTemplateState>((set, 
       }
       set({ isLoading: false });
     }
+  },
+
+
+  saveTemplate: async (name, promptContent) => {
+    const state = get();
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      return { success: false, error: 'Template name is required' };
+    }
+
+    if (state.scope === 'project' && !state.currentProjectId) {
+      return { success: false, error: 'Project scope is unavailable without an open project' };
+    }
+
+    const projectId = state.scope === 'project' ? state.currentProjectId : null;
+    const result = state.selectedTemplateId
+
+    if (!result.success || !result.template) {
+      return { success: false, error: result.error || 'Failed to save template' };
+    }
+
+    await get().loadTemplates(state.scope, state.currentProjectId);
+    set({ selectedTemplateId: result.template.id });
+    return { success: true, template: result.template };
+  },
+
+  deleteSelectedTemplate: async () => {
+    const state = get();
+    if (!state.selectedTemplateId) {
+      return { success: false, error: 'No template selected' };
+    }
+
+    if (!result.success) {
+      return { success: false, error: result.error || 'Failed to delete template' };
+    }
+
+    set({ selectedTemplateId: null });
+    await get().loadTemplates(state.scope, state.currentProjectId);
+    return { success: true };
+  },
+
+  setSelectedTemplateAsDefault: async () => {
+    const state = get();
+    if (!state.selectedTemplateId) {
+      return { success: false, error: 'No template selected' };
+    }
+
+    if (!result.success || !result.template) {
+      return { success: false, error: result.error || 'Failed to set default' };
+    }
+
+    await get().loadTemplates(state.scope, state.currentProjectId);
+    set({ selectedTemplateId: result.template.id });
+    return { success: true, template: result.template };
   },
 
   getSelectedTemplate: () => {

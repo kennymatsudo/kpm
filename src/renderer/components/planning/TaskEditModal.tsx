@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 // Stable empty array to avoid re-render loops
+const EMPTY_ISSUE_TYPES: TrackerIssueTypeOption[] = [];
 
 // Fallback options when no Jira connection exists
 const FALLBACK_TYPE_OPTIONS = [
@@ -33,6 +34,7 @@ export function TaskEditModal({
   }, [item.association_id, associations]);
 
   // Get cached issue types + loader in a single subscription
+  const { jiraIssueTypes, loadIssueTypes } = useTrackerMetadataStore(
     useShallow((state) => ({
       loadIssueTypes: state.loadIssueTypes,
     }))

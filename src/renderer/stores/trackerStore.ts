@@ -30,6 +30,8 @@ interface TrackerState {
 
   // Association actions
   loadAssociations: (projectId: string) => Promise<void>;
+  getAssociationById: (associationId: string) => TrackerAssociationWithScope | null;
+  updateAssociationEpicKey: (associationId: string, epicKey: string | null) => Promise<{ success: boolean; error?: string }>;
   removeAssociation: (associationId: string) => Promise<void>;
   hasAssociationItems: (associationId: string) => Promise<boolean>;
 
@@ -78,12 +80,37 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
     }
   },
 
+  getAssociationById: (associationId) => {
+    return get().associations.find((association) => association.id === associationId) ?? null;
+  },
+
     set({ error: null });
     if (!result.success) {
       return { success: false, error: result.error };
     }
     await get().loadAssociations(projectId);
     return { success: true };
+  },
+
+  updateAssociationEpicKey: async (associationId, epicKey) => {
+    const association = get().getAssociationById(associationId);
+
+    set({ error: null });
+    try {
+      if (!result.success) {
+        return { success: false, error: result.error || 'Failed to update epic key' };
+      }
+
+      if (association) {
+        await get().loadAssociations(association.kpm_project_id);
+      }
+
+      return { success: true };
+    } catch (e) {
+      const error = e instanceof Error ? e.message : 'Failed to update epic key';
+      set({ error });
+      return { success: false, error };
+    }
   },
 
   removeAssociation: async (associationId) => {

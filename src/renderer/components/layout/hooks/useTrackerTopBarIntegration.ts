@@ -7,11 +7,21 @@ import {
   useSyncStore,
   usePlanDomainStore,
 } from '../../../stores';
+import type {
+  TrackerCredentialInfo,
+  TrackerAssociationWithScope,
+  TrackerType,
+} from '../../../../shared/types';
 
+interface TrackerTopBarDeps {
   currentProjectId: string | null;
+  trackerType: TrackerType;
 }
 
+interface TrackerTopBarReturn {
   // Derived state
+  hasTrackerCredentials: boolean;
+  trackerCredential: TrackerCredentialInfo | undefined;
   hasAssociations: boolean;
   associations: TrackerAssociationWithScope[];
   // Sync panel for association
@@ -20,11 +30,15 @@ import {
   // Export
   queueCount: number;
   // Handlers
+  handleTrackerClick: () => void;
   handleSyncComplete: () => Promise<void>;
   handleExportComplete: () => Promise<void>;
 }
 
+export function useTrackerTopBarIntegration({
   currentProjectId,
+  trackerType,
+}: TrackerTopBarDeps): TrackerTopBarReturn {
   const [syncPanelAssociationId, setSyncPanelAssociationId] = useState<string | null>(null);
 
   // Credential store
@@ -74,7 +88,14 @@ import {
 
   const refreshPlanItems = usePlanDomainStore((state) => state.refreshPlanItems);
 
+  const trackerCredential = credentials.find((credential) => credential.type === trackerType);
+  const hasTrackerCredentials = Boolean(trackerCredential);
+  const trackerAssociations = associations.filter(
+    (association) => association.tracker_type === trackerType
+  );
+  const hasAssociations = trackerAssociations.length > 0;
 
+  // Load tracker credentials on mount
   useEffect(() => {
     void loadCredentials();
   }, [loadCredentials]);
@@ -87,6 +108,9 @@ import {
     }
   }, [currentProjectId, loadAssociations, refreshQueueCount]);
 
+  // Handle tracker button click
+  const handleTrackerClick = useCallback(() => {
+    if (!hasTrackerCredentials) {
       setShowCredentialsDialog(true);
       return;
     }
@@ -94,6 +118,15 @@ import {
       setShowAssociationDialog(true);
       return;
     }
+      setSyncPanelAssociationId(trackerAssociations[0].id);
+    }
+  }, [
+    hasTrackerCredentials,
+    hasAssociations,
+    trackerAssociations,
+    setShowCredentialsDialog,
+    setShowAssociationDialog,
+  ]);
 
   // Handle sync completion
   const handleSyncComplete = useCallback(async () => {
@@ -115,10 +148,14 @@ import {
   }, [setShowQueuePanel, refreshPlanItems, currentProjectId, loadAssociations, refreshQueueCount]);
 
   return {
+    hasTrackerCredentials,
+    trackerCredential,
     hasAssociations,
+    associations: trackerAssociations,
     syncPanelAssociationId,
     setSyncPanelAssociationId,
     queueCount,
+    handleTrackerClick,
     handleSyncComplete,
     handleExportComplete,
   };

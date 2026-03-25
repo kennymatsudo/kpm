@@ -1,18 +1,23 @@
+import type { TrackerAssociationWithScope, TrackerType } from '../../../../shared/types';
 type SelectedItem = 'connection' | 'link-new' | { type: 'project'; associationId: string };
 
 interface Props {
+  trackerType: TrackerType;
   hasCredentials: boolean;
   associations: TrackerAssociationWithScope[];
   selectedItem: SelectedItem;
   onSelectItem: (item: SelectedItem) => void;
+  onSelectTrackerType: (trackerType: TrackerType) => void;
   canLinkNew: boolean;
 }
 
 export function TrackerSidebar({
+  trackerType,
   hasCredentials,
   associations,
   selectedItem,
   onSelectItem,
+  onSelectTrackerType,
   canLinkNew,
 }: Props) {
   const isConnectionSelected = selectedItem === 'connection';
@@ -20,6 +25,14 @@ export function TrackerSidebar({
 
   return (
     <div className="w-52 flex-shrink-0 bg-surface-2/50 border-r border-border-subtle p-3 flex flex-col">
+      <div className="mb-3">
+        <p className="text-xxs font-medium uppercase tracking-wider text-text-muted mb-2 px-1">
+          Tracker
+        </p>
+        <div className="flex gap-1 p-1 rounded-lg bg-surface-3">
+        </div>
+      </div>
+
       {/* Connection item */}
       <button
         onClick={() => onSelectItem('connection')}
@@ -145,6 +158,7 @@ export function TrackerSidebar({
       {!hasCredentials && (
         <div className="mt-3 p-2.5 rounded-lg bg-warning-muted/50 border border-warning/20">
           <p className="text-xs text-warning">
+            Connect to {trackerType === 'jira' ? 'Jira' : 'Linear'} first to link projects
           </p>
         </div>
       )}

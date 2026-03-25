@@ -16,6 +16,8 @@ interface CreatePrModalProps {
 }
 
 export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreatePrModalProps) {
+  const loadPrContext = useDevSessionsStore((state) => state.loadPrContext);
+  const createPullRequest = useDevSessionsStore((state) => state.createPullRequest);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -27,8 +29,19 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
     setTitle('');
     setBody('');
 
+      .then((result) => {
+        if (!result.success || !result.context) {
+          setAuthError(result.error || 'Failed to load PR context');
+          setIsLoadingContext(false);
+          return;
+        }
 
+        setTitle(result.context.suggestedTitle);
+        setBody(result.context.body);
         setIsLoadingContext(false);
+      })
+      .catch(() => {
+      });
 
 
   const handleSubmit = async () => {
@@ -39,6 +52,7 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
 
     setIsCreating(true);
     try {
+      const result = await createPullRequest(session.id, title.trim(), body, draft);
       if (result.success) {
         toast.success(`PR #${result.number} created`);
         onPrCreated();

@@ -1,7 +1,9 @@
 export { DiffRenderer } from './DiffRenderer';
 
 // Config dialogs
+export { TrackerConfigDialog } from './config/TrackerConfigDialog';
 export { JiraConfigDialog } from './config/JiraConfigDialog';
+export { TrackerLinkProjectDialog } from './config/TrackerLinkProjectDialog';
 export { JiraProjectSelector } from './config/JiraProjectSelector';
 
 // Sync components

@@ -1,14 +1,17 @@
 import { create } from 'zustand';
 
+export interface TrackerProjectRef {
   key: string;
   name: string;
 }
 
+export interface TrackerStatusOption {
   id: string;
   name: string;
   categoryKey: string;
 }
 
+export interface TrackerIssueTypeOption {
   id: string;
   name: string;
   subtask: boolean;
@@ -16,13 +19,17 @@ import { create } from 'zustand';
   iconUrl?: string;
 }
 
+interface TrackerMetadataState {
+  projects: TrackerProjectRef[];
   isLoadingProjects: boolean;
   projectsError: string | null;
   projectsLoadedAt: number | null;
 
+  statusesByProject: Record<string, TrackerStatusOption[]>;
   loadingStatusesFor: Set<string>;
   statusesErrorByProject: Record<string, string>;
 
+  issueTypesByProject: Record<string, TrackerIssueTypeOption[]>;
   loadingIssueTypesFor: Set<string>;
   issueTypesErrorByProject: Record<string, string>;
 
@@ -38,13 +45,16 @@ import { create } from 'zustand';
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 const initialState = {
+  projects: [] as TrackerProjectRef[],
   isLoadingProjects: false,
   projectsError: null as string | null,
   projectsLoadedAt: null as number | null,
 
+  statusesByProject: {} as Record<string, TrackerStatusOption[]>,
   loadingStatusesFor: new Set<string>(),
   statusesErrorByProject: {} as Record<string, string>,
 
+  issueTypesByProject: {} as Record<string, TrackerIssueTypeOption[]>,
   loadingIssueTypesFor: new Set<string>(),
   issueTypesErrorByProject: {} as Record<string, string>,
 
@@ -52,6 +62,7 @@ const initialState = {
   issueTypesLastFetchedAt: {} as Record<string, number>,
 };
 
+export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) => ({
   ...initialState,
 
   loadProjects: async (force = false) => {
@@ -82,6 +93,10 @@ const initialState = {
         });
         return { success: true };
       }
+
+      const error = result.error || 'Failed to load projects';
+      set({ isLoadingProjects: false, projectsError: error });
+      return { success: false, error };
     } catch (e) {
       const error = e instanceof Error ? e.message : 'Failed to load projects';
       set({ isLoadingProjects: false, projectsError: error });
@@ -105,15 +120,28 @@ const initialState = {
     try {
       if (result.success && result.statuses) {
         set((s) => {
+          const nextLoading = new Set(s.loadingStatusesFor);
           return {
+            loadingStatusesFor: nextLoading,
           };
         });
         return { success: true };
       }
+
+      const error = result.error || 'Failed to load statuses';
+      set((s) => {
+        const nextLoading = new Set(s.loadingStatusesFor);
+        return {
+          loadingStatusesFor: nextLoading,
+        };
+      });
+      return { success: false, error };
     } catch (e) {
       const error = e instanceof Error ? e.message : 'Failed to load statuses';
       set((s) => {
+        const nextLoading = new Set(s.loadingStatusesFor);
         return {
+          loadingStatusesFor: nextLoading,
         };
       });
       return { success: false, error };
@@ -142,16 +170,33 @@ const initialState = {
     try {
       if (result.success && result.issueTypes) {
         set((s) => {
+          const nextLoading = new Set(s.loadingIssueTypesFor);
+          nextLoading.delete(projectKey);
           return {
+            loadingIssueTypesFor: nextLoading,
             issueTypesLastFetchedAt: { ...s.issueTypesLastFetchedAt, [projectKey]: Date.now() },
           };
         });
         return { success: true };
       }
+
+      const error = result.error || 'Failed to load issue types';
+      set((s) => {
+        const nextLoading = new Set(s.loadingIssueTypesFor);
+        nextLoading.delete(projectKey);
+        return {
+          loadingIssueTypesFor: nextLoading,
+          issueTypesErrorByProject: { ...s.issueTypesErrorByProject, [projectKey]: error },
+        };
+      });
+      return { success: false, error };
     } catch (e) {
       const error = e instanceof Error ? e.message : 'Failed to load issue types';
       set((s) => {
+        const nextLoading = new Set(s.loadingIssueTypesFor);
+        nextLoading.delete(projectKey);
         return {
+          loadingIssueTypesFor: nextLoading,
           issueTypesErrorByProject: { ...s.issueTypesErrorByProject, [projectKey]: error },
         };
       });

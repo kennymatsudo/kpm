@@ -10,6 +10,7 @@ interface Props {
 }
 
 export function JiraConfigDialog({ credential, onClose }: Props) {
+  const { testCredentials, saveCredentials, deleteCredentials, loadCredentials } = useCredentialStore();
 
   const [siteUrl, setSiteUrl] = useState(credential?.site_url ?? '');
   const [email, setEmail] = useState(credential?.email ?? '');
@@ -63,6 +64,7 @@ export function JiraConfigDialog({ credential, onClose }: Props) {
 
   const handleDisconnect = async () => {
     if (credential) {
+      await deleteCredentials('jira');
       await loadCredentials();
       onClose();
     }

@@ -32,6 +32,71 @@ describe('projectStore slices', () => {
     expect(store.getState().repoBranches).toEqual({});
   });
 
+  it('refreshes projects after updating the Storybook URL', async () => {
+    const refreshedProjects = [{
+      id: 'project-1',
+      name: 'Project One',
+      folder_path: '/tmp/project-one',
+      phase: 'discovery',
+      session_tokens: 0,
+      session_input_tokens: 0,
+      session_output_tokens: 0,
+      storybook_url: 'http://localhost:6006',
+    }];
+    api.storybook.updateUrl.mockResolvedValue({ success: true });
+    api.projects.list.mockResolvedValue(refreshedProjects);
+
+    const result = await store.getState().updateProjectStorybookUrl('project-1', 'http://localhost:6006');
+
+    expect(api.storybook.updateUrl).toHaveBeenCalledWith('project-1', 'http://localhost:6006');
+    expect(api.projects.list).toHaveBeenCalled();
+    expect(result).toEqual(refreshedProjects);
+    expect(store.getState().projects).toEqual(refreshedProjects);
+  });
+
+  it('adds repos through the resource domain and tracks their branches', async () => {
+    const repos = [
+      { id: 'repo-1', project_id: 'project-1', path: '/tmp/repo-1' },
+      { id: 'repo-2', project_id: 'project-1', path: '/tmp/repo-2' },
+    ];
+
+    api.repos.add
+      .mockResolvedValueOnce(repos[0])
+      .mockResolvedValueOnce(repos[1]);
+    api.repos.getBranches.mockResolvedValue({
+      '/tmp/repo-1': 'main',
+      '/tmp/repo-2': 'develop',
+    });
+
+    const result = await store.getState().addReposToProject('project-1', repos.map((repo) => repo.path));
+
+    expect(api.repos.add).toHaveBeenNthCalledWith(1, 'project-1', '/tmp/repo-1');
+    expect(api.repos.add).toHaveBeenNthCalledWith(2, 'project-1', '/tmp/repo-2');
+    expect(api.repos.getBranches).toHaveBeenCalledWith(['/tmp/repo-1', '/tmp/repo-2']);
+    expect(api.repos.watch).toHaveBeenNthCalledWith(1, 'repo-1', '/tmp/repo-1');
+    expect(api.repos.watch).toHaveBeenNthCalledWith(2, 'repo-2', '/tmp/repo-2');
+    expect(result).toEqual(repos);
+    expect(store.getState().repos).toEqual(repos);
+    expect(store.getState().repoBranches).toEqual({
+      'repo-1': 'main',
+      'repo-2': 'develop',
+    });
+  });
+
+  it('removes repos through the resource domain and stops watching them', async () => {
+    store.setState({
+      repos: [{ id: 'repo-1', project_id: 'project-1', path: '/tmp/repo-1', created_at: '' }],
+      repoBranches: { 'repo-1': 'main' },
+    } as Partial<ProjectState>);
+
+    await store.getState().removeRepoFromProject('project-1', 'repo-1');
+
+    expect(api.repos.remove).toHaveBeenCalledWith('repo-1');
+    expect(api.repos.unwatch).toHaveBeenCalledWith('/tmp/repo-1');
+    expect(store.getState().repos).toEqual([]);
+    expect(store.getState().repoBranches).toEqual({});
+  });
+
   it('queues tracker status change event when updating status category on external items', async () => {
     api.plan.updateItem.mockResolvedValue({ success: true });
 

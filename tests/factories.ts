@@ -214,6 +214,7 @@ export function createTrackerAssociationWithScope(
   const base = createTrackerAssociation(options);
   return {
     ...base,
+    tracker_type: options.tracker_type ?? 'jira',
     project_key: options.project_key ?? 'TEST',
     project_name: options.project_name ?? 'Test Project',
     site_url: options.site_url ?? 'test.atlassian.net',

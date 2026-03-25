@@ -7,6 +7,10 @@
   isLoading: boolean;
   deletingSessionIds: Set<string>;
   lastActivityMap: Map<string, number>;
+  diffBySessionId: Map<string, string | null>;
+  diffLoadingIds: Set<string>;
+  prContextBySessionId: Map<string, PrCreationContext>;
+  prContextLoadingIds: Set<string>;
 
   // PR status cache (transient, keyed by sessionId)
   prStatusCache: Map<string, PrStatus>;
@@ -27,8 +31,20 @@
 
   // Load function
   loadSessions: (projectId: string) => Promise<void>;
+  checkSessionDirty: (sessionId: string) => Promise<{ success: boolean; isDirty: boolean; files: string[]; error?: string }>;
+  deleteDevSession: (sessionId: string, mode: 'cleanup' | 'destroy') => Promise<{ success: boolean; error?: string }>;
   dismissSession: (session: DevSessionWithPlanItem) => Promise<{ success: boolean; error?: string }>;
   updateSessionName: (session: DevSessionWithPlanItem, name: string) => Promise<{ success: boolean; error?: string }>;
+  loadDiff: (sessionId: string, options?: { force?: boolean }) => Promise<{ success: boolean; diff: string | null; error?: string }>;
+  loadPrContext: (
+    sessionId: string,
+  ) => Promise<{ success: boolean; context?: PrCreationContext; error?: string }>;
+  createPullRequest: (
+    sessionId: string,
+    title: string,
+    body: string,
+    draft: boolean
+  ) => Promise<{ success: boolean; number?: number; url?: string; error?: string }>;
 
   // Reset
   reset: () => void;
@@ -43,6 +59,10 @@ const initialState = {
   isLoading: false,
   deletingSessionIds: new Set<string>(),
   lastActivityMap: new Map<string, number>(),
+  diffBySessionId: new Map<string, string | null>(),
+  diffLoadingIds: new Set<string>(),
+  prContextBySessionId: new Map<string, PrCreationContext>(),
+  prContextLoadingIds: new Set<string>(),
   prStatusCache: new Map<string, PrStatus>(),
 };
 

@@ -226,14 +226,22 @@ describe('FileExplorerService', () => {
       }
     });
 
+    it.each(['AGENTS.md', 'CLAUDE.md'])('prevents deleting %s', async (filename) => {
+      fs.writeFileSync(path.join(tempDir, filename), `# ${filename}`);
+      const result = await service.deleteEntry('test-project', filename);
       expect(result.ok).toBe(false);
       if (!result.ok) {
+        expect(result.error).toBe(`Cannot delete ${filename}`);
       }
     });
 
+    it.each(['AGENTS.md', 'CLAUDE.md'])('prevents deleting %s in subdirectory', async (filename) => {
       fs.mkdirSync(path.join(tempDir, 'subdir'));
+      fs.writeFileSync(path.join(tempDir, 'subdir', filename), `# ${filename}`);
+      const result = await service.deleteEntry('test-project', `subdir/${filename}`);
       expect(result.ok).toBe(false);
       if (!result.ok) {
+        expect(result.error).toBe(`Cannot delete ${filename}`);
       }
     });
 
