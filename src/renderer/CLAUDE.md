@@ -52,6 +52,8 @@ Don't create abstractions until you have 3+ actual uses of a pattern. Wait until
 
 - **Canvas constants** in `constants/layout.ts` — card widths, grid spacing, zoom limits
 - **Stores** — See `stores/CLAUDE.md` for patterns. Use `useShallow` for multi-value selectors. Stores communicate via typed events.
+- **Default views** — Main view defaults to `'workspace'`; planning view mode defaults to `'board'` (Board view). Both are persisted via `usePersistedViewState`.
+- **WorkspaceHome** — `components/workspace/WorkspaceHome.tsx` is the landing screen shown inside the workspace view when no chat is active. Displays project context and quick-start prompts.
 
 ## CSS Conventions
 

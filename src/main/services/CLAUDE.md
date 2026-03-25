@@ -19,6 +19,8 @@ Plan items, projects, attachments, tracker connections, and groups—the domain 
 - `PlanService` — Modify plan items, manage relations
 - `AttachmentService` — Upload files, track metadata
 - `SearchService` — Global search across plan items and documents
+- `TrackerService` — Tracker credential management, connection/scope/association CRUD, Jira API queries (issue search, labels, components, statuses, custom fields), import preview generation, and sync coordination. Wraps `TrackerClientService` + domain `ImportService`/`SyncService`.
+- `GroupService` — Group CRUD (create, update, delete, position, size) and item assignment. Delegates to `GroupAssignmentService` for assignment rule enforcement.
 
 ### Repo Services (`services/repo/`)
 

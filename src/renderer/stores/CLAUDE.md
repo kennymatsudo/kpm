@@ -5,6 +5,9 @@ UI state management with slice pattern, typed events for cross-store communicati
 ## Store Organization
 
 - **`projectStore.ts`** — Main store factory (sliced into `project/` subdirectory: projectSlice, planSlice, resourceSlice, uiSlice)
+  - `useSyncStore` — Sync preview state, conflict resolutions, and `syncAvailability` (keyed by associationId). `checkForUpdates()` is called by `useTrackerTopBarIntegration` on a 2-minute polling interval; badge UI reads from `syncAvailability`.
+  - `useExportStore` — Export queue state. `addToQueueWithStatus()` stages items and tracks `recentlyImportedIds` for visual feedback.
+  - `useCredentialStore` — Tracker credential loading/display.
 
 All stores exported from `index.ts`. See the directory for the full list.
 
