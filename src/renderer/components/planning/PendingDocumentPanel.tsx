@@ -39,6 +39,8 @@ export function PendingDocumentPanel({
   isApplying = false,
   embedded = false,
 }: PendingDocumentPanelProps) {
+  const isNewFile = oldContent === null || oldContent.trim() === '';
+  const [viewMode, setViewMode] = useState<ViewMode>(isNewFile ? 'preview' : 'diff');
   const [isExpanded, setIsExpanded] = useState(false);
   const [editedContent, setEditedContent] = useState(content);
 

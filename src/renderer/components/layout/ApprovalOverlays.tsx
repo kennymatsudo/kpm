@@ -8,6 +8,7 @@
  * Panel auto-expands when items arrive.
  */
 
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { useShallow } from 'zustand/react/shallow';
@@ -89,6 +90,69 @@ export function ApprovalOverlays() {
   );
 
   const [isApplying, setIsApplying] = useState(false);
+
+  // Resizable panel width (follows same pattern as usePanelResize)
+  const MIN_PANEL_WIDTH = 380;
+  const MAX_PANEL_WIDTH = 900;
+  const [isResizingPanel, setIsResizingPanel] = useState(false);
+  const resizeStartX = useRef(0);
+  const resizeStartWidth = useRef(0);
+  const rafRef = useRef<number | null>(null);
+  const pendingWidth = useRef<number | null>(null);
+
+  const handlePanelResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingPanel(true);
+    resizeStartX.current = e.clientX;
+    resizeStartWidth.current = panelWidth;
+  }, [panelWidth]);
+
+  useEffect(() => {
+    if (!isResizingPanel) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = e.clientX - resizeStartX.current;
+      pendingWidth.current = Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, resizeStartWidth.current + delta));
+
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          if (pendingWidth.current !== null) {
+            setPanelWidth(pendingWidth.current);
+            pendingWidth.current = null;
+          }
+          rafRef.current = null;
+        });
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      if (pendingWidth.current !== null) {
+        setPanelWidth(pendingWidth.current);
+        pendingWidth.current = null;
+      }
+      setIsResizingPanel(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [isResizingPanel]);
 
   // Current item to show (first in queue)
   const currentItem = queue.length > 0 ? queue[0] : null;
@@ -243,6 +307,7 @@ export function ApprovalOverlays() {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -24, opacity: 0 }}
             transition={{ type: 'tween', duration: 0.25, ease: [0.25, 0.1, 0.25, 1] }}
+            className="fixed left-0 max-w-[90vw]
                        bg-surface-1
                        border-r border-border-strong
                        flex flex-col overflow-hidden"
@@ -295,6 +360,24 @@ export function ApprovalOverlays() {
           </m.div>
         )}
       </AnimatePresence>
+
+      {/* Resize handle - plain div outside overflow-hidden panel */}
+        <div
+          onMouseDown={handlePanelResizeStart}
+          className="fixed cursor-col-resize group"
+          style={{
+            zIndex: Z_INDEX.panel - 9,
+            top: 'var(--titlebar-height)',
+            height: 'calc(100% - var(--titlebar-height))',
+            left: panelWidth - 3,
+            width: 8,
+          }}
+        >
+          <div className="absolute top-0 right-0 w-[2px] h-full
+                          bg-transparent group-hover:bg-accent/40 group-active:bg-accent/60
+                          transition-colors duration-100" />
+        </div>
+      )}
     </>,
     document.body
   );
