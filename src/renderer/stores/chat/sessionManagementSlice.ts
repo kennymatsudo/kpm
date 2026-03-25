@@ -42,6 +42,7 @@ export function createSessionManagementSlice(set: ChatSet, get: ChatGet): Pick<C
             ...session,
             isStreaming: false,
             streamingContent: '',
+            streamingThinking: '',
             streamingSegments: [],
             pendingActivities: [],
             activities: [],

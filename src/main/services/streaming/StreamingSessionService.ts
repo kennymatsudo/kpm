@@ -850,6 +850,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           }
         }
 
+        if (block.type === 'thinking' && block.thinking) {
+        }
+
         if (block.type === 'text') {
           segState.hasTextInCurrentSegment = true;
 

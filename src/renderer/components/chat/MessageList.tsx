@@ -58,9 +58,11 @@ const CopyButton = memo(function CopyButton({
 });
 
 const ThinkingIndicator = memo(function ThinkingIndicator({
+  thinkingContent,
   activities,
   elapsedSeconds,
 }: {
+  thinkingContent?: string;
   activities: Activity[];
   elapsedSeconds: number | null;
 }) {
@@ -114,10 +116,12 @@ const AssistantMessageContent = memo(function AssistantMessageContent({
 /** Render streaming segments within a single bubble */
 const StreamingContent = memo(function StreamingContent({
   segments,
+  thinkingContent,
   activities,
   elapsedSeconds,
 }: {
   segments: MessageSegment[];
+  thinkingContent?: string;
   activities: Activity[];
   elapsedSeconds: number | null;
 }) {
@@ -200,11 +204,13 @@ interface MessageListProps {
   const messages = viewedSession?.messages ?? [];
   const streamingSegments = viewedSession?.streamingSegments ?? [];
   const streamingContent = viewedSession?.streamingContent ?? '';
+  const streamingThinking = viewedSession?.streamingThinking ?? '';
   const isStreaming = viewedSession?.isStreaming ?? false;
   const error = viewedSession?.error ?? null;
   const sessionState = viewedSession?.sessionState ?? 'idle';
   const activities = viewedSession?.activities ?? [];
   const streamStartedAt = viewedSession?.streamStartedAt ?? null;
+
   const listRef = useRef<HTMLDivElement>(null);
   const messageHeightsRef = useRef<Map<string, number>>(new Map());
   const isInitialMount = useRef(true);
@@ -222,6 +228,11 @@ interface MessageListProps {
     const interval = setInterval(() => setTimeNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, [isStreaming]);
+
+  const elapsedSeconds = useMemo(() => {
+    if (!streamStartedAt) return null;
+    return Math.max(0, Math.floor((timeNow - streamStartedAt) / 1000));
+  }, [streamStartedAt, timeNow]);
 
   const interruptedCandidate =
     !isStreaming &&
@@ -403,6 +414,7 @@ interface MessageListProps {
         {isStreaming && (streamingSegments.length > 0 || streamingContent) && (
               <StreamingContent
                 segments={streamingSegments}
+                thinkingContent={streamingThinking || undefined}
                 activities={activities}
                 elapsedSeconds={elapsedSeconds}
               />
@@ -416,6 +428,7 @@ interface MessageListProps {
         {((isStreaming && streamingSegments.length === 0 && !streamingContent)
           || (!isStreaming && interruptedCandidate && !showInterruptedBanner)) && (
           <ThinkingIndicator
+            thinkingContent={streamingThinking || undefined}
             activities={activities}
             elapsedSeconds={elapsedSeconds}
           />

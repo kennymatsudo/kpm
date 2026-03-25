@@ -3,6 +3,7 @@
   messages: [],
   streamingSegments: [],
   streamingContent: '',
+  streamingThinking: '',
   pendingActivities: [],
   isStreaming: false,
   error: null,

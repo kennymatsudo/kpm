@@ -100,6 +100,25 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
       }
     },
 
+    appendThinking: (chatSessionId, text) => set((state) => {
+      const now = Date.now();
+      const sessions = new Map(state.sessions);
+      const session = sessions.get(chatSessionId);
+      if (!session) return state;
+
+      sessions.set(chatSessionId, {
+        ...session,
+        streamingThinking: session.streamingThinking
+          ? session.streamingThinking + '\n\n' + text
+          : text,
+        isStreaming: true,
+        streamStartedAt: session.streamStartedAt ?? now,
+        lastStreamUpdateAt: now,
+      });
+
+      return { sessions };
+    }),
+
     flushStreamingContent: (chatSessionId) => {
       const isViewed = get().viewedSessionId === chatSessionId;
       if (!isViewed) return;
@@ -149,10 +168,16 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
           !session.isStreaming &&
           segments.length === 0 &&
           !buffered &&
+          !session.streamingThinking &&
           session.pendingActivities.length === 0 &&
           session.activities.length === 0
         ) {
           return state;
+        }
+
+        // Prepend thinking segment if Claude produced reasoning
+        if (session.streamingThinking.trim()) {
+          segments.unshift({ type: 'thinking', content: session.streamingThinking.trim() });
         }
 
         if (session.pendingActivities.length > 0) {
@@ -171,6 +196,7 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
         let finalSegments = segments.filter((seg) => {
           if (seg.type === 'text') return seg.content.trim().length > 0;
           if (seg.type === 'activity') return seg.activities.length > 0;
+          if (seg.type === 'thinking') return seg.content.trim().length > 0;
           return false;
         });
 
@@ -196,6 +222,7 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
           sessions.set(chatSessionId, {
             ...session,
             streamingContent: '',
+            streamingThinking: '',
             streamingSegments: [],
             pendingActivities: [],
             activities: [],

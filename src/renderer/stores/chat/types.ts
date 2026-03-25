@@ -24,6 +24,8 @@ export interface PerSessionState {
   /** Currently active activities (for real-time indicator) */
   activities: Activity[];
   sessionState: SessionState;
+  /** Accumulated thinking content during streaming (Claude's reasoning) */
+  streamingThinking: string;
   /** Timestamp when current streaming turn started */
   streamStartedAt: number | null;
   /** Timestamp of the last chunk/activity update for current streaming turn */
@@ -61,6 +63,7 @@ export interface ChatState {
   // Per-session actions (operate on specific session by chatSessionId)
   setRetrying: (chatSessionId: string) => void;
   appendChunk: (chatSessionId: string, chunk: string, segmentId?: number, precedingActivities?: Activity[]) => void;
+  appendThinking: (chatSessionId: string, text: string) => void;
   flushStreamingContent: (chatSessionId: string) => void;
   setError: (chatSessionId: string, error: string) => void;
   addActivity: (chatSessionId: string, activity: Activity) => void;

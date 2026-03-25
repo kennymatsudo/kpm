@@ -165,6 +165,11 @@ const chat = {
     ipcRenderer.on('chat:activity', handler);
     return () => ipcRenderer.removeListener('chat:activity', handler);
   },
+  onThinking: (callback: (data: { projectId: string; chatSessionId?: string; text: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; text: string }) => callback(data);
+    ipcRenderer.on('chat:thinking', handler);
+    return () => ipcRenderer.removeListener('chat:thinking', handler);
+  },
     const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; filePath: string; content: string; oldContent?: string | null }) => callback(data);
     ipcRenderer.on('chat:file-update', handler);
     return () => ipcRenderer.removeListener('chat:file-update', handler);

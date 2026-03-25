@@ -16,6 +16,7 @@ import { emit } from '../stores/storeEvents';
 export function useChatIpcBridge(projectId: string | null): void {
   const {
     appendChunk,
+    appendThinking,
     finalizeMessage,
     setError,
     setTokens,
@@ -28,6 +29,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     getOrCreateSession,
   } = useChatStore(useShallow((state) => ({
     appendChunk: state.appendChunk,
+    appendThinking: state.appendThinking,
     finalizeMessage: state.finalizeMessage,
     setError: state.setError,
     setTokens: state.setTokens,

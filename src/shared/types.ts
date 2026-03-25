@@ -416,6 +416,12 @@ export interface ActivitySegment {
   activities: Activity[];
 }
 
+/** Thinking segment showing Claude's reasoning (collapsible in UI) */
+export interface ThinkingSegment {
+  type: 'thinking';
+  content: string;
+}
+
 
 // =============================================================================
 // Plan Actions - structured commands for AI-driven plan manipulation
