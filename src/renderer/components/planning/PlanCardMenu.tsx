@@ -1,9 +1,17 @@
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useShallow } from 'zustand/react/shallow';
 import { DeleteWorktreeDialog } from './DeleteWorktreeDialog';
 import { Z_INDEX } from '../../constants/zIndex';
 
+export type MenuPosition =
+  | { type: 'card'; top?: number; bottom?: number; right: number }
+  | { type: 'point'; x: number; y: number };
+
 interface PlanCardMenuProps {
+  itemId: string;
   isOpen: boolean;
+  position: MenuPosition | null;
   onClose: () => void;
   onEditItem: () => void;
   onDelete: () => void;
@@ -11,6 +19,7 @@ interface PlanCardMenuProps {
 }
 
 export function PlanCardMenu({
+  itemId,
   isOpen,
   position,
   onClose,
@@ -18,6 +27,24 @@ export function PlanCardMenu({
   onDelete,
   onAddToContext,
 }: PlanCardMenuProps) {
+  const {
+    openWorktreeInEditor,
+    deleteWorktree,
+    destroyWorktree,
+  } = useResourceDomainStore(
+    useShallow((state) => ({
+      openWorktreeInEditor: state.openWorktreeInEditor,
+      deleteWorktree: state.deleteWorktree,
+      destroyWorktree: state.destroyWorktree,
+    }))
+  );
+    const loadingOp =
+      null;
+    return {
+      worktree: worktreeMatch,
+      worktreeLoadingOp: loadingOp,
+    };
+
   const [showDeleteWorktreeConfirm, setShowDeleteWorktreeConfirm] = useState(false);
   const [showDestroyWorktreeConfirm, setShowDestroyWorktreeConfirm] = useState(false);
 
@@ -33,6 +60,16 @@ export function PlanCardMenu({
           ref={menuRef}
           className="dropdown-menu fixed max-w-[200px] max-h-[calc(100vh-32px)] overflow-y-auto"
           style={{
+            ...(position.type === 'card'
+              ? {
+                  ...(position.top !== undefined ? { top: `${position.top}px` } : {}),
+                  ...(position.bottom !== undefined ? { bottom: `${position.bottom}px` } : {}),
+                  right: `${position.right}px`,
+                }
+              : {
+                  left: `${position.x}px`,
+                  top: `${position.y}px`,
+                }),
             zIndex: Z_INDEX.dropdown,
           }}
         >

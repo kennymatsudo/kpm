@@ -1,5 +1,6 @@
 import { DropdownMenu } from '../ui';
 
+interface BulkActionsMenuProps {
   x: number;
   y: number;
   selectedCount: number;
@@ -9,6 +10,7 @@ import { DropdownMenu } from '../ui';
   onClose: () => void;
 }
 
+export function BulkActionsMenu({
   x,
   y,
   selectedCount,
@@ -16,6 +18,7 @@ import { DropdownMenu } from '../ui';
   onAddToContext,
   onDelete,
   onClose,
+}: BulkActionsMenuProps) {
   return (
     <DropdownMenu
       isOpen={true}

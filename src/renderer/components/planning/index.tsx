@@ -1,4 +1,6 @@
 import { Canvas } from './Canvas';
+import { BulkActionsMenu } from './BulkActionsMenu';
+import { PlanCardMenu } from './PlanCardMenu';
 import { BulkDeleteConfirmDialog } from './BulkDeleteConfirmDialog';
 import { CreateItemModal } from './CreateItemModal';
 import { TreeView } from '../tree-view';
@@ -355,6 +357,18 @@ export function PlanView({
         </div>
       </div>
 
+      {/* Context Menu — single-item gets full agent menu, multi-select gets bulk actions */}
+      {contextMenu?.singleItemId ? (
+        <PlanCardMenu
+          itemId={contextMenu.singleItemId}
+          isOpen={true}
+          position={{ type: 'point', x: contextMenu.x, y: contextMenu.y }}
+          onClose={closeContextMenu}
+          onEditItem={() => handleEditItem(contextMenu.singleItemId!)}
+          onDelete={openBulkDeleteDialog}
+        />
+      ) : contextMenu ? (
+        <BulkActionsMenu
           x={contextMenu.x}
           y={contextMenu.y}
           selectedCount={selectedItemIds.size}
@@ -365,6 +379,7 @@ export function PlanView({
           onDelete={openBulkDeleteDialog}
           onClose={closeContextMenu}
         />
+      ) : null}
 
       {/* Bulk Delete Confirmation Dialog */}
       {showBulkDeleteDialog && (

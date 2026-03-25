@@ -12,6 +12,7 @@ import { getStyleForDepth, MAX_DEPTH } from '../../constants/planCardStyles';
 import { DragSource } from '../../constants/dragSource';
 import { DeleteConfirmDialog } from '../ui/DeleteConfirmDialog';
 import { getStatusCategory } from '../../constants/statusConfig';
+import { PlanCardMenu, type MenuPosition } from './PlanCardMenu';
 
 // Hoisted constant for active session status check (avoids array recreation in selector)
 const ACTIVE_SESSION_STATUSES = ['pending', 'active'] as const;
@@ -221,6 +222,7 @@ export const PlanCard = memo(function PlanCard({
   const [isDragging, setIsDragging] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
 
   const {
     deletePlanItem,
@@ -542,6 +544,7 @@ export const PlanCard = memo(function PlanCard({
 
       {/* Context menu */}
         <PlanCardMenu
+          itemId={item.id}
           isOpen={showMenu}
           position={menuPosition}
           onClose={() => setShowMenu(false)}

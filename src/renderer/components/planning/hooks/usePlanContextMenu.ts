@@ -8,6 +8,13 @@ interface PlanContextMenuDeps {
   addToQueue: (projectId: string, itemIds: string[]) => Promise<unknown>;
 }
 
+export interface ContextMenuState {
+  x: number;
+  y: number;
+  /** When a single item is right-clicked, its ID. Null for multi-select. */
+  singleItemId: string | null;
+}
+
 export function usePlanContextMenu({
   currentProjectId,
   selectedItemIds,
@@ -15,11 +22,14 @@ export function usePlanContextMenu({
   addFocusedResource,
   addToQueue,
 }: PlanContextMenuDeps) {
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
       if (selectedItemIds.size > 0) {
         e.preventDefault();
+        const singleItemId = selectedItemIds.size === 1 ? Array.from(selectedItemIds)[0] : null;
+        setContextMenu({ x: e.clientX, y: e.clientY, singleItemId });
       }
     },
     [selectedItemIds]
@@ -54,8 +64,12 @@ export function usePlanContextMenu({
     [planItemsById, addFocusedResource]
   );
 
+  // Handle tree/board view context menu
   const handleTreeContextMenu = useCallback(
+    (e: React.MouseEvent, ids: Set<string>) => {
       e.preventDefault();
+      const singleItemId = ids.size === 1 ? Array.from(ids)[0] : null;
+      setContextMenu({ x: e.clientX, y: e.clientY, singleItemId });
     },
     []
   );
