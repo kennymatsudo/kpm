@@ -8,6 +8,7 @@ import type {
   ISyncQueueRepository,
   IGroupRepository,
 } from '../interfaces';
+import { assignItemToGroup } from './GroupAssignmentService';
 
 type Logger = Pick<Console, 'log' | 'warn'>;
 
@@ -334,6 +335,12 @@ function executeAssignToGroup(
   // Resolve placeholder IDs for both item and group
   const itemId = resolveId(ctx, action.item_id) ?? action.item_id;
   const groupId = resolveId(ctx, action.group_id);
+  const result = assignItemToGroup(itemId, groupId, {
+    groups: ctx.deps.groups,
+    planItems: ctx.deps.planItems,
+  });
+  if (!result.ok) {
+    skip(ctx, 'assign_to_group', result.error);
     return;
   }
   invalidateItem(ctx, itemId);

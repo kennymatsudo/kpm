@@ -1,9 +1,11 @@
+import type { PlanAction, PlanActionResult, PlanItem, PlanItemUpdates, PlanRelation } from '../../../shared/types';
 import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
 import { failure, success, type ServiceResult } from '../result';
 
 export interface PlanServiceDeps {
   planItems: IPlanItemRepository;
   planRelations: IPlanRelationRepository;
+  executePlanActions: (projectId: string, actions: PlanAction[]) => PlanActionResult;
 }
 
 function withItem<T>(deps: PlanServiceDeps, itemId: string, fn: (item: PlanItem) => T): ServiceResult<T> {
@@ -31,6 +33,10 @@ export function createPlanService(deps: PlanServiceDeps) {
   return {
     listItems(projectId: string): PlanItem[] {
       return deps.planItems.getByProject(projectId);
+    },
+
+    executeActions(projectId: string, actions: PlanAction[]): PlanActionResult {
+      return deps.executePlanActions(projectId, actions);
     },
 
     getRelations(projectId: string): PlanRelation[] {

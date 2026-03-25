@@ -9,11 +9,14 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import type { IRepositoryContainer } from '../db/interfaces';
 import { getDatabase, getUserDataPath } from '../db/connection';
+import { createPlanActionExecutor } from '../db/domain/PlanActionService';
 
 // Core services
 import { createPlanService } from './core/PlanService';
 import { createAttachmentService } from './core/AttachmentService';
+import { createGroupService } from './core/GroupService';
 import { createSearchService } from './core/SearchService';
+import { createTrackerService } from './core/TrackerService';
 import { createRepoWatcherService } from './repo/RepoWatcherService';
 
 // Generation services
@@ -30,6 +33,7 @@ import { createMcpDiscoveryService } from './core/McpDiscoveryService';
 // Confluence services
 import { createConfluenceSyncService } from './confluence';
 import { unwrapOrThrow } from './result';
+import { TrackerClientService } from '../trackers/TrackerClientService';
 
 // =============================================================================
 // Application Services Factory
@@ -47,9 +51,23 @@ export function createAppServices(container: IRepositoryContainer) {
   // Core Services
   // ─────────────────────────────────────────────────────────────────────────────
 
+  const planActionExecutor = createPlanActionExecutor({
+    planItems: container.planItems,
+    planRelations: container.planRelations,
+    groups: container.groups,
+    tracker: container.tracker,
+    syncQueue: container.syncQueue,
+  });
+
   const planService = createPlanService({
     planItems: container.planItems,
     planRelations: container.planRelations,
+    executePlanActions: planActionExecutor.execute,
+  });
+
+  const groupService = createGroupService({
+    groups: container.groups,
+    planItems: container.planItems,
   });
 
   const attachmentService = createAttachmentService({
@@ -61,6 +79,11 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const searchService = createSearchService({
     getDatabase,
+  });
+
+  const trackerService = createTrackerService({
+    tracker: container.tracker,
+    clientService: TrackerClientService,
   });
 
     planItems: container.planItems,
@@ -108,7 +131,9 @@ export function createAppServices(container: IRepositoryContainer) {
 
     // Core
     planService,
+    groupService,
     attachmentService,
+    trackerService,
     searchService,
 
     // Repo

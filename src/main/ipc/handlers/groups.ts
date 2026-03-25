@@ -6,9 +6,13 @@
  */
 
 import { ipcMain } from 'electron';
+import type { GroupService } from '../../services/core/GroupService';
+import { toIpcResponse } from '../response';
+import { unwrapOrThrow } from '../../services/result';
 import { GroupSchemas } from '../validation/group';
 import { IPC_CHANNELS } from '../channels';
 
+export function registerGroupHandlers(groupService: GroupService): void {
   // ─────────────────────────────────────────────────────────────────────────
   // CRUD Operations
   // ─────────────────────────────────────────────────────────────────────────
@@ -16,16 +20,19 @@ import { IPC_CHANNELS } from '../channels';
   // List groups for a project
   ipcMain.handle(IPC_CHANNELS.group.list, (_event, params: unknown) => {
     const { projectId } = GroupSchemas.list.parse(params);
+    return groupService.list(projectId);
   });
 
   // Get a single group
   ipcMain.handle(IPC_CHANNELS.group.get, (_event, params: unknown) => {
     const { id } = GroupSchemas.get.parse(params);
+    return groupService.get(id);
   });
 
   // Create a new group
   ipcMain.handle(IPC_CHANNELS.group.create, (_event, params: unknown) => {
     const { projectId, name, color, position_x, position_y, width, height } = GroupSchemas.create.parse(params);
+    return unwrapOrThrow(groupService.create({
       project_id: projectId,
       name,
       color,
@@ -34,16 +41,19 @@ import { IPC_CHANNELS } from '../channels';
       width,
       height,
       is_collapsed: false,
+    }));
   });
 
   // Update a group
   ipcMain.handle(IPC_CHANNELS.group.update, (_event, params: unknown) => {
     const { id, updates } = GroupSchemas.update.parse(params);
+    return toIpcResponse(groupService.update(id, updates));
   });
 
   // Delete a group
   ipcMain.handle(IPC_CHANNELS.group.delete, (_event, params: unknown) => {
     const { id } = GroupSchemas.delete.parse(params);
+    return toIpcResponse(groupService.delete(id));
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -53,11 +63,13 @@ import { IPC_CHANNELS } from '../channels';
   // Update group position
   ipcMain.handle(IPC_CHANNELS.group.updatePosition, (_event, params: unknown) => {
     const { id, x, y } = GroupSchemas.updatePosition.parse(params);
+    return toIpcResponse(groupService.updatePosition(id, x, y));
   });
 
   // Update group size
   ipcMain.handle(IPC_CHANNELS.group.updateSize, (_event, params: unknown) => {
     const { id, width, height } = GroupSchemas.updateSize.parse(params);
+    return toIpcResponse(groupService.updateSize(id, width, height));
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -67,5 +79,6 @@ import { IPC_CHANNELS } from '../channels';
   // Assign item to group (or unassign with null)
   ipcMain.handle(IPC_CHANNELS.group.assignItem, (_event, params: unknown) => {
     const { itemId, groupId } = GroupSchemas.assignItem.parse(params);
+    return toIpcResponse(groupService.assignItem(itemId, groupId));
   });
 }
