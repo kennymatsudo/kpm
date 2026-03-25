@@ -35,6 +35,7 @@ export function formatFocusedResource(resource: FocusedResource): string {
   }
 
   return `
+# Focused Selection
 
 ${focusDescription}
 
