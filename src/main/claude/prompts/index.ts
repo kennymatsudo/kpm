@@ -29,6 +29,7 @@ The user is on the planning canvas. Use \`modify_plan\` when they ask you to cre
   }
 
   return `## Current View: Workspace
+The user is in the workspace for documents and exploration. Plan modification tools are also available if the user asks to create or modify plan items.
 Default action: \`propose_document_create\` for new documents, \`propose_document_edit\` for existing files.`;
 }
 
