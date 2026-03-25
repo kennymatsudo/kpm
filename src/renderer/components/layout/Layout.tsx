@@ -42,6 +42,8 @@ export const Layout = memo(function Layout({
   sidebarOverlay = false,
   chatOverlay = false,
 }: LayoutProps) {
+  const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Create item handler registered by PlanView (for Cmd+Shift+I)
@@ -115,6 +117,7 @@ export const Layout = memo(function Layout({
   // Keyboard shortcuts
   useLayoutShortcuts({
     onToggleSidebar: () => setSidebarCollapsed((prev) => !prev),
+    onToggleChat: handleToggleChat,
     onMainViewChange: handleMainViewChange,
     onOpenCommandPalette: openCommandPalette,
     onCreateItem: handleOpenCreateItem,
@@ -130,6 +133,7 @@ export const Layout = memo(function Layout({
           sidebarCollapsed={sidebarCollapsed}
           onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
           chatCollapsed={chatCollapsed}
+          onToggleChat={handleToggleChat}
           onDeleteProject={onDeleteProject}
           onNewProject={onNewProject}
           onOpenProject={onOpenProject}
@@ -204,6 +208,10 @@ export const Layout = memo(function Layout({
 
             {mainView === 'workspace' && currentProjectId && (
               <ErrorBoundary name="WorkspaceView">
+                <WorkspaceView
+                  projectId={currentProjectId}
+                  chatCollapsed={workspaceChatCollapsed}
+                />
               </ErrorBoundary>
             )}
           </main>

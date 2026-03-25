@@ -6,3 +6,4 @@
 
 export { WorkspaceView } from './WorkspaceView';
 export { FileEditor } from './FileEditor';
+export { WorkspaceHome } from './WorkspaceHome';

@@ -1,12 +1,15 @@
 import { useShallow } from 'zustand/react/shallow';
 import { Chat, ChatHeader } from '../chat';
 import { FileEditor } from './FileEditor';
+import { WorkspaceHome } from './WorkspaceHome';
 import { getParentPath } from '../../utils/path';
 import { subscribe as subscribeToStoreEvent } from '../../stores/storeEvents';
 import { useWorkspaceResize } from './useWorkspaceResize';
 
 interface WorkspaceViewProps {
   projectId: string;
+  chatCollapsed: boolean;
+  onShowChat: () => void;
 }
 
 /**
@@ -20,6 +23,7 @@ interface WorkspaceViewProps {
  * Note: Pending file approvals (from Claude-generated content) are now handled
  * by ApprovalOverlays via the unified approval queue.
  */
+export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: WorkspaceViewProps) {
   const {
     editingFile,
     closeEditor,
@@ -163,7 +167,29 @@ interface WorkspaceViewProps {
         </div>
       )}
 
+      {!isEditing && chatCollapsed && (
+        <WorkspaceHome onShowChat={onShowChat} />
+      )}
 
+      {!chatCollapsed && (
+        <div
+          className={`
+            panel-right flex flex-col bg-surface-1
+            ${isEditing ? 'flex-shrink-0' : 'flex-1'}
+          `}
+        >
+          <ChatHeader />
+
+          {/* Soft divider */}
+          <div className="divider mx-4" />
+
+          {/* Chat content */}
+            <ErrorBoundary name="Chat">
+              <Chat currentView="workspace" />
+            </ErrorBoundary>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

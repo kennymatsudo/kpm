@@ -133,6 +133,7 @@ export function TopBar({
             </>
           )}
 
+          {(mainView === 'planning' || mainView === 'workspace') && (
           )}
         </div>
       </header>
