@@ -34,6 +34,8 @@ export interface IDevSessionRepository {
   updateStatus(id: string, status: DevSessionStatus): void;
   /** Update PR tracking info on a session */
   updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null): void;
+  /** Update session name */
+  updateName(id: string, name: string): void;
   /** Delete a session */
   delete(id: string): void;
   /** Mark all active sessions as inactive (called on app startup) */

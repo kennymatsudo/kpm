@@ -173,6 +173,11 @@ export function createGitHubService(deps: GitHubServiceDeps) {
 
 
 
+          comments.push({
+            state: null,
+          });
+        }
+
         });
 
       }

@@ -2246,7 +2246,25 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1059,
+    name: '059_add_dev_session_name',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE dev_sessions ADD COLUMN name TEXT;
+
+        -- Backfill: plan-item sessions get the plan item title
+        UPDATE dev_sessions
+        SET name = (SELECT pi.title FROM plan_items pi WHERE pi.id = dev_sessions.plan_item_id)
+        WHERE plan_item_id IS NOT NULL;
+
         -- Backfill: sessions without plan items get first 60 chars of instructions
+        UPDATE dev_sessions
+        SET name = SUBSTR(initial_instructions, 1, 60)
+        WHERE plan_item_id IS NULL AND name IS NULL;
+      `);
+    },
+  },
   {
     id: 1075,
     name: '075_drop_inbox_and_project_sessions',

@@ -271,6 +271,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           project_id: item.project_id!,
           plan_item_id: planItemId,
           repo_id: repoId,
+          name: item.title,
           worktree_path: worktreePath,
           branch_name: branchName,
           base_branch: baseBranch,

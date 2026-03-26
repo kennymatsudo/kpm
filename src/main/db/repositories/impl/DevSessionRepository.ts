@@ -31,6 +31,7 @@ interface PreparedStatements {
   insert: Statement;
   updateStatus: Statement;
   updatePrInfo: Statement;
+  updateName: Statement;
   delete: Statement;
   markActiveAsInactive: Statement;
 }
@@ -50,8 +51,11 @@ export class DevSessionRepository implements IDevSessionRepository {
           pi.title as pi_title,
           pi.description as pi_description,
           pi.label as pi_label,
+          pi.external_key as pi_external_key,
+          r.path as repo_path
         FROM dev_sessions ds
         LEFT JOIN plan_items pi ON ds.plan_item_id = pi.id
+        LEFT JOIN repos r ON ds.repo_id = r.id
         WHERE ds.project_id = ?
         ORDER BY ds.created_at DESC
       `),
@@ -71,6 +75,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       // Write operations - use RETURNING to avoid re-query
       insert: db.prepare(`
         INSERT INTO dev_sessions (
+          id, project_id, plan_item_id, repo_id, name,
           worktree_path, branch_name, base_branch,
         )
         RETURNING *
@@ -82,6 +87,7 @@ export class DevSessionRepository implements IDevSessionRepository {
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `),
+      updateName: db.prepare('UPDATE dev_sessions SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
       delete: db.prepare('DELETE FROM dev_sessions WHERE id = ?'),
       markActiveAsInactive: db.prepare(`
         UPDATE dev_sessions
@@ -106,6 +112,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       pi_description: string | null;
       pi_label: string | null;
       pi_external_key: string | null;
+      repo_path: string | null;
     })[];
 
     return rows.map((row) => ({
@@ -113,6 +120,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       project_id: row.project_id,
       plan_item_id: row.plan_item_id,
       repo_id: row.repo_id,
+      name: row.name,
       worktree_path: row.worktree_path,
       branch_name: row.branch_name,
       base_branch: row.base_branch,
@@ -125,6 +133,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       created_at: row.created_at,
       updated_at: row.updated_at,
       completed_at: row.completed_at,
+      repo_name: row.repo_path ? row.repo_path.split('/').pop()! : null,
       plan_item: row.pi_id ? {
         id: row.pi_id,
         title: row.pi_title!,
@@ -154,6 +163,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       session.project_id,
       session.plan_item_id,
       session.repo_id,
+      session.name,
       session.worktree_path,
       session.branch_name,
       session.base_branch,
@@ -168,6 +178,10 @@ export class DevSessionRepository implements IDevSessionRepository {
 
   updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null): void {
     this.stmts.updatePrInfo.run(prNumber, prUrl, prState, reviewState, id);
+  }
+
+  updateName(id: string, name: string): void {
+    this.stmts.updateName.run(name, id);
   }
 
   delete(id: string): void {

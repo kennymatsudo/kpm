@@ -6,6 +6,8 @@ function createDevSession() {
     project_id: 'project-1',
     plan_item_id: 'plan-1',
     repo_id: 'repo-1',
+    name: 'Implement feature',
+    repo_name: 'my-repo',
     branch_name: 'kpm/test-branch',
     base_branch: 'main',
     worktree_path: '/tmp/worktree',

@@ -736,6 +736,7 @@ export interface DevSession {
   project_id: string;
   plan_item_id: string | null;
   repo_id: string;
+  name: string | null;
 
   // Git worktree
   worktree_path: string;
@@ -765,6 +766,7 @@ export interface DevSession {
  * plan_item is null for historical rows or PR-linked stub sessions.
  */
 export interface DevSessionWithPlanItem extends DevSession {
+  repo_name: string | null;
   plan_item: {
     id: string;
     title: string;
