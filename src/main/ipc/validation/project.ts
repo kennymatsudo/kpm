@@ -86,6 +86,15 @@ export const RepoSchemas = {
     repoId: uuid,
     mode: repoEnvironmentMode,
   }),
+
+  listDirectories: z.object({
+    repoPath: existingDirectoryPath,
+    prefix: z.string().max(500).default(''),
+  }),
+
+  listAllBranches: z.object({
+    repoPath: existingDirectoryPath,
+  }),
 };
 
 // =============================================================================

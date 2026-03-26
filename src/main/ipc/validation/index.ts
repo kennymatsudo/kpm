@@ -127,6 +127,10 @@ export { McpServerSchemas } from './mcpServers';
 // Briefing
 export { BriefingSchemas } from './briefing';
 
+// Onboarding
+export { OnboardingSchemas } from './onboarding';
+export type { OnboardingGenerateInput, OnboardingSaveContextInput } from './onboarding';
+
 // Confluence
 export { ConfluenceSchemas } from './confluence';
 

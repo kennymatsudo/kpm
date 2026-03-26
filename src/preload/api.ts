@@ -253,6 +253,8 @@ const repos = {
   watch: (repoId: string, path: string): Promise<{ success: boolean }> =>
   unwatch: (path: string): Promise<{ success: boolean }> =>
   updateEnvironmentMode: (repoId: string, mode: RepoEnvironmentMode): Promise<{ success: boolean; error?: string }> =>
+  listDirectories: (repoPath: string, prefix?: string, depth?: number): Promise<string[]> =>
+  listAllBranches: (repoPath: string): Promise<string[]> =>
   onBranchChanged: (callback: (data: { repoId: string; repoPath: string; branch: string | null }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, data: { repoId: string; repoPath: string; branch: string | null }) => callback(data);
     ipcRenderer.on('repo:branch-changed', handler);
@@ -992,6 +994,26 @@ const debug = {
   isEnabled: (): Promise<{ enabled: boolean }> => ipcRenderer.invoke(IPC_CHANNELS.debug.isEnabled),
 };
 
+// Onboarding API (project setup wizard)
+const onboarding = {
+  saveContext: (projectId: string, content: string): Promise<{ success: boolean; error?: string }> =>
+  onProgress: (callback: (data: { taskId: string; message: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; message: string }) => callback(data);
+    ipcRenderer.on('onboarding:progress', handler);
+    return () => ipcRenderer.removeListener('onboarding:progress', handler);
+  },
+  onComplete: (callback: (data: { taskId: string; content: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; content: string }) => callback(data);
+    ipcRenderer.on('onboarding:complete', handler);
+    return () => ipcRenderer.removeListener('onboarding:complete', handler);
+  },
+  onError: (callback: (data: { taskId: string; error: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; error: string }) => callback(data);
+    ipcRenderer.on('onboarding:error', handler);
+    return () => ipcRenderer.removeListener('onboarding:error', handler);
+  },
+};
+
 export const api = {
   tempImages,
   chat,
@@ -1026,6 +1048,7 @@ export const api = {
   promptOverrides,
   briefing,
   mcpServers,
+  onboarding,
 };
 
 export type API = typeof api;

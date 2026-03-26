@@ -108,6 +108,9 @@ export function createAppServices(container: IRepositoryContainer) {
     projects: container.projects,
   });
 
+    getProjectFolder,
+  });
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Confluence Services
   // ─────────────────────────────────────────────────────────────────────────────
@@ -149,6 +152,7 @@ export function createAppServices(container: IRepositoryContainer) {
     repoFileService,
 
     // Generation
+    onboardingService,
 
     // Prompt overrides
     promptOverrideService,

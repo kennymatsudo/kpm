@@ -1,6 +1,7 @@
 import { useCallback, useState, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Layout } from './components/layout';
+import { ProjectOnboardingWizard } from './components/onboarding';
 import {
   useStoreSubscriptions,
   useProjectDomainStore,
@@ -49,6 +50,7 @@ export default function App() {
             onOpenProject={loadProjectData}
           />
 
+          <ProjectOnboardingWizard
             isOpen={showNewProjectDialog}
             onClose={handleCloseNewProjectDialog}
             onCreate={handleCreateProject}
