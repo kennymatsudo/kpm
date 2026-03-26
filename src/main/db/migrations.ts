@@ -2139,6 +2139,55 @@ interface Migration {
       }
     },
   },
+  {
+    id: 1057,
+    name: '057_add_plan_review_and_behavior_agent_roles',
+    up: (db: BetterSqliteDatabase) => {
+      // Add plan review roles and behavior_reviewer to agent_prompts CHECK constraint.
+      // SQLite requires table recreation to change CHECK constraints.
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+
+        CREATE TABLE agent_prompts_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+          agent_role TEXT NOT NULL CHECK(agent_role IN (
+            'codebase_fit_reviewer', 'premortem_reviewer', 'scope_reviewer', 'completeness_reviewer', 'plan_synthesizer',
+            'behavior_reviewer', 'design_reviewer', 'test_reviewer', 'readability_reviewer', 'security_reviewer', 'review_synthesizer'
+          )),
+          name TEXT NOT NULL DEFAULT 'default',
+          prompt_content TEXT NOT NULL,
+          is_default INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(project_id, agent_role, name)
+        );
+
+        INSERT INTO agent_prompts_new (id, project_id, agent_role, name, prompt_content, is_default, created_at, updated_at)
+        SELECT id, project_id, agent_role, name, prompt_content, is_default, created_at, updated_at
+        FROM agent_prompts;
+
+        DROP TABLE agent_prompts;
+        ALTER TABLE agent_prompts_new RENAME TO agent_prompts;
+
+        CREATE INDEX idx_agent_prompts_project ON agent_prompts(project_id);
+
+        CREATE UNIQUE INDEX idx_agent_prompts_global_unique
+          ON agent_prompts(agent_role, name)
+          WHERE project_id IS NULL;
+
+        CREATE UNIQUE INDEX idx_agent_prompts_default_project_role
+          ON agent_prompts(project_id, agent_role)
+          WHERE is_default = 1 AND project_id IS NOT NULL;
+
+        CREATE UNIQUE INDEX idx_agent_prompts_default_global_role
+          ON agent_prompts(agent_role)
+          WHERE is_default = 1 AND project_id IS NULL;
+
+        PRAGMA foreign_keys = ON;
+      `);
+    },
+  },
         -- Backfill: sessions without plan items get first 60 chars of instructions
   {
     id: 1075,
