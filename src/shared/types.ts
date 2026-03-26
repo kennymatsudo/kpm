@@ -726,6 +726,7 @@ export type SessionState = 'idle' | 'connecting' | 'ready' | 'processing' | 'err
 export type DevSessionStatus =
 
 /**
+ * A development session represents an implementation attempt.
  * Each session runs Claude Code in an isolated git worktree.
  * Sessions are normally linked to plan items; null plan_item_id is retained
  * for historical rows and PR-linked stub sessions.
@@ -733,6 +734,7 @@ export type DevSessionStatus =
 export interface DevSession {
   id: string;
   project_id: string;
+  plan_item_id: string | null;
   repo_id: string;
 
   // Git worktree
@@ -759,6 +761,7 @@ export interface DevSession {
 }
 
 /**
+ * Session with joined plan item data for display.
  * plan_item is null for historical rows or PR-linked stub sessions.
  */
 export interface DevSessionWithPlanItem extends DevSession {
@@ -768,6 +771,7 @@ export interface DevSessionWithPlanItem extends DevSession {
     description: string | null;
     label: string | null;
     external_key: string | null;
+  } | null;
 }
 
 // =============================================================================

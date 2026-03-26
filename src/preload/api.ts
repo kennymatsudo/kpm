@@ -651,6 +651,10 @@ const github = {
     ipcRenderer.invoke(IPC_CHANNELS.github.buildPrContext, { sessionId }),
   buildAddressCommentsContext: (sessionId: string): Promise<{ success: boolean; context?: string; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.github.buildAddressCommentsContext, { sessionId }),
+  detectAndLinkPr: (sessionId: string): Promise<{ success: boolean; status?: PrStatus | null; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.github.detectAndLinkPr, { sessionId }),
+  linkPr: (sessionId: string, prIdentifier: string): Promise<{ success: boolean; number?: number; url?: string; state?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.github.linkPr, { sessionId, prIdentifier }),
 };
 
 const worktrees = {

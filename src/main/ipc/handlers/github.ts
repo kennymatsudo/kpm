@@ -92,4 +92,27 @@ export function registerGitHubHandlers(gitHubService: GitHubService): void {
       'Failed to build address comments context'
     )
   );
+
+  ipcMain.handle(
+    IPC_CHANNELS.github.detectAndLinkPr,
+    createIpcHandler(
+      GitHubSchemas.detectAndLinkPr,
+      async ({ sessionId }) => {
+        const status = unwrapOrThrow(await gitHubService.detectAndLinkPr(sessionId));
+        return { status };
+      },
+      'Failed to detect PR for branch'
+    )
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.github.linkPr,
+    createIpcHandler(
+      GitHubSchemas.linkPr,
+      async ({ sessionId, prIdentifier }) => {
+        return unwrapOrThrow(await gitHubService.linkPr(sessionId, prIdentifier));
+      },
+      'Failed to link pull request'
+    )
+  );
 }

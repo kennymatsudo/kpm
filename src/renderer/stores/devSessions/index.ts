@@ -45,6 +45,10 @@
     body: string,
     draft: boolean
   ) => Promise<{ success: boolean; number?: number; url?: string; error?: string }>;
+  linkPullRequest: (
+    sessionId: string,
+    prIdentifier: string
+  ) => Promise<{ success: boolean; number?: number; url?: string; error?: string }>;
 
   // Reset
   reset: () => void;
@@ -87,6 +91,7 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
       return { lastActivityMap: next };
     });
   },
+
 
 
   reset: () => {

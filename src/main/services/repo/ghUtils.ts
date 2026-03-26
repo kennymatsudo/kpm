@@ -130,10 +130,84 @@ export async function getPrForBranch(
       { cwd }
     );
 
+    return parsePrViewOutput(stdout);
   } catch {
     // gh pr view exits non-zero when no PR exists for the branch
     return null;
   }
+}
+
+/**
+ * Get PR status by PR number. Returns null if no PR exists.
+ */
+export async function getPrByNumber(
+  cwd: string,
+  prNumber: number
+): Promise<GhPrStatus | null> {
+  try {
+    const { stdout } = await ghExec(
+      [
+        'pr', 'view', String(prNumber),
+      ],
+      { cwd }
+    );
+
+    return parsePrViewOutput(stdout);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse a PR identifier string into a PR number.
+ * Accepts: bare number, #number, or GitHub PR URL.
+ */
+export function parsePrIdentifier(input: string): number | null {
+  const trimmed = input.trim();
+  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+  if (/^#\d+$/.test(trimmed)) return parseInt(trimmed.slice(1), 10);
+  const urlMatch = /github\.com\/[^/]+\/[^/]+\/pull\/(\d+)/.exec(trimmed);
+  if (urlMatch) return parseInt(urlMatch[1], 10);
+  return null;
+}
+
+/**
+ * Parse `gh pr view --json` output into a GhPrStatus object.
+ */
+function parsePrViewOutput(stdout: string): GhPrStatus {
+  const raw = JSON.parse(stdout) as {
+    number: number;
+    url: string;
+    state: string;
+    reviewDecision: string;
+    statusCheckRollup: { state: string }[] | null;
+    additions: number;
+    deletions: number;
+    mergeable: string;
+  };
+
+  let checksStatus: GhPrStatus['checksStatus'] = null;
+  if (raw.statusCheckRollup && raw.statusCheckRollup.length > 0) {
+    const states = raw.statusCheckRollup.map(c => c.state);
+    if (states.every(s => s === 'SUCCESS')) {
+      checksStatus = 'SUCCESS';
+    } else if (states.some(s => s === 'FAILURE' || s === 'ERROR')) {
+      checksStatus = 'FAILURE';
+    } else {
+      checksStatus = 'PENDING';
+    }
+  }
+
+  return {
+    number: raw.number,
+    url: raw.url,
+    state: raw.state as GhPrStatus['state'],
+    reviewDecision: (raw.reviewDecision || null) as GhPrStatus['reviewDecision'],
+    checksStatus,
+    additions: raw.additions,
+    deletions: raw.deletions,
+    mergeable: (raw.mergeable || 'UNKNOWN') as GhPrStatus['mergeable'],
+  };
 }
 
 // =============================================================================

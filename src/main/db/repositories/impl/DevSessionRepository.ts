@@ -51,6 +51,7 @@ export class DevSessionRepository implements IDevSessionRepository {
           pi.description as pi_description,
           pi.label as pi_label,
         FROM dev_sessions ds
+        LEFT JOIN plan_items pi ON ds.plan_item_id = pi.id
         WHERE ds.project_id = ?
         ORDER BY ds.created_at DESC
       `),
@@ -100,6 +101,8 @@ export class DevSessionRepository implements IDevSessionRepository {
 
   getByProjectWithPlanItems(projectId: string): DevSessionWithPlanItem[] {
     const rows = this.stmts.getByProjectWithPlanItems.all(projectId) as (DevSession & {
+      pi_id: string | null;
+      pi_title: string | null;
       pi_description: string | null;
       pi_label: string | null;
       pi_external_key: string | null;
@@ -122,10 +125,13 @@ export class DevSessionRepository implements IDevSessionRepository {
       created_at: row.created_at,
       updated_at: row.updated_at,
       completed_at: row.completed_at,
+      plan_item: row.pi_id ? {
         id: row.pi_id,
+        title: row.pi_title!,
         description: row.pi_description,
         label: row.pi_label,
         external_key: row.pi_external_key,
+      } : null,
     }));
   }
 

@@ -12,6 +12,8 @@ import {
   checkGhAuth,
   createPr,
   getPrForBranch,
+  getPrByNumber,
+  parsePrIdentifier,
   pushBranch,
   isBranchPushed,
   type GhAuthResult,
@@ -315,6 +317,62 @@ export function createGitHubService(deps: GitHubServiceDeps) {
 
 
 
+    },
+
+    /**
+     * Auto-detect and link a PR for a session's branch.
+     * Returns the PR status if found and linked, null if no PR exists.
+     */
+    async detectAndLinkPr(sessionId: string): AsyncResult<PrStatus | null> {
+      const resolved = resolveSessionRepo(sessionId);
+      if ('error' in resolved) return failure(resolved.error);
+      const { repoPath, session } = resolved;
+
+      if (session.pr_number) return success(null);
+
+      try {
+        const status = await getPrForBranch(repoPath, session.branch_name);
+        if (!status) return success(null);
+
+        deps.devSessions.updatePrInfo(
+          sessionId,
+          status.number,
+          status.url,
+          status.state,
+          status.reviewDecision
+        );
+
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
+    /**
+     * Link an existing PR to a session by PR number or URL.
+     */
+    async linkPr(sessionId: string, prIdentifier: string): AsyncResult<PrStatus> {
+      const resolved = resolveSessionRepo(sessionId);
+      if ('error' in resolved) return failure(resolved.error);
+      const { repoPath } = resolved;
+
+      const prNumber = parsePrIdentifier(prIdentifier);
+      if (!prNumber) return failure('Invalid PR identifier. Provide a PR number or GitHub PR URL.');
+
+      try {
+        const status = await getPrByNumber(repoPath, prNumber);
+        if (!status) return failure(`PR #${prNumber} not found in this repository.`);
+
+        deps.devSessions.updatePrInfo(
+          sessionId,
+          status.number,
+          status.url,
+          status.state,
+          status.reviewDecision
+        );
+
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
     },
   };
 }

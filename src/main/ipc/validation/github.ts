@@ -40,4 +40,13 @@ export const GitHubSchemas = {
   buildAddressCommentsContext: z.object({
     sessionId: uuid,
   }),
+
+  detectAndLinkPr: z.object({
+    sessionId: uuid,
+  }),
+
+  linkPr: z.object({
+    sessionId: uuid,
+    prIdentifier: z.string().min(1, 'PR identifier is required').max(512),
+  }),
 };
