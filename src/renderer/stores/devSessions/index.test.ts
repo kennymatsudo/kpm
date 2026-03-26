@@ -64,6 +64,13 @@ describe('devSessionsStore', () => {
       body: '## Summary',
       branch: 'feature/test',
       baseBranch: 'main',
+      hasCommits: true,
+      prTemplate: null,
+    });
+    api.github.generatePrContent.mockResolvedValue({
+      success: true,
+      title: 'AI: Implement feature',
+      body: 'AI generated description',
     });
 
     const result = await useDevSessionsStore.getState().loadPrContext('dev-session-1');
@@ -73,8 +80,13 @@ describe('devSessionsStore', () => {
     expect(result).toEqual({
       success: true,
       context: {
+        suggestedTitle: 'AI: Implement feature',
+        body: 'AI generated description',
         branch: 'feature/test',
         baseBranch: 'main',
+        hasCommits: true,
+        prTemplate: null,
+        aiGenerated: true,
       },
     });
     expect(useDevSessionsStore.getState().prContextBySessionId.get('dev-session-1')).toEqual(

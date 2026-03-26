@@ -20,18 +20,27 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
   const createPullRequest = useDevSessionsStore((state) => state.createPullRequest);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [draft, setDraft] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [noCommits, setNoCommits] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
 
     setIsLoadingContext(true);
     setAuthError(null);
+    setNoCommits(false);
     setTitle('');
     setBody('');
 
       .then((result) => {
         if (!result.success || !result.context) {
           setAuthError(result.error || 'Failed to load PR context');
+          setIsLoadingContext(false);
+          return;
+        }
+
+        if (result.context.hasCommits === false) {
+          setNoCommits(true);
           setIsLoadingContext(false);
           return;
         }
@@ -90,12 +99,23 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
                 <p className="text-xs text-text-muted mt-1">{authError}</p>
               </div>
             </div>
+          ) : noCommits ? (
+            <div className="flex items-start gap-3 p-3 rounded-md bg-amber-500/10 border border-amber-500/20">
+              <svg className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
+              </svg>
+              <div>
+                <p className="text-xs text-text-muted mt-1">
+                </p>
+              </div>
+            </div>
           ) : isLoadingContext ? (
             <div className="flex items-center justify-center py-12 gap-2 text-text-muted text-xs">
               <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
               </svg>
+              Generating PR title and description...
             </div>
           ) : (
             <>

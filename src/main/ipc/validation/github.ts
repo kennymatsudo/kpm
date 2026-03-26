@@ -28,6 +28,15 @@ export const GitHubSchemas = {
     sessionId: uuid,
   }),
 
+  generatePrContent: z.object({
+    sessionId: uuid,
+    rawTitle: z.string(),
+    rawBody: z.string(),
+    prTemplate: z.string().nullable(),
+    diff: z.string(),
+    commitLog: z.string(),
+  }),
+
   buildAddressCommentsContext: z.object({
     sessionId: uuid,
   }),

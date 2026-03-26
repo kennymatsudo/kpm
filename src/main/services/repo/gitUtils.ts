@@ -91,6 +91,66 @@ export async function detectBaseBranch(
 }
 
 /**
+ * Check if a branch has any commits ahead of a base branch.
+ */
+export async function hasCommitsAhead(
+  repoPath: string,
+  baseBranch: string
+): Promise<boolean> {
+  try {
+    const { stdout } = await gitExec(
+      { cwd: repoPath }
+    );
+    return parseInt(stdout.trim(), 10) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Find and read a PR template from standard locations in a repo.
+ * Searches: .github/pull_request_template.md, .github/PULL_REQUEST_TEMPLATE.md,
+ * PULL_REQUEST_TEMPLATE.md, pull_request_template.md,
+ * docs/pull_request_template.md, .github/PULL_REQUEST_TEMPLATE/ (first .md file).
+ */
+export async function readPrTemplate(repoPath: string): Promise<string | null> {
+  const { readFile, readdir } = await import('fs/promises');
+  const { join } = await import('path');
+
+  const candidates = [
+    '.github/pull_request_template.md',
+    '.github/PULL_REQUEST_TEMPLATE.md',
+    'PULL_REQUEST_TEMPLATE.md',
+    'pull_request_template.md',
+    'docs/pull_request_template.md',
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const content = await readFile(join(repoPath, candidate), 'utf-8');
+      return content.trim();
+    } catch {
+      // File doesn't exist, try next
+    }
+  }
+
+  // Check .github/PULL_REQUEST_TEMPLATE/ directory for first .md file
+  try {
+    const templateDir = join(repoPath, '.github', 'PULL_REQUEST_TEMPLATE');
+    const files = await readdir(templateDir);
+    const mdFile = files.find(f => f.endsWith('.md'));
+    if (mdFile) {
+      const content = await readFile(join(templateDir, mdFile), 'utf-8');
+      return content.trim();
+    }
+  } catch {
+    // Directory doesn't exist
+  }
+
+  return null;
+}
+
+/**
  * Get recent commits from a repo (last N weeks).
  */
 export async function getRecentCommits(

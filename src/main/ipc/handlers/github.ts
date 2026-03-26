@@ -73,6 +73,15 @@ export function registerGitHubHandlers(gitHubService: GitHubService): void {
   );
 
   ipcMain.handle(
+    IPC_CHANNELS.github.generatePrContent,
+    createIpcHandler(
+      GitHubSchemas.generatePrContent,
+      },
+      'Failed to generate PR content'
+    )
+  );
+
+  ipcMain.handle(
     IPC_CHANNELS.github.buildAddressCommentsContext,
     createIpcHandler(
       GitHubSchemas.buildAddressCommentsContext,

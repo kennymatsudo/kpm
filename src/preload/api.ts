@@ -647,6 +647,7 @@ const github = {
     ipcRenderer.invoke(IPC_CHANNELS.github.getPrStatus, { sessionId }),
   getPrComments: (sessionId: string): Promise<{ success: boolean; comments?: PrComment[]; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.github.getPrComments, { sessionId }),
+  buildPrContext: (sessionId: string): Promise<{ success: boolean; suggestedTitle?: string; body?: string; branch?: string | null; baseBranch?: string; hasCommits?: boolean; prTemplate?: string | null; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.github.buildPrContext, { sessionId }),
   buildAddressCommentsContext: (sessionId: string): Promise<{ success: boolean; context?: string; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.github.buildAddressCommentsContext, { sessionId }),

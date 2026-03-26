@@ -7,6 +7,7 @@
 
 import type { IDevSessionRepository, IRepoRepository, IPlanItemRepository } from '../../db/interfaces';
 import { success, failure, wrapAsync, type AsyncResult } from '../result';
+import { getConfig } from '../../config';
 import {
   checkGhAuth,
   createPr,
@@ -18,6 +19,8 @@ import {
 import {
   getCommitLog,
   getCurrentBranch,
+  hasCommitsAhead,
+  readPrTemplate,
 } from './gitUtils';
 
 // =============================================================================
@@ -35,7 +38,12 @@ export interface PrContextResult {
   body: string;
   branch: string | null;
   baseBranch: string;
+  hasCommits: boolean;
+  prTemplate: string | null;
 }
+
+/** Branches that must never be pushed directly. */
+const PROTECTED_BRANCHES = new Set(['main', 'master', 'develop', 'release']);
 
 // =============================================================================
 // Service Factory
@@ -80,6 +88,20 @@ export function createGitHubService(deps: GitHubServiceDeps) {
       const { repoPath, session } = resolved;
 
       try {
+        // Safety: refuse to push protected branches
+        if (PROTECTED_BRANCHES.has(session.branch_name)) {
+          return failure(`Refusing to create PR from protected branch "${session.branch_name}". Create a feature branch first.`);
+        }
+        if (session.branch_name === session.base_branch) {
+          return failure(`Head branch "${session.branch_name}" is the same as base branch. Create a feature branch first.`);
+        }
+
+        // Check for commits ahead of base
+        const commits = await hasCommitsAhead(repoPath, baseBranch);
+        if (!commits) {
+          return failure(`No commits ahead of ${baseBranch}. Commit your changes before creating a PR.`);
+        }
+
         // Push branch if not already pushed
         const pushed = await isBranchPushed(repoPath, session.branch_name);
         if (!pushed) {
@@ -163,6 +185,9 @@ export function createGitHubService(deps: GitHubServiceDeps) {
       if ('error' in resolved) return failure(resolved.error);
 
       try {
+          getCurrentBranch(repoPath),
+          hasCommitsAhead(repoPath, baseBranch),
+        ]);
 
         // Build body sections
         const sections: string[] = [];
@@ -191,9 +216,91 @@ export function createGitHubService(deps: GitHubServiceDeps) {
           body: sections.join('\n\n'),
           branch: currentBranch,
           baseBranch,
+          hasCommits: commits,
+          prTemplate,
         });
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
+    /**
+     * Generate PR title and description using Sonnet.
+     * Takes raw context from buildPrContext and generates polished content.
+     * Falls back to the raw context if generation fails.
+     */
+    async generatePrContent(
+      sessionId: string,
+      rawTitle: string,
+      rawBody: string,
+      prTemplate: string | null,
+      diff: string,
+    ): AsyncResult<{ title: string; body: string }> {
+      const log = (msg: string) => console.log(`[GitHubService:generatePr] ${msg}`);
+      const logError = (msg: string) => console.error(`[GitHubService:generatePr] ${msg}`);
+
+      try {
+        const resolved = resolveSessionRepo(sessionId);
+        if ('error' in resolved) return failure(resolved.error);
+
+        // Gather context for the prompt
+        const [sessionDiff, sessionCommitLog] = diff && commitLog
+          ? [diff, commitLog]
+          : await Promise.all([
+              getCommitLog(repoPath, baseBranch),
+            ]);
+
+
+        // Build the generation prompt
+        const contextParts: string[] = [];
+
+        if (planItem) {
+          if (planItem.description) {
+            contextParts.push(`Description: ${planItem.description}`);
+          }
+          if (planItem.external_key) {
+            contextParts.push(`Tracker Key: ${planItem.external_key}`);
+          }
+        }
+
+
+        if (sessionDiff) {
+          // Truncate diff for prompt to keep tokens reasonable
+          const truncatedDiff = sessionDiff.length > 40_000
+            ? sessionDiff.slice(0, 40_000) + '\n\n... (diff truncated)'
+            : sessionDiff;
+        }
+
+
+        const prompt = `Generate a PR title and description for the following changes:\n\n${contextParts.join('\n\n')}`;
+
+        log('Calling Sonnet to generate PR content...');
+
+        const sdkOptions: SDKOptions = {
+          systemPrompt,
+          stderr: (data: string) => { logError(`stderr: ${data}`); },
+        };
+
+        const TIMEOUT_MS = getConfig().generation.prGenerationTimeoutMs;
+              }
+
+
+        if (!generatedContent.trim()) {
+          log('No content generated, falling back to raw context');
+          return success({ title: rawTitle, body: rawBody });
+        }
+
+        // Parse the response
+        const titleMatch = /^TITLE:\s*(.+)$/m.exec(generatedContent);
+        const bodyMatch = /^BODY:\s*\n([\s\S]*)$/m.exec(generatedContent);
+
+        const title = titleMatch?.[1]?.trim() || rawTitle;
+
+        log(`Generated title: ${title.substring(0, 60)}...`);
+        return success({ title, body });
+      } catch (error) {
+        logError(`Generation failed, falling back: ${error instanceof Error ? error.message : String(error)}`);
+        return success({ title: rawTitle, body: rawBody });
       }
     },
 

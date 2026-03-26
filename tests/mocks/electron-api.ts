@@ -260,6 +260,8 @@ export function createMockApi() {
       createPr: vi.fn().mockResolvedValue({ success: true, number: 1, url: 'https://github.com/test/repo/pull/1' }),
       getPrStatus: vi.fn().mockResolvedValue({ success: true, status: null }),
       getPrComments: vi.fn().mockResolvedValue({ success: true, comments: [] }),
+      buildPrContext: vi.fn().mockResolvedValue({ success: true, suggestedTitle: 'Test PR', body: '', branch: 'test-branch', baseBranch: 'main', hasCommits: true, prTemplate: null }),
+      generatePrContent: vi.fn().mockResolvedValue({ success: true, title: 'AI Generated Title', body: 'AI generated description' }),
       buildAddressCommentsContext: vi.fn().mockResolvedValue({ success: true, context: '' }),
     },
   };
