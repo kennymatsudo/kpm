@@ -173,6 +173,9 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
     // Remove from store
     removeProject(currentProjectId);
 
+    // Reset all project-scoped stores so stale data from the deleted project is cleared
+    resetAllProjectScopedStores();
+
     // Find another project to switch to
     const remainingProjects = projects.filter(p => p.id !== currentProjectId);
     if (remainingProjects.length > 0) {

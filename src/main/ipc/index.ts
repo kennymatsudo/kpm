@@ -12,4 +12,5 @@ export function registerAllIpcHandlers(
     getMainWindow,
 
 
+  // Review sync is on-demand (triggered by renderer when Review view is opened)
 }
