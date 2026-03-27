@@ -90,6 +90,7 @@ export const RepoSchemas = {
   listDirectories: z.object({
     repoPath: existingDirectoryPath,
     prefix: z.string().max(500).default(''),
+    depth: z.number().int().min(1).max(20).default(20),
   }),
 
   listAllBranches: z.object({
