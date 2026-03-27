@@ -25,3 +25,6 @@ export * from './AppSettingsRepository';
 export * from './DevSessionRepository';
 export * from './ConfluenceLinkRepository';
 export * from './ToolPermissionRepository';
+export * from './ReviewTaskRepository';
+export * from './ReviewOwnershipRepository';
+export * from './ReviewSyncStateRepository';

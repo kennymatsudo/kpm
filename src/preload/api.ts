@@ -59,6 +59,7 @@ import type {
   ToolPermission,
   PrStatus,
   PrComment,
+  ReviewInboxSnapshot,
   DiscoveredPlugin,
   UserMcpServer,
   DiscoveredMcpServer,
@@ -117,6 +118,7 @@ export type {
   PromptCategory,
   BriefingResult,
   ToolPermission,
+  ReviewInboxSnapshot,
 };
 
 const tempImages = {
@@ -659,6 +661,42 @@ const github = {
     ipcRenderer.invoke(IPC_CHANNELS.github.linkPr, { sessionId, prIdentifier }),
 };
 
+const review = {
+  getInbox: (sessionId: string): Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.review.getInbox, { sessionId }),
+  refreshSession: (sessionId: string): Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.review.refreshSession, { sessionId }),
+  assignOwnership: (sessionId: string): Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.review.assignOwnership, { sessionId }),
+  draftPostImplReplies: (sessionId: string): Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.review.draftPostImplReplies, { sessionId }),
+  triggerAutomation: (
+    sessionId: string,
+    taskIds?: string[]
+  ): Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; taskIds?: string[]; context?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.review.triggerAutomation, { sessionId, taskIds }),
+  replyToThread: (
+    sessionId: string,
+    threadId: string,
+    body: string,
+    resolve?: boolean
+  ): Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; replyId?: string; resolved?: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.review.replyToThread, { sessionId, threadId, body, resolve }),
+  resolveThread: (sessionId: string, threadId: string): Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.review.resolveThread, { sessionId, threadId }),
+  unresolveThread: (sessionId: string, threadId: string): Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.review.unresolveThread, { sessionId, threadId }),
+  ignoreTask: (taskId: string): Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.review.ignoreTask, { taskId }),
+  overrideDisposition: (taskId: string, disposition: string): Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.review.overrideDisposition, { taskId, disposition }),
+  onSyncUpdated: (callback: (data: { sessionId: string; needsReviewCount: number; totalTasks: number; fetchedAt: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { sessionId: string; needsReviewCount: number; totalTasks: number; fetchedAt: string }) => callback(data);
+    ipcRenderer.on('review:sync-updated', handler);
+    return () => ipcRenderer.removeListener('review:sync-updated', handler);
+  },
+};
+
 const worktrees = {
   getByProject: (projectId: string): Promise<Worktree[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.worktree.getByProject, { projectId }),
@@ -732,6 +770,10 @@ const devSessions = {
     ipcRenderer.on('dev-session:status-changed', handler);
     return () => ipcRenderer.removeListener('dev-session:status-changed', handler);
   },
+
+  // Update session name
+  updateName: (sessionId: string, name: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.devSession.updateName, { sessionId, name }),
 };
 
 const fileExplorer = {
@@ -996,11 +1038,17 @@ const debug = {
 
 // Onboarding API (project setup wizard)
 const onboarding = {
+  generate: (taskId: string, projectId: string, description: string, repoDirectories: Record<string, string[]>): Promise<{ taskId: string }> =>
   saveContext: (projectId: string, content: string): Promise<{ success: boolean; error?: string }> =>
   onProgress: (callback: (data: { taskId: string; message: string }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; message: string }) => callback(data);
     ipcRenderer.on('onboarding:progress', handler);
     return () => ipcRenderer.removeListener('onboarding:progress', handler);
+  },
+  onThinking: (callback: (data: { taskId: string; text: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; text: string }) => callback(data);
+    ipcRenderer.on('onboarding:thinking', handler);
+    return () => ipcRenderer.removeListener('onboarding:thinking', handler);
   },
   onComplete: (callback: (data: { taskId: string; content: string }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; content: string }) => callback(data);
@@ -1034,6 +1082,7 @@ export const api = {
   taskPromptTemplates,
   customPrompts,
   github,
+  review,
   worktrees,
   devSessions,
   fileExplorer,

@@ -66,6 +66,11 @@ export const DevSessionSchemas = {
     sessionId: uuid,
   }),
 
+  /** Update session name */
+  updateName: z.object({
+    sessionId: uuid,
+    name: z.string().min(1).max(200),
+  }),
 };
 
 // =============================================================================

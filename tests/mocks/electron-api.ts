@@ -264,6 +264,21 @@ export function createMockApi() {
       generatePrContent: vi.fn().mockResolvedValue({ success: true, title: 'AI Generated Title', body: 'AI generated description' }),
       buildAddressCommentsContext: vi.fn().mockResolvedValue({ success: true, context: '' }),
     },
+
+    review: {
+      getInbox: vi.fn().mockResolvedValue({ success: true, inbox: null }),
+      refreshSession: vi.fn().mockResolvedValue({ success: true, inbox: null }),
+      assignOwnership: vi.fn().mockResolvedValue({ success: true, inbox: null }),
+      assessThreads: vi.fn().mockResolvedValue({ success: true, inbox: null, results: [], errors: [] }),
+      draftPostImplReplies: vi.fn().mockResolvedValue({ success: true, inbox: null }),
+      triggerAutomation: vi.fn().mockResolvedValue({ success: true, inbox: null, taskIds: [], context: '' }),
+      replyToThread: vi.fn().mockResolvedValue({ success: true, inbox: null, replyId: 'reply-1', resolved: false }),
+      resolveThread: vi.fn().mockResolvedValue({ success: true, inbox: null }),
+      unresolveThread: vi.fn().mockResolvedValue({ success: true, inbox: null }),
+      ignoreTask: vi.fn().mockResolvedValue({ success: true, inbox: null }),
+      overrideDisposition: vi.fn().mockResolvedValue({ success: true, inbox: null }),
+      onSyncUpdated: vi.fn().mockReturnValue(() => {}),
+    },
   };
 }
 

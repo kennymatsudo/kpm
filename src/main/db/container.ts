@@ -31,6 +31,9 @@ import {
   DevSessionRepository as DevSessionRepositoryClass,
   ConfluenceLinkRepository as ConfluenceLinkRepositoryClass,
   ToolPermissionRepository as ToolPermissionRepositoryClass,
+  ReviewTaskRepository as ReviewTaskRepositoryClass,
+  ReviewOwnershipRepository as ReviewOwnershipRepositoryClass,
+  ReviewSyncStateRepository as ReviewSyncStateRepositoryClass,
 } from './repositories/impl';
 import type { IFileSystem, IPathUtils } from './repositories/impl/ProjectRepository';
 
@@ -104,6 +107,9 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
     devSessions: new DevSessionRepositoryClass(database),
     confluenceLinks: new ConfluenceLinkRepositoryClass(database),
     toolPermissions: new ToolPermissionRepositoryClass(database),
+    reviewTasks: new ReviewTaskRepositoryClass(database),
+    reviewOwnership: new ReviewOwnershipRepositoryClass(database),
+    reviewSyncState: new ReviewSyncStateRepositoryClass(database),
   };
 }
 

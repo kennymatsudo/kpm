@@ -34,10 +34,24 @@ export interface PendingDocumentItem {
   oldContent: string | null;
 }
 
+export interface PendingReviewReplyItem {
+  type: 'review-reply';
+  id: string;
+  sessionId: string;
+  threadId: string;
+  threadUrl: string;
+  threadTitle: string;
+  threadLocation: string;
+  latestCommentPreview: string | null;
+  body: string;
+  resolve: boolean;
+}
+
 export type ApprovalItem =
   | PendingPlanActionsItem
   | PendingClaudeMdItem
   | PendingDocumentItem
+  | PendingReviewReplyItem;
 
 // =============================================================================
 // Store Interface
@@ -57,6 +71,9 @@ interface ApprovalQueueState {
 
   /** Add a document update to the queue */
   enqueueDocumentUpdate: (filePath: string, content: string, oldContent: string | null) => void;
+
+  /** Add a staged GitHub review reply for approval */
+  enqueueReviewReply: (draft: Omit<PendingReviewReplyItem, 'type' | 'id'>) => void;
 
   /** Remove the current (first) item from the queue */
   dequeue: () => void;
@@ -158,6 +175,22 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
         return { queue: updatedQueue };
       }
 
+    });
+  },
+
+  enqueueReviewReply: (draft) => {
+    const newItem: PendingReviewReplyItem = {
+      type: 'review-reply',
+      id: generateId(),
+      ...draft,
+    };
+
+    set((state) => {
+      const filtered = state.queue.filter((item) => (
+        item.type !== 'review-reply' ||
+        item.sessionId !== draft.sessionId ||
+        item.threadId !== draft.threadId
+      ));
     });
   },
 

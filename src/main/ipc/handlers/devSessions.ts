@@ -169,4 +169,15 @@ export function registerDevSessionHandlers(
     )
   );
 
+  // Update session name
+  ipcMain.handle(
+    IPC_CHANNELS.devSession.updateName,
+    createIpcHandler(
+      DevSessionSchemas.updateName,
+      ({ sessionId, name }) => {
+        devSessionService.updateName(sessionId, name);
+      },
+      'Failed to update session name'
+    )
+  );
 }

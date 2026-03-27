@@ -803,6 +803,209 @@ export interface PrComment {
   createdAt: string;
 }
 
+/** GitHub author node type exposed in review data. */
+export type GitHubAuthorType = 'User' | 'Bot' | 'Organization' | 'App' | 'Mannequin' | 'Unknown';
+
+
+/**
+ * User-visible workflow status for a persisted review task.
+ *
+ * Five states the user sees in the thread list:
+ * - needs_review: new or changed thread, not yet assessed
+ * - assessed: Claude has a disposition and rationale
+ * - in_progress: routed to dev session for implementation
+ * - ready_to_post: draft reply ready for approval
+ * - done: reply posted and/or thread resolved
+ */
+export type ReviewTaskStatus =
+  | 'needs_review'
+  | 'assessed'
+  | 'in_progress'
+  | 'ready_to_post'
+  | 'done';
+
+/**
+ * Internal bookkeeping states tracked by the service layer for orchestration.
+ * These do not appear in the thread list UI.
+ */
+export type ReviewTaskInternalState =
+  | 'assessment_running'
+  | 'implementation_queued'
+  | 'post_impl_running'
+  | 'stale'
+  | 'failed'
+  | 'ignored';
+
+/**
+ * Assessment disposition for a review thread.
+ *
+ * - implement: real issue, fix it
+ * - push_back: not worth implementing, here's why
+ * - needs_user_input: ambiguous, user should decide
+ */
+export type ReviewDisposition = 'implement' | 'push_back' | 'needs_user_input';
+
+/** Coarse origin for an actionable review task. */
+export type ReviewTaskSource = 'human' | 'bot' | 'mixed';
+
+/** Simple prioritization used for review task ordering. */
+export type ReviewTaskPriority = 'low' | 'medium' | 'high';
+
+/** Summary of live PR review state. */
+export interface PrReviewSummary {
+  totalThreads: number;
+  unresolvedThreads: number;
+  resolvedThreads: number;
+  outdatedThreads: number;
+  actionableThreads: number;
+  humanThreads: number;
+  botOnlyThreads: number;
+  topLevelReviewCount: number;
+  conversationCommentCount: number;
+}
+
+/** One comment inside a GitHub review thread. */
+export interface PrReviewThreadComment {
+  id: string;
+  databaseId: number | null;
+  url: string;
+  author: string;
+  authorType: GitHubAuthorType;
+  authorAssociation: string | null;
+  body: string;
+  createdAt: string;
+  replyToId: string | null;
+  viewerCanUpdate: boolean;
+  viewerCanDelete: boolean;
+}
+
+/** One GitHub review thread with its reply chain. */
+export interface PrReviewThread {
+  id: string;
+  url: string;
+  path: string | null;
+  line: number | null;
+  startLine: number | null;
+  subjectType: string | null;
+  diffSide: 'LEFT' | 'RIGHT' | null;
+  isResolved: boolean;
+  isOutdated: boolean;
+  resolvedBy: string | null;
+  updatedAt: string;
+  participants: string[];
+  comments: PrReviewThreadComment[];
+  hasBotOnlyComments: boolean;
+  hasHumanReviewerComment: boolean;
+  latestCommentPreview: string | null;
+}
+
+/** Top-level review decision/comment on a PR. */
+export interface PrTopLevelReview {
+  id: string;
+  databaseId: number | null;
+  url: string;
+  author: string;
+  authorType: GitHubAuthorType;
+  authorAssociation: string | null;
+  body: string;
+  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING' | null;
+  submittedAt: string | null;
+  commitOid: string | null;
+}
+
+/** General PR conversation comment outside review threads. */
+export interface PrConversationComment {
+  id: string;
+  databaseId: number | null;
+  url: string;
+  author: string;
+  authorType: GitHubAuthorType;
+  authorAssociation: string | null;
+  body: string;
+  createdAt: string;
+  viewerCanUpdate: boolean;
+  viewerCanDelete: boolean;
+}
+
+/** Live GitHub review snapshot for a pull request. */
+export interface PrReviewSnapshot {
+  prNumber: number;
+  prUrl: string;
+  title: string;
+  state: 'OPEN' | 'CLOSED' | 'MERGED';
+  reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null;
+  headOid: string;
+  baseRefName: string;
+  headRefName: string;
+  fetchedAt: string;
+  summary: PrReviewSummary;
+  threads: PrReviewThread[];
+  topLevelReviews: PrTopLevelReview[];
+  conversationComments: PrConversationComment[];
+}
+
+/** Persisted workflow record for one actionable review thread. */
+export interface ReviewTask {
+  id: string;
+  project_id: string;
+  repo_id: string;
+  session_id: string;
+  pr_number: number;
+  thread_id: string;
+  thread_url: string;
+  path: string | null;
+  line: number | null;
+  source: ReviewTaskSource;
+  status: ReviewTaskStatus;
+  internal_state: ReviewTaskInternalState | null;
+  disposition: ReviewDisposition | null;
+  rationale: string | null;
+  draft_reply: string | null;
+  priority: ReviewTaskPriority;
+  title: string;
+  latest_comment_preview: string | null;
+  last_seen_comment_id: string | null;
+  last_seen_updated_at: string;
+  last_agent_run_at: string | null;
+  last_posted_reply_id: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+/** Session ownership for review handling of a PR. */
+export interface ReviewOwnership {
+  repo_id: string;
+  pr_number: number;
+  session_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Latest review sync metadata cached per PR. */
+export interface ReviewSyncState {
+  repo_id: string;
+  pr_number: number;
+  session_id: string | null;
+  last_fetched_at: string | null;
+  last_successful_fetched_at: string | null;
+  last_head_oid: string | null;
+  last_review_decision: PrStatus['reviewDecision'];
+  last_error: string | null;
+}
+
+
+/** Renderer-friendly aggregate of live review state plus workflow state. */
+export interface ReviewInboxSnapshot {
+  session_id: string;
+  snapshot: PrReviewSnapshot | null;
+  tasks: ReviewTask[];
+  ownership: ReviewOwnership | null;
+  sync_state: ReviewSyncState | null;
+  fetched_at: string;
+}
+
 // =============================================================================
 // File Explorer Types
 // =============================================================================

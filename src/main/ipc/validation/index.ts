@@ -121,6 +121,9 @@ export type {
 // GitHub
 export { GitHubSchemas } from './github';
 
+// Review workflow
+export { ReviewSchemas } from './review';
+
 // MCP Servers
 export { McpServerSchemas } from './mcpServers';
 

@@ -30,6 +30,112 @@ function createDevSession() {
   };
 }
 
+function createReviewInbox(sessionId = 'dev-session-1') {
+  return {
+    session_id: sessionId,
+    fetched_at: '2024-01-02T00:00:00.000Z',
+    ownership: {
+      repo_id: 'repo-1',
+      pr_number: 42,
+      session_id: sessionId,
+      created_at: '2024-01-02T00:00:00.000Z',
+      updated_at: '2024-01-02T00:00:00.000Z',
+    },
+    sync_state: {
+      repo_id: 'repo-1',
+      pr_number: 42,
+      session_id: sessionId,
+      last_fetched_at: '2024-01-02T00:00:00.000Z',
+      last_successful_fetched_at: '2024-01-02T00:00:00.000Z',
+      last_head_oid: 'abcdef1234567890',
+      last_review_decision: 'CHANGES_REQUESTED' as const,
+      last_error: null,
+    },
+    snapshot: {
+      prNumber: 42,
+      prUrl: 'https://github.com/test/repo/pull/42',
+      title: 'Implement feature',
+      state: 'OPEN' as const,
+      reviewDecision: 'CHANGES_REQUESTED' as const,
+      headOid: 'abcdef1234567890',
+      baseRefName: 'main',
+      headRefName: 'kpm/test-branch',
+      fetchedAt: '2024-01-02T00:00:00.000Z',
+      summary: {
+        totalThreads: 1,
+        unresolvedThreads: 1,
+        resolvedThreads: 0,
+        outdatedThreads: 0,
+        actionableThreads: 1,
+        humanThreads: 1,
+        botOnlyThreads: 0,
+        topLevelReviewCount: 0,
+        conversationCommentCount: 0,
+      },
+      threads: [{
+        id: 'thread-1',
+        url: 'https://github.com/test/repo/pull/42#discussion_r1',
+        path: 'src/file.ts',
+        line: 10,
+        startLine: null,
+        subjectType: 'LINE',
+        diffSide: 'RIGHT' as const,
+        isResolved: false,
+        isOutdated: false,
+        resolvedBy: null,
+        updatedAt: '2024-01-02T00:00:00.000Z',
+        participants: ['reviewer'],
+        comments: [{
+          id: 'comment-1',
+          databaseId: 1,
+          url: 'https://github.com/test/repo/pull/42#discussion_r1',
+          author: 'reviewer',
+          authorType: 'User' as const,
+          authorAssociation: 'MEMBER',
+          body: 'Please fix this',
+          createdAt: '2024-01-02T00:00:00.000Z',
+          replyToId: null,
+          viewerCanUpdate: false,
+          viewerCanDelete: false,
+        }],
+        hasBotOnlyComments: false,
+        hasHumanReviewerComment: true,
+        latestCommentPreview: 'Please fix this',
+      }],
+      topLevelReviews: [],
+      conversationComments: [],
+    },
+    tasks: [{
+      id: 'task-1',
+      project_id: 'project-1',
+      repo_id: 'repo-1',
+      session_id: sessionId,
+      pr_number: 42,
+      thread_id: 'thread-1',
+      thread_url: 'https://github.com/test/repo/pull/42#discussion_r1',
+      path: 'src/file.ts',
+      line: 10,
+      source: 'human' as const,
+      status: 'needs_review' as const,
+      internal_state: null,
+      disposition: null,
+      rationale: null,
+      draft_reply: null,
+      priority: 'high' as const,
+      title: 'Review feedback on src/file.ts:10',
+      latest_comment_preview: 'Please fix this',
+      last_seen_comment_id: 'comment-1',
+      last_seen_updated_at: '2024-01-02T00:00:00.000Z',
+      last_agent_run_at: null,
+      last_posted_reply_id: null,
+      error: null,
+      created_at: '2024-01-02T00:00:00.000Z',
+      updated_at: '2024-01-02T00:00:00.000Z',
+      completed_at: null,
+    }],
+  };
+}
+
 describe('devSessionsStore', () => {
   let api: MockApi;
 
@@ -39,19 +145,41 @@ describe('devSessionsStore', () => {
     vi.clearAllMocks();
   });
 
+  it('caches review inbox by session id', async () => {
+    const inbox = createReviewInbox();
+    api.review.getInbox.mockResolvedValue({ success: true, inbox });
 
+    const first = await useDevSessionsStore.getState().loadReviewInbox('dev-session-1');
+    const second = await useDevSessionsStore.getState().loadReviewInbox('dev-session-1');
 
+    expect(first).toEqual({ success: true, inbox });
+    expect(second).toEqual({ success: true, inbox });
+    expect(api.review.getInbox).toHaveBeenCalledTimes(1);
+    expect(useDevSessionsStore.getState().reviewInboxBySessionId.get('dev-session-1')).toEqual(inbox);
   });
 
+  it('triggers review automation through the review service and refreshes sessions', async () => {
     const session = createDevSession();
+    const inbox = createReviewInbox();
+    useDevSessionsStore.setState({ projectId: 'project-1' });
+    api.review.triggerAutomation.mockResolvedValue({
       success: true,
+      inbox,
+      taskIds: ['task-1'],
+      context: 'THREAD thread-1',
     });
     api.devSessions.getByProjectWithPlanItems.mockResolvedValue({ success: true, sessions: [{ ...session, status: 'active' }] });
 
+    const result = await useDevSessionsStore.getState().triggerReviewAutomation('dev-session-1', ['task-1']);
 
+    expect(api.review.triggerAutomation).toHaveBeenCalledWith('dev-session-1', ['task-1']);
     expect(result).toEqual({
       success: true,
+      inbox,
+      taskIds: ['task-1'],
+      context: 'THREAD thread-1',
     });
+    expect(useDevSessionsStore.getState().reviewInboxBySessionId.get('dev-session-1')).toEqual(inbox);
   });
 
   it('loads PR context through the store after checking GitHub auth', async () => {

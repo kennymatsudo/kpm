@@ -1,3 +1,7 @@
+import type {
+  DevSessionWithPlanItem,
+  PrStatus,
+  ReviewInboxSnapshot,
   // Data
   projectId: string | null;
   sessions: DevSessionWithPlanItem[];
@@ -9,6 +13,10 @@
   lastActivityMap: Map<string, number>;
   diffBySessionId: Map<string, string | null>;
   diffLoadingIds: Set<string>;
+  reviewInboxBySessionId: Map<string, ReviewInboxSnapshot>;
+  reviewLoadingIds: Set<string>;
+  reviewErrorBySessionId: Map<string, string | null>;
+  reviewFiltersBySessionId: Map<string, ReviewFilters>;
   prContextBySessionId: Map<string, PrCreationContext>;
   prContextLoadingIds: Set<string>;
 
@@ -36,6 +44,17 @@
   dismissSession: (session: DevSessionWithPlanItem) => Promise<{ success: boolean; error?: string }>;
   updateSessionName: (session: DevSessionWithPlanItem, name: string) => Promise<{ success: boolean; error?: string }>;
   loadDiff: (sessionId: string, options?: { force?: boolean }) => Promise<{ success: boolean; diff: string | null; error?: string }>;
+  loadReviewInbox: (sessionId: string, options?: { force?: boolean }) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
+  refreshReviewInbox: (sessionId: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
+  assignReviewOwnership: (sessionId: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
+  draftPostImplReplies: (sessionId: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
+  triggerReviewAutomation: (sessionId: string, taskIds?: string[]) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; taskIds?: string[]; context?: string; error?: string }>;
+  replyToReviewThread: (sessionId: string, threadId: string, body: string, resolve?: boolean) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; replyId?: string; resolved?: boolean; error?: string }>;
+  resolveReviewThread: (sessionId: string, threadId: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
+  unresolveReviewThread: (sessionId: string, threadId: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
+  ignoreReviewTask: (sessionId: string, taskId: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
+  overrideReviewDisposition: (sessionId: string, taskId: string, disposition: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
+  setReviewFilters: (sessionId: string, filters: Partial<ReviewFilters>) => void;
   loadPrContext: (
     sessionId: string,
   ) => Promise<{ success: boolean; context?: PrCreationContext; error?: string }>;
@@ -65,6 +84,10 @@ const initialState = {
   lastActivityMap: new Map<string, number>(),
   diffBySessionId: new Map<string, string | null>(),
   diffLoadingIds: new Set<string>(),
+  reviewInboxBySessionId: new Map<string, ReviewInboxSnapshot>(),
+  reviewLoadingIds: new Set<string>(),
+  reviewErrorBySessionId: new Map<string, string | null>(),
+  reviewFiltersBySessionId: new Map<string, ReviewFilters>(),
   prContextBySessionId: new Map<string, PrCreationContext>(),
   prContextLoadingIds: new Set<string>(),
   prStatusCache: new Map<string, PrStatus>(),

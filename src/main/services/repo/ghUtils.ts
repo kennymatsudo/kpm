@@ -8,6 +8,15 @@
 
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import type {
+  GitHubAuthorType,
+  PrConversationComment,
+  PrReviewSnapshot,
+  PrReviewSummary,
+  PrReviewThread,
+  PrReviewThreadComment,
+  PrTopLevelReview,
+} from '../../../shared/types';
 import { gitExec } from './gitUtils';
 
 const execFileAsync = promisify(execFile);
@@ -37,6 +46,12 @@ export interface GhPrStatus {
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
 }
 
+export interface GhReviewThreadState {
+  id: string;
+  isResolved: boolean;
+  resolvedBy: string | null;
+}
+
 // =============================================================================
 // Core Execution
 // =============================================================================
@@ -48,6 +63,22 @@ export interface GhPrStatus {
   options: { cwd: string; maxBuffer?: number }
 ): Promise<{ stdout: string; stderr: string }> {
   return execFileAsync('gh', args, options);
+}
+
+async function ghGraphQL<T>(
+  cwd: string,
+  query: string,
+  variables: Record<string, string | number | boolean | null | undefined>
+): Promise<T> {
+  const args = ['api', 'graphql', '-f', `query=${query}`];
+  for (const [key, value] of Object.entries(variables)) {
+    if (value == null) continue;
+    args.push('-F', `${key}=${String(value)}`);
+  }
+
+  const { stdout } = await ghExec(args, { cwd, maxBuffer: 10 * 1024 * 1024 });
+  const parsed = JSON.parse(stdout);
+  return (parsed.data ?? parsed) as T;
 }
 
 // =============================================================================
@@ -95,6 +126,14 @@ export async function checkGhAuth(cwd: string): Promise<GhAuthResult> {
     { cwd }
   );
   return stdout.trim();
+}
+
+function splitRepoSlug(slug: string): { owner: string; name: string } {
+  const [owner, name] = slug.split('/');
+  if (!owner || !name) {
+    throw new Error(`Invalid GitHub repository slug: ${slug}`);
+  }
+  return { owner, name };
 }
 
 // =============================================================================
@@ -156,6 +195,631 @@ export async function getPrByNumber(
   } catch {
     return null;
   }
+}
+
+function truncatePreview(body: string, maxLength = 160): string {
+  const normalized = body.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function toAuthorType(rawType: string | null | undefined): GitHubAuthorType {
+  switch (rawType) {
+    case 'User':
+    case 'Bot':
+    case 'Organization':
+    case 'App':
+    case 'Mannequin':
+      return rawType;
+    default:
+      return 'Unknown';
+  }
+}
+
+function isHumanAuthorType(authorType: GitHubAuthorType): boolean {
+  return authorType === 'User';
+}
+
+interface GhGraphQLPageInfo {
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
+
+interface GhGraphQLActor {
+  login: string | null;
+  __typename: string | null;
+}
+
+interface GhGraphQLReviewCommentNode {
+  id: string;
+  databaseId: number | null;
+  url: string;
+  body: string;
+  createdAt: string;
+  author: GhGraphQLActor | null;
+  authorAssociation: string | null;
+  replyTo: { id: string } | null;
+  viewerCanUpdate: boolean;
+  viewerCanDelete: boolean;
+}
+
+interface GhGraphQLReviewThreadNode {
+  id: string;
+  isResolved: boolean;
+  isOutdated: boolean;
+  path: string | null;
+  line: number | null;
+  startLine: number | null;
+  subjectType: string | null;
+  diffSide: 'LEFT' | 'RIGHT' | null;
+  resolvedBy: GhGraphQLActor | null;
+  comments: {
+    pageInfo: GhGraphQLPageInfo;
+  };
+}
+
+interface GhGraphQLTopLevelReviewNode {
+  id: string;
+  databaseId: number | null;
+  url: string;
+  body: string;
+  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING' | null;
+  submittedAt: string | null;
+  author: GhGraphQLActor | null;
+  authorAssociation: string | null;
+  commit: { oid: string } | null;
+}
+
+interface GhGraphQLConversationCommentNode {
+  id: string;
+  databaseId: number | null;
+  url: string;
+  body: string;
+  createdAt: string;
+  author: GhGraphQLActor | null;
+  authorAssociation: string | null;
+  viewerCanUpdate: boolean;
+  viewerCanDelete: boolean;
+}
+
+  repository: {
+    pullRequest: {
+      reviewThreads: GhGraphQLReviewThreadsPage;
+    } | null;
+  } | null;
+
+  pageInfo: GhGraphQLPageInfo;
+
+  repository: {
+    pullRequest: {
+      reviews: GhGraphQLTopLevelReviewsPage;
+    } | null;
+  } | null;
+
+  pageInfo: GhGraphQLPageInfo;
+
+  repository: {
+    pullRequest: {
+      comments: GhGraphQLConversationCommentsPage;
+    } | null;
+  } | null;
+
+  pageInfo: GhGraphQLPageInfo;
+
+function mapReviewThreadComment(node: GhGraphQLReviewCommentNode): PrReviewThreadComment {
+  return {
+    id: node.id,
+    databaseId: node.databaseId,
+    url: node.url,
+    author: node.author?.login ?? 'unknown',
+    authorType: toAuthorType(node.author?.__typename),
+    authorAssociation: node.authorAssociation,
+    body: node.body,
+    createdAt: node.createdAt,
+    replyToId: node.replyTo?.id ?? null,
+    viewerCanUpdate: node.viewerCanUpdate,
+    viewerCanDelete: node.viewerCanDelete,
+  };
+}
+
+function mapTopLevelReview(node: GhGraphQLTopLevelReviewNode): PrTopLevelReview {
+  return {
+    id: node.id,
+    databaseId: node.databaseId,
+    url: node.url,
+    author: node.author?.login ?? 'unknown',
+    authorType: toAuthorType(node.author?.__typename),
+    authorAssociation: node.authorAssociation,
+    body: node.body,
+    state: node.state,
+    submittedAt: node.submittedAt,
+    commitOid: node.commit?.oid ?? null,
+  };
+}
+
+function mapConversationComment(node: GhGraphQLConversationCommentNode): PrConversationComment {
+  return {
+    id: node.id,
+    databaseId: node.databaseId,
+    url: node.url,
+    author: node.author?.login ?? 'unknown',
+    authorType: toAuthorType(node.author?.__typename),
+    authorAssociation: node.authorAssociation,
+    body: node.body,
+    createdAt: node.createdAt,
+    viewerCanUpdate: node.viewerCanUpdate,
+    viewerCanDelete: node.viewerCanDelete,
+  };
+}
+
+async function fetchAdditionalReviewThreadComments(
+  cwd: string,
+  threadId: string,
+  after: string | null
+): Promise<PrReviewThreadComment[]> {
+  const comments: PrReviewThreadComment[] = [];
+  let cursor = after;
+
+  while (cursor) {
+    const response = await ghGraphQL<{
+      node: {
+        comments: {
+          pageInfo: GhGraphQLPageInfo;
+        };
+      } | null;
+    }>(
+      cwd,
+      `query($threadId: ID!, $after: String) {
+        node(id: $threadId) {
+          ... on PullRequestReviewThread {
+            comments(first: 100, after: $after) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                databaseId
+                url
+                body
+                createdAt
+                author { login __typename }
+                authorAssociation
+                replyTo { id }
+                viewerCanUpdate
+                viewerCanDelete
+              }
+            }
+          }
+        }
+      }`,
+      { threadId, after: cursor }
+    );
+
+    const page = response.node?.comments;
+    if (!page) break;
+
+    comments.push(
+      ...page.nodes.filter((node): node is GhGraphQLReviewCommentNode => node != null).map(mapReviewThreadComment)
+    );
+
+    cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+  }
+
+  return comments;
+}
+
+function buildReviewThread(node: GhGraphQLReviewThreadNode, prUrl: string): PrReviewThread {
+  const comments = node.comments.nodes
+    .filter((comment): comment is GhGraphQLReviewCommentNode => comment != null)
+    .map(mapReviewThreadComment);
+  const participants = Array.from(
+    new Set(
+      comments
+        .map((comment) => comment.author)
+        .filter((author): author is string => Boolean(author))
+    )
+  );
+  const hasHumanReviewerComment = comments.some((comment) => isHumanAuthorType(comment.authorType));
+  const hasBotOnlyComments = comments.length > 0 && comments.every((comment) => !isHumanAuthorType(comment.authorType));
+  const latestComment = comments[comments.length - 1];
+
+  return {
+    id: node.id,
+    url: latestComment?.url ?? prUrl,
+    path: node.path,
+    line: node.line,
+    startLine: node.startLine,
+    subjectType: node.subjectType,
+    diffSide: node.diffSide,
+    isResolved: node.isResolved,
+    isOutdated: node.isOutdated,
+    resolvedBy: node.resolvedBy?.login ?? null,
+    updatedAt: latestComment?.createdAt ?? '',
+    participants,
+    comments,
+    hasBotOnlyComments,
+    hasHumanReviewerComment,
+    latestCommentPreview: latestComment ? truncatePreview(latestComment.body) : null,
+  };
+}
+
+function buildReviewSummary(
+  threads: PrReviewThread[],
+  topLevelReviews: PrTopLevelReview[],
+  conversationComments: PrConversationComment[]
+): PrReviewSummary {
+  return {
+    totalThreads: threads.length,
+    unresolvedThreads: threads.filter((thread) => !thread.isResolved).length,
+    resolvedThreads: threads.filter((thread) => thread.isResolved).length,
+    outdatedThreads: threads.filter((thread) => thread.isOutdated).length,
+    humanThreads: threads.filter((thread) => thread.hasHumanReviewerComment).length,
+    botOnlyThreads: threads.filter((thread) => thread.hasBotOnlyComments).length,
+    topLevelReviewCount: topLevelReviews.length,
+    conversationCommentCount: conversationComments.length,
+  };
+}
+
+async function fetchReviewThreads(
+  cwd: string,
+  owner: string,
+  name: string,
+  prNumber: number,
+  prUrl: string
+): Promise<PrReviewThread[]> {
+  const threads: PrReviewThread[] = [];
+  let cursor: string | null = null;
+
+  do {
+    const response: GhGraphQLReviewThreadsPageResponse = await ghGraphQL<GhGraphQLReviewThreadsPageResponse>(
+      cwd,
+      `query($owner: String!, $name: String!, $prNumber: Int!, $after: String) {
+        repository(owner: $owner, name: $name) {
+          pullRequest(number: $prNumber) {
+            reviewThreads(first: 100, after: $after) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                isResolved
+                isOutdated
+                path
+                line
+                startLine
+                subjectType
+                diffSide
+                resolvedBy { login __typename }
+                comments(first: 100) {
+                  pageInfo { hasNextPage endCursor }
+                  nodes {
+                    id
+                    databaseId
+                    url
+                    body
+                    createdAt
+                    author { login __typename }
+                    authorAssociation
+                    replyTo { id }
+                    viewerCanUpdate
+                    viewerCanDelete
+                  }
+                }
+              }
+            }
+          }
+        }
+      }`,
+      { owner, name, prNumber, after: cursor }
+    );
+
+    const page: GhGraphQLReviewThreadsPage | undefined = response.repository?.pullRequest?.reviewThreads;
+    if (!page) break;
+
+    const pageThreads = await Promise.all(
+      page.nodes
+        .filter((node): node is GhGraphQLReviewThreadNode => node != null)
+        .map(async (node) => {
+          const thread = buildReviewThread(node, prUrl);
+          if (node.comments.pageInfo.hasNextPage && node.comments.pageInfo.endCursor) {
+            thread.comments.push(
+              ...await fetchAdditionalReviewThreadComments(cwd, node.id, node.comments.pageInfo.endCursor)
+            );
+            const latestComment = thread.comments[thread.comments.length - 1];
+            thread.participants = Array.from(new Set(thread.comments.map((comment) => comment.author)));
+            thread.hasHumanReviewerComment = thread.comments.some((comment) => isHumanAuthorType(comment.authorType));
+            thread.hasBotOnlyComments =
+              thread.comments.length > 0 && thread.comments.every((comment) => !isHumanAuthorType(comment.authorType));
+            thread.latestCommentPreview = latestComment ? truncatePreview(latestComment.body) : null;
+            thread.url = latestComment?.url ?? thread.url;
+          }
+          return thread;
+        })
+    );
+
+    threads.push(...pageThreads);
+    cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+  } while (cursor);
+
+  return threads;
+}
+
+async function fetchTopLevelReviews(
+  cwd: string,
+  owner: string,
+  name: string,
+  prNumber: number
+): Promise<PrTopLevelReview[]> {
+  const reviews: PrTopLevelReview[] = [];
+  let cursor: string | null = null;
+
+  do {
+    const response: GhGraphQLTopLevelReviewsPageResponse = await ghGraphQL<GhGraphQLTopLevelReviewsPageResponse>(
+      cwd,
+      `query($owner: String!, $name: String!, $prNumber: Int!, $after: String) {
+        repository(owner: $owner, name: $name) {
+          pullRequest(number: $prNumber) {
+            reviews(first: 100, after: $after) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                databaseId
+                url
+                body
+                state
+                submittedAt
+                author { login __typename }
+                authorAssociation
+                commit { oid }
+              }
+            }
+          }
+        }
+      }`,
+      { owner, name, prNumber, after: cursor }
+    );
+
+    const page: GhGraphQLTopLevelReviewsPage | undefined = response.repository?.pullRequest?.reviews;
+    if (!page) break;
+
+    reviews.push(
+      ...page.nodes.filter((node): node is GhGraphQLTopLevelReviewNode => node != null).map(mapTopLevelReview)
+    );
+
+    cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+  } while (cursor);
+
+  return reviews;
+}
+
+async function fetchConversationComments(
+  cwd: string,
+  owner: string,
+  name: string,
+  prNumber: number
+): Promise<PrConversationComment[]> {
+  const comments: PrConversationComment[] = [];
+  let cursor: string | null = null;
+
+  do {
+    const response: GhGraphQLConversationCommentsPageResponse = await ghGraphQL<GhGraphQLConversationCommentsPageResponse>(
+      cwd,
+      `query($owner: String!, $name: String!, $prNumber: Int!, $after: String) {
+        repository(owner: $owner, name: $name) {
+          pullRequest(number: $prNumber) {
+            comments(first: 100, after: $after) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                databaseId
+                url
+                body
+                createdAt
+                author { login __typename }
+                authorAssociation
+                viewerCanUpdate
+                viewerCanDelete
+              }
+            }
+          }
+        }
+      }`,
+      { owner, name, prNumber, after: cursor }
+    );
+
+    const page: GhGraphQLConversationCommentsPage | undefined = response.repository?.pullRequest?.comments;
+    if (!page) break;
+
+    comments.push(
+      ...page.nodes
+        .filter((node): node is GhGraphQLConversationCommentNode => node != null)
+        .map(mapConversationComment)
+    );
+
+    cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+  } while (cursor);
+
+  return comments;
+}
+
+export async function getPrReviewSnapshot(
+  cwd: string,
+  prNumber: number
+): Promise<PrReviewSnapshot> {
+  const slug = await getRepoSlug(cwd);
+  const { owner, name } = splitRepoSlug(slug);
+
+  const response = await ghGraphQL<{
+    repository: {
+      pullRequest: {
+        number: number;
+        url: string;
+        title: string;
+        state: 'OPEN' | 'CLOSED' | 'MERGED';
+        reviewDecision: PrReviewSnapshot['reviewDecision'];
+        headRefOid: string;
+        baseRefName: string;
+        headRefName: string;
+      } | null;
+    } | null;
+  }>(
+    cwd,
+    `query($owner: String!, $name: String!, $prNumber: Int!) {
+      repository(owner: $owner, name: $name) {
+        pullRequest(number: $prNumber) {
+          number
+          url
+          title
+          state
+          reviewDecision
+          headRefOid
+          baseRefName
+          headRefName
+        }
+      }
+    }`,
+    { owner, name, prNumber }
+  );
+
+  const pullRequest = response.repository?.pullRequest;
+  if (!pullRequest) {
+    throw new Error(`PR #${prNumber} not found in ${slug}`);
+  }
+
+  const [threads, topLevelReviews, conversationComments] = await Promise.all([
+    fetchReviewThreads(cwd, owner, name, prNumber, pullRequest.url),
+    fetchTopLevelReviews(cwd, owner, name, prNumber),
+    fetchConversationComments(cwd, owner, name, prNumber),
+  ]);
+
+  return {
+    prNumber: pullRequest.number,
+    prUrl: pullRequest.url,
+    title: pullRequest.title,
+    state: pullRequest.state,
+    reviewDecision: pullRequest.reviewDecision ?? null,
+    headOid: pullRequest.headRefOid,
+    baseRefName: pullRequest.baseRefName,
+    headRefName: pullRequest.headRefName,
+    fetchedAt: new Date().toISOString(),
+    summary: buildReviewSummary(threads, topLevelReviews, conversationComments),
+    threads,
+    topLevelReviews,
+    conversationComments,
+  };
+}
+
+export async function replyToReviewThread(
+  cwd: string,
+  threadId: string,
+  body: string
+): Promise<PrReviewThreadComment> {
+  const response = await ghGraphQL<{
+    addPullRequestReviewThreadReply: {
+      comment: GhGraphQLReviewCommentNode | null;
+    } | null;
+  }>(
+    cwd,
+    `mutation($threadId: ID!, $body: String!) {
+      addPullRequestReviewThreadReply(input: {
+        pullRequestReviewThreadId: $threadId,
+        body: $body
+      }) {
+        comment {
+          id
+          databaseId
+          url
+          body
+          createdAt
+          author { login __typename }
+          authorAssociation
+          replyTo { id }
+          viewerCanUpdate
+          viewerCanDelete
+        }
+      }
+    }`,
+    { threadId, body }
+  );
+
+  const comment = response.addPullRequestReviewThreadReply?.comment;
+  if (!comment) {
+    throw new Error('GitHub did not return a thread reply comment');
+  }
+
+  return mapReviewThreadComment(comment);
+}
+
+export async function resolveReviewThread(
+  cwd: string,
+  threadId: string
+): Promise<GhReviewThreadState> {
+  const response = await ghGraphQL<{
+    resolveReviewThread: {
+      thread: {
+        id: string;
+        isResolved: boolean;
+        resolvedBy: GhGraphQLActor | null;
+      } | null;
+    } | null;
+  }>(
+    cwd,
+    `mutation($threadId: ID!) {
+      resolveReviewThread(input: { threadId: $threadId }) {
+        thread {
+          id
+          isResolved
+          resolvedBy { login __typename }
+        }
+      }
+    }`,
+    { threadId }
+  );
+
+  const thread = response.resolveReviewThread?.thread;
+  if (!thread) {
+    throw new Error('GitHub did not return a resolved review thread');
+  }
+
+  return {
+    id: thread.id,
+    isResolved: thread.isResolved,
+    resolvedBy: thread.resolvedBy?.login ?? null,
+  };
+}
+
+export async function unresolveReviewThread(
+  cwd: string,
+  threadId: string
+): Promise<GhReviewThreadState> {
+  const response = await ghGraphQL<{
+    unresolveReviewThread: {
+      thread: {
+        id: string;
+        isResolved: boolean;
+        resolvedBy: GhGraphQLActor | null;
+      } | null;
+    } | null;
+  }>(
+    cwd,
+    `mutation($threadId: ID!) {
+      unresolveReviewThread(input: { threadId: $threadId }) {
+        thread {
+          id
+          isResolved
+          resolvedBy { login __typename }
+        }
+      }
+    }`,
+    { threadId }
+  );
+
+  const thread = response.unresolveReviewThread?.thread;
+  if (!thread) {
+    throw new Error('GitHub did not return an unresolved review thread');
+  }
+
+  return {
+    id: thread.id,
+    isResolved: thread.isResolved,
+    resolvedBy: thread.resolvedBy?.login ?? null,
+  };
 }
 
 /**

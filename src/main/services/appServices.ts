@@ -93,6 +93,8 @@ export function createAppServices(container: IRepositoryContainer) {
 
   });
 
+    devSessionService,
+    gitHubService,
     getProjectFolder,
   });
 
@@ -145,6 +147,8 @@ export function createAppServices(container: IRepositoryContainer) {
     worktreeService,
     devSessionService,
     gitHubService,
+    reviewService,
+    reviewAssessmentService,
 
     // Files
     fileExplorerService,

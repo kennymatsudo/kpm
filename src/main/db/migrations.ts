@@ -2266,6 +2266,190 @@ interface Migration {
     },
   },
   {
+    id: 1060,
+    name: '060_add_review_workflow_tables',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS review_ownership (
+          repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+          pr_number INTEGER NOT NULL,
+          session_id TEXT NOT NULL REFERENCES dev_sessions(id) ON DELETE CASCADE,
+          mode TEXT NOT NULL CHECK(mode IN ('manual', 'auto_resume', 'auto_post_bots', 'auto_post_all')),
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (repo_id, pr_number)
+        );
+
+        CREATE TABLE IF NOT EXISTS review_tasks (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+          session_id TEXT NOT NULL REFERENCES dev_sessions(id) ON DELETE CASCADE,
+          pr_number INTEGER NOT NULL,
+          thread_id TEXT NOT NULL,
+          thread_url TEXT NOT NULL,
+          path TEXT,
+          line INTEGER,
+          source TEXT NOT NULL CHECK(source IN ('human', 'bot', 'mixed')),
+          status TEXT NOT NULL CHECK(status IN (
+            'new', 'queued', 'assigned', 'in_progress', 'awaiting_user_review',
+            'ready_to_post', 'posted', 'resolved', 'stale', 'ignored', 'failed'
+          )),
+          priority TEXT NOT NULL CHECK(priority IN ('low', 'medium', 'high')),
+          title TEXT NOT NULL,
+          latest_comment_preview TEXT,
+          last_seen_comment_id TEXT,
+          last_seen_updated_at DATETIME NOT NULL,
+          last_agent_run_at DATETIME,
+          last_posted_reply_id TEXT,
+          error TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME,
+          UNIQUE (repo_id, pr_number, thread_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_review_tasks_session_status
+          ON review_tasks(session_id, status);
+        CREATE INDEX IF NOT EXISTS idx_review_tasks_repo_pr_status
+          ON review_tasks(repo_id, pr_number, status);
+        CREATE INDEX IF NOT EXISTS idx_review_tasks_updated_at
+          ON review_tasks(updated_at);
+
+        CREATE TABLE IF NOT EXISTS review_sync_state (
+          repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+          pr_number INTEGER NOT NULL,
+          session_id TEXT REFERENCES dev_sessions(id) ON DELETE SET NULL,
+          last_fetched_at DATETIME,
+          last_successful_fetched_at DATETIME,
+          last_head_oid TEXT,
+          last_review_decision TEXT CHECK(last_review_decision IN ('APPROVED', 'CHANGES_REQUESTED', 'REVIEW_REQUIRED')),
+          last_error TEXT,
+          PRIMARY KEY (repo_id, pr_number)
+        );
+      `);
+    },
+  },
+  {
+    id: 1061,
+    name: '061_remove_review_ownership_mode',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+
+        CREATE TABLE review_ownership_new (
+          repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+          pr_number INTEGER NOT NULL,
+          session_id TEXT NOT NULL REFERENCES dev_sessions(id) ON DELETE CASCADE,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (repo_id, pr_number)
+        );
+
+        INSERT INTO review_ownership_new (repo_id, pr_number, session_id, created_at, updated_at)
+        SELECT repo_id, pr_number, session_id, created_at, updated_at
+        FROM review_ownership;
+
+        DROP TABLE review_ownership;
+        ALTER TABLE review_ownership_new RENAME TO review_ownership;
+
+        PRAGMA foreign_keys = ON;
+      `);
+    },
+  },
+  {
+    id: 1062,
+    name: '062_review_task_status_model_v2',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+
+        CREATE TABLE review_tasks_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+          session_id TEXT NOT NULL REFERENCES dev_sessions(id) ON DELETE CASCADE,
+          pr_number INTEGER NOT NULL,
+          thread_id TEXT NOT NULL,
+          thread_url TEXT NOT NULL,
+          path TEXT,
+          line INTEGER,
+          source TEXT NOT NULL CHECK(source IN ('human', 'bot', 'mixed')),
+          status TEXT NOT NULL CHECK(status IN (
+            'needs_review', 'assessed', 'in_progress', 'ready_to_post', 'done'
+          )),
+          internal_state TEXT CHECK(internal_state IN (
+            'assessment_running', 'implementation_queued', 'post_impl_running',
+            'stale', 'failed', 'ignored'
+          )),
+          disposition TEXT CHECK(disposition IN ('implement', 'push_back', 'needs_user_input')),
+          rationale TEXT,
+          draft_reply TEXT,
+          priority TEXT NOT NULL CHECK(priority IN ('low', 'medium', 'high')),
+          title TEXT NOT NULL,
+          latest_comment_preview TEXT,
+          last_seen_comment_id TEXT,
+          last_seen_updated_at DATETIME NOT NULL,
+          last_agent_run_at DATETIME,
+          last_posted_reply_id TEXT,
+          error TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME,
+          UNIQUE (repo_id, pr_number, thread_id)
+        );
+
+        INSERT INTO review_tasks_new (
+          id, project_id, repo_id, session_id, pr_number, thread_id, thread_url,
+          path, line, source, status, internal_state, disposition, rationale, draft_reply,
+          priority, title, latest_comment_preview, last_seen_comment_id,
+          last_seen_updated_at, last_agent_run_at, last_posted_reply_id,
+          error, created_at, updated_at, completed_at
+        )
+        SELECT
+          id, project_id, repo_id, session_id, pr_number, thread_id, thread_url,
+          path, line, source,
+          CASE status
+            WHEN 'new' THEN 'needs_review'
+            WHEN 'queued' THEN 'in_progress'
+            WHEN 'assigned' THEN 'in_progress'
+            WHEN 'in_progress' THEN 'in_progress'
+            WHEN 'awaiting_user_review' THEN 'assessed'
+            WHEN 'ready_to_post' THEN 'ready_to_post'
+            WHEN 'posted' THEN 'done'
+            WHEN 'resolved' THEN 'done'
+            WHEN 'stale' THEN 'needs_review'
+            WHEN 'ignored' THEN 'done'
+            WHEN 'failed' THEN 'needs_review'
+            ELSE 'needs_review'
+          END,
+          CASE status
+            WHEN 'stale' THEN 'stale'
+            WHEN 'ignored' THEN 'ignored'
+            WHEN 'failed' THEN 'failed'
+            ELSE NULL
+          END,
+          NULL, NULL, NULL,
+          priority, title, latest_comment_preview, last_seen_comment_id,
+          last_seen_updated_at, last_agent_run_at, last_posted_reply_id,
+          error, created_at, updated_at, completed_at
+        FROM review_tasks;
+
+        DROP TABLE review_tasks;
+        ALTER TABLE review_tasks_new RENAME TO review_tasks;
+
+        CREATE INDEX IF NOT EXISTS idx_review_tasks_session_status
+          ON review_tasks(session_id, status);
+        CREATE INDEX IF NOT EXISTS idx_review_tasks_repo_pr_status
+          ON review_tasks(repo_id, pr_number, status);
+        CREATE INDEX IF NOT EXISTS idx_review_tasks_updated_at
+          ON review_tasks(updated_at);
+
+        PRAGMA foreign_keys = ON;
+      `);
+    },
+  },
+  {
     id: 1075,
     name: '075_drop_inbox_and_project_sessions',
     up: (db: BetterSqliteDatabase) => {

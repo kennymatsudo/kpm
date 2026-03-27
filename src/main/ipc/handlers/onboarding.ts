@@ -13,6 +13,7 @@ export function registerOnboardingHandlers(
     IPC_CHANNELS.onboarding.generate,
     createIpcHandler(
       OnboardingSchemas.generate,
+      async ({ taskId, projectId, description, repoDirectories }) => {
         const mainWindow = getMainWindow();
         if (!mainWindow) {
           throw new Error('Main window not available');
@@ -21,6 +22,9 @@ export function registerOnboardingHandlers(
           {
             onProgress: (message: string) => {
               mainWindow.webContents.send('onboarding:progress', { taskId, message });
+            },
+            onThinking: (text: string) => {
+              mainWindow.webContents.send('onboarding:thinking', { taskId, text });
             },
             onComplete: (content: string) => {
               mainWindow.webContents.send('onboarding:complete', { taskId, content });

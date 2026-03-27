@@ -37,4 +37,7 @@ export interface IRepositoryContainer {
   devSessions: IDevSessionRepository;
   confluenceLinks: IConfluenceLinkRepository;
   toolPermissions: IToolPermissionRepository;
+  reviewTasks: IReviewTaskRepository;
+  reviewOwnership: IReviewOwnershipRepository;
+  reviewSyncState: IReviewSyncStateRepository;
 }

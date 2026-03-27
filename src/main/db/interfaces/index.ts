@@ -36,5 +36,15 @@ export type {
 // Confluence domain
 export type { IConfluenceLinkRepository, ConfluencePageLink, ConfluenceLinkCreate, SyncState } from './confluence';
 
+// Review workflow domain
+export type {
+  IReviewTaskRepository,
+  IReviewOwnershipRepository,
+  IReviewSyncStateRepository,
+  ReviewTaskUpsert,
+  ReviewTaskStatusUpdate,
+  ReviewSyncStateUpsert,
+} from './review';
+
 // Container
 export type { IRepositoryContainer } from './container';

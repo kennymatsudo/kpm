@@ -486,6 +486,13 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     },
 
     /**
+     * Update session name
+     */
+    updateName(sessionId: string, name: string): void {
+      deps.devSessions.updateName(sessionId, name);
+    },
+
+    /**
      * Mark all active sessions as inactive (called on app startup)
      */
     markActiveAsInactive(): void {

@@ -28,6 +28,7 @@ export interface OnboardingScanOptions {
 
 export interface OnboardingCallbacks {
   onProgress: (message: string) => void;
+  onThinking: (text: string) => void;
   onComplete: (content: string) => void;
   onError: (error: string) => void;
 }

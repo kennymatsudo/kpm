@@ -6,6 +6,13 @@
  */
 
 import type { IDevSessionRepository, IRepoRepository, IPlanItemRepository } from '../../db/interfaces';
+import type {
+  PrComment,
+  PrReviewSnapshot,
+  PrReviewThread,
+  PrReviewThreadComment,
+  PrStatus,
+} from '../../../shared/types';
 import { success, failure, wrapAsync, type AsyncResult } from '../result';
 import { getConfig } from '../../config';
 import {
@@ -14,9 +21,14 @@ import {
   getPrForBranch,
   getPrByNumber,
   parsePrIdentifier,
+  getPrReviewSnapshot as fetchPrReviewSnapshot,
   pushBranch,
   isBranchPushed,
+  replyToReviewThread as postReviewThreadReply,
+  resolveReviewThread as resolveGhReviewThread,
   type GhAuthResult,
+  type GhReviewThreadState,
+  unresolveReviewThread as unresolveGhReviewThread,
 } from './ghUtils';
 import {
   getCommitLog,
@@ -46,6 +58,70 @@ export interface PrContextResult {
 
 /** Branches that must never be pushed directly. */
 const PROTECTED_BRANCHES = new Set(['main', 'master', 'develop', 'release']);
+
+export interface BuildAddressReviewContextOptions {
+  threadIds?: string[];
+  includeResolved?: boolean;
+  includeOutdated?: boolean;
+}
+
+function formatThreadLocation(thread: PrReviewThread): string {
+  if (thread.path && thread.line != null) return `${thread.path}:${thread.line}`;
+  if (thread.path) return thread.path;
+  return 'General';
+}
+
+function formatReviewContext(
+  snapshot: PrReviewSnapshot,
+  options?: BuildAddressReviewContextOptions
+): string {
+  const requestedIds = options?.threadIds ? new Set(options.threadIds) : null;
+  const threads = snapshot.threads.filter((thread) => {
+    if (requestedIds && !requestedIds.has(thread.id)) return false;
+    if (!options?.includeResolved && thread.isResolved) return false;
+    if (!options?.includeOutdated && thread.isOutdated) return false;
+    return true;
+  });
+
+  if (threads.length === 0) {
+    return `No matching review threads to address on PR #${snapshot.prNumber}.`;
+  }
+
+  const lines: string[] = [
+    `Review feedback for PR #${snapshot.prNumber}: ${snapshot.title}`,
+    `PR: ${snapshot.prUrl}`,
+    `Head: ${snapshot.headRefName} (${snapshot.headOid.slice(0, 12)})`,
+    '',
+    'Address each unresolved review thread below. Make code changes where appropriate, then draft concise replies per thread.',
+  ];
+
+  for (const thread of threads) {
+    lines.push('');
+    lines.push(`THREAD ${thread.id}`);
+    lines.push(`Location: ${formatThreadLocation(thread)}`);
+    lines.push(`Resolved: ${thread.isResolved ? 'yes' : 'no'}`);
+    lines.push(`Outdated: ${thread.isOutdated ? 'yes' : 'no'}`);
+    lines.push(`Participants: ${thread.participants.join(', ') || 'unknown'}`);
+
+    for (const comment of thread.comments) {
+      const replyPrefix = comment.replyToId ? ` (reply to ${comment.replyToId})` : '';
+      lines.push(`- @${comment.author}${replyPrefix} at ${comment.createdAt}`);
+      lines.push(comment.body);
+    }
+  }
+
+  if (snapshot.topLevelReviews.length > 0) {
+    lines.push('');
+    lines.push('Top-level reviews:');
+    for (const review of snapshot.topLevelReviews) {
+      if (!review.body.trim()) continue;
+      lines.push(`- ${review.state ?? 'COMMENTED'} by @${review.author} at ${review.submittedAt ?? 'unknown time'}`);
+      lines.push(review.body);
+    }
+  }
+
+  return lines.join('\n');
+}
 
 // =============================================================================
 // Service Factory
@@ -159,7 +235,9 @@ export function createGitHubService(deps: GitHubServiceDeps) {
     },
 
     /**
+     * Get a thread-first GitHub review snapshot for the session's PR.
      */
+    async getPrReviewSnapshot(sessionId: string): AsyncResult<PrReviewSnapshot> {
       const resolved = resolveSessionRepo(sessionId);
       if ('error' in resolved) return failure(resolved.error);
       const { repoPath, session } = resolved;
@@ -169,18 +247,84 @@ export function createGitHubService(deps: GitHubServiceDeps) {
       }
 
       try {
+        const snapshot = await fetchPrReviewSnapshot(repoPath, session.pr_number);
 
+        deps.devSessions.updatePrInfo(
+          sessionId,
+          snapshot.prNumber,
+          snapshot.prUrl,
+          snapshot.state,
+          snapshot.reviewDecision
+        );
 
+        return success(snapshot);
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
 
+    /**
+     * Get all review comments on a session's PR.
+     * Merges line-level comments and top-level reviews into a unified list.
+     */
+    async getPrComments(sessionId: string): AsyncResult<PrComment[]> {
+      const snapshotResult = await this.getPrReviewSnapshot(sessionId);
+      if (!snapshotResult.ok) return snapshotResult;
 
+      const comments: PrComment[] = [];
+
+      for (const thread of snapshotResult.data.threads) {
+        for (const comment of thread.comments) {
+          const numericId = comment.databaseId ?? Number.parseInt(comment.id, 10);
           comments.push({
+            id: Number.isFinite(numericId) ? numericId : 0,
+            author: comment.author,
+            body: comment.body,
+            path: thread.path,
+            line: thread.line,
             state: null,
+            createdAt: comment.createdAt,
           });
         }
-
-        });
-
       }
+
+      for (const review of snapshotResult.data.topLevelReviews) {
+        if (!review.body.trim()) continue;
+        comments.push({
+          id: review.databaseId ?? 0,
+          author: review.author,
+          body: review.body,
+          path: null,
+          line: null,
+          state: review.state,
+          createdAt: review.submittedAt ?? '',
+        });
+      }
+
+      for (const comment of snapshotResult.data.conversationComments) {
+        comments.push({
+          id: comment.databaseId ?? 0,
+          author: comment.author,
+          body: comment.body,
+          path: null,
+          line: null,
+          state: null,
+          createdAt: comment.createdAt,
+        });
+      }
+
+      comments.sort((a, b) => {
+        if (a.path && b.path) {
+          const pathCmp = a.path.localeCompare(b.path);
+          if (pathCmp !== 0) return pathCmp;
+          return (a.line ?? 0) - (b.line ?? 0);
+        }
+        if (a.path) return -1;
+        if (b.path) return 1;
+        return a.createdAt.localeCompare(b.createdAt);
+      });
+
+      return success(comments);
     },
 
     /**
@@ -312,16 +456,66 @@ export function createGitHubService(deps: GitHubServiceDeps) {
     },
 
     /**
+     * Build structured context from live review threads for Claude to address.
+     */
+    async buildAddressReviewContext(
+      sessionId: string,
+      options?: BuildAddressReviewContextOptions
+    ): AsyncResult<string> {
+      const snapshotResult = await this.getPrReviewSnapshot(sessionId);
+      if (!snapshotResult.ok) return snapshotResult;
+
+      return success(formatReviewContext(snapshotResult.data, options));
+    },
+
+    /**
      * Build structured context from PR review comments for Claude to address.
      */
     async buildAddressCommentsContext(sessionId: string): AsyncResult<string> {
+      return this.buildAddressReviewContext(sessionId);
+    },
+
+    /**
+     * Post a reply to a GitHub review thread.
+     */
+    async replyToReviewThread(
+      sessionId: string,
+      threadId: string,
+      body: string
+    ): AsyncResult<PrReviewThreadComment> {
       const resolved = resolveSessionRepo(sessionId);
       if ('error' in resolved) return failure(resolved.error);
 
+      return wrapAsync(
+        () => postReviewThreadReply(resolved.repoPath, threadId, body),
+        'Failed to reply to GitHub review thread'
+      );
+    },
 
+    /**
+     * Resolve a GitHub review thread.
+     */
+    async resolveReviewThread(sessionId: string, threadId: string): AsyncResult<GhReviewThreadState> {
+      const resolved = resolveSessionRepo(sessionId);
+      if ('error' in resolved) return failure(resolved.error);
 
+      return wrapAsync(
+        () => resolveGhReviewThread(resolved.repoPath, threadId),
+        'Failed to resolve GitHub review thread'
+      );
+    },
 
+    /**
+     * Unresolve a GitHub review thread.
+     */
+    async unresolveReviewThread(sessionId: string, threadId: string): AsyncResult<GhReviewThreadState> {
+      const resolved = resolveSessionRepo(sessionId);
+      if ('error' in resolved) return failure(resolved.error);
 
+      return wrapAsync(
+        () => unresolveGhReviewThread(resolved.repoPath, threadId),
+        'Failed to unresolve GitHub review thread'
+      );
     },
 
     /**

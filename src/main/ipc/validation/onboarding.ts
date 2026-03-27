@@ -7,6 +7,7 @@ import { uuid } from './shared';
 
 export const OnboardingSchemas = {
   generate: z.object({
+    taskId: z.string().min(1),
     projectId: uuid,
     description: z.string().max(10000).default(''),
     repoDirectories: z.record(z.string(), z.array(z.string())).default({}),
