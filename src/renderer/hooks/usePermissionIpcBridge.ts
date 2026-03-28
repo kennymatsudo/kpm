@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { subscribeToPermissionRequests } from '../services/permissionService';
 import { usePermissionStore } from '../stores';
 
 /**
@@ -7,6 +8,7 @@ import { usePermissionStore } from '../stores';
  */
 export function usePermissionIpcBridge(): void {
   useEffect(() => {
+    const unsubscribe = subscribeToPermissionRequests((request) => {
       usePermissionStore.getState().setPendingRequest(request);
     });
 

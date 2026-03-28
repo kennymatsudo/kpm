@@ -5,6 +5,11 @@ import type {
   ConflictResolution,
   DeletedItemAction,
 } from '../../../shared/types';
+import {
+  applyTrackerSyncChanges,
+  getTrackerSyncPreview,
+  subscribeToTrackerSyncProgress,
+} from '../../services/trackerService';
 export interface SyncAvailability {
   isChecking: boolean;
   hasIncomingChanges: boolean;
@@ -165,6 +170,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     set({ isSyncing: true, error: null });
 
     try {
+      const result = await applyTrackerSyncChanges(
         projectId,
         syncPreview,
         resolutions,
@@ -240,6 +246,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   clearError: () => set({ error: null }),
 
   setupProgressListener: () => {
+    return subscribeToTrackerSyncProgress((data: { projectId: string; associationId: string; phase: string; current: number; total: number }) => {
       const { phase, current, total } = data;
       set({
         syncProgress: { phase, current, total },

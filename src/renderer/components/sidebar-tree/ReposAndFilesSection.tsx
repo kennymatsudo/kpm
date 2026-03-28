@@ -11,6 +11,14 @@ import { useResourceDomainActions } from '../../hooks/useStoreActions';
 import { isImageFile, formatFileSize } from '../../utils/image';
 import { subscribe as subscribeToStoreEvent } from '../../stores/storeEvents';
 import {
+  copyExternalProjectFile,
+  createProjectBinaryFile,
+  createProjectTextFile,
+  unwatchProjectFiles,
+  watchProjectFiles,
+} from '../../services/projectFileService';
+import { ReposAndFilesOverlays } from './ReposAndFilesOverlays';
+import {
   useFileViewers,
   useFileContextMenus,
   useConfluenceLinks,
@@ -143,8 +151,10 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
   useEffect(() => {
     if (!projectId) return;
 
+    void watchProjectFiles(projectId);
 
     return () => {
+      void unwatchProjectFiles();
     };
   }, [projectId]);
 
@@ -358,6 +368,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
 
           if (isText) {
             if (filePath && file.size > MAX_TEXT_FILE_BYTES) {
+              await copyExternalProjectFile(projectId, filePath, newPath);
               continue;
             }
 
@@ -369,15 +380,18 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
             }
 
             const content = await file.text();
+            await createProjectTextFile(projectId, newPath, content);
             continue;
           }
 
           if (filePath) {
+            await copyExternalProjectFile(projectId, filePath, newPath);
             continue;
           }
 
           const arrayBuffer = await file.arrayBuffer();
           const data = new Uint8Array(arrayBuffer);
+          await createProjectBinaryFile(projectId, newPath, data);
         } catch (err) {
           console.error(`Failed to copy file ${file.name}:`, err);
         }
@@ -425,6 +439,10 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     : null;
   const linkDocumentTitle = linkDocumentNode?.name.replace(/\.md$/, '') ?? '';
 
+  const repoContextRepo = fileContextMenus.repoContextMenu
+    ? repos.find((repo) => repo.id === fileContextMenus.repoContextMenu?.repoId) ?? null
+    : null;
+
   return (
     <div className="flex flex-col h-full min-h-0">
         isCollapsed={reposCollapsed}
@@ -434,13 +452,93 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         isCollapsed={filesCollapsed}
         onToggleCollapsed={() => setFilesCollapsed(!filesCollapsed)}
 
+      <ReposAndFilesOverlays
+        projectId={projectId}
+        addMenuAnchorRef={addMenu.addButtonRef}
+        isAddMenuOpen={addMenu.isAddMenuOpen}
+        onCloseAddMenu={addMenu.closeAddMenu}
+        onStartCreate={handleStartCreate}
+        emptySpaceMenu={fileContextMenus.emptySpaceMenu}
+        onCloseEmptySpaceMenu={() => fileContextMenus.setEmptySpaceMenu(null)}
+        fileContextMenu={fileContextMenus.contextMenu}
+        contextNode={contextNode}
+        isContextPathFocused={fileContextMenus.contextMenu ? isPathFocused(fileContextMenus.contextMenu.path) : false}
+        onCloseFileContextMenu={fileContextMenus.handleCloseContextMenu}
+        onToggleContextFileFocus={() => {
+          if (fileContextMenus.contextMenu && contextNode) {
+            handleToggleFileFocus(fileContextMenus.contextMenu.path, contextNode.isDirectory);
           }
+        }}
+        onRenameContextFile={() => {
+          if (fileContextMenus.contextMenu) {
+            handleStartRename(fileContextMenus.contextMenu.path);
           }
+        }}
+        onRevealContextFileInFinder={() => {
+          if (fileContextMenus.contextMenu) {
+            void fileContextMenus.handleRevealInFinder(fileContextMenus.contextMenu.path);
           }
+        }}
+        onCopyContextFullPath={() => {
+          if (fileContextMenus.contextMenu) {
+            void fileContextMenus.handleCopyFullPath(fileContextMenus.contextMenu.path);
           }
+        }}
+        onCopyContextRelativePath={() => {
+          if (fileContextMenus.contextMenu) {
+            fileContextMenus.handleCopyRelativePath(fileContextMenus.contextMenu.path);
           }
+        }}
+        onViewContextFile={
+          fileContextMenus.contextMenu
+            ? () => void handleViewMarkdown(fileContextMenus.contextMenu!.path)
+            : undefined
+        }
+        onDeleteContextFile={fileContextMenus.handleRequestDelete}
+        onLinkToConfluence={confluenceLinks.handleLinkToConfluence}
+        onSyncConfluence={confluenceLinks.handleSyncConfluence}
+        onUnlinkFromConfluence={confluenceLinks.handleRequestUnlink}
+        isContextFileLinkedToConfluence={contextMenuConfluenceLink !== null}
+        repoContextMenu={fileContextMenus.repoContextMenu}
+        repoContextRepo={repoContextRepo}
+        isRepoFocused={repoContextRepo ? isRepoFocused(repoContextRepo.id) : false}
+        onCloseRepoContextMenu={fileContextMenus.handleCloseRepoContextMenu}
+        onToggleRepoFocus={() => {
+          if (repoContextRepo) {
+            handleToggleRepoFocus(repoContextRepo.id);
           }
+        }}
+        onRemoveRepo={() => {
+          if (repoContextRepo) {
+            void handleRemoveRepo(repoContextRepo.id);
           }
+        }}
+        onRevealRepoInFinder={() => {
+          if (repoContextRepo) {
+          }
+        }}
+        deleteConfirmPath={fileContextMenus.deleteConfirmPath}
+        deleteNode={deleteNode}
+        deleteFilename={deleteFilename}
+        onCancelDelete={fileContextMenus.handleCancelDelete}
+        onConfirmDelete={fileContextMenus.handleConfirmDelete}
+        unlinkConfirmPath={confluenceLinks.unlinkConfirmPath}
+        onCancelUnlink={confluenceLinks.handleCancelUnlink}
+        onConfirmUnlink={confluenceLinks.handleConfirmUnlink}
+        viewingPath={fileViewers.viewingPath}
+        viewingFilename={fileViewers.viewingPath ? getNodeByPath(fileViewers.viewingPath)?.name ?? '' : ''}
+        viewingContent={fileViewers.viewingContent}
+        onCloseViewer={fileViewers.closeViewer}
+        onSaveMarkdown={fileViewers.saveMarkdown}
+        viewingImage={fileViewers.viewingImage}
+        onCloseImageViewer={fileViewers.closeImageViewer}
+        confluenceLinkPath={confluenceLinks.confluenceLinkPath}
+        onCloseLinkModal={confluenceLinks.handleCloseLinkModal}
+        linkDocumentTitle={linkDocumentTitle}
+        syncConfluenceLink={syncConfluenceLink}
+        confluenceSyncPath={confluenceLinks.confluenceSyncPath}
+        onCloseSyncModal={confluenceLinks.handleCloseSyncModal}
+        onConfluenceContentUpdated={() => void loadProjectDirectory(projectId)}
       />
     </div>
   );

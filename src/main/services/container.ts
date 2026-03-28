@@ -2,9 +2,13 @@
  * Service Container
  *
  * Provides a single point of access to all application services.
+ * Production code initializes services explicitly at app startup.
  *
+ * Production usage:
  * ```ts
+ * import { initializeServices } from '../services/container';
  *
+ * const services = initializeServices(container);
  * ```
  *
  * For testing:
@@ -24,6 +28,7 @@
  */
 
 import { createAppServices, type AppServices } from './appServices';
+import type { IRepositoryContainer } from '../db/interfaces';
 
 // =============================================================================
 // Singleton Container
@@ -32,10 +37,25 @@ import { createAppServices, type AppServices } from './appServices';
 let _services: AppServices | null = null;
 
 /**
+ * Initialize the application services container.
+ * Production code should call this once during app startup.
+ */
+export function initializeServices(container: IRepositoryContainer): AppServices {
+  if (!_services) {
+    _services = createAppServices(container);
+  }
+  return _services;
+}
+
+/**
  * Get the application services container.
+ * Throws if production startup has not initialized services yet.
  */
 export function getServices(): AppServices {
   if (!_services) {
+    throw new Error(
+      'Services not initialized. Call initializeServices() at app startup or setServices() in tests.'
+    );
   }
   return _services;
 }

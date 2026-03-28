@@ -51,6 +51,7 @@ export function CustomPromptSettings() {
   const loadPrompts = useCallback(async () => {
     // First ensure built-in prompts exist
     try {
+      await ensureBuiltinCustomPrompts();
     } catch (err) {
       console.error('[CustomPromptSettings] Failed to ensure builtins:', err);
     }

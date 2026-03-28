@@ -5,11 +5,17 @@
  */
 
 import { ipcMain, type BrowserWindow } from 'electron';
+import { createIpcHandler, createSimpleIpcHandler, CustomPromptSchemas } from '../validation';
 import { IPC_CHANNELS } from '../channels';
+import type { CustomPromptService } from '../../services/core/CustomPromptService';
 
 /**
  * Register all custom prompt IPC handlers
  */
+export function registerCustomPromptHandlers(
+  getMainWindow: () => BrowserWindow | null,
+  customPromptService: CustomPromptService,
+): void {
   /**
    * List all custom prompts
    */
@@ -18,6 +24,9 @@ import { IPC_CHANNELS } from '../channels';
     createIpcHandler(
       CustomPromptSchemas.list,
       async () => {
+        const result = customPromptService.list();
+        if (!result.ok) throw new Error(result.error);
+        return { prompts: result.data };
       },
       'Failed to list custom prompts'
     )
@@ -31,6 +40,9 @@ import { IPC_CHANNELS } from '../channels';
     createIpcHandler(
       CustomPromptSchemas.get,
       async ({ promptId }) => {
+        const result = customPromptService.get(promptId);
+        if (!result.ok) throw new Error(result.error);
+        return { prompt: result.data };
       },
       'Failed to get custom prompt'
     )
@@ -43,8 +55,15 @@ import { IPC_CHANNELS } from '../channels';
     IPC_CHANNELS.customPrompts.create,
     createIpcHandler(
       CustomPromptSchemas.create,
+        const result = customPromptService.create({
           name,
+          description,
+          promptContent,
+          icon,
+          keywords,
         });
+        if (!result.ok) throw new Error(result.error);
+        return { prompt: result.data };
       },
       'Failed to create custom prompt'
     )
@@ -57,6 +76,14 @@ import { IPC_CHANNELS } from '../channels';
     IPC_CHANNELS.customPrompts.update,
     createIpcHandler(
       CustomPromptSchemas.update,
+        const result = customPromptService.update(promptId, {
+          name,
+          description,
+          promptContent,
+          icon,
+          keywords,
+        });
+        if (!result.ok) throw new Error(result.error);
       },
       'Failed to update custom prompt'
     )
@@ -70,6 +97,8 @@ import { IPC_CHANNELS } from '../channels';
     createIpcHandler(
       CustomPromptSchemas.delete,
       async ({ promptId }) => {
+        const result = customPromptService.delete(promptId);
+        if (!result.ok) throw new Error(result.error);
       },
       'Failed to delete custom prompt'
     )
@@ -88,9 +117,15 @@ import { IPC_CHANNELS } from '../channels';
           throw new Error('Main window not available');
         }
 
+        const promptResult = customPromptService.get(promptId);
+        if (!promptResult.ok) {
+          throw new Error(promptResult.error);
         }
 
         const taskId = `custom-prompt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const result = customPromptService.startExecution(
+          promptId,
+          projectId,
           {
             onProgress: (message: string) => {
               mainWindow.webContents.send('custom-prompt:progress', {
@@ -102,6 +137,7 @@ import { IPC_CHANNELS } from '../channels';
               mainWindow.webContents.send('custom-prompt:complete', {
                 taskId,
                 filePath,
+                promptName: promptResult.data.name,
               });
             },
             onError: (error: string) => {
@@ -113,6 +149,10 @@ import { IPC_CHANNELS } from '../channels';
           }
         );
 
+        if (!result.ok) {
+          throw new Error(result.error);
+        }
+
         return { taskId };
       },
       'Failed to execute custom prompt'
@@ -122,4 +162,10 @@ import { IPC_CHANNELS } from '../channels';
   /**
    * Ensure built-in prompts exist (called at app startup)
    */
+  ipcMain.handle(IPC_CHANNELS.customPrompts.ensureBuiltins, createSimpleIpcHandler(() => {
+    const result = customPromptService.ensureBuiltins();
+    if (!result.ok) {
+      throw new Error(result.error);
+    }
+  }, 'Failed to ensure built-in prompts'));
 }

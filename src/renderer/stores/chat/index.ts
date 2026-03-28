@@ -6,6 +6,7 @@ import { createStreamingSlice } from './streamingSlice';
 import { createMessageSlice } from './messageSlice';
 import { createHistorySlice } from './historySlice';
 import { createSettingsSlice } from './settingsSlice';
+import { getAppSetting } from '../../services/settingsService';
 
 export const useChatStore: UseBoundStore<StoreApi<ChatState>> = create<ChatState>((set, get) => ({
   ...createInitialChatState(),

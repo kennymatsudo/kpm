@@ -103,6 +103,8 @@ export function useFileContextMenus({
   const handleCopyFullPath = useCallback(
     async (path: string) => {
       if (projectId && path) {
+        const fullPath = await getProjectAbsolutePath(projectId, path);
+        if (fullPath) {
         }
       }
       setContextMenu(null);

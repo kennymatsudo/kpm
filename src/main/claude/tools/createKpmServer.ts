@@ -7,7 +7,10 @@
 import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import { EventEmitter } from 'events';
 import { AsyncLocalStorage } from 'async_hooks';
+import type { BrowserWindow } from 'electron';
 import { CONTEXT_FILE_NAMES } from '../../../shared/contextFile';
+import type { IRepositoryContainer } from '../../db/interfaces';
+import type { AppServices } from '../../services/appServices';
 
 import { createPlanItemTools } from './plan-items';
 import { createRelationTools } from './relations';
@@ -27,6 +30,27 @@ import { createFileMoveTools } from './file-move';
 
 // Cached tools array - collected once at warmup, reused per session
 let cachedTools: Parameters<typeof createSdkMcpServer>[0]['tools'] | null = null;
+
+  container: Pick<
+    IRepositoryContainer,
+    | 'projects'
+    | 'planItems'
+    | 'planRelations'
+    | 'groups'
+    | 'repos'
+    | 'devSessions'
+    | 'confluenceLinks'
+  >;
+  services: Pick<AppServices, 'briefingService' | 'fileExplorerService'>;
+  getMainWindow: () => BrowserWindow | null;
+}
+
+
+  cachedTools = null;
+}
+
+  }
+}
 
 // Cache for pending document content (proposed but not yet accepted).
 const pendingDocumentContent = new Map<string, string>();
@@ -69,6 +93,7 @@ const toolExecutionContext = new AsyncLocalStorage<ToolExecutionContext>();
  * Returns file content or null if not found.
  */
 async function readProjectFile(projectId: string, filePath: string): Promise<string | null> {
+  const project = container.projects.get(projectId);
   if (!project) return null;
 
   const scoped = resolveScopedPath(project.folder_path, filePath);
@@ -181,6 +206,11 @@ async function readProjectFileWithPending(projectId: string, filePath: string): 
 function collectTools() {
   if (cachedTools) return cachedTools;
 
+  const projectRepo = container.projects;
+  const planItemRepo = container.planItems;
+  const planRelationRepo = container.planRelations;
+  const groupRepo = container.groups;
+  const repoRepo = container.repos;
 
   const planItemTools = createPlanItemTools(planItemRepo, planRelationRepo, emitPlanActions);
   const relationTools = createRelationTools(planItemRepo);
@@ -189,6 +219,13 @@ function collectTools() {
   const storybookTools = createStorybookTools(projectRepo);
   const documentCreateTools = createDocumentCreateTools(emitDocumentUpdate);
   const documentEditTools = createDocumentEditTools(readProjectFileWithPending, emitDocumentUpdate);
+  const githubTools = createGitHubTools(planItemRepo, repoRepo, container.devSessions);
+  const confluenceTools = createConfluenceTools(container.confluenceLinks);
+  const briefingTools = createBriefingTools(services.briefingService);
+  const fileMoveTools = createFileMoveTools({
+    fileExplorerService: services.fileExplorerService,
+    getMainWindow,
+  });
 
     ...planItemTools,
     ...relationTools,

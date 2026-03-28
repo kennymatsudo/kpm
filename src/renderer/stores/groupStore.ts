@@ -7,6 +7,15 @@
 
 import { create } from 'zustand';
 import type { Group } from '../../shared/types';
+import {
+  assignItemToGroup as assignItemToGroupInService,
+  createGroup as createGroupInService,
+  deleteGroup as deleteGroupInService,
+  listGroups,
+  updateGroup as updateGroupInService,
+  updateGroupPosition as updateGroupPositionInService,
+  updateGroupSize as updateGroupSizeInService,
+} from '../services/groupService';
 
 // =============================================================================
 // Types
@@ -90,6 +99,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   loadGroups: async (projectId) => {
     set({ isLoading: true, error: null });
     try {
+      const groups = await listGroups(projectId);
       set({ groups, isLoading: false });
     } catch (error) {
       set({
@@ -101,6 +111,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
   createGroup: async (projectId, name, options) => {
     try {
+      const group = await createGroupInService(projectId, name, options);
       get().addGroup(group);
       return group;
     } catch (error) {
@@ -117,6 +128,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     get().updateGroup(id, updates);
 
     try {
+      const result = await updateGroupInService(id, updates);
       if (!result.success) {
         // Revert on failure
         set({ groups: previousGroups, error: result.error || 'Failed to update group' });
@@ -139,6 +151,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     get().removeGroup(id);
 
     try {
+      const result = await deleteGroupInService(id);
       if (!result.success) {
         // Revert on failure
         set({ groups: previousGroups, error: result.error || 'Failed to delete group' });
@@ -160,6 +173,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     get().updateGroup(id, { position_x: x, position_y: y });
 
     try {
+      const result = await updateGroupPositionInService(id, x, y);
       if (!result.success) {
         // Don't revert position updates - they're cosmetic and frequent
         console.error('Failed to save group position:', result.error);
@@ -177,6 +191,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     get().updateGroup(id, { width, height });
 
     try {
+      const result = await updateGroupSizeInService(id, width, height);
       if (!result.success) {
         // Don't revert size updates - they're cosmetic and frequent
         console.error('Failed to save group size:', result.error);
@@ -191,6 +206,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
   assignItemToGroup: async (itemId, groupId) => {
     try {
+      const result = await assignItemToGroupInService(itemId, groupId);
       return result.success;
     } catch (error) {
       set({

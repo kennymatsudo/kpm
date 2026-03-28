@@ -1,5 +1,6 @@
 import { useState, type KeyboardEvent, type ClipboardEvent, type DragEvent, useRef, useEffect, useCallback } from 'react';
 import { useChatStore } from '../../stores';
+import { deleteTempImage, saveTempImage } from '../../services/tempImageService';
 import { useShallow } from 'zustand/react/shallow';
 import { ModelSelector } from './ModelSelector';
 
@@ -116,6 +117,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
           const uint8Array = new Uint8Array(arrayBuffer);
 
           // Save via IPC
+          const result = await saveTempImage(uint8Array, blob.type);
 
           if (result.success) {
           } else {
@@ -133,6 +135,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
 
     // Delete file in background (best-effort, stale cleanup handles orphans)
     try {
+      await deleteTempImage(pathToRemove);
     } catch (error) {
     }
   };

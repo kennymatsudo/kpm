@@ -5,6 +5,7 @@ import { StepProjectInfo } from './StepProjectInfo';
 import { StepScopeFeature } from './StepScopeFeature';
 import { StepContextGeneration } from './StepContextGeneration';
 import { useOnboardingEvents } from '../../hooks/useOnboardingEvents';
+import { saveOnboardingContext } from '../../services/onboardingService';
 
 interface ProjectOnboardingWizardProps {
   isOpen: boolean;
@@ -81,6 +82,7 @@ interface ProjectOnboardingWizardProps {
     setIsSaving(true);
     setError(null);
     try {
+      const result = await saveOnboardingContext(projectId, editableContent);
       if (!result.success) {
         setError(result.error || 'Failed to save project context');
         return;

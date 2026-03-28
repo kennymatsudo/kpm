@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { removeTrackerAssociation } from '../../../../services/trackerService';
 
 interface UnlinkFlowDeps {
   associationId: string;
@@ -22,6 +23,7 @@ export function useUnlinkFlow({
   async function handleUnlink(): Promise<void> {
     setIsUnlinking(true);
     try {
+      await removeTrackerAssociation(associationId);
       onUnlink();
     } catch (e) {
       console.error('Failed to unlink:', e);

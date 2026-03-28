@@ -4,6 +4,17 @@ import type {
   ImportPreview,
   ImportResult,
 } from '../../shared/types';
+import {
+  addTrackerAssociation,
+  applyTrackerImport,
+  getTrackerImportPreview,
+  importAllTrackerItems,
+  listTrackerAssociations,
+  removeTrackerAssociation,
+  subscribeToTrackerImportProgress,
+  trackerAssociationHasImportedItems,
+  updateTrackerAssociationEpicKey,
+} from '../services/trackerService';
 
 interface TrackerState {
   associations: TrackerAssociationWithScope[];
@@ -72,6 +83,7 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
   loadAssociations: async (projectId) => {
     set({ isLoadingAssociations: true, error: null });
     try {
+      const associations = await listTrackerAssociations(projectId);
       set({ associations });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : 'Failed to load associations' });
@@ -97,6 +109,7 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
 
     set({ error: null });
     try {
+      const result = await updateTrackerAssociationEpicKey(associationId, epicKey);
       if (!result.success) {
         return { success: false, error: result.error || 'Failed to update epic key' };
       }
@@ -120,6 +133,7 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
 
     set({ error: null });
     try {
+      await removeTrackerAssociation(associationId);
       await get().loadAssociations(association.kpm_project_id);
     } catch (e) {
       set({ error: e instanceof Error ? e.message : 'Failed to remove association' });
@@ -127,6 +141,7 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
   },
 
   hasAssociationItems: (associationId) => {
+    return trackerAssociationHasImportedItems(associationId);
   },
 
   fetchImportPreview: async (projectId, associationId) => {
@@ -138,6 +153,7 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
     });
 
     try {
+      const result = await getTrackerImportPreview(projectId, associationId);
       if (result.success && result.preview) {
         set({
           importPreview: result.preview,
@@ -164,6 +180,7 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
     });
 
     try {
+      const result = await applyTrackerImport(projectId, associationId, selectedTypes);
       if (result.success && result.result) {
         set({
           importPreview: null,
@@ -194,6 +211,7 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
     });
 
     try {
+      const result = await importAllTrackerItems(projectId, associationId);
       if (result.success && result.result) {
         set({
           importPreview: null,
@@ -239,6 +257,7 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
   clearError: () => set({ error: null, importError: null }),
 
   setupImportProgressListener: () => {
+    return subscribeToTrackerImportProgress((data: { projectId: string; associationId: string; phase?: string; fetched?: number; current?: number; total?: number }) => {
       const { phase, fetched, current, total } = data;
       set({
         importProgress: {

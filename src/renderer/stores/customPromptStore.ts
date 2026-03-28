@@ -6,6 +6,12 @@
  */
 
 import { create } from 'zustand';
+import {
+  createCustomPrompt,
+  deleteCustomPrompt,
+  listCustomPrompts,
+  updateCustomPrompt,
+} from '../services/promptService';
 
 interface CustomPromptState {
   // Data
@@ -80,6 +86,7 @@ export const useCustomPromptStore = create<CustomPromptState>((set, get) => ({
     }
 
     try {
+      const result = await listCustomPrompts();
 
       // Check for stale request
       if (requestId !== loadPromptsRequestId) {
@@ -115,6 +122,7 @@ export const useCustomPromptStore = create<CustomPromptState>((set, get) => ({
 
   createPrompt: async (name, promptContent, options) => {
     try {
+      const result = await createCustomPrompt(name, promptContent, options);
       if (result.success && result.data) {
         // Add to local state
         const prompts = [...get().prompts, result.data];
@@ -133,6 +141,7 @@ export const useCustomPromptStore = create<CustomPromptState>((set, get) => ({
 
   updatePrompt: async (promptId, updates) => {
     try {
+      const result = await updateCustomPrompt(promptId, updates);
       if (result.success) {
         // Update local state
         const prompts = get().prompts.map((p) => {
@@ -164,6 +173,7 @@ export const useCustomPromptStore = create<CustomPromptState>((set, get) => ({
 
   deletePrompt: async (promptId) => {
     try {
+      const result = await deleteCustomPrompt(promptId);
       if (result.success) {
         // Remove from local state
         const prompts = get().prompts.filter((p) => p.id !== promptId);

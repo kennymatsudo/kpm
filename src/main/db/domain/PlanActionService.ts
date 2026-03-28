@@ -8,6 +8,7 @@ import type {
   ISyncQueueRepository,
   IGroupRepository,
 } from '../interfaces';
+import type { QueueTrackerUpdateIfNeeded } from './PlanItemService';
 import { assignItemToGroup } from './GroupAssignmentService';
 
 type Logger = Pick<Console, 'log' | 'warn'>;
@@ -19,6 +20,7 @@ export interface PlanActionExecutorDeps {
   groups: IGroupRepository;
   tracker: ITrackerRepository;
   syncQueue: ISyncQueueRepository;
+  queueTrackerUpdateIfNeeded: QueueTrackerUpdateIfNeeded;
   logger?: Logger;
 }
 

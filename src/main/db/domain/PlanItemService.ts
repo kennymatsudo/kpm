@@ -18,6 +18,16 @@ export interface PlanItemServiceDeps {
   tracker: ITrackerRepository;
 }
 
+export type QueueTrackerUpdateIfNeeded = (
+  item: { id: string; project_id?: string | null; external_key: string | null; association_id: string | null; status_category?: string | null },
+  updates: ExportableUpdates,
+  queuedBy: QueueSource
+) => void;
+
+export type MoveSubtasksToPlan = (
+  projectId: string | null | undefined,
+  parentItemId: string
+) => void;
 
 /**
  * Queue a tracker export when user-facing fields change on a tracker-linked item,
@@ -28,6 +38,7 @@ export interface PlanItemServiceDeps {
  * For new items (no external_key): queues 'create' operation when status_category
  * is set to something other than 'none' (container items cannot be synced)
  *
+ * @param deps - Repository dependencies
  * @param item - The plan item being updated
  * @param updates - The field updates being applied
  * @param queuedBy - Source of the update ('user' or 'claude')
@@ -36,6 +47,7 @@ export function queueTrackerUpdateIfNeeded(
   item: { id: string; project_id?: string | null; external_key: string | null; association_id: string | null; status_category?: string | null },
   updates: ExportableUpdates,
   queuedBy: QueueSource,
+  deps: PlanItemServiceDeps
 ): void {
   if (!item.project_id) return;
 
@@ -97,10 +109,12 @@ export function queueTrackerUpdateIfNeeded(
  *
  * @param projectId - The project containing the items
  * @param parentItemId - The parent item whose children to check
+ * @param deps - Repository dependencies
  */
 export function moveSubtasksToPlan(
   projectId: string | null | undefined,
   parentItemId: string,
+  deps: PlanItemServiceDeps
 ): void {
   if (!projectId) return;
 

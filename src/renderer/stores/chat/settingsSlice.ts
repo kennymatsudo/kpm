@@ -1,3 +1,4 @@
+import { setAppSetting } from '../../services/settingsService';
 
 > {
   return {

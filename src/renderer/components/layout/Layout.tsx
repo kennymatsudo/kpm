@@ -24,6 +24,15 @@ import { useToolLog } from '../../hooks/useToolLog';
 import { useChatIpcBridge } from '../../hooks/useChatIpcBridge';
 import { usePermissionIpcBridge } from '../../hooks/usePermissionIpcBridge';
 import { useFileExplorerIpcBridge } from '../../hooks/useFileExplorerIpcBridge';
+import { useDevSessionsSync } from '../../hooks/useDevSessionsSync';
+import {
+  useLayoutNavigationEffects,
+  useLayoutPlanViewState,
+  usePanelResize,
+  useLayoutShortcuts,
+  usePersistedChatCollapseState,
+  usePersistedViewState,
+} from './hooks';
 import { logPerfEvent, startPerfSpan } from '../../utils/perfLogger';
 
 interface LayoutProps {
@@ -59,6 +68,25 @@ export const Layout = memo(function Layout({
   // Extracted hooks
   const { sidebarWidth, chatWidth, handleSidebarResizeStart, handleChatResizeStart } = usePanelResize();
   const { mainView, viewMode, setMainView, setViewMode } = usePersistedViewState(currentProjectId);
+  const {
+    chatCollapsed,
+    workspaceChatCollapsed,
+    handleToggleChat,
+    showWorkspaceChat,
+  } = usePersistedChatCollapseState(currentProjectId, mainView);
+  const {
+    searchQuery,
+    setSearchQuery,
+    hiddenStatusCategories,
+    hiddenStatusCategoriesRef,
+    setHiddenStatusCategories,
+    selectedItemIds,
+    setSelectedItemIds,
+    clearSelectedItemIds,
+    filteredPlannedItems,
+    statusCounts,
+    searchResultCount,
+  } = useLayoutPlanViewState(currentProjectId, planItems);
 
   const handleMainViewChange = useCallback((view: typeof mainView) => {
     if (view === mainView) return;
@@ -90,6 +118,7 @@ export const Layout = memo(function Layout({
   // File explorer IPC bridge - centralizes filesystem event listeners
   useFileExplorerIpcBridge(currentProjectId);
 
+  useDevSessionsSync(currentProjectId);
 
   // Register create item handler from PlanView
   const registerCreateItemHandler = useCallback((handler: (() => void) | null) => {
@@ -104,6 +133,12 @@ export const Layout = memo(function Layout({
     }
   }, [mainView, createItemHandler]);
 
+  const { handleFileOpen } = useLayoutNavigationEffects({
+    currentProjectId,
+    hiddenStatusCategoriesRef,
+    setHiddenStatusCategories,
+    handleMainViewChange,
+  });
 
   const handleToggleToolLog = useCallback(() => {
     useToolLogStore.getState().togglePanel();
@@ -147,6 +182,7 @@ export const Layout = memo(function Layout({
           hiddenStatusCategories={hiddenStatusCategories}
           onHiddenStatusCategoriesChange={setHiddenStatusCategories}
           selectedItemCount={selectedItemIds.size}
+          onClearSelection={clearSelectedItemIds}
           statusCounts={statusCounts}
           searchResultCount={searchResultCount}
         />
@@ -216,6 +252,7 @@ export const Layout = memo(function Layout({
                 <WorkspaceView
                   projectId={currentProjectId}
                   chatCollapsed={workspaceChatCollapsed}
+                  onShowChat={showWorkspaceChat}
                 />
               </ErrorBoundary>
             )}

@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { Project } from '../../../../shared/types';
+import { listProjects, updateProject } from '../../../services/projectService';
 
 interface ProjectEditDeps {
   currentProject: Project | null;
@@ -33,6 +34,8 @@ export function useProjectEdit({
 
   const handleSaveEdit = useCallback(async () => {
     if (editName.trim() && editName !== currentProject?.name && currentProjectId) {
+      await updateProject(currentProjectId, { name: editName.trim() });
+      const projects = await listProjects();
       setProjects(projects);
     }
     setIsEditing(false);

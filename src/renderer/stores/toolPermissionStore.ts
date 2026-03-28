@@ -1,5 +1,10 @@
 import { create } from 'zustand';
 import type { ToolPermission } from '../../shared/types';
+import {
+  listToolPermissions,
+  revokeAllToolPermissions,
+  revokeToolPermission,
+} from '../services/permissionService';
 
 interface ToolPermissionState {
   projectId: string | null;
@@ -29,6 +34,7 @@ export const useToolPermissionStore = create<ToolPermissionState>((set, get) => 
     set({ projectId, isLoading: true, error: null });
 
     try {
+      const permissions = await listToolPermissions(projectId);
       if (get().projectId !== projectId) return;
       set({ permissions });
     } catch (error) {
@@ -48,6 +54,7 @@ export const useToolPermissionStore = create<ToolPermissionState>((set, get) => 
     set({ isRevokingId: permission.id, error: null });
 
     try {
+      await revokeToolPermission(permission.id, permission.project_id, permission.cache_key);
       set((state) => ({
         permissions: state.permissions.filter((entry) => entry.id !== permission.id),
       }));
@@ -65,6 +72,7 @@ export const useToolPermissionStore = create<ToolPermissionState>((set, get) => 
     set({ error: null });
 
     try {
+      await revokeAllToolPermissions(projectId);
       if (get().projectId === projectId) {
         set({ permissions: [] });
       }

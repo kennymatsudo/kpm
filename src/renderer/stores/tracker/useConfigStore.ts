@@ -1,5 +1,13 @@
 import { create } from 'zustand';
 import type { CustomFieldValues, JiraCustomField, StatusMapping } from '../../../shared/types';
+import {
+  getRecentTrackerIssues,
+  listTrackerCustomFields,
+  searchTrackerIssues,
+  searchTrackerIssuesByJql,
+  updateTrackerAssociationCustomFieldValues,
+  updateTrackerAssociationStatusMapping,
+} from '../../services/trackerService';
 
 export interface TrackerBrowsableIssue {
   key: string;
@@ -121,9 +129,11 @@ export const useTrackerConfigStore = create<TrackerConfigState>((set, get) => ({
 
     try {
       const result = issueType
+        ? await searchTrackerIssuesByJql(
             projectKey,
             `project = ${projectKey} AND type = ${issueType} ORDER BY updated DESC`
           )
+        : await getRecentTrackerIssues(projectKey);
 
       if (result.success && result.issues) {
         return { success: true, issues: result.issues };
@@ -144,9 +154,11 @@ export const useTrackerConfigStore = create<TrackerConfigState>((set, get) => ({
 
     try {
       const result = issueType
+        ? await searchTrackerIssuesByJql(
             projectKey,
             `project = ${projectKey} AND type = ${issueType} AND (key ~ "${query}" OR summary ~ "${query}*") ORDER BY updated DESC`
           )
+        : await searchTrackerIssues(projectKey, query);
 
       if (result.success && result.issues) {
         return { success: true, issues: result.issues };
@@ -166,6 +178,7 @@ export const useTrackerConfigStore = create<TrackerConfigState>((set, get) => ({
     set({ error: null });
 
     try {
+      const result = await searchTrackerIssuesByJql(
         projectKey,
         `parent = ${parentIssueKey}`
       );
@@ -208,6 +221,7 @@ export const useTrackerConfigStore = create<TrackerConfigState>((set, get) => ({
     set({ error: null });
 
     try {
+      const result = await listTrackerCustomFields(projectKey, issueTypeId);
       if (result.success && result.fields) {
         const supportedFields = getSupportedCustomFields(result.fields);
         set((state) => ({
@@ -242,6 +256,7 @@ export const useTrackerConfigStore = create<TrackerConfigState>((set, get) => ({
 
     try {
       const savedMapping = cleanStatusMapping(statusMapping);
+      const result = await updateTrackerAssociationStatusMapping(
         associationId,
         savedMapping
       );
@@ -264,6 +279,7 @@ export const useTrackerConfigStore = create<TrackerConfigState>((set, get) => ({
 
     try {
       const savedValues = cleanCustomFieldValues(customFieldValues);
+      const result = await updateTrackerAssociationCustomFieldValues(
         associationId,
         savedValues
       );

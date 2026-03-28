@@ -6,6 +6,12 @@
 
 import { create } from 'zustand';
 import type { PromptCategory, PromptDefinitionInfo } from '../../shared/types';
+import {
+  getPromptOverride,
+  listPromptOverrides,
+  resetPromptOverride,
+  savePromptOverride,
+} from '../services/promptService';
 
 
 interface PromptDetail extends PromptDefinitionInfo {
@@ -53,6 +59,7 @@ export const usePromptOverrideStore = create<PromptOverrideState>((set, get) => 
   loadPrompts: async () => {
     set({ isLoading: true, error: null });
     try {
+      const result = await listPromptOverrides();
       if (result.success && result.prompts) {
         set({ prompts: result.prompts, isLoading: false });
       } else {
@@ -70,6 +77,7 @@ export const usePromptOverrideStore = create<PromptOverrideState>((set, get) => 
   selectPrompt: async (key) => {
     set({ selectedKey: key, saveStatus: 'idle', error: null });
     try {
+      const result = await getPromptOverride(key);
       if (result.success && result.prompt) {
         set({
           editContent: result.prompt.currentContent,
@@ -90,6 +98,7 @@ export const usePromptOverrideStore = create<PromptOverrideState>((set, get) => 
 
     set({ saveStatus: 'saving' });
     try {
+      const result = await savePromptOverride(selectedKey, editContent);
       if (result.success) {
         set({ saveStatus: 'saved' });
         // Reload to update override status
@@ -115,6 +124,7 @@ export const usePromptOverrideStore = create<PromptOverrideState>((set, get) => 
 
     set({ saveStatus: 'saving' });
     try {
+      const result = await resetPromptOverride(selectedKey);
       if (result.success) {
         set({ saveStatus: 'saved' });
         // Reload to update override status and content

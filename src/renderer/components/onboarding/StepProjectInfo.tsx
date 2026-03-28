@@ -1,5 +1,6 @@
 import { m, AnimatePresence } from 'framer-motion';
 import { CloseIcon } from '../icons';
+import { selectRepoPaths } from '../../services/repoService';
 
 interface StepProjectInfoProps {
   name: string;
@@ -21,6 +22,7 @@ export function StepProjectInfo({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleBrowse = useCallback(async () => {
+    const paths = await selectRepoPaths();
     if (paths.length > 0) {
       const newPaths = paths.filter((p: string) => !repoPaths.includes(p));
       onRepoPathsChange([...repoPaths, ...newPaths]);

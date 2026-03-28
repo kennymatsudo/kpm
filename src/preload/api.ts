@@ -65,6 +65,28 @@ import type {
   DiscoveredMcpServer,
 } from '../shared/types';
 
+type IpcSuccess<T extends object | void> = T extends void ? { success: true } : { success: true } & T;
+type FlatIpcResponse<T extends object | void> = IpcSuccess<T> | IpcFailure;
+
+async function invokeFlat<T extends object | void>(
+  channel: string,
+  payload?: unknown,
+): Promise<FlatIpcResponse<T>> {
+  return ipcRenderer.invoke(channel, payload) as Promise<FlatIpcResponse<T>>;
+}
+
+async function invokeOrThrow<T extends object, TResult>(
+  channel: string,
+  payload: unknown,
+  pick: (response: IpcSuccess<T>) => TResult,
+): Promise<TResult> {
+  const response = await invokeFlat<T>(channel, payload);
+  if (!response.success) {
+    throw new Error(response.error);
+  }
+  return pick(response);
+}
+
 // Re-export shared types for renderer consumers
 export type {
   Project,
@@ -130,8 +152,23 @@ const tempImages = {
 
 const chat = {
   newSession: (projectId: string): Promise<{ success: boolean }> =>
+    invokeFlat<void>(IPC_CHANNELS.chat.newSession, { projectId }),
+  getUsage: (projectId: string): Promise<{ totalTokens: number; inputTokens: number; outputTokens: number }> =>
+    invokeOrThrow<
+      { usage: { totalTokens: number; inputTokens: number; outputTokens: number } },
+      { totalTokens: number; inputTokens: number; outputTokens: number }
+    >(IPC_CHANNELS.chat.getUsage, { projectId }, ({ usage }) => usage),
   getMessages: (projectId: string): Promise<{ success: boolean; messages?: ChatMessage[]; error?: string }> =>
+    invokeFlat<{ messages: ChatMessage[] }>(IPC_CHANNELS.chat.getMessages, { projectId }).then((result) =>
+      result.success ? { success: true, messages: result.messages } : result
+    ),
   getSessionHistory: (projectId: string, limit?: number): Promise<{ success: boolean; sessions?: ChatSessionSummary[]; error?: string }> =>
+    invokeFlat<{ sessions: ChatSessionSummary[] }>(IPC_CHANNELS.chat.getSessionHistory, { projectId, limit }).then((result) =>
+      result.success ? { success: true, sessions: result.sessions } : result
+    ),
+      IPC_CHANNELS.chat.loadSession,
+      { projectId, chatSessionId },
+    ).then((result) => (result.success ? result : result)),
   onChunk: (callback: (data: {
     projectId: string;
     chatSessionId?: string;
@@ -181,20 +218,29 @@ const chat = {
 
   /** Connect streaming session for a project (called on project open) */
   connectSession: (projectId: string): Promise<{ success: boolean; sessionId?: string; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.chat.connectSession, { projectId }),
 
   /** Disconnect streaming session for a project (all sessions) */
   disconnectSession: (projectId: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.chat.disconnectSession, { projectId }),
 
   /** Get all active sessions for a project (multi-session support) */
   getActiveSessions: (projectId: string): Promise<{
     success: boolean;
     error?: string;
+    IPC_CHANNELS.chat.getActiveSessions,
+    { projectId },
+  ).then((result) => (result.success ? { success: true, sessions: result.sessions } : result)),
 
   /** Disconnect a specific session (multi-session support) */
   disconnectSpecificSession: (projectId: string, chatSessionId: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.chat.disconnectSpecificSession, { projectId, chatSessionId }),
 
   /** Get current session state */
   getSessionState: (projectId: string, chatSessionId: string): Promise<{ success: boolean; state?: SessionState; error?: string }> =>
+    invokeFlat<{ state: SessionState }>(IPC_CHANNELS.chat.getSessionState, { projectId, chatSessionId }).then((result) =>
+      result.success ? { success: true, state: result.state } : result
+    ),
 
   /** Session connecting event */
   onSessionConnecting: (callback: (data: { projectId: string; chatSessionId?: string }) => void): (() => void) => {
@@ -240,23 +286,44 @@ const chat = {
 
 const projects = {
   get: (projectId: string): Promise<Project | undefined> =>
+    invokeOrThrow<{ project: Project | undefined }, Project | undefined>(IPC_CHANNELS.project.get, { projectId }, ({ project }) => project),
   list: (): Promise<Project[]> =>
+    invokeOrThrow<{ projects: Project[] }, Project[]>(IPC_CHANNELS.project.list, undefined, ({ projects }) => projects),
+  update: (projectId: string, updates: { name?: string; phase?: string }): Promise<Project | undefined> =>
+    invokeOrThrow<{ project: Project | undefined }, Project | undefined>(IPC_CHANNELS.project.update, { projectId, updates }, ({ project }) => project),
   delete: (projectId: string): Promise<{ success: boolean }> =>
+    invokeFlat<void>(IPC_CHANNELS.project.delete, { projectId }),
   openFolder: (projectId: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.project.openFolder, { projectId }),
 };
 
 const repos = {
   add: (projectId: string, path: string): Promise<Repo> =>
+    invokeOrThrow<{ repo: Repo }, Repo>(IPC_CHANNELS.repo.add, { projectId, path }, ({ repo }) => repo),
   remove: (repoId: string): Promise<{ success: boolean }> =>
+    invokeFlat<void>(IPC_CHANNELS.repo.remove, { repoId }),
   list: (projectId: string): Promise<Repo[]> =>
+    invokeOrThrow<{ repos: Repo[] }, Repo[]>(IPC_CHANNELS.repo.list, { projectId }, ({ repos }) => repos),
   selectDialog: (): Promise<string[]> =>
+    invokeOrThrow<{ paths: string[] }, string[]>(IPC_CHANNELS.repo.selectDialog, undefined, ({ paths }) => paths),
   getBranch: (path: string): Promise<string | null> =>
+    invokeOrThrow<{ branch: string | null }, string | null>(IPC_CHANNELS.repo.getBranch, { path }, ({ branch }) => branch),
   getBranches: (paths: string[]): Promise<Record<string, string | null>> =>
+    invokeOrThrow<{ branches: Record<string, string | null> }, Record<string, string | null>>(IPC_CHANNELS.repo.getBranches, { paths }, ({ branches }) => branches),
   watch: (repoId: string, path: string): Promise<{ success: boolean }> =>
+    invokeFlat<void>(IPC_CHANNELS.repo.watch, { repoId, path }),
   unwatch: (path: string): Promise<{ success: boolean }> =>
+    invokeFlat<void>(IPC_CHANNELS.repo.unwatch, { path }),
   updateEnvironmentMode: (repoId: string, mode: RepoEnvironmentMode): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.repo.updateEnvironmentMode, { repoId, mode }),
   listDirectories: (repoPath: string, prefix?: string, depth?: number): Promise<string[]> =>
+    invokeOrThrow<{ directories: string[] }, string[]>(
+      IPC_CHANNELS.repo.listDirectories,
+      { repoPath, prefix: prefix ?? '', ...(depth != null && { depth }) },
+      ({ directories }) => directories,
+    ),
   listAllBranches: (repoPath: string): Promise<string[]> =>
+    invokeOrThrow<{ branches: string[] }, string[]>(IPC_CHANNELS.repo.listAllBranches, { repoPath }, ({ branches }) => branches),
   onBranchChanged: (callback: (data: { repoId: string; repoPath: string; branch: string | null }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, data: { repoId: string; repoPath: string; branch: string | null }) => callback(data);
     ipcRenderer.on('repo:branch-changed', handler);
@@ -277,15 +344,25 @@ const attachments = {
 
 const plan = {
   listItems: (projectId: string): Promise<PlanItem[]> =>
+    invokeOrThrow<{ items: PlanItem[] }, PlanItem[]>(IPC_CHANNELS.plan.listItems, { projectId }, ({ items }) => items),
   executeActions: (projectId: string, actions: PlanAction[]): Promise<PlanActionResult> =>
+    invokeOrThrow<{ result: PlanActionResult }, PlanActionResult>(IPC_CHANNELS.plan.executeActions, { projectId, actions }, ({ result }) => result),
   addRelation: (relation: Omit<PlanRelation, 'id'>): Promise<PlanRelation> =>
+    invokeOrThrow<{ relation: PlanRelation }, PlanRelation>(IPC_CHANNELS.plan.addRelation, relation, ({ relation: nextRelation }) => nextRelation),
   removeRelation: (relationId: string): Promise<{ success: boolean }> =>
+    invokeFlat<void>(IPC_CHANNELS.plan.removeRelation, { relationId }),
   getRelations: (projectId: string): Promise<PlanRelation[]> =>
+    invokeOrThrow<{ relations: PlanRelation[] }, PlanRelation[]>(IPC_CHANNELS.plan.getRelations, { projectId }, ({ relations }) => relations),
   updatePosition: (itemId: string, x: number, y: number): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.plan.updatePosition, { itemId, x, y }),
   updateItem: (itemId: string, updates: PlanItemUpdates): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.plan.updateItem, { itemId, updates }),
   deleteItem: (itemId: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.plan.deleteItem, { itemId }),
   deleteItemWithDescendants: (itemId: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.plan.deleteItemWithDescendants, { itemId }),
   getChildCount: (itemId: string): Promise<number> =>
+    invokeOrThrow<{ count: number }, number>(IPC_CHANNELS.plan.getChildCount, { itemId }, ({ count }) => count),
 };
 
 // Groups API (Visual containers - Figma-style frames)
@@ -471,22 +548,45 @@ const tracker = {
 
 const claudeMd = {
   read: (projectId: string): Promise<{ success: boolean; content: string | null; error?: string }> =>
+    invokeFlat<{ content: string | null; filename?: string }>(IPC_CHANNELS.claudeMd.read, { projectId }).then((result) =>
+      result.success
+        ? { success: true, content: result.content }
+        : { success: false, content: null, error: result.error }
+    ),
   write: (projectId: string, content: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.claudeMd.write, { projectId, content }),
 };
 
 const contextFiles = {
   list: (projectId: string): Promise<{
     success: boolean;
+  files?: {
       path: string;
       name: string;
       isClaudeMd: boolean;
       modifiedAt: string;
     }[];
     error?: string;
+  }> => invokeFlat<{ files: {
+      path: string;
+      name: string;
+      isClaudeMd: boolean;
+      modifiedAt: string;
+    }[] }>(IPC_CHANNELS.context.list, { projectId }),
   read: (projectId: string, path: string): Promise<{ success: boolean; content: string | null; error?: string }> =>
+    invokeFlat<{ content: string | null }>(IPC_CHANNELS.context.read, { projectId, path }).then((result) =>
+      result.success
+        ? { success: true, content: result.content }
+        : { success: false, content: null, error: result.error }
+    ),
   write: (projectId: string, path: string, content: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.context.write, { projectId, path, content }),
   delete: (projectId: string, path: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.context.delete, { projectId, path }),
   import: (projectId: string, sourcePath: string): Promise<{ success: boolean; filename?: string; error?: string }> =>
+    invokeFlat<{ filename: string }>(IPC_CHANNELS.context.import, { projectId, sourcePath }),
+  selectDialog: (): Promise<string[]> =>
+    invokeOrThrow<{ paths: string[] }, string[]>(IPC_CHANNELS.context.selectDialog, undefined, ({ paths }) => paths),
 };
 
 const menu = {
@@ -532,6 +632,7 @@ const settings = {
 
 const permission = {
   respond: (requestId: string, projectId: string, action: PermissionAction): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.permission.respond, { requestId, projectId, action }),
   onRequest: (callback: (request: PermissionRequest) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, request: PermissionRequest) => callback(request);
     ipcRenderer.on('permission:request', handler);
@@ -541,15 +642,28 @@ const permission = {
 
 const permissions = {
   list: (projectId: string): Promise<ToolPermission[]> =>
+    invokeOrThrow<{ permissions: ToolPermission[] }, ToolPermission[]>(
+      IPC_CHANNELS.permission.list,
+      { projectId },
+      ({ permissions }) => permissions,
+    ),
   revoke: (id: string, projectId: string, cacheKey: string): Promise<{ success: boolean }> =>
+    invokeFlat<void>(IPC_CHANNELS.permission.revoke, { id, projectId, cacheKey }),
   revokeAll: (projectId: string): Promise<{ success: boolean }> =>
+    invokeFlat<void>(IPC_CHANNELS.permission.revokeAll, { projectId }),
 };
 
 const artifacts = {
   list: (projectId: string): Promise<{ success: boolean; artifacts?: { filename: string; path: string; createdAt: string; modifiedAt: string; size: number }[]; error?: string }> =>
+    invokeFlat<{ artifacts: { filename: string; path: string; createdAt: string; modifiedAt: string; size: number }[] }>(IPC_CHANNELS.artifact.list, { projectId }),
   read: (projectId: string, filename: string): Promise<{ success: boolean; content?: string; error?: string }> =>
+    invokeFlat<{ content: string }>(IPC_CHANNELS.artifact.read, { projectId, filename }),
   delete: (projectId: string, filename: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.artifact.delete, { projectId, filename }),
   import: (projectId: string, sourcePath: string): Promise<{ success: boolean; filename?: string; error?: string }> =>
+    invokeFlat<{ filename: string }>(IPC_CHANNELS.artifact.import, { projectId, sourcePath }),
+  selectDialog: (): Promise<string[]> =>
+    invokeOrThrow<{ paths: string[] }, string[]>(IPC_CHANNELS.artifact.selectDialog, undefined, ({ paths }) => paths),
 };
 
 const taskPromptTemplates = {
@@ -584,9 +698,15 @@ const taskPromptTemplates = {
 const customPrompts = {
   // List all custom prompts
   list: (): Promise<{ success: boolean; data?: CustomPrompt[]; error?: string }> =>
+    invokeFlat<{ prompts: CustomPrompt[] }>(IPC_CHANNELS.customPrompts.list, {}).then((result) =>
+      result.success ? { success: true, data: result.prompts } : result
+    ),
 
   // Get a single custom prompt
   get: (promptId: string): Promise<{ success: boolean; data?: CustomPrompt; error?: string }> =>
+    invokeFlat<{ prompt: CustomPrompt }>(IPC_CHANNELS.customPrompts.get, { promptId }).then((result) =>
+      result.success ? { success: true, data: result.prompt } : result
+    ),
 
   // Create a new custom prompt
   create: (
@@ -598,6 +718,9 @@ const customPrompts = {
       keywords?: string | null;
     }
   ): Promise<{ success: boolean; data?: CustomPrompt; error?: string }> =>
+    invokeFlat<{ prompt: CustomPrompt }>(IPC_CHANNELS.customPrompts.create, { name, promptContent, ...options }).then((result) =>
+      result.success ? { success: true, data: result.prompt } : result
+    ),
 
   // Update a custom prompt
   update: (
@@ -610,15 +733,22 @@ const customPrompts = {
       keywords?: string | null;
     }
   ): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.customPrompts.update, { promptId, ...updates }),
 
   // Delete a custom prompt (not allowed for built-in prompts)
   delete: (promptId: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.customPrompts.delete, { promptId }),
 
   // Execute a custom prompt
   execute: (
+    projectId: string,
+    promptId: string
+  ): Promise<{ success: boolean; taskId?: string; error?: string }> =>
+    invokeFlat<{ taskId: string }>(IPC_CHANNELS.customPrompts.execute, { promptId, projectId }),
 
   // Ensure built-in prompts exist
   ensureBuiltins: (): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.customPrompts.ensureBuiltins),
 
   // Progress callback
   onProgress: (callback: (data: { taskId: string; message: string }) => void): (() => void) => {
@@ -1039,7 +1169,13 @@ const debug = {
 // Onboarding API (project setup wizard)
 const onboarding = {
   generate: (taskId: string, projectId: string, description: string, repoDirectories: Record<string, string[]>): Promise<{ taskId: string }> =>
+    invokeOrThrow<{ taskId: string }, { taskId: string }>(
+      IPC_CHANNELS.onboarding.generate,
+      { taskId, projectId, description, repoDirectories },
+      ({ taskId: nextTaskId }) => ({ taskId: nextTaskId }),
+    ),
   saveContext: (projectId: string, content: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.onboarding.saveContext, { projectId, content }),
   onProgress: (callback: (data: { taskId: string; message: string }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; message: string }) => callback(data);
     ipcRenderer.on('onboarding:progress', handler);

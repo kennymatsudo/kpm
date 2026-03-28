@@ -123,11 +123,24 @@ export default tseslint.config(
       '@typescript-eslint/no-misused-promises': ['error', {
         checksVoidReturn: { attributes: false },
       }],
+      'no-restricted-properties': ['error', {
+        object: 'window',
+        property: 'api',
+        message: 'Use a renderer service instead of accessing window.api directly outside src/renderer/services.',
+      }],
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',
       '@typescript-eslint/no-unsafe-return': 'off',
+    },
+  },
+
+  // Renderer services are the transport boundary for preload IPC
+  {
+    files: ['src/renderer/services/**/*.ts'],
+    rules: {
+      'no-restricted-properties': 'off',
     },
   },
 

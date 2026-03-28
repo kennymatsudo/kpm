@@ -7,6 +7,7 @@
 
 import type { MarkdownToJSX } from 'markdown-to-jsx';
 import type { JSX } from 'react';
+import { openExternalUrl } from '../services/shellService';
 
 /**
  * Click handler for markdown links - opens in external browser
@@ -14,6 +15,7 @@ import type { JSX } from 'react';
 function handleLinkClick(e: React.MouseEvent<HTMLAnchorElement>, href: string | undefined) {
   e.preventDefault();
   if (href) {
+    openExternalUrl(href);
   }
 }
 

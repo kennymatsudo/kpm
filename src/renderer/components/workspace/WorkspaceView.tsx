@@ -5,6 +5,7 @@ import { WorkspaceHome } from './WorkspaceHome';
 import { getParentPath } from '../../utils/path';
 import { subscribe as subscribeToStoreEvent } from '../../stores/storeEvents';
 import { useWorkspaceResize } from './useWorkspaceResize';
+import { readWorkspaceFile } from '../../services/workspaceFileService';
 
 interface WorkspaceViewProps {
   projectId: string;
@@ -69,6 +70,7 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
       if (data.type === 'updated' && data.path === editingFile.path) {
         // Only auto-refresh if there are no unsaved changes
         if (!hasUnsavedChanges) {
+          readWorkspaceFile(editingFile.source, data.path, projectId).then((content: string) => {
             openFile(editingFile.source, editingFile.path, content, editingFile.isReadOnly);
           }).catch(console.error);
         }
@@ -84,6 +86,7 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
       // Handle file being renamed - update the editing path
       if (data.type === 'renamed' && data.path === editingFile.path && data.newPath) {
         // Re-open with the new path
+        readWorkspaceFile(editingFile.source, data.newPath, projectId).then((content: string) => {
           openFile(editingFile.source, data.newPath!, content, editingFile.isReadOnly);
         }).catch(console.error);
       }

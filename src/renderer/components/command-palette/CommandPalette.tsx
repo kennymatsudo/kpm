@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { executeCustomPrompt } from '../../services/promptService';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -93,6 +94,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     setCommandError(null);
 
     try {
+      const result = await executeCustomPrompt(currentProjectId!, command.promptId);
 
       if (result.success && result.taskId) {
         closeTimeoutRef.current = setTimeout(() => {

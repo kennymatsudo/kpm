@@ -75,6 +75,9 @@ export { DevSessionSchemas, WorktreeSchemas } from './dev-session';
 // Settings
 export { SettingsSchemas } from './settings';
 
+// Permissions
+export { PermissionSchemas } from './permission';
+
 
 // Task Prompt Templates
 export { TaskPromptTemplateSchemas } from './agents';

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { DeleteWorktreeDialog } from './DeleteWorktreeDialog';
+import { Modal } from '../ui/Modal';
 import { Z_INDEX } from '../../constants/zIndex';
 
 export type MenuPosition =

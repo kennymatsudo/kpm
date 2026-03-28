@@ -1,3 +1,10 @@
+import type { Database } from 'better-sqlite3';
+import type {
+  IExternalPlanItemRepository,
+  IPlanItemRepository,
+  ISyncRepository,
+  ITrackerRepository,
+} from '../interfaces';
 import type { TrackerClient, ExternalIssue } from '../../trackers';
 import { fetchIssuesWithSubtasks } from '../../trackers';
 import { inferCategoryWithMapping } from '../../trackers/statusTransitions';
@@ -15,6 +22,22 @@ import type {
 
 type SyncProgressCallback = (phase: string, current: number, total: number) => void;
 
+export interface SyncServiceDeps {
+  database: Database;
+  planItems: IPlanItemRepository;
+  externalPlanItems: IExternalPlanItemRepository;
+  sync: ISyncRepository;
+  tracker: ITrackerRepository;
+}
+
+export function createSyncService(deps: SyncServiceDeps) {
+  const getDatabase = () => deps.database;
+  const PlanItemRepository = deps.planItems;
+  const ExternalPlanItemRepository = deps.externalPlanItems;
+  const SyncRepository = deps.sync;
+  const TrackerRepository = deps.tracker;
+
+  const service = {
   /**
    * Generate preview of changes without applying.
    * Returns diff for user review.
@@ -80,6 +103,7 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
       } else {
         // Existing item - check for changes/conflicts
         const snapshot = snapshots.get(existing.id) ?? null;
+        const analysis = service.analyzeChanges(existing, issue, snapshot, association.status_mapping);
 
         if (analysis.conflicts.length > 0) {
           preview.conflicts.push({
@@ -406,8 +430,12 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
         }
 
         // Apply all operations
+        const snapshots1 = service.applyNewItems(projectId, preview, result);
         ExternalPlanItemRepository.linkSubtasksToParentIssues(projectId, preview.tracker_type);
 
+        const snapshots2 = service.applyUpdates(preview, result, itemCache, statusMapping);
+        const snapshots3 = service.applyConflictResolutions(preview, resolutions, result, itemCache);
+        const snapshotsToDelete = service.handleDeletedItems(preview, deletedAction, deletedDecisions, result);
 
         // Bulk update snapshots
         const allSnapshots = [...snapshots1, ...snapshots2, ...snapshots3];
@@ -429,3 +457,8 @@ type SyncProgressCallback = (phase: string, current: number, total: number) => v
     return result;
   },
 };
+
+  return service;
+}
+
+export type SyncService = ReturnType<typeof createSyncService>;

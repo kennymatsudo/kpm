@@ -1,5 +1,13 @@
 import { create } from 'zustand';
 import type { TaskPromptTemplate } from '../../shared/types';
+import {
+  createTaskPromptTemplate,
+  deleteTaskPromptTemplate,
+  getBuiltinTaskPromptTemplate,
+  listTaskPromptTemplates,
+  setDefaultTaskPromptTemplate,
+  updateTaskPromptTemplate,
+} from '../services/taskPromptTemplateService';
 
 type TemplateScope = 'global' | 'project';
 
@@ -71,6 +79,7 @@ export const useTaskPromptTemplateStore = create<TaskPromptTemplateState>((set, 
 
     try {
       const projectId = targetProjectId;
+      const result = await listTaskPromptTemplates(projectId);
       if (
         requestId !== loadTemplatesRequestId ||
         get().scope !== scope ||
@@ -115,6 +124,7 @@ export const useTaskPromptTemplateStore = create<TaskPromptTemplateState>((set, 
     }
   },
 
+  loadBuiltinDefault: () => getBuiltinTaskPromptTemplate(),
 
   saveTemplate: async (name, promptContent) => {
     const state = get();
@@ -129,6 +139,8 @@ export const useTaskPromptTemplateStore = create<TaskPromptTemplateState>((set, 
 
     const projectId = state.scope === 'project' ? state.currentProjectId : null;
     const result = state.selectedTemplateId
+      ? await updateTaskPromptTemplate(state.selectedTemplateId, { name: trimmedName, promptContent })
+      : await createTaskPromptTemplate(projectId ?? null, trimmedName, promptContent);
 
     if (!result.success || !result.template) {
       return { success: false, error: result.error || 'Failed to save template' };
@@ -145,6 +157,7 @@ export const useTaskPromptTemplateStore = create<TaskPromptTemplateState>((set, 
       return { success: false, error: 'No template selected' };
     }
 
+    const result = await deleteTaskPromptTemplate(state.selectedTemplateId);
     if (!result.success) {
       return { success: false, error: result.error || 'Failed to delete template' };
     }
@@ -160,6 +173,7 @@ export const useTaskPromptTemplateStore = create<TaskPromptTemplateState>((set, 
       return { success: false, error: 'No template selected' };
     }
 
+    const result = await setDefaultTaskPromptTemplate(state.selectedTemplateId);
     if (!result.success || !result.template) {
       return { success: false, error: result.error || 'Failed to set default' };
     }

@@ -6,9 +6,11 @@
  */
 
 import { ipcMain } from 'electron';
+import type { TaskPromptTemplateService } from '../../services/core/TaskPromptTemplateService';
 import { createIpcHandler, createSimpleIpcHandler, TaskPromptTemplateSchemas } from '../validation';
 import { IPC_CHANNELS } from '../channels';
 
+export function registerTaskPromptTemplateHandlers(taskPromptTemplateService: TaskPromptTemplateService): void {
   /**
    * List all templates (optionally filtered by project).
    */
@@ -17,6 +19,9 @@ import { IPC_CHANNELS } from '../channels';
     createIpcHandler(
       TaskPromptTemplateSchemas.list,
       ({ projectId }) => {
+        const result = taskPromptTemplateService.list(projectId);
+        if (!result.ok) throw new Error(result.error);
+        return { templates: result.data };
       },
       'Failed to list templates'
     )
@@ -30,6 +35,9 @@ import { IPC_CHANNELS } from '../channels';
     createIpcHandler(
       TaskPromptTemplateSchemas.get,
       ({ templateId }) => {
+        const result = taskPromptTemplateService.get(templateId);
+        if (!result.ok) throw new Error(result.error);
+        return { template: result.data };
       },
       'Failed to get template'
     )
@@ -44,6 +52,9 @@ import { IPC_CHANNELS } from '../channels';
     createIpcHandler(
       TaskPromptTemplateSchemas.getEffective,
       ({ projectId }) => {
+        const result = taskPromptTemplateService.getEffective(projectId);
+        if (!result.ok) throw new Error(result.error);
+        return { template: result.data };
       },
       'Failed to get effective template'
     )
@@ -58,6 +69,9 @@ import { IPC_CHANNELS } from '../channels';
     createIpcHandler(
       TaskPromptTemplateSchemas.getBuiltinDefault,
       () => {
+        const result = taskPromptTemplateService.getBuiltinDefault();
+        if (!result.ok) throw new Error(result.error);
+        return result.data;
       },
       'Failed to get builtin default'
     )
@@ -71,6 +85,9 @@ import { IPC_CHANNELS } from '../channels';
     createIpcHandler(
       TaskPromptTemplateSchemas.create,
       ({ projectId, name, promptContent }) => {
+        const result = taskPromptTemplateService.create(projectId, name, promptContent);
+        if (!result.ok) throw new Error(result.error);
+        return { template: result.data };
       },
       'Failed to create template'
     )
@@ -84,6 +101,9 @@ import { IPC_CHANNELS } from '../channels';
     createIpcHandler(
       TaskPromptTemplateSchemas.update,
       ({ templateId, name, promptContent }) => {
+        const result = taskPromptTemplateService.update(templateId, { name, promptContent });
+        if (!result.ok) throw new Error(result.error);
+        return { template: result.data };
       },
       'Failed to update template'
     )
@@ -97,6 +117,8 @@ import { IPC_CHANNELS } from '../channels';
     createIpcHandler(
       TaskPromptTemplateSchemas.delete,
       ({ templateId }) => {
+        const result = taskPromptTemplateService.delete(templateId);
+        if (!result.ok) throw new Error(result.error);
       },
       'Failed to delete template'
     )
@@ -110,6 +132,9 @@ import { IPC_CHANNELS } from '../channels';
     createIpcHandler(
       TaskPromptTemplateSchemas.setDefault,
       ({ templateId }) => {
+        const result = taskPromptTemplateService.setDefault(templateId);
+        if (!result.ok) throw new Error(result.error);
+        return { template: result.data };
       },
       'Failed to set default template'
     )
@@ -121,6 +146,8 @@ import { IPC_CHANNELS } from '../channels';
   ipcMain.handle(
     IPC_CHANNELS.taskPromptTemplates.ensureDefault,
     createSimpleIpcHandler(() => {
+      const result = taskPromptTemplateService.ensureDefault();
+      if (!result.ok) throw new Error(result.error);
     }, 'Failed to ensure default template')
   );
 }

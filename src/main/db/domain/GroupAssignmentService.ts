@@ -16,6 +16,7 @@ export type GroupAssignmentResult =
 export function assignItemToGroup(
   itemId: string,
   groupId: string | null,
+  deps: GroupAssignmentDeps
 ): GroupAssignmentResult {
   const item = deps.planItems.get(itemId);
   if (!item) {

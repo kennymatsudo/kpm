@@ -1,6 +1,12 @@
 import { useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { emit } from '../stores/storeEvents';
+import {
+  getActiveChatSessions,
+  getChatSessionState,
+  getChatUsage,
+  subscribeToChatEvents,
+} from '../services/chatService';
 
 /**
  * Bridge hook that registers ALL chat IPC listeners at the Layout level.
@@ -53,11 +59,13 @@ export function useChatIpcBridge(projectId: string | null): void {
     if (!projectId) return;
 
     void (async () => {
+      const usage = await getChatUsage(projectId);
       setTokens(usage.totalTokens);
     })();
 
     // Load active sessions from backend on mount
     void (async () => {
+      const result = await getActiveChatSessions(projectId);
       if (result.success && result.sessions) {
         let preferredSessionId: string | null = useChatStore.getState().viewedSessionId;
 
@@ -88,9 +96,72 @@ export function useChatIpcBridge(projectId: string | null): void {
 
     // Subscribe to unified chat IPC events
     // Events now include chatSessionId for routing to correct session
+    const unsubscribeChatEvents = subscribeToChatEvents({
+      onChunk: (data) => {
+        const sessionId = data.chatSessionId;
+          appendChunk(sessionId, data.text, data.segmentId, data.precedingActivities);
         }
+      },
+      onPlanActions: (data) => {
+        }
+      },
+      onFileUpdate: (data) => {
+        }
+      },
+      onDone: (data) => {
+        void (async () => {
+          const sessionId = data.chatSessionId;
+          }
+          const usage = await getChatUsage(projectId);
+          setTokens(usage.totalTokens);
+        })();
+      },
+      onError: (data) => {
+        const sessionId = data.chatSessionId ?? useChatStore.getState().viewedSessionId ?? undefined;
+          if (data.error.includes('still responding')) {
+            setRetrying(sessionId);
+            setSessionState(sessionId, 'processing');
+            return;
+          }
 
+          setError(sessionId, data.error);
         }
+      },
+      onActivity: (data) => {
+        const sessionId = data.chatSessionId;
+          addActivity(sessionId, data.activity);
+        }
+      },
+      onThinking: (data) => {
+        const sessionId = data.chatSessionId;
+          appendThinking(sessionId, data.text);
+        }
+      },
+      onSessionConnecting: (data) => {
+        const sessionId = data.chatSessionId;
+          setSessionState(sessionId, 'connecting');
+          markSessionActive(sessionId);
+        }
+      },
+      onSessionReady: (data) => {
+        const sessionId = data.chatSessionId;
+          setSessionState(sessionId, 'ready');
+          markSessionActive(sessionId);
+        }
+      },
+      onSessionError: (data) => {
+        const sessionId = data.chatSessionId;
+          setSessionState(sessionId, 'error');
+          setError(sessionId, data.error);
+          console.warn('[useChatIpcBridge] Session error:', data.error);
+        }
+      },
+      onSessionDeactivated: (data) => {
+        const sessionId = data.chatSessionId;
+          setSessionState(sessionId, 'idle');
+          markSessionInactive(sessionId);
+        }
+      },
     });
 
     const WATCHDOG_POLL_MS = 15_000;
@@ -141,6 +212,7 @@ export function useChatIpcBridge(projectId: string | null): void {
               continue;
             }
 
+            const stateResult = await getChatSessionState(projectId, sessionId);
             const backendState = stateResult.success ? stateResult.state : undefined;
 
             if (
@@ -171,5 +243,6 @@ export function useChatIpcBridge(projectId: string | null): void {
 
     return () => {
       clearInterval(watchdogInterval);
+      unsubscribeChatEvents();
     };
 }

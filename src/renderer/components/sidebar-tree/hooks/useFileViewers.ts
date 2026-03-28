@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { subscribe as subscribeToStoreEvent } from '../../../stores/storeEvents';
 import { getImageMimeType, uint8ArrayToDataUrl } from '../../../utils/image';
+import { readProjectBinaryFile, readWorkspaceFile, writeProjectFile } from '../../../services/workspaceFileService';
 import type { FileNode } from '../../../../shared/types';
 
 interface FileViewersDeps {
@@ -34,6 +35,7 @@ export function useFileViewers({ projectId }: FileViewersDeps) {
     async (path: string) => {
       if (!path || !projectId) return;
       try {
+        const content = await readWorkspaceFile('project', path, projectId);
         setViewingContent(content);
         setViewingPath(path);
       } catch (err) {
@@ -46,6 +48,7 @@ export function useFileViewers({ projectId }: FileViewersDeps) {
   const openImageViewer = useCallback(
     async (path: string, node: FileNode) => {
       try {
+        const data = await readProjectBinaryFile(projectId, path);
         const mimeType = getImageMimeType(node.name);
         const dataUrl = uint8ArrayToDataUrl(new Uint8Array(data), mimeType);
         setViewingImage({
@@ -74,6 +77,7 @@ export function useFileViewers({ projectId }: FileViewersDeps) {
     async (newContent: string) => {
       if (!viewingPath || !projectId) return;
       try {
+        const result = await writeProjectFile(projectId, viewingPath, newContent);
         if (result.success) {
           setViewingContent(newContent);
           closeViewer();
@@ -90,6 +94,7 @@ export function useFileViewers({ projectId }: FileViewersDeps) {
     switch (type) {
       case 'updated':
         if (path === viewingPath) {
+          readWorkspaceFile('project', path, projectId)
             .then((content: string) => {
               setViewingContent(content);
             })

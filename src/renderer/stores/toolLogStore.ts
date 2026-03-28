@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ToolCallLogEntry, ToolCallTurnSummary, ActivityType } from '../../shared/types';
+import { setToolLogEnabled } from '../services/toolLogService';
 
 interface ToolLogState {
   entries: ToolCallLogEntry[];
@@ -45,6 +46,7 @@ export const useToolLogStore = create<ToolLogState>((set) => ({
 
   setEnabled(enabled: boolean) {
     set({ isEnabled: enabled });
+    void setToolLogEnabled(enabled);
   },
 
   setFilterCategory(cat: ActivityType | null) {

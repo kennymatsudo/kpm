@@ -1,9 +1,16 @@
 import path from 'path';
 import { execSync } from 'child_process';
 import { initDatabase } from './db';
+import { registerAllIpcHandlers } from './ipc';
 import * as TempImageService from './services/files/TempImageService';
+import { initializeRepositoryContainer } from './db/container';
 import { warmupMcpSdk } from './claude/tools/createKpmServer';
+import { initializeServices } from './services/container';
+import type { IRepositoryContainer } from './db/interfaces';
+import type { AppServices } from './services/appServices';
 import { default as installExtension, REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
+import { createMainWindowManager } from './bootstrap/windowManager';
+import { buildApplicationMenu } from './bootstrap/menu';
 
 // Fix PATH for production builds launched from Finder
 function fixPath(): void {
@@ -28,11 +35,23 @@ app.setPath('userData', e2eDataDir || path.join(app.getPath('appData'), 'KPM - P
 // Fix PATH immediately at startup
 fixPath();
 
+let runtimeRepositories: Pick<IRepositoryContainer, 'appSettings' | 'projects'> | null = null;
+let runtimeServices: AppServices | null = null;
 
+function getRuntimeRepositories(): Pick<IRepositoryContainer, 'appSettings' | 'projects'> {
+  if (!runtimeRepositories) {
+    throw new Error('[Main] Runtime repositories accessed before initialization');
+  }
+  return runtimeRepositories;
+}
+
+function saveWindowBounds(bounds: Electron.Rectangle): void {
+  const { appSettings } = getRuntimeRepositories();
   appSettings.set('window_bounds', JSON.stringify(bounds));
 }
 
 function loadWindowBounds(): Electron.Rectangle | null {
+  const { appSettings } = getRuntimeRepositories();
   const saved = appSettings.get('window_bounds');
   if (!saved) return null;
 
@@ -51,6 +70,10 @@ function loadWindowBounds(): Electron.Rectangle | null {
   }
 }
 
+const { createWindow, getMainWindow } = createMainWindowManager({
+  loadWindowBounds,
+  saveWindowBounds,
+});
 
 void app.whenReady().then(async () => {
   // Install React DevTools extension in dev mode
@@ -81,9 +104,27 @@ void app.whenReady().then(async () => {
   // Node's default limit of 10. Raise it to accommodate concurrent sessions.
   process.setMaxListeners(20);
 
+  const container = initializeRepositoryContainer();
+  runtimeRepositories = {
+    appSettings: container.appSettings,
+    projects: container.projects,
+  };
+  const services = initializeServices(container);
+  runtimeServices = services;
+  services.appLifecycleService.start();
+
+  warmupMcpSdk({
+    container,
+    services,
+    getMainWindow,
+  });
 
   registerAllIpcHandlers(getMainWindow, services);
   createWindow();
+  buildApplicationMenu({
+    getMainWindow,
+    getRecentProjects: () => getRuntimeRepositories().projects.list(),
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -100,3 +141,4 @@ app.on('window-all-closed', () => {
 
 });
 
+export { getMainWindow };

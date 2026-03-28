@@ -1,0 +1,142 @@
+import type { BrowserWindow } from 'electron';
+import type { AppServices } from '../appServices';
+import type { IRepositoryContainer } from '../../db/interfaces';
+import { createStreamingSessionService } from '../streaming/StreamingSessionService';
+import { createContextBuilder } from '../../claude/contextBuilders';
+import { buildSdkOptions, type ModelType } from '../../claude/sdkOptionsBuilder';
+import {
+  subscribeToPlanActions,
+  subscribeToClaudeMdUpdate,
+  subscribeToDocumentUpdate,
+} from '../../claude/tools/createKpmServer';
+import { createToolCallLogger } from '../toollog';
+import type { PlanContext } from '../../claude/prompts';
+import { unwrapOrThrow } from '../result';
+import { createChatService } from './ChatService';
+
+export interface ChatRuntimeServiceDeps {
+  getMainWindow: () => BrowserWindow | null;
+  services: AppServices;
+  container: IRepositoryContainer;
+}
+
+export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
+  const { getMainWindow, services, container } = deps;
+
+  const buildContext = createContextBuilder({
+    projects: container.projects,
+    repos: container.repos,
+    attachments: container.attachments,
+    planItems: container.planItems,
+    taskPromptTemplates: container.taskPromptTemplates,
+  });
+
+  const buildContextWithPrompts = (projectId: string): PlanContext | null => {
+    const context = buildContext(projectId);
+    if (context) {
+      context.getPromptContent = (key: string) => unwrapOrThrow(services.promptOverrideService.getContent(key));
+    }
+    return context;
+  };
+
+  const toolCallLogger = createToolCallLogger({ getMainWindow });
+
+  const streamingSessionService = createStreamingSessionService({
+    projectRepository: {
+      get: container.projects.get.bind(container.projects),
+      updateTokens: container.projects.updateTokens.bind(container.projects),
+    },
+    chatMessageRepository: {
+      addMessage: container.chatMessages.addMessage.bind(container.chatMessages),
+    },
+    chatSessionRepository: {
+      get: container.chatSessions.get.bind(container.chatSessions),
+      create: container.chatSessions.create.bind(container.chatSessions),
+      updateClaudeSessionId: container.chatSessions.updateClaudeSessionId.bind(container.chatSessions),
+    },
+    getMainWindow,
+    buildContext: buildContextWithPrompts,
+    buildSdkOptions: (context: PlanContext, options: {
+      model: ModelType;
+      resumeSessionId?: string;
+      mainWindow: BrowserWindow | null;
+      onClaudeMdEdit?: (projectId: string, newContent: string) => void;
+      onProjectFileWrite?: (projectId: string, filePath: string, content: string) => void;
+    }) => {
+      const pluginPathsResult = services.mcpDiscoveryService.getEnabledPluginPaths();
+      const enabledPluginPaths = pluginPathsResult.ok ? pluginPathsResult.data : [];
+
+      const userConfigsResult = services.mcpDiscoveryService.getEnabledUserMcpConfigs();
+      const enabledUserMcpConfigs = userConfigsResult.ok ? userConfigsResult.data : {};
+
+      const managedServersResult = services.mcpDiscoveryService.getCachedManagedServers();
+      const disabledToolsResult = managedServersResult.ok
+        ? services.mcpDiscoveryService.getDisabledMcpTools(managedServersResult.data)
+        : { ok: false as const, error: '' };
+      const disabledMcpTools = disabledToolsResult.ok ? disabledToolsResult.data : [];
+
+      return buildSdkOptions({
+        context,
+        model: options.model,
+        currentView: options.currentView,
+        resumeSessionId: options.resumeSessionId,
+        mainWindow: options.mainWindow,
+        onClaudeMdEdit: options.onClaudeMdEdit,
+        onProjectFileWrite: options.onProjectFileWrite,
+        enabledPluginPaths,
+        enabledUserMcpConfigs,
+        disabledMcpTools,
+      });
+    },
+    subscribeToPlanActions,
+    subscribeToClaudeMdUpdate,
+    subscribeToDocumentUpdate,
+    readClaudeMd: async (projectId: string) => {
+      const result = await services.contextFileService.readClaudeMd(projectId);
+      return result.ok
+        ? { success: true, ...result.data }
+        : { success: false, content: null, error: result.error };
+    },
+    readDocumentFile: async (projectId: string, filePath: string) => {
+      const result = await services.contextFileService.readDocumentFile(projectId, filePath);
+      return result.ok
+        ? { success: true, content: result.data.content }
+        : { success: false, content: null, error: result.error };
+    },
+    toolCallLogger,
+    onMcpStatusReady: (mcpStatus) => {
+      const managed = mcpStatus
+        .filter(s => s.name.startsWith('claude.ai'))
+        .map(s => ({
+          name: s.name,
+          source: 'claude-ai' as const,
+          status: s.status,
+          tools: (s.tools ?? []).map((t: { name: string }) => t.name),
+        }));
+      services.mcpDiscoveryService.saveManagedServers(managed);
+    },
+  });
+
+  const chatService = createChatService({
+    projects: container.projects,
+    chatMessages: container.chatMessages,
+    loadPersistedPermissions: (projectId: string) => {
+      const result = services.permissionService.loadPersistedPermissions(projectId);
+      if (!result.ok) {
+        throw new Error(result.error);
+      }
+    },
+    streamingSessionService,
+    emitChatError: ({ projectId, chatSessionId, error }) => {
+      getMainWindow()?.webContents.send('chat:error', { projectId, chatSessionId, error });
+    },
+  });
+
+  return {
+    toolCallLogger,
+    streamingSessionService,
+    chatService,
+  };
+}
+
+export type ChatRuntimeService = ReturnType<typeof createChatRuntimeService>;

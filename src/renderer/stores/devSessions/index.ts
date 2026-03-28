@@ -1,7 +1,9 @@
+import { create, type StoreApi } from 'zustand';
 import type {
   DevSessionWithPlanItem,
   PrStatus,
   ReviewInboxSnapshot,
+export interface DevSessionsState {
   // Data
   projectId: string | null;
   sessions: DevSessionWithPlanItem[];
@@ -96,6 +98,8 @@ const initialState = {
 /** Throttle map for recordActivity — tracks last update time per session */
 const activityThrottleMap = new Map<string, number>();
 
+export type DevSessionsSet = StoreApi<DevSessionsState>['setState'];
+export type DevSessionsGet = StoreApi<DevSessionsState>['getState'];
 
 export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
   ...initialState,
@@ -116,8 +120,11 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
   },
 
 
+  ...createDevSessionsLifecycleSlice(set, get),
+  ...createDevSessionsPrSlice(set, get),
 
   reset: () => {
+    invalidateLoadSessionsRequests();
     set({
       ...initialState,
       deletingSessionIds: new Set<string>(),
@@ -125,9 +132,11 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
   },
 
   resetProjectState: () => {
+    invalidateLoadSessionsRequests();
     set({
       ...initialState,
       deletingSessionIds: new Set<string>(),
     });
   },
+  ...createDevSessionsReviewSlice(set, get),
 }));

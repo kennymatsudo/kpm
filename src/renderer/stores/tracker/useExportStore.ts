@@ -7,6 +7,20 @@ import type {
   ExportResult,
   StatusCategory,
 } from '../../../shared/types';
+import {
+  addTrackerExportQueue,
+  clearTrackerExportQueue,
+  createDefaultTrackerTypeMappings,
+  getTrackerExportPreview,
+  getTrackerExportQueue,
+  getTrackerTypeMappings,
+  getTrackerTypeMappingsByScope,
+  removeTrackerExportQueueEntry,
+  removeTrackerTypeMapping,
+  saveTrackerTypeMapping,
+  updateTrackerExportQueueCustomFieldOverrides,
+  updateTrackerExportQueueStatus,
+} from '../../services/trackerService';
 
 function getQueueCountsByAssociation(entries: SyncQueueEntryWithPlanItem[]): Record<string, number> {
   return entries.reduce<Record<string, number>>((counts, entry) => {
@@ -109,6 +123,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
   loadQueue: async (projectId) => {
     set({ isLoadingQueue: true, error: null });
     try {
+      const result = await getTrackerExportQueue(projectId);
       if (result.success && result.entries) {
         const itemIds = new Set<string>(result.entries.map((entry: SyncQueueEntryWithPlanItem) => entry.plan_item_id));
         set({
@@ -130,6 +145,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
   addToQueue: async (projectId, itemIds) => {
     set({ error: null });
     try {
+      const result = await addTrackerExportQueue(projectId, itemIds);
       if (result.success) {
         await get().loadQueue(projectId);
         return { success: true, added: result.added, skipped: result.skipped };
@@ -146,16 +162,19 @@ export const useExportStore = create<ExportState>((set, get) => ({
     set({ error: null });
     try {
       // First add items to queue
+      const result = await addTrackerExportQueue(projectId, itemIds);
       if (!result.success) {
         return { success: false, error: result.error };
       }
 
       // Then update the status category on the queue entries
       // Get the latest queue to find the entry IDs
+      const queueResult = await getTrackerExportQueue(projectId);
       if (queueResult.success && queueResult.entries) {
         const itemIdSet = new Set(itemIds);
         for (const entry of queueResult.entries) {
           if (itemIdSet.has(entry.plan_item_id)) {
+            await updateTrackerExportQueueStatus(entry.id, statusCategory);
           }
         }
       }
@@ -172,6 +191,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
   removeFromQueue: async (queueEntryId) => {
     set({ error: null });
     try {
+      const result = await removeTrackerExportQueueEntry(queueEntryId);
       if (!result.success) {
         set({ error: result.error || 'Failed to remove from queue' });
         return;
@@ -192,6 +212,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
   updateQueueCustomFieldOverrides: async (queueEntryId, overrides) => {
     set({ error: null });
     try {
+      const result = await updateTrackerExportQueueCustomFieldOverrides(
         queueEntryId,
         overrides
       );
@@ -215,6 +236,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
   clearQueue: async (projectId) => {
     set({ error: null });
     try {
+      const result = await clearTrackerExportQueue(projectId);
       if (result.success) {
         set({
           queueEntries: [],
@@ -241,6 +263,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
   loadMappings: async (projectId) => {
     set({ isLoadingMappings: true, error: null });
     try {
+      const result = await getTrackerTypeMappings(projectId);
       if (result.success && result.mappings) {
         set({ typeMappings: result.mappings });
       } else {
@@ -256,6 +279,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
   loadMappingsByScope: async (projectId, scopeId) => {
     set({ isLoadingMappings: true, error: null });
     try {
+      const result = await getTrackerTypeMappingsByScope(projectId, scopeId);
       if (result.success && result.mappings) {
         set({ typeMappings: result.mappings });
       } else {
@@ -271,6 +295,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
   saveMapping: async (projectId, scopeId, kpmLabel, jiraIssueTypeId, jiraIssueTypeName) => {
     set({ error: null });
     try {
+      const result = await saveTrackerTypeMapping(projectId, scopeId, kpmLabel, jiraIssueTypeId, jiraIssueTypeName);
       if (result.success) {
         await get().loadMappingsByScope(projectId, scopeId);
         return { success: true };
@@ -286,6 +311,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
   removeMapping: async (mappingId) => {
     set({ error: null });
     try {
+      const result = await removeTrackerTypeMapping(mappingId);
       if (!result.success) {
         set({ error: result.error || 'Failed to remove mapping' });
       }
@@ -300,6 +326,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
   createDefaultMappings: async (projectId, scopeId) => {
     set({ error: null });
     try {
+      const result = await createDefaultTrackerTypeMappings(projectId, scopeId);
       if (result.success) {
         await get().loadMappingsByScope(projectId, scopeId);
         return { success: true };
@@ -315,6 +342,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
   loadExportPreview: async (projectId, associationId) => {
     set({ isExporting: true, exportPreview: null, exportResult: null, error: null });
     try {
+      const result = await getTrackerExportPreview(projectId, associationId);
       if (result.success && result.preview) {
         set({ exportPreview: result.preview });
       } else {

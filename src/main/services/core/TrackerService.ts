@@ -15,6 +15,7 @@ import type {
 } from '../../../shared/types';
 import type { ITrackerRepository } from '../../db/interfaces';
 import { failure, success, type AsyncResult, type ServiceResult, wrapAsync } from '../result';
+import type { ImportService, SyncService } from '../../db/domain';
 
 interface IssueSummary {
   key: string;
@@ -34,6 +35,8 @@ interface TrackerClientServiceLike {
 export interface TrackerServiceDeps {
   tracker: ITrackerRepository;
   clientService: TrackerClientServiceLike;
+  importService: Pick<ImportService, 'generateImportPreview' | 'importIssues'>;
+  syncService: Pick<SyncService, 'generateSyncPreview' | 'applySyncChanges'>;
 }
 
   return issues.map((issue) => ({

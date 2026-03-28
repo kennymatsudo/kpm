@@ -1,4 +1,9 @@
 import { create } from 'zustand';
+import {
+  listTrackerIssueTypes,
+  listTrackerProjectStatuses,
+  listTrackerProjects,
+} from '../../services/trackerService';
 
 export interface TrackerProjectRef {
   key: string;
@@ -85,6 +90,7 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
     set({ isLoadingProjects: true, projectsError: null });
 
     try {
+      const result = await listTrackerProjects();
       if (result.success && result.projects) {
         set({
           projects: result.projects,
@@ -168,6 +174,7 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
     }));
 
     try {
+      const result = await listTrackerIssueTypes(projectKey);
       if (result.success && result.issueTypes) {
         set((s) => {
           const nextLoading = new Set(s.loadingIssueTypesFor);

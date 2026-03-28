@@ -1,3 +1,12 @@
+import type { Database } from 'better-sqlite3';
+import type {
+  IPlanItemRepository,
+  ISyncQueueRepository,
+  ISyncRepository,
+  ITrackerRepository,
+  ITypeMappingRepository,
+} from '../interfaces';
+import { createTypeMappingService } from './TypeMappingService';
 import { diffWords } from 'diff';
 import type {
   SyncQueueEntryWithPlanItem,
@@ -12,6 +21,20 @@ import type {
   FieldDiff,
   DiffHunk,
   StatusTransitionInfo,
+
+interface TrackerClientServiceLike {
+  getJiraClient(): Promise<JiraClient>;
+}
+
+export interface ExportServiceDeps {
+  database: Database;
+  syncQueue: ISyncQueueRepository;
+  planItems: IPlanItemRepository;
+  tracker: ITrackerRepository;
+  sync: ISyncRepository;
+  typeMappings: ITypeMappingRepository;
+  trackerClientService: TrackerClientServiceLike;
+}
 
 /**
  * Merge per-item custom field overrides with association-level defaults.
@@ -31,6 +54,16 @@ function mergeCustomFieldValues(
 /**
  * Manages the sync queue and executes the export.
  */
+export function createExportService(deps: ExportServiceDeps) {
+  const getDatabase = () => deps.database;
+  const SyncQueueRepository = deps.syncQueue;
+  const PlanItemRepository = deps.planItems;
+  const TrackerRepository = deps.tracker;
+  const SyncRepository = deps.sync;
+  const TypeMappingService = createTypeMappingService({ typeMappings: deps.typeMappings });
+  const TrackerClientService = deps.trackerClientService;
+
+  const service = {
   /**
    * Add items to the sync queue.
    * Determines operation type (create vs update) based on external_key.
@@ -363,6 +396,7 @@ function mergeCustomFieldValues(
     associationId: string
   ): Promise<SyncReviewData> {
     // First get the base export preview
+    const preview = await service.generateExportPreview(kpmProjectId, associationId);
 
     if (!preview.canProceed && preview.items.length === 0) {
       return {
@@ -705,6 +739,11 @@ function mergeCustomFieldValues(
     return result;
   },
 };
+
+  return service;
+}
+
+export type ExportService = ReturnType<typeof createExportService>;
 
 /**
  * Create a lazy depth calculator that memoizes results.

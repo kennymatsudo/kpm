@@ -1,4 +1,5 @@
 import { useChatStore, useProjectDomainStore } from '../../stores';
+import { cancelChatSession, disconnectChatSession } from '../../services/chatService';
 import { useShallow } from 'zustand/react/shallow';
 import { CloseIcon } from '../icons';
 

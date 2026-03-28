@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { CloseIcon } from '../icons';
+import { listRepoDirectories } from '../../services/repoService';
 
 interface DirectoryAutocompleteProps {
   repoPath: string;
@@ -28,6 +29,7 @@ export function DirectoryAutocomplete({
       return;
     }
     try {
+      const results = await listRepoDirectories(repoPath, prefix);
       const filtered = results.filter((d: string) => !directories.includes(d));
       setSuggestions(filtered);
       setSelectedIndex(-1);

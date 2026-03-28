@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { subscribeToProjectFileChanges, type ProjectFileChangeEvent } from '../services/projectFileService';
 import { emit } from '../stores/storeEvents';
 
 /**
@@ -9,6 +10,7 @@ export function useFileExplorerIpcBridge(projectId: string | null): void {
   useEffect(() => {
     if (!projectId) return;
 
+    const unsubscribe = subscribeToProjectFileChanges((data: ProjectFileChangeEvent) => {
       if (data.projectId !== projectId) return;
       emit({
         type: 'file-explorer-changed',

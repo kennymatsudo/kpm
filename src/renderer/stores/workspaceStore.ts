@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { FileNode } from '../../shared/types';
+import { writeWorkspaceFile } from '../services/workspaceFileService';
 
 /**
  * File source identifier
@@ -193,6 +194,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({ isSaving: true, saveError: null });
 
     try {
+      await writeWorkspaceFile(
+        editingFile.source,
+        editingFile.path,
+        editingFile.content,
+        currentProjectId
+      );
 
       set({
         editingFile: {

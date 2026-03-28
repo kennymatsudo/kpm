@@ -12,7 +12,14 @@ import { getStyleForDepth, MAX_DEPTH } from '../../constants/planCardStyles';
 import { DragSource } from '../../constants/dragSource';
 import { DeleteConfirmDialog } from '../ui/DeleteConfirmDialog';
 import { getStatusCategory } from '../../constants/statusConfig';
+import { isPerfLoggingEnabled, logPerfEvent } from '../../utils/perfLogger';
 import { PlanCardMenu, type MenuPosition } from './PlanCardMenu';
+import {
+  getPlanCardMenuPositionForPoint,
+  getPlanCardMenuPositionForRect,
+  PlanCardHeader,
+  PlanCardMetadataRow,
+} from './PlanCardSections';
 
 // Hoisted constant for active session status check (avoids array recreation in selector)
 const ACTIVE_SESSION_STATUSES = ['pending', 'active'] as const;
@@ -77,6 +84,7 @@ function recordPlanCardPerf(
   variant: 'default' | 'preview'
 ): void {
   if (variant !== 'default') return;
+  if (!isPerfLoggingEnabled()) return;
 
   if (!pendingPlanCardPerf) {
     pendingPlanCardPerf = {
@@ -346,6 +354,7 @@ export const PlanCard = memo(function PlanCard({
           onSelectItem?.(item.id, false);
         }
 
+        setMenuPosition(getPlanCardMenuPositionForPoint(e.clientX, e.clientY));
         setShowMenu(true);
 
         // Mark as handled so parent cards don't also open menus
@@ -471,6 +480,39 @@ export const PlanCard = memo(function PlanCard({
         onDrop?.(validItems, item.id);
       }}
     >
+      <PlanCardHeader
+        item={item}
+        titleSizeClass={style.titleSize}
+        isPreview={isPreview}
+        isSearchActive={isSearchActive}
+        directMatch={directMatch}
+        searchQuery={searchQuery}
+        hasActiveDevSession={hasActiveDevSession}
+        isWorktreeLoading={isWorktreeLoading}
+        worktreeLoadingOp={worktreeLoadingOp}
+        showMenu={showMenu}
+        onEdit={() => {
+          onPrepareEditItem?.(item.id);
+          onEditItem?.(item.id);
+        }}
+        onPrepareEdit={() => onPrepareEditItem?.(item.id)}
+        onToggleMenu={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          setMenuPosition(getPlanCardMenuPositionForRect(rect));
+          setShowMenu((current) => !current);
+        }}
+      />
+
+      <PlanCardMetadataRow
+        item={item}
+        isPreview={isPreview}
+        isSearchActive={isSearchActive}
+        directMatch={directMatch}
+        searchQuery={searchQuery}
+        effectiveStatus={effectiveStatus}
+        isQueued={!!isQueued}
+        onStatusChange={(status) => updateStatusCategory(item.id, status)}
+      />
 
       {/* Description (collapsed for deeper levels, space always reserved at depth 0-1) */}
       {depth <= 1 && (

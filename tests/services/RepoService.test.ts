@@ -57,6 +57,18 @@ function createMocks(overrides?: Partial<RepoServiceDeps>): RepoServiceDeps {
     getCachedBranch: vi.fn(() => 'main'),
   };
 
+  const fs = {
+    readdirSync: vi.fn(() => []),
+  };
+
+  const path = {
+    join: vi.fn((...parts: string[]) => parts.join('/')),
+    relative: vi.fn((from: string, to: string) => to.slice(`${from}/`.length)),
+  };
+
+  const gitExec = vi.fn(async () => ({ stdout: '', stderr: '' }));
+
+  return { repos, watcher, fs, path, gitExec, ...overrides };
 }
 
 describe('RepoService', () => {
@@ -210,6 +222,59 @@ describe('RepoService', () => {
 
       expect(result.ok).toBe(true);
       expect(deps.watcher.unwatchRepo).toHaveBeenCalledWith('/path/to/repo');
+    });
+  });
+
+  describe('updateEnvironmentMode', () => {
+    it('updates repo environment mode through the repository', () => {
+      const deps = createMocks();
+      const service = createRepoService(deps);
+
+      const result = service.updateEnvironmentMode('r1', 'nix');
+
+      expect(result.ok).toBe(true);
+      expect(deps.repos.updateEnvironmentMode).toHaveBeenCalledWith('r1', 'nix');
+    });
+  });
+
+  describe('listDirectories', () => {
+    it('returns matching relative directories', () => {
+      const deps = createMocks();
+      (deps.fs.readdirSync as ReturnType<typeof vi.fn>)
+        .mockReturnValueOnce([
+          { name: 'src', isDirectory: () => true },
+          { name: '.git', isDirectory: () => true },
+        ])
+        .mockReturnValueOnce([
+          { name: 'components', isDirectory: () => true },
+        ]);
+
+      const service = createRepoService(deps);
+
+      const result = service.listDirectories('/repo', 'src', 2);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data).toEqual(['src/', 'src/components/']);
+      }
+    });
+  });
+
+  describe('listAllBranches', () => {
+    it('returns local branches from git', async () => {
+      const deps = createMocks();
+      (deps.gitExec as ReturnType<typeof vi.fn>).mockResolvedValue({
+        stdout: 'feature/test\nmain\n',
+        stderr: '',
+      });
+      const service = createRepoService(deps);
+
+      const result = await service.listAllBranches('/repo');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data).toEqual(['feature/test', 'main']);
+      }
     });
   });
 });

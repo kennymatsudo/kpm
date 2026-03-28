@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { openExternalUrl } from '../../services/shellService';
 
 interface ReviewReplyApprovalPanelProps {
   draft: {
@@ -110,6 +111,7 @@ export function ReviewReplyApprovalPanel({
         <button
           type="button"
           className="text-xxs text-text-muted hover:text-text-secondary transition-colors"
+          onClick={() => openExternalUrl(draft.threadUrl)}
         >
           Open thread on GitHub
         </button>

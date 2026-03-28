@@ -8,7 +8,22 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { CONTEXT_FILE_NAMES } from '../../shared/contextFile';
+import type {
+  IAttachmentRepository,
+  IPlanItemRepository,
+  IProjectRepository,
+  IRepoRepository,
+  ITaskPromptTemplateRepository,
+} from '../db/interfaces';
 import type { PlanContext } from './prompts/types';
+
+export interface BuildContextDeps {
+  projects: IProjectRepository;
+  repos: IRepoRepository;
+  attachments: IAttachmentRepository;
+  planItems: IPlanItemRepository;
+  taskPromptTemplates: ITaskPromptTemplateRepository;
+}
 
 /**
  * Read the project context file (AGENTS.md or CLAUDE.md) from a project's folder.
@@ -29,7 +44,31 @@ function readContextFile(folderPath: string): string | null {
   return null;
 }
 
+export function createContextBuilder(deps: BuildContextDeps) {
+  /**
+   * Build the context for a main chat session.
+   * @returns PlanContext or null if project not found
+   */
+  return function buildContext(projectId: string): PlanContext | null {
+    const project = deps.projects.get(projectId);
+    if (!project) {
+      return null;
+    }
 
+    const repos = deps.repos.getByProject(projectId);
+    const attachments = deps.attachments.getByProject(projectId);
+    const planItems = deps.planItems.getByProject(projectId);
+    const taskPromptTemplate = deps.taskPromptTemplates.getEffective(projectId);
+    const claudeMdContent = readContextFile(project.folder_path);
 
+    return {
+      project,
+      repos,
+      attachments,
+      planItems,
+      focusedResources: [], // Will be populated by message sender
+      taskPromptTemplate,
+      claudeMdContent,
+    };
   };
 }

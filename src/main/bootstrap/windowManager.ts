@@ -1,0 +1,68 @@
+import { app, BrowserWindow, shell } from 'electron';
+import path from 'path';
+import { getConfig } from '../config';
+import { isAllowedExternalUrl } from '../security/externalUrl';
+
+export interface MainWindowManagerDeps {
+  loadWindowBounds: () => Electron.Rectangle | null;
+  saveWindowBounds: (bounds: Electron.Rectangle) => void;
+}
+
+export function createMainWindowManager(deps: MainWindowManagerDeps) {
+  let mainWindow: BrowserWindow | null = null;
+
+  function createWindow(): void {
+    const windowConfig = getConfig().window;
+    const savedBounds = deps.loadWindowBounds();
+
+    mainWindow = new BrowserWindow({
+      width: savedBounds?.width ?? windowConfig.width,
+      height: savedBounds?.height ?? windowConfig.height,
+      x: savedBounds?.x,
+      y: savedBounds?.y,
+      minWidth: windowConfig.minWidth,
+      minHeight: windowConfig.minHeight,
+      webPreferences: {
+        preload: path.join(__dirname, '../preload/index.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+      titleBarStyle: 'hiddenInset',
+      trafficLightPosition: windowConfig.trafficLightPosition,
+    });
+
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+      if (isAllowedExternalUrl(url)) {
+        void shell.openExternal(url);
+      } else {
+        console.warn(`[Main] Blocked unsafe external URL: ${url}`);
+      }
+      return { action: 'deny' };
+    });
+
+    const persistBounds = () => {
+      if (mainWindow) {
+        deps.saveWindowBounds(mainWindow.getBounds());
+      }
+    };
+
+    mainWindow.on('resize', persistBounds);
+    mainWindow.on('move', persistBounds);
+
+    const rendererUrl = process.env.ELECTRON_RENDERER_URL;
+    if (!app.isPackaged && rendererUrl) {
+      void mainWindow.loadURL(rendererUrl);
+    } else {
+      void mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+    }
+  }
+
+  function getMainWindow(): BrowserWindow | null {
+    return mainWindow;
+  }
+
+  return {
+    createWindow,
+    getMainWindow,
+  };
+}

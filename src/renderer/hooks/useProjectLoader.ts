@@ -7,6 +7,21 @@ import {
   useResourceDomainActions,
 } from './useStoreActions';
 import { logPerfEvent, startPerfSpan } from '../utils/perfLogger';
+import type { Attachment, PlanItem, Repo, Worktree } from '../../shared/types';
+import {
+  createProjectRecord,
+  deleteProjectRecord,
+  disconnectActiveChatSessions,
+  getLastOpenedProjectId,
+  listProjects,
+  loadProjectRepoBranches,
+  loadProjectResources,
+  persistLastOpenedProjectId,
+  subscribeToProjectMenuEvents,
+  subscribeToRepoBranchChanges,
+  unwatchProjectRepos,
+  watchProjectRepos,
+} from '../services/projectLoaderService';
 
 interface UseProjectLoaderOptions {
   onRequestNewProject?: () => void;
@@ -36,6 +51,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
   const loadSequenceRef = useRef(0);
 
   const teardownWatchers = useCallback(async () => {
+    await unwatchProjectRepos(watchedRepoPathsRef.current);
     watchedRepoPathsRef.current = [];
 
   const loadProjectData = useCallback(async (projectId: string) => {
@@ -53,8 +69,14 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       let worktrees: Worktree[] = [];
 
       try {
+        const [resources] = await Promise.all([
+          loadProjectResources(projectId),
           useGroupStore.getState().loadGroups(projectId),
         ]);
+        repos = resources.repos;
+        attachments = resources.attachments;
+        planItems = resources.planItems;
+        worktrees = resources.worktrees;
         endFetch({
           repoCount: repos.length,
           attachmentCount: attachments.length,
@@ -72,6 +94,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       // Load branches for repos (deferred to avoid blocking initial UI swap)
       const branchesById: Record<string, string | null> = {};
       const fetchBranches = async () => {
+        const branchesByPath = await loadProjectRepoBranches(repoPaths);
         for (const repo of repos) {
         }
       };
@@ -104,6 +127,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
 
         // 4. Setup new watchers (deferred)
         if (repos.length > 0) {
+          watchedRepoPathsRef.current = watchProjectRepos(repos);
         } else {
           watchedRepoPathsRef.current = [];
         }
@@ -132,6 +156,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       previousConnectedProjectId = projectId;
 
       // Save as last opened project (non-blocking)
+      persistLastOpenedProjectId(projectId).catch((err: unknown) => {
         console.warn('[useProjectLoader] Failed to persist last project:', err);
       });
 
@@ -162,6 +187,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
     // Disconnect ALL streaming sessions before deleting project
     if (previousConnectedProjectId === currentProjectId) {
       try {
+        await disconnectActiveChatSessions(currentProjectId);
       } catch {
         // Best effort - continue with delete
       }
@@ -169,6 +195,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
     }
 
     // Delete via API
+    await deleteProjectRecord(currentProjectId);
 
     // Remove from store
     removeProject(currentProjectId);
@@ -190,11 +217,13 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
   useEffect(() => {
     const loadProjects = async () => {
       const endList = startPerfSpan('project.list');
+      const projects = await listProjects();
       endList({ projectCount: projects.length });
       setProjects(projects);
 
       if (projects.length > 0) {
         // Try to load the last opened project
+        const lastProjectId = await getLastOpenedProjectId();
         const projectToLoad = lastProjectId && projects.some((p: { id: string }) => p.id === lastProjectId)
           ? lastProjectId
           : projects[0].id;
@@ -208,11 +237,16 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
 
   // Listen for menu events
   useEffect(() => {
+    return subscribeToProjectMenuEvents({
+      onNewProject: onRequestNewProject,
+      onOpenProject: loadProjectData,
     });
   }, [loadProjectData, onRequestNewProject]);
 
   // Listen for repo branch changes
   useEffect(() => {
+    const unsubBranchChange = subscribeToRepoBranchChanges(
+      ({ repoId, branch }) => {
         setRepoBranch(repoId, branch);
       }
     );

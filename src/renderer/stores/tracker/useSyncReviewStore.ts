@@ -1,5 +1,9 @@
 import { create } from 'zustand';
 import type { CustomFieldValues, SyncReviewData, SyncReviewItem, ExportResult } from '../../../shared/types';
+import {
+  executeApprovedTrackerExport,
+  getTrackerExportReview,
+} from '../../services/trackerService';
 import { useExportStore } from './useExportStore';
 
 type ReviewPhase = 'idle' | 'loading' | 'reviewing' | 'summary' | 'exporting' | 'complete';
@@ -37,6 +41,7 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
   startReview: async (projectId, associationId) => {
     set({ phase: 'loading', error: null, exportResult: null });
     try {
+      const result = await getTrackerExportReview(projectId, associationId);
       if (result.success && result.reviewData) {
         set({
           reviewData: result.reviewData,
@@ -72,6 +77,7 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
 
     set({ phase: 'exporting', error: null });
     try {
+      const result = await executeApprovedTrackerExport(projectId, associationId, approvedItemIds);
       if (result.success && result.result) {
         set({ exportResult: result.result, phase: 'complete' });
         return result.result;

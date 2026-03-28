@@ -1,4 +1,5 @@
 import type { Project } from '../../../../shared/types';
+import { openProjectFolder } from '../../../services/projectService';
 import { getBaseName } from '../../../utils/path';
 
 interface ProjectMenuDeps {
@@ -61,6 +62,7 @@ export function useProjectMenu({
 
   const handleOpenProjectFolder = useCallback(async () => {
     if (currentProjectId) {
+      await openProjectFolder(currentProjectId);
     }
   }, [currentProjectId]);
 

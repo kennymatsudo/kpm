@@ -115,16 +115,34 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
 
 /**
  * Singleton instance for production use.
+ * Must be initialized explicitly at app startup.
  */
 let _container: IRepositoryContainer | null = null;
 
 /**
+ * Initialize the singleton repository container for production use.
+ * Returns the existing instance if already initialized.
  */
+export function initializeRepositoryContainer(): IRepositoryContainer {
   if (!_container) {
     _container = createRepositoryContainer({
       database: getDatabase(),
       userDataPath: getUserDataPath(),
     });
+  }
+  return _container;
+}
+
+/**
+ * Get the singleton repository container for production use.
+ *
+ * @throws Error if called before app startup initialization
+ */
+export function getRepositoryContainer(): IRepositoryContainer {
+  if (!_container) {
+    throw new Error(
+      'Repository container not initialized. Call initializeRepositoryContainer() at app startup.'
+    );
   }
   return _container;
 }

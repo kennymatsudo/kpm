@@ -1,4 +1,12 @@
 import { create } from 'zustand';
+import {
+  deleteAnthropicApiKey,
+  getAppSetting,
+  hasAnthropicApiKey,
+  saveAnthropicApiKey,
+  setAppSetting,
+  testAnthropicApiKey,
+} from '../services/settingsService';
 
 const BRANCH_TEMPLATE_KEY = 'branch_name_template';
 
@@ -42,9 +50,11 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
       error: null,
     });
 
+      hasAnthropicApiKey().catch((error: unknown) => ({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to load API key status',
       })),
+      getAppSetting(BRANCH_TEMPLATE_KEY).catch((error: unknown) => ({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to load branch template',
       })),
@@ -63,6 +73,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
   loadAnthropicKeyStatus: async () => {
     set({ isLoadingAnthropicKey: true, error: null });
     try {
+      const result = await hasAnthropicApiKey();
       if (!result.success) {
         const error = result.error || 'Failed to load API key status';
         set({ isLoadingAnthropicKey: false, error });
@@ -81,6 +92,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
   testAnthropicKey: async (apiKey) => {
     set({ isTestingAnthropicKey: true, error: null });
     try {
+      const result = await testAnthropicApiKey(apiKey);
       if (!result.success || !result.valid) {
         const error = result.error || 'Invalid API key';
         set({ isTestingAnthropicKey: false, error });
@@ -105,6 +117,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
         return { success: false, error: testResult.error };
       }
 
+      const result = await saveAnthropicApiKey(apiKey);
       if (!result.success) {
         const error = result.error || 'Failed to save API key';
         set({ isSavingAnthropicKey: false, error });
@@ -126,6 +139,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
   deleteAnthropicKey: async () => {
     set({ isDeletingAnthropicKey: true, error: null });
     try {
+      const result = await deleteAnthropicApiKey();
       if (!result.success) {
         const error = result.error || 'Failed to delete API key';
         set({ isDeletingAnthropicKey: false, error });
@@ -147,6 +161,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
   saveBranchTemplate: async (branchTemplate) => {
     set({ error: null });
     try {
+      const result = await setAppSetting(BRANCH_TEMPLATE_KEY, branchTemplate);
       if (!result.success) {
         const error = result.error || 'Failed to save branch template';
         set({ error });

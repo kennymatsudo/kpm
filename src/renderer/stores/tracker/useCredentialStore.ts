@@ -1,5 +1,11 @@
 import { create } from 'zustand';
 import type { TrackerCredentialInfo, TrackerType } from '../../../shared/types';
+import {
+  deleteTrackerCredentials,
+  listTrackerCredentials,
+  saveJiraTrackerCredentials,
+  testJiraTrackerCredentials,
+} from '../../services/trackerService';
 
 
 interface CredentialState {
@@ -36,6 +42,7 @@ export const useCredentialStore = create<CredentialState>((set, get) => ({
   loadCredentials: async () => {
     set({ isLoading: true, error: null });
     try {
+      const credentials = await listTrackerCredentials();
       set({ credentials });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : 'Failed to load credentials' });

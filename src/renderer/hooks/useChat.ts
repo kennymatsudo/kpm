@@ -1,6 +1,12 @@
 import { useCallback } from 'react';
 import { useChatStore, useProjectUiDomainStore } from '../stores';
 import { useShallow } from 'zustand/react/shallow';
+import {
+  cancelChatSession,
+  disconnectChatSession,
+  sendChatMessage,
+  startNewBackendChatSession,
+} from '../services/chatService';
 
 /**
  * Chat hook for managing unified chat sessions.
@@ -75,12 +81,14 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
 
     if (!keepCurrentActive && viewedSessionId) {
       // End current session before starting new one
+      await disconnectChatSession(projectId, viewedSessionId);
     }
 
     // Start a new chat session in the store
     const newSessionId = startNewChatSession(keepCurrentActive);
 
     // Reset tokens for new session
+    await startNewBackendChatSession(projectId);
 
     return newSessionId;
   }, [projectId, viewedSessionId, startNewChatSession]);
@@ -95,6 +103,7 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
 
   const closeSession = useCallback(async (chatSessionId: string) => {
     if (!projectId) return;
+    await disconnectChatSession(projectId, chatSessionId);
     markSessionInactive(chatSessionId);
   }, [projectId, markSessionInactive]);
 

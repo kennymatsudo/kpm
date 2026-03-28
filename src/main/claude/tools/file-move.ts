@@ -11,8 +11,15 @@
 
 import path from 'path';
 import { z } from 'zod';
+import type { BrowserWindow } from 'electron';
 import { isContextFile } from '../../../shared/contextFile';
 import { tool, jsonResult, toolError } from './index';
+import type { FileExplorerService } from '../../services/files/FileExplorerService';
+
+interface FileMoveToolDeps {
+  fileExplorerService: FileExplorerService;
+  getMainWindow: () => BrowserWindow | null;
+}
 
 const TOOL_DESCRIPTION = `Move a file or folder to a different location within the project files.
 
@@ -33,6 +40,7 @@ Use when the user asks to reorganize, move, or relocate files/folders in the pro
 - Cannot move the project context file (AGENTS.md or CLAUDE.md)
 - Cannot move a file to its current location (no-op)`;
 
+export function createFileMoveTools(deps: FileMoveToolDeps) {
 
   return [
     tool(
@@ -59,12 +67,14 @@ Use when the user asks to reorganize, move, or relocate files/folders in the pro
         }
 
         try {
+          const result = await deps.fileExplorerService.rename(projectId, sourcePath, newPath);
 
           if (!result.ok) {
             return toolError(result.error);
           }
 
           // Emit file change event for real-time UI update
+          const mainWindow = deps.getMainWindow();
           if (mainWindow) {
             mainWindow.webContents.send('file-explorer:file-changed', {
               projectId,

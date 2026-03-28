@@ -7,6 +7,7 @@
 
 import { create } from 'zustand';
 import type { PermissionRequest, PermissionAction } from '../../shared/types';
+import { respondToPermissionRequest } from '../services/permissionService';
 
 interface PermissionStore {
   /** Current pending permission request (only one at a time) */
@@ -34,6 +35,7 @@ export const usePermissionStore = create<PermissionStore>((set, get) => ({
     }
 
     // Send response to main process
+    respondToPermissionRequest(pendingRequest.requestId, pendingRequest.projectId, action)
       .then(() => {
         // Clear pending request
         set({ pendingRequest: null });

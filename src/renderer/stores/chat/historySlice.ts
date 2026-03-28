@@ -1,3 +1,4 @@
+import { getChatSessionHistory, loadChatSession } from '../../services/chatService';
 import { createInitialPerSessionState } from './baseState';
 
 export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
@@ -49,6 +50,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
     },
 
       try {
+        const result = await loadChatSession(projectId, chatSessionId);
         if (result.success && result.messages) {
               id: m.id,
               role: m.role,

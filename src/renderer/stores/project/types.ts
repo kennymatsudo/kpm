@@ -131,6 +131,7 @@ export type PlanDomainState = Pick<
 
 export type ResourceDomainState = Pick<
   ProjectState,
+  'repos' | 'repoBranches' | 'attachments' | 'worktrees' | 'worktreeLoading' |
   'setRepos' | 'setAttachments' | 'addRepo' | 'addReposToProject' | 'addReposFromDialog' |
   'removeRepo' | 'removeRepoFromProject' | 'addAttachment' | 'removeAttachment' | 'refreshRepos' |
   'setWorktrees' | 'addWorktree' | 'removeWorktree' |

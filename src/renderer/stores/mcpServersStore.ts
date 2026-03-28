@@ -1,5 +1,10 @@
 import { create } from 'zustand';
 import type { DiscoveredPlugin, UserMcpServer, DiscoveredMcpServer } from '../../shared/types';
+import {
+  getMcpServerPreferences,
+  listAvailableMcpServers,
+  setMcpServerEnabled,
+} from '../services/mcpServersService';
 
 interface McpServersState {
   plugins: DiscoveredPlugin[];
@@ -40,6 +45,8 @@ export const useMcpServersStore = create<McpServersState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const [listResult, prefsResult] = await Promise.all([
+        listAvailableMcpServers(),
+        getMcpServerPreferences(),
       ]);
 
       if (!listResult.success) {
@@ -72,6 +79,7 @@ export const useMcpServersStore = create<McpServersState>((set, get) => ({
   setServerEnabled: async (serverKey, enabled) => {
     set({ togglingServerName: serverKey, error: null });
     try {
+      const result = await setMcpServerEnabled(serverKey, enabled);
       if (!result.success) {
         const error = result.error || 'Failed to update MCP server preference';
         set({ togglingServerName: null, error });

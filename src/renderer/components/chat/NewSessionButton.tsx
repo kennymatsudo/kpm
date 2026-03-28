@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useProjectDomainStore, useChatStore } from '../../stores';
+import { disconnectChatSession, startNewBackendChatSession } from '../../services/chatService';
 import { useShallow } from 'zustand/react/shallow';
 
 /**

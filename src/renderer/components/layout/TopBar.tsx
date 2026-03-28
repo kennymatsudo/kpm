@@ -9,7 +9,10 @@ import {
 } from '../../stores';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { Z_INDEX } from '../../constants/zIndex';
+import type { ViewMode } from '../planning/ViewSwitcher';
 import type { StatusCategory, TrackerAssociationWithScope, TrackerCredentialInfo, TrackerType } from '../../../shared/types';
+import { TopBarPlanningControls } from './TopBarPlanningControls';
+import { TopBarProjectSection } from './TopBarProjectSection';
 import { useProjectEdit } from './hooks/useProjectEdit';
 import { useProjectMenu } from './hooks/useProjectMenu';
 import { useTrackerTopBarIntegration } from './hooks/useTrackerTopBarIntegration';
@@ -121,12 +124,46 @@ export function TopBar({
 
   return (
     <>
+        <TopBarProjectSection
+          isEditing={isEditing}
+          editName={editName}
+          setEditName={setEditName}
+          handleSaveEdit={handleSaveEdit}
+          handleKeyDown={handleKeyDown}
+          showMenu={showMenu}
+          setShowMenu={setShowMenu}
+          handleOpenProject={handleOpenProject}
+          handleNewProject={handleNewProject}
+          handleStartEdit={handleStartEdit}
+          handleOpenProjectFolder={handleOpenProjectFolder}
+          handleCopyPath={handleCopyPath}
+          handleCopyRelativePath={handleCopyRelativePath}
+          handleDeleteClick={handleDeleteClick}
+          onNewProject={onNewProject}
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={onToggleSidebar}
+          mainView={mainView}
+          onMainViewChange={onMainViewChange}
+        />
 
         {/* Spacer */}
         <div className="flex-1" />
 
           {currentProject && (
             <>
+              <TopBarPlanningControls
+                isVisible={mainView === 'planning'}
+                viewMode={viewMode}
+                onViewModeChange={onViewModeChange}
+                selectedItemCount={selectedItemCount}
+                onClearSelection={onClearSelection}
+                searchQuery={searchQuery}
+                onSearchChange={onSearchChange}
+                searchResultCount={searchResultCount}
+                hiddenStatusCategories={hiddenStatusCategories}
+                onHiddenStatusCategoriesChange={onHiddenStatusCategoriesChange}
+                statusCounts={statusCounts}
+              />
 
 
               </div>

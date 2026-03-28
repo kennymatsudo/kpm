@@ -12,6 +12,7 @@ import { SectionHeader } from './SectionHeader';
 import { EntityIcon } from './EntityIcon';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { PaletteShell } from '../ui/PaletteShell';
+import { searchProject } from '../../services/searchService';
 import type { SearchResult, SearchEntityType, SearchTab } from '../../../shared/types';
 
 const SECTION_ORDER: SearchEntityType[] = ['plan_item', 'document'];
@@ -41,6 +42,7 @@ export function GlobalSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const requestIdRef = useRef(0);
 
   // Focus input when opened
   useEffect(() => {
@@ -51,23 +53,38 @@ export function GlobalSearch() {
 
   // Debounced search
   useEffect(() => {
+    if (!isOpen || !currentProjectId) {
+      requestIdRef.current += 1;
+      return;
+    }
+
+    const requestId = ++requestIdRef.current;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     const trimmed = query.trim();
     if (!trimmed) {
       setResults([]);
+      setIsSearching(false);
       return;
     }
 
     setIsSearching(true);
     debounceRef.current = setTimeout(() => {
+      const searchQuery = trimmed;
       void (async () => {
         try {
+          const data = await searchProject(currentProjectId, searchQuery);
+          const currentState = useSearchStore.getState();
+          const isLatestRequest = requestId === requestIdRef.current;
+          const isSameQuery = currentState.query.trim() === searchQuery;
+          if (isLatestRequest && currentState.isOpen && isSameQuery) {
             setResults(data);
           }
         } catch (error) {
           console.error('[GlobalSearch] Search error:', error);
+            setResults([]);
+          }
         }
       })();
     }, 250);

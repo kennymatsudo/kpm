@@ -2,11 +2,14 @@
  * Briefing Tools
  *
  * MCP tool that generates a project briefing by gathering SQL context
+ * and synthesizing with Claude.
  */
 
 import { z } from 'zod';
 import { tool, toolResult, toolError } from './index';
+import type { BriefingService } from '../../services/core/BriefingService';
 
+export function createBriefingTools(briefingService: BriefingService) {
   return [
     tool(
       'get_briefing',
@@ -15,6 +18,7 @@ import { tool, toolResult, toolError } from './index';
         projectId: z.string().uuid().describe('The project UUID'),
       },
       async ({ projectId }) => {
+        const result = await briefingService.generateBriefing(projectId);
 
         if (!result.ok) {
           return toolError(result.error);

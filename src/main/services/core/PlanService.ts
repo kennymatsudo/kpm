@@ -1,10 +1,12 @@
 import type { PlanAction, PlanActionResult, PlanItem, PlanItemUpdates, PlanRelation } from '../../../shared/types';
 import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
+import type { QueueTrackerUpdateIfNeeded } from '../../db/domain';
 import { failure, success, type ServiceResult } from '../result';
 
 export interface PlanServiceDeps {
   planItems: IPlanItemRepository;
   planRelations: IPlanRelationRepository;
+  queueTrackerUpdateIfNeeded: QueueTrackerUpdateIfNeeded;
   executePlanActions: (projectId: string, actions: PlanAction[]) => PlanActionResult;
 }
 

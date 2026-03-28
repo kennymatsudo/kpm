@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import type { Project } from '../../../shared/types';
 import {
   isContextFile,
   CONTEXT_FILE_NAMES,
@@ -23,12 +24,22 @@ export interface ContextFile {
 /**
  */
 class FileWatchServiceClass {
+  private getProjectById: ((projectId: string) => Project | undefined) | null = null;
 
+  init(deps: {
+    getProjectById: (projectId: string) => Project | undefined;
+  }): void {
+    this.getProjectById = deps.getProjectById;
+  }
+
+  private getProject(projectId: string): Project | undefined {
+    return this.getProjectById?.(projectId);
   }
 
   /**
    */
   async listContextFiles(projectId: string): Promise<{ success: boolean; files?: ContextFile[]; error?: string }> {
+    const project = this.getProject(projectId);
     if (!project) {
       return { success: false, error: 'Project not found' };
     }
@@ -71,6 +82,7 @@ class FileWatchServiceClass {
     projectId: string,
     relativePath: string
   ): Promise<{ success: boolean; content: string | null; error?: string }> {
+    const project = this.getProject(projectId);
     if (!project) {
       return { success: false, content: null, error: 'Project not found' };
     }
@@ -101,6 +113,7 @@ class FileWatchServiceClass {
     relativePath: string,
     content: string
   ): Promise<{ success: boolean; error?: string }> {
+    const project = this.getProject(projectId);
     if (!project) {
       return { success: false, error: 'Project not found' };
     }
@@ -127,6 +140,7 @@ class FileWatchServiceClass {
     projectId: string,
     relativePath: string
   ): Promise<{ success: boolean; error?: string }> {
+    const project = this.getProject(projectId);
     if (!project) {
       return { success: false, error: 'Project not found' };
     }
@@ -162,6 +176,7 @@ class FileWatchServiceClass {
     projectId: string,
     sourcePath: string
   ): Promise<{ success: boolean; filename?: string; error?: string }> {
+    const project = this.getProject(projectId);
     if (!project) {
       return { success: false, error: 'Project not found' };
     }
@@ -201,6 +216,7 @@ class FileWatchServiceClass {
    * Checks AGENTS.md first, then falls back to CLAUDE.md.
    */
   async readClaudeMd(projectId: string): Promise<{ success: boolean; content: string | null; filename?: string; error?: string }> {
+    const project = this.getProject(projectId);
     if (!project) {
       return { success: false, content: null, error: 'Project not found' };
     }
@@ -224,6 +240,7 @@ class FileWatchServiceClass {
    * Writes to the first existing context file, or creates AGENTS.md if none exist.
    */
   async writeClaudeMd(projectId: string, content: string): Promise<{ success: boolean; error?: string }> {
+    const project = this.getProject(projectId);
     if (!project) {
       return { success: false, error: 'Project not found' };
     }
@@ -242,6 +259,7 @@ class FileWatchServiceClass {
     projectId: string,
     filePath: string
   ): Promise<{ success: boolean; content: string | null; error?: string }> {
+    const project = this.getProject(projectId);
     if (!project) {
       return { success: false, content: null, error: 'Project not found' };
     }

@@ -7,6 +7,7 @@ import { GroupContainer } from './GroupContainer';
 import { CanvasContextMenu } from './CanvasContextMenu';
 import { useGroupStore, useExportStore } from '../../stores';
 import { Z_INDEX } from '../../constants/zIndex';
+import { isPerfLoggingEnabled, logPerfEvent } from '../../utils/perfLogger';
 
 const CARD_MOTION_DISABLE_THRESHOLD = 60;
 
@@ -241,6 +242,7 @@ export const Canvas = memo(function Canvas({
   const lastViewportSnapshotRef = useRef<{ at: number; signature: string }>({ at: 0, signature: '' });
 
   useEffect(() => {
+    if (!isPerfLoggingEnabled()) return;
 
     const now = performance.now();
     const signature = [
