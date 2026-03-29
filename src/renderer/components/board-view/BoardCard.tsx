@@ -1,5 +1,6 @@
 import { HighlightedText } from '../planning/HighlightedText';
 
+
 export interface Breadcrumb {
   title: string;
   externalKey?: string;
@@ -36,6 +37,7 @@ export const BoardCard = memo(function BoardCard({
   onDragStart,
   onDragEnd,
 }: BoardCardProps) {
+
   // Search match detection
   const isSearchActive = searchQuery.trim().length > 0;
   const titleMatches = isSearchActive && item.title.toLowerCase().includes(searchQuery.toLowerCase());
@@ -103,6 +105,14 @@ export const BoardCard = memo(function BoardCard({
         </div>
       )}
 
+      <div className="flex items-start gap-1.5">
+        <div className="text-sm font-medium text-text-primary line-clamp-2 min-w-0 flex-1">
+          {isSearchActive && titleMatches ? (
+            <HighlightedText text={item.title} query={searchQuery} />
+          ) : (
+            item.title
+          )}
+        </div>
         )}
       </div>
 
