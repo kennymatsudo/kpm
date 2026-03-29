@@ -11,8 +11,12 @@
    ============================================ */
 
 @theme {
+  --text-sm: 0.875rem;     /* 14px - most UI labels */
+  --text-base: 0.9375rem;  /* 15px - body text, inputs */
   --text-lg: 1rem;         /* 16px */
   --text-xl: 1.125rem;     /* 18px */
+  --text-2xl: 1.25rem;     /* 20px - section headings */
+  --text-3xl: 1.5rem;      /* 24px - page headings */
 
   /* Spacing Scale — tightened for density */
   --spacing-xs: 0.125rem;

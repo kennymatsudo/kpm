@@ -92,12 +92,14 @@ export function calculateCardHeight(
 
   // Height components based on actual CSS:
   // - Padding: depth 0 = p-2 (16px), depth 1 = p-2 (16px), depth 2+ = p-1.5 (12px)
+  // - Title row: text-sm 14px * 1.5 line-height = 21px
   // - Metadata row: mt-1.5 (6px) + ~20px badges = 26px
   // - Description (line-clamp-1, depth <= 1): mt-1.5 (6px) + text-xs 12px * 1.5 * 1 line = 24px
   //   Always reserved at depth <= 1 for consistent card heights (even without description)
   // - Children container: mt-1.5 (6px) + toggle 16px + children heights + space-y-2 (8px gaps)
   const padding = depth === 0 ? 16 : depth === 1 ? 16 : 12;
   let height = padding; // total padding (top + bottom)
+  height += depth === 0 ? 21 : 18; // title: text-sm (21px) at depth 0, text-xs (18px) at depth 1+
   height += 26; // metadata row (mt-1.5 + content)
   if (depth <= 1) {
     height += 24; // description space always reserved at depth 0-1 for uniform height
@@ -134,6 +136,7 @@ export function buildHeightMapFromTree(nodes: TreeNode[]): Map<string, number> {
 
     const padding = depth === 0 ? 16 : depth === 1 ? 16 : 12;
     let height = padding;
+    height += depth === 0 ? 21 : 18; // title: text-sm (21px) at depth 0, text-xs (18px) at depth 1+
     height += 26; // metadata row (mt-1.5 + content)
     if (depth <= 1) {
       height += 24; // description space always reserved at depth 0-1 for uniform height

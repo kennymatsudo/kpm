@@ -36,6 +36,7 @@ export function TopBarPlanningControls({
   }
 
   return (
+    <div className="flex items-center gap-2 rounded-lg bg-surface-2/40 px-1.5 py-0.5">
       <div className="flex-shrink-0">
         <ViewSwitcher value={viewMode} onChange={onViewModeChange} />
       </div>
@@ -54,6 +55,8 @@ export function TopBarPlanningControls({
         </div>
       )}
 
+      <div className="flex-shrink-0 w-px h-4 bg-border-default" />
+
       <div className="flex-shrink min-w-[120px] max-w-[200px]">
         <SearchInput
           value={searchQuery}
@@ -71,5 +74,6 @@ export function TopBarPlanningControls({
           visibleCount={statusCounts.visible}
         />
       </div>
+    </div>
   );
 }
