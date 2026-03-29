@@ -18,8 +18,11 @@ createKpmServer() (singleton MCP server)
     ├─ relations.ts (dependency tools)
     ├─ storybook.ts (component discovery)
     ├─ document-update.ts (document update tools)
+    ├─ document-edit.ts (document edit tools)
     ├─ claudemd-update.ts (project context updates)
     ├─ github.ts (GitHub PR description generation)
+    ├─ confluence.ts (Confluence integration tools)
+    ├─ briefing.ts (project briefing generation)
     ↓
 System prompts (prompts/ directory)
 ```

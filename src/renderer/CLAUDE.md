@@ -93,3 +93,6 @@ For padding utilities: `p-2` = 8px each side (16px total), `p-1.5` = 6px (12px t
 ```
 
 **Gap between cards in groups:** `GROUP_LAYOUT.VERTICAL_GAP` in `constants/layout.ts` (currently 16px). This is added on top of the calculated height. If the calculated height is wrong, the visual gap = `VERTICAL_GAP + (calculated - actual)`.
+
+## Z-Index Layers
+

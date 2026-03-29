@@ -27,6 +27,7 @@ src/
 │   ├── services/            # Application services (DI pattern)
 │   │   ├── agents/          # AgentSessionManager, Claude/Codex/Gemini sessions, hooks, auto-review
 │   │   ├── confluence/      # ConfluenceSyncService
+│   │   ├── composition/     # Service composition helpers
 │   │   ├── toollog/         # Tool call logging
 │   │   └── PerfLogger.ts    # Performance metrics
 │   ├── trackers/            # Tracker-specific logic
@@ -217,6 +218,10 @@ src/
 - `toastStore.ts` - Toast notifications
 - `toolLogStore.ts` - Tool call log state
 - `promptOverrideStore.ts` - Prompt override state
+- `briefingStore.ts` - Project briefing state
+- `generalSettingsStore.ts` - General settings state
+- `mcpServersStore.ts` - MCP server state
+- `toolPermissionStore.ts` - Tool permission state
 - `contextRegenerationStore.ts` - Context regeneration modal state
 - `useSlackTriageStore.ts` - Slack triage panel and execution state
 
@@ -322,6 +327,10 @@ Tracks git branch changes for connected repositories in real-time.
 │  │       ├─ Plan tools (get hierarchy, filter, modify)          │
 │  │       ├─ Jira tools (search, get issues, compare)            │
 │  │       ├─ Relations tools (dependencies, blockers)            │
+│  │       ├─ Document tools (create, edit, context updates)      │
+│  │       ├─ Confluence tools (URL lookup)                       │
+│  │       ├─ GitHub tools (PR description generation)            │
+│  │       ├─ Briefing tools (project briefing generation)        │
 │  │       └─ Storybook tools (list/search components)            │
 │  └─ Database (single connection)                                │
 └─────────────────────────────────────────────────────────────────┘
@@ -336,9 +345,13 @@ Tracks git branch changes for connected repositories in real-time.
 - `src/main/claude/tools/jira.ts` - Jira integration
 - `src/main/claude/tools/storybook.ts` - Component discovery
 - `src/main/claude/tools/document-update.ts` - Document update tools
+- `src/main/claude/tools/document-edit.ts` - Document edit tools
 - `src/main/claude/tools/claudemd-update.ts` - Project context updates
 - `src/main/claude/tools/groups.ts` - Group management tools
 - `src/main/claude/tools/github.ts` - GitHub PR description generation
+- `src/main/claude/tools/confluence.ts` - Confluence integration tools
+- `src/main/claude/tools/briefing.ts` - Project briefing generation
+- `src/main/claude/tools/file-move.ts` - File move tools
 - `src/main/claude/streaming/` - Streaming session classes
 - `src/main/claude/prompts/` - System prompt modules
 - `src/main/services/streaming/StreamingSessionService.ts` - Main chat session management
@@ -365,3 +378,4 @@ Tracks git branch changes for connected repositories in real-time.
 - User approval required before starting
 - Automatic opposing-agent review can run after implementation completion and feed findings back into the implementation session before the plan item moves to `in_review`
 
+See `src/renderer/CLAUDE.md` for z-index hierarchy and renderer conventions.
