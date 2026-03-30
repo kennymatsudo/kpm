@@ -172,6 +172,10 @@ function hasSlackUrl(config: Record<string, unknown> | undefined): boolean {
   return typeof url === 'string' && url.toLowerCase().includes('slack');
 }
 
+function isEnabledInKpm(preferences: Record<string, boolean>, key: string): boolean {
+  return preferences[key] === true;
+}
+
 export interface SlackMcpAvailability {
   available: boolean;
   source: McpServerSource | null;
@@ -281,16 +285,24 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
      * Detect whether Slack MCP is available from the user's Claude environment.
      */
     async getSlackAvailability(): Promise<ServiceResult<SlackMcpAvailability>> {
+      const prefsResult = this.getPreferences();
+      if (!prefsResult.ok) return failure(prefsResult.error);
+      const prefs = prefsResult.data;
+
       const pluginsResult = this.discoverPlugins();
       if (!pluginsResult.ok) return failure(pluginsResult.error);
 
+      const slackPlugins = pluginsResult.data.filter((plugin) =>
           isSlackIdentifier(plugin.name) ||
           plugin.serverNames.some((serverName) => isSlackIdentifier(serverName))
         )
       );
+      const enabledSlackPlugin = slackPlugins.find((plugin) => isEnabledInKpm(prefs, plugin.name));
+      if (enabledSlackPlugin) {
         return success({
           available: true,
           source: 'plugin',
+          serverName: enabledSlackPlugin.serverNames.find((serverName) => isSlackIdentifier(serverName)) ?? enabledSlackPlugin.name,
           reason: null,
         });
       }
@@ -298,11 +310,15 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
       const userServersResult = this.discoverUserServers();
       if (!userServersResult.ok) return failure(userServersResult.error);
 
+      const slackUserServers = userServersResult.data.filter((server) =>
         isSlackIdentifier(server.name) || hasSlackUrl(server.config)
       );
+      const enabledSlackUserServer = slackUserServers.find((server) => isEnabledInKpm(prefs, `user:${server.name}`));
+      if (enabledSlackUserServer) {
         return success({
           available: true,
           source: 'user',
+          serverName: enabledSlackUserServer.name,
           reason: null,
         });
       }
@@ -316,6 +332,25 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
         return success({
           source: 'claude-ai',
           serverName: slackManagedServer.name,
+            : available
+              ? null
+              : `Slack MCP is detected but currently ${slackManagedServer.status}`,
+        });
+      }
+
+      if (slackPlugins.length > 0) {
+        return success({
+          available: false,
+          source: 'plugin',
+          serverName: slackPlugins[0].serverNames.find((serverName) => isSlackIdentifier(serverName)) ?? slackPlugins[0].name,
+        });
+      }
+
+      if (slackUserServers.length > 0) {
+        return success({
+          available: false,
+          source: 'user',
+          serverName: slackUserServers[0].name,
         });
       }
 

@@ -48,6 +48,7 @@ A question directed at the developer that can be answered using project context.
 A discussion that implies work not yet tracked in the plan.
 - Check plan items first — if work is already tracked, skip or use update_document instead.
 - Use suggested_parent to nest under an existing plan item when the relationship is clear.
+- Keep titles and descriptions grounded in the Slack text and thread content.
 
 ### update_document
 A decision, status update, or reference that should be captured on an existing plan item.
@@ -135,6 +136,7 @@ For info_only:
 - One thread CAN produce multiple triage items if it contains multiple distinct topics.
 - Sequential top-level messages about the same topic should be grouped (use multiple source_messages).
 - Skip messages that are purely social (+1, thanks, emoji reactions).
+- Skip Slack system/structural events such as channel joins/leaves, topic changes, and other workspace mechanics even if they appear as plain text.
 - If no existing plan item is an appropriate target for a documentation-worthy update, prefer create_task instead of update_document.
 - Return an empty array [] if no messages warrant action.
 - Return ONLY the JSON array, no markdown fencing or extra text.`;

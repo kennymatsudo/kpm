@@ -28,6 +28,10 @@ const ACTION_TYPE_LABELS: Record<SlackTriageActionType, string> = {
   info_only: 'Info Only',
 };
 
+function isOpaqueSlackUserId(value: string | null | undefined): boolean {
+  return typeof value === 'string' && /^[UW][A-Z0-9]{8,}$/.test(value.trim());
+}
+
 export function SlackTriagePanel({ projectId }: SlackTriagePanelProps) {
   const {
     isPanelOpen,
@@ -68,7 +72,17 @@ export function SlackTriagePanel({ projectId }: SlackTriagePanelProps) {
   }, [pendingItems]);
 
   const handleTriggerAll = useCallback(async () => {
+
+    let channelsChecked = 0;
+
     for (const link of channelLinks) {
+      const result = await triggerTriage(projectId, link.id);
+      if (!result) continue;
+
+      channelsChecked += 1;
+    }
+
+    if (channelsChecked > 0) {
     }
 
   if (!isPanelOpen) return null;
@@ -117,6 +131,8 @@ export function SlackTriagePanel({ projectId }: SlackTriagePanelProps) {
         <div className="px-4 py-2 bg-danger/10 text-danger text-xs border-b border-border-default">
           {error}
         </div>
+      )}
+
       )}
 
       {/* Content */}
@@ -185,6 +201,7 @@ function TriageItemCard({
   onExecute: (id: string, projectId: string) => Promise<void>;
 }) {
   const [isActing, setIsActing] = useState(false);
+  const showAuthor = item.author_name && !isOpaqueSlackUserId(item.author_name);
 
   const handleAction = async (action: (id: string, pid: string) => Promise<void>) => {
     setIsActing(true);
@@ -197,6 +214,14 @@ function TriageItemCard({
 
   return (
     <div className="rounded-lg border border-border-default bg-surface-1 p-3">
+      <div className="flex items-start gap-2 mb-2">
+        <div className="min-w-0">
+          <p className="text-xxs uppercase tracking-wider text-text-muted">Topic</p>
+          <p className="text-xs font-medium text-text-primary">{item.topic_summary}</p>
+          {showAuthor && (
+            <p className="text-xxs text-text-muted mt-0.5">{item.author_name}</p>
+          )}
+        </div>
         {item.context_used && item.context_used.length > 0 && (
           <span className="text-xxs text-text-muted ml-auto">
             Based on: {(item.context_used as string[]).join(', ')}
@@ -204,6 +229,15 @@ function TriageItemCard({
         )}
       </div>
 
+      <div className="mb-2">
+        <p className="text-xxs uppercase tracking-wider text-text-muted">Slack Excerpt</p>
+        <p className="text-xs text-text-secondary mt-0.5 line-clamp-3">
+          {showAuthor && (
+            <span className="font-medium text-text-primary">{item.author_name}: </span>
+          )}
+          {item.source_text}
+        </p>
+      </div>
 
       {/* Suggested action preview */}
       <SuggestedActionPreview item={item} />
@@ -216,6 +250,7 @@ function TriageItemCard({
         {item.action_type === 'create_task' && (
         )}
         {item.action_type === 'update_document' && (
+          <ActionButton label="Apply" variant="accent" disabled={isActing} onClick={() => handleAction(onExecute)} />
         )}
         {item.action_type !== 'info_only' && (
           <ActionButton label="Dismiss" variant="muted" disabled={isActing} onClick={() => handleAction(onDismiss)} />
@@ -246,7 +281,10 @@ function SuggestedActionPreview({ item }: { item: SlackTriageItem }) {
       const taskAction = action as unknown as SlackTriageCreateTaskAction;
       return (
         <div className="bg-surface-2 rounded p-2 text-xs">
+          <p className="font-medium text-text-primary mt-0.5">{taskAction.title}</p>
+          <p className="text-text-secondary mt-1 whitespace-pre-wrap line-clamp-4">{taskAction.description}</p>
           {taskAction.suggested_parent && (
+            <p className="text-xxs text-text-muted mt-1">Under: {taskAction.suggested_parent}</p>
           )}
         </div>
       );
@@ -255,6 +293,9 @@ function SuggestedActionPreview({ item }: { item: SlackTriageItem }) {
       const docAction = action as unknown as SlackTriageUpdateDocumentAction;
       return (
         <div className="bg-surface-2 rounded p-2 text-xs">
+          <p className="text-xxs uppercase tracking-wider text-text-muted">Document Update</p>
+          <p className="font-medium text-text-primary mt-0.5">{docAction.target}</p>
+          <p className="text-xxs text-text-muted mt-1">{docAction.update_type.replace(/_/g, ' ')}</p>
           <p className="text-text-secondary line-clamp-2">{docAction.content}</p>
         </div>
       );

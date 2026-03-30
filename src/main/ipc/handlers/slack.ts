@@ -26,7 +26,9 @@ export function registerSlackHandlers(slackTriageService: SlackTriageService): v
     return slackTriageService.listLinks(projectId);
   });
 
+  ipcMain.handle(IPC_CHANNELS.slack.links.create, async (_event, params: unknown) => {
     const { projectId, channelId, channelName } = SlackSchemas.createLink.parse(params);
+    return unwrapOrThrow(await slackTriageService.createLink(projectId, channelId, channelName));
   });
 
   ipcMain.handle(IPC_CHANNELS.slack.links.delete, (_event, params: unknown) => {

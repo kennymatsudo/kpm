@@ -31,6 +31,7 @@ export interface SlackTriageServiceDeps {
   slackChannelLinks: ISlackChannelLinkRepository;
   slackTriageItems: ISlackTriageItemRepository;
   planItems: IPlanItemRepository;
+  resolveSlackChannel: (projectId: string, channelReference: string) => Promise<{ id: string; name: string } | null>;
   readSlackChannel: (projectId: string, channelId: string, oldest?: string) => Promise<SlackMessage[]>;
   readSlackThread: (projectId: string, channelId: string, threadTs: string) => Promise<SlackMessage[]>;
   sendSlackMessage: (projectId: string, channelId: string, text: string, threadTs?: string) => Promise<void>;
@@ -47,6 +48,7 @@ export interface SlackMessage {
   subtype?: string;
   bot_id?: string;
   reply_count?: number;
+  latest_reply?: string;
 }
 
 export interface TriageResult {
@@ -112,6 +114,20 @@ const triageResponseSchema = z.array(z.discriminatedUnion('action_type', [
 
 type ParsedTriageItem = z.infer<typeof triageResponseSchema>[number];
 
+function isStructuralSlackMessage(msg: SlackMessage): boolean {
+  if (msg.subtype && ['channel_join', 'channel_leave', 'channel_topic', 'channel_purpose'].includes(msg.subtype)) {
+    return true;
+  }
+
+  const normalizedText = msg.text.trim().toLowerCase();
+  if (!normalizedText) return false;
+
+  return normalizedText.includes(' has joined the channel')
+    || normalizedText.includes(' has left the channel')
+    || normalizedText.includes(' set the channel topic:')
+    || normalizedText.includes(' set the channel purpose:');
+}
+
 // ============================================================================
 // Service Factory
 // ============================================================================
@@ -133,9 +149,26 @@ export function createSlackTriageService(deps: SlackTriageServiceDeps) {
     return deps.slackChannelLinks.getByProject(projectId);
   }
 
+  async function createLink(
     projectId: string,
     channelId: string,
     channelName: string
+  ): AsyncResult<SlackChannelLink> {
+    return wrapAsync(async () => {
+      await ensureSlackAvailable();
+
+      const resolvedChannel = await deps.resolveSlackChannel(projectId, channelId);
+      if (!resolvedChannel) {
+        throw new Error(`Slack channel not found: ${channelName}`);
+      }
+
+      if (existing) {
+      }
+
+      return deps.slackChannelLinks.create({
+        project_id: projectId,
+      });
+    });
   }
 
   function deleteLink(linkId: string): ServiceResult<void> {
@@ -162,15 +195,53 @@ export function createSlackTriageService(deps: SlackTriageServiceDeps) {
       }
 
       // Step 0: Fetch messages from Slack
+      const rawMessages = await deps.readSlackChannel(projectId, link.channel_id);
+      console.log('[SlackTriage] Raw channel messages', {
+        projectId,
+        channelLinkId,
+        channelId: link.channel_id,
+        messageCount: rawMessages.length,
+        messages: rawMessages.map((msg) => ({
+          ts: msg.ts,
+          user: msg.user,
+          subtype: msg.subtype ?? null,
+          botId: msg.bot_id ?? null,
+          replyCount: msg.reply_count ?? 0,
+          latestReply: msg.latest_reply ?? null,
+          textPreview: msg.text.slice(0, 80),
+        })),
+      });
 
       if (rawMessages.length === 0) {
       }
 
       // Step 0: Pre-filter (deterministic, no model)
       const existingTs = deps.slackTriageItems.getExistingMessageTs(channelLinkId, ['pending', 'executed']);
+      const filtered: SlackMessage[] = [];
+      for (const msg of rawMessages) {
+        if (isStructuralSlackMessage(msg)) {
+          filteredOut.push({ ts: msg.ts, reason: msg.subtype ? `subtype:${msg.subtype}` : 'structural_text' });
+          continue;
         }
+        if (msg.bot_id) {
+          filteredOut.push({ ts: msg.ts, reason: 'bot_message' });
+          continue;
+        }
+        if (existingTs.has(msg.ts)) {
+          filteredOut.push({ ts: msg.ts, reason: 'already_triaged' });
+          continue;
+        }
+        filtered.push(msg);
+      }
 
       const messagesFiltered = rawMessages.length - filtered.length;
+      console.log('[SlackTriage] Filtered channel messages', {
+        projectId,
+        channelLinkId,
+        keptCount: filtered.length,
+        filteredCount: messagesFiltered,
+        filteredOut,
+      });
 
       if (filtered.length === 0) {
         updateWatermark(link, rawMessages);
@@ -184,6 +255,13 @@ export function createSlackTriageService(deps: SlackTriageServiceDeps) {
       for (const msg of threadMessages) {
         const replies = await deps.readSlackThread(projectId, link.channel_id, msg.ts);
         threads.set(msg.ts, replies);
+        console.log('[SlackTriage] Loaded thread replies', {
+          projectId,
+          channelLinkId,
+          threadTs: msg.ts,
+          replyCount: replies.length,
+          latestReply: msg.latest_reply ?? null,
+        });
 
         const dismissed = deps.slackTriageItems.getDismissedForThread(channelLinkId, msg.ts);
         for (const dismissedItem of dismissed) {
@@ -238,6 +316,15 @@ export function createSlackTriageService(deps: SlackTriageServiceDeps) {
       const newItems = itemsToCreate.length > 0
         ? deps.slackTriageItems.createBatch(itemsToCreate)
         : [];
+
+      console.log('[SlackTriage] Triage result summary', {
+        projectId,
+        channelLinkId,
+        messagesProcessed: filtered.length,
+        messagesFiltered,
+        threadCount: threads.size,
+        triageItemCount: newItems.length,
+      });
 
       updateWatermark(link, rawMessages);
 

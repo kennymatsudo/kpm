@@ -43,6 +43,9 @@ interface SlackTriageState {
   loadPendingCount: (projectId: string) => Promise<void>;
   createLink: (projectId: string, channelId: string, channelName: string) => Promise<SlackChannelLink | null>;
   deleteLink: (linkId: string, projectId: string) => Promise<void>;
+  triggerTriage: (
+    projectId: string,
+    channelLinkId: string
   approveItem: (itemId: string, projectId: string) => Promise<void>;
   editItem: (itemId: string, suggestedAction: unknown, projectId: string) => Promise<void>;
   dismissItem: (itemId: string, projectId: string) => Promise<void>;
