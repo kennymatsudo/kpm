@@ -231,13 +231,51 @@ function buildPrompt(
 
 
 
+
+
+
+## Regeneration Context
+
 If an existing context document is provided, it is for REFERENCE ONLY:
 - Always generate from the current repository state -- prioritize accuracy over preserving old content
 - Use the existing document to understand what the user cared about (which sections, what emphasis)
 - Do not copy information from the old document unless it is confirmed by current repo data
 - Custom sections or notes the user added (not derivable from code) may be included if still relevant
 
+## Writing Quality
+
+- Keep the document concise and focused -- under 150 lines. Shorter is better.
+- Be specific: "React 18 with TypeScript and Vite" not "modern web framework."
+- Put executable commands early with full flags.
+- Focus on what an agent cannot infer from the code alone.
+- Do NOT include style guidelines or linting rules.
+
+## Required Sections
+
+1. **Project/Feature Overview** -- title, one-line description, and the purpose or goal of this project. If the user provided a description, incorporate it. If this spans multiple repos, explain why.
+
+2. **Connected Repos** -- table with each repo's basename, inferred purpose, and tech stack with versions where detectable. This is how the assistant knows what it's working with.
+
+
+4. **Architecture** -- how the repos relate to each other (frontend -> backend -> service, monorepo packages, shared libraries). Include data flow if detectable. This helps the assistant reason about cross-repo impact during planning.
+
+
+  - Never commit secrets
+
+7. **Documentation Pointers** -- point to docs/ directories, READMEs, wikis, or ADRs found in the repos. Use file paths so the assistant can read them when needed.
+
+## Optional Sections (include only when relevant)
+
+- **Gotchas** -- non-obvious constraints: multi-repo deploy ordering, environment setup quirks, shared state between services
+- **Key Dependencies** -- critical external services, APIs, or infrastructure the project depends on (only if detectable from config/manifests)
+
+## Output Rules
+
+- Return ONLY the markdown content. No preamble, no wrapping code fences.
+- Do NOT use Write, Edit, or Bash tools. Do NOT write files.
+- No emojis. Plain markdown only: headers, bold, lists, tables, code blocks.
 - Use repo basenames (not full paths) when referencing repos.
+- Omit sections where you lack confident data rather than guessing.`;
 
 // =============================================================================
 // Service Factory
