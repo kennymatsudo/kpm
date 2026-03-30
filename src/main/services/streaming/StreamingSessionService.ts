@@ -65,6 +65,7 @@ interface ManagedSession {
   currentView?: ViewMode;
   processingStartTime?: number; // Timestamp when processing started (for timeout detection)
   lastSdkActivity?: number; // Timestamp of most recent SDK message (for idle-while-processing detection)
+  mcpRecoveryAttempts: number; // Consecutive failed reconnect attempts
   segmentState: SegmentState; // Track message segments for splitting bubbles
   chatSessionId?: string; // For persisting main chat messages
   accumulatedResponse: string; // Accumulate assistant response for persistence
@@ -461,6 +462,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         model,
         lastActivity: Date.now(),
         currentView,
+        mcpHealthStatus: 'healthy',
+        mcpRecoveryAttempts: 0,
         segmentState: {
           currentSegmentId: 0,
           hasTextInCurrentSegment: false,
@@ -1016,8 +1019,86 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     console.log(`[StreamingSessionService] Session ended: ${key} (${reason})`);
   }
 
+  /**
+   * Called from the cleanup interval for idle-ready sessions.
+   * After 3 consecutive failures, tears down the session so the next
+   * user message creates a fresh one via sendMessageToSession.
+   */
+  async function checkAndRecoverMcpHealth(key: string, managed: ManagedSession): Promise<void> {
+    const mainWindow = deps.getMainWindow();
+
+    // Lock: prevent concurrent recovery attempts from overlapping interval ticks
+    managed.mcpHealthStatus = 'recovering';
+
+    try {
+      const statuses = await managed.session.mcpServerStatus();
+      const kpmServer = statuses.find(s => s.name === 'kpm');
+
+      // If kpm server is connected (or not reported at all), mark healthy
+      if (!kpmServer || kpmServer.status === 'connected') {
+        if (managed.mcpRecoveryAttempts > 0) {
+          mainWindow?.webContents.send('chat:mcp-status', {
+            projectId: managed.projectId,
+            chatSessionId: managed.chatSessionId,
+            serverName: 'kpm',
+            status: 'connected',
+          });
+        }
+        managed.mcpHealthStatus = 'healthy';
+        managed.mcpRecoveryAttempts = 0;
+        return;
+      }
+
+      // Server is not connected — attempt reconnection
+      await managed.session.reconnectMcpServer('kpm');
+
+      // Verify reconnection
+      const verifyStatuses = await managed.session.mcpServerStatus();
+      const verifyKpm = verifyStatuses.find(s => s.name === 'kpm');
+
+      if (verifyKpm?.status === 'connected') {
+        managed.mcpHealthStatus = 'healthy';
+        managed.mcpRecoveryAttempts = 0;
+        mainWindow?.webContents.send('chat:mcp-status', {
+          projectId: managed.projectId,
+          chatSessionId: managed.chatSessionId,
+          serverName: 'kpm',
+          status: 'connected',
+        });
+        return;
+      }
+
+      // Reconnect failed
+      managed.mcpRecoveryAttempts++;
+      managed.mcpHealthStatus = 'degraded';
+      const errorMsg = verifyKpm?.error ?? `status: ${verifyKpm?.status ?? 'unknown'}`;
+
+      mainWindow?.webContents.send('chat:mcp-status', {
+        projectId: managed.projectId,
+        chatSessionId: managed.chatSessionId,
+        serverName: 'kpm',
+        status: verifyKpm?.status ?? 'failed',
+      });
+
+      // After max attempts, tear down the session
+        await disconnectSession(key, {
+          reason: 'mcp_recovery_failed',
+          source: 'mcpHealthCheck',
+        });
+      }
+    } catch (error) {
+      // mcpServerStatus() or reconnect threw — likely dead subprocess
+      console.error(`[StreamingSessionService] MCP health check error for ${key}:`, error);
+      managed.mcpHealthStatus = 'degraded';
+      // Don't increment attempts for infrastructure errors — existing dead-session
+      // detection in sendMessageToSession will handle the dead session
+    }
+  }
+
     const sessionConfig = getSessionConfig();
 
+
+        }
 
       }
     }, sessionConfig.cleanupIntervalMs);

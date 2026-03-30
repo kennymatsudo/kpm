@@ -14,6 +14,8 @@
   draftMessage: '',
   suggestions: [],
   sessionNumber,
+  mcpDegraded: false,
+  mcpError: null,
 });
 
 export const createInitialChatState = (): Pick<ChatState,

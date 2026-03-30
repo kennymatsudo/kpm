@@ -36,6 +36,9 @@ export interface PerSessionState {
   suggestions: string[];
   /** Sequential session number for display (e.g., "Session 1") */
   sessionNumber: number;
+  mcpDegraded: boolean;
+  /** Error message when MCP is degraded */
+  mcpError: string | null;
 }
 
 export interface ChatState {
@@ -73,6 +76,7 @@ export interface ChatState {
   setSessionState: (chatSessionId: string, state: SessionState) => void;
   setDraftMessage: (chatSessionId: string, message: string) => void;
   setSuggestions: (chatSessionId: string, suggestions: string[]) => void;
+  setMcpStatus: (chatSessionId: string, degraded: boolean, error?: string | null) => void;
 
   // Shared actions
   setTokens: (tokens: number) => void;

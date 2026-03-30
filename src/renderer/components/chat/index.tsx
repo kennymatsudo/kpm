@@ -54,6 +54,8 @@ export function Chat({ currentView }: ChatProps) {
   }));
 
   const error = viewedSession?.error ?? null;
+  const mcpDegraded = viewedSession?.mcpDegraded ?? false;
+  const mcpError = viewedSession?.mcpError ?? null;
 
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [lastClientMessageId, setLastClientMessageId] = useState<string | null>(null);
@@ -197,6 +199,17 @@ export function Chat({ currentView }: ChatProps) {
           >
             <CloseIcon className="w-4 h-4" />
           </button>
+        </div>
+      )}
+
+      {/* MCP degraded warning banner — auto-clears when server reconnects */}
+      {mcpDegraded && (
+        <div className="bg-warning-muted px-3 py-2 flex items-center gap-3">
+          <svg className="w-4 h-4 text-warning flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <p className="text-sm text-warning">
+          </p>
         </div>
       )}
 

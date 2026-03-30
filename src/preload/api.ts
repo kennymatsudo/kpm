@@ -297,6 +297,25 @@ const chat = {
     return () => ipcRenderer.removeListener('chat:session-deactivated', handler);
   },
 
+  /** MCP server status change event (health monitoring) */
+  onMcpStatus: (callback: (data: {
+    projectId: string;
+    chatSessionId?: string;
+    serverName: string;
+    status: string;
+    error?: string;
+  }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: {
+      projectId: string;
+      chatSessionId?: string;
+      serverName: string;
+      status: string;
+      error?: string;
+    }) => callback(data);
+    ipcRenderer.on('chat:mcp-status', handler);
+    return () => ipcRenderer.removeListener('chat:mcp-status', handler);
+  },
+
 };
 
 const projects = {

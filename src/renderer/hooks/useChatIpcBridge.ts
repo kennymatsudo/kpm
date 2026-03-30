@@ -34,6 +34,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     markSessionInactive,
     setViewedSession,
     getOrCreateSession,
+    setMcpStatus,
   } = useChatStore(useShallow((state) => ({
     appendChunk: state.appendChunk,
     appendThinking: state.appendThinking,
@@ -48,6 +49,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     markSessionInactive: state.markSessionInactive,
     setViewedSession: state.setViewedSession,
     getOrCreateSession: state.getOrCreateSession,
+    setMcpStatus: state.setMcpStatus,
   })));
 
   const {
@@ -149,6 +151,7 @@ export function useChatIpcBridge(projectId: string | null): void {
         const sessionId = data.chatSessionId;
           setSessionState(sessionId, 'ready');
           markSessionActive(sessionId);
+          setMcpStatus(sessionId, false);
         }
       },
       onSessionError: (data) => {
@@ -162,6 +165,11 @@ export function useChatIpcBridge(projectId: string | null): void {
         const sessionId = data.chatSessionId;
           setSuggestions(sessionId, data.suggestions);
         }
+      },
+      onMcpStatus: (data) => {
+        const sessionId = data.chatSessionId ?? useChatStore.getState().viewedSessionId ?? undefined;
+        const isDegraded = data.status !== 'connected';
+        setMcpStatus(sessionId, isDegraded, isDegraded ? (data.error ?? `Tools unavailable (${data.status})`) : null);
       },
       onSessionDeactivated: (data) => {
         const sessionId = data.chatSessionId;
