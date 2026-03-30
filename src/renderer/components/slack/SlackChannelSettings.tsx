@@ -5,6 +5,7 @@
  * Used in project settings or as a standalone dialog.
  */
 
+import { useState, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useSlackTriageStore } from '../../stores';
 import type { SlackChannelLink } from '../../../shared/types';
@@ -23,23 +24,79 @@ export function SlackChannelSettings({ projectId }: SlackChannelSettingsProps) {
   );
   const loadLinks = useSlackTriageStore((s) => s.loadLinks);
   const deleteLink = useSlackTriageStore((s) => s.deleteLink);
+  const createLink = useSlackTriageStore((s) => s.createLink);
 
+  const [isAdding, setIsAdding] = useState(false);
+  const [channelInput, setChannelInput] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
   }, [projectId, loadLinks]);
+
+  const normalizedName = channelInput.replace(/^#/, '').trim();
+
+  const handleAdd = async () => {
+    if (!normalizedName) return;
+    setIsSaving(true);
+    const link = await createLink(projectId, normalizedName, normalizedName);
+    setIsSaving(false);
+    if (link) {
+      setChannelInput('');
+      setIsAdding(false);
+    }
+  };
 
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-text-primary">Slack Channels</h3>
+        {!isAdding && (
+          <button
+            onClick={() => setIsAdding(true)}
+            className="btn text-xs px-2 py-1 bg-accent/10 text-accent hover:bg-accent/20"
+          >
+            Add Channel
+          </button>
+        )}
       </div>
 
       {error && (
         <div className="text-xs text-danger mb-2">{error}</div>
       )}
 
+      {isAdding && (
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-sm text-text-muted">#</span>
+          <input
+            type="text"
+            value={channelInput}
+            onChange={(e) => setChannelInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') { setIsAdding(false); setChannelInput(''); }
+            }}
+            placeholder="channel-name"
+            className="flex-1 text-sm bg-surface-1 border border-border-default rounded px-2 py-1 text-text-primary placeholder:text-text-muted outline-none focus:border-accent"
+            autoFocus
+          />
+          <button
+            onClick={handleAdd}
+            disabled={!normalizedName || isSaving}
+            className="btn text-xs px-2 py-1 bg-accent/10 text-accent hover:bg-accent/20 disabled:opacity-50"
+          >
+            {isSaving ? 'Adding...' : 'Add'}
+          </button>
+          <button
+            onClick={() => { setIsAdding(false); setChannelInput(''); }}
+            className="text-xs text-text-muted hover:text-text-secondary px-1 py-1"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {isLoadingLinks ? (
         <div className="text-xs text-text-muted">Loading...</div>
+      ) : channelLinks.length === 0 && !isAdding ? (
         <div className="text-xs text-text-muted py-4 text-center">
           No Slack channels linked. Add a channel to enable triage.
         </div>
