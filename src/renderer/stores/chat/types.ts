@@ -32,6 +32,8 @@ export interface PerSessionState {
   lastStreamUpdateAt: number | null;
   /** Draft message persisted across view switches */
   draftMessage: string;
+  /** Suggested next prompts from the SDK (populated after each turn) */
+  suggestions: string[];
   /** Sequential session number for display (e.g., "Session 1") */
   sessionNumber: number;
 }
@@ -70,6 +72,7 @@ export interface ChatState {
   clearError: (chatSessionId: string) => void;
   setSessionState: (chatSessionId: string, state: SessionState) => void;
   setDraftMessage: (chatSessionId: string, message: string) => void;
+  setSuggestions: (chatSessionId: string, suggestions: string[]) => void;
 
   // Shared actions
   setTokens: (tokens: number) => void;

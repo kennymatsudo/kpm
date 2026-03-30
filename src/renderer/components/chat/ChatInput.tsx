@@ -40,6 +40,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   }));
 
   const isStreaming = viewedSession?.isStreaming ?? false;
+  const suggestions = viewedSession?.suggestions ?? [];
 
     const sessionId = viewedSessionId ?? getChatSessionId();
     getOrCreateSession(sessionId);
@@ -47,12 +48,29 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Placeholder: use SDK suggestions when available, fall back to static rotation
+  const fallbackPlaceholders = currentView === 'plan' ? PLAN_PLACEHOLDERS : WORKSPACE_PLACEHOLDERS;
+  const [suggestionIndex, setSuggestionIndex] = useState(0);
+
+  // Reset suggestion index when new suggestions arrive
+  const suggestionsKey = suggestions.join('|');
+  useEffect(() => {
+    setSuggestionIndex(0);
+  }, [suggestionsKey]);
 
   // Rotate placeholder on focus
   const handleFocus = useCallback(() => {
+    if (suggestions.length > 0) {
+      setSuggestionIndex((prev) => (prev + 1) % suggestions.length);
+    } else {
+      setFallbackIndex((prev) => (prev + 1) % fallbackPlaceholders.length);
+    }
+  }, [suggestions.length, fallbackPlaceholders.length]);
 
   const currentPlaceholder = disabled
     ? 'Select a project first'
+    : suggestions.length > 0
+      ? suggestions[suggestionIndex % suggestions.length]
 
   // Auto-resize textarea
   useEffect(() => {
@@ -152,6 +170,12 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+    // Tab accepts the current suggestion into the textarea
+    if (e.key === 'Tab' && !e.shiftKey && suggestions.length > 0 && !message.trim()) {
+      e.preventDefault();
+      const suggestion = suggestions[suggestionIndex % suggestions.length];
+      setMessage(suggestion);
     }
   };
 

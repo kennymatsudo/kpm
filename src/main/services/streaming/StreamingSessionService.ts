@@ -952,6 +952,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         console.error('[StreamingSessionService] Failed to update token stats:', statsError);
       }
     }
+
+    // Handle prompt suggestion (arrives after result message)
+    if (sdkMsg.type === 'prompt_suggestion' && sdkMsg.suggestion) {
+      mainWindow?.webContents.send('chat:suggestions', {
+        projectId,
+        chatSessionId,
+        suggestions: [sdkMsg.suggestion],
+      });
+    }
   }
 
     const managed = sessions.get(key);

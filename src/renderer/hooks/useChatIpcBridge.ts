@@ -27,6 +27,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     setError,
     setTokens,
     addActivity,
+    setSuggestions,
     setSessionState,
     setRetrying,
     markSessionActive,
@@ -40,6 +41,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     setError: state.setError,
     setTokens: state.setTokens,
     addActivity: state.addActivity,
+    setSuggestions: state.setSuggestions,
     setSessionState: state.setSessionState,
     setRetrying: state.setRetrying,
     markSessionActive: state.markSessionActive,
@@ -154,6 +156,11 @@ export function useChatIpcBridge(projectId: string | null): void {
           setSessionState(sessionId, 'error');
           setError(sessionId, data.error);
           console.warn('[useChatIpcBridge] Session error:', data.error);
+        }
+      },
+      onSuggestions: (data) => {
+        const sessionId = data.chatSessionId;
+          setSuggestions(sessionId, data.suggestions);
         }
       },
       onSessionDeactivated: (data) => {

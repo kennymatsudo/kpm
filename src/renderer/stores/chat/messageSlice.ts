@@ -89,6 +89,15 @@ export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
       return { sessions };
     }),
 
+    setSuggestions: (chatSessionId, suggestions) => set((state) => {
+      const sessions = new Map(state.sessions);
+      const session = sessions.get(chatSessionId);
+      if (!session) return state;
+
+      sessions.set(chatSessionId, { ...session, suggestions });
+      return { sessions };
+    }),
+
     setSessionState: (chatSessionId, sessionState) => set((state) => {
       const sessions = new Map(state.sessions);
       const session = sessions.get(chatSessionId);

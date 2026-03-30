@@ -271,6 +271,13 @@ const chat = {
     return () => ipcRenderer.removeListener('chat:session-error', handler);
   },
 
+  /** Prompt suggestions event (after turn completes) */
+  onSuggestions: (callback: (data: { projectId: string; chatSessionId?: string; suggestions: string[] }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; suggestions: string[] }) => callback(data);
+    ipcRenderer.on('chat:suggestions', handler);
+    return () => ipcRenderer.removeListener('chat:suggestions', handler);
+  },
+
   /** Session deactivated event (multi-session support) */
   onSessionDeactivated: (callback: (data: {
     projectId: string;

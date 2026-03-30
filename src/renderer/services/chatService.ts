@@ -59,6 +59,12 @@ export interface ThinkingEventData {
   text: string;
 }
 
+export interface SuggestionsEventData {
+  projectId: string;
+  chatSessionId?: string;
+  suggestions: string[];
+}
+
 export function getChatUsage(projectId: string) {
   return window.api.chat.getUsage(projectId);
 }
@@ -121,6 +127,7 @@ export function subscribeToChatEvents(handlers: {
   onSessionReady?: (data: SessionReadyEventData) => void;
   onSessionError?: (data: ErrorEventData) => void;
   onSessionDeactivated?: (data: SessionEventData) => void;
+  onSuggestions?: (data: SuggestionsEventData) => void;
 }): () => void {
   const cleanups = [
     handlers.onChunk ? window.api.chat.onChunk(handlers.onChunk) : null,
@@ -134,6 +141,7 @@ export function subscribeToChatEvents(handlers: {
     handlers.onSessionReady ? window.api.chat.onSessionReady(handlers.onSessionReady) : null,
     handlers.onSessionError ? window.api.chat.onSessionError(handlers.onSessionError) : null,
     handlers.onSessionDeactivated ? window.api.chat.onSessionDeactivated(handlers.onSessionDeactivated) : null,
+    handlers.onSuggestions ? window.api.chat.onSuggestions(handlers.onSuggestions) : null,
   ].filter((cleanup): cleanup is (() => void) => Boolean(cleanup));
 
   return () => {

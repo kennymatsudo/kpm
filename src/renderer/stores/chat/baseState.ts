@@ -12,6 +12,7 @@
   streamStartedAt: null,
   lastStreamUpdateAt: null,
   draftMessage: '',
+  suggestions: [],
   sessionNumber,
 });
 
