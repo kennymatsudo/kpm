@@ -63,9 +63,15 @@ import type {
   DiscoveredPlugin,
   UserMcpServer,
   DiscoveredMcpServer,
+  SlackChannelLink,
+  SlackTriageItem,
 } from '../shared/types';
 
 type IpcSuccess<T extends object | void> = T extends void ? { success: true } : { success: true } & T;
+interface IpcFailure {
+  success: false;
+  error: string;
+}
 type FlatIpcResponse<T extends object | void> = IpcSuccess<T> | IpcFailure;
 
 async function invokeFlat<T extends object | void>(
@@ -141,6 +147,8 @@ export type {
   BriefingResult,
   ToolPermission,
   ReviewInboxSnapshot,
+  SlackChannelLink,
+  SlackTriageItem,
 };
 
 const tempImages = {
@@ -1198,6 +1206,39 @@ const onboarding = {
   },
 };
 
+// Slack Triage API
+const slack = {
+  availability: {
+    get: (): Promise<{ available: boolean; source: string | null; serverName: string | null; reason: string | null }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.slack.availability.get, {}),
+  },
+  links: {
+    list: (projectId: string): Promise<SlackChannelLink[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.slack.links.list, { projectId }),
+    create: (projectId: string, channelId: string, channelName: string): Promise<SlackChannelLink> =>
+      ipcRenderer.invoke(IPC_CHANNELS.slack.links.create, { projectId, channelId, channelName }),
+    delete: (linkId: string): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.slack.links.delete, { linkId }),
+  },
+  triage: {
+      ipcRenderer.invoke(IPC_CHANNELS.slack.triage.trigger, { projectId, channelLinkId }),
+    getPending: (projectId: string): Promise<SlackTriageItem[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.slack.triage.getPending, { projectId }),
+    getAll: (projectId: string): Promise<SlackTriageItem[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.slack.triage.getAll, { projectId }),
+    countPending: (projectId: string): Promise<number> =>
+      ipcRenderer.invoke(IPC_CHANNELS.slack.triage.countPending, { projectId }),
+    approve: (itemId: string): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.slack.triage.approve, { itemId }),
+    edit: (itemId: string, suggestedAction: unknown): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.slack.triage.edit, { itemId, suggestedAction }),
+    dismiss: (itemId: string): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.slack.triage.dismiss, { itemId }),
+    execute: (itemId: string): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.slack.triage.execute, { itemId }),
+  },
+};
+
 export const api = {
   tempImages,
   chat,
@@ -1234,6 +1275,7 @@ export const api = {
   briefing,
   mcpServers,
   onboarding,
+  slack,
 };
 
 export type API = typeof api;

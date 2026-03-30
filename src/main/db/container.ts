@@ -34,6 +34,8 @@ import {
   ReviewTaskRepository as ReviewTaskRepositoryClass,
   ReviewOwnershipRepository as ReviewOwnershipRepositoryClass,
   ReviewSyncStateRepository as ReviewSyncStateRepositoryClass,
+  SlackChannelLinkRepository as SlackChannelLinkRepositoryClass,
+  SlackTriageItemRepository as SlackTriageItemRepositoryClass,
 } from './repositories/impl';
 import type { IFileSystem, IPathUtils } from './repositories/impl/ProjectRepository';
 
@@ -110,6 +112,8 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
     reviewTasks: new ReviewTaskRepositoryClass(database),
     reviewOwnership: new ReviewOwnershipRepositoryClass(database),
     reviewSyncState: new ReviewSyncStateRepositoryClass(database),
+    slackChannelLinks: new SlackChannelLinkRepositoryClass(database),
+    slackTriageItems: new SlackTriageItemRepositoryClass(database),
   };
 }
 

@@ -1176,6 +1176,63 @@ export interface McpServerPreference {
   enabled: boolean;
 }
 
+// =============================================================================
+// Slack Triage Types
+// =============================================================================
+
+export type SlackTriageActionType = 'reply' | 'create_task' | 'update_document' | 'info_only';
+export type SlackTriageStatus = 'pending' | 'approved' | 'edited' | 'dismissed' | 'executed';
+export type SlackTriageContextUsed = 'plan_items' | 'triaged_topics' | 'thread_content' | 'source_code';
+
+export interface SlackChannelLink {
+  id: string;
+  project_id: string;
+  channel_id: string;
+  channel_name: string;
+  last_checked_ts: string | null;
+  created_at: string;
+}
+
+export interface SlackTriageItem {
+  id: string;
+  channel_link_id: string;
+  source_messages: string[];
+  thread_ts: string | null;
+  latest_reply_ts: string | null;
+  author_name: string;
+  source_text: string;
+  topic_summary: string;
+  action_type: SlackTriageActionType;
+  suggested_action: unknown;
+  context_used: SlackTriageContextUsed[] | null;
+  status: SlackTriageStatus;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+/** Suggested action for a reply triage item */
+export interface SlackTriageReplyAction {
+  reply_text: string;
+  thread_ts: string | null;
+}
+
+/** Suggested action for a create_task triage item */
+export interface SlackTriageCreateTaskAction {
+  title: string;
+  description: string;
+  suggested_status: 'not_started' | 'in_progress' | 'blocked';
+  suggested_parent: string | null;
+  labels: string[];
+}
+
+/** Suggested action for an update_document triage item */
+export interface SlackTriageUpdateDocumentAction {
+  target: string;
+  update_type: 'add_note' | 'update_status' | 'add_reference_link' | 'update_description';
+  content: string;
+  rationale: string;
+}
+
 /** An external plugin discovered from ~/.claude/plugins/ */
 export interface DiscoveredPlugin {
   /** Plugin name (directory name, e.g., "slack") */

@@ -12,6 +12,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
+import type { DiscoveredPlugin, DiscoveredMcpServer, McpServerSource, UserMcpServer } from '../../../shared/types';
 import type { IAppSettingsRepository } from '../../db/interfaces';
 import { success, failure, type ServiceResult } from '../result';
 
@@ -161,6 +162,23 @@ function findClaudeInPath(): string | null {
   return null;
 }
 
+function isSlackIdentifier(value: string | undefined | null): boolean {
+  return typeof value === 'string' && value.toLowerCase().includes('slack');
+}
+
+function hasSlackUrl(config: Record<string, unknown> | undefined): boolean {
+  if (!config) return false;
+  const url = config.url;
+  return typeof url === 'string' && url.toLowerCase().includes('slack');
+}
+
+export interface SlackMcpAvailability {
+  available: boolean;
+  source: McpServerSource | null;
+  serverName: string | null;
+  reason: string | null;
+}
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -257,6 +275,56 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
       } catch {
         return success([]);
       }
+    },
+
+    /**
+     * Detect whether Slack MCP is available from the user's Claude environment.
+     */
+    async getSlackAvailability(): Promise<ServiceResult<SlackMcpAvailability>> {
+      const pluginsResult = this.discoverPlugins();
+      if (!pluginsResult.ok) return failure(pluginsResult.error);
+
+          isSlackIdentifier(plugin.name) ||
+          plugin.serverNames.some((serverName) => isSlackIdentifier(serverName))
+        )
+      );
+        return success({
+          available: true,
+          source: 'plugin',
+          reason: null,
+        });
+      }
+
+      const userServersResult = this.discoverUserServers();
+      if (!userServersResult.ok) return failure(userServersResult.error);
+
+        isSlackIdentifier(server.name) || hasSlackUrl(server.config)
+      );
+        return success({
+          available: true,
+          source: 'user',
+          reason: null,
+        });
+      }
+
+      const managedServersResult = await this.getManagedServers();
+      if (!managedServersResult.ok) return failure(managedServersResult.error);
+
+      const slackManagedServer = managedServersResult.data.find((server) => isSlackIdentifier(server.name));
+      if (slackManagedServer) {
+        const available = slackManagedServer.status === 'connected';
+        return success({
+          source: 'claude-ai',
+          serverName: slackManagedServer.name,
+        });
+      }
+
+      return success({
+        available: false,
+        source: null,
+        serverName: null,
+        reason: 'Slack MCP not detected in the user Claude environment',
+      });
     },
 
     /**

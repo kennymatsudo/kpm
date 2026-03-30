@@ -13,6 +13,7 @@ import { registerArtifactHandlers } from '../handlers/artifacts';
 import { registerTaskPromptTemplateHandlers } from '../handlers/taskPromptTemplates';
 import { registerCustomPromptHandlers } from '../handlers/customPrompts';
 import { registerOnboardingHandlers } from '../handlers/onboarding';
+import { registerSlackHandlers } from '../handlers/slack';
 import type { IpcRegistrationContext } from './types';
 
 export function registerWorkspaceHandlers({
@@ -33,4 +34,5 @@ export function registerWorkspaceHandlers({
   registerTaskPromptTemplateHandlers(services.taskPromptTemplateService);
   registerCustomPromptHandlers(getMainWindow, services.customPromptService);
   registerOnboardingHandlers(getMainWindow, services.onboardingFacadeService);
+  registerSlackHandlers(services.slackTriageService);
 }

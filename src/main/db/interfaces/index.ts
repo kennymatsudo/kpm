@@ -36,6 +36,14 @@ export type {
 // Confluence domain
 export type { IConfluenceLinkRepository, ConfluencePageLink, ConfluenceLinkCreate, SyncState } from './confluence';
 
+// Slack triage domain
+export type {
+  ISlackChannelLinkRepository,
+  ISlackTriageItemRepository,
+  SlackChannelLinkCreate,
+  SlackTriageItemCreate,
+} from './slack';
+
 // Review workflow domain
 export type {
   IReviewTaskRepository,

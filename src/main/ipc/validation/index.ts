@@ -137,6 +137,23 @@ export { BriefingSchemas } from './briefing';
 export { OnboardingSchemas } from './onboarding';
 export type { OnboardingGenerateInput, OnboardingSaveContextInput } from './onboarding';
 
+// Slack Triage
+export { SlackSchemas } from './slack';
+export type {
+  SlackAvailabilityInput,
+  SlackListLinksInput,
+  SlackCreateLinkInput,
+  SlackDeleteLinkInput,
+  SlackTriggerTriageInput,
+  SlackGetPendingInput,
+  SlackGetAllInput,
+  SlackCountPendingInput,
+  SlackApproveItemInput,
+  SlackEditItemInput,
+  SlackDismissItemInput,
+  SlackExecuteItemInput,
+} from './slack';
+
 // Confluence
 export { ConfluenceSchemas } from './confluence';
 

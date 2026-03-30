@@ -2450,6 +2450,48 @@ interface Migration {
     },
   },
   {
+    id: 1063,
+    name: '063_slack_channel_triage',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS slack_channel_links (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          channel_id TEXT NOT NULL,
+          channel_name TEXT NOT NULL,
+          last_checked_ts TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (project_id, channel_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_slack_channel_links_project
+          ON slack_channel_links(project_id);
+
+        CREATE TABLE IF NOT EXISTS slack_triage_items (
+          id TEXT PRIMARY KEY,
+          channel_link_id TEXT NOT NULL REFERENCES slack_channel_links(id) ON DELETE CASCADE,
+          source_messages TEXT NOT NULL,
+          thread_ts TEXT,
+          latest_reply_ts TEXT,
+          author_name TEXT NOT NULL,
+          source_text TEXT NOT NULL,
+          topic_summary TEXT NOT NULL,
+          action_type TEXT NOT NULL CHECK(action_type IN ('reply', 'create_task', 'update_document', 'info_only')),
+          suggested_action TEXT,
+          context_used TEXT,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'edited', 'dismissed', 'executed')),
+          resolved_at DATETIME,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_slack_triage_items_channel_link
+          ON slack_triage_items(channel_link_id);
+        CREATE INDEX IF NOT EXISTS idx_slack_triage_items_status
+          ON slack_triage_items(channel_link_id, status);
+      `);
+    },
+  },
+  {
     id: 1075,
     name: '075_drop_inbox_and_project_sessions',
     up: (db: BetterSqliteDatabase) => {

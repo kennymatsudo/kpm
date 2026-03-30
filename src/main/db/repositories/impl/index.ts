@@ -28,3 +28,5 @@ export * from './ToolPermissionRepository';
 export * from './ReviewTaskRepository';
 export * from './ReviewOwnershipRepository';
 export * from './ReviewSyncStateRepository';
+export * from './SlackChannelLinkRepository';
+export * from './SlackTriageItemRepository';

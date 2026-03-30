@@ -13,6 +13,7 @@ import type { ViewMode } from '../planning/ViewSwitcher';
 import type { StatusCategory, TrackerAssociationWithScope, TrackerCredentialInfo, TrackerType } from '../../../shared/types';
 import { TopBarPlanningControls } from './TopBarPlanningControls';
 import { TopBarProjectSection } from './TopBarProjectSection';
+import { SlackTriageBadge, SlackTriagePanel } from '../slack';
 import { useProjectEdit } from './hooks/useProjectEdit';
 import { useProjectMenu } from './hooks/useProjectMenu';
 import { useTrackerTopBarIntegration } from './hooks/useTrackerTopBarIntegration';
@@ -177,6 +178,8 @@ export function TopBar({
                     </svg>
                   </button>
 
+                <SlackTriageBadge projectId={currentProjectId!} />
+
                   <button
                     onClick={handleTrackerClick}
                     aria-label={
@@ -218,6 +221,11 @@ export function TopBar({
           action={{ label: 'Delete', variant: 'danger', onClick: handleConfirmDelete }}
           onCancel={() => setShowDeleteConfirm(false)}
         />
+      )}
+
+      {/* Slack triage panel */}
+      {currentProjectId && (
+        <SlackTriagePanel projectId={currentProjectId} />
       )}
 
       <TopBarTrackerOverlays

@@ -95,3 +95,6 @@ export { useBriefingStore } from './briefingStore';
 
 // Global Search
 export { useSearchStore } from './searchStore';
+
+// Slack Triage
+export { useSlackTriageStore } from './useSlackTriageStore';

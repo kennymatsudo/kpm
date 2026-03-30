@@ -42,6 +42,9 @@ import { createBriefingService } from './core/BriefingService';
 // MCP discovery
 import { createMcpDiscoveryService } from './core/McpDiscoveryService';
 
+// Slack triage
+import { createSlackTriageService } from './core/SlackTriageService';
+
 // Confluence services
 import { createConfluenceSyncService } from './confluence';
 import { unwrapOrThrow } from './result';
@@ -104,6 +107,7 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const projectService = createProjectService({
     projects: container.projects,
+    openPath: (targetPath: string) => shell.openPath(targetPath),
   });
 
   const settingsService = createSettingsService({
@@ -243,6 +247,17 @@ export function createAppServices(container: IRepositoryContainer) {
     appSettings: container.appSettings,
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Slack Triage Service
+  // ─────────────────────────────────────────────────────────────────────────
+
+
+  const slackTriageService = createSlackTriageService({
+    slackChannelLinks: container.slackChannelLinks,
+    slackTriageItems: container.slackTriageItems,
+    planItems: container.planItems,
+  });
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Return All Services
   // ─────────────────────────────────────────────────────────────────────────────
@@ -290,6 +305,9 @@ export function createAppServices(container: IRepositoryContainer) {
 
     // Confluence
     confluenceSyncService,
+
+    // Slack
+    slackTriageService,
 
     // MCP
     mcpDiscoveryService,

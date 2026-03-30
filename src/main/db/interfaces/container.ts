@@ -11,6 +11,7 @@ import type { ITrackerRepository, ISyncRepository, ISyncQueueRepository, ITypeMa
 import type { IChatMessageRepository, IChatSessionRepository } from './chat';
 import type { IDevSessionRepository, IWorktreeRepository } from './dev';
 import type { IConfluenceLinkRepository } from './confluence';
+import type { ISlackChannelLinkRepository, ISlackTriageItemRepository } from './slack';
 
 /**
  * Container holding all repository instances.
@@ -40,4 +41,6 @@ export interface IRepositoryContainer {
   reviewTasks: IReviewTaskRepository;
   reviewOwnership: IReviewOwnershipRepository;
   reviewSyncState: IReviewSyncStateRepository;
+  slackChannelLinks: ISlackChannelLinkRepository;
+  slackTriageItems: ISlackTriageItemRepository;
 }
