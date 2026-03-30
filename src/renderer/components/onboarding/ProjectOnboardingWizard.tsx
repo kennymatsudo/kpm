@@ -104,6 +104,7 @@ interface ProjectOnboardingWizardProps {
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
+      size="xl"
       aria-labelledby="onboarding-title"
     >
         <div className="flex items-center gap-3">

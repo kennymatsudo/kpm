@@ -37,6 +37,7 @@ interface PreparedStatements {
   updateTokens: Statement;
   resetTokens: Statement;
   updateStorybookUrl: Statement;
+  updateContextDirectories: Statement;
   delete: Statement;
 }
 
@@ -77,6 +78,9 @@ export class ProjectRepository implements IProjectRepository {
       `),
       updateStorybookUrl: db.prepare(`
         UPDATE projects SET storybook_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `),
+      updateContextDirectories: db.prepare(`
+        UPDATE projects SET context_directories = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
       `),
       delete: db.prepare('DELETE FROM projects WHERE id = ?'),
     };
@@ -137,6 +141,20 @@ This is your project workspace. Use this file to track context, conventions, and
 
   updateStorybookUrl(projectId: string, url: string | null): void {
     this.stmts.updateStorybookUrl.run(url, projectId);
+  }
+
+  updateContextDirectories(projectId: string, directories: Record<string, string[]>): void {
+    this.stmts.updateContextDirectories.run(JSON.stringify(directories), projectId);
+  }
+
+  getContextDirectories(projectId: string): Record<string, string[]> | null {
+    const project = this.get(projectId);
+    if (!project?.context_directories) return null;
+    try {
+      return JSON.parse(project.context_directories) as Record<string, string[]>;
+    } catch {
+      return null;
+    }
   }
 
   delete(id: string): void {

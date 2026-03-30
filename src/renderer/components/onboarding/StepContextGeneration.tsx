@@ -57,12 +57,22 @@ export function StepContextGeneration({
         )}
       </AnimatePresence>
 
+      {generatedContent !== null && generatedContent.length > 0 && (
         <div className="flex-1 flex flex-col min-h-0 space-y-2">
+            {!isGenerating && (
+            )}
           <textarea
             value={editableContent}
             onChange={e => onContentChange(e.target.value)}
+            readOnly={isGenerating}
+            className={`flex-1 min-h-[200px] w-full px-3 py-2.5 text-xs font-mono bg-surface-2 border border-border-default rounded-lg text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none resize-none ${isGenerating ? 'opacity-60 cursor-not-allowed' : ''}`}
             placeholder="Generated content will appear here..."
           />
+        </div>
+      )}
+
+      {!isGenerating && !error && (generatedContent === null || generatedContent.length === 0) && (
+        <div className="flex-1 flex items-center justify-center text-sm text-text-muted">
         </div>
       )}
     </div>

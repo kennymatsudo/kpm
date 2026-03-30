@@ -22,6 +22,8 @@ export interface IProjectRepository {
   updateTokens(projectId: string, tokens: { total: number; input: number; output: number }): void;
   resetTokens(projectId: string): void;
   updateStorybookUrl(projectId: string, url: string | null): void;
+  updateContextDirectories(projectId: string, directories: Record<string, string[]>): void;
+  getContextDirectories(projectId: string): Record<string, string[]> | null;
   delete(id: string): void;
 }
 

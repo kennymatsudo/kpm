@@ -24,6 +24,8 @@ export interface OnboardingScanOptions {
   projectPath: string;
   description?: string;
   repoDirectories: Record<string, string[]>; // repoPath → scoped dirs
+  /** Existing project context content (for regeneration, not initial creation) */
+  existingContext?: string | null;
 }
 
 export interface OnboardingCallbacks {
@@ -183,12 +185,16 @@ function buildPrompt(
   projectName: string,
   description: string,
   scanResults: RepoScanResult[],
+  existingContext?: string | null,
 ): string {
   const sections: string[] = [];
 
   sections.push(`## Project: ${projectName}`);
   if (description) {
     sections.push(`## User Description\n${description}`);
+  }
+  if (existingContext) {
+    sections.push(`## Previous Project Context (reference only)\nThe following is the existing context document. It is provided so you can understand what the user previously found important. Generate the most accurate document possible from the current repository state -- do not copy stale information from this document. If the user added custom sections or notes that are not derivable from repo data, include them only if they still appear relevant.\n\n${existingContext}`);
   }
 
   for (const repo of scanResults) {
@@ -225,6 +231,13 @@ function buildPrompt(
 
 
 
+If an existing context document is provided, it is for REFERENCE ONLY:
+- Always generate from the current repository state -- prioritize accuracy over preserving old content
+- Use the existing document to understand what the user cared about (which sections, what emphasis)
+- Do not copy information from the old document unless it is confirmed by current repo data
+- Custom sections or notes the user added (not derivable from code) may be included if still relevant
+
+- Use repo basenames (not full paths) when referencing repos.
 
 // =============================================================================
 // Service Factory
@@ -239,17 +252,22 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
       try {
         // Phase 1: Scan repos
         callbacks.onProgress('Starting repository scan...');
+        console.log('[OnboardingService] Starting scan for project:', options.projectId);
 
         const repos = deps.getReposByProject(options.projectId);
+        console.log('[OnboardingService] Found repos:', repos.length, repos.map(r => r.path));
+
         const scanResults: RepoScanResult[] = [];
 
         for (const repo of repos) {
           const scopedDirs = options.repoDirectories[repo.path] ?? [];
+          console.log('[OnboardingService] Scanning repo:', repo.path, 'scopedDirs:', scopedDirs);
           const result = await scanRepo(repo.path, scopedDirs, callbacks);
           scanResults.push(result);
         }
 
         if (scanResults.length === 0) {
+          console.error('[OnboardingService] No repos found for project');
           callbacks.onError('No repositories found for this project');
           return;
         }
@@ -261,13 +279,18 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
           options.projectName,
           options.description ?? '',
           scanResults,
+          options.existingContext,
         );
+
+        console.log('[OnboardingService] Built prompt, length:', userPrompt.length);
 
         const sdkOptions: SDKOptions = {
           systemPrompt: SYSTEM_PROMPT,
         };
 
+        console.log('[OnboardingService] Calling Claude Agent SDK query()...');
 
+              }
         });
 
 
@@ -275,6 +298,9 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Unknown error';
         console.error('[OnboardingService] Error:', msg);
+        if (error instanceof Error && error.stack) {
+          console.error('[OnboardingService] Stack:', error.stack);
+        }
         callbacks.onError(`Context generation failed: ${msg}`);
       }
     },

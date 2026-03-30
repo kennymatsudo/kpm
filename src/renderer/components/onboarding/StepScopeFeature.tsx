@@ -59,6 +59,7 @@ export function StepScopeFeature({
             </p>
           </div>
 
+          <div className="space-y-4 pr-1">
             {repoPaths.map(repoPath => (
               <DirectoryAutocomplete
                 key={repoPath}

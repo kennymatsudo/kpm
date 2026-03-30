@@ -112,6 +112,8 @@ export function createRepoService(deps: RepoServiceDeps) {
         const maxResults = 50;
         const results: string[] = [];
 
+        const prefixLower = prefix.toLowerCase();
+
         const walk = (dir: string, currentDepth: number): void => {
           if (currentDepth > depth || results.length >= maxResults) return;
 
@@ -127,10 +129,24 @@ export function createRepoService(deps: RepoServiceDeps) {
 
             const relPath = deps.path.relative(repoPath, deps.path.join(dir, entry.name));
             const relPathWithSlash = `${relPath}/`;
+            const relLower = relPathWithSlash.toLowerCase();
+
+            // Check if this dir is an ancestor of the target prefix,
+            // or if it matches/extends the prefix
+            const isAncestor = prefixLower.startsWith(relLower);
+            const isMatch = relLower.startsWith(prefixLower);
+
+            if (!prefix || isMatch) {
+              // Only include directories that match/extend the prefix,
+              // not ancestor directories (e.g. typing "src/learning/app"
+              // should not show "src/" or "src/learning/" as suggestions)
               results.push(relPathWithSlash);
               if (results.length >= maxResults) return;
             }
 
+            // Only recurse into directories that could contain matches:
+            // ancestors of the target, or the target and its descendants
+            if (currentDepth < depth && (!prefix || isAncestor || isMatch)) {
               walk(deps.path.join(dir, entry.name), currentDepth + 1);
             }
           }

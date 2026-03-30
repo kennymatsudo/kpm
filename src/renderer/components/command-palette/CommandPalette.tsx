@@ -73,6 +73,20 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
     if (!currentProjectId) return [];
 
+      {
+        id: 'regenerate-context',
+        label: 'Regenerate Project Context',
+        description: 'Regenerate AGENTS.md / CLAUDE.md from connected repos',
+        icon: 'sparkles',
+        category: 'project',
+        keywords: ['agents', 'claude', 'context', 'regenerate', 'refresh', 'md'],
+        action: () => {
+          useContextRegenerationStore.getState().open();
+        },
+      },
+    ];
+
+    const promptCommands = prompts.map((prompt) => ({
       id: `prompt-${prompt.id}`,
       label: prompt.name,
       description: prompt.description || 'Execute custom prompt',
@@ -83,6 +97,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       action: () => {
       },
     }));
+
 
 
     if (!command.promptId) {

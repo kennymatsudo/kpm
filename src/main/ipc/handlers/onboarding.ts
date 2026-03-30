@@ -65,4 +65,8 @@ export function registerOnboardingHandlers(
       'Failed to save context',
     ),
   );
+
+  ipcMain.handle(
+    IPC_CHANNELS.onboarding.getContextDirectories,
+  );
 }

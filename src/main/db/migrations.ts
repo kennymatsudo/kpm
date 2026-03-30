@@ -2492,6 +2492,15 @@ interface Migration {
     },
   },
   {
+    id: 1064,
+    name: '064_add_context_directories_to_projects',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE projects ADD COLUMN context_directories TEXT;
+      `);
+    },
+  },
+  {
     id: 1075,
     name: '075_drop_inbox_and_project_sessions',
     up: (db: BetterSqliteDatabase) => {

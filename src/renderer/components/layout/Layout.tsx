@@ -10,6 +10,7 @@ import { GlobalSearch } from '../global-search';
 import { ApprovalOverlays } from './ApprovalOverlays';
 import { ToastContainer } from '../ui';
 import { BriefingModal } from '../briefing';
+import { RegenerateContextModal } from '../onboarding';
 import { ToolLogPanel } from '../tool-log';
 import { Z_INDEX } from '../../constants/zIndex';
 import {
@@ -312,6 +313,7 @@ const LayoutOverlays = memo(function LayoutOverlays({
       <GlobalSearch />
       <ApprovalOverlays />
       <BriefingModal />
+      <RegenerateContextModal />
       <ToastContainer />
     </>
   );

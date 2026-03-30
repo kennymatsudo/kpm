@@ -1,4 +1,5 @@
 import type { KeyboardEvent, RefObject } from 'react';
+import { useContextRegenerationStore } from '../../stores';
 
 interface ProjectOption {
   id: string;
@@ -79,6 +80,7 @@ export function TopBarProjectSection({
                     >
                       </svg>
                   >
+                    </svg>
                     </svg>
                     </svg>
                     </svg>

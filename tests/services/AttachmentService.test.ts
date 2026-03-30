@@ -58,6 +58,8 @@ function createMocks(overrides?: Partial<AttachmentServiceDeps>): AttachmentServ
     update: vi.fn(),
     delete: vi.fn(),
     updateStorybookUrl: vi.fn(),
+    updateContextDirectories: vi.fn(),
+    getContextDirectories: vi.fn(() => null),
     updateSession: vi.fn(),
     updateTokens: vi.fn(),
     resetTokens: vi.fn(),

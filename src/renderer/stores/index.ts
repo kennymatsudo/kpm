@@ -93,6 +93,9 @@ export { usePromptOverrideStore } from './promptOverrideStore';
 // Briefing
 export { useBriefingStore } from './briefingStore';
 
+// Context Regeneration
+export { useContextRegenerationStore } from './contextRegenerationStore';
+
 // Global Search
 export { useSearchStore } from './searchStore';
 
