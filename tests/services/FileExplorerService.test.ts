@@ -298,6 +298,21 @@ describe('FileExplorerService', () => {
         expect(result.error).toBe('Destination path already exists');
       }
     });
+
+    it('renames a folder when only the casing changes', async () => {
+      fs.mkdirSync(path.join(tempDir, 'Archive'));
+      fs.writeFileSync(path.join(tempDir, 'Archive', 'note.txt'), 'content');
+
+      const result = await service.rename('test-project', 'Archive', 'archive');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.name).toBe('archive');
+        expect(result.data.path).toBe('archive');
+        expect(fs.existsSync(path.join(tempDir, 'archive'))).toBe(true);
+        expect(fs.existsSync(path.join(tempDir, 'archive', 'note.txt'))).toBe(true);
+      }
+    });
   });
 
   describe('readFile', () => {

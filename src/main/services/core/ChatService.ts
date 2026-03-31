@@ -66,6 +66,11 @@ export function createChatService(deps: ChatServiceDeps) {
           return failure('Project not found');
         }
 
+        const result = await deps.streamingSessionService.sendChatMessage(
+          projectId,
+          {
+          }
+        );
 
         if (!result.ok) {
           emitError(projectId, chatSessionId, result.error);
@@ -84,6 +89,7 @@ export function createChatService(deps: ChatServiceDeps) {
       return result.ok ? success(undefined) : failure(result.error);
     },
 
+    newSession(projectId: string): ServiceResult<void> {
       try {
         deps.projects.resetTokens(projectId);
         deps.chatMessages.pruneOldSessions(projectId, 10);

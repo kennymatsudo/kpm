@@ -79,6 +79,20 @@ export function getToolActivity(
       : typeof input.prompt === 'string'
         ? input.prompt.slice(0, 120)
         : undefined;
+
+    if (subagentType.startsWith('codex:')) {
+      const codexAgent = subagentType.slice('codex:'.length).replace(/[-_]/g, ' ');
+      if (log) console.log(`[Claude]    Delegating to Codex: ${codexAgent}`);
+      return {
+        id,
+        type: 'other' as ActivityType,
+        label: 'Delegating to Codex',
+        detail: codexAgent && detail
+          ? `${codexAgent}: ${detail}`
+          : codexAgent || detail,
+      };
+    }
+
     if (log) console.log(`[Claude]    Task: ${subagentType}`);
     return { id, type: 'other' as ActivityType, label: subagentType, detail };
   }

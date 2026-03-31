@@ -16,6 +16,13 @@ export function createSessionManagementSlice(set: ChatSet, get: ChatGet): Pick<C
     },
 
     setViewedSession: (chatSessionId) => {
+      const previousViewedSessionId = get().viewedSessionId;
+      if (previousViewedSessionId) {
+        // The viewed session uses the shared throttled buffer. Flush pending
+        // text into that session before switching pointers so we don't drop
+        // chunks during mid-stream tab switches.
+        get().flushStreamingContent(previousViewedSessionId);
+      }
 
     },
 

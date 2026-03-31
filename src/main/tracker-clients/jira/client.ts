@@ -32,6 +32,37 @@ interface JiraIssueResponse {
   };
 }
 
+function getJiraFieldErrors(error: unknown): Record<string, string> | undefined {
+  if (!error || typeof error !== 'object') {
+    return undefined;
+  }
+
+  if ('errors' in error && error.errors && typeof error.errors === 'object') {
+    return error.errors as Record<string, string>;
+  }
+
+  if (
+    'response' in error &&
+    error.response &&
+    typeof error.response === 'object' &&
+    'data' in error.response &&
+    error.response.data &&
+    typeof error.response.data === 'object' &&
+    'errors' in error.response.data &&
+    error.response.data.errors &&
+    typeof error.response.data.errors === 'object'
+  ) {
+    return error.response.data.errors as Record<string, string>;
+  }
+
+  return undefined;
+}
+
+function isResolutionScreenError(error: unknown): boolean {
+  const resolutionError = getJiraFieldErrors(error)?.resolution;
+  return typeof resolutionError === 'string' && resolutionError.includes('cannot be set');
+}
+
 export class JiraClient implements TrackerClient {
   readonly type = 'jira' as const;
   private client: Version3Client;
@@ -491,10 +522,35 @@ export class JiraClient implements TrackerClient {
    * If transitioning to a "done" category status, includes the "Done" resolution.
    */
   async transitionIssue(issueKey: string, transitionId: string, toDoneCategory = false): Promise<void> {
+    const request: {
+      issueIdOrKey: string;
+      transition: { id: string };
+      fields?: { resolution?: { name: string } };
+    } = {
+      issueIdOrKey: issueKey,
+      transition: { id: transitionId },
+    };
 
+    if (toDoneCategory) {
+      request.fields = {
+        resolution: { name: 'Done' },
+      };
+    }
 
+    try {
       await this.client.issues.doTransition(request);
     } catch (error) {
+      if (toDoneCategory && request.fields?.resolution && isResolutionScreenError(error)) {
+        console.warn(
+          `[JiraClient] Transition ${transitionId} for ${issueKey} rejected the resolution field; retrying without resolution.`
+        );
+        await this.client.issues.doTransition({
+          issueIdOrKey: issueKey,
+          transition: { id: transitionId },
+        });
+        return;
+      }
+
       // Log the raw error for debugging
       console.error(`[JiraClient] transitionIssue failed for ${issueKey} with transitionId ${transitionId}:`, JSON.stringify(error, null, 2));
       throw TrackerError.fromJiraError(error);

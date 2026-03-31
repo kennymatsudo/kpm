@@ -1,6 +1,8 @@
 /**
  * MCP Discovery Service
  *
+ * Discovers installed Claude Code plugins from the user's Claude Code plugin ecosystem.
+ * Starts from installed_plugins.json and records whether each plugin also has an MCP server config.
  *
  * Does NOT manage MCP server processes — the SDK handles that.
  */
@@ -26,10 +28,15 @@ const MCP_PREFERENCES_KEY = 'mcp_enabled_servers';
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
 /**
+ * Discover installed Claude Code plugins.
  *
  * Flow:
  * 1. Read installed_plugins.json to get installed plugin keys (e.g., "slack@claude-plugins-official")
+ * 2. For each, derive the external plugin path and read plugin metadata
+ * 3. Record whether it exposes MCP servers via .mcp.json
+ * 4. Read enabledPlugins from settings.json to know which are active in Claude Code
  */
+function discoverInstalledClaudePlugins(): DiscoveredPlugin[] {
   const installedPath = path.join(CLAUDE_DIR, 'plugins', 'installed_plugins.json');
   if (!fs.existsSync(installedPath)) return [];
 
@@ -63,9 +70,44 @@ const CLAUDE_DIR = path.join(os.homedir(), '.claude');
     const marketplace = key.substring(atIndex + 1);
 
     const pluginDir = path.join(CLAUDE_DIR, 'plugins', 'marketplaces', marketplace, 'external_plugins', name);
-      }
 
+    // Read plugin manifest for description
+    let description: string | undefined;
+    const manifestPath = path.join(pluginDir, '.claude-plugin', 'plugin.json');
+    if (fs.existsSync(manifestPath)) {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+        description = manifest.description;
+      } catch {
+        // Ignore invalid manifests and still surface the plugin
+      }
     }
+
+    // Check for .mcp.json in the external plugin directory
+    const mcpPath = path.join(pluginDir, '.mcp.json');
+    let serverNames: string[] = [];
+    const hasMcpServer = fs.existsSync(mcpPath);
+
+    if (hasMcpServer) {
+      try {
+        const mcpConfig = JSON.parse(fs.readFileSync(mcpPath, 'utf-8'));
+        // .mcp.json can have servers at top level or nested under mcpServers
+        const servers: Record<string, unknown> = mcpConfig.mcpServers ?? mcpConfig;
+        serverNames = Object.keys(servers).filter(k => k !== 'mcpServers');
+      } catch {
+        // Keep the plugin discoverable even if its MCP metadata is invalid.
+        serverNames = [];
+      }
+    }
+
+    plugins.push({
+      name,
+      path: pluginDir,
+      description,
+      hasMcpServer,
+      serverNames,
+      enabledInClaudeCode: enabledPlugins[key] === true,
+    });
   }
 
   return plugins;
@@ -198,10 +240,12 @@ export interface McpDiscoveryServiceDeps {
 export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
   return {
     /**
+     * Discover installed Claude Code plugins.
      */
     discoverPlugins(): ServiceResult<DiscoveredPlugin[]> {
       try {
       } catch (error) {
+        return failure(`Failed to discover Claude plugins: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
 
@@ -293,6 +337,9 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
       if (!pluginsResult.ok) return failure(pluginsResult.error);
 
       const slackPlugins = pluginsResult.data.filter((plugin) =>
+        plugin.enabledInClaudeCode
+        && plugin.hasMcpServer
+        && (
           isSlackIdentifier(plugin.name) ||
           plugin.serverNames.some((serverName) => isSlackIdentifier(serverName))
         )

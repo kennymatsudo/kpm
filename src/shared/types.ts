@@ -1241,6 +1241,8 @@ export interface DiscoveredPlugin {
   path: string;
   /** Human-readable description from .claude-plugin/plugin.json */
   description?: string;
+  /** Whether the plugin exposes MCP servers via .mcp.json */
+  hasMcpServer: boolean;
   /** MCP server names defined in .mcp.json */
   serverNames: string[];
   /** Whether this plugin is enabled in Claude Code settings */

@@ -200,10 +200,27 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
       try {
         }
 
+        // Detect case-only renames on case-insensitive filesystems (e.g. macOS):
+        // "Archive" -> "archive" reports destination as existing because the OS
+        // treats them as the same path. Compare inodes to distinguish.
+        let isCaseOnlyRename = false;
+
+        if (await pathExists(newFullPath)) {
+          const newStat = await fs.promises.stat(newFullPath);
+          isCaseOnlyRename = oldStat.ino === newStat.ino && oldStat.dev === newStat.dev;
+          if (!isCaseOnlyRename) {
+            return failure('Destination path already exists');
+          }
         }
 
         // Ensure parent directory of destination exists
+        await ensureParentDirectory(newFullPath);
 
+        if (isCaseOnlyRename) {
+          // Direct rename is a no-op on case-insensitive FS; use a temporary intermediate name
+          await fs.promises.rename(tmpPath, newFullPath);
+        } else {
+        }
 
       } catch (error) {
         return failure(`Failed to rename: ${error}`);

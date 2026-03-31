@@ -173,6 +173,9 @@ export function useChatIpcBridge(projectId: string | null): void {
       },
       onSessionDeactivated: (data) => {
         const sessionId = data.chatSessionId;
+          // Always finalize on teardown. This safely no-ops after completed
+          // turns and ensures buffered-only viewed chunks are not dropped.
+          finalizeMessage(sessionId);
           setSessionState(sessionId, 'idle');
           markSessionInactive(sessionId);
         }

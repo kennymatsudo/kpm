@@ -116,3 +116,90 @@ describe('McpDiscoveryService.getSlackAvailability', () => {
     }
   });
 });
+
+describe('McpDiscoveryService plugin discovery', () => {
+  const files = new Map<string, string>();
+
+  const appSettings = {
+    get: vi.fn<(key: string) => string | undefined>(),
+    set: vi.fn(),
+    delete: vi.fn(),
+    getAll: vi.fn(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    files.clear();
+
+    mockExistsSync.mockImplementation((filePath: fs.PathLike) => files.has(String(filePath)));
+    mockReadFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
+      const content = files.get(String(filePath));
+      if (content === undefined) {
+        throw new Error(`Unexpected read: ${String(filePath)}`);
+      }
+      return content;
+    });
+    appSettings.get.mockReturnValue(undefined);
+  });
+
+  it('discovers non-MCP Claude plugins and marks them as not exposing MCP servers', () => {
+    files.set('/mock-home/.claude/plugins/installed_plugins.json', JSON.stringify({
+      plugins: {
+        'codex@openai-codex': [{}],
+      },
+    }));
+    files.set('/mock-home/.claude/settings.json', JSON.stringify({
+      enabledPlugins: {
+        'codex@openai-codex': true,
+      },
+    }));
+    files.set('/mock-home/.claude/plugins/marketplaces/openai-codex/external_plugins/codex/.claude-plugin/plugin.json', JSON.stringify({
+      description: 'Use Codex from inside Claude Code.',
+    }));
+    files.set('/mock-home/.claude/plugins/marketplaces/openai-codex/external_plugins/codex', '');
+
+    const result = service.discoverPlugins();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toEqual([
+        {
+          name: 'codex',
+          path: '/mock-home/.claude/plugins/marketplaces/openai-codex/external_plugins/codex',
+          description: 'Use Codex from inside Claude Code.',
+          hasMcpServer: false,
+          serverNames: [],
+          enabledInClaudeCode: true,
+        },
+      ]);
+    }
+  });
+
+    files.set('/mock-home/.claude/plugins/installed_plugins.json', JSON.stringify({
+      plugins: {
+        'codex@openai-codex': [{}],
+      },
+    }));
+    files.set('/mock-home/.claude/settings.json', JSON.stringify({
+      enabledPlugins: {
+        'codex@openai-codex': true,
+      },
+    }));
+    files.set('/mock-home/.claude/plugins/marketplaces/openai-codex/external_plugins/codex/.claude-plugin/plugin.json', JSON.stringify({
+      description: 'Use Codex from inside Claude Code.',
+    }));
+    files.set('/mock-home/.claude/plugins/marketplaces/openai-codex/external_plugins/codex', '');
+    appSettings.get.mockImplementation((key: string) => key === 'mcp_enabled_servers'
+      ? JSON.stringify({ codex: true })
+      : undefined);
+
+    const result = service.getEnabledPluginPaths();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toEqual([
+        '/mock-home/.claude/plugins/marketplaces/openai-codex/external_plugins/codex',
+      ]);
+    }
+  });
+});
