@@ -12,6 +12,9 @@ interface BoardCardProps {
   isSelected: boolean;
   isFocused: boolean;
   searchQuery: string;
+  childCount?: number;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
   onSelect: (addToSelection: boolean) => void;
   onEdit: () => void;
   onPrepareEdit?: () => void;
@@ -30,6 +33,9 @@ export const BoardCard = memo(function BoardCard({
   isSelected,
   isFocused,
   searchQuery,
+  childCount = 0,
+  isExpanded = false,
+  onToggleExpand,
   onSelect,
   onEdit,
   onPrepareEdit,
@@ -115,6 +121,8 @@ export const BoardCard = memo(function BoardCard({
         </div>
         )}
       </div>
+
+          )}
 
               className="
               "

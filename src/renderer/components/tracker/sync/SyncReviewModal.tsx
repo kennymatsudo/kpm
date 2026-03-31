@@ -70,9 +70,50 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
   const allValidChecked = validItems.length > 0 && validItems.every(i => i.decision === 'approved');
 
   // Handlers
+  // Build parent lookup for hierarchy display and auto-approval
+  const itemMap = useMemo(() => {
+    const map = new Map<string, SyncReviewItem>();
+    for (const item of items) map.set(item.planItem.id, item);
+    return map;
+  }, [items]);
+
+  // Build tree structure for sidebar display
+  const itemTree = useMemo(() => {
+    const itemIds = new Set(items.map(i => i.planItem.id));
+    const childrenOf = new Map<string | null, SyncReviewItem[]>();
+
+    for (const item of items) {
+      // Nest under parent only if parent is also in the review list
+      const parentKey = item.planItem.parent_id && itemIds.has(item.planItem.parent_id)
+        ? item.planItem.parent_id
+        : null;
+      const siblings = childrenOf.get(parentKey) ?? [];
+      siblings.push(item);
+      childrenOf.set(parentKey, siblings);
+    }
+
+    return { roots: childrenOf.get(null) ?? [], childrenOf };
+  }, [items]);
+
   const handleToggleItem = (itemId: string) => {
     const item = items.find(i => i.planItem.id === itemId);
     if (!item || item.validationErrors.length > 0) return;
+
+    const newDecision = item.decision === 'approved' ? 'pending' : 'approved';
+    setDecision(itemId, newDecision);
+
+    // When approving a subtask, auto-approve its unsynced parent chain
+    if (newDecision === 'approved') {
+      let parentId = item.planItem.parent_id;
+      while (parentId) {
+        const parent = itemMap.get(parentId);
+        if (!parent) break;
+        if (!parent.planItem.external_key && parent.decision !== 'approved' && parent.validationErrors.length === 0) {
+          setDecision(parentId, 'approved');
+        }
+        parentId = parent.planItem.parent_id;
+      }
+    }
   };
 
   const handleToggleAll = () => {
@@ -244,8 +285,15 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
           {/* Item list */}
           <div className="flex-1 overflow-y-auto py-1.5 px-1.5">
             <div className="space-y-0.5">
+              {itemTree.roots.map((item) => (
+                <ItemTreeNode
                   key={item.planItem.id}
                   item={item}
+                  depth={0}
+                  childrenOf={itemTree.childrenOf}
+                  selectedItemId={selectedItemId}
+                  onSelect={setSelectedItemId}
+                  onToggle={handleToggleItem}
                 />
               ))}
             </div>
@@ -371,8 +419,43 @@ interface ModalShellProps {
   );
 }
 
+interface ItemTreeNodeProps {
+  item: SyncReviewItem;
+  depth: number;
+  childrenOf: Map<string | null, SyncReviewItem[]>;
+  selectedItemId: string | null;
+  onSelect: (id: string) => void;
+  onToggle: (id: string) => void;
+}
+
+  const children = childrenOf.get(item.planItem.id) ?? [];
+  return (
+    <>
+      <ItemRow
+        item={item}
+        depth={depth}
+        isSelected={selectedItemId === item.planItem.id}
+        onSelect={() => onSelect(item.planItem.id)}
+        onToggle={() => onToggle(item.planItem.id)}
+      />
+      {children.map((child) => (
+        <ItemTreeNode
+          key={child.planItem.id}
+          item={child}
+          depth={depth + 1}
+          childrenOf={childrenOf}
+          selectedItemId={selectedItemId}
+          onSelect={onSelect}
+          onToggle={onToggle}
+        />
+      ))}
+    </>
+  );
+}
+
 interface ItemRowProps {
   item: SyncReviewItem;
+  depth?: number;
   isSelected: boolean;
   onSelect: () => void;
   onToggle: () => void;
@@ -386,11 +469,13 @@ interface ItemRowProps {
     <div
       onClick={onSelect}
       className={`
+        group relative flex items-center gap-2.5 py-2 rounded-lg cursor-pointer transition-all duration-100
         ${isSelected
           ? 'bg-accent/8 ring-1 ring-accent/20'
           : 'hover:bg-surface-1'
         }
       `}
+      style={{ paddingLeft: `${10 + depth * 16}px`, paddingRight: 10 }}
     >
       {/* Checkbox */}
       <button

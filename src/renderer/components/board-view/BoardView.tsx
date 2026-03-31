@@ -7,6 +7,15 @@ import {
 import { getStatusCategory, STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import { subscribe } from '../../stores/storeEvents';
 
+/**
+ * A board tree node: a plan item with children that share the same status column.
+ * Children whose status differs from the parent appear as top-level nodes in their own column.
+ */
+export interface BoardTreeNode {
+  item: PlanItem;
+  children: BoardTreeNode[];
+}
+
 // Columns to display
 const VISIBLE_COLUMNS: StatusCategory[] = ['not_started', 'in_progress', 'in_review', 'done'];
 const CORE_COLUMNS: StatusCategory[] = ['not_started', 'in_progress', 'in_review', 'done'];
@@ -119,7 +128,17 @@ export const BoardView = memo(function BoardView({
     return map;
   }, [allItems]);
 
+  // Resolve effective status for an item
+  const getEffectiveStatus = useCallback(
+    (item: PlanItem): StatusCategory =>
+      item.status_category ?? getStatusCategory(item.external_status, item.external_type) ?? 'not_started',
+    []
+  );
+
+  // Group items by status_category, building a tree within each column
   const itemsByStatus = useMemo(() => {
+    // First pass: bucket every item by its status
+    const flatGroups: Record<StatusCategory, PlanItem[]> = {
       not_started: [],
       in_progress: [],
       in_review: [],
@@ -128,10 +147,61 @@ export const BoardView = memo(function BoardView({
       canceled: [],
     };
 
+    const statusOf = new Map<string, StatusCategory>();
+
     for (const item of items) {
+      const status = getEffectiveStatus(item);
+      statusOf.set(item.id, status);
+      if (status in flatGroups) {
+        flatGroups[status].push(item);
       }
     }
 
+    // Second pass: build column-local trees
+    // An item is nested under its parent only when both share the same column.
+    const treeGroups: Record<StatusCategory, BoardTreeNode[]> = {
+      not_started: [],
+      in_progress: [],
+      in_review: [],
+      done: [],
+      blocked: [],
+      canceled: [],
+    };
+
+    for (const status of Object.keys(flatGroups) as StatusCategory[]) {
+      const columnItems = flatGroups[status];
+      const columnIds = new Set(columnItems.map((i) => i.id));
+
+      // Create nodes
+      const nodeMap = new Map<string, BoardTreeNode>();
+      for (const item of columnItems) {
+        nodeMap.set(item.id, { item, children: [] });
+      }
+
+      const roots: BoardTreeNode[] = [];
+
+      for (const item of columnItems) {
+        const node = nodeMap.get(item.id)!;
+        // Nest under parent only if the parent is in the same column
+        if (item.parent_id && columnIds.has(item.parent_id)) {
+          nodeMap.get(item.parent_id)!.children.push(node);
+        } else {
+          roots.push(node);
+        }
+      }
+
+      // Sort roots and children by item_order
+      const sortNodes = (nodes: BoardTreeNode[]) => {
+        nodes.sort((a, b) => a.item.item_order - b.item.item_order);
+        for (const n of nodes) sortNodes(n.children);
+      };
+      sortNodes(roots);
+
+      treeGroups[status] = roots;
+    }
+
+    return treeGroups;
+  }, [items, getEffectiveStatus]);
 
   // Count items in toggle columns (for showing count even when hidden)
   const toggleColumnCounts = useMemo(() => {
@@ -181,6 +251,8 @@ export const BoardView = memo(function BoardView({
 
   return (
       {/* Header with column toggles */}
+        {items.length} item{items.length !== 1 ? 's' : ''}
+      </span>
 
       </div>
 
@@ -189,6 +261,7 @@ export const BoardView = memo(function BoardView({
           <BoardColumn
             key={status}
             status={status}
+            treeNodes={itemsByStatus[status]}
             parentMap={parentMap}
             selectedIds={selectedIds}
             focusedItemId={focusedItemId}

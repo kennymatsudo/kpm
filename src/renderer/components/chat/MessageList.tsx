@@ -1,3 +1,4 @@
+import { useEffect, useRef, memo, useState, useMemo, useCallback, useLayoutEffect } from 'react';
 import { useChatStore, type Activity, type MessageSegment } from '../../stores';
 import type { Message } from '../../stores/chat';
 import { processMessageContent } from '../../utils/messageFormatter';
@@ -268,6 +269,9 @@ interface MessageListProps {
   const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
     const list = listRef.current;
     if (!list) return;
+    if (behavior === 'auto') {
+      setScrollTop(Math.max(0, list.scrollHeight - list.clientHeight));
+    }
     list.scrollTo({ top: list.scrollHeight, behavior });
   };
 
@@ -346,6 +350,9 @@ interface MessageListProps {
 
     // For smaller conversations (or before viewport dimensions are reliable),
     // render all rows to avoid clipped/missing messages from virtualization math.
+    const shouldVirtualize =
+      viewportHeight > 0
+      && !isInitialMount.current;
     if (!shouldVirtualize) {
       return {
         totalStaticHeight: runningTop,
@@ -368,6 +375,7 @@ interface MessageListProps {
   // - Follow while user is at bottom
   // - Stop following when user scrolls up
   // - Show "Jump to latest" when detached and new content arrives
+  useLayoutEffect(() => {
     if (isInitialMount.current) {
       scrollToBottom('auto');
       isInitialMount.current = false;

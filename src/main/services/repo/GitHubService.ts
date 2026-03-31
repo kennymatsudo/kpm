@@ -5,6 +5,7 @@
  * Follows the factory + DI pattern used by other services.
  */
 
+import { existsSync } from 'fs';
 import type { IDevSessionRepository, IRepoRepository, IPlanItemRepository } from '../../db/interfaces';
 import type {
   PrComment,
@@ -135,6 +136,10 @@ export function createGitHubService(deps: GitHubServiceDeps) {
     if (!session) return { error: `Session not found: ${sessionId}` };
     const repo = deps.repos.getById(session.repo_id);
     if (!repo) return { error: `Repo not found: ${session.repo_id}` };
+
+    // PR operations need the session branch's HEAD, which lives in the worktree.
+    // Fall back to the main repo path only if the worktree no longer exists.
+    const repoPath = existsSync(session.worktree_path) ? session.worktree_path : repo.path;
   }
 
   return {
@@ -189,6 +194,7 @@ export function createGitHubService(deps: GitHubServiceDeps) {
         // Create the PR
         const result = await createPr(repoPath, {
           head: session.branch_name,
+          base: baseBranch,
           title,
           draft,
         });

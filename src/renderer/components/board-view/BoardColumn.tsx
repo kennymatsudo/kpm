@@ -1,9 +1,12 @@
+import { memo, useCallback, useMemo, useState } from 'react';
 import { BoardCard, type Breadcrumb } from './BoardCard';
 import { STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
+import type { BoardTreeNode } from './BoardView';
 import type { PlanItem, StatusCategory } from '../../../shared/types';
 
 interface BoardColumnProps {
   status: StatusCategory;
+  treeNodes: BoardTreeNode[];
   parentMap: Map<string, PlanItem>;
   selectedIds: Set<string>;
   focusedItemId: string | null;
@@ -27,6 +30,7 @@ interface BoardColumnProps {
  */
 export const BoardColumn = memo(function BoardColumn({
   status,
+  treeNodes,
   parentMap,
   selectedIds,
   focusedItemId,
@@ -44,6 +48,26 @@ export const BoardColumn = memo(function BoardColumn({
   const config = STATUS_CATEGORY_CONFIG[status];
   const [isDragOver, setIsDragOver] = useState(false);
 
+  // Track which parent nodes are expanded (default: collapsed)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const toggleExpanded = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Count total items (including nested children) for the column header
+  const totalItemCount = useMemo(() => {
+    const count = (nodes: BoardTreeNode[]): number =>
+      nodes.reduce((sum, n) => sum + 1 + count(n.children), 0);
+    return count(treeNodes);
+  }, [treeNodes]);
+
+  // Build breadcrumb for an item (walks up parent chain outside this column)
   const buildBreadcrumb = useCallback(
     (item: PlanItem): Breadcrumb[] => {
       const chain: Breadcrumb[] = [];
@@ -130,7 +154,22 @@ export const BoardColumn = memo(function BoardColumn({
       <div
         onClick={handleColumnClick}
       >
+        {treeNodes.map((node) => (
+          <BoardTreeNodeRenderer
+            key={node.item.id}
+            node={node}
+            depth={0}
+            breadcrumb={buildBreadcrumb(node.item)}
+            expandedIds={expandedIds}
+            toggleExpanded={toggleExpanded}
+            selectedIds={selectedIds}
+            focusedItemId={focusedItemId}
             searchQuery={searchQuery}
+            onSelectItem={onSelectItem}
+            onEditItem={onEditItem}
+            onPrepareEditItem={onPrepareEditItem}
+            onContextMenu={handleCardContextMenu}
+            onDragStart={onDragStart}
             onDragEnd={onDragEnd}
           />
         ))}
@@ -149,6 +188,90 @@ export const BoardColumn = memo(function BoardColumn({
           </button>
         )}
       </div>
+    </div>
+  );
+});
+
+// --- Recursive tree node renderer ---
+
+interface BoardTreeNodeRendererProps {
+  node: BoardTreeNode;
+  depth: number;
+  breadcrumb: Breadcrumb[];
+  expandedIds: Set<string>;
+  toggleExpanded: (id: string) => void;
+  selectedIds: Set<string>;
+  focusedItemId: string | null;
+  searchQuery: string;
+  onSelectItem: (id: string | null, addToSelection?: boolean) => void;
+  onEditItem: (id: string) => void;
+  onPrepareEditItem?: (id: string) => void;
+  onContextMenu: (e: React.MouseEvent, itemId: string) => void;
+  onDragStart: (itemId: string) => void;
+  onDragEnd: () => void;
+}
+
+const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
+  node,
+  depth,
+  breadcrumb,
+  expandedIds,
+  toggleExpanded,
+  selectedIds,
+  focusedItemId,
+  searchQuery,
+  onSelectItem,
+  onEditItem,
+  onPrepareEditItem,
+  onContextMenu,
+  onDragStart,
+  onDragEnd,
+}: BoardTreeNodeRendererProps) {
+  const { item, children } = node;
+  const hasChildren = children.length > 0;
+  const isExpanded = expandedIds.has(item.id);
+
+  return (
+    <div className={depth > 0 ? 'ml-3 border-l border-border-subtle pl-1.5' : ''}>
+      <BoardCard
+        item={item}
+        breadcrumb={breadcrumb}
+        isSelected={selectedIds.has(item.id)}
+        isFocused={focusedItemId === item.id}
+        searchQuery={searchQuery}
+        childCount={children.length}
+        isExpanded={isExpanded}
+        onToggleExpand={hasChildren ? () => toggleExpanded(item.id) : undefined}
+        onSelect={(addToSelection) => onSelectItem(item.id, addToSelection)}
+        onEdit={() => onEditItem(item.id)}
+        onPrepareEdit={() => onPrepareEditItem?.(item.id)}
+        onContextMenu={(e) => onContextMenu(e, item.id)}
+        onDragStart={() => onDragStart(item.id)}
+        onDragEnd={onDragEnd}
+      />
+      {hasChildren && isExpanded && (
+        <div className="mt-1 space-y-1">
+          {children.map((child) => (
+            <BoardTreeNodeRenderer
+              key={child.item.id}
+              node={child}
+              depth={depth + 1}
+              breadcrumb={[]} // Children nested in-column don't need breadcrumbs
+              expandedIds={expandedIds}
+              toggleExpanded={toggleExpanded}
+              selectedIds={selectedIds}
+              focusedItemId={focusedItemId}
+              searchQuery={searchQuery}
+              onSelectItem={onSelectItem}
+              onEditItem={onEditItem}
+              onPrepareEditItem={onPrepareEditItem}
+              onContextMenu={onContextMenu}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 });

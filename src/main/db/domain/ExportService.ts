@@ -553,8 +553,37 @@ export function createExportService(deps: ExportServiceDeps) {
     } catch (e) {
     }
 
+    // Get queued items - filter to approved ones, but force-include unsynced
+    // parents so subtasks don't get orphaned under the epic fallback.
     const allQueueEntries = SyncQueueRepository.getByAssociation(associationId);
+    const allItems = PlanItemRepository.getByProject(kpmProjectId);
+    const itemMap = new Map<string, PlanItem>();
+    for (const item of allItems) {
+      itemMap.set(item.id, item);
+    }
+
     const approvedSet = new Set(approvedItemIds);
+
+    // Walk parent chains of approved creates to ensure unsynced parents are included
+    const queuedItemIds = new Set(allQueueEntries.map(e => e.plan_item_id));
+    const processedParents = new Set<string>();
+    for (const itemId of approvedItemIds) {
+      let currentId: string | null = itemMap.get(itemId)?.parent_id ?? null;
+      while (currentId && !processedParents.has(currentId)) {
+        processedParents.add(currentId);
+        const parent = itemMap.get(currentId);
+        if (parent) {
+          // Force-include unsynced parents that are in the queue
+          if (!parent.external_key && queuedItemIds.has(currentId)) {
+            approvedSet.add(currentId);
+          }
+          currentId = parent.parent_id;
+        } else {
+          break;
+        }
+      }
+    }
+
     const queueEntries = allQueueEntries.filter(e => approvedSet.has(e.plan_item_id));
 
     if (queueEntries.length === 0) {
