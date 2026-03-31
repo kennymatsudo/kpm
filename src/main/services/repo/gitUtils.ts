@@ -18,6 +18,22 @@ export async function gitExec(
 }
 
 /**
+ * Resolve the merge-base between a base branch and HEAD.
+ */
+  repoPath: string,
+  baseBranch: string
+): Promise<string> {
+  const { stdout } = await gitExec(
+    ['merge-base', baseBranch, 'HEAD'],
+    { cwd: repoPath }
+  );
+  return stdout.trim();
+}
+
+/**
+ * Get the diff between a base branch's merge-base and the current worktree.
+ * This includes committed, staged, and unstaged tracked changes so PR
+ * generation reflects the live dev-session worktree, not just HEAD.
  * Returns the diff output, truncated if very large.
  */
 export async function getDiff(
