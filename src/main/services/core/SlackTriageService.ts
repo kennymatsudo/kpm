@@ -62,6 +62,10 @@ export interface TriageResult {
 // ============================================================================
 
 const contextUsedSchema = z.enum(['plan_items', 'triaged_topics', 'thread_content', 'source_code']);
+const resolvedSlackChannelSchema = z.object({
+  id: z.string().trim().min(1),
+  name: z.string().trim().min(1),
+});
 
 const replyActionSchema = z.object({
   reply_text: z.string().min(1),
@@ -161,12 +165,20 @@ export function createSlackTriageService(deps: SlackTriageServiceDeps) {
       if (!resolvedChannel) {
         throw new Error(`Slack channel not found: ${channelName}`);
       }
+      const parsedChannel = resolvedSlackChannelSchema.safeParse(resolvedChannel);
+      if (!parsedChannel.success) {
+        throw new Error('Slack channel resolution returned an invalid channel payload');
+      }
 
+      const existing = deps.slackChannelLinks.getByChannelId(projectId, parsedChannel.data.id);
       if (existing) {
+        throw new Error(`Channel #${parsedChannel.data.name} is already linked to this project`);
       }
 
       return deps.slackChannelLinks.create({
         project_id: projectId,
+        channel_id: parsedChannel.data.id,
+        channel_name: parsedChannel.data.name,
       });
     });
   }

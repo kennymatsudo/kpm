@@ -165,4 +165,26 @@ describe('SlackTriageService createLink', () => {
       channel_name: 'team-project-updates',
     });
   });
+
+  it('rejects malformed resolved channel payloads before hitting the repository', async () => {
+    const deps = createDeps({
+      slackChannelLinks: {
+        getByProject: vi.fn(() => []),
+        getByChannelId: vi.fn(() => undefined),
+        create: vi.fn(),
+        get: vi.fn(),
+        delete: vi.fn(),
+        updateLastCheckedTs: vi.fn(),
+      resolveSlackChannel: vi.fn(async () => ({ name: 'team-project-updates' } as { id: string; name: string })),
+    });
+    const service = createSlackTriageService(deps);
+
+    const result = await service.createLink('project-1', 'team-project-updates', 'team-project-updates');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('invalid channel payload');
+    }
+    expect(deps.slackChannelLinks.create).not.toHaveBeenCalled();
+  });
 });
