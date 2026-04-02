@@ -3,6 +3,7 @@
  *
  * Slide-over from the right showing triage items grouped by action type.
  * Users can approve, edit, dismiss, or execute each item.
+ * History tab shows dismissed/executed items with restore capability.
  */
 
 import { useEffect, useMemo, useCallback, useState } from 'react';
@@ -36,29 +37,44 @@ export function SlackTriagePanel({ projectId }: SlackTriagePanelProps) {
   const {
     isPanelOpen,
     pendingItems,
+    historyItems,
     channelLinks,
     isTriaging,
+    activeTab,
+    lastTriageResult,
     error,
   } = useSlackTriageStore(
     useShallow((s) => ({
       isPanelOpen: s.isPanelOpen,
       pendingItems: s.pendingItems,
+      historyItems: s.historyItems,
       channelLinks: s.channelLinks,
       isTriaging: s.isTriaging,
+      activeTab: s.activeTab,
+      lastTriageResult: s.lastTriageResult,
       error: s.error,
     }))
   );
   const setPanelOpen = useSlackTriageStore((s) => s.setPanelOpen);
+  const setActiveTab = useSlackTriageStore((s) => s.setActiveTab);
+  const setLastTriageResult = useSlackTriageStore((s) => s.setLastTriageResult);
   const loadPendingItems = useSlackTriageStore((s) => s.loadPendingItems);
+  const loadHistoryItems = useSlackTriageStore((s) => s.loadHistoryItems);
   const loadLinks = useSlackTriageStore((s) => s.loadLinks);
   const triggerTriage = useSlackTriageStore((s) => s.triggerTriage);
   const dismissItem = useSlackTriageStore((s) => s.dismissItem);
   const executeItem = useSlackTriageStore((s) => s.executeItem);
+  const restoreItem = useSlackTriageStore((s) => s.restoreItem);
 
   useEffect(() => {
     if (isPanelOpen) {
     }
   }, [isPanelOpen, projectId, loadLinks, loadPendingItems]);
+
+  useEffect(() => {
+    if (isPanelOpen && activeTab === 'history') {
+    }
+  }, [isPanelOpen, activeTab, projectId, loadHistoryItems]);
 
   const grouped = useMemo(() => {
     const groups = new Map<SlackTriageActionType, SlackTriageItem[]>();
@@ -72,18 +88,40 @@ export function SlackTriagePanel({ projectId }: SlackTriagePanelProps) {
   }, [pendingItems]);
 
   const handleTriggerAll = useCallback(async () => {
+    setLastTriageResult(null);
 
     let channelsChecked = 0;
+    let totalRead = 0;
+    let totalProcessed = 0;
+    let totalFiltered = 0;
+    let totalNew = 0;
+    const breakdown = { bot_message: 0, already_triaged: 0, structural: 0 };
 
     for (const link of channelLinks) {
       const result = await triggerTriage(projectId, link.id);
       if (!result) continue;
 
       channelsChecked += 1;
+      totalRead += result.messagesRead;
+      totalProcessed += result.messagesProcessed;
+      totalFiltered += result.messagesFiltered;
+      totalNew += result.newItems.length;
+      breakdown.bot_message += result.filterBreakdown.bot_message;
+      breakdown.already_triaged += result.filterBreakdown.already_triaged;
+      breakdown.structural += result.filterBreakdown.structural;
     }
 
     if (channelsChecked > 0) {
+      setLastTriageResult({
+        messagesRead: totalRead,
+        messagesProcessed: totalProcessed,
+        messagesFiltered: totalFiltered,
+        filterBreakdown: breakdown,
+        newItemsCount: totalNew,
+        channelsChecked,
+      });
     }
+  }, [channelLinks, projectId, triggerTriage, setLastTriageResult]);
 
   if (!isPanelOpen) return null;
 
@@ -133,11 +171,68 @@ export function SlackTriagePanel({ projectId }: SlackTriagePanelProps) {
         </div>
       )}
 
+      {/* Triage summary */}
+      {lastTriageResult && !error && (
+        <TriageSummaryBar result={lastTriageResult} />
       )}
+
+      {/* Tab toggle */}
+      <div className="px-4 py-2 border-b border-border-default">
+        <div className="flex items-center rounded-md bg-surface-1 border border-border-subtle p-0.5">
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`flex-1 px-2.5 py-1 rounded text-xxs font-medium transition-colors ${
+              activeTab === 'pending'
+                ? 'bg-surface-3 text-text-primary shadow-sm'
+                : 'text-text-muted hover:text-text-secondary'
+            }`}
+          >
+            Pending{pendingItems.length > 0 ? ` (${pendingItems.length})` : ''}
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`flex-1 px-2.5 py-1 rounded text-xxs font-medium transition-colors ${
+              activeTab === 'history'
+                ? 'bg-surface-3 text-text-primary shadow-sm'
+                : 'text-text-muted hover:text-text-secondary'
+            }`}
+          >
+            History{historyItems.length > 0 ? ` (${historyItems.length})` : ''}
+          </button>
+        </div>
+      </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
+        {activeTab === 'pending' ? (
+          channelLinks.length === 0 ? (
+            <EmptyState message="No Slack channels linked. Add channels in Settings -> Integrations." />
+          ) : pendingItems.length === 0 ? (
+            <EmptyState message={isTriaging ? 'Analyzing messages...' : 'No pending triage items. Click "Check Channels" to scan for new messages.'} />
+          ) : (
+            <div className="p-3 space-y-4">
+              {ACTION_TYPE_ORDER.map((type) => {
+                const items = grouped.get(type);
+                if (!items) return null;
+                return (
+                  <TriageGroup
+                    key={type}
+                    actionType={type}
+                    items={items}
+                    projectId={projectId}
+                    onDismiss={dismissItem}
+                    onExecute={executeItem}
+                  />
+                );
+              })}
+            </div>
+          )
         ) : (
+          historyItems.length === 0 ? (
+            <EmptyState message="No history yet. Dismissed and completed items will appear here." />
+          ) : (
+            <HistoryView items={historyItems} projectId={projectId} onRestore={restoreItem} />
+          )
         )}
       </div>
     </div>
@@ -148,10 +243,125 @@ export function SlackTriagePanel({ projectId }: SlackTriagePanelProps) {
 // Sub-components
 // ============================================================================
 
+function TriageSummaryBar({ result }: { result: { messagesRead: number; messagesProcessed: number; messagesFiltered: number; filterBreakdown: { bot_message: number; already_triaged: number; structural: number }; newItemsCount: number; channelsChecked: number } }) {
+  const filterParts: string[] = [];
+  if (result.filterBreakdown.bot_message > 0) filterParts.push(`${result.filterBreakdown.bot_message} bot`);
+  if (result.filterBreakdown.already_triaged > 0) filterParts.push(`${result.filterBreakdown.already_triaged} seen`);
+  if (result.filterBreakdown.structural > 0) filterParts.push(`${result.filterBreakdown.structural} system`);
+
+  return (
+    <div className="px-4 py-2 bg-surface-2 text-xxs text-text-secondary border-b border-border-default flex flex-wrap items-center gap-x-1.5">
+      <span>{result.messagesRead} read</span>
+      {filterParts.length > 0 && (
+        <>
+          <span className="text-text-muted">&middot;</span>
+          <span className="text-text-muted">{filterParts.join(', ')}</span>
+        </>
+      )}
+      <span className="text-text-muted">&middot;</span>
+      <span>{result.messagesProcessed} analyzed</span>
+      <span className="text-text-muted">&middot;</span>
+      <span className="font-medium text-text-primary">{result.newItemsCount} new</span>
+    </div>
+  );
+}
+
 function EmptyState({ message }: { message: string }) {
   return (
     <div className="flex items-center justify-center h-40 text-text-muted text-sm px-6 text-center">
       {message}
+    </div>
+  );
+}
+
+const HISTORY_STATUS_ORDER = ['dismissed', 'executed', 'approved'] as const;
+const HISTORY_STATUS_LABELS: Record<string, string> = {
+  dismissed: 'Dismissed',
+  executed: 'Completed',
+  approved: 'Approved',
+  edited: 'Edited',
+};
+
+function HistoryView({
+  items,
+  projectId,
+  onRestore,
+}: {
+  items: SlackTriageItem[];
+  projectId: string;
+  onRestore: (id: string, projectId: string) => Promise<void>;
+}) {
+  const groupedByStatus = useMemo(() => {
+    const groups = new Map<string, SlackTriageItem[]>();
+    for (const status of HISTORY_STATUS_ORDER) {
+      const statusItems = items.filter((i) => i.status === status);
+      if (statusItems.length > 0) {
+        groups.set(status, statusItems);
+      }
+    }
+    // Catch any other statuses
+    const coveredStatuses = new Set<string>(HISTORY_STATUS_ORDER);
+    const other = items.filter((i) => !coveredStatuses.has(i.status));
+    if (other.length > 0) {
+      groups.set('other', other);
+    }
+    return groups;
+  }, [items]);
+
+  return (
+    <div className="p-3 space-y-4">
+      {[...groupedByStatus.entries()].map(([status, statusItems]) => (
+        <div key={status}>
+          <h3 className="text-xxs font-semibold text-text-muted uppercase tracking-wider mb-2">
+            {HISTORY_STATUS_LABELS[status] ?? status}
+          </h3>
+          <div className="space-y-2">
+            {statusItems.map((item) => (
+              <HistoryItemCard key={item.id} item={item} projectId={projectId} onRestore={onRestore} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function HistoryItemCard({
+  item,
+  projectId,
+  onRestore,
+}: {
+  item: SlackTriageItem;
+  projectId: string;
+  onRestore: (id: string, projectId: string) => Promise<void>;
+}) {
+  const [isRestoring, setIsRestoring] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-border-default bg-surface-1 p-3 opacity-75">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-text-primary">{item.topic_summary}</p>
+          <p className="text-xxs text-text-muted mt-0.5">
+            {ACTION_TYPE_LABELS[item.action_type]}
+            {item.resolved_at && ` \u00b7 ${new Date(item.resolved_at).toLocaleDateString()}`}
+          </p>
+        </div>
+          <button
+            onClick={async () => {
+              setIsRestoring(true);
+              try {
+                await onRestore(item.id, projectId);
+              } finally {
+                setIsRestoring(false);
+              }
+            }}
+            disabled={isRestoring}
+            className="text-xxs px-2 py-0.5 rounded bg-surface-2 text-text-muted hover:text-text-secondary hover:bg-surface-3 transition-colors disabled:opacity-50 flex-shrink-0"
+          >
+          </button>
+        )}
+      </div>
     </div>
   );
 }

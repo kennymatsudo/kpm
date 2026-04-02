@@ -51,10 +51,18 @@ export interface SlackMessage {
   latest_reply?: string;
 }
 
+export interface FilterBreakdown {
+  bot_message: number;
+  already_triaged: number;
+  structural: number;
+}
+
 export interface TriageResult {
   newItems: SlackTriageItem[];
+  messagesRead: number;
   messagesProcessed: number;
   messagesFiltered: number;
+  filterBreakdown: FilterBreakdown;
 }
 
 // ============================================================================
@@ -207,6 +215,11 @@ export function createSlackTriageService(deps: SlackTriageServiceDeps) {
       }
 
       // Step 0: Fetch messages from Slack
+      // NOTE: We intentionally do NOT pass link.last_checked_ts here.
+      // Slack's conversations.history with `oldest` skips old thread roots
+      // that have new replies, causing those threads to be silently missed.
+      // Instead, we rely on the already_triaged pre-filter to deduplicate,
+      // and the enriched summary bar makes the filter results transparent.
       const rawMessages = await deps.readSlackChannel(projectId, link.channel_id);
       console.log('[SlackTriage] Raw channel messages', {
         projectId,
@@ -225,6 +238,7 @@ export function createSlackTriageService(deps: SlackTriageServiceDeps) {
       });
 
       if (rawMessages.length === 0) {
+        return { newItems: [], messagesRead: 0, messagesProcessed: 0, messagesFiltered: 0, filterBreakdown: { bot_message: 0, already_triaged: 0, structural: 0 } };
       }
 
       // Step 0: Pre-filter (deterministic, no model)
@@ -247,16 +261,25 @@ export function createSlackTriageService(deps: SlackTriageServiceDeps) {
       }
 
       const messagesFiltered = rawMessages.length - filtered.length;
+      const filterBreakdown: FilterBreakdown = { bot_message: 0, already_triaged: 0, structural: 0 };
+      for (const f of filteredOut) {
+        if (f.reason === 'bot_message') filterBreakdown.bot_message++;
+        else if (f.reason === 'already_triaged') filterBreakdown.already_triaged++;
+        else filterBreakdown.structural++;
+      }
+
       console.log('[SlackTriage] Filtered channel messages', {
         projectId,
         channelLinkId,
         keptCount: filtered.length,
         filteredCount: messagesFiltered,
+        filterBreakdown,
         filteredOut,
       });
 
       if (filtered.length === 0) {
         updateWatermark(link, rawMessages);
+        return { newItems: [], messagesRead: rawMessages.length, messagesProcessed: 0, messagesFiltered, filterBreakdown };
       }
 
       const threads = new Map<string, SlackMessage[]>();
@@ -340,6 +363,7 @@ export function createSlackTriageService(deps: SlackTriageServiceDeps) {
 
       updateWatermark(link, rawMessages);
 
+      return { newItems, messagesRead: rawMessages.length, messagesProcessed: filtered.length, messagesFiltered, filterBreakdown };
     }, 'Failed to run triage pipeline');
   }
 
@@ -381,6 +405,12 @@ export function createSlackTriageService(deps: SlackTriageServiceDeps) {
   function dismissItem(itemId: string): ServiceResult<void> {
     return withItem(itemId, () => {
       deps.slackTriageItems.updateStatus(itemId, 'dismissed');
+    });
+  }
+
+  function restoreItem(itemId: string): ServiceResult<void> {
+    return withItem(itemId, () => {
+      deps.slackTriageItems.updateStatus(itemId, 'pending');
     });
   }
 
@@ -460,6 +490,7 @@ export function createSlackTriageService(deps: SlackTriageServiceDeps) {
     approveItem,
     editItem,
     dismissItem,
+    restoreItem,
     executeItem,
   };
 }

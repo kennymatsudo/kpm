@@ -1258,6 +1258,7 @@ const slack = {
       ipcRenderer.invoke(IPC_CHANNELS.slack.links.delete, { linkId }),
   },
   triage: {
+    trigger: (projectId: string, channelLinkId: string): Promise<{ newItems: SlackTriageItem[]; messagesRead: number; messagesProcessed: number; messagesFiltered: number; filterBreakdown: { bot_message: number; already_triaged: number; structural: number } }> =>
       ipcRenderer.invoke(IPC_CHANNELS.slack.triage.trigger, { projectId, channelLinkId }),
     getPending: (projectId: string): Promise<SlackTriageItem[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.slack.triage.getPending, { projectId }),
@@ -1271,6 +1272,8 @@ const slack = {
       ipcRenderer.invoke(IPC_CHANNELS.slack.triage.edit, { itemId, suggestedAction }),
     dismiss: (itemId: string): Promise<{ success: boolean; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.slack.triage.dismiss, { itemId }),
+    restore: (itemId: string): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.slack.triage.restore, { itemId }),
     execute: (itemId: string): Promise<{ success: boolean; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.slack.triage.execute, { itemId }),
   },

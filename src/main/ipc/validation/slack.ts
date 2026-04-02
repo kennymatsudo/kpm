@@ -60,6 +60,10 @@ export const SlackSchemas = {
     itemId: uuid,
   }),
 
+  restoreItem: z.object({
+    itemId: uuid,
+  }),
+
   executeItem: z.object({
     itemId: uuid,
   }),
@@ -80,4 +84,5 @@ export type SlackCountPendingInput = z.infer<typeof SlackSchemas.countPending>;
 export type SlackApproveItemInput = z.infer<typeof SlackSchemas.approveItem>;
 export type SlackEditItemInput = z.infer<typeof SlackSchemas.editItem>;
 export type SlackDismissItemInput = z.infer<typeof SlackSchemas.dismissItem>;
+export type SlackRestoreItemInput = z.infer<typeof SlackSchemas.restoreItem>;
 export type SlackExecuteItemInput = z.infer<typeof SlackSchemas.executeItem>;

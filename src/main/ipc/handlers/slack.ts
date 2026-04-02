@@ -75,6 +75,11 @@ export function registerSlackHandlers(slackTriageService: SlackTriageService): v
     return toIpcResponse(slackTriageService.dismissItem(itemId));
   });
 
+  ipcMain.handle(IPC_CHANNELS.slack.triage.restore, (_event, params: unknown) => {
+    const { itemId } = SlackSchemas.restoreItem.parse(params);
+    return toIpcResponse(slackTriageService.restoreItem(itemId));
+  });
+
   ipcMain.handle(IPC_CHANNELS.slack.triage.execute, (_event, params: unknown) => {
     const { itemId } = SlackSchemas.executeItem.parse(params);
     return toIpcResponseAsync(slackTriageService.executeItem(itemId));

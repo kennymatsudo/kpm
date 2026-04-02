@@ -14,6 +14,7 @@ export function deleteSlackLink(linkId: string): Promise<{ success: boolean; err
 }
 
 // Triage
+export function triggerSlackTriage(projectId: string, channelLinkId: string): Promise<{ newItems: SlackTriageItem[]; messagesRead: number; messagesProcessed: number; messagesFiltered: number; filterBreakdown: { bot_message: number; already_triaged: number; structural: number } }> {
   return window.api.slack.triage.trigger(projectId, channelLinkId);
 }
 
@@ -39,6 +40,10 @@ export function editSlackItem(itemId: string, suggestedAction: unknown): Promise
 
 export function dismissSlackItem(itemId: string): Promise<{ success: boolean; error?: string }> {
   return window.api.slack.triage.dismiss(itemId);
+}
+
+export function restoreSlackItem(itemId: string): Promise<{ success: boolean; error?: string }> {
+  return window.api.slack.triage.restore(itemId);
 }
 
 export function executeSlackItem(itemId: string): Promise<{ success: boolean; error?: string }> {
