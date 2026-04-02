@@ -60,6 +60,8 @@ interface ScopedDirectoryScan {
 export interface OnboardingServiceDeps {
   getReposByProject: (projectId: string) => { id: string; path: string }[];
   getProjectFolder: (projectId: string) => string | null;
+  queryFn?: typeof query;
+  getTimeoutMs?: () => number;
 }
 
 // =============================================================================
@@ -229,9 +231,34 @@ function buildPrompt(
   return sections.join('\n\n');
 }
 
+function sanitizeGeneratedContext(content: string): string {
+  const trimmed = content.trim();
+  if (!trimmed) return trimmed;
+
+  const firstHeadingMatch = /^\s*#\s+.+$/m.exec(trimmed);
+  if (firstHeadingMatch && typeof firstHeadingMatch.index === 'number' && firstHeadingMatch.index > 0) {
+    return trimmed.slice(firstHeadingMatch.index).trim();
+  }
+
+  return trimmed;
+}
 
 
 
+
+## Audience And Goal
+
+The reader needs to:
+- Understand what the project or feature is and why it exists
+- See which repos are connected and how they relate to each other
+- Find the stable entry points and ownership areas for further investigation
+- Know the build, test, and verification workflows
+- Understand important boundaries and constraints
+
+The reader does NOT need:
+- A narration of how you gathered the information
+- A dump of repository scan results
+- An exhaustive snapshot of current components, hooks, helpers, or other volatile implementation details
 
 
 ## Regeneration Context
@@ -245,9 +272,13 @@ If an existing context document is provided, it is for REFERENCE ONLY:
 ## Writing Quality
 
 - Keep the document concise and focused -- under 150 lines. Shorter is better.
+- Write a durable orientation document, not a changelog or repository walkthrough.
 - Be specific: "React 18 with TypeScript and Vite" not "modern web framework."
 - Put executable commands early with full flags.
 - Focus on what an agent cannot infer from the code alone.
+- Prefer stable entry points, subsystem boundaries, and ownership areas over inventories of current component or hook filenames.
+- Mention individual files only when they are canonical entry points, contracts, or other high-signal anchors that are likely to remain useful as the code evolves.
+- If a detail is likely to churn during normal development, summarize it at the directory, subsystem, or contract level instead.
 - Do NOT include style guidelines or linting rules.
 
 ## Required Sections
@@ -256,6 +287,7 @@ If an existing context document is provided, it is for REFERENCE ONLY:
 
 2. **Connected Repos** -- table with each repo's basename, inferred purpose, and tech stack with versions where detectable. This is how the assistant knows what it's working with.
 
+   Keep this at the directory or subsystem level unless a specific file is the durable entry point.
 
 4. **Architecture** -- how the repos relate to each other (frontend -> backend -> service, monorepo packages, shared libraries). Include data flow if detectable. This helps the assistant reason about cross-repo impact during planning.
 
@@ -271,7 +303,10 @@ If an existing context document is provided, it is for REFERENCE ONLY:
 
 ## Output Rules
 
+- The first line must be a markdown H1 title for the project or feature.
 - Return ONLY the markdown content. No preamble, no wrapping code fences.
+- Do not mention the scanning process, repository scan results, or whether the provided input was sufficient.
+- Do not introduce the document with phrases like "here is the context file" or "based on the scanned repository data."
 - Do NOT use Write, Edit, or Bash tools. Do NOT write files.
 - No emojis. Plain markdown only: headers, bold, lists, tables, code blocks.
 - Use repo basenames (not full paths) when referencing repos.
@@ -324,6 +359,13 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
 
         const sdkOptions: SDKOptions = {
           systemPrompt: SYSTEM_PROMPT,
+          cwd: options.projectPath,
+          additionalDirectories: scanResults.map(result => result.repoPath),
+            toolName === 'Write' || toolName === 'Edit' || toolName === 'Bash'
+              ? {
+                  message: 'Onboarding context generation is read-only. Use Read, Grep, or Glob if more repository context is needed.',
+                }
+          ),
         };
 
         console.log('[OnboardingService] Calling Claude Agent SDK query()...');
@@ -333,6 +375,7 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
 
 
         callbacks.onProgress('Context generated successfully');
+        callbacks.onComplete(sanitizeGeneratedContext(generatedContent));
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Unknown error';
         console.error('[OnboardingService] Error:', msg);

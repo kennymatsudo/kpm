@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { StoreApi } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { createInitialPerSessionState } from './baseState';
 import { createSessionManagementSlice } from './sessionManagementSlice';
@@ -15,6 +16,7 @@ type TestState = {
   nextSessionNumber: number;
 } & SessionActions & StreamingActions;
 
+function createTestStore(): StoreApi<TestState> {
 
   return createStore<TestState>()((set, get) => ({
     sessions: new Map([
