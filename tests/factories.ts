@@ -377,18 +377,28 @@ export function createMockFileSystem(): IFileSystem & {
   createdDirs: string[];
   writtenFiles: Map<string, string>;
   deletedPaths: string[];
+  symlinkedFiles: Map<string, string>;
 } {
   const createdDirs: string[] = [];
   const writtenFiles = new Map<string, string>();
   const deletedPaths: string[] = [];
+  const symlinkedFiles = new Map<string, string>();
 
   return {
     createdDirs,
     writtenFiles,
     deletedPaths,
+    symlinkedFiles,
+    existsSync: (path: string) => createdDirs.includes(path) || writtenFiles.has(path) || symlinkedFiles.has(path),
     mkdirSync: (path: string) => { createdDirs.push(path); },
     writeFileSync: (path: string, content: string) => { writtenFiles.set(path, content); },
     rmSync: (path: string) => { deletedPaths.push(path); },
+    unlinkSync: (path: string) => {
+      deletedPaths.push(path);
+      writtenFiles.delete(path);
+      symlinkedFiles.delete(path);
+    },
+    symlinkSync: (target: string, path: string) => { symlinkedFiles.set(path, target); },
   };
 }
 

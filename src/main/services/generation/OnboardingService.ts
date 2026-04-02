@@ -244,6 +244,7 @@ function sanitizeGeneratedContext(content: string): string {
 }
 
 
+This file is for a future coding agent or developer who is joining an ongoing project. Its job is to orient them quickly and remain useful as the codebase evolves. Write for durable understanding, not for a point-in-time code inventory.
 
 
 ## Audience And Goal
@@ -274,6 +275,9 @@ If an existing context document is provided, it is for REFERENCE ONLY:
 - Keep the document concise and focused -- under 150 lines. Shorter is better.
 - Write a durable orientation document, not a changelog or repository walkthrough.
 - Be specific: "React 18 with TypeScript and Vite" not "modern web framework."
+- Prefer repo-relative file paths or directory paths over inline code snippets.
+- Add line numbers only when precision materially helps and the anchor is likely to remain stable (for example: a canonical entry point, exported interface, schema, or config declaration).
+- Avoid line numbers for general architecture notes, because they drift as the code changes.
 - Put executable commands early with full flags.
 - Focus on what an agent cannot infer from the code alone.
 - Prefer stable entry points, subsystem boundaries, and ownership areas over inventories of current component or hook filenames.
@@ -291,8 +295,12 @@ If an existing context document is provided, it is for REFERENCE ONLY:
 
 4. **Architecture** -- how the repos relate to each other (frontend -> backend -> service, monorepo packages, shared libraries). Include data flow if detectable. This helps the assistant reason about cross-repo impact during planning.
 
+5. **Build and Test Commands** -- exact commands with flags to build, test, lint, and type-check each repo. These should be useful to an agent or developer who needs to understand, validate, or change the code.
 
+6. **Boundaries** -- project constraints that matter to any agent or developer working in these repos:
   - Never commit secrets
+  - Protected or generated areas that should not be edited casually
+  - Repo-specific constraints (e.g. deploy freezes, required review flows, protected branches)
 
 7. **Documentation Pointers** -- point to docs/ directories, READMEs, wikis, or ADRs found in the repos. Use file paths so the assistant can read them when needed.
 
@@ -393,6 +401,7 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
           return { success: false, error: 'Project folder not found' };
         }
 
+        writeProjectContextFilesSync(fs, folderPath, content);
         return { success: true };
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Unknown error';

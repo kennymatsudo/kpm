@@ -14,7 +14,11 @@ import type { Project } from '../../../../shared/types';
 export interface IFileSystem {
   existsSync(path: string): boolean;
   mkdirSync(path: string, options?: { recursive?: boolean }): void;
+  writeFileSync(path: string, content: string, encoding?: BufferEncoding): void;
   rmSync(path: string, options?: { recursive?: boolean; force?: boolean }): void;
+  readlinkSync?(path: string): string;
+  unlinkSync?(path: string): void;
+  symlinkSync?(target: string, path: string): void;
 }
 
 /**

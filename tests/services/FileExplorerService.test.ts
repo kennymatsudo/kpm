@@ -135,6 +135,28 @@ describe('FileExplorerService', () => {
         expect(level3?.children).toBeUndefined();
       }
     });
+
+    it('hides CLAUDE.md at the project root when AGENTS.md exists', async () => {
+      fs.writeFileSync(path.join(tempDir, 'AGENTS.md'), '# Agents');
+      fs.writeFileSync(path.join(tempDir, 'CLAUDE.md'), '# Claude');
+      fs.writeFileSync(path.join(tempDir, 'notes.md'), '# Notes');
+
+      const result = await service.listDirectory('test-project');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.map((node) => node.name)).toEqual(['AGENTS.md', 'notes.md']);
+      }
+    });
+
+    it('shows CLAUDE.md when AGENTS.md does not exist', async () => {
+      fs.writeFileSync(path.join(tempDir, 'CLAUDE.md'), '# Claude');
+
+      const result = await service.listDirectory('test-project');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.map((node) => node.name)).toEqual(['CLAUDE.md']);
+      }
+    });
   });
 
   describe('createFolder', () => {

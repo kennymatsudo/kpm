@@ -3,6 +3,7 @@ import path from 'path';
 import type { Project } from '../../../shared/types';
 import {
   isContextFile,
+  COMPAT_CONTEXT_FILENAME,
   CONTEXT_FILE_NAMES,
   DEFAULT_CONTEXT_FILENAME,
   getContextFilePriority,
@@ -125,6 +126,11 @@ class FileWatchServiceClass {
     }
 
     try {
+      if (isContextFile(relativePath)) {
+        await writeProjectContextFiles(project.folder_path, content);
+        return { success: true };
+      }
+
       await fs.promises.writeFile(fullPath, content, 'utf-8');
       return { success: true };
     } catch (error) {
@@ -246,6 +252,7 @@ class FileWatchServiceClass {
     }
 
     try {
+      await writeProjectContextFiles(project.folder_path, content);
       return { success: true };
     } catch (error) {
       return { success: false, error: String(error) };

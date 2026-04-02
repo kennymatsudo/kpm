@@ -79,6 +79,10 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
     mkdirSync: (...args) => fs.mkdirSync(...args),
     writeFileSync: (...args) => fs.writeFileSync(...args),
     rmSync: (...args) => fs.rmSync(...args),
+    lstatSync: (...args) => fs.lstatSync(...args),
+    readlinkSync: (...args) => fs.readlinkSync(...args),
+    unlinkSync: (...args) => fs.unlinkSync(...args),
+    symlinkSync: (...args) => fs.symlinkSync(...args),
   };
 
   const pathUtils: IPathUtils = config.pathUtils ?? {

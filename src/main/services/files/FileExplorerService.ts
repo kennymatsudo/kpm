@@ -2,6 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import { success, failure, type AsyncResult, type ServiceResult } from '../result';
 import {
+  COMPAT_CONTEXT_FILENAME,
+  DEFAULT_CONTEXT_FILENAME,
+} from '../../../shared/contextFile';
+import {
   ensureParentDirectory,
   getScopedEntryInfo,
   listScopedDirectory,
@@ -29,6 +33,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
 
 
       try {
+        let nodes = await listScopedDirectory({
           rootPath: projectFolder,
           directoryPath: fullPath,
           recursive: options.recursive ?? false,
@@ -37,6 +42,12 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
             console.error(`[FileExplorerService] Failed to read ${entryPath}:`, error);
           },
         });
+
+        const isRootDirectory = relativePath === '' || relativePath === '.';
+        if (isRootDirectory && await pathExists(path.join(projectFolder, DEFAULT_CONTEXT_FILENAME))) {
+          nodes = nodes.filter((node) => node.name !== COMPAT_CONTEXT_FILENAME);
+        }
+
         return success(nodes);
       } catch (error) {
         return failure(`Failed to list directory: ${error}`);

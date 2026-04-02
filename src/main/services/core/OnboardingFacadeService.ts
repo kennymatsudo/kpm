@@ -76,6 +76,20 @@ export function createOnboardingFacadeService(deps: OnboardingFacadeServiceDeps)
       }
     },
 
+    saveContextDirectories(projectId: string, repoDirectories: Record<string, string[]>): ServiceResult<void> {
+      try {
+        const project = deps.projects.get(projectId);
+        if (!project) {
+          return failure('Project not found');
+        }
+
+        deps.projects.updateContextDirectories(projectId, repoDirectories);
+        return success(undefined);
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
     saveContext(projectId: string, content: string): ServiceResult<void> {
       try {
         const result = deps.onboardingService.saveContext(projectId, content);

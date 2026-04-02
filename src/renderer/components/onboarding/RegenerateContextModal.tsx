@@ -8,6 +8,7 @@ import { StepContextGeneration } from './StepContextGeneration';
 import { useOnboardingEvents } from '../../hooks/useOnboardingEvents';
 import {
   saveOnboardingContext,
+  saveOnboardingContextDirectories,
 } from '../../services/onboardingService';
 import {
   useContextRegenerationStore,
@@ -47,6 +48,9 @@ export function RegenerateContextModal() {
         if (dirs) setRepoDirectories(dirs);
       });
     }
+
+  const handleRepoDirectoriesChange = useCallback((nextRepoDirectories: Record<string, string[]>) => {
+    setRepoDirectories(nextRepoDirectories);
 
   // Transition from generate -> review when generation completes
   useEffect(() => {
@@ -136,6 +140,7 @@ export function RegenerateContextModal() {
             onDescriptionChange={setDescription}
             repoPaths={repoPaths}
             repoDirectories={repoDirectories}
+            onRepoDirectoriesChange={handleRepoDirectoriesChange}
           />
         )}
 

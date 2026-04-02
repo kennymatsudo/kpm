@@ -38,6 +38,13 @@ export function saveOnboardingContext(
   return window.api.onboarding.saveContext(projectId, content);
 }
 
+export function saveOnboardingContextDirectories(
+  projectId: string,
+  repoDirectories: Record<string, string[]>,
+): Promise<{ success: boolean; error?: string }> {
+  return window.api.onboarding.saveContextDirectories(projectId, repoDirectories);
+}
+
 export function subscribeToOnboardingEvents(handlers: {
   onProgress?: (event: OnboardingProgressEvent) => void;
   onThinking?: (event: OnboardingThinkingEvent) => void;

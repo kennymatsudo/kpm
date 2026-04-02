@@ -67,6 +67,20 @@ export function registerOnboardingHandlers(
   );
 
   ipcMain.handle(
+    IPC_CHANNELS.onboarding.saveContextDirectories,
+    createIpcHandler(
+      OnboardingSchemas.saveContextDirectories,
+      async ({ projectId, repoDirectories }) => {
+        const result = onboardingFacadeService.saveContextDirectories(projectId, repoDirectories);
+        if (!result.ok) {
+          throw new Error(result.error);
+        }
+      },
+      'Failed to save context directories',
+    ),
+  );
+
+  ipcMain.handle(
     IPC_CHANNELS.onboarding.getContextDirectories,
   );
 }

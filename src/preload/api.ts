@@ -1210,6 +1210,11 @@ const onboarding = {
     ),
   saveContext: (projectId: string, content: string): Promise<{ success: boolean; error?: string }> =>
     invokeFlat<void>(IPC_CHANNELS.onboarding.saveContext, { projectId, content }),
+  saveContextDirectories: (
+    projectId: string,
+    repoDirectories: Record<string, string[]>,
+  ): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.onboarding.saveContextDirectories, { projectId, repoDirectories }),
   getContextDirectories: (projectId: string): Promise<Record<string, string[]> | null> =>
     invokeOrThrow<{ directories: Record<string, string[]> | null }, Record<string, string[]> | null>(
       IPC_CHANNELS.onboarding.getContextDirectories,

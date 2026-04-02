@@ -6,6 +6,11 @@ import { z } from 'zod';
 import { uuid } from './shared';
 
 export const OnboardingSchemas = {
+  saveContextDirectories: z.object({
+    projectId: uuid,
+    repoDirectories: z.record(z.string(), z.array(z.string())).default({}),
+  }),
+
   generate: z.object({
     taskId: z.string().min(1),
     projectId: uuid,
@@ -22,3 +27,4 @@ export const OnboardingSchemas = {
 // Inferred types
 export type OnboardingGenerateInput = z.infer<typeof OnboardingSchemas.generate>;
 export type OnboardingSaveContextInput = z.infer<typeof OnboardingSchemas.saveContext>;
+export type OnboardingSaveContextDirectoriesInput = z.infer<typeof OnboardingSchemas.saveContextDirectories>;

@@ -8,9 +8,16 @@
  *
  */
 
+export const PRIMARY_CONTEXT_FILENAME = 'AGENTS.md';
+
+/** Compatibility filename for tools that still auto-load CLAUDE.md. */
+export const COMPAT_CONTEXT_FILENAME = 'CLAUDE.md';
+
 /** Filenames to check, in priority order. */
+export const CONTEXT_FILE_NAMES = [PRIMARY_CONTEXT_FILENAME, COMPAT_CONTEXT_FILENAME] as const;
 
 /** Default filename when creating a new context file. */
+export const DEFAULT_CONTEXT_FILENAME = PRIMARY_CONTEXT_FILENAME;
 
 /** Check whether a filename is a recognized context file. */
 export function isContextFile(filename: string): boolean {
