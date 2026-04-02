@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 export type SettingsTab =
+  | 'workflow'
 
 interface SettingsUIState {
   isOpen: boolean;
@@ -17,6 +18,7 @@ interface SettingsUIState {
 
 /** Ordered list of tabs for index-based navigation */
 const TAB_ORDER: SettingsTab[] = [
+  'workflow',
   'prompts',
 ];
 

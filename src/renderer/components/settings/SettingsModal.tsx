@@ -1,6 +1,8 @@
 import { useMemo, useEffect } from 'react';
 import { m } from 'framer-motion';
 import { Modal, ModalHeader } from '../ui/Modal';
+import { WorkflowSettings } from './WorkflowSettings';
+import { PermissionsSettings } from './PermissionsSettings';
 import { PromptsSettings } from './PromptsSettings';
 import { useSettingsUIStore, type SettingsTab } from '../../stores';
 
@@ -65,6 +67,8 @@ const allTabs: { id: SettingsTab; label: string; icon: React.ReactNode; requires
     >
 
 
+          {activeTab === 'permissions' && currentProjectId && (
+            <PermissionsSettings currentProjectId={currentProjectId} />
           )}
         </div>
     </Modal>
