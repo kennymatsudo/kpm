@@ -20,6 +20,7 @@ import {
   type McpServerStatus,
   type McpServerConfig,
   type McpSetServersResult,
+  type PermissionMode,
 } from '@anthropic-ai/claude-agent-sdk';
 import { AsyncMessageQueue, type StreamingUserMessage } from './AsyncMessageQueue';
 import { getConfig } from '../../config';
@@ -249,6 +250,7 @@ export class StreamingSession {
   /**
    * Change the permission mode mid-session.
    */
+  async setPermissionMode(mode: PermissionMode): Promise<void> {
     await this.queryInstance?.setPermissionMode(mode);
   }
 

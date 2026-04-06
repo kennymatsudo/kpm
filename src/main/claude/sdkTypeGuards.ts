@@ -8,7 +8,9 @@ import type {
   SDKResultMessage,
   SDKSystemMessage,
   SDKAPIRetryMessage,
+  TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
+
 
 /**
  * Check if a message is an init system message (sent when SDK initializes).
@@ -26,9 +28,21 @@ export function isMaxTokensReached(msg: SDKResultMessage): boolean {
 
 /**
  * Check if result was truncated due to max turns limit.
+ * Uses terminal_reason when available (v0.2.91+), falls back to subtype.
  */
 export function isMaxTurnsReached(msg: SDKResultMessage): boolean {
+  if ('terminal_reason' in msg && msg.terminal_reason) {
+    return msg.terminal_reason === 'max_turns';
+  }
   return 'subtype' in msg && msg.subtype === 'error_max_turns';
+}
+
+/**
+ * Extract the terminal_reason from a result message (v0.2.91+).
+ * Returns undefined for older SDK versions or if not present.
+ */
+export function getTerminalReason(msg: SDKResultMessage): TerminalReason | undefined {
+  return 'terminal_reason' in msg ? msg.terminal_reason : undefined;
 }
 
 /**

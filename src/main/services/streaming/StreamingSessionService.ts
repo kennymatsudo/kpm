@@ -909,6 +909,24 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         });
       }
 
+      const terminalReason = getTerminalReason(sdkMsg);
+        const terminalMessages: Partial<Record<typeof terminalReason, string>> = {
+          aborted_tools: 'Response stopped: tool execution was aborted.',
+          blocking_limit: 'Response stopped: rate limit reached. Send another message to continue.',
+          hook_stopped: 'Response stopped by a hook.',
+          stop_hook_prevented: 'Response stopped: a stop hook prevented continuation.',
+          tool_deferred: 'Response paused: a tool is waiting for approval.',
+          prompt_too_long: 'Response stopped: the prompt exceeded the context limit.',
+          model_error: 'Response stopped due to a model error.',
+          rapid_refill_breaker: 'Response stopped: too many rapid requests. Please wait a moment.',
+        };
+        const message = terminalMessages[terminalReason];
+        if (message) {
+          console.log(`[StreamingSessionService] Terminal reason: ${terminalReason} for ${key}`);
+          mainWindow?.webContents.send('chat:error', { projectId, chatSessionId, error: message });
+        }
+      }
+
       // Clear "Allow All Remaining" flag when response completes
       clientManager.clearAllowAllRemaining(projectId);
 
