@@ -82,5 +82,14 @@ export function registerOnboardingHandlers(
 
   ipcMain.handle(
     IPC_CHANNELS.onboarding.getContextDirectories,
+    createIpcHandler(
+      OnboardingSchemas.saveContext.pick({ projectId: true }),
+      ({ projectId }) => {
+        const result = onboardingFacadeService.getContextDirectories(projectId);
+        if (!result.ok) throw new Error(result.error);
+        return { directories: result.data };
+      },
+      'Failed to get context directories',
+    ),
   );
 }
