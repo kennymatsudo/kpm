@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import type { PlanItem, StatusCategory } from '../../../../shared/types';
 import { useLocalStorageSet } from '../../../hooks/useLocalStorageSet';
+import { useDebouncedValue } from '../../../hooks/useDebouncedValue';
 import {
   selectFilteredPlannedItems,
   selectNormalizedPlanItems,
@@ -13,8 +14,11 @@ interface StatusCounts {
   visible: number;
 }
 
+const isSearchCleared = (v: string) => v.trim() === '';
+
 export interface UseLayoutPlanViewStateReturn {
   searchQuery: string;
+  debouncedSearchQuery: string;
   setSearchQuery: (query: string) => void;
   hiddenStatusCategories: Set<StatusCategory>;
   hiddenStatusCategoriesRef: MutableRefObject<Set<StatusCategory>>;
@@ -33,6 +37,7 @@ export function useLayoutPlanViewState(
 ): UseLayoutPlanViewStateReturn {
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300, isSearchCleared);
   const [hiddenStatusCategories, setHiddenStatusCategories] = useLocalStorageSet<StatusCategory>(
     currentProjectId ? `kpm-status-filter-${currentProjectId}` : null
   );
@@ -60,11 +65,16 @@ export function useLayoutPlanViewState(
     [filteredPlannedItems.length, plannedItems.length]
   );
   const searchResultCount = useMemo(
+    () => selectPlanSearchResultCount(filteredPlannedItems, debouncedSearchQuery),
+    [filteredPlannedItems, debouncedSearchQuery]
   );
 
   useEffect(() => {
     const previous = prevSearchQueryRef.current;
+    if (previous === debouncedSearchQuery) return;
+    prevSearchQueryRef.current = debouncedSearchQuery;
 
+    const trimmed = debouncedSearchQuery.trim();
     if (trimmed.length >= 2) {
       logPerfEvent('search.query', {
         length: trimmed.length,
@@ -73,6 +83,7 @@ export function useLayoutPlanViewState(
     } else if (previous && !trimmed) {
       logPerfEvent('search.clear', { prevLength: previous.length });
     }
+  }, [debouncedSearchQuery, searchResultCount]);
 
   const clearSelectedItemIds = useCallback(() => {
     setSelectedItemIds(new Set());
@@ -80,6 +91,7 @@ export function useLayoutPlanViewState(
 
   return {
     searchQuery,
+    debouncedSearchQuery,
     setSearchQuery,
     hiddenStatusCategories,
     hiddenStatusCategoriesRef,

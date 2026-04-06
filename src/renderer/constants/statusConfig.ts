@@ -77,6 +77,17 @@ export const STATUS_CATEGORY_CONFIG: Record<StatusCategory, {
 };
 
 /**
+ * Status category options for form select dropdowns.
+ * Derived from STATUS_CATEGORY_CONFIG to stay in sync.
+ */
+export const STATUS_CATEGORY_OPTIONS: { value: StatusCategory | ''; label: string }[] = [
+  { value: '', label: 'Not set' },
+  ...Object.entries(STATUS_CATEGORY_CONFIG)
+    .filter(([key]) => key !== 'in_review') // in_review is tracker-assigned, not user-selectable
+    .map(([key, config]) => ({ value: key as StatusCategory, label: config.label })),
+];
+
+/**
  * Resolve a tracker-specific status string to a normalized category.
  * Returns null if status or trackerType is missing.
  * Uses keyword-based fallback for custom/unmapped statuses.

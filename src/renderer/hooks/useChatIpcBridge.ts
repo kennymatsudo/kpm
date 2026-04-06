@@ -34,6 +34,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     markSessionInactive,
     setViewedSession,
     getOrCreateSession,
+    setClaudeSessionId,
     setMcpStatus,
   } = useChatStore(useShallow((state) => ({
     appendChunk: state.appendChunk,
@@ -49,6 +50,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     markSessionInactive: state.markSessionInactive,
     setViewedSession: state.setViewedSession,
     getOrCreateSession: state.getOrCreateSession,
+    setClaudeSessionId: state.setClaudeSessionId,
     setMcpStatus: state.setMcpStatus,
   })));
 
@@ -152,6 +154,9 @@ export function useChatIpcBridge(projectId: string | null): void {
           setSessionState(sessionId, 'ready');
           markSessionActive(sessionId);
           setMcpStatus(sessionId, false);
+          if (data.sessionId) {
+            setClaudeSessionId(sessionId, data.sessionId);
+          }
         }
       },
       onSessionError: (data) => {

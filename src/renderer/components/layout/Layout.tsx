@@ -77,6 +77,7 @@ export const Layout = memo(function Layout({
   } = usePersistedChatCollapseState(currentProjectId, mainView);
   const {
     searchQuery,
+    debouncedSearchQuery,
     setSearchQuery,
     hiddenStatusCategories,
     hiddenStatusCategoriesRef,
@@ -237,6 +238,7 @@ export const Layout = memo(function Layout({
                   <PlanView
                     viewMode={viewMode}
                     filteredPlannedItems={filteredPlannedItems}
+                    searchQuery={debouncedSearchQuery}
                     onSearchChange={setSearchQuery}
                     hiddenStatusCategories={hiddenStatusCategories}
                     onHiddenStatusCategoriesChange={setHiddenStatusCategories}

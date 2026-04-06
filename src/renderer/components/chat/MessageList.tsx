@@ -215,6 +215,8 @@ interface MessageListProps {
   const listRef = useRef<HTMLDivElement>(null);
   const messageHeightsRef = useRef<Map<string, number>>(new Map());
   const isInitialMount = useRef(true);
+  const prevMessagesRef = useRef(messages);
+  const prevStreamingContentRef = useRef(streamingContent);
   const [autoFollow, setAutoFollow] = useState(true);
   const [hasUnseenMessages, setHasUnseenMessages] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
@@ -383,6 +385,11 @@ interface MessageListProps {
     }
 
     if (autoFollow) {
+      // Use smooth scroll only when new content arrived — not for layout reflows
+      // (e.g. container resize on view switch, editor panel opening/closing).
+      const isNewContent =
+        messages !== prevMessagesRef.current ||
+      scrollToBottom(isStreaming || !isNewContent ? 'auto' : 'smooth');
       return;
     }
 
@@ -441,6 +448,7 @@ interface MessageListProps {
             elapsedSeconds={elapsedSeconds}
           />
         )}
+
       </div>
 
       {!autoFollow && (

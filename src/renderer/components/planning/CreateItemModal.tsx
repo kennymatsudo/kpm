@@ -15,6 +15,7 @@ import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { MotionButton } from '../ui/MotionButton';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import type { PlanItem, StatusCategory } from '../../../shared/types';
+import { STATUS_CATEGORY_OPTIONS, STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 
 // Type options with visual indicators
 const TYPE_OPTIONS: { value: string; label: string; color?: string }[] = [
@@ -187,6 +188,8 @@ export function CreateItemModal({
     }
   }, [isDirty, onClose]);
 
+  // Get status indicator class
+  const statusConfig = statusCategory ? STATUS_CATEGORY_CONFIG[statusCategory] : null;
   const typeColor = TYPE_OPTIONS.find(t => t.value === label)?.color;
 
   return (
@@ -291,7 +294,9 @@ export function CreateItemModal({
                 {defaultStatus && (
                   <span className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface-3">
                     <span
+                      className={`w-1.5 h-1.5 rounded-full ${STATUS_CATEGORY_CONFIG[defaultStatus]?.bgClass ?? 'bg-surface-3'}`}
                     />
+                    {STATUS_CATEGORY_CONFIG[defaultStatus]?.label ?? defaultStatus}
                   </span>
                 )}
                 {canvasPosition && (

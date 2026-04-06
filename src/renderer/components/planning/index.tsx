@@ -345,14 +345,57 @@ export function PlanView({
         {/* View area - Canvas, Tree, or Board */}
         <div className="flex-1 overflow-hidden" onContextMenu={handleContextMenu}>
           {viewMode === 'card' ? (
+            <ErrorBoundary name="Canvas">
+              <div className="h-full canvas-bg">
+                <Canvas
+                  projectId={currentProjectId}
+                  items={filteredPlannedItems}
+                  hierarchyTree={treeHierarchy}
+                  selectedItemIds={selectedItemIds}
+                  focusedItemId={focusedItemId}
+                  searchQuery={searchQuery}
+                  onSelectItem={handleSelectItem}
+                  onEditItem={handleEditItem}
+                  onPrepareEditItem={prefetchEditItem}
+                  onCreateItem={handleCreateItemFromCanvas}
+                  onReparent={handleReparent}
+                  onUpdatePosition={updateItemPosition}
+                  onUpdatePositions={updateItemPositions}
+                  onAutoLayout={handleAutoLayout}
+                  onAssignToGroup={handleAssignToGroup}
+                />
+              </div>
+            </ErrorBoundary>
+          ) : viewMode === 'tree' ? (
+            <ErrorBoundary name="TreeView">
+              <TreeView
+                items={treeHierarchy}
+                selectedIds={selectedItemIds}
                 focusedItemId={focusedItemId}
                 searchQuery={searchQuery}
                 onSelectItem={handleSelectItem}
                 onEditItem={handleEditItem}
                 onPrepareEditItem={prefetchEditItem}
+                onContextMenu={handleTreeContextMenu}
                 onReparent={handleReparent}
+                onCreateItem={handleCreateItemFromTree}
               />
+            </ErrorBoundary>
           ) : (
+            <ErrorBoundary name="BoardView">
+              <BoardView
+                items={leafItems}
+                allItems={planItems}
+                selectedIds={selectedItemIds}
+                focusedItemId={focusedItemId}
+                searchQuery={searchQuery}
+                onSelectItem={handleSelectItem}
+                onEditItem={handleEditItem}
+                onPrepareEditItem={prefetchEditItem}
+                onContextMenu={handleTreeContextMenu}
+                onCreateItem={handleCreateItemFromBoard}
+              />
+            </ErrorBoundary>
           )}
         </div>
       </div>
@@ -394,10 +437,30 @@ export function PlanView({
 
       {/* Task Edit Modal */}
       {editingItem && (
+        <ErrorBoundary name="TaskEditModal">
+          <TaskEditModal
+            item={editingItem}
+            isOpen={!!editingItem}
+            onClose={closeEditModal}
+            onSave={handleSaveTask}
+          />
+        </ErrorBoundary>
       )}
 
       {/* Create Item Modal */}
       {createItemContext && (
+        <ErrorBoundary name="CreateItemModal">
+          <CreateItemModal
+            isOpen={createItemContext.isOpen}
+            onClose={closeCreateItemModal}
+            projectId={currentProjectId}
+            defaultParentId={createItemContext.parentId}
+            defaultStatus={createItemContext.status}
+            canvasPosition={createItemContext.canvasPosition}
+            planItems={planItems}
+            onSubmit={handleCreateItemSubmit}
+          />
+        </ErrorBoundary>
       )}
     </div>
   );

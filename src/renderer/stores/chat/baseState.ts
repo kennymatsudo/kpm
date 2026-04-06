@@ -14,6 +14,7 @@
   draftMessage: '',
   suggestions: [],
   sessionNumber,
+  claudeSessionId: null,
   mcpDegraded: false,
   mcpError: null,
 });

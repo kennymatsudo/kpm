@@ -36,6 +36,8 @@ export interface PerSessionState {
   suggestions: string[];
   /** Sequential session number for display (e.g., "Session 1") */
   sessionNumber: number;
+  /** Claude SDK session ID (for debugging) */
+  claudeSessionId: string | null;
   mcpDegraded: boolean;
   /** Error message when MCP is degraded */
   mcpError: string | null;
@@ -76,6 +78,7 @@ export interface ChatState {
   setSessionState: (chatSessionId: string, state: SessionState) => void;
   setDraftMessage: (chatSessionId: string, message: string) => void;
   setSuggestions: (chatSessionId: string, suggestions: string[]) => void;
+  setClaudeSessionId: (chatSessionId: string, claudeSessionId: string) => void;
   setMcpStatus: (chatSessionId: string, degraded: boolean, error?: string | null) => void;
 
   // Shared actions
