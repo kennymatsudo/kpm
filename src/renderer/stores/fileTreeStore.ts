@@ -27,6 +27,7 @@ interface FileTreeState {
   projectId: string | null;
   nodes: FileNode[];
   expandedPaths: Set<string>;
+  selectedPaths: Set<string>;
   focusedPaths: Set<string>;
   renamingPath: string | null;
   /** Phantom input state for inline file/folder creation */
@@ -81,6 +82,7 @@ const initialState = {
   projectId: null as string | null,
   nodes: [] as FileNode[],
   expandedPaths: new Set<string>(),
+  selectedPaths: new Set<string>(),
   focusedPaths: new Set<string>(),
   renamingPath: null as string | null,
   creatingItem: null as CreatingItem | null,
@@ -176,6 +178,23 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
 
   setNodes: (nodes) => set({ nodes }),
 
+  setSelectedPath: (path, mode = 'single') => {
+    if (path === null) {
+      return;
+    }
+
+    if (mode === 'toggle') {
+      const newPaths = new Set(get().selectedPaths);
+      if (newPaths.has(path)) {
+        newPaths.delete(path);
+      } else {
+        newPaths.add(path);
+      }
+      return;
+    }
+
+    // single
+  },
 
   toggleExpanded: (path) => {
     const { expandedPaths } = get();
@@ -235,6 +254,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       : await get().createFile(path);
 
     if (node) {
+      set({ selectedPaths: new Set([node.path]), creatingItem: null });
       get().markRecentlyChanged(node.path, 'created');
     } else {
       set({ creatingItem: null });
@@ -298,6 +318,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
         projectId,
         nodes: [],
         expandedPaths: new Set<string>(),
+        selectedPaths: new Set<string>(),
         focusedPaths: new Set<string>(),
       });
     }
@@ -435,6 +456,11 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
         set({ nodes: updatedNodes });
 
         // Clear selection if deleted item was selected
+        const { selectedPaths } = get();
+        if (selectedPaths.has(path)) {
+          const newSelected = new Set(selectedPaths);
+          newSelected.delete(path);
+          set({ selectedPaths: newSelected });
         }
 
         // Remove from focused if present
@@ -468,6 +494,12 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       set({ nodes: updatedNodes });
 
       // Update selection if renamed item was selected
+      const { selectedPaths } = get();
+      if (selectedPaths.has(oldPath)) {
+        const newSelected = new Set(selectedPaths);
+        newSelected.delete(oldPath);
+        newSelected.add(newPath);
+        set({ selectedPaths: newSelected });
       }
 
       // Update focused paths if needed
@@ -508,6 +540,12 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       set({ nodes: updatedNodes });
 
       // Update selection if moved item was selected
+      const { selectedPaths } = get();
+      if (selectedPaths.has(sourcePath)) {
+        const newSelected = new Set(selectedPaths);
+        newSelected.delete(sourcePath);
+        newSelected.add(newPath);
+        set({ selectedPaths: newSelected });
       }
 
       // Update focused paths if needed

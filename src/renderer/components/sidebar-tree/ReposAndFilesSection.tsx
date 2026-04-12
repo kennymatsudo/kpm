@@ -89,10 +89,12 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     nodes: projectNodes,
     expandedPaths: projectExpanded,
     loadingPaths: projectLoading,
+    selectedPaths: projectSelectedPaths,
     renamingPath,
     creatingItem,
     loadDirectory: loadProjectDirectory,
     toggleExpanded: toggleProjectExpanded,
+    setSelectedPath: selectPath,
     setRenamingPath,
     setCreatingItem,
     createItemAndSelect,
@@ -115,6 +117,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
 
   const fileContextMenus = useFileContextMenus({
     projectId,
+    setProjectSelectedPath: (path: string) => selectPath(path),
     deleteEntry,
     getNodeByPath,
     removeFocusedResource,

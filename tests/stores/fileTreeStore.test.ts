@@ -159,6 +159,7 @@ describe('fileTreeStore', () => {
       const state = useFileTreeStore.getState();
       expect(state.projectId).toBe(null);
       expect(state.nodes).toEqual([]);
+      expect(state.selectedPaths.size).toBe(0);
       expect(state.expandedPaths.size).toBe(0);
       expect(state.focusedPaths.size).toBe(0);
       expect(state.renamingPath).toBe(null);
@@ -208,6 +209,7 @@ describe('fileTreeStore', () => {
 
       const state = useFileTreeStore.getState();
       expect(state.projectId).toBe('project-2');
+      expect(state.selectedPaths.size).toBe(0);
       expect(state.expandedPaths.size).toBe(0);
       expect(state.focusedPaths.size).toBe(0);
     });
