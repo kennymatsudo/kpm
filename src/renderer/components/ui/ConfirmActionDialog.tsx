@@ -1,3 +1,4 @@
+import { useState, useRef, useCallback, type ReactNode } from 'react';
 import { Modal } from './Modal';
 import { MotionButton, ActionButton } from './MotionButton';
 
@@ -55,6 +56,7 @@ const variantClasses: Record<ActionOption['variant'], string> = {
  * 2. Dual action: Two choice buttons + cancel (use `dualActions` prop)
  *
  * Handles loading states automatically when onClick returns a Promise.
+ * Arrow keys navigate between buttons; Enter activates the focused button.
  */
 export function ConfirmActionDialog({
   title,
@@ -67,6 +69,8 @@ export function ConfirmActionDialog({
 }: ConfirmActionDialogProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeAction, setActiveAction] = useState<0 | 1 | null>(null);
+  const firstActionRef = useRef<HTMLButtonElement>(null);
+  const secondActionRef = useRef<HTMLButtonElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
   const handleAction = async (
@@ -85,13 +89,41 @@ export function ConfirmActionDialog({
     }
   };
 
+  const handleArrowKeys = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+
+      const buttons = [
+        firstActionRef.current,
+        dualActions ? secondActionRef.current : null,
+        cancelButtonRef.current,
+      ].filter((b): b is HTMLButtonElement => b !== null);
+
+      const currentIndex = buttons.indexOf(
+        document.activeElement as HTMLButtonElement
+      );
+      if (currentIndex === -1) return;
+
+      const next =
+        e.key === 'ArrowDown'
+          ? (currentIndex + 1) % buttons.length
+          : (currentIndex - 1 + buttons.length) % buttons.length;
+      buttons[next].focus();
+    },
+    [dualActions]
+  );
+
   const renderActionButton = (
     actionConfig: ActionOption,
+    index: 0 | 1 | null,
+    ref?: React.RefObject<HTMLButtonElement | null>
   ) => {
     const isThisLoading = isProcessing && activeAction === index;
 
     return (
       <ActionButton
+        ref={ref}
         key={index ?? 'single'}
         label={actionConfig.label}
         description={actionConfig.description}
@@ -110,6 +142,7 @@ export function ConfirmActionDialog({
       isOpen={true}
       onClose={onCancel}
       size="sm"
+      initialFocusRef={firstActionRef}
       preventClose={isProcessing}
       role="alertdialog"
       aria-labelledby={`${dialogId}-title`}
@@ -128,10 +161,14 @@ export function ConfirmActionDialog({
         >
           {message}
         </div>
+        <div className="flex flex-col gap-2" onKeyDown={handleArrowKeys}>
           {dualActions && (
             <>
+              {renderActionButton(dualActions[0], 0, firstActionRef)}
+              {renderActionButton(dualActions[1], 1, secondActionRef)}
             </>
           )}
+          {action && !dualActions && renderActionButton(action, null, firstActionRef)}
           <MotionButton
             ref={cancelButtonRef}
             variant="secondary"
