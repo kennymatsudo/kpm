@@ -36,6 +36,8 @@ export interface IPlanItemRepository {
    * @returns Array of item IDs that were successfully updated
    */
   batchReparent(updates: { id: string; parentId: string | null }[]): string[];
+  /** Batch update status for multiple items in a single transaction. */
+  batchUpdateStatus(ids: string[], status: string): void;
 }
 
 // =============================================================================

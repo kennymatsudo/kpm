@@ -44,6 +44,7 @@ export class ChatMessageRepository implements IChatMessageRepository {
       insertOrIgnoreWithClientMessageId: db.prepare(`
         INSERT OR IGNORE INTO chat_messages (id, session_id, role, content, chat_session_id, provider, client_message_id)
         VALUES (?, ?, ?, ?, ?, ?, ?)
+        RETURNING *
       `),
       getByClientMessageId: db.prepare(`
         SELECT * FROM chat_messages
@@ -83,6 +84,7 @@ export class ChatMessageRepository implements IChatMessageRepository {
       }
 
       const id = randomUUID();
+      const inserted = this.stmts.insertOrIgnoreWithClientMessageId.get(
         id,
         sessionId,
         role,
@@ -90,6 +92,8 @@ export class ChatMessageRepository implements IChatMessageRepository {
         chatSessionId,
         clientMessageId
       ) as ChatMessage | undefined;
+      if (inserted) {
+        return inserted;
       }
     }
 

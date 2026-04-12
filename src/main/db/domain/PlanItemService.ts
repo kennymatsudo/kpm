@@ -119,4 +119,8 @@ export function moveSubtasksToPlan(
   if (!projectId) return;
 
   const children = deps.planItems.getChildrenByParent(projectId, parentItemId);
+  const subtaskIds = children
+    .filter(i => isSubtaskIssueType(i.external_issue_type))
+    .map(i => i.id);
+  deps.planItems.batchUpdateStatus(subtaskIds, 'planned');
 }

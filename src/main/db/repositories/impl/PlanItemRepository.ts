@@ -450,6 +450,16 @@ export class PlanItemRepository implements IPlanItemRepository {
     return this.stmts.siblingsNoParentNoExclude.all(projectId) as { id: string; item_order: number }[];
   }
 
+  batchUpdateStatus(ids: string[], status: string): void {
+    if (ids.length === 0) return;
+    const transaction = this.db.transaction(() => {
+      for (const id of ids) {
+        this.stmts.updateStatus.run(status, id);
+      }
+    });
+    transaction();
+  }
+
   /**
    * Batch reparent multiple items efficiently.
    * Uses a single pre-prepared statement, binding once per item.
