@@ -31,6 +31,7 @@ export function SlackChannelSettings({ projectId }: SlackChannelSettingsProps) {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
+    void loadLinks(projectId);
   }, [projectId, loadLinks]);
 
   const normalizedName = channelInput.replace(/^#/, '').trim();
@@ -72,6 +73,7 @@ export function SlackChannelSettings({ projectId }: SlackChannelSettingsProps) {
             value={channelInput}
             onChange={(e) => setChannelInput(e.target.value)}
             onKeyDown={(e) => {
+              if (e.key === 'Enter') void handleAdd();
               if (e.key === 'Escape') { setIsAdding(false); setChannelInput(''); }
             }}
             placeholder="channel-name"

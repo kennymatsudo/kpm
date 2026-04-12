@@ -1,8 +1,10 @@
 import type { Repo } from '../../shared/types';
 
+export function listProjectRepos(projectId: string): Promise<Repo[]> {
   return window.api.repos.list(projectId);
 }
 
+export function selectRepoPaths(): Promise<string[]> {
   return window.api.repos.selectDialog();
 }
 
@@ -21,5 +23,6 @@ export async function loadRepoBranchOptions(repoPath: string): Promise<{
   };
 }
 
+export function listRepoDirectories(repoPath: string, prefix: string): Promise<string[]> {
   return window.api.repos.listDirectories(repoPath, prefix);
 }

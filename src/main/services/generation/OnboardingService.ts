@@ -370,10 +370,13 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
           cwd: options.projectPath,
           additionalDirectories: scanResults.map(result => result.repoPath),
           persistSession: false, // Ephemeral one-shot query, no need to persist
+          canUseTool: (toolName, input) => Promise.resolve(
             toolName === 'Write' || toolName === 'Edit' || toolName === 'Bash'
               ? {
+                  behavior: 'deny' as const,
                   message: 'Onboarding context generation is read-only. Use Read, Grep, or Glob if more repository context is needed.',
                 }
+              : { behavior: 'allow' as const, updatedInput: input }
           ),
         };
 

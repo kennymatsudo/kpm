@@ -1,6 +1,10 @@
 import type { IProjectRepository } from '../../db/interfaces';
+import type path from 'path';
+import type fs from 'fs';
 import { failure, success, type ServiceResult } from '../result';
 
+type PathModule = typeof path;
+type FsModule = typeof fs;
 
 export interface ArtifactRecord {
   filename: string;

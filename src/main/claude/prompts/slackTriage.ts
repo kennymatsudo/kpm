@@ -9,6 +9,9 @@ import type { SlackTriageStatus } from '../../../shared/types';
 
 export interface SlackTriagePromptContext {
   channelName: string;
+  planItems: { title: string; status: string }[];
+  priorTopics: { topic_summary: string; status: SlackTriageStatus }[];
+  dismissedThreadContext: { thread_ts: string; topic_summary: string; dismissal_reason?: string }[];
 }
 
 export function buildSlackTriagePrompt(context: SlackTriagePromptContext): string {
@@ -143,6 +146,8 @@ For info_only:
 }
 
 export function buildSlackTriageUserMessage(
+  messages: { ts: string; user: string; text: string; thread_ts?: string }[],
+  threads: Map<string, { ts: string; user: string; text: string }[]>
 ): string {
   const parts: string[] = ['## Messages to Triage\n'];
 

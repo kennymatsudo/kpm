@@ -31,6 +31,7 @@ export async function loadProjectResources(projectId: string): Promise<LoadedPro
   };
 }
 
+export function loadProjectRepoBranches(repoPaths: string[]): Promise<Record<string, string | null>> {
   return window.api.repos.getBranches(repoPaths);
 }
 
@@ -74,6 +75,7 @@ export async function deleteProjectRecord(projectId: string): Promise<void> {
   await window.api.projects.delete(projectId);
 }
 
+export function listProjects(): Promise<Project[]> {
   return window.api.projects.list();
 }
 

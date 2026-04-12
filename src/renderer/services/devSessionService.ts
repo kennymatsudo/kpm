@@ -30,9 +30,11 @@ export async function loadDevSessions(projectId: string): Promise<{
   };
 }
 
+export function checkDevSessionDirty(sessionId: string): Promise<SessionDirtyResult> {
   return window.api.devSessions.checkDirty(sessionId);
 }
 
+export function deleteDevSessionRecord(
   sessionId: string,
   mode: 'cleanup' | 'destroy'
 ): Promise<{ success: boolean; error?: string }> {
@@ -41,17 +43,20 @@ export async function loadDevSessions(projectId: string): Promise<{
     : window.api.devSessions.delete(sessionId, true);
 }
 
+export function dismissExistingSession(
   session: DevSessionWithPlanItem
 ): Promise<{ success: boolean; error?: string }> {
   return window.api.devSessions.delete(session.id, false);
 }
 
+export function updateExistingSessionName(
   session: DevSessionWithPlanItem,
   name: string
 ): Promise<{ success: boolean; error?: string }> {
   return window.api.devSessions.updateName(session.id, name);
 }
 
+export function loadDevSessionDiff(sessionId: string): Promise<SessionDiffResult> {
   return window.api.devSessions.getDiff(sessionId);
 }
 

@@ -1,5 +1,6 @@
 import type { Project } from '../../shared/types';
 
+export function listProjects(): Promise<Project[]> {
   return window.api.projects.list();
 }
 

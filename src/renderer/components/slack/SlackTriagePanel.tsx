@@ -68,11 +68,14 @@ export function SlackTriagePanel({ projectId }: SlackTriagePanelProps) {
 
   useEffect(() => {
     if (isPanelOpen) {
+      void loadLinks(projectId);
+      void loadPendingItems(projectId);
     }
   }, [isPanelOpen, projectId, loadLinks, loadPendingItems]);
 
   useEffect(() => {
     if (isPanelOpen && activeTab === 'history') {
+      void loadHistoryItems(projectId);
     }
   }, [isPanelOpen, activeTab, projectId, loadHistoryItems]);
 

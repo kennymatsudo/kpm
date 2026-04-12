@@ -115,6 +115,7 @@ export class ReviewTaskRepository implements IReviewTaskRepository {
 
   updateStatus(id: string, status: ReviewTask['status'], meta?: ReviewTaskStatusUpdate): ReviewTask | undefined {
     const assignments = ['status = ?', 'updated_at = CURRENT_TIMESTAMP'];
+    const params: (string | null)[] = [status];
 
     if (meta && Object.prototype.hasOwnProperty.call(meta, 'error')) {
       assignments.push('error = ?');

@@ -1,6 +1,8 @@
+export interface PerfEventInput {
   name: string;
   durationMs?: number;
   meta?: Record<string, unknown>;
+}
 
 export function isPerfLoggingEnabled(): boolean {
   if (typeof window === 'undefined') return false;

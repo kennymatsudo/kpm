@@ -13,6 +13,7 @@ export function respondToPermissionRequest(
   return window.api.permission.respond(requestId, projectId, action);
 }
 
+export function listToolPermissions(projectId: string): Promise<ToolPermission[]> {
   return window.api.permissions?.list(projectId) ?? Promise.resolve([]);
 }
 

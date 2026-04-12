@@ -52,6 +52,7 @@ export interface ISlackTriageItemRepository {
   getPending(projectId: string): SlackTriageItem[];
   get(id: string): SlackTriageItem | undefined;
   getExistingMessageTs(channelLinkId: string, statuses: SlackTriageStatus[]): Set<string>;
+  getPriorTopics(channelLinkId: string): { topic_summary: string; status: SlackTriageStatus }[];
   getDismissedForThread(channelLinkId: string, threadTs: string): SlackTriageItem[];
   createBatch(items: SlackTriageItemCreate[]): SlackTriageItem[];
   updateStatus(id: string, status: SlackTriageStatus): void;

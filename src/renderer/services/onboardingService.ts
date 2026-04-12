@@ -22,6 +22,12 @@ export function hasOnboardingApi(): boolean {
   return typeof window !== 'undefined' && Boolean(window.api?.onboarding);
 }
 
+export function getOnboardingContextDirectories(
+  projectId: string
+): Promise<Record<string, string[]> | null> {
+  return window.api.onboarding.getContextDirectories(projectId);
+}
+
 export function generateOnboardingContext(
   taskId: string,
   projectId: string,

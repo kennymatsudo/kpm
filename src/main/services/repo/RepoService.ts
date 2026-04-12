@@ -4,6 +4,7 @@ import type { Repo, RepoEnvironmentMode } from '../../../shared/types';
 import type { IRepoRepository } from '../../db/interfaces';
 import type { RepoWatcherService } from './RepoWatcherService';
 import { failure, success, type ServiceResult, type AsyncResult, wrapAsync } from '../result';
+import type { gitExec } from './gitUtils';
 
 interface RepoFs {
   readdirSync: typeof fs.readdirSync;

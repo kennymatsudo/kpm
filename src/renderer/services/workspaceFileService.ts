@@ -1,4 +1,6 @@
+export type WorkspaceFileSource = string;
 
+export function readWorkspaceFile(
   source: WorkspaceFileSource,
   path: string,
   projectId?: string | null
@@ -13,6 +15,7 @@
   return window.api.repoFiles.readFile(source, path);
 }
 
+export function readProjectBinaryFile(
   projectId: string,
   path: string
 ): Promise<Uint8Array> {
@@ -34,6 +37,7 @@ export async function writeWorkspaceFile(
   }
 }
 
+export function writeProjectFile(
   projectId: string | null | undefined,
   path: string,
   content: string

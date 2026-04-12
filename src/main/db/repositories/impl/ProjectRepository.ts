@@ -6,6 +6,7 @@
 
 import type { Database, Statement } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
+import type { Stats } from 'fs';
 import type { Project } from '../../../../shared/types';
 
 /**
@@ -16,6 +17,7 @@ export interface IFileSystem {
   mkdirSync(path: string, options?: { recursive?: boolean }): void;
   writeFileSync(path: string, content: string, encoding?: BufferEncoding): void;
   rmSync(path: string, options?: { recursive?: boolean; force?: boolean }): void;
+  lstatSync?(path: string): Stats;
   readlinkSync?(path: string): string;
   unlinkSync?(path: string): void;
   symlinkSync?(target: string, path: string): void;

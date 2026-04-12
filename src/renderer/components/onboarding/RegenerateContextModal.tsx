@@ -7,9 +7,11 @@ import { StepScopeFeature } from './StepScopeFeature';
 import { StepContextGeneration } from './StepContextGeneration';
 import { useOnboardingEvents } from '../../hooks/useOnboardingEvents';
 import {
+  getOnboardingContextDirectories,
   saveOnboardingContext,
   saveOnboardingContextDirectories,
 } from '../../services/onboardingService';
+import { readClaudeMdFile } from '../../services/contextFileService';
 import {
   useContextRegenerationStore,
   useProjectDomainStore,

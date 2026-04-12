@@ -1,5 +1,6 @@
 import type { PlanItem } from '../../shared/types';
 
+export function listProjectPlanItems(projectId: string): Promise<PlanItem[]> {
   return window.api.plan.listItems(projectId);
 }
 

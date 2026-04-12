@@ -94,6 +94,7 @@ export class SlackTriageItemRepository implements ISlackTriageItemRepository {
     const stmt = this.db.prepare(
       `SELECT source_messages FROM slack_triage_items WHERE channel_link_id = ? AND status IN (${placeholders})`
     );
+    const rows = stmt.all(channelLinkId, ...statuses) as { source_messages: string }[];
     const tsSet = new Set<string>();
     for (const row of rows) {
       const messages: string[] = JSON.parse(row.source_messages);
@@ -104,8 +105,11 @@ export class SlackTriageItemRepository implements ISlackTriageItemRepository {
     return tsSet;
   }
 
+  getPriorTopics(channelLinkId: string): { topic_summary: string; status: SlackTriageStatus }[] {
+    return this.stmts.getPriorTopics.all(channelLinkId) as {
       topic_summary: string;
       status: SlackTriageStatus;
+    }[];
   }
 
   getDismissedForThread(channelLinkId: string, threadTs: string): SlackTriageItem[] {

@@ -1,4 +1,6 @@
+import { describe, expect, it, vi } from 'vitest';
 import { createSlackTriageService, type SlackTriageServiceDeps } from '../../src/main/services/core/SlackTriageService';
+import type { SlackChannelLinkCreate } from '../../src/main/db/interfaces/slack';
 
 function createDeps(overrides?: Partial<SlackTriageServiceDeps>): SlackTriageServiceDeps {
   return {
@@ -137,6 +139,7 @@ describe('SlackTriageService createLink', () => {
       slackChannelLinks: {
         getByProject: vi.fn(() => []),
         getByChannelId: vi.fn(() => undefined),
+        create: vi.fn((link: SlackChannelLinkCreate) => ({
           id: 'link-1',
           project_id: link.project_id,
           channel_id: link.channel_id,

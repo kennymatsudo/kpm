@@ -20,6 +20,8 @@ const mockExecFile = vi.mocked(execFile);
 const mockExistsSync = vi.mocked(fs.existsSync);
 const mockReadFileSync = vi.mocked(fs.readFileSync);
 
+function createExecFileMock(response: { stdout: string; stderr: string } | Error): typeof execFile {
+  return ((
     _cmd: string,
     _args: unknown,
     _opts: unknown,
@@ -34,6 +36,7 @@ const mockReadFileSync = vi.mocked(fs.readFileSync);
     }
 
     return {} as ReturnType<typeof execFile>;
+  }) as unknown as typeof execFile;
 }
 
 describe('McpDiscoveryService.getSlackAvailability', () => {

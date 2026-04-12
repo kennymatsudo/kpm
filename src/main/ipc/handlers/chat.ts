@@ -27,6 +27,8 @@ import { IPC_CHANNELS } from '../channels';
     IPC_CHANNELS.chat.newSession,
     createIpcHandler(
       ChatSchemas.newSession,
+      ({ projectId }) => {
+        const result = chatService.newSession(projectId);
         if (!result.ok) throw new Error(result.error);
       },
       'Failed to start new chat session',

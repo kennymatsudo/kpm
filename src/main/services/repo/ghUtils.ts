@@ -211,6 +211,8 @@ function toAuthorType(rawType: string | null | undefined): GitHubAuthorType {
     case 'App':
     case 'Mannequin':
       return rawType;
+    case undefined:
+    case null:
     default:
       return 'Unknown';
   }
@@ -255,6 +257,7 @@ interface GhGraphQLReviewThreadNode {
   resolvedBy: GhGraphQLActor | null;
   comments: {
     pageInfo: GhGraphQLPageInfo;
+    nodes: (GhGraphQLReviewCommentNode | null)[];
   };
 }
 
@@ -282,29 +285,44 @@ interface GhGraphQLConversationCommentNode {
   viewerCanDelete: boolean;
 }
 
+interface GhGraphQLReviewThreadsPageResponse {
   repository: {
     pullRequest: {
       reviewThreads: GhGraphQLReviewThreadsPage;
     } | null;
   } | null;
+}
 
+interface GhGraphQLReviewThreadsPage {
   pageInfo: GhGraphQLPageInfo;
+  nodes: (GhGraphQLReviewThreadNode | null)[];
+}
 
+interface GhGraphQLTopLevelReviewsPageResponse {
   repository: {
     pullRequest: {
       reviews: GhGraphQLTopLevelReviewsPage;
     } | null;
   } | null;
+}
 
+interface GhGraphQLTopLevelReviewsPage {
   pageInfo: GhGraphQLPageInfo;
+  nodes: (GhGraphQLTopLevelReviewNode | null)[];
+}
 
+interface GhGraphQLConversationCommentsPageResponse {
   repository: {
     pullRequest: {
       comments: GhGraphQLConversationCommentsPage;
     } | null;
   } | null;
+}
 
+interface GhGraphQLConversationCommentsPage {
   pageInfo: GhGraphQLPageInfo;
+  nodes: (GhGraphQLConversationCommentNode | null)[];
+}
 
 function mapReviewThreadComment(node: GhGraphQLReviewCommentNode): PrReviewThreadComment {
   return {
@@ -365,6 +383,7 @@ async function fetchAdditionalReviewThreadComments(
       node: {
         comments: {
           pageInfo: GhGraphQLPageInfo;
+          nodes: (GhGraphQLReviewCommentNode | null)[];
         };
       } | null;
     }>(

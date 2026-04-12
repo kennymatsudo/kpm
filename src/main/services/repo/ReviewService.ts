@@ -103,6 +103,8 @@ function reconcileTaskStatus(existing: ReviewTask | undefined, thread: PrReviewT
     case 'assessed':
     case 'done':
       return 'needs_review';
+    case 'in_progress':
+    case 'needs_review':
       return existing.status;
   }
 }

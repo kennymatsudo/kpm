@@ -37,7 +37,9 @@ export function PermissionPrompt() {
           </div>
         ) : (
           <div className="text-sm text-text-primary mb-3">
+            <pre className="font-mono text-xs bg-surface-3 px-2 py-1 rounded max-h-40 overflow-auto whitespace-pre-wrap break-all">
               {pendingRequest.preview}
+            </pre>
           </div>
         )}
 
