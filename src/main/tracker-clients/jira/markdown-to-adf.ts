@@ -174,6 +174,7 @@ function createBlockquote(text: string): AdfNode {
   const paragraphs = text.split('\n\n').filter(p => p.trim());
   return {
     type: 'blockquote',
+    content: paragraphs.map(createParagraph),
   };
 }
 

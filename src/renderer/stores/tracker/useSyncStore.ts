@@ -23,6 +23,22 @@ function getChangeCount(stats: SyncPreview['stats']): number {
   return stats.new + stats.updated + stats.conflicts + stats.deleted;
 }
 
+/** Build a SyncAvailability entry that preserves previous values, with overrides applied. */
+function availabilityFromPrevious(
+  previous: SyncAvailability | undefined,
+  overrides: Partial<SyncAvailability>
+): SyncAvailability {
+  return {
+    isChecking: false,
+    hasIncomingChanges: previous?.hasIncomingChanges ?? false,
+    changeCount: previous?.changeCount ?? 0,
+    lastCheckedAt: previous?.lastCheckedAt ?? null,
+    stats: previous?.stats ?? null,
+    error: null,
+    ...overrides,
+  };
+}
+
 interface SyncState {
   isSyncing: boolean;
   syncProgress: { phase: string; current: number; total: number } | null;
@@ -122,6 +138,12 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   checkForUpdates: async (projectId, associationId) => {
     const previous = get().syncAvailability[associationId];
 
+    const setAvailability = (availability: SyncAvailability) =>
+      set((state) => ({
+        syncAvailability: { ...state.syncAvailability, [associationId]: availability },
+      }));
+
+    setAvailability(availabilityFromPrevious(previous, { isChecking: true }));
 
     try {
 
@@ -133,6 +155,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         error: null,
       };
 
+      setAvailability(availability);
       return availability;
     } catch (e) {
       return null;

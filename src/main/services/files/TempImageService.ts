@@ -319,6 +319,7 @@ export type TempImageService = ReturnType<typeof createTempImageService>;
 
 export const tempImageService = createTempImageService({
   getTempDir: () => os.tmpdir(),
+  generateRandomBytes: randomBytes,
 });
 
 // =============================================================================
