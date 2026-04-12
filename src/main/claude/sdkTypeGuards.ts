@@ -8,6 +8,9 @@ import type {
   SDKResultMessage,
   SDKSystemMessage,
   SDKAPIRetryMessage,
+  SDKSessionStateChangedMessage,
+  SDKRateLimitEvent,
+  SDKRateLimitInfo,
   TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
 
@@ -51,4 +54,20 @@ export function getTerminalReason(msg: SDKResultMessage): TerminalReason | undef
  */
 export function isApiRetryMessage(msg: SDKMessage): msg is SDKAPIRetryMessage {
   return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'api_retry';
+}
+
+/**
+ * Check if a message is a session state change notification.
+ * Emitted when the session transitions between idle, running, or requires_action.
+ */
+export function isSessionStateChanged(msg: SDKMessage): msg is SDKSessionStateChangedMessage {
+  return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'session_state_changed';
+}
+
+/**
+ * Check if a message is a rate limit event.
+ * Emitted when rate limit info changes (warning, rejection, etc.).
+ */
+export function isRateLimitEvent(msg: SDKMessage): msg is SDKRateLimitEvent {
+  return msg.type === 'rate_limit_event';
 }

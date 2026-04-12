@@ -3,6 +3,7 @@ import type { AppServices } from '../appServices';
 import type { IRepositoryContainer } from '../../db/interfaces';
 import { createStreamingSessionService } from '../streaming/StreamingSessionService';
 import { createContextBuilder } from '../../claude/contextBuilders';
+import type { OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import { buildSdkOptions, type ModelType } from '../../claude/sdkOptionsBuilder';
 import {
   subscribeToPlanActions,
@@ -62,6 +63,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
       mainWindow: BrowserWindow | null;
       onClaudeMdEdit?: (projectId: string, newContent: string) => void;
       onProjectFileWrite?: (projectId: string, filePath: string, content: string) => void;
+      onElicitation?: OnElicitation;
     }) => {
       const pluginPathsResult = services.mcpDiscoveryService.getEnabledPluginPaths();
       const enabledPluginPaths = pluginPathsResult.ok ? pluginPathsResult.data : [];
@@ -83,6 +85,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         mainWindow: options.mainWindow,
         onClaudeMdEdit: options.onClaudeMdEdit,
         onProjectFileWrite: options.onProjectFileWrite,
+        onElicitation: options.onElicitation,
         enabledPluginPaths,
         enabledUserMcpConfigs,
         disabledMcpTools,

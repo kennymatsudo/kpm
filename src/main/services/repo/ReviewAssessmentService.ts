@@ -295,6 +295,7 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
     log(`Assessing ${threadsToAssess.length} threads for PR #${session.pr_number}`);
 
     const sdkOptions: SDKOptions = {
+      persistSession: false,
     };
 
     try {
@@ -403,6 +404,7 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
 
 
     const sdkOptions: SDKOptions = {
+      persistSession: false,
       systemPrompt: buildPostImplSystemPrompt(),
     };
 

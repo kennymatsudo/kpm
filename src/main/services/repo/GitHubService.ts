@@ -434,6 +434,7 @@ export function createGitHubService(deps: GitHubServiceDeps) {
         log('Calling Sonnet to generate PR content...');
 
         const sdkOptions: SDKOptions = {
+          persistSession: false,
           systemPrompt,
           stderr: (data: string) => { logError(`stderr: ${data}`); },
         };

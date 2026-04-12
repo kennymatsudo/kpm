@@ -21,7 +21,11 @@ import {
   type McpServerConfig,
   type McpSetServersResult,
   type PermissionMode,
+  type SDKControlGetContextUsageResponse,
+  type ModelInfo,
+  type AccountInfo,
 } from '@anthropic-ai/claude-agent-sdk';
+export type { McpServerStatus, SDKControlGetContextUsageResponse, ModelInfo, AccountInfo } from '@anthropic-ai/claude-agent-sdk';
 import { AsyncMessageQueue, type StreamingUserMessage } from './AsyncMessageQueue';
 import { getConfig } from '../../config';
 
@@ -288,6 +292,36 @@ export class StreamingSession {
    */
   async setMcpServers(servers: Record<string, McpServerConfig>): Promise<McpSetServersResult | null> {
     return (await this.queryInstance?.setMcpServers(servers)) ?? null;
+  }
+
+  /**
+   * Get a breakdown of context window usage by category.
+   * Useful for showing users how much context is consumed.
+   */
+  async getContextUsage(): Promise<SDKControlGetContextUsageResponse | null> {
+    return (await this.queryInstance?.getContextUsage()) ?? null;
+  }
+
+  /**
+   * Get the list of available models from the SDK.
+   * Returns model info including display names, descriptions, and capabilities.
+   */
+  async supportedModels(): Promise<ModelInfo[]> {
+    return (await this.queryInstance?.supportedModels()) ?? [];
+  }
+
+  /**
+   * Get information about the authenticated account.
+   */
+  async accountInfo(): Promise<AccountInfo | null> {
+    return (await this.queryInstance?.accountInfo()) ?? null;
+  }
+
+  /**
+   * Stop a running background task by ID.
+   */
+  async stopTask(taskId: string): Promise<void> {
+    await this.queryInstance?.stopTask(taskId);
   }
 
   /**

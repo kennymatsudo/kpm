@@ -5,6 +5,7 @@
  * This is used by both the per-query and streaming session patterns.
  */
 
+import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import type { ChatViewMode } from '../../shared/types';
 import { createPermissionHandler, type PermissionContext, type ClaudeMdInterceptFn, type ProjectFileInterceptFn } from './permissions';
 import { getConfig } from '../config';
@@ -27,6 +28,8 @@ export interface BuildSdkOptionsParams {
   enabledUserMcpConfigs?: Record<string, Record<string, unknown>>;
   /** Tool names to disallow (for disabled managed MCP servers) */
   disabledMcpTools?: string[];
+  /** Callback for MCP elicitation requests (auth flows, form input) */
+  onElicitation?: OnElicitation;
 }
 
 /**
@@ -65,9 +68,13 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
       plugins: enabledPluginPaths.map(p => ({ type: 'local' as const, path: p })),
     }),
     maxTurns: claudeConfig.maxTurns,
+    // Fallback to Sonnet if the primary model is unavailable (e.g., rate limited)
+    ...(model === 'opus' && { fallbackModel: 'sonnet' }),
     ...(resumeSessionId && { resume: resumeSessionId }),
     ...(claudeConfig.debug && { debug: true }),
     ...(claudeConfig.debug && claudeConfig.debugFile && { debugFile: claudeConfig.debugFile }),
+    // Handle MCP elicitation requests (auth flows, form inputs from managed servers)
+    ...(onElicitation && { onElicitation }),
   };
 
   // Add connected repos as accessible directories

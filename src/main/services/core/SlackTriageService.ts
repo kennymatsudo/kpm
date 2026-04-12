@@ -244,6 +244,7 @@ export function createSlackTriageService(deps: SlackTriageServiceDeps) {
       // Step 0: Pre-filter (deterministic, no model)
       const existingTs = deps.slackTriageItems.getExistingMessageTs(channelLinkId, ['pending', 'executed']);
       const filtered: SlackMessage[] = [];
+      const filteredOut: { ts: string; reason: string }[] = [];
       for (const msg of rawMessages) {
         if (isStructuralSlackMessage(msg)) {
           filteredOut.push({ ts: msg.ts, reason: msg.subtype ? `subtype:${msg.subtype}` : 'structural_text' });
@@ -502,6 +503,7 @@ export type SlackTriageService = ReturnType<typeof createSlackTriageService>;
 // ============================================================================
 
   const sdkOptions: SDKOptions = {
+    persistSession: false,
     systemPrompt,
     maxTurns: 1,
   };

@@ -14,6 +14,7 @@
  */
 
 import type { BrowserWindow } from 'electron';
+import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import { StreamingSession, type McpServerStatus } from '../../claude/streaming';
 import type { ClaudeMdUpdatePayload } from '../../claude/tools/claudemd-update';
 import type { DocumentUpdatePayload } from '../../claude/tools/document-update';
@@ -125,6 +126,7 @@ export interface StreamingSessionServiceDeps {
       mainWindow: BrowserWindow | null;
       onClaudeMdEdit?: (projectId: string, newContent: string) => void;
       onProjectFileWrite?: (projectId: string, filePath: string, content: string) => void;
+      onElicitation?: OnElicitation;
     }
   ) => SDKOptions;
 
@@ -405,6 +407,33 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           })().catch((error) => {
             console.error('[StreamingSessionService] Failed to read file for intercepted write:', error);
           });
+        },
+        // Handle MCP elicitation requests (auth flows, form input from managed servers).
+        // Routes them to the renderer as permission-style prompts so the user can
+        // approve/decline or complete OAuth flows.
+        onElicitation: async (request, { signal }) => {
+          if (!mainWindow) {
+            return { action: 'decline' as const };
+          }
+          // For URL-mode elicitation (OAuth), open the URL and auto-accept
+          if (request.mode === 'url' && request.url) {
+            const { shell } = await import('electron');
+            void shell.openExternal(request.url);
+            return { action: 'accept' as const, content: {} };
+          }
+          // For form-mode elicitation, route to the permission prompt UI
+          const result = await promptUser(mainWindow, projectId, `mcp_elicitation:${request.serverName}`, {
+            message: request.message,
+            mode: request.mode,
+          }, {
+            signal,
+            title: request.title ?? `${request.serverName} requests input`,
+            displayName: request.displayName ?? request.serverName,
+            description: request.description ?? request.message,
+          });
+          return result.behavior === 'allow'
+            ? { action: 'accept' as const, content: {} }
+            : { action: 'decline' as const };
         },
       });
 
@@ -882,6 +911,22 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           detail: `API ${statusText} — retrying in ${delaySec}s (attempt ${sdkMsg.attempt}/${sdkMsg.max_retries})`,
         },
       });
+    }
+
+    // Handle rate limit events — surface warnings/rejections to UI
+    if (isRateLimitEvent(sdkMsg)) {
+      const info = sdkMsg.rate_limit_info;
+      if (info.status === 'allowed_warning' || info.status === 'rejected') {
+        const resetsIn = info.resetsAt ? Math.round((info.resetsAt - Date.now()) / 60_000) : undefined;
+        mainWindow?.webContents.send('chat:activity', {
+          projectId,
+          chatSessionId,
+          activity: {
+            type: 'other' as const,
+            detail,
+          },
+        });
+      }
     }
 
     // Handle result message (final stats)
