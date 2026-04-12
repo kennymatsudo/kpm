@@ -154,6 +154,9 @@ export type {
   SlackExecuteItemInput,
 } from './slack';
 
+// Agent Sessions
+export { AgentSessionSchemas } from './agentSession';
+
 // Confluence
 export { ConfluenceSchemas } from './confluence';
 

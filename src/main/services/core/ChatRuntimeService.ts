@@ -59,11 +59,13 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     buildContext: buildContextWithPrompts,
     buildSdkOptions: (context: PlanContext, options: {
       model: ModelType;
+      effort?: 'low' | 'medium' | 'high' | 'max';
       resumeSessionId?: string;
       mainWindow: BrowserWindow | null;
       onClaudeMdEdit?: (projectId: string, newContent: string) => void;
       onProjectFileWrite?: (projectId: string, filePath: string, content: string) => void;
       onElicitation?: OnElicitation;
+      autoApprove?: boolean;
     }) => {
       const pluginPathsResult = services.mcpDiscoveryService.getEnabledPluginPaths();
       const enabledPluginPaths = pluginPathsResult.ok ? pluginPathsResult.data : [];
@@ -80,12 +82,14 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
       return buildSdkOptions({
         context,
         model: options.model,
+        effort: options.effort,
         currentView: options.currentView,
         resumeSessionId: options.resumeSessionId,
         mainWindow: options.mainWindow,
         onClaudeMdEdit: options.onClaudeMdEdit,
         onProjectFileWrite: options.onProjectFileWrite,
         onElicitation: options.onElicitation,
+        autoApprove: options.autoApprove,
         enabledPluginPaths,
         enabledUserMcpConfigs,
         disabledMcpTools,

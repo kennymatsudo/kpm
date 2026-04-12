@@ -8,9 +8,12 @@ import type {
   Project as ProjectBase,
   PlanItem as PlanItemBase,
   Group,
+  AgentType,
 } from './base-types';
+import type { PersistedAgentReview } from './agent-types';
 
 // Re-export core types from base types
+export type { AgentType, AgentSessionState, AgentSessionRole } from './base-types';
 
 // =============================================================================
 // =============================================================================
@@ -62,6 +65,10 @@ export interface TaskPromptTemplate {
   created_at: string;
   updated_at: string;
 }
+
+/**
+ * Effort level controlling how much thinking/reasoning Claude applies.
+ */
 
 // =============================================================================
 // Custom Prompt Types
@@ -308,6 +315,7 @@ export interface Repo {
   project_id: string;
   path: string;
   environment_mode?: RepoEnvironmentMode;
+  active_worktree_path?: string | null;
   created_at?: string;
 }
 
@@ -724,6 +732,15 @@ export type SessionState = 'idle' | 'connecting' | 'ready' | 'processing' | 'err
  * - (any) → deleted (user deletes session)
  */
 export type DevSessionStatus =
+  | 'pending'      // Awaiting user approval to start
+  | 'inactive';    // Stopped (can resume or delete)
+
+export type DevSessionAutomationPhase =
+  | 'idle'
+  | 'reviewing'
+  | 'addressing_review'
+  | 'ready_for_review'
+  | 'needs_attention';
 
 /**
  * A development session represents an implementation attempt.
@@ -746,6 +763,10 @@ export interface DevSession {
   // Status
   status: DevSessionStatus;
 
+  // Agent type used for this session
+  agent_type: AgentType;
+  automation_phase: DevSessionAutomationPhase | null;
+
   // Context passed to Claude Code
   initial_instructions: string;
 
@@ -754,6 +775,9 @@ export interface DevSession {
   pr_url: string | null;
   pr_state: string | null;      // 'OPEN' | 'CLOSED' | 'MERGED'
   review_state: string | null;  // 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED'
+
+  // Merge ordering (null = derive from plan dependency graph; integer = user explicit override)
+  merge_order: number | null;
 
   // Timestamps
   created_at: string;
@@ -767,6 +791,7 @@ export interface DevSession {
  */
 export interface DevSessionWithPlanItem extends DevSession {
   repo_name: string | null;
+  latest_agent_review?: PersistedAgentReview | null;
   plan_item: {
     id: string;
     title: string;

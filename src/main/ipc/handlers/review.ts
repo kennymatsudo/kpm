@@ -7,6 +7,7 @@
 import { ipcMain } from 'electron';
 import type { ReviewService } from '../../services/repo/ReviewService';
 import type { ReviewAssessmentService } from '../../services/repo/ReviewAssessmentService';
+import type { ReviewPollService } from '../../services/repo/ReviewPollService';
 import { unwrapOrThrow } from '../../services/result';
 import { IPC_CHANNELS } from '../channels';
 import { ReviewSchemas } from '../validation';
@@ -14,6 +15,8 @@ import { createIpcHandler } from '../validation/utils';
 
 export function registerReviewHandlers(
   reviewService: ReviewService,
+  reviewAssessmentService: ReviewAssessmentService,
+  reviewPollService: ReviewPollService
 ): void {
   ipcMain.handle(
     IPC_CHANNELS.review.getInbox,
@@ -143,6 +146,28 @@ export function registerReviewHandlers(
         return { inbox };
       },
       'Failed to override disposition'
+    )
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.review.pollNow,
+    createIpcHandler(
+      ReviewSchemas.pollNow,
+      async () => {
+        return reviewPollService.pollNow();
+      },
+      'Failed to trigger review poll'
+    )
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.review.pollSession,
+    createIpcHandler(
+      ReviewSchemas.pollSession,
+      async ({ sessionId }) => {
+        return reviewPollService.pollSession(sessionId);
+      },
+      'Failed to poll session for reviews'
     )
   );
 }

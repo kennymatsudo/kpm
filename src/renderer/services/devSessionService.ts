@@ -60,6 +60,24 @@ export function loadDevSessionDiff(sessionId: string): Promise<SessionDiffResult
   return window.api.devSessions.getDiff(sessionId);
 }
 
+export interface MergeOrderEntry {
+  layer: number | null;
+  blockedBy: string[];
+}
+
+export function getDevSessionMergeOrder(
+  projectId: string,
+): Promise<{ success: boolean; mergeOrder?: Record<string, MergeOrderEntry>; error?: string }> {
+  return window.api.devSessions.getMergeOrder(projectId);
+}
+
+export function updateDevSessionMergeOrder(
+  sessionId: string,
+  order: number | null,
+): Promise<{ success: boolean; error?: string }> {
+  return window.api.devSessions.updateMergeOrder(sessionId, order);
+}
+
 export function subscribeToSessionStatusChanges(
   callback: (event: SessionStatusChangedEvent) => void
 ): () => void {

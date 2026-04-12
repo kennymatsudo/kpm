@@ -84,6 +84,7 @@ export interface ResourceSlice {
   setRepoBranches: (branches: Record<string, string | null>) => void;
   setRepoBranch: (repoId: string, branch: string | null) => void;
   updateRepoEnvironmentMode: (projectId: string, repoId: string, mode: RepoEnvironmentMode) => Promise<boolean>;
+  setActiveWorktreePath: (projectId: string, repoId: string, worktreePath: string | null) => Promise<boolean>;
   // Worktree actions
   setWorktrees: (worktrees: Worktree[]) => void;
   addWorktree: (worktree: Worktree) => void;
@@ -134,6 +135,7 @@ export type ResourceDomainState = Pick<
   'repos' | 'repoBranches' | 'attachments' | 'worktrees' | 'worktreeLoading' |
   'setRepos' | 'setAttachments' | 'addRepo' | 'addReposToProject' | 'addReposFromDialog' |
   'removeRepo' | 'removeRepoFromProject' | 'addAttachment' | 'removeAttachment' | 'refreshRepos' |
+  'setRepoBranches' | 'setRepoBranch' | 'updateRepoEnvironmentMode' | 'setActiveWorktreePath' |
   'setWorktrees' | 'addWorktree' | 'removeWorktree' |
 >;
 

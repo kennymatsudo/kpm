@@ -30,6 +30,8 @@ export interface BuildSdkOptionsParams {
   disabledMcpTools?: string[];
   /** Callback for MCP elicitation requests (auth flows, form input) */
   onElicitation?: OnElicitation;
+  /** When true, skip permission prompts and auto-allow all non-denied tool calls */
+  autoApprove?: boolean;
 }
 
 /**
@@ -43,6 +45,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     currentView,
     onClaudeMdEdit,
     onProjectFileWrite,
+    autoApprove,
   };
 
   // Get MCP server
@@ -68,6 +71,8 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
       plugins: enabledPluginPaths.map(p => ({ type: 'local' as const, path: p })),
     }),
     maxTurns: claudeConfig.maxTurns,
+    // Effort level: guides how much thinking Claude applies (works with adaptive thinking)
+    ...(effort && { effort }),
     // Fallback to Sonnet if the primary model is unavailable (e.g., rate limited)
     ...(model === 'opus' && { fallbackModel: 'sonnet' }),
     ...(resumeSessionId && { resume: resumeSessionId }),

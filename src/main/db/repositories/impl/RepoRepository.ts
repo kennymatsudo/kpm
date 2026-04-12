@@ -17,6 +17,7 @@ interface PreparedStatements {
   getById: Statement;
   insert: Statement;
   updateEnvironmentMode: Statement;
+  updateActiveWorktreePath: Statement;
   delete: Statement;
 }
 
@@ -33,6 +34,7 @@ export class RepoRepository implements IRepoRepository {
         RETURNING *
       `),
       updateEnvironmentMode: db.prepare('UPDATE repos SET environment_mode = ? WHERE id = ?'),
+      updateActiveWorktreePath: db.prepare('UPDATE repos SET active_worktree_path = ? WHERE id = ?'),
       delete: db.prepare('DELETE FROM repos WHERE id = ?'),
     };
   }
@@ -53,6 +55,10 @@ export class RepoRepository implements IRepoRepository {
 
   updateEnvironmentMode(id: string, mode: RepoEnvironmentMode): void {
     this.stmts.updateEnvironmentMode.run(mode, id);
+  }
+
+  updateActiveWorktreePath(id: string, worktreePath: string | null): void {
+    this.stmts.updateActiveWorktreePath.run(worktreePath, id);
   }
 
   delete(id: string): void {

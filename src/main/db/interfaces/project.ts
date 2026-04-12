@@ -36,6 +36,7 @@ export interface IRepoRepository {
   getById(id: string): Repo | undefined;
   add(projectId: string, path: string): Repo;
   updateEnvironmentMode(id: string, mode: RepoEnvironmentMode): void;
+  updateActiveWorktreePath(id: string, worktreePath: string | null): void;
   delete(id: string): void;
   remove(id: string): void;
 }

@@ -1,1 +1,180 @@
+/**
+ * DetailPane - Slide-in panel showing agent session details.
+ *
+ */
+
+import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { ActivityTab } from './ActivityTab';
+import { ChangesTab } from './ChangesTab';
+import { CreatePrModal } from '../development/CreatePrModal';
+import { LinkPrDialog } from '../development/LinkPrDialog';
 import { ReviewTab } from '../development/ReviewTab';
+import { useAgentSession } from '../../hooks/useAgentSession';
+import { openExternalUrl } from '../../services/shellService';
+import { toReviewSessionId } from '../../../shared/agent-types';
+
+interface DetailPaneProps {
+  session: DevSessionWithPlanItem;
+  onClose: () => void;
+}
+
+
+export const DetailPane = memo(function DetailPane({
+  session,
+  onClose,
+}: DetailPaneProps) {
+  const [activeTab, setActiveTab] = useState<DetailTab>('activity');
+  const [showCreatePr, setShowCreatePr] = useState(false);
+  const [showLinkPr, setShowLinkPr] = useState(false);
+  const [changesRefreshToken, setChangesRefreshToken] = useState(0);
+  // When true, committing also transitions the card to in_review (Ready for Review path).
+  // When false, committing is standalone — no status change (Changes tab path).
+  const [commitTransitionsToReview, setCommitTransitionsToReview] = useState(false);
+  const setCommitState = useDevSessionsStore((s) => s.setCommitState);
+  const loadDiff = useDevSessionsStore((s) => s.loadDiff);
+  const implementationSession = useAgentSession(session.id);
+  const reviewSessionId = toReviewSessionId(session.id);
+  const reviewSession = useAgentSession(reviewSessionId);
+  const showReviewSession =
+    reviewSession.agentState === 'starting'
+    || reviewSession.agentState === 'working'
+    || reviewSession.agentState === 'waiting_for_input'
+    || reviewSession.agentState === 'failed'
+    || reviewSession.agentState === 'stopped';
+  const effectiveAgentState = showReviewSession ? reviewSession.agentState : implementationSession.agentState;
+  const effectiveActivities = showReviewSession ? reviewSession.activities : implementationSession.activities;
+
+  const updateStatusCategory = usePlanDomainStore((s) => s.updateStatusCategory);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+    void stopAgentSession(session.id);
+
+  const moveToReview = useCallback(() => {
+    if (session.plan_item_id) {
+      void updateStatusCategory(session.plan_item_id, 'in_review');
+      const title = session.plan_item?.title ?? session.name ?? 'Task';
+      toast.success(`${title} — moved to review`);
+    }
+  }, [session.plan_item_id, session.plan_item?.title, session.name, updateStatusCategory]);
+
+    if (commitState?.status === 'running') {
+      return;
+    }
+
+    if (typeof diff === 'string' && diff.trim().length > 0) {
+      setCommitTransitionsToReview(true);
+    } else {
+      moveToReview();
+    }
+  }, [commitState?.status, diff, moveToReview]);
+
+    if (commitState?.status === 'running') {
+      return;
+    }
+
+    setCommitTransitionsToReview(false);
+  }, [commitState?.status]);
+
+  const handleOpenPr = useCallback(() => {
+    if (!session.pr_url) {
+      return;
+    }
+
+    openExternalUrl(session.pr_url);
+  }, [session.pr_url]);
+
+  const handleCopyWorktree = useCallback(() => {
+  }, [session.worktree_path]);
+
+  const detailSession = {
+    ...session,
+    sessionType: 'dev' as const,
+  };
+
+  const handleCommitSubmit = useCallback((message: string) => {
+    const shouldMoveToReview = commitTransitionsToReview;
+    setCommitState(session.id, {
+      status: 'running',
+      message,
+      startedAt: Date.now(),
+      moveToReviewOnSuccess: shouldMoveToReview,
+    });
+
+    void (async () => {
+      try {
+        if (!result.success) {
+          const errMsg = result.error ?? 'Commit failed';
+          const commitError = errMsg.includes('Nothing to commit') || errMsg.includes('nothing to commit')
+            : errMsg;
+          setCommitState(session.id, {
+            status: 'failed',
+            message,
+            startedAt: Date.now(),
+            error: commitError,
+            moveToReviewOnSuccess: shouldMoveToReview,
+          });
+          return;
+        }
+
+        setCommitState(session.id, null);
+        await loadDiff(session.id, { force: true });
+        if (isMountedRef.current) {
+          setChangesRefreshToken((value) => value + 1);
+        }
+
+        toast.success('Commit complete');
+        if (shouldMoveToReview) {
+          moveToReview();
+        }
+      } catch (error) {
+        const commitError = error instanceof Error ? error.message : 'Commit failed';
+        setCommitState(session.id, {
+          status: 'failed',
+          message,
+          startedAt: Date.now(),
+          error: commitError,
+          moveToReviewOnSuccess: shouldMoveToReview,
+        });
+      }
+    })();
+  }, [commitTransitionsToReview, loadDiff, moveToReview, session.id, setCommitState]);
+
+  return (
+    <>
+    <CreatePrModal
+      isOpen={showCreatePr}
+      onClose={() => setShowCreatePr(false)}
+      session={detailSession}
+      onPrCreated={() => undefined}
+    />
+    <LinkPrDialog
+      isOpen={showLinkPr}
+      onClose={() => setShowLinkPr(false)}
+      session={detailSession}
+    />
+    <div className="flex h-full min-w-0 w-full flex-col border-l border-border-subtle bg-surface-0">
+      <DetailPaneHeader
+        session={session}
+        agentState={effectiveAgentState}
+        commitState={commitState}
+        onClose={onClose}
+        onCreatePr={() => setShowCreatePr(true)}
+        onLinkPr={() => setShowLinkPr(true)}
+        onOpenPr={handleOpenPr}
+        onCopyWorktree={handleCopyWorktree}
+      />
+
+
+            agentState={effectiveAgentState}
+          />
+    </div>
+    </>
+  );
+});

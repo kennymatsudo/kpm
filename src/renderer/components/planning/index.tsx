@@ -1,3 +1,4 @@
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Canvas } from './Canvas';
 import { BulkActionsMenu } from './BulkActionsMenu';
 import { PlanCardMenu } from './PlanCardMenu';
@@ -6,6 +7,7 @@ import { CreateItemModal } from './CreateItemModal';
 import { TreeView } from '../tree-view';
 import { BoardView } from '../board-view';
 import {
+  toast,
   useProjectDomainStore,
   usePlanDomainStore,
   useProjectUiDomainStore,
@@ -16,6 +18,8 @@ import {
   selectFocusedPlanItemId,
   selectDescendantIds,
 } from '../../stores';
+import { createAndStartAgentSession } from '../../services/agentSessionService';
+import { getStatusCategory } from '../../constants/statusConfig';
 import { useShallow } from 'zustand/react/shallow';
 import {
   useBulkActions,
@@ -167,6 +171,56 @@ export function PlanView({
     executePlanActions,
     setSelectedItemIds,
   });
+
+  // --- Agent start modal ---
+
+  const [agentStartItemId, setAgentStartItemId] = useState<string | null>(null);
+  const agentStartItem = agentStartItemId ? planItems.find((i) => i.id === agentStartItemId) : undefined;
+  const updateStatusCategory = usePlanDomainStore((state) => state.updateStatusCategory);
+  const loadSessions = useDevSessionsStore((state) => state.loadSessions);
+
+  const handleStartAgent = useCallback((itemId: string) => {
+    setAgentStartItemId(itemId);
+  }, []);
+
+  const handleAgentStartConfirmed = useCallback(async (params: {
+    planItemId: string;
+    repoId: string;
+    prompt: string;
+    baseBranch?: string;
+    contextPaths?: string[];
+    effort?: AgentEffortLevel;
+  }) => {
+    const item = planItems.find((i) => i.id === params.planItemId);
+    const currentStatus = item
+      ? item.status_category ?? getStatusCategory(item.external_status, item.external_type) ?? 'not_started'
+      : null;
+
+    setAgentStartItemId(null);
+
+    const result = await createAndStartAgentSession(
+      params.planItemId,
+      params.repoId,
+      params.prompt,
+      undefined,
+      params.baseBranch,
+      params.contextPaths,
+      params.effort,
+    );
+
+    if (!result.success) {
+      toast.error(result.error || 'Failed to start agent session');
+      return;
+    }
+
+    if (currentStatus && currentStatus !== 'in_progress') {
+      await updateStatusCategory(params.planItemId, 'in_progress');
+    }
+
+    if (currentProjectId) {
+      void loadSessions(currentProjectId);
+    }
+  }, [planItems, currentProjectId, loadSessions, updateStatusCategory]);
 
   // --- Auto layout & collision resolution ---
 
@@ -394,6 +448,7 @@ export function PlanView({
                 onPrepareEditItem={prefetchEditItem}
                 onContextMenu={handleTreeContextMenu}
                 onCreateItem={handleCreateItemFromBoard}
+                onStartAgent={handleStartAgent}
               />
             </ErrorBoundary>
           )}
@@ -423,6 +478,15 @@ export function PlanView({
           onClose={closeContextMenu}
         />
       ) : null}
+
+      {/* Agent Start Modal */}
+      {agentStartItem && (
+        <AgentStartModal
+          item={agentStartItem}
+          onStart={handleAgentStartConfirmed}
+          onClose={() => setAgentStartItemId(null)}
+        />
+      )}
 
       {/* Bulk Delete Confirmation Dialog */}
       {showBulkDeleteDialog && (

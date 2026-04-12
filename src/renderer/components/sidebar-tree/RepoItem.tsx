@@ -8,6 +8,7 @@ interface RepoItemProps {
   path: string;
   branch?: string | null;
   environmentMode?: RepoEnvironmentMode;
+  activeWorktreePath?: string | null;
   isFocused: boolean;
   onToggleFocus: (repoId: string) => void;
   onContextMenu: (e: React.MouseEvent, repoId: string) => void;
@@ -24,14 +25,20 @@ export const RepoItem = memo(function RepoItem({
   path,
   branch,
   environmentMode,
+  activeWorktreePath,
   isFocused,
   onToggleFocus,
   onContextMenu,
 }: RepoItemProps) {
   const hasEnvConfig = environmentMode && environmentMode !== 'auto' && environmentMode !== 'none';
+  const isWorktreeActive = !!activeWorktreePath;
 
   return (
     <div
+      title={isWorktreeActive
+        ? `${path}\nActive worktree: ${activeWorktreePath}${branch ? `\nBranch: ${branch}` : ''}`
+        : branch ? `${path}\nBranch: ${branch}` : path
+      }
       onContextMenu={(e) => onContextMenu(e, id)}
     >
       <RepoIcon />

@@ -26,6 +26,7 @@ export * from './DevSessionRepository';
 export * from './ConfluenceLinkRepository';
 export * from './ToolPermissionRepository';
 export * from './ReviewTaskRepository';
+export * from './AgentReviewRepository';
 export * from './ReviewOwnershipRepository';
 export * from './ReviewSyncStateRepository';
 export * from './SlackChannelLinkRepository';

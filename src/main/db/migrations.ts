@@ -2501,6 +2501,319 @@ interface Migration {
     },
   },
   {
+    id: 1065,
+    name: '065_add_agent_columns_to_dev_sessions',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE dev_sessions ADD COLUMN agent_type TEXT NOT NULL DEFAULT 'claude';
+        ALTER TABLE dev_sessions ADD COLUMN agent_state TEXT NOT NULL DEFAULT 'inactive';
+      `);
+    },
+  },
+  {
+    id: 1066,
+    name: '066_scope_global_search_uniqueness_by_project',
+    up: (db: BetterSqliteDatabase) => {
+      const hasSearchIndex = db.prepare(`
+        SELECT EXISTS(
+          SELECT 1 FROM sqlite_master
+          WHERE type = 'table' AND name = 'global_search_index'
+        ) as has_index
+      `).get() as { has_index: number };
+
+      if (hasSearchIndex.has_index !== 1) {
+        return;
+      }
+
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+
+        DROP TRIGGER IF EXISTS trg_global_search_index_ai;
+        DROP TRIGGER IF EXISTS trg_global_search_index_ad;
+        DROP TRIGGER IF EXISTS trg_global_search_index_au;
+        DROP TRIGGER IF EXISTS trg_plan_items_search_ai;
+        DROP TRIGGER IF EXISTS trg_plan_items_search_au;
+        DROP TRIGGER IF EXISTS trg_plan_items_search_ad;
+        DROP TRIGGER IF EXISTS trg_inbox_items_search_ai;
+        DROP TRIGGER IF EXISTS trg_inbox_items_search_au;
+        DROP TRIGGER IF EXISTS trg_inbox_items_search_ad;
+        DROP INDEX IF EXISTS idx_global_search_project_type_updated;
+        DROP TABLE IF EXISTS global_search_fts;
+
+        ALTER TABLE global_search_index RENAME TO global_search_index_old;
+
+        CREATE TABLE global_search_index (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          entity_type TEXT NOT NULL CHECK (entity_type IN ('plan_item', 'document', 'inbox_item')),
+          entity_id TEXT NOT NULL,
+          project_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          body TEXT,
+          status_category TEXT,
+          label TEXT,
+          external_key TEXT,
+          chat_session_id TEXT,
+          suggested_type TEXT,
+          updated_at TEXT,
+          UNIQUE(project_id, entity_type, entity_id)
+        );
+
+        CREATE INDEX idx_global_search_project_type_updated
+          ON global_search_index(project_id, entity_type, updated_at DESC);
+
+        INSERT INTO global_search_index (
+          id,
+          entity_type,
+          entity_id,
+          project_id,
+          title,
+          body,
+          status_category,
+          label,
+          external_key,
+          chat_session_id,
+          suggested_type,
+          updated_at
+        )
+        SELECT
+          id,
+          entity_type,
+          entity_id,
+          project_id,
+          title,
+          body,
+          status_category,
+          label,
+          external_key,
+          chat_session_id,
+          suggested_type,
+          updated_at
+        FROM global_search_index_old;
+
+        CREATE VIRTUAL TABLE global_search_fts USING fts5(
+          title,
+          body,
+          content = 'global_search_index',
+          content_rowid = 'id',
+          tokenize = 'unicode61 remove_diacritics 2 tokenchars ''-_'''
+        );
+
+        CREATE TRIGGER trg_global_search_index_ai
+        AFTER INSERT ON global_search_index
+        BEGIN
+          INSERT INTO global_search_fts(rowid, title, body)
+          VALUES (new.id, new.title, COALESCE(new.body, ''));
+        END;
+
+        CREATE TRIGGER trg_global_search_index_ad
+        AFTER DELETE ON global_search_index
+        BEGIN
+          INSERT INTO global_search_fts(global_search_fts, rowid, title, body)
+          VALUES ('delete', old.id, old.title, COALESCE(old.body, ''));
+        END;
+
+        CREATE TRIGGER trg_global_search_index_au
+        AFTER UPDATE ON global_search_index
+        BEGIN
+          INSERT INTO global_search_fts(global_search_fts, rowid, title, body)
+          VALUES ('delete', old.id, old.title, COALESCE(old.body, ''));
+          INSERT INTO global_search_fts(rowid, title, body)
+          VALUES (new.id, new.title, COALESCE(new.body, ''));
+        END;
+
+        CREATE TRIGGER trg_plan_items_search_ai
+        AFTER INSERT ON plan_items
+        BEGIN
+          DELETE FROM global_search_index
+          WHERE project_id = new.project_id AND entity_type = 'plan_item' AND entity_id = new.id;
+          INSERT INTO global_search_index (
+            entity_type, entity_id, project_id, title, body, status_category, label, external_key, updated_at
+          )
+          VALUES (
+            'plan_item',
+            new.id,
+            new.project_id,
+            new.title,
+            trim(COALESCE(new.description, '') || ' ' || COALESCE(new.external_key, '')),
+            new.status_category,
+            new.label,
+            new.external_key,
+            new.updated_at
+          );
+        END;
+
+        CREATE TRIGGER trg_plan_items_search_au
+        AFTER UPDATE ON plan_items
+        BEGIN
+          DELETE FROM global_search_index
+          WHERE project_id = old.project_id AND entity_type = 'plan_item' AND entity_id = old.id;
+          INSERT INTO global_search_index (
+            entity_type, entity_id, project_id, title, body, status_category, label, external_key, updated_at
+          )
+          VALUES (
+            'plan_item',
+            new.id,
+            new.project_id,
+            new.title,
+            trim(COALESCE(new.description, '') || ' ' || COALESCE(new.external_key, '')),
+            new.status_category,
+            new.label,
+            new.external_key,
+            new.updated_at
+          );
+        END;
+
+        CREATE TRIGGER trg_plan_items_search_ad
+        AFTER DELETE ON plan_items
+        BEGIN
+          DELETE FROM global_search_index
+          WHERE project_id = old.project_id AND entity_type = 'plan_item' AND entity_id = old.id;
+        END;
+
+        CREATE TRIGGER trg_inbox_items_search_ai
+        AFTER INSERT ON inbox_items
+        WHEN new.status = 'active'
+        BEGIN
+          DELETE FROM global_search_index
+          WHERE project_id = new.project_id AND entity_type = 'inbox_item' AND entity_id = new.id;
+          INSERT INTO global_search_index (
+            entity_type, entity_id, project_id, title, body, suggested_type, updated_at
+          )
+          VALUES (
+            'inbox_item',
+            new.id,
+            new.project_id,
+            substr(COALESCE(new.enhanced_content, new.raw_content), 1, 80),
+            COALESCE(new.enhanced_content, new.raw_content),
+            new.suggested_type,
+            new.updated_at
+          );
+        END;
+
+        CREATE TRIGGER trg_inbox_items_search_au
+        AFTER UPDATE ON inbox_items
+        BEGIN
+          DELETE FROM global_search_index
+          WHERE project_id = old.project_id AND entity_type = 'inbox_item' AND entity_id = old.id;
+          INSERT INTO global_search_index (
+            entity_type, entity_id, project_id, title, body, suggested_type, updated_at
+          )
+          SELECT
+            'inbox_item',
+            new.id,
+            new.project_id,
+            substr(COALESCE(new.enhanced_content, new.raw_content), 1, 80),
+            COALESCE(new.enhanced_content, new.raw_content),
+            new.suggested_type,
+            new.updated_at
+          WHERE new.status = 'active';
+        END;
+
+        CREATE TRIGGER trg_inbox_items_search_ad
+        AFTER DELETE ON inbox_items
+        BEGIN
+          DELETE FROM global_search_index
+          WHERE project_id = old.project_id AND entity_type = 'inbox_item' AND entity_id = old.id;
+        END;
+
+        INSERT INTO global_search_fts(global_search_fts) VALUES ('rebuild');
+
+        DROP TABLE global_search_index_old;
+
+        PRAGMA foreign_keys = ON;
+      `);
+    },
+  },
+  {
+    id: 1067,
+    name: '067_persist_agent_reviews',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS agent_review_runs (
+          id TEXT PRIMARY KEY,
+          implementation_session_id TEXT NOT NULL REFERENCES dev_sessions(id) ON DELETE CASCADE,
+          review_session_id TEXT NOT NULL,
+          reviewer_agent TEXT NOT NULL CHECK(reviewer_agent IN ('claude', 'codex', 'gemini')),
+          status TEXT NOT NULL CHECK(status IN ('complete', 'stale')),
+          diff_fingerprint TEXT,
+          raw_output TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_review_findings (
+          id TEXT PRIMARY KEY,
+          review_run_id TEXT NOT NULL REFERENCES agent_review_runs(id) ON DELETE CASCADE,
+          finding_order INTEGER NOT NULL,
+          severity TEXT NOT NULL CHECK(severity IN ('critical', 'warning', 'suggestion')),
+          file TEXT NOT NULL,
+          line INTEGER,
+          description TEXT NOT NULL,
+          agent TEXT NOT NULL CHECK(agent IN ('claude', 'codex', 'gemini')),
+          source TEXT NOT NULL CHECK(source IN ('agent', 'pr')),
+          UNIQUE(review_run_id, finding_order)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_agent_review_runs_implementation
+          ON agent_review_runs(implementation_session_id, completed_at DESC, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_agent_review_runs_status
+          ON agent_review_runs(implementation_session_id, status);
+        CREATE INDEX IF NOT EXISTS idx_agent_review_findings_run
+          ON agent_review_findings(review_run_id, finding_order);
+      `);
+    },
+  },
+  {
+    id: 1068,
+    name: '068_add_dev_session_automation_phase',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE dev_sessions ADD COLUMN automation_phase TEXT
+          CHECK(automation_phase IN ('idle', 'reviewing', 'addressing_review', 'ready_for_review', 'needs_attention'));
+      `);
+    },
+  },
+  {
+    id: 1069,
+    name: '069_add_dev_session_merge_order',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE dev_sessions ADD COLUMN merge_order INTEGER;
+      `);
+    },
+  },
+  {
+    id: 1070,
+    name: '070_add_repo_active_worktree_path',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE repos ADD COLUMN active_worktree_path TEXT;
+      `);
+    },
+  },
+
+  {
+    id: 1071,
+    name: '071_add_repo_setup_command',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE repos ADD COLUMN setup_command TEXT;
+      `);
+    },
+  },
+
+  {
+    id: 1072,
+    name: '072_reset_setting_up_sessions',
+    up: (db: BetterSqliteDatabase) => {
+      // Sessions stuck in setting_up from a prior crash become inactive so users can retry
+      db.exec(`
+        UPDATE dev_sessions SET status = 'inactive' WHERE status = 'setting_up';
+      `);
+    },
+  },
+  {
     id: 1075,
     name: '075_drop_inbox_and_project_sessions',
     up: (db: BetterSqliteDatabase) => {

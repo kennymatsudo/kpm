@@ -13,6 +13,7 @@ import {
   checkDevSessionDirty,
   deleteDevSessionRecord,
   dismissExistingSession,
+  getDevSessionMergeOrder,
   loadDevSessionDiff,
   loadDevSessions,
   updateExistingSessionName,
@@ -51,6 +52,7 @@ export function createDevSessionsLifecycleSlice(
           isLoading: false,
           diffBySessionId: new Map<string, string | null>(),
           diffLoadingIds: new Set<string>(),
+          commitStateBySessionId: new Map<string, BackgroundCommitState>(),
           reviewInboxBySessionId: new Map<string, ReviewInboxSnapshot>(),
           reviewLoadingIds: new Set<string>(),
           reviewErrorBySessionId: new Map<string, string | null>(),
@@ -89,12 +91,39 @@ export function createDevSessionsLifecycleSlice(
           (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
         );
         const validSessionIds = new Set(allSessions.map((session) => session.id));
+
+        // Fetch merge order alongside sessions (fire-and-forget: don't block on failure)
+        const mergeOrderBySessionId = new Map<string, { layer: number | null; blockedBy: string[] }>();
+        try {
+          const mergeOrderResult = await getDevSessionMergeOrder(projectId);
+          if (mergeOrderResult.success && mergeOrderResult.mergeOrder) {
+            for (const [id, entry] of Object.entries(mergeOrderResult.mergeOrder)) {
+              mergeOrderBySessionId.set(id, entry);
+            }
+          }
+        } catch {
+          // Non-fatal: board still works, merge indicators just won't appear
+        }
+        const validReviewSessionIds = new Set(devSessions.map((session) => `${session.id}-review`));
         const currentSelectedId = get().selectedSessionId;
 
         let newSelectedId = currentSelectedId;
         if (!currentSelectedId || !allSessions.find((session) => session.id === currentSelectedId)) {
           const activeSession = allSessions.find((session) => session.status === 'active');
           newSelectedId = activeSession?.id || allSessions[0]?.id || null;
+        }
+
+        const nextReviewFindings = new Map(
+          Array.from(get().reviewFindingsBySessionId.entries()).filter(([sessionId]) =>
+            validSessionIds.has(sessionId) || validReviewSessionIds.has(sessionId)
+          )
+        );
+        for (const session of devSessions) {
+          if (session.latest_agent_review?.findings) {
+            nextReviewFindings.set(session.id, session.latest_agent_review.findings);
+          } else {
+            nextReviewFindings.delete(session.id);
+          }
         }
 
         set({
@@ -105,6 +134,7 @@ export function createDevSessionsLifecycleSlice(
           isLoading: false,
           diffBySessionId: pruneMapByKeys(get().diffBySessionId, validSessionIds),
           diffLoadingIds: pruneSetByKeys(get().diffLoadingIds, validSessionIds),
+          commitStateBySessionId: pruneMapByKeys(get().commitStateBySessionId, validSessionIds),
           reviewInboxBySessionId: pruneMapByKeys(get().reviewInboxBySessionId, validSessionIds),
           reviewLoadingIds: pruneSetByKeys(get().reviewLoadingIds, validSessionIds),
           reviewErrorBySessionId: pruneMapByKeys(get().reviewErrorBySessionId, validSessionIds),
@@ -112,6 +142,8 @@ export function createDevSessionsLifecycleSlice(
           prContextBySessionId: pruneMapByKeys(get().prContextBySessionId, validSessionIds),
           prContextLoadingIds: pruneSetByKeys(get().prContextLoadingIds, validSessionIds),
           prStatusCache: pruneMapByKeys(get().prStatusCache, validSessionIds),
+          reviewFindingsBySessionId: nextReviewFindings,
+          mergeOrderBySessionId,
         });
       } catch (error) {
         console.error('[DevSessionsStore] Failed to load sessions:', error);
@@ -236,13 +268,36 @@ export function createDevSessionsLifecycleSlice(
       try {
         const result = await loadDevSessionDiff(sessionId);
         if (!result.success) {
+          const error = result.error || 'Failed to load diff';
+          set((state) => {
+            const nextDiff = new Map(state.diffBySessionId);
+            nextDiff.set(sessionId, null);
+            const nextErr = new Map(state.diffErrorBySessionId);
+            nextErr.set(sessionId, error);
+            return { diffBySessionId: nextDiff, diffErrorBySessionId: nextErr };
+          });
+          return { success: false, diff: null, error };
         }
 
         const diff = result.diff && result.diff.length > 0 ? result.diff : null;
         set((state) => {
+          const nextDiff = new Map(state.diffBySessionId);
+          nextDiff.set(sessionId, diff);
+          const nextErr = new Map(state.diffErrorBySessionId);
+          nextErr.delete(sessionId);
+          return { diffBySessionId: nextDiff, diffErrorBySessionId: nextErr };
         });
         return { success: true, diff };
       } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Failed to load diff';
+        set((state) => {
+          const nextDiff = new Map(state.diffBySessionId);
+          nextDiff.set(sessionId, null);
+          const nextErr = new Map(state.diffErrorBySessionId);
+          nextErr.set(sessionId, msg);
+          return { diffBySessionId: nextDiff, diffErrorBySessionId: nextErr };
+        });
+        return { success: false, diff: null, error: msg };
       } finally {
         set((state) => ({
           diffLoadingIds: removeFromSet(state.diffLoadingIds, sessionId),

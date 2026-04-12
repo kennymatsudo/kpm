@@ -22,9 +22,13 @@ export const useChatStore: UseBoundStore<StoreApi<ChatState>> = create<ChatState
   },
 }));
 
+// Load persisted model and effort preferences (guarded for Node.js test environments)
 if (typeof window !== 'undefined') {
     if (result.value === 'sonnet' || result.value === 'opus') {
       useChatStore.setState({ model: result.value });
+    }
+  });
+      useChatStore.setState({ effort: result.value });
     }
   });
 }

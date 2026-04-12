@@ -117,3 +117,9 @@ export interface Group {
   created_at: string;
   updated_at: string;
 }
+
+// =============================================================================
+// Agent Types (re-exported from agent-types.ts)
+// =============================================================================
+
+export type { AgentType, AgentSessionState, AgentSessionRole } from './agent-types';

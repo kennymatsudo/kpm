@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto';
 } from '../../../shared/types';
 import type {
   IAppSettingsRepository,
+  IAgentReviewRepository,
   IDevSessionRepository,
   IPlanItemRepository,
   IProjectRepository,
@@ -21,6 +22,7 @@ import type {
 import {
   createStatusBroadcaster,
 } from './sessionOrchestration';
+import type { AgentSessionManager } from '../agents/AgentSessionManager';
 
 interface AgentContextInput {
   item: PlanItem;
@@ -77,7 +79,10 @@ export interface DevSessionServiceDeps {
   projects: IProjectRepository;
   repos: IRepoRepository;
   appSettings: IAppSettingsRepository;
+  agentReviews: IAgentReviewRepository;
   userDataPath: string;
+  /** Optional — when provided, dev sessions use the Agent SDK instead of PTY */
+  agentSessionManager?: AgentSessionManager;
 }
 const broadcastSessionStatusChange = createStatusBroadcaster<DevSession>('dev-session:status-changed');
 
@@ -203,6 +208,15 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
      * Get sessions with plan item data for display
      */
     getByProjectWithPlanItems(projectId: string): DevSessionWithPlanItem[] {
+      const sessions = deps.devSessions.getByProjectWithPlanItems(projectId);
+      const latestReviewBySessionId = new Map(
+        latestReviews.map((review) => [review.implementation_session_id, review])
+      );
+
+      return sessions.map((session) => ({
+        ...session,
+        latest_agent_review: latestReviewBySessionId.get(session.id) ?? null,
+      }));
     },
 
     /**
@@ -219,11 +233,32 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       return deps.devSessions.get(id);
     },
 
+    updateAutomationPhase(sessionId: string, phase: DevSession['automation_phase']): void {
+      deps.devSessions.updateAutomationPhase(sessionId, phase);
+      const updatedSession = deps.devSessions.get(sessionId);
+      if (updatedSession) {
+        broadcastSessionStatusChange(updatedSession);
+      }
+    },
+
+    markLatestAgentReviewStale(sessionId: string): void {
+      deps.agentReviews.markLatestCompletedStale(sessionId);
+    },
+
     /**
      * Check if a plan item has an active session
      */
     hasActiveSession(planItemId: string): boolean {
       return !!deps.devSessions.getActiveByPlanItem(planItemId);
+    },
+
+    /**
+     * Get the most recent session for a plan item, regardless of status.
+     * Used by board execution to continue previous work instead of silently
+     * creating a brand new session/worktree.
+     */
+    getLatestSessionForPlanItem(planItemId: string): DevSession | undefined {
+      return deps.devSessions.getByPlanItem(planItemId);
     },
 
     /**
@@ -255,6 +290,8 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           }
         }
 
+        // Use provided base branch or detect the default
+        const baseBranch = options?.baseBranch ?? await detectDefaultBranch(repo.path);
 
         // Generate branch name and worktree path
         const template = deps.appSettings.get('branch_name_template');
@@ -276,17 +313,145 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           branch_name: branchName,
           base_branch: baseBranch,
           status: 'pending',
+          agent_type: 'claude',
+          automation_phase: null,
           initial_instructions: instructions,
           pr_number: null,
           pr_url: null,
           pr_state: null,
           review_state: null,
+          merge_order: null,
         });
 
         // Broadcast new session to UI
         broadcastSessionStatusChange(session);
 
         return success(session);
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
+    /**
+     * Start a session using the Agent SDK (no PTY).
+     * Used by the board-driven execution flow.
+     * Creates worktree, builds prompt, then delegates to AgentSessionManager.
+     */
+    async startAgentSession(
+      sessionId: string,
+    ): AsyncResult<{ session: DevSession }> {
+      try {
+        if (!deps.agentSessionManager) {
+          return failure('Agent session manager is not available');
+        }
+
+        const session = deps.devSessions.get(sessionId);
+        if (!session) {
+          return failure(`Session not found: ${sessionId}`);
+        }
+
+        if (session.status !== 'pending' && session.status !== 'inactive') {
+          return failure(`Session is not in a startable state: ${session.status}`);
+        }
+
+        const repo = deps.repos.getById(session.repo_id);
+        if (!repo) {
+          return failure(`Repository not found: ${session.repo_id}`);
+        }
+
+            return failure(
+              `Branch '${session.branch_name}' is currently checked out in the main repository. ` +
+              `Switch to a different branch or choose a different branch for this session.`
+            );
+          }
+            );
+          }
+        }
+
+        // Use the user's prompt override if provided, otherwise the stored instructions
+
+        deps.agentReviews.markLatestCompletedStale(sessionId);
+        deps.devSessions.updateAutomationPhase(sessionId, 'idle');
+
+        // Build SDK options for the dev session
+        const sdkOptions: SDKOptions = {
+        };
+
+        // Create the agent session via the manager
+        const agentSession = deps.agentSessionManager.create({
+          devSessionId: sessionId,
+          projectId: session.project_id,
+          agentType: session.agent_type,
+          role: 'implement',
+          sdkOptions: session.agent_type === 'claude' ? sdkOptions : undefined,
+        });
+
+        // Update DB status to active
+        deps.devSessions.updateStatus(sessionId, 'active');
+        const updatedSession = deps.devSessions.get(sessionId)!;
+        broadcastSessionStatusChange(updatedSession);
+
+        // Start the agent session asynchronously
+          console.error(`[DevSessionService] Agent session start failed for ${sessionId}:`, error);
+          deps.devSessions.updateStatus(sessionId, 'inactive');
+          const failedSession = deps.devSessions.get(sessionId);
+          if (failedSession) {
+            broadcastSessionStatusChange(failedSession);
+          }
+        });
+
+        return success({ session: updatedSession });
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
+    async sendAgentFollowUp(
+      sessionId: string,
+      text: string,
+      try {
+        if (!deps.agentSessionManager) {
+          return failure('Agent session manager is not available');
+        }
+
+        const activeSession = deps.agentSessionManager.getByDevSession(sessionId);
+        if (activeSession) {
+          deps.agentReviews.markLatestCompletedStale(sessionId);
+          try {
+            await activeSession.followUp(text);
+            return success({ restarted: false });
+          } catch (followUpError) {
+            // followUp() rejects when the session is in a non-terminal state (e.g. 'working').
+            // This can happen if the session was resumed externally. Fall through to restart.
+            console.warn(`[DevSessionService] followUp() failed for ${sessionId}, will restart:`, followUpError);
+          }
+        }
+
+        const session = deps.devSessions.get(sessionId);
+        if (!session) {
+          return failure(`Session not found: ${sessionId}`);
+        }
+
+        if (session.status === 'active') {
+          deps.devSessions.updateStatus(sessionId, 'inactive');
+        }
+
+        const restartPrompt = [
+          'Resume work on this existing implementation task.',
+          '',
+          'Original task:',
+          session.initial_instructions || 'No original task description was stored.',
+          '',
+          'Follow-up request:',
+          text,
+        ].join('\n');
+
+        const startResult = await service.startAgentSession(sessionId, { prompt: restartPrompt });
+        if (!startResult.ok) {
+          return failure(startResult.error);
+        }
+
+        return success({ restarted: true });
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }
@@ -490,6 +655,13 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
      */
     updateName(sessionId: string, name: string): void {
       deps.devSessions.updateName(sessionId, name);
+    },
+
+    /**
+     * Update user-explicit merge order override (null = derive from plan graph)
+     */
+    updateMergeOrder(sessionId: string, order: number | null): void {
+      deps.devSessions.updateMergeOrder(sessionId, order);
     },
 
     /**

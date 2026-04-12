@@ -5,6 +5,7 @@ import { ProjectOnboardingWizard } from './components/onboarding';
 import {
   useStoreSubscriptions,
   useProjectDomainStore,
+  usePlanDomainStore,
   selectProjectSummary,
 } from './stores';
 import { ThemeProvider } from './contexts';
@@ -16,9 +17,17 @@ export default function App() {
 
   // Track app ready state for E2E tests - app is ready when projects have been loaded
   const { projects, currentProjectId } = useProjectDomainStore(useShallow(selectProjectSummary));
+  const refreshPlanItems = usePlanDomainStore((state) => state.refreshPlanItems);
   // App is ready when either we have a current project, or we know there are no projects
   // This ensures the initial project list has been fetched
   const isAppReady = currentProjectId !== null || projects.length === 0;
+
+  useEffect(() => {
+      if (event.projectId === currentProjectId) {
+        void refreshPlanItems();
+      }
+    });
+  }, [currentProjectId, refreshPlanItems]);
 
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
   const handleOpenNewProjectDialog = useCallback(() => {

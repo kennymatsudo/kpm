@@ -14,6 +14,7 @@ import { IPC_CHANNELS } from '../channels';
  */
 export function registerDevSessionHandlers(
   devSessionService: DevSessionService,
+  _getMainWindow: () => BrowserWindow | null,
 ): void {
   // Get all sessions for a project
   ipcMain.handle(
@@ -180,4 +181,28 @@ export function registerDevSessionHandlers(
       'Failed to update session name'
     )
   );
+
+  // Get computed merge order for all sessions in a project
+  ipcMain.handle(
+    IPC_CHANNELS.devSession.getMergeOrder,
+    createIpcHandler(
+      DevSessionSchemas.getMergeOrder,
+      ({ projectId }) => {
+      },
+      'Failed to compute merge order'
+    )
+  );
+
+  // Update user-explicit merge order override
+  ipcMain.handle(
+    IPC_CHANNELS.devSession.updateMergeOrder,
+    createIpcHandler(
+      DevSessionSchemas.updateMergeOrder,
+      ({ sessionId, order }) => {
+        devSessionService.updateMergeOrder(sessionId, order);
+      },
+      'Failed to update merge order'
+    )
+  );
+
 }

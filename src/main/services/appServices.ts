@@ -9,6 +9,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { BrowserWindow, shell } from 'electron';
 import type { IRepositoryContainer } from '../db/interfaces';
+import { getConfig } from '../config';
 import { getDatabase, getUserDataPath } from '../db/connection';
 import { createExportService, createImportService, createSyncService, createTypeMappingService, queueTrackerUpdateIfNeeded } from '../db/domain';
 import type { PlanItemServiceDeps, QueueTrackerUpdateIfNeeded } from '../db/domain';
@@ -53,6 +54,9 @@ import { AnthropicAuth } from '../claude/auth';
 import { clientManager } from '../claude/clientManager';
 import { createRepoServices } from './composition/repoServices';
 import { createGenerationServices } from './composition/generationServices';
+import { createAgentSessionManager } from './agents/AgentSessionManager';
+import { createHookServer } from './agents/hookServer';
+import { createReviewPollService } from './repo/ReviewPollService';
 
 // =============================================================================
 // Application Services Factory
@@ -76,6 +80,12 @@ export function createAppServices(container: IRepositoryContainer) {
   const queueTrackerUpdate: QueueTrackerUpdateIfNeeded = (item, updates, queuedBy) => {
     queueTrackerUpdateIfNeeded(item, updates, queuedBy, planItemServiceDeps);
   };
+  let devSessionServiceRef: ReturnType<typeof createRepoServices>['devSessionService'] | null = null;
+
+  const requestPlanRefresh = (projectId: string) => {
+    broadcastToWindows('plan:refresh-requested', { projectId });
+  };
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Repo Watcher (needed by RepoService)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -187,6 +197,29 @@ export function createAppServices(container: IRepositoryContainer) {
     trackerClientService: TrackerClientService,
   });
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Agent Session Manager + Hook Server (created early — needed by DevSessionService)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const hookServer = createHookServer();
+      }
+    },
+
+  });
+
+  // Wire hook server events to agent session manager
+  hookServer.onHookEvent((sessionId, hookEvent) => {
+    agentSessionManager.handleHookEvent(sessionId, hookEvent);
+  });
+
+  // Start hook server asynchronously (non-blocking — CLI agents won't work until it's ready)
+  void hookServer.start().then(() => {
+    agentSessionManager.setHookPort(hookServer.port);
+    console.log(`[AppServices] Hook server ready on port ${hookServer.port}`);
+  }).catch((err) => {
+    console.error('[AppServices] Failed to start hook server:', err);
+  });
+
   const {
     repoService,
     worktreeService,
@@ -203,7 +236,31 @@ export function createAppServices(container: IRepositoryContainer) {
     repoWatcherService,
     getMainWindow: getPrimaryWindow,
     userDataPath: getUserDataPath(),
+    agentSessionManager,
   });
+  devSessionServiceRef = devSessionService;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Review Poll Service (background polling for PR comments)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const reviewPollService = createReviewPollService({
+    projects: container.projects,
+    devSessions: container.devSessions,
+    planItems: container.planItems,
+    reviewTasks: container.reviewTasks,
+    reviewService,
+    reviewAssessmentService,
+    devSessionService,
+    gitHubService,
+    agentSessionManager,
+    broadcastToWindows,
+  });
+
+  if (getConfig().reviewPoll.enabled) {
+    reviewPollService.start();
+    console.log('[AppServices] Review poll service started');
+  }
 
   const appLifecycleService = createAppLifecycleService({
     searchService,
@@ -286,6 +343,7 @@ export function createAppServices(container: IRepositoryContainer) {
     gitHubService,
     reviewService,
     reviewAssessmentService,
+    reviewPollService,
 
     // Files
     fileExplorerService,
@@ -311,6 +369,10 @@ export function createAppServices(container: IRepositoryContainer) {
 
     // MCP
     mcpDiscoveryService,
+
+    // Agent Sessions
+    agentSessionManager,
+    hookServer,
 
     // Runtime factories
     createChatRuntime: (getMainWindow: () => BrowserWindow | null) => createChatRuntimeService({

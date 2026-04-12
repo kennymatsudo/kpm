@@ -5,6 +5,7 @@
  */
 
 import type {
+  DevSessionAutomationPhase,
   DevSession,
   DevSessionStatus,
   DevSessionWithPlanItem,
@@ -32,10 +33,14 @@ export interface IDevSessionRepository {
   create(session: Omit<DevSession, 'created_at' | 'updated_at' | 'completed_at'>): DevSession;
   /** Update session status */
   updateStatus(id: string, status: DevSessionStatus): void;
+  /** Update persisted automation phase for session orchestration. */
+  updateAutomationPhase(id: string, phase: DevSessionAutomationPhase | null): void;
   /** Update PR tracking info on a session */
   updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null): void;
   /** Update session name */
   updateName(id: string, name: string): void;
+  /** Update user-explicit merge order override (null = derive from plan graph) */
+  updateMergeOrder(id: string, order: number | null): void;
   /** Delete a session */
   delete(id: string): void;
   /** Mark all active sessions as inactive (called on app startup) */

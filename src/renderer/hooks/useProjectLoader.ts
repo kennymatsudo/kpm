@@ -12,6 +12,7 @@ import {
   createProjectRecord,
   deleteProjectRecord,
   disconnectActiveChatSessions,
+  getEffectiveRepoPath,
   getLastOpenedProjectId,
   listProjects,
   loadProjectRepoBranches,
@@ -94,8 +95,10 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       // Load branches for repos (deferred to avoid blocking initial UI swap)
       const branchesById: Record<string, string | null> = {};
       const fetchBranches = async () => {
+        const repoPaths = repos.map(getEffectiveRepoPath);
         const branchesByPath = await loadProjectRepoBranches(repoPaths);
         for (const repo of repos) {
+          branchesById[repo.id] = branchesByPath[getEffectiveRepoPath(repo)] ?? null;
         }
       };
 

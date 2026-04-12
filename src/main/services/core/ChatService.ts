@@ -33,6 +33,7 @@ export interface SendChatMessageInput {
   projectId: string;
   message: string;
   model?: ClaudeModel;
+  effort?: 'low' | 'medium' | 'high' | 'max';
   tempImages?: string[];
   chatSessionId?: string;
   clientMessageId?: string;
@@ -54,6 +55,7 @@ export function createChatService(deps: ChatServiceDeps) {
         projectId,
         message,
         model,
+        effort,
         tempImages,
         chatSessionId,
         clientMessageId,
@@ -69,6 +71,9 @@ export function createChatService(deps: ChatServiceDeps) {
         const result = await deps.streamingSessionService.sendChatMessage(
           projectId,
           {
+            model: model ?? 'sonnet',
+            effort,
+            chatSessionId,
           }
         );
 

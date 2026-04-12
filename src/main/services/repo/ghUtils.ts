@@ -52,6 +52,14 @@ export interface GhReviewThreadState {
   resolvedBy: string | null;
 }
 
+export interface GhPrCreateOptions {
+  head: string;
+  base: string;
+  title: string;
+  body: string;
+  draft?: boolean;
+}
+
 // =============================================================================
 // Core Execution
 // =============================================================================
@@ -140,6 +148,7 @@ function splitRepoSlug(slug: string): { owner: string; name: string } {
 // Pull Requests
 // =============================================================================
 
+export function buildCreatePrArgs(opts: GhPrCreateOptions): string[] {
   const args = [
     'pr', 'create',
     '--head', opts.head,
@@ -150,8 +159,45 @@ function splitRepoSlug(slug: string): { owner: string; name: string } {
   if (opts.draft) {
     args.push('--draft');
   }
+  return args;
+}
 
+export function parseCreatePrOutput(stdout: string): GhPrCreateResult {
+  const url = stdout
+    .split(/\s+/)
+    .map((token) => token.trim().replace(/[),.;]+$/g, ''))
+    .find((token) => /^https?:\/\/\S+\/pull\/\d+\/?$/.test(token));
+
+  if (!url) {
+    const trimmed = stdout.trim();
+    throw new Error(
+      trimmed
+        ? `Failed to parse created pull request URL from gh output: ${trimmed}`
+        : 'Failed to parse created pull request URL from gh output: command returned no output'
+    );
+  }
+
+  const match = /\/pull\/(\d+)\/?$/.exec(url);
+  if (!match) {
+    throw new Error(`Failed to parse pull request number from URL: ${url}`);
+  }
+
+  return {
+    number: Number.parseInt(match[1], 10),
+    url,
+  };
+}
+
+/**
+ * Create a pull request.
+ */
+export async function createPr(
+  cwd: string,
+  opts: GhPrCreateOptions
+): Promise<GhPrCreateResult> {
+  const args = buildCreatePrArgs(opts);
   const { stdout } = await ghExec(args, { cwd });
+  return parseCreatePrOutput(stdout);
 }
 
 /**

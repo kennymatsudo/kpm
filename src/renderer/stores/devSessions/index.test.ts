@@ -13,6 +13,7 @@ function createDevSession() {
     worktree_path: '/tmp/worktree',
     status: 'inactive' as const,
     initial_instructions: 'Implement the task',
+    automation_phase: null,
     pr_number: 42,
     pr_url: 'https://github.com/test/repo/pull/42',
     pr_state: 'OPEN' as const,
@@ -20,6 +21,7 @@ function createDevSession() {
     created_at: '2024-01-01T00:00:00.000Z',
     updated_at: '2024-01-01T00:00:00.000Z',
     completed_at: null,
+    latest_agent_review: null,
     plan_item: {
       id: 'plan-1',
       title: 'Implement feature',
@@ -27,6 +29,29 @@ function createDevSession() {
       label: 'task',
       external_key: null,
     },
+  };
+}
+
+function createPersistedReview() {
+  return {
+    id: 'agent-review-1',
+    implementation_session_id: 'dev-session-1',
+    review_session_id: 'dev-session-1-review',
+    reviewer_agent: 'codex' as const,
+    status: 'complete' as const,
+    diff_fingerprint: null,
+    raw_output: '{"findings":[]}',
+    findings: [{
+      severity: 'warning' as const,
+      file: 'src/file.ts',
+      line: 10,
+      description: 'Please handle undefined input.',
+      agent: 'codex' as const,
+      source: 'agent' as const,
+    }],
+    created_at: '2024-01-02T00:00:00.000Z',
+    updated_at: '2024-01-02T00:00:00.000Z',
+    completed_at: '2024-01-02T00:00:00.000Z',
   };
 }
 
@@ -251,5 +276,44 @@ describe('devSessionsStore', () => {
       number: 17,
       url: 'https://github.com/test/repo/pull/17',
     });
+  });
+
+  it('stores review findings when a review agent completes', () => {
+    const findings = [{
+      severity: 'warning' as const,
+      file: 'src/file.ts',
+      line: 10,
+      description: 'Please handle undefined input.',
+      agent: 'claude' as const,
+      source: 'agent' as const,
+    }];
+
+    useDevSessionsStore.getState().handleAgentComplete('dev-session-1-review', {
+      filesChanged: 1,
+      additions: 3,
+      deletions: 1,
+    }, findings);
+
+    expect(useDevSessionsStore.getState().reviewFindingsBySessionId.get('dev-session-1-review')).toEqual(findings);
+    expect(useDevSessionsStore.getState().questionBySessionId.get('dev-session-1-review')).toBeNull();
+  });
+
+  it('rehydrates persisted agent review findings when sessions reload', async () => {
+    const persistedReview = createPersistedReview();
+    const session = {
+      ...createDevSession(),
+      latest_agent_review: persistedReview,
+    };
+
+    api.devSessions.getByProjectWithPlanItems.mockResolvedValue({
+      success: true,
+      sessions: [session],
+    });
+
+    await useDevSessionsStore.getState().loadSessions('project-1');
+
+    expect(useDevSessionsStore.getState().reviewFindingsBySessionId.get('dev-session-1')).toEqual(
+      persistedReview.findings
+    );
   });
 });

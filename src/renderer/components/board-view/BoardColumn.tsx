@@ -20,6 +20,8 @@ interface BoardColumnProps {
   onDragEnd: () => void;
   onDrop: (itemId: string, newStatus: StatusCategory) => void;
   onCreateItem?: (status: StatusCategory) => void;
+  onStartAgent?: (itemId: string) => void;
+  onStopAgent?: (devSessionId: string) => void;
 }
 
 /**
@@ -44,6 +46,8 @@ export const BoardColumn = memo(function BoardColumn({
   onDragEnd,
   onDrop,
   onCreateItem,
+  onStartAgent,
+  onStopAgent,
 }: BoardColumnProps) {
   const config = STATUS_CATEGORY_CONFIG[status];
   const [isDragOver, setIsDragOver] = useState(false);
@@ -171,6 +175,8 @@ export const BoardColumn = memo(function BoardColumn({
             onContextMenu={handleCardContextMenu}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
+            onStartAgent={onStartAgent}
+            onStopAgent={onStopAgent}
           />
         ))}
 
@@ -209,6 +215,8 @@ interface BoardTreeNodeRendererProps {
   onContextMenu: (e: React.MouseEvent, itemId: string) => void;
   onDragStart: (itemId: string) => void;
   onDragEnd: () => void;
+  onStartAgent?: (itemId: string) => void;
+  onStopAgent?: (devSessionId: string) => void;
 }
 
 const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
@@ -226,6 +234,8 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
   onContextMenu,
   onDragStart,
   onDragEnd,
+  onStartAgent,
+  onStopAgent,
 }: BoardTreeNodeRendererProps) {
   const { item, children } = node;
   const hasChildren = children.length > 0;
@@ -248,6 +258,8 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
         onContextMenu={(e) => onContextMenu(e, item.id)}
         onDragStart={() => onDragStart(item.id)}
         onDragEnd={onDragEnd}
+        onStartAgent={onStartAgent}
+        onStopAgent={onStopAgent}
       />
       {hasChildren && isExpanded && (
         <div className="mt-1 space-y-1">
@@ -268,6 +280,8 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
               onContextMenu={onContextMenu}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
+              onStartAgent={onStartAgent}
+              onStopAgent={onStopAgent}
             />
           ))}
         </div>

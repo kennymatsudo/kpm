@@ -1,5 +1,6 @@
 import type { RefObject } from 'react';
 import { isContextFile } from '../../../shared/contextFile';
+import type { RepoWorktree } from './RepoContextMenu';
 import { DropdownMenu } from '../ui/DropdownMenu';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { MarkdownDocumentModal } from '../markdown-document-modal';
@@ -76,12 +77,15 @@ interface ReposAndFilesOverlaysProps {
   repoContextRepo: {
     id: string;
     path: string;
+    active_worktree_path?: string | null;
   } | null;
+  repoWorktrees: RepoWorktree[];
   isRepoFocused: boolean;
   onCloseRepoContextMenu: () => void;
   onToggleRepoFocus: () => void;
   onRemoveRepo: () => void;
   onRevealRepoInFinder: () => void;
+  onSetActiveWorktreePath: (path: string | null) => void;
   deleteConfirmPath: string | null;
   deleteNode: FileNode | null;
   deleteFilename: string;
@@ -135,11 +139,13 @@ export function ReposAndFilesOverlays({
   isContextFileLinkedToConfluence,
   repoContextMenu,
   repoContextRepo,
+  repoWorktrees,
   isRepoFocused,
   onCloseRepoContextMenu,
   onToggleRepoFocus,
   onRemoveRepo,
   onRevealRepoInFinder,
+  onSetActiveWorktreePath,
   deleteConfirmPath,
   deleteNode,
   deleteFilename,
@@ -217,11 +223,14 @@ export function ReposAndFilesOverlays({
           y={repoContextMenu.y}
           repoId={repoContextRepo.id}
           repoPath={repoContextRepo.path}
+          activeWorktreePath={repoContextRepo.active_worktree_path}
+          worktrees={repoWorktrees}
           isFocused={isRepoFocused}
           onClose={onCloseRepoContextMenu}
           onToggleFocus={onToggleRepoFocus}
           onRemove={onRemoveRepo}
           onRevealInFinder={onRevealRepoInFinder}
+          onSetActiveWorktreePath={onSetActiveWorktreePath}
         />
       )}
 

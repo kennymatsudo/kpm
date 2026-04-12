@@ -260,6 +260,7 @@ class FileWatchServiceClass {
   }
 
   /**
+   * Read a document file from the project folder.
    * Returns null content if file doesn't exist (new document).
    */
   async readDocumentFile(

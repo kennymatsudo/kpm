@@ -52,6 +52,7 @@ export function useResourceDomainActions() {
     setRepoBranches: state.setRepoBranches,
     setRepoBranch: state.setRepoBranch,
     updateRepoEnvironmentMode: state.updateRepoEnvironmentMode,
+    setActiveWorktreePath: state.setActiveWorktreePath,
     setWorktrees: state.setWorktrees,
     addWorktree: state.addWorktree,
     removeWorktree: state.removeWorktree,

@@ -1,4 +1,11 @@
 import { useCallback, useEffect } from 'react';
+import {
+  subscribeToAgentStateChanges,
+  subscribeToAgentActivities,
+  subscribeToAgentQuestions,
+  subscribeToAgentComplete,
+  subscribeToAgentErrors,
+} from '../services/agentSessionService';
 
 export function useDevSessionsSync(projectId: string | null): void {
   const loadSessionsFromStore = useDevSessionsStore((state) => state.loadSessions);
@@ -32,4 +39,34 @@ export function useDevSessionsSync(projectId: string | null): void {
       window.clearInterval(intervalId);
     };
   }, [loadSessions]);
+
+  useEffect(() => {
+    const cleanupState = subscribeToAgentStateChanges((event) => {
+      useDevSessionsStore.getState().handleAgentStateChanged(event.devSessionId, event.state);
+    });
+
+    const cleanupActivity = subscribeToAgentActivities((event) => {
+      useDevSessionsStore.getState().handleAgentActivity(event.devSessionId, event.activity);
+    });
+
+    const cleanupQuestion = subscribeToAgentQuestions((event) => {
+      useDevSessionsStore.getState().handleAgentQuestion(event.devSessionId, event.question);
+    });
+
+    const cleanupComplete = subscribeToAgentComplete((event) => {
+      useDevSessionsStore.getState().handleAgentComplete(event.devSessionId, event.summary, event.findings);
+    });
+
+    const cleanupError = subscribeToAgentErrors((event) => {
+      useDevSessionsStore.getState().handleAgentError(event.devSessionId, event.error);
+    });
+
+    return () => {
+      cleanupState();
+      cleanupActivity();
+      cleanupQuestion();
+      cleanupComplete();
+      cleanupError();
+    };
+  }, []);
 }

@@ -3,6 +3,15 @@ import type {
   DevSessionWithPlanItem,
   PrStatus,
   ReviewInboxSnapshot,
+  AgentSessionState,
+
+export interface BackgroundCommitState {
+  status: 'running' | 'failed';
+  message: string;
+  startedAt: number;
+  error?: string;
+  moveToReviewOnSuccess?: boolean;
+}
 
 export interface DevSessionsState {
   // Data
@@ -15,7 +24,9 @@ export interface DevSessionsState {
   deletingSessionIds: Set<string>;
   lastActivityMap: Map<string, number>;
   diffBySessionId: Map<string, string | null>;
+  diffErrorBySessionId: Map<string, string>;
   diffLoadingIds: Set<string>;
+  commitStateBySessionId: Map<string, BackgroundCommitState>;
   reviewInboxBySessionId: Map<string, ReviewInboxSnapshot>;
   reviewLoadingIds: Set<string>;
   reviewErrorBySessionId: Map<string, string | null>;
@@ -26,11 +37,23 @@ export interface DevSessionsState {
   // PR status cache (transient, keyed by sessionId)
   prStatusCache: Map<string, PrStatus>;
 
+  // Computed merge order (refreshed alongside sessions)
+  mergeOrderBySessionId: Map<string, { layer: number | null; blockedBy: string[] }>;
+
+  // Agent session state (board-driven execution)
+  agentStateBySessionId: Map<string, AgentSessionState>;
+  activitiesBySessionId: Map<string, AgentActivity[]>;
+  latestActivityBySessionId: Map<string, AgentActivity>;
+  questionBySessionId: Map<string, AgentQuestion | null>;
+  completionBySessionId: Map<string, AgentCompletionSummary>;
+  reviewFindingsBySessionId: Map<string, ReviewFinding[]>;
+
   // Actions
   setSessions: (sessions: DevSessionWithPlanItem[]) => void;
   setSelectedSessionId: (sessionId: string | null) => void;
   setIsLoading: (isLoading: boolean) => void;
   recordActivity: (sessionId: string) => void;
+  setCommitState: (sessionId: string, state: BackgroundCommitState | null) => void;
 
   // PR polling
   pollPrStatuses: () => Promise<void>;
@@ -72,6 +95,21 @@ export interface DevSessionsState {
     prIdentifier: string
   ) => Promise<{ success: boolean; number?: number; url?: string; error?: string }>;
 
+  // Agent session actions (called from IPC listeners)
+  handleAgentStateChanged: (devSessionId: string, state: AgentSessionState) => void;
+  handleAgentActivity: (devSessionId: string, activity: AgentActivity) => void;
+  handleAgentQuestion: (devSessionId: string, question: AgentQuestion) => void;
+  handleAgentComplete: (devSessionId: string, summary: AgentCompletionSummary, findings?: ReviewFinding[]) => void;
+  handleAgentError: (devSessionId: string, error: string) => void;
+  hydrateAgentSnapshot: (
+    devSessionId: string,
+    snapshot: {
+      state?: AgentSessionState | null;
+      activities?: AgentActivity[];
+    }
+  ) => void;
+  getAgentState: (devSessionId: string) => AgentSessionState | undefined;
+
   // Reset
   reset: () => void;
   resetProjectState: () => void;
@@ -86,7 +124,9 @@ const initialState = {
   deletingSessionIds: new Set<string>(),
   lastActivityMap: new Map<string, number>(),
   diffBySessionId: new Map<string, string | null>(),
+  diffErrorBySessionId: new Map<string, string>(),
   diffLoadingIds: new Set<string>(),
+  commitStateBySessionId: new Map<string, BackgroundCommitState>(),
   reviewInboxBySessionId: new Map<string, ReviewInboxSnapshot>(),
   reviewLoadingIds: new Set<string>(),
   reviewErrorBySessionId: new Map<string, string | null>(),
@@ -94,6 +134,13 @@ const initialState = {
   prContextBySessionId: new Map<string, PrCreationContext>(),
   prContextLoadingIds: new Set<string>(),
   prStatusCache: new Map<string, PrStatus>(),
+  mergeOrderBySessionId: new Map<string, { layer: number | null; blockedBy: string[] }>(),
+  agentStateBySessionId: new Map<string, AgentSessionState>(),
+  activitiesBySessionId: new Map<string, AgentActivity[]>(),
+  latestActivityBySessionId: new Map<string, AgentActivity>(),
+  questionBySessionId: new Map<string, AgentQuestion | null>(),
+  completionBySessionId: new Map<string, AgentCompletionSummary>(),
+  reviewFindingsBySessionId: new Map<string, ReviewFinding[]>(),
 };
 
 /** Throttle map for recordActivity — tracks last update time per session */
@@ -120,6 +167,115 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
     });
   },
 
+  setCommitState: (sessionId, commitState) => {
+    set((state) => {
+      const next = new Map(state.commitStateBySessionId);
+      if (commitState) {
+        next.set(sessionId, commitState);
+      } else {
+        next.delete(sessionId);
+      }
+      return { commitStateBySessionId: next };
+    });
+  },
+
+  // Agent session handlers — called from IPC event listeners
+  handleAgentStateChanged: (devSessionId, state) => {
+    set((s) => {
+    });
+  },
+
+  handleAgentActivity: (devSessionId, activity) => {
+    set((s) => {
+      const nextLatest = new Map(s.latestActivityBySessionId);
+      nextLatest.set(devSessionId, activity);
+      const nextAll = new Map(s.activitiesBySessionId);
+      const existing = nextAll.get(devSessionId) ?? [];
+      nextAll.set(devSessionId, [...existing, activity]);
+      return { latestActivityBySessionId: nextLatest, activitiesBySessionId: nextAll };
+    });
+  },
+
+  handleAgentQuestion: (devSessionId, question) => {
+    set((s) => {
+      const next = new Map(s.questionBySessionId);
+      next.set(devSessionId, question);
+      return { questionBySessionId: next };
+    });
+  },
+
+  handleAgentComplete: (devSessionId, summary, findings) => {
+    set((s) => {
+      const nextCompletion = new Map(s.completionBySessionId);
+      nextCompletion.set(devSessionId, summary);
+      // Clear the pending question on completion
+      const nextQuestion = new Map(s.questionBySessionId);
+      nextQuestion.set(devSessionId, null);
+      const nextFindings = new Map(s.reviewFindingsBySessionId);
+      if (findings) {
+        nextFindings.set(devSessionId, findings);
+      }
+      return {
+        completionBySessionId: nextCompletion,
+        questionBySessionId: nextQuestion,
+        reviewFindingsBySessionId: nextFindings,
+      };
+    });
+  },
+
+  handleAgentError: (devSessionId, _error) => {
+    set((s) => {
+      const nextState = new Map(s.agentStateBySessionId);
+      nextState.set(devSessionId, 'failed');
+      const nextLatest = new Map(s.latestActivityBySessionId);
+      const errorActivity: AgentActivity = {
+        type: 'error',
+        timestamp: Date.now(),
+        summary: _error,
+        content: _error,
+      };
+      nextLatest.set(devSessionId, errorActivity);
+      const nextAll = new Map(s.activitiesBySessionId);
+      const existing = nextAll.get(devSessionId) ?? [];
+      nextAll.set(devSessionId, [...existing, errorActivity]);
+      return {
+        agentStateBySessionId: nextState,
+        latestActivityBySessionId: nextLatest,
+        activitiesBySessionId: nextAll,
+      };
+    });
+  },
+
+  hydrateAgentSnapshot: (devSessionId, snapshot) => {
+    set((s) => {
+      const nextState = new Map(s.agentStateBySessionId);
+      if (snapshot.state) {
+        nextState.set(devSessionId, snapshot.state);
+      }
+
+      const nextActivities = new Map(s.activitiesBySessionId);
+      const nextLatest = new Map(s.latestActivityBySessionId);
+      if (snapshot.activities) {
+        nextActivities.set(devSessionId, snapshot.activities);
+        const latest = snapshot.activities.at(-1);
+        if (latest) {
+          nextLatest.set(devSessionId, latest);
+        } else {
+          nextLatest.delete(devSessionId);
+        }
+      }
+
+      return {
+        agentStateBySessionId: nextState,
+        activitiesBySessionId: nextActivities,
+        latestActivityBySessionId: nextLatest,
+      };
+    });
+  },
+
+  getAgentState: (devSessionId) => {
+    return get().agentStateBySessionId.get(devSessionId);
+  },
 
   ...createDevSessionsLifecycleSlice(set, get),
   ...createDevSessionsPrSlice(set, get),

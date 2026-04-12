@@ -70,6 +70,11 @@ const GENERATION_PROMPTS: PromptDefinition[] = [
     category: 'generation',
   },
   {
+    key: 'generation.commit_message_instructions',
+    name: 'Commit Message Instructions',
+    category: 'generation',
+  },
+  {
     key: 'generation.briefing_instructions',
     name: 'Briefing Instructions',
     category: 'generation',

@@ -254,9 +254,14 @@ export function MarkdownDocumentModal({
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
+              <div className="flex items-center gap-3 min-w-0">
                 {icon}
+                <div className="min-w-0">
+                  <h3 className="text-base font-medium text-text-primary truncate">{title}</h3>
+                  <p className="text-xs text-text-muted truncate">{subtitle}</p>
                 </div>
               </div>
+              <div className="flex items-center gap-1 flex-shrink-0 ml-2">
                 {onDelete && (
                   <button
                     onClick={onDelete}
@@ -288,6 +293,7 @@ export function MarkdownDocumentModal({
             </div>
 
             {/* Tab bar */}
+            <div className="px-6 pt-3 pb-0 flex flex-wrap gap-1 bg-surface-1/50">
               {/* Diff tab - only shown if oldContent exists */}
               {oldContent !== undefined && (
                 <button
@@ -589,6 +595,8 @@ export function MarkdownDocumentModal({
             </div>
 
             {/* Footer */}
+            <div className="flex items-center justify-between gap-4 px-6 py-4 border-t border-border-subtle bg-surface-1/50">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted min-w-0">
                 <span className="flex items-center gap-1.5">
                   <kbd className="px-1.5 py-0.5 rounded bg-surface-2 text-xxs font-mono">⌘F</kbd>
                   <span>search</span>
@@ -614,6 +622,7 @@ export function MarkdownDocumentModal({
                   </>
                 )}
               </div>
+              <div className="flex gap-2 flex-shrink-0">
                 <MotionButton
                   variant="secondary"
                   onClick={onClose}

@@ -30,6 +30,8 @@ function createMocks(overrides?: Partial<RepoServiceDeps>): RepoServiceDeps {
       return repo;
     }),
     updateEnvironmentMode: vi.fn(),
+    updateSetupCommand: vi.fn(),
+    updateActiveWorktreePath: vi.fn(),
     delete: vi.fn((id: string) => repoStore.delete(id)),
     remove: vi.fn((id: string) => repoStore.delete(id)),
   };
@@ -64,6 +66,8 @@ function createMocks(overrides?: Partial<RepoServiceDeps>): RepoServiceDeps {
   const path = {
     join: vi.fn((...parts: string[]) => parts.join('/')),
     relative: vi.fn((from: string, to: string) => to.slice(`${from}/`.length)),
+    dirname: vi.fn((p: string) => p.slice(0, p.lastIndexOf('/'))),
+    basename: vi.fn((p: string) => p.slice(p.lastIndexOf('/') + 1)),
   };
 
   const gitExec = vi.fn(async () => ({ stdout: '', stderr: '' }));

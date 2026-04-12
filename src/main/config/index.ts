@@ -80,6 +80,19 @@ export interface NetworkConfig {
   gitTimeoutMs: number;
 }
 
+export interface ReviewPollConfig {
+  /** Polling interval in milliseconds */
+  pollIntervalMs: number;
+  /** Whether to auto-post draft replies without human approval */
+  autoPostReplies: boolean;
+  /** Maximum sessions to process per poll tick */
+  maxSessionsPerTick: number;
+  /** Whether the poller is enabled */
+  enabled: boolean;
+  /** Number of ticks to skip a session after an error */
+  errorBackoffTicks: number;
+}
+
 export interface AppConfig {
   database: DatabaseConfig;
   window: WindowConfig;
@@ -87,6 +100,7 @@ export interface AppConfig {
   session: SessionConfig;
   generation: GenerationConfig;
   network: NetworkConfig;
+  reviewPoll: ReviewPollConfig;
 }
 
 // =============================================================================
@@ -118,6 +132,9 @@ function createDefaultConfig(): AppConfig {
 
     session: {
       mainIdleTimeoutMs: 30 * 60 * 1000, // 30 minutes
+      processingTimeoutMs: 60 * 60 * 1000, // 60 minutes (hard cap for very long turns)
+      processingIdleTimeoutMs: 30 * 60 * 1000, // 30 minutes with no SDK activity = likely hung
+      permissionRequestTimeoutMs: 60 * 60 * 1000, // 60 minutes for permission prompts
       cleanupIntervalMs: 30 * 1000, // 30 seconds
       sessionReadyTimeoutMs: 30 * 1000, // 30 seconds
     },
@@ -132,6 +149,14 @@ function createDefaultConfig(): AppConfig {
     network: {
       fetchTimeoutMs: 10 * 1000, // 10 seconds
       gitTimeoutMs: 5 * 1000, // 5 seconds
+    },
+
+    reviewPoll: {
+      pollIntervalMs: 2 * 60 * 1000, // 2 minutes
+      autoPostReplies: false,
+      maxSessionsPerTick: 5,
+      enabled: true,
+      errorBackoffTicks: 3,
     },
 
   };

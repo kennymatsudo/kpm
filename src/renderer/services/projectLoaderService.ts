@@ -35,10 +35,16 @@ export function loadProjectRepoBranches(repoPaths: string[]): Promise<Record<str
   return window.api.repos.getBranches(repoPaths);
 }
 
+/** Returns the path that should be watched/queried for branch info (worktree if set, else main). */
+export function getEffectiveRepoPath(repo: Repo): string {
+  return repo.active_worktree_path ?? repo.path;
+}
+
 export function watchProjectRepos(repos: Repo[]): string[] {
   for (const repo of repos) {
   }
 
+  return repos.map(getEffectiveRepoPath);
 }
 
 export async function unwatchProjectRepos(repoPaths: string[]): Promise<void> {

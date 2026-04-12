@@ -31,6 +31,7 @@ export function createAppLifecycleService(deps: AppLifecycleServiceDeps) {
       }
       shutdownApplied = true;
 
+
       if (chatRuntime) {
           console.error('[AppLifecycleService] Error during session cleanup:', err);
         });

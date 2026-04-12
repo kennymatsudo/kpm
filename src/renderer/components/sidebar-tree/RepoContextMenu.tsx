@@ -1,15 +1,24 @@
 import { DropdownMenu } from '../ui';
 
+export interface RepoWorktree {
+  path: string;
+  branch: string | null;
+  isMain: boolean;
+}
+
 interface RepoContextMenuProps {
   x: number;
   y: number;
   repoId: string;
   repoPath: string;
+  activeWorktreePath: string | null | undefined;
+  worktrees: RepoWorktree[];
   isFocused: boolean;
   onClose: () => void;
   onToggleFocus: () => void;
   onRemove: () => void;
   onRevealInFinder: () => void;
+  onSetActiveWorktreePath: (path: string | null) => void;
 }
 
 export function RepoContextMenu({
@@ -17,12 +26,20 @@ export function RepoContextMenu({
   y,
   repoId: _repoId,
   repoPath,
+  activeWorktreePath,
+  worktrees,
   isFocused,
   onClose,
   onToggleFocus,
   onRemove,
   onRevealInFinder,
+  onSetActiveWorktreePath,
 }: RepoContextMenuProps) {
+
+  const handleWorktreeSelect = (path: string | null) => {
+    onSetActiveWorktreePath(path);
+    onClose();
+  };
 
   return (
     <DropdownMenu
@@ -59,6 +76,72 @@ export function RepoContextMenu({
       </DropdownMenu.Item>
 
       <DropdownMenu.Separator />
+
+      {/* Switch worktree submenu */}
+      <DropdownMenu.Submenu
+        trigger="Switch worktree"
+        icon={
+          <svg
+            className="w-4 h-4 text-text-tertiary"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+            />
+          </svg>
+        }
+        minWidth={240}
+      >
+        <DropdownMenu.SubmenuItem
+          onClick={() => handleWorktreeSelect(null)}
+          selected={!activeWorktreePath}
+        >
+          <span className="flex items-center gap-2">
+            {!activeWorktreePath ? (
+              <svg className="w-4 h-4 text-accent" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+              </svg>
+            ) : (
+              <span className="w-4" />
+            )}
+            <span className="flex flex-col items-start">
+              <span className="text-sm">Main checkout</span>
+              <span className="text-tiny text-text-muted font-mono truncate max-w-[180px]">{repoPath}</span>
+            </span>
+          </span>
+        </DropdownMenu.SubmenuItem>
+        {worktrees.filter((wt) => !wt.isMain).map((wt) => (
+          <DropdownMenu.SubmenuItem
+            key={wt.path}
+            onClick={() => handleWorktreeSelect(wt.path)}
+            selected={activeWorktreePath === wt.path}
+          >
+            <span className="flex items-center gap-2">
+              {activeWorktreePath === wt.path ? (
+                <svg className="w-4 h-4 text-accent" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                </svg>
+              ) : (
+                <span className="w-4" />
+              )}
+              <span className="flex flex-col items-start">
+                <span className="text-sm font-mono">{wt.branch ?? '(detached)'}</span>
+                <span className="text-tiny text-text-muted font-mono truncate max-w-[180px]">{wt.path}</span>
+              </span>
+            </span>
+          </DropdownMenu.SubmenuItem>
+        ))}
+        {worktrees.filter((wt) => !wt.isMain).length === 0 && (
+          <DropdownMenu.SubmenuItem selected={false}>
+            <span className="text-sm text-text-muted italic">No worktrees found</span>
+          </DropdownMenu.SubmenuItem>
+        )}
+      </DropdownMenu.Submenu>
 
 
       <DropdownMenu.Separator />

@@ -147,4 +147,29 @@ export function registerRepoHandlers(
       'Failed to list local branches',
     ),
   );
+
+  ipcMain.handle(
+    IPC_CHANNELS.repo.listWorktrees,
+    createIpcHandler(
+      RepoSchemas.listWorktrees,
+      async ({ repoPath }) => {
+        const result = await repoService.listWorktrees(repoPath);
+        if (!result.ok) throw new Error(result.error);
+        return { worktrees: result.data };
+      },
+      'Failed to list worktrees',
+    ),
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.repo.setActiveWorktreePath,
+    createIpcHandler(
+      RepoSchemas.setActiveWorktreePath,
+      ({ repoId, worktreePath }) => {
+        const result = repoService.setActiveWorktreePath(repoId, worktreePath);
+        if (!result.ok) throw new Error(result.error);
+      },
+      'Failed to set active worktree path',
+    ),
+  );
 }

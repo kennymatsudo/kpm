@@ -63,6 +63,7 @@ function createTestDb(): Database {
       label TEXT,
       external_key TEXT,
       updated_at TEXT,
+      UNIQUE(project_id, entity_type, entity_id)
     );
 
     CREATE VIRTUAL TABLE global_search_fts USING fts5(
@@ -111,6 +112,12 @@ function insertSearchIndexRow(
 
   const row = db.prepare(`
     SELECT id, title, body FROM global_search_index
+    WHERE project_id = ? AND entity_type = ? AND entity_id = ?
+  `).get(input.projectId, input.entityType, input.entityId) as {
+    id: number;
+    title: string;
+    body: string | null;
+  };
 
   db.prepare('INSERT INTO global_search_fts(rowid, title, body) VALUES (?, ?, ?)')
     .run(row.id, row.title, row.body ?? '');
@@ -154,6 +161,7 @@ describeIfFts('SearchService', () => {
     });
     insertSearchIndexRow(db, {
       entityType: 'document',
+      entityId: 'architecture.md',
       projectId,
       title: 'Architecture Overview',
       body: null,
@@ -283,6 +291,40 @@ describeIfFts('SearchService', () => {
     }
   });
 
+  it('allows document ids to overlap across projects', async () => {
+    const otherProjectId = 'proj-other-docs';
+    db.prepare('INSERT INTO projects (id, name, folder_path) VALUES (?, ?, ?)').run(otherProjectId, 'Other Docs', '/tmp');
+
+    insertSearchIndexRow(db, {
+      entityType: 'document',
+      entityId: 'README.md',
+      projectId,
+      title: 'Primary Project Readme',
+      body: 'alpha project setup guide',
+    });
+    insertSearchIndexRow(db, {
+      entityType: 'document',
+      entityId: 'README.md',
+      projectId: otherProjectId,
+      title: 'Secondary Project Readme',
+      body: 'beta project onboarding notes',
+    });
+
+    const primaryResult = await service.search(projectId, 'alpha');
+    expect(primaryResult.ok).toBe(true);
+    if (primaryResult.ok) {
+      expect(primaryResult.data.find((row) => row.id === 'README.md')?.title).toBe('Primary Project Readme');
+      expect(primaryResult.data.every((row) => row.title !== 'Secondary Project Readme')).toBe(true);
+    }
+
+    const secondaryResult = await service.search(otherProjectId, 'beta');
+    expect(secondaryResult.ok).toBe(true);
+    if (secondaryResult.ok) {
+      expect(secondaryResult.data.find((row) => row.id === 'README.md')?.title).toBe('Secondary Project Readme');
+      expect(secondaryResult.data.every((row) => row.title !== 'Primary Project Readme')).toBe(true);
+    }
+  });
+
   it('respects limit', async () => {
     const result = await service.search(projectId, 'authentication', 1);
     expect(result.ok).toBe(true);
@@ -302,6 +344,7 @@ describeIfFts('SearchService', () => {
     });
     insertSearchIndexRow(db, {
       entityType: 'document',
+      entityId: 'auth-runbook.md',
       projectId,
       title: 'Operations runbook',
       body: 'Troubleshooting authentication and token refresh issues',
@@ -311,6 +354,7 @@ describeIfFts('SearchService', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       const titleMatchIndex = result.data.findIndex((r) => r.id === 'item-auth-title');
+      const bodyOnlyDocIndex = result.data.findIndex((r) => r.id === 'auth-runbook.md');
       expect(titleMatchIndex).toBeGreaterThanOrEqual(0);
       expect(bodyOnlyDocIndex).toBeGreaterThanOrEqual(0);
       expect(titleMatchIndex).toBeLessThan(bodyOnlyDocIndex);

@@ -8,6 +8,7 @@
 
 import type {
   IDevSessionRepository,
+  IPlanItemRepository,
 } from '../../db/interfaces';
 import type {
   DevSession,
@@ -40,6 +41,7 @@ export interface BatchAssessmentResult {
 export interface ReviewAssessmentServiceDeps {
   devSessions: IDevSessionRepository;
   repos: IRepoRepository;
+  planItems: IPlanItemRepository;
   reviewTasks: IReviewTaskRepository;
   gitHubService: GitHubService;
 }
@@ -243,6 +245,19 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
     if (session.name) parts.push(`Session: ${session.name}`);
     if (session.initial_instructions) {
       parts.push(`Purpose: ${session.initial_instructions.slice(0, 500)}`);
+    }
+    if (session.plan_item_id) {
+      const planItem = deps.planItems.get(session.plan_item_id);
+      if (planItem) {
+        parts.push(`Task: ${planItem.title}`);
+        if (planItem.description) {
+          parts.push(`Description: ${planItem.description.slice(0, 1000)}`);
+        }
+        const subtasks = deps.planItems.getChildrenByParent(session.project_id, planItem.id);
+        if (subtasks.length > 0) {
+          parts.push(`Subtasks:\n${subtasks.map(s => `- ${s.title}`).join('\n')}`);
+        }
+      }
     }
     return parts.length > 0 ? parts.join('\n') : null;
   }

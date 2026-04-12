@@ -52,6 +52,8 @@ export interface PermissionContext {
   onClaudeMdEdit?: ClaudeMdInterceptFn;
   /** Optional callback to intercept project file writes for approval */
   onProjectFileWrite?: ProjectFileInterceptFn;
+  /** When true, skip permission prompts and auto-allow all non-denied tool calls */
+  autoApprove?: boolean;
 }
 
 /**
@@ -227,6 +229,7 @@ export function createPermissionHandler(
     // These are from claude.ai managed servers or user-loaded plugins
     if (toolName.startsWith('mcp__')) {
       const mcpCacheKey = `${toolName}:mcp-external`;
+      if (context.autoApprove || clientManager.hasPermissionCached(context.projectId, mcpCacheKey)) {
         return { behavior: 'allow', updatedInput: input };
       }
       if (clientManager.hasAllowAllRemaining(context.projectId)) {
@@ -255,6 +258,10 @@ export function createPermissionHandler(
 
     // Rule 5: Prompt for writes outside project directory
     if (WRITE_TOOLS.includes(toolName)) {
+      if (context.autoApprove) {
+        console.log(`[Permissions] Auto-allowing ${toolName} (autoApprove active)`);
+        return { behavior: 'allow', updatedInput: input };
+      }
       const result = await promptUser(toolName, input, options);
 
       // If "Allow Always" was selected, cache it via clientManager

@@ -4,6 +4,7 @@
  * Manages a unified queue for all pending approvals from Claude:
  * - Plan actions (create/update/delete plan items)
  * - Project context file edits (AGENTS.md / CLAUDE.md)
+ * - Document updates (markdown files in the project folder)
  *
  */
 

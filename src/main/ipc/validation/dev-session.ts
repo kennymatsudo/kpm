@@ -71,6 +71,18 @@ export const DevSessionSchemas = {
     sessionId: uuid,
     name: z.string().min(1).max(200),
   }),
+
+  /** Get computed merge order for all sessions in a project */
+  getMergeOrder: z.object({
+    projectId: uuid,
+  }),
+
+  /** Update user-explicit merge order override (null clears the override) */
+  updateMergeOrder: z.object({
+    sessionId: uuid,
+    order: z.number().int().min(0).nullable(),
+  }),
+
 };
 
 // =============================================================================

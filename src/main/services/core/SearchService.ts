@@ -2,6 +2,7 @@
  * SearchService - Global search across project entities.
  *
  * FTS5-backed global search. Document entries are indexed from filesystem
+ * (all `.md`/`.mdx` files under the project folder, recursively) into `global_search_index`.
  */
 
 import * as fs from 'fs/promises';
@@ -201,6 +202,7 @@ async function mapWithConcurrency<T, R>(
 async function listDocumentFiles(projectFolder: string): Promise<IndexedDocument[]> {
   let rootEntries: Dirent[];
   try {
+    rootEntries = await fs.readdir(projectFolder, { withFileTypes: true });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return [];
@@ -209,6 +211,7 @@ async function listDocumentFiles(projectFolder: string): Promise<IndexedDocument
   }
 
   const documents: IndexedDocument[] = [];
+  const queue: { absoluteDir: string; entries: Dirent[] }[] = [{ absoluteDir: projectFolder, entries: rootEntries }];
 
   while (queue.length > 0) {
     const current = queue.pop();

@@ -96,6 +96,15 @@ export const RepoSchemas = {
   listAllBranches: z.object({
     repoPath: existingDirectoryPath,
   }),
+
+  listWorktrees: z.object({
+    repoPath: existingDirectoryPath,
+  }),
+
+  setActiveWorktreePath: z.object({
+    repoId: uuid,
+    worktreePath: z.string().nullable(),
+  }),
 };
 
 // =============================================================================

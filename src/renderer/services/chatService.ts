@@ -90,6 +90,7 @@ export function sendChatMessage(params: {
   message: string;
   focusedResources: FocusedResource[];
   model: string;
+  effort?: string;
   tempImages?: string[];
   chatSessionId: string;
   currentView?: ChatViewMode;
@@ -102,6 +103,7 @@ export function sendChatMessage(params: {
     params.tempImages,
     params.chatSessionId,
     params.currentView,
+    params.clientMessageId,
   );
 }
 

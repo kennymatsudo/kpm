@@ -9,6 +9,7 @@
 
 import type { Database, Statement } from 'better-sqlite3';
 import type {
+  DevSessionAutomationPhase,
   DevSession,
   DevSessionStatus,
   DevSessionWithPlanItem,
@@ -30,8 +31,10 @@ interface PreparedStatements {
   // Write operations
   insert: Statement;
   updateStatus: Statement;
+  updateAutomationPhase: Statement;
   updatePrInfo: Statement;
   updateName: Statement;
+  updateMergeOrder: Statement;
   delete: Statement;
   markActiveAsInactive: Statement;
 }
@@ -81,6 +84,11 @@ export class DevSessionRepository implements IDevSessionRepository {
         RETURNING *
       `),
       updateStatus: db.prepare('UPDATE dev_sessions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
+      updateAutomationPhase: db.prepare(`
+        UPDATE dev_sessions
+        SET automation_phase = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `),
       updatePrInfo: db.prepare(`
         UPDATE dev_sessions
         SET pr_number = ?, pr_url = ?, pr_state = ?, review_state = ?,
@@ -88,6 +96,7 @@ export class DevSessionRepository implements IDevSessionRepository {
         WHERE id = ?
       `),
       updateName: db.prepare('UPDATE dev_sessions SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
+      updateMergeOrder: db.prepare('UPDATE dev_sessions SET merge_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
       delete: db.prepare('DELETE FROM dev_sessions WHERE id = ?'),
       markActiveAsInactive: db.prepare(`
         UPDATE dev_sessions
@@ -125,11 +134,14 @@ export class DevSessionRepository implements IDevSessionRepository {
       branch_name: row.branch_name,
       base_branch: row.base_branch,
       status: row.status,
+      agent_type: row.agent_type,
+      automation_phase: row.automation_phase ?? null,
       initial_instructions: row.initial_instructions,
       pr_number: row.pr_number ?? null,
       pr_url: row.pr_url ?? null,
       pr_state: row.pr_state ?? null,
       review_state: row.review_state ?? null,
+      merge_order: row.merge_order ?? null,
       created_at: row.created_at,
       updated_at: row.updated_at,
       completed_at: row.completed_at,
@@ -168,6 +180,8 @@ export class DevSessionRepository implements IDevSessionRepository {
       session.branch_name,
       session.base_branch,
       session.status,
+      session.agent_type,
+      session.automation_phase ?? null,
       session.initial_instructions,
     ) as DevSession;
   }
@@ -176,12 +190,20 @@ export class DevSessionRepository implements IDevSessionRepository {
     this.stmts.updateStatus.run(status, id);
   }
 
+  updateAutomationPhase(id: string, phase: DevSessionAutomationPhase | null): void {
+    this.stmts.updateAutomationPhase.run(phase, id);
+  }
+
   updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null): void {
     this.stmts.updatePrInfo.run(prNumber, prUrl, prState, reviewState, id);
   }
 
   updateName(id: string, name: string): void {
     this.stmts.updateName.run(name, id);
+  }
+
+  updateMergeOrder(id: string, order: number | null): void {
+    this.stmts.updateMergeOrder.run(order, id);
   }
 
   delete(id: string): void {

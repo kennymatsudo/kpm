@@ -65,6 +65,7 @@ export function setMapValue<T>(current: Map<string, T>, key: string, value: T): 
 interface SessionCacheState {
   diffBySessionId: Map<string, string | null>;
   diffLoadingIds: Set<string>;
+  commitStateBySessionId: Map<string, BackgroundCommitState>;
   reviewInboxBySessionId: Map<string, ReviewInboxSnapshot>;
   reviewLoadingIds: Set<string>;
   reviewErrorBySessionId: Map<string, string | null>;
@@ -80,6 +81,9 @@ export function dropSessionCacheEntries<State extends SessionCacheState>(
 ) {
   const diffBySessionId = new Map(state.diffBySessionId);
   diffBySessionId.delete(sessionId);
+
+  const commitStateBySessionId = new Map(state.commitStateBySessionId);
+  commitStateBySessionId.delete(sessionId);
 
   const reviewInboxBySessionId = new Map(state.reviewInboxBySessionId);
   reviewInboxBySessionId.delete(sessionId);
@@ -99,6 +103,7 @@ export function dropSessionCacheEntries<State extends SessionCacheState>(
   return {
     diffBySessionId,
     diffLoadingIds: removeFromSet(state.diffLoadingIds, sessionId),
+    commitStateBySessionId,
     reviewInboxBySessionId,
     reviewLoadingIds: removeFromSet(state.reviewLoadingIds, sessionId),
     reviewErrorBySessionId,

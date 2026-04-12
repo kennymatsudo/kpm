@@ -56,4 +56,10 @@ export const ReviewSchemas = {
     taskId: uuid,
     disposition: z.enum(['implement', 'push_back', 'needs_user_input']),
   }),
+
+  pollNow: z.object({}).optional(),
+
+  pollSession: z.object({
+    sessionId: uuid,
+  }),
 };

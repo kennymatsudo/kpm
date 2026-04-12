@@ -46,9 +46,11 @@ export type {
 
 // Review workflow domain
 export type {
+  IAgentReviewRepository,
   IReviewTaskRepository,
   IReviewOwnershipRepository,
   IReviewSyncStateRepository,
+  PersistedAgentReviewUpsert,
   ReviewTaskUpsert,
   ReviewTaskStatusUpdate,
   ReviewSyncStateUpsert,

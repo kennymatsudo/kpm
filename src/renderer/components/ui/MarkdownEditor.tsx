@@ -178,6 +178,8 @@ export function MarkdownEditor({
   return (
     <div className="flex flex-col h-full bg-surface-0">
       {/* Toolbar with Edit/Preview toggle */}
+      <div className="px-4 py-2 border-b border-border-default bg-surface-1 flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-1 flex-shrink-0">
           <button
             onClick={() => setActiveTab('edit')}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all

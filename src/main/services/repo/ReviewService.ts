@@ -128,6 +128,7 @@ function reconcileInternalState(
   return existing.internal_state;
 }
 
+export function buildAutomationPrompt(context: string): string {
   return [
     '',
     'Please address the following GitHub review feedback.',

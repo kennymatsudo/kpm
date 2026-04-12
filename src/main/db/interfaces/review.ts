@@ -64,6 +64,15 @@ export interface ReviewSyncStateUpsert {
   last_error?: string | null;
 }
 
+export interface PersistedAgentReviewUpsert {
+  implementation_session_id: string;
+  review_session_id: string;
+  reviewer_agent: PersistedAgentReview['reviewer_agent'];
+  diff_fingerprint?: string | null;
+  raw_output?: string | null;
+  findings: PersistedAgentReview['findings'];
+}
+
 export interface IReviewTaskRepository {
   get(id: string): ReviewTask | undefined;
   getByRepoPr(repoId: string, prNumber: number): ReviewTask[];
@@ -81,4 +90,10 @@ export interface IReviewSyncStateRepository {
   get(repoId: string, prNumber: number): ReviewSyncState | undefined;
   upsert(state: ReviewSyncStateUpsert): ReviewSyncState;
   updateError(repoId: string, prNumber: number, error: string | null): ReviewSyncState | undefined;
+}
+
+export interface IAgentReviewRepository {
+  persistCompletedReview(review: PersistedAgentReviewUpsert): PersistedAgentReview;
+  getLatestByImplementationSessionIds(sessionIds: string[]): PersistedAgentReview[];
+  markLatestCompletedStale(implementationSessionId: string): void;
 }

@@ -121,12 +121,14 @@ export interface StreamingSessionServiceDeps {
     context: PlanContext,
     options: {
       model: ModelType;
+      effort?: 'low' | 'medium' | 'high' | 'max';
       currentView?: ViewMode;
       resumeSessionId?: string;
       mainWindow: BrowserWindow | null;
       onClaudeMdEdit?: (projectId: string, newContent: string) => void;
       onProjectFileWrite?: (projectId: string, filePath: string, content: string) => void;
       onElicitation?: OnElicitation;
+      autoApprove?: boolean;
     }
   ) => SDKOptions;
 
@@ -334,6 +336,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     projectId: string;
     chatSessionId?: string;
     model: ModelType;
+    effort?: 'low' | 'medium' | 'high' | 'max';
     resumeSessionId?: string;
     context: PlanContext;
     currentView?: ViewMode;
@@ -349,6 +352,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       chatSessionId,
       initialMessage,
       model,
+      effort,
       resumeSessionId,
       context,
       currentView,
@@ -374,9 +378,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     try {
         model,
+        effort,
         currentView,
         resumeSessionId,
         mainWindow,
+        autoApprove: true,
         // Callback for intercepted context file edits from the permission handler
         onClaudeMdEdit: (editProjectId: string, newContent: string) => {
           // Read current context file for diff display
@@ -574,6 +580,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   /** Options for sending a chat message */
   interface SendChatMessageOptions {
     model?: ModelType;
+    effort?: 'low' | 'medium' | 'high' | 'max';
     focusedResources?: { type: string; path: string }[];
     chatSessionId?: string;
     /** Current UI view - used for prompt customization */
@@ -662,6 +669,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       chatSessionId,
       initialMessage,
       model: options.model ?? 'sonnet',
+      effort: options.effort,
       resumeSessionId,
       context,
       currentView: options.currentView,

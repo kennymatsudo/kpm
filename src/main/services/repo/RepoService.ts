@@ -13,6 +13,8 @@ interface RepoFs {
 interface RepoPath {
   join: typeof path.join;
   relative: typeof path.relative;
+  dirname: typeof path.dirname;
+  basename: typeof path.basename;
 }
 
 export interface RepoServiceDeps {
@@ -168,6 +170,46 @@ export function createRepoService(deps: RepoServiceDeps) {
         );
         return stdout.trim().split('\n').filter(Boolean);
       }, 'Failed to list all branches');
+    },
+
+    async listWorktrees(repoPath: string): AsyncResult<{ path: string; branch: string | null; isMain: boolean }[]> {
+      return wrapAsync(async () => {
+        const { stdout } = await deps.gitExec(['worktree', 'list', '--porcelain'], { cwd: repoPath });
+        const worktrees: { path: string; branch: string | null; isMain: boolean }[] = [];
+        let current: { path?: string; branch?: string | null } = {};
+        let isFirst = true;
+
+        for (const line of stdout.trim().split('\n')) {
+          if (line.startsWith('worktree ')) {
+            if (current.path !== undefined) {
+              worktrees.push({ path: current.path, branch: current.branch ?? null, isMain: isFirst });
+              isFirst = false;
+            }
+            current = { path: line.slice('worktree '.length) };
+          } else if (line.startsWith('branch ')) {
+            current.branch = line.slice('branch refs/heads/'.length);
+          } else if (line === '') {
+            if (current.path !== undefined) {
+              worktrees.push({ path: current.path, branch: current.branch ?? null, isMain: isFirst });
+              isFirst = false;
+              current = {};
+            }
+          }
+        }
+        if (current.path !== undefined) {
+          worktrees.push({ path: current.path, branch: current.branch ?? null, isMain: isFirst });
+        }
+
+      }, 'Failed to list worktrees');
+    },
+
+    setActiveWorktreePath(repoId: string, worktreePath: string | null): ServiceResult<void> {
+      try {
+        deps.repos.updateActiveWorktreePath(repoId, worktreePath);
+        return success(undefined);
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
     },
   };
 }

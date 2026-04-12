@@ -11,6 +11,7 @@ import type { ITrackerRepository, ISyncRepository, ISyncQueueRepository, ITypeMa
 import type { IChatMessageRepository, IChatSessionRepository } from './chat';
 import type { IDevSessionRepository, IWorktreeRepository } from './dev';
 import type { IConfluenceLinkRepository } from './confluence';
+import type { IAgentReviewRepository, IReviewOwnershipRepository, IReviewSyncStateRepository, IReviewTaskRepository } from './review';
 import type { ISlackChannelLinkRepository, ISlackTriageItemRepository } from './slack';
 
 /**
@@ -39,6 +40,7 @@ export interface IRepositoryContainer {
   confluenceLinks: IConfluenceLinkRepository;
   toolPermissions: IToolPermissionRepository;
   reviewTasks: IReviewTaskRepository;
+  agentReviews: IAgentReviewRepository;
   reviewOwnership: IReviewOwnershipRepository;
   reviewSyncState: IReviewSyncStateRepository;
   slackChannelLinks: ISlackChannelLinkRepository;

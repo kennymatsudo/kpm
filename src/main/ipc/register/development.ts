@@ -4,6 +4,7 @@ import { registerReviewHandlers } from '../handlers/review';
 import { registerDevSessionHandlers } from '../handlers/devSessions';
 import { registerFileExplorerHandlers } from '../handlers/fileExplorer';
 import { registerRepoFileHandlers } from '../handlers/repoFiles';
+import { registerAgentSessionHandlers } from '../handlers/agentSessions';
 import type { IpcRegistrationContext } from './types';
 
 export function registerDevelopmentHandlers({
@@ -12,6 +13,7 @@ export function registerDevelopmentHandlers({
 }: IpcRegistrationContext): void {
   registerWorktreeHandlers(services.worktreeService);
   registerGitHubHandlers(services.gitHubService);
+  registerReviewHandlers(services.reviewService, services.reviewAssessmentService, services.reviewPollService);
   registerFileExplorerHandlers(services.fileExplorerService, services.projectWatcherService, getMainWindow);
   registerRepoFileHandlers(services.repoFileService);
 }

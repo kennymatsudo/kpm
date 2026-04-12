@@ -13,12 +13,14 @@ import type { RepoWatcherService } from '../repo/RepoWatcherService';
 import { createFileExplorerService } from '../files/FileExplorerService';
 import { createProjectWatcherService } from '../files/ProjectWatcherService';
 import { createRepoFileService } from '../files/RepoFileService';
+import type { AgentSessionManager } from '../agents/AgentSessionManager';
 
 export interface RepoServicesCompositionDeps {
   container: IRepositoryContainer;
   repoWatcherService: RepoWatcherService;
   getMainWindow: () => BrowserWindow | null;
   userDataPath: string;
+  agentSessionManager?: AgentSessionManager;
 }
 
 export function createRepoServices({
@@ -26,6 +28,7 @@ export function createRepoServices({
   repoWatcherService,
   getMainWindow,
   userDataPath,
+  agentSessionManager,
 }: RepoServicesCompositionDeps) {
   const repoService = createRepoService({
     repos: container.repos,
@@ -57,7 +60,9 @@ export function createRepoServices({
     projects: container.projects,
     repos: container.repos,
     appSettings: container.appSettings,
+    agentReviews: container.agentReviews,
     userDataPath,
+    agentSessionManager,
   });
 
   const gitHubService = createGitHubService({
@@ -78,6 +83,7 @@ export function createRepoServices({
   const reviewAssessmentService = createReviewAssessmentService({
     devSessions: container.devSessions,
     repos: container.repos,
+    planItems: container.planItems,
     reviewTasks: container.reviewTasks,
     gitHubService,
   });

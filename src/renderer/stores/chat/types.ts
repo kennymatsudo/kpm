@@ -55,6 +55,7 @@ export interface ChatState {
 
   // Shared state
   model: ClaudeModel;
+  effort: AgentEffortLevel;
   totalTokens: number;
   sessionHistory: ChatSessionSummary[];
 

@@ -65,7 +65,14 @@ import type {
   DiscoveredMcpServer,
   SlackChannelLink,
   SlackTriageItem,
+  AgentType,
+  AgentSessionState,
+  AgentSessionRole,
+  AgentEffortLevel,
 } from '../shared/types';
+import type {
+  AgentActivity,
+} from '../shared/agent-types';
 
 type IpcSuccess<T extends object | void> = T extends void ? { success: true } : { success: true } & T;
 interface IpcFailure {
@@ -358,6 +365,12 @@ const repos = {
     ),
   listAllBranches: (repoPath: string): Promise<string[]> =>
     invokeOrThrow<{ branches: string[] }, string[]>(IPC_CHANNELS.repo.listAllBranches, { repoPath }, ({ branches }) => branches),
+  listWorktrees: (repoPath: string): Promise<{ path: string; branch: string | null; isMain: boolean }[]> =>
+    invokeOrThrow<{ worktrees: { path: string; branch: string | null; isMain: boolean }[] }, { path: string; branch: string | null; isMain: boolean }[]>(
+      IPC_CHANNELS.repo.listWorktrees, { repoPath }, ({ worktrees }) => worktrees,
+    ),
+  setActiveWorktreePath: (repoId: string, worktreePath: string | null): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.repo.setActiveWorktreePath, { repoId, worktreePath }),
   onBranchChanged: (callback: (data: { repoId: string; repoPath: string; branch: string | null }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, data: { repoId: string; repoPath: string; branch: string | null }) => callback(data);
     ipcRenderer.on('repo:branch-changed', handler);
@@ -397,6 +410,11 @@ const plan = {
     invokeFlat<void>(IPC_CHANNELS.plan.deleteItemWithDescendants, { itemId }),
   getChildCount: (itemId: string): Promise<number> =>
     invokeOrThrow<{ count: number }, number>(IPC_CHANNELS.plan.getChildCount, { itemId }, ({ count }) => count),
+  onRefreshRequested: (callback: (event: { projectId: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, event: { projectId: string }) => callback(event);
+    ipcRenderer.on('plan:refresh-requested', handler);
+    return () => ipcRenderer.removeListener('plan:refresh-requested', handler);
+  },
 };
 
 // Groups API (Visual containers - Figma-style frames)
@@ -854,6 +872,10 @@ const review = {
     ipcRenderer.invoke(IPC_CHANNELS.review.ignoreTask, { taskId }),
   overrideDisposition: (taskId: string, disposition: string): Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.review.overrideDisposition, { taskId, disposition }),
+  pollNow: (): Promise<{ success: boolean; processed?: number; fixesStarted?: number; assessmentsRun?: number; needsAttention?: number; errors?: number; timestamp?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.review.pollNow),
+  pollSession: (sessionId: string): Promise<{ success: boolean; sessionId?: string; action?: string; newThreadCount?: number; implementCount?: number; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.review.pollSession, { sessionId }),
   onSyncUpdated: (callback: (data: { sessionId: string; needsReviewCount: number; totalTasks: number; fetchedAt: string }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, data: { sessionId: string; needsReviewCount: number; totalTasks: number; fetchedAt: string }) => callback(data);
     ipcRenderer.on('review:sync-updated', handler);
@@ -938,6 +960,103 @@ const devSessions = {
   // Update session name
   updateName: (sessionId: string, name: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.devSession.updateName, { sessionId, name }),
+
+  // Get computed merge order for all sessions in a project
+  getMergeOrder: (projectId: string): Promise<{ success: boolean; mergeOrder?: Record<string, { layer: number | null; blockedBy: string[] }>; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.devSession.getMergeOrder, { projectId }),
+
+  // Update user-explicit merge order override (null clears the override)
+  updateMergeOrder: (sessionId: string, order: number | null): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.devSession.updateMergeOrder, { sessionId, order }),
+
+};
+
+// =============================================================================
+// Agent Sessions (Board-Driven Execution)
+// =============================================================================
+
+const agentSessions = {
+  // Create pending session + start agent in one call (primary entry point from board UI)
+
+  // Start an agent session for an existing pending/inactive dev session
+  startAgent: (devSessionId: string, agentType?: AgentType, role?: AgentSessionRole): Promise<{ success: boolean; session?: DevSession; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.agentSession.startAgent, { devSessionId, agentType, role }),
+
+  // Respond to an agent's question
+  respond: (devSessionId: string, text: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.agentSession.respond, { devSessionId, text }),
+
+  // Follow up after agent completion
+  followUp: (devSessionId: string, text: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.agentSession.followUp, { devSessionId, text }),
+
+  // Stop an agent session
+  stop: (devSessionId: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.agentSession.stop, { devSessionId }),
+
+  // Get activities for a session
+  getActivities: (devSessionId: string): Promise<{ success: boolean; activities?: AgentActivity[]; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.agentSession.getActivities, { devSessionId }),
+
+  // Get current state for a session
+  getState: (devSessionId: string): Promise<{ success: boolean; state?: AgentSessionState | null; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.agentSession.getState, { devSessionId }),
+
+  // Get available agents on this machine
+  getAvailableAgents: (): Promise<{ success: boolean; agents?: AgentType[]; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.agentSession.getAvailableAgents),
+
+  // Launch opposing-agent auto-review for a completed session
+  launchReview: (devSessionId: string): Promise<{ success: boolean; reviewSessionId?: string | null; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.agentSession.launchReview, { devSessionId }),
+
+  // Generate a commit message for the session's changes using the configured instructions
+  generateCommitMessage: (
+    devSessionId: string,
+    taskTitle: string,
+    externalKey?: string,
+  ): Promise<{ success: boolean; message?: string; error?: string }> =>
+
+  // Commit uncommitted changes in the session's worktree
+  commit: (
+    devSessionId: string,
+    message: string,
+
+  // Get structured commit log (commits ahead of base branch)
+  getCommitLog: (
+    devSessionId: string,
+  ): Promise<{ success: boolean; commits?: { sha: string; subject: string; authorName: string; date: string }[]; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.agentSession.getCommitLog, { devSessionId }),
+
+  // Get file stats for a single commit
+  getCommitFiles: (
+    devSessionId: string,
+    sha: string,
+  ): Promise<{ success: boolean; files?: { path: string; additions: number; deletions: number }[]; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.agentSession.getCommitFiles, { devSessionId, sha }),
+
+  // Event listeners
+    ipcRenderer.on('agent-session:state-changed', handler);
+    return () => ipcRenderer.removeListener('agent-session:state-changed', handler);
+  },
+
+    ipcRenderer.on('agent-session:activity', handler);
+    return () => ipcRenderer.removeListener('agent-session:activity', handler);
+  },
+
+    ipcRenderer.on('agent-session:question', handler);
+    return () => ipcRenderer.removeListener('agent-session:question', handler);
+  },
+
+    ipcRenderer.on('agent-session:complete', handler);
+    return () => ipcRenderer.removeListener('agent-session:complete', handler);
+  },
+
+  onError: (callback: (event: { sessionId: string; devSessionId: string; error: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, event: { sessionId: string; devSessionId: string; error: string }) => callback(event);
+    ipcRenderer.on('agent-session:error', handler);
+    return () => ipcRenderer.removeListener('agent-session:error', handler);
+  },
 };
 
 const fileExplorer = {
@@ -1302,6 +1421,7 @@ export const api = {
   review,
   worktrees,
   devSessions,
+  agentSessions,
   fileExplorer,
   repoFiles,
   shell,

@@ -1,11 +1,17 @@
+import { useState, useCallback, useMemo, useEffect, useRef, memo } from 'react';
 import { BoardColumn } from './BoardColumn';
+import { DetailPane } from './DetailPane';
+import { MergeQueuePanel } from './MergeQueuePanel';
 import {
   toast,
   usePlanDomainStore,
   useProjectDomainStore,
 } from '../../stores';
+import { stopAgentSession } from '../../services/agentSessionService';
 import { getStatusCategory, STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import { subscribe } from '../../stores/storeEvents';
+import type { PlanItem, StatusCategory, DevSessionWithPlanItem } from '../../../shared/types';
+import { getBoardDropDecision } from './dropBehavior';
 
 /**
  * A board tree node: a plan item with children that share the same status column.
@@ -33,6 +39,8 @@ interface BoardViewProps {
   onContextMenu: (e: React.MouseEvent, ids: Set<string>) => void;
   /** Callback for creating a new item with a given status */
   onCreateItem?: (status: StatusCategory) => void;
+  /** Callback when user wants to start an agent on an item */
+  onStartAgent?: (itemId: string) => void;
 }
 
 /**
@@ -51,9 +59,17 @@ export const BoardView = memo(function BoardView({
   onPrepareEditItem,
   onContextMenu,
   onCreateItem,
+  onStartAgent: onStartAgentProp,
 }: BoardViewProps) {
   const updateStatusCategory = usePlanDomainStore((state) => state.updateStatusCategory);
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
+
+
+  const boardRef = useRef<HTMLDivElement>(null);
+
+  // Merge queue panel visibility — auto-show when PRs first appear
+  const [showMergeQueue, setShowMergeQueue] = useState(false);
+  useEffect(() => {
 
   // Column visibility - persisted per project
   const [columnVisibility, setColumnVisibility] = useState<Record<StatusCategory, boolean>>(() => {
@@ -207,6 +223,17 @@ export const BoardView = memo(function BoardView({
   const toggleColumnCounts = useMemo(() => {
   }, []);
 
+  // Agent start handler - delegates to parent
+  const handleStartAgent = useCallback((itemId: string) => {
+    onStartAgentProp?.(itemId);
+  }, [onStartAgentProp]);
+
+  // Agent stop handler
+  const handleStopAgent = useCallback(async (devSessionId: string) => {
+    await stopAgentSession(devSessionId);
+  }, []);
+
+  // Handle drop - update status category with agent lifecycle awareness
   const handleDrop = useCallback(
     (itemId: string, newStatus: StatusCategory) => {
       const item = allItems.find((candidate) => candidate.id === itemId);
@@ -217,8 +244,23 @@ export const BoardView = memo(function BoardView({
 
       const previousStatus =
         item.status_category ?? getStatusCategory(item.external_status, item.external_type) ?? 'not_started';
+        (s) => s.plan_item_id === itemId && ['pending', 'active'].includes(s.status)
+      );
+      const decision = getBoardDropDecision(previousStatus, newStatus, !!activeSession);
+
+      if (decision.action === 'noop') {
         setDraggedItemId(null);
         return;
+      }
+
+      if (decision.action === 'start_agent') {
+        setDraggedItemId(null);
+        handleStartAgent(itemId);
+        return;
+      }
+
+      if (decision.stopActiveSession && activeSession) {
+        void stopAgentSession(activeSession.id);
       }
 
       void updateStatusCategory(itemId, newStatus);
@@ -233,6 +275,8 @@ export const BoardView = memo(function BoardView({
     },
   );
 
+  const handleSelectQueueSession = useCallback((sessionId: string) => {
+
   const handleDragStart = useCallback((itemId: string) => {
     setDraggedItemId(itemId);
   }, []);
@@ -240,6 +284,8 @@ export const BoardView = memo(function BoardView({
   const handleDragEnd = useCallback(() => {
     setDraggedItemId(null);
   }, []);
+
+    );
 
   // Determine which columns to show
   const visibleColumns = useMemo(() => {
@@ -250,13 +296,64 @@ export const BoardView = memo(function BoardView({
   }, [columnVisibility]);
 
   return (
+    <div
+      ref={boardRef}
+    >
+      <div className="flex-1 flex flex-col min-w-0">
       {/* Header with column toggles */}
         {items.length} item{items.length !== 1 ? 's' : ''}
       </span>
 
+        <div className="ml-auto flex items-center gap-1">
+          {/* Merge queue toggle — only shown when there are open PRs */}
+            <button
+              onClick={() => setShowMergeQueue((v) => !v)}
+              className={`
+                flex items-center gap-1.5 px-2 py-1 text-xs rounded transition-colors
+                ${showMergeQueue ? 'bg-surface-3 text-text-secondary' : 'text-text-muted hover:text-text-secondary hover:bg-surface-2'}
+              `}
+              title={showMergeQueue ? 'Hide merge queue' : 'Show merge queue'}
+            >
+              <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8Z" />
+              </svg>
+              Merge queue
+              <span className="tabular-nums opacity-75">({openPrCount})</span>
+            </button>
+          )}
+
+          {TOGGLE_COLUMNS.map((status) => {
+            const config = STATUS_CATEGORY_CONFIG[status];
+            const count = toggleColumnCounts[status as keyof typeof toggleColumnCounts];
+            const isVisible = columnVisibility[status];
+
+            return (
+              <button
+                key={status}
+                onClick={() => toggleColumn(status)}
+                className={`
+                  flex items-center gap-1.5 px-2 py-1 text-xs rounded transition-colors
+                  ${isVisible ? 'bg-surface-3 text-text-secondary' : 'text-text-muted hover:text-text-secondary hover:bg-surface-2'}
+                `}
+                title={`${isVisible ? 'Hide' : 'Show'} ${config.label} column`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${config.bgClass}`} />
+                {config.label}
+                {count > 0 && (
+                  <span className="text-tiny tabular-nums opacity-60">({count})</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
+      {/* Merge queue panel — between header and columns */}
+        <MergeQueuePanel onSelectSession={handleSelectQueueSession} />
+      )}
+
       {/* Columns container - horizontal scroll if needed */}
+      <div className="flex-1 flex gap-4 p-4 overflow-x-auto min-w-0">
         {visibleColumns.map((status) => (
           <BoardColumn
             key={status}
@@ -274,9 +371,17 @@ export const BoardView = memo(function BoardView({
             onDragEnd={handleDragEnd}
             onDrop={handleDrop}
             onCreateItem={onCreateItem}
+            onStartAgent={handleStartAgent}
+            onStopAgent={handleStopAgent}
           />
         ))}
       </div>
+
+      </div>
+
+      {detailSession && (
+      )}
+
     </div>
   );
 });

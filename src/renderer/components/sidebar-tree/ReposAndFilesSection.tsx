@@ -1,3 +1,4 @@
+import { useState, useCallback, useEffect, memo, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
   useResourceDomainStore,
@@ -9,6 +10,7 @@ import {
 } from '../../stores';
 import { useResourceDomainActions } from '../../hooks/useStoreActions';
 import { isImageFile, formatFileSize } from '../../utils/image';
+import type { RepoWorktree } from './RepoContextMenu';
 import { subscribe as subscribeToStoreEvent } from '../../stores/storeEvents';
 import {
   copyExternalProjectFile,
@@ -82,7 +84,11 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
   const {
     addReposFromDialog,
     removeRepoFromProject,
+    setActiveWorktreePath,
   } = useResourceDomainActions();
+
+  const [repoWorktrees, setRepoWorktrees] = useState<RepoWorktree[]>([]);
+  const loadingWorktreesForRef = useRef<string | null>(null);
 
   // File tree store
   const {
@@ -130,6 +136,33 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     unlinkDocument,
     setContextMenu: fileContextMenus.setContextMenu,
   });
+
+  // Load git worktrees when the repo context menu opens
+  useEffect(() => {
+    const repoContextMenu = fileContextMenus.repoContextMenu;
+    if (!repoContextMenu) {
+      setRepoWorktrees([]);
+      return;
+    }
+    const repo = repos.find((r) => r.id === repoContextMenu.repoId);
+    if (!repo || loadingWorktreesForRef.current === repo.id) return;
+
+    loadingWorktreesForRef.current = repo.id;
+      setRepoWorktrees(wts);
+      loadingWorktreesForRef.current = null;
+    }).catch(() => {
+      setRepoWorktrees([]);
+      loadingWorktreesForRef.current = null;
+    });
+  }, [fileContextMenus.repoContextMenu, repos]);
+
+  const handleSetActiveWorktreePath = useCallback(
+    async (repoId: string, path: string | null) => {
+      if (!projectId) return;
+      await setActiveWorktreePath(projectId, repoId, path);
+    },
+    [projectId, setActiveWorktreePath]
+  );
 
   const addMenu = useAddMenu();
 
@@ -504,6 +537,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         isContextFileLinkedToConfluence={contextMenuConfluenceLink !== null}
         repoContextMenu={fileContextMenus.repoContextMenu}
         repoContextRepo={repoContextRepo}
+        repoWorktrees={repoWorktrees}
         isRepoFocused={repoContextRepo ? isRepoFocused(repoContextRepo.id) : false}
         onCloseRepoContextMenu={fileContextMenus.handleCloseRepoContextMenu}
         onToggleRepoFocus={() => {
@@ -519,6 +553,9 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         onRevealRepoInFinder={() => {
           if (repoContextRepo) {
           }
+        }}
+        onSetActiveWorktreePath={(path) => {
+          if (repoContextRepo) void handleSetActiveWorktreePath(repoContextRepo.id, path);
         }}
         deleteConfirmPath={fileContextMenus.deleteConfirmPath}
         deleteNode={deleteNode}
