@@ -29,6 +29,7 @@ if (typeof window !== 'undefined') {
       useChatStore.setState({ model: result.value });
     }
   });
+    if (result.value === 'high' || result.value === 'max') {
       useChatStore.setState({ effort: result.value });
     }
   });

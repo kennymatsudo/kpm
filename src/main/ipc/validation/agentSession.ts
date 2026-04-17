@@ -9,6 +9,7 @@ const agentType = z.enum(['claude', 'codex', 'gemini'], {
   message: 'Agent type must be "claude", "codex", or "gemini"',
 });
 
+const agentEffortLevel = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 
 const agentSessionRole = z.enum(['implement', 'review'], {
   message: 'Role must be "implement" or "review"',

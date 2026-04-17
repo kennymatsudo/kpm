@@ -69,6 +69,7 @@ export interface TaskPromptTemplate {
 /**
  * Effort level controlling how much thinking/reasoning Claude applies.
  */
+export type AgentEffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 // =============================================================================
 // Custom Prompt Types

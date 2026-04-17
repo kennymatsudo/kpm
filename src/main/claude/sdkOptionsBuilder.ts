@@ -17,6 +17,7 @@ export type ModelType = 'opus' | 'sonnet' | 'haiku';
 export interface BuildSdkOptionsParams {
   context: PlanContext;
   model: ModelType;
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   currentView?: ChatViewMode;
   resumeSessionId?: string;
   mainWindow: BrowserWindow | null;
