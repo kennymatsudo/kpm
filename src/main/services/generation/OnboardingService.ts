@@ -366,6 +366,8 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
         console.log('[OnboardingService] Built prompt, length:', userPrompt.length);
 
         const sdkOptions: SDKOptions = {
+          // Adaptive thinking with summarized display: OnboardingService streams thinking to UI.
+          thinking: { type: 'adaptive' as const, display: 'summarized' as const },
           systemPrompt: SYSTEM_PROMPT,
           cwd: options.projectPath,
           additionalDirectories: scanResults.map(result => result.repoPath),

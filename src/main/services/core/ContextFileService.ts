@@ -73,6 +73,26 @@ export function createContextFileService(deps: ContextFileServiceDeps) {
       }
       return success({ filename: result.filename });
     },
+
+    async buildContextPrefix(projectId: string, contextPaths: string[]): AsyncResult<string> {
+      if (contextPaths.length === 0) return success('');
+
+      // Read all context files in parallel instead of sequentially — with N files
+      // this was previously O(N × per-file latency).
+      const results = await Promise.all(
+        contextPaths.map((filePath) => FileWatchService.readContextFile(projectId, filePath))
+      );
+
+      const sections: string[] = [];
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        if (result.success && result.content) {
+          sections.push(`<context-file path="${contextPaths[i]}">\n${result.content}\n</context-file>`);
+        }
+      }
+
+      return success(sections.length > 0 ? sections.join('\n\n') + '\n\n' : '');
+    },
   };
 }
 

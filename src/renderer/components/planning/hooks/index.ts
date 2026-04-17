@@ -9,3 +9,7 @@ export { useGroupDrag } from './useGroupDrag';
 export { usePlanTaskEdit } from './usePlanTaskEdit';
 export { useCreateItemModal } from './useCreateItemModal';
 export { usePlanContextMenu } from './usePlanContextMenu';
+export { useCanvasHierarchy } from './useCanvasHierarchy';
+export { useCanvasAutoLayoutTrigger } from './useCanvasAutoLayoutTrigger';
+export { useCanvasDragHandlers } from './useCanvasDragHandlers';
+export { useVisibleCanvasItems } from './useVisibleCanvasItems';

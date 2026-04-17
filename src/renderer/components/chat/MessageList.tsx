@@ -1,4 +1,5 @@
 import { useEffect, useRef, memo, useState, useMemo, useCallback, useLayoutEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useChatStore, type Activity, type MessageSegment } from '../../stores';
 import type { Message } from '../../stores/chat';
 import { processMessageContent } from '../../utils/messageFormatter';
@@ -201,6 +202,8 @@ interface MessageListProps {
 }
 
   // Access per-session chat state
+        ? state.sessions.get(state.viewedSessionId) ?? null
+  );
 
   const messages = viewedSession?.messages ?? [];
   const streamingSegments = viewedSession?.streamingSegments ?? [];

@@ -5,6 +5,7 @@
 
 import { useState, useRef } from 'react';
 import type { DevSessionWithPlanItem } from '../../../shared/types';
+import { useDevSessionsStore } from '../../stores/devSessions';
 import { Modal } from '../ui/Modal';
 import { MotionButton } from '../ui/MotionButton';
 import { toast } from '../../stores/toastStore';

@@ -26,3 +26,11 @@ export async function loadRepoBranchOptions(repoPath: string): Promise<{
 export function listRepoDirectories(repoPath: string, prefix: string): Promise<string[]> {
   return window.api.repos.listDirectories(repoPath, prefix);
 }
+
+export function listAllRepoBranches(repoPath: string): Promise<string[]> {
+  return window.api.repos.listAllBranches(repoPath);
+}
+
+export function listRepoWorktrees(repoPath: string): Promise<{ path: string; branch: string | null; isMain: boolean }[]> {
+  return window.api.repos.listWorktrees(repoPath);
+}

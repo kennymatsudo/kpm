@@ -57,6 +57,7 @@ export function useChatIpcBridge(projectId: string | null): void {
   const {
     processPlanActions,
     processFileUpdate,
+  } = useApprovalQueueStore(useShallow((state) => ({
     processPlanActions: state.processPlanActions,
     processFileUpdate: state.processFileUpdate,
   })));

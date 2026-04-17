@@ -95,6 +95,8 @@ Be thorough but concise. Focus on what was requested.`;
 
         // Configure SDK for Opus with extended thinking and MCP server
         const sdkOptions: SDKOptions = {
+          // Adaptive thinking for high-quality generation.
+          thinking: { type: 'adaptive' as const, display: 'summarized' as const },
           persistSession: false, // Ephemeral one-shot query, no need to persist
           mcpServers: {
             kpm: kpmServer,

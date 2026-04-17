@@ -149,6 +149,15 @@ The review session ID is always `toReviewSessionId(implSessionId)` from `shared/
 ## Completion Stats
 
 
+## Agent Prompt Shape
+
+
+- `## Intent` — rendered when `item.intent` is set.
+- `## Acceptance Criteria` — rendered when `item.acceptance_criteria` has entries; each becomes a `- [ ]` checkbox line.
+- `## Context` / `## Description` — the description block. Rendered as `## Context` when acceptance criteria are present (description is supplementary rationale), `## Description` otherwise. `No description provided.` is used as a final fallback only when neither intent, criteria, nor description exist.
+- `## Instructions` — instructs the agent not to commit. When acceptance criteria are present, the instruction explicitly tells the agent to satisfy every criterion.
+
+
 ## Common Pitfalls
 
 - Do not assume board `Play` always means "new worktree". It should usually mean "continue existing work" when prior work exists.

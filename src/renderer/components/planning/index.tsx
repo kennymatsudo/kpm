@@ -18,6 +18,7 @@ import {
   selectFocusedPlanItemId,
   selectDescendantIds,
 } from '../../stores';
+import { useDevSessionsStore } from '../../stores/devSessions';
 import { createAndStartAgentSession } from '../../services/agentSessionService';
 import { getStatusCategory } from '../../constants/statusConfig';
 import { useShallow } from 'zustand/react/shallow';

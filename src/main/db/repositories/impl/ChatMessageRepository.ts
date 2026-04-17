@@ -21,6 +21,7 @@ interface PreparedStatements {
   insertOrIgnoreWithClientMessageId: Statement;
   getByClientMessageId: Statement;
   getRecentSessions: Statement;
+  pruneOldSessions: Statement;
 }
 
 export class ChatMessageRepository implements IChatMessageRepository {
@@ -55,6 +56,16 @@ export class ChatMessageRepository implements IChatMessageRepository {
         SELECT
           COUNT(*) as message_count,
         LIMIT ?
+      `),
+      // Delete every chat_session_id older than the N most recent, in a single
+      // query. The subquery uses LIMIT -1 OFFSET ? to return only the sessions
+      // we intend to drop — no need to materialize the full session list in JS.
+      pruneOldSessions: db.prepare(`
+        DELETE FROM chat_messages
+        WHERE session_id = ?
+          AND chat_session_id IN (
+            LIMIT -1 OFFSET ?
+          )
       `),
     };
   }
@@ -116,8 +127,11 @@ export class ChatMessageRepository implements IChatMessageRepository {
   /**
    * Delete old sessions beyond the keep limit to prevent unbounded database growth.
    * Keeps the N most recent sessions and deletes all messages from older ones.
+   * One cached DELETE...IN (SELECT) query — no full session list in memory and
+   * no inline prepare on the hot path.
    */
   pruneOldSessions(sessionId: string, keepCount = 10): number {
+    const result = this.stmts.pruneOldSessions.run(sessionId, sessionId, keepCount);
     return result.changes;
   }
 }

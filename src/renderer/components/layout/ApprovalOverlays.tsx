@@ -86,11 +86,13 @@ export function ApprovalOverlays() {
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
   const planItems = usePlanDomainStore((state) => state.planItems);
 
+  // Get execution methods from approval queue store
   const {
     executePlanActions,
     executeClaudeMdWrite,
     executeFileWrite,
     executeReviewReply,
+  } = useApprovalQueueStore(
     useShallow((state) => ({
       executePlanActions: state.executePlanActions,
       executeClaudeMdWrite: state.executeClaudeMdWrite,

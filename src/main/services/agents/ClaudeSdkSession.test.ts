@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ClaudeSdkSession } from './ClaudeSdkSession';
 
+  processMessage(msg: object): void;
+  setState(state: string): void;
+}
+
+}
+
   });
 
 

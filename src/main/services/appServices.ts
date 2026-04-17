@@ -45,6 +45,7 @@ import { createMcpDiscoveryService } from './core/McpDiscoveryService';
 
 // Slack triage
 import { createSlackTriageService } from './core/SlackTriageService';
+import { createSlackTriageAdapter } from './core/slackTriageAdapter';
 
 // Confluence services
 import { createConfluenceSyncService } from './confluence';
@@ -308,11 +309,24 @@ export function createAppServices(container: IRepositoryContainer) {
   // Slack Triage Service
   // ─────────────────────────────────────────────────────────────────────────
 
+  const slackAdapter = createSlackTriageAdapter({
+    projects: container.projects,
+    planItems: container.planItems,
+    mcpDiscoveryService,
+    queueTrackerUpdate,
+  });
 
   const slackTriageService = createSlackTriageService({
     slackChannelLinks: container.slackChannelLinks,
     slackTriageItems: container.slackTriageItems,
     planItems: container.planItems,
+    resolveSlackChannel: slackAdapter.resolveSlackChannel,
+    getSlackAvailability: slackAdapter.getSlackAvailability,
+    readSlackChannel: slackAdapter.readSlackChannel,
+    readSlackThread: slackAdapter.readSlackThread,
+    sendSlackMessage: slackAdapter.sendSlackMessage,
+    createTaskFromTriage: slackAdapter.createTaskFromTriage,
+    applyDocumentUpdate: slackAdapter.applyDocumentUpdate,
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

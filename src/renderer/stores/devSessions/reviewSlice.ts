@@ -4,6 +4,8 @@ import {
   setReviewError,
   setReviewInbox,
   setReviewLoading,
+} from './helpers';
+import type { DevSessionsGet, DevSessionsSet, DevSessionsState } from './index';
 import {
   assessSessionReviewThreads,
   assignSessionReviewOwnership,
@@ -16,6 +18,7 @@ import {
   resolveSessionReviewThread,
   triggerSessionReviewAutomation,
   unresolveSessionReviewThread,
+} from '../../services/reviewService';
 
 export function createDevSessionsReviewSlice(
   set: DevSessionsSet,

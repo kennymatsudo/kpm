@@ -83,6 +83,7 @@ export { useMcpServersStore } from './mcpServersStore';
 
 // Custom Prompts
 export { useCustomPromptStore } from './customPromptStore';
+export { useDevSessionsStore } from './devSessions';
 
 // Tool Call Logging
 export { useToolLogStore } from './toolLogStore';

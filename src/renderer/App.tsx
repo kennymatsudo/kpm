@@ -10,6 +10,7 @@ import {
 } from './stores';
 import { ThemeProvider } from './contexts';
 import { useProjectLoader } from './hooks/useProjectLoader';
+import { subscribeToRefreshRequested } from './services/planService';
 
 export default function App() {
   // Initialize cross-store event subscriptions
@@ -23,6 +24,7 @@ export default function App() {
   const isAppReady = currentProjectId !== null || projects.length === 0;
 
   useEffect(() => {
+    return subscribeToRefreshRequested((event) => {
       if (event.projectId === currentProjectId) {
         void refreshPlanItems();
       }

@@ -180,6 +180,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     if (!tracked) return;
 
     sessions.delete(sessionId);
+    tracked.agentSession.clearHandlers();
     console.log(`${LOG_PREFIX} Removed session ${sessionId}`);
   }
 
@@ -191,9 +192,14 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
 
   /** Stop and remove all sessions (e.g., on app quit) */
   async function stopAll(): Promise<void> {
+    const allTracked = Array.from(sessions.values());
+    const allActive = allTracked
       .filter(t => isActiveState(t.agentSession.state))
       .map(t => t.agentSession);
     await Promise.allSettled(allActive.map(s => s.stop()));
+    for (const tracked of allTracked) {
+      tracked.agentSession.clearHandlers();
+    }
     sessions.clear();
   }
 
@@ -222,6 +228,9 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
       });
 
       if (state === 'complete' || state === 'failed' || state === 'stopped') {
+          // Drop every handler attached to the evicted session so captured IPC
+          // callbacks don't hang on to the webContents reference for the full
+          agentSession.clearHandlers();
           console.log(`${LOG_PREFIX} Evicted terminal session ${agentSession.id} after TTL`);
       }
     });

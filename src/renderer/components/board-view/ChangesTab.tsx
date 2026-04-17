@@ -5,6 +5,8 @@
  * Uses the existing diff infrastructure from devSessionsStore.
  */
 
+import { useDevSessionsStore } from '../../stores/devSessions';
+import type { BackgroundCommitState } from '../../stores/devSessions';
 import { getAgentCommitLog, getAgentCommitFiles } from '../../services/agentSessionService';
 
 interface ChangesTabProps {
@@ -339,6 +341,14 @@ export const ChangesTab = memo(function ChangesTab({
     void loadCommits();
   }, [refreshToken, sessionId, loadDiff, loadCommits]);
 
+  const { files, totalAdditions, totalDeletions } = useMemo(() => {
+    const parsed = diff ? parseDiffStats(diff) : [];
+    return {
+      files: parsed,
+      totalAdditions: parsed.reduce((sum, f) => sum + f.additions, 0),
+      totalDeletions: parsed.reduce((sum, f) => sum + f.deletions, 0),
+    };
+  }, [diff]);
   const hasFiles = files.length > 0;
   const hasCommits = commits.length > 0;
 

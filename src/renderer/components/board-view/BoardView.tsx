@@ -7,6 +7,7 @@ import {
   usePlanDomainStore,
   useProjectDomainStore,
 } from '../../stores';
+import { useDevSessionsStore } from '../../stores/devSessions';
 import { stopAgentSession } from '../../services/agentSessionService';
 import { getStatusCategory, STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import { subscribe } from '../../stores/storeEvents';

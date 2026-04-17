@@ -1,6 +1,8 @@
 import type {
   PrStatus,
   ReviewInboxSnapshot,
+} from '../../../shared/types';
+import type { BackgroundCommitState } from './index';
 
 export interface PrCreationContext {
   suggestedTitle: string;

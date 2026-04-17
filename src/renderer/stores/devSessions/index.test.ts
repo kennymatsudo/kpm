@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { installMockApi, type MockApi } from '../../../../tests/mocks/electron-api';
+import { useDevSessionsStore } from './index';
 
 function createDevSession() {
   return {

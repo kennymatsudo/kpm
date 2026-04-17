@@ -8,6 +8,7 @@
 import { memo, useState, useCallback, useEffect, useRef } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { listContextFiles } from '../../services/contextFileService';
+import { listAllRepoBranches } from '../../services/repoService';
 
 const EFFORT_OPTIONS: { value: AgentEffortLevel; label: string; title: string }[] = [
   { value: 'high', label: 'High', title: 'Deep thinking for complex tasks' },
@@ -72,6 +73,7 @@ export const AgentStartModal = memo(function AgentStartModal({
     setSelectedBranch('');
     setBranches([]);
 
+    listAllRepoBranches(repo.path)
       .then((branchList: string[]) => {
         setBranches(branchList);
         // Default to main/master if present, otherwise first branch

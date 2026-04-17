@@ -13,7 +13,9 @@ import { z } from 'zod';
 import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
 import type { PlanItem, PlanAction } from '../../../shared/types';
 import { getDatabase } from '../../db/connection';
+import { StatusCategoryEnum, type PlanActionsCallback } from './schemas';
 
+export type { PlanActionsCallback };
 
 // Status and label enums matching shared types
 const StatusEnum = z.literal('planned');

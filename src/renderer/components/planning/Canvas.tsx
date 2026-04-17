@@ -5,6 +5,20 @@ import type { PlanItem } from '../../../shared/types';
 import { PlanCard } from './PlanCard';
 import { GroupContainer } from './GroupContainer';
 import { CanvasContextMenu } from './CanvasContextMenu';
+import type { TreeNode } from '../../utils/planHierarchy';
+import { ZOOM } from '../../constants/layout';
+import {
+  useCanvasViewport,
+  useCanvasWheel,
+  useCanvasDragPreview,
+  useCanvasContextMenu,
+  useGroupDrag,
+  useCanvasHierarchy,
+  useCanvasAutoLayoutTrigger,
+  useCanvasDragHandlers,
+  useVisibleCanvasItems,
+  type AutoLayoutOptions,
+} from './hooks';
 import { useGroupStore, useExportStore } from '../../stores';
 import { Z_INDEX } from '../../constants/zIndex';
 import { isPerfLoggingEnabled, logPerfEvent } from '../../utils/perfLogger';
@@ -99,6 +113,18 @@ export const Canvas = memo(function Canvas({
   const selectionSignaturesRef = useRef<Map<string, string>>(new Map());
 
 
+  // Hierarchy processing: tree, positions, maps, group layout
+  const {
+    itemsWithPositions,
+    hasItemsNeedingLayout,
+    itemsByGroupId,
+    childrenMap,
+    itemMap,
+    heightMap,
+    groupLayoutInfo,
+    groupBounds,
+    collapsedGroupIds,
+  } = useCanvasHierarchy({ items, groups, hierarchyTree });
 
   // Drag preview state and handlers
   const {
@@ -192,6 +218,7 @@ export const Canvas = memo(function Canvas({
     }
   }, [groupLayoutInfo, itemMap, onUpdatePosition, onUpdatePositions, draggingGroupId]);
 
+  // Build selection signatures for each subtree (pipe-joined selected IDs within that subtree)
   const selectionSignatures = useMemo(() => {
     const signatures = new Map<string, string>();
     const buildSignature = (node: TreeNode): string[] => {
@@ -219,7 +246,29 @@ export const Canvas = memo(function Canvas({
     selectionSignaturesRef.current = selectionSignatures;
   }, [selectionSignatures]);
 
+  // Viewport measurement and auto-layout trigger
+  const { getStableViewportDimensions } = useCanvasAutoLayoutTrigger({
+    projectId,
+    items,
+    hasItemsNeedingLayout,
+    effectiveZoom,
+    onAutoLayout,
+    containerRef,
+  });
 
+  // Canvas drop and dragover handlers
+  const { handleCanvasDrop, handleDragOver } = useCanvasDragHandlers({
+    itemMap,
+    zoom,
+    screenToCanvas,
+    findGroupAtPoint,
+    setDragPreview,
+    setHoveredGroupId,
+    onReparent,
+    onUpdatePosition,
+    onUpdatePositions,
+    onAssignToGroup,
+  });
 
   const handleCardDrop = useCallback((droppedItemIds: string[], targetParentId: string) => {
     void onReparent(droppedItemIds, targetParentId);
@@ -236,6 +285,22 @@ export const Canvas = memo(function Canvas({
     void saveGroupUpdates(groupId, { is_collapsed: isCollapsed });
   }, [saveGroupUpdates]);
 
+  // Visibility filtering, position correction, viewport culling
+  const {
+    positionCorrectedItems,
+    viewportItems,
+    viewportSubtreeNodeCount,
+  } = useVisibleCanvasItems({
+    itemsWithPositions,
+    collapsedGroupIds,
+    groupLayoutInfo,
+    getVisibleBounds,
+    heightMap,
+    selectedItemIds,
+    focusedItemId,
+    draggingGroupId,
+    itemsByGroupId,
+  });
 
   const disableCardMotion = viewportItems.length > CARD_MOTION_DISABLE_THRESHOLD;
 
@@ -370,6 +435,7 @@ export const Canvas = memo(function Canvas({
               await onAutoLayout({
                 dimensions,
                 effectiveZoom,
+                forceFullLayout: true,
               });
 
               setTimeout(() => {
@@ -474,11 +540,14 @@ export const Canvas = memo(function Canvas({
         ) : (
         <AnimatePresence mode="popLayout">
           {viewportItems.map(node => {
+            let zIndex = 1;
             const isInDraggingGroup = draggingGroupId && node.group_id === draggingGroupId;
             const isInRecentlyDraggedGroup = recentlyDraggedGroupId && node.group_id === recentlyDraggedGroupId;
             if (draggingGroupId) {
               if (isInDraggingGroup) {
+                zIndex = 1001;
               } else if (node.group_id) {
+                zIndex = 0;
               }
             }
 
@@ -499,6 +568,7 @@ export const Canvas = memo(function Canvas({
               }}
               exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
               transition={useInstantTransition
+                ? { type: 'tween', duration: 0 }
                 : { type: 'tween', duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }
               }
               className="absolute pointer-events-auto"

@@ -11,6 +11,7 @@ import { getAgentBinary } from './agentCatalog';
 import { generateClaudeCodeHookSettings, cleanupClaudeCodeHookSettings } from './hooks/claudeCodeHooks';
 import { hookEventToActivity, type HookEvent } from './hookServer';
 import { getCleanEnv } from '../streaming/envUtils';
+import { BaseAgentSession } from './BaseAgentSession';
 import type {
   IAgentSession,
   AgentType,
@@ -32,6 +33,7 @@ export interface CliAgentSessionConfig {
   hookPort: number;
 }
 
+export class CliAgentSession extends BaseAgentSession implements IAgentSession {
 
   private ptyProcess: pty.IPty | null = null;
   private worktreePath: string | null = null;
@@ -40,6 +42,7 @@ export interface CliAgentSessionConfig {
   private hookPort: number;
 
   constructor(config: CliAgentSessionConfig) {
+    super(config.id, config.role);
     this.agentType = config.agentType;
     this.hookPort = config.hookPort;
   }

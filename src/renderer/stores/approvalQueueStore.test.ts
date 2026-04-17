@@ -1,4 +1,5 @@
 import { useApprovalQueueStore } from './approvalQueueStore';
+import { useDevSessionsStore } from './devSessions';
 
 
   beforeEach(() => {
@@ -49,6 +50,7 @@ import { useApprovalQueueStore } from './approvalQueueStore';
       }],
     });
 
+    const result = await useApprovalQueueStore.getState().executeReviewReply({
       sessionId: 'dev-session-1',
       threadId: 'thread-1',
       body: 'Fixed in the latest commit.',

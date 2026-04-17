@@ -14,7 +14,9 @@ import { tool, jsonResult, toolError } from './index';
 import type { IGroupRepository, IPlanItemRepository } from '../../db/interfaces';
 import type { PlanAction } from '../../../shared/types';
 import { getDatabase } from '../../db/connection';
+import type { PlanActionsCallback } from './schemas';
 
+export type { PlanActionsCallback };
 
 // Default group dimensions (2 columns of 260px cards + 16px gap + 32px padding)
 const DEFAULT_GROUP_WIDTH = 552;

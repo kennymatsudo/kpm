@@ -6,6 +6,7 @@ import {
   useResourceDomainStore,
   toast,
 } from '../../stores';
+import { useDevSessionsStore } from '../../stores/devSessions';
 import { useExportActions } from '../../hooks/useStoreActions';
 import type { TreeNode } from '../../utils/planHierarchy';
 import { getStyleForDepth, MAX_DEPTH } from '../../constants/planCardStyles';
@@ -246,7 +247,12 @@ export const PlanCard = memo(function PlanCard({
   const { addToQueue } = useExportActions();
 
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
+  // Narrow the sessions subscription to a scalar boolean so this card only
+  // re-renders when its own active-session status changes, rather than on any
+  // session update anywhere in the store.
+  const hasActiveDevSession = useDevSessionsStore((state) => {
     const activeStatuses = ACTIVE_SESSION_STATUSES as readonly string[];
+  });
   const isWorktreeLoading = !!worktreeLoadingOp;
 
 

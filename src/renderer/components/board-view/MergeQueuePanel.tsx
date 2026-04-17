@@ -7,6 +7,7 @@
  */
 
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { useDevSessionsStore } from '../../stores/devSessions';
 import { updateDevSessionMergeOrder } from '../../services/devSessionService';
 import { openExternalUrl } from '../../services/shellService';
 import type { DevSessionWithPlanItem } from '../../../shared/types';
@@ -29,6 +30,7 @@ function prReviewLabel(
       return { label: 'Changes requested', className: 'text-red-400 bg-red-400/10' };
     case 'REVIEW_REQUIRED':
       return { label: 'Needs review', className: 'text-text-muted bg-surface-2' };
+    case null:
     default:
       return null;
   }
@@ -56,6 +58,7 @@ export const MergeQueuePanel = memo(function MergeQueuePanel({
         const blockedBy = entry?.blockedBy ?? [];
         const isBlocked = blockedBy.some((blockerId) => {
           const blocker = sessions.find((s) => s.id === blockerId);
+          return blocker?.pr_state !== 'MERGED';
         });
         return { session, layer: entry?.layer ?? null, blockedBy, isBlocked };
       })

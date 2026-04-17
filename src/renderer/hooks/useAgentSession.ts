@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useMemo, useRef } from 'react';
+import { useDevSessionsStore } from '../stores/devSessions';
 import { getAgentActivities, getAgentState } from '../services/agentSessionService';
 import type { AgentSessionState } from '../../shared/types';
 import type { AgentActivity, AgentQuestion, AgentCompletionSummary } from '../../shared/agent-types';

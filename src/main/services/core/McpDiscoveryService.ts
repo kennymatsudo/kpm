@@ -238,12 +238,26 @@ export interface McpDiscoveryServiceDeps {
 // =============================================================================
 
 export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
+  // Both discoverPlugins and discoverUserServers do multiple synchronous
+  // JSON.parse(fs.readFileSync(...)) calls per invocation. Cache results for a
+  // short window so UI paths that call these repeatedly (settings, availability
+  // checks, new-session dialogs) don't redo the disk work.
+  const CACHE_TTL_MS = 30_000;
+  let pluginsCache: { data: DiscoveredPlugin[]; expiresAt: number } | null = null;
+  let userServersCache: { data: UserMcpServer[]; expiresAt: number } | null = null;
+
   return {
     /**
      * Discover installed Claude Code plugins.
      */
     discoverPlugins(): ServiceResult<DiscoveredPlugin[]> {
       try {
+        if (pluginsCache && pluginsCache.expiresAt > Date.now()) {
+          return success(pluginsCache.data);
+        }
+        const data = discoverInstalledClaudePlugins();
+        pluginsCache = { data, expiresAt: Date.now() + CACHE_TTL_MS };
+        return success(data);
       } catch (error) {
         return failure(`Failed to discover Claude plugins: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -254,6 +268,12 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
      */
     discoverUserServers(): ServiceResult<UserMcpServer[]> {
       try {
+        if (userServersCache && userServersCache.expiresAt > Date.now()) {
+          return success(userServersCache.data);
+        }
+        const data = discoverUserMcpServers();
+        userServersCache = { data, expiresAt: Date.now() + CACHE_TTL_MS };
+        return success(data);
       } catch (error) {
         return failure(`Failed to discover user MCP servers: ${error instanceof Error ? error.message : String(error)}`);
       }

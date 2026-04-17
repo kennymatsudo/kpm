@@ -125,6 +125,8 @@ export interface IAgentSession {
 
   on<K extends keyof AgentSessionEvents>(event: K, handler: AgentSessionEvents[K]): void;
   off<K extends keyof AgentSessionEvents>(event: K, handler: AgentSessionEvents[K]): void;
+  /** Remove every registered handler in one go — used when the session is being evicted. */
+  clearHandlers(): void;
 }
 
 // =============================================================================

@@ -6,9 +6,15 @@
  * - Project context file edits (AGENTS.md / CLAUDE.md)
  * - Document updates (markdown files in the project folder)
  *
+ *
+ * Also contains process methods (called by IPC bridge when events arrive)
  */
 
 import { create } from 'zustand';
+import { isContextFile } from '../../shared/contextFile';
+import { useDevSessionsStore } from './devSessions';
+import { replyToSessionReviewThread } from '../services/reviewService';
+import { writeClaudeMdFile } from '../services/contextFileService';
 
 // =============================================================================
 // Approval Item Types (Discriminated Union)
@@ -64,6 +70,10 @@ interface ApprovalQueueState {
 
   /**
    */
+  // ───────────────────────────────────────────────────────────────────────────
+  // Enqueue methods
+  // ───────────────────────────────────────────────────────────────────────────
+
   /** Add a plan actions approval to the queue */
   enqueuePlanActions: (actions: PlanAction[]) => void;
 
@@ -90,6 +100,67 @@ interface ApprovalQueueState {
 
   /** Get count of items in queue */
   queueLength: () => number;
+
+  /** Reset queue and expand counter. Called on project switch. */
+  resetProjectState: () => void;
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Process methods — called by useChatIpcBridge when IPC events arrive.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  processPlanActions: (projectId: string, actions: PlanAction[]) => void;
+
+  processClaudeMdUpdate: (
+    projectId: string,
+    oldContent: string | null,
+    newContent: string
+  ) => void;
+
+  processFileUpdate: (
+    projectId: string,
+    filePath: string,
+    content: string,
+  ) => void;
+
+  /** Process a staged GitHub review reply draft - queues for approval */
+  processReviewReplyDraft: (draft: {
+    sessionId: string;
+    threadId: string;
+    threadUrl: string;
+    threadTitle: string;
+    threadLocation: string;
+    latestCommentPreview: string | null;
+    body: string;
+    resolve: boolean;
+  }) => void;
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Execute methods — called by approval modal when user approves.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /** Execute plan actions */
+  executePlanActions: (actions: PlanAction[]) => Promise<{ success: boolean; error?: string }>;
+
+  /** Execute project context file write */
+  executeClaudeMdWrite: (
+    projectId: string,
+    content: string
+  ) => Promise<{ success: boolean; error?: string }>;
+
+  /** Execute file write */
+  executeFileWrite: (
+    projectId: string,
+    filePath: string,
+    content: string
+  ) => Promise<{ success: boolean; error?: string }>;
+
+  /** Execute a staged GitHub review reply */
+  executeReviewReply: (draft: {
+    sessionId: string;
+    threadId: string;
+    body: string;
+    resolve: boolean;
+  }) => Promise<{ success: boolean; error?: string }>;
 }
 
 // =============================================================================
@@ -107,6 +178,10 @@ function generateId(): string {
 
 export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
   queue: [],
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Enqueue Methods
+  // ─────────────────────────────────────────────────────────────────────────
 
   enqueuePlanActions: (actions) => {
     if (actions.length === 0) return;
@@ -218,6 +293,89 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
 
   queueLength: () => {
     return get().queue.length;
+  },
+
+  resetProjectState: () => {
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+
+  processPlanActions: (_projectId, actions) => {
+    if (actions.length === 0) return;
+
+  },
+
+      return;
+    }
+
+  },
+
+  processReviewReplyDraft: (draft) => {
+    get().enqueueReviewReply(draft);
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Execute Methods - Called by approval modal when user approves
+  // ─────────────────────────────────────────────────────────────────────────
+
+  executePlanActions: async (actions) => {
+    try {
+      await usePlanDomainStore.getState().executePlanActions(actions);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  },
+
+  executeClaudeMdWrite: async (projectId, content) => {
+    try {
+      const result = await writeClaudeMdFile(projectId, content);
+      return result;
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  },
+
+  executeFileWrite: async (projectId, filePath, content) => {
+    try {
+      const result = await writeProjectFile(projectId, filePath, content);
+      return result;
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  },
+
+  executeReviewReply: async (draft) => {
+    try {
+      const result = await replyToSessionReviewThread(draft.sessionId, draft.threadId, draft.body, draft.resolve);
+      if (!result.success) {
+        return { success: false, error: result.error || 'Failed to post review reply' };
+      }
+
+      if (result.inbox) {
+        useDevSessionsStore.setState((state) => {
+          const reviewInboxBySessionId = new Map(state.reviewInboxBySessionId);
+
+          const reviewErrorBySessionId = new Map(state.reviewErrorBySessionId);
+          reviewErrorBySessionId.set(draft.sessionId, null);
+
+          return {
+            reviewInboxBySessionId,
+            reviewErrorBySessionId,
+          };
+        });
+      }
+
+      const projectId = useDevSessionsStore.getState().projectId;
+      if (projectId) {
+        await useDevSessionsStore.getState().loadSessions(projectId);
+      }
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
   },
 }));
 

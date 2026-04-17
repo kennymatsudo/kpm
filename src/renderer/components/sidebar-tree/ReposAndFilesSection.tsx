@@ -148,6 +148,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     if (!repo || loadingWorktreesForRef.current === repo.id) return;
 
     loadingWorktreesForRef.current = repo.id;
+    void listRepoWorktrees(repo.path).then((wts: RepoWorktree[]) => {
       setRepoWorktrees(wts);
       loadingWorktreesForRef.current = null;
     }).catch(() => {

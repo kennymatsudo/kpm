@@ -4,6 +4,12 @@ import type {
   PrStatus,
   ReviewInboxSnapshot,
   AgentSessionState,
+} from '../../../shared/types';
+import type { AgentActivity, AgentQuestion, AgentCompletionSummary, ReviewFinding } from '../../../shared/agent-types';
+import { createDevSessionsLifecycleSlice } from './lifecycleSlice';
+import { createDevSessionsPrSlice } from './prSlice';
+import { invalidateLoadSessionsRequests } from './requestState';
+import { createDevSessionsReviewSlice } from './reviewSlice';
 
 export interface BackgroundCommitState {
   status: 'running' | 'failed';

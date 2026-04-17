@@ -6,6 +6,7 @@ import {
   subscribeToAgentComplete,
   subscribeToAgentErrors,
 } from '../services/agentSessionService';
+import { useDevSessionsStore } from '../stores/devSessions';
 
 export function useDevSessionsSync(projectId: string | null): void {
   const loadSessionsFromStore = useDevSessionsStore((state) => state.loadSessions);

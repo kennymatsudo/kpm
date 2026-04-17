@@ -4,12 +4,14 @@
  */
 
 import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { ActivityTab } from './ActivityTab';
 import { ChangesTab } from './ChangesTab';
 import { CreatePrModal } from '../development/CreatePrModal';
 import { LinkPrDialog } from '../development/LinkPrDialog';
 import { ReviewTab } from '../development/ReviewTab';
 import { useAgentSession } from '../../hooks/useAgentSession';
+import { useDevSessionsStore } from '../../stores/devSessions';
 import { openExternalUrl } from '../../services/shellService';
 import { toReviewSessionId } from '../../../shared/agent-types';
 
@@ -30,6 +32,11 @@ export const DetailPane = memo(function DetailPane({
   // When true, committing also transitions the card to in_review (Ready for Review path).
   // When false, committing is standalone — no status change (Changes tab path).
   const [commitTransitionsToReview, setCommitTransitionsToReview] = useState(false);
+    useShallow((s) => ({
+      commitState: s.commitStateBySessionId.get(session.id),
+      diff: s.diffBySessionId.get(session.id),
+    }))
+  );
   const setCommitState = useDevSessionsStore((s) => s.setCommitState);
   const loadDiff = useDevSessionsStore((s) => s.loadDiff);
   const implementationSession = useAgentSession(session.id);

@@ -17,6 +17,7 @@ import {
   type Options as SDKOptions,
 } from '@anthropic-ai/claude-agent-sdk';
 import { isInitMessage, isSessionStateChanged } from '../../claude/sdkTypeGuards';
+import { BaseAgentSession } from './BaseAgentSession';
 import type {
   IAgentSession,
   AgentType,
@@ -78,6 +79,7 @@ export interface ClaudeSdkSessionConfig {
   sdkOptions: SDKOptions;
 }
 
+export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession {
   readonly agentType: AgentType = 'claude';
 
   private _stopping = false;
@@ -88,6 +90,7 @@ export interface ClaudeSdkSessionConfig {
   private completing = false;
 
   constructor(config: ClaudeSdkSessionConfig) {
+    super(config.id, config.role);
     this.sdkOptions = config.sdkOptions;
   }
 

@@ -26,11 +26,14 @@ import { useFileTreeStore } from './fileTreeStore';
 import { useExportStore } from './tracker/useExportStore';
 import { useTrackerConfigStore } from './tracker/useConfigStore';
 import { useSyncStore } from './tracker/useSyncStore';
+import { useSyncReviewStore } from './tracker/useSyncReviewStore';
 import { useGroupStore } from './groupStore';
+import { useDevSessionsStore } from './devSessions';
 import { useWorkspaceStore } from './workspaceStore';
 import { useProjectStore } from './projectStore';
 import { useTaskPromptTemplateStore } from './taskPromptTemplateStore';
 import { useToolPermissionStore } from './toolPermissionStore';
+import { useApprovalQueueStore } from './approvalQueueStore';
 
 interface AnyStore { getState: () => unknown }
 
@@ -49,6 +52,7 @@ const PROJECT_SCOPED_STORES: StoreEntry[] = [
   { name: 'export', store: useExportStore },
   { name: 'trackerConfig', store: useTrackerConfigStore },
   { name: 'sync', store: useSyncStore },
+  { name: 'syncReview', store: useSyncReviewStore },
   { name: 'fileTree', store: useFileTreeStore },
   { name: 'groups', store: useGroupStore },
   { name: 'devSessions', store: useDevSessionsStore },
@@ -56,6 +60,7 @@ const PROJECT_SCOPED_STORES: StoreEntry[] = [
   { name: 'project', store: useProjectStore },
   { name: 'taskPromptTemplates', store: useTaskPromptTemplateStore },
   { name: 'toolPermissions', store: useToolPermissionStore },
+  { name: 'approvalQueue', store: useApprovalQueueStore },
 ];
 
 /**

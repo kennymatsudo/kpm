@@ -6,9 +6,12 @@ import {
   removeFromSet,
   type PrCreationContext,
   type ReviewFilters,
+} from './helpers';
 import {
   beginLoadSessionsRequest,
   isCurrentLoadSessionsRequest,
+} from './requestState';
+import type { BackgroundCommitState, DevSessionsGet, DevSessionsSet, DevSessionsState } from './index';
 import {
   checkDevSessionDirty,
   deleteDevSessionRecord,
@@ -17,6 +20,7 @@ import {
   loadDevSessionDiff,
   loadDevSessions,
   updateExistingSessionName,
+} from '../../services/devSessionService';
 
 export function createDevSessionsLifecycleSlice(
   set: DevSessionsSet,
@@ -105,6 +109,7 @@ export function createDevSessionsLifecycleSlice(
           // Non-fatal: board still works, merge indicators just won't appear
         }
         const validReviewSessionIds = new Set(devSessions.map((session) => `${session.id}-review`));
+        const allTrackedIds = new Set<string>([...validSessionIds, ...validReviewSessionIds]);
         const currentSelectedId = get().selectedSessionId;
 
         let newSelectedId = currentSelectedId;
@@ -144,6 +149,10 @@ export function createDevSessionsLifecycleSlice(
           prStatusCache: pruneMapByKeys(get().prStatusCache, validSessionIds),
           reviewFindingsBySessionId: nextReviewFindings,
           mergeOrderBySessionId,
+          agentStateBySessionId: pruneMapByKeys(get().agentStateBySessionId, allTrackedIds),
+          activitiesBySessionId: pruneMapByKeys(get().activitiesBySessionId, allTrackedIds),
+          latestActivityBySessionId: pruneMapByKeys(get().latestActivityBySessionId, allTrackedIds),
+          completionBySessionId: pruneMapByKeys(get().completionBySessionId, allTrackedIds),
         });
       } catch (error) {
         console.error('[DevSessionsStore] Failed to load sessions:', error);

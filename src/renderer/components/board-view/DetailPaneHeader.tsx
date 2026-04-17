@@ -2,6 +2,7 @@
  */
 
 import type { DevSessionWithPlanItem, AgentSessionState } from '../../../shared/types';
+import type { BackgroundCommitState } from '../../stores/devSessions';
 
 interface DetailPaneHeaderProps {
   session: DevSessionWithPlanItem;
