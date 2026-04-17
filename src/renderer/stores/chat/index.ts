@@ -14,6 +14,7 @@ export const useChatStore: UseBoundStore<StoreApi<ChatState>> = create<ChatState
   ...createStreamingSlice(set, get),
   ...createMessageSlice(set, get),
   ...createHistorySlice(set, get),
+  ...createSettingsSlice(set, get),
 
   getViewedSession: () => {
     const state = get();

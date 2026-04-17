@@ -1,3 +1,4 @@
+import type { ChatState, ChatSet, ChatGet } from './types';
 import { setAppSetting } from '../../services/settingsService';
 
 > {
