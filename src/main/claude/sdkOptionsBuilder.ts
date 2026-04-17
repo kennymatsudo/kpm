@@ -6,9 +6,11 @@
  */
 
 import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-agent-sdk';
+import type { BrowserWindow } from 'electron';
 import type { ChatViewMode } from '../../shared/types';
 import { createPermissionHandler, type PermissionContext, type ClaudeMdInterceptFn, type ProjectFileInterceptFn } from './permissions';
 import { getConfig } from '../config';
+import { getClaudeSdkSpawnOptions } from './findClaude';
 
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
 
@@ -55,6 +57,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   const sdkOptions: SDKOptions = {
     systemPrompt,
     model,
+    ...getClaudeSdkSpawnOptions(),
     canUseTool: createPermissionHandler(permissionContext, async (toolName, input, opts) => {
       return promptUser(mainWindow, permissionContext.projectId, toolName, input, {
         signal: opts.signal,

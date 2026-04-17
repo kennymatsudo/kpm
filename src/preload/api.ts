@@ -1311,6 +1311,7 @@ const testing = {
     ipcRenderer.invoke(IPC_CHANNELS.testing.resetDatabase),
 };
 
+// Debug API - console-only toggle used to gate other diagnostic handlers.
 // Usage in console:
 //   await window.api.debug.enable()
 const debug = {

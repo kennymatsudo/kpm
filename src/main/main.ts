@@ -6,6 +6,7 @@ import * as TempImageService from './services/files/TempImageService';
 import { initializeRepositoryContainer } from './db/container';
 import { warmupMcpSdk } from './claude/tools/createKpmServer';
 import { initializeServices } from './services/container';
+import { getCommonDevToolPaths } from './claude/findClaude';
 import type { IRepositoryContainer } from './db/interfaces';
 import type { AppServices } from './services/appServices';
 import { default as installExtension, REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
@@ -13,7 +14,11 @@ import { createMainWindowManager } from './bootstrap/windowManager';
 import { buildApplicationMenu } from './bootstrap/menu';
 
 // Fix PATH for production builds launched from Finder
+// macOS GUI apps get minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin), which
+// breaks shell commands and user-configured stdio MCP servers that rely on
+// node/npx/homebrew tools being resolvable.
 function fixPath(): void {
+  const additionalPaths = getCommonDevToolPaths();
 
   const currentPath = process.env.PATH || '';
   const pathSet = new Set(currentPath.split(path.delimiter));

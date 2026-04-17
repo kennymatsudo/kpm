@@ -5,6 +5,11 @@ import { IPC_CHANNELS } from '../channels';
 let debugEnabled = false;
 
 /**
+ * Register debug IPC handlers.
+ *
+ * Currently only exposes the debug-mode toggle. Future diagnostic handlers
+ * should gate themselves on `debugEnabled` before returning any sensitive
+ * state.
  */
 export function registerDebugHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.debug.setEnabled, (_event, enabled: boolean) => {

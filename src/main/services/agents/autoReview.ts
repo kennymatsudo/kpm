@@ -12,6 +12,7 @@
  */
 
 import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
+import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import type { AgentType, ReviewFinding } from '../../../shared/agent-types';
 import { toReviewSessionId } from '../../../shared/agent-types';
 import { getReviewOpponent, isAgentAvailable } from './agentCatalog';
@@ -67,6 +68,7 @@ async function startReviewSession(params: {
     const sdkOptions: SDKOptions = {
       cwd: worktreePath,
       maxTurns: 5,
+      ...getClaudeSdkSpawnOptions(),
     };
 
     const session = agentSessionManager.create({

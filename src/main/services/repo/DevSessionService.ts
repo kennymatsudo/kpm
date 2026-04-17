@@ -19,6 +19,7 @@ import type {
   IProjectRepository,
   IRepoRepository,
 } from '../../db/interfaces';
+import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import {
   createStatusBroadcaster,
 } from './sessionOrchestration';
@@ -375,6 +376,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
 
         // Build SDK options for the dev session
         const sdkOptions: SDKOptions = {
+          ...getClaudeSdkSpawnOptions(),
         };
 
         // Create the agent session via the manager
