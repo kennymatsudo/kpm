@@ -141,6 +141,7 @@ export function PlanView({
 
   // --- Selection & bulk operations ---
 
+
   // Descendant tracking for bulk operations
   const descendantIds = useMemo(
     () => selectDescendantIds(planItems, selectedItemIds),
