@@ -19,8 +19,15 @@ interface TaskEditModalProps {
     title: string;
     description: string | null;
     label: string | null;
+    intent?: string | null;
+    acceptance_criteria?: string[] | null;
   }) => Promise<void>;
 }
+
+// Zod-aligned limits (see src/main/ipc/validation/plan.ts)
+const INTENT_MAX_CHARS = 500;
+const CRITERION_MAX_CHARS = 1000;
+const MAX_CRITERIA = 50;
 
 export function TaskEditModal({
   item,
@@ -59,6 +66,9 @@ export function TaskEditModal({
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(item.description || '');
   const [label, setLabel] = useState(item.label || '');
+  // Spec fields — editable in this sprint.
+  const [intent, setIntent] = useState(item.intent ?? '');
+  const [criteria, setCriteria] = useState<string[]>(item.acceptance_criteria ?? []);
 
   // UI state
   const [isSaving, setIsSaving] = useState(false);
@@ -74,12 +84,16 @@ export function TaskEditModal({
       setTitle(item.title);
       setDescription(item.description || '');
       setLabel(item.label || '');
+      setIntent(item.intent ?? '');
+      setCriteria(item.acceptance_criteria ?? []);
     }
   }, [
     item.id,
     item.title,
     item.description,
     item.label,
+    item.intent,
+    item.acceptance_criteria,
     isOpen,
   ]);
 
@@ -91,24 +105,45 @@ export function TaskEditModal({
     titleInputRef.current?.select();
   }, []);
 
+  // Normalize criteria for save + diff: trim, drop empties, cap at MAX_CRITERIA.
+  const sanitizedCriteria = useMemo(() => {
+    const trimmed = criteria.map((c) => c.trim()).filter((c) => c.length > 0);
+    return trimmed.slice(0, MAX_CRITERIA);
+  }, [criteria]);
+
+  const originalCriteria = useMemo(() => item.acceptance_criteria ?? [], [item.acceptance_criteria]);
+
   // Track unsaved changes
   const isDirty = useMemo(() => {
     const titleChanged = title.trim() !== item.title.trim();
     const descChanged = description.trim() !== (item.description || '').trim();
     const labelChanged = label !== (item.label || '');
+    const intentChanged = intent.trim() !== (item.intent ?? '').trim();
+    const criteriaChanged =
+      sanitizedCriteria.length !== originalCriteria.length ||
+      sanitizedCriteria.some((c, i) => c !== originalCriteria[i]);
 
   // Validate form
   const canSave = useMemo(() => {
+    if (!isDirty || title.trim().length === 0) return false;
+    if (intent.length > INTENT_MAX_CHARS) return false;
+    if (sanitizedCriteria.some((c) => c.length > CRITERION_MAX_CHARS)) return false;
+    return true;
+  }, [isDirty, title, intent, sanitizedCriteria]);
+
   // Handle save
   const handleSave = useCallback(async () => {
     if (!canSave) return;
 
     setIsSaving(true);
     try {
+      const trimmedIntent = intent.trim();
       await onSave({
         title: title.trim(),
         description: description.trim() || null,
         label: label || null,
+        intent: trimmedIntent.length > 0 ? trimmedIntent : null,
+        acceptance_criteria: sanitizedCriteria.length > 0 ? sanitizedCriteria : null,
       });
       onClose();
     } catch (error) {
@@ -116,6 +151,23 @@ export function TaskEditModal({
     } finally {
       setIsSaving(false);
     }
+
+  // Criteria list helpers
+  const updateCriterion = useCallback((index: number, value: string) => {
+    setCriteria((prev) => {
+      const next = prev.slice();
+      next[index] = value;
+      return next;
+    });
+  }, []);
+
+  const removeCriterion = useCallback((index: number) => {
+    setCriteria((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const addCriterion = useCallback(() => {
+    setCriteria((prev) => (prev.length >= MAX_CRITERIA ? prev : [...prev, '']));
+  }, []);
 
   // Handle close with unsaved changes check
   const handleRequestClose = useCallback(() => {
@@ -146,6 +198,7 @@ export function TaskEditModal({
       <Modal
         isOpen={isOpen}
         onClose={handleRequestClose}
+        size="xl"
         className="flex flex-col overflow-hidden"
         closeOnBackdropClick={!isDirty}
         preventClose={isSaving}
@@ -201,6 +254,92 @@ export function TaskEditModal({
               <div className="absolute bottom-2 right-2 text-xxs text-text-muted opacity-60 pointer-events-none">
                 Markdown
               </div>
+            </div>
+          </div>
+
+          <div
+            className="rounded-lg border border-border-subtle bg-surface-1/50 px-4 py-3 space-y-3"
+            aria-label="Spec"
+          >
+
+            {/* Intent */}
+            <div>
+              <label
+                htmlFor="task-edit-intent"
+                className="block text-xxs font-medium text-text-muted uppercase tracking-wide mb-1"
+              >
+                Intent
+                <span className="ml-1.5 text-text-muted/70 normal-case">one sentence</span>
+              </label>
+              <textarea
+                id="task-edit-intent"
+                value={intent}
+                onChange={(e) => setIntent(e.target.value)}
+                rows={2}
+                maxLength={INTENT_MAX_CHARS}
+                className="input w-full text-sm leading-snug resize-none"
+              />
+            </div>
+
+            {/* Acceptance Criteria */}
+            <div>
+              </div>
+
+              {criteria.length === 0 ? (
+                <p className="text-sm text-text-muted italic mb-2">
+                </p>
+              ) : (
+                <ul className="space-y-1.5 mb-2">
+                  {criteria.map((criterion, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <svg
+                        className="w-3.5 h-3.5 mt-2 flex-shrink-0 text-text-muted"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <rect x="4" y="4" width="16" height="16" rx="2" strokeWidth="1.5" />
+                      </svg>
+                      <input
+                        type="text"
+                        value={criterion}
+                        onChange={(e) => updateCriterion(index, e.target.value)}
+                        placeholder="Testable criterion..."
+                        maxLength={CRITERION_MAX_CHARS}
+                        className="input flex-1 min-w-0 text-sm"
+                        aria-label={`Acceptance criterion ${index + 1}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeCriterion(index)}
+                        className="mt-1.5 p-1 text-text-muted hover:text-danger hover:bg-surface-2 rounded transition-colors"
+                        aria-label={`Remove criterion ${index + 1}`}
+                        title="Remove"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <button
+                type="button"
+                onClick={addCriterion}
+                disabled={criteria.length >= MAX_CRITERIA}
+                className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add criterion
+                {criteria.length >= MAX_CRITERIA && (
+                  <span className="text-text-muted ml-1">(max {MAX_CRITERIA})</span>
+                )}
+              </button>
             </div>
           </div>
 

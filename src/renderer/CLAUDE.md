@@ -61,6 +61,19 @@ Don't create abstractions until you have 3+ actual uses of a pattern. Wait until
 - CSS custom properties defined in `index.css` for theme tokens
 - Existing `.btn`, `.btn-primary`, `.dropdown-item` classes for consistent styling
 
+## Plan Item Spec Fields in UI
+
+
+| Site | Mode | What it shows |
+|------|------|---------------|
+
+
+
+**Conventions:**
+- **Sanitize on save, not on edit.** Keep the user's in-progress empty rows while typing; trim + drop empties + cap at the Zod limits (`MAX_CRITERIA = 50`, `CRITERION_MAX_CHARS = 1000`, `INTENT_MAX_CHARS = 500`) only when building the save payload. Limits must mirror `planItemUpdates` in `src/main/ipc/validation/plan.ts`.
+- **Save via `onSave` widening, not a side-channel.** `TaskEditModal.onSave` accepts optional `intent` and `acceptance_criteria`; `usePlanTaskEdit.handleSaveTask` passes them through to the existing `updatePlanItem` IPC path. The backing `planItemUpdates` Zod schema already accepts these fields — no service-layer changes needed when extending this pattern.
+- **New spec fields go through the modal first.** If a new spec-like field is added, wire it into the `TaskEditModal` Spec section before deciding whether it earns card-face surfacing.
+
 ## Plan Card Layout & Height Sync
 
 **When changing PlanCard layout, you MUST update height calculations in `utils/planHierarchy.ts`.**

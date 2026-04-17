@@ -70,6 +70,9 @@ export interface CreatePlanItemOptions {
   parent_id?: string | null;
   title?: string;
   description?: string | null;
+  intent?: string | null;
+  acceptance_criteria?: string[] | null;
+  source_document_id?: string | null;
   label?: 'project' | 'feature' | 'task' | null;
   item_order?: number;
   code_refs?: string[] | null;
@@ -119,6 +122,9 @@ export function createPlanItem(options: CreatePlanItemOptions = {}): PlanItem {
     external_epic_key: options.external_epic_key ?? null,
     sync_source: options.sync_source ?? 'local',
     last_synced_at: options.last_synced_at ?? null,
+    intent: options.intent ?? null,
+    acceptance_criteria: options.acceptance_criteria ?? null,
+    source_document_id: options.source_document_id ?? null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };

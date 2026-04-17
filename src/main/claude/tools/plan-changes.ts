@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { StatusCategoryEnum, type PlanActionsCallback } from './schemas';
 
 // Zod schemas matching the PlanAction type
 const LabelEnum = z.enum(['project', 'story', 'feature', 'task']);
@@ -17,6 +18,21 @@ const RelationTypeEnum = z.enum(['depends_on', 'blocks', 'relates_to']);
 const CreateItemAction = z.object({
   type: z.literal('create_item'),
   title: z.string(),
+  description: z.string().optional().describe('Rationale / context. For the *contract* the agent executes, use intent + acceptance_criteria instead.'),
+  intent: z
+    .string()
+    .max(500)
+    .optional()
+    .describe('One sentence: what this item commits to. The decided outcome, not the motivation.'),
+  acceptance_criteria: z
+    .array(z.string().min(1).max(1000))
+    .max(50)
+    .optional()
+    .describe('Testable checklist the agent will satisfy. Each entry is one criterion. Omit when criteria cannot be enumerated upfront (exploratory or research items).'),
+  source_document_id: z
+    .string()
+    .optional()
+    .describe('ID of the iteration document this item was extracted from, if any. Preserves the breadcrumb back to discovery context.'),
   label: LabelEnum.optional(),
   parent_id: z.string().nullable().describe('Parent item ID, placeholder ($1, $2), or null for root'),
 });
@@ -63,6 +79,13 @@ const UpdateItemAction = z.object({
   updates: z.object({
     title: z.string().optional(),
     description: z.string().optional(),
+    intent: z.string().max(500).optional(),
+    acceptance_criteria: z
+      .array(z.string().min(1).max(1000))
+      .max(50)
+      .optional()
+      .describe('Replaces the full list. Fetch the current items first if you want to add/remove individual criteria.'),
+    source_document_id: z.string().optional(),
     label: LabelEnum.optional(),
     release_tag: z.string().optional(),
     status_category: StatusCategoryEnum.optional(),
@@ -101,6 +124,7 @@ const PlanActionSchema = z.discriminatedUnion('type', [
   QueueForTrackerAction,
 ]);
 
+export type { PlanActionsCallback };
 
 /**
  * Create the plan changes tool.
@@ -113,20 +137,59 @@ export function createPlanChangeTools(onPlanActions: PlanActionsCallback) {
     tool(
       'modify_plan',
 
+Plan items carry structured fields that flow to the agent, the reviewer, and generated artifacts:
+- **intent** (one sentence, local-only): what "done" means at a glance. The decided outcome.
+- **acceptance_criteria** (string[], local-only): testable checklist the agent will satisfy. Each entry is one criterion.
+- **description** (markdown, **synced to Jira/Linear**): rationale, context, rejected alternatives. Not the contract — the story.
+- **source_document_id** (local-only): if this item was extracted from an iteration doc, carry the breadcrumb here.
+
+Use intent + acceptance_criteria as the primary shape for implementation items. Use description for discovery/research items where criteria cannot be enumerated yet.
+
+**Sync boundary — critical.** When an item has a Jira/Linear association, its \`description\` is pushed to the external tracker as-is. Keep description sync-clean:
+- **Never** cite iteration-doc filenames or local project-folder paths unless they correspond to files actually in the synced code repo.
+- Breadcrumbs to iteration docs live in the \`source_document_id\` field, never in prose.
+- Code references (repo-relative paths like \`src/auth/session.ts\`) are fine in description — they exist wherever the code does.
+- intent and acceptance_criteria are local-only and not synced today, so they can reference local context freely. Still, prefer self-contained phrasing so they survive if sync coverage expands later.
 
 Item actions:
+- create_item: see full example below
 - update_item: { "type": "update_item", "item_id": "...", "updates": { "status_category": "done" } }
+  - update_item can also set intent, acceptance_criteria (replaces full list), description, etc.
 - delete_item: { "type": "delete_item", "item_id": "..." }
 - reparent: { "type": "reparent", "item_id": "...", "new_parent_id": "..." }
 - add_dependency: { "type": "add_dependency", "from_id": "...", "to_id": "..." }
 
 Group actions (visual containers):
+- create_group: { "type": "create_group", "project_id": "...", "name": "Must Do", "position_x": 0, "position_y": 0, "width": 552, "height": 300 }
 - assign_to_group: { "type": "assign_to_group", "item_id": "existing-uuid", "group_id": "$1" }
 - update_group: { "type": "update_group", "group_id": "...", "updates": { "name": "New Name" } }
 - delete_group: { "type": "delete_group", "group_id": "..." }
 
 Placeholder references: Use $1, $2 etc. to reference entities created earlier in the same batch. Example: first action creates a group, $1 is that group's ID for subsequent assign_to_group actions.
 
+Full create_item example (implementation item):
+{
+  "type": "create_item",
+  "title": "Add session timeout warning modal",
+  "intent": "Warn users before their session expires so they don't lose unsaved work.",
+  "acceptance_criteria": [
+    "Warning modal appears 5 minutes before session expires",
+    "Modal exposes an Extend Session action that refreshes the token",
+    "Warning does not interrupt active form input (e.g., typing in a textarea)",
+    "Dismissing the modal still lets the session expire on schedule"
+  ],
+  "description": "Users report losing draft work when sessions time out silently. Rejected: auto-extending the session without asking — conflicts with session-fixation mitigations.",
+  "parent_id": null
+}
+
+Exploratory item example (no criteria yet):
+{
+  "type": "create_item",
+  "title": "Investigate storage budget for offline mode",
+  "intent": "Decide whether IndexedDB is a viable target for offline plan caching.",
+  "description": "Open question: are per-origin quotas predictable enough to rely on? Compare against OPFS.",
+  "parent_id": null
+}
 
       {
         message: z.string().describe('Brief description of the proposed changes'),

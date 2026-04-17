@@ -636,6 +636,11 @@ export function createExportService(deps: ExportServiceDeps) {
         const customFields = rawCustomFields && Object.keys(rawCustomFields).length > 0
           : undefined;
 
+        // Sync boundary: only title/description cross to the external tracker.
+        // Spec fields (`intent`, `acceptance_criteria`, `source_document_id`) are
+        // and must not leak to Jira/Linear without an explicit product decision.
+        // If you add new spec-like fields, default them to local-only and require sign-off
+        // before adding to this payload. See `src/main/claude/CLAUDE.md` (Sync boundary).
         const created = await client.createIssue({
           projectKey: association.project_key,
           issueTypeId: entry.target_issue_type_id!,
@@ -689,6 +694,8 @@ export function createExportService(deps: ExportServiceDeps) {
         const overrideFields = entry.custom_field_overrides && Object.keys(entry.custom_field_overrides).length > 0
           : undefined;
 
+        // Sync boundary: same rule as createIssue above — spec fields are local-only.
+        // Do not add `intent`, `acceptance_criteria`, or `source_document_id` to this payload.
         await client.updateIssue(planItem.external_key!, {
           summary: planItem.title,
           customFields: overrideFields,

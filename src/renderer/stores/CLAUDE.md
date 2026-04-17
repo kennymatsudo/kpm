@@ -8,6 +8,8 @@ UI state management with slice pattern, typed events for cross-store communicati
   - `useSyncStore` — Sync preview state, conflict resolutions, and `syncAvailability` (keyed by associationId). `checkForUpdates()` is called by `useTrackerTopBarIntegration` on a 2-minute polling interval; badge UI reads from `syncAvailability`.
   - `useExportStore` — Export queue state. `addToQueueWithStatus()` stages items and tracks `recentlyImportedIds` for visual feedback.
   - `useCredentialStore` — Tracker credential loading/display.
+  - `useSyncReviewStore` — Sync review state (project-scoped).
+- **Infrastructure** — `storeEvents.ts` (typed event emitter), `projectScopedStores.ts` (lifecycle management — reset list includes `approvalQueue`, `syncReview`, and `devSessions`), `useStoreSubscriptions.ts` (event wiring)
 
 All stores exported from `index.ts`. See the directory for the full list.
 

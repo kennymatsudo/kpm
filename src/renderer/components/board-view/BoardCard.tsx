@@ -1,4 +1,7 @@
+import { memo, Fragment, useCallback } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { HighlightedText } from '../planning/HighlightedText';
+import { useDevSessionsStore } from '../../stores/devSessions';
 import { CardActivityLine } from './CardActivityLine';
 import type { PlanItem, AgentSessionState } from '../../../shared/types';
 import { toReviewSessionId } from '../../../shared/agent-types';
@@ -79,9 +82,49 @@ export const BoardCard = memo(function BoardCard({
   onStartAgent,
   onStopAgent,
 }: BoardCardProps) {
+  // Single consolidated selector: re-renders only when this item's derived
+  // session state actually changes, not on every store update. Using useShallow
+  // lets us return a handful of scalars/refs keyed by item.id so 50 cards don't
+  // all re-render when one unrelated session ticks.
+  const {
+    activeSession,
+    activeSessionCount,
+    prSession,
+    agentState,
+    latestActivity,
+    reviewState,
+    latestReviewActivity,
+    isMergeBlocked,
+  } = useDevSessionsStore(
+    useShallow((state) => {
+      const pr = itemSessions
+        .filter((s) => s.pr_url)
+        .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))[0];
 
+      const reviewId = active ? toReviewSessionId(active.id) : undefined;
 
+      let mergeBlocked = false;
+      if (pr?.pr_url && pr.pr_state !== 'MERGED') {
+        const entry = state.mergeOrderBySessionId.get(pr.id);
+        if (entry && entry.blockedBy.length > 0) {
+          mergeBlocked = entry.blockedBy.some((blockerId) => {
+            return blocker?.pr_state !== 'MERGED';
+          });
+        }
+      }
 
+      return {
+        activeSession: active,
+        activeSessionCount: activeCount,
+        prSession: pr,
+        agentState: active ? state.agentStateBySessionId.get(active.id) : undefined,
+        latestActivity: active ? state.latestActivityBySessionId.get(active.id) : undefined,
+        reviewState: reviewId ? state.agentStateBySessionId.get(reviewId) : undefined,
+        latestReviewActivity: reviewId ? state.latestActivityBySessionId.get(reviewId) : undefined,
+        isMergeBlocked: mergeBlocked,
+      };
+    })
+  );
 
   const automationPhase = activeSession?.automation_phase;
   const reviewSessionId = activeSession ? toReviewSessionId(activeSession.id) : undefined;

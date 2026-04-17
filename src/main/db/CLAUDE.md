@@ -114,6 +114,11 @@ getMany(ids: string[]): Item[] {
 }
 ```
 
+### 8. JSON-Encoded Array Columns
+
+String arrays (e.g., `code_refs`, `acceptance_criteria` on `plan_items`) are stored as JSON TEXT and parsed at read time. Use the `parseStringArray` helper in `PlanItemRepository.ts` — it defensively returns `null` on parse failure or non-array values. Write with `JSON.stringify(value)`; never concatenate or semicolon-delimit. Loose cross-table references (e.g., `source_document_id`) are stored as plain TEXT **without** a foreign key so the referenced row can be renamed/deleted without cascading.
+
+### 9. Batch Operations
 
 
 ## Key Design Decisions

@@ -343,6 +343,9 @@ export interface PlanItem extends PlanItemBase {
 export type PlanItemUpdates = Partial<Pick<PlanItem,
   | 'title'
   | 'description'
+  | 'intent'
+  | 'acceptance_criteria'
+  | 'source_document_id'
   | 'label'
   | 'status'
   | 'status_category'
@@ -436,12 +439,39 @@ export interface ThinkingSegment {
 // Plan Actions - structured commands for AI-driven plan manipulation
 export type PlanAction =
   // Plan item actions
+  | {
+      type: 'create_item';
+      title: string;
+      description?: string;
+      /** One-sentence commitment — what "done" means at a glance. */
+      intent?: string;
+      /** Testable checklist the agent will satisfy. Each entry is one criterion. */
+      acceptance_criteria?: string[];
+      /** ID of the iteration document this item was extracted from, if any. */
+      source_document_id?: string;
+      label?: string;
+      parent_id: string | null;
+    }
   | { type: 'reparent'; item_id: string; new_parent_id: string | null }
   | { type: 'set_label'; item_id: string; label: string }
   | { type: 'set_release'; item_id: string; release_tag: string | null }
   | { type: 'add_dependency'; from_id: string; to_id: string; relation_type: 'depends_on' | 'blocks' | 'relates_to' }
   | { type: 'remove_dependency'; relation_id: string }
   | { type: 'reorder'; item_id: string; after_item_id: string | null }
+  | {
+      type: 'update_item';
+      item_id: string;
+      updates: Partial<Pick<PlanItem,
+        | 'title'
+        | 'description'
+        | 'intent'
+        | 'acceptance_criteria'
+        | 'source_document_id'
+        | 'label'
+        | 'release_tag'
+        | 'status_category'
+      >>;
+    }
   | { type: 'delete_item'; item_id: string }
   | { type: 'set_position'; item_id: string; x: number; y: number }
   | { type: 'queue_for_tracker'; item_ids: string[] }

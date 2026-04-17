@@ -22,6 +22,13 @@ const planItemUpdates = z
   .object({
     title: z.string().min(1, 'Title cannot be empty').max(500, 'Title too long').trim().optional(),
     description: z.string().max(50000, 'Description too long').nullable().optional(),
+    intent: z.string().max(500, 'Intent should be one sentence').nullable().optional(),
+    acceptance_criteria: z
+      .array(z.string().min(1, 'Criterion cannot be empty').max(1000, 'Criterion too long'))
+      .max(50, 'Too many acceptance criteria')
+      .nullable()
+      .optional(),
+    source_document_id: z.string().nullable().optional(),
     label: planItemLabel.nullable().optional(),
     status: planItemStatus.optional(),
     status_category: statusCategory.nullable().optional(),
@@ -44,6 +51,9 @@ export const planActionSchema = z.discriminatedUnion('type', [
     type: z.literal('create_item'),
     title: nonEmptyString('Item title'),
     description: z.string().optional(),
+    intent: z.string().max(500).optional(),
+    acceptance_criteria: z.array(z.string().min(1).max(1000)).max(50).optional(),
+    source_document_id: z.string().optional(),
     label: planItemLabel.optional(),
     parent_id: z.string().nullable(),
   }),
@@ -83,6 +93,9 @@ export const planActionSchema = z.discriminatedUnion('type', [
     updates: z.object({
       title: z.string().optional(),
       description: z.string().nullable().optional(),
+      intent: z.string().max(500).nullable().optional(),
+      acceptance_criteria: z.array(z.string().min(1).max(1000)).max(50).nullable().optional(),
+      source_document_id: z.string().nullable().optional(),
       label: z.string().nullable().optional(),
       release_tag: z.string().nullable().optional(),
       status_category: statusCategory.nullable().optional(),

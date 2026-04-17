@@ -2813,6 +2813,22 @@ interface Migration {
       `);
     },
   },
+
+  {
+    id: 1073,
+    name: '073_add_plan_item_spec_fields',
+    up: (db: BetterSqliteDatabase) => {
+      // Structured spec fields: carry commitment from chat iteration doc → plan item → agent.
+      // acceptance_criteria is JSON-encoded string[] (same pattern as code_refs).
+      // source_document_id is a loose reference (no FK) to a project document, so docs can be
+      // deleted/renamed without cascading into plan items.
+      db.exec(`
+        ALTER TABLE plan_items ADD COLUMN intent TEXT;
+        ALTER TABLE plan_items ADD COLUMN acceptance_criteria TEXT;
+        ALTER TABLE plan_items ADD COLUMN source_document_id TEXT;
+      `);
+    },
+  },
   {
     id: 1075,
     name: '075_drop_inbox_and_project_sessions',

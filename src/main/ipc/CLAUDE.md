@@ -101,4 +101,6 @@ Current action types that MUST be in both places:
 - Groups: `create_group`, `update_group`, `delete_group`, `assign_to_group`
 - Tracker: `queue_for_tracker`
 
+Spec sub-fields inside `create_item` / `update_item.updates` (`intent`, `acceptance_criteria`, `source_document_id`) must also match between `shared/types.ts`, `planActionSchema`, and `PlanActionService`. The DB column is added via migration (see `src/main/db/CLAUDE.md`) — schema updates without a migration will silently drop the values.
+
 **Failure to sync causes:** `ZodError: Invalid input` with "No matching discriminator" when Claude tools emit actions.

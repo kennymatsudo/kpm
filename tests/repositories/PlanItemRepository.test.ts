@@ -49,6 +49,115 @@ describe('PlanItemRepository', () => {
 
       expect(item.code_refs).toEqual(['src/file1.ts', 'src/file2.ts']);
     });
+
+    it('persists intent, acceptance_criteria, and source_document_id', () => {
+      const itemData = createPlanItem({
+        id: 'spec-item-1',
+        project_id: projectId,
+        title: 'Session timeout warning',
+        intent: "Warn users before their session expires so they don't lose unsaved work.",
+        acceptance_criteria: [
+          'Warning modal appears 5 minutes before expiry',
+          'Modal exposes an Extend Session action',
+        ],
+        source_document_id: 'doc-42',
+      });
+
+      const created = ctx.repos.planItems.add(itemData);
+
+      expect(created.intent).toBe("Warn users before their session expires so they don't lose unsaved work.");
+      expect(created.acceptance_criteria).toEqual([
+        'Warning modal appears 5 minutes before expiry',
+        'Modal exposes an Extend Session action',
+      ]);
+      expect(created.source_document_id).toBe('doc-42');
+
+      // Verify round-trip through SELECT as well as INSERT RETURNING
+      const refetched = ctx.repos.planItems.get('spec-item-1');
+      expect(refetched?.intent).toBe(created.intent);
+      expect(refetched?.acceptance_criteria).toEqual(created.acceptance_criteria);
+      expect(refetched?.source_document_id).toBe('doc-42');
+    });
+
+    it('round-trips null spec fields without collapsing them to undefined', () => {
+      const itemData = createPlanItem({
+        id: 'bare-item-1',
+        project_id: projectId,
+        title: 'Bare item',
+      });
+
+      ctx.repos.planItems.add(itemData);
+      const refetched = ctx.repos.planItems.get('bare-item-1');
+
+      expect(refetched?.intent).toBeNull();
+      expect(refetched?.acceptance_criteria).toBeNull();
+      expect(refetched?.source_document_id).toBeNull();
+    });
+  });
+
+  describe('update — spec fields', () => {
+    it('sets acceptance_criteria on an existing item', () => {
+      ctx.repos.planItems.add(createPlanItem({
+        id: 'update-item-1',
+        project_id: projectId,
+        title: 'Item to update',
+      }));
+
+      ctx.repos.planItems.update('update-item-1', {
+        acceptance_criteria: ['First criterion', 'Second criterion'],
+      });
+
+      const updated = ctx.repos.planItems.get('update-item-1');
+      expect(updated?.acceptance_criteria).toEqual(['First criterion', 'Second criterion']);
+    });
+
+    it('replaces acceptance_criteria in full (semantic: list replacement, not merge)', () => {
+      ctx.repos.planItems.add(createPlanItem({
+        id: 'update-item-2',
+        project_id: projectId,
+        title: 'Item to update',
+        acceptance_criteria: ['Original A', 'Original B', 'Original C'],
+      }));
+
+      ctx.repos.planItems.update('update-item-2', {
+        acceptance_criteria: ['New A'],
+      });
+
+      const updated = ctx.repos.planItems.get('update-item-2');
+      expect(updated?.acceptance_criteria).toEqual(['New A']);
+    });
+
+    it('clears acceptance_criteria when set to null', () => {
+      ctx.repos.planItems.add(createPlanItem({
+        id: 'update-item-3',
+        project_id: projectId,
+        title: 'Item to clear',
+        acceptance_criteria: ['Some criterion'],
+      }));
+
+      ctx.repos.planItems.update('update-item-3', {
+        acceptance_criteria: null,
+      });
+
+      const updated = ctx.repos.planItems.get('update-item-3');
+      expect(updated?.acceptance_criteria).toBeNull();
+    });
+
+    it('updates intent independently of acceptance_criteria', () => {
+      ctx.repos.planItems.add(createPlanItem({
+        id: 'update-item-4',
+        project_id: projectId,
+        title: 'Item',
+        intent: 'Original intent',
+        acceptance_criteria: ['One', 'Two'],
+      }));
+
+      ctx.repos.planItems.update('update-item-4', { intent: 'Revised intent' });
+
+      const updated = ctx.repos.planItems.get('update-item-4');
+      expect(updated?.intent).toBe('Revised intent');
+      expect(updated?.acceptance_criteria).toEqual(['One', 'Two']);
+    });
   });
 
   describe('get', () => {

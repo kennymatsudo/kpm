@@ -57,6 +57,8 @@ export function usePlanTaskEdit({ planItemsById, updatePlanItem }: PlanTaskEditD
       title: string;
       description: string | null;
       label: string | null;
+      intent?: string | null;
+      acceptance_criteria?: string[] | null;
     }) => {
       if (!editingItem) return;
       await updatePlanItem(editingItem.id, updates);

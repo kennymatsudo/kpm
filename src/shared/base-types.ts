@@ -38,6 +38,12 @@ export interface PlanItem {
   parent_id: string | null;
   title: string;
   description: string | null;
+  /** One-sentence "what this item commits to" — the decided outcome, distinct from the prose rationale in description. */
+  intent: string | null;
+  /** Structured agent contract: each entry is one testable criterion. Serialized as JSON in SQLite. */
+  acceptance_criteria: string[] | null;
+  /** Loose reference to the project document this item was extracted from. No FK — docs can be deleted without cascading. */
+  source_document_id: string | null;
   label: string | null;
   item_order: number;
   code_refs: string[] | null;

@@ -127,4 +127,35 @@ The `currentView` parameter ('plan' | 'workspace') adds context-aware suggestion
 | `sdkTypeGuards.ts` | Type guard utilities |
 | `streaming/` | Session management |
 | `tools/` | MCP tool implementations |
+| `tools/schemas.ts` | Shared Zod primitives (`StatusCategoryEnum`, `PlanActionsCallback`) reused across tool files |
 | `prompts/` | System prompt builders |
+
+## Plan Item Spec Fields
+
+`create_item` / `update_item` carry four fields that flow from the chat iteration doc → plan item → implementation agent:
+
+| Field | Shape | Role |
+|-------|-------|------|
+| `intent` | `string` (≤ 500 chars, one sentence) | Decided outcome. What "done" means at a glance. |
+| `acceptance_criteria` | `string[]` (≤ 50 entries, each ≤ 1000 chars) | Testable checklist the agent must satisfy. |
+| `description` | `string` (markdown) | Rationale, context, rejected alternatives. The story, not the contract. |
+| `source_document_id` | `string` (no FK) | Breadcrumb to the iteration doc this item was extracted from. |
+
+Guidance baked into the `modify_plan` tool prompt: prefer `intent` + `acceptance_criteria` for implementation items; rely on `description` alone for exploratory/research items where criteria can't be enumerated yet. `update_item.acceptance_criteria` **replaces** the full list — fetch current values first if you want to add/remove individual criteria.
+
+
+### Sync boundary
+
+
+| Field | External tracker (Jira/Linear) |
+|-------|--------------------------------|
+| `title` | Synced as `summary` |
+| `description` | Synced as description (markdown → ADF for Jira) |
+| `intent` | **Local-only** — not synced |
+| `acceptance_criteria` | **Local-only** — not synced |
+| `source_document_id` | **Local-only** — not synced |
+
+Enforced at `src/main/db/domain/ExportService.ts` (see the guard comments on `createIssue` / `updateIssue` payloads). Do not add spec fields to the outbound payload without an explicit product decision.
+
+
+If you later want intent or criteria to reach external stakeholders, do it by appending them to the description payload at export time (under explicit section headers like `## Acceptance Criteria`) rather than by changing sync-direction defaults on the fields themselves. That keeps the "local by default" invariant intact.

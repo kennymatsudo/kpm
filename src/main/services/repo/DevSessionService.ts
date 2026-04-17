@@ -20,6 +20,7 @@ import type {
   IRepoRepository,
 } from '../../db/interfaces';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
+import { getConfig } from '../../config';
 import {
   createStatusBroadcaster,
 } from './sessionOrchestration';
@@ -35,7 +36,10 @@ interface AgentContextInput {
 /**
  * Build agent context from plan item data
  * Note: Claude Code automatically reads CLAUDE.md/AGENTS.md from the worktree, so we don't include it here
+ *
+ * Exported for unit testing.
  */
+export function buildAgentContext(input: AgentContextInput): string {
   const { item, children, parent } = input;
   const sections: string[] = [];
 
@@ -47,6 +51,23 @@ interface AgentContextInput {
     sections.push(`**Ticket:** ${item.external_key}`);
   }
 
+  // Intent — one-sentence commitment. What "done" means at a glance.
+  if (item.intent) {
+    sections.push('## Intent');
+    sections.push(item.intent);
+  }
+
+  // Acceptance criteria — the contract the agent must satisfy.
+  if (hasCriteria) {
+    sections.push('## Acceptance Criteria');
+  }
+
+  // Description — rationale and context. Demoted to "Context" when structured fields carry the contract.
+    sections.push(hasCriteria ? '## Context' : '## Description');
+  } else if (!item.intent && !hasCriteria) {
+    sections.push('## Description');
+    sections.push('No description provided.');
+  }
 
   // Sub-tasks
   if (children.length > 0) {
@@ -67,6 +88,7 @@ interface AgentContextInput {
   // Instructions
   sections.push('---');
   sections.push('## Instructions');
+  sections.push(hasCriteria
   if (item.external_key) {
     sections.push(`Ticket reference for commits: **${item.external_key}**`);
   }
@@ -193,6 +215,75 @@ async function detectDefaultBranch(repoPath: string): Promise<string> {
   } catch {
     // Fallback to 'main' if remote HEAD not found
     return 'main';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Worktree scaffolding helper
+// ---------------------------------------------------------------------------
+
+type WorktreeScaffoldResult =
+  | { ok: true }
+  | { ok: false; kind: 'checkedOutInMainRepo' }
+  | { ok: false; kind: 'checkedOutElsewhere' }
+  | { ok: false; kind: 'createFailed'; outerMessage: string; innerMessage: string };
+
+/**
+ * Ensure the worktrees directory exists and, if the worktree path is absent,
+ * create it via `git worktree add`.  Returns a discriminated result so callers
+ * can produce their own exact error messages.
+ *
+ * Preconditions: session fields `worktree_path`, `branch_name`, `base_branch`
+ * must already be set; `repoPath` is the path of the primary checkout.
+ */
+async function _scaffoldWorktree(params: {
+  worktreePath: string;
+  branchName: string;
+  baseBranch: string;
+  repoPath: string;
+}): Promise<WorktreeScaffoldResult> {
+  const { worktreePath, branchName, baseBranch, repoPath } = params;
+
+  // Ensure the parent worktrees directory exists
+  const worktreesDir = path.dirname(worktreePath);
+  if (!fs.existsSync(worktreesDir)) {
+    fs.mkdirSync(worktreesDir, { recursive: true });
+  }
+
+  // Nothing to do — worktree already present
+  if (fs.existsSync(worktreePath)) {
+    return { ok: true };
+  }
+
+  // Guard: never shadow the primary checkout's current branch
+  const checkedOut = await getCurrentBranch(repoPath);
+  if (checkedOut && checkedOut === branchName) {
+    return { ok: false, kind: 'checkedOutInMainRepo' };
+  }
+
+  try {
+    // Attempt to create a new branch from base
+    await gitExec(
+      ['worktree', 'add', '-b', branchName, worktreePath, baseBranch],
+      { cwd: repoPath }
+    );
+    return { ok: true };
+  } catch (outerError) {
+    const outerMessage = outerError instanceof Error ? outerError.message : String(outerError);
+    // Branch may already exist — retry without -b
+    try {
+      await gitExec(
+        ['worktree', 'add', worktreePath, branchName],
+        { cwd: repoPath }
+      );
+      return { ok: true };
+    } catch (innerError) {
+      const innerMessage = innerError instanceof Error ? innerError.message : String(innerError);
+      if (innerMessage.includes('already checked out')) {
+        return { ok: false, kind: 'checkedOutElsewhere' };
+      }
+      return { ok: false, kind: 'createFailed', outerMessage, innerMessage };
+    }
   }
 }
 
@@ -360,13 +451,26 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           return failure(`Repository not found: ${session.repo_id}`);
         }
 
+        // Create worktree directory (if needed) and git worktree
+        const scaffoldResult = await _scaffoldWorktree({
+          worktreePath: session.worktree_path,
+          branchName: session.branch_name,
+          baseBranch: session.base_branch,
+          repoPath: repo.path,
+        });
+        if (!scaffoldResult.ok) {
+          if (scaffoldResult.kind === 'checkedOutInMainRepo') {
             return failure(
               `Branch '${session.branch_name}' is currently checked out in the main repository. ` +
               `Switch to a different branch or choose a different branch for this session.`
             );
           }
+          if (scaffoldResult.kind === 'checkedOutElsewhere') {
+            return failure(
+              `Branch '${session.branch_name}' is already checked out in another worktree.`
             );
           }
+          return failure(`Failed to create worktree: ${scaffoldResult.innerMessage}`);
         }
 
         // Use the user's prompt override if provided, otherwise the stored instructions
@@ -374,8 +478,11 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         deps.agentReviews.markLatestCompletedStale(sessionId);
         deps.devSessions.updateAutomationPhase(sessionId, 'idle');
 
+
         // Build SDK options for the dev session
         const sdkOptions: SDKOptions = {
+          model: developerModel,
+          thinking: { type: 'adaptive' as const, display: 'summarized' as const },
           ...getClaudeSdkSpawnOptions(),
         };
 

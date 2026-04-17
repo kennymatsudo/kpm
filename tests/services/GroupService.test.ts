@@ -28,6 +28,9 @@ const item: PlanItem = {
   external_epic_key: null,
   sync_source: 'local',
   last_synced_at: null,
+  intent: null,
+  acceptance_criteria: null,
+  source_document_id: null,
   created_at: '',
   updated_at: '',
 };

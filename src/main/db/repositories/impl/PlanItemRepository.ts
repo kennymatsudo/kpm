@@ -7,9 +7,13 @@ import type { PlanItem, PlanItemUpdates, PlanItemSyncUpdates } from '../../../..
 import type { IPlanItemRepository } from '../../interfaces';
 
 /**
+ * Safely parse a JSON-encoded string[] column. Returns null on parse failure.
  */
+function parseStringArray(json: string | null): string[] | null {
   if (!json) return null;
   try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -21,6 +25,10 @@ import type { IPlanItemRepository } from '../../interfaces';
 function rowToPlanItem(row: Record<string, unknown>): PlanItem {
   return {
     ...row,
+    code_refs: parseStringArray(row.code_refs as string | null),
+    acceptance_criteria: parseStringArray(row.acceptance_criteria as string | null),
+    intent: (row.intent as string | null) ?? null,
+    source_document_id: (row.source_document_id as string | null) ?? null,
     status: (row.status as 'backlog' | 'planned') || 'planned',
     group_id: row.group_id as string | null ?? null,
   } as PlanItem;
@@ -125,6 +133,8 @@ export class PlanItemRepository implements IPlanItemRepository {
           code_refs, status, status_category, release_tag, position_x, position_y,
           association_id, external_key, external_id, external_type, external_issue_type,
           external_status, external_url, external_parent_key, external_epic_key,
+          sync_source, last_synced_at, group_id,
+          intent, acceptance_criteria, source_document_id
         )
         RETURNING *
       `),
@@ -216,6 +226,10 @@ export class PlanItemRepository implements IPlanItemRepository {
       item.external_epic_key ?? null,
       item.sync_source ?? 'local',
       item.last_synced_at ?? null,
+      item.group_id ?? null,
+      item.intent ?? null,
+      item.acceptance_criteria ? JSON.stringify(item.acceptance_criteria) : null,
+      item.source_document_id ?? null
     ) as Record<string, unknown>;
     return rowToPlanItem(row);
   }
@@ -280,6 +294,18 @@ export class PlanItemRepository implements IPlanItemRepository {
       fields.push('code_refs = ?');
       values.push(updates.code_refs ? JSON.stringify(updates.code_refs) : null);
     }
+    if (updates.intent !== undefined) {
+      fields.push('intent = ?');
+      values.push(updates.intent);
+    }
+    if (updates.acceptance_criteria !== undefined) {
+      fields.push('acceptance_criteria = ?');
+      values.push(updates.acceptance_criteria ? JSON.stringify(updates.acceptance_criteria) : null);
+    }
+    if (updates.source_document_id !== undefined) {
+      fields.push('source_document_id = ?');
+      values.push(updates.source_document_id);
+    }
     if (updates.status !== undefined) {
       fields.push('status = ?');
       values.push(updates.status);
@@ -288,7 +314,13 @@ export class PlanItemRepository implements IPlanItemRepository {
       fields.push('status_category = ?');
       values.push(updates.status_category);
 
+      // Track completion timestamp when item is marked as done. Use a SQL CASE
+      // against the OLD status_category instead of a pre-read SELECT: SQLite
+      // evaluates every SET expression against the pre-update row values, so
+      // the CASE correctly distinguishes "already done" from "transitioning
+      // into done" without an extra round trip.
       if (updates.status_category === 'done') {
+        fields.push("completed_at = CASE WHEN status_category != 'done' THEN CURRENT_TIMESTAMP ELSE completed_at END");
       } else if (updates.status_category !== null) {
         // Clear completed_at if moving away from done state
         fields.push('completed_at = NULL');
