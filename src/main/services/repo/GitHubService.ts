@@ -412,6 +412,7 @@ export function createGitHubService(deps: GitHubServiceDeps) {
         const contextParts: string[] = [];
 
         if (planItem) {
+          contextParts.push(`[REFERENCE — Task]\nTitle: ${planItem.title}`);
           if (planItem.description) {
             contextParts.push(`Description: ${planItem.description}`);
           }
@@ -420,6 +421,7 @@ export function createGitHubService(deps: GitHubServiceDeps) {
           }
         }
 
+        contextParts.push(`[REFERENCE — Branch]\n${session.branch_name} -> ${baseBranch}`);
 
         if (sessionDiff) {
           // Truncate diff for prompt to keep tokens reasonable
@@ -428,6 +430,14 @@ export function createGitHubService(deps: GitHubServiceDeps) {
             : sessionDiff;
         }
 
+- Do NOT omit sections the template contains.
+- Within each section, keep the answer concise. Aim for a description that fits on one screen.
+- If a section asks a question that does not apply, answer "N/A" on one line. Do not explain why unless the absence is itself surprising.
+- If a section expects a value after a colon (e.g. "Tested on ondemand (if applicable): "), put the value or "N/A" directly after the colon. One line, no elaboration.
+
+HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and examples — read them to understand what each section expects, then write plain markdown in their place. Your output must not contain any \`<!-- ... -->\`, stray \`-->\`, or stray \`--->\`.
+
+## PR Template
 
         const prompt = `Generate a PR title and description for the following changes:\n\n${contextParts.join('\n\n')}`;
 

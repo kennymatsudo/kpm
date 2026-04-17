@@ -6,6 +6,7 @@ import {
   subscribeToAgentComplete,
   subscribeToAgentErrors,
 } from '../services/agentSessionService';
+import { subscribeToReviewActionable } from '../services/reviewService';
 import { useDevSessionsStore } from '../stores/devSessions';
 
 export function useDevSessionsSync(projectId: string | null): void {
@@ -62,12 +63,17 @@ export function useDevSessionsSync(projectId: string | null): void {
       useDevSessionsStore.getState().handleAgentError(event.devSessionId, event.error);
     });
 
+    const cleanupActionable = subscribeToReviewActionable((summary) => {
+      useDevSessionsStore.getState().setReviewActionable(summary);
+    });
+
     return () => {
       cleanupState();
       cleanupActivity();
       cleanupQuestion();
       cleanupComplete();
       cleanupError();
+      cleanupActionable();
     };
   }, []);
 }

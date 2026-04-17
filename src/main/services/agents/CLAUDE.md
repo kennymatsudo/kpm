@@ -18,8 +18,15 @@ Everything else is automated:
 3. implementation agent assesses and fixes review findings if warranted
 4. task moves to `In Review`
 
+The board detail pane exposes:
 
+- tabs: `Activity`, `Changes`, and `Review` — the `Review` tab is conditional and only renders when the session has a linked PR (`session.pr_number != null`)
+- no explicit board control to manually run opposing-agent review as part of the normal path — that still runs automatically once after implementation
 
+The `BoardCard` orange dot fires on a **union** of two signals:
+2. `reviewActionableBySessionId[sessionId].hasActionable` — derived from review tasks that need user action: `disposition === 'needs_user_input'`, `internal_state === 'failed'`, `internal_state === 'stale'`, or a task `error` set on an otherwise-open task. Populated by (a) the `review-poll:actionable` broadcast emitted at the end of every `processSession` call in `ReviewPollService`, and (b) local recomputation in the renderer's `setReviewInbox` helper so user actions (ignore/override/post) clear the dot immediately without waiting for the next poll tick. The reconciler deliberately does NOT touch `automation_phase` to avoid stomping on non-review callers that set `needs_attention`.
+
+The older opposing-agent review findings (`agent_review_runs` / `agent_review_findings`) still exist for audit/debugging but are not the primary UI surface in the board flow.
 
 ## Architecture
 

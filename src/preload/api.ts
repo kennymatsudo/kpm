@@ -60,6 +60,7 @@ import type {
   PrStatus,
   PrComment,
   ReviewInboxSnapshot,
+  ReviewActionableSummary,
   DiscoveredPlugin,
   UserMcpServer,
   DiscoveredMcpServer,
@@ -880,6 +881,11 @@ const review = {
     const handler = (_: Electron.IpcRendererEvent, data: { sessionId: string; needsReviewCount: number; totalTasks: number; fetchedAt: string }) => callback(data);
     ipcRenderer.on('review:sync-updated', handler);
     return () => ipcRenderer.removeListener('review:sync-updated', handler);
+  },
+  onActionableChanged: (callback: (summary: ReviewActionableSummary) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, summary: ReviewActionableSummary) => callback(summary);
+    ipcRenderer.on('review-poll:actionable', handler);
+    return () => ipcRenderer.removeListener('review-poll:actionable', handler);
   },
 };
 

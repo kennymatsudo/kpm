@@ -84,8 +84,10 @@ export function createRepoServices({
     devSessions: container.devSessions,
     repos: container.repos,
     planItems: container.planItems,
+    planRelations: container.planRelations,
     reviewTasks: container.reviewTasks,
     gitHubService,
+    fileExplorerService,
   });
 
   const projectWatcherService = createProjectWatcherService({

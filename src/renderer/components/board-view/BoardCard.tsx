@@ -33,6 +33,23 @@ interface BoardCardProps {
   onStopAgent?: (devSessionId: string) => void;
 }
 
+function buildReviewActionableTooltip(
+  counts: { needsInput: number; failed: number; stale: number; errored: number },
+  alsoAutomationInterrupted: boolean,
+): string {
+  const parts: string[] = [];
+  if (counts.needsInput > 0) parts.push(`${counts.needsInput} need your input`);
+  if (counts.failed > 0) parts.push(`${counts.failed} failed`);
+  if (counts.stale > 0) parts.push(`${counts.stale} stale`);
+  if (counts.errored > 0) parts.push(`${counts.errored} errored`);
+  const head = parts.length > 0
+    ? `Review: ${parts.join(', ')}`
+    : 'Review requires attention';
+  return alsoAutomationInterrupted
+    ? `${head} · Automation interrupted`
+    : `${head} — open Review tab`;
+}
+
 /** Map agent states to visual categories for border/indicator styling */
 function getAgentVisualState(
   agentState: AgentSessionState | undefined,
@@ -95,6 +112,7 @@ export const BoardCard = memo(function BoardCard({
     reviewState,
     latestReviewActivity,
     isMergeBlocked,
+    reviewActionable,
   } = useDevSessionsStore(
     useShallow((state) => {
       const pr = itemSessions
@@ -113,6 +131,15 @@ export const BoardCard = memo(function BoardCard({
         }
       }
 
+      let actionableSummary: { hasActionable: boolean; counts: { needsInput: number; failed: number; stale: number; errored: number } } | undefined;
+      for (const session of itemSessions) {
+        const summary = state.reviewActionableBySessionId.get(session.id);
+        if (summary?.hasActionable) {
+          actionableSummary = summary;
+          break;
+        }
+      }
+
       return {
         activeSession: active,
         activeSessionCount: activeCount,
@@ -122,6 +149,7 @@ export const BoardCard = memo(function BoardCard({
         reviewState: reviewId ? state.agentStateBySessionId.get(reviewId) : undefined,
         latestReviewActivity: reviewId ? state.latestActivityBySessionId.get(reviewId) : undefined,
         isMergeBlocked: mergeBlocked,
+        reviewActionable: actionableSummary,
       };
     })
   );
@@ -263,6 +291,12 @@ export const BoardCard = memo(function BoardCard({
         {visualState === 'stale' && (
         )}
 
+        {/* Needs attention indicator: automation interrupted OR review items need user action */}
+        {(automationPhase === 'needs_attention' || reviewActionable?.hasActionable) && visualState !== 'active' && visualState !== 'attention' && (
+              reviewActionable?.hasActionable
+                ? buildReviewActionableTooltip(reviewActionable.counts, automationPhase === 'needs_attention')
+                : 'Automation interrupted — click Play to continue'
+            }
         )}
 
         {/* Active session indicator (legacy green dot) */}

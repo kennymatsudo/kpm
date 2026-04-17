@@ -44,3 +44,11 @@ export function ignoreSessionReviewTask(taskId: string) {
 export function overrideSessionReviewDisposition(taskId: string, disposition: string) {
   return window.api.review.overrideDisposition(taskId, disposition);
 }
+
+import type { ReviewActionableSummary } from '../../shared/types';
+
+export function subscribeToReviewActionable(
+  callback: (summary: ReviewActionableSummary) => void,
+): () => void {
+  return window.api.review.onActionableChanged(callback);
+}

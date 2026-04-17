@@ -1,3 +1,4 @@
+import type { PrStatus, ReviewActionableSummary, ReviewInboxSnapshot } from '../../../shared/types';
 import {
   addToSet,
   dropSessionCacheEntries,
@@ -61,6 +62,7 @@ export function createDevSessionsLifecycleSlice(
           reviewLoadingIds: new Set<string>(),
           reviewErrorBySessionId: new Map<string, string | null>(),
           reviewFiltersBySessionId: new Map<string, ReviewFilters>(),
+          reviewActionableBySessionId: new Map<string, ReviewActionableSummary>(),
           prContextBySessionId: new Map<string, PrCreationContext>(),
           prContextLoadingIds: new Set<string>(),
           prStatusCache: new Map<string, PrStatus>(),
@@ -144,6 +146,7 @@ export function createDevSessionsLifecycleSlice(
           reviewLoadingIds: pruneSetByKeys(get().reviewLoadingIds, validSessionIds),
           reviewErrorBySessionId: pruneMapByKeys(get().reviewErrorBySessionId, validSessionIds),
           reviewFiltersBySessionId: pruneMapByKeys(get().reviewFiltersBySessionId, validSessionIds),
+          reviewActionableBySessionId: pruneMapByKeys(get().reviewActionableBySessionId, validSessionIds),
           prContextBySessionId: pruneMapByKeys(get().prContextBySessionId, validSessionIds),
           prContextLoadingIds: pruneSetByKeys(get().prContextLoadingIds, validSessionIds),
           prStatusCache: pruneMapByKeys(get().prStatusCache, validSessionIds),

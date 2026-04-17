@@ -123,6 +123,31 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
   }
 
   // ---------------------------------------------------------------------------
+  // Actionable-Review Summary
+  // ---------------------------------------------------------------------------
+
+    if (session.pr_number == null) return null;
+    const tasks = deps.reviewTasks.getByRepoPr(session.repo_id, session.pr_number);
+    const counts = { needsInput: 0, failed: 0, stale: 0, errored: 0 };
+    for (const t of tasks) {
+      if (t.session_id !== session.id) continue;
+      if (t.status === 'done') continue;
+      if (t.internal_state === 'ignored') continue;
+      if (t.disposition === 'needs_user_input') counts.needsInput++;
+      else if (t.internal_state === 'failed') counts.failed++;
+      else if (t.internal_state === 'stale') counts.stale++;
+      else if (t.error != null) counts.errored++;
+    }
+    const hasActionable =
+      counts.needsInput > 0 || counts.failed > 0 || counts.stale > 0 || counts.errored > 0;
+    return { sessionId: session.id, hasActionable, counts };
+  }
+
+    if (!summary) return;
+    deps.broadcastToWindows('review-poll:actionable', summary);
+  }
+
+  // ---------------------------------------------------------------------------
   // Per-Session Processing
   // ---------------------------------------------------------------------------
 
@@ -246,6 +271,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       deps.broadcastToWindows('review-poll:error', { sessionId, error: msg });
 
       return { sessionId, action: 'error', newThreadCount: 0, implementCount: 0, error: msg };
+    } finally {
     }
   }
 

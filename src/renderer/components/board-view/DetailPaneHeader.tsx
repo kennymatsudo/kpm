@@ -10,6 +10,7 @@ interface DetailPaneHeaderProps {
   commitState?: BackgroundCommitState;
   onClose: () => void;
   onCreatePr: () => void;
+  onGeneratePrContent: () => void;
   onLinkPr: () => void;
   onOpenPr: () => void;
   onCopyWorktree: () => void;
@@ -21,6 +22,7 @@ export const DetailPaneHeader = memo(function DetailPaneHeader({
   commitState,
   onClose,
   onCreatePr,
+  onGeneratePrContent,
   onLinkPr,
   onOpenPr,
   onCopyWorktree,

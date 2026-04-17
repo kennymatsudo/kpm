@@ -9,6 +9,7 @@
 import type {
   IDevSessionRepository,
   IPlanItemRepository,
+  IPlanRelationRepository,
 } from '../../db/interfaces';
 import type {
   DevSession,
@@ -19,6 +20,11 @@ import type {
 import { failure, success, type AsyncResult, type ServiceResult } from '../result';
 import type { createGitHubService } from './GitHubService';
 import { getDiff, detectBaseBranch } from './gitUtils';
+import {
+  createReviewAssessmentMcpServer,
+  REVIEW_ASSESSMENT_TOOL_NAMES,
+} from '../../claude/tools/review-assessment';
+import type { FileExplorerService } from '../files/FileExplorerService';
 
 type GitHubService = ReturnType<typeof createGitHubService>;
 
@@ -38,17 +44,33 @@ export interface BatchAssessmentResult {
   errors: string[];
 }
 
+interface ToolContext {
+  projectId: string;
+  prRepoId: string;
+  otherRepos: { id: string; path: string }[];
+}
+
 export interface ReviewAssessmentServiceDeps {
   devSessions: IDevSessionRepository;
   repos: IRepoRepository;
   planItems: IPlanItemRepository;
+  planRelations: IPlanRelationRepository;
   reviewTasks: IReviewTaskRepository;
   gitHubService: GitHubService;
+  fileExplorerService: FileExplorerService;
 }
 
 // =============================================================================
 // Assessment Prompt
 // =============================================================================
+
+
+You have read-only tools to explore beyond the PR diff before landing a disposition. A reviewer concern is often already resolved by work the diff alone can't show. Before you assign a disposition, check whichever of these apply:
+
+1. **Follow-up plan items** — does \`list_plan_items\` surface a planned (or in-progress) task that covers this concern? Use \`get_plan_item\` to confirm the scope matches. If yes, the thread is a \`push_back\` with the follow-up as the rationale.
+2. **In-flight work on this repo or a sibling repo** — call \`list_project_branches\` once to see every repo on the project. If a branch name or recent commit subject suggests the concern is being addressed elsewhere (commonly true for cross-repo changes like API/client pairs), use \`get_branch_activity\` to verify the commits touch the relevant files.
+
+
 
 ## Assessment Criteria
 
@@ -59,6 +81,7 @@ For each thread, consider:
 4. Is the reviewer asking for explanation rather than a code change?
 5. Is this a style/preference issue vs a correctness issue?
 6. For bot-generated comments: is the suggestion actually applicable given the surrounding code context?
+7. Is the concern already handled elsewhere — a planned follow-up task, an in-flight branch on this or a sibling repo, or a project doc that captured the decision?
 
 ## Dispositions
 
@@ -70,12 +93,34 @@ Assign exactly one disposition per thread:
 
 
 
+
+## Draft Reply Voice
+
+Write like a developer replying on their own PR — not a bot, not a customer-support agent.
+
+- Lead with the concrete fact that resolves it. No "Thanks for catching", no "Great point", no pleasantries.
+- Don't restate the reviewer's concern or explain what would have been a problem. They already know — they wrote it.
+- No hedging or hypothetical framing: skip "it would be a real issue if...", "you're right that in theory...", "this could be a concern but...". Just state what's true now.
+- Short. One or two sentences is usually enough. Two short sentences beats one long one.
+- Casual-professional tone: contractions are fine, first person is fine, lowercase after em-dashes is fine.
+
+Examples of the voice you want:
+
+Good: "The \`@retry\` decorator is being removed in #1234, so there's no retry path left to guard."
+Good: "Not in scope here — tracked separately as PROJ-7012."
+Good: "Left this as-is because the upstream caller already validates the input."
+
+Avoid:
+- "Thanks for catching this — it would be a real problem if retries were still in play. The \`@retry\` decorator is being removed in #1234, which eliminates the retry path entirely and resolves this concern."
+- "Great point! You're absolutely right that..."
+- "This is a valid concern. However, ..."`;
 }
 
 function buildAssessmentUserPrompt(
   snapshot: PrReviewSnapshot,
   threads: PrReviewThread[],
   diff: string | null,
+  sessionContext: string | null,
 ): string {
   const lines: string[] = [];
 
@@ -85,6 +130,20 @@ function buildAssessmentUserPrompt(
   lines.push(`Branch: ${snapshot.headRefName} -> ${snapshot.baseRefName}`);
   lines.push(`Head: ${snapshot.headOid.slice(0, 12)}`);
   lines.push(`Review decision: ${snapshot.reviewDecision ?? 'none'}`);
+
+  lines.push('');
+  lines.push(`## Tool Inputs`);
+  lines.push(`Pass these IDs verbatim to the review tools. Don't guess UUIDs.`);
+  lines.push(`- projectId (for list_plan_items, list_project_branches, read_project_document): ${toolContext.projectId}`);
+  lines.push(`- this PR's repoId (for get_branch_activity): ${toolContext.prRepoId}`);
+  if (toolContext.otherRepos.length > 0) {
+    lines.push(`- sibling repos on this project:`);
+    for (const r of toolContext.otherRepos) {
+      lines.push(`    - repoId=${r.id} — path=${r.path}`);
+    }
+  } else {
+    lines.push(`- sibling repos on this project: none`);
+  }
 
   if (sessionContext) {
     lines.push('');
@@ -154,12 +213,34 @@ Your job is to look at review threads that were marked for implementation, exami
 
 
 - Do NOT fabricate changes — only mark as addressed if the diff actually shows the fix
+
+## Draft Reply Voice
+
+Write like a developer replying on their own PR — not a bot.
+
+- Lead with what changed. Skip "Thanks for the suggestion", "Great catch", and other pleasantries.
+- Don't restate the reviewer's concern — they wrote it, they know.
+- No hedging or hypotheticals ("this would have been an issue if...", "you're right in theory...").
+- Short. One sentence is usually enough. Point at the fix in concrete terms.
+- Casual-professional. Contractions, first person, lowercase after em-dashes are all fine.
+
+Examples of the voice you want:
+
+Good: "Switched to resetting the stream before each attempt — see \`upload.py\` in the latest push."
+Good: "Fixed — now validates before the DB call."
+Good: "Moved the guard into the caller so it's enforced for every path."
+
+Avoid:
+- "Addressed — added seek(0) handling to reset the file position before each retry attempt, which ensures retries work correctly as you pointed out."
+- "Thanks for the great catch! I've updated the code to..."
+- "You're absolutely right. Fixed in the latest commit."`;
 }
 
 function buildPostImplUserPrompt(
   snapshot: PrReviewSnapshot,
   threads: PrReviewThread[],
   tasks: { thread_id: string; rationale: string | null }[],
+  diff: string | null,
 ): string {
   const taskByThreadId = new Map(tasks.map((t) => [t.thread_id, t]));
   const lines: string[] = [];
@@ -169,6 +250,12 @@ function buildPostImplUserPrompt(
   lines.push(`PR #${snapshot.prNumber}: ${snapshot.title}`);
   lines.push(`Branch: ${snapshot.headRefName}`);
   lines.push(`Head: ${snapshot.headOid.slice(0, 12)}`);
+
+  lines.push('');
+  lines.push(`## Tool Inputs`);
+  lines.push(`Pass these IDs verbatim if you need to explore beyond the diff.`);
+  lines.push(`- projectId: ${toolContext.projectId}`);
+  lines.push(`- this PR's repoId: ${toolContext.prRepoId}`);
 
   if (diff) {
     lines.push('');
@@ -224,6 +311,25 @@ interface PostImplResult {
 export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps) {
   const log = (msg: string) => console.log(`[ReviewAssessment] ${msg}`);
   const logError = (msg: string) => console.error(`[ReviewAssessment] ${msg}`);
+
+  const reviewMcpServer = createReviewAssessmentMcpServer({
+    planItems: deps.planItems,
+    planRelations: deps.planRelations,
+    repos: deps.repos,
+    fileExplorerService: deps.fileExplorerService,
+  });
+
+  function buildToolContext(session: DevSession): ToolContext {
+    const projectRepos = deps.repos.getByProject(session.project_id);
+    const otherRepos = projectRepos
+      .filter((r) => r.id !== session.repo_id)
+      .map((r) => ({ id: r.id, path: r.path }));
+    return {
+      projectId: session.project_id,
+      prRepoId: session.repo_id,
+      otherRepos,
+    };
+  }
 
   function getSessionContext(sessionId: string): ServiceResult<DevSession> {
     const session = deps.devSessions.get(sessionId);
@@ -306,10 +412,21 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
 
     // 4. Assemble context
     const sessionContext = buildSessionContextString(session);
+    const toolContext = buildToolContext(session);
+    const userPrompt = buildAssessmentUserPrompt(
+      snapshot,
+      threadsToAssess,
+      diff,
+      sessionContext,
+    );
 
     log(`Assessing ${threadsToAssess.length} threads for PR #${session.pr_number}`);
 
+    // 5. Call SDK — multi-turn with scoped read-only MCP tools so the agent
+    //    can check follow-up plan items / sibling-repo branches / project docs
     const sdkOptions: SDKOptions = {
+      mcpServers: { review: reviewMcpServer },
+      allowedTools: [...REVIEW_ASSESSMENT_TOOL_NAMES],
       persistSession: false,
     };
 
@@ -417,8 +534,14 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
 
     log(`Drafting post-implementation replies for ${threads.length} threads on PR #${session.pr_number}`);
 
+    const toolContext = buildToolContext(session);
 
+    // Post-impl drafting is primarily diff-driven, but we keep the same tool
+    // surface available for edge cases (e.g., verifying a companion change
+    // landed on a sibling repo branch).
     const sdkOptions: SDKOptions = {
+      mcpServers: { review: reviewMcpServer },
+      allowedTools: [...REVIEW_ASSESSMENT_TOOL_NAMES],
       persistSession: false,
       systemPrompt: buildPostImplSystemPrompt(),
     };

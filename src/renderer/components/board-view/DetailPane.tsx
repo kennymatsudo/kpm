@@ -8,6 +8,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { ActivityTab } from './ActivityTab';
 import { ChangesTab } from './ChangesTab';
 import { CreatePrModal } from '../development/CreatePrModal';
+import { GeneratePrContentModal } from '../development/GeneratePrContentModal';
 import { LinkPrDialog } from '../development/LinkPrDialog';
 import { ReviewTab } from '../development/ReviewTab';
 import { useAgentSession } from '../../hooks/useAgentSession';
@@ -20,6 +21,7 @@ interface DetailPaneProps {
   onClose: () => void;
 }
 
+type DetailTab = 'activity' | 'changes' | 'review';
 
 export const DetailPane = memo(function DetailPane({
   session,
@@ -27,6 +29,7 @@ export const DetailPane = memo(function DetailPane({
 }: DetailPaneProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>('activity');
   const [showCreatePr, setShowCreatePr] = useState(false);
+  const [showGeneratePrContent, setShowGeneratePrContent] = useState(false);
   const [showLinkPr, setShowLinkPr] = useState(false);
   const [changesRefreshToken, setChangesRefreshToken] = useState(0);
   // When true, committing also transitions the card to in_review (Ready for Review path).
@@ -60,6 +63,12 @@ export const DetailPane = memo(function DetailPane({
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'review' && session.pr_number == null) {
+      setActiveTab('activity');
+    }
+  }, [activeTab, session.pr_number]);
 
     void stopAgentSession(session.id);
 
@@ -161,6 +170,11 @@ export const DetailPane = memo(function DetailPane({
       session={detailSession}
       onPrCreated={() => undefined}
     />
+    <GeneratePrContentModal
+      isOpen={showGeneratePrContent}
+      onClose={() => setShowGeneratePrContent(false)}
+      session={detailSession}
+    />
     <LinkPrDialog
       isOpen={showLinkPr}
       onClose={() => setShowLinkPr(false)}
@@ -173,11 +187,13 @@ export const DetailPane = memo(function DetailPane({
         commitState={commitState}
         onClose={onClose}
         onCreatePr={() => setShowCreatePr(true)}
+        onGeneratePrContent={() => setShowGeneratePrContent(true)}
         onLinkPr={() => setShowLinkPr(true)}
         onOpenPr={handleOpenPr}
         onCopyWorktree={handleCopyWorktree}
       />
 
+            )}
 
             agentState={effectiveAgentState}
           />

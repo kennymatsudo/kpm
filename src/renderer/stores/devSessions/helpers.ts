@@ -1,5 +1,6 @@
 import type {
   PrStatus,
+  ReviewActionableSummary,
   ReviewInboxSnapshot,
 } from '../../../shared/types';
 import type { BackgroundCommitState } from './index';
@@ -72,6 +73,7 @@ interface SessionCacheState {
   reviewLoadingIds: Set<string>;
   reviewErrorBySessionId: Map<string, string | null>;
   reviewFiltersBySessionId: Map<string, ReviewFilters>;
+  reviewActionableBySessionId: Map<string, ReviewActionableSummary>;
   prContextBySessionId: Map<string, PrCreationContext>;
   prContextLoadingIds: Set<string>;
   prStatusCache: Map<string, PrStatus>;
@@ -96,6 +98,9 @@ export function dropSessionCacheEntries<State extends SessionCacheState>(
   const reviewFiltersBySessionId = new Map(state.reviewFiltersBySessionId);
   reviewFiltersBySessionId.delete(sessionId);
 
+  const reviewActionableBySessionId = new Map(state.reviewActionableBySessionId);
+  reviewActionableBySessionId.delete(sessionId);
+
   const prContextBySessionId = new Map(state.prContextBySessionId);
   prContextBySessionId.delete(sessionId);
 
@@ -110,6 +115,7 @@ export function dropSessionCacheEntries<State extends SessionCacheState>(
     reviewLoadingIds: removeFromSet(state.reviewLoadingIds, sessionId),
     reviewErrorBySessionId,
     reviewFiltersBySessionId,
+    reviewActionableBySessionId,
     prContextBySessionId,
     prContextLoadingIds: removeFromSet(state.prContextLoadingIds, sessionId),
     prStatusCache,
@@ -121,6 +127,26 @@ interface ReviewState {
   reviewLoadingIds: Set<string>;
   reviewErrorBySessionId: Map<string, string | null>;
   reviewFiltersBySessionId: Map<string, ReviewFilters>;
+  reviewActionableBySessionId: Map<string, ReviewActionableSummary>;
+}
+
+export function computeActionableFromInbox(
+  inbox: ReviewInboxSnapshot,
+  sessionId: string
+): ReviewActionableSummary {
+  const counts = { needsInput: 0, failed: 0, stale: 0, errored: 0 };
+  for (const t of inbox.tasks) {
+    if (t.session_id !== sessionId) continue;
+    if (t.status === 'done') continue;
+    if (t.internal_state === 'ignored') continue;
+    if (t.disposition === 'needs_user_input') counts.needsInput++;
+    else if (t.internal_state === 'failed') counts.failed++;
+    else if (t.internal_state === 'stale') counts.stale++;
+    else if (t.error != null) counts.errored++;
+  }
+  const hasActionable =
+    counts.needsInput > 0 || counts.failed > 0 || counts.stale > 0 || counts.errored > 0;
+  return { sessionId, hasActionable, counts };
 }
 
 export function setReviewLoading<State extends ReviewState>(
@@ -160,5 +186,10 @@ export function setReviewInbox<State extends ReviewState>(
     reviewInboxBySessionId: setMapValue(state.reviewInboxBySessionId, sessionId, inbox),
     reviewErrorBySessionId: setMapValue(state.reviewErrorBySessionId, sessionId, null),
     reviewFiltersBySessionId: nextFilters,
+    reviewActionableBySessionId: setMapValue(
+      state.reviewActionableBySessionId,
+      sessionId,
+      computeActionableFromInbox(inbox, sessionId)
+    ),
   };
 }

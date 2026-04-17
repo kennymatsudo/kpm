@@ -1052,6 +1052,21 @@ export interface ReviewSyncState {
 }
 
 
+/** Counts of user-actionable review items for a session, broken down by reason. */
+export interface ReviewActionableCounts {
+  needsInput: number;
+  failed: number;
+  stale: number;
+  errored: number;
+}
+
+/** Per-session actionable-review summary broadcast by the review poller. */
+export interface ReviewActionableSummary {
+  sessionId: string;
+  hasActionable: boolean;
+  counts: ReviewActionableCounts;
+}
+
 /** Renderer-friendly aggregate of live review state plus workflow state. */
 export interface ReviewInboxSnapshot {
   session_id: string;

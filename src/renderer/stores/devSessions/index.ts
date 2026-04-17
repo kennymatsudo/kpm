@@ -2,6 +2,7 @@ import { create, type StoreApi } from 'zustand';
 import type {
   DevSessionWithPlanItem,
   PrStatus,
+  ReviewActionableSummary,
   ReviewInboxSnapshot,
   AgentSessionState,
 } from '../../../shared/types';
@@ -37,6 +38,7 @@ export interface DevSessionsState {
   reviewLoadingIds: Set<string>;
   reviewErrorBySessionId: Map<string, string | null>;
   reviewFiltersBySessionId: Map<string, ReviewFilters>;
+  reviewActionableBySessionId: Map<string, ReviewActionableSummary>;
   prContextBySessionId: Map<string, PrCreationContext>;
   prContextLoadingIds: Set<string>;
 
@@ -87,6 +89,7 @@ export interface DevSessionsState {
   ignoreReviewTask: (sessionId: string, taskId: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
   overrideReviewDisposition: (sessionId: string, taskId: string, disposition: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
   setReviewFilters: (sessionId: string, filters: Partial<ReviewFilters>) => void;
+  setReviewActionable: (summary: ReviewActionableSummary) => void;
   loadPrContext: (
     sessionId: string,
   ) => Promise<{ success: boolean; context?: PrCreationContext; error?: string }>;
@@ -137,6 +140,7 @@ const initialState = {
   reviewLoadingIds: new Set<string>(),
   reviewErrorBySessionId: new Map<string, string | null>(),
   reviewFiltersBySessionId: new Map<string, ReviewFilters>(),
+  reviewActionableBySessionId: new Map<string, ReviewActionableSummary>(),
   prContextBySessionId: new Map<string, PrCreationContext>(),
   prContextLoadingIds: new Set<string>(),
   prStatusCache: new Map<string, PrStatus>(),
@@ -182,6 +186,14 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
         next.delete(sessionId);
       }
       return { commitStateBySessionId: next };
+    });
+  },
+
+  setReviewActionable: (summary) => {
+    set((state) => {
+      const next = new Map(state.reviewActionableBySessionId);
+      next.set(summary.sessionId, summary);
+      return { reviewActionableBySessionId: next };
     });
   },
 
