@@ -27,6 +27,7 @@ import { createGitHubTools } from './github';
 import { createConfluenceTools } from './confluence';
 import { createBriefingTools } from './briefing';
 import { createFileMoveTools } from './file-move';
+import { createListProjectFilesTools } from './list-project-files';
 
 // Cached tools array - collected once at warmup, reused per session
 let cachedTools: Parameters<typeof createSdkMcpServer>[0]['tools'] | null = null;
@@ -226,6 +227,9 @@ function collectTools() {
     fileExplorerService: services.fileExplorerService,
     getMainWindow,
   });
+  const listProjectFilesTools = createListProjectFilesTools({
+    fileExplorerService: services.fileExplorerService,
+  });
 
     ...planItemTools,
     ...relationTools,
@@ -240,6 +244,7 @@ function collectTools() {
     ...confluenceTools,
     ...briefingTools,
     ...fileMoveTools,
+    ...listProjectFilesTools,
   ];
 
 }
