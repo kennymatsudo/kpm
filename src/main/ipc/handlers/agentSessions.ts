@@ -192,7 +192,10 @@ export function registerAgentSessionHandlers(
     IPC_CHANNELS.agentSession.commit,
     createIpcHandler(
       AgentSessionSchemas.commit,
+        const result = await devSessionService.commitSessionChanges(devSessionId, message);
+        if (!result.ok) {
         }
+        return result.data;
       },
       'Failed to commit changes'
     )
@@ -204,7 +207,11 @@ export function registerAgentSessionHandlers(
     createIpcHandler(
       AgentSessionSchemas.getCommitLog,
       async ({ devSessionId }) => {
+        const result = await devSessionService.getSessionCommitLog(devSessionId);
+        if (!result.ok) {
+          throw new Error(result.error);
         }
+        return { commits: result.data };
       },
       'Failed to get commit log'
     )
@@ -216,7 +223,11 @@ export function registerAgentSessionHandlers(
     createIpcHandler(
       AgentSessionSchemas.getCommitFiles,
       async ({ devSessionId, sha }) => {
+        const result = await devSessionService.getSessionCommitFiles(devSessionId, sha);
+        if (!result.ok) {
+          throw new Error(result.error);
         }
+        return { files: result.data };
       },
       'Failed to get commit files'
     )

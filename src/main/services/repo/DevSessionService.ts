@@ -482,6 +482,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         // Build SDK options for the dev session
         const sdkOptions: SDKOptions = {
           model: developerModel,
+          maxTurns: getConfig().claude.maxTurns,
           thinking: { type: 'adaptive' as const, display: 'summarized' as const },
           ...getClaudeSdkSpawnOptions(),
         };
@@ -756,6 +757,131 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         return success(parseInt(stdout.trim(), 10) || 0);
       } catch {
         return success(0);
+      }
+    },
+
+    /**
+     * Commit uncommitted changes in the session's worktree.
+     *
+     * Stages all changes and commits once. If pre-commit hooks rewrite files
+     * and exit non-zero (prettier/eslint/lefthook pattern), re-stages and
+     * retries once — mirrors the /commit skill's conversational retry.
+     */
+    async commitSessionChanges(
+      sessionId: string,
+      message: string,
+    ): AsyncResult<{ sha: string }> {
+      const session = deps.devSessions.get(sessionId);
+      if (!session) {
+        return failure(`Session not found: ${sessionId}`);
+      }
+
+      const extractSha = (stdout: string): string => {
+        const shaMatch = /\[[\w/.-]+ ([0-9a-f]{7,})\]/.exec(stdout);
+        return shaMatch?.[1] ?? '';
+      };
+
+      const isNothingToCommit = (err: unknown): boolean => {
+        const stderr = (err as { stderr?: string }).stderr ?? '';
+        const stdout = (err as { stdout?: string }).stdout ?? '';
+        return stderr.includes('nothing to commit') || stdout.includes('nothing to commit');
+      };
+
+      try {
+        await gitExec(['add', '-A'], { cwd });
+        try {
+          const { stdout } = await gitExec(['commit', '-m', message], { cwd });
+          return success({ sha: extractSha(stdout) });
+        } catch (firstErr) {
+          if (isNothingToCommit(firstErr)) {
+            return failure('Nothing to commit — working tree is clean');
+          }
+        }
+      } catch (err) {
+        if (isNothingToCommit(err)) {
+          return failure('Nothing to commit — working tree is clean');
+        }
+      }
+    },
+
+    /**
+     * Get the commit log (commits ahead of base branch) for a session's worktree.
+     */
+    async getSessionCommitLog(
+      sessionId: string,
+    ): AsyncResult<{ sha: string; subject: string; authorName: string; date: string }[]> {
+      try {
+        const session = deps.devSessions.get(sessionId);
+        if (!session) {
+          return failure(`Session not found: ${sessionId}`);
+        }
+        if (!fs.existsSync(session.worktree_path)) {
+          return success([]);
+        }
+
+        const SEP = '\x1f';
+        const { stdout } = await gitExec(
+          { cwd: session.worktree_path },
+        );
+
+        const commits = stdout
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => {
+            const [sha, subject, authorName, date] = line.split(SEP);
+            return {
+              sha: sha ?? '',
+              subject: subject ?? '',
+              authorName: authorName ?? '',
+              date: date ?? '',
+            };
+          });
+
+        return success(commits);
+      } catch (err) {
+        return failure(err instanceof Error ? err.message : String(err));
+      }
+    },
+
+    /**
+     * Get per-file additions/deletions for a single commit in a session's worktree.
+     */
+    async getSessionCommitFiles(
+      sessionId: string,
+      sha: string,
+    ): AsyncResult<{ additions: number; deletions: number; path: string }[]> {
+      try {
+        const session = deps.devSessions.get(sessionId);
+        if (!session) {
+          return failure(`Session not found: ${sessionId}`);
+        }
+        if (!fs.existsSync(session.worktree_path)) {
+          return success([]);
+        }
+
+        const { stdout } = await gitExec(
+          ['show', '--numstat', '--format=', sha],
+          { cwd: session.worktree_path },
+        );
+
+        const files = stdout
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => {
+            const parts = line.split('\t');
+            return {
+              additions: parseInt(parts[0] ?? '0', 10) || 0,
+              deletions: parseInt(parts[1] ?? '0', 10) || 0,
+              path: parts[2] ?? '',
+            };
+          })
+          .filter((f) => f.path);
+
+        return success(files);
+      } catch (err) {
+        return failure(err instanceof Error ? err.message : String(err));
       }
     },
 
