@@ -31,6 +31,9 @@ Git repositories, worktrees, development sessions, environment capture.
 - `WorktreeService` — Manage git worktrees
 - `RepoWatcherService` — Watch git branch changes (fs.watch on .git/HEAD)
 - `EnvironmentService` — Capture environment from direnv/Nix for dev sessions
+- `GitHubService` — PR description generation, PR creation, PR template enforcement, diff/commit log helpers
+- `ReviewService` — GitHub PR review thread CRUD (fetch threads, post replies, resolve)
+- `ReviewAssessmentService` — SDK-backed multi-turn assessment agent that classifies PR review threads and drafts replies (uses the standalone MCP server in `claude/tools/review-assessment.ts`)
 
 ### File Services (`services/files/`)
 
@@ -51,6 +54,7 @@ Terminal/PTY and Claude session management.
 ### Generation Services (`services/generation/`)
 
 - `CustomPromptGenerationService` — Custom prompt generation
+- `OnboardingService` — Project onboarding wizard synthesis
 
 ### Confluence Services (`services/confluence/`)
 

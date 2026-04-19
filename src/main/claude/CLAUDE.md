@@ -23,6 +23,7 @@ createKpmServer() (singleton MCP server)
     ├─ github.ts (GitHub PR description generation)
     ├─ confluence.ts (Confluence integration tools)
     ├─ briefing.ts (project briefing generation)
+    ├─ file-move.ts (file move tools)
     ↓
 System prompts (prompts/ directory)
 ```
@@ -128,6 +129,7 @@ The `currentView` parameter ('plan' | 'workspace') adds context-aware suggestion
 | `streaming/` | Session management |
 | `tools/` | MCP tool implementations |
 | `tools/schemas.ts` | Shared Zod primitives (`StatusCategoryEnum`, `PlanActionsCallback`) reused across tool files |
+| `tools/review-assessment.ts` | Separate read-only MCP server used by `ReviewAssessmentService` (not part of the main-chat `createKpmServer`) |
 | `prompts/` | System prompt builders |
 
 ## Plan Item Spec Fields
