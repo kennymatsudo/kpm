@@ -1,5 +1,6 @@
 import type { Project } from '../../../shared/types';
 import { FileWatchService, type ContextFile } from '../files';
+import { failure, success, type AsyncResult } from '../result';
 
 export interface ContextFileServiceDeps {
   getProjectById: (projectId: string) => Project | undefined;

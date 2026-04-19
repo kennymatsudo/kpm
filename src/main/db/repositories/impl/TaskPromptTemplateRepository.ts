@@ -123,6 +123,7 @@ export class TaskPromptTemplateRepository implements ITaskPromptTemplateReposito
       id: 'fallback',
       project_id: null,
       name: 'Fallback',
+      prompt_content: DEFAULT_TASK_PROMPT,
       is_default: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -134,6 +135,7 @@ export class TaskPromptTemplateRepository implements ITaskPromptTemplateReposito
    * Used for "Reset to Default" functionality.
    */
   getBuiltinDefault(): string {
+    return DEFAULT_TASK_PROMPT;
   }
 
   create(template: Omit<TaskPromptTemplate, 'id' | 'is_default' | 'created_at' | 'updated_at'>): TaskPromptTemplate {
@@ -204,6 +206,7 @@ export class TaskPromptTemplateRepository implements ITaskPromptTemplateReposito
       const created = this.create({
         project_id: null,
         name: 'Default',
+        prompt_content: DEFAULT_TASK_PROMPT,
       });
 
       // Mark it as default

@@ -67,6 +67,7 @@ export interface GhPrCreateOptions {
 /**
  * Execute a gh CLI command safely without shell interpolation.
  */
+async function ghExec(
   args: string[],
   options: { cwd: string; maxBuffer?: number }
 ): Promise<{ stdout: string; stderr: string }> {
@@ -129,6 +130,7 @@ export async function checkGhAuth(cwd: string): Promise<GhAuthResult> {
 /**
  * Get the owner/repo slug for a repository (e.g., "octocat/hello-world").
  */
+async function getRepoSlug(cwd: string): Promise<string> {
   const { stdout } = await ghExec(
     ['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner'],
     { cwd }

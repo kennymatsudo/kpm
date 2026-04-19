@@ -23,6 +23,8 @@ export interface ContextFile {
 }
 
 /**
+ * Read/write access to project context files (AGENTS.md / CLAUDE.md and other
+ * .md files at the project root).
  */
 class FileWatchServiceClass {
   private getProjectById: ((projectId: string) => Project | undefined) | null = null;
