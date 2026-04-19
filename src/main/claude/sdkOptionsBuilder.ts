@@ -11,6 +11,7 @@ import type { ChatViewMode } from '../../shared/types';
 import { createPermissionHandler, type PermissionContext, type ClaudeMdInterceptFn, type ProjectFileInterceptFn } from './permissions';
 import { getConfig } from '../config';
 import { getClaudeSdkSpawnOptions } from './findClaude';
+import { promptUser } from '../services/core/PermissionPromptService';
 
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
 

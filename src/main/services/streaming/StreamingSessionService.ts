@@ -28,6 +28,7 @@ import type { PlanContext } from '../../claude/prompts';
 import { getConfig } from '../../config';
 import { clientManager } from '../../claude/clientManager';
 import { DEFAULT_CONTEXT_FILENAME } from '../../../shared/contextFile';
+import { promptUser } from '../core/PermissionPromptService';
 import { extractFilePaths } from '../toollog/extractFilePaths';
 import { randomUUID } from 'crypto';
 

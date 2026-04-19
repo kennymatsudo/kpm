@@ -28,6 +28,7 @@ export default defineConfig({
     build: {
       outDir: 'dist/main',
       minify: isProduction ? 'esbuild' : false,
+      // electron-vite externalizeDeps is enabled by default
       // @openai/codex-sdk is ESM-only (no CJS exports) so it must be bundled
       // rather than externalized, otherwise require() fails at runtime
       externalizeDeps: { exclude: ['@openai/codex-sdk'] },
@@ -49,6 +50,7 @@ export default defineConfig({
     build: {
       outDir: 'dist/preload',
       minify: isProduction ? 'esbuild' : false,
+      // electron-vite externalizeDeps is enabled by default
       // Note: bytecode for preload requires sandbox: false
       // which we don't want for security, so skip it
       rollupOptions: {
@@ -70,11 +72,25 @@ export default defineConfig({
       minify: isProduction ? 'esbuild' : false,
       // Enable CSS code splitting for better caching
       cssCodeSplit: true,
+      // The main renderer entry is intentionally large because the app treats
+      // planning, development, and workspace as equally hot paths.
+      chunkSizeWarningLimit: 1600,
       rollupOptions: {
+        // Rolldown accepts boolean/object treeshaking config, not Rollup presets.
+        treeshake: true,
         input: {
           index: resolve(__dirname, 'src/renderer/index.html')
         },
         output: {
+          // Rolldown expects manualChunks as a function instead of an object map.
+          manualChunks(id) {
+            if (/node_modules[\\/](react|react-dom)[\\/]/.test(id)) {
+              return 'react-vendor'
+            }
+            if (/node_modules[\\/](framer-motion|zustand)[\\/]/.test(id)) {
+              return 'ui-vendor'
+            }
+            return undefined
           }
         }
       }
@@ -86,6 +102,7 @@ export default defineConfig({
       ...(visualizerPlugin ? [visualizerPlugin] : [])
     ].filter(Boolean),
     resolve: {
+      // plugin-react no longer auto-deduplicates React; set explicitly
       // to prevent duplicate React instances when multiple copies resolve
       dedupe: ['react', 'react-dom'],
       alias: {
