@@ -6,6 +6,7 @@
  *
  */
 
+import { z } from 'zod';
 import type {
   IDevSessionRepository,
   IPlanItemRepository,
@@ -62,6 +63,68 @@ export interface ReviewAssessmentServiceDeps {
 }
 
 // =============================================================================
+// Structured Output Schemas
+// =============================================================================
+//
+// The SDK's outputFormat option enforces schema compliance on the final `result`
+// message and retries on schema violations. We keep Zod schemas as the source of
+// truth, derive JSON Schema for the SDK, and runtime-validate structured_output.
+
+const assessmentItemSchema = z.object({
+  thread_id: z.string(),
+  disposition: z.enum(['implement', 'push_back', 'needs_user_input']),
+  rationale: z.string(),
+  draft_reply: z.union([z.string(), z.null()]),
+});
+
+const assessmentOutputSchema = z.object({
+  assessments: z.array(assessmentItemSchema),
+});
+
+const postImplItemSchema = z.object({
+  thread_id: z.string(),
+  addressed: z.boolean(),
+  reason: z.union([z.string(), z.null()]),
+  draft_reply: z.union([z.string(), z.null()]),
+});
+
+const postImplOutputSchema = z.object({
+  replies: z.array(postImplItemSchema),
+});
+
+const assessmentJsonSchema = z.toJSONSchema(assessmentOutputSchema, { target: 'draft-07' });
+const postImplJsonSchema = z.toJSONSchema(postImplOutputSchema, { target: 'draft-07' });
+
+// =============================================================================
+// Structured Query Runner
+// =============================================================================
+
+/**
+ * Run a query with structured output and return the validated result.
+ *
+ * The SDK enforces schema compliance on the final `result` message via
+ * `outputFormat`, retrying internally on violations. On exhaustion, the
+ * result subtype becomes `error_max_structured_output_retries` — we surface
+ * that as a typed failure here so callers can report it.
+ */
+async function runStructuredQuery<T>(
+  userPrompt: string,
+  sdkOptions: SDKOptions,
+  schema: z.ZodType<T>,
+  timeoutMs: number,
+): Promise<T> {
+  });
+
+  }
+
+  if (!parsed.success) {
+    throw new Error(`Structured output failed validation: ${parsed.error.message}`);
+  }
+
+  return parsed.data;
+}
+
+// =============================================================================
 // Assessment Prompt
 // =============================================================================
 
@@ -92,8 +155,13 @@ Assign exactly one disposition per thread:
 - **push_back**: The feedback should not be implemented. Reasons include: the suggestion is incorrect, out of scope, conflicts with the design intent, is a style preference that doesn't improve the code, or the reviewer misunderstood the context. For push_back threads, you MUST provide a draft reply explaining why.
 - **needs_user_input**: The feedback raises a legitimate question that could go either way. You can see both sides and the developer should make the call. Do NOT use this as a default — only when there is genuine ambiguity.
 
+## Output Rules
 
+Your final response is validated against a JSON schema — the shape of \`assessments\` is enforced automatically, so focus on content. Required content rules:
 
+- Every thread in the input MUST have a corresponding entry in \`assessments\`
+- \`draft_reply\` MUST be a non-empty string for \`push_back\` threads, and \`null\` for \`implement\` and \`needs_user_input\` threads
+- \`rationale\` should reference specific code context, not just restate the comment
 
 ## Draft Reply Voice
 
@@ -184,18 +252,36 @@ function buildAssessmentUserPrompt(
 }
 
 // =============================================================================
+// Business-Rule Validation
 // =============================================================================
+//
+// Schema shape (field types, enum values, presence) is enforced by the SDK via
+// outputFormat. These helpers apply cross-field business rules that the schema
+// can't express (e.g. push_back threads must have a non-empty draft_reply).
+
+function applyAssessmentBusinessRules(
+  parsed: z.infer<typeof assessmentOutputSchema>,
+): { results: AssessmentResult[]; errors: string[] } {
   const errors: string[] = [];
   const results: AssessmentResult[] = [];
 
+  for (const item of parsed.assessments) {
+    if (!item.rationale.trim()) {
+      errors.push(`Skipped entry for thread ${item.thread_id}: missing rationale`);
       continue;
     }
 
+    const draftReply = item.disposition === 'push_back'
+      ? (item.draft_reply?.trim() ? item.draft_reply : null)
       : null;
 
+    if (item.disposition === 'push_back' && !draftReply) {
+      errors.push(`Thread ${item.thread_id}: push_back disposition but no draft_reply provided`);
     }
 
     results.push({
+      threadId: item.thread_id,
+      rationale: item.rationale,
       draftReply,
     });
   }
@@ -211,8 +297,13 @@ function buildPostImplSystemPrompt(): string {
 
 Your job is to look at review threads that were marked for implementation, examine the current diff, and draft concise "addressed" replies for threads that were actually fixed.
 
+## Output Rules
 
+Your final response is validated against a JSON schema — the shape of \`replies\` is enforced automatically, so focus on content. Required content rules:
 
+- Every thread in the input MUST have a corresponding entry in \`replies\`
+- If the diff shows the issue was fixed, set \`addressed\` to \`true\` and populate \`draft_reply\`
+- If the diff does not show a fix for this specific thread, set \`addressed\` to \`false\` and leave \`draft_reply\` as \`null\`
 - Do NOT fabricate changes — only mark as addressed if the diff actually shows the fix
 
 ## Draft Reply Voice
@@ -295,10 +386,18 @@ interface PostImplResult {
   draftReply: string | null;
 }
 
+function applyPostImplBusinessRules(
+  parsed: z.infer<typeof postImplOutputSchema>,
+): { results: PostImplResult[]; errors: string[] } {
   const errors: string[] = [];
   const results: PostImplResult[] = [];
 
+  for (const item of parsed.replies) {
     results.push({
+      threadId: item.thread_id,
+      addressed: item.addressed,
+      reason: item.reason?.trim() ? item.reason : null,
+      draftReply: item.draft_reply?.trim() ? item.draft_reply : null,
     });
   }
 
@@ -426,15 +525,22 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
 
     // 5. Call SDK — multi-turn with scoped read-only MCP tools so the agent
     //    can check follow-up plan items / sibling-repo branches / project docs
+    //    before landing a disposition. outputFormat pins the final result to
+    //    our schema; the SDK retries on schema violations and surfaces a
+    //    typed error if retries are exhausted.
     const sdkOptions: SDKOptions = {
       model: getConfig().generation.fastModel,
       mcpServers: { review: reviewMcpServer },
       allowedTools: [...REVIEW_ASSESSMENT_TOOL_NAMES],
       persistSession: false,
       maxTurns: reviewAssessmentConfig.maxTurns,
+      outputFormat: { type: 'json_schema', schema: assessmentJsonSchema },
     };
 
+    let parsed: z.infer<typeof assessmentOutputSchema>;
     try {
+        userPrompt,
+        sdkOptions,
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : 'Unknown error';
       logError(`SDK query failed: ${errorMsg}`);
@@ -450,6 +556,8 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
       return failure(`Assessment failed: ${errorMsg}`);
     }
 
+    // 6. Apply business rules (schema already validated structure)
+    const { results, errors } = applyAssessmentBusinessRules(parsed);
 
     log(`Parsed ${results.length} assessment results, ${errors.length} errors`);
 
@@ -551,9 +659,13 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
       persistSession: false,
       systemPrompt: buildPostImplSystemPrompt(),
       maxTurns: reviewAssessmentConfig.maxTurns,
+      outputFormat: { type: 'json_schema', schema: postImplJsonSchema },
     };
 
+    let parsed: z.infer<typeof postImplOutputSchema>;
     try {
+        userPrompt,
+        sdkOptions,
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : 'Unknown error';
       logError(`Post-implementation drafting failed: ${errorMsg}`);
@@ -566,6 +678,7 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
       return failure(`Post-implementation drafting failed: ${errorMsg}`);
     }
 
+    const { results, errors } = applyPostImplBusinessRules(parsed);
 
     log(`Parsed ${results.length} post-implementation drafts, ${errors.length} errors`);
 
