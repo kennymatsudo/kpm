@@ -187,6 +187,8 @@ export interface BriefingServiceDeps {
         return failure('Project not found');
       }
 
+      const generationConfig = getConfig().generation;
+      const timeoutMs = generationConfig.briefingStageTimeoutMs;
 
       try {
         log(`Generating briefing for project "${project.name}" (${projectId})`);
@@ -263,6 +265,7 @@ Output a concise, actionable markdown briefing. Use sections like:
 NEVER use emojis, colored circles, or status indicators. No icons of any kind. Use plain markdown only — headers, bold, lists, and text. Be direct and utilitarian. Lead with actions, not narration.`;
 
         const summary = await callClaude(
+          generationConfig.deepModel,
           briefingSystemPrompt,
           synthesisContext,
         );

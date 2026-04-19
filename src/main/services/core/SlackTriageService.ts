@@ -22,6 +22,7 @@ import {
   type SlackTriagePromptContext,
 } from '../../claude/prompts/slackTriage';
 import type { SlackMcpAvailability } from './McpDiscoveryService';
+import { getConfig } from '../../config';
 
 // ============================================================================
 // Types

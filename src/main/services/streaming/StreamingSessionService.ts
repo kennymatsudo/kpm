@@ -225,6 +225,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
    */
   async function waitForSessionReady(key: string, timeoutMs: number): AsyncResult<void> {
     const startTime = Date.now();
+    const pollInterval = getSessionConfig().sessionReadyPollIntervalMs;
 
     while (Date.now() - startTime < timeoutMs) {
       const managed = sessions.get(key);
@@ -644,6 +645,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // Enforce session limit only for NEW sessions (not resumes)
     if (!isResume) {
       const activeCount = getActiveSessionCount(projectId);
+      if (activeCount >= getSessionConfig().maxConcurrentSessionsPerProject) {
+        return failure(`Maximum ${getSessionConfig().maxConcurrentSessionsPerProject} concurrent sessions reached. Close an existing session first.`);
       }
     }
 
@@ -1097,6 +1100,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
    */
   async function checkAndRecoverMcpHealth(key: string, managed: ManagedSession): Promise<void> {
     const mainWindow = deps.getMainWindow();
+    const maxRecoveryAttempts = getSessionConfig().mcpRecoveryMaxAttempts;
 
     // Lock: prevent concurrent recovery attempts from overlapping interval ticks
     managed.mcpHealthStatus = 'recovering';
@@ -1149,9 +1153,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         chatSessionId: managed.chatSessionId,
         serverName: 'kpm',
         status: verifyKpm?.status ?? 'failed',
+        error: `Reconnect failed (attempt ${managed.mcpRecoveryAttempts}/${maxRecoveryAttempts})`,
       });
 
       // After max attempts, tear down the session
+      if (managed.mcpRecoveryAttempts >= maxRecoveryAttempts) {
         await disconnectSession(key, {
           reason: 'mcp_recovery_failed',
           source: 'mcpHealthCheck',

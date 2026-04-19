@@ -483,6 +483,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         const sdkOptions: SDKOptions = {
           model: developerModel,
           maxTurns: getConfig().claude.maxTurns,
+          permissionMode: getConfig().claude.defaultPermissionMode,
           thinking: { type: 'adaptive' as const, display: 'summarized' as const },
           ...getClaudeSdkSpawnOptions(),
         };

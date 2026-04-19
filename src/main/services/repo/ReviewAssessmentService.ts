@@ -17,6 +17,7 @@ import type {
   PrReviewThread,
   ReviewDisposition,
 } from '../../../shared/types';
+import { getConfig } from '../../config';
 import { failure, success, type AsyncResult, type ServiceResult } from '../result';
 import type { createGitHubService } from './GitHubService';
 import { getDiff, detectBaseBranch } from './gitUtils';
@@ -377,6 +378,7 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
    * 4. Calls Claude SDK for structured assessment
    * 5. Parses results and updates task records
    */
+    const reviewAssessmentConfig = getConfig().reviewAssessment;
     const sessionResult = getSessionContext(sessionId);
     if (!sessionResult.ok) return sessionResult;
     const session = sessionResult.data;
@@ -425,9 +427,11 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
     // 5. Call SDK — multi-turn with scoped read-only MCP tools so the agent
     //    can check follow-up plan items / sibling-repo branches / project docs
     const sdkOptions: SDKOptions = {
+      model: getConfig().generation.fastModel,
       mcpServers: { review: reviewMcpServer },
       allowedTools: [...REVIEW_ASSESSMENT_TOOL_NAMES],
       persistSession: false,
+      maxTurns: reviewAssessmentConfig.maxTurns,
     };
 
     try {
@@ -495,6 +499,7 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
    * 4. Updates tasks to ready_to_post with draft replies
    */
   async function draftPostImplementationReplies(sessionId: string): AsyncResult<BatchAssessmentResult> {
+    const reviewAssessmentConfig = getConfig().reviewAssessment;
     const sessionResult = getSessionContext(sessionId);
     if (!sessionResult.ok) return sessionResult;
     const session = sessionResult.data;
@@ -540,10 +545,12 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
     // surface available for edge cases (e.g., verifying a companion change
     // landed on a sibling repo branch).
     const sdkOptions: SDKOptions = {
+      model: getConfig().generation.fastModel,
       mcpServers: { review: reviewMcpServer },
       allowedTools: [...REVIEW_ASSESSMENT_TOOL_NAMES],
       persistSession: false,
       systemPrompt: buildPostImplSystemPrompt(),
+      maxTurns: reviewAssessmentConfig.maxTurns,
     };
 
     try {

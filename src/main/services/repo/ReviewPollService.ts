@@ -95,6 +95,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         if (agentSession && !isTerminalState(agentSession.state)) continue;
 
         const activeCount = deps.agentSessionManager.getActiveCountForProject(session.project_id);
+        if (activeCount >= getConfig().agentSession.maxConcurrentSessionsPerProject) continue;
 
         eligible.push(session);
       }

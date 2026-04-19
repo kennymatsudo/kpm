@@ -13,6 +13,7 @@
 
 import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
+import { getConfig } from '../../config';
 import type { AgentType, ReviewFinding } from '../../../shared/agent-types';
 import { toReviewSessionId } from '../../../shared/agent-types';
 import { getReviewOpponent, isAgentAvailable } from './agentCatalog';
@@ -66,8 +67,10 @@ async function startReviewSession(params: {
 
   if (reviewAgentType === 'claude') {
     const sdkOptions: SDKOptions = {
+      model: getConfig().generation.fastModel,
       cwd: worktreePath,
       maxTurns: 5,
+      permissionMode: getConfig().claude.defaultPermissionMode,
       ...getClaudeSdkSpawnOptions(),
     };
 

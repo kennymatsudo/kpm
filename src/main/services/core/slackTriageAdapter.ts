@@ -20,6 +20,7 @@ import type { QueueTrackerUpdateIfNeeded } from '../../db/domain';
 import type { SlackTriageCreateTaskAction, SlackTriageUpdateDocumentAction, PlanItem } from '../../../shared/types';
 import type { SlackMessage } from './SlackTriageService';
 import { unwrapOrThrow } from '../result';
+import { getConfig } from '../../config';
 
 // =============================================================================
 // Deps type
@@ -180,6 +181,7 @@ export function createSlackTriageAdapter(deps: SlackTriageAdapterDeps) {
     const enabledUserMcpConfigs = userConfigsResult.ok ? userConfigsResult.data : {};
 
     const sdkOptions: SDKOptions = {
+      model: getConfig().generation.fastModel,
       systemPrompt: {
         type: 'preset',
         preset: 'claude_code',

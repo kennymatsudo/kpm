@@ -21,6 +21,7 @@ import { ClaudeSdkSession } from './ClaudeSdkSession';
 import { CliAgentSession } from './CliAgentSession';
 import type { HookEvent } from './hookServer';
 import { parseReviewFindings } from './autoReview';
+import { getConfig } from '../../config';
 
 // =============================================================================
 // Constants
@@ -96,7 +97,10 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
 
     // Enforce concurrency limit
     const projectCount = getActiveCountForProject(projectId);
+    const maxConcurrentSessions = getConfig().agentSession.maxConcurrentSessionsPerProject;
+    if (projectCount >= maxConcurrentSessions) {
       throw new Error(
+        `Maximum concurrent sessions (${maxConcurrentSessions}) reached for this project. ` +
         'Stop an existing session before starting a new one.'
       );
     }
@@ -232,6 +236,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
           // callbacks don't hang on to the webContents reference for the full
           agentSession.clearHandlers();
           console.log(`${LOG_PREFIX} Evicted terminal session ${agentSession.id} after TTL`);
+        }, getConfig().agentSession.terminalSessionTtlMs);
       }
     });
 

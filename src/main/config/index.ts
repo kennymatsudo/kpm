@@ -7,6 +7,8 @@
  * For testing, use setConfig() to inject custom configuration.
  */
 
+import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
+
 
 // =============================================================================
 // Type Definitions
@@ -45,6 +47,8 @@ export interface ClaudeConfig {
   debugFile: string | null;
   /** Max agent turns per response to prevent runaway sessions */
   maxTurns: number;
+  /** Default permission mode for Claude-driven automation outside plan mode */
+  defaultPermissionMode: PermissionMode;
 }
 
 export interface SessionConfig {
@@ -60,9 +64,21 @@ export interface SessionConfig {
   cleanupIntervalMs: number;
   /** Timeout waiting for session to become ready (ms) */
   sessionReadyTimeoutMs: number;
+  /** How often to poll for connecting sessions to become ready (ms) */
+  sessionReadyPollIntervalMs: number;
+  /** Maximum concurrent main chat sessions per project */
+  maxConcurrentSessionsPerProject: number;
+  /** Number of consecutive MCP recovery attempts before tearing down a session */
+  mcpRecoveryMaxAttempts: number;
 }
 
 export interface GenerationConfig {
+  /** Model for quick interactive generation tasks where speed matters most */
+  fastModel: ClaudeModel;
+  /** Model for higher-value synthesis tasks where quality matters most */
+  deepModel: ClaudeModel;
+  /** Model for constrained low-cost generation tasks */
+  cheapModel: ClaudeModel;
   /** Note refinement timeout (ms) */
   noteRefinementTimeoutMs: number;
   /** Artifact generation timeout (ms) */
@@ -78,6 +94,22 @@ export interface NetworkConfig {
   fetchTimeoutMs: number;
   /** Timeout for git operations */
   gitTimeoutMs: number;
+}
+
+export interface AgentSessionConfig {
+  /** Maximum concurrent agent sessions per project */
+  maxConcurrentSessionsPerProject: number;
+  /** How long to keep terminal sessions around for follow-up interactions (ms) */
+  terminalSessionTtlMs: number;
+  /** Timeout for the initial SDK agent session startup (ms) */
+  sessionStartTimeoutMs: number;
+}
+
+export interface ReviewAssessmentConfig {
+  /** Timeout for a single assessment pass (ms) */
+  timeoutMs: number;
+  /** Max turns for the review assessment agent */
+  maxTurns: number;
 }
 
 export interface ReviewPollConfig {
@@ -100,6 +132,8 @@ export interface AppConfig {
   session: SessionConfig;
   generation: GenerationConfig;
   network: NetworkConfig;
+  agentSession: AgentSessionConfig;
+  reviewAssessment: ReviewAssessmentConfig;
   reviewPoll: ReviewPollConfig;
 }
 
@@ -128,6 +162,7 @@ function createDefaultConfig(): AppConfig {
       debug: false,
       debugFile: null,
       maxTurns: 200,
+      defaultPermissionMode: 'bypassPermissions',
     },
 
     session: {
@@ -137,9 +172,14 @@ function createDefaultConfig(): AppConfig {
       permissionRequestTimeoutMs: 60 * 60 * 1000, // 60 minutes for permission prompts
       cleanupIntervalMs: 30 * 1000, // 30 seconds
       sessionReadyTimeoutMs: 30 * 1000, // 30 seconds
+      sessionReadyPollIntervalMs: 100,
+      maxConcurrentSessionsPerProject: 3,
+      mcpRecoveryMaxAttempts: 3,
     },
 
     generation: {
+      fastModel: 'sonnet',
+      cheapModel: 'haiku',
       noteRefinementTimeoutMs: 2 * 60 * 1000, // 2 minutes
       artifactGenerationTimeoutMs: 5 * 60 * 1000, // 5 minutes
       briefingStageTimeoutMs: 2 * 60 * 1000, // 2 minutes per stage
@@ -151,6 +191,12 @@ function createDefaultConfig(): AppConfig {
       gitTimeoutMs: 5 * 1000, // 5 seconds
     },
 
+    agentSession: {
+      maxConcurrentSessionsPerProject: 3,
+      terminalSessionTtlMs: 30 * 60 * 1000, // 30 minutes
+      sessionStartTimeoutMs: 60 * 1000, // 1 minute
+    },
+
     reviewPoll: {
       pollIntervalMs: 2 * 60 * 1000, // 2 minutes
       autoPostReplies: false,
@@ -159,6 +205,9 @@ function createDefaultConfig(): AppConfig {
       errorBackoffTicks: 3,
     },
 
+    reviewAssessment: {
+      timeoutMs: 8 * 60 * 1000, // 8 minutes
+    },
   };
 }
 

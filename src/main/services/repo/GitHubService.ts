@@ -444,6 +444,7 @@ HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and 
         log('Calling Sonnet to generate PR content...');
 
         const sdkOptions: SDKOptions = {
+          model: getConfig().generation.fastModel,
           persistSession: false,
           systemPrompt,
           stderr: (data: string) => { logError(`stderr: ${data}`); },

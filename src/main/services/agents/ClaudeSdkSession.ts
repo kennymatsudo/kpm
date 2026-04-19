@@ -18,6 +18,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 import { isInitMessage, isSessionStateChanged } from '../../claude/sdkTypeGuards';
 import { BaseAgentSession } from './BaseAgentSession';
+import { getConfig } from '../../config';
 import type {
   IAgentSession,
   AgentType,
@@ -152,6 +153,7 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
     // We wait for the first `working` state or for the timeout.
     return new Promise<void>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
+        reject(new Error(`Agent session start timed out after ${timeoutMs / 1000}s`));
 
       const onState = (state: AgentSessionState) => {
         if (state === 'working' || state === 'complete' || state === 'failed') {

@@ -176,6 +176,7 @@ export function registerAgentSessionHandlers(
 
 
         const sdkOptions: SDKOptions = {
+          model: getConfig().generation.cheapModel,
           allowedTools: [],
           persistSession: false,
           stderr: () => {},
