@@ -4,6 +4,15 @@ import {
   listTrackerProjectStatuses,
   listTrackerProjects,
 } from '../../services/trackerService';
+import type { TrackerType } from '../../../shared/types';
+
+/**
+ * Cache key combines trackerType + projectKey so Jira "ENG" and a Linear team
+ * "ENG" don't collide. Used internally for all per-project caches.
+ */
+function cacheKey(trackerType: TrackerType, projectKey: string): string {
+  return `${trackerType}:${projectKey}`;
+}
 
 export interface TrackerProjectRef {
   key: string;
@@ -42,6 +51,7 @@ interface TrackerMetadataState {
   issueTypesLastFetchedAt: Record<string, number>;
 
   loadProjects: (force?: boolean) => Promise<{ success: boolean; error?: string }>;
+  loadStatuses: (projectKey: string, trackerType?: TrackerType, force?: boolean) => Promise<{ success: boolean; error?: string }>;
   loadIssueTypes: (projectKey: string, force?: boolean) => Promise<{ success: boolean; error?: string }>;
 
   reset: () => void;
@@ -110,25 +120,35 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
     }
   },
 
+  loadStatuses: async (projectKey, trackerType = 'jira', force = false) => {
     const state = get();
+    const key = cacheKey(trackerType, projectKey);
 
+    if (!force && state.statusesByProject[key]?.length > 0) {
+      const lastFetched = state.statusesLastFetchedAt[key];
       if (lastFetched && Date.now() - lastFetched < CACHE_TTL_MS) {
         return { success: true };
       }
     }
 
+    if (state.loadingStatusesFor.has(key)) {
       return { success: true };
     }
 
     set((s) => ({
+      loadingStatusesFor: new Set(s.loadingStatusesFor).add(key),
+      statusesErrorByProject: { ...s.statusesErrorByProject, [key]: '' },
     }));
 
     try {
+      const result = await listTrackerProjectStatuses(projectKey, trackerType);
       if (result.success && result.statuses) {
         set((s) => {
           const nextLoading = new Set(s.loadingStatusesFor);
+          nextLoading.delete(key);
           return {
             loadingStatusesFor: nextLoading,
+            statusesLastFetchedAt: { ...s.statusesLastFetchedAt, [key]: Date.now() },
           };
         });
         return { success: true };
@@ -137,8 +157,10 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
       const error = result.error || 'Failed to load statuses';
       set((s) => {
         const nextLoading = new Set(s.loadingStatusesFor);
+        nextLoading.delete(key);
         return {
           loadingStatusesFor: nextLoading,
+          statusesErrorByProject: { ...s.statusesErrorByProject, [key]: error },
         };
       });
       return { success: false, error };
@@ -146,8 +168,10 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
       const error = e instanceof Error ? e.message : 'Failed to load statuses';
       set((s) => {
         const nextLoading = new Set(s.loadingStatusesFor);
+        nextLoading.delete(key);
         return {
           loadingStatusesFor: nextLoading,
+          statusesErrorByProject: { ...s.statusesErrorByProject, [key]: error },
         };
       });
       return { success: false, error };

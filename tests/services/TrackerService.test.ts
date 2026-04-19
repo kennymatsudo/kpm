@@ -20,12 +20,19 @@ describe('TrackerService', () => {
     const service = createTrackerService({
       tracker: tracker as never,
       clientService: {
+        getClient: vi.fn(),
         getJiraCredentialsInfo: vi.fn(),
         saveJiraCredentials: vi.fn(),
         clearJiraCredentials: vi.fn(),
         testJiraConnection: vi.fn(),
         getJiraProjects: vi.fn(),
         getJiraClient: vi.fn(),
+        getLinearClient: vi.fn(),
+        getLinearCredentialsInfo: vi.fn(),
+        saveLinearCredentials: vi.fn(),
+        clearLinearCredentials: vi.fn(),
+        testLinearConnection: vi.fn(),
+        getLinearTeams: vi.fn(),
       },
       importService: {
         generateImportPreview: vi.fn(),
@@ -37,6 +44,7 @@ describe('TrackerService', () => {
       },
     });
 
+    const result = service.addAssociation('jira', 'project-1', 'site.atlassian.net', 'PROJ', 'Sample Project', 'project = PROJ', 'Main');
 
     expect(result.ok).toBe(true);
     expect(tracker.getOrCreateConnection).toHaveBeenCalledWith('jira', 'site.atlassian.net');
@@ -61,12 +69,19 @@ describe('TrackerService', () => {
         updateEpicKey: vi.fn(),
       } as never,
       clientService: {
+        getClient: vi.fn(),
         getJiraCredentialsInfo: vi.fn(),
         saveJiraCredentials: vi.fn(),
         clearJiraCredentials: vi.fn(),
         testJiraConnection: vi.fn(),
         getJiraProjects: vi.fn(),
         getJiraClient,
+        getLinearClient: vi.fn(),
+        getLinearCredentialsInfo: vi.fn(),
+        saveLinearCredentials: vi.fn(),
+        clearLinearCredentials: vi.fn(),
+        testLinearConnection: vi.fn(),
+        getLinearTeams: vi.fn(),
       },
       importService: {
         generateImportPreview: vi.fn(),

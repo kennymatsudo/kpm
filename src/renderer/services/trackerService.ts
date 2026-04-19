@@ -4,6 +4,7 @@ import type {
   DeletedItemAction,
   StatusCategory,
   SyncPreview,
+  TrackerType,
 } from '../../shared/types';
 
 export function listTrackerAssociations(projectId: string) {
@@ -11,6 +12,7 @@ export function listTrackerAssociations(projectId: string) {
 }
 
 export function addTrackerAssociation(
+  trackerType: TrackerType,
   projectId: string,
   siteUrl: string,
   projectKey: string,
@@ -19,6 +21,7 @@ export function addTrackerAssociation(
   displayName?: string
 ) {
   return window.api.tracker.associations.add(
+    trackerType,
     projectId,
     siteUrl,
     projectKey,
@@ -87,6 +90,10 @@ export function testJiraTrackerCredentials(siteUrl: string, email: string, apiTo
   return window.api.tracker.credentials.testJira(siteUrl, email, apiToken);
 }
 
+export function testLinearTrackerCredentials(apiToken: string) {
+  return window.api.tracker.credentials.testLinear(apiToken);
+}
+
 export function listTrackerCredentials() {
   return window.api.tracker.credentials.list();
 }
@@ -95,14 +102,28 @@ export function saveJiraTrackerCredentials(siteUrl: string, email: string, apiTo
   return window.api.tracker.credentials.saveJira(siteUrl, email, apiToken);
 }
 
+export function saveLinearTrackerCredentials(apiToken: string) {
+  return window.api.tracker.credentials.saveLinear(apiToken);
+}
+
 export function deleteTrackerCredentials() {
   return window.api.tracker.credentials.delete();
+}
+
+export function deleteLinearTrackerCredentials() {
+  return window.api.tracker.credentials.deleteLinear();
 }
 
 export function listTrackerProjects() {
   return window.api.tracker.projects.list();
 }
 
+export function listLinearTrackerTeams() {
+  return window.api.tracker.projects.listLinearTeams();
+}
+
+export function listTrackerProjectStatuses(projectKey: string, trackerType: TrackerType = 'jira') {
+  return window.api.tracker.projects.getStatuses(projectKey, trackerType);
 }
 
 export function listTrackerIssueTypes(projectKey: string) {

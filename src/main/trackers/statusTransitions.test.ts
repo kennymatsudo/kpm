@@ -8,6 +8,8 @@ import {
   inferCategoryFromStatus,
   isTransitionNeeded,
   generateTransitionWarning,
+  inferCategoryWithMapping,
+  mapLinearStateTypeToCategory,
 } from './statusTransitions';
 import type { JiraTransition } from '../../shared/types';
 
@@ -108,5 +110,48 @@ describe('generateTransitionWarning', () => {
     expect(warning).toContain('Available:');
     expect(warning).toContain('In Progress');
     expect(warning).toContain('Done');
+  });
+});
+
+describe('mapLinearStateTypeToCategory', () => {
+  it('maps Linear state types directly', () => {
+    expect(mapLinearStateTypeToCategory('triage')).toBe('not_started');
+    expect(mapLinearStateTypeToCategory('backlog')).toBe('not_started');
+    expect(mapLinearStateTypeToCategory('unstarted')).toBe('not_started');
+    expect(mapLinearStateTypeToCategory('started')).toBe('in_progress');
+    expect(mapLinearStateTypeToCategory('completed')).toBe('done');
+    expect(mapLinearStateTypeToCategory('canceled')).toBe('canceled');
+  });
+
+  it('is case-insensitive', () => {
+    expect(mapLinearStateTypeToCategory('STARTED')).toBe('in_progress');
+    expect(mapLinearStateTypeToCategory('Completed')).toBe('done');
+  });
+
+  it('returns null for unknown or empty values', () => {
+    expect(mapLinearStateTypeToCategory(null)).toBeNull();
+    expect(mapLinearStateTypeToCategory(undefined)).toBeNull();
+    expect(mapLinearStateTypeToCategory('')).toBeNull();
+    expect(mapLinearStateTypeToCategory('wat')).toBeNull();
+  });
+});
+
+describe('inferCategoryWithMapping — Linear state type hint', () => {
+  it('prefers Linear state type over keyword inference when no explicit mapping', () => {
+    // "Custom Status" would default to not_started via keyword inference, but
+    // Linear state type 'started' should override.
+    expect(inferCategoryWithMapping('Custom Status', null, { stateType: 'started' })).toBe('in_progress');
+    expect(inferCategoryWithMapping('Custom Status', null, { stateType: 'canceled' })).toBe('canceled');
+  });
+
+  it('explicit mapping still wins over the state-type hint', () => {
+    const mapping = { in_progress: 'Custom Status' };
+    expect(
+      inferCategoryWithMapping('Custom Status', mapping, { stateType: 'completed' })
+    ).toBe('in_progress');
+  });
+
+  it('falls back to keyword inference when no hint and no mapping', () => {
+    expect(inferCategoryWithMapping('In Progress', null)).toBe('in_progress');
   });
 });

@@ -5,6 +5,7 @@
  * Reuses Jira credentials (same Atlassian Cloud account).
  */
 
+import type { JiraCredentials } from '../../tracker-clients/common/types';
 
 export interface ConfluencePage {
   id: string;
@@ -40,6 +41,7 @@ export class ConfluenceClient {
   private baseUrl: string;
   private authHeader: string;
 
+  constructor(credentials: JiraCredentials) {
     this.baseUrl = `https://${credentials.siteUrl}/wiki`;
     this.authHeader =
       'Basic ' + Buffer.from(`${credentials.email}:${credentials.apiToken}`).toString('base64');

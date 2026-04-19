@@ -1,3 +1,4 @@
+import type { JiraIssueType, TrackerType } from '../../../shared/types';
 import type { ExportService, TypeMappingService } from '../../db/domain';
 import { failure, success, type AsyncResult, type ServiceResult } from '../result';
 
@@ -5,8 +6,11 @@ export interface ExportFacadeServiceDeps {
   exportService: ExportService;
   typeMappingService: TypeMappingService;
   tracker: {
+    getScopeById(scopeId: string): { project_key: string; connection_id: string } | undefined;
+    getConnectionById(connectionId: string): { tracker_type: TrackerType } | undefined;
   };
   trackerClientService: {
+    getClient(type: TrackerType): Promise<{
       getIssueTypes(projectKey: string): Promise<JiraIssueType[]>;
     }>;
   };
@@ -158,7 +162,12 @@ export function createExportFacadeService(deps: ExportFacadeServiceDeps) {
         if (!scope) {
           return failure('Scope not found');
         }
+        const connection = deps.tracker.getConnectionById(scope.connection_id);
+        if (!connection) {
+          return failure('Connection not found');
+        }
 
+        const client = await deps.trackerClientService.getClient(connection.tracker_type);
         const issueTypes = await client.getIssueTypes(scope.project_key);
         return success(deps.typeMappingService.createDefaultMappings(projectId, scopeId, issueTypes));
       } catch (error) {
@@ -166,7 +175,9 @@ export function createExportFacadeService(deps: ExportFacadeServiceDeps) {
       }
     },
 
+    async getIssueTypes(projectKey: string, trackerType: TrackerType = 'jira'): AsyncResult<JiraIssueType[]> {
       try {
+        const client = await deps.trackerClientService.getClient(trackerType);
         return success(await client.getIssueTypes(projectKey));
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));

@@ -2,6 +2,7 @@ import { Version3Client } from 'jira.js';
 import type {
   TrackerClient,
   ExternalIssue,
+  JiraCredentials,
   JiraIssueType,
   JiraCustomField,
   JiraTransition,
@@ -10,6 +11,25 @@ import type {
   UpdateIssueParams,
 } from '../common/types';
 import { TrackerError } from '../common/errors';
+
+const DEFAULT_BATCH_SIZE = 50;
+
+/**
+ * Jira option/select custom fields require values wrapped as { id: "<option-id>" }.
+ * We store the option ID directly, so we need to wrap numeric IDs.
+ */
+function wrapJiraCustomFieldValues(values: Record<string, string>): Record<string, unknown> {
+  const formatted: Record<string, unknown> = {};
+  for (const [fieldId, value] of Object.entries(values)) {
+    if (!value) continue;
+    if (/^\d+$/.test(value)) {
+      formatted[fieldId] = { id: value };
+    } else {
+      formatted[fieldId] = value;
+    }
+  }
+  return formatted;
+}
 
 /**
  * Jira issue shape from API response.
@@ -68,15 +88,34 @@ export class JiraClient implements TrackerClient {
   private client: Version3Client;
   private siteUrl: string;
 
+  constructor(credentials: JiraCredentials) {
     this.siteUrl = credentials.siteUrl;
     this.client = new Version3Client({
       host: `https://${credentials.siteUrl}`,
       authentication: {
         basic: {
+          email: credentials.email,
           apiToken: credentials.apiToken,
         },
       },
     });
+  }
+
+  async fetchChildrenByParents(parentKeys: string[]): Promise<ExternalIssue[]> {
+    if (parentKeys.length === 0) return [];
+    const results: ExternalIssue[] = [];
+    for (let i = 0; i < parentKeys.length; i += DEFAULT_BATCH_SIZE) {
+      const batch = parentKeys.slice(i, i + DEFAULT_BATCH_SIZE);
+      const jql = `parent in (${batch.join(',')})`;
+      for await (const child of this.fetchIssuesByJql(jql)) {
+        results.push(child);
+      }
+    }
+    return results;
+  }
+
+  formatCustomFieldsForApi(values: Record<string, string>): Record<string, unknown> {
+    return wrapJiraCustomFieldValues(values);
   }
 
   async testConnection(): Promise<{ success: boolean; error?: string }> {

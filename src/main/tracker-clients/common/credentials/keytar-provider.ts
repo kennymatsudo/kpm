@@ -1,5 +1,6 @@
 import keytar from 'keytar';
 import type { TrackerType, TrackerCredentials } from '../types.js';
+import type { CredentialProvider, CredentialOfType } from './index.js';
 
 const SERVICE = 'KPM';
 
@@ -8,7 +9,9 @@ export class KeytarCredentialProvider implements CredentialProvider {
     return `${type}-credentials`;
   }
 
+  async getCredentials<T extends TrackerType>(type: T): Promise<CredentialOfType<T> | null> {
     const stored = await keytar.getPassword(SERVICE, this.accountKey(type));
+    return stored ? (JSON.parse(stored) as CredentialOfType<T>) : null;
   }
 
   async saveCredentials(creds: TrackerCredentials): Promise<void> {

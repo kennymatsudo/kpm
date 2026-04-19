@@ -3,6 +3,7 @@ import type {
   TrackerAssociationWithScope,
   ImportPreview,
   ImportResult,
+  TrackerType,
 } from '../../shared/types';
 import {
   addTrackerAssociation,
@@ -42,6 +43,7 @@ interface TrackerState {
   // Association actions
   loadAssociations: (projectId: string) => Promise<void>;
   getAssociationById: (associationId: string) => TrackerAssociationWithScope | null;
+  addAssociation: (trackerType: TrackerType, projectId: string, siteUrl: string, projectKey: string, projectName: string | undefined, jqlFilter: string, displayName?: string) => Promise<{ success: boolean; error?: string }>;
   updateAssociationEpicKey: (associationId: string, epicKey: string | null) => Promise<{ success: boolean; error?: string }>;
   removeAssociation: (associationId: string) => Promise<void>;
   hasAssociationItems: (associationId: string) => Promise<boolean>;
@@ -96,7 +98,9 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
     return get().associations.find((association) => association.id === associationId) ?? null;
   },
 
+  addAssociation: async (trackerType, projectId, siteUrl, projectKey, projectName, jqlFilter, displayName) => {
     set({ error: null });
+    const result = await addTrackerAssociation(trackerType, projectId, siteUrl, projectKey, projectName, jqlFilter, displayName);
     if (!result.success) {
       return { success: false, error: result.error };
     }

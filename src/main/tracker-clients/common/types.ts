@@ -1,11 +1,15 @@
 export type TrackerType = 'jira' | 'linear';
 
 export interface ExternalIssue {
+  key: string;              // 'PROJ-123' or Linear 'ENG-42'
   id: string;
   title: string;
   description: string | null;
+  issueType: string;        // 'Epic', 'Story', 'Task', etc. (Jira); synthesized from labels/template for Linear
   status: string;
+  statusType?: string;      // Linear workflow-state type: 'triage'|'backlog'|'unstarted'|'started'|'completed'|'canceled'
   parentKey: string | null;
+  epicKey: string | null;   // Jira epic link or Linear project id
   updatedAt: string;
   url: string;
 }
@@ -70,8 +74,40 @@ export interface TrackerClient {
   testConnection(): Promise<{ success: boolean; error?: string }>;
   getAvailableProjects(): Promise<{ key: string; name: string }[]>;
   fetchIssues(projectKey: string): AsyncGenerator<ExternalIssue>;
+  /**
+   * Fetch issues by a tracker-native filter string. For Jira this is JQL;
+   * for Linear this is `JSON.stringify(LinearFilter)`.
+   */
+  fetchIssuesByJql(filter: string): AsyncGenerator<ExternalIssue>;
   fetchIssue(issueKey: string): Promise<ExternalIssue>;
+  searchIssues(projectKey: string, filter?: string): Promise<ExternalIssue[]>;
+  /** Fetch direct children for a batch of parent issue keys. Replaces JQL `parent in (...)`. */
+  fetchChildrenByParents(parentKeys: string[]): Promise<ExternalIssue[]>;
+  /** Wrap custom-field values for the client-native API (Jira option IDs etc.). */
+  formatCustomFieldsForApi(values: Record<string, string>): Record<string, unknown>;
+  // Write operations. Every supported tracker implements these — Linear
+  // synthesizes `getIssueTypes` as a single "Issue" entry and
+  // `getTransitions` as one pseudo-transition per workflow state so the
+  // signature remains identical across trackers.
+  getIssueTypes(projectKey: string): Promise<JiraIssueType[]>;
+  createIssue(params: CreateIssueParams): Promise<CreatedIssue>;
+  updateIssue(issueKey: string, params: UpdateIssueParams): Promise<void>;
+  getTransitions(issueKey: string): Promise<JiraTransition[]>;
+  transitionIssue(issueKey: string, transitionId: string, toDoneCategory?: boolean): Promise<void>;
 }
 
+/** Atlassian Cloud credentials (Jira and Confluence share the account). */
+export interface JiraCredentials {
+  type: 'jira';
+  siteUrl: string;         // 'company.atlassian.net'
+  email: string;
   apiToken: string;
 }
+
+/** Linear personal API key. No site URL — the API lives at api.linear.app. */
+export interface LinearCredentials {
+  type: 'linear';
+  apiToken: string;
+}
+
+export type TrackerCredentials = JiraCredentials | LinearCredentials;

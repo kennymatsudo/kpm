@@ -17,6 +17,7 @@ import type {
   TrackerProjectScope,
   TrackerAssociation,
   TrackerAssociationWithScope,
+  TrackerType,
   StatusMapping,
   CustomFieldValues,
   JiraCustomField,
@@ -119,6 +120,7 @@ export type {
   TrackerProjectScope,
   TrackerAssociation,
   TrackerAssociationWithScope,
+  TrackerType,
   StatusMapping,
   ImportPreview,
   ImportResult,
@@ -472,10 +474,16 @@ const tracker = {
       ipcRenderer.invoke(IPC_CHANNELS.tracker.credentials.get),
     saveJira: (siteUrl: string, email: string, apiToken: string): Promise<{ success: boolean; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.tracker.credentials.saveJira, { siteUrl, email, apiToken }),
+    saveLinear: (apiToken: string): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.tracker.credentials.saveLinear, { apiToken }),
     delete: (): Promise<{ success: boolean }> =>
       ipcRenderer.invoke(IPC_CHANNELS.tracker.credentials.delete),
+    deleteLinear: (): Promise<{ success: true }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.tracker.credentials.deleteLinear),
     testJira: (siteUrl: string, email: string, apiToken: string): Promise<{ success: boolean; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.tracker.credentials.testJira, { siteUrl, email, apiToken }),
+    testLinear: (apiToken: string): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.tracker.credentials.testLinear, { apiToken }),
   },
   connections: {
     list: (): Promise<TrackerConnection[]> =>
@@ -490,6 +498,19 @@ const tracker = {
   associations: {
     list: (projectId: string): Promise<TrackerAssociationWithScope[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.tracker.associations.get, { projectId }),
+    add: (
+      trackerType: TrackerType,
+      projectId: string,
+      siteUrl: string,
+      projectKey: string,
+      projectName: string | undefined,
+      jqlFilter: string,
+      displayName?: string,
+    ): Promise<{ success: boolean; association?: TrackerAssociationWithScope; error?: string }> =>
+      ipcRenderer.invoke(
+        IPC_CHANNELS.tracker.associations.add,
+        { trackerType, projectId, siteUrl, projectKey, projectName, jqlFilter, displayName },
+      ),
     remove: (associationId: string): Promise<{ success: boolean }> =>
       ipcRenderer.invoke(IPC_CHANNELS.tracker.associations.remove, { associationId }),
     hasImported: (associationId: string): Promise<boolean> =>
@@ -508,10 +529,17 @@ const tracker = {
   projects: {
     list: (): Promise<{ success: boolean; projects?: { key: string; name: string }[]; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.tracker.projects.listJira),
+    listLinearTeams: (): Promise<{ success: boolean; teams?: { key: string; name: string }[]; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.tracker.projects.listLinearTeams),
     getLabels: (projectKey: string): Promise<{ success: boolean; labels?: string[]; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.tracker.project.labels, { projectKey }),
     getComponents: (projectKey: string): Promise<{ success: boolean; components?: { id: string; name: string }[]; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.tracker.project.components, { projectKey }),
+    getStatuses: (
+      projectKey: string,
+      trackerType: TrackerType = 'jira',
+    ): Promise<{ success: boolean; statuses?: { id: string; name: string; categoryKey: string }[]; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.tracker.project.statuses, { projectKey, trackerType }),
   },
   issues: {
     search: (projectKey: string, searchText: string): Promise<{ success: boolean; issues?: { key: string; title: string; issueType: string; status: string }[]; error?: string }> =>

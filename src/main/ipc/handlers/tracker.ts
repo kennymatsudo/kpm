@@ -32,6 +32,20 @@ export function registerTrackerHandlers(
     return trackerService.testJiraConnection(siteUrl, email, apiToken);
   });
 
+  ipcMain.handle(IPC_CHANNELS.tracker.credentials.saveLinear, async (_e, params: unknown) => {
+    const { apiToken } = TrackerSchemas.saveLinearCredentials.parse(params);
+    return trackerService.saveLinearCredentials(apiToken);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.tracker.credentials.deleteLinear, async () => {
+    return trackerService.clearLinearCredentials();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.tracker.credentials.testLinear, async (_e, params: unknown) => {
+    const { apiToken } = TrackerSchemas.testLinearConnection.parse(params);
+    return trackerService.testLinearConnection(apiToken);
+  });
+
   // ============================================
   // Three-Level Tracker Architecture (ADR-002)
   // ============================================
@@ -59,6 +73,8 @@ export function registerTrackerHandlers(
   });
 
   ipcMain.handle(IPC_CHANNELS.tracker.associations.add, async (_e, params: unknown) => {
+    const { trackerType, projectId, siteUrl, projectKey, projectName, jqlFilter, displayName } = TrackerSchemas.addAssociation.parse(params);
+    const result = trackerService.addAssociation(trackerType, projectId, siteUrl, projectKey, projectName, jqlFilter, displayName);
     return result.ok ? { success: true, association: result.data } : { success: false, error: result.error };
   });
 
@@ -101,7 +117,13 @@ export function registerTrackerHandlers(
     return trackerService.listJiraProjects();
   });
 
+  ipcMain.handle(IPC_CHANNELS.tracker.projects.listLinearTeams, async () => {
+    return trackerService.listLinearTeams();
+  });
+
   ipcMain.handle(IPC_CHANNELS.tracker.project.statuses, async (_e, params: unknown) => {
+    const { projectKey, trackerType } = TrackerSchemas.getProjectStatuses.parse(params);
+    const result = await trackerService.getProjectStatuses(projectKey, trackerType);
     return result.ok ? { success: true, statuses: result.data } : { success: false, error: result.error };
   });
 

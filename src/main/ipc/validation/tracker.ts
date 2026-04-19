@@ -14,6 +14,17 @@ import {
   jiraProjectKey,
 } from './shared';
 
+/** Tracker type literal used across tracker schemas. */
+export const trackerType = z.enum(['jira', 'linear'], {
+  message: 'Tracker type must be "jira" or "linear"',
+});
+
+/**
+ * Scope/project key accepted across trackers. Jira uses uppercase letters/digits
+ * (e.g. "PROJ", "MY_PROJECT"); Linear team keys are the same shape (e.g. "ENG").
+ */
+export const trackerProjectKey = jiraProjectKey;
+
 // =============================================================================
 // Tracker Schemas
 // =============================================================================
@@ -29,6 +40,15 @@ export const TrackerSchemas = {
   testJiraConnection: z.object({
     siteUrl: jiraSiteUrl,
     email: email,
+    apiToken: apiToken,
+  }),
+
+  // Linear credentials — API key only; no site URL / email.
+  saveLinearCredentials: z.object({
+    apiToken: apiToken,
+  }),
+
+  testLinearConnection: z.object({
     apiToken: apiToken,
   }),
 
@@ -49,8 +69,16 @@ export const TrackerSchemas = {
   }),
 
   addAssociation: z.object({
+    // `trackerType` defaults to 'jira' for backward compatibility with callers
+    // that predate Linear support.
+    trackerType: trackerType.default('jira'),
     projectId: uuid,
+    // Linear passes a constant placeholder ("linear.app"); Jira passes the real hostname.
+    siteUrl: z.string().min(1, 'Site URL is required'),
+    projectKey: trackerProjectKey,
     projectName: optionalString,
+    // Jira: JQL. Linear: JSON.stringify(LinearFilter).
+    jqlFilter: nonEmptyString('Filter'),
     displayName: optionalString,
   }),
 
@@ -188,7 +216,10 @@ export const TrackerSchemas = {
     deletedDecisions: z.record(z.string(), z.enum(['keep', 'delete'])).optional(),
   }),
 
+  // Status Mapping (shared across trackers; trackerType defaults to Jira for legacy callers)
   getProjectStatuses: z.object({
+    projectKey: trackerProjectKey,
+    trackerType: trackerType.default('jira'),
   }),
 
   updateStatusMapping: z.object({

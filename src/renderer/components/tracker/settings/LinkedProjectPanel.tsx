@@ -25,6 +25,12 @@ interface Props {
 }
 
 export function LinkedProjectPanel({ association, onUnlink }: Props) {
+  const isLinear = association.tracker_type === 'linear';
+  const trackerLabel = isLinear ? 'Linear' : 'Jira';
+
+  // Linear has no issue types or custom fields — default to the Statuses tab
+  // and restrict the tab set so the user can't land on an empty Jira-only view.
+  const [activeTab, setActiveTab] = useState<Tab>(isLinear ? 'statuses' : 'types');
 
   // Type mappings state (local to this component, used by TypeMappingsTab)
   const [newLabel, setNewLabel] = useState('');
@@ -43,6 +49,7 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
     saveMapping,
     removeMapping,
     statusesByCategory,
+  } = useJiraDataLoader({ projectId, scopeId, projectKey, trackerType: association.tracker_type });
 
   const {
     statusMapping,
@@ -128,6 +135,8 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
     }
   }
 
+  const visibleTabs = (isLinear ? ['statuses'] : ['types', 'statuses', 'fields']) as readonly Tab[];
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -144,12 +153,58 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
           {association.jql_filter}
         </p>
 
+        {/* Parent Epic — Jira-only. Linear's "Project" equivalent is not yet wired. */}
+        {!isLinear && (
+          <div className="mt-3 p-3 rounded-xl bg-surface-2">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div>
+                <span className="text-text-primary text-sm font-medium">Parent Epic</span>
+                <p className="text-text-tertiary text-xs">New issues will be linked to this epic</p>
+              </div>
             </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={epicKey}
+                onChange={(e) => setEpicKey(e.target.value.toUpperCase())}
+                placeholder="e.g., PROJ-1234"
+                className="flex-1 bg-surface-3 text-text-primary text-xs rounded-lg px-2 py-1.5 border border-border-default focus:border-accent focus:outline-none placeholder:text-text-muted font-mono"
+              />
+              <button
+                onClick={handleSaveEpicKey}
+                disabled={isSavingEpicKey || epicKey === (association.epic_key ?? '')}
+                className="btn btn-secondary text-xs px-3 py-1.5"
+              >
+                {isSavingEpicKey ? <LoadingSpinner className="w-3 h-3" /> : 'Save'}
+              </button>
+            </div>
+            {epicKeyError && (
+              <p className="text-danger text-xs mt-1">{epicKeyError}</p>
+            )}
           </div>
+        )}
+      </div>
+
+      {/* Tabs — only render when more than one is visible */}
+      {visibleTabs.length > 1 && (
+        <div className="flex gap-1 p-1 bg-surface-2 rounded-lg">
+          {visibleTabs.map((tab) => (
             <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`
+                flex-1 px-3 py-2 text-sm font-medium rounded-md transition-all duration-150 cursor-pointer capitalize
+                ${activeTab === tab
+                  ? 'bg-surface-elevated text-text-primary shadow-sm'
+                  : 'text-text-muted hover:text-text-secondary'
+                }
+              `}
             >
+              {tab === 'fields' ? 'Custom Fields' : tab}
             </button>
+          ))}
         </div>
+      )}
 
       {/* Tab content */}
       <m.div
@@ -158,6 +213,7 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.15 }}
       >
+        {activeTab === 'types' && !isLinear && (
           <TypeMappingsTab
             typeMappings={typeMappings}
             jiraIssueTypes={jiraIssueTypes}
@@ -174,6 +230,7 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
 
         {activeTab === 'statuses' && (
           <StatusMappingsTab
+            trackerLabel={trackerLabel}
             statusMapping={statusMapping}
             statusesByCategory={statusesByCategory}
             isLoading={isLoadingStatuses}
@@ -185,6 +242,7 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
           />
         )}
 
+        {activeTab === 'fields' && !isLinear && (
           <CustomFieldsTab
             jiraIssueTypes={jiraIssueTypes}
             selectedIssueType={selectedIssueTypeForFields}
@@ -348,6 +406,7 @@ function TypeMappingsTab({
 
 // Status Mappings Tab Component
 interface StatusMappingsTabProps {
+  trackerLabel: string;
   statusMapping: StatusMapping;
   statusesByCategory: Record<string, { id: string; name: string; categoryKey: string }[]>;
   isLoading: boolean;
@@ -359,6 +418,7 @@ interface StatusMappingsTabProps {
 }
 
 function StatusMappingsTab({
+  trackerLabel,
   statusMapping,
   statusesByCategory,
   isLoading,
@@ -416,6 +476,7 @@ function StatusMappingsTab({
           <div className="text-xs text-text-tertiary">
             <p>Status mappings are used for:</p>
             <ul className="mt-1 ml-3 list-disc space-y-0.5">
+              <li>Pushing status changes to {trackerLabel}</li>
             </ul>
           </div>
         </div>

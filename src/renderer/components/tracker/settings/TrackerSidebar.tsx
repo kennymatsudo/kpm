@@ -1,4 +1,5 @@
 import type { TrackerAssociationWithScope, TrackerType } from '../../../../shared/types';
+
 type SelectedItem = 'connection' | 'link-new' | { type: 'project'; associationId: string };
 
 interface Props {
@@ -116,6 +117,10 @@ export function TrackerSidebar({
                     isSelected ? 'bg-info-muted' : 'bg-surface-3'
                   }`}
                 >
+                  <TrackerIcon
+                    trackerType={association.tracker_type}
+                    className={`w-3.5 h-3.5 ${isSelected ? 'text-info' : 'text-text-tertiary'}`}
+                  />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium truncate">

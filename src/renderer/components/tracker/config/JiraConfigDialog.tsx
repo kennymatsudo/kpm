@@ -29,6 +29,7 @@ export function JiraConfigDialog({ credential, onClose }: Props) {
     setError(null);
 
     try {
+      const result = await testCredentials({ type: 'jira', siteUrl, email, apiToken });
       if (result.success) {
       } else {
         setError(result.error || 'Connection failed');
@@ -50,6 +51,7 @@ export function JiraConfigDialog({ credential, onClose }: Props) {
     setError(null);
 
     try {
+      const result = await saveCredentials({ type: 'jira', siteUrl, email, apiToken });
       if (result.success) {
         onClose();
       } else {

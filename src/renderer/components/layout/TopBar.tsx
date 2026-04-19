@@ -8,7 +8,9 @@ import {
   useTrackerStore,
 } from '../../stores';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
+import { JiraIcon, LinearIcon } from '../icons';
 import { Z_INDEX } from '../../constants/zIndex';
+import { TrackerConfigDialog, TrackerLinkProjectDialog, SyncReviewPanel, SyncReviewModal, TypeMappingDialog, TrackerSyncPanel } from '../tracker';
 import type { ViewMode } from '../planning/ViewSwitcher';
 import type { StatusCategory, TrackerAssociationWithScope, TrackerCredentialInfo, TrackerType } from '../../../shared/types';
 import { TopBarPlanningControls } from './TopBarPlanningControls';
@@ -190,6 +192,9 @@ export function TopBar({
                           : `Open ${trackerLabel} sync`
                     }
                   >
+                    {selectedTrackerType === 'linear' ? (
+                    ) : (
+                    )}
                     {queueCount > 0 && (
                         {queueCount > 99 ? '99+' : queueCount}
                       </span>
@@ -315,6 +320,8 @@ const TopBarTrackerOverlays = memo(function TopBarTrackerOverlays({
         />
       )}
 
+      {syncPanelAssociationId && (
+        <TrackerSyncPanel associationId={syncPanelAssociationId} onClose={onCloseSyncPanel} />
       )}
 
       {showSyncPanel && currentProjectId && (

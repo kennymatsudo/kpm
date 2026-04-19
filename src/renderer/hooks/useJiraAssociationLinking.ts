@@ -264,6 +264,7 @@ export function useJiraAssociationLinking({
 
     try {
       const result = await addAssociation(
+        'jira',
         projectId,
         siteUrl,
         selectedProject.key,

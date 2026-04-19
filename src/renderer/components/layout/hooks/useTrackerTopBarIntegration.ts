@@ -118,6 +118,7 @@ export function useTrackerTopBarIntegration({
   }, [currentProjectId, loadAssociations, refreshQueueCount]);
 
   useEffect(() => {
+    if (!currentProjectId || trackerAssociations.length === 0) return;
 
     let disposed = false;
 
@@ -188,6 +189,7 @@ export function useTrackerTopBarIntegration({
       setShowAssociationDialog(true);
       return;
     }
+    if (trackerAssociations[0]) {
       setSyncPanelAssociationId(trackerAssociations[0].id);
     }
   }, [
@@ -196,6 +198,7 @@ export function useTrackerTopBarIntegration({
     trackerAssociations,
     setShowCredentialsDialog,
     setShowAssociationDialog,
+    setSyncPanelAssociationId,
   ]);
 
   // Handle sync completion

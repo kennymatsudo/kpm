@@ -6,11 +6,13 @@ import {
   type TrackerIssueTypeOption,
   type TrackerStatusOption,
 } from '../../../../stores/tracker/useMetadataStore';
+import type { TrackerTypeMapping, TrackerType } from '../../../../../shared/types';
 
 interface JiraDataLoaderDeps {
   projectId: string;
   scopeId: string;
   projectKey: string;
+  trackerType?: TrackerType;
 }
 
 type SaveMappingFn = (
@@ -42,6 +44,7 @@ export function useJiraDataLoader({
   projectId,
   scopeId,
   projectKey,
+  trackerType = 'jira',
 }: JiraDataLoaderDeps): JiraDataLoaderResult {
   const {
     typeMappings,
@@ -50,6 +53,7 @@ export function useJiraDataLoader({
     saveMapping,
     removeMapping,
   } = useExportStore();
+  const statusCacheKey = projectKey ? `${trackerType}:${projectKey}` : '';
   const {
     jiraIssueTypes,
     jiraStatuses,
@@ -64,8 +68,11 @@ export function useJiraDataLoader({
       jiraIssueTypes: projectKey
         ? state.issueTypesByProject[projectKey] ?? EMPTY_ISSUE_TYPES
         : EMPTY_ISSUE_TYPES,
+      jiraStatuses: statusCacheKey ? state.statusesByProject[statusCacheKey] ?? EMPTY_STATUSES : EMPTY_STATUSES,
       isLoadingTypesForProject: Boolean(projectKey) && state.loadingIssueTypesFor.has(projectKey),
+      isLoadingStatusesForProject: Boolean(statusCacheKey) && state.loadingStatusesFor.has(statusCacheKey),
       typesError: projectKey ? state.issueTypesErrorByProject[projectKey] || null : null,
+      statusesError: statusCacheKey ? state.statusesErrorByProject[statusCacheKey] || null : null,
       loadIssueTypes: state.loadIssueTypes,
       loadStatuses: state.loadStatuses,
     }))
@@ -76,7 +83,13 @@ export function useJiraDataLoader({
   useEffect(() => {
     void loadMappingsByScope(projectId, scopeId);
     if (projectKey) {
+      // Linear has no `issueTypes` concept, so don't fetch them.
+      if (trackerType === 'jira') {
+        void loadIssueTypes(projectKey);
+      }
+      void loadStatuses(projectKey, trackerType);
     }
+  }, [projectId, scopeId, projectKey, trackerType, loadIssueTypes, loadMappingsByScope, loadStatuses]);
 
   const statusesByCategory = jiraStatuses.reduce<Record<string, TrackerStatusOption[]>>((acc, status) => {
     const cat = status.categoryKey;

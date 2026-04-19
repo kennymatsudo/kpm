@@ -1,5 +1,6 @@
 import { useCredentialStore } from '../../../stores';
 import { JiraLinkProjectForm } from '../linking/JiraLinkProjectForm';
+import { LinearLinkProjectForm } from '../linking/LinearLinkProjectForm';
 import type { TrackerType } from '../../../../shared/types';
 
 interface Props {
@@ -20,6 +21,8 @@ export function LinkNewProjectPanel({
   onCancel,
 }: Props) {
   const { credentials } = useCredentialStore();
+  const jiraCred = credentials.find((credential) => credential.type === 'jira');
+  const siteUrl = jiraCred?.site_url || '';
   const trackerLabel = getTrackerLabel(trackerType);
 
   return (
@@ -38,6 +41,11 @@ export function LinkNewProjectPanel({
           variant="panel"
         />
       ) : (
+        <LinearLinkProjectForm
+          projectId={projectId}
+          onLinked={onComplete}
+          onCancel={onCancel}
+        />
       )}
     </div>
   );

@@ -21,8 +21,20 @@ import type {
   FieldDiff,
   DiffHunk,
   StatusTransitionInfo,
+  CustomFieldValues,
+  TrackerType,
+} from '../../../shared/types';
+import type { JiraClient, TrackerClient } from '../../tracker-clients';
+import {
+  findTransitionWithMapping,
+  generateTransitionWarning,
+  inferCategoryWithMapping,
+} from '../../trackers/statusTransitions';
 
 interface TrackerClientServiceLike {
+  /** Polymorphic factory — preferred for any code path that handles both trackers. */
+  getClient(type: TrackerType): Promise<TrackerClient>;
+  /** Back-compat for Jira-only call sites that haven't been migrated yet. */
   getJiraClient(): Promise<JiraClient>;
 }
 
@@ -246,8 +258,11 @@ export function createExportService(deps: ExportServiceDeps) {
       };
     }
 
+    // Issue types are a Jira concept; Linear returns a synthetic "Issue" entry.
+    // Either way we defer to the tracker-specific client.
     let availableTypes: JiraIssueType[];
     try {
+      const client = await TrackerClientService.getClient(association.tracker_type);
       availableTypes = await client.getIssueTypes(association.project_key);
     } catch (e) {
       return {
@@ -409,14 +424,24 @@ export function createExportService(deps: ExportServiceDeps) {
     // Get association for status mapping
     const association = TrackerRepository.getAssociationById(associationId);
 
+    // Get tracker client for fetching current state.
+    let client: TrackerClient | null = null;
+    if (association) {
+      try {
+        client = await TrackerClientService.getClient(association.tracker_type);
+      } catch {
+        // Continue without client - diffs won't be available for updates
+      }
     }
 
+    // Identify items that need tracker fetches (updates with external_key)
     const itemsNeedingFetch = client
       ? preview.items.filter(
           item => item.queueEntry.operation === 'update' && item.planItem.external_key
         )
       : [];
 
+    // Parallel fetch all tracker issues
     const jiraFetchResults = await Promise.allSettled(
       itemsNeedingFetch.map(item => client!.fetchIssue(item.planItem.external_key!))
     );
@@ -549,8 +574,12 @@ export function createExportService(deps: ExportServiceDeps) {
       return { success: false, created: [], updated: [], errors: [{ plan_item_id: '', error: 'Association not found' }] };
     }
 
+    // Get tracker client for this association's tracker type.
+    let client: TrackerClient;
     try {
+      client = await TrackerClientService.getClient(association.tracker_type);
     } catch (e) {
+      return { success: false, created: [], updated: [], errors: [{ plan_item_id: '', error: `Failed to get ${association.tracker_type} client: ${e instanceof Error ? e.message : 'Unknown'}` }] };
     }
 
     // Get queued items - filter to approved ones, but force-include unsynced
@@ -629,11 +658,14 @@ export function createExportService(deps: ExportServiceDeps) {
           parentKey = association.epic_key;
         }
 
+        // Format custom fields via the client-native helper (Jira wraps option
+        // IDs, Linear returns {} since it has no equivalent concept).
         const rawCustomFields = mergeCustomFieldValues(
           entry.custom_field_overrides,
           association.custom_field_values
         );
         const customFields = rawCustomFields && Object.keys(rawCustomFields).length > 0
+          ? client.formatCustomFieldsForApi(rawCustomFields)
           : undefined;
 
         // Sync boundary: only title/description cross to the external tracker.
@@ -649,10 +681,28 @@ export function createExportService(deps: ExportServiceDeps) {
           customFields,
         });
 
+        // Fetch the created issue so we record the tracker-assigned status.
+        // Prevents sync from showing spurious status updates on the next pass.
+        const trackerStatus = createdIssue.status;
+        const inferredCategory = inferCategoryWithMapping(
+          trackerStatus,
+          association.status_mapping,
+          { stateType: createdIssue.statusType ?? null }
+        );
+
+        // Jira's CreatedIssue.self is a REST API URL, not the browse URL, so
+        // we build the browse URL from siteUrl. Linear's `self` is already the
+        // user-facing URL; prefer it when present.
+        const externalUrl = client.type === 'linear' && created.self
+          ? created.self
+          : `https://${association.site_url}/browse/${created.key}`;
 
         const syncUpdate: PlanItemSyncUpdates = {
           external_key: created.key,
           external_id: created.id,
+          external_type: association.tracker_type,
+          external_status: trackerStatus,
+          external_url: externalUrl,
           association_id: associationId,
           sync_source: 'local',
           last_synced_at: new Date().toISOString(),
@@ -691,7 +741,9 @@ export function createExportService(deps: ExportServiceDeps) {
       }
 
       try {
+        // Update fields - pass title and description directly.
         const overrideFields = entry.custom_field_overrides && Object.keys(entry.custom_field_overrides).length > 0
+          ? client.formatCustomFieldsForApi(entry.custom_field_overrides)
           : undefined;
 
         // Sync boundary: same rule as createIssue above — spec fields are local-only.

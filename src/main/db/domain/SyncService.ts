@@ -177,6 +177,13 @@ export function createSyncService(deps: SyncServiceDeps) {
       updates.push({ field: 'external_status', old_value: kpmItem.external_status, new_value: external.status });
     }
 
+    // Check if status_category is out of sync with what the tracker status implies.
+    // Catches cases where a failed export left status_category in a wrong state.
+    const expectedCategory = inferCategoryWithMapping(
+      external.status,
+      statusMapping,
+      { stateType: external.statusType ?? null }
+    );
     if (kpmItem.status_category !== expectedCategory) {
       updates.push({ field: 'status_category', old_value: kpmItem.status_category, new_value: expectedCategory });
     }

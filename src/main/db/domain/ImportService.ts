@@ -1,6 +1,11 @@
 import type { IExternalPlanItemRepository, ISyncRepository, ITrackerRepository } from '../interfaces';
 import type { TrackerClient, ExternalIssue } from '../../trackers';
 import { fetchIssuesWithSubtasks, inferCategoryWithMapping } from '../../trackers';
+import type {
+  ImportPreview,
+  ImportIssueTypeGroup,
+  ImportResult,
+  TrackerProgressCallback,
 } from '../../../shared/types';
 
 export interface ImportServiceDeps {
@@ -63,6 +68,7 @@ export function createImportService(deps: ImportServiceDeps) {
         }));
 
       return {
+        tracker_type: client.type,
         external_project_key: association.project_key,
         total_count: issues.length,
         issues_by_type: issuesByType,
@@ -120,8 +126,14 @@ export function createImportService(deps: ImportServiceDeps) {
         description: issue.description,
         external_key: issue.key,
         external_id: issue.id,
+        external_type: client.type,
         external_issue_type: issue.issueType,
         external_status: issue.status,
+        status_category: inferCategoryWithMapping(
+          issue.status,
+          association.status_mapping,
+          { trackerType: client.type, stateType: issue.statusType ?? null }
+        ),
         external_url: issue.url,
         external_parent_key: issue.parentKey,
         external_epic_key: issue.epicKey,
@@ -131,6 +143,7 @@ export function createImportService(deps: ImportServiceDeps) {
         const createdItems = ExternalPlanItemRepository.importExternalIssues(inputs);
         result.created = createdItems.length;
 
+        ExternalPlanItemRepository.linkSubtasksToParentIssues(projectId, client.type);
 
         if (createdItems.length > 0) {
           const issueByKey = new Map(issues.map(i => [i.key, i]));

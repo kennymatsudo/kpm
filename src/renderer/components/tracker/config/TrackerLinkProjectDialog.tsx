@@ -3,6 +3,7 @@ import { useProjectDomainStore } from '../../../stores';
 import type { TrackerType } from '../../../../shared/types';
 import { Z_INDEX } from '../../../constants/zIndex';
 import { JiraLinkProjectForm } from '../linking/JiraLinkProjectForm';
+import { LinearLinkProjectForm } from '../linking/LinearLinkProjectForm';
 
 interface Props {
   trackerType: TrackerType;
@@ -39,8 +40,10 @@ export function TrackerLinkProjectDialog({ trackerType, siteUrl, onClose }: Prop
         <div className="dialog-header px-6 py-5 border-b border-border-default flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-info-muted flex items-center justify-center">
+              <TrackerIcon trackerType={trackerType} className="w-4 h-4 text-info" />
             </div>
             <h2 className="text-base font-semibold text-text-primary tracking-tight">
+              Link {trackerLabel} {trackerType === 'linear' ? 'Team' : 'Project'}
             </h2>
           </div>
           <button
@@ -62,6 +65,11 @@ export function TrackerLinkProjectDialog({ trackerType, siteUrl, onClose }: Prop
               variant="dialog"
             />
           ) : (
+            <LinearLinkProjectForm
+              projectId={currentProjectId}
+              onLinked={onClose}
+              onCancel={onClose}
+            />
           )}
         </div>
       </div>

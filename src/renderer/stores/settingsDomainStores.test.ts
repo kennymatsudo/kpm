@@ -54,6 +54,8 @@ describe('settings domain stores', () => {
   it('tests Jira credentials through the credential store', async () => {
     api.tracker.credentials.testJira.mockResolvedValue({ success: true });
 
+    const result = await useCredentialStore.getState().testCredentials({
+      type: 'jira',
       siteUrl: 'acme.atlassian.net',
       email: 'dev@acme.com',
       apiToken: 'token',

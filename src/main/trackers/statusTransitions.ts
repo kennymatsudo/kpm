@@ -13,6 +13,23 @@
  * - 'done' (Done) - corresponds to done/canceled
  */
 
+import type { StatusCategory, JiraTransition, StatusMapping, TrackerType } from '../../shared/types';
+
+/**
+ */
+const LINEAR_STATE_TYPE_TO_CATEGORY: Record<string, StatusCategory> = {
+  triage: 'not_started',
+  backlog: 'not_started',
+  unstarted: 'not_started',
+  started: 'in_progress',
+  completed: 'done',
+  canceled: 'canceled',
+};
+
+export function mapLinearStateTypeToCategory(stateType: string | null | undefined): StatusCategory | null {
+  if (!stateType) return null;
+  return LINEAR_STATE_TYPE_TO_CATEGORY[stateType.toLowerCase()] ?? null;
+}
 
 /**
  * Note: Jira only has 3 categories, so we map blocked → indeterminate and canceled → done.
@@ -203,16 +220,32 @@ export function findTransitionWithMapping(
 }
 
 /**
+ * Smart category inference that uses explicit mapping if available, then tracker-native
+ * hints (Linear state type), then keyword heuristics.
  *
+ * @param statusName - The tracker status name
  * @param statusMapping - The explicit status mapping (if configured)
+ * @param hint - Optional tracker context; for Linear, `stateType` is preferred over keyword matching
  */
 export function inferCategoryWithMapping(
   statusName: string,
+  statusMapping: StatusMapping | null,
+  hint?: { trackerType?: TrackerType; stateType?: string | null }
 ): StatusCategory {
+  // 1. Explicit per-association mapping wins.
   const mappedCategory = inferCategoryFromMapping(statusName, statusMapping);
   if (mappedCategory) {
     return mappedCategory;
   }
 
+  // 2. Linear state type is a direct signal — use it before keyword heuristics
+  // (which were tuned for Jira). Presence of stateType is itself a signal that
+  // the issue came from Linear; the explicit trackerType field is optional.
+  const linearCategory = mapLinearStateTypeToCategory(hint?.stateType);
+  if (linearCategory) {
+    return linearCategory;
+  }
+
+  // 3. Keyword-based fallback.
   return inferCategoryFromStatus(statusName);
 }

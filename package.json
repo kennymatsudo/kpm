@@ -28,6 +28,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "graphql-request": "^7.4.0",
     "jira.js": "5.3.1",
     "keytar": "7.9.0",
     "node-pty": "1.1.0",

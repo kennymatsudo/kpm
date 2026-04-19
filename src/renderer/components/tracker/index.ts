@@ -7,6 +7,7 @@ export { TrackerLinkProjectDialog } from './config/TrackerLinkProjectDialog';
 export { JiraProjectSelector } from './config/JiraProjectSelector';
 
 // Sync components
+export { TrackerSyncPanel } from './sync/TrackerSyncPanel';
 export { SyncReviewPanel } from './sync/SyncReviewPanel';
 export { SyncReviewModal } from './sync/SyncReviewModal';
 export { SyncConflictCard } from './sync/SyncConflictCard';

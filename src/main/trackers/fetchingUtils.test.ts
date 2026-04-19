@@ -29,16 +29,34 @@ async function* arrayToAsyncGenerator<T>(items: T[]): AsyncGenerator<T> {
   }
 }
 
+// Create mock client. `responses` holds issues keyed either by filter-string (for the
+// initial filter query) or by `parent:<KEY>` (consumed by fetchChildrenByParents).
 function createMockClient(responses: Map<string, ExternalIssue[]>): TrackerClient {
   return {
     type: 'jira',
     testConnection: vi.fn(),
     getAvailableProjects: vi.fn(),
     fetchIssues: vi.fn(),
+    fetchIssuesByJql: vi.fn((filter: string) => {
+      const issues = responses.get(filter) ?? [];
       return arrayToAsyncGenerator(issues);
     }),
     fetchIssue: vi.fn(),
     searchIssues: vi.fn(),
+    async fetchChildrenByParents(keys: string[]): Promise<ExternalIssue[]> {
+      const out: ExternalIssue[] = [];
+      for (const k of keys) {
+        const children = responses.get(`parent:${k}`) ?? [];
+        out.push(...children);
+      }
+      return out;
+    },
+    formatCustomFieldsForApi: (v: Record<string, string>) => v,
+    getIssueTypes: vi.fn(async () => []),
+    createIssue: vi.fn(),
+    updateIssue: vi.fn(),
+    getTransitions: vi.fn(async () => []),
+    transitionIssue: vi.fn(),
   };
 }
 
@@ -79,6 +97,7 @@ describe('fetchIssuesWithSubtasks', () => {
 
       const responses = new Map([
         ['project = PROJ', [story]],
+        ['parent:PROJ-1', [subtask1, subtask2]],
       ]);
       const client = createMockClient(responses);
 
@@ -93,6 +112,8 @@ describe('fetchIssuesWithSubtasks', () => {
 
       const responses = new Map([
         ['project = PROJ', [subtask]],
+        // Should NOT be consulted since PROJ-1 is a subtask.
+        ['parent:PROJ-1', [createIssue('PROJ-2', 'Sub-task', 'PROJ-1')]],
       ]);
       const client = createMockClient(responses);
 
@@ -106,6 +127,8 @@ describe('fetchIssuesWithSubtasks', () => {
       const story = createIssue('PROJ-1', 'Story');
 
       const responses = new Map([
+        ['project = PROJ', [story, story]],
+        ['parent:PROJ-1', []],
       ]);
       const client = createMockClient(responses);
 
@@ -121,6 +144,9 @@ describe('fetchIssuesWithSubtasks', () => {
 
       const responses = new Map([
         ['parent = EPIC-1', [epic, story]],
+        ['parent:PROJ-1', []],
+        ['parent:PROJ-2', [subtask]],
+        ['parent:PROJ-3', []],
       ]);
       const client = createMockClient(responses);
 
