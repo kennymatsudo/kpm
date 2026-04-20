@@ -31,12 +31,14 @@ interface AgentStartModalProps {
     effort?: AgentEffortLevel;
   }) => void;
   onClose: () => void;
+  onMoveOnly?: () => void;
 }
 
 export const AgentStartModal = memo(function AgentStartModal({
   item,
   onStart,
   onClose,
+  onMoveOnly,
 }: AgentStartModalProps) {
   const repos = useResourceDomainStore((state) => state.repos);
   const [selectedRepoId, setSelectedRepoId] = useState<string>(repos[0]?.id ?? '');
@@ -155,6 +157,13 @@ export const AgentStartModal = memo(function AgentStartModal({
         >
           Cancel
         </button>
+        {onMoveOnly && (
+          <button
+            onClick={onMoveOnly}
+          >
+            Just move
+          </button>
+        )}
         <button
           onClick={handleStart}
           disabled={!selectedRepoId || isStarting || loadingBranches}

@@ -185,6 +185,13 @@ export function PlanView({
     setAgentStartItemId(itemId);
   }, []);
 
+  const handleAgentMoveOnly = useCallback(async () => {
+    if (!agentStartItemId) return;
+    const itemId = agentStartItemId;
+    setAgentStartItemId(null);
+    await updateStatusCategory(itemId, 'in_progress');
+  }, [agentStartItemId, updateStatusCategory]);
+
   const handleAgentStartConfirmed = useCallback(async (params: {
     planItemId: string;
     repoId: string;
@@ -487,6 +494,7 @@ export function PlanView({
           item={agentStartItem}
           onStart={handleAgentStartConfirmed}
           onClose={() => setAgentStartItemId(null)}
+          onMoveOnly={handleAgentMoveOnly}
         />
       )}
 
