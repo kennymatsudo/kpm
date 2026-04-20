@@ -987,11 +987,16 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // Clear "Allow All Remaining" flag when response completes
       clientManager.clearAllowAllRemaining(projectId);
 
+      // Detect auth error responses before resetting accumulatedResponse
+      const finalResponse = managed.accumulatedResponse.trim();
+      const isAuthError = /not logged in/i.test(finalResponse) && /\/login/i.test(finalResponse);
+
       // Persist and finalize — errors here must not prevent chat:done from being sent
       try {
           deps.chatMessageRepository.addMessage(
             projectId,
             'assistant',
+            finalResponse,
           );
         }
       } catch (dbError) {
@@ -1021,6 +1026,18 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           chatSessionId,
           error: 'Response reached the output limit. Send another message to continue.',
         });
+      }
+
+      // Auth error: tear down the session so the next message spawns a fresh subprocess
+      // that picks up updated credentials after /login, then surface an actionable banner.
+      if (isAuthError) {
+        console.log(`[StreamingSessionService] Auth error detected for ${key} — tearing down session`);
+        mainWindow?.webContents.send('chat:error', {
+          projectId,
+          chatSessionId,
+          error: 'Not logged in to Claude Code. Run /login in a terminal, then click Retry.',
+        });
+        void disconnectSession(key, { silent: true });
       }
 
       try {

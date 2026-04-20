@@ -59,6 +59,8 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   const sdkOptions: SDKOptions = {
     systemPrompt,
     model,
+    // Pin the bundled native Claude binary so the SDK skips its own PATH lookup.
+    // See findClaude.ts for platform-specific resolution details.
     ...getClaudeSdkSpawnOptions(),
     canUseTool: createPermissionHandler(permissionContext, async (toolName, input, opts) => {
       return promptUser(mainWindow, permissionContext.projectId, toolName, input, {
