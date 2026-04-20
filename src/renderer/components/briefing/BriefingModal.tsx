@@ -33,12 +33,14 @@ export function BriefingModal() {
   const briefing = currentProjectId ? briefings[currentProjectId] ?? null : null;
 
   useEffect(() => {
+    if (isModalOpen && currentProjectId && (!briefing || isStale) && !isLoading && !error) {
       void loadBriefing(currentProjectId).then((loaded) => {
         if (!loaded) {
           void generateBriefing(currentProjectId);
         }
       });
     }
+  }, [isModalOpen, currentProjectId, briefing, isStale, isLoading, error, loadBriefing, generateBriefing]);
 
   const handleRefresh = () => {
     if (currentProjectId) {

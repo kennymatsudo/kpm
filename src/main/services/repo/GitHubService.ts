@@ -16,6 +16,7 @@ import type {
 } from '../../../shared/types';
 import { success, failure, wrapAsync, type AsyncResult } from '../result';
 import { getConfig } from '../../config';
+import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import {
   checkGhAuth,
   createPr,
@@ -448,6 +449,7 @@ HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and 
           persistSession: false,
           systemPrompt,
           stderr: (data: string) => { logError(`stderr: ${data}`); },
+          ...getClaudeSdkSpawnOptions(),
         };
 
         const TIMEOUT_MS = getConfig().generation.prGenerationTimeoutMs;

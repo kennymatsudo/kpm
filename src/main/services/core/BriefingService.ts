@@ -10,6 +10,7 @@ import type { BriefingResult, FileNode } from '../../../shared/types';
 import type { AsyncResult } from '../result';
 import { success, failure } from '../result';
 import { getConfig } from '../../config';
+import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 
 // =============================================================================
 // Types

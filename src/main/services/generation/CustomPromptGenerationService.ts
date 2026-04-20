@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { getKpmServer } from '../../claude/tools/createKpmServer';
 import { getConfig } from '../../config';
+import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 
 export interface CustomPromptExecutionOptions {
   promptId: string;
@@ -108,6 +109,7 @@ Generate markdown output that is clear, well-structured, and professional.`,
           stderr: (data: string) => {
             logError(`stderr: ${data}`);
           },
+          ...getClaudeSdkSpawnOptions(),
         };
 
 

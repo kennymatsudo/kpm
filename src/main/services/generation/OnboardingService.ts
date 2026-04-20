@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { gitExec } from '../repo/gitUtils';
 import { getConfig } from '../../config';
+import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 
 // =============================================================================
 // Types
@@ -381,6 +382,7 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
                 }
               : { behavior: 'allow' as const, updatedInput: input }
           ),
+          ...getClaudeSdkSpawnOptions(),
         };
 
         console.log('[OnboardingService] Calling Claude Agent SDK query()...');

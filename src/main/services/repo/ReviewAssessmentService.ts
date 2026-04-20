@@ -26,6 +26,7 @@ import {
   createReviewAssessmentMcpServer,
   REVIEW_ASSESSMENT_TOOL_NAMES,
 } from '../../claude/tools/review-assessment';
+import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import type { FileExplorerService } from '../files/FileExplorerService';
 
 type GitHubService = ReturnType<typeof createGitHubService>;
@@ -535,6 +536,7 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
       persistSession: false,
       maxTurns: reviewAssessmentConfig.maxTurns,
       outputFormat: { type: 'json_schema', schema: assessmentJsonSchema },
+      ...getClaudeSdkSpawnOptions(),
     };
 
     let parsed: z.infer<typeof assessmentOutputSchema>;
@@ -660,6 +662,7 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
       systemPrompt: buildPostImplSystemPrompt(),
       maxTurns: reviewAssessmentConfig.maxTurns,
       outputFormat: { type: 'json_schema', schema: postImplJsonSchema },
+      ...getClaudeSdkSpawnOptions(),
     };
 
     let parsed: z.infer<typeof postImplOutputSchema>;

@@ -13,6 +13,7 @@ import { launchAutoReview } from '../../services/agents/autoReview';
 import { AgentSessionSchemas, createIpcHandler, createSimpleIpcHandler } from '../validation';
 import { IPC_CHANNELS } from '../channels';
 import { getConfig } from '../../config';
+import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 
 /**
  * Register agent session IPC handlers
@@ -180,6 +181,7 @@ export function registerAgentSessionHandlers(
           allowedTools: [],
           persistSession: false,
           stderr: () => {},
+          ...getClaudeSdkSpawnOptions(),
         };
 
         const TIMEOUT_MS = getConfig().generation.prGenerationTimeoutMs;

@@ -23,6 +23,7 @@ import {
 } from '../../claude/prompts/slackTriage';
 import type { SlackMcpAvailability } from './McpDiscoveryService';
 import { getConfig } from '../../config';
+import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 
 // ============================================================================
 // Types
@@ -507,6 +508,7 @@ export type SlackTriageService = ReturnType<typeof createSlackTriageService>;
     persistSession: false,
     systemPrompt,
     maxTurns: 1,
+    ...getClaudeSdkSpawnOptions(),
   };
 
         }

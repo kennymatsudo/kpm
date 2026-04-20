@@ -21,6 +21,7 @@ import type { SlackTriageCreateTaskAction, SlackTriageUpdateDocumentAction, Plan
 import type { SlackMessage } from './SlackTriageService';
 import { unwrapOrThrow } from '../result';
 import { getConfig } from '../../config';
+import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 
 // =============================================================================
 // Deps type
@@ -206,6 +207,7 @@ export function createSlackTriageAdapter(deps: SlackTriageAdapterDeps) {
               message: 'Slack triage may only use Slack MCP tools in this adapter session.',
             }
       ),
+      ...getClaudeSdkSpawnOptions(),
     };
 
     const queryGenerator = query({ prompt: userPrompt, options: sdkOptions });
