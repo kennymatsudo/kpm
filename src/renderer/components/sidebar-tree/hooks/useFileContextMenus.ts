@@ -76,17 +76,23 @@ export function useFileContextMenus({
   const handleConfirmDelete = useCallback(async () => {
     if (!deleteConfirmPath) return;
     setIsDeletingFile(true);
+    const pathToDelete = deleteConfirmPath;
     try {
+      const success = await deleteEntry(pathToDelete);
       if (success) {
+        const node = getNodeByPath(pathToDelete);
         if (node) {
           const resource: FocusedResource = {
             type: 'project_file',
+            path: pathToDelete,
             isDirectory: node.isDirectory,
           };
           removeFocusedResource(resource);
         }
+        closeIfViewing(pathToDelete);
       }
     } finally {
+      setDeleteConfirmPath(null);
       setIsDeletingFile(false);
     }
   }, [deleteConfirmPath, deleteEntry, getNodeByPath, removeFocusedResource, closeIfViewing]);
