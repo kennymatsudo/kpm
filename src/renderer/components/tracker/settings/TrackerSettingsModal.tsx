@@ -25,6 +25,13 @@ export function TrackerSettingsModal({ isOpen, onClose, currentProjectId, initia
     initialSelection ?? 'connection'
   );
 
+  // A project uses exactly one tracker. If associations exist for this project,
+  // lock the sidebar to that type so the user can't set up the other one.
+  const lockedTrackerType: TrackerType | null = currentProjectId
+    ? associations.find((a) => a.kpm_project_id === currentProjectId)?.tracker_type ?? null
+    : null;
+  const activeTrackerType: TrackerType = lockedTrackerType ?? selectedTrackerType;
+
   // Note: Data is already loaded by TrackerSettings parent component.
   // We don't reload here to avoid triggering parent's loading state which would unmount this modal.
 
@@ -129,6 +136,7 @@ export function TrackerSettingsModal({ isOpen, onClose, currentProjectId, initia
           onSelectItem={handleSelectItem}
           onSelectTrackerType={setSelectedTrackerType}
           canLinkNew={hasCredentials && !!currentProjectId}
+          lockedTrackerType={lockedTrackerType}
         />
 
         {/* Main Panel */}

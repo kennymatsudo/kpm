@@ -156,6 +156,15 @@ export function createTrackerService(deps: TrackerServiceDeps) {
       displayName?: string
     ): ServiceResult<TrackerAssociationWithScope> {
       try {
+        const existing = deps.tracker.getAssociationsByProject(projectId);
+        const conflict = existing.find((a) => a.tracker_type !== trackerType);
+        if (conflict) {
+          const existingLabel = conflict.tracker_type === 'jira' ? 'Jira' : 'Linear';
+          const incomingLabel = trackerType === 'jira' ? 'Jira' : 'Linear';
+          return failure(
+            `This project is already linked to ${existingLabel}. Remove the ${existingLabel} link before connecting ${incomingLabel}.`
+          );
+        }
         const connection = deps.tracker.getOrCreateConnection(trackerType, siteUrl);
         const scope = deps.tracker.getOrCreateScope(connection.id, projectKey, projectName);
         const association = deps.tracker.createAssociation(projectId, scope.id, filter, displayName);

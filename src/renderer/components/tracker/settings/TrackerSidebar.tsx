@@ -10,6 +10,8 @@ interface Props {
   onSelectItem: (item: SelectedItem) => void;
   onSelectTrackerType: (trackerType: TrackerType) => void;
   canLinkNew: boolean;
+  /** If set, the project is already linked to this tracker and the toggle is locked. */
+  lockedTrackerType?: TrackerType | null;
 }
 
 export function TrackerSidebar({
@@ -20,6 +22,7 @@ export function TrackerSidebar({
   onSelectItem,
   onSelectTrackerType,
   canLinkNew,
+  lockedTrackerType,
 }: Props) {
   const isConnectionSelected = selectedItem === 'connection';
   const isLinkNewSelected = selectedItem === 'link-new';
@@ -31,6 +34,29 @@ export function TrackerSidebar({
           Tracker
         </p>
         <div className="flex gap-1 p-1 rounded-lg bg-surface-3">
+          {(['jira', 'linear'] as const).map((type) => {
+            const disabled = lockedTrackerType !== null && lockedTrackerType !== undefined && lockedTrackerType !== type;
+            const title = disabled
+              ? `Project is linked to ${lockedTrackerType === 'jira' ? 'Jira' : 'Linear'}. Unlink it first to switch trackers.`
+              : undefined;
+            return (
+              <button
+                key={type}
+                onClick={() => !disabled && onSelectTrackerType(type)}
+                disabled={disabled}
+                title={title}
+                className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'
+                } ${
+                  trackerType === type
+                    ? 'bg-surface-1 text-text-primary shadow-sm'
+                    : 'text-text-tertiary hover:text-text-primary'
+                }`}
+              >
+                {type === 'jira' ? 'Jira' : 'Linear'}
+              </button>
+            );
+          })}
         </div>
       </div>
 

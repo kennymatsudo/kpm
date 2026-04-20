@@ -46,11 +46,13 @@ export function useTrackerTopBarIntegration({
     credentials,
     loadCredentials,
     setShowDialog: setShowCredentialsDialog,
+    setSelectedTrackerType,
   } = useCredentialStore(
     useShallow((state) => ({
       credentials: state.credentials,
       loadCredentials: state.loadCredentials,
       setShowDialog: state.setShowDialog,
+      setSelectedTrackerType: state.setSelectedTrackerType,
     }))
   );
 
@@ -116,6 +118,18 @@ export function useTrackerTopBarIntegration({
       void refreshQueueCount(currentProjectId);
     }
   }, [currentProjectId, loadAssociations, refreshQueueCount]);
+
+  // A project uses exactly one tracker. When associations exist, lock the global
+  // selectedTrackerType to match so the UI (TopBar, settings modal) can't drift
+  // into showing the other tracker for this project.
+  const projectTrackerType = associations.find(
+    (a) => a.kpm_project_id === currentProjectId
+  )?.tracker_type ?? null;
+  useEffect(() => {
+    if (projectTrackerType && projectTrackerType !== trackerType) {
+      setSelectedTrackerType(projectTrackerType);
+    }
+  }, [projectTrackerType, trackerType, setSelectedTrackerType]);
 
   useEffect(() => {
     if (!currentProjectId || trackerAssociations.length === 0) return;
