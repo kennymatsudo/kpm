@@ -505,6 +505,7 @@ export type SlackTriageService = ReturnType<typeof createSlackTriageService>;
 // ============================================================================
 
   const sdkOptions: SDKOptions = {
+    tools: [],
     persistSession: false,
     systemPrompt,
     maxTurns: 1,

@@ -446,6 +446,7 @@ HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and 
 
         const sdkOptions: SDKOptions = {
           model: getConfig().generation.fastModel,
+          tools: [],
           persistSession: false,
           systemPrompt,
           stderr: (data: string) => { logError(`stderr: ${data}`); },
