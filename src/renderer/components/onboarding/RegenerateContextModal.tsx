@@ -136,6 +136,7 @@ export function RegenerateContextModal() {
       </div>
 
       {/* Body */}
+      <ModalBody className={phase === 'generate' ? 'flex flex-col min-h-[300px]' : ''}>
         {phase === 'configure' && (
           <StepScopeFeature
             description={description}

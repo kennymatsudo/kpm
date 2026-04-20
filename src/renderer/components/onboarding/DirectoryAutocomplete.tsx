@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { CloseIcon } from '../icons';
 import { listRepoDirectories } from '../../services/repoService';
 
@@ -19,6 +20,7 @@ export function DirectoryAutocomplete({
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
@@ -26,12 +28,21 @@ export function DirectoryAutocomplete({
   const fetchSuggestions = useCallback(async (prefix: string) => {
     if (!prefix) {
       setSuggestions([]);
+      setShowSuggestions(false);
+      setDropdownRect(null);
       return;
     }
     try {
       const results = await listRepoDirectories(repoPath, prefix);
       const filtered = results.filter((d: string) => !directories.includes(d));
       setSuggestions(filtered);
+      if (filtered.length > 0) {
+        setDropdownRect(inputRef.current?.getBoundingClientRect() ?? null);
+        setShowSuggestions(true);
+      } else {
+        setShowSuggestions(false);
+        setDropdownRect(null);
+      }
       setSelectedIndex(-1);
     } catch {
       setSuggestions([]);
@@ -53,6 +64,7 @@ export function DirectoryAutocomplete({
     setInputValue('');
     setSuggestions([]);
     setShowSuggestions(false);
+    setDropdownRect(null);
     inputRef.current?.focus();
   }, [directories, onDirectoriesChange]);
 
@@ -139,13 +151,26 @@ export function DirectoryAutocomplete({
           onChange={e => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => {
+            if (suggestions.length > 0) {
+              setDropdownRect(inputRef.current?.getBoundingClientRect() ?? null);
+              setShowSuggestions(true);
+            }
           }}
           placeholder="Type a directory path..."
           className="w-full px-2.5 py-1.5 text-xs font-mono bg-surface-2 border border-border-default rounded-md text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
         />
 
+        {showSuggestions && suggestions.length > 0 && dropdownRect && createPortal(
           <div
             ref={suggestionsRef}
+            style={{
+              position: 'fixed',
+              top: dropdownRect.bottom + 4,
+              left: dropdownRect.left,
+              width: dropdownRect.width,
+              zIndex: 9999,
+            }}
+            className="bg-surface-1 border border-border-default rounded-md shadow-lg max-h-64 overflow-y-auto"
           >
             {suggestions.map((suggestion, i) => (
               <button
@@ -163,6 +188,8 @@ export function DirectoryAutocomplete({
                 {suggestion}
               </button>
             ))}
+          </div>,
+          document.body
         )}
       </div>
     </div>
