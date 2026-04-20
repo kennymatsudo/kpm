@@ -39,6 +39,18 @@ export interface SendChatMessageInput {
   clientMessageId?: string;
 }
 
+/**
+ * View metadata forwarded to the prompt/streaming layer.
+ *
+ * ChatService does not inspect these fields — it only forwards them. Keeping
+ * them separate from `SendChatMessageInput` makes the service view-agnostic:
+ * the UI can restructure its focus/view model without touching chat logic.
+ */
+export interface ChatPromptContext {
+  focusedResources: FocusedResource[];
+  currentView?: ChatViewMode;
+}
+
   }
 
 }
@@ -51,6 +63,10 @@ export function createChatService(deps: ChatServiceDeps) {
   }
 
   return {
+    async sendMessage(
+      input: SendChatMessageInput,
+      promptContext?: ChatPromptContext,
+    ): AsyncResult<void> {
       const {
         projectId,
         message,
@@ -73,7 +89,9 @@ export function createChatService(deps: ChatServiceDeps) {
           {
             model: model ?? 'sonnet',
             effort,
+            focusedResources: (promptContext?.focusedResources ?? []) as { type: string; path: string }[],
             chatSessionId,
+            currentView: promptContext?.currentView,
           }
         );
 

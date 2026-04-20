@@ -603,6 +603,13 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
           case 'reparent':
             // Already processed in batchExecuteReparents
             break;
+          default: {
+            const _exhaustive: never = action;
+            void _exhaustive;
+            throw new Error(
+              `[PlanActionService] Unhandled action type: ${(action as { type: string }).type}`
+            );
+          }
         }
       }
     });
