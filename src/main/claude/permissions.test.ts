@@ -262,6 +262,8 @@ describe('permissions', () => {
           repoPaths: ['/repos/my-app', '/repos/shared-lib'],
         };
         handler = createPermissionHandler(context, mockPromptUser);
+        vi.mocked(clientManager.hasPermissionCached).mockReturnValue(false);
+        vi.mocked(clientManager.hasAllowAllRemaining).mockReturnValue(false);
       });
 
       });
