@@ -107,6 +107,26 @@ export async function detectBaseBranch(
 }
 
 /**
+ * Resolve the effective base branch: verify the declared branch exists in the
+ * repo; if it doesn't (e.g. a session created against 'main' in a 'master'
+ * repo), fall back to detectBaseBranch.
+ */
+export async function resolveBaseBranch(
+  repoPath: string,
+  declared?: string | null
+): Promise<string> {
+  if (declared) {
+    try {
+      await gitExec(['rev-parse', '--verify', declared], { cwd: repoPath });
+      return declared;
+    } catch {
+      // branch doesn't exist in this repo — fall through to detection
+    }
+  }
+  return detectBaseBranch(repoPath);
+}
+
+/**
  * Check if a branch has any commits ahead of a base branch.
  */
 export async function hasCommitsAhead(

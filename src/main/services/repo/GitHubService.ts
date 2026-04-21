@@ -6,6 +6,7 @@
  */
 
 import { existsSync } from 'fs';
+import { randomUUID } from 'crypto';
 import type { IDevSessionRepository, IRepoRepository, IPlanItemRepository } from '../../db/interfaces';
 import type {
   PrComment,
@@ -35,6 +36,7 @@ import {
 import {
   getCommitLog,
   getCurrentBranch,
+  resolveBaseBranch,
   hasCommitsAhead,
   readPrTemplate,
 } from './gitUtils';
@@ -181,6 +183,7 @@ export function createGitHubService(deps: GitHubServiceDeps) {
         }
 
         // Check for commits ahead of base
+        const baseBranch = await resolveBaseBranch(repoPath, session.base_branch);
         const commits = await hasCommitsAhead(repoPath, baseBranch);
         if (!commits) {
           return failure(`No commits ahead of ${baseBranch}. Commit your changes before creating a PR.`);
@@ -343,6 +346,7 @@ export function createGitHubService(deps: GitHubServiceDeps) {
       if ('error' in resolved) return failure(resolved.error);
 
       try {
+        const baseBranch = await resolveBaseBranch(repoPath, session.base_branch);
           getCurrentBranch(repoPath),
           hasCommitsAhead(repoPath, baseBranch),
         ]);
@@ -400,6 +404,7 @@ export function createGitHubService(deps: GitHubServiceDeps) {
       try {
         const resolved = resolveSessionRepo(sessionId);
         if ('error' in resolved) return failure(resolved.error);
+        const baseBranch = await resolveBaseBranch(repoPath, session.base_branch);
 
         // Gather context for the prompt
         const [sessionDiff, sessionCommitLog] = diff && commitLog
@@ -565,6 +570,50 @@ HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and 
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }
+    },
+
+    /**
+     * Link an existing PR to a plan item, creating a stub session if none exists.
+     * Finds the most recent session for the item; if none exists, creates a minimal
+     * inactive session so the PR data has somewhere to live.
+     */
+    async linkPrToItem(planItemId: string, repoId: string, prIdentifier: string): AsyncResult<PrStatus> {
+      const existingSession = deps.devSessions.getByPlanItem(planItemId);
+
+      let sessionId: string;
+      if (existingSession) {
+        sessionId = existingSession.id;
+      } else {
+        const planItem = deps.planItems.get(planItemId);
+        if (!planItem) return failure(`Plan item not found: ${planItemId}`);
+        if (!planItem.project_id) return failure(`Plan item has no project ID: ${planItemId}`);
+
+        const repo = deps.repos.getById(repoId);
+        if (!repo) return failure(`Repo not found: ${repoId}`);
+
+        const stub = deps.devSessions.create({
+          id: randomUUID(),
+          project_id: planItem.project_id,
+          plan_item_id: planItemId,
+          repo_id: repoId,
+          name: null,
+          worktree_path: '',
+          branch_name: '',
+          base_branch: '',
+          status: 'inactive',
+          agent_type: 'claude',
+          automation_phase: null,
+          initial_instructions: '',
+          pr_number: null,
+          pr_url: null,
+          pr_state: null,
+          review_state: null,
+          merge_order: null,
+        });
+        sessionId = stub.id;
+      }
+
+      return this.linkPr(sessionId, prIdentifier);
     },
 
     /**

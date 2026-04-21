@@ -870,6 +870,8 @@ const github = {
     ipcRenderer.invoke(IPC_CHANNELS.github.detectAndLinkPr, { sessionId }),
   linkPr: (sessionId: string, prIdentifier: string): Promise<{ success: boolean; number?: number; url?: string; state?: string; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.github.linkPr, { sessionId, prIdentifier }),
+  linkPrToItem: (planItemId: string, repoId: string, prIdentifier: string): Promise<{ success: boolean; number?: number; url?: string; state?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.github.linkPrToItem, { planItemId, repoId, prIdentifier }),
 };
 
 const review = {

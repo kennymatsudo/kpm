@@ -115,4 +115,15 @@ export function registerGitHubHandlers(gitHubService: GitHubService): void {
       'Failed to link pull request'
     )
   );
+
+  ipcMain.handle(
+    IPC_CHANNELS.github.linkPrToItem,
+    createIpcHandler(
+      GitHubSchemas.linkPrToItem,
+      async ({ planItemId, repoId, prIdentifier }) => {
+        return unwrapOrThrow(await gitHubService.linkPrToItem(planItemId, repoId, prIdentifier));
+      },
+      'Failed to link pull request to item'
+    )
+  );
 }

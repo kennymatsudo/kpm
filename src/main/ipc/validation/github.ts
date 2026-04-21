@@ -49,4 +49,10 @@ export const GitHubSchemas = {
     sessionId: uuid,
     prIdentifier: z.string().min(1, 'PR identifier is required').max(512),
   }),
+
+  linkPrToItem: z.object({
+    planItemId: uuid,
+    repoId: uuid,
+    prIdentifier: z.string().min(1, 'PR identifier is required').max(512),
+  }),
 };

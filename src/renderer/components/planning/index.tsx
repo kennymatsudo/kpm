@@ -6,6 +6,7 @@ import { BulkDeleteConfirmDialog } from './BulkDeleteConfirmDialog';
 import { CreateItemModal } from './CreateItemModal';
 import { TreeView } from '../tree-view';
 import { BoardView } from '../board-view';
+import { LinkPrToItemDialog } from '../development/LinkPrToItemDialog';
 import {
   toast,
   useProjectDomainStore,
@@ -14,6 +15,7 @@ import {
   useTrackerStore,
   useExportStore,
   useGroupStore,
+  useResourceDomainStore,
   selectNormalizedPlanItems,
   selectFocusedPlanItemId,
   selectDescendantIds,
@@ -173,6 +175,15 @@ export function PlanView({
     executePlanActions,
     setSelectedItemIds,
   });
+
+  // --- Link PR to item ---
+
+  const repos = useResourceDomainStore((state) => state.repos);
+  const [linkPrItemId, setLinkPrItemId] = useState<string | null>(null);
+
+  const handleLinkPr = useCallback((itemId: string) => {
+    setLinkPrItemId(itemId);
+  }, []);
 
   // --- Agent start modal ---
 
@@ -473,6 +484,7 @@ export function PlanView({
           onClose={closeContextMenu}
           onEditItem={() => handleEditItem(contextMenu.singleItemId!)}
           onDelete={openBulkDeleteDialog}
+          onLinkPr={() => handleLinkPr(contextMenu.singleItemId!)}
         />
       ) : contextMenu ? (
         <BulkActionsMenu
@@ -487,6 +499,21 @@ export function PlanView({
           onClose={closeContextMenu}
         />
       ) : null}
+
+      {/* Link PR to Item Dialog */}
+      {linkPrItemId && (
+        <LinkPrToItemDialog
+          isOpen={true}
+          onClose={() => setLinkPrItemId(null)}
+          planItemId={linkPrItemId}
+          repos={repos}
+          onLinked={() => {
+            if (currentProjectId) {
+              void loadSessions(currentProjectId);
+            }
+          }}
+        />
+      )}
 
       {/* Agent Start Modal */}
       {agentStartItem && (
