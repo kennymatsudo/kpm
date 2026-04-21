@@ -132,6 +132,27 @@
   --terminal-bright-white: #ffffff;
 }
 
+[data-kpm-diff-viewer] > div {
+  width: 100%;
+}
+
+[data-kpm-diff-viewer] table {
+  width: 100% !important;
+  min-width: 100% !important;
+  table-layout: fixed !important;
+}
+
+[data-kpm-diff-viewer] td:last-child {
+  width: 100% !important;
+}
+
+[data-kpm-diff-viewer] td:last-child > * {
+  display: block;
+  width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ============================================
    Typography
    ============================================ */
