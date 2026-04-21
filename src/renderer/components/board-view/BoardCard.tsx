@@ -238,6 +238,9 @@ export const BoardCard = memo(function BoardCard({
         onContextMenu(e);
       }}
       onDragStart={(e) => {
+        // Chromium/Electron can ignore drags that only carry custom MIME types.
+        // Keep a standard payload so native HTML5 drag starts reliably.
+        e.dataTransfer.setData('text/plain', item.id);
         e.dataTransfer.setData('board-item-id', item.id);
         e.dataTransfer.effectAllowed = 'move';
 

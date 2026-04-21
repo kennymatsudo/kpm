@@ -385,6 +385,9 @@ export const PlanCard = memo(function PlanCard({
         const offsetX = e.clientX - cardRect.left;
         const offsetY = e.clientY - cardRect.top;
 
+        // Chromium/Electron can ignore drags that only carry custom MIME types.
+        // Keep a standard payload so native HTML5 drag starts reliably.
+        e.dataTransfer.setData('text/plain', item.id);
         e.dataTransfer.setData('item-id', item.id);
         e.dataTransfer.setData('source', DragSource.CANVAS);
         // Store the item's original canvas position

@@ -79,6 +79,7 @@ export const MergeQueuePanel = memo(function MergeQueuePanel({
   const handleDragStart = useCallback(
     (e: React.DragEvent, index: number, sessionId: string) => {
       e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', sessionId);
       setDragIndex(index);
       draggedIdRef.current = sessionId;
     },
