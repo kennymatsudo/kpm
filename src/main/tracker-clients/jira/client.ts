@@ -11,6 +11,7 @@ import type {
   UpdateIssueParams,
 } from '../common/types';
 import { TrackerError } from '../common/errors';
+import { jiraAdfCodec } from '../../documents';
 
 const DEFAULT_BATCH_SIZE = 50;
 
@@ -85,6 +86,7 @@ function isResolutionScreenError(error: unknown): boolean {
 
 export class JiraClient implements TrackerClient {
   readonly type = 'jira' as const;
+  readonly documentCodec = jiraAdfCodec;
   private client: Version3Client;
   private siteUrl: string;
 
@@ -199,6 +201,7 @@ export class JiraClient implements TrackerClient {
       key: issue.key,
       id: issue.id,
       title: issue.fields.summary,
+      description: this.documentCodec.fromExternal(issue.fields.description),
       issueType: issue.fields.issuetype?.name ?? 'Task',
       status: issue.fields.status?.name ?? 'Unknown',
       parentKey: issue.fields.parent?.key ?? null,
@@ -465,6 +468,9 @@ export class JiraClient implements TrackerClient {
         summary: params.summary,
       };
 
+      const description = this.documentCodec.toExternal(params.description);
+      if (description !== null) {
+        fields.description = description;
       }
 
       if (params.parentKey) {
@@ -506,6 +512,7 @@ export class JiraClient implements TrackerClient {
       }
 
       if (params.description !== undefined) {
+        fields.description = this.documentCodec.toExternal(params.description);
       }
 
       if (params.labels !== undefined) {

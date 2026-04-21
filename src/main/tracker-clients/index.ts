@@ -13,6 +13,7 @@ export type {
   UpdateIssueParams,
 } from './common/types';
 
+export type { DocumentCodec } from '../documents';
 
 // Errors
 export { TrackerError, type TrackerErrorCode } from './common/errors';
@@ -33,3 +34,6 @@ export {
   buildLinearIssueFilter,
   buildParentIdentifierFilter,
 } from './linear/filter-types';
+
+// Documents
+export { jiraAdfCodec, linearMarkdownCodec, normalizeMarkdown } from '../documents';

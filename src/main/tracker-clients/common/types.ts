@@ -1,3 +1,5 @@
+import type { DocumentCodec } from '../../documents/types';
+
 export type TrackerType = 'jira' | 'linear';
 
 export interface ExternalIssue {
@@ -71,6 +73,7 @@ export interface JiraTransition {
 
 export interface TrackerClient {
   type: TrackerType;
+  documentCodec: DocumentCodec;
   testConnection(): Promise<{ success: boolean; error?: string }>;
   getAvailableProjects(): Promise<{ key: string; name: string }[]>;
   fetchIssues(projectKey: string): AsyncGenerator<ExternalIssue>;

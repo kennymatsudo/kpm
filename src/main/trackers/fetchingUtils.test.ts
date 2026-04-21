@@ -5,6 +5,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { fetchIssuesWithSubtasks } from './fetchingUtils';
 import type { TrackerClient, ExternalIssue } from '../tracker-clients';
+import { linearMarkdownCodec } from '../documents';
 
 // Helper to create mock issues
 function createIssue(key: string, issueType: string, parentKey: string | null = null): ExternalIssue {
@@ -34,6 +35,7 @@ async function* arrayToAsyncGenerator<T>(items: T[]): AsyncGenerator<T> {
 function createMockClient(responses: Map<string, ExternalIssue[]>): TrackerClient {
   return {
     type: 'jira',
+    documentCodec: linearMarkdownCodec,
     testConnection: vi.fn(),
     getAvailableProjects: vi.fn(),
     fetchIssues: vi.fn(),

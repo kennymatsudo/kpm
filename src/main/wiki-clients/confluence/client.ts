@@ -6,6 +6,7 @@
  */
 
 import type { JiraCredentials } from '../../tracker-clients/common/types';
+import { jiraAdfCodec } from '../../documents';
 
 export interface ConfluencePage {
   id: string;
@@ -40,6 +41,7 @@ interface ConfluencePageResponse {
 export class ConfluenceClient {
   private baseUrl: string;
   private authHeader: string;
+  private documentCodec = jiraAdfCodec;
 
   constructor(credentials: JiraCredentials) {
     this.baseUrl = `https://${credentials.siteUrl}/wiki`;
@@ -81,6 +83,7 @@ export class ConfluenceClient {
     // Parse ADF content
     let content = '';
       try {
+        content = this.documentCodec.fromExternal(adf) ?? '';
       } catch {
         // If ADF parsing fails, leave content empty
       }
@@ -104,6 +107,7 @@ export class ConfluenceClient {
     markdownContent: string,
     currentVersion: number
   ): Promise<ConfluencePage> {
+    const adfContent = this.documentCodec.toExternal(markdownContent);
 
     // First get the page to get its title (required for update)
     const currentPage = await this.getPage(pageId);

@@ -10,6 +10,7 @@ import type {
   UpdateIssueParams,
 } from '../common/types';
 import { TrackerError } from '../common/errors';
+import { linearMarkdownCodec } from '../../documents';
 import {
   buildLinearIssueFilter,
   buildParentIdentifierFilter,
@@ -72,6 +73,7 @@ interface PageInfo { hasNextPage: boolean; endCursor: string | null }
 
 export class LinearClient implements TrackerClient {
   readonly type = 'linear' as const;
+  readonly documentCodec = linearMarkdownCodec;
   private client: GraphQLClient;
 
   constructor(credentials: LinearCredentials) {
@@ -244,6 +246,8 @@ export class LinearClient implements TrackerClient {
         teamId,
         title: params.summary,
       };
+      const description = this.documentCodec.toExternal(params.description);
+      if (description !== null) input.description = description;
       if (params.labels?.length) input.labelIds = params.labels; // Labels must be IDs, not names
       if (params.parentKey) {
         const parent = await this.client.request<{ issue: { id: string } }>(
@@ -281,6 +285,9 @@ export class LinearClient implements TrackerClient {
       );
       const input: Record<string, unknown> = {};
       if (params.summary !== undefined) input.title = params.summary;
+      if (params.description !== undefined) {
+        input.description = this.documentCodec.toExternal(params.description) ?? '';
+      }
       if (params.labels !== undefined) input.labelIds = params.labels;
 
       const data = await this.client.request<{ issueUpdate: { success: boolean } }>(
@@ -373,6 +380,7 @@ export class LinearClient implements TrackerClient {
       key: issue.identifier,
       id: issue.id,
       title: issue.title,
+      description: this.documentCodec.fromExternal(issue.description),
       issueType,
       status: stateName,
       statusType: stateType,
