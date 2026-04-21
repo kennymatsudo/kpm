@@ -9,6 +9,7 @@ export { MarkdownEditor } from './MarkdownEditor';
 export type { MarkdownEditorProps } from './MarkdownEditor';
 export { CodeEditor } from './CodeEditor';
 export type { CodeEditorProps } from './CodeEditor';
+export { DiffViewer, InlineDiff, computeDiff, getDiffStats, getInlineDiffHunks } from './DiffViewer';
 export type { DiffLine, InlineDiffHunk } from './DiffViewer';
 export { ToastContainer } from './Toast';
 export { Badge } from './Badge';

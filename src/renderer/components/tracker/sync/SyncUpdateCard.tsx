@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { SyncUpdatedItem } from '../../../../shared/types';
+import { InlineDiff, getInlineDiffHunks } from '../../ui';
 
 interface Props {
   item: SyncUpdatedItem;
@@ -26,8 +27,10 @@ export function SyncUpdateCard({ item }: Props) {
 
   // Pre-compute diffs for text fields
   const fieldDiffs = useMemo(() => {
+    const diffs: Record<string, ReturnType<typeof getInlineDiffHunks>> = {};
     for (const change of item.changes) {
       if (change.field !== 'external_status' && change.field !== 'status_category') {
+        diffs[change.field] = getInlineDiffHunks(change.old_value, change.new_value);
       }
     }
     return diffs;

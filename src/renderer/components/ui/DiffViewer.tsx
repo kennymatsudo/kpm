@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import { diffLines, diffWords } from 'diff';
 import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued';
 import type { ReactDiffViewerStylesOverride } from 'react-diff-viewer-continued';
 
@@ -25,6 +26,18 @@ interface DiffViewerProps {
 }
 
 export function computeDiff(oldContent: string | null, newContent: string): DiffLine[] {
+  return diffLines(oldContent ?? '', newContent, { stripTrailingCr: true }).flatMap((change) => {
+    const type: DiffLine['type'] = change.added
+      ? 'added'
+      : change.removed
+        ? 'removed'
+        : 'unchanged';
+
+    return change.value
+      .split(/\r?\n/)
+      .filter((line, index, lines) => !(index === lines.length - 1 && line === ''))
+      .map((content) => ({ type, content }));
+  });
 }
 
 /**
@@ -175,6 +188,20 @@ export function getDiffStatsFromDiff(diffLines: DiffLine[]): {
 export interface InlineDiffHunk {
   type: 'equal' | 'insert' | 'delete';
   value: string;
+}
+
+export function getInlineDiffHunks(oldValue: string | null, newValue: string | null): InlineDiffHunk[] {
+  const oldStr = oldValue ?? '';
+  const newStr = newValue ?? '';
+
+  if (oldStr === newStr) {
+    return [{ type: 'equal', value: oldStr }];
+  }
+
+  return diffWords(oldStr, newStr).map((change) => ({
+    type: change.added ? 'insert' : change.removed ? 'delete' : 'equal',
+    value: change.value,
+  }));
 }
 
 interface InlineDiffProps {

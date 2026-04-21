@@ -1,5 +1,6 @@
 import { useRef, useCallback, useState, useMemo, type KeyboardEvent } from 'react';
 import type { SyncConflict, ConflictResolution } from '../../../../shared/types';
+import { InlineDiff, getInlineDiffHunks } from '../../ui';
 
 interface Props {
   conflict: SyncConflict;
@@ -34,7 +35,9 @@ function formatFieldName(field: string): string {
 
   // Pre-compute diffs
   const fieldDiffs = useMemo(() => {
+    const diffs: Record<string, ReturnType<typeof getInlineDiffHunks>> = {};
     for (const field of conflict.fields) {
+      diffs[field.field] = getInlineDiffHunks(field.your_value, field.tracker_value);
     }
     return diffs;
   }, [conflict.fields]);
