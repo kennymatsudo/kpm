@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { infer as ZodInfer } from 'zod';
 import type { PlanAction } from '../../../shared/types';
 import { planActionSchema } from './plan';
 
@@ -38,6 +39,7 @@ type AssertTrue<T extends true> = T;
 
 type _CanonicalMatchesUnion = AssertTrue<Equals<CanonicalType, PlanAction['type']>>;
 type _CanonicalMatchesSchema = AssertTrue<
+  Equals<CanonicalType, ZodInfer<typeof planActionSchema>['type']>
 >;
 
 describe('planActionSchema discriminator sync', () => {

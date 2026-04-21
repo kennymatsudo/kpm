@@ -8,6 +8,7 @@ import type { Repo } from '../../../shared/types';
 import { Modal } from '../ui/Modal';
 import { MotionButton } from '../ui/MotionButton';
 import { toast } from '../../stores/toastStore';
+import { linkPullRequestToPlanItem } from '../../services/githubService';
 import { getBaseName } from '../../utils/path';
 
 interface LinkPrToItemDialogProps {
@@ -44,6 +45,7 @@ export function LinkPrToItemDialog({
     setIsLinking(true);
     setError(null);
     try {
+      const result = await linkPullRequestToPlanItem(planItemId, repoId, prIdentifier.trim());
       if (result.success) {
         toast.success(`Linked PR #${result.number}`);
         onLinked?.();

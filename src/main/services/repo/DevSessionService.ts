@@ -10,6 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
+import { failure, success, type AsyncResult, type ServiceResult } from '../result';
 } from '../../../shared/types';
 import type {
   IAppSettingsRepository,
@@ -94,6 +95,41 @@ export function buildAgentContext(input: AgentContextInput): string {
   }
 
   return sections.join('\n\n');
+}
+
+function buildLegacyBoardPrompt(item: Pick<PlanItem, 'title' | 'description'>): string {
+  const parts: string[] = [item.title];
+  if (item.description) {
+    parts.push('', item.description);
+  }
+  return parts.join('\n').trim();
+}
+
+/**
+ * Build the board-start prompt around the canonical structured task context.
+ * If the user leaves the board editor at its legacy default (title/description),
+ * omit that duplicate text and rely on the structured context alone.
+ */
+export function buildBoardStartInstructions(
+  input: AgentContextInput & { userPrompt?: string | null }
+): string {
+  const structuredContext = buildAgentContext(input);
+  const normalizedUserPrompt = input.userPrompt?.trim() ?? '';
+  const legacyDefaultPrompt = buildLegacyBoardPrompt(input.item);
+
+  if (
+    normalizedUserPrompt.length === 0
+    || normalizedUserPrompt === input.item.title.trim()
+    || normalizedUserPrompt === legacyDefaultPrompt
+  ) {
+    return structuredContext;
+  }
+
+  return [
+    structuredContext,
+    '## Additional User Instructions',
+    normalizedUserPrompt,
+  ].join('\n\n');
 }
 
 export interface DevSessionServiceDeps {
@@ -288,6 +324,33 @@ async function _scaffoldWorktree(params: {
 }
 
 export function createDevSessionService(deps: DevSessionServiceDeps) {
+  function getAgentContextInput(planItemId: string): ServiceResult<AgentContextInput> {
+    const item = deps.planItems.get(planItemId);
+    if (!item) {
+      return failure(`Plan item not found: ${planItemId}`);
+    }
+
+    if (!item.project_id) {
+      return failure(`Plan item has no project: ${planItemId}`);
+    }
+
+    const project = deps.projects.get(item.project_id);
+    if (!project) {
+      return failure(`Project not found: ${item.project_id}`);
+    }
+
+    const allItems = deps.planItems.getByProject(project.id);
+    const children = allItems.filter((candidate) => candidate.parent_id === planItemId);
+    const parent = item.parent_id ? deps.planItems.get(item.parent_id) ?? null : null;
+
+    return success({
+      item,
+      project,
+      children,
+      parent,
+    });
+  }
+
   const service = {
     /**
      * Get all sessions for a project
@@ -351,6 +414,25 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
      */
     getLatestSessionForPlanItem(planItemId: string): DevSession | undefined {
       return deps.devSessions.getByPlanItem(planItemId);
+    },
+
+    /**
+     * Build the structured prompt used when a board action starts a session.
+     * This keeps board launches aligned with the richer plan-item execution path.
+     */
+    buildBoardStartInstructions(
+      planItemId: string,
+      userPrompt?: string
+    ): ServiceResult<string> {
+      const contextResult = getAgentContextInput(planItemId);
+      if (!contextResult.ok) {
+        return contextResult;
+      }
+
+      return success(buildBoardStartInstructions({
+        ...contextResult.data,
+        userPrompt,
+      }));
     },
 
     /**

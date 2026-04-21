@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { buildAgentContext, buildBoardStartInstructions } from '../../src/main/services/repo/DevSessionService';
 import { createPlanItem, createProject } from '../factories';
 
 describe('buildAgentContext', () => {
@@ -133,5 +134,55 @@ describe('buildAgentContext', () => {
     expect(prompt).not.toContain('## Acceptance Criteria');
     expect(prompt).toContain('## Description');
     expect(prompt).not.toContain('so that every acceptance criterion above is satisfied');
+  });
+});
+
+describe('buildBoardStartInstructions', () => {
+  const project = createProject({ id: 'project-1', name: 'Test Project' });
+
+  it('uses the structured context when the board prompt is left at the legacy default', () => {
+    const item = createPlanItem({
+      project_id: project.id,
+      title: 'Session timeout warning',
+      description: 'Users lose draft work today.',
+      intent: "Warn users before their session expires so they don't lose unsaved work.",
+      acceptance_criteria: [
+        'Warning modal appears 5 minutes before session expires',
+        'Modal exposes an Extend Session action',
+      ],
+    });
+
+    const prompt = buildBoardStartInstructions({
+      item,
+      project,
+      children: [],
+      parent: null,
+      userPrompt: 'Session timeout warning\n\nUsers lose draft work today.',
+    });
+
+    expect(prompt).toContain('## Intent');
+    expect(prompt).toContain('## Acceptance Criteria');
+    expect(prompt).not.toContain('## Additional User Instructions');
+  });
+
+  it('appends explicit user instructions after the structured context', () => {
+    const item = createPlanItem({
+      project_id: project.id,
+      title: 'Investigate storage quota',
+      description: 'Background context.',
+      intent: 'Decide whether IndexedDB is a viable target for offline caching.',
+    });
+
+    const prompt = buildBoardStartInstructions({
+      item,
+      project,
+      children: [],
+      parent: null,
+      userPrompt: 'Prefer touching the existing storage adapter instead of adding a new abstraction.',
+    });
+
+    expect(prompt).toContain('## Intent');
+    expect(prompt).toContain('## Additional User Instructions');
+    expect(prompt).toContain('Prefer touching the existing storage adapter instead of adding a new abstraction.');
   });
 });
