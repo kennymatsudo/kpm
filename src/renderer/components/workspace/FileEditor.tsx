@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useState, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { CodeEditor, MarkdownEditor } from '../ui';
 import type { FocusedResource } from '../../../shared/types';
 import { getBaseName } from '../../utils/path';
 
@@ -12,6 +13,7 @@ interface FileEditorProps {
 /**
  * File editor wrapper for the workspace view.
  * - Markdown files: Full MarkdownEditor with toolbar, shortcuts, side-by-side preview
+ * - Other files: Monaco-based editor/viewer
  */
 export const FileEditor = memo(function FileEditor({ source: _source, path, onClose }: FileEditorProps) {
   const { editingFile, updateContent, saveFile, isSaving: _isSaving, saveError } = useWorkspaceStore(
@@ -231,7 +233,14 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
       {/* Content area */}
       <div className="flex-1 overflow-hidden">
         {editingFile.isReadOnly ? (
+          <CodeEditor
+            path={editingFile.path}
+            content={editingFile.content}
+            isReadOnly
+          />
         ) : (
+          <CodeEditor
+            path={editingFile.path}
             content={editingFile.content}
             onChange={handleContentChange}
           />

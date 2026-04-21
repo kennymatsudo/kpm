@@ -7,6 +7,8 @@ export { DeleteConfirmDialog } from './DeleteConfirmDialog';
 export { ConfirmActionDialog } from './ConfirmActionDialog';
 export { MarkdownEditor } from './MarkdownEditor';
 export type { MarkdownEditorProps } from './MarkdownEditor';
+export { CodeEditor } from './CodeEditor';
+export type { CodeEditorProps } from './CodeEditor';
 export type { DiffLine, InlineDiffHunk } from './DiffViewer';
 export { ToastContainer } from './Toast';
 export { Badge } from './Badge';
