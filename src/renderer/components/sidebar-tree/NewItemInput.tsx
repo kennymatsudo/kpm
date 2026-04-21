@@ -8,6 +8,7 @@ interface NewItemInputProps {
 
 /**
  * Phantom inline input row for creating a new file or folder.
+ * Matches the project tree rename styling.
  */
 export function NewItemInput({ type, onSubmit, onCancel }: NewItemInputProps) {
   const [value, setValue] = useState('');

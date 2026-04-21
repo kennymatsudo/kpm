@@ -73,6 +73,7 @@ export function SidebarSection({
         className={`overflow-hidden transition-all duration-200 ${
           isCollapsed
             ? 'max-h-0 opacity-0 flex-none'
+            : `flex flex-1 min-h-0 flex-col opacity-100 pt-1 ${dropZoneProps ? 'pb-4' : ''}`
         }`}
       >
         {children}

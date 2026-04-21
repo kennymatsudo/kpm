@@ -10,7 +10,10 @@ import {
 } from '../../stores';
 import { useResourceDomainActions } from '../../hooks/useStoreActions';
 import { isImageFile, formatFileSize } from '../../utils/image';
+import { RepoListSection } from './RepoListSection';
+import { ProjectFilesTreeSection } from './ProjectFilesTreeSection';
 import type { RepoWorktree } from './RepoContextMenu';
+import { getParentPath } from '../../utils/path';
 import { subscribe as subscribeToStoreEvent } from '../../stores/storeEvents';
 import {
   copyExternalProjectFile,
@@ -101,6 +104,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     loadDirectory: loadProjectDirectory,
     toggleExpanded: toggleProjectExpanded,
     setSelectedPath: selectPath,
+    setSelectedPaths,
     setRenamingPath,
     setCreatingItem,
     createItemAndSelect,
@@ -482,12 +486,59 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
 
   return (
     <div className="flex flex-col h-full min-h-0">
+      <RepoListSection
+        repos={repos}
+        repoBranches={repoBranches}
         isCollapsed={reposCollapsed}
         onToggleCollapsed={() => setReposCollapsed(!reposCollapsed)}
+        onAddRepo={() => {
+          void handleAddRepo();
+        }}
+        isRepoFocused={isRepoFocused}
+        onToggleRepoFocus={handleToggleRepoFocus}
+        onRepoContextMenu={fileContextMenus.handleRepoContextMenu}
+      />
       <div className="divider mx-4 my-2 flex-none" />
 
+      <ProjectFilesTreeSection
+        projectNodes={projectNodes}
+        expandedPaths={projectExpanded}
+        loadingPaths={projectLoading}
+        selectedPaths={projectSelectedPaths}
+        editingPath={editingPath}
+        renamingPath={renamingPath}
+        creatingItem={creatingItem}
         isCollapsed={filesCollapsed}
         onToggleCollapsed={() => setFilesCollapsed(!filesCollapsed)}
+        addButtonRef={addMenu.addButtonRef}
+        onToggleAddMenu={addMenu.toggleAddMenu}
+        isPathFocused={isPathFocused}
+        isLinkedToConfluence={isDocumentLinked}
+        setSelectedPaths={setSelectedPaths}
+        onOpen={handleFileOpen}
+        onToggleExpand={(path) => {
+          const node = getNodeByPath(path);
+          const shouldLoadChildren =
+            projectId &&
+            !projectExpanded.has(path) &&
+            node?.isDirectory &&
+            node.children === undefined;
+
+          toggleProjectExpanded(path);
+          if (shouldLoadChildren) {
+            void loadProjectDirectory(projectId, path);
+          }
+        }}
+        onToggleFocus={handleToggleFileFocus}
+        onContextMenu={fileContextMenus.handleContextMenu}
+        onRename={rename}
+        onEndRename={handleEndRename}
+        onExternalDrop={handleExternalDrop}
+        onInternalMove={handleInternalMove}
+        onEmptySpaceContextMenu={fileContextMenus.handleEmptySpaceContextMenu}
+        onCreateSubmit={handleCreateSubmit}
+        onCreateCancel={handleCreateCancel}
+      />
 
       <ReposAndFilesOverlays
         projectId={projectId}

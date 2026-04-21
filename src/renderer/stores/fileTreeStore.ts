@@ -43,6 +43,8 @@ interface FileTreeState {
   // Actions
   setProjectId: (projectId: string | null) => void;
   setNodes: (nodes: FileNode[]) => void;
+  setSelectedPath: (path: string | null, mode?: 'single' | 'toggle') => void;
+  setSelectedPaths: (paths: string[]) => void;
   toggleExpanded: (path: string) => void;
   setExpanded: (path: string, expanded: boolean) => void;
   toggleFocused: (path: string) => void;
@@ -180,6 +182,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
 
   setSelectedPath: (path, mode = 'single') => {
     if (path === null) {
+      set({ selectedPaths: new Set() });
       return;
     }
 
@@ -190,10 +193,17 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       } else {
         newPaths.add(path);
       }
+      set({ selectedPaths: newPaths });
       return;
     }
 
     // single
+    set({ selectedPaths: new Set([path]) });
+  },
+
+  setSelectedPaths: (paths) => {
+    const selectedPaths = new Set(paths);
+    set({ selectedPaths });
   },
 
   toggleExpanded: (path) => {
