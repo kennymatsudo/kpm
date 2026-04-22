@@ -115,6 +115,13 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
       await deps.api.repos.watch(repoId, newPath);
       const branch = await deps.api.repos.getBranch(newPath).catch(() => null);
       get().setRepoBranch(repoId, branch);
+
+      // Disconnect active chat sessions so the next message picks up the new cwd.
+      // The SDK bakes cwd into the session at spawn time; stale sessions would
+      // still run git commands from the old repo path.
+      await deps.api.chat.disconnectSession(projectId).catch((err: unknown) => {
+        console.warn('[resourceSlice] Failed to disconnect chat session after worktree change', err);
+      });
     }
 
     return true;
