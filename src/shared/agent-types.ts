@@ -62,6 +62,13 @@ export interface AgentCompletionSummary {
   filesChanged: number;
   additions: number;
   deletions: number;
+  /**
+   * Why the SDK query loop terminated. Surfaces cases like `max_turns`,
+   * `aborted_tools`, `prompt_too_long`, `hook_stopped`, etc. so the UI can
+   * distinguish a clean finish from a budget/abort/rate-limit exit.
+   * ended before the SDK emitted a terminal reason.
+   */
+  terminalReason?: string;
 }
 
 /** A finding from an opposing-agent review or GitHub PR review */

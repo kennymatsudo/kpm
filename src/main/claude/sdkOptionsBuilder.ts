@@ -78,6 +78,9 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
       plugins: enabledPluginPaths.map(p => ({ type: 'local' as const, path: p })),
     }),
     maxTurns: claudeConfig.maxTurns,
+    // Periodic AI-generated progress summaries for Task-tool subagents.
+    // Forks the subagent every ~30s and emits a short description on
+    // `task_progress.summary`; reuses the prompt cache, so cost is minimal.
     // Effort level: guides how much thinking Claude applies (works with adaptive thinking)
     ...(effort && { effort }),
     // Fallback to Sonnet if the primary model is unavailable (e.g., rate limited)

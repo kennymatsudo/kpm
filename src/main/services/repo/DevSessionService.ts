@@ -567,6 +567,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           maxTurns: getConfig().claude.maxTurns,
           permissionMode: getConfig().claude.defaultPermissionMode,
           thinking: { type: 'adaptive' as const, display: 'summarized' as const },
+          agentProgressSummaries: true,
           ...getClaudeSdkSpawnOptions(),
         };
 

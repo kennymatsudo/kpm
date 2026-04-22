@@ -89,6 +89,8 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
   private sdkOptions: SDKOptions;
   private abortController: AbortController | null = null;
   private completing = false;
+  private lastProgressSummary: string | null = null;
+  private terminalReason: string | null = null;
 
   constructor(config: ClaudeSdkSessionConfig) {
     super(config.id, config.role);
@@ -214,6 +216,19 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
 
     if (msg.type === 'system' && msg.subtype === 'task_progress') {
       this.markReady();
+      // `summary` is populated by the SDK when `agentProgressSummaries` is on.
+      // Emit it as a system activity so the UI can surface subagent progress
+      // (e.g. "Analyzing authentication module"). Dedupe on the exact text
+      // because the SDK repeats the last summary across progress ticks.
+      const progressSummary = typeof msg.summary === 'string' ? msg.summary.trim() : '';
+      if (progressSummary && progressSummary !== this.lastProgressSummary) {
+        this.lastProgressSummary = progressSummary;
+        this.emitActivity({
+          type: 'system',
+          timestamp: Date.now(),
+          summary: progressSummary,
+        });
+      }
       return;
     }
 
@@ -279,6 +294,11 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
     if (msg.type === 'result') {
       this.markReady();
       const terminalReason = msg.terminal_reason;
+      // Only stash non-normal reasons; 'completed' is the expected case and
+      // surfacing it as "ended because completed" would be noise.
+      if (typeof terminalReason === 'string' && terminalReason && terminalReason !== 'completed') {
+        this.terminalReason = terminalReason;
+      }
         this.emitActivity({
           type: 'system',
           timestamp: Date.now(),
@@ -312,6 +332,8 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
   }
 
   private beginTurn(): void {
+    this.lastProgressSummary = null;
+    this.terminalReason = null;
   }
 
   private async handleCompletion(): Promise<void> {
@@ -327,8 +349,10 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
 
   /** Parse git diff stats from the worktree to build completion summary */
   private async getCompletionSummary(): Promise<AgentCompletionSummary> {
+    const terminalReason = this.terminalReason ?? undefined;
     const cwd = this.sdkOptions.cwd;
     if (!cwd) {
+      return { filesChanged: 0, additions: 0, deletions: 0, terminalReason };
     }
 
     try {
@@ -340,12 +364,14 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
           filesChanged: parseInt(match[1], 10) || 0,
           additions: parseInt(match[2], 10) || 0,
           deletions: parseInt(match[3], 10) || 0,
+          terminalReason,
         };
       }
     } catch {
       // Git diff may fail if not a git repo or no changes
     }
 
+    return { filesChanged: 0, additions: 0, deletions: 0, terminalReason };
   }
 
 }
