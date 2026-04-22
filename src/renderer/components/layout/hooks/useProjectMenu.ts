@@ -1,3 +1,4 @@
+import { useState, useRef, useCallback } from 'react';
 import type { Project } from '../../../../shared/types';
 import { openProjectFolder } from '../../../services/projectService';
 import { getBaseName } from '../../../utils/path';
@@ -13,8 +14,11 @@ interface ProjectMenuDeps {
 interface ProjectMenuReturn {
   showMenu: boolean;
   showDeleteConfirm: boolean;
+  menuPos: DOMRect | null;
+  buttonRef: React.RefObject<HTMLButtonElement | null>;
   setShowMenu: (show: boolean) => void;
   setShowDeleteConfirm: (show: boolean) => void;
+  handleOpenMenu: () => void;
   handleDeleteClick: () => void;
   handleConfirmDelete: () => void;
   handleOpenProject: (projectId: string) => void;
@@ -33,8 +37,14 @@ export function useProjectMenu({
 }: ProjectMenuDeps): ProjectMenuReturn {
   const [showMenu, setShowMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [menuPos, setMenuPos] = useState<DOMRect | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
+  const handleOpenMenu = useCallback(() => {
+    if (!showMenu && buttonRef.current) {
+      setMenuPos(buttonRef.current.getBoundingClientRect());
     }
+    setShowMenu((prev) => !prev);
   }, [showMenu]);
 
   const handleDeleteClick = useCallback(() => {
@@ -82,8 +92,11 @@ export function useProjectMenu({
   return {
     showMenu,
     showDeleteConfirm,
+    menuPos,
+    buttonRef,
     setShowMenu,
     setShowDeleteConfirm,
+    handleOpenMenu,
     handleDeleteClick,
     handleConfirmDelete,
     handleOpenProject,

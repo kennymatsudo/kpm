@@ -843,6 +843,8 @@ select:focus-visible {
   transition: all var(--transition-fast);
 }
 
+.dropdown-item:hover,
+.dropdown-item[data-highlighted] {
   background: var(--color-surface-3);
   color: var(--color-text-primary);
 }
@@ -851,6 +853,8 @@ select:focus-visible {
   color: var(--color-danger);
 }
 
+.dropdown-item-danger:hover,
+.dropdown-item-danger[data-highlighted] {
   background: var(--color-danger-muted);
   color: var(--color-danger);
 }
@@ -859,8 +863,15 @@ select:focus-visible {
   color: var(--color-accent);
 }
 
+.dropdown-item-accent:hover,
+.dropdown-item-accent[data-highlighted] {
   background: var(--color-accent-subtle);
   color: var(--color-accent);
+}
+
+/* Submenu trigger highlight when submenu is open */
+.dropdown-item[data-state="open"] {
+  color: var(--color-text-primary);
 }
 
 .dropdown-separator {

@@ -49,5 +49,12 @@ export function StatusSelector({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         )}
+        {STATUS_OPTIONS.map((status) => {
+          const config = STATUS_CATEGORY_CONFIG[status];
+          const isSelected = status === value;
+          return (
+              </span>
+          );
+        })}
   );
 }

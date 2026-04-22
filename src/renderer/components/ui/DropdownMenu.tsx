@@ -1,5 +1,10 @@
+import * as RadixDropdown from '@radix-ui/react-dropdown-menu';
+import type { ReactNode } from 'react';
 import { Z_INDEX } from '../../constants/zIndex';
 
+export type DropdownPosition =
+  | { type: 'point'; x: number; y: number }
+  | { type: 'anchor'; anchor: DOMRect; placement?: 'bottom' | 'top' | 'right' | 'left' };
 
 interface DropdownMenuProps {
   isOpen: boolean;
@@ -11,12 +16,44 @@ interface DropdownMenuProps {
   minWidth?: number;
 }
 
+function DropdownMenuRoot({ isOpen, onClose, position, children, className = '', zIndex = Z_INDEX.dropdown, minWidth = 160 }: DropdownMenuProps) {
+  // Derive a virtual x/y point for both position types.
+  // Radix handles viewport collision via avoidCollisions + collisionPadding.
+  let virtualX = 0;
+  let virtualY = 0;
+  if (position?.type === 'point') {
+    virtualX = position.x;
+    virtualY = position.y;
+  } else if (position?.type === 'anchor') {
+    const gap = 4;
+    virtualX = position.anchor.left;
+    virtualY = position.anchor.bottom + gap;
+  }
 
+  return (
+    <RadixDropdown.Root
+      open={isOpen && !!position}
+      onOpenChange={(open) => !open && onClose()}
+      modal={false}
     >
+      <RadixDropdown.Portal>
+        <RadixDropdown.Content
+          className={`dropdown-menu ${className}`}
+          style={{ minWidth: `${minWidth}px`, zIndex }}
+          align="start"
+          sideOffset={0}
+          collisionPadding={8}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+        >
+          {children}
+        </RadixDropdown.Content>
+      </RadixDropdown.Portal>
+    </RadixDropdown.Root>
   );
 }
 
 interface DropdownMenuItemProps {
+  onClick?: () => void;
   children: ReactNode;
   icon?: ReactNode;
   variant?: 'default' | 'danger' | 'accent';
@@ -45,8 +82,16 @@ function DropdownMenuItem({
   };
 
   return (
+    <RadixDropdown.Item
+      className={`dropdown-item ${variantClasses[variant]} ${
+        disabled ? 'opacity-40 cursor-not-allowed' : ''
+      } ${className}`}
       disabled={disabled}
       title={title}
+      onSelect={(e) => {
+        if (!closeOnClick) e.preventDefault();
+        onClick?.();
+      }}
     >
       {icon && <span className="w-4 h-4 flex items-center justify-center shrink-0">{icon}</span>}
       <span className="flex-1 text-left">{children}</span>
@@ -54,10 +99,12 @@ function DropdownMenuItem({
           {shortcut}
         </kbd>
       )}
+    </RadixDropdown.Item>
   );
 }
 
 function DropdownMenuSeparator() {
+  return <RadixDropdown.Separator className="dropdown-separator" />;
 }
 
 interface DropdownMenuSubmenuProps {
@@ -76,13 +123,20 @@ function DropdownMenuSubmenu({
   highlighted = false,
 }: DropdownMenuSubmenuProps) {
   return (
+    <RadixDropdown.Sub>
+      <RadixDropdown.SubTrigger
+        className={`dropdown-item w-full justify-between ${
           highlighted ? 'dropdown-item-accent' : ''
         }`}
       >
         <span className="flex items-center gap-2">
+          {icon && (
+            <span className="w-4 h-4 flex items-center justify-center shrink-0">{icon}</span>
+          )}
           <span>{trigger}</span>
         </span>
         <svg
+          className="w-4 h-4 text-text-tertiary shrink-0"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -94,6 +148,17 @@ function DropdownMenuSubmenu({
             d="M9 5l7 7-7 7"
           />
         </svg>
+      </RadixDropdown.SubTrigger>
+      <RadixDropdown.Portal>
+        <RadixDropdown.SubContent
+          className="dropdown-menu py-1"
+          style={{ minWidth: `${minWidth}px`, zIndex: Z_INDEX.dropdown + 10 }}
+          collisionPadding={8}
+        >
+          {children}
+        </RadixDropdown.SubContent>
+      </RadixDropdown.Portal>
+    </RadixDropdown.Sub>
   );
 }
 
@@ -111,8 +176,12 @@ function DropdownMenuSubmenuItem({
   className = '',
 }: DropdownMenuSubmenuItemProps) {
   return (
+    <RadixDropdown.Item
+      className={`dropdown-item w-full ${selected ? 'dropdown-item-accent' : ''} ${className}`}
+      onSelect={() => onClick?.()}
     >
       {children}
+    </RadixDropdown.Item>
   );
 }
 

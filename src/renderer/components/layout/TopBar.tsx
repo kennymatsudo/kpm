@@ -95,8 +95,11 @@ export function TopBar({
   const {
     showMenu,
     showDeleteConfirm,
+    menuPos,
+    buttonRef,
     setShowMenu,
     setShowDeleteConfirm,
+    handleOpenMenu,
     handleDeleteClick,
     handleConfirmDelete,
     handleOpenProject,
@@ -134,7 +137,10 @@ export function TopBar({
           handleSaveEdit={handleSaveEdit}
           handleKeyDown={handleKeyDown}
           showMenu={showMenu}
+          menuPos={menuPos}
+          buttonRef={buttonRef}
           setShowMenu={setShowMenu}
+          handleOpenMenu={handleOpenMenu}
           handleOpenProject={handleOpenProject}
           handleNewProject={handleNewProject}
           handleStartEdit={handleStartEdit}
