@@ -841,6 +841,7 @@ select:focus-visible {
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--transition-fast);
+  white-space: nowrap;
 }
 
 .dropdown-item:hover,
