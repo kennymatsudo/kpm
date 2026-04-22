@@ -26,6 +26,10 @@ export function formatFocusedResource(resource: FocusedResource): string {
   const isSingle = focusedResources.length === 1;
   const resource = focusedResources[0];
 
+  const hasReadableFile = focusedResources.some(
+    (r) => r.type === 'project_file' || r.type === 'document'
+  );
+
   // Build a natural-language description of what's focused
   let focusDescription: string;
   if (isSingle) {
@@ -33,6 +37,10 @@ export function formatFocusedResource(resource: FocusedResource): string {
   } else {
     focusDescription = `The user has selected the following ${focusedResources.length} resources. When they say "these", "these files", "the files", "them", or refer to something without specifying what, they mean these resources. When they say "this file" or "this" singularly, ask which one they mean — or infer from context if obvious.`;
   }
+
+  const readHint = hasReadableFile
+    ? `\nUse the \`Read\` tool on the path(s) above to access file content directly — do not call \`list_project_files\` or plan query tools to find them.\n`
+    : '';
 
   return `
 # Focused Selection
