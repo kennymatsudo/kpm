@@ -810,7 +810,10 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           return failure(`Worktree not found: ${session.worktree_path}`);
         }
 
+        // Show only truly uncommitted changes (staged + unstaged vs HEAD).
+        // Committed branch changes are visible via the commit list below.
         const { stdout } = await gitExec(
+          ['diff', 'HEAD'],
           { cwd: session.worktree_path, maxBuffer: 10 * 1024 * 1024 }
         );
 

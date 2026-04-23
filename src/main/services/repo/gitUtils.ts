@@ -40,6 +40,8 @@ export async function getDiff(
   repoPath: string,
   baseBranch: string,
 ): Promise<string> {
+  const effectiveBranch = await resolveUpstreamBranch(repoPath, baseBranch);
+  const mergeBase = await getMergeBase(repoPath, effectiveBranch);
   const { stdout } = await gitExec(
     { cwd: repoPath, maxBuffer: 10 * 1024 * 1024 }
   );
@@ -56,7 +58,9 @@ export async function getCommitLog(
   repoPath: string,
   baseBranch: string
 ): Promise<string> {
+  const effectiveBranch = await resolveUpstreamBranch(repoPath, baseBranch);
   const { stdout } = await gitExec(
+    ['log', `${effectiveBranch}..HEAD`, '--oneline'],
     { cwd: repoPath }
   );
   return stdout.trim();
@@ -127,6 +131,29 @@ export async function resolveBaseBranch(
 }
 
 /**
+ * Prefer the remote tracking branch over the local branch name.
+ * ref (e.g. 'master') can be stale while origin/master points to the actual
+ * rebase target. Using the upstream avoids showing master's new commits as
+ * "ours" in the log and diff.
+ */
+export async function resolveUpstreamBranch(
+  repoPath: string,
+  baseBranch: string
+): Promise<string> {
+  try {
+    const { stdout } = await gitExec(
+      ['rev-parse', '--abbrev-ref', `${baseBranch}@{u}`],
+      { cwd: repoPath }
+    );
+    const upstream = stdout.trim();
+    if (upstream) return upstream;
+  } catch {
+    // No upstream configured for this branch
+  }
+  return baseBranch;
+}
+
+/**
  * Check if a branch has any commits ahead of a base branch.
  */
 export async function hasCommitsAhead(
@@ -134,7 +161,9 @@ export async function hasCommitsAhead(
   baseBranch: string
 ): Promise<boolean> {
   try {
+    const effectiveBranch = await resolveUpstreamBranch(repoPath, baseBranch);
     const { stdout } = await gitExec(
+      ['rev-list', '--count', `${effectiveBranch}..HEAD`],
       { cwd: repoPath }
     );
     return parseInt(stdout.trim(), 10) > 0;

@@ -5,6 +5,7 @@
  * Uses the existing diff infrastructure from devSessionsStore.
  */
 
+import { memo, useState, useCallback, useEffect, useMemo } from 'react';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import type { BackgroundCommitState } from '../../stores/devSessions';
 import { getAgentCommitLog, getAgentCommitFiles } from '../../services/agentSessionService';
@@ -285,6 +286,7 @@ export const ChangesTab = memo(function ChangesTab({
 
   const loadCommits = useCallback(async () => {
     setIsLoadingCommits(true);
+    setCommits([]);
     try {
       const result = await getAgentCommitLog(sessionId);
       if (result.success && result.commits) {
@@ -306,7 +308,9 @@ export const ChangesTab = memo(function ChangesTab({
     }
   }, [diff, isLoading, sessionId, loadDiff]);
 
+  // Reload commits whenever the session changes
   useEffect(() => {
+    void loadCommits();
   }, [loadCommits]);
 
   useEffect(() => {
