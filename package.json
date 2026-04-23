@@ -36,11 +36,15 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@monaco-editor/react": "^4.7.0",
     "@types/better-sqlite3": "7.6.13",
     "@types/react-dom": "19.2.3",
+    "cmdk": "^1.1.1",
     "electron-devtools-installer": "4.0.0",
     "electron-playwright-helpers": "2.1.0",
     "electron-vite": "6.0.0-beta.1",
+    "monaco-editor": "^0.55.1",
+    "react-diff-viewer-continued": "^4.2.0",
     "rollup-plugin-visualizer": "7.0.1",
     "typescript": "6.0.3",
   }

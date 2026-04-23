@@ -32,6 +32,19 @@ files:
   # Exclude license files (large text files, not needed for app functionality)
   - "!node_modules/**/LICENSE*"
   - "!node_modules/**/LICENCE*"
+  # Exclude native module sources and non-target prebuilds
+  - "!node_modules/better-sqlite3/deps/**"
+  - "!node_modules/better-sqlite3/src/**"
+  - "!node_modules/better-sqlite3/binding.gyp"
+  - "!node_modules/keytar/src/**"
+  - "!node_modules/keytar/binding.gyp"
+  - "!node_modules/keytar/keytar.d.ts"
+  - "!node_modules/node-pty/src/**"
+  - "!node_modules/node-pty/scripts/**"
+  - "!node_modules/node-pty/deps/**"
+  - "!node_modules/node-pty/prebuilds/darwin-x64/**"
+  - "!node_modules/node-pty/prebuilds/win32-arm64/**"
+  - "!node_modules/node-pty/prebuilds/win32-x64/**"
 
 # Native modules need to be unpacked from ASAR for proper loading
 asar: true
