@@ -13,6 +13,7 @@ import type { AgentSessionState } from '../../../shared/types';
 interface ActivityTabProps {
   activities: AgentActivity[];
   agentState?: AgentSessionState;
+  sessionLabel?: string;
 }
 
 function formatTime(timestamp: number): string {
@@ -165,6 +166,7 @@ const ActivityEntry = memo(function ActivityEntry({ activity }: { activity: Agen
 export const ActivityTab = memo(function ActivityTab({
   activities,
   agentState,
+  sessionLabel,
 }: ActivityTabProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -193,6 +195,13 @@ export const ActivityTab = memo(function ActivityTab({
 
   return (
     <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
+      {sessionLabel && (
+        <div className="flex items-center gap-2 px-4 py-1.5 sticky top-0 bg-surface-0/90 backdrop-blur-sm border-b border-border-subtle/40">
+          <div className="flex-1 h-px bg-border-subtle/60" />
+          <span className="text-tiny text-amber-500/80 font-medium uppercase tracking-wide">{sessionLabel}</span>
+          <div className="flex-1 h-px bg-border-subtle/60" />
+        </div>
+      )}
         ))}
       </div>
     </div>

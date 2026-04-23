@@ -37,3 +37,6 @@ function getPlaceholder(state: AgentSessionState | undefined): string {
       }
 
 
+    return (
+      </div>
+    );
