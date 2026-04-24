@@ -9,7 +9,9 @@ interface DetailPaneHeaderProps {
   session: DevSessionWithPlanItem;
   agentState: AgentSessionState | undefined;
   commitState?: BackgroundCommitState;
+  canRunReview?: boolean;
   onClose: () => void;
+  onRunReview: () => void;
   onCreatePr: () => void;
   onGeneratePrContent: () => void;
   onLinkPr: () => void;
@@ -75,7 +77,9 @@ export const DetailPaneHeader = memo(function DetailPaneHeader({
   session,
   agentState,
   commitState,
+  canRunReview,
   onClose,
+  onRunReview,
   onCreatePr,
   onGeneratePrContent,
   onLinkPr,

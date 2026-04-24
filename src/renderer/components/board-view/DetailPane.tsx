@@ -58,6 +58,21 @@ export const DetailPane = memo(function DetailPane({
   const planItem = usePlanDomainStore((s) =>
     session.plan_item_id ? s.planItems.find((p) => p.id === session.plan_item_id) : undefined
   );
+  const implIsTerminal =
+    implementationSession.agentState === 'complete'
+    || implementationSession.agentState === 'failed'
+    || implementationSession.agentState === 'stopped';
+  const reviewIsActive =
+    reviewSession.agentState === 'starting'
+    || reviewSession.agentState === 'working'
+    || reviewSession.agentState === 'waiting_for_input';
+  // Manual opposing-agent review can be triggered when the impl is terminal
+  // (or the session is inactive) and no review is already in flight. Used when
+  // the automated post-impl review was skipped (e.g. Codex unavailable).
+  const canRunReview = (implIsTerminal || session.status === 'inactive')
+    && !reviewIsActive
+    && session.automation_phase !== 'addressing_review'
+    && commitState?.status !== 'running';
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -74,6 +89,20 @@ export const DetailPane = memo(function DetailPane({
   }, [activeTab, session.pr_number]);
 
     void stopAgentSession(session.id);
+
+  const handleRunReview = useCallback(() => {
+    void (async () => {
+      const result = await launchAutoReview(session.id);
+      if (!result.success) {
+        toast.error(result.error ?? 'Failed to start review');
+        return;
+      }
+      if (!result.reviewSessionId) {
+        return;
+      }
+      toast.success('Review started');
+    })();
+  }, [session.id]);
 
   const moveToReview = useCallback(() => {
     if (session.plan_item_id) {
@@ -188,7 +217,9 @@ export const DetailPane = memo(function DetailPane({
         session={session}
         agentState={effectiveAgentState}
         commitState={commitState}
+        canRunReview={canRunReview}
         onClose={onClose}
+        onRunReview={handleRunReview}
         onCreatePr={() => setShowCreatePr(true)}
         onGeneratePrContent={() => setShowGeneratePrContent(true)}
         onLinkPr={() => setShowLinkPr(true)}

@@ -14,6 +14,7 @@ import { AgentSessionSchemas, createIpcHandler, createSimpleIpcHandler } from '.
 import { IPC_CHANNELS } from '../channels';
 import { getConfig } from '../../config';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
+import { toReviewSessionId } from '../../../shared/agent-types';
 
 /**
  * Register agent session IPC handlers
@@ -141,6 +142,12 @@ export function registerAgentSessionHandlers(
     )
   );
 
+  // Launch opposing-agent auto-review for a completed session.
+  // Used by the board UI "Run Review" action when the automated post-implementation
+  // review was skipped (e.g. Codex unavailable at the time) and the user wants to
+  // trigger it after the fact. Goes through the same orchestration as the auto path:
+  // sets automation_phase to 'reviewing' so findings will route through the normal
+  // address-review flow in appServices.onSessionComplete.
   ipcMain.handle(
     IPC_CHANNELS.agentSession.launchReview,
     createIpcHandler(
@@ -151,7 +158,46 @@ export function registerAgentSessionHandlers(
           throw new Error(`Session not found: ${devSessionId}`);
         }
 
+        const implAgent = agentSessionManager.getByDevSession(devSessionId);
+        if (implAgent && (
+          implAgent.state === 'starting'
+          || implAgent.state === 'working'
+          || implAgent.state === 'waiting_for_input'
+        )) {
+          throw new Error('Implementation agent is still running — stop it before running review');
+        }
 
+        const existingReview = agentSessionManager.getByDevSession(toReviewSessionId(devSessionId));
+        if (existingReview && (
+          existingReview.state === 'starting'
+          || existingReview.state === 'working'
+          || existingReview.state === 'waiting_for_input'
+        )) {
+          throw new Error('A review is already running for this session');
+        }
+
+        devSessionService.updateAutomationPhase(devSessionId, 'reviewing');
+
+        try {
+          const reviewSessionId = await launchAutoReview({
+            implementationSessionId: devSessionId,
+            implementationAgentType: session.agent_type,
+            worktreePath: session.worktree_path,
+            baseBranch: session.base_branch,
+            taskDescription: session.initial_instructions,
+            projectId: session.project_id,
+            agentSessionManager,
+          });
+
+          if (!reviewSessionId) {
+            devSessionService.updateAutomationPhase(devSessionId, 'idle');
+          }
+
+          return { reviewSessionId };
+        } catch (error) {
+          devSessionService.updateAutomationPhase(devSessionId, 'idle');
+          throw error;
+        }
       },
       'Failed to launch auto-review'
     )
