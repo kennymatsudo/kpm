@@ -1,5 +1,11 @@
 /**
+ * ActivityTab - Narrative activity feed for an agent session.
  *
+ * Groups tool calls under the narration text Claude writes before them, so the
+ * log reads as a sequence of stated intentions + supporting evidence rather than
+ * a flat list of tool names. Orphan tool calls (before Claude writes any
+ * narration) appear flat at the top. Errors and system events are inlined where
+ * they occur in the timeline.
  *
  * Auto-scroll is non-stealing: only jumps to bottom if the user is already
  * near the bottom, so they can freely scroll up to review history while
@@ -58,6 +64,38 @@ function isSignificant(activity: AgentActivity): boolean {
 }
 
 // =============================================================================
+// Grouping
+// =============================================================================
+
+  /** The narration Claude wrote before this batch of tool calls. Null for
+   *  orphan tool calls that appear before any narration. */
+  narration: AgentActivity | null;
+  /** Significant tool_use, error, and system activities in order. */
+  entries: AgentActivity[];
+
+function groupActivities(activities: AgentActivity[]): ActivityGroup[] {
+  const groups: ActivityGroup[] = [];
+  let current: ActivityGroup = { narration: null, entries: [] };
+
+  for (const activity of activities) {
+    if (activity.type === 'message') {
+      if (current.narration !== null || current.entries.length > 0) {
+        groups.push(current);
+      }
+      current = { narration: activity, entries: [] };
+    } else if (isSignificant(activity)) {
+      current.entries.push(activity);
+    }
+  }
+
+  if (current.narration !== null || current.entries.length > 0) {
+    groups.push(current);
+  }
+
+  return groups;
+}
+
+// =============================================================================
 // Icons
 // =============================================================================
 
@@ -99,6 +137,24 @@ function ActivityIcon({ activity }: { activity: AgentActivity }) {
 }
 
 // =============================================================================
+// Narration header
+// =============================================================================
+
+const NarrationHeader = memo(function NarrationHeader({ activity }: { activity: AgentActivity }) {
+  return (
+    <div className="flex items-start justify-between gap-3 px-4 pt-3 pb-1.5">
+      <p className="text-xs text-text-primary leading-relaxed line-clamp-3 flex-1 min-w-0">
+        {activity.content || activity.summary}
+      </p>
+      <span className="text-tiny text-text-muted tabular-nums shrink-0 mt-0.5">
+        {formatTime(activity.timestamp)}
+      </span>
+    </div>
+  );
+});
+
+// =============================================================================
+// Tool / error / system entry
 // =============================================================================
 
 const ActivityEntry = memo(function ActivityEntry({ activity }: { activity: AgentActivity }) {
@@ -139,6 +195,9 @@ const ActivityEntry = memo(function ActivityEntry({ activity }: { activity: Agen
 
         <span className="flex-1 min-w-0">
           <span
+            className={`text-xs leading-relaxed truncate block ${
+              activity.type === 'error' ? 'text-red-400' : 'text-text-secondary'
+            }`}
           >
             {activity.summary}
           </span>
@@ -160,8 +219,27 @@ const ActivityEntry = memo(function ActivityEntry({ activity }: { activity: Agen
 });
 
 // =============================================================================
+// Activity group
 // =============================================================================
 
+const ActivityGroupView = memo(function ActivityGroupView({ group }: { group: ActivityGroup }) {
+  return (
+    <div className="border-b border-border-subtle/40 last:border-0 py-0.5">
+      {group.narration && <NarrationHeader activity={group.narration} />}
+      {group.entries.length > 0 && (
+        <div className={group.narration ? 'ml-3 border-l border-border-subtle/50' : ''}>
+          {group.entries.map((entry, i) => (
+            <ActivityEntry key={`${entry.timestamp}-${i}`} activity={entry} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
+
+// =============================================================================
+// ActivityTab
+// =============================================================================
 
 export const ActivityTab = memo(function ActivityTab({
   activities,
@@ -170,12 +248,20 @@ export const ActivityTab = memo(function ActivityTab({
 }: ActivityTabProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const groups = useMemo(() => groupActivities(activities), [activities]);
+
+  const totalItems = useMemo(
+    () => groups.reduce((n, g) => n + (g.narration ? 1 : 0) + g.entries.length, 0),
+    [groups],
   );
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [totalItems]);
 
+  if (groups.length === 0) {
     const isActive =
       agentState === 'starting' || agentState === 'working' || agentState === 'waiting_for_input';
     return (
@@ -188,6 +274,7 @@ export const ActivityTab = memo(function ActivityTab({
             </svg>
           </>
         ) : (
+          <span className="text-xs">No activity recorded</span>
         )}
       </div>
     );
@@ -202,6 +289,9 @@ export const ActivityTab = memo(function ActivityTab({
           <div className="flex-1 h-px bg-border-subtle/60" />
         </div>
       )}
+      <div className="py-1">
+        {groups.map((group, i) => (
+          <ActivityGroupView key={`${group.narration?.timestamp ?? 'orphan'}-${i}`} group={group} />
         ))}
       </div>
     </div>
