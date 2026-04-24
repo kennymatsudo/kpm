@@ -578,6 +578,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           agentType: session.agent_type,
           role: 'implement',
           sdkOptions: session.agent_type === 'claude' ? sdkOptions : undefined,
+          model: session.agent_type === 'codex' ? getConfig().agentSession.codexModel : undefined,
         });
 
         // Update DB status to active

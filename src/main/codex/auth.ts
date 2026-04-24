@@ -11,6 +11,7 @@ import type { CodexStatus } from '../../shared/types';
 const AUTH_FILE = join(homedir(), '.codex', 'auth.json');
 
 /** Check if the user has valid Codex credentials. */
+export async function hasCodexAuth(): Promise<boolean> {
   try {
     const raw = await readFile(AUTH_FILE, 'utf-8');
     const data = JSON.parse(raw) as Record<string, unknown>;

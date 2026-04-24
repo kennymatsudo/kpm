@@ -103,6 +103,8 @@ export interface AgentSessionConfig {
   terminalSessionTtlMs: number;
   /** Timeout for the initial SDK agent session startup (ms) */
   sessionStartTimeoutMs: number;
+  /** Model for Codex agent sessions (e.g. 'gpt-5.5', 'gpt-5.4'). If omitted, Codex uses its own default. */
+  codexModel?: string;
 }
 
 export interface ReviewAssessmentConfig {
@@ -195,6 +197,7 @@ function createDefaultConfig(): AppConfig {
       maxConcurrentSessionsPerProject: 3,
       terminalSessionTtlMs: 30 * 60 * 1000, // 30 minutes
       sessionStartTimeoutMs: 60 * 1000, // 1 minute
+      codexModel: 'gpt-5.5',
     },
 
     reviewPoll: {

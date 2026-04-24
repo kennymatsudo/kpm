@@ -17,6 +17,7 @@ import { getConfig } from '../../config';
 import type { AgentType, ReviewFinding } from '../../../shared/agent-types';
 import { toReviewSessionId } from '../../../shared/agent-types';
 import { getReviewOpponent, isAgentAvailable } from './agentCatalog';
+import { hasCodexAuth } from '../../codex/auth';
 import type { AgentSessionManager } from './AgentSessionManager';
 
 const LOG_PREFIX = '[AutoReview]';
@@ -55,6 +56,7 @@ async function startReviewSession(params: {
   worktreePath: string;
   reviewPrompt: string;
   agentSessionManager: AgentSessionManager;
+  model?: string;
 }): Promise<void> {
   const {
     reviewAgentType,
@@ -63,6 +65,7 @@ async function startReviewSession(params: {
     worktreePath,
     reviewPrompt,
     agentSessionManager,
+    model,
   } = params;
 
   if (reviewAgentType === 'claude') {
@@ -91,6 +94,7 @@ async function startReviewSession(params: {
     projectId,
     agentType: reviewAgentType,
     role: 'review',
+    model: reviewAgentType === 'codex' ? model : undefined,
   });
 
 }
@@ -205,6 +209,15 @@ export async function launchAutoReview(params: {
     }
   }
 
+  if (reviewAgentType === 'codex' && !await hasCodexAuth()) {
+      console.log(`${LOG_PREFIX} Codex not authenticated, falling back to claude for review`);
+      reviewAgentType = 'claude';
+    } else {
+      console.log(`${LOG_PREFIX} Codex not authenticated and Claude unavailable, skipping auto-review`);
+      return null;
+    }
+  }
+
   // Get the diff
   const diff = await getWorktreeDiff(worktreePath, baseBranch);
   if (!diff.trim()) {
@@ -216,6 +229,8 @@ export async function launchAutoReview(params: {
   // Create a review session ID (derived from implementation session)
   const reviewSessionId = toReviewSessionId(implementationSessionId);
 
+  const codexModel = getConfig().agentSession.codexModel;
+
   try {
     await startReviewSession({
       reviewAgentType,
@@ -224,6 +239,7 @@ export async function launchAutoReview(params: {
       worktreePath,
       reviewPrompt,
       agentSessionManager,
+      model: codexModel,
     });
 
     console.log(`${LOG_PREFIX} Started ${reviewAgentType} review for session ${implementationSessionId}`);

@@ -74,6 +74,7 @@ export interface CreateSessionParams {
   role: AgentSessionRole;
   /** SDK options (for Claude sessions) */
   sdkOptions?: SDKOptions;
+  model?: string;
 }
 
 // =============================================================================
@@ -94,6 +95,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
    * Does NOT start it — call agentSession.start() after creation.
    */
   function create(params: CreateSessionParams): IAgentSession {
+    const { devSessionId, projectId, agentType, role, sdkOptions, model } = params;
 
     // Enforce concurrency limit
     const projectCount = getActiveCountForProject(projectId);
