@@ -53,6 +53,7 @@ asarUnpack:
   - "node_modules/keytar/**"
   - "node_modules/bindings/**"
   - "node_modules/file-uri-to-path/**"
+  - "node_modules/@openai/codex-*/vendor/**"
   - "**/*.node"
 
 # Rebuild native modules for Electron
