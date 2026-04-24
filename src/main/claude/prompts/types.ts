@@ -17,4 +17,14 @@ export interface PlanContext {
   claudeMdContent?: string | null;
   /** Prompt content resolver for configurable prompts (user override > default) */
   getPromptContent?: (key: string) => string;
+  /**
+   * Replay of earlier turns in this chat, injected when the previous SDK
+   * conversation should continue. Empty/undefined for normal sends.
+   */
+  continuationHistory?: ContinuationTurn[];
+}
+
+export interface ContinuationTurn {
+  role: 'user' | 'assistant';
+  content: string;
 }

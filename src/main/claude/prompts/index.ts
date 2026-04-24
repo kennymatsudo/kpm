@@ -11,6 +11,7 @@
 // Re-export types
 export type { PlanContext } from './types';
 
+import type { PlanContext, ContinuationTurn } from './types';
 import { FULL_HIERARCHY_THRESHOLD, buildItemReferenceTable } from './planFormatting';
 import { buildResponseModesSection } from './modes';
 import { buildToolDecisionTree } from './toolDocs';
@@ -20,6 +21,23 @@ import { PROMPT_REGISTRY_MAP } from './promptRegistry';
  * Build view context section for mode-aware suggestions.
  * This is additive to existing response modes, providing UI context.
  */
+function buildContinuationSection(history?: ContinuationTurn[]): string {
+  if (!history || history.length === 0) return '';
+
+  const turns = history
+    .map((turn) => `${turn.role === 'user' ? 'User' : 'Assistant'}: ${turn.content}`)
+    .join('\n\n');
+
+  return `# Prior Conversation (continued)
+
+The user switched worktrees since your last turn, so your tool cache was reset. Re-read files before citing their contents — prior claims about file contents may reflect a different worktree. The chat history below is for context; the user's next message picks up from where it left off.
+
+${turns}
+
+---
+`;
+}
+
 function buildViewContextSection(currentView?: ChatViewMode): string {
   if (!currentView) return '';
 
@@ -57,6 +75,7 @@ export function buildSystemPrompt(context: PlanContext): string {
   };
 
 
+${buildContinuationSection(continuationHistory)}# Project: ${project.name}
 ID: \`${project.id}\` (use for all tool calls)
 Phase: ${project.phase}
 Project folder: \`${project.folder_path}\`

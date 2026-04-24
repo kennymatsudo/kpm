@@ -49,11 +49,13 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     },
     chatMessageRepository: {
       addMessage: container.chatMessages.addMessage.bind(container.chatMessages),
+      getMessagesByChatSession: container.chatMessages.getMessagesByChatSession.bind(container.chatMessages),
     },
     chatSessionRepository: {
       get: container.chatSessions.get.bind(container.chatSessions),
       create: container.chatSessions.create.bind(container.chatSessions),
       updateClaudeSessionId: container.chatSessions.updateClaudeSessionId.bind(container.chatSessions),
+      clearClaudeSessionIdsByProject: container.chatSessions.clearClaudeSessionIdsByProject.bind(container.chatSessions),
     },
     getMainWindow,
     buildContext: buildContextWithPrompts,

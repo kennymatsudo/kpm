@@ -4,6 +4,7 @@ import type {
   PlanActionsEvent,
 } from '../../claude/tools/createKpmServer';
 import {
+  buildContinuationHistory,
   createStreamingSessionService,
   type StreamingSessionServiceDeps,
 } from './StreamingSessionService';
@@ -123,6 +124,7 @@ function createDeps(sendSpy: (channel: string, payload: unknown) => void): Strea
     },
     chatMessageRepository: {
       addMessage: vi.fn(),
+      getMessagesByChatSession: vi.fn(() => []),
     },
     chatSessionRepository: {
       get: (id: string) => chatSessions.get(id),
@@ -130,6 +132,11 @@ function createDeps(sendSpy: (channel: string, payload: unknown) => void): Strea
         return { id };
       },
       updateClaudeSessionId: (id: string, claudeSessionId: string) => {
+      },
+      clearClaudeSessionIdsByProject: () => {
+        for (const [key, value] of chatSessions) {
+          chatSessions.set(key, { ...value, claude_session_id: null });
+        }
       },
     },
     getMainWindow: () => ({
@@ -426,5 +433,139 @@ it('surfaces max-token truncation after finalizing the partial response', async 
       chatSessionId: 'chat-1',
       error: 'Response reached the output limit. Send another message to continue.',
     });
+  });
+});
+
+describe('buildContinuationHistory', () => {
+  it('returns empty for empty history', () => {
+    expect(buildContinuationHistory([])).toEqual([]);
+  });
+
+  it('drops a trailing user turn (the just-sent current message)', () => {
+    const stored: { role: 'user' | 'assistant'; content: string }[] = [
+      { role: 'user', content: 'q1' },
+      { role: 'assistant', content: 'a1' },
+      { role: 'user', content: 'current message being sent' },
+    ];
+    expect(buildContinuationHistory(stored)).toEqual([
+      { role: 'user', content: 'q1' },
+      { role: 'assistant', content: 'a1' },
+    ]);
+  });
+
+  it('keeps trailing assistant turn (unusual but valid)', () => {
+    const stored: { role: 'user' | 'assistant'; content: string }[] = [
+      { role: 'user', content: 'q1' },
+      { role: 'assistant', content: 'a1' },
+    ];
+    expect(buildContinuationHistory(stored)).toEqual([
+      { role: 'user', content: 'q1' },
+      { role: 'assistant', content: 'a1' },
+    ]);
+  });
+
+  it('returns empty when the only stored message is the current send', () => {
+    expect(buildContinuationHistory([{ role: 'user', content: 'just sent' }])).toEqual([]);
+  });
+
+  it('truncates an oversized single turn rather than dropping it', () => {
+    const big = 'x'.repeat(20_000);
+    const stored: { role: 'user' | 'assistant'; content: string }[] = [
+      { role: 'assistant', content: big },
+    ];
+    const out = buildContinuationHistory(stored);
+    expect(out).toHaveLength(1);
+    expect(out[0].content.length).toBeLessThan(big.length);
+    expect(out[0].content.endsWith('[…truncated]')).toBe(true);
+  });
+
+  it('caps at 20 turns, keeping the most recent', () => {
+    const stored: { role: 'user' | 'assistant'; content: string }[] = [];
+    for (let i = 0; i < 30; i++) {
+      stored.push({ role: i % 2 === 0 ? 'user' : 'assistant', content: `msg ${i}` });
+    }
+    // Trailing turn (i=29) is assistant, so no trim; builder takes last 20.
+    const out = buildContinuationHistory(stored);
+    expect(out).toHaveLength(20);
+    expect(out[0].content).toBe('msg 10');
+    expect(out[out.length - 1].content).toBe('msg 29');
+  });
+});
+
+describe('createChatSession continuation wiring', () => {
+  const sendSpy = vi.fn();
+
+  beforeEach(() => {
+    mockSessionInstances.length = 0;
+    mockSessionCounter.nextId = 1;
+    sendSpy.mockClear();
+  });
+
+  it('seeds continuationHistory on fresh sessions when prior turns exist', async () => {
+    const deps = createDeps(sendSpy);
+    const capturedContexts: unknown[] = [];
+    const depsWithCapture: StreamingSessionServiceDeps = {
+      ...deps,
+      chatMessageRepository: {
+        ...deps.chatMessageRepository,
+        getMessagesByChatSession: vi.fn(() => [
+          { role: 'user' as const, content: 'earlier question' },
+          { role: 'assistant' as const, content: 'earlier answer' },
+          { role: 'user' as const, content: 'new message after worktree switch' },
+        ]),
+      },
+      buildSdkOptions: (ctx) => {
+        capturedContexts.push(ctx);
+      },
+    };
+
+    const service = createStreamingSessionService(depsWithCapture);
+    const result = await service.sendChatMessage('project-1', 'new message after worktree switch', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(result.ok).toBe(true);
+
+    expect(capturedContexts).toHaveLength(1);
+    const ctx = capturedContexts[0] as { continuationHistory?: unknown };
+    expect(ctx.continuationHistory).toEqual([
+      { role: 'user', content: 'earlier question' },
+      { role: 'assistant', content: 'earlier answer' },
+    ]);
+
+    await service.disposeAll();
+  });
+
+  it('does not seed continuationHistory for a resumed session', async () => {
+    const deps = createDeps(sendSpy);
+    const capturedContexts: unknown[] = [];
+    const depsWithCapture: StreamingSessionServiceDeps = {
+      ...deps,
+      chatSessionRepository: {
+        ...deps.chatSessionRepository,
+      },
+      chatMessageRepository: {
+        ...deps.chatMessageRepository,
+        getMessagesByChatSession: vi.fn(() => [
+          { role: 'user' as const, content: 'earlier' },
+          { role: 'assistant' as const, content: 'answer' },
+        ]),
+      },
+      buildSdkOptions: (ctx) => {
+        capturedContexts.push(ctx);
+      },
+    };
+
+    const service = createStreamingSessionService(depsWithCapture);
+    const result = await service.sendChatMessage('project-1', 'continuing', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(result.ok).toBe(true);
+
+    const ctx = capturedContexts[0] as { continuationHistory?: unknown };
+    expect(ctx.continuationHistory).toBeUndefined();
+
+    await service.disposeAll();
   });
 });

@@ -41,6 +41,44 @@ export type SessionType = 'chat';
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
 /** UI view mode - passed to prompts for context-aware suggestions */
 
+// Budgets for the history replay seeded into a fresh SDK session after a
+// worktree switch. MAX_TURNS caps ping-pong depth; MAX_CHARS (~15k tokens)
+// bounds the preface; MAX_TURN_CHARS prevents a single noisy turn from
+// eating the whole budget.
+const CONTINUATION_MAX_TURNS = 20;
+const CONTINUATION_MAX_CHARS = 60_000;
+const CONTINUATION_MAX_TURN_CHARS = 8_000;
+
+/**
+ * Trim stored chat messages into a replay preface for a fresh SDK session.
+ * Drops a trailing user turn (the just-sent message persists before we run)
+ * and walks backward from the newest prior turn, respecting per-turn and
+ * total character caps. Returns messages in chronological order.
+ */
+export function buildContinuationHistory(
+  stored: { role: 'user' | 'assistant'; content: string }[],
+): { role: 'user' | 'assistant'; content: string }[] {
+  if (stored.length === 0) return [];
+
+  const tail = stored[stored.length - 1];
+  const prior = tail?.role === 'user' ? stored.slice(0, -1) : stored;
+  if (prior.length === 0) return [];
+
+  const selected: { role: 'user' | 'assistant'; content: string }[] = [];
+  let charsUsed = 0;
+  for (let i = prior.length - 1; i >= 0; i--) {
+    if (selected.length >= CONTINUATION_MAX_TURNS) break;
+    const raw = prior[i];
+    const trimmed = raw.content.length > CONTINUATION_MAX_TURN_CHARS
+      ? `${raw.content.slice(0, CONTINUATION_MAX_TURN_CHARS)}\n\n[…truncated]`
+      : raw.content;
+    if (charsUsed + trimmed.length > CONTINUATION_MAX_CHARS && selected.length > 0) break;
+    selected.push({ role: raw.role, content: trimmed });
+    charsUsed += trimmed.length;
+  }
+  return selected.reverse();
+}
+
 /** Info about an active session (for UI display) */
 export interface ActiveSessionInfo {
   chatSessionId: string;
@@ -111,11 +149,16 @@ export interface StreamingSessionServiceDeps {
       content: string,
       chatSessionId?: string,
     ): void;
+    getMessagesByChatSession(
+      sessionId: string,
+      chatSessionId: string
+    ): { role: 'user' | 'assistant'; content: string }[];
   };
 
   /** Chat session repository for Claude SDK session ID storage */
   chatSessionRepository: {
     updateClaudeSessionId(id: string, claudeSessionId: string): void;
+    clearClaudeSessionIdsByProject(projectId: string): void;
   };
 
   /** Function to get the main window for IPC */
@@ -581,11 +624,16 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         source: 'disconnectChatSession',
       });
     } else {
+      // Disconnect all sessions for project (worktree switch / project close).
+      // Also null out persisted claude_session_ids so the next send spawns a
+      // fresh SDK session: resuming would re-use the old spawn-time cwd even
+      // after the repo's active_worktree_path has changed.
       const keys = getSessionKeysForProject(projectId);
       await Promise.all(keys.map(key => disconnectSession(key, {
         reason: 'disconnect_all_sessions',
         source: 'disconnectChatSession',
       })));
+      deps.chatSessionRepository.clearClaudeSessionIdsByProject(projectId);
     }
     return success(undefined);
   }
@@ -676,6 +724,17 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     let resumeSessionId: string | undefined;
 
 
+    }
+
+    // history (e.g. after a worktree switch cleared the claude_session_id),
+    // seed the fresh session with a replay of prior turns so the conversation
+    // keeps its thread. Skipped for normal resumes — the SDK's own transcript
+    // carries that context.
+      const stored = deps.chatMessageRepository.getMessagesByChatSession(projectId, chatSessionId);
+      const continuationHistory = buildContinuationHistory(stored);
+      if (continuationHistory.length > 0) {
+        context.continuationHistory = continuationHistory;
+      }
     }
 
     return createSession({
