@@ -40,6 +40,7 @@ class FileWatchServiceClass {
   }
 
   /**
+   * List all context files (.md files) in the project directory, including subdirectories.
    */
   async listContextFiles(projectId: string): Promise<{ success: boolean; files?: ContextFile[]; error?: string }> {
     const project = this.getProject(projectId);
@@ -50,17 +51,45 @@ class FileWatchServiceClass {
     try {
       const files: ContextFile[] = [];
 
+      const walkDir = async (dirPath: string, relDir: string): Promise<void> => {
+        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        // Only de-duplicate AGENTS.md / CLAUDE.md at the project root
+        const hasPrimaryContextFile =
+          relDir === '' && entries.some(e => e.isFile() && e.name === DEFAULT_CONTEXT_FILENAME);
 
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            const subRelDir = relDir ? `${relDir}/${entry.name}` : entry.name;
+            await walkDir(path.join(dirPath, entry.name), subRelDir);
+          } else if (entry.isFile() && entry.name.endsWith('.md')) {
+            if (relDir === '' && hasPrimaryContextFile && entry.name === COMPAT_CONTEXT_FILENAME) continue;
+            const relativePath = relDir ? `${relDir}/${entry.name}` : entry.name;
+            const fullPath = path.join(dirPath, entry.name);
+            const stats = await fs.promises.stat(fullPath);
+            files.push({
+              path: relativePath,
+              name: relativePath,
+              isClaudeMd: isContextFile(entry.name),
+              modifiedAt: stats.mtime.toISOString(),
+            });
+          }
         }
+      };
 
+      await walkDir(project.folder_path, '');
+
+      // Sort: context files first (by priority), then alphabetically by path
       files.sort((a, b) => {
         if (a.isClaudeMd && b.isClaudeMd) {
+          const priorityDiff =
+            getContextFilePriority(path.basename(a.path)) - getContextFilePriority(path.basename(b.path));
           if (priorityDiff !== 0) return priorityDiff;
         } else if (a.isClaudeMd) {
           return -1;
         } else if (b.isClaudeMd) {
           return 1;
         }
+        return a.path.localeCompare(b.path);
       });
 
       return { success: true, files };
