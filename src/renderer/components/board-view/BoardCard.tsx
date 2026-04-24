@@ -165,6 +165,7 @@ export const BoardCard = memo(function BoardCard({
   const effectiveAgentState = isReviewVisible ? reviewState : agentState;
   const isSessionStale =
     !!effectiveLatestActivity &&
+    effectiveLatestActivity.status !== 'running' &&
     Date.now() - effectiveLatestActivity.timestamp > STALE_ACTIVITY_MS;
   const visualState = getAgentVisualState(effectiveAgentState, isSessionStale);
 
