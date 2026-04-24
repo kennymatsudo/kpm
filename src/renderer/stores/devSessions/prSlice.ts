@@ -36,11 +36,18 @@ export function createDevSessionsPrSlice(
         (session) => session.pr_number != null && session.pr_state !== 'MERGED' && session.pr_state !== 'CLOSED'
       );
 
+      let anyStatusChanged = false;
       for (const session of sessionsWithOpenPr) {
         try {
           const result = await getSessionPrStatus(session.id);
           if (result.success && result.status) {
             get().updatePrStatus(session.id, result.status);
+            if (
+              result.status.state !== session.pr_state ||
+              result.status.reviewDecision !== session.review_state
+            ) {
+              anyStatusChanged = true;
+            }
           }
         } catch {
           // Silently skip failures during polling
@@ -61,6 +68,7 @@ export function createDevSessionsPrSlice(
         }
       }
 
+      if ((anyStatusChanged || anyLinked) && projectId) {
         await get().loadSessions(projectId);
       }
     },
