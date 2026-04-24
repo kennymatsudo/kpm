@@ -157,6 +157,12 @@ export function createDevSessionsLifecycleSlice(
           latestActivityBySessionId: pruneMapByKeys(get().latestActivityBySessionId, allTrackedIds),
           completionBySessionId: pruneMapByKeys(get().completionBySessionId, allTrackedIds),
         });
+
+        // Self-heal agent state: after every load, ask the main process for
+        // the current state of each session so a missed state-change event
+        // (e.g. across a renderer HMR) doesn't leave the UI stuck on a stale
+        // "working" badge.
+        void get().reconcileAgentStates([...allTrackedIds]);
       } catch (error) {
         console.error('[DevSessionsStore] Failed to load sessions:', error);
         if (!isCurrentLoadSessionsRequest(requestId) || get().projectId !== projectId) {

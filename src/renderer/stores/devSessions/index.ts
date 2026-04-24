@@ -11,6 +11,7 @@ import { createDevSessionsLifecycleSlice } from './lifecycleSlice';
 import { createDevSessionsPrSlice } from './prSlice';
 import { invalidateLoadSessionsRequests } from './requestState';
 import { createDevSessionsReviewSlice } from './reviewSlice';
+import { getAgentState } from '../../services/agentSessionService';
 
 export interface BackgroundCommitState {
   status: 'running' | 'failed';
@@ -117,6 +118,7 @@ export interface DevSessionsState {
       activities?: AgentActivity[];
     }
   ) => void;
+  reconcileAgentStates: (devSessionIds: string[]) => Promise<void>;
   getAgentState: (devSessionId: string) => AgentSessionState | undefined;
 
   // Reset
@@ -293,6 +295,38 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
 
   getAgentState: (devSessionId) => {
     return get().agentStateBySessionId.get(devSessionId);
+  },
+
+  // Pull authoritative state from the main process for each session and merge
+  // it into `agentStateBySessionId`. Main is the source of truth; renderer
+  // event streams can drop events across HMR/reload, so reconciling here
+  // keeps the UI self-healing.
+  reconcileAgentStates: async (devSessionIds) => {
+    if (devSessionIds.length === 0) return;
+    const results = await Promise.allSettled(
+      devSessionIds.map(async (id) => ({ id, res: await getAgentState(id) }))
+    );
+    set((s) => {
+      const next = new Map(s.agentStateBySessionId);
+      let changed = false;
+      for (const entry of results) {
+        if (entry.status !== 'fulfilled') continue;
+        const { id, res } = entry.value;
+        if (!res.success) continue;
+        const remote = res.state ?? null;
+        if (remote === null) {
+          // Main has no session (evicted past TTL). If the local store still
+          // thinks it's active, fall through to the completion event stream;
+          // don't fabricate a terminal state from a missing lookup.
+          continue;
+        }
+        if (next.get(id) !== remote) {
+          next.set(id, remote);
+          changed = true;
+        }
+      }
+      return changed ? { agentStateBySessionId: next } : {};
+    });
   },
 
   ...createDevSessionsLifecycleSlice(set, get),

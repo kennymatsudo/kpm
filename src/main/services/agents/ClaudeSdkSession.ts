@@ -133,8 +133,11 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
   }
 
   async stop(): Promise<void> {
+    if (this._state === 'stopped') {
+      return; // Already fully torn down
     }
 
+    // `complete` / `failed` are terminal from the SDK's perspective but the
     this._stopping = true;
 
     this.abortController?.abort();
