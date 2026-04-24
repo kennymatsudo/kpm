@@ -228,6 +228,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
           onPaste={handlePaste}
           onFocus={handleFocus}
           placeholder={currentPlaceholder}
+          disabled={disabled || sendDisabledWhileStreaming}
           rows={1}
         />
 

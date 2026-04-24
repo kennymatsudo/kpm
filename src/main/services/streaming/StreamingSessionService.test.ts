@@ -12,6 +12,8 @@ import {
     emitMessage: (msg: unknown) => void;
     emitSessionEnd: (reason: 'completed' | 'error' | 'closed', error?: Error) => void;
     setReady: (value: boolean) => void;
+    sentMessages: string[];
+    interruptCallCount: { value: number };
   }[],
   mockSessionCounter: { nextId: 1 },
 }));
@@ -35,19 +37,25 @@ vi.mock('../../claude/streaming', () => {
   class MockStreamingSession {
     private readonly config: MockSessionConfig;
     private ready = true;
+    readonly sentMessages: string[] = [];
+    readonly interruptCallCount = { value: 0 };
 
     constructor(config: MockSessionConfig) {
       this.config = config;
       mockSessionInstances.push(this);
     }
 
+    async start(initialMessage: string): Promise<void> {
+      this.sentMessages.push(initialMessage);
       const sessionId = `mock-session-${mockSessionCounter.nextId++}`;
       this.config.onReady?.(sessionId, []);
     }
 
+    send(text: string): void {
       if (!this.ready) {
         throw new Error('Session is not ready');
       }
+      this.sentMessages.push(text);
     }
 
     isReady(): boolean {
@@ -55,6 +63,7 @@ vi.mock('../../claude/streaming', () => {
     }
 
     async interrupt(): Promise<void> {
+      this.interruptCallCount.value += 1;
       return Promise.resolve();
     }
 
@@ -331,6 +340,67 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     });
   });
 
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(firstSend.ok).toBe(true);
+    // Initial message was delivered via start(), session is now processing.
+    expect(mockSessionInstances).toHaveLength(1);
+    const session = mockSessionInstances[0];
+    expect(session.sentMessages).toEqual(['first prompt']);
+
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+
+    expect(secondSend.ok).toBe(true);
+    expect(session.sentMessages).toEqual(['first prompt', 'second prompt']);
+
+    expect(mockSessionInstances).toHaveLength(1);
+  });
+
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(firstSend.ok).toBe(true);
+
+    const session = mockSessionInstances[0];
+
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+
+      chatSessionId: 'chat-1',
+    });
+  });
+
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(firstSend.ok).toBe(true);
+
+    const session = mockSessionInstances[0];
+    sentEvents.length = 0;
+
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+
+    session.emitMessage({
+      type: 'assistant',
+    });
+  });
+
+it('surfaces max-token truncation after finalizing the partial response', async () => {
     sdkTypeGuardState.maxTokensReached = true;
     service = createStreamingSessionService(createDeps(sendSpy));
 

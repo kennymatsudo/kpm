@@ -6,6 +6,12 @@ export interface Message {
   /** Structured segments for single-bubble rendering with inline activities */
   segments: MessageSegment[];
   timestamp: Date;
+  /**
+   * True when this assistant response was cut short by the user sending a
+   * follow-up message (or hitting stop). The UI renders a visual indicator
+   * on the message to explain the truncation.
+   */
+  interrupted?: boolean;
 }
 
 // Re-export types for consumers

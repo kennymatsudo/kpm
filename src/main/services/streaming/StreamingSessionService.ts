@@ -73,6 +73,13 @@ interface ManagedSession {
   accumulatedResponse: string; // Accumulate assistant response for persistence
   lastTurnFinalized: boolean; // True after a turn has emitted chat:done
   suppressLifecycleEventsOnEnd: boolean; // Suppress renderer lifecycle events when session ends
+  /**
+   * Resolver for interrupt-and-send orchestration: fires when the next
+   */
+  pendingInterruptResolver?: () => void;
+  /**
+   */
+  interruptInProgress: boolean;
   unsubscribePlanActions: () => void;
   unsubscribeClaudeMdUpdate: () => void;
   unsubscribeDocumentUpdate: () => void;
@@ -259,6 +266,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     createSession: () => Promise<ServiceResult<{ sessionId: string }>>
   ): AsyncResult<void> {
     let managed = sessions.get(key);
+
+    if (managed?.interruptInProgress) {
+    }
 
     // Create new session with this message if none exists or error state
     if (!managed || managed.state === 'idle' || managed.state === 'error') {
@@ -509,6 +519,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         accumulatedResponse: '',
         lastTurnFinalized: false,
         suppressLifecycleEventsOnEnd: false,
+        interruptInProgress: false,
         unsubscribePlanActions,
         unsubscribeClaudeMdUpdate,
         unsubscribeDocumentUpdate,
@@ -742,6 +753,126 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   }
 
   /**
+   * Interrupt the in-flight turn on `key`, wait for its result to finalize
+   * (partial response persisted, chat:done emitted), then send `message` as
+   * the next turn on the same session. Preserves session continuity so the
+   * conversation context is not lost — no reconnect.
+   *
+   * Invariants maintained across the orchestration:
+   * - `state` stays 'processing' throughout (never transiently 'ready'), so a
+   *   concurrent send cannot slip past the state guard and push a second
+   *   message onto the SDK ahead of the intended follow-up.
+   * - `interruptInProgress` is held for the duration; concurrent calls fail
+   *   fast instead of stacking interrupts.
+   * - `chat:chunk` emissions for the aborted turn are suppressed so late
+   *   tokens can't bleed into the next turn's bubble.
+   * - If the aborted turn's result never acknowledges, the orchestration
+   *   fails rather than optimistically sending. Leaving a queued send pending
+   *   while the SDK might still emit a late result would let `chat:done` for
+   *   the old turn clear the new turn's streaming state mid-response.
+   */
+    key: string,
+  ): AsyncResult<void> {
+    const managed = sessions.get(key);
+    if (!managed) {
+      return failure('No active session');
+    }
+
+    if (managed.interruptInProgress) {
+      return failure('An interrupt is already in progress for this session. Please wait a moment.');
+    }
+
+    managed.interruptInProgress = true;
+    try {
+      // Wait for the aborted turn's result message. The result handler resolves
+      // this after persisting the partial response and emitting chat:done.
+      const resultFinalized = new Promise<void>((resolve) => {
+        managed.pendingInterruptResolver = resolve;
+      });
+
+      // Inline interrupt + timeout (do NOT reuse the public `interrupt()`,
+      // which would transition state to 'ready' — opening a window where a
+      // concurrent send could bypass this orchestration).
+      const INTERRUPT_ACK_TIMEOUT_MS = 5_000;
+      let interruptAckResult: 'ok' | 'timeout' | 'error' = 'error';
+      let interruptError: unknown;
+      try {
+        interruptAckResult = await Promise.race([
+          managed.session.interrupt().then(() => 'ok' as const),
+          new Promise<'timeout'>((resolve) =>
+            setTimeout(() => resolve('timeout'), INTERRUPT_ACK_TIMEOUT_MS),
+          ),
+        ]);
+      } catch (error) {
+        interruptError = error;
+      }
+
+      if (interruptAckResult !== 'ok') {
+        managed.pendingInterruptResolver = undefined;
+        if (interruptAckResult === 'timeout') {
+          console.warn(`[StreamingSessionService] Interrupt timed out for ${key}, force disconnecting`);
+        } else {
+          console.error(`[StreamingSessionService] Interrupt failed for ${key}:`, interruptError);
+        }
+        await disconnectSession(key, {
+          reason: interruptAckResult === 'timeout' ? 'interrupt_timeout' : 'interrupt_error',
+          source: 'interruptAndSendInSession',
+        });
+        return failure('Interrupt did not complete. Please resend your message.');
+      }
+
+      // Wait for the aborted turn's result (bounded). If it never arrives,
+      // fail rather than risk a late result landing during the next turn.
+      const RESULT_WAIT_TIMEOUT_MS = 5_000;
+      const resultStatus = await Promise.race([
+        resultFinalized.then(() => 'ok' as const),
+        new Promise<'timeout'>((resolve) =>
+          setTimeout(() => resolve('timeout'), RESULT_WAIT_TIMEOUT_MS),
+        ),
+      ]);
+      managed.pendingInterruptResolver = undefined;
+
+      if (resultStatus === 'timeout') {
+        console.warn(`[StreamingSessionService] Aborted-turn result never arrived for ${key}; tearing down`);
+        await disconnectSession(key, {
+          reason: 'interrupt_result_timeout',
+          source: 'interruptAndSendInSession',
+        });
+        return failure('Interrupted response did not acknowledge in time. Please resend your message.');
+      }
+
+      // At this point the aborted turn's result has been processed: the
+      // result handler set state='ready' and emitted chat:done. Verify the
+      // session is still usable before claiming it for the next turn.
+      const stillManaged = sessions.get(key);
+        return failure('Session disconnected during interrupt. Please resend your message.');
+      }
+
+      // Send the new user message as the next turn. Mirrors the happy-path
+      // bookkeeping from sendMessageToSession for a fresh turn.
+      stillManaged.lastTurnFinalized = false;
+      stillManaged.state = 'processing';
+      stillManaged.processingStartTime = Date.now();
+      stillManaged.lastSdkActivity = Date.now();
+      stillManaged.lastActivity = Date.now();
+
+      try {
+          { projectId: stillManaged.projectId, chatSessionId: stillManaged.chatSessionId },
+        );
+        return success(undefined);
+      } catch (error) {
+        return failure(`Failed to send message after interrupt: ${(error as Error).message}`);
+      }
+    } finally {
+      const current = sessions.get(key);
+      if (current) {
+        current.interruptInProgress = false;
+        current.pendingInterruptResolver = undefined;
+      }
+    }
+  }
+
+  /**
    * Change the model for a session.
    */
   async function setModel(sessionKey: string, model: ModelType): AsyncResult<void> {
@@ -868,6 +999,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           if (activity) {
             // Queue activity for the next text segment
             segState.pendingActivities.push(activity);
+            // Also send activity for real-time display during streaming —
+            // suppress during interrupt-and-send so late old-turn activities
+            // can't repopulate the next turn's activity indicator.
+            if (!managed.interruptInProgress) {
+              mainWindow?.webContents.send('chat:activity', { projectId, chatSessionId, activity });
+            }
           }
 
           // Tool call logging (additive - does not affect activity flow)
@@ -895,13 +1032,40 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         }
 
         if (block.type === 'thinking' && block.thinking) {
+          // Thinking blocks stream Claude's reasoning - send to renderer for display.
+          // Suppressed during interrupt-and-send: late old-turn thinking would
+          // leak into the next turn's reasoning display.
+          if (!managed.interruptInProgress) {
+            mainWindow?.webContents.send('chat:thinking', {
+              projectId,
+              chatSessionId,
+              text: block.thinking,
+            });
+          }
         }
 
         if (block.type === 'text') {
           segState.hasTextInCurrentSegment = true;
 
+          // Accumulate text for persistence (the partial response still gets
           managed.accumulatedResponse += block.text;
 
+          // Suppress chunk emission for the aborted turn while an
+          // interrupt-and-send orchestration is in flight. The renderer has
+          // already committed the partial bubble as an interrupted message;
+          // forwarding late tokens would repopulate the next turn's empty
+          // streaming state and produce a phantom assistant bubble.
+          if (!managed.interruptInProgress) {
+            mainWindow?.webContents.send('chat:chunk', {
+              projectId,
+              chatSessionId,
+              text: block.text,
+              segmentId: segState.currentSegmentId,
+              precedingActivities: segState.pendingActivities.length > 0
+                ? [...segState.pendingActivities]
+                : undefined,
+            });
+          }
 
           // Clear pending activities after attaching to text
           segState.pendingActivities = [];
@@ -1020,6 +1184,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       };
 
       managed.lastTurnFinalized = true;
+
+      // Unblock interrupt-and-send orchestration waiting on this result.
+      // Runs after chat:done so the renderer can finalize its partial bubble
+      // before the follow-up user turn starts streaming.
+      if (managed.pendingInterruptResolver) {
+        const resolve = managed.pendingInterruptResolver;
+        managed.pendingInterruptResolver = undefined;
+        resolve();
+      }
       if (maxTokensReached) {
         mainWindow?.webContents.send('chat:error', {
           projectId,

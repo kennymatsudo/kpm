@@ -150,8 +150,10 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
       }
     },
 
+    finalizeMessage: (chatSessionId, options) => {
       const isViewed = get().viewedSessionId === chatSessionId;
       const buffered = isViewed ? streamingBuffer.flush() : '';
+      const interrupted = options?.interrupted ?? false;
 
       set((state) => {
         const sessions = new Map(state.sessions);

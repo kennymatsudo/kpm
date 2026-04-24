@@ -51,6 +51,8 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     // Ensure session exists in store
     getOrCreateSession(chatSessionId);
 
+    const currentSession = useChatStore.getState().sessions.get(chatSessionId);
+
 
     // Resolve context for the specific chat session (session-scoped "Add to context").
     const { focusedResources, focusedResourcesBySession } = useProjectUiDomainStore.getState();
@@ -96,6 +98,9 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
   const cancel = useCallback(() => {
     if (!projectId || !viewedSessionId) return;
 
+    // Immediately finalize UI for the viewed session, marking the partial
+    // assistant response as interrupted so the bubble shows an indicator.
+    finalizeMessage(viewedSessionId, { interrupted: true });
 
     // Backend cleanup happens in background - don't await
       console.error('[useChat] Cancel failed:', err);

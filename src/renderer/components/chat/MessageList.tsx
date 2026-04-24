@@ -92,11 +92,25 @@ const ThinkingIndicator = memo(function ThinkingIndicator({
   );
 });
 
+const InterruptedIndicator = memo(function InterruptedIndicator() {
+  return (
+    <div
+      className="flex items-center gap-2 mt-3 pt-3 border-t border-border-subtle"
+      aria-label="Response was interrupted"
+    >
+      <span className="w-1.5 h-1.5 rounded-full bg-warning flex-shrink-0" />
+      <span className="text-xs text-text-muted italic">Interrupted</span>
+    </div>
+  );
+});
+
 /** Render assistant message segments within a single bubble */
 const AssistantMessageContent = memo(function AssistantMessageContent({
   segments,
+  interrupted,
 }: {
   segments: MessageSegment[];
+  interrupted?: boolean;
 }) {
   const fullText = useMemo(() => getTextContent(segments), [segments]);
   const processed = useMemo(() => processMessageContent(fullText), [fullText]);
@@ -110,6 +124,7 @@ const AssistantMessageContent = memo(function AssistantMessageContent({
         );
       })}
       <CopyButton content={processed.displayContent} />
+      {interrupted && <InterruptedIndicator />}
       {processed.hasPlanUpdate && <PlanUpdateIndicator />}
     </>
   );
