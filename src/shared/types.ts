@@ -823,6 +823,13 @@ export interface DevSession {
 export interface DevSessionWithPlanItem extends DevSession {
   repo_name: string | null;
   latest_agent_review?: PersistedAgentReview | null;
+  /**
+   * All distinct agents that have completed at least one review of this
+   * session (including runs later superseded). Unlike
+   * `latest_agent_review.reviewer_agent`, this is sticky across re-reviews —
+   * use it to indicate "Codex has reviewed this at some point".
+   */
+  reviewer_agents_seen?: AgentType[];
   plan_item: {
     id: string;
     title: string;

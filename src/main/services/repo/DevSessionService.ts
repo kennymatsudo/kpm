@@ -364,13 +364,18 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
      */
     getByProjectWithPlanItems(projectId: string): DevSessionWithPlanItem[] {
       const sessions = deps.devSessions.getByProjectWithPlanItems(projectId);
+      const sessionIds = sessions.map((session) => session.id);
+      const latestReviews = deps.agentReviews.getLatestByImplementationSessionIds(sessionIds);
       const latestReviewBySessionId = new Map(
         latestReviews.map((review) => [review.implementation_session_id, review])
       );
+      const reviewerAgentsBySessionId =
+        deps.agentReviews.getReviewerAgentsByImplementationSessionIds(sessionIds);
 
       return sessions.map((session) => ({
         ...session,
         latest_agent_review: latestReviewBySessionId.get(session.id) ?? null,
+        reviewer_agents_seen: reviewerAgentsBySessionId.get(session.id) ?? [],
       }));
     },
 

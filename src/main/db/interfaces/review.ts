@@ -14,6 +14,7 @@ import type {
   ReviewTaskSource,
   ReviewTaskStatus,
 } from '../../../shared/types';
+import type { AgentType, PersistedAgentReview } from '../../../shared/agent-types';
 
 export interface ReviewTaskUpsert {
   id?: string;
@@ -95,5 +96,12 @@ export interface IReviewSyncStateRepository {
 export interface IAgentReviewRepository {
   persistCompletedReview(review: PersistedAgentReviewUpsert): PersistedAgentReview;
   getLatestByImplementationSessionIds(sessionIds: string[]): PersistedAgentReview[];
+  /**
+   * For each implementation session, the distinct reviewer agents that have
+   * completed at least one review (including runs later marked stale). Use
+   * this to answer "has agent X reviewed this session at any point?" — robust
+   * to re-reviews that would overwrite `latest_agent_review.reviewer_agent`.
+   */
+  getReviewerAgentsByImplementationSessionIds(sessionIds: string[]): Map<string, AgentType[]>;
   markLatestCompletedStale(implementationSessionId: string): void;
 }

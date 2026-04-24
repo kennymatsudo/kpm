@@ -6,6 +6,7 @@
 
 import { randomUUID } from 'crypto';
 import type { Database, Statement } from 'better-sqlite3';
+import type { AgentType, PersistedAgentReview, ReviewFinding } from '../../../../shared/agent-types';
 
 interface AgentReviewRunRow {
   id: string;
@@ -34,6 +35,7 @@ interface AgentReviewFindingRow {
 interface PreparedStatements {
   insertFinding: Statement;
   getLatestByImplementationSessionIds: (placeholders: string) => Statement;
+  getReviewerAgentsByImplementationSessionIds: (placeholders: string) => Statement;
   getFindingsByRunIds: (placeholders: string) => Statement;
   markLatestCompletedStale: Statement;
 }
@@ -107,6 +109,11 @@ export class AgentReviewRepository implements IAgentReviewRepository {
           WHERE arr.implementation_session_id IN (${placeholders})
         )
         WHERE row_num = 1
+      `),
+      getReviewerAgentsByImplementationSessionIds: (placeholders: string) => db.prepare(`
+        SELECT DISTINCT implementation_session_id, reviewer_agent
+        FROM agent_review_runs
+        WHERE implementation_session_id IN (${placeholders})
       `),
       getFindingsByRunIds: (placeholders: string) => db.prepare(`
         SELECT
@@ -185,6 +192,31 @@ export class AgentReviewRepository implements IAgentReviewRepository {
     }
 
     return runs.map((run) => hydrateReview(run, findingsByRunId.get(run.id)));
+  }
+
+  getReviewerAgentsByImplementationSessionIds(sessionIds: string[]): Map<string, AgentType[]> {
+    const result = new Map<string, AgentType[]>();
+    if (sessionIds.length === 0) {
+      return result;
+    }
+
+    const placeholders = sessionIds.map(() => '?').join(', ');
+    const rows = this.stmts
+      .getReviewerAgentsByImplementationSessionIds(placeholders)
+      .all(...sessionIds) as { implementation_session_id: string; reviewer_agent: AgentType }[];
+
+    for (const row of rows) {
+      const existing = result.get(row.implementation_session_id);
+      if (existing) {
+        if (!existing.includes(row.reviewer_agent)) {
+          existing.push(row.reviewer_agent);
+        }
+      } else {
+        result.set(row.implementation_session_id, [row.reviewer_agent]);
+      }
+    }
+
+    return result;
   }
 
   markLatestCompletedStale(implementationSessionId: string): void {
