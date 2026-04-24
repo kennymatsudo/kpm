@@ -180,6 +180,7 @@ export function registerAgentSessionHandlers(
           model: getConfig().generation.cheapModel,
           allowedTools: [],
           persistSession: false,
+          systemPrompt: 'You generate descriptive git commit messages. Return only the commit message — no explanation, no code fences.',
           stderr: () => {},
           ...getClaudeSdkSpawnOptions(),
         };
