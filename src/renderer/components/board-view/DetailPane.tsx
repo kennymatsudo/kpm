@@ -55,6 +55,9 @@ export const DetailPane = memo(function DetailPane({
   const effectiveActivities = showReviewSession ? reviewSession.activities : implementationSession.activities;
 
   const updateStatusCategory = usePlanDomainStore((s) => s.updateStatusCategory);
+  const planItem = usePlanDomainStore((s) =>
+    session.plan_item_id ? s.planItems.find((p) => p.id === session.plan_item_id) : undefined
+  );
   const isMountedRef = useRef(true);
 
   useEffect(() => {
