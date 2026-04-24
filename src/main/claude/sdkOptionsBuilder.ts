@@ -59,6 +59,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   const sdkOptions: SDKOptions = {
     systemPrompt,
     model,
+    cwd: context.project.folder_path ?? context.repos[0]?.active_worktree_path ?? context.repos[0]?.path,
     // Pin the bundled native Claude binary so the SDK skips its own PATH lookup.
     // See findClaude.ts for platform-specific resolution details.
     ...getClaudeSdkSpawnOptions(),
