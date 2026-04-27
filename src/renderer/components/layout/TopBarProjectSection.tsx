@@ -5,6 +5,14 @@ import { DropdownMenu } from '../ui/DropdownMenu';
 interface ProjectOption {
   id: string;
   name: string;
+  /** 1..10 for projects bound to ⌥⌘1..9 / ⌥⌘0; null when out of range. */
+  shortcutPosition: number | null;
+}
+
+function formatProjectShortcut(position: number | null): string | null {
+  if (position == null || position < 1 || position > 10) return null;
+  const digit = position === 10 ? '0' : String(position);
+  return `⌥⌘${digit}`;
 }
 
 interface TopBarProjectSectionProps {
@@ -60,6 +68,10 @@ export function TopBarProjectSection({
   mainView,
   onMainViewChange,
 }: TopBarProjectSectionProps) {
+  const currentProjectShortcut = currentProject
+    ? formatProjectShortcut(currentProject.shortcutPosition)
+    : null;
+
   return (
     <>
         {currentProject ? (
@@ -103,6 +115,32 @@ export function TopBarProjectSection({
                       }
                       minWidth={200}
                     >
+                      <DropdownMenu.SubmenuItem selected>
+                        <span className="project-avatar">{currentProject.name.slice(0, 2)}</span>
+                        <span className="flex-1">{currentProject.name}</span>
+                        <span className="sr-only">(current project)</span>
+                        {currentProjectShortcut && (
+                            {currentProjectShortcut}
+                          </kbd>
+                        )}
+                      </DropdownMenu.SubmenuItem>
+                      <DropdownMenu.Separator />
+                      {otherProjects.map((project) => {
+                        const shortcut = formatProjectShortcut(project.shortcutPosition);
+                        return (
+                          <DropdownMenu.SubmenuItem
+                            key={project.id}
+                            onClick={() => handleOpenProject(project.id)}
+                          >
+                            <span className="project-avatar">{project.name.slice(0, 2)}</span>
+                            <span className="flex-1">{project.name}</span>
+                            {shortcut && (
+                                {shortcut}
+                              </kbd>
+                            )}
+                          </DropdownMenu.SubmenuItem>
+                        );
+                      })}
                     </DropdownMenu.Submenu>
                     <DropdownMenu.Separator />
                   </>

@@ -59,6 +59,7 @@ export class ProjectRepository implements IProjectRepository {
     this.stmts = {
       // Read operations
       getById: db.prepare('SELECT * FROM projects WHERE id = ?'),
+      list: db.prepare('SELECT * FROM projects ORDER BY created_at ASC'),
 
       // Write operations - use RETURNING to avoid re-query
       insert: db.prepare(`

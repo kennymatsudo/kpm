@@ -9,6 +9,8 @@ export interface UseLayoutShortcutsOptions {
   onCreateItem?: () => void;
   onToggleToolLog?: () => void;
   onOpenGlobalSearch?: () => void;
+  /** Switch project by 1-indexed position (1..10). Called via Cmd+Option+1..9 / Cmd+Option+0. */
+  onSwitchProjectByPosition?: (position: number) => void;
 }
 
 export function useLayoutShortcuts({
@@ -19,6 +21,7 @@ export function useLayoutShortcuts({
   onCreateItem,
   onToggleToolLog,
   onOpenGlobalSearch,
+  onSwitchProjectByPosition,
 }: UseLayoutShortcutsOptions): void {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -69,6 +72,23 @@ export function useLayoutShortcuts({
         e.preventDefault();
         e.stopPropagation();
         onOpenGlobalSearch?.();
+      }
+      // Cmd+Option+1-9 / Cmd+Option+0 - Switch projects by stable position.
+      // Use e.code (Digit1..Digit9, Digit0) because Option held on macOS rewrites e.key
+      // to special characters (¡, ™, etc.). Handle even in editable elements so users
+      // can switch while typing in chat — Cmd+Option+digit isn't a standard text shortcut.
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.altKey &&
+        !e.shiftKey &&
+        /^Digit[0-9]$/.test(e.code)
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        const digit = e.code.slice(5);
+        const position = digit === '0' ? 10 : parseInt(digit, 10);
+        onSwitchProjectByPosition?.(position);
+        return;
       }
       // Cmd+1-9 - Context-aware: Settings tabs (when open) or Main views (1-2)
       if (!isEditableElement && (e.metaKey || e.ctrlKey) && /^[1-9]$/.test(e.key)) {

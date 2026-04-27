@@ -78,6 +78,16 @@ export function TopBar({
     }))
   );
   const currentProject = projects.find((p) => p.id === currentProjectId) || null;
+  // Projects are ordered oldest-first by ProjectRepository.list (created_at ASC).
+  // ⌥⌘1 binds to the oldest project; new projects get the next-highest number
+  // so existing bindings don't shift on create.
+  const projectMenuOptions = projects.map((project, index) => ({
+    id: project.id,
+    name: project.name,
+    shortcutPosition: index < 10 ? index + 1 : null,
+  }));
+  const currentProjectMenuOption = projectMenuOptions.find((p) => p.id === currentProjectId) ?? null;
+  const otherProjectsMenuOptions = projectMenuOptions.filter((p) => p.id !== currentProjectId);
   const { selectedTrackerType } = useCredentialStore(
     useShallow((state) => ({ selectedTrackerType: state.selectedTrackerType }))
   );
@@ -131,6 +141,8 @@ export function TopBar({
   return (
     <>
         <TopBarProjectSection
+          currentProject={currentProjectMenuOption}
+          otherProjects={otherProjectsMenuOptions}
           isEditing={isEditing}
           editName={editName}
           setEditName={setEditName}

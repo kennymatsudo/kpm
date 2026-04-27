@@ -4,6 +4,7 @@ import { createBaseState } from './baseState';
 export const createProjectSlice: SliceCreator<ProjectSlice> = (_deps) => (set, get) => ({
   setProjects: (projects) => set({ projects }),
   addProject: (project) => set((state) => ({
+    projects: [...state.projects, project],
   })),
   removeProject: (projectId) => set((state) => ({
     projects: state.projects.filter((p) => p.id !== projectId),

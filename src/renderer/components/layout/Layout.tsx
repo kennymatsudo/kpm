@@ -54,6 +54,7 @@ export const Layout = memo(function Layout({
   chatOverlay = false,
 }: LayoutProps) {
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
+  const projects = useProjectDomainStore((state) => state.projects);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -146,6 +147,12 @@ export const Layout = memo(function Layout({
     useToolLogStore.getState().togglePanel();
   }, []);
 
+  const handleSwitchProjectByPosition = useCallback((position: number) => {
+    const project = projects[position - 1];
+    if (!project || project.id === currentProjectId) return;
+    onOpenProject?.(project.id);
+  }, [projects, currentProjectId, onOpenProject]);
+
   // Global search
   const openGlobalSearch = useSearchStore((state) => state.openSearch);
   const handleOpenGlobalSearch = useCallback(() => {
@@ -161,6 +168,7 @@ export const Layout = memo(function Layout({
     onCreateItem: handleOpenCreateItem,
     onToggleToolLog: handleToggleToolLog,
     onOpenGlobalSearch: handleOpenGlobalSearch,
+    onSwitchProjectByPosition: handleSwitchProjectByPosition,
   });
 
   return (
