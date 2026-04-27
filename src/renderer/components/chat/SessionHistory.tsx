@@ -48,6 +48,12 @@ export function SessionHistory() {
 
   const handleSessionClick = async (chatSessionId: string) => {
     if (!currentProjectId) return;
+    const projectId = currentProjectId;
+    await loadFromHistory(
+      projectId,
+      chatSessionId,
+      () => useProjectDomainStore.getState().currentProjectId === projectId
+    );
     setIsOpen(false);
   };
 

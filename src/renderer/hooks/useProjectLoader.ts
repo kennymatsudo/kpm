@@ -126,6 +126,8 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
         worktrees,
       });
 
+      const shouldRestoreChat = () =>
+
       const scheduleRepoTasks = () => {
 
         // 4. Setup new watchers (deferred)

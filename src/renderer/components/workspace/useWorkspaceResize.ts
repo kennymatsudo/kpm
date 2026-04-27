@@ -1,7 +1,12 @@
 
 const CHAT_MIN = 320;
+const CHAT_MAX_ABS = 1600;
+const CHAT_MAX_VIEWPORT_FRACTION = 0.75;
 const CHAT_DEFAULT = 420;
+const EDITOR_MIN = 480;
 const STORAGE_KEY = 'kpm-workspace-chat-width';
+
+}
 
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return CHAT_DEFAULT;
@@ -22,6 +27,10 @@ export interface UseWorkspaceResizeReturn {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, width.toString());
   }, [width]);
+
+  useEffect(() => {
+      setWidth((current) => (current > max ? max : current));
+    };
 
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {

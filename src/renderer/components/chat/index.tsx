@@ -130,6 +130,7 @@ export function Chat({ currentView }: ChatProps) {
   const focusCount = focusedResources.length;
 
   return (
+      {/* Session tabs */}
       <SessionList />
 
       {/* Focused resources banner - animated height to prevent layout shift */}

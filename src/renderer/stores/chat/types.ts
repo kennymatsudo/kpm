@@ -97,6 +97,8 @@ export interface ChatState {
   startNewChatSession: (keepCurrentActive?: boolean) => string;
   getChatSessionId: () => string;
   loadSessionHistory: (projectId: string) => Promise<void>;
+  loadFromHistory: (projectId: string, chatSessionId: string, shouldContinue?: () => boolean) => Promise<void>;
+  restoreLastSession: (projectId: string, shouldContinue?: () => boolean) => Promise<void>;
 
   // Selectors
   getViewedSession: () => PerSessionState | null;
