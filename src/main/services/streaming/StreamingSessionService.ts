@@ -904,6 +904,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // result handler set state='ready' and emitted chat:done. Verify the
       // session is still usable before claiming it for the next turn.
       const stillManaged = sessions.get(key);
+      if (!stillManaged?.session.isReady()) {
         return failure('Session disconnected during interrupt. Please resend your message.');
       }
 

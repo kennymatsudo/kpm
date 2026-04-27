@@ -67,11 +67,13 @@ function isSignificant(activity: AgentActivity): boolean {
 // Grouping
 // =============================================================================
 
+interface ActivityGroup {
   /** The narration Claude wrote before this batch of tool calls. Null for
    *  orphan tool calls that appear before any narration. */
   narration: AgentActivity | null;
   /** Significant tool_use, error, and system activities in order. */
   entries: AgentActivity[];
+}
 
 function groupActivities(activities: AgentActivity[]): ActivityGroup[] {
   const groups: ActivityGroup[] = [];
