@@ -271,6 +271,7 @@ const TreeRow = memo(function TreeRow({
         {node.external_key && (
           <a
             href={node.external_url ?? '#'}
+            title={`Open ${node.external_key} in ${trackerLabelFor(node.external_type)}`}
             onClick={(e) => {
               e.stopPropagation();
               if (node.external_url) {
@@ -285,6 +286,7 @@ const TreeRow = memo(function TreeRow({
               flex items-center gap-1 max-w-[100px]
             "
           >
+            <TrackerIcon trackerType={node.external_type} className="w-2.5 h-2.5 flex-shrink-0" />
             <span className="truncate">
               {isSearchActive && keyMatches ? highlightText(node.external_key, searchQuery) : node.external_key}
             </span>
@@ -667,6 +669,7 @@ export const TreeView = memo(function TreeView({
         {dragState && (
           dragState.isUnderJiraParent ? (
             <div className="h-12 mx-3 mt-2 border-2 border-dashed border-danger/20 rounded-lg flex items-center justify-center text-xs text-danger/50">
+              Cannot move to root (tracker subtask must stay under parent)
             </div>
           ) : (
             <div

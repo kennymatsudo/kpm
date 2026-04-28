@@ -95,7 +95,10 @@ export function PlanView({
     [focusedResources]
   );
 
+  // Tracker store - check if we have tracker associations
   const associations = useTrackerStore((state) => state.associations);
+  const activeTrackerType = associations[0]?.tracker_type ?? null;
+  const hasTrackerAssociation = !!activeTrackerType;
 
   // Export store - for queue operations
   const addToQueue = useExportStore((state) => state.addToQueue);
@@ -132,6 +135,7 @@ export function PlanView({
     contextMenu,
     handleContextMenu,
     closeContextMenu,
+    handleQueueForTracker,
     handleAddToContext,
     handleAddItemToContext,
     handleTreeContextMenu,
@@ -492,6 +496,9 @@ export function PlanView({
           onClose={closeContextMenu}
           onEditItem={() => handleEditItem(contextMenu.singleItemId!)}
           onDelete={openBulkDeleteDialog}
+          onAddToTrackerQueue={handleQueueForTracker}
+          hasTrackerAssociation={hasTrackerAssociation}
+          trackerType={activeTrackerType}
           onLinkPr={() => handleLinkPr(contextMenu.singleItemId!)}
           onStartAgent={handleStartAgent}
         />
@@ -500,10 +507,13 @@ export function PlanView({
           x={contextMenu.x}
           y={contextMenu.y}
           selectedCount={selectedItemIds.size}
+          hasTrackerAssociation={hasTrackerAssociation}
+          trackerType={activeTrackerType}
           onEdit={() => {
             const selectedId = Array.from(selectedItemIds)[0];
             if (selectedId) handleEditItem(selectedId);
           }}
+          onQueueForTracker={handleQueueForTracker}
           onDelete={openBulkDeleteDialog}
           onClose={closeContextMenu}
         />

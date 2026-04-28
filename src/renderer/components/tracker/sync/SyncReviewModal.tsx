@@ -28,6 +28,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
   } = useSyncReviewStore();
 
   // Extracted hooks
+  const trackerLabel = trackerLabelFor(trackerType);
   const { selectedItemId, setSelectedItemId, selectedItem } = useSyncItemSelection({ items });
   const {
     customFields,
@@ -151,6 +152,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
   // Loading state
   if (phase === 'loading') {
     return (
+      <ModalShell onClose={handleClose} trackerLabel={trackerLabel}>
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="relative">
             <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center">
@@ -158,6 +160,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
             </div>
           </div>
           <p className="text-text-secondary text-sm font-medium mt-5">Preparing export review...</p>
+          <p className="text-text-muted text-xs mt-1.5">Fetching current {trackerLabel} state</p>
         </div>
       </ModalShell>
     );
@@ -166,6 +169,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
   // Error with no items
   if (error && items.length === 0) {
     return (
+      <ModalShell onClose={handleClose} trackerLabel={trackerLabel}>
         <div className="flex-1 flex flex-col items-center justify-center px-6">
           <div className="w-14 h-14 rounded-2xl bg-danger/15 flex items-center justify-center mb-4">
             <svg className="w-7 h-7 text-danger" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -181,6 +185,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
   // Empty queue
   if (items.length === 0) {
     return (
+      <ModalShell onClose={handleClose} trackerLabel={trackerLabel}>
         <div className="flex-1 flex flex-col items-center justify-center px-6">
           <div className="w-14 h-14 rounded-2xl bg-surface-3 flex items-center justify-center mb-4">
             <svg className="w-7 h-7 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -202,6 +207,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
     const failureCount = exportResult.errors.length;
 
     return (
+      <ModalShell onClose={handleClose} trackerLabel={trackerLabel}>
         <div className="flex-1 flex flex-col items-center justify-center px-6">
           <div className="w-16 h-16 rounded-full bg-success/15 flex items-center justify-center mb-5 relative">
             <svg className="w-8 h-8 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -211,6 +217,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
           </div>
           <h3 className="text-text-primary text-lg font-semibold mb-2">Export complete</h3>
           <p className="text-text-secondary text-sm mb-1">
+            Successfully exported {successCount} item{successCount !== 1 ? 's' : ''} to {trackerLabel}
           </p>
           {failureCount > 0 && (
             <p className="text-danger text-sm mb-4">{failureCount} failed</p>
@@ -294,6 +301,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
                   selectedItemId={selectedItemId}
                   onSelect={setSelectedItemId}
                   onToggle={handleToggleItem}
+                  trackerLabel={trackerLabel}
                 />
               ))}
             </div>
@@ -315,6 +323,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
               onCustomFieldChange={handleCustomFieldChange}
               onSaveCustomFields={handleSaveCustomFields}
               onClearCustomFields={handleClearCustomFields}
+              trackerLabel={trackerLabel}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center text-text-muted text-xs">
@@ -378,6 +387,7 @@ interface ModalShellProps {
   children: React.ReactNode;
   onClose: () => void;
   wide?: boolean;
+  trackerLabel: string;
 }
 
   const { containerRef } = useFocusTrap<HTMLDivElement>({
@@ -410,6 +420,7 @@ interface ModalShellProps {
               </svg>
             </div>
             <div>
+              <h2 className="text-sm font-semibold text-text-primary leading-tight">Export to {trackerLabel}</h2>
               <p className="text-xxs text-text-muted">Review and sync selected items</p>
             </div>
           </div>
@@ -426,8 +437,10 @@ interface ItemTreeNodeProps {
   selectedItemId: string | null;
   onSelect: (id: string) => void;
   onToggle: (id: string) => void;
+  trackerLabel: string;
 }
 
+function ItemTreeNode({ item, depth, childrenOf, selectedItemId, onSelect, onToggle, trackerLabel }: ItemTreeNodeProps) {
   const children = childrenOf.get(item.planItem.id) ?? [];
   return (
     <>
@@ -437,6 +450,7 @@ interface ItemTreeNodeProps {
         isSelected={selectedItemId === item.planItem.id}
         onSelect={() => onSelect(item.planItem.id)}
         onToggle={() => onToggle(item.planItem.id)}
+        trackerLabel={trackerLabel}
       />
       {children.map((child) => (
         <ItemTreeNode
@@ -447,6 +461,7 @@ interface ItemTreeNodeProps {
           selectedItemId={selectedItemId}
           onSelect={onSelect}
           onToggle={onToggle}
+          trackerLabel={trackerLabel}
         />
       ))}
     </>
@@ -459,8 +474,10 @@ interface ItemRowProps {
   isSelected: boolean;
   onSelect: () => void;
   onToggle: () => void;
+  trackerLabel: string;
 }
 
+function ItemRow({ item, depth = 0, isSelected, onSelect, onToggle, trackerLabel }: ItemRowProps) {
   const isChecked = item.decision === 'approved';
   const hasErrors = item.validationErrors.length > 0;
   const isCreate = item.queueEntry.operation === 'create';
@@ -527,6 +544,7 @@ interface ItemRowProps {
           </div>
         )}
         {item.hasConflict && (
+          <div className="w-4 h-4 rounded-full bg-warning/12 flex items-center justify-center" title={`Modified in ${trackerLabel}`}>
             <svg className="w-2.5 h-2.5 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01" />
             </svg>
@@ -551,6 +569,7 @@ interface DetailPanelProps {
   onCustomFieldChange: (fieldId: string, value: string) => void;
   onSaveCustomFields: () => void;
   onClearCustomFields: () => void;
+  trackerLabel: string;
 }
 
 function DetailPanel({
@@ -567,6 +586,7 @@ function DetailPanel({
   onCustomFieldChange,
   onSaveCustomFields,
   onClearCustomFields,
+  trackerLabel,
 }: DetailPanelProps) {
   const isCreate = item.queueEntry.operation === 'create';
   const hasErrors = item.validationErrors.length > 0;
@@ -610,6 +630,7 @@ function DetailPanel({
                 <span className="text-xxs font-mono text-text-muted/80">{item.planItem.external_key}</span>
               )}
               {item.hasConflict && (
+                  Modified in {trackerLabel}
                 </span>
               )}
             </div>

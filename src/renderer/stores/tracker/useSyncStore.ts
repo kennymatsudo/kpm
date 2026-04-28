@@ -158,6 +158,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       setAvailability(availability);
       return availability;
     } catch (e) {
+      setAvailability(availabilityFromPrevious(previous, { error: e instanceof Error ? e.message : 'Failed to check tracker updates' }));
       return null;
     }
   },

@@ -37,6 +37,8 @@ export function usePlanContextMenu({
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
+  // Handle queue for tracker export
+  const handleQueueForTracker = useCallback(async () => {
     if (!currentProjectId || selectedItemIds.size === 0) return;
     const itemIds = Array.from(selectedItemIds);
     await addToQueue(currentProjectId, itemIds);
@@ -78,6 +80,7 @@ export function usePlanContextMenu({
     contextMenu,
     handleContextMenu,
     closeContextMenu,
+    handleQueueForTracker,
     handleAddToContext,
     handleAddItemToContext,
     handleTreeContextMenu,

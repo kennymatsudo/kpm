@@ -37,19 +37,28 @@ export function TaskEditModal({
 }: TaskEditModalProps) {
   // Get Jira issue types from the associated project
   const associations = useTrackerStore(useShallow((state) => state.associations));
+  const association = useMemo(() => {
     if (!item.association_id) return null;
+    return associations.find((a) => a.id === item.association_id) ?? null;
   }, [item.association_id, associations]);
+  const projectKey = association?.project_key ?? null;
+  const trackerType = item.external_type ?? association?.tracker_type ?? null;
+  const trackerLabel = trackerLabelFor(trackerType);
+  const shouldUseTrackerIssueTypes = trackerType === 'jira';
 
   // Get cached issue types + loader in a single subscription
   const { jiraIssueTypes, loadIssueTypes } = useTrackerMetadataStore(
     useShallow((state) => ({
+      jiraIssueTypes: projectKey && shouldUseTrackerIssueTypes ? state.issueTypesByProject[projectKey] ?? EMPTY_ISSUE_TYPES : EMPTY_ISSUE_TYPES,
       loadIssueTypes: state.loadIssueTypes,
     }))
   );
   // Load issue types when modal opens (if we have a project key)
   useEffect(() => {
+    if (isOpen && projectKey && shouldUseTrackerIssueTypes) {
       void loadIssueTypes(projectKey);
     }
+  }, [isOpen, projectKey, shouldUseTrackerIssueTypes, loadIssueTypes]);
 
   // Build type options from Jira or use fallback
   const typeOptions = useMemo(() => {

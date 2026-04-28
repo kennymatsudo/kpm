@@ -8,6 +8,7 @@ interface AssociationDataDeps {
 
 interface AssociationDataResult {
   projectKey: string | null;
+  trackerType: TrackerType | null;
   customFieldDefaults: CustomFieldValues | null;
 }
 
@@ -23,6 +24,7 @@ export function useAssociationData({ projectId, associationId }: AssociationData
 
   return {
     projectKey: association?.project_key ?? null,
+    trackerType: association?.tracker_type ?? null,
     customFieldDefaults: (association?.custom_field_values as CustomFieldValues | null) ?? null,
   };
 }

@@ -1,4 +1,5 @@
 import type { MouseEvent } from 'react';
+import type { StatusCategory, TrackerType } from '../../../shared/types';
 import type { TreeNode } from '../../utils/planHierarchy';
 import { StatusSelector } from '../ui/StatusSelector';
 import { HighlightedText } from './HighlightedText';
@@ -123,6 +124,7 @@ interface PlanCardMetadataRowProps {
   searchQuery: string;
   effectiveStatus: StatusCategory | null;
   isQueued: boolean;
+  activeTrackerType: TrackerType | null;
   onStatusChange: (status: StatusCategory) => void;
 }
 
@@ -134,8 +136,12 @@ export function PlanCardMetadataRow({
   searchQuery,
   effectiveStatus,
   isQueued,
+  activeTrackerType,
   onStatusChange,
 }: PlanCardMetadataRowProps) {
+  const itemTrackerType = item.external_type ?? activeTrackerType;
+  const trackerLabel = trackerLabelFor(itemTrackerType);
+
   return (
     <div className="flex items-center gap-1.5 mt-1.5 overflow-hidden">
       {isPreview ? (
@@ -162,6 +168,7 @@ export function PlanCardMetadataRow({
       {item.external_key && item.external_url && (
         isPreview ? (
           <span className="flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 text-tiny font-medium bg-info-muted text-info rounded max-w-[100px]">
+            <TrackerIcon trackerType={itemTrackerType} className="w-3 h-3 flex-shrink-0" />
             <span className="truncate">{item.external_key}</span>
           </span>
         ) : (
@@ -173,7 +180,9 @@ export function PlanCardMetadataRow({
               window.open(item.external_url!, '_blank');
             }}
             className="flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 text-tiny font-medium rounded transition-colors max-w-[100px] bg-info-muted text-info hover:bg-info-muted"
+            title={`Open ${item.external_key} in ${trackerLabel}`}
           >
+            <TrackerIcon trackerType={itemTrackerType} className="w-3 h-3 flex-shrink-0" />
             <span className="truncate">
               {isSearchActive && directMatch ? (
                 <HighlightedText text={item.external_key} query={searchQuery} />
@@ -191,6 +200,7 @@ export function PlanCardMetadataRow({
       {!item.external_key && isQueued && (
         <span
           className="flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 text-tiny font-medium bg-accent/15 text-accent rounded"
+          title={`Queued for creation in ${trackerLabel}`}
         >
           <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />

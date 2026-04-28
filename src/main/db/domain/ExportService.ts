@@ -72,6 +72,10 @@ function readLinearProjectId(filter: string): string | undefined {
   }
 }
 
+function trackerLabelFor(type: TrackerType): string {
+  return type === 'linear' ? 'Linear' : 'Jira';
+}
+
 /**
  * Manages the sync queue and executes the export.
  */
@@ -105,6 +109,7 @@ export function createExportService(deps: ExportServiceDeps) {
     if (associations.length === 0) {
       // Skip all items if no association
       for (const id of itemIds) {
+        skipped.push({ id, reason: 'No tracker association configured for project' });
       }
       return { queued, skipped };
     }
@@ -116,6 +121,7 @@ export function createExportService(deps: ExportServiceDeps) {
       association = associations.find(a => a.id === associationId);
       if (!association) {
         for (const id of itemIds) {
+          skipped.push({ id, reason: 'Specified tracker association not found' });
         }
         return { queued, skipped };
       }
@@ -125,6 +131,7 @@ export function createExportService(deps: ExportServiceDeps) {
     } else {
       // Multiple associations - require explicit selection
       for (const id of itemIds) {
+        skipped.push({ id, reason: 'Multiple tracker associations exist - please specify which one to use' });
       }
       return { queued, skipped };
     }
@@ -266,6 +273,7 @@ export function createExportService(deps: ExportServiceDeps) {
         canProceed: false,
       };
     }
+    const trackerLabel = trackerLabelFor(association.tracker_type);
 
     // Issue types are a Jira concept; Linear returns a synthetic "Issue" entry.
     // Either way we defer to the tracker-specific client.
@@ -276,6 +284,7 @@ export function createExportService(deps: ExportServiceDeps) {
     } catch (e) {
       return {
         items: [],
+        warnings: [`Failed to fetch issue types from ${trackerLabel}: ${e instanceof Error ? e.message : 'Unknown error'}`],
         canProceed: false,
       };
     }
@@ -357,6 +366,7 @@ export function createExportService(deps: ExportServiceDeps) {
       );
 
       if (!resolvedType) {
+        validationErrors.push(`Could not resolve ${trackerLabel} issue type`);
         canProceed = false;
       }
 
@@ -368,6 +378,7 @@ export function createExportService(deps: ExportServiceDeps) {
           validationErrors.push('Sub-task type requires a parent item');
           canProceed = false;
         } else if (!resolvedParent) {
+          validationErrors.push(`Parent item must be queued or already synced to ${trackerLabel}`);
           canProceed = false;
         }
       }

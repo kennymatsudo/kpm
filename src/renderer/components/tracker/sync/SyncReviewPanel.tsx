@@ -111,6 +111,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
   if (!syncPreview) return null;
 
   const { stats, new_items, updated_items, conflicts, deleted_in_tracker } = syncPreview;
+  const trackerLabel = trackerLabelFor(syncPreview.tracker_type);
 
   // Check if everything is up to date
   const isUpToDate = stats.new === 0 && stats.updated === 0 && stats.conflicts === 0 && stats.deleted === 0;
@@ -174,6 +175,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
               </svg>
               New Items ({new_items.length})
             </h3>
+            <p className="text-xs text-text-muted mb-3">New issues in {trackerLabel} that will be imported.</p>
             <div className="space-y-2">
               {new_items.map(item => (
                 <div key={item.external_key} className="p-3 bg-surface-2 rounded-lg">
@@ -211,6 +213,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
               </svg>
               Updates ({updated_items.length})
             </h3>
+            <p className="text-xs text-text-muted mb-3">These fields changed in {trackerLabel} since your last sync. They will be automatically applied.</p>
             <div className="space-y-2">
               {updated_items.map(item => (
                 <SyncUpdateCard key={item.plan_item_id} item={item} />
@@ -233,6 +236,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
                 </span>
               )}
             </h3>
+            <p className="text-xs text-text-muted mb-3">Both you and {trackerLabel} changed these fields differently. Choose which version to keep.</p>
             <div className="space-y-3">
               {conflicts.map((conflict, idx) => (
                 <SyncConflictCard
@@ -242,6 +246,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
                   onResolve={(r) => setResolution(conflict.plan_item_id, r)}
                   index={idx}
                   total={conflicts.length}
+                  trackerLabel={trackerLabel}
                 />
               ))}
             </div>
@@ -255,6 +260,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
           decisions={deletedDecisions}
           onActionChange={setDeletedAction}
           onDecisionChange={setDeletedDecision}
+          trackerLabel={trackerLabel}
         />
 
         {syncError && (

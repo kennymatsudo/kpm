@@ -10,12 +10,14 @@ interface Props {
   index?: number;
   /** Total conflicts for aria-label */
   total?: number;
+  trackerLabel: string;
 }
 
 function formatFieldName(field: string): string {
   return field.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+export function SyncConflictCard({ conflict, resolution, onResolve, index, total, trackerLabel }: Props) {
   const keepMineRef = useRef<HTMLButtonElement>(null);
   const useTheirsRef = useRef<HTMLButtonElement>(null);
   const [showDiff, setShowDiff] = useState(true);
@@ -162,6 +164,7 @@ function formatFieldName(field: string): string {
                 </div>
               </button>
 
+              {/* Tracker version */}
               <button
                 type="button"
                 className={`p-3 cursor-pointer bg-surface-1 hover:bg-surface-2 transition-colors text-left w-full ${
@@ -171,6 +174,7 @@ function formatFieldName(field: string): string {
                 tabIndex={-1}
                 aria-pressed={resolution === 'use_theirs'}
               >
+                <div className="text-xxs font-medium text-text-muted mb-1">{trackerLabel}</div>
                 <div
                   className={`text-sm text-text-primary whitespace-pre-wrap break-words ${
                     isLongContent && !isExpanded ? 'max-h-16 overflow-hidden relative' : ''
@@ -213,6 +217,7 @@ function formatFieldName(field: string): string {
           aria-pressed={resolution === 'use_theirs'}
         >
           <span className="mr-1.5 text-xxs opacity-60">2</span>
+          Use {trackerLabel}'s
         </button>
         {resolution && (
           <span className="ml-auto text-xxs text-success flex items-center gap-1">

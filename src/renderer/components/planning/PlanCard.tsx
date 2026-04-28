@@ -4,6 +4,7 @@ import {
   useProjectDomainStore,
   usePlanDomainStore,
   useResourceDomainStore,
+  useTrackerStore,
   toast,
 } from '../../stores';
 import { useDevSessionsStore } from '../../stores/devSessions';
@@ -258,8 +259,11 @@ export const PlanCard = memo(function PlanCard({
   const hasActiveDevSession = useDevSessionsStore((state) => {
     const activeStatuses = ACTIVE_SESSION_STATUSES as readonly string[];
   });
+  const activeTrackerType = useTrackerStore((state) => state.associations[0]?.tracker_type ?? null);
   const isWorktreeLoading = !!worktreeLoadingOp;
 
+  // Check if we have tracker associations (only relevant for default mode)
+  const hasTrackerAssociation = !isPreview && !!activeTrackerType;
 
   // Derive effective status: use status_category if set, otherwise derive from external_status
   const effectiveStatus = useMemo(
@@ -529,6 +533,7 @@ export const PlanCard = memo(function PlanCard({
         searchQuery={searchQuery}
         effectiveStatus={effectiveStatus}
         isQueued={!!isQueued}
+        activeTrackerType={activeTrackerType}
         onStatusChange={(status) => updateStatusCategory(item.id, status)}
       />
 
@@ -616,6 +621,7 @@ export const PlanCard = memo(function PlanCard({
           }}
           onDelete={() => setShowDeleteConfirm(true)}
           onAddToContext={() => onAddToContext?.(item.id)}
+          onAddToTrackerQueue={async () => {
             if (currentProjectId) {
               const result = await addToQueue(currentProjectId, [item.id]);
               if (!result.success && result.error) {
@@ -623,6 +629,8 @@ export const PlanCard = memo(function PlanCard({
               }
             }
           }}
+          hasTrackerAssociation={hasTrackerAssociation}
+          trackerType={activeTrackerType}
         />
       )}
 
