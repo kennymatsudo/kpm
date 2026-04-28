@@ -1,8 +1,29 @@
 import { memo, useCallback, useMemo, useState } from 'react';
 import { BoardCard, type Breadcrumb } from './BoardCard';
 import { STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
+import { useLatestRef } from '../../hooks/useLatestRef';
 import type { BoardTreeNode } from './BoardView';
 import type { PlanItem, StatusCategory } from '../../../shared/types';
+import type { OrderedIdsGetter, RangeSelectHandler } from '../../utils/rangeSelection';
+
+function getVisibleBoardSelectionOrder(
+  nodes: readonly BoardTreeNode[],
+  expandedIds: ReadonlySet<string>,
+): string[] {
+  const orderedIds: string[] = [];
+
+  const walk = (currentNodes: readonly BoardTreeNode[]) => {
+    for (const node of currentNodes) {
+      orderedIds.push(node.item.id);
+      if (expandedIds.has(node.item.id) && node.children.length > 0) {
+        walk(node.children);
+      }
+    }
+  };
+
+  walk(nodes);
+  return orderedIds;
+}
 
 interface BoardColumnProps {
   status: StatusCategory;
@@ -13,6 +34,7 @@ interface BoardColumnProps {
   searchQuery: string;
   draggedItemId: string | null;
   onSelectItem: (id: string | null, addToSelection?: boolean) => void;
+  onSelectRange?: RangeSelectHandler;
   onEditItem: (id: string) => void;
   onPrepareEditItem?: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, ids: Set<string>) => void;
@@ -39,6 +61,7 @@ export const BoardColumn = memo(function BoardColumn({
   searchQuery,
   draggedItemId,
   onSelectItem,
+  onSelectRange,
   onEditItem,
   onPrepareEditItem,
   onContextMenu,
@@ -54,6 +77,13 @@ export const BoardColumn = memo(function BoardColumn({
 
   // Track which parent nodes are expanded (default: collapsed)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const treeNodesRef = useLatestRef(treeNodes);
+  const expandedIdsRef = useLatestRef(expandedIds);
+  const getOrderedColumnIds = useCallback(
+    () => getVisibleBoardSelectionOrder(treeNodesRef.current, expandedIdsRef.current),
+    [expandedIdsRef, treeNodesRef],
+  );
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -170,6 +200,8 @@ export const BoardColumn = memo(function BoardColumn({
             focusedItemId={focusedItemId}
             searchQuery={searchQuery}
             onSelectItem={onSelectItem}
+            onSelectRange={onSelectRange}
+            getOrderedIds={getOrderedColumnIds}
             onEditItem={onEditItem}
             onPrepareEditItem={onPrepareEditItem}
             onContextMenu={handleCardContextMenu}
@@ -210,6 +242,8 @@ interface BoardTreeNodeRendererProps {
   focusedItemId: string | null;
   searchQuery: string;
   onSelectItem: (id: string | null, addToSelection?: boolean) => void;
+  onSelectRange?: RangeSelectHandler;
+  getOrderedIds?: OrderedIdsGetter;
   onEditItem: (id: string) => void;
   onPrepareEditItem?: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, itemId: string) => void;
@@ -229,6 +263,8 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
   focusedItemId,
   searchQuery,
   onSelectItem,
+  onSelectRange,
+  getOrderedIds,
   onEditItem,
   onPrepareEditItem,
   onContextMenu,
@@ -253,6 +289,11 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
         isExpanded={isExpanded}
         onToggleExpand={hasChildren ? () => toggleExpanded(item.id) : undefined}
         onSelect={(addToSelection) => onSelectItem(item.id, addToSelection)}
+        onSelectRange={
+          onSelectRange && getOrderedIds
+            ? () => onSelectRange(item.id, getOrderedIds())
+            : undefined
+        }
         onEdit={() => onEditItem(item.id)}
         onPrepareEdit={() => onPrepareEditItem?.(item.id)}
         onContextMenu={(e) => onContextMenu(e, item.id)}
@@ -275,6 +316,8 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
               focusedItemId={focusedItemId}
               searchQuery={searchQuery}
               onSelectItem={onSelectItem}
+              onSelectRange={onSelectRange}
+              getOrderedIds={getOrderedIds}
               onEditItem={onEditItem}
               onPrepareEditItem={onPrepareEditItem}
               onContextMenu={onContextMenu}

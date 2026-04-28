@@ -24,6 +24,7 @@ interface BoardCardProps {
   isExpanded?: boolean;
   onToggleExpand?: () => void;
   onSelect: (addToSelection: boolean) => void;
+  onSelectRange?: () => void;
   onEdit: () => void;
   onPrepareEdit?: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
@@ -91,6 +92,7 @@ export const BoardCard = memo(function BoardCard({
   isExpanded = false,
   onToggleExpand,
   onSelect,
+  onSelectRange,
   onEdit,
   onPrepareEdit,
   onContextMenu,
@@ -226,6 +228,10 @@ export const BoardCard = memo(function BoardCard({
       `}
       onClick={(e) => {
         e.stopPropagation();
+        if (e.shiftKey && onSelectRange) {
+          onSelectRange();
+          return;
+        }
         onSelect(e.metaKey || e.ctrlKey);
       }}
       onDoubleClick={(e) => {

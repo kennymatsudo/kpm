@@ -31,6 +31,7 @@ import {
   usePlanTaskEdit,
   useCreateItemModal,
   usePlanContextMenu,
+  usePlanItemSelection,
 } from './hooks';
 import type { ViewMode } from './ViewSwitcher';
 
@@ -144,6 +145,10 @@ export function PlanView({
 
   // --- Selection & bulk operations ---
 
+  const { handleSelectItem, handleSelectRange } = usePlanItemSelection({
+    selectedItemIds,
+    setSelectedItemIds,
+  });
 
   // Descendant tracking for bulk operations
   const descendantIds = useMemo(
@@ -429,6 +434,7 @@ export function PlanView({
                   focusedItemId={focusedItemId}
                   searchQuery={searchQuery}
                   onSelectItem={handleSelectItem}
+                  onSelectRange={handleSelectRange}
                   onEditItem={handleEditItem}
                   onPrepareEditItem={prefetchEditItem}
                   onCreateItem={handleCreateItemFromCanvas}
@@ -448,6 +454,7 @@ export function PlanView({
                 focusedItemId={focusedItemId}
                 searchQuery={searchQuery}
                 onSelectItem={handleSelectItem}
+                onSelectRange={handleSelectRange}
                 onEditItem={handleEditItem}
                 onPrepareEditItem={prefetchEditItem}
                 onContextMenu={handleTreeContextMenu}
@@ -464,6 +471,7 @@ export function PlanView({
                 focusedItemId={focusedItemId}
                 searchQuery={searchQuery}
                 onSelectItem={handleSelectItem}
+                onSelectRange={handleSelectRange}
                 onEditItem={handleEditItem}
                 onPrepareEditItem={prefetchEditItem}
                 onContextMenu={handleTreeContextMenu}

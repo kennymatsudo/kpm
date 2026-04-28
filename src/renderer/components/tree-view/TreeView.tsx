@@ -4,12 +4,18 @@ import type { TreeNode } from '../../utils/planHierarchy';
 import { StatusSelector } from '../ui/StatusSelector';
 import { getStatusCategory } from '../../constants/statusConfig';
 import { usePlanDomainStore } from '../../stores';
+import { useLatestRef } from '../../hooks/useLatestRef';
 import { MAX_DEPTH } from '../../constants/planCardStyles';
 import { Z_INDEX } from '../../constants/zIndex';
+import {
+  getVisibleTreeSelectionOrder,
+  treeNodeMatchesSearch,
+} from '../../utils/planSelectionOrder';
 import { useTreeExpansion } from './hooks/useTreeExpansion';
 import { useTreeDragDrop } from './hooks/useTreeDragDrop';
 import { useTreeContextMenu } from './hooks/useTreeContextMenu';
 import type { DragState, DropPosition } from './hooks/useTreeDragDrop';
+import type { OrderedIdsGetter, RangeSelectHandler } from '../../utils/rangeSelection';
 
 /**
  * TreeView - A compact outline view for plan items with drag-and-drop
@@ -45,6 +51,8 @@ interface TreeRowProps {
   dropPosition: DropPosition;
   canDrop: boolean;
   onSelect: (id: string, addToSelection: boolean) => void;
+  onSelectRange?: RangeSelectHandler;
+  getOrderedIds?: OrderedIdsGetter;
   onEdit: (id: string) => void;
   onPrepareEdit?: (id: string) => void;
   onToggleExpand: (id: string) => void;
@@ -67,6 +75,8 @@ const TreeRow = memo(function TreeRow({
   dropPosition,
   canDrop,
   onSelect,
+  onSelectRange,
+  getOrderedIds,
   onEdit,
   onPrepareEdit,
   onToggleExpand,
@@ -174,6 +184,10 @@ const TreeRow = memo(function TreeRow({
         style={{ paddingLeft: `${12 + depth * 20}px` }}
         onClick={(e) => {
           e.stopPropagation();
+          if (e.shiftKey && onSelectRange && getOrderedIds) {
+            onSelectRange(node.id, getOrderedIds());
+            return;
+          }
           onSelect(node.id, e.metaKey || e.ctrlKey);
         }}
         onDoubleClick={(e) => {
@@ -319,6 +333,8 @@ interface TreeBranchProps {
   searchQuery: string;
   dragState: DragState | null;
   onSelect: (id: string, addToSelection: boolean) => void;
+  onSelectRange?: RangeSelectHandler;
+  getOrderedIds?: OrderedIdsGetter;
   onEdit: (id: string) => void;
   onPrepareEdit?: (id: string) => void;
   onToggleExpand: (id: string) => void;
@@ -340,6 +356,8 @@ const TreeBranch = memo(function TreeBranch({
   searchQuery,
   dragState,
   onSelect,
+  onSelectRange,
+  getOrderedIds,
   onEdit,
   onPrepareEdit,
   onToggleExpand,
@@ -381,6 +399,7 @@ const TreeBranch = memo(function TreeBranch({
 
         // During search, auto-expand if descendants match
         const isSearchActive = searchQuery.trim().length > 0;
+        const hasMatchingDescendant = isSearchActive && treeNodeMatchesSearch(node, searchQuery);
         const shouldShowChildren = hasChildren && (isExpanded || (isSearchActive && hasMatchingDescendant));
 
         // Hide items that don't match search (and have no matching descendants)
@@ -399,6 +418,8 @@ const TreeBranch = memo(function TreeBranch({
               dropPosition={dropPosition}
               canDrop={canDrop}
               onSelect={onSelect}
+              onSelectRange={onSelectRange}
+              getOrderedIds={getOrderedIds}
               onEdit={onEdit}
               onPrepareEdit={onPrepareEdit}
               onToggleExpand={onToggleExpand}
@@ -428,6 +449,8 @@ const TreeBranch = memo(function TreeBranch({
                   searchQuery={searchQuery}
                   dragState={dragState}
                   onSelect={onSelect}
+                  onSelectRange={onSelectRange}
+                  getOrderedIds={getOrderedIds}
                   onEdit={onEdit}
                   onToggleExpand={onToggleExpand}
                   onContextMenu={onContextMenu}
@@ -451,6 +474,8 @@ export interface TreeViewProps {
   selectedIds: Set<string>;
   focusedItemId: string | null;
   searchQuery: string;
+  onSelectItem: (id: string | null, addToSelection: boolean) => void;
+  onSelectRange?: RangeSelectHandler;
   onEditItem: (id: string) => void;
   onPrepareEditItem?: (id: string) => void;
   onContextMenu?: (e: React.MouseEvent, selectedIds: Set<string>) => void;
@@ -465,6 +490,7 @@ export const TreeView = memo(function TreeView({
   focusedItemId,
   searchQuery,
   onSelectItem,
+  onSelectRange,
   onEditItem,
   onPrepareEditItem,
   onContextMenu,
@@ -479,6 +505,18 @@ export const TreeView = memo(function TreeView({
     handleExpandAll,
     handleCollapseAll,
   } = useTreeExpansion({ items });
+
+  const itemsRef = useLatestRef(items);
+  const expandedIdsRef = useLatestRef(expandedIds);
+  const searchQueryRef = useLatestRef(searchQuery);
+  const getOrderedTreeIds = useCallback(
+    () => getVisibleTreeSelectionOrder(
+      itemsRef.current,
+      expandedIdsRef.current,
+      searchQueryRef.current,
+    ),
+    [expandedIdsRef, itemsRef, searchQueryRef],
+  );
 
   const {
     dragState,
@@ -596,6 +634,11 @@ export const TreeView = memo(function TreeView({
         className="flex-1 overflow-y-auto py-1"
         onDragOver={handleContainerDragOver}
         onDrop={handleContainerDrop}
+        onClick={(e) => {
+          // Plain click on the empty area (not on a row) clears selection.
+          // TreeRow stops propagation, so this only fires for misses.
+          if (e.target === e.currentTarget) onSelectItem(null, false);
+        }}
       >
         <TreeBranch
           nodes={items}
@@ -606,6 +649,12 @@ export const TreeView = memo(function TreeView({
           expandedIds={expandedIds}
           searchQuery={searchQuery}
           dragState={dragState}
+          onSelect={onSelectItem}
+          onSelectRange={onSelectRange}
+          getOrderedIds={getOrderedTreeIds}
+          onEdit={onEditItem}
+          onPrepareEdit={onPrepareEditItem}
+          onToggleExpand={handleToggleExpand}
           onContextMenu={handleContextMenu}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}

@@ -14,6 +14,7 @@ import { DragSource } from '../../constants/dragSource';
 import { DeleteConfirmDialog } from '../ui/DeleteConfirmDialog';
 import { getStatusCategory } from '../../constants/statusConfig';
 import { isPerfLoggingEnabled, logPerfEvent } from '../../utils/perfLogger';
+import type { OrderedIdsGetter, RangeSelectHandler } from '../../utils/rangeSelection';
 import { PlanCardMenu, type MenuPosition } from './PlanCardMenu';
 import {
   getPlanCardMenuPositionForPoint,
@@ -170,6 +171,8 @@ interface PlanCardProps {
   /** Set of recently imported item IDs for temporary highlight */
   recentlyImportedIds?: Set<string>;
   onSelectItem?: (itemId: string, addToSelection: boolean) => void;  // Selection handler
+  onSelectRange?: RangeSelectHandler;  // Shift-click range select
+  getOrderedIds?: OrderedIdsGetter;  // Visual order for range select; called at click time
   onEditItem?: (itemId: string) => void;  // For opening edit panel
   onPrepareEditItem?: (itemId: string) => void;  // For warming modal data before open
   onAddToContext?: (itemId: string) => void;  // For adding to chat context
@@ -198,6 +201,8 @@ export const PlanCard = memo(function PlanCard({
   queuedItemIds,
   recentlyImportedIds,
   onSelectItem,
+  onSelectRange,
+  getOrderedIds,
   onEditItem,
   onPrepareEditItem,
   onAddToContext,
@@ -340,6 +345,10 @@ export const PlanCard = memo(function PlanCard({
       draggable={!isPreview}
       onClick={isPreview ? undefined : (e) => {
         e.stopPropagation();
+        if (e.shiftKey && onSelectRange && getOrderedIds) {
+          onSelectRange(item.id, getOrderedIds());
+          return;
+        }
         onSelectItem?.(item.id, e.metaKey || e.ctrlKey);
       }}
       onDoubleClick={isPreview ? undefined : (e) => {
@@ -576,6 +585,8 @@ export const PlanCard = memo(function PlanCard({
                   queuedItemIds={queuedItemIds}
                   recentlyImportedIds={recentlyImportedIds}
                   onSelectItem={onSelectItem}
+                  onSelectRange={onSelectRange}
+                  getOrderedIds={getOrderedIds}
                   onEditItem={onEditItem}
                   onPrepareEditItem={onPrepareEditItem}
                   onAddToContext={onAddToContext}

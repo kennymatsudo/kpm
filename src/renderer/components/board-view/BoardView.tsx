@@ -12,6 +12,7 @@ import { stopAgentSession } from '../../services/agentSessionService';
 import { getStatusCategory, STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import { subscribe } from '../../stores/storeEvents';
 import type { PlanItem, StatusCategory, DevSessionWithPlanItem } from '../../../shared/types';
+import type { RangeSelectHandler } from '../../utils/rangeSelection';
 import { getBoardDropDecision } from './dropBehavior';
 
 /**
@@ -35,6 +36,7 @@ interface BoardViewProps {
   focusedItemId: string | null;
   searchQuery: string;
   onSelectItem: (id: string | null, addToSelection?: boolean) => void;
+  onSelectRange?: RangeSelectHandler;
   onEditItem: (id: string) => void;
   onPrepareEditItem?: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, ids: Set<string>) => void;
@@ -56,6 +58,7 @@ export const BoardView = memo(function BoardView({
   focusedItemId,
   searchQuery,
   onSelectItem,
+  onSelectRange,
   onEditItem,
   onPrepareEditItem,
   onContextMenu,
@@ -365,6 +368,7 @@ export const BoardView = memo(function BoardView({
             focusedItemId={focusedItemId}
             searchQuery={searchQuery}
             draggedItemId={draggedItemId}
+            onSelectRange={onSelectRange}
             onEditItem={onEditItem}
             onPrepareEditItem={onPrepareEditItem}
             onContextMenu={onContextMenu}

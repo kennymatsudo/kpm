@@ -7,6 +7,9 @@ import { GroupContainer } from './GroupContainer';
 import { CanvasContextMenu } from './CanvasContextMenu';
 import type { TreeNode } from '../../utils/planHierarchy';
 import { ZOOM } from '../../constants/layout';
+import { useLatestRef } from '../../hooks/useLatestRef';
+import { getCanvasSelectionOrder } from '../../utils/planSelectionOrder';
+import type { RangeSelectHandler } from '../../utils/rangeSelection';
 import {
   useCanvasViewport,
   useCanvasWheel,
@@ -41,6 +44,7 @@ interface CanvasProps {
   /** Search query for filtering/highlighting cards */
   searchQuery?: string;
   onSelectItem: (itemId: string | null, addToSelection?: boolean) => void;
+  onSelectRange?: RangeSelectHandler;
   onEditItem: (itemId: string) => void;
   onPrepareEditItem?: (itemId: string) => void;
   onAddToContext?: (itemId: string) => void;
@@ -61,6 +65,7 @@ export const Canvas = memo(function Canvas({
   focusedItemId,
   searchQuery = '',
   onSelectItem,
+  onSelectRange,
   onEditItem,
   onPrepareEditItem,
   onAddToContext,
@@ -110,8 +115,14 @@ export const Canvas = memo(function Canvas({
 
   useCanvasWheel({ projectId, containerRef, setZoom, setPanOffset });
 
+  const selectionRef = useLatestRef(selectedItemIds);
   const selectionSignaturesRef = useRef<Map<string, string>>(new Map());
 
+  const itemsRef = useLatestRef(items);
+  const getOrderedCanvasIds = useCallback(
+    () => getCanvasSelectionOrder(itemsRef.current),
+    [itemsRef],
+  );
 
   // Hierarchy processing: tree, positions, maps, group layout
   const {
@@ -524,6 +535,8 @@ export const Canvas = memo(function Canvas({
                   queuedItemIds={queuedItemIds}
                   recentlyImportedIds={recentlyImportedIds}
                   onSelectItem={onSelectItem}
+                  onSelectRange={onSelectRange}
+                  getOrderedIds={getOrderedCanvasIds}
                   onEditItem={onEditItem}
                   onPrepareEditItem={onPrepareEditItem}
                   onAddToContext={onAddToContext}
@@ -591,6 +604,8 @@ export const Canvas = memo(function Canvas({
                 queuedItemIds={queuedItemIds}
                 recentlyImportedIds={recentlyImportedIds}
                 onSelectItem={onSelectItem}
+                onSelectRange={onSelectRange}
+                getOrderedIds={getOrderedCanvasIds}
                 onEditItem={onEditItem}
                 onPrepareEditItem={onPrepareEditItem}
                 onAddToContext={onAddToContext}
