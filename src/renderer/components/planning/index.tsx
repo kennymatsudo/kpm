@@ -493,6 +493,7 @@ export function PlanView({
           onEditItem={() => handleEditItem(contextMenu.singleItemId!)}
           onDelete={openBulkDeleteDialog}
           onLinkPr={() => handleLinkPr(contextMenu.singleItemId!)}
+          onStartAgent={handleStartAgent}
         />
       ) : contextMenu ? (
         <BulkActionsMenu

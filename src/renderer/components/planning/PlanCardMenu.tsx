@@ -18,6 +18,7 @@ interface PlanCardMenuProps {
   onDelete: () => void;
   onAddToContext: () => void;
   onLinkPr?: () => void;
+  onStartAgent?: (itemId: string) => void;
 }
 
 export function PlanCardMenu({
@@ -29,6 +30,7 @@ export function PlanCardMenu({
   onDelete,
   onAddToContext,
   onLinkPr,
+  onStartAgent,
 }: PlanCardMenuProps) {
   const {
     openWorktreeInEditor,
@@ -53,6 +55,12 @@ export function PlanCardMenu({
 
   const menuRef = useRef<HTMLDivElement>(null);
 
+
+  const handleStartAgentFromMenu = () => {
+    if (!onStartAgent) return;
+    onStartAgent(itemId);
+    onClose();
+  };
 
   // Click-outside and escape key dismissal (inlined since this menu uses custom canvas positioning)
   useEffect(() => {
