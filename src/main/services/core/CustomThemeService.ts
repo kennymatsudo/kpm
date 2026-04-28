@@ -124,6 +124,7 @@ export function createCustomThemeService(deps: CustomThemeServiceDeps) {
   return {
     list(): ServiceResult<CustomTheme[]> {
       try {
+        return success(deps.customThemes.list().map(normalizeThemeForRuntime));
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }
@@ -132,6 +133,7 @@ export function createCustomThemeService(deps: CustomThemeServiceDeps) {
     get(themeId: string): ServiceResult<CustomTheme> {
       try {
         const theme = deps.customThemes.get(themeId);
+        return theme ? success(normalizeThemeForRuntime(theme)) : failure('Theme not found');
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }
@@ -167,6 +169,23 @@ export function createCustomThemeService(deps: CustomThemeServiceDeps) {
 }
 
 export type CustomThemeService = ReturnType<typeof createCustomThemeService>;
+
+function normalizeThemeForRuntime(theme: CustomTheme): CustomTheme {
+  const vscodeColors = sanitizeVsCodeColors(theme.vscode.colors);
+  if (Object.keys(vscodeColors).length === 0) {
+    return theme;
+  }
+
+  return {
+    ...theme,
+    colors,
+    preview: {
+      surface: colors.surface0,
+      accent: colors.accent,
+      text: colors.textPrimary,
+    },
+  };
+}
 
 async function importThemeFromMarketplace(
   parts: VsCodeThemesUrlParts,
@@ -411,9 +430,23 @@ function sanitizeVsCodeColors(input: unknown): Record<string, string> {
     colorScheme,
   );
 
+  const accent = getContrastingColor(
     vscodeColors,
+    [
+      'button.background',
+      'activityBarBadge.background',
+      'activityBar.foreground',
+      'tab.activeForeground',
+      'list.highlightForeground',
+      'panelTitle.activeBorder',
+      'textLink.foreground',
+      'progressBar.background',
+      'terminal.ansiBlue',
+      'focusBorder',
+    ],
     isDark ? '#60a5fa' : '#2563eb',
     surface0,
+    3,
   );
 
   const surface1 = getOpaqueColor(vscodeColors, ['sideBar.background', 'panel.background', 'activityBar.background'], mix(surface0, isDark ? '#ffffff' : '#000000', 0.04), surface0);
@@ -439,6 +472,13 @@ function sanitizeVsCodeColors(input: unknown): Record<string, string> {
     textTertiary: getOpaqueColor(vscodeColors, ['disabledForeground'], mix(textPrimary, surface0, 0.42), surface0),
     textMuted: getOpaqueColor(vscodeColors, ['editorLineNumber.foreground', 'input.placeholderForeground'], mix(textPrimary, surface0, 0.58), surface0),
     accent,
+    accentHover: getContrastingColor(
+      vscodeColors,
+      ['button.hoverBackground', 'textLink.activeForeground'],
+      mix(accent, isDark ? '#ffffff' : '#000000', 0.14),
+      surface0,
+      3,
+    ),
     success: getOpaqueColor(vscodeColors, ['terminal.ansiGreen', 'testing.iconPassed', 'charts.green'], isDark ? '#4ade80' : '#16a34a', surface0),
     warning: getOpaqueColor(vscodeColors, ['terminal.ansiYellow', 'editorWarning.foreground', 'charts.yellow'], isDark ? '#fbbf24' : '#ca8a04', surface0),
     danger: getOpaqueColor(vscodeColors, ['terminal.ansiRed', 'errorForeground', 'editorError.foreground'], isDark ? '#f87171' : '#dc2626', surface0),
@@ -642,6 +682,36 @@ function getOpaqueColor(
     }
   }
   return normalizeOpaqueHex(fallback, background);
+}
+
+function getContrastingColor(
+  colors: Record<string, string>,
+  keys: string[],
+  fallback: string,
+  background: string,
+  minRatio: number,
+): string {
+  let firstValid: string | null = null;
+
+  for (const key of keys) {
+    const value = colors[key];
+    if (!value) {
+      continue;
+    }
+
+    const color = normalizeOpaqueHex(value, background);
+    firstValid ??= color;
+    if (contrastRatio(color, background) >= minRatio) {
+      return color;
+    }
+  }
+
+  const fallbackColor = normalizeOpaqueHex(fallback, background);
+  if (contrastRatio(fallbackColor, background) >= minRatio) {
+    return fallbackColor;
+  }
+
+  return firstValid ?? fallbackColor;
 }
 
 function normalizeHexColor(value: string): string | null {

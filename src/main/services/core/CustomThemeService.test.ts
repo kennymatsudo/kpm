@@ -162,4 +162,116 @@ describe('CustomThemeService', () => {
       fontStyle: 'italic',
     });
   });
+
+  it('skips low-contrast workbench colors when deriving the app accent', async () => {
+    const packageJson = JSON.stringify({
+      publisher: 'liviuschera',
+      name: 'noctis',
+      contributes: {
+        themes: [
+          {
+            label: 'Noctis Hibernus',
+            uiTheme: 'vs',
+            path: './themes/hibernus.json',
+          },
+        ],
+      },
+    });
+    const themeJson = JSON.stringify({
+      colors: {
+        'editor.background': '#f4f6f6',
+        'editor.foreground': '#005661',
+        'focusBorder': '#e0eff1',
+        'button.background': '#099',
+        'button.hoverBackground': '#0cc',
+        'textLink.foreground': '#00c6e0',
+        'textLink.activeForeground': '#00c6e0',
+      },
+    });
+    const zip = createZip({
+      'extension/package.json': packageJson,
+      'extension/themes/hibernus.json': themeJson,
+    });
+    const body = zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) as ArrayBuffer;
+    const fetchFn = vi.fn(async () => new Response(body, {
+      status: 200,
+      headers: { 'content-length': String(zip.length) },
+    })) as unknown as typeof fetch;
+    const service = createCustomThemeService({
+      customThemes: createStore(),
+      fetchFn,
+    });
+
+    const result = await service.importFromVsCodeThemesUrl(
+      'https://vscodethemes.com/e/liviuschera.noctis/noctis-hibernus',
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.theme.colors.colorScheme).toBe('light');
+    expect(result.data.theme.colors.accent).toBe('#009999');
+    expect(result.data.theme.colors.accentHover).toBe('#008484');
+  });
+
+  it('normalizes existing imported themes on read', () => {
+    const store = createStore();
+    const persisted = store.upsert({
+      sourceKey: 'vscodethemes:liviuschera.noctis:noctis-hibernus',
+      name: 'Noctis Hibernus',
+      description: 'Imported from liviuschera.noctis',
+      colors: {
+        colorScheme: 'light',
+        surface0: '#f4f6f6',
+        surface1: '#e7f2f3',
+        surface2: '#e0eff1',
+        surface3: '#d1eafa',
+        surface4: '#b6e1e7',
+        surfaceElevated: '#e0eff1',
+        textPrimary: '#005661',
+        textSecondary: '#71838e',
+        textTertiary: '#8ca6a6',
+        textMuted: '#a0abac',
+        accent: '#e0eff1',
+        accentHover: '#00c6e0',
+      },
+      preview: {
+        surface: '#f4f6f6',
+        accent: '#e0eff1',
+        text: '#005661',
+      },
+      vscode: {
+        base: 'vs',
+        inherit: true,
+        colors: {
+          'editor.background': '#f4f6f6',
+          'editor.foreground': '#005661',
+          'focusBorder': '#e0eff1',
+          'button.background': '#099',
+          'button.hoverBackground': '#0cc',
+        },
+        rules: [],
+      },
+      source: {
+        type: 'vscodethemes',
+        url: 'https://vscodethemes.com/e/liviuschera.noctis/noctis-hibernus',
+        extensionId: 'liviuschera.noctis',
+        publisher: 'liviuschera',
+        extensionName: 'noctis',
+        themeSlug: 'noctis-hibernus',
+        themeLabel: 'Noctis Hibernus',
+        importedAt: '2026-04-28T00:00:00.000Z',
+      },
+    });
+    const service = createCustomThemeService({ customThemes: store });
+
+    const listResult = service.list();
+    const getResult = service.get(persisted.id);
+
+    expect(listResult.ok).toBe(true);
+    expect(getResult.ok).toBe(true);
+    if (!listResult.ok || !getResult.ok) return;
+    expect(listResult.data[0].colors.accent).toBe('#009999');
+    expect(listResult.data[0].preview.accent).toBe('#009999');
+    expect(getResult.data.colors.accent).toBe('#009999');
+  });
 });
