@@ -25,6 +25,7 @@ interface SlackTriagePanelProps {
 const ACTION_TYPE_ORDER: SlackTriageActionType[] = ['reply', 'create_task', 'update_document', 'info_only'];
 const ACTION_TYPE_LABELS: Record<SlackTriageActionType, string> = {
   reply: 'Reply',
+  create_task: 'Needs Investigation',
   update_document: 'Update Document',
   info_only: 'Info Only',
 };
@@ -64,6 +65,7 @@ export function SlackTriagePanel({ projectId }: SlackTriagePanelProps) {
   const triggerTriage = useSlackTriageStore((s) => s.triggerTriage);
   const dismissItem = useSlackTriageStore((s) => s.dismissItem);
   const executeItem = useSlackTriageStore((s) => s.executeItem);
+  const investigateItem = useSlackTriageStore((s) => s.investigateItem);
   const restoreItem = useSlackTriageStore((s) => s.restoreItem);
 
   useEffect(() => {
@@ -225,6 +227,7 @@ export function SlackTriagePanel({ projectId }: SlackTriagePanelProps) {
                     projectId={projectId}
                     onDismiss={dismissItem}
                     onExecute={executeItem}
+                    onInvestigate={investigateItem}
                   />
                 );
               })}
@@ -339,6 +342,10 @@ function HistoryItemCard({
   onRestore: (id: string, projectId: string) => Promise<void>;
 }) {
   const [isRestoring, setIsRestoring] = useState(false);
+  const restoreLabel = item.status === 'dismissed' ? 'Restore' : 'Reopen';
+  const restoreTitle = item.status === 'dismissed'
+    ? 'Move this item back to pending'
+    : 'Move this item back to pending. This does not undo any previous side effects.';
 
   return (
     <div className="rounded-lg border border-border-default bg-surface-1 p-3 opacity-75">
@@ -350,6 +357,7 @@ function HistoryItemCard({
             {item.resolved_at && ` \u00b7 ${new Date(item.resolved_at).toLocaleDateString()}`}
           </p>
         </div>
+        {item.status !== 'pending' && (
           <button
             onClick={async () => {
               setIsRestoring(true);
@@ -360,8 +368,10 @@ function HistoryItemCard({
               }
             }}
             disabled={isRestoring}
+            title={restoreTitle}
             className="text-xxs px-2 py-0.5 rounded bg-surface-2 text-text-muted hover:text-text-secondary hover:bg-surface-3 transition-colors disabled:opacity-50 flex-shrink-0"
           >
+            {restoreLabel}
           </button>
         )}
       </div>
@@ -375,12 +385,14 @@ function TriageGroup({
   projectId,
   onDismiss,
   onExecute,
+  onInvestigate,
 }: {
   actionType: SlackTriageActionType;
   items: SlackTriageItem[];
   projectId: string;
   onDismiss: (id: string, projectId: string) => Promise<void>;
   onExecute: (id: string, projectId: string) => Promise<void>;
+  onInvestigate: (item: SlackTriageItem, projectId: string) => Promise<void>;
 }) {
   return (
     <div>
@@ -395,6 +407,7 @@ function TriageGroup({
             projectId={projectId}
             onDismiss={onDismiss}
             onExecute={onExecute}
+            onInvestigate={onInvestigate}
           />
         ))}
       </div>
@@ -407,11 +420,13 @@ function TriageItemCard({
   projectId,
   onDismiss,
   onExecute,
+  onInvestigate,
 }: {
   item: SlackTriageItem;
   projectId: string;
   onDismiss: (id: string, projectId: string) => Promise<void>;
   onExecute: (id: string, projectId: string) => Promise<void>;
+  onInvestigate: (item: SlackTriageItem, projectId: string) => Promise<void>;
 }) {
   const [isActing, setIsActing] = useState(false);
   const showAuthor = item.author_name && !isOpaqueSlackUserId(item.author_name);
@@ -420,6 +435,15 @@ function TriageItemCard({
     setIsActing(true);
     try {
       await action(item.id, projectId);
+    } finally {
+      setIsActing(false);
+    }
+  };
+
+  const handleInvestigate = async () => {
+    setIsActing(true);
+    try {
+      await onInvestigate(item, projectId);
     } finally {
       setIsActing(false);
     }
@@ -461,6 +485,7 @@ function TriageItemCard({
           <ActionButton label="Send" variant="accent" disabled={isActing} onClick={() => handleAction(onExecute)} />
         )}
         {item.action_type === 'create_task' && (
+          <ActionButton label="Investigate" variant="accent" disabled={isActing} onClick={handleInvestigate} />
         )}
         {item.action_type === 'update_document' && (
           <ActionButton label="Apply" variant="accent" disabled={isActing} onClick={() => handleAction(onExecute)} />
@@ -494,6 +519,7 @@ function SuggestedActionPreview({ item }: { item: SlackTriageItem }) {
       const taskAction = action as unknown as SlackTriageCreateTaskAction;
       return (
         <div className="bg-surface-2 rounded p-2 text-xs">
+          <p className="text-xxs uppercase tracking-wider text-text-muted">Investigation Seed</p>
           <p className="font-medium text-text-primary mt-0.5">{taskAction.title}</p>
           <p className="text-text-secondary mt-1 whitespace-pre-wrap line-clamp-4">{taskAction.description}</p>
           {taskAction.suggested_parent && (

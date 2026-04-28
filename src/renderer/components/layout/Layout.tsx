@@ -141,6 +141,7 @@ export const Layout = memo(function Layout({
     hiddenStatusCategoriesRef,
     setHiddenStatusCategories,
     handleMainViewChange,
+    showWorkspaceChat,
   });
 
   const handleToggleToolLog = useCallback(() => {

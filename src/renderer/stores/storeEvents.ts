@@ -43,6 +43,8 @@ export interface NavigateToViewEvent {
   type: 'navigate-to-view';
   payload: {
     view: 'planning' | 'workspace';
+    /** Optional request to reveal the chat surface for views that can hide it. */
+    showChat?: boolean;
     /** Optional file path to open after navigation (for workspace view) */
     filePath?: string;
     /** Optional plan item ID to focus after navigation (for planning view) */

@@ -189,6 +189,7 @@ export function createSlackTriageAdapter(deps: SlackTriageAdapterDeps) {
         append: systemPrompt,
       },
       cwd: projectFolder,
+      maxTurns: 15,
       tools: [],
       persistSession: false,
       // Always pass mcpServers (even if empty) so the SDK initializes the MCP
@@ -294,6 +295,7 @@ export function createSlackTriageAdapter(deps: SlackTriageAdapterDeps) {
 
 Use Slack tools to resolve a Slack channel reference to an exact channel.
 The reference may be a Slack channel ID like C123ABC456 or a human-readable channel name like team-project-updates.
+When calling slack_search_channels, pass channel_types: "public_channel,private_channel" so private channels the user belongs to are included — defaulting to public-only causes valid private channels to resolve as null.
 Return only JSON in one of these forms:
 - {"id":"C123ABC456","name":"team-project-updates"}
 - null`,
@@ -350,6 +352,7 @@ Return only JSON.`,
       projectId,
 
 Use Slack tools to read channel history.
+Call slack_read_channel exactly once with limit: 100. Do not paginate — ignore any next_cursor in the response.
 Return only a JSON array of messages. Preserve these fields when present:
 - ts: string
 - user: string
@@ -395,6 +398,7 @@ Return only JSON.`,
       projectId,
 
 Use Slack tools to read a thread.
+Call slack_read_thread exactly once with limit: 100. Do not paginate — ignore any next_cursor in the response.
 Return only a JSON array of reply messages. Exclude the root message whose ts matches the thread ts.
 Preserve these fields when present:
 - ts: string

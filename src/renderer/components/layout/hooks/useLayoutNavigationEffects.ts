@@ -16,6 +16,7 @@ interface UseLayoutNavigationEffectsParams {
   hiddenStatusCategoriesRef: MutableRefObject<Set<StatusCategory>>;
   setHiddenStatusCategories: (categories: Set<StatusCategory>) => void;
   handleMainViewChange: (view: 'planning' | 'workspace') => void;
+  showWorkspaceChat: () => void;
 }
 
 export interface UseLayoutNavigationEffectsReturn {
@@ -27,6 +28,7 @@ export function useLayoutNavigationEffects({
   hiddenStatusCategoriesRef,
   setHiddenStatusCategories,
   handleMainViewChange,
+  showWorkspaceChat,
 }: UseLayoutNavigationEffectsParams): UseLayoutNavigationEffectsReturn {
   const openFile = useWorkspaceStore((state) => state.openFile);
 
@@ -53,6 +55,10 @@ export function useLayoutNavigationEffects({
   useEffect(() => {
     const unsubscribe = subscribeToStoreEvent('navigate-to-view', (event) => {
       handleMainViewChange(event.payload.view);
+
+      if (event.payload.view === 'workspace' && event.payload.showChat) {
+        showWorkspaceChat();
+      }
 
       if (event.payload.view === 'workspace' && event.payload.filePath) {
         const filePath = event.payload.filePath;
@@ -101,6 +107,7 @@ export function useLayoutNavigationEffects({
     });
 
     return unsubscribe;
+  }, [handleFileOpen, handleMainViewChange, hiddenStatusCategoriesRef, setHiddenStatusCategories, showWorkspaceChat]);
 
   return { handleFileOpen };
 }
