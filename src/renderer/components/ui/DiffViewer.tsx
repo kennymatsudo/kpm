@@ -66,6 +66,7 @@ export function DiffViewer({ oldContent, newContent, diffLines: diffLinesProp, a
         newValue={newContent}
         splitView={false}
         compareMethod={DiffMethod.LINES}
+        showDiffOnly={false}
         hideLineNumbers
         hideSummary
         styles={diffViewerStyles}
