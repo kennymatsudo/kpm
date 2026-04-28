@@ -132,6 +132,8 @@ export function createMockApi() {
       },
       projects: {
         list: vi.fn().mockResolvedValue({ success: true, projects: [] }),
+        listLinearTeams: vi.fn().mockResolvedValue({ success: true, teams: [] }),
+        listLinearProjects: vi.fn().mockResolvedValue({ success: true, projects: [] }),
         getStatuses: vi.fn().mockResolvedValue({ success: true, statuses: [] }),
         getLabels: vi.fn().mockResolvedValue({ success: true, labels: [] }),
         getComponents: vi.fn().mockResolvedValue({ success: true, components: [] }),

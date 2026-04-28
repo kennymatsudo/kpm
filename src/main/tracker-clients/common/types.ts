@@ -42,6 +42,8 @@ export interface CreateIssueParams {
   parentKey?: string;         // For sub-tasks or stories under epics
   labels?: string[];
   customFields?: Record<string, unknown>;  // Custom field values
+  /** Linear-only: scope new issues to a Linear Project (UUID). Ignored by other clients. */
+  linearProjectId?: string;
 }
 
 export interface CreatedIssue {

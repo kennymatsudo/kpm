@@ -103,6 +103,36 @@ describe('TrackerService', () => {
     expect(tracker.createAssociation).not.toHaveBeenCalled();
   });
 
+  it('loads Linear projects through the Linear client', async () => {
+    const getProjectsForTeam = vi.fn().mockResolvedValue([{ id: 'proj-1', name: 'Roadmap' }]);
+    const service = createTrackerService({
+      tracker: {} as never,
+      clientService: {
+        getClient: vi.fn(),
+        getJiraCredentialsInfo: vi.fn(),
+        saveJiraCredentials: vi.fn(),
+        clearJiraCredentials: vi.fn(),
+        testJiraConnection: vi.fn(),
+        getJiraProjects: vi.fn(),
+        getJiraClient: vi.fn(),
+        getLinearClient,
+        getLinearCredentialsInfo: vi.fn(),
+        saveLinearCredentials: vi.fn(),
+        clearLinearCredentials: vi.fn(),
+        testLinearConnection: vi.fn(),
+        getLinearTeams: vi.fn(),
+      },
+      importService: { generateImportPreview: vi.fn(), importIssues: vi.fn() },
+      syncService: { generateSyncPreview: vi.fn(), applySyncChanges: vi.fn() },
+    });
+
+    const result = await service.listLinearProjects('ENG');
+
+    expect(result).toEqual({ ok: true, data: [{ id: 'proj-1', name: 'Roadmap' }] });
+    expect(getLinearClient).toHaveBeenCalledTimes(1);
+    expect(getProjectsForTeam).toHaveBeenCalledWith('ENG');
+  });
+
   it('fails sync preview early when the association is missing', async () => {
     const getJiraClient = vi.fn();
     const service = createTrackerService({

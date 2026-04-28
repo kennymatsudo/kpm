@@ -1,9 +1,12 @@
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 import {
+  listLinearTrackerProjects,
   listLinearTrackerTeams,
   listTrackerProjectStatuses,
 } from '../../../services/trackerService';
 import { useTrackerStore } from '../../../stores';
+import { SearchableSelect } from './SearchableSelect';
 
 interface Props {
   projectId: string | null;
@@ -16,6 +19,11 @@ interface LinearTeam {
   name: string;
 }
 
+interface LinearProject {
+  id: string;
+  name: string;
+}
+
 interface LinearState {
   id: string;
   name: string;
@@ -23,6 +31,10 @@ interface LinearState {
 }
 
 /**
+ * Linear linking form. Team selection is required; project and state scoping
+ * are optional. Selecting a Linear Project narrows the import to just that
+ * project's issues; selecting workflow states narrows by state. With neither
+ * set, every issue in the team syncs.
  */
 export function LinearLinkProjectForm({ projectId, onLinked, onCancel }: Props) {
   const addAssociation = useTrackerStore((state) => state.addAssociation);
@@ -30,9 +42,16 @@ export function LinearLinkProjectForm({ projectId, onLinked, onCancel }: Props) 
   const [teams, setTeams] = useState<LinearTeam[]>([]);
   const [isLoadingTeams, setIsLoadingTeams] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedTeamKey, setSelectedTeamKey] = useState<string>('');
   const [displayName, setDisplayName] = useState('');
   const [isLinking, setIsLinking] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+
+  // Project-filter data — lazy-loaded when a team is selected
+  const [projects, setProjects] = useState<LinearProject[]>([]);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
 
   // State-filter data — lazy-loaded when a team is selected
   const [states, setStates] = useState<LinearState[]>([]);
@@ -65,8 +84,45 @@ export function LinearLinkProjectForm({ projectId, onLinked, onCancel }: Props) 
     };
   }, []);
 
+  // Load Linear projects (within the team) when the team selection changes.
+  useEffect(() => {
+    if (!selectedTeamKey) {
+      setProjects([]);
+      setSelectedProjectId('');
+      setProjectsError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setProjects([]);
+    setIsLoadingProjects(true);
+    setProjectsError(null);
+    setSelectedProjectId('');
+    listLinearTrackerProjects(selectedTeamKey)
+      .then((result: { success: boolean; projects?: LinearProject[]; error?: string }) => {
+        if (cancelled) return;
+        if (!result.success || !result.projects) {
+          setProjectsError(result.error || 'Failed to load Linear projects');
+          setProjects([]);
+          return;
+        }
+        setProjects(result.projects);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setProjectsError(e instanceof Error ? e.message : 'Failed to load Linear projects');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingProjects(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTeamKey]);
+
   // Load workflow states when the team selection changes.
   useEffect(() => {
+    if (!selectedTeamKey) {
       setStates([]);
       setSelectedStateIds(new Set());
       setStatesError(null);
@@ -74,8 +130,11 @@ export function LinearLinkProjectForm({ projectId, onLinked, onCancel }: Props) 
     }
 
     let cancelled = false;
+    setStates([]);
+    setSelectedStateIds(new Set());
     setIsLoadingStates(true);
     setStatesError(null);
+    listTrackerProjectStatuses(selectedTeamKey, 'linear')
       .then((result: { success: boolean; statuses?: LinearState[]; error?: string }) => {
         if (cancelled) return;
         if (!result.success || !result.statuses) {
@@ -95,6 +154,7 @@ export function LinearLinkProjectForm({ projectId, onLinked, onCancel }: Props) 
     return () => {
       cancelled = true;
     };
+  }, [selectedTeamKey]);
 
   const toggleState = (stateId: string) => {
     setSelectedStateIds((prev) => {
@@ -108,6 +168,8 @@ export function LinearLinkProjectForm({ projectId, onLinked, onCancel }: Props) 
     });
   };
 
+  const selectedTeam = teams.find((t) => t.key === selectedTeamKey) ?? null;
+  const selectedProject = projects.find((p) => p.id === selectedProjectId) ?? null;
 
   const handleLink = useCallback(async () => {
     if (!projectId || !selectedTeam) return;
@@ -116,8 +178,14 @@ export function LinearLinkProjectForm({ projectId, onLinked, onCancel }: Props) 
     try {
       const filter = {
         teamKey: selectedTeam.key,
+        ...(selectedProjectId ? { projectId: selectedProjectId } : {}),
         ...(selectedStateIds.size > 0 ? { stateIds: Array.from(selectedStateIds) } : {}),
       };
+      // Default name reflects the scoping the user actually chose: just the team
+      // when team-wide, or "Team - Project" when narrowed to a Linear Project.
+      const fallbackName = selectedProject
+        ? `${selectedTeam.name} - ${selectedProject.name}`
+        : undefined;
       const result = await addAssociation(
         'linear',
         projectId,
@@ -125,6 +193,7 @@ export function LinearLinkProjectForm({ projectId, onLinked, onCancel }: Props) 
         selectedTeam.key,
         selectedTeam.name,
         JSON.stringify(filter),
+        displayName.trim() || fallbackName
       );
       if (result.success) {
         onLinked();
@@ -136,6 +205,27 @@ export function LinearLinkProjectForm({ projectId, onLinked, onCancel }: Props) 
     } finally {
       setIsLinking(false);
     }
+  }, [
+    addAssociation,
+    displayName,
+    onLinked,
+    projectId,
+    selectedProject,
+    selectedProjectId,
+    selectedStateIds,
+    selectedTeam,
+  ]);
+
+  // Group states by category for the picker UI.
+  const statesByCategory = useMemo(() => {
+    const groups: Record<string, LinearState[]> = {};
+    for (const state of states) {
+      const category = state.categoryKey || 'other';
+      groups[category] ??= [];
+      groups[category].push(state);
+    }
+    return groups;
+  }, [states]);
 
   if (isLoadingTeams) {
     return (
@@ -167,7 +257,18 @@ export function LinearLinkProjectForm({ projectId, onLinked, onCancel }: Props) 
         <label className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-2">
           Linear Team
         </label>
+        <SearchableSelect<LinearTeam>
+          options={teams}
+          value={selectedTeam}
+          onChange={(team) => setSelectedTeamKey(team?.key ?? '')}
+          getKey={(t) => t.key}
+          getLabel={(t) => t.name}
+          getMeta={(t) => t.key}
+          getSearchText={(t) => `${t.name} ${t.key}`}
+          placeholder={`Search ${teams.length} team${teams.length === 1 ? '' : 's'}…`}
+          emptyMessage="No teams match your search"
           disabled={isLinking}
+        />
       </div>
 
       <div>
@@ -178,12 +279,54 @@ export function LinearLinkProjectForm({ projectId, onLinked, onCancel }: Props) 
           type="text"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
+          placeholder={
+            selectedProject
+              ? `${selectedTeam?.name ?? ''} - ${selectedProject.name}`
+              : selectedTeam?.name ?? ''
+          }
           className="input"
           disabled={isLinking}
         />
       </div>
 
+      {/* Project picker — appears once a team is chosen */}
+      {selectedTeamKey && (
+        <div>
+          <label className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-2">
+            Linear Project (optional)
+          </label>
+          {isLoadingProjects ? (
+            <div className="flex items-center gap-2 text-xs text-text-tertiary py-2">
+              <LoadingSpinner className="w-3.5 h-3.5" />
+              Loading Linear projects…
+            </div>
+          ) : projectsError ? (
+            <p className="text-xs text-danger">{projectsError}</p>
+          ) : projects.length === 0 ? (
+            <p className="text-xs text-text-tertiary">No Linear projects found for this team.</p>
+          ) : (
+            <SearchableSelect<LinearProject>
+              options={projects}
+              value={selectedProject}
+              onChange={(project) => setSelectedProjectId(project?.id ?? '')}
+              getKey={(p) => p.id}
+              getLabel={(p) => p.name}
+              placeholder={`Search ${projects.length} project${projects.length === 1 ? '' : 's'}…`}
+              emptyMessage="No projects match your search"
+              disabled={isLinking}
+              allowClear
+            />
+          )}
+          <p className="text-xs text-text-tertiary mt-1.5">
+            {selectedProjectId
+              ? 'Only issues in this Linear project will sync; new issues you export will land in this project.'
+              : 'All projects in the team will sync.'}
+          </p>
+        </div>
+      )}
+
       {/* State picker — appears once a team is chosen */}
+      {selectedTeamKey && (
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-medium text-text-secondary uppercase tracking-wider">

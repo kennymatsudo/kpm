@@ -230,6 +230,14 @@ export function createTrackerService(deps: TrackerServiceDeps) {
       return deps.clientService.getJiraProjects();
     },
 
+    // ---- Linear-specific project queries ----------------------------------
+    listLinearProjects(teamKey: string): AsyncResult<{ id: string; name: string }[]> {
+      return wrapAsync(async () => {
+        const client = await deps.clientService.getLinearClient();
+        return client.getProjectsForTeam(teamKey);
+      }, 'Failed to load Linear projects for the selected team.');
+    },
+
     getProjectLabels(projectKey: string): AsyncResult<string[]> {
       return wrapAsync(async () => {
         const client = await deps.clientService.getJiraClient();

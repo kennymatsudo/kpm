@@ -531,6 +531,10 @@ const tracker = {
       ipcRenderer.invoke(IPC_CHANNELS.tracker.projects.listJira),
     listLinearTeams: (): Promise<{ success: boolean; teams?: { key: string; name: string }[]; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.tracker.projects.listLinearTeams),
+    listLinearProjects: (
+      teamKey: string,
+    ): Promise<{ success: boolean; projects?: { id: string; name: string }[]; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.tracker.projects.listLinearProjects, { teamKey }),
     getLabels: (projectKey: string): Promise<{ success: boolean; labels?: string[]; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.tracker.project.labels, { projectKey }),
     getComponents: (projectKey: string): Promise<{ success: boolean; components?: { id: string; name: string }[]; error?: string }> =>

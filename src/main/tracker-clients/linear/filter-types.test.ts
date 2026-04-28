@@ -20,6 +20,7 @@ describe('parseLinearFilter', () => {
       stateIds: ['s1', 's2'],
       labelIds: ['l1'],
       projectId: 'p1',
+      parentIdentifier: 'ENG-1',
       searchTerm: 'foo',
     };
     expect(parseLinearFilter(stringifyLinearFilter(filter))).toEqual(filter);
@@ -40,6 +41,16 @@ describe('parseLinearFilter', () => {
   it('throws when input is not an object', () => {
     expect(() => parseLinearFilter('null')).toThrow(/expected an object/);
     expect(() => parseLinearFilter('"ENG"')).toThrow(/expected an object/);
+  });
+
+  it('throws when optional array fields are malformed', () => {
+    expect(() => parseLinearFilter(JSON.stringify({ teamKey: 'ENG', stateIds: 's1' }))).toThrow(/stateIds/);
+    expect(() => parseLinearFilter(JSON.stringify({ teamKey: 'ENG', labelIds: ['l1', 2] }))).toThrow(/labelIds/);
+  });
+
+  it('throws when optional string fields are malformed', () => {
+    expect(() => parseLinearFilter(JSON.stringify({ teamKey: 'ENG', projectId: 1 }))).toThrow(/projectId/);
+    expect(() => parseLinearFilter(JSON.stringify({ teamKey: 'ENG', searchTerm: false }))).toThrow(/searchTerm/);
   });
 });
 

@@ -121,6 +121,12 @@ export function registerTrackerHandlers(
     return trackerService.listLinearTeams();
   });
 
+  ipcMain.handle(IPC_CHANNELS.tracker.projects.listLinearProjects, async (_e, params: unknown) => {
+    const { teamKey } = TrackerSchemas.listLinearProjects.parse(params);
+    const result = await trackerService.listLinearProjects(teamKey);
+    return result.ok ? { success: true, projects: result.data } : { success: false, error: result.error };
+  });
+
   ipcMain.handle(IPC_CHANNELS.tracker.project.statuses, async (_e, params: unknown) => {
     const { projectKey, trackerType } = TrackerSchemas.getProjectStatuses.parse(params);
     const result = await trackerService.getProjectStatuses(projectKey, trackerType);

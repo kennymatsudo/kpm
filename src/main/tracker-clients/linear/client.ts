@@ -20,6 +20,7 @@ import {
 
 const LINEAR_ENDPOINT = 'https://api.linear.app/graphql';
 const PAGE_SIZE = 50;
+const TEAM_PAGE_SIZE = 250;
 
 const ISSUE_FIELDS = gql`
   fragment IssueFields on Issue {
@@ -70,6 +71,10 @@ interface LinearIssue {
 }
 
 interface PageInfo { hasNextPage: boolean; endCursor: string | null }
+interface Connection<T> { nodes: T[]; pageInfo: PageInfo }
+type IssueConnection = Connection<LinearIssue>;
+interface LinearTeam { key: string; name: string }
+interface LinearProject { id: string; name: string }
 
 export class LinearClient implements TrackerClient {
   readonly type = 'linear' as const;
@@ -93,6 +98,20 @@ export class LinearClient implements TrackerClient {
 
   async getAvailableProjects(): Promise<{ key: string; name: string }[]> {
     try {
+      return this.collectPages<LinearTeam>(async (cursor) => {
+        const data = await this.client.request<{ teams: Connection<LinearTeam> }>(
+          gql`
+            query ListTeams($first: Int!, $after: String) {
+              teams(first: $first, after: $after) {
+                nodes { key name }
+                pageInfo { hasNextPage endCursor }
+              }
+            }
+          `,
+          { first: TEAM_PAGE_SIZE, after: cursor }
+        );
+        return data.teams;
+      });
     } catch (e) {
       throw linearError(e);
     }
@@ -249,6 +268,7 @@ export class LinearClient implements TrackerClient {
       const description = this.documentCodec.toExternal(params.description);
       if (description !== null) input.description = description;
       if (params.labels?.length) input.labelIds = params.labels; // Labels must be IDs, not names
+      if (params.linearProjectId) input.projectId = params.linearProjectId;
       if (params.parentKey) {
         const parent = await this.client.request<{ issue: { id: string } }>(
           gql`query ParentId($id: String!) { issue(id: $id) { id } }`,
@@ -301,6 +321,48 @@ export class LinearClient implements TrackerClient {
       if (!data.issueUpdate.success) {
         throw new Error('Linear issueUpdate returned success=false');
       }
+    } catch (e) {
+      throw linearError(e);
+    }
+  }
+
+  /**
+   * Return Linear Projects accessible to a team. Linear "Projects" are our epic
+   * proxy and are surfaced in the link form so users can scope an association
+   * to a single project rather than the whole team.
+   */
+  async getProjectsForTeam(teamKey: string): Promise<{ id: string; name: string }[]> {
+    try {
+      return this.collectPages<LinearProject>(async (cursor) => {
+        const data = await this.client.request<{
+          teams: {
+            nodes: {
+              projects: {
+                nodes: LinearProject[];
+                pageInfo: PageInfo;
+              };
+            }[];
+          };
+        }>(
+          gql`
+            query TeamProjects($key: String!, $first: Int!, $after: String) {
+              teams(filter: { key: { eq: $key } }) {
+                nodes {
+                  projects(first: $first, after: $after) {
+                    nodes { id name }
+                    pageInfo { hasNextPage endCursor }
+                  }
+                }
+              }
+            }
+          `,
+          // Linear's GraphQL complexity budget for nested connections caps the
+          // page size — 50 keeps us well under the 10k limit.
+          { key: teamKey, first: PAGE_SIZE, after: cursor }
+        );
+        const team = data.teams.nodes[0];
+        return team?.projects ?? { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } };
+      });
     } catch (e) {
       throw linearError(e);
     }
@@ -365,6 +427,18 @@ export class LinearClient implements TrackerClient {
 
       if (!data.issues.pageInfo.hasNextPage || !data.issues.pageInfo.endCursor) return;
       cursor = data.issues.pageInfo.endCursor;
+    }
+  }
+
+  private async collectPages<T>(loadPage: (cursor: string | null) => Promise<Connection<T>>): Promise<T[]> {
+    const nodes: T[] = [];
+    let cursor: string | null = null;
+
+    while (true) {
+      const page = await loadPage(cursor);
+      nodes.push(...page.nodes);
+      if (!page.pageInfo.hasNextPage || !page.pageInfo.endCursor) return nodes;
+      cursor = page.pageInfo.endCursor;
     }
   }
 

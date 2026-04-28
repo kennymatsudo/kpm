@@ -222,6 +222,11 @@ export const TrackerSchemas = {
     trackerType: trackerType.default('jira'),
   }),
 
+  // List Linear projects within a team
+  listLinearProjects: z.object({
+    teamKey: trackerProjectKey,
+  }),
+
   updateStatusMapping: z.object({
     associationId: uuid,
     statusMapping: z.object({

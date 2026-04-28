@@ -52,6 +52,20 @@ export function parseLinearFilter(serialized: string): LinearFilter {
   if (typeof obj.teamKey !== 'string' || obj.teamKey.length === 0) {
     throw new Error('Invalid Linear filter: "teamKey" is required');
   }
+
+  const filter: LinearFilter = { teamKey: obj.teamKey };
+  const stateIds = readOptionalStringArray(obj, 'stateIds');
+  const labelIds = readOptionalStringArray(obj, 'labelIds');
+  const projectId = readOptionalString(obj, 'projectId');
+  const parentIdentifier = readOptionalString(obj, 'parentIdentifier');
+  const searchTerm = readOptionalString(obj, 'searchTerm');
+
+  if (stateIds !== undefined) filter.stateIds = stateIds;
+  if (labelIds !== undefined) filter.labelIds = labelIds;
+  if (projectId !== undefined) filter.projectId = projectId;
+  if (parentIdentifier !== undefined) filter.parentIdentifier = parentIdentifier;
+  if (searchTerm !== undefined) filter.searchTerm = searchTerm;
+  return filter;
 }
 
 export function stringifyLinearFilter(filter: LinearFilter): string {
@@ -103,4 +117,22 @@ export function buildParentIdentifierFilter(parentIdentifiers: string[]): Linear
     return { number: { eq: -1 } };
   }
   return { or: clauses };
+}
+
+function readOptionalString(obj: Record<string, unknown>, key: keyof LinearFilter): string | undefined {
+  const value = obj[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid Linear filter: "${key}" must be a string`);
+  }
+  return value.length > 0 ? value : undefined;
+}
+
+function readOptionalStringArray(obj: Record<string, unknown>, key: keyof LinearFilter): string[] | undefined {
+  const value = obj[key];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw new Error(`Invalid Linear filter: "${key}" must be an array of strings`);
+  }
+  return value;
 }

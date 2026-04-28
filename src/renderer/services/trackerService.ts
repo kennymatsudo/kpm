@@ -122,6 +122,10 @@ export function listLinearTrackerTeams() {
   return window.api.tracker.projects.listLinearTeams();
 }
 
+export function listLinearTrackerProjects(teamKey: string) {
+  return window.api.tracker.projects.listLinearProjects(teamKey);
+}
+
 export function listTrackerProjectStatuses(projectKey: string, trackerType: TrackerType = 'jira') {
   return window.api.tracker.projects.getStatuses(projectKey, trackerType);
 }

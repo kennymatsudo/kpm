@@ -25,6 +25,7 @@ import type {
   TrackerType,
 } from '../../../shared/types';
 import type { JiraClient, TrackerClient } from '../../tracker-clients';
+import { parseLinearFilter } from '../../tracker-clients/linear/filter-types';
 import {
   findTransitionWithMapping,
   generateTransitionWarning,
@@ -61,6 +62,14 @@ function mergeCustomFieldValues(
     ...(defaults ?? {}),
     ...(overrides ?? {}),
   };
+}
+
+function readLinearProjectId(filter: string): string | undefined {
+  try {
+    return parseLinearFilter(filter).projectId;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -634,6 +643,14 @@ export function createExportService(deps: ExportServiceDeps) {
     // Map to track newly created external keys for parent resolution
     const createdKeys = new Map<string, string>();
 
+    // Linear-only: if the association was scoped to a Linear Project at link time,
+    // mirror that scoping on export so new issues land in the same Project. The
+    // association's filter is stored as `JSON.stringify(LinearFilter)`; we treat
+    // a malformed filter as "no project scope" rather than failing the export.
+    const linearProjectId = association.tracker_type === 'linear'
+      ? readLinearProjectId(association.jql_filter)
+      : undefined;
+
     // Process creates sequentially (parent must exist before child)
     for (const entry of sortedCreateEntries) {
       const planItem = itemMap.get(entry.plan_item_id);
@@ -673,12 +690,16 @@ export function createExportService(deps: ExportServiceDeps) {
         // and must not leak to Jira/Linear without an explicit product decision.
         // If you add new spec-like fields, default them to local-only and require sign-off
         // before adding to this payload. See `src/main/claude/CLAUDE.md` (Sync boundary).
+        //
+        // Labels: `planItem.label` is intentionally not forwarded. Jira would accept the
+        // raw string, but Linear requires label UUIDs (not names) — wiring would need a
         const created = await client.createIssue({
           projectKey: association.project_key,
           issueTypeId: entry.target_issue_type_id!,
           summary: planItem.title,
           parentKey,
           customFields,
+          linearProjectId,
         });
 
         // Fetch the created issue so we record the tracker-assigned status.
