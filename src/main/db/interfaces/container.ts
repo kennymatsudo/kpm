@@ -10,6 +10,7 @@ import type { IGroupRepository } from './group';
 import type { ITrackerRepository, ISyncRepository, ISyncQueueRepository, ITypeMappingRepository } from './tracker';
 import type { IChatMessageRepository, IChatSessionRepository } from './chat';
 import type { IDevSessionRepository, IWorktreeRepository } from './dev';
+import type { IAppSettingsRepository, ICustomThemeRepository, ITaskPromptTemplateRepository, ICustomPromptRepository, IToolPermissionRepository } from './settings';
 import type { IConfluenceLinkRepository } from './confluence';
 import type { IAgentReviewRepository, IReviewOwnershipRepository, IReviewSyncStateRepository, IReviewTaskRepository } from './review';
 import type { ISlackChannelLinkRepository, ISlackTriageItemRepository } from './slack';
@@ -36,6 +37,7 @@ export interface IRepositoryContainer {
   customPrompts: ICustomPromptRepository;
   worktrees: IWorktreeRepository;
   appSettings: IAppSettingsRepository;
+  customThemes: ICustomThemeRepository;
   devSessions: IDevSessionRepository;
   confluenceLinks: IConfluenceLinkRepository;
   toolPermissions: IToolPermissionRepository;

@@ -14,6 +14,14 @@ import type { PersistedAgentReview } from './agent-types';
 
 // Re-export core types from base types
 export type { AgentType, AgentSessionState, AgentSessionRole } from './base-types';
+export type {
+  CustomTheme,
+  CustomThemeColors,
+  CustomThemeSource,
+  CustomThemeTokenRule,
+  CustomThemeVsCodeData,
+  ImportedCustomThemeResult,
+} from './customThemes';
 
 // =============================================================================
 // =============================================================================

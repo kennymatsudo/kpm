@@ -31,4 +31,6 @@ export type {
   SyncReviewData,
   ChatMessage,
   Group,
+  CustomTheme,
+  ImportedCustomThemeResult,
 } from './api';

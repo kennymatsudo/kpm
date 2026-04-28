@@ -75,6 +75,10 @@ export { DevSessionSchemas, WorktreeSchemas } from './dev-session';
 // Settings
 export { SettingsSchemas } from './settings';
 
+// Custom Themes
+export { CustomThemeSchemas } from './customThemes';
+export type { CustomThemeImportFromUrlInput, CustomThemeDeleteInput } from './customThemes';
+
 // Permissions
 export { PermissionSchemas } from './permission';
 

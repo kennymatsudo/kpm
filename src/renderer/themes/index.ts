@@ -1,3 +1,5 @@
+import type { CustomTheme, CustomThemeVsCodeData } from '../../shared/types';
+
 export type ThemeId =
   | 'system'
 export type ColorScheme = 'light' | 'dark';
@@ -53,6 +55,16 @@ export interface ThemeDefinition {
     text: string;
   };
 }
+
+export type CustomThemePreference = `custom:${string}`;
+
+export interface CustomThemeOption extends Omit<CustomTheme, 'id'> {
+  id: CustomThemePreference;
+  customThemeId: string;
+  isCustom: true;
+}
+
+export type ThemeOption = ThemeDefinition | CustomThemeOption;
 
 // ============================================
 // Color Utility Functions
@@ -110,6 +122,18 @@ export const THEMES: ThemeDefinition[] = [
 
 export function getThemeById(id: ThemeId): ThemeDefinition | undefined {
   return THEMES.find((t) => t.id === id);
+}
+
+export function customThemePreferenceId(themeId: string): CustomThemePreference {
+  return `custom:${themeId}`;
+}
+
+export function getCustomThemeId(preference: string): string | null {
+  return preference.startsWith('custom:') ? preference.slice('custom:'.length) : null;
+}
+
+export function isCustomThemeOption(theme: ThemeOption): theme is CustomThemeOption {
+  return 'isCustom' in theme && theme.isCustom === true;
 }
 
 // ============================================
@@ -301,7 +325,10 @@ export function generateThemeVariables(colors: ThemeColors): Record<string, stri
 }
 
 /**
+ * Apply concrete theme colors to the document root.
  */
+export function applyThemeColors(colors: ThemeColors): void {
+  const variables = generateThemeVariables(colors);
   const root = document.documentElement;
 
   for (const [key, value] of Object.entries(variables)) {
@@ -311,4 +338,42 @@ export function generateThemeVariables(colors: ThemeColors): Record<string, stri
       root.style.setProperty(key, value);
     }
   }
+}
+
+/**
+ * Apply a built-in theme's CSS variables to the document root.
+ */
+export function applyThemeVariables(themeId: Exclude<ThemeId, 'system'>): void {
+  const theme = getThemeById(themeId);
+  if (!theme) return;
+
+  applyThemeColors(theme.colors);
+}
+
+export function createMonacoThemeData(theme: ThemeOption): CustomThemeVsCodeData {
+  if (isCustomThemeOption(theme)) {
+    return theme.vscode;
+  }
+
+  const colors = theme.colors;
+  return {
+    inherit: true,
+    rules: [],
+    colors: {
+      'editor.foreground': colors.textPrimary,
+      'editorLineNumber.foreground': colors.textMuted,
+      'editorLineNumber.activeForeground': colors.textSecondary,
+      'editor.lineHighlightBackground': colors.surface2,
+      'editor.lineHighlightBorder': '#00000000',
+      'editor.selectionBackground': `${colors.accent}33`,
+      'editor.inactiveSelectionBackground': `${colors.accent}1a`,
+      'editorCursor.foreground': colors.accentHover,
+      'editorWhitespace.foreground': colors.surface4,
+      'editorIndentGuide.background1': colors.surface3,
+      'editorIndentGuide.activeBackground1': colors.textMuted,
+      'editorGutter.background': colors.surface0,
+      'editorBracketMatch.background': `${colors.accent}1a`,
+      'editorBracketMatch.border': colors.accent,
+    },
+  };
 }

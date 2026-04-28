@@ -71,6 +71,8 @@ import type {
   AgentSessionState,
   AgentSessionRole,
   AgentEffortLevel,
+  CustomTheme,
+  ImportedCustomThemeResult,
 } from '../shared/types';
 import type {
   AgentActivity,
@@ -159,6 +161,8 @@ export type {
   ReviewInboxSnapshot,
   SlackChannelLink,
   SlackTriageItem,
+  CustomTheme,
+  ImportedCustomThemeResult,
 };
 
 const tempImages = {
@@ -713,6 +717,15 @@ const settings = {
     getAll: (): Promise<{ success: boolean; settings?: Record<string, string>; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.settings.app.getAll),
   },
+};
+
+const customThemes = {
+  list: (): Promise<{ success: boolean; themes?: CustomTheme[]; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.customThemes.list),
+  importFromUrl: (url: string): Promise<{ success: boolean; theme?: CustomTheme; warnings?: string[]; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.customThemes.importFromUrl, { url }),
+  delete: (themeId: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.customThemes.delete, { themeId }),
 };
 
 const permission = {
@@ -1453,6 +1466,7 @@ export const api = {
   menu,
   storybook,
   settings,
+  customThemes,
   permission,
   permissions,
   artifacts,

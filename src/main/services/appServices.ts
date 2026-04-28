@@ -25,6 +25,7 @@ import { createCustomPromptService } from './core/CustomPromptService';
 import { createExportFacadeService } from './core/ExportFacadeService';
 import { createPermissionService } from './core/PermissionService';
 import { createSettingsService } from './core/SettingsService';
+import { createCustomThemeService } from './core/CustomThemeService';
 import { createTaskPromptTemplateService } from './core/TaskPromptTemplateService';
 import { createAttachmentService } from './core/AttachmentService';
 import { createGroupService } from './core/GroupService';
@@ -124,6 +125,10 @@ export function createAppServices(container: IRepositoryContainer) {
   const settingsService = createSettingsService({
     appSettings: container.appSettings,
     anthropicAuth: AnthropicAuth,
+  });
+
+  const customThemeService = createCustomThemeService({
+    customThemes: container.customThemes,
   });
 
   const contextFileService = createContextFileService({
@@ -337,6 +342,7 @@ export function createAppServices(container: IRepositoryContainer) {
     // Core
     projectService,
     settingsService,
+    customThemeService,
     contextFileService,
     customPromptService,
     permissionService,

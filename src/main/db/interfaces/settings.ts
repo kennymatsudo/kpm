@@ -21,6 +21,23 @@ export interface IAppSettingsRepository {
 }
 
 // =============================================================================
+// Custom Theme Repository
+// =============================================================================
+
+export type CustomThemeSaveInput = Omit<CustomTheme, 'id' | 'created_at' | 'updated_at'>;
+
+export interface ICustomThemeRepository {
+  /** List all custom themes ordered by most recently updated */
+  list(): CustomTheme[];
+  /** Get a custom theme by ID */
+  get(id: string): CustomTheme | undefined;
+  /** Upsert a theme by source key and return the persisted row */
+  upsert(theme: CustomThemeSaveInput): CustomTheme;
+  /** Delete a custom theme by ID */
+  delete(id: string): void;
+}
+
+// =============================================================================
 // Task Prompt Template Repository
 // =============================================================================
 

@@ -2830,6 +2830,31 @@ interface Migration {
     },
   },
   {
+    id: 1074,
+    name: '074_custom_themes',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- CUSTOM THEMES: sanitized user-imported themes
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS custom_themes (
+          id TEXT PRIMARY KEY,
+          source_key TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          colors_json TEXT NOT NULL,
+          preview_json TEXT NOT NULL,
+          vscode_json TEXT NOT NULL,
+          source_json TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_custom_themes_updated_at ON custom_themes(updated_at);
+      `);
+    },
+  },
+  {
     id: 1075,
     name: '075_drop_inbox_and_project_sessions',
     up: (db: BetterSqliteDatabase) => {

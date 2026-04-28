@@ -26,9 +26,11 @@ export type { IDevSessionRepository, IWorktreeRepository } from './dev';
 // Settings domain
 export type {
   IAppSettingsRepository,
+  ICustomThemeRepository,
   ITaskPromptTemplateRepository,
   ICustomPromptRepository,
   IToolPermissionRepository,
+  CustomThemeSaveInput,
   CustomPromptCreate,
   CustomPromptUpdate,
 } from './settings';

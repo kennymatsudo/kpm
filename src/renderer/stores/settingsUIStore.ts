@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 export type SettingsTab =
   | 'workflow'
+  | 'prompts'
 
 interface SettingsUIState {
   isOpen: boolean;
@@ -20,6 +21,7 @@ interface SettingsUIState {
 const TAB_ORDER: SettingsTab[] = [
   'workflow',
   'prompts',
+  'permissions',
 ];
 
 export const useSettingsUIStore = create<SettingsUIState>((set, get) => ({
