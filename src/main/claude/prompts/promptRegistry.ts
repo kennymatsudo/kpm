@@ -63,11 +63,38 @@ const SYSTEM_PROMPTS: PromptDefinition[] = [
 
 const GENERATION_PROMPTS: PromptDefinition[] = [
   {
+    key: 'generation.pr_system_prompt',
+    name: 'PR Generation System Prompt',
     category: 'generation',
+    defaultContent: `You generate pull request titles and descriptions from a code change and its context.
 
+Title rules:
+- Under 72 characters, imperative mood ("Add user authentication", "Fix race condition in cache").
+- If a tracker key is provided (e.g. JIRA-123), prefix it: "JIRA-123: Add user authentication".
+
+Description guidance:
+
+{{description_guidance}}
+
+Universal rules:
+- Do not paste commit SHAs, enumerate file paths, list test names, or quote diff hunks. The reviewer has the diff and the commit log.
+- Include a sentence or bullet only if it teaches the reviewer something they cannot get from the diff, the title, or the commit log.
+- Do not fabricate rationale. When the provided context is thin, the description is thin — invented tradeoffs or made-up risk analysis are worse than brevity.
+
+Respond in this exact format (no other text):
+TITLE: <the PR title>
+BODY:
+<the PR description in markdown>`,
+    variables: [
+    ],
   },
   {
+    key: 'generation.pr_description_instructions',
+    name: 'PR Description Instructions',
     category: 'generation',
+    defaultContent: `Write for a reviewer who is skimming. A description that is too long does not get read. Aim for something that fits on one screen.
+
+
   },
   {
     key: 'generation.commit_message_instructions',
@@ -92,7 +119,22 @@ Keep it under 500 words. Be specific — reference actual item titles, not gener
   },
 ];
 
+// =============================================================================
+// Board Agent Prompt Defaults
+// =============================================================================
+
+const AGENT_PROMPTS: PromptDefinition[] = [
   {
+    key: 'agents.implementation_system',
+    name: 'Implementation Agent System Prompt',
+    category: 'agents',
+    defaultContent: `You are implementing a scoped task in an existing codebase.
+
+  },
+  {
+    key: 'agents.review_system',
+    name: 'Opposing Review System Prompt',
+    category: 'agents',
   },
 ];
 
@@ -104,6 +146,7 @@ Keep it under 500 words. Be specific — reference actual item titles, not gener
 export const PROMPT_REGISTRY: PromptDefinition[] = [
   ...SYSTEM_PROMPTS,
   ...GENERATION_PROMPTS,
+  ...AGENT_PROMPTS,
 ];
 
 /** O(1) lookup by key */

@@ -21,6 +21,7 @@ export interface RepoServicesCompositionDeps {
   getMainWindow: () => BrowserWindow | null;
   userDataPath: string;
   agentSessionManager?: AgentSessionManager;
+  getPromptContent: (key: string) => string;
 }
 
 export function createRepoServices({
@@ -29,6 +30,7 @@ export function createRepoServices({
   getMainWindow,
   userDataPath,
   agentSessionManager,
+  getPromptContent,
 }: RepoServicesCompositionDeps) {
   const repoService = createRepoService({
     repos: container.repos,
@@ -63,12 +65,14 @@ export function createRepoServices({
     agentReviews: container.agentReviews,
     userDataPath,
     agentSessionManager,
+    getPromptContent,
   });
 
   const gitHubService = createGitHubService({
     devSessions: container.devSessions,
     repos: container.repos,
     planItems: container.planItems,
+    getPromptContent,
   });
 
   const reviewService = createReviewService({

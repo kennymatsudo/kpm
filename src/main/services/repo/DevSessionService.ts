@@ -140,6 +140,8 @@ export interface DevSessionServiceDeps {
   appSettings: IAppSettingsRepository;
   agentReviews: IAgentReviewRepository;
   userDataPath: string;
+  /** Resolves configurable prompt content (override > registry default). */
+  getPromptContent: (key: string) => string;
   /** Optional — when provided, dev sessions use the Agent SDK instead of PTY */
   agentSessionManager?: AgentSessionManager;
 }
@@ -568,6 +570,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
 
         // Build SDK options for the dev session
         const sdkOptions: SDKOptions = {
+          systemPrompt: deps.getPromptContent('agents.implementation_system'),
           model: developerModel,
           maxTurns: getConfig().claude.maxTurns,
           permissionMode: getConfig().claude.defaultPermissionMode,

@@ -74,6 +74,13 @@ export function createAppServices(container: IRepositoryContainer) {
       }
     }
   };
+
+  // Prompt overrides — created early so any service or callback below can resolve
+  // configurable prompts via `getPromptContent`.
+  const promptOverrideService = createPromptOverrideService({
+    appSettings: container.appSettings,
+  });
+  const getPromptContent = (key: string) => unwrapOrThrow(promptOverrideService.getContent(key));
   const planItemServiceDeps: PlanItemServiceDeps = {
     planItems: container.planItems,
     syncQueue: container.syncQueue,
@@ -243,6 +250,7 @@ export function createAppServices(container: IRepositoryContainer) {
     getMainWindow: getPrimaryWindow,
     userDataPath: getUserDataPath(),
     agentSessionManager,
+    getPromptContent,
   });
   devSessionServiceRef = devSessionService;
 
@@ -280,6 +288,7 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const briefingService = createBriefingService({
     getDatabase,
+    getPromptContent,
     fileExplorerService,
     projects: container.projects,
   });

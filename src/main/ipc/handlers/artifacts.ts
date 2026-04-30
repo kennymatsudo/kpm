@@ -1,4 +1,8 @@
 /**
+ * IPC Handlers for project outputs/ folder management.
+ *
+ * Lists, reads, deletes, and imports markdown files from the project's
+ * outputs/ directory (used by Custom Prompts and other generators).
  */
 
 import { ipcMain, dialog, type BrowserWindow } from 'electron';

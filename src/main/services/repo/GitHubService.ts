@@ -49,6 +49,8 @@ export interface GitHubServiceDeps {
   devSessions: IDevSessionRepository;
   repos: IRepoRepository;
   planItems: IPlanItemRepository;
+  /** Resolves configurable prompt content (override > registry default). */
+  getPromptContent?: (key: string) => string;
 }
 
 export interface PrContextResult {
@@ -444,6 +446,13 @@ export function createGitHubService(deps: GitHubServiceDeps) {
 HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and examples — read them to understand what each section expects, then write plain markdown in their place. Your output must not contain any \`<!-- ... -->\`, stray \`-->\`, or stray \`--->\`.
 
 ## PR Template
+          : (deps.getPromptContent
+              ? deps.getPromptContent('generation.pr_description_instructions')
+              : '');
+
+        const systemPromptTemplate = deps.getPromptContent
+          ? deps.getPromptContent('generation.pr_system_prompt')
+          : '';
 
         const prompt = `Generate a PR title and description for the following changes:\n\n${contextParts.join('\n\n')}`;
 

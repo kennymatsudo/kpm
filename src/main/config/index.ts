@@ -9,6 +9,7 @@
 
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 
+type ClaudeModel = 'opus' | 'sonnet' | 'haiku';
 
 // =============================================================================
 // Type Definitions

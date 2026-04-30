@@ -12,6 +12,7 @@ import { getAvailableAgents } from '../../services/agents/agentCatalog';
 import { launchAutoReview } from '../../services/agents/autoReview';
 import { AgentSessionSchemas, createIpcHandler, createSimpleIpcHandler } from '../validation';
 import { IPC_CHANNELS } from '../channels';
+import { unwrapOrThrow } from '../../services/result';
 import { getConfig } from '../../config';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import { toReviewSessionId } from '../../../shared/agent-types';
@@ -187,6 +188,7 @@ export function registerAgentSessionHandlers(
             taskDescription: session.initial_instructions,
             projectId: session.project_id,
             agentSessionManager,
+            getPromptContent: (key) => unwrapOrThrow(promptOverrideService.getContent(key)),
           });
 
           if (!reviewSessionId) {

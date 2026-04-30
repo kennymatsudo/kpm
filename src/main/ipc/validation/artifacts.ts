@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import * as path from 'path';
 import { getTempImagesDir } from '../../services/files/TempImageService';
+import { uuid, absolutePath, supportedImageFormat } from './shared';
 
 // =============================================================================
 // Artifact Schemas

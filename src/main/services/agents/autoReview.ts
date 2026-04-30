@@ -24,6 +24,7 @@ const LOG_PREFIX = '[AutoReview]';
 
 /**
  */
+  return `## Task that was implemented
 ${taskDescription}
 
 ## Changes (git diff)
@@ -55,6 +56,7 @@ async function startReviewSession(params: {
   projectId: string;
   worktreePath: string;
   reviewPrompt: string;
+  reviewSystemPrompt: string;
   agentSessionManager: AgentSessionManager;
   model?: string;
 }): Promise<void> {
@@ -64,12 +66,14 @@ async function startReviewSession(params: {
     projectId,
     worktreePath,
     reviewPrompt,
+    reviewSystemPrompt,
     agentSessionManager,
     model,
   } = params;
 
   if (reviewAgentType === 'claude') {
     const sdkOptions: SDKOptions = {
+      systemPrompt: reviewSystemPrompt,
       model: getConfig().generation.fastModel,
       cwd: worktreePath,
       maxTurns: 5,
@@ -186,6 +190,8 @@ export async function launchAutoReview(params: {
   taskDescription: string;
   projectId: string;
   agentSessionManager: AgentSessionManager;
+  /** Resolves configurable prompt content (override > registry default). */
+  getPromptContent: (key: string) => string;
 }): Promise<string | null> {
   const {
     implementationSessionId,
@@ -195,6 +201,7 @@ export async function launchAutoReview(params: {
     taskDescription,
     projectId,
     agentSessionManager,
+    getPromptContent,
   } = params;
 
   // Determine the review agent
@@ -225,6 +232,7 @@ export async function launchAutoReview(params: {
     return null;
   }
 
+  const reviewSystemPrompt = getPromptContent('agents.review_system');
 
   // Create a review session ID (derived from implementation session)
   const reviewSessionId = toReviewSessionId(implementationSessionId);
@@ -238,6 +246,7 @@ export async function launchAutoReview(params: {
       projectId,
       worktreePath,
       reviewPrompt,
+      reviewSystemPrompt,
       agentSessionManager,
       model: codexModel,
     });
@@ -253,6 +262,7 @@ export async function launchAutoReview(params: {
           projectId,
           worktreePath,
           reviewPrompt,
+          reviewSystemPrompt,
           agentSessionManager,
         });
         console.log(`${LOG_PREFIX} Started claude fallback review for session ${implementationSessionId}`);

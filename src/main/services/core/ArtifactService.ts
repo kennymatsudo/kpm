@@ -22,6 +22,7 @@ export interface ArtifactServiceDeps {
 
 export function createArtifactService(deps: ArtifactServiceDeps) {
   function getProjectOrThrow(projectId: string) {
+    const project = deps.projects.get(projectId);
     if (!project) {
       throw new Error('Project not found');
     }

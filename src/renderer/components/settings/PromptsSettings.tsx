@@ -16,6 +16,7 @@ const SUB_TABS: { id: PromptSubTab; label: string }[] = [
   { id: 'system', label: 'System' },
   { id: 'generation', label: 'Generation' },
   { id: 'taskCreation', label: 'Task Creation' },
+  { id: 'agents', label: 'Board Agents' },
 ];
 
 export function PromptsSettings({ currentProjectId }: Props) {
@@ -56,6 +57,9 @@ export function PromptsSettings({ currentProjectId }: Props) {
         </div>
       </div>
 
+        {(activeCategory === 'system'
+          || activeCategory === 'generation'
+          || activeCategory === 'agents') && (
           <PromptEditorSettings />
         )}
         {activeCategory === 'taskCreation' && (
