@@ -57,6 +57,11 @@ export function buildApplicationMenu(deps: ApplicationMenuDeps): void {
           submenu: recentProjectsSubmenu,
         },
         { type: 'separator' as const },
+        {
+          label: 'Close',
+          accelerator: 'CmdOrCtrl+W',
+          click: () => sendToFocusedOrMainWindow('menu:close-context'),
+        },
       ] as MenuItemConstructorOptions[],
     },
     {

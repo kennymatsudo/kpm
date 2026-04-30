@@ -20,7 +20,12 @@ import {
   useProjectUiDomainStore,
   useToolLogStore,
   useSearchStore,
+  useChatStore,
+  useWorkspaceStore,
+  useSettingsUIStore,
+  useBriefingStore,
 } from '../../stores';
+import { cancelChatSession, disconnectChatSession } from '../../services/chatService';
 import { useToolLog } from '../../hooks/useToolLog';
 import { useChatIpcBridge } from '../../hooks/useChatIpcBridge';
 import { usePermissionIpcBridge } from '../../hooks/usePermissionIpcBridge';
@@ -160,6 +165,57 @@ export const Layout = memo(function Layout({
     openGlobalSearch(mainView === 'planning' ? 'plan_item' : 'document');
   }, [openGlobalSearch, mainView]);
 
+  // Cmd+W: close focused context (overlays > file editor > chat session)
+  const handleClose = useCallback(() => {
+    const { isCommandPaletteOpen, closeCommandPalette } = useArtifactsStore.getState();
+    if (isCommandPaletteOpen) {
+      closeCommandPalette();
+      return;
+    }
+
+    const { isOpen: isSearchOpen, closeSearch } = useSearchStore.getState();
+    if (isSearchOpen) {
+      closeSearch();
+      return;
+    }
+
+    const { isOpen: isSettingsOpen, setIsOpen: setSettingsOpen } = useSettingsUIStore.getState();
+    if (isSettingsOpen) {
+      setSettingsOpen(false);
+      return;
+    }
+
+    const { isModalOpen: isBriefingOpen, closeModal: closeBriefing } = useBriefingStore.getState();
+    if (isBriefingOpen) {
+      closeBriefing();
+      return;
+    }
+
+    const { editingFile, closeEditor } = useWorkspaceStore.getState();
+    if (mainView === 'workspace' && editingFile !== null) {
+      closeEditor();
+      return;
+    }
+
+    const chatState = useChatStore.getState();
+    const { viewedSessionId, sessions, activeSessionIds } = chatState;
+    if (viewedSessionId) {
+      const session = sessions.get(viewedSessionId);
+      void (async () => {
+        if (currentProjectId && session) {
+          if (activeSessionIds.has(viewedSessionId) && session.isStreaming) {
+          }
+          if (activeSessionIds.has(viewedSessionId)) {
+            await disconnectChatSession(currentProjectId, viewedSessionId);
+          }
+        }
+        chatState.removeSession(viewedSessionId);
+      })();
+      return;
+    }
+
+  }, [mainView, currentProjectId]);
+
   // Keyboard shortcuts
   useLayoutShortcuts({
     onToggleSidebar: () => setSidebarCollapsed((prev) => !prev),
@@ -170,6 +226,7 @@ export const Layout = memo(function Layout({
     onToggleToolLog: handleToggleToolLog,
     onOpenGlobalSearch: handleOpenGlobalSearch,
     onSwitchProjectByPosition: handleSwitchProjectByPosition,
+    onClose: handleClose,
   });
 
   return (

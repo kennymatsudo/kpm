@@ -1,3 +1,4 @@
+import { ipcMain, BrowserWindow } from 'electron';
 import { registerTempImageHandlers } from '../handlers/tempImages';
 import { registerShellHandlers } from '../handlers/shell';
 import { registerPerfHandlers } from '../handlers/perf';
@@ -15,6 +16,9 @@ export function registerPlatformHandlers({
   services,
   chatRuntime,
 }: IpcRegistrationContext): void {
+  ipcMain.on('window:close', (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.close();
+  });
   registerTempImageHandlers();
   registerShellHandlers();
   registerPerfHandlers();

@@ -696,6 +696,14 @@ const menu = {
     ipcRenderer.on('menu:open-project', handler);
     return () => ipcRenderer.removeListener('menu:open-project', handler);
   },
+  onCloseContext: (callback: () => void): (() => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:close-context', handler);
+    return () => ipcRenderer.removeListener('menu:close-context', handler);
+  },
+  closeWindow: (): void => {
+    ipcRenderer.send('window:close');
+  },
 };
 
 const storybook = {

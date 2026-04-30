@@ -11,6 +11,8 @@ export interface UseLayoutShortcutsOptions {
   onOpenGlobalSearch?: () => void;
   /** Switch project by 1-indexed position (1..10). Called via Cmd+Option+1..9 / Cmd+Option+0. */
   onSwitchProjectByPosition?: (position: number) => void;
+  /** Close the currently focused context (file editor, chat session, or window). */
+  onClose?: () => void;
 }
 
 export function useLayoutShortcuts({
@@ -22,6 +24,7 @@ export function useLayoutShortcuts({
   onToggleToolLog,
   onOpenGlobalSearch,
   onSwitchProjectByPosition,
+  onClose,
 }: UseLayoutShortcutsOptions): void {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -117,4 +120,9 @@ export function useLayoutShortcuts({
     // Use capture phase to catch event before it reaches other elements
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
+
+  useEffect(() => {
+      onClose?.();
+    });
+  }, [onClose]);
 }
