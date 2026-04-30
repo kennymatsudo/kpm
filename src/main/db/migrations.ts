@@ -3063,6 +3063,16 @@ interface Migration {
       db.exec(`ALTER TABLE chat_sessions ADD COLUMN title TEXT;`);
     },
   },
+  {
+    id: 1077,
+    name: '077_drop_dev_session_mode_columns',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE dev_sessions DROP COLUMN requested_mode;
+        ALTER TABLE dev_sessions DROP COLUMN effective_mode;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

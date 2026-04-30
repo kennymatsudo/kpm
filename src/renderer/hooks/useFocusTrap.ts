@@ -51,10 +51,12 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>({
       if (restoreFocus && previousActiveElement.current) {
         // Use setTimeout to ensure the element is still in the DOM
         const elementToFocus = previousActiveElement.current;
+        const restoreId = setTimeout(() => {
           if (document.body.contains(elementToFocus)) {
             elementToFocus.focus();
           }
         }, 0);
+        return () => clearTimeout(restoreId);
       }
       return;
     }
