@@ -191,6 +191,24 @@ Exploratory item example (no criteria yet):
   "parent_id": null
 }
 
+Hierarchy rules:
+- **Default \`parent_id: null\`.** Create items at root unless you have a concrete reason to nest.
+- **Only nest when expanding a specific existing item** the user named or focused, AND you have resolved its ID via a query tool (\`get_plan_hierarchy\` / \`get_item_context\`). Never use a \`parent_id\` you didn't resolve from real data — placeholders ($1, $2) are fine when you create the parent in the same batch, but inventing IDs leaves orphaned references and corrupts the plan.
+- **Do not create a parent item just to group siblings under it.** That's what Groups are for.
+
+Groups vs hierarchy: Groups are visual containers (like Figma frames) — use them for organization without semantic weight ("these belong to the OAuth effort"). Hierarchy (\`parent_id\`) is for genuine parent/child relationships and **becomes a sub-task link on export to Jira/Linear** — so nesting is a semantic commitment, not a layout choice.
+
+Example — capturing N items with optional grouping:
+[
+  { "type": "create_group", "project_id": "proj-1", "name": "OAuth migration", "position_x": 0, "position_y": 0, "width": 552, "height": 400 },
+  { "type": "create_item", "title": "Audit existing token refresh flow", "parent_id": null },
+  { "type": "create_item", "title": "Add PKCE support to authorize endpoint", "parent_id": null },
+  { "type": "create_item", "title": "Migrate session store to Redis", "parent_id": null },
+  { "type": "assign_to_group", "item_id": "$2", "group_id": "$1" },
+  { "type": "assign_to_group", "item_id": "$3", "group_id": "$1" },
+  { "type": "assign_to_group", "item_id": "$4", "group_id": "$1" }
+]
+All three items are root-level; the Group provides organization. Do not invent an "OAuth migration" parent item to nest them under.`,
       {
         message: z.string().describe('Brief description of the proposed changes'),
         actions: z.array(PlanActionSchema).describe('The plan actions to propose'),

@@ -44,10 +44,14 @@ ${attachments.map(a => `- ${a.filename}`).join('\n')}
 
 /**
  * Plan system rules - non-configurable behavior injected into every prompt.
+ * Defines when nesting is appropriate vs when items should be created at root.
  */
 export const PLAN_SYSTEM_RULES = `## Plan Structure
 
 
+**Only nest when expanding a specific existing item.** Acceptable: the user names or focuses an existing item and asks to break *it* down, OR explicitly asks for a multi-level breakdown of one named scope. Use \`reparent\` against an item ID you have already resolved (via \`get_plan_hierarchy\` or \`get_item_context\`). Never invent a parent ID, and never create a parent item just to group siblings under it.
+
+**For organization without semantic weight, use Groups** (visual containers). Groups are the right tool for "these N items belong to the OAuth effort" — hierarchy is not. Hierarchy is reserved for genuine parent/child relationships, which on export to Jira/Linear become sub-task links.`;
 
 /**
  */
