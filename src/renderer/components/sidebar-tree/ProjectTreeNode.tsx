@@ -199,7 +199,9 @@ export interface ProjectTreeNodeExtraProps {
       <div
         ref={dragHandle}
         className={`
+          group flex h-full items-center gap-2 px-3 py-1 rounded-lg relative box-border
           transition-all duration-150 ease-out
+          ${isEditingFile ? 'bg-accent/10' : node.isSelected ? 'bg-surface-4' : 'hover:bg-surface-2/60'}
           ${node.willReceiveDrop ? 'bg-accent/20 ring-2 ring-inset ring-accent ring-dashed' : ''}
           ${isExternalDragOver ? 'bg-accent/20 ring-2 ring-inset ring-accent ring-dashed' : ''}
         `}
@@ -211,7 +213,9 @@ export interface ProjectTreeNodeExtraProps {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
+        {(isEditingFile || node.isSelected) && (
           <div
+            className={`absolute top-1 bottom-1 w-[2px] rounded-full ${isEditingFile ? 'bg-accent' : 'bg-accent/40'}`}
             style={{ left: `${node.level * 16 + 6}px` }}
           />
         )}
@@ -220,6 +224,8 @@ export interface ProjectTreeNodeExtraProps {
           Array.from({ length: node.level }, (_, index) => (
             <div
               key={index}
+              className="absolute top-0 bottom-0 w-px bg-border-default"
+              style={{ left: `${20 + index * 16}px` }}
             />
           ))}
 

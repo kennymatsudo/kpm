@@ -302,6 +302,7 @@ export const ProjectFilesTreeSection = memo(function ProjectFilesTreeSection({
                 width="100%"
                 height={treeHeight}
                 indent={16}
+                rowHeight={32}
                 openByDefault={false}
                 initialOpenState={initialOpenState}
                 onSelect={handleTreeSelect}
