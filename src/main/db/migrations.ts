@@ -3053,6 +3053,16 @@ interface Migration {
       db.exec(`PRAGMA foreign_keys = ON;`);
     },
   },
+  {
+    id: 1076,
+    name: '076_chat_sessions_title',
+    up: (db: BetterSqliteDatabase) => {
+      // SDK-derived display title (auto-summary or user-renamed via /rename)
+      // surfaced in live tabs and the history dropdown. NULL for older rows;
+      // history queries fall back to the first user message for those.
+      db.exec(`ALTER TABLE chat_sessions ADD COLUMN title TEXT;`);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

@@ -102,6 +102,12 @@ vi.mock('../../claude/clientManager', () => ({
   },
 }));
 
+vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+  // The service uses getSessionInfo to fetch the SDK-derived session summary
+  // for tab/history titles. Stub to a no-op so tests don't touch the JSONL store.
+  getSessionInfo: vi.fn(async () => undefined),
+}));
+
 
 vi.mock('../../config', () => ({
   getConfig: () => ({
@@ -116,6 +122,7 @@ vi.mock('../../config', () => ({
 }));
 
 function createDeps(sendSpy: (channel: string, payload: unknown) => void): StreamingSessionServiceDeps {
+  const chatSessions = new Map<string, { claude_session_id: string | null; title: string | null }>();
 
   return {
     projectRepository: {
@@ -129,9 +136,16 @@ function createDeps(sendSpy: (channel: string, payload: unknown) => void): Strea
     chatSessionRepository: {
       get: (id: string) => chatSessions.get(id),
       create: (id: string) => {
+        chatSessions.set(id, { claude_session_id: null, title: null });
         return { id };
       },
       updateClaudeSessionId: (id: string, claudeSessionId: string) => {
+        const prev = chatSessions.get(id) ?? { claude_session_id: null, title: null };
+        chatSessions.set(id, { ...prev, claude_session_id: claudeSessionId });
+      },
+      updateTitle: (id: string, title: string) => {
+        const prev = chatSessions.get(id) ?? { claude_session_id: null, title: null };
+        chatSessions.set(id, { ...prev, title });
       },
       clearClaudeSessionIdsByProject: () => {
         for (const [key, value] of chatSessions) {
@@ -543,6 +557,7 @@ describe('createChatSession continuation wiring', () => {
       ...deps,
       chatSessionRepository: {
         ...deps.chatSessionRepository,
+        get: () => ({ claude_session_id: 'prior-sdk-session', title: null }),
       },
       chatMessageRepository: {
         ...deps.chatMessageRepository,

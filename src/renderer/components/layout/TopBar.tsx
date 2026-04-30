@@ -140,6 +140,7 @@ export function TopBar({
 
   return (
     <>
+      <header className="h-10 flex items-center bg-surface-1 border-b border-border-subtle drag-region flex-shrink-0 relative overflow-visible" style={{ zIndex: Z_INDEX.panel - 10 }}>
         <TopBarProjectSection
           currentProject={currentProjectMenuOption}
           otherProjects={otherProjectsMenuOptions}
@@ -170,6 +171,8 @@ export function TopBar({
         {/* Spacer */}
         <div className="flex-1" />
 
+        {/* Right section: View controls | Actions | Chat toggle (chrome) */}
+        <div className="flex items-center gap-2 pr-3 no-drag min-w-0">
           {currentProject && (
             <>
               <TopBarPlanningControls
@@ -186,6 +189,9 @@ export function TopBar({
                 statusCounts={statusCounts}
               />
 
+              {/* Action buttons - independent toggles, no shared container */}
+              <div className="flex items-center gap-1">
+                {/* Briefing button - read-only context, small icon */}
                   <button
                     onClick={() => {
                       useBriefingStore.getState().openModal();
@@ -198,10 +204,13 @@ export function TopBar({
                     </svg>
                   </button>
 
+                {/* Slack triage button - conditional, small icon */}
                 <SlackTriageBadge projectId={currentProjectId!} />
 
+                {/* Tracker sync - mutating state with queue, labeled button */}
                   <button
                     onClick={handleTrackerClick}
+                    className="relative flex items-center gap-1.5 pl-2 pr-2.5 h-7 rounded-md border border-border-subtle bg-surface-2 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface-3 hover:border-border-default transition-colors"
                     aria-label={
                       !hasTrackerCredentials
                         ? `Open ${trackerLabel} setup`
@@ -211,9 +220,13 @@ export function TopBar({
                     }
                   >
                     {selectedTrackerType === 'linear' ? (
+                      <LinearIcon className="w-3.5 h-3.5" />
                     ) : (
+                      <JiraIcon className="w-3.5 h-3.5" />
                     )}
+                    <span>{trackerLabel}</span>
                     {queueCount > 0 && (
+                      <span className="ml-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-tiny font-semibold bg-accent text-white rounded-full">
                         {queueCount > 99 ? '99+' : queueCount}
                       </span>
                     )}
@@ -222,6 +235,7 @@ export function TopBar({
             </>
           )}
 
+          {/* Chat toggle - panel chrome, sits at the far right edge to mirror the sidebar toggle on the left */}
           {(mainView === 'planning' || mainView === 'workspace') && (
           )}
         </div>

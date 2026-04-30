@@ -27,6 +27,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     setError,
     setTokens,
     addActivity,
+    updateActivity,
     setSuggestions,
     setSessionState,
     setRetrying,
@@ -35,6 +36,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     setViewedSession,
     getOrCreateSession,
     setClaudeSessionId,
+    setSessionTitle,
     setMcpStatus,
   } = useChatStore(useShallow((state) => ({
     appendChunk: state.appendChunk,
@@ -43,6 +45,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     setError: state.setError,
     setTokens: state.setTokens,
     addActivity: state.addActivity,
+    updateActivity: state.updateActivity,
     setSuggestions: state.setSuggestions,
     setSessionState: state.setSessionState,
     setRetrying: state.setRetrying,
@@ -51,6 +54,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     setViewedSession: state.setViewedSession,
     getOrCreateSession: state.getOrCreateSession,
     setClaudeSessionId: state.setClaudeSessionId,
+    setSessionTitle: state.setSessionTitle,
     setMcpStatus: state.setMcpStatus,
   })));
 
@@ -78,6 +82,12 @@ export function useChatIpcBridge(projectId: string | null): void {
 
         for (const session of result.sessions) {
           markSessionActive(session.chatSessionId);
+
+          // Seed live tab title from the persisted SDK summary so reloads
+          // don't drop back to the numeric "Claude N" label until the next turn.
+          if (session.title) {
+            setSessionTitle(session.chatSessionId, session.title);
+          }
 
           if (session.state === 'processing' || session.state === 'connecting') {
             setRetrying(session.chatSessionId);
@@ -136,6 +146,12 @@ export function useChatIpcBridge(projectId: string | null): void {
       },
       onActivity: (data) => {
         const sessionId = data.chatSessionId;
+        // Result-side updates carry diffStats/diffHunks and reuse the original
+        // activity id — route them to updateActivity so we don't duplicate cards.
+        const isResultUpdate = !!(data.activity.diffStats || data.activity.diffHunks);
+        if (isResultUpdate) {
+          updateActivity(sessionId, data.activity);
+        } else {
           addActivity(sessionId, data.activity);
         }
       },
@@ -158,6 +174,11 @@ export function useChatIpcBridge(projectId: string | null): void {
           if (data.sessionId) {
             setClaudeSessionId(sessionId, data.sessionId);
           }
+        }
+      },
+      onSessionTitle: (data) => {
+        const sessionId = data.chatSessionId;
+          setSessionTitle(sessionId, data.title);
         }
       },
       onSessionError: (data) => {

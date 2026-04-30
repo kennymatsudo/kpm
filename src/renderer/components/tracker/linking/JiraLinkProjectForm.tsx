@@ -377,6 +377,7 @@ export function JiraLinkProjectForm({
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
+                placeholder={selectedIssue?.key || selectedProject?.key || 'e.g., Frontend bugs'}
                 className={styles.input}
               />
             </div>

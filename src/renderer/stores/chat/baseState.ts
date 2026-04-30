@@ -15,6 +15,7 @@
   suggestions: [],
   sessionNumber,
   claudeSessionId: null,
+  title: null,
   mcpDegraded: false,
   mcpError: null,
 });

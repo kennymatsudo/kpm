@@ -278,6 +278,13 @@ const chat = {
     return () => ipcRenderer.removeListener('chat:session-ready', handler);
   },
 
+  /** Session title event — SDK-derived summary used to label the session tab. */
+  onSessionTitle: (callback: (data: { projectId: string; chatSessionId?: string; title: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; title: string }) => callback(data);
+    ipcRenderer.on('chat:session-title', handler);
+    return () => ipcRenderer.removeListener('chat:session-title', handler);
+  },
+
   /** Session error event */
   onSessionError: (callback: (data: { projectId: string; chatSessionId?: string; error: string }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; error: string }) => callback(data);

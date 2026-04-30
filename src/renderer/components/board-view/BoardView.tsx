@@ -305,6 +305,8 @@ export const BoardView = memo(function BoardView({
     >
       <div className="flex-1 flex flex-col min-w-0">
       {/* Header with column toggles */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-surface-0">
+        <span className="text-xs font-mono text-text-tertiary">
         {items.length} item{items.length !== 1 ? 's' : ''}
       </span>
 

@@ -15,7 +15,9 @@
 
 import type { BrowserWindow } from 'electron';
 import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-agent-sdk';
+import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { StreamingSession, type McpServerStatus } from '../../claude/streaming';
+import { getToolActivity, extractDiffFromToolResult } from '../../claude/activity';
 import type { ClaudeMdUpdatePayload } from '../../claude/tools/claudemd-update';
 import type { DocumentUpdatePayload } from '../../claude/tools/document-update';
 import {
@@ -84,6 +86,8 @@ export interface ActiveSessionInfo {
   chatSessionId: string;
   state: SessionState;
   isProcessing: boolean;
+  /** Persisted SDK-derived title (null for legacy rows). */
+  title?: string | null;
 }
 
 /** Segment state for tracking message boundaries */
@@ -107,6 +111,13 @@ interface ManagedSession {
   lastSdkActivity?: number; // Timestamp of most recent SDK message (for idle-while-processing detection)
   mcpRecoveryAttempts: number; // Consecutive failed reconnect attempts
   segmentState: SegmentState; // Track message segments for splitting bubbles
+  /**
+   * Maps SDK tool_use id → the Activity we emitted for it.
+   * Used to attach diff stats from the matching tool_use_result back to the
+   * original activity (so the renderer updates the existing card instead of
+   * pushing a duplicate).
+   */
+  toolUseActivities: Map<string, Activity>;
   chatSessionId?: string; // For persisting main chat messages
   accumulatedResponse: string; // Accumulate assistant response for persistence
   lastTurnFinalized: boolean; // True after a turn has emitted chat:done
@@ -158,6 +169,7 @@ export interface StreamingSessionServiceDeps {
   /** Chat session repository for Claude SDK session ID storage */
   chatSessionRepository: {
     updateClaudeSessionId(id: string, claudeSessionId: string): void;
+    updateTitle(id: string, title: string): void;
     clearClaudeSessionIdsByProject(projectId: string): void;
   };
 
@@ -256,10 +268,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const prefix = `chat:${projectId}:`;
 
     for (const [key, managed] of sessions) {
+        const persisted = deps.chatSessionRepository.get(managed.chatSessionId);
         result.push({
           chatSessionId: managed.chatSessionId,
           state: managed.state,
           isProcessing: managed.state === 'processing',
+          title: persisted?.title ?? null,
         });
       }
     }
@@ -559,6 +573,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           hasTextInCurrentSegment: false,
           pendingActivities: [],
         },
+        toolUseActivities: new Map(),
         accumulatedResponse: '',
         lastTurnFinalized: false,
         suppressLifecycleEventsOnEnd: false,
@@ -1059,6 +1074,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           if (activity) {
             // Queue activity for the next text segment
             segState.pendingActivities.push(activity);
+            // Map the SDK tool_use id → activity so we can attach the diff
+            // stats from the matching tool_use_result later.
+            const toolUseId = (block as { id?: unknown }).id;
+            if (typeof toolUseId === 'string') {
+              managed.toolUseActivities.set(toolUseId, activity);
+            }
             // Also send activity for real-time display during streaming —
             // suppress during interrupt-and-send so late old-turn activities
             // can't repopulate the next turn's activity indicator.
@@ -1130,6 +1151,34 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           // Clear pending activities after attaching to text
           segState.pendingActivities = [];
         }
+      }
+    }
+
+    // Handle tool_use_result on user messages — attach diff stats to the
+    // matching activity by tool_use_id and re-emit so the renderer updates
+    // the existing card instead of pushing a new one.
+    // Suppress during interrupt-and-send so late old-turn results can't
+    // leak into the next turn's activity stream.
+    if (sdkMsg.type === 'user' && sdkMsg.tool_use_result && !managed.interruptInProgress) {
+      const content = sdkMsg.message?.content;
+      const blocks = Array.isArray(content) ? content : [];
+      for (const block of blocks) {
+        if (block?.type !== 'tool_result') continue;
+        const toolUseId = typeof block.tool_use_id === 'string' ? block.tool_use_id : null;
+        if (!toolUseId) continue;
+        const original = managed.toolUseActivities.get(toolUseId);
+        if (!original) continue;
+
+        const diff = extractDiffFromToolResult(sdkMsg.tool_use_result);
+        if (!diff) continue;
+
+        const updated: Activity = {
+          ...original,
+          diffStats: { additions: diff.additions, deletions: diff.deletions },
+          diffHunks: diff.hunks.length > 0 ? diff.hunks : undefined,
+        };
+        managed.toolUseActivities.set(toolUseId, updated);
+        mainWindow?.webContents.send('chat:activity', { projectId, chatSessionId, activity: updated });
       }
     }
 
@@ -1242,8 +1291,34 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         hasTextInCurrentSegment: false,
         pendingActivities: [],
       };
+      managed.toolUseActivities.clear();
 
       managed.lastTurnFinalized = true;
+
+      // Fire-and-forget: fetch the SDK's session summary so the renderer can
+      // show a meaningful tab title instead of the numeric "Claude N" label.
+      // Auto-summary generation runs alongside the first turn, so this is the
+      // earliest moment we can read it. Re-fetched after every turn so a
+      // user-renamed session updates the UI on next reply too.
+        const sdkSessionId = managed.sessionId;
+        void getSessionInfo(sdkSessionId)
+          .then((info) => {
+            if (!info?.summary) return;
+            // Persist for the history dropdown so old sessions keep their
+            // meaningful label after a reload, then notify the live UI.
+            try {
+            } catch (err) {
+              console.warn('[StreamingSessionService] updateTitle failed:', err);
+            }
+            mainWindow?.webContents.send('chat:session-title', {
+              projectId,
+              chatSessionId,
+            });
+          })
+          .catch((err: unknown) => {
+            console.warn('[StreamingSessionService] getSessionInfo failed:', err);
+          });
+      }
 
       // Unblock interrupt-and-send orchestration waiting on this result.
       // Runs after chat:done so the renderer can finalize its partial bubble

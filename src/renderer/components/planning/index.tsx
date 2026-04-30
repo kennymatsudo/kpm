@@ -22,6 +22,7 @@ import {
 } from '../../stores';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { createAndStartAgentSession } from '../../services/agentSessionService';
+import { buildHierarchyTree } from '../../utils/planHierarchy';
 import { getStatusCategory } from '../../constants/statusConfig';
 import { useShallow } from 'zustand/react/shallow';
 import {

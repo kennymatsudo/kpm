@@ -107,6 +107,16 @@ export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
       return { sessions };
     }),
 
+    setSessionTitle: (chatSessionId, title) => set((state) => {
+      const sessions = new Map(state.sessions);
+      const session = sessions.get(chatSessionId);
+      if (!session) return state;
+
+      const trimmed = title.trim();
+      sessions.set(chatSessionId, { ...session, title: trimmed.length > 0 ? trimmed : null });
+      return { sessions };
+    }),
+
     setMcpStatus: (chatSessionId, degraded, error) => set((state) => {
       const sessions = new Map(state.sessions);
       const session = sessions.get(chatSessionId);

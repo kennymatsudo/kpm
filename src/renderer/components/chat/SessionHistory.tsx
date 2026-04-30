@@ -65,6 +65,18 @@ export function SessionHistory() {
     return cleaned.slice(0, maxLength).trim() + '...';
   };
 
+  const formatDateCompact = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMins = Math.floor((now.getTime() - date.getTime()) / 60000);
+    if (diffMins < 60) return `${diffMins}m`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d`;
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
   return (
     <div className="relative" ref={dropdownRef}>
       {/* Trigger button - subtle icon */}
@@ -159,7 +171,54 @@ export function SessionHistory() {
             </div>
           ) : (
             <div className="max-h-80 overflow-y-auto py-1">
+              {sessionHistory.map((session, index) => {
+                const primary = session.title ?? truncateMessage(session.first_message);
+                const secondary = session.title ? truncateMessage(session.first_message, 50) : null;
+                return (
+                  <button
+                    key={session.chat_session_id}
+                    onClick={() => handleSessionClick(session.chat_session_id)}
+                    className="dropdown-item w-full text-left group"
+                    style={{
+                      animationDelay: `${index * 30}ms`,
+                      animationFillMode: 'backwards',
+                    }}
                   >
+                    <div className="flex-1 min-w-0">
+                      {/* Primary: title (or first message when no title yet) */}
+                      <p className="text-sm text-text-primary truncate">
+                        {primary}
+                      </p>
+                      {/* Secondary: compact meta line */}
+                      <div className="flex items-center gap-1.5 mt-px text-xxs text-text-muted min-w-0">
+                        {secondary && (
+                          <>
+                            <span className="truncate">{secondary}</span>
+                            <span className="opacity-60 flex-shrink-0">·</span>
+                          </>
+                        )}
+                        <span className="flex-shrink-0">{formatDateCompact(session.created_at)}</span>
+                        <span className="opacity-60 flex-shrink-0">·</span>
+                        <span className="flex-shrink-0">{session.message_count}</span>
+                      </div>
+                    </div>
+                    {/* Arrow indicator on hover */}
+                    <svg
+                      className="w-4 h-4 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

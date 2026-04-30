@@ -74,6 +74,26 @@ export function TopBarProjectSection({
 
   return (
     <>
+        <button
+          onClick={onToggleSidebar}
+          className={`p-1.5 rounded-lg transition-colors ${
+            sidebarCollapsed
+              ? 'text-text-muted hover:text-text-primary hover:bg-surface-3'
+              : 'text-accent bg-accent/10 hover:bg-accent/20'
+          }`}
+          title={sidebarCollapsed ? 'Show sidebar (Cmd+B)' : 'Hide sidebar (Cmd+B)'}
+          aria-label={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M3 4h18v16H3V4zm6 0v16"
+            />
+          </svg>
+        </button>
+
         {currentProject ? (
           isEditing ? (
             <input
@@ -88,6 +108,9 @@ export function TopBarProjectSection({
               <button
                 ref={buttonRef}
                 onClick={handleOpenMenu}
+                className={`flex items-center gap-1.5 px-2 py-1 text-sm font-medium text-text-primary rounded-lg transition-colors ${
+                  showMenu ? 'bg-surface-3' : 'hover:bg-surface-3'
+                }`}
                 aria-expanded={showMenu}
                 aria-haspopup="menu"
                 aria-label={`Project menu for ${currentProject.name}`}
@@ -237,6 +260,7 @@ export function TopBarProjectSection({
       </div>
 
       {currentProject && (
+        <div className="flex items-center ml-3 no-drag">
           <MainViewSwitcher value={mainView} onChange={onMainViewChange} />
         </div>
       )}

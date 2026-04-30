@@ -15,6 +15,7 @@ interface PreparedStatements {
   getById: Statement;
   insert: Statement;
   updateClaudeSessionId: Statement;
+  updateTitle: Statement;
   clearClaudeSessionIdsByProject: Statement;
   delete: Statement;
 }
@@ -31,6 +32,11 @@ export class ChatSessionRepository implements IChatSessionRepository {
       updateClaudeSessionId: db.prepare(`
         UPDATE chat_sessions
         SET claude_session_id = ?
+        WHERE id = ?
+      `),
+      updateTitle: db.prepare(`
+        UPDATE chat_sessions
+        SET title = ?
         WHERE id = ?
       `),
       clearClaudeSessionIdsByProject: db.prepare(`
@@ -50,6 +56,10 @@ export class ChatSessionRepository implements IChatSessionRepository {
 
   updateClaudeSessionId(id: string, claudeSessionId: string): void {
     this.stmts.updateClaudeSessionId.run(claudeSessionId, id);
+  }
+
+  updateTitle(id: string, title: string): void {
+    this.stmts.updateTitle.run(title, id);
   }
 
   clearClaudeSessionIdsByProject(projectId: string): void {

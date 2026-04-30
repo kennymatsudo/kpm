@@ -265,5 +265,40 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
       return { sessions };
     }),
 
+    updateActivity: (chatSessionId, activity) => set((state) => {
+      const sessions = new Map(state.sessions);
+      const session = sessions.get(chatSessionId);
+      if (!session) return state;
+
+      const replaceById = (a: typeof activity) => (a.id === activity.id ? activity : a);
+
+      const messages: Message[] = session.messages.map((message) => {
+        let touched = false;
+        const segments = message.segments.map((segment) => {
+          if (segment.type !== 'activity') return segment;
+          if (!segment.activities.some((a) => a.id === activity.id)) return segment;
+          touched = true;
+          return { ...segment, activities: segment.activities.map(replaceById) };
+        });
+        return touched ? { ...message, segments } : message;
+      });
+
+      const streamingSegments = session.streamingSegments.map((segment) => {
+        if (segment.type !== 'activity') return segment;
+        if (!segment.activities.some((a) => a.id === activity.id)) return segment;
+        return { ...segment, activities: segment.activities.map(replaceById) };
+      });
+
+      sessions.set(chatSessionId, {
+        ...session,
+        activities: session.activities.map(replaceById),
+        pendingActivities: session.pendingActivities.map(replaceById),
+        streamingSegments,
+        messages,
+      });
+
+      return { sessions };
+    }),
+
   };
 }

@@ -55,6 +55,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
       get: container.chatSessions.get.bind(container.chatSessions),
       create: container.chatSessions.create.bind(container.chatSessions),
       updateClaudeSessionId: container.chatSessions.updateClaudeSessionId.bind(container.chatSessions),
+      updateTitle: container.chatSessions.updateTitle.bind(container.chatSessions),
       clearClaudeSessionIdsByProject: container.chatSessions.clearClaudeSessionIdsByProject.bind(container.chatSessions),
     },
     getMainWindow,

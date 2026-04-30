@@ -42,6 +42,8 @@ export interface PerSessionState {
   suggestions: string[];
   /** Sequential session number for display (e.g., "Session 1") */
   sessionNumber: number;
+  /** SDK-derived display title (auto-summary or user-renamed). Falls back to sessionNumber when null. */
+  title: string | null;
   /** Claude SDK session ID (for debugging) */
   claudeSessionId: string | null;
   mcpDegraded: boolean;
@@ -81,11 +83,13 @@ export interface ChatState {
   flushStreamingContent: (chatSessionId: string) => void;
   setError: (chatSessionId: string, error: string) => void;
   addActivity: (chatSessionId: string, activity: Activity) => void;
+  updateActivity: (chatSessionId: string, activity: Activity) => void;
   clearError: (chatSessionId: string) => void;
   setSessionState: (chatSessionId: string, state: SessionState) => void;
   setDraftMessage: (chatSessionId: string, message: string) => void;
   setSuggestions: (chatSessionId: string, suggestions: string[]) => void;
   setClaudeSessionId: (chatSessionId: string, claudeSessionId: string) => void;
+  setSessionTitle: (chatSessionId: string, title: string) => void;
   setMcpStatus: (chatSessionId: string, degraded: boolean, error?: string | null) => void;
 
   // Shared actions

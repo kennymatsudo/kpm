@@ -2,10 +2,15 @@ import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
+import { readFileSync } from 'fs'
 import type { Plugin } from 'vite'
 
 const isProduction = process.env.NODE_ENV === 'production'
 const shouldAnalyze = process.env.ANALYZE === 'true'
+
+// Inject the package.json version at build time so the renderer can show it
+// without a round-trip through IPC. Read synchronously here — config evaluates once.
+  readFileSync(resolve(__dirname, 'package.json'), 'utf-8')
 
 // Load visualizer plugin conditionally for bundle analysis (top-level await, ESM)
 let visualizerPlugin: Plugin | null = null
@@ -67,6 +72,9 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
+    define: {
+      __APP_VERSION__: JSON.stringify(pkgVersion)
+    },
     build: {
       outDir: resolve(__dirname, 'dist/renderer'),
       minify: isProduction ? 'esbuild' : false,

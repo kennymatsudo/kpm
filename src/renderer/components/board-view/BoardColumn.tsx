@@ -181,7 +181,10 @@ export const BoardColumn = memo(function BoardColumn({
       onDrop={handleDrop}
     >
       {/* Column header */}
+      <div className="flex items-center gap-2 px-3 py-2.5">
         <span className={`w-2 h-2 rounded-full ${config.bgClass}`} />
+        <span className="text-xs font-medium text-text-primary">{config.label}</span>
+        <span className="text-[11px] font-mono text-text-tertiary ml-auto tabular-nums">{totalItemCount}</span>
       </div>
 
       {/* Scrollable cards container */}

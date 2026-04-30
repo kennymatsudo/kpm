@@ -5,6 +5,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { ModelSelector } from './ModelSelector';
 
 const WORKSPACE_PLACEHOLDERS = [
+  'Reply or ask a follow-up…',
   'Explain how authentication works...',
   'Draft a technical spec for...',
   'Summarize these files...',
@@ -12,11 +13,14 @@ const WORKSPACE_PLACEHOLDERS = [
 ];
 
 const PLAN_PLACEHOLDERS = [
+  'Reply or ask a follow-up…',
   'Create a task to refactor the...',
   'Break this feature into subtasks...',
   "What's left to do on this project?",
   'Generate a test plan for...',
 ];
+
+const DEFAULT_PLACEHOLDER = 'Reply or ask a follow-up…';
 
 interface ChatInputProps {
   onCancel: () => void;
@@ -50,6 +54,9 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
 
   // Placeholder: use SDK suggestions when available, fall back to static rotation
   const fallbackPlaceholders = currentView === 'plan' ? PLAN_PLACEHOLDERS : WORKSPACE_PLACEHOLDERS;
+  // Start with the canonical "Reply or ask a follow-up…" prompt; rotate to
+  // view-specific examples only after the user focuses the input.
+  const [fallbackIndex, setFallbackIndex] = useState(0);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
 
   // Reset suggestion index when new suggestions arrive
@@ -71,6 +78,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     ? 'Select a project first'
     : suggestions.length > 0
       ? suggestions[suggestionIndex % suggestions.length]
+      : (fallbackPlaceholders[fallbackIndex] ?? DEFAULT_PLACEHOLDER);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -230,12 +238,37 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
           placeholder={currentPlaceholder}
           disabled={disabled || sendDisabledWhileStreaming}
           rows={1}
+          style={{ minHeight: '40px', maxHeight: '200px' }}
         />
 
+        {/* Action row: selectors as pill chips on the left, send on the right. */}
+        <div className="flex items-center gap-2 px-2 pb-2 pt-1">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <ModelSelector />
+          </div>
+
+          {isStreaming && (
+            <button
+              onClick={onCancel}
+              className="btn btn-danger h-8 w-8 !p-0 flex-shrink-0 rounded-lg"
+              title="Stop generating (Esc)"
+              aria-label="Stop generating"
+            >
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 16 16">
+                <rect x="3" y="3" width="10" height="10" rx="1" />
+              </svg>
+            </button>
+          )}
           <button
+            onClick={handleSend}
+            title={
+            }
           >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" />
             </svg>
           </button>
+        </div>
       </div>
     </div>
   );

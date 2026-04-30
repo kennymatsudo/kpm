@@ -53,6 +53,12 @@ export interface SessionReadyEventData {
   sessionId?: string;
 }
 
+export interface SessionTitleEventData {
+  projectId: string;
+  chatSessionId?: string;
+  title: string;
+}
+
 export interface ThinkingEventData {
   projectId: string;
   chatSessionId?: string;
@@ -135,6 +141,7 @@ export function subscribeToChatEvents(handlers: {
   onThinking?: (data: ThinkingEventData) => void;
   onSessionConnecting?: (data: SessionEventData) => void;
   onSessionReady?: (data: SessionReadyEventData) => void;
+  onSessionTitle?: (data: SessionTitleEventData) => void;
   onSessionError?: (data: ErrorEventData) => void;
   onSessionDeactivated?: (data: SessionEventData) => void;
   onSuggestions?: (data: SuggestionsEventData) => void;
@@ -150,6 +157,7 @@ export function subscribeToChatEvents(handlers: {
     handlers.onThinking ? window.api.chat.onThinking(handlers.onThinking) : null,
     handlers.onSessionConnecting ? window.api.chat.onSessionConnecting(handlers.onSessionConnecting) : null,
     handlers.onSessionReady ? window.api.chat.onSessionReady(handlers.onSessionReady) : null,
+    handlers.onSessionTitle ? window.api.chat.onSessionTitle(handlers.onSessionTitle) : null,
     handlers.onSessionError ? window.api.chat.onSessionError(handlers.onSessionError) : null,
     handlers.onSessionDeactivated ? window.api.chat.onSessionDeactivated(handlers.onSessionDeactivated) : null,
     handlers.onSuggestions ? window.api.chat.onSuggestions(handlers.onSuggestions) : null,

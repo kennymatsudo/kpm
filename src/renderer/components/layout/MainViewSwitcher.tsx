@@ -35,9 +35,13 @@ export const MainViewSwitcher = memo(function MainViewSwitcher({
   onChange,
 }: MainViewSwitcherProps) {
   return (
+    <div className="inline-flex items-center bg-surface-2 border border-border-subtle rounded-md p-0.5 h-[26px]">
       {VIEW_BUTTONS.map((button) => {
         const isActive = value === button.id;
+        const baseClass = 'inline-flex items-center gap-1.5 px-2.5 h-[22px] rounded-[5px] text-xs font-medium transition-colors duration-150';
         const stateClass = isActive
+          ? 'bg-surface-elevated text-text-primary shadow-sm'
+          : 'text-text-secondary hover:text-text-primary';
 
         return (
           <button
@@ -46,6 +50,7 @@ export const MainViewSwitcher = memo(function MainViewSwitcher({
             className={`${baseClass} ${stateClass}`}
             title={button.title}
           >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"

@@ -52,9 +52,18 @@ export class ChatMessageRepository implements IChatMessageRepository {
         WHERE session_id = ? AND chat_session_id = ? AND client_message_id = ?
         LIMIT 1
       `),
+      // Get distinct sessions with first user message, ordered by most recent.
+      // LEFT JOIN chat_sessions for the SDK-derived title (null for legacy rows).
       getRecentSessions: db.prepare(`
         SELECT
+          m.chat_session_id,
+          s.title as title,
+          MIN(CASE WHEN m.role = 'user' THEN SUBSTR(m.content, 1, 100) END) as first_message,
           COUNT(*) as message_count,
+        FROM chat_messages m
+        LEFT JOIN chat_sessions s ON s.id = m.chat_session_id
+        GROUP BY m.chat_session_id
+        ORDER BY MAX(m.created_at) DESC
         LIMIT ?
       `),
       // Delete every chat_session_id older than the N most recent, in a single

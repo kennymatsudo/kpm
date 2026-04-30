@@ -389,6 +389,13 @@ export interface Activity {
   type: ActivityType;
   label: string;
   detail?: string;
+  /** Diff line counts surfaced by the SDK for Edit/Write tools. */
+  diffStats?: {
+    additions: number;
+    deletions: number;
+  };
+  /** Diff hunk lines (each prefixed `+`, `-`, or ` `) from the SDK's structuredPatch — for inline diff rendering. */
+  diffHunks?: string[];
 }
 
 // =============================================================================
@@ -673,6 +680,8 @@ export interface ChatMessage {
 /** Summary of a chat session for history display */
 export interface ChatSessionSummary {
   chat_session_id: string;
+  /** SDK-derived display title (null for legacy rows or sessions that haven't generated one yet). */
+  title: string | null;
   first_message: string;  // First user message (truncated for display)
   message_count: number;
   created_at: string;
@@ -683,6 +692,7 @@ export interface ChatSession {
   id: string;  // Same as chat_session_id in chat_messages
   project_id: string;
   claude_session_id: string | null;  // Claude SDK session ID for resume
+  title: string | null;
   created_at: string;
 }
 

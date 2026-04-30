@@ -142,3 +142,63 @@ export function getToolActivity(
   if (log) console.log(`[Claude]    Tool: ${toolName}`);
   return { id, type: 'other' as ActivityType, label: toolName };
 }
+
+/** Patch hunk shape exported by the SDK for FileEditOutput / FileWriteOutput. */
+interface StructuredPatchHunk {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: string[];
+}
+
+/**
+ * Extract diff stats and inline hunk lines from an SDK tool_use_result for
+ * Edit/Write tools. Returns null when the result lacks any diff info we can
+ * use (non-edit tool, or unexpected shape).
+ *
+ * Prefers `gitDiff` line counts (computed by git) and falls back to
+ * `structuredPatch` hunk math when the file isn't tracked.
+ */
+export function extractDiffFromToolResult(
+  toolResult: unknown,
+): { additions: number; deletions: number; hunks: string[] } | null {
+  if (!toolResult || typeof toolResult !== 'object') return null;
+  const result = toolResult as Record<string, unknown>;
+
+  // gitDiff is preferred — pre-computed line counts from git itself
+  const gitDiff = result.gitDiff as { additions?: unknown; deletions?: unknown } | undefined;
+  let additions: number | null = null;
+  let deletions: number | null = null;
+  if (gitDiff && typeof gitDiff === 'object') {
+    if (typeof gitDiff.additions === 'number') additions = gitDiff.additions;
+    if (typeof gitDiff.deletions === 'number') deletions = gitDiff.deletions;
+  }
+
+  // structuredPatch carries the actual `+`/`-` lines and is our fallback
+  // for line counts when gitDiff isn't available.
+  const patches = Array.isArray(result.structuredPatch)
+    ? (result.structuredPatch as StructuredPatchHunk[])
+    : [];
+
+  const hunks: string[] = [];
+  for (const hunk of patches) {
+    if (!hunk || !Array.isArray(hunk.lines)) continue;
+    hunks.push(...hunk.lines);
+  }
+
+  if (additions === null || deletions === null) {
+    let plus = 0;
+    let minus = 0;
+    for (const line of hunks) {
+      if (line.startsWith('+')) plus++;
+      else if (line.startsWith('-')) minus++;
+    }
+    additions = additions ?? plus;
+    deletions = deletions ?? minus;
+  }
+
+  if (additions === 0 && deletions === 0 && hunks.length === 0) return null;
+
+  return { additions, deletions, hunks };
+}

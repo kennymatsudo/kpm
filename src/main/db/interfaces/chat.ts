@@ -38,6 +38,8 @@ export interface IChatSessionRepository {
   get(id: string): ChatSession | undefined;
   /** Update the Claude SDK session ID for resume functionality */
   updateClaudeSessionId(id: string, claudeSessionId: string): void;
+  /** Update the SDK-derived display title (auto-summary or user-renamed). */
+  updateTitle(id: string, title: string): void;
   /**
    * Null out claude_session_id for every chat session in a project.
    * Forces the next send to spawn a fresh SDK session instead of resuming
