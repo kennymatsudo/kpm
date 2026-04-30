@@ -1,3 +1,4 @@
+import { useEffect, useCallback } from 'react';
 
 interface ShortcutGroup {
   title: string;
@@ -18,13 +19,39 @@ const shortcuts: ShortcutGroup[] = [
   },
 ];
 
+export function ShortcutsList() {
   return (
+      {shortcuts.map((group) => (
+        <div key={group.title}>
+          <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">
+            {group.title}
+          </h4>
+          <div className="space-y-1.5">
+            {group.shortcuts.map((shortcut, idx) => (
+              <div key={idx} className="flex items-center justify-between gap-2">
+                <span className="text-sm text-text-secondary">{shortcut.description}</span>
+                <div className="flex items-center gap-1">
+                  {shortcut.keys.map((key, keyIdx) => (
+                    <kbd
+                      key={keyIdx}
+                      className="px-1.5 py-0.5 text-xs font-mono bg-surface-3 rounded border border-border-default text-text-secondary"
+                    >
+                      {key}
+                    </kbd>
+                  ))}
+                </div>
               </div>
+            ))}
+          </div>
         </div>
+      ))}
+    </div>
   );
 }
 
 export function KeyboardShortcuts() {
+  const setIsOpen = useSettingsUIStore((state) => state.setIsOpen);
+  const setActiveTab = useSettingsUIStore((state) => state.setActiveTab);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     const target = e.target as HTMLElement;
@@ -33,10 +60,12 @@ export function KeyboardShortcuts() {
     }
 
     }
+  }, [setActiveTab, setIsOpen]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
+  return null;
 }
