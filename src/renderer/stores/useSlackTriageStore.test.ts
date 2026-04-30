@@ -21,6 +21,7 @@ vi.mock('../services/slackService', () => ({
   dismissSlackItem: vi.fn(),
   restoreSlackItem: vi.fn(),
   executeSlackItem: vi.fn(),
+  getSlackAvailability: vi.fn(),
 }));
 
 vi.mock('../services/chatService', () => ({
@@ -54,6 +55,12 @@ describe('useSlackTriageStore', () => {
     vi.mocked(slackService.getSlackPendingItems).mockResolvedValue([]);
     vi.mocked(slackService.countSlackPending).mockResolvedValue(0);
     vi.mocked(slackService.getAllSlackTriageItems).mockResolvedValue([]);
+    vi.mocked(slackService.getSlackAvailability).mockResolvedValue({
+      available: true,
+      source: 'user',
+      serverName: 'slack',
+      reason: null,
+    });
     vi.mocked(chatService.startNewBackendChatSession).mockResolvedValue({ success: true });
     vi.mocked(chatService.sendChatMessage).mockResolvedValue({ success: true });
   });

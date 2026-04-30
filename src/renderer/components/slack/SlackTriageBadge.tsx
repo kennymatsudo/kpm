@@ -2,6 +2,9 @@
  * Slack Triage Badge
  *
  * Shows pending triage count in the TopBar action buttons area.
+ * Clicking opens the triage panel. Hidden when the Slack MCP is not
+ * connected — discovery moves to the MCP/Integrations settings page so the
+ * topbar doesn't surface a non-functional control.
  */
 
 import { useEffect } from 'react';
@@ -14,10 +17,22 @@ interface SlackTriageBadgeProps {
 export function SlackTriageBadge({ projectId }: SlackTriageBadgeProps) {
   const pendingCount = useSlackTriageStore((s) => s.pendingCount);
   const isPanelOpen = useSlackTriageStore((s) => s.isPanelOpen);
+  const isAvailable = useSlackTriageStore((s) => s.isAvailable);
   const setPanelOpen = useSlackTriageStore((s) => s.setPanelOpen);
   const loadPendingCount = useSlackTriageStore((s) => s.loadPendingCount);
+  const loadAvailability = useSlackTriageStore((s) => s.loadAvailability);
 
   useEffect(() => {
+    void loadAvailability();
+  }, [loadAvailability]);
+
+  useEffect(() => {
+    if (isAvailable) {
+      void loadPendingCount(projectId);
+    }
+  }, [projectId, isAvailable, loadPendingCount]);
+
+  if (!isAvailable) return null;
 
   return (
       <button

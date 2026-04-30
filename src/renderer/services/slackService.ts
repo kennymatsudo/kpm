@@ -1,5 +1,17 @@
 import type { SlackChannelLink, SlackTriageItem } from '../../shared/types';
 
+export interface SlackAvailability {
+  available: boolean;
+  source: string | null;
+  serverName: string | null;
+  reason: string | null;
+}
+
+// Availability
+export function getSlackAvailability(): Promise<SlackAvailability> {
+  return window.api.slack.availability.get();
+}
+
 // Channel Links
 export function listSlackLinks(projectId: string): Promise<SlackChannelLink[]> {
   return window.api.slack.links.list(projectId);

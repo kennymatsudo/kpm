@@ -28,6 +28,7 @@ import {
   dismissSlackItem,
   restoreSlackItem,
   executeSlackItem,
+  getSlackAvailability,
 } from '../services/slackService';
 import { emit } from './storeEvents';
 import { toast } from './toastStore';
@@ -57,7 +58,11 @@ interface SlackTriageState {
   lastTriageResult: TriageResultSummary | null;
   error: string | null;
 
+  // Availability (Slack MCP connection state). null = not yet checked.
+  isAvailable: boolean | null;
+
   // Actions
+  loadAvailability: () => Promise<void>;
   loadLinks: (projectId: string) => Promise<void>;
   loadPendingItems: (projectId: string) => Promise<void>;
   loadAllItems: (projectId: string) => Promise<void>;
@@ -93,6 +98,7 @@ const initialState = {
   activeTab: 'pending' as const,
   lastTriageResult: null as TriageResultSummary | null,
   error: null as string | null,
+  isAvailable: null as boolean | null,
 };
 
 function assertSuccess(result: { success: boolean; error?: string }, fallback: string): void {
@@ -197,6 +203,15 @@ async function startChatInvestigation(item: SlackTriageItem, projectId: string):
 
 export const useSlackTriageStore = create<SlackTriageState>((set, get) => ({
   ...initialState,
+
+  loadAvailability: async () => {
+    try {
+      const result = await getSlackAvailability();
+      set({ isAvailable: result.available });
+    } catch {
+      set({ isAvailable: false });
+    }
+  },
 
   loadLinks: async (projectId: string) => {
     set({ isLoadingLinks: true, error: null });
