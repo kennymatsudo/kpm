@@ -1206,6 +1206,7 @@ export interface SearchParams {
 // =============================================================================
 
 /** Prompt categories for the configurable prompts system */
+export type PromptCategory = 'system' | 'generation' | 'agents';
 
 /** Prompt definition info returned to the renderer */
 export interface PromptDefinitionInfo {

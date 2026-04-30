@@ -22,6 +22,27 @@ import type { AgentSessionManager } from './AgentSessionManager';
 
 const LOG_PREFIX = '[AutoReview]';
 
+// Static output format appended to every review prompt regardless of user customizations.
+// parseReviewFindings() depends on this exact shape — do not make it user-editable.
+const REVIEW_OUTPUT_FORMAT = `Return ONLY a JSON object with this shape:
+- findings: an array of finding objects
+
+Each finding should have:
+- severity: "critical" | "warning" | "suggestion"
+- file: the file path
+- line: the line number, or null when not applicable
+- description: the concrete issue, why it matters, and the smallest reasonable fix direction
+
+Return ONLY the JSON object, no other text. If there are no issues, return \`{"findings":[]}\`.
+
+Example:
+\`\`\`json
+{
+  "findings": [
+  ]
+}
+\`\`\``;
+
 /**
  */
   return `## Task that was implemented
@@ -32,6 +53,7 @@ ${taskDescription}
 ${diff}
 \`\`\`
 
+${REVIEW_OUTPUT_FORMAT}`;
 }
 
 /**

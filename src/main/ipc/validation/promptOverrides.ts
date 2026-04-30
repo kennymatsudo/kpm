@@ -11,6 +11,7 @@ import { z } from 'zod';
 export const PromptOverrideSchemas = {
   /** List prompts, optionally filtered by category */
   list: z.object({
+    category: z.enum(['system', 'generation', 'agents']).optional(),
   }),
 
   /** Get a prompt's current content and metadata */

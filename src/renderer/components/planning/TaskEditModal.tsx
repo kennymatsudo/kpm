@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { m } from 'framer-motion';
 import { useShallow } from 'zustand/react/shallow';
 
 // Stable empty array to avoid re-render loops
@@ -254,6 +255,9 @@ export function TaskEditModal({
           </div>
 
           <div>
+            <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
+              Description
+            </label>
             <div className="relative">
               <textarea
                 value={description}
