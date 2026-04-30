@@ -65,16 +65,29 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
 
     // Loads recent history and auto-opens the most recent session if one exists.
     // Called on project load so the user lands back in their last conversation.
+    //
+    // The IPC bridge may already have restored an active backend session as an
+    // empty placeholder (correct id + title, but no messages) before this runs.
+    // In that case we hydrate it from history rather than bail.
     restoreLastSession: async (projectId, shouldContinue) => {
       try {
+        if (!isCurrent(shouldContinue)) return;
 
         const sessions = await fetchRecentSessions(projectId);
         if (!isCurrent(shouldContinue) || !sessions) return;
 
         set({ sessionHistory: sessions });
+        if (sessions.length === 0) return;
+
+        const currentViewed = get().viewedSessionId;
+        if (currentViewed) {
+          const session = get().sessions.get(currentViewed);
+            await get().loadFromHistory(projectId, currentViewed, shouldContinue);
+          }
           return;
         }
 
+        if (!isCurrent(shouldContinue)) return;
         await get().loadFromHistory(projectId, sessions[0].chat_session_id, shouldContinue);
       } catch (error) {
         console.error('[ChatStore] Failed to restore last session:', error);

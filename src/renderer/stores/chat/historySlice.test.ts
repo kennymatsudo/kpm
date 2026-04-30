@@ -100,4 +100,114 @@ describe('historySlice.restoreLastSession', () => {
       timestamp: new Date('2026-01-01T00:00:00.000Z'),
     }]);
   });
+
+  // Regression: after Cmd+R reload the IPC bridge restores active backend
+  // sessions as empty placeholders (correct id, no messages). restoreLastSession
+  // must hydrate them rather than bail because viewedSessionId is set.
+  it('hydrates an existing empty placeholder session instead of bailing', async () => {
+    const store = createTestStore();
+
+    // Simulate the IPC bridge having already created an empty session and
+    // pointed viewedSessionId at it.
+    store.setState({
+      viewedSessionId: 'chat-a',
+      sessions: new Map([
+        ['chat-a', {
+          messages: [],
+          streamingSegments: [],
+          streamingContent: '',
+          streamingThinking: '',
+          pendingActivities: [],
+          isStreaming: false,
+          error: null,
+          activities: [],
+          sessionState: 'idle',
+          streamStartedAt: null,
+          lastStreamUpdateAt: null,
+          draftMessage: '',
+          suggestions: [],
+          sessionNumber: 1,
+          claudeSessionId: null,
+          title: null,
+          mcpDegraded: false,
+          mcpError: null,
+        }],
+      ]),
+    });
+
+    vi.mocked(getChatSessionHistory).mockResolvedValue({
+      success: true,
+      sessions: [{
+        chat_session_id: 'chat-a',
+        first_message: 'Hello',
+        message_count: 1,
+        created_at: '2026-01-01T00:00:00.000Z',
+      }],
+    });
+    vi.mocked(loadChatSession).mockResolvedValue({
+      success: true,
+      messages: [{
+        id: 'message-1',
+        role: 'user',
+        content: 'Hello',
+        created_at: '2026-01-01T00:00:00.000Z',
+      }],
+      chatSessionId: 'chat-a',
+    });
+
+    await store.getState().restoreLastSession('project-a', () => true);
+
+    expect(store.getState().sessions.get('chat-a')?.messages).toHaveLength(1);
+    expect(loadChatSession).toHaveBeenCalledWith('project-a', 'chat-a');
+  });
+
+  it('keeps a non-empty viewed session intact (no redundant reload)', async () => {
+    const store = createTestStore();
+
+    store.setState({
+      viewedSessionId: 'chat-a',
+      sessions: new Map([
+        ['chat-a', {
+          messages: [{
+            id: 'm1',
+            role: 'user',
+            segments: [{ type: 'text', content: 'Existing' }],
+            timestamp: new Date('2026-01-01T00:00:00.000Z'),
+          }],
+          streamingSegments: [],
+          streamingContent: '',
+          streamingThinking: '',
+          pendingActivities: [],
+          isStreaming: false,
+          error: null,
+          activities: [],
+          sessionState: 'idle',
+          streamStartedAt: null,
+          lastStreamUpdateAt: null,
+          draftMessage: '',
+          suggestions: [],
+          sessionNumber: 1,
+          claudeSessionId: null,
+          title: null,
+          mcpDegraded: false,
+          mcpError: null,
+        }],
+      ]),
+    });
+
+    vi.mocked(getChatSessionHistory).mockResolvedValue({
+      success: true,
+      sessions: [{
+        chat_session_id: 'chat-b',
+        first_message: 'Other',
+        message_count: 1,
+        created_at: '2026-01-01T00:00:00.000Z',
+      }],
+    });
+
+    await store.getState().restoreLastSession('project-a', () => true);
+
+    expect(loadChatSession).not.toHaveBeenCalled();
+    expect(store.getState().viewedSessionId).toBe('chat-a');
+  });
 });

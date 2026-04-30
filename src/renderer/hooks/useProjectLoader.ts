@@ -127,6 +127,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       });
 
       const shouldRestoreChat = () =>
+        useProjectDomainStore.getState().currentProjectId === projectId;
 
       const scheduleRepoTasks = () => {
 

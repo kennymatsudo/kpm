@@ -5,6 +5,7 @@ import type { Message } from '../../stores/chat';
 import { processMessageContent } from '../../utils/messageFormatter';
 import { Markdown } from 'markdown-to-jsx';
 import { CopyIcon, CheckIcon } from '../icons';
+import { ProcessTimeline } from './ProcessTimeline';
 
 /** Extract text content from message segments for copy/display */
 function getTextContent(segments: MessageSegment[]): string {
@@ -13,6 +14,7 @@ function getTextContent(segments: MessageSegment[]): string {
     .map((s) => s.content)
     .join('');
 }
+
 
 /** Parse user message to extract image attachments and clean content */
 function parseUserMessage(content: string): { cleanContent: string; imageCount: number } {

@@ -495,6 +495,8 @@ select:focus-visible {
 
 .chat-message-content {
   font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.65;
   word-break: break-word;
   user-select: text;
   -webkit-user-select: text;
@@ -505,6 +507,7 @@ select:focus-visible {
    ensure consistent font sizing with user messages */
 .chat-message-content.prose-themed {
   white-space: normal;
+  font-size: var(--text-base);
 }
 
 /* Compact heading sizes for chat messages */
