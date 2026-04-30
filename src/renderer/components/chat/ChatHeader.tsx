@@ -1,3 +1,4 @@
+import { useChatStore } from '../../stores';
 import { SessionHistory } from './SessionHistory';
 import { NewSessionButton } from './NewSessionButton';
 

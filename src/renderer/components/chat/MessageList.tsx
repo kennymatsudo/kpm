@@ -2,6 +2,7 @@ import { useEffect, useRef, memo, useState, useMemo, useCallback, useLayoutEffec
 import { useShallow } from 'zustand/react/shallow';
 import { useChatStore, type Activity, type MessageSegment } from '../../stores';
 import type { Message } from '../../stores/chat';
+import type { ChatViewMode } from '../../../shared/types';
 import { processMessageContent } from '../../utils/messageFormatter';
 import { Markdown } from 'markdown-to-jsx';
 import { CopyIcon, CheckIcon } from '../icons';

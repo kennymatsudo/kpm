@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import type { ChatService } from '../../services/core/ChatService';
+import { ChatSchemas, StreamingSessionSchemas, createIpcHandler } from '../validation';
 import { IPC_CHANNELS } from '../channels';
 
   ipcMain.handle(
