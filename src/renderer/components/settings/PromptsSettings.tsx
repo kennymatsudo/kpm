@@ -24,7 +24,9 @@ export function PromptsSettings({ currentProjectId }: Props) {
   const setCategory = usePromptOverrideStore((s) => s.setCategory);
 
   return (
+    <div className="flex flex-col h-full">
       {/* Sticky header + sub-tabs */}
+      <div className="shrink-0 bg-surface-elevated px-5 pt-3 pb-4">
         {/* Header */}
         <div className="flex items-center gap-3 mb-3">
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent-subtle">
@@ -57,6 +59,8 @@ export function PromptsSettings({ currentProjectId }: Props) {
         </div>
       </div>
 
+      {/* Content area fills remaining modal height */}
+      <div className="flex-1 min-h-0 px-5 py-4 flex flex-col">
         {(activeCategory === 'system'
           || activeCategory === 'generation'
           || activeCategory === 'agents') && (

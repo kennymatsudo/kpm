@@ -10,11 +10,17 @@ interface ShortcutGroup {
 
 const shortcuts: ShortcutGroup[] = [
   {
+    title: 'Global',
     shortcuts: [
       { keys: ['⌘', 'B'], description: 'Toggle sidebar' },
       { keys: ['⌘', 'L'], description: 'Toggle chat panel' },
+      { keys: ['⌘', 'K'], description: 'Open command palette' },
+      { keys: ['⌘', '⇧', 'F'], description: 'Open global search' },
       { keys: ['⌘', '⇧', 'I'], description: 'Create plan item' },
       { keys: ['⌘', '⇧', 'T'], description: 'Toggle tool log' },
+      { keys: ['⌘', 'W'], description: 'Close overlay, editor, or chat' },
+      { keys: ['⌘', '1'], description: 'Workspace view' },
+      { keys: ['⌘', '⌥', '0–9'], description: 'Switch project by position' },
     ],
   },
 ];

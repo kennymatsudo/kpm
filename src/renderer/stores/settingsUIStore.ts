@@ -1,8 +1,11 @@
 import { create } from 'zustand';
 
 export type SettingsTab =
+  | 'general'
   | 'workflow'
+  | 'shortcuts'
   | 'prompts'
+  | 'mcp'
 
 interface SettingsUIState {
   isOpen: boolean;
@@ -19,14 +22,20 @@ interface SettingsUIState {
 
 /** Ordered list of tabs for index-based navigation */
 const TAB_ORDER: SettingsTab[] = [
+  'general',
   'workflow',
+  'shortcuts',
   'prompts',
+  'mcp',
   'permissions',
 ];
 
 export const useSettingsUIStore = create<SettingsUIState>((set, get) => ({
   isOpen: false,
+  activeTab: 'general',
+  visibleTabCount: 6, // Default tabs without a project (Permissions is project-gated)
 
+  setIsOpen: (open) => set({ isOpen: open, activeTab: open ? get().activeTab : 'general' }),
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 

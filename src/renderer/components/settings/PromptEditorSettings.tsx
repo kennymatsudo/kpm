@@ -74,8 +74,11 @@ export function PromptEditorSettings() {
   }
 
   return (
+    <div className="flex flex-col flex-1 min-h-0 gap-4">
       {/* Main content: prompt list + editor */}
+      <div className="flex gap-4 flex-1 min-h-0">
         {/* Left: Prompt list */}
+        <div className="w-48 flex-shrink-0 space-y-1 overflow-y-auto">
           {filteredPrompts.map((p) => (
             <button
               key={p.key}
@@ -99,7 +102,9 @@ export function PromptEditorSettings() {
         </div>
 
         {/* Right: Editor */}
+        <div className="flex-1 min-w-0 flex flex-col" onKeyDown={handleKeyDown}>
           {selectedPrompt ? (
+            <div className="flex flex-col flex-1 min-h-0 gap-3">
               {/* Prompt name and description */}
               <div>
                 <div className="flex items-center gap-2">
@@ -116,6 +121,7 @@ export function PromptEditorSettings() {
               {/* Variable hints */}
               {selectedPrompt.variables && selectedPrompt.variables.length > 0 && (
                 <div className="p-2 bg-surface-3/50 rounded-lg">
+                  <p className="text-xxs font-medium text-text-muted uppercase tracking-wider mb-1">Available Variables</p>
                   {selectedPrompt.variables.map((v) => (
                     <div key={v.name} className="text-xs text-text-secondary">
                       <code className="text-accent/80">{v.name}</code>
@@ -129,6 +135,8 @@ export function PromptEditorSettings() {
               <textarea
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
+                className="flex-1 min-h-0 w-full px-3 py-3 text-xs font-mono leading-relaxed bg-surface-3 border border-border rounded-lg
+                  text-text-primary placeholder:text-text-muted resize-none
                   focus:outline-none focus:ring-1 focus:ring-accent/50 focus:border-accent/50"
                 spellCheck={false}
               />
@@ -177,8 +185,12 @@ export function PromptEditorSettings() {
                   <button
                     onClick={() => void handleSave()}
                     disabled={!isModified || saveStatus === 'saving'}
+                    className="btn btn-primary text-xs px-4 py-1.5 disabled:opacity-50 flex items-center gap-2"
                   >
                     {saveStatus === 'saving' ? 'Saving...' : 'Save'}
+                    {isModified && saveStatus !== 'saving' && (
+                      <kbd className="text-[10px] opacity-60 font-sans">⌘S</kbd>
+                    )}
                   </button>
                 </div>
               </div>

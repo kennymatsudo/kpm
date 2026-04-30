@@ -11,6 +11,7 @@
 // Types
 // =============================================================================
 
+export type PromptCategory = 'system' | 'generation' | 'agents';
 
 export interface PromptVariable {
   name: string;
@@ -34,24 +35,28 @@ const SYSTEM_PROMPTS: PromptDefinition[] = [
   {
     key: 'system.constraints',
     name: 'Constraints',
+    description: 'Defines what Claude can and cannot do in this workspace.',
     category: 'system',
     defaultContent: CONSTRAINTS,
   },
   {
     key: 'system.workspace',
     name: 'Workspace',
+    description: 'How Claude understands and references workspace content.',
     category: 'system',
     defaultContent: WORKSPACE_SECTION,
   },
   {
     key: 'system.plan_rules',
     name: 'Plan Rules',
+    description: 'How plan items are structured and decomposed.',
     category: 'system',
     defaultContent: PLAN_SYSTEM_RULES,
   },
   {
     key: 'system.response_style',
     name: 'Response Style',
+    description: 'Tone and formatting rules for Claude\'s responses.',
     category: 'system',
     defaultContent: RESPONSE_STYLE,
   },
@@ -65,6 +70,7 @@ const GENERATION_PROMPTS: PromptDefinition[] = [
   {
     key: 'generation.pr_system_prompt',
     name: 'PR Generation System Prompt',
+    description: 'Controls how Claude generates PR titles and descriptions. The {{description_guidance}} variable is replaced with body formatting instructions from the repo\'s PR template, or from the PR Description Instructions prompt when no template exists.',
     category: 'generation',
     defaultContent: `You generate pull request titles and descriptions from a code change and its context.
 
@@ -86,11 +92,13 @@ TITLE: <the PR title>
 BODY:
 <the PR description in markdown>`,
     variables: [
+      { name: 'description_guidance', description: 'Body formatting instructions — pulled from the repo\'s PR template when one exists, otherwise from the PR Description Instructions prompt.' },
     ],
   },
   {
     key: 'generation.pr_description_instructions',
     name: 'PR Description Instructions',
+    description: 'Fallback body formatting instructions used when the repo has no PR template.',
     category: 'generation',
     defaultContent: `Write for a reviewer who is skimming. A description that is too long does not get read. Aim for something that fits on one screen.
 
@@ -99,11 +107,13 @@ BODY:
   {
     key: 'generation.commit_message_instructions',
     name: 'Commit Message Instructions',
+    description: 'How Claude writes commit messages when work moves to review.',
     category: 'generation',
   },
   {
     key: 'generation.briefing_instructions',
     name: 'Briefing Instructions',
+    description: 'Controls how the "What should I do next?" briefing is written.',
     category: 'generation',
     defaultContent: `Produce a concise, prioritized briefing that helps a developer decide what to focus on next.
 
@@ -127,6 +137,7 @@ const AGENT_PROMPTS: PromptDefinition[] = [
   {
     key: 'agents.implementation_system',
     name: 'Implementation Agent System Prompt',
+    description: 'How the implementation agent approaches work on a plan item.',
     category: 'agents',
     defaultContent: `You are implementing a scoped task in an existing codebase.
 

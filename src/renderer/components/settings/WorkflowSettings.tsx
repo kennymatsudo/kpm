@@ -3,7 +3,75 @@ import { LoadingSpinner } from '../ui/LoadingButton';
 import { useGeneralSettingsStore } from '../../stores';
 import { toast } from '../../stores/toastStore';
 import { SettingsSection, StatusBadge } from './SettingsSection';
+import { TrackerSettings } from './TrackerSettings';
+import { StorybookSettings } from './StorybookSettings';
+import { SlackChannelSettings } from '../slack';
 
+type WorkflowSubTab = 'git' | 'tracker' | 'slack' | 'storybook';
+
+const SUB_TABS: { id: WorkflowSubTab; label: string; requiresProject?: boolean }[] = [
+  { id: 'tracker', label: 'Tracker', requiresProject: true },
+  { id: 'git', label: 'Git' },
+  { id: 'slack', label: 'Slack', requiresProject: true },
+  { id: 'storybook', label: 'Storybook', requiresProject: true },
+];
+
+interface Props {
+  currentProjectId?: string | null;
+}
+
+function ProjectGatedMessage() {
+  return (
+    <div className="flex items-center justify-center py-12 text-text-muted text-sm">
+      Open a project to configure this integration
+    </div>
+  );
+}
+
+export function WorkflowSettings({ currentProjectId }: Props) {
+  const [activeSubTab, setActiveSubTab] = useState<WorkflowSubTab>(currentProjectId ? 'tracker' : 'git');
+
+  return (
+    <div>
+      {/* Sticky sub-tab strip */}
+      <div className="sticky top-0 z-10 bg-surface-elevated px-5 pt-3 pb-0">
+        <div className="flex gap-1 border-b border-border -mx-5 px-5">
+          {SUB_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveSubTab(tab.id)}
+              className={`
+                px-3 py-1.5 text-xs font-medium rounded-t transition-colors
+                ${activeSubTab === tab.id
+                  ? 'text-accent bg-surface-elevated border-b-2 border-accent -mb-px'
+                  : 'text-text-muted hover:text-text-secondary'
+                }
+              `}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="px-5 py-4">
+        {activeSubTab === 'git' && <GitSubTab />}
+        {activeSubTab === 'tracker' && (
+          currentProjectId ? <TrackerSettings currentProjectId={currentProjectId} /> : <ProjectGatedMessage />
+        )}
+        {activeSubTab === 'slack' && (
+          currentProjectId ? <SlackChannelSettings projectId={currentProjectId} /> : <ProjectGatedMessage />
+        )}
+        {activeSubTab === 'storybook' && (
+          currentProjectId ? <StorybookSettings currentProjectId={currentProjectId} /> : <ProjectGatedMessage />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GitSubTab() {
   const {
     branchTemplate: savedBranchTemplate,
     isLoadingBranchTemplate,
