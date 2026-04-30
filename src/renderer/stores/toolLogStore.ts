@@ -19,6 +19,8 @@ interface ToolLogState {
 
 /** Maximum entries to keep in the renderer store */
 const MAX_RENDERER_ENTRIES = 500;
+/** Coarser-grained than entries: one summary per Claude turn */
+const MAX_RENDERER_SUMMARIES = 200;
 
 export const useToolLogStore = create<ToolLogState>((set) => ({
   entries: [],
@@ -38,6 +40,13 @@ export const useToolLogStore = create<ToolLogState>((set) => ({
   },
 
   addTurnSummary(summary: ToolCallTurnSummary) {
+    set((state) => {
+      const summaries = [...state.summaries, summary];
+      if (summaries.length > MAX_RENDERER_SUMMARIES) {
+        summaries.shift();
+      }
+      return { summaries };
+    });
   },
 
   togglePanel() {

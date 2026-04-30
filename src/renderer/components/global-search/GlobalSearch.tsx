@@ -83,6 +83,8 @@ export function GlobalSearch() {
           }
         } catch (error) {
           console.error('[GlobalSearch] Search error:', error);
+          const currentState = useSearchStore.getState();
+          if (requestId === requestIdRef.current && currentState.isOpen) {
             setResults([]);
           }
         }
