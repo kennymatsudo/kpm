@@ -309,6 +309,7 @@ export function createAppServices(container: IRepositoryContainer) {
   const confluenceSyncService = createConfluenceSyncService({
     confluenceLinks: container.confluenceLinks,
     projects: container.projects,
+    planItems: container.planItems,
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -402,6 +403,10 @@ export function createAppServices(container: IRepositoryContainer) {
     // Agent Sessions
     agentSessionManager,
     hookServer,
+
+    // Repository container (escape hatch for IPC handlers that need direct
+    // repository access; prefer adding a service method when possible)
+    container,
 
     // Runtime factories
     createChatRuntime: (getMainWindow: () => BrowserWindow | null) => createChatRuntimeService({

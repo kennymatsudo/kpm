@@ -40,6 +40,10 @@ import {
   hasCommitsAhead,
   readPrTemplate,
 } from './gitUtils';
+import {
+  resolvePlanRefs,
+  collectLinkedRefKeys,
+} from '../../documents/planRefResolver';
 
 // =============================================================================
 // Types
@@ -197,11 +201,31 @@ export function createGitHubService(deps: GitHubServiceDeps) {
           await pushBranch(repoPath, session.branch_name);
         }
 
+        // Resolve @plan/<uuid> tokens in the body to bare external keys (so
+        // Jira/Linear unfurl-on-paste works), and append `Closes <key>` lines
+        // for any linked refs so tracker integrations auto-transition on
+        // merge. Pulls plan items from the session's project.
+        let resolvedBody = body;
+        if (session.project_id) {
+          const projectPlanItems = deps.planItems.getByProject(session.project_id);
+          resolvedBody = resolvePlanRefs(body, projectPlanItems, 'github');
+          const closeKeys = collectLinkedRefKeys(body, projectPlanItems);
+          if (closeKeys.length > 0) {
+            // Avoid duplicating `Closes …` if the author already wrote it.
+            const closesPattern = /(?:^|\n)\s*(?:closes|fixes|resolves)\s+/i;
+            if (!closesPattern.test(resolvedBody)) {
+              const closesLine = `Closes ${closeKeys.join(', ')}`;
+              resolvedBody = `${resolvedBody.replace(/\s+$/, '')}\n\n${closesLine}\n`;
+            }
+          }
+        }
+
         // Create the PR
         const result = await createPr(repoPath, {
           head: session.branch_name,
           base: baseBranch,
           title,
+          body: resolvedBody,
           draft,
         });
 

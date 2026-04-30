@@ -4,7 +4,14 @@
  * This converter handles common markdown elements including headings, lists,
  * code blocks, blockquotes, tables, and inline formatting (bold, italic, links).
  * Complex nested structures may not convert perfectly.
+ *
+ * `@plan/<uuid>` tokens are resolved before parsing when `planItems` is
+ * supplied: linked items become `[external_key](external_url)` smart-link
+ * markdown; unlinked items degrade to the item's title.
  */
+
+import type { PlanItem } from '../../../shared/types';
+import { resolvePlanRefs } from '../../documents/planRefResolver';
 
 interface AdfNode {
   type: string;
@@ -24,8 +31,16 @@ interface AdfDocument {
  * Convert markdown text to ADF document structure.
  * Returns null if input is empty/null.
  */
+export function markdownToAdf(
+  markdown: string | null | undefined,
+  options: { planItems?: readonly PlanItem[]; destination?: 'jira' | 'confluence' } = {},
+): AdfDocument | null {
   if (!markdown?.trim()) return null;
 
+  const resolved = options.planItems
+    ? resolvePlanRefs(markdown, options.planItems, options.destination ?? 'jira')
+    : markdown;
+  const lines = resolved.split('\n');
   const content: AdfNode[] = [];
   let i = 0;
 

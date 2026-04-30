@@ -14,9 +14,11 @@ import type {
   SyncState,
 } from '../../db/interfaces/confluence';
 import type { IProjectRepository } from '../../db/interfaces/project';
+import type { IPlanItemRepository } from '../../db/interfaces/plan';
 import { ConfluenceClient } from '../../wiki-clients/confluence';
 import { TrackerClientService } from '../../trackers/TrackerClientService';
 import { resolveScopedPath } from '../files/scopedFs';
+import { resolvePlanRefs } from '../../documents/planRefResolver';
 
 export interface SyncPreview {
   hasConflict: boolean; // Both sides changed since last sync
@@ -30,6 +32,8 @@ export interface SyncPreview {
 export interface ConfluenceSyncServiceDeps {
   confluenceLinks: IConfluenceLinkRepository;
   projects: IProjectRepository;
+  /** Used to resolve `@plan/<uuid>` tokens to native Jira smart links on push. */
+  planItems: IPlanItemRepository;
 }
 
 export function createConfluenceSyncService(deps: ConfluenceSyncServiceDeps) {
@@ -232,12 +236,18 @@ export function createConfluenceSyncService(deps: ConfluenceSyncServiceDeps) {
           throw new Error('Local document not found');
         }
 
+        // Resolve @plan/<uuid> refs to native Jira smart-link markdown so the
+        // Confluence page renders issue cards instead of literal tokens.
+        const projectPlanItems = deps.planItems.getByProject(projectId);
+        const resolvedContent = resolvePlanRefs(localContent, projectPlanItems, 'confluence');
+
         // Get current remote version
         const currentPage = await client.getPage(link.page_id);
 
         // Update Confluence
         const updatedPage = await client.updatePage(
           link.page_id,
+          resolvedContent,
           currentPage.version
         );
 

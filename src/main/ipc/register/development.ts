@@ -16,4 +16,9 @@ export function registerDevelopmentHandlers({
   registerReviewHandlers(services.reviewService, services.reviewAssessmentService, services.reviewPollService);
   registerFileExplorerHandlers(services.fileExplorerService, services.projectWatcherService, getMainWindow);
   registerRepoFileHandlers(services.repoFileService);
+  registerAgentSessionHandlers(
+    services.agentSessionManager,
+    services.devSessionService,
+    services.promptOverrideService,
+  );
 }

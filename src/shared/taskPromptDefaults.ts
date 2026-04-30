@@ -13,6 +13,7 @@ export const TASK_DESCRIPTION_TEMPLATE = `\`\`\`
 [Optional. What this ticket explicitly does NOT include.]
 
 ## Dependencies
+[Optional. Related tickets, blocking work, or parallel efforts. Reference plan items as \`@plan/<uuid>\` — they render as live chips locally and rewrite to native tracker links on sync.]
 
 ## Code References
 [Optional. File paths and specific functions/classes from repos. Include what's relevant about each reference.]

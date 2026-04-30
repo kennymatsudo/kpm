@@ -31,6 +31,7 @@ import {
   generateTransitionWarning,
   inferCategoryWithMapping,
 } from '../../trackers/statusTransitions';
+import { resolvePlanRefs, type RefDestination } from '../../documents/planRefResolver';
 
 interface TrackerClientServiceLike {
   /** Polymorphic factory — preferred for any code path that handles both trackers. */
@@ -704,6 +705,11 @@ export function createExportService(deps: ExportServiceDeps) {
         //
         // Labels: `planItem.label` is intentionally not forwarded. Jira would accept the
         // raw string, but Linear requires label UUIDs (not names) — wiring would need a
+        // Sync boundary: rewrite @plan/<uuid> tokens to native syntax for the
+        // tracker so the description never lands as literal `@plan/<uuid>` text
+        // in Jira/Linear. Linked items become tracker-key links; unlinked
+        // items degrade to the title.
+
         const created = await client.createIssue({
           projectKey: association.project_key,
           issueTypeId: entry.target_issue_type_id!,
@@ -780,6 +786,7 @@ export function createExportService(deps: ExportServiceDeps) {
 
         // Sync boundary: same rule as createIssue above — spec fields are local-only.
         // Do not add `intent`, `acceptance_criteria`, or `source_document_id` to this payload.
+        // Plan refs in the description are resolved to native syntax for the tracker.
         await client.updateIssue(planItem.external_key!, {
           summary: planItem.title,
           customFields: overrideFields,

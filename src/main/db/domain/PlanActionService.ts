@@ -10,6 +10,7 @@ import type {
 } from '../interfaces';
 import type { QueueTrackerUpdateIfNeeded } from './PlanItemService';
 import { assignItemToGroup } from './GroupAssignmentService';
+import { findRefs } from '../../../shared/planRefs';
 
 type Logger = Pick<Console, 'log' | 'warn'>;
 
@@ -498,8 +499,50 @@ function executeBatchReparent(
 // Executor Factory
 // =============================================================================
 
+/**
+ * Walk text fields on `create_item` / `update_item` actions. Returns the
+ * unresolved UUIDs in document order (deduplicated).
+ */
+function collectRefIdsInActions(actions: PlanAction[]): string[] {
+  const ids = new Set<string>();
+  const consume = (text: string | null | undefined) => {
+    if (!text) return;
+    for (const m of findRefs(text)) ids.add(m.id);
+  };
+
+  for (const action of actions) {
+    if (action.type === 'create_item') {
+      consume(action.title);
+      consume(action.description);
+      consume(action.intent);
+      if (action.acceptance_criteria) {
+        for (const c of action.acceptance_criteria) consume(c);
+      }
+    } else if (action.type === 'update_item') {
+      const u = action.updates;
+      consume(u.title);
+      consume(u.description);
+      consume(u.intent);
+      if (u.acceptance_criteria) {
+        for (const c of u.acceptance_criteria) consume(c);
+      }
+    }
+  }
+  return Array.from(ids);
+}
+
 export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
   const logger = deps.logger ?? defaultLogger;
+
+  function validatePlanRefs(projectId: string, actions: PlanAction[]): string | null {
+    const refIds = collectRefIdsInActions(actions);
+    if (refIds.length === 0) return null;
+    const existing = deps.planItems.getByProject(projectId);
+    const existingIds = new Set(existing.map((i) => i.id.toLowerCase()));
+    const unresolved = refIds.filter((id) => !existingIds.has(id));
+    if (unresolved.length === 0) return null;
+    return `Plan action references unknown plan item(s): ${unresolved.join(', ')}`;
+  }
 
   const createContext = (projectId: string): ExecutorContext => ({
     projectId,
@@ -521,6 +564,18 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
    */
   function execute(projectId: string, actions: PlanAction[]): PlanActionResult {
     logger.log(`[PlanActionService] Executing ${actions.length} action(s): ${actions.map(a => a.type).join(', ')}`);
+
+    // Validate any @plan/<uuid> references in user-visible text fields against
+    // existing items in this project. Hallucinated UUIDs (typically from
+    // Claude) must not be persisted — they would render as broken chips and
+    // leak into tracker descriptions on sync. Refs to items being created in
+    // the same batch are fine: we don't know their concrete UUIDs yet (the
+    // executor mints them with `randomUUID()`), but Claude has no way to know
+    // them either, so any UUID it emits must already exist.
+    const refValidationError = validatePlanRefs(projectId, actions);
+    if (refValidationError) {
+      return { success: false, error: refValidationError };
+    }
 
     const ctx = createContext(projectId);
 

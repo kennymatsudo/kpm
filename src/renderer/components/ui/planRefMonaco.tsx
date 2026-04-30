@@ -13,6 +13,8 @@ import { STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import { findRefs, PLAN_REF_REGEX, serializeRef } from '../../../shared/planRefs';
 import type { PlanItem } from '../../../shared/types';
 
+const PLAN_REF_OWNER = 'kpm-plan-ref';
+
 type MonacoNs = typeof Monaco;
 type EditorInstance = Monaco.editor.IStandaloneCodeEditor;
 
@@ -185,8 +187,72 @@ export function registerPlanRefMonacoProviders(
   // definition" default keybinding. Users can invoke via right-click or F12.
   // The definition provider above already opens the modal as a side effect.
 
+  // Diagnostics: mark every unresolved @plan/<uuid> as a Warning so the
+  // editor surfaces the broken link with the same red squiggle / problems
+  // affordance as TypeScript errors. Re-runs on every content change and
+  // when the plan store updates, since the same UUID can resolve again
+  // after a sync.
+    const model = editor.getModel();
+    if (!model) return;
+    const text = model.getValue();
+      monacoNs.editor.setModelMarkers(model, PLAN_REF_OWNER, []);
+      return;
+    }
+
+  // The plan store can update underneath us (sync, approval flow); subscribe
+  // so a previously-broken ref re-resolves once its target item lands.
+  const unsubscribePlanStore = usePlanDomainStore.subscribe(() => {
+  });
+  disposables.push({ dispose: unsubscribePlanStore });
+
+  // Code actions: offer "Remove ref" for unresolved tokens. Relink-to-picker
+  // is deferred — opening a Monaco-side picker UI conflicts with our chip
+  // picker; users can simply delete + re-type @ to invoke completion.
+  disposables.push(
+    monacoNs.languages.registerCodeActionProvider('markdown', {
+      provideCodeActions(model, range, context) {
+        const ourMarkers = context.markers.filter((m) => m.source === 'kpm');
+        if (ourMarkers.length === 0) return { actions: [], dispose: () => {} };
+
+        const actions: Monaco.languages.CodeAction[] = ourMarkers.map((marker) => ({
+          title: 'Remove unresolved plan reference',
+          kind: 'quickfix',
+          diagnostics: [marker],
+          edit: {
+            edits: [
+              {
+                resource: model.uri,
+                versionId: model.getVersionId(),
+                textEdit: {
+                  range: {
+                    startLineNumber: marker.startLineNumber,
+                    startColumn: marker.startColumn,
+                    endLineNumber: marker.endLineNumber,
+                    endColumn: marker.endColumn,
+                  },
+                  text: '',
+                },
+              },
+            ],
+          },
+          isPreferred: true,
+        }));
+        return { actions, dispose: () => {} };
+      },
+    }),
+  );
+
   return {
     dispose: () => {
+      // Clear markers we set so they don't outlive this editor instance.
+      const model = editor.getModel();
+      if (model) {
+        try {
+          monacoNs.editor.setModelMarkers(model, PLAN_REF_OWNER, []);
+        } catch {
+          // ignore
+        }
+      }
       for (const d of disposables) {
         try {
           d.dispose();

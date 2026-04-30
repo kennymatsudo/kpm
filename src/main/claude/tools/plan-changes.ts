@@ -151,6 +151,7 @@ Use intent + acceptance_criteria as the primary shape for implementation items. 
 - Code references (repo-relative paths like \`src/auth/session.ts\`) are fine in description — they exist wherever the code does.
 - intent and acceptance_criteria are local-only and not synced today, so they can reference local context freely. Still, prefer self-contained phrasing so they survive if sync coverage expands later.
 
+
 Item actions:
 - create_item: see full example below
 - update_item: { "type": "update_item", "item_id": "...", "updates": { "status_category": "done" } }

@@ -9,6 +9,13 @@
 import type { PlanItem } from './base-types';
 
 /**
+ * Minimum shape `expandPlanRefs` needs from each item — just an id. Using a
+ * structural minimum lets the function accept either the narrower
+ * `shared/types.ts` PlanItem or the looser base-types PlanItem.
+ */
+type RefResolvable = Pick<PlanItem, 'id'>;
+
+/**
  * UUIDv4 strict (RFC 4122 §4.4): version digit `4`, variant nibble `8|9|a|b`.
  * Case-insensitive — refs may be authored in either case but are normalized
  * downstream. The leading `@plan/` is literal.
@@ -33,6 +40,8 @@ export interface PlanRefMatch {
 }
 
 /** A ref resolved against a plan-items map. `item` is null for unknown UUIDs. */
+export interface ExpandedRef<TItem extends RefResolvable = PlanItem> extends PlanRefMatch {
+  item: TItem | null;
 }
 
 /** A single segment of a tokenized string. */
@@ -111,10 +120,14 @@ export function tokenizeRefs(text: string): RefSegment[] {
  *
  * Refs inside fenced code blocks are not expanded.
  */
+export function expandPlanRefs<TItem extends RefResolvable>(
   text: string,
+  planItems: readonly TItem[],
+): ExpandedRef<TItem>[] {
   const matches = findRefs(text);
   if (matches.length === 0) return [];
 
+  const byId = new Map<string, TItem>();
   for (const item of planItems) {
     byId.set(item.id.toLowerCase(), item);
   }

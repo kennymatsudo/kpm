@@ -102,5 +102,13 @@ ${hasPlan
       ? `${planItems.length} items. IDs listed below — use directly.`
       : `${planItems.length} items. Root items below. Query \`filter_plan_items\` for others.`
     : 'Empty.'}
+${buildItemReferenceTable(planItems)}
+
+## Plan References
+
+
+Rules:
+- Refs work mid-prose: "After @plan/<uuid>, we can…" is fine.
+- Don't put refs inside fenced code blocks — they won't resolve.
 - Prefer a ref over restating the item's title or external key in prose; readers get a live chip.`;
 }
