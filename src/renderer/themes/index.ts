@@ -357,10 +357,23 @@ export function createMonacoThemeData(theme: ThemeOption): CustomThemeVsCodeData
   }
 
   const colors = theme.colors;
+  const isDark = colors.colorScheme === 'dark';
+
+  // Mirror generateThemeVariables so Monaco widget borders match the rest of the app.
+  const borderRgb = isDark ? '255, 255, 255' : '0, 0, 0';
+  const borderDefault = `rgba(${borderRgb}, ${isDark ? 0.08 : 0.12})`;
+  const widgetShadow = isDark ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.15)';
+
+  const danger = colors.danger ?? (isDark ? '#f87171' : '#dc2626');
+  const warning = colors.warning ?? (isDark ? '#fbbf24' : '#ca8a04');
+  const info = colors.info ?? (isDark ? '#60a5fa' : '#2563eb');
+
   return {
+    base: isDark ? 'vs-dark' : 'vs',
     inherit: true,
     rules: [],
     colors: {
+      // Editor body
       'editor.foreground': colors.textPrimary,
       'editorLineNumber.foreground': colors.textMuted,
       'editorLineNumber.activeForeground': colors.textSecondary,
@@ -375,6 +388,78 @@ export function createMonacoThemeData(theme: ThemeOption): CustomThemeVsCodeData
       'editorGutter.background': colors.surface0,
       'editorBracketMatch.background': `${colors.accent}1a`,
       'editorBracketMatch.border': colors.accent,
+
+      // Find widget / hover / suggest widget chrome
+      'editorWidget.background': colors.surfaceElevated,
+      'editorWidget.foreground': colors.textPrimary,
+      'editorWidget.border': borderDefault,
+      'editorWidget.resizeBorder': colors.accent,
+      'widget.shadow': widgetShadow,
+      'editorHoverWidget.background': colors.surfaceElevated,
+      'editorHoverWidget.foreground': colors.textPrimary,
+      'editorHoverWidget.border': borderDefault,
+      'editorSuggestWidget.background': colors.surfaceElevated,
+      'editorSuggestWidget.foreground': colors.textPrimary,
+      'editorSuggestWidget.border': borderDefault,
+      'editorSuggestWidget.selectedBackground': `${colors.accent}33`,
+      'editorSuggestWidget.highlightForeground': colors.accent,
+
+      // Input fields (find widget search/replace boxes)
+      'input.background': colors.surface1,
+      'input.foreground': colors.textPrimary,
+      'input.border': borderDefault,
+      'input.placeholderForeground': colors.textMuted,
+      'inputOption.activeBackground': `${colors.accent}33`,
+      'inputOption.activeBorder': colors.accent,
+      'inputOption.activeForeground': colors.textPrimary,
+      'inputValidation.errorBackground': `${danger}1a`,
+      'inputValidation.errorBorder': danger,
+      'inputValidation.warningBackground': `${warning}1a`,
+      'inputValidation.warningBorder': warning,
+      'inputValidation.infoBackground': `${info}1a`,
+      'inputValidation.infoBorder': info,
+
+      // Focus ring
+      focusBorder: colors.accent,
+
+      // Buttons inside widgets
+      'button.background': colors.accent,
+      'button.hoverBackground': colors.accentHover,
+      'button.secondaryBackground': colors.surface3,
+      'button.secondaryForeground': colors.textPrimary,
+      'button.secondaryHoverBackground': colors.surface4,
+
+      // Dropdowns
+      'dropdown.background': colors.surfaceElevated,
+      'dropdown.foreground': colors.textPrimary,
+      'dropdown.border': borderDefault,
+      'dropdown.listBackground': colors.surfaceElevated,
+
+      // Lists (suggest widget rows, tree views inside widgets)
+      'list.hoverBackground': colors.surface3,
+      'list.activeSelectionBackground': `${colors.accent}33`,
+      'list.activeSelectionForeground': colors.textPrimary,
+      'list.inactiveSelectionBackground': colors.surface3,
+      'list.inactiveSelectionForeground': colors.textPrimary,
+      'list.focusBackground': `${colors.accent}33`,
+      'list.focusForeground': colors.textPrimary,
+
+      // Find matches
+      'editor.findMatchBackground': `${colors.accent}66`,
+      'editor.findMatchBorder': colors.accent,
+      'editor.findMatchHighlightBackground': `${colors.accent}33`,
+      'editor.findRangeHighlightBackground': `${colors.accent}1a`,
+
+      // Scrollbars
+      'scrollbar.shadow': widgetShadow,
+      'scrollbarSlider.background': `${colors.surface4}80`,
+      'scrollbarSlider.hoverBackground': `${colors.surface4}b3`,
+      'scrollbarSlider.activeBackground': colors.surface4,
+
+      // Diagnostic foregrounds (in case any leak past renderValidationDecorations: 'off')
+      'editorError.foreground': danger,
+      'editorWarning.foreground': warning,
+      'editorInfo.foreground': info,
     },
   };
 }
