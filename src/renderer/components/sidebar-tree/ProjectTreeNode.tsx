@@ -202,6 +202,7 @@ export interface ProjectTreeNodeExtraProps {
           group flex h-full items-center gap-2 px-3 py-1 rounded-lg relative box-border
           transition-all duration-150 ease-out
           ${isEditingFile ? 'bg-accent/10' : node.isSelected ? 'bg-surface-4' : 'hover:bg-surface-2/60'}
+
           ${node.willReceiveDrop ? 'bg-accent/20 ring-2 ring-inset ring-accent ring-dashed' : ''}
           ${isExternalDragOver ? 'bg-accent/20 ring-2 ring-inset ring-accent ring-dashed' : ''}
         `}
@@ -270,6 +271,7 @@ export interface ProjectTreeNodeExtraProps {
             <span
               className={`
                 flex-1 text-sm truncate transition-colors
+                ${isEditable ? 'text-text-primary' : 'text-text-secondary'}
                 ${node.isSelected || isEditingFile ? 'text-text-primary' : ''}
               `}
             >

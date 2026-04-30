@@ -35,6 +35,7 @@ export const RepoItem = memo(function RepoItem({
 
   return (
     <div
+      className="group flex items-center gap-2 py-1 px-3 mx-1 rounded-md transition-all duration-150 hover:bg-surface-2/60 cursor-default"
       title={isWorktreeActive
         ? `${path}\nActive worktree: ${activeWorktreePath}${branch ? `\nBranch: ${branch}` : ''}`
         : branch ? `${path}\nBranch: ${branch}` : path
@@ -42,13 +43,33 @@ export const RepoItem = memo(function RepoItem({
       onContextMenu={(e) => onContextMenu(e, id)}
     >
       <RepoIcon />
+      <span className="flex-1 min-w-0 text-sm text-text-primary truncate">{name}</span>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        {isWorktreeActive && (
+          <span
+            className="text-xxs px-1.5 py-0.5 rounded bg-accent/15 text-accent font-mono"
+            title={`Worktree: ${activeWorktreePath}`}
+          >
+            WT
+          </span>
+        )}
+        {hasEnvConfig && (
+          <span
+            className="text-xxs px-1.5 py-0.5 rounded bg-surface-3 text-text-muted font-mono"
+            title={`Environment: ${environmentMode}`}
+          >
+            {environmentMode === 'direnv' ? 'env' : 'nix'}
+          </span>
+        )}
         {branch && (
           <span
+            className="text-xxs px-1.5 py-0.5 rounded bg-surface-3 text-text-muted font-mono truncate max-w-[64px]"
             title={branch}
           >
             {branch}
           </span>
         )}
+      </div>
     </div>
   );
 });
