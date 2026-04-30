@@ -36,6 +36,7 @@ export function PromptsSettings({ currentProjectId }: Props) {
           </div>
           <div>
             <h3 className="text-sm font-medium text-text-primary">Prompts</h3>
+            <p className="text-xs text-text-muted">Customize Claude&apos;s instructions and response style</p>
           </div>
         </div>
 

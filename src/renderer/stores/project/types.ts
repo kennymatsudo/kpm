@@ -94,8 +94,19 @@ export interface ResourceSlice {
   destroyWorktree: (worktreeId: string) => Promise<void>;
 }
 
+export interface AddFocusedResourcesResult {
+  /** Number of resources newly added (not already in the focus list). */
+  added: number;
+  /** Number of resources that were already present and skipped. */
+  alreadyPresent: number;
+}
+
 export interface UiSlice {
   setFocusedResources: (resources: FocusedResource[]) => void;
+  /** Append a single resource. Returns whether it was newly added (false = duplicate). */
+  addFocusedResource: (resource: FocusedResource) => { added: boolean };
+  /** Append multiple resources in a single state update. Returns added/alreadyPresent counts. */
+  addFocusedResources: (resources: FocusedResource[]) => AddFocusedResourcesResult;
   removeFocusedResource: (resource: FocusedResource) => void;
   clearFocusedResources: () => void;
   syncFocusedResourcesForSession: (chatSessionId: string | null) => void;
@@ -142,6 +153,7 @@ export type ResourceDomainState = Pick<
 export type UiDomainState = Pick<
   ProjectState,
   'isLoading' | 'isSwitchingProject' | 'error' | 'focusedResources' | 'focusedResourcesBySession' | 'editingItemId' |
+  'setFocusedResources' | 'addFocusedResource' | 'addFocusedResources' | 'removeFocusedResource' | 'clearFocusedResources' |
   'syncFocusedResourcesForSession' | 'setEditingItemId' | 'setLoading' | 'setSwitchingProject' |
 >;
 

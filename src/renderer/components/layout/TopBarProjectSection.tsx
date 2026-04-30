@@ -74,6 +74,7 @@ export function TopBarProjectSection({
 
   return (
     <>
+      <div className="flex items-center gap-1.5 no-drag" style={{ paddingLeft: 'var(--traffic-light-inset)' }}>
         <button
           onClick={onToggleSidebar}
           className={`p-1.5 rounded-lg transition-colors ${
@@ -103,8 +104,10 @@ export function TopBarProjectSection({
               onBlur={() => void handleSaveEdit()}
               onKeyDown={handleKeyDown}
               autoFocus
+              className="input px-3 py-1.5 text-sm w-48"
             />
           ) : (
+            <div className="flex items-center gap-2 relative">
               <button
                 ref={buttonRef}
                 onClick={handleOpenMenu}
@@ -256,6 +259,7 @@ export function TopBarProjectSection({
             </div>
           )
         ) : (
+          <span className="text-sm text-text-muted">No project</span>
         )}
       </div>
 

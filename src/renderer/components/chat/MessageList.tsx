@@ -5,6 +5,7 @@ import type { Message } from '../../stores/chat';
 import type { ChatViewMode } from '../../../shared/types';
 import { processMessageContent } from '../../utils/messageFormatter';
 import { Markdown } from 'markdown-to-jsx';
+import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
 import { CopyIcon, CheckIcon } from '../icons';
 import { ProcessTimeline } from './ProcessTimeline';
 
@@ -122,6 +123,7 @@ const AssistantMessageContent = memo(function AssistantMessageContent({
     <>
         return (
             <Markdown options={markdownOptions}>
+              {transformPlanRefs(segmentProcessed.displayContent)}
             </Markdown>
           </div>
         );
@@ -149,6 +151,7 @@ const StreamingContent = memo(function StreamingContent({
     <>
         return (
             <Markdown options={markdownOptions}>
+              {transformPlanRefs(processed.displayContent)}
             </Markdown>
           </div>
         );

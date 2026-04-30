@@ -397,6 +397,7 @@ function TypeMappingsTab({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <div className="text-xs text-text-tertiary">
+            <p>Synced items keep their original Jira type. Local items fall back to depth: root → Epic, level 1 → Story, level 2+ → Task.</p>
           </div>
         </div>
       </div>
@@ -530,6 +531,7 @@ function CustomFieldsTab({
           Browse Fields By Type
         </label>
         >
+        <p className="text-text-tertiary text-xs mt-1">Values apply across all issue types — pick one to view its fields.</p>
       </div>
 
       {/* Loading fields */}
@@ -622,6 +624,7 @@ function CustomFieldsTab({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <div className="text-xs text-text-tertiary">
+            <p>Custom field values apply project-wide when creating Jira issues. Switch issue types above to view their fields.</p>
           </div>
         </div>
       </div>

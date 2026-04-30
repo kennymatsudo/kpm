@@ -254,6 +254,8 @@ export function GlobalSearch() {
             <svg className="w-8 h-8 mx-auto mb-2 text-text-muted opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
+            <p className="text-text-muted text-sm font-medium">Search tasks and documents</p>
+            <p className="text-text-tertiary text-xs mt-1">Type to search the project</p>
           </div>
         )}
 
@@ -266,6 +268,7 @@ export function GlobalSearch() {
 
         {showNoResults && (
           <div className="px-6 py-10 text-center">
+            <p className="text-text-muted text-sm font-medium">No results</p>
             <p className="text-text-tertiary text-xs mt-1">Try different keywords</p>
           </div>
         )}

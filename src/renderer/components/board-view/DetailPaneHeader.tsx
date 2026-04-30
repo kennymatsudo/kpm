@@ -17,6 +17,8 @@ interface DetailPaneHeaderProps {
   onLinkPr: () => void;
   onOpenPr: () => void;
   onCopyWorktree: () => void;
+  /** Optional — when provided, surfaces an "Add to context" action in the overflow menu. */
+  onAddToContext?: () => void;
 }
 
 // =============================================================================
@@ -85,6 +87,7 @@ export const DetailPaneHeader = memo(function DetailPaneHeader({
   onLinkPr,
   onOpenPr,
   onCopyWorktree,
+  onAddToContext,
 }: DetailPaneHeaderProps) {
   const isTerminal = agentState === 'complete' || agentState === 'failed' || agentState === 'stopped';
   const isCommitting = commitState?.status === 'running';
@@ -94,6 +97,7 @@ export const DetailPaneHeader = memo(function DetailPaneHeader({
   const title = session.plan_item?.title ?? session.name ?? 'Session';
 
   const overflowItems: OverflowItem[] = [
+    ...(onAddToContext ? [{ label: 'Add to chat context', onClick: onAddToContext }] : []),
     { label: 'Copy worktree path', onClick: onCopyWorktree },
     ...(canManagePostRun ? [{ label: 'PR content', onClick: onGeneratePrContent }] : []),
     ...(canManagePostRun && !hasPr ? [{ label: 'Link existing PR', onClick: onLinkPr }] : []),

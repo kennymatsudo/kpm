@@ -19,6 +19,7 @@ import type * as Monaco from 'monaco-editor';
 import { configureMonaco } from '../../lib/monaco';
 import { useTheme } from '../../contexts';
 import { createMonacoThemeData } from '../../themes';
+import { registerPlanRefMonacoProviders } from './planRefMonaco';
 
 export interface MarkdownEditorProps {
   content: string;
@@ -74,8 +75,12 @@ const MARKDOWN_EDITOR_OPTIONS: Monaco.editor.IStandaloneEditorConstructionOption
   tabSize: 2,
   insertSpaces: true,
   // Suppress every code-editor affordance Monaco enables by default so the
+  // surface reads as a prose editor — except the bits that power plan-ref
+  // authoring: completion on `@` and hover for resolving `@plan/<uuid>`.
   quickSuggestions: false,
+  suggestOnTriggerCharacters: true,
   parameterHints: { enabled: false },
+  hover: { enabled: true, delay: 200 },
   occurrencesHighlight: 'off',
   selectionHighlight: false,
   codeLens: false,
@@ -436,12 +441,16 @@ export function MarkdownEditor({
     defineCurrentTheme(monacoInstance);
   };
 
+  const planRefDisposerRef = useRef<{ dispose: () => void } | null>(null);
+
   const handleMount: OnMount = (editor, monacoInstance) => {
     editorRef.current = editor;
     monacoRef.current = monacoInstance;
     editor.getModel()?.updateOptions({ tabSize: 2, insertSpaces: true });
     defineCurrentTheme(monacoInstance);
     monacoInstance.editor.setTheme(monacoThemeName);
+    planRefDisposerRef.current?.dispose();
+    planRefDisposerRef.current = registerPlanRefMonacoProviders(editor, monacoInstance);
 
     // Override Monaco's built-in Cmd+B (go to definition) and bind formatting shortcuts.
     editor.addCommand(
@@ -468,6 +477,14 @@ export function MarkdownEditor({
     defineCurrentTheme(monacoRef.current);
     monacoRef.current.editor.setTheme(monacoThemeName);
   }, [defineCurrentTheme, monacoThemeName]);
+
+  // Dispose plan-ref Monaco providers when this editor unmounts.
+  useEffect(() => {
+    return () => {
+      planRefDisposerRef.current?.dispose();
+      planRefDisposerRef.current = null;
+    };
+  }, []);
 
   // ----- Preview-mode search -----
   const matchIndexes = useMemo(() => {

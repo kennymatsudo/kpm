@@ -365,6 +365,7 @@ export function PendingDocumentPanel({
           ) : viewMode === 'preview' ? (
             <div className="prose-themed prose-panel bg-surface-2 p-4 rounded-lg border border-border-subtle overflow-y-auto overflow-x-hidden">
               <Markdown options={markdownOptions}>
+                {transformPlanRefs(editedContent)}
               </Markdown>
             </div>
           ) : (

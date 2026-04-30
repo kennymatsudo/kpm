@@ -334,6 +334,7 @@ export function CreateItemModal({
                     <textarea
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Add context or notes..."
                       rows={4}
                       disabled={isSubmitting}
                       className="input w-full px-4 py-3 text-sm font-mono leading-relaxed resize-y min-h-[100px]"

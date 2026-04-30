@@ -14,6 +14,7 @@ import { ReviewTab } from '../development/ReviewTab';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { openExternalUrl } from '../../services/shellService';
+import { usePlanDomainStore, useProjectUiDomainStore, toast } from '../../stores';
 import { toReviewSessionId } from '../../../shared/agent-types';
 
 interface DetailPaneProps {
@@ -98,6 +99,7 @@ export const DetailPane = memo(function DetailPane({
         return;
       }
       if (!result.reviewSessionId) {
+        toast.info('Nothing to review — no diff or reviewer available');
         return;
       }
       toast.success('Review started');
@@ -113,6 +115,7 @@ export const DetailPane = memo(function DetailPane({
   }, [session.plan_item_id, session.plan_item?.title, session.name, updateStatusCategory]);
 
     if (commitState?.status === 'running') {
+      toast.info('Commit already in progress');
       return;
     }
 
@@ -124,6 +127,7 @@ export const DetailPane = memo(function DetailPane({
   }, [commitState?.status, diff, moveToReview]);
 
     if (commitState?.status === 'running') {
+      toast.info('Commit already in progress');
       return;
     }
 
@@ -132,6 +136,7 @@ export const DetailPane = memo(function DetailPane({
 
   const handleOpenPr = useCallback(() => {
     if (!session.pr_url) {
+      toast.error('No PR linked to this session');
       return;
     }
 
@@ -140,6 +145,20 @@ export const DetailPane = memo(function DetailPane({
 
   const handleCopyWorktree = useCallback(() => {
   }, [session.worktree_path]);
+
+  const addFocusedResource = useProjectUiDomainStore((s) => s.addFocusedResource);
+  const handleAddToContext = useMemo(() => {
+    if (!planItem) return undefined;
+    return () => {
+      const result = addFocusedResource({
+        type: 'plan_item',
+        id: planItem.id,
+        title: planItem.title,
+      });
+      if (result.added) toast.success(`Added "${planItem.title}" to chat context`);
+      else toast.info(`"${planItem.title}" is already in chat context`);
+    };
+  }, [planItem, addFocusedResource]);
 
   const detailSession = {
     ...session,
@@ -154,12 +173,14 @@ export const DetailPane = memo(function DetailPane({
       startedAt: Date.now(),
       moveToReviewOnSuccess: shouldMoveToReview,
     });
+    toast.info('Committing…');
 
     void (async () => {
       try {
         if (!result.success) {
           const errMsg = result.error ?? 'Commit failed';
           const commitError = errMsg.includes('Nothing to commit') || errMsg.includes('nothing to commit')
+            ? 'Worktree is clean — nothing to commit.'
             : errMsg;
           setCommitState(session.id, {
             status: 'failed',
@@ -225,6 +246,7 @@ export const DetailPane = memo(function DetailPane({
         onLinkPr={() => setShowLinkPr(true)}
         onOpenPr={handleOpenPr}
         onCopyWorktree={handleCopyWorktree}
+        onAddToContext={handleAddToContext}
       />
 
             )}

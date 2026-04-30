@@ -105,6 +105,12 @@
 :root {
   color-scheme: dark;
   --titlebar-height: 48px;
+  /* Reserve space for macOS traffic-light controls + breathing room before
+     the first interactive element. Lights are positioned at x=16 (see
+     trafficLightPosition in main config); cluster spans ~62px, so 92px
+     leaves ~14px of clear space. Overridden to 0 on non-mac via
+     html[data-platform]. */
+  --traffic-light-inset: 92px;
 
 
   /* Inline code background */
@@ -161,6 +167,11 @@
    ============================================ */
 
 :root {
+}
+
+html[data-platform="win32"],
+html[data-platform="linux"] {
+  --traffic-light-inset: 0px;
 }
 
 html {
@@ -463,11 +474,13 @@ select:focus-visible {
 
 .plan-card:hover {
   background: var(--color-surface-elevated);
+  border-color: var(--color-border-strong);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .plan-card.selected {
   background: var(--color-surface-elevated);
+  border-color: var(--color-border-strong);
 }
 
 /* Nested cards: keep the same surface tone as parent cards */
@@ -479,6 +492,7 @@ select:focus-visible {
 
 .plan-card .plan-card:hover {
   background: var(--color-surface-elevated);
+  border-color: var(--color-border-strong);
 }
 
 /* Drop target indicator - moved to bottom of file with animation */
@@ -2236,8 +2250,14 @@ select:focus-visible {
    Plan Card State Indicators
    ============================================ */
 
+/* Recently imported — border pulses 3 times */
+.plan-card.plan-card-imported {
+  animation: imported-border-pulse 1.5s ease-in-out 3;
 }
 
+@keyframes imported-border-pulse {
+  0%, 100% { border-color: var(--color-border-default); }
+  50% { border-color: var(--color-accent); }
 }
 
 /* Focused item — border highlight, neutral bg */
@@ -2247,6 +2267,7 @@ select:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .plan-card.plan-card-imported {
     animation: none;
   }
 }

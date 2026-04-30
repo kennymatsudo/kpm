@@ -1,10 +1,13 @@
 import { useCallback, useState } from 'react';
 import type { FocusedResource, PlanItem } from '../../../../shared/types';
+import type { AddFocusedResourcesResult } from '../../../stores/project/types';
 
 interface PlanContextMenuDeps {
   currentProjectId: string | null;
   selectedItemIds: Set<string>;
   planItemsById: Map<string, PlanItem>;
+  addFocusedResource: (resource: FocusedResource) => { added: boolean };
+  addFocusedResources: (resources: FocusedResource[]) => AddFocusedResourcesResult;
   addToQueue: (projectId: string, itemIds: string[]) => Promise<unknown>;
 }
 
@@ -20,6 +23,7 @@ export function usePlanContextMenu({
   selectedItemIds,
   planItemsById,
   addFocusedResource,
+  addFocusedResources,
   addToQueue,
 }: PlanContextMenuDeps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -45,6 +49,13 @@ export function usePlanContextMenu({
     setContextMenu(null);
   }, [currentProjectId, selectedItemIds, addToQueue]);
 
+  // Multi-select bulk add. Appends with dedupe (matches every other "Add to
+  // context" surface). Returns the result so the caller can toast.
+  const handleAddToContext = useCallback((): AddFocusedResourcesResult => {
+    if (selectedItemIds.size === 0) {
+      setContextMenu(null);
+      return { added: 0, alreadyPresent: 0 };
+    }
     const resources: FocusedResource[] = Array.from(selectedItemIds).map((id) => {
       const item = planItemsById.get(id);
       return {
@@ -53,15 +64,21 @@ export function usePlanContextMenu({
         title: item?.title ?? 'Unknown',
       };
     });
+    const result = addFocusedResources(resources);
     setContextMenu(null);
+    return result;
+  }, [selectedItemIds, planItemsById, addFocusedResources]);
 
+  // Single-card add from the per-card menu. Returns whether it was newly added.
   const handleAddItemToContext = useCallback(
+    (itemId: string): { added: boolean } => {
       const item = planItemsById.get(itemId);
       const resource: FocusedResource = {
         type: 'plan_item',
         id: itemId,
         title: item?.title ?? 'Unknown',
       };
+      return addFocusedResource(resource);
     },
     [planItemsById, addFocusedResource]
   );

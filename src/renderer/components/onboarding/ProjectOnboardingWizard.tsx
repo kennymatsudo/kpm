@@ -144,6 +144,7 @@ interface ProjectOnboardingWizardProps {
           <>
               Cancel
             </button>
+                title="Skip code scan"
             <button
               className="btn btn-primary"
             >
@@ -159,6 +160,7 @@ interface ProjectOnboardingWizardProps {
         )}
 
           <>
+                title="Generation continues in the background"
             {!isGenerating && (
               <button
                 className="btn btn-secondary"

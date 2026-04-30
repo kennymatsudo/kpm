@@ -4,6 +4,13 @@ import { useShallow } from 'zustand/react/shallow';
 import { DeleteWorktreeDialog } from './DeleteWorktreeDialog';
 import { Modal } from '../ui/Modal';
 import { Z_INDEX } from '../../constants/zIndex';
+import { OPENABLE_SESSION_STATUSES, type TrackerType, type DevSession } from '../../../shared/types';
+
+// Stable empty-sessions ref. The Zustand selector below returns this when an
+// item has no dev sessions; without a stable reference, `?? []` would create a
+// fresh array on every render and `useSyncExternalStore` would treat each as a
+// new snapshot — producing infinite re-renders.
+const EMPTY_SESSIONS: DevSession[] = [];
 
 export type MenuPosition =
   | { type: 'card'; top?: number; bottom?: number; right: number }
@@ -56,6 +63,7 @@ export function PlanCardMenu({
       worktreeLoadingOp: loadingOp,
     };
 
+  const itemSessions = useDevSessionsStore((state) => state.sessionsByPlanItemId.get(itemId) ?? EMPTY_SESSIONS);
   const [showDeleteWorktreeConfirm, setShowDeleteWorktreeConfirm] = useState(false);
   const [showDestroyWorktreeConfirm, setShowDestroyWorktreeConfirm] = useState(false);
 

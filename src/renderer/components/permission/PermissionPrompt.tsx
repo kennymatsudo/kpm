@@ -79,6 +79,7 @@ export function PermissionPrompt() {
         </div>
 
         <p className="text-xs text-text-tertiary mt-2">
+          Allow All Remaining covers the rest of this response. Allow Always covers this session.
         </p>
       </div>
     </div>

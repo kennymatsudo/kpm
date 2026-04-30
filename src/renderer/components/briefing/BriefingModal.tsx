@@ -10,6 +10,7 @@ import { Markdown } from 'markdown-to-jsx';
 import { useShallow } from 'zustand/react/shallow';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { useBriefingStore, useProjectDomainStore } from '../../stores';
+import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
 
 function SignalBadge({ label, count, color }: { label: string; count: number; color: string }) {
   if (count === 0) return null;
@@ -68,6 +69,8 @@ export function BriefingModal() {
           <div className="flex flex-col items-center justify-center py-16 gap-4">
             <div className="w-8 h-8 rounded-full border-2 border-accent/30 border-t-accent spinner-refined" />
             <div className="space-y-1 text-center">
+              <div className="text-sm text-text-secondary">Reading the project…</div>
+              <div className="text-xs text-text-tertiary">Usually takes 15–30 seconds</div>
             </div>
           </div>
         )}
@@ -101,6 +104,7 @@ export function BriefingModal() {
 
             {/* Markdown briefing content */}
             <div className="prose-themed">
+              <Markdown options={markdownOptions}>{transformPlanRefs(briefing.summary)}</Markdown>
             </div>
           </div>
         )}

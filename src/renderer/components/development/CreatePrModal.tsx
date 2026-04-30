@@ -106,7 +106,9 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
               </svg>
               <div>
+                <p className="text-xs text-amber-400 font-medium">Nothing to push</p>
                 <p className="text-xs text-text-muted mt-1">
+                  This branch is even with the base branch. Commit your changes first.
                 </p>
               </div>
             </div>
@@ -146,6 +148,7 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
                   id="pr-body"
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
+                  placeholder="PR description"
                   rows={12}
                   className="w-full px-3 py-2 text-sm bg-surface-1 border border-border-subtle rounded-md text-text-primary placeholder-text-tertiary focus:outline-none focus:border-accent transition-colors font-mono resize-y"
                 />

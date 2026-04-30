@@ -288,6 +288,7 @@ export function TaskEditModal({
                 id="task-edit-intent"
                 value={intent}
                 onChange={(e) => setIntent(e.target.value)}
+                placeholder="What done looks like, in one sentence..."
                 rows={2}
                 maxLength={INTENT_MAX_CHARS}
                 className="input w-full text-sm leading-snug resize-none"
@@ -300,6 +301,7 @@ export function TaskEditModal({
 
               {criteria.length === 0 ? (
                 <p className="text-sm text-text-muted italic mb-2">
+                  A testable checklist for what counts as done.
                 </p>
               ) : (
                 <ul className="space-y-1.5 mb-2">

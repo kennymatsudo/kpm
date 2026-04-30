@@ -39,6 +39,7 @@ export function McpServersSettings() {
       <div>
         <h3 className="text-base font-semibold text-text-primary">MCP Servers</h3>
         <p className="text-sm text-text-secondary mt-1">
+          Choose which MCP servers Claude can use. Changes apply to new chat sessions.
         </p>
       </div>
 
@@ -66,6 +67,7 @@ export function McpServersSettings() {
           {hasManagedServers && (
             <ServerSection
               title="Connected (claude.ai)"
+              description="Synced from your claude.ai account."
               icon={<CloudIcon />}
             >
               {sortedManagedServers.map(server => (
@@ -82,6 +84,7 @@ export function McpServersSettings() {
           {hasUserServers && (
             <ServerSection
               title="User Servers"
+              description={<>Configured via <code className="text-xs bg-surface-3 px-1 py-0.5 rounded">claude mcp add</code>.</>}
               icon={<UserIcon />}
             >
               {userServers.map(server => (
@@ -101,6 +104,7 @@ export function McpServersSettings() {
           {hasPlugins && (
             <ServerSection
               title="Plugins"
+              description="Installed Claude Code plugins."
               icon={<PlugIcon />}
             >
               {enabledPlugins.map(plugin => (
@@ -120,6 +124,7 @@ export function McpServersSettings() {
 
       {/* Info note */}
       <p className="text-xs text-text-muted">
+        External MCP tool calls require approval before they run.
       </p>
     </div>
   );

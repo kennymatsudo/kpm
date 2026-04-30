@@ -216,6 +216,7 @@ export function CustomPromptSettings() {
               <svg className="w-4 h-4 mt-0.5 shrink-0 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
               </svg>
+              <span>Built-in prompt — editable, not deletable.</span>
             </div>
           )}
 
@@ -408,6 +409,7 @@ function EmptyState() {
         </svg>
       </div>
       <p className="text-xs text-text-muted leading-relaxed">
+        No prompts yet. Click New to add one.
       </p>
     </div>
   );

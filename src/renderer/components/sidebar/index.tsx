@@ -44,6 +44,7 @@ export function Sidebar({ onDeleteProject: _onDeleteProject, onNewProject, onFil
               No project open
             </p>
             <p className="text-text-muted text-xs mt-1.5 leading-relaxed whitespace-nowrap">
+              Create one to get started.
             </p>
             {onNewProject && (
               <button

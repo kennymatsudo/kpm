@@ -10,6 +10,7 @@ export function KeyboardShortcutsSettings() {
           </svg>
         }
         title="Keyboard Shortcuts"
+        description="Shortcuts available across the app"
         collapsible={false}
       >
         <ShortcutsList />

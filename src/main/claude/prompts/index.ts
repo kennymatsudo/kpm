@@ -102,4 +102,5 @@ ${hasPlan
       ? `${planItems.length} items. IDs listed below — use directly.`
       : `${planItems.length} items. Root items below. Query \`filter_plan_items\` for others.`
     : 'Empty.'}
+- Prefer a ref over restating the item's title or external key in prose; readers get a live chip.`;
 }

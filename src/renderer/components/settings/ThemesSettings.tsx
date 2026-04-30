@@ -11,6 +11,7 @@ export function ThemesSettings() {
           </svg>
         }
         title="Themes"
+        description="Pick or import a color theme"
         collapsible={false}
       >
         <ThemeSelector />

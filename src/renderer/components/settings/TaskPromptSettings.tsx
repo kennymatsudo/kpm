@@ -295,6 +295,7 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
 
           {/* Help text */}
           <div className="text-xs text-text-tertiary space-y-1">
+            <p>Sets the structure for new plan item titles and descriptions.</p>
           </div>
 
           {/* Actions */}

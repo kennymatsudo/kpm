@@ -18,6 +18,7 @@ function getPlaceholder(state: AgentSessionState | undefined): string {
     case 'starting':
       return 'Agent is working...';
     case 'waiting_for_input':
+      return 'Answer the question...';
     case 'complete':
       return 'Ask for changes...';
     case 'failed':

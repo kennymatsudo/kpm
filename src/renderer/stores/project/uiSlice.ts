@@ -31,11 +31,15 @@ export const createUiSlice: SliceCreator<UiSlice> = (_deps) => (set, get) => ({
       ? (get().focusedResourcesBySession[chatSessionId] ?? [])
       : get().focusedResources;
 
+    if (current.some((r) => resourceEquals(r, resource))) {
+      return { added: false };
+    }
 
     const next = [...current, resource];
 
     if (!chatSessionId) {
       set({ focusedResources: next });
+      return { added: true };
     }
 
     set((state) => ({
@@ -45,6 +49,43 @@ export const createUiSlice: SliceCreator<UiSlice> = (_deps) => (set, get) => ({
         [chatSessionId]: next,
       },
     }));
+    return { added: true };
+  },
+
+  addFocusedResources: (resources) => {
+    if (resources.length === 0) return { added: 0, alreadyPresent: 0 };
+    const chatSessionId = getActiveChatSessionId(true);
+    const current = chatSessionId
+      ? (get().focusedResourcesBySession[chatSessionId] ?? [])
+      : get().focusedResources;
+
+    const next = [...current];
+    let added = 0;
+    let alreadyPresent = 0;
+    for (const resource of resources) {
+      if (next.some((r) => resourceEquals(r, resource))) {
+        alreadyPresent += 1;
+        continue;
+      }
+      next.push(resource);
+      added += 1;
+    }
+
+    if (added === 0) return { added, alreadyPresent };
+
+    if (!chatSessionId) {
+      set({ focusedResources: next });
+      return { added, alreadyPresent };
+    }
+
+    set((state) => ({
+      focusedResources: next,
+      focusedResourcesBySession: {
+        ...state.focusedResourcesBySession,
+        [chatSessionId]: next,
+      },
+    }));
+    return { added, alreadyPresent };
   },
 
   removeFocusedResource: (resource) => {

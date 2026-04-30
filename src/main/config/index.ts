@@ -158,6 +158,7 @@ function createDefaultConfig(): AppConfig {
       height: 900,
       minWidth: 900,
       minHeight: 600,
+      trafficLightPosition: { x: 16, y: 14 },
     },
 
     claude: {

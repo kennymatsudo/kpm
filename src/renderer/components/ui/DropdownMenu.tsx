@@ -1,5 +1,6 @@
 import * as RadixDropdown from '@radix-ui/react-dropdown-menu';
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Z_INDEX } from '../../constants/zIndex';
 
 export type DropdownPosition =
@@ -30,12 +31,34 @@ function DropdownMenuRoot({ isOpen, onClose, position, children, className = '',
     virtualY = position.anchor.bottom + gap;
   }
 
+  // Render the fixed-position anchor into document.body so any CSS transforms
+  // on ancestors (e.g. canvas pan/zoom) don't disturb Radix's positioning math.
+  const anchor =
+    typeof document !== 'undefined'
+      ? createPortal(
+          <RadixDropdown.Trigger asChild>
+            <div
+              style={{
+                position: 'fixed',
+                left: virtualX,
+                top: virtualY,
+                width: 0,
+                height: 0,
+                pointerEvents: 'none',
+              }}
+            />
+          </RadixDropdown.Trigger>,
+          document.body
+        )
+      : null;
+
   return (
     <RadixDropdown.Root
       open={isOpen && !!position}
       onOpenChange={(open) => !open && onClose()}
       modal={false}
     >
+      {anchor}
       <RadixDropdown.Portal>
         <RadixDropdown.Content
           className={`dropdown-menu ${className}`}

@@ -79,10 +79,12 @@ export function PlanView({
   const {
     focusedResources,
     addFocusedResource,
+    addFocusedResources,
   } = useProjectUiDomainStore(
     useShallow((state) => ({
       focusedResources: state.focusedResources,
       addFocusedResource: state.addFocusedResource,
+      addFocusedResources: state.addFocusedResources,
     }))
   );
 
@@ -145,8 +147,30 @@ export function PlanView({
     selectedItemIds,
     planItemsById,
     addFocusedResource,
+    addFocusedResources,
     addToQueue,
   });
+
+  const handleAddItemToContextWithToast = useCallback(
+    (itemId: string) => {
+      const result = handleAddItemToContext(itemId);
+      const title = planItemsById.get(itemId)?.title ?? 'Item';
+      if (result.added) toast.success(`Added "${title}" to chat context`);
+      else toast.info(`"${title}" is already in chat context`);
+    },
+    [handleAddItemToContext, planItemsById]
+  );
+
+  const handleBulkAddToContextWithToast = useCallback(() => {
+    const result = handleAddToContext();
+    if (result.added > 0 && result.alreadyPresent > 0) {
+      toast.success(`Added ${result.added} to chat context (${result.alreadyPresent} already present)`);
+    } else if (result.added > 0) {
+      toast.success(`Added ${result.added} to chat context`);
+    } else if (result.alreadyPresent > 0) {
+      toast.info(`All ${result.alreadyPresent} already in chat context`);
+    }
+  }, [handleAddToContext]);
 
   // --- Selection & bulk operations ---
 
@@ -442,6 +466,7 @@ export function PlanView({
                   onSelectRange={handleSelectRange}
                   onEditItem={handleEditItem}
                   onPrepareEditItem={prefetchEditItem}
+                  onAddToContext={handleAddItemToContextWithToast}
                   onCreateItem={handleCreateItemFromCanvas}
                   onReparent={handleReparent}
                   onUpdatePosition={updateItemPosition}
@@ -497,6 +522,7 @@ export function PlanView({
           onClose={closeContextMenu}
           onEditItem={() => handleEditItem(contextMenu.singleItemId!)}
           onDelete={openBulkDeleteDialog}
+          onAddToContext={() => handleAddItemToContextWithToast(contextMenu.singleItemId!)}
           onAddToTrackerQueue={handleQueueForTracker}
           hasTrackerAssociation={hasTrackerAssociation}
           trackerType={activeTrackerType}
@@ -514,6 +540,7 @@ export function PlanView({
             const selectedId = Array.from(selectedItemIds)[0];
             if (selectedId) handleEditItem(selectedId);
           }}
+          onAddToContext={handleBulkAddToContextWithToast}
           onQueueForTracker={handleQueueForTracker}
           onDelete={openBulkDeleteDialog}
           onClose={closeContextMenu}

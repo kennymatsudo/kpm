@@ -8,6 +8,14 @@
 import type { MarkdownToJSX } from 'markdown-to-jsx';
 import type { JSX } from 'react';
 import { openExternalUrl } from '../services/shellService';
+import { findRefs, PLAN_REF_REGEX } from '../../shared/planRefs';
+
+/**
+ * URI scheme used to smuggle a plan reference through markdown-to-jsx as a
+ * regular link. The `a` override below detects it and renders a chip instead
+ * of an anchor.
+ */
+const PLAN_REF_SCHEME = 'kpm-plan:';
 
 /**
  * Click handler for markdown links - opens in external browser
@@ -20,14 +28,63 @@ function handleLinkClick(e: React.MouseEvent<HTMLAnchorElement>, href: string | 
 }
 
 /**
+ * Rewrite `@plan/<uuid>` tokens in a markdown source string into markdown
+ * links that the `a` override will replace with `<PlanRefChip>`. Skips refs
+ * inside fenced code blocks (using the same skip logic as the resolver).
+ *
+ * space placeholder; the chip renders its own label.
+ */
+export function transformPlanRefs(content: string): string {
+  if (!content) return content;
+  // Fast path: no @plan tokens anywhere.
+  PLAN_REF_REGEX.lastIndex = 0;
+  if (!PLAN_REF_REGEX.test(content)) return content;
+
+  const matches = findRefs(content);
+  if (matches.length === 0) return content;
+
+  let out = '';
+  let cursor = 0;
+  for (const match of matches) {
+    out += content.slice(cursor, match.start);
+    cursor = match.end;
+  }
+  out += content.slice(cursor);
+  return out;
+}
+
+/**
+ * Render either a `<PlanRefChip>` (for `kpm-plan:` URIs) or an external
+ * anchor. Used by every `Markdown` callsite via `markdownOverrides`.
+ */
+function renderAnchor({
+  href,
+  children,
+  ...props
+}: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+    return <PlanRefChip id={href.slice(PLAN_REF_SCHEME.length)} />;
+  }
+  return (
+    <a href={href} onClick={(e) => handleLinkClick(e, href)} {...props}>
+      {children}
+    </a>
+  );
+}
+
+/**
+ * Custom overrides for markdown-to-jsx that open links externally and render
+ * `@plan/<uuid>` tokens as inline chips.
  *
  * Usage:
  * ```tsx
  * import Markdown from 'markdown-to-jsx';
+ * import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
+ * <Markdown options={markdownOptions}>{transformPlanRefs(content)}</Markdown>
  * ```
  */
 export const markdownOverrides: MarkdownToJSX.Overrides = {
   a: {
+    component: renderAnchor,
   },
 };
 
@@ -128,7 +185,21 @@ function highlightSearchMatches(
   });
 
   return {
+    // Link handling: chip for plan refs, external-open for everything else.
     a: {
+      component: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
+          return <PlanRefChip id={href.slice(PLAN_REF_SCHEME.length)} />;
+        }
+        return (
+          <a
+            href={href}
+            onClick={(e) => handleLinkClick(e, href)}
+            {...props}
+          >
+            {processChildren(children)}
+          </a>
+        );
+      },
     },
     // Text elements that can contain searchable content
     p: createOverride('p'),

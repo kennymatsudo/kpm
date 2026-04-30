@@ -157,6 +157,7 @@ export const AgentStartModal = memo(function AgentStartModal({
             <div className="space-y-4">
               <div className="rounded-xl border border-border-subtle bg-surface-1 p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-text-primary">Spec</p>
                   <span className="rounded-full border border-border-subtle bg-surface-2 px-2 py-1 text-tiny text-text-secondary">
                     {hasAcceptanceCriteria ? `${acceptanceCriteria.length} criteria` : 'No criteria'}
                   </span>
@@ -202,6 +203,7 @@ export const AgentStartModal = memo(function AgentStartModal({
                   )}
 
                   {!hasIntent && !hasAcceptanceCriteria && !hasDescription && (
+                    <p className="text-sm text-text-muted">No spec yet.</p>
                   )}
                 </div>
               </div>
@@ -264,6 +266,7 @@ export const AgentStartModal = memo(function AgentStartModal({
                     )}
                   </button>
                   <p className="mt-1 text-tiny text-text-muted">
+                    Files added here will be sent as context.
                   </p>
                   {showContextPicker && (
                     <div className="mt-3 max-h-40 overflow-y-auto rounded-lg border border-border-subtle bg-surface-0">
@@ -288,7 +291,9 @@ export const AgentStartModal = memo(function AgentStartModal({
 
               <div className="flex min-h-[260px] flex-col">
                 <div className="mb-2">
+                  <label className="block text-tiny text-text-muted">Extra instructions</label>
                   <p className="mt-1 text-tiny leading-4 text-text-muted">
+                    Optional. Constraints, file pointers, or implementation preferences.
                   </p>
                 </div>
                 <textarea
