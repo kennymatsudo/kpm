@@ -60,6 +60,9 @@ export const PLAN_SYSTEM_RULES = `## Plan Structure
 **For organization without semantic weight, use Groups** (visual containers). Groups are the right tool for "these N items belong to the OAuth effort" — hierarchy is not. Hierarchy is reserved for genuine parent/child relationships, which on export to Jira/Linear become sub-task links.`;
 
 /**
+ * formatting conventions. Generic anti-coaching ("don't say 'Certainly!'",
+ * "don't narrate process") removed: modern Claude doesn't exhibit those failure
+ * modes by default.
  */
 export const RESPONSE_STYLE = `## Response Style
 

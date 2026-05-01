@@ -44,7 +44,11 @@ Example:
 \`\`\``;
 
 /**
+ * Build the review prompt. Review criteria live on the system prompt
+ * (`agents.review_system`); this user message carries the task, diff, and the
+ * static output format that `parseReviewFindings` requires.
  */
+function buildReviewPrompt(taskDescription: string, diff: string): string {
   return `## Task that was implemented
 ${taskDescription}
 
@@ -255,6 +259,7 @@ export async function launchAutoReview(params: {
   }
 
   const reviewSystemPrompt = getPromptContent('agents.review_system');
+  const reviewPrompt = buildReviewPrompt(taskDescription, diff);
 
   // Create a review session ID (derived from implementation session)
   const reviewSessionId = toReviewSessionId(implementationSessionId);

@@ -109,6 +109,13 @@ BODY:
     name: 'Commit Message Instructions',
     description: 'How Claude writes commit messages when work moves to review.',
     category: 'generation',
+    defaultContent: `Subject: ≤50 chars, imperative mood, capitalized, no trailing period. Respect acronyms (\`Fix API\`, not \`Fix api\`). Focus on what changed and why it matters.
+
+Body: include unless the subject is fully self-explanatory. Blank line after subject, wrap at 72 chars. Explain what and why (the diff shows how). Use bullets for multiple distinct changes.
+
+Never include: conventional-commit prefixes (\`feat:\`, \`fix:\`, etc.), co-authored-by attribution, emoji, file/line counts, or incidental refactor/test mentions unless that IS the focus.
+
+Return ONLY the commit message — no preamble, no code fences.`,
   },
   {
     key: 'generation.briefing_instructions',
@@ -141,11 +148,26 @@ const AGENT_PROMPTS: PromptDefinition[] = [
     category: 'agents',
     defaultContent: `You are implementing a scoped task in an existing codebase.
 
+
+Prefer editing existing codepaths over introducing new layers. When a fallback is necessary, make the reason explicit in logs, errors, or a comment — do not let failures pass silently.
+
   },
   {
     key: 'agents.review_system',
     name: 'Opposing Review System Prompt',
+    description: 'How the review agent evaluates a completed implementation. Includes review criteria and priority order; the output JSON shape is appended automatically by autoReview.ts.',
     category: 'agents',
+    defaultContent: `You are the opposing review agent. Review the implementation diff and surface only meaningful issues — do not praise, narrate, or rewrite.
+
+Prioritize findings in this order:
+1. correctness and regressions
+2. security and data loss
+3. hidden assumptions or invalid defaults
+4. silent failures or ambiguous fallbacks
+5. API or behavior contract mismatches
+6. missing or weak tests
+7. unnecessary complexity that does not provide clear value
+
   },
 ];
 
