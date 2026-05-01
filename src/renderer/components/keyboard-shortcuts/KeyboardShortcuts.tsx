@@ -28,6 +28,7 @@ const shortcuts: ShortcutGroup[] = [
 
 export function ShortcutsList() {
   return (
+    <div className="space-y-4">
       {shortcuts.map((group) => (
         <div key={group.title}>
           <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">
