@@ -188,6 +188,8 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
       }
     }
 
+    }
+
     if (state.loadingIssueTypesFor.has(projectKey)) {
       return { success: true };
     }

@@ -55,6 +55,7 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
     jiraIssueTypes,
     isLoadingTypes,
     isLoadingStatuses,
+    typesError,
     typeMappings,
     isLoadingMappings,
     saveMapping,
@@ -195,6 +196,15 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
           </div>
         )}
       </div>
+
+        <div className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
+          <p className="mt-1 text-text-secondary text-xs">
+            The project key <span className="font-mono">{projectKey}</span> returned an error: {typesError}
+          </p>
+          <p className="mt-1 text-text-secondary text-xs">
+          </p>
+        </div>
+      )}
 
       {/* Tabs — only render when more than one is visible */}
       {visibleTabs.length > 1 && (
