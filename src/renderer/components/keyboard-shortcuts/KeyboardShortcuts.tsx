@@ -14,6 +14,7 @@ const shortcuts: ShortcutGroup[] = [
     shortcuts: [
       { keys: ['⌘', 'B'], description: 'Toggle sidebar' },
       { keys: ['⌘', 'L'], description: 'Toggle chat panel' },
+      { keys: ['⌘', ','], description: 'Open settings' },
       { keys: ['⌘', 'K'], description: 'Open command palette' },
       { keys: ['⌘', '⇧', 'F'], description: 'Open global search' },
       { keys: ['⌘', '⇧', 'I'], description: 'Create plan item' },
@@ -65,6 +66,10 @@ export function KeyboardShortcuts() {
       return;
     }
 
+    if (e.key === ',' && e.metaKey && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      setActiveTab('general');
+      setIsOpen(true);
     }
   }, [setActiveTab, setIsOpen]);
 
