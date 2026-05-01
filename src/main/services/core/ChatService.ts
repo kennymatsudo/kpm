@@ -1,8 +1,10 @@
 import { randomUUID } from 'crypto';
+import * as path from 'path';
 import {
   clearSessionCache as clearPermissionSessionCache,
 } from '../../claude/permissions';
 import type {
+  ChatAttachment,
   ChatMessage,
   ChatSessionSummary,
   ChatViewMode,
@@ -34,7 +36,14 @@ export interface SendChatMessageInput {
   message: string;
   model?: ClaudeModel;
   effort?: 'low' | 'medium' | 'high' | 'max';
+  /**
+   * Wire-format list of paste-derived temp image absolute paths. Backward-
+   * compatible with the existing IPC boundary; converted to {@link ChatAttachment}
+   * before reaching the streaming layer.
+   */
   tempImages?: string[];
+  /** Pre-built attachment list. Takes precedence when present. */
+  attachments?: ChatAttachment[];
   chatSessionId?: string;
   clientMessageId?: string;
 }
@@ -51,8 +60,46 @@ export interface ChatPromptContext {
   currentView?: ChatViewMode;
 }
 
+/**
+ * Map a paste-derived temp image path to a structured {@link ChatAttachment}.
+ *
+ * The renderer's paste flow only produces images today (PNG/JPEG/GIF/WebP);
+ * BMP is supported by the temp-image cache but the SDK rejects it, so we
+ * surface a clear error rather than silently dropping it.
+ */
+function tempImagePathToAttachment(filePath: string): ChatAttachment {
+  const ext = path.extname(filePath).toLowerCase();
+  const filename = path.basename(filePath);
+  switch (ext) {
+    case '.png':
+      return { kind: 'image', path: filePath, filename, mediaType: 'image/png' };
+    case '.jpg':
+    case '.jpeg':
+      return { kind: 'image', path: filePath, filename, mediaType: 'image/jpeg' };
+    case '.gif':
+      return { kind: 'image', path: filePath, filename, mediaType: 'image/gif' };
+    case '.webp':
+      return { kind: 'image', path: filePath, filename, mediaType: 'image/webp' };
+    case '.bmp':
+      throw new Error(
+        `BMP images aren't supported by the model. Convert "${filename}" to PNG, JPEG, GIF, or WebP and try again.`,
+      );
+    default:
+      throw new Error(`Unsupported attachment type "${ext}" for "${filename}"`);
   }
+}
 
+function buildAttachments(
+  tempImages: string[] | undefined,
+  attachments: ChatAttachment[] | undefined,
+): ChatAttachment[] {
+  if (attachments && attachments.length > 0) {
+    return attachments;
+  }
+  if (!tempImages || tempImages.length === 0) {
+    return [];
+  }
+  return tempImages.map(tempImagePathToAttachment);
 }
 
 export function createChatService(deps: ChatServiceDeps) {
@@ -73,6 +120,7 @@ export function createChatService(deps: ChatServiceDeps) {
         model,
         effort,
         tempImages,
+        attachments: providedAttachments,
         chatSessionId,
         clientMessageId,
       } = input;
@@ -84,6 +132,16 @@ export function createChatService(deps: ChatServiceDeps) {
           return failure('Project not found');
         }
 
+        let attachments: ChatAttachment[];
+        try {
+          attachments = buildAttachments(tempImages, providedAttachments);
+        } catch (conversionError) {
+          const errorText =
+            conversionError instanceof Error ? conversionError.message : 'Unsupported attachment';
+          emitError(projectId, chatSessionId, errorText);
+          return failure(errorText);
+        }
+
         const result = await deps.streamingSessionService.sendChatMessage(
           projectId,
           {
@@ -92,6 +150,7 @@ export function createChatService(deps: ChatServiceDeps) {
             focusedResources: (promptContext?.focusedResources ?? []) as { type: string; path: string }[],
             chatSessionId,
             currentView: promptContext?.currentView,
+            attachments: attachments.length > 0 ? attachments : undefined,
           }
         );
 

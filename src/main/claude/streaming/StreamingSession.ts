@@ -26,6 +26,7 @@ import {
   type AccountInfo,
 } from '@anthropic-ai/claude-agent-sdk';
 export type { McpServerStatus, SDKControlGetContextUsageResponse, ModelInfo, AccountInfo } from '@anthropic-ai/claude-agent-sdk';
+import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
 import { AsyncMessageQueue, type StreamingUserMessage } from './AsyncMessageQueue';
 import { getConfig } from '../../config';
 
@@ -78,13 +79,21 @@ export class StreamingSession {
    * Start the session with an initial message and wait for MCP to be ready.
    * The SDK requires an initial message to initialize the session.
    *
+   * @param initialMessage - The first message to send. Either plain text, or
+   *   a pre-built array of SDK content blocks (for attachments).
    * @returns Resolves when MCP is connected and session can accept more messages.
    * @throws If MCP connection fails or timeout is reached.
    */
+  async start(initialMessage: string | ContentBlockParam[]): Promise<void> {
     if (this._isActive) {
       throw new Error('Session already started');
     }
 
+    if (typeof initialMessage === 'string') {
+      if (!initialMessage.trim()) {
+        throw new Error('Initial message is required to start session');
+      }
+    } else if (initialMessage.length === 0) {
       throw new Error('Initial message is required to start session');
     }
 
@@ -105,11 +114,18 @@ export class StreamingSession {
       }, startTimeoutMs);
     });
 
+    // Pre-queue the initial message so the generator can yield it immediately.
+    // This is needed because the SDK waits for the first yield before initializing.
+    const seedContent: string | ContentBlockParam[] =
+      typeof initialMessage === 'string'
+        ? [{ type: 'text', text: initialMessage }]
+        : initialMessage;
     this.messageQueue.push({
       type: 'user',
       session_id: '', // Will be filled by SDK
       message: {
         role: 'user',
+        content: seedContent,
       },
       parent_tool_use_id: null,
     });
@@ -218,6 +234,27 @@ export class StreamingSession {
       message: {
         role: 'user',
         content: [{ type: 'text', text }],
+      },
+      parent_tool_use_id: null,
+    });
+  }
+
+  /**
+   * Send a structured user turn whose content has already been built (e.g. for
+   * multimodal attachments). Use {@link send} for text-only messages.
+   * @throws If session is not ready (start() not resolved)
+   */
+  sendUserContent(content: ContentBlockParam[]): void {
+    if (!this._isReady) {
+      throw new Error('Session is not ready - wait for start() to resolve');
+    }
+
+    this.sendRaw({
+      type: 'user',
+      session_id: this.sessionId || '',
+      message: {
+        role: 'user',
+        content,
       },
       parent_tool_use_id: null,
     });

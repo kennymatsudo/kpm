@@ -82,6 +82,8 @@ export type { CustomThemeImportFromUrlInput, CustomThemeDeleteInput } from './cu
 // Permissions
 export { PermissionSchemas } from './permission';
 
+// Artifacts, Temp Images, Chat Attachments
+export { ArtifactSchemas, TempImageSchemas, ChatAttachmentSchemas } from './artifacts';
 
 // Task Prompt Templates
 export { TaskPromptTemplateSchemas } from './agents';

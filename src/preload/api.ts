@@ -392,6 +392,13 @@ const repos = {
   },
 };
 
+interface PickedChatAttachment {
+  path: string;
+  filename: string;
+  kind: 'image' | 'pdf' | 'text';
+  mediaType: string;
+}
+
 const attachments = {
   add: (projectId: string, path: string, filename: string): Promise<Attachment> =>
     ipcRenderer.invoke(IPC_CHANNELS.attachment.add, { projectId, path, filename }),
@@ -401,6 +408,24 @@ const attachments = {
     ipcRenderer.invoke(IPC_CHANNELS.attachment.list, { projectId }),
   selectDialog: (): Promise<string[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.attachment.selectDialog),
+  pickForChat: (): Promise<{
+    picked: PickedChatAttachment[];
+    errors: { filename: string; error: string }[];
+  }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.attachment.pickForChat),
+  saveDropped: (
+    data: Uint8Array,
+    filename: string,
+    mimeType?: string,
+  ): Promise<
+    | { success: true; path: string; filename: string; kind: 'image' | 'pdf' | 'text'; mediaType: string }
+    | { success: false; error: string }
+  > => ipcRenderer.invoke(IPC_CHANNELS.attachment.saveDropped, { data, filename, mimeType }),
+  readAsDataUrl: (
+    filePath: string,
+    mediaType: string,
+  ): Promise<{ success: true; dataUrl: string } | { success: false; error: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.attachment.readAsDataUrl, { filePath, mediaType }),
 };
 
 const plan = {

@@ -1,8 +1,14 @@
 import { useState, type KeyboardEvent, type ClipboardEvent, type DragEvent, useRef, useEffect, useCallback } from 'react';
 import { useChatStore } from '../../stores';
 import { deleteTempImage, saveTempImage } from '../../services/tempImageService';
+import {
+  pickChatAttachments,
+  saveDroppedFile,
+} from '../../services/attachmentService';
 import { useShallow } from 'zustand/react/shallow';
 import { ModelSelector } from './ModelSelector';
+import { AttachmentChip } from './AttachmentChip';
+import type { ChatAttachment, FocusedResource, ChatViewMode } from '../../../shared/types';
 
 const WORKSPACE_PLACEHOLDERS = [
   'Reply or ask a follow-up…',
@@ -23,6 +29,7 @@ const PLAN_PLACEHOLDERS = [
 const DEFAULT_PLACEHOLDER = 'Reply or ask a follow-up…';
 
 interface ChatInputProps {
+  onSend: (message: string, attachments?: ChatAttachment[], chatSessionId?: string) => void;
   onCancel: () => void;
   disabled?: boolean;
   /** Handler for adding files dragged from file tree to chat context */
@@ -48,7 +55,9 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
 
     const sessionId = viewedSessionId ?? getChatSessionId();
     getOrCreateSession(sessionId);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isPickingFiles, setIsPickingFiles] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -146,10 +155,20 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
           const result = await saveTempImage(uint8Array, blob.type);
 
           if (result.success) {
+            const mediaType = blob.type as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+            // Pasted images are always image kind. The temp-image service
+            // returns the pasted bytes' actual MIME, so trust it here.
+            setAttachments((prev) => [
+              ...prev,
+              { kind: 'image', path: result.path, filename: result.filename, mediaType },
+            ]);
+            setAttachmentError(null);
           } else {
+            setAttachmentError(result.error);
           }
         } catch (error) {
           console.error('Failed to process pasted image:', error);
+          setAttachmentError('Failed to process pasted image');
         }
 
         break; // Only handle first image
@@ -158,19 +177,72 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     // If no image found, allow default text paste behavior
   };
 
+  const handleRemoveAttachment = async (pathToRemove: string) => {
+    // Optimistic UI update — remove immediately using path as identifier
+    setAttachments((prev) => prev.filter((a) => a.path !== pathToRemove));
 
     // Delete file in background (best-effort, stale cleanup handles orphans)
     try {
       await deleteTempImage(pathToRemove);
     } catch (error) {
+      console.error('Failed to delete temp attachment:', error);
+    }
+  };
+
+  const handlePickFiles = async () => {
+    if (isPickingFiles) return;
+    setIsPickingFiles(true);
+    setAttachmentError(null);
+    try {
+      const result = await pickChatAttachments();
+      if (result.picked.length > 0) {
+        setAttachments((prev) => [
+          ...prev,
+          ...result.picked.map((p): ChatAttachment => {
+            if (p.kind === 'image') {
+              return {
+                kind: 'image',
+                path: p.path,
+                filename: p.filename,
+                mediaType: p.mediaType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+              };
+            }
+            if (p.kind === 'pdf') {
+              return { kind: 'pdf', path: p.path, filename: p.filename };
+            }
+            return { kind: 'text', path: p.path, filename: p.filename, mediaType: p.mediaType };
+          }),
+        ]);
+      }
+      if (result.errors.length > 0) {
+        setAttachmentError(
+          result.errors.map((e) => `${e.filename}: ${e.error}`).join(' • '),
+        );
+      }
+    } catch (error) {
+      console.error('[ChatInput] Failed to pick attachments:', error);
+      setAttachmentError(
+        error instanceof Error ? error.message : 'Failed to add attachments',
+      );
+    } finally {
+      setIsPickingFiles(false);
     }
   };
 
   const handleSend = () => {
     const trimmed = message.trim();
+    // Allow sending if there's text OR if there are attachments.
+    if ((trimmed || attachments.length > 0) && !disabled && !sendDisabledWhileStreaming) {
       const chatSessionId = viewedSessionId ?? getChatSessionId();
       getOrCreateSession(chatSessionId);
+      onSend(
+        trimmed || '(see attached files)',
+        attachments.length > 0 ? attachments : undefined,
+        chatSessionId,
+      );
       setMessage('');
+      setAttachments([]);
+      setAttachmentError(null);
     }
   };
 
@@ -187,7 +259,12 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     }
   };
 
+  // behavior) or OS-native file drops (new in Phase 2).
   const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+    const types = e.dataTransfer.types;
+    const isKpmFile = types.includes('application/x-kpm-file');
+    const isNativeFiles = types.includes('Files');
+    if (isKpmFile || isNativeFiles) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
       setIsDragOver(true);
@@ -200,12 +277,71 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     setIsDragOver(false);
   }, []);
 
+  const handleDrop = useCallback(async (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragOver(false);
 
+    // Sidebar drags carry our custom payload — keep that path unchanged.
     const data = e.dataTransfer.getData('application/x-kpm-file');
-
+    if (data && addFocusedResource) {
+      try {
+        const fileData = JSON.parse(data) as { source: string; path: string; isDirectory: boolean };
+        if (fileData.source === 'project') {
+          addFocusedResource({
+            type: 'project_file',
+            path: fileData.path,
+            isDirectory: fileData.isDirectory,
+          });
+        }
+      } catch {
+        console.error('Failed to parse dropped file data');
       }
+      return;
+    }
+
+    // OS-native drops — read each File, save to temp, append to attachments.
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length === 0) return;
+
+    setAttachmentError(null);
+    const newAttachments: ChatAttachment[] = [];
+    const errors: string[] = [];
+
+    for (const file of files) {
+      try {
+        const result = await saveDroppedFile(file);
+        if (!result.success) {
+          errors.push(`${file.name}: ${result.error}`);
+          continue;
+        }
+        if (result.kind === 'image') {
+          newAttachments.push({
+            kind: 'image',
+            path: result.path,
+            filename: result.filename,
+            mediaType: result.mediaType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+          });
+        } else if (result.kind === 'pdf') {
+          newAttachments.push({ kind: 'pdf', path: result.path, filename: result.filename });
+        } else {
+          newAttachments.push({
+            kind: 'text',
+            path: result.path,
+            filename: result.filename,
+            mediaType: result.mediaType,
+          });
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to read dropped file';
+        errors.push(`${file.name}: ${message}`);
+      }
+    }
+
+    if (newAttachments.length > 0) {
+      setAttachments((prev) => [...prev, ...newAttachments]);
+    }
+    if (errors.length > 0) {
+      setAttachmentError(errors.join(' • '));
     }
   }, [addFocusedResource]);
 
@@ -218,14 +354,26 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     >
       {/* Drop zone indicator */}
       {isDragOver && (
+          Drop files to attach
         </div>
       )}
 
+      {/* Attachment chips */}
+      {attachments.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2">
+          {attachments.map((attachment) => (
+            <AttachmentChip
+              key={attachment.path}
+              attachment={attachment}
+              onRemove={() => void handleRemoveAttachment(attachment.path)}
+            />
           ))}
         </div>
       )}
 
+      {/* Attachment error message */}
+      {attachmentError && (
+          {attachmentError}
         </div>
       )}
 
@@ -245,6 +393,15 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
         <div className="flex items-center gap-2 px-2 pb-2 pt-1">
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
             <ModelSelector />
+            <button
+              type="button"
+              onClick={() => void handlePickFiles()}
+              disabled={disabled || isPickingFiles}
+              className="text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors p-1.5 rounded-md hover:bg-surface-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              title="Add attachment"
+              aria-label="Add attachment"
+            >
+            </button>
           </div>
 
           {isStreaming && (
@@ -261,6 +418,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
           )}
           <button
             onClick={handleSend}
+            disabled={(!message.trim() && attachments.length === 0) || disabled || sendDisabledWhileStreaming}
             title={
             }
           >

@@ -25,6 +25,7 @@ import {
   clearPendingDocumentContent,
   type PlanActionsEvent,
 } from '../../claude/tools/createKpmServer';
+import { buildUserContentBlocks } from '../../claude/attachmentBlocks';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../claude/prompts';
 import { getConfig } from '../../config';
@@ -79,6 +80,16 @@ export function buildContinuationHistory(
     charsUsed += trimmed.length;
   }
   return selected.reverse();
+}
+
+/**
+ * Internal envelope wrapping a user-facing message for transport through the
+ * service. Carries the typed text alongside any file attachments that should
+ * be turned into native multimodal content blocks at the SDK send site.
+ */
+interface MessageEnvelope {
+  text: string;
+  attachments?: ChatAttachment[];
 }
 
 /** Info about an active session (for UI display) */
@@ -320,6 +331,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
    */
   async function sendMessageToSession(
     key: string,
+    envelope: MessageEnvelope,
     createSession: () => Promise<ServiceResult<{ sessionId: string }>>
   ): AsyncResult<void> {
     let managed = sessions.get(key);
@@ -391,10 +403,28 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     managed.lastActivity = Date.now();
 
     try {
+      await runWithToolExecutionContext(
         { projectId: managed.projectId, chatSessionId: managed.chatSessionId },
+        async () => {
+          if (envelope.attachments && envelope.attachments.length > 0) {
+            const blocks = await buildUserContentBlocks(envelope.text, envelope.attachments);
+            managed.session.sendUserContent(blocks);
+          } else {
+            managed.session.send(envelope.text);
+          }
+        }
       );
       return success(undefined);
     } catch (error) {
+      // Roll back the optimistic 'processing' transition so the session
+      // doesn't appear stuck if the SDK send fails (e.g. attachment read
+      // error).
+      const current = sessions.get(key);
+      if (current?.state === 'processing') {
+        current.state = 'ready';
+        current.processingStartTime = undefined;
+        current.lastSdkActivity = undefined;
+      }
       return failure(`Failed to send message: ${(error as Error).message}`);
     }
   }
@@ -404,6 +434,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     key: string;
     projectId: string;
     chatSessionId?: string;
+    initialMessage: MessageEnvelope;
     model: ModelType;
     effort?: 'low' | 'medium' | 'high' | 'max';
     resumeSessionId?: string;
@@ -583,7 +614,16 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         unsubscribeDocumentUpdate,
       });
 
+      // Start session WITH the initial message (required by SDK).
+      // For attachments, build native multimodal blocks and seed them into
+      // the SDK's first turn rather than waiting until after start() resolves.
+      // Can throw on timeout or MCP connection failure.
+      const seedContent =
+        initialMessage.attachments && initialMessage.attachments.length > 0
+          ? await buildUserContentBlocks(initialMessage.text, initialMessage.attachments)
+          : initialMessage.text;
       await runWithToolExecutionContext({ projectId, chatSessionId }, () =>
+        session.start(seedContent)
       );
 
       const managed = sessions.get(key);
@@ -661,6 +701,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     chatSessionId?: string;
     /** Current UI view - used for prompt customization */
     currentView?: ViewMode;
+    /** File attachments to attach to this turn as native multimodal content blocks */
+    attachments?: ChatAttachment[];
   }
 
   /**
@@ -698,6 +740,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
    */
   async function createChatSession(
     projectId: string,
+    initialMessage: MessageEnvelope,
     options: SendChatMessageOptions = {}
   ): AsyncResult<{ sessionId: string }> {
     const project = deps.projectRepository.get(projectId);
@@ -846,6 +889,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
    *   the old turn clear the new turn's streaming state mid-response.
    */
     key: string,
+    envelope: MessageEnvelope,
   ): AsyncResult<void> {
     const managed = sessions.get(key);
     if (!managed) {
@@ -932,10 +976,27 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       stillManaged.lastActivity = Date.now();
 
       try {
+        await runWithToolExecutionContext(
           { projectId: stillManaged.projectId, chatSessionId: stillManaged.chatSessionId },
+          async () => {
+            if (envelope.attachments && envelope.attachments.length > 0) {
+              const blocks = await buildUserContentBlocks(envelope.text, envelope.attachments);
+              stillManaged.session.sendUserContent(blocks);
+            } else {
+              stillManaged.session.send(envelope.text);
+            }
+          },
         );
         return success(undefined);
       } catch (error) {
+        // Roll back the optimistic 'processing' transition so the session
+        // can accept retries.
+        const current = sessions.get(key);
+        if (current?.state === 'processing') {
+          current.state = 'ready';
+          current.processingStartTime = undefined;
+          current.lastSdkActivity = undefined;
+        }
         return failure(`Failed to send message after interrupt: ${(error as Error).message}`);
       }
     } finally {

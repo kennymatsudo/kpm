@@ -46,6 +46,16 @@ const focusedResourceSchema = z.discriminatedUnion('type', [
 // =============================================================================
 
 export const ChatSchemas = {
+      projectId: uuid,
+      message: z.string().min(1, 'Message cannot be empty').max(100000, 'Message too long'),
+      focusedResources: z.array(focusedResourceSchema).default([]),
+      model: claudeModel.optional(),
+      effort: z.enum(['low', 'medium', 'high', 'max']).optional(),
+      tempImages: z.array(tempImagePath).optional(),
+      chatSessionId: uuid.optional(),
+      clientMessageId: uuid.optional(),
+      /** Current UI view - used for prompt customization */
+      currentView: chatViewModeSchema,
 
   cancel: z.object({
     projectId: uuid,

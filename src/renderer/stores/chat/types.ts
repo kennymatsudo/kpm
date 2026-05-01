@@ -16,6 +16,12 @@ export interface Message {
   durationMs?: number;
   /** Model that produced this assistant message (e.g. "claude-sonnet-4-6"). */
   model?: string;
+  /**
+   * In-memory attachments rendered alongside this user message. Phase 2 only —
+   * these do not survive a reload because attachment metadata isn't persisted
+   * yet. Phase 3 plumbs DB persistence so attachments appear after reload.
+   */
+  attachments?: ChatAttachment[];
 }
 
 // Re-export types for consumers

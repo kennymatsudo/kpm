@@ -22,6 +22,16 @@ function createTestMessage(text: string, sessionId = 'test-session'): StreamingU
   };
 }
 
+/** Extract the text from the first content block of a user message. */
+function getFirstText(msg: StreamingUserMessage | null | undefined): string | undefined {
+  if (!msg) return undefined;
+  const { content } = msg.message;
+  if (typeof content === 'string') return content;
+  const first = content[0];
+  if (first?.type === 'text') return first.text;
+  return undefined;
+}
+
 describe('AsyncMessageQueue', () => {
   let queue: AsyncMessageQueue;
 
@@ -98,6 +108,9 @@ describe('AsyncMessageQueue', () => {
       const second = await queue.pull();
       const third = await queue.pull();
 
+      expect(getFirstText(first)).toBe('First');
+      expect(getFirstText(second)).toBe('Second');
+      expect(getFirstText(third)).toBe('Third');
     });
 
     it('waits for push when queue is empty', async () => {
@@ -142,6 +155,8 @@ describe('AsyncMessageQueue', () => {
       const second = await queue.pull();
       const third = await queue.pull();
 
+      expect(getFirstText(first)).toBe('Message 1');
+      expect(getFirstText(second)).toBe('Message 2');
       expect(third).toBeNull();
     });
   });
@@ -214,6 +229,8 @@ describe('AsyncMessageQueue', () => {
       }
 
       expect(messages.length).toBe(5);
+      expect(getFirstText(messages[0])).toBe('Message 0');
+      expect(getFirstText(messages[4])).toBe('Message 4');
     });
 
     it('handles interleaved push and pull', async () => {
@@ -225,6 +242,9 @@ describe('AsyncMessageQueue', () => {
       const second = await queue.pull();
       const third = await queue.pull();
 
+      expect(getFirstText(first)).toBe('First');
+      expect(getFirstText(second)).toBe('Second');
+      expect(getFirstText(third)).toBe('Third');
     });
   });
 });

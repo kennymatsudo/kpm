@@ -21,7 +21,11 @@ const TEMP_DIR_NAME = 'kpm-images';
 /** Maximum age of temp files before cleanup (24 hours in milliseconds) */
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
+/** Maximum image / pdf file size (10MB) */
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+/** Maximum text-attachment size (256KB) — keeps inline blocks reasonable. */
+const MAX_TEXT_ATTACHMENT_SIZE = 256 * 1024;
 
 /** Supported image MIME types */
 const SUPPORTED_FORMATS = [
@@ -34,10 +38,77 @@ const SUPPORTED_FORMATS = [
 
 export type SupportedImageFormat = (typeof SUPPORTED_FORMATS)[number];
 
+/** Image MIME types acceptable for picker / drag-drop attachments. */
+const ATTACHMENT_IMAGE_MIME_TYPES = new Set<string>([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+]);
+
+/** Text MIME types acceptable as text attachments. */
+const ATTACHMENT_TEXT_MIME_TYPES = new Set<string>([
+  'text/plain',
+  'text/markdown',
+  'application/json',
+  'text/yaml',
+  'application/yaml',
+  'application/x-yaml',
+]);
+
+/** Map of well-known extensions to media types for attachment kind sniffing. */
+const ATTACHMENT_EXT_MAP: Record<string, { kind: 'image' | 'pdf' | 'text'; mediaType: string }> = {
+  '.png': { kind: 'image', mediaType: 'image/png' },
+  '.jpg': { kind: 'image', mediaType: 'image/jpeg' },
+  '.jpeg': { kind: 'image', mediaType: 'image/jpeg' },
+  '.gif': { kind: 'image', mediaType: 'image/gif' },
+  '.webp': { kind: 'image', mediaType: 'image/webp' },
+  '.pdf': { kind: 'pdf', mediaType: 'application/pdf' },
+  '.txt': { kind: 'text', mediaType: 'text/plain' },
+  '.md': { kind: 'text', mediaType: 'text/markdown' },
+  '.markdown': { kind: 'text', mediaType: 'text/markdown' },
+  '.json': { kind: 'text', mediaType: 'application/json' },
+  '.yaml': { kind: 'text', mediaType: 'text/yaml' },
+  '.yml': { kind: 'text', mediaType: 'text/yaml' },
+};
+
 /** Result of saving a temp image (discriminated union for type safety) */
 export type SaveTempImageResult =
   | { success: true; path: string; filename: string }
   | { success: false; error: string };
+
+export type SaveTempAttachmentResult =
+  | {
+      success: true;
+      path: string;
+      filename: string;
+      kind: 'image' | 'pdf' | 'text';
+      mediaType: string;
+    }
+  | { success: false; error: string };
+
+/** Classify a (filename, optional explicit MIME) pair into an attachment kind. */
+export function classifyAttachment(
+  filename: string,
+  declaredMime?: string,
+): { kind: 'image' | 'pdf' | 'text'; mediaType: string } | null {
+  const ext = path.extname(filename).toLowerCase();
+  const fromExt = ATTACHMENT_EXT_MAP[ext];
+
+  if (declaredMime) {
+    if (declaredMime === 'application/pdf') {
+      return { kind: 'pdf', mediaType: 'application/pdf' };
+    }
+    if (ATTACHMENT_IMAGE_MIME_TYPES.has(declaredMime)) {
+      return { kind: 'image', mediaType: declaredMime };
+    }
+    if (ATTACHMENT_TEXT_MIME_TYPES.has(declaredMime)) {
+      return { kind: 'text', mediaType: declaredMime };
+    }
+  }
+
+  return fromExt ?? null;
+}
 
 // =============================================================================
 // Dependencies
@@ -94,6 +165,18 @@ export function createTempImageService(deps: TempImageServiceDeps) {
   }
 
   /**
+   * Generate a unique filename for a temp attachment, preserving the source
+   * extension so file kind sniffing remains stable across the lifetime of the
+   * temp file.
+   */
+  function generateAttachmentFilename(originalName: string): string {
+    const timestamp = Date.now();
+    const random = deps.generateRandomBytes(8).toString('hex');
+    const ext = path.extname(originalName).toLowerCase();
+    return `kpm-attach-${timestamp}-${random}${ext}`;
+  }
+
+  /**
    * Validate that a path is within the temp images directory.
    * Prevents path traversal attacks.
    */
@@ -141,6 +224,106 @@ export function createTempImageService(deps: TempImageServiceDeps) {
       } catch (error) {
         console.error('[TempImage] Failed to initialize temp directory:', error);
         throw error;
+      }
+    },
+
+    /**
+     * Save a non-image attachment (PDF or text) or image picked through the
+     * file picker / OS drag-drop. The renderer hands us raw bytes plus the
+     * originating filename and (optional) declared MIME; we sniff the kind,
+     * validate size, and persist next to the existing paste-image cache.
+     *
+     * Files share the temp images directory but use a distinct `kpm-attach-`
+     * prefix so the stale-file cleanup can sweep them on the same schedule
+     * without confusing them with paste-images.
+     */
+    async saveTempAttachment(
+      data: Buffer,
+      originalFilename: string,
+      declaredMime?: string,
+    ): Promise<SaveTempAttachmentResult> {
+      const classification = classifyAttachment(originalFilename, declaredMime);
+      if (!classification) {
+        return {
+          success: false,
+          error: `Unsupported attachment type for "${originalFilename}". Allowed: PNG, JPEG, GIF, WebP, PDF, plain text, markdown, JSON, YAML.`,
+        };
+      }
+
+      const sizeLimit = classification.kind === 'text' ? MAX_TEXT_ATTACHMENT_SIZE : MAX_FILE_SIZE;
+      if (data.byteLength > sizeLimit) {
+        const sizeKB = (data.byteLength / 1024).toFixed(0);
+        const limitLabel = classification.kind === 'text'
+          ? `${(sizeLimit / 1024).toFixed(0)} KB`
+          : `${(sizeLimit / (1024 * 1024)).toFixed(0)} MB`;
+        return {
+          success: false,
+          error: `Attachment "${originalFilename}" is ${sizeKB} KB, exceeds the ${limitLabel} limit.`,
+        };
+      }
+
+      const tempDir = getTempImagesDir();
+      const filename = generateAttachmentFilename(originalFilename);
+      const filePath = path.join(tempDir, filename);
+
+      try {
+        await fs.mkdir(tempDir, { recursive: true, mode: 0o700 });
+        await fs.writeFile(filePath, data);
+
+        console.log(`[TempImage] Saved attachment: ${filename} (${data.byteLength} bytes, ${classification.kind})`);
+
+        return {
+          success: true,
+          path: filePath,
+          filename: originalFilename,
+          kind: classification.kind,
+          mediaType: classification.mediaType,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`[TempImage] Failed to save attachment: ${errorMessage}`);
+        if (error instanceof Error && 'code' in error) {
+          const nodeError = error as NodeJS.ErrnoException;
+          if (nodeError.code === 'ENOSPC') {
+            return { success: false, error: 'Not enough disk space to save the attachment.' };
+          }
+          if (nodeError.code === 'EACCES' || nodeError.code === 'EPERM') {
+            return { success: false, error: 'Permission denied. Cannot write to temp directory.' };
+          }
+        }
+        return { success: false, error: `Failed to save attachment: ${errorMessage}` };
+      }
+    },
+
+    /**
+     * Read a saved temp file as a base64 data URL. Used for renderer thumbnail
+     * loading where the CSP blocks `file://`. The 2 MB cap is renderer-memory
+     * insurance; oversized images simply skip the thumbnail and fall back to a
+     * filename-only chip.
+     */
+    async readAttachmentAsDataUrl(
+      filePath: string,
+      mediaType: string,
+    ): Promise<{ success: true; dataUrl: string } | { success: false; error: string }> {
+      if (!isValidTempPath(filePath)) {
+        return { success: false, error: 'Invalid path: not within temp attachment directory' };
+      }
+
+      const MAX_THUMBNAIL_BYTES = 2 * 1024 * 1024;
+      try {
+        const stats = await fs.lstat(filePath);
+        if (stats.isSymbolicLink()) {
+          return { success: false, error: 'Cannot read symlinks' };
+        }
+        if (stats.size > MAX_THUMBNAIL_BYTES) {
+          return { success: false, error: 'File too large for inline preview' };
+        }
+        const buffer = await fs.readFile(filePath);
+        const base64 = buffer.toString('base64');
+        return { success: true, dataUrl: `data:${mediaType};base64,${base64}` };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        return { success: false, error: message };
       }
     },
 
@@ -277,6 +460,8 @@ export function createTempImageService(deps: TempImageServiceDeps) {
         const files = await fs.readdir(tempDir);
 
         for (const file of files) {
+          // Only process files with our naming patterns
+          if (!file.startsWith('kpm-paste-') && !file.startsWith('kpm-attach-')) {
             continue;
           }
 
@@ -342,6 +527,23 @@ export function savePastedImage(
   format: string
 ): Promise<SaveTempImageResult> {
   return tempImageService.savePastedImage(imageData, format);
+}
+
+/** Save a non-image attachment to the temp directory */
+export function saveTempAttachment(
+  data: Buffer,
+  originalFilename: string,
+  declaredMime?: string,
+): Promise<SaveTempAttachmentResult> {
+  return tempImageService.saveTempAttachment(data, originalFilename, declaredMime);
+}
+
+/** Read a saved attachment as a base64 data URL. */
+export function readAttachmentAsDataUrl(
+  filePath: string,
+  mediaType: string,
+) {
+  return tempImageService.readAttachmentAsDataUrl(filePath, mediaType);
 }
 
 /** Delete a specific temp image */

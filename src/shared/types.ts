@@ -666,6 +666,25 @@ export interface SyncReviewData {
 
 /** UI view mode - indicates which view the user is currently in (for prompt customization) */
 
+/**
+ * A file attachment sent with a chat message.
+ *
+ * Discriminated by `kind`:
+ * - `image`: rendered as a vision content block (PNG/JPEG/GIF/WebP only — the SDK
+ *   does not accept BMP).
+ * - `pdf`: rendered as a document content block (base64 PDF).
+ * - `text`: read as UTF-8 and inlined as a wrapped text block.
+ */
+export type ChatAttachment =
+  | {
+      kind: 'image';
+      path: string;
+      filename: string;
+      mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+    }
+  | { kind: 'pdf'; path: string; filename: string }
+  | { kind: 'text'; path: string; filename: string; mediaType: string };
+
 /** Persisted chat message for session recovery */
 export interface ChatMessage {
   id: string;

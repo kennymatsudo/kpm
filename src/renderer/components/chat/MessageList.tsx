@@ -8,6 +8,7 @@ import { Markdown } from 'markdown-to-jsx';
 import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
 import { CopyIcon, CheckIcon } from '../icons';
 import { ProcessTimeline } from './ProcessTimeline';
+import { AttachmentChip } from './AttachmentChip';
 
 /** Extract text content from message segments for copy/display */
 function getTextContent(segments: MessageSegment[]): string {
@@ -250,7 +251,13 @@ const MessageRow = memo(function MessageRow({
 }) {
   const isUser = message.role === 'user';
   const textContent = useMemo(() => getTextContent(message.segments), [message.segments]);
+  // Phase 2: prefer the structured `attachments` carried on the message; fall
+  // back to legacy regex parsing only for older sessions that still carry the
+  // "Images attached:" prefix (no longer emitted on send as of Phase 1).
+  const hasStructuredAttachments = isUser && message.attachments && message.attachments.length > 0;
   const userParsed = useMemo(
+    () => (isUser && !hasStructuredAttachments ? parseUserMessage(textContent) : null),
+    [isUser, hasStructuredAttachments, textContent]
   );
 
   return (

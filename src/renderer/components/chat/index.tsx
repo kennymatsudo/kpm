@@ -11,6 +11,7 @@ import {
   useChatStore,
   type ChatViewMode,
 } from '../../stores';
+import type { ChatAttachment, FocusedResource } from '../../../shared/types';
 import { useShallow } from 'zustand/react/shallow';
 import { CloseIcon } from '../icons';
 import { getBaseName } from '../../utils/path';
@@ -60,9 +61,11 @@ export function Chat({ currentView }: ChatProps) {
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [lastClientMessageId, setLastClientMessageId] = useState<string | null>(null);
 
+  const handleSend = useCallback((message: string, attachments?: ChatAttachment[], chatSessionId?: string) => {
     const clientMessageId = crypto.randomUUID();
     setLastMessage(message);
     setLastClientMessageId(clientMessageId);
+    void send(message, attachments, clientMessageId, chatSessionId);
 
   const handleRetry = useCallback(() => {
     if (lastMessage && lastClientMessageId && viewedSessionId) {

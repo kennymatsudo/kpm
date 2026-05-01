@@ -54,3 +54,25 @@ export const TempImageSchemas = {
     filePath: tempImagePath,
   }),
 };
+
+// =============================================================================
+// Chat Attachment Schemas
+// =============================================================================
+
+export const ChatAttachmentSchemas = {
+  saveDropped: z.object({
+    data: z.instanceof(Uint8Array, { message: 'Attachment data must be a Uint8Array' }),
+    filename: z
+      .string()
+      .min(1, 'Filename is required')
+      .max(255, 'Filename too long')
+      .refine((f) => !f.includes('/') && !f.includes('\\'), 'Filename cannot contain path separators')
+      .refine((f) => f !== '.' && f !== '..', 'Invalid filename'),
+    mimeType: z.string().max(255).optional(),
+  }),
+
+  readAsDataUrl: z.object({
+    filePath: tempImagePath,
+    mediaType: z.string().min(1).max(255),
+  }),
+};

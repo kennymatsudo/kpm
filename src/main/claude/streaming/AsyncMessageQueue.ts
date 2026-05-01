@@ -13,14 +13,20 @@
  * Thread safety: Single-threaded (Node.js event loop), no explicit locking needed.
  */
 
+import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
+
 /**
  * User message structure for streaming input.
+ * This matches what the SDK expects from the async generator. `content`
+ * accepts the full SDK content-block union so callers can attach images,
+ * documents, and text in a single message.
  */
 export interface StreamingUserMessage {
   type: 'user';
   session_id: string;
   message: {
     role: 'user';
+    content: string | ContentBlockParam[];
   };
   parent_tool_use_id: string | null;
 }

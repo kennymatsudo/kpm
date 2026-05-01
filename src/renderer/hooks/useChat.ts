@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useChatStore, useProjectUiDomainStore } from '../stores';
 import { useShallow } from 'zustand/react/shallow';
+import type { ChatAttachment, ChatViewMode } from '../../shared/types';
 import {
   cancelChatSession,
   disconnectChatSession,
@@ -39,6 +40,7 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
 
   const send = useCallback(async (
     message: string,
+    attachments?: ChatAttachment[],
     clientMessageId?: string,
     targetChatSessionId?: string
   ) => {
@@ -57,6 +59,12 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     // Resolve context for the specific chat session (session-scoped "Add to context").
     const { focusedResources, focusedResourcesBySession } = useProjectUiDomainStore.getState();
     const sessionFocusedResources = focusedResourcesBySession[chatSessionId] ?? focusedResources;
+
+    // Phase 2 keeps the IPC wire format unchanged (`tempImages: string[]`);
+    // the main process re-classifies each path via extension sniffing.
+    const tempImages = attachments && attachments.length > 0
+      ? attachments.map((a) => a.path)
+      : undefined;
 
 
     return effectiveClientMessageId;
