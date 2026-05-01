@@ -11,6 +11,10 @@
  * 3. Assess threads via ReviewAssessmentService (Claude SDK triage)
  * 4. For `implement` dispositions: launch headless fix via DevSessionService
  * 5. Broadcast IPC events for UI transparency
+ *
+ * Lifecycle: registers with the central PollScheduler. The scheduler owns the
+ * timer, jitter, error backoff, and clean shutdown. This service owns only
+ * the per-session business logic and the public IPC-facing methods.
  */
 
 import type {
@@ -26,6 +30,8 @@ import type { ReviewAssessmentService } from './ReviewAssessmentService';
 import type { DevSessionService } from './DevSessionService';
 import type { GitHubService } from './GitHubService';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
+import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
+import type { UpdateEventBus } from '../core/UpdateEventBus';
 
 // =============================================================================
 // Types
@@ -42,6 +48,8 @@ export interface ReviewPollServiceDeps {
   gitHubService: GitHubService;
   agentSessionManager: AgentSessionManager;
   broadcastToWindows: (channel: string, payload: unknown) => void;
+  scheduler: PollScheduler;
+  eventBus: UpdateEventBus;
 }
 
 export interface PollTickSummary {
@@ -64,13 +72,19 @@ export interface PollSessionResult {
 // Constants
 // =============================================================================
 
+const TASK_ID = 'review-poll';
 
 // =============================================================================
 // Service Factory
 // =============================================================================
 
 export function createReviewPollService(deps: ReviewPollServiceDeps) {
+  let registered = false;
+  let started = false;
 
+  // Per-session error backoff: sessionId → remaining ticks to skip.
+  // Kept here (rather than in the scheduler) because backoff is per-session,
+  // not per-task — a transient error on session A shouldn't slow session B.
   const errorBackoff = new Map<string, number>();
 
   // ---------------------------------------------------------------------------
@@ -172,6 +186,18 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         return { sessionId, action: 'synced', newThreadCount: 0, implementCount: 0 };
       }
 
+      // New review threads detected — emit to the event bus so notification
+      // and metrics consumers can react without coupling to this service.
+      deps.eventBus.emit({
+        kind: 'pr_changed',
+        source: 'github',
+        detectedAt: new Date().toISOString(),
+        sessionId,
+        prNumber: session.pr_number!,
+        repoId: session.repo_id,
+        change: 'new_review_threads',
+        summary: `${needsReviewTasks.length} new review thread(s)`,
+      });
 
       const assessResult = await deps.reviewAssessmentService.assessThreads(sessionId);
       if (!assessResult.ok) {
@@ -277,6 +303,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
   }
 
   // ---------------------------------------------------------------------------
+  // Tick (called by the scheduler, or directly via pollNow)
   // ---------------------------------------------------------------------------
 
   async function runTick(): Promise<PollTickSummary> {
@@ -294,6 +321,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       return summary;
     }
 
+    // Sequential to avoid GitHub rate limiting.
     for (const session of sessions) {
       const result = await processSession(session);
       summary.processed++;
@@ -324,7 +352,36 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
     return summary;
   }
 
+  // ---------------------------------------------------------------------------
+  // Scheduler Registration
+  // ---------------------------------------------------------------------------
 
+  function ensureRegistered(): void {
+    if (registered) return;
+    const config = getConfig().reviewPoll;
+    deps.scheduler.register({
+      id: TASK_ID,
+      intervalMs: config.pollIntervalMs,
+      handler: async (ctx): Promise<PollTickResult> => {
+        const summary = await runTick();
+        if (summary.processed === 0) {
+          return { outcome: 'noop' };
+        }
+        const message =
+          `${summary.processed} processed, ${summary.fixesStarted} fix(es), ` +
+        ctx.logger.info(message, {
+          processed: summary.processed,
+          fixesStarted: summary.fixesStarted,
+          errors: summary.errors,
+        });
+        return {
+          outcome: summary.errors > 0 && summary.fixesStarted === 0 ? 'error' : 'ok',
+          message,
+          details: { ...summary },
+        };
+      },
+    });
+    registered = true;
   }
 
   // ---------------------------------------------------------------------------
@@ -332,19 +389,29 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
   // ---------------------------------------------------------------------------
 
   function start(): void {
+    if (started) return;
     const config = getConfig().reviewPoll;
     if (!config.enabled) {
+      console.log('[ReviewPoll] Disabled by config');
       return;
     }
+    ensureRegistered();
+    deps.scheduler.start(TASK_ID);
+    started = true;
   }
 
   function stop(): void {
+    if (!started) return;
+    deps.scheduler.stop(TASK_ID);
+    started = false;
   }
 
   function isRunning(): boolean {
+    return started;
   }
 
   async function pollNow(): Promise<PollTickSummary> {
+    return runTick();
   }
 
   async function pollSession(sessionId: string): Promise<PollSessionResult> {

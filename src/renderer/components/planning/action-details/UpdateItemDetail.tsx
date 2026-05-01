@@ -3,8 +3,11 @@
  * Shows diff view for each changed field.
  */
 
+import { Markdown } from 'markdown-to-jsx';
 import type { PlanAction, PlanItem } from '../../../../shared/types';
 import { DiffViewer } from '../../ui/DiffViewer';
+import { markdownOptions, transformPlanRefs } from '../../../utils/markdown';
+import { findRefs } from '../../../../shared/planRefs';
 
 interface UpdateItemDetailProps {
   action: Extract<PlanAction, { type: 'update_item' }>;
@@ -62,6 +65,19 @@ export function UpdateItemDetail({ action, planItems }: UpdateItemDetailProps) {
                 {formatFieldName(field)}
               </div>
               {field === 'description' ? (
+                <>
+                  <DiffViewer oldContent={oldValue} newContent={newValue || ''} />
+                  {newValue && findRefs(newValue).length > 0 && (
+                    <div className="mt-2 px-2.5 py-2 rounded-lg bg-surface-1 border border-border-subtle">
+                      <div className="text-xxs font-semibold text-text-muted uppercase tracking-wider mb-1">
+                        Resolved preview
+                      </div>
+                      <div className="prose-themed text-xs">
+                        <Markdown options={markdownOptions}>{transformPlanRefs(newValue)}</Markdown>
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
                 <FieldChange field={field} oldValue={oldValue} newValue={newValue} />
               )}

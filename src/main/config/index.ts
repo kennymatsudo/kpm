@@ -128,6 +128,26 @@ export interface ReviewPollConfig {
   errorBackoffTicks: number;
 }
 
+export interface WatcherConfig {
+  /** Debounce delay for project file watcher (ms) */
+  projectDebounceMs: number;
+  /** Debounce delay for repo .git/HEAD watcher (ms) */
+  repoDebounceMs: number;
+  /** Debounce delay for search index doc sync watcher (ms) */
+  searchDocSyncDebounceMs: number;
+  /** How often the search indexer reconciles project watchers (ms) */
+  searchReconcileIntervalMs: number;
+}
+
+export interface PollSchedulerConfig {
+  /** Default jitter percentage applied to scheduled polls (0–1) */
+  defaultJitterPct: number;
+  /** Default error backoff multiplier applied per consecutive failure */
+  defaultBackoffMultiplier: number;
+  /** Maximum delay between retries regardless of backoff (ms) */
+  maxBackoffMs: number;
+}
+
 export interface AppConfig {
   database: DatabaseConfig;
   window: WindowConfig;
@@ -138,6 +158,8 @@ export interface AppConfig {
   agentSession: AgentSessionConfig;
   reviewAssessment: ReviewAssessmentConfig;
   reviewPoll: ReviewPollConfig;
+  watcher: WatcherConfig;
+  pollScheduler: PollSchedulerConfig;
 }
 
 // =============================================================================
@@ -212,6 +234,19 @@ function createDefaultConfig(): AppConfig {
 
     reviewAssessment: {
       timeoutMs: 8 * 60 * 1000, // 8 minutes
+    },
+
+    watcher: {
+      projectDebounceMs: 100,
+      repoDebounceMs: 100,
+      searchDocSyncDebounceMs: 400,
+      searchReconcileIntervalMs: 30 * 1000,
+    },
+
+    pollScheduler: {
+      defaultJitterPct: 0.1,
+      defaultBackoffMultiplier: 2,
+      maxBackoffMs: 30 * 60 * 1000, // 30 minutes
     },
   };
 }

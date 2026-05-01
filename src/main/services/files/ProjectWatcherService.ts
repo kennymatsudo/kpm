@@ -9,6 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { BrowserWindow } from 'electron';
+import { getConfig } from '../../config';
 
 
 // =============================================================================
@@ -59,6 +60,7 @@ export function createProjectWatcherService(deps: ProjectWatcherServiceDeps) {
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
       flushPendingChanges(projectId);
+    }, getConfig().watcher.projectDebounceMs);
   }
 
   return {

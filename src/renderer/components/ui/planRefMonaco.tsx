@@ -59,6 +59,18 @@ function buildCompletionDetail(item: PlanItem): string {
   return parts.join(' · ');
 }
 
+/**
+ * Readable label shown in place of the UUID in the Monaco editor.
+ * Truncated so long titles don't swamp the prose.
+ */
+function buildRefLabel(item: PlanItem): string {
+  const maxTitle = 32;
+  const title = item.title.length > maxTitle
+    ? item.title.slice(0, maxTitle) + '…'
+    : item.title;
+  return item.external_key ? `@plan/${title} · ${item.external_key}` : `@plan/${title}`;
+}
+
 export function registerPlanRefMonacoProviders(
   editor: EditorInstance,
   monacoNs: MonacoNs,
@@ -199,6 +211,53 @@ export function registerPlanRefMonacoProviders(
       return;
     }
 
+    const matches = findRefs(text);
+    const items = getPlanItems();
+    const byId = new Map(items.map((i) => [i.id.toLowerCase(), i]));
+
+    const decorations: Monaco.editor.IModelDeltaDecoration[] = [];
+    const cssRules: string[] = [];
+
+    for (const match of matches) {
+      const item = byId.get(match.id);
+
+      // Build the label: title truncated + optional key
+      const label = buildRefLabel(item);
+      // Stable class name keyed by UUID so the same item reuses the same rule
+      const className = `kpm-ref-${match.id.replace(/-/g, '')}`;
+
+      decorations.push({
+        range: new monacoNs.Range(
+          start.lineNumber, start.column,
+          end.lineNumber, end.column,
+        ),
+        options: {
+          inlineClassName: className,
+          inlineClassNameAffectsLetterSpacing: true,
+          hoverMessage: { value: buildHoverMarkdown(item) },
+        },
+      });
+
+      // Escape single quotes in the label for CSS content value
+      const safeLabel = label.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      cssRules.push(
+        `.${className} { color: transparent; font-size: 0; }`,
+        `.${className}::before {`,
+        `  content: '${safeLabel}';`,
+        `  color: var(--color-accent, #6366f1);`,
+        `  font-size: 13px;`,
+        `  font-family: var(--font-mono, monospace);`,
+        `  font-weight: 500;`,
+        `}`,
+      );
+    }
+
+    styleEl.textContent = cssRules.join('\n');
+    decorationsCollection.set(decorations);
+  };
+
+  disposables.push(editor.onDidChangeModelContent(() => {
+  }));
   // The plan store can update underneath us (sync, approval flow); subscribe
   // so a previously-broken ref re-resolves once its target item lands.
   const unsubscribePlanStore = usePlanDomainStore.subscribe(() => {

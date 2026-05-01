@@ -8,6 +8,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { BrowserWindow } from 'electron';
+import { getConfig } from '../../config';
+import type { UpdateEventBus } from '../core/UpdateEventBus';
 
 // =============================================================================
 // Dependencies
@@ -16,6 +18,8 @@ import type { BrowserWindow } from 'electron';
 export interface RepoWatcherServiceDeps {
   /** Function to get the main window for IPC */
   getMainWindow: () => BrowserWindow | null;
+  /** Optional event bus — emits `branch_changed` when a watched repo's branch changes. */
+  eventBus?: UpdateEventBus;
 }
 
 // =============================================================================
@@ -140,6 +144,16 @@ export function createRepoWatcherService(deps: RepoWatcherServiceDeps) {
           branch: newBranch,
         });
       }
+
+      // Emit on the update event bus for any in-process consumers (metrics, notifications).
+      deps.eventBus?.emit({
+        kind: 'branch_changed',
+        source: 'git',
+        detectedAt: new Date().toISOString(),
+        repoId,
+        repoPath,
+        branch: newBranch,
+      });
     }
   }
 
@@ -207,6 +221,7 @@ export function createRepoWatcherService(deps: RepoWatcherServiceDeps) {
             setTimeout(() => {
               debounceTimers.delete(repoPath);
               handleBranchChange(repoId, repoPath);
+            }, getConfig().watcher.repoDebounceMs)
           );
         });
 

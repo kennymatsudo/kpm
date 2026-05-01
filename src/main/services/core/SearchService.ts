@@ -10,6 +10,9 @@ import * as path from 'path';
 import type { Database } from 'better-sqlite3';
 import type { AsyncResult } from '../result';
 import { success, failure } from '../result';
+import type { PlanItem, SearchResult, StatusCategory } from '../../../shared/types';
+import { getConfig } from '../../config';
+import { findRefs } from '../../../shared/planRefs';
 
 export interface SearchServiceDeps {
   getDatabase: () => Database;
@@ -147,6 +150,48 @@ function toEntityTitle(relativePath: string): string {
 
 function toIndexTimestamp(date: Date): string {
   return date.toISOString();
+}
+
+/**
+ * Build a hidden ref-titles block to append to an indexed doc body. For each
+ * unique `@plan/<uuid>` in `content` whose UUID resolves, emit the item's
+ * title (and external_key if present). FTS only sees text — there is no UI
+ * surface for this string — so a flat newline list is enough to make a doc
+ * matchable by the title of an item it references via the bare chip token.
+ *
+ * Returns null when no resolved refs are present.
+ */
+function collectRefTitlesForBody(
+  content: string,
+  itemsById: Map<string, Pick<PlanItem, 'title' | 'external_key'>>,
+): string | null {
+  if (!content || itemsById.size === 0) return null;
+  const matches = findRefs(content);
+  if (matches.length === 0) return null;
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const match of matches) {
+    if (seen.has(match.id)) continue;
+    seen.add(match.id);
+    const item = itemsById.get(match.id);
+    if (!item) continue;
+    lines.push(item.external_key ? `${item.title} ${item.external_key}` : item.title);
+  }
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+function loadPlanItemsById(
+  db: Database,
+  projectId: string,
+): Map<string, Pick<PlanItem, 'title' | 'external_key'>> {
+  const rows = db
+    .prepare('SELECT id, title, external_key FROM plan_items WHERE project_id = ?')
+    .all(projectId) as { id: string; title: string; external_key: string | null }[];
+  const map = new Map<string, Pick<PlanItem, 'title' | 'external_key'>>();
+  for (const row of rows) {
+    map.set(row.id.toLowerCase(), { title: row.title, external_key: row.external_key });
+  }
+  return map;
 }
 
 function normalizeDocumentContent(content: string): string {
@@ -355,13 +400,22 @@ export function createSearchService(deps: SearchServiceDeps) {
       return current?.title !== doc.title || current?.updated_at !== doc.updatedAt;
     });
 
+    // Resolve @plan/<uuid> tokens to their item titles when building the
+    // FTS body so a search for "export pipeline" finds docs that reference
+    // @plan/<uuid-of-export-pipeline-item> via the chip token alone — not
+    // just docs that mention the title in prose.
+    const planItemsById = loadPlanItemsById(db, projectId);
+
     const indexedBodies = await mapWithConcurrency(
       docsNeedingUpdate,
       DOCUMENT_INDEX_READ_CONCURRENCY,
       async (doc) => {
         const content = await readDocumentContentForIndex(doc.absolutePath);
+        const refTitles = collectRefTitlesForBody(content, planItemsById);
+        const augmented = refTitles ? `${content}\n\n${refTitles}` : content;
         return {
           entityId: doc.entityId,
+          body: normalizeDocumentContent(`${doc.entityId}\n${augmented}`),
         };
       },
     );
@@ -435,6 +489,7 @@ export function createSearchService(deps: SearchServiceDeps) {
     state.debounceTimer = setTimeout(() => {
       state.debounceTimer = null;
       flushDocumentSync(projectId);
+    }, getConfig().watcher.searchDocSyncDebounceMs);
   }
 
   function watchProjectFolderForDocs(projectId: string, projectFolderPath: string): void {
@@ -477,6 +532,7 @@ export function createSearchService(deps: SearchServiceDeps) {
 
     reconcileProjectWatchers();
     watcherReconcileInterval = setInterval(() => {
+    }, getConfig().watcher.searchReconcileIntervalMs);
   }
 
     if (watcherReconcileInterval) {

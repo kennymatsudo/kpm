@@ -32,6 +32,9 @@ import { createGroupService } from './core/GroupService';
 import { createSearchService } from './core/SearchService';
 import { createTrackerService } from './core/TrackerService';
 import { createRepoWatcherService } from './repo/RepoWatcherService';
+import { createPollScheduler } from './core/PollScheduler';
+import { createUpdateEventBus } from './core/UpdateEventBus';
+import { createNotificationService } from './core/NotificationService';
 
 // Generation services
 
@@ -96,11 +99,27 @@ export function createAppServices(container: IRepositoryContainer) {
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Cross-cutting Infrastructure (scheduler + event bus + notifications)
+  //
+  // Created early so any downstream service can register pollers or subscribe
+  // to update events without reaching back through the composition root.
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const pollScheduler = createPollScheduler();
+  const updateEventBus = createUpdateEventBus();
+  const notificationService = createNotificationService({
+    bus: updateEventBus,
+    broadcastToWindows,
+  });
+  notificationService.start();
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Repo Watcher (needed by RepoService)
   // ─────────────────────────────────────────────────────────────────────────────
 
   const repoWatcherService = createRepoWatcherService({
     getMainWindow: getPrimaryWindow,
+    eventBus: updateEventBus,
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -269,6 +288,8 @@ export function createAppServices(container: IRepositoryContainer) {
     gitHubService,
     agentSessionManager,
     broadcastToWindows,
+    scheduler: pollScheduler,
+    eventBus: updateEventBus,
   });
 
   if (getConfig().reviewPoll.enabled) {
@@ -279,6 +300,10 @@ export function createAppServices(container: IRepositoryContainer) {
   const appLifecycleService = createAppLifecycleService({
     searchService,
     devSessionService,
+    pollScheduler,
+    repoWatcherService,
+    projectWatcherService,
+    notificationService,
     disposeClaudeClients: () => clientManager.disposeAll(),
   });
 
@@ -364,6 +389,9 @@ export function createAppServices(container: IRepositoryContainer) {
     trackerService,
     searchService,
     appLifecycleService,
+    pollScheduler,
+    updateEventBus,
+    notificationService,
 
     // Repo
     repoService,

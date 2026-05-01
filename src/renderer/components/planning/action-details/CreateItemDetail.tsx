@@ -3,7 +3,9 @@
  * Shows preview of the new item being created.
  */
 
+import { Markdown } from 'markdown-to-jsx';
 import type { PlanAction, PlanItem } from '../../../../shared/types';
+import { markdownOptions, transformPlanRefs } from '../../../utils/markdown';
 
 interface CreateItemDetailProps {
   action: Extract<PlanAction, { type: 'create_item' }>;
@@ -40,6 +42,9 @@ export function CreateItemDetail({ action, planItems, placeholderMap }: CreateIt
         <div className="text-xxs font-semibold text-text-muted uppercase tracking-wider mb-1">Description</div>
         <div className="px-2.5 py-2 rounded-lg bg-surface-1 border border-border-subtle max-h-[40vh] overflow-y-auto">
           {action.description ? (
+            <div className="prose-themed text-xs">
+              <Markdown options={markdownOptions}>{transformPlanRefs(action.description)}</Markdown>
+            </div>
           ) : (
             <span className="text-xs text-text-tertiary italic">No description</span>
           )}
