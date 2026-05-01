@@ -289,6 +289,19 @@ const MessageRow = memo(function MessageRow({
         durationMs={message.durationMs}
       />
 
+      {/* Structured attachment chips (current-session messages) */}
+      {hasStructuredAttachments && (
+          {message.attachments!.map((attachment) => (
+            <AttachmentChip
+              key={attachment.path}
+              attachment={attachment}
+              thumbnailSize={40}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Legacy fallback: count chip for old "Images attached:" prefixed messages */}
       {isUser && userParsed && userParsed.imageCount > 0 && (
           <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-accent-subtle text-accent text-xs rounded">
             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 16 16">
