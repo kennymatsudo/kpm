@@ -732,6 +732,25 @@ A feature that scores low on all four is a candidate for removal even if it is t
   - Claude in-process MCP tools
 - **Maturity signal:** Mature but optional. It is enabled only when a project has a Storybook URL.
 
+### 102. Plan References (`@plan/<uuid>` tokens)
+- **What it does:** Markdown surfaces (descriptions, intents, acceptance criteria, chat, project documents) can carry `@plan/<uuid>` tokens that resolve to a `PlanItem`. Tokens render as inline chips in the renderer, fold to readable titles in Monaco, expand to full item context for agents, and are rewritten to native syntax (Jira ADF, Linear refs, Confluence links, GitHub markdown) at every export boundary so they never leak to external trackers.
+- **Key code locations:**
+  - Token primitive: `src/shared/planRefs.ts` (pure parser/expander)
+  - Resolver: `src/main/documents/planRefResolver.ts` (used at every export boundary)
+  - Agent context: `src/main/claude/contextRefs.ts` (`formatPlanRefSection` prepends a `<plan-refs>` block)
+  - Claude tool: `src/main/claude/tools/plan-refs.ts` (`extract_plan_items_from_doc`)
+  - Validation: `src/main/db/domain/PlanActionService.ts` (rejects unresolved refs)
+  - Monaco integration: `src/renderer/components/ui/planRefMonaco.tsx` (folds UUIDs to titles, surfaces unresolved-ref diagnostics)
+  - Search: refs surface in approval UI and global search index
+  - Export sites: `markdown-to-adf.ts` (Jira), `ExportService.ts` (Linear), `ConfluenceSyncService.ts`, `GitHubService.ts`
+- **Entry points / surfaces:**
+  - Type `@plan/` in any markdown editor surface
+  - Refs render as chips with hover preview
+  - Claude can author refs in plan modifications (validated server-side)
+- **Dependencies / integrations:**
+  - Plan items: token resolves to `PlanItem` by id
+  - Export pipeline: every export path calls the resolver before sending
+
 ---
 
 ## Summary
@@ -782,9 +801,11 @@ A feature that scores low on all four is a candidate for removal even if it is t
 ### chat/ Components
 - `MessageList.tsx`: Rendered chat history with streaming
 - `ChatInput.tsx`: Text + image input
+- `ChatHeader.tsx`: Session id + history dropdown
 - `SessionList.tsx`: List of chat sessions
 - `ModelSelector.tsx`: Choose Claude model
 - `SessionHistory.tsx`: Past messages in session
+- `ProcessTimeline.tsx`: Consolidated thinking + tool activity
 
 ### development/ Components
 - `ReviewTab.tsx`: Review thread list rendered in the board detail pane
@@ -883,5 +904,6 @@ A feature that scores low on all four is a candidate for removal even if it is t
 - **Experimental:** Custom prompts (65) are lightweight; prompt editor UI is basic.
 - **Known limitations:**
   - Image editing not supported; inline image paste in chat only.
+  - Markdown documents use a dedicated markdown editor (Monaco-backed edit pane plus preview/toolbar) rather than raw Monaco.
   - No advanced IDE features (IntelliSense, debugging, git integration in editor).
   - No real-time collaboration (single-user tool by design).

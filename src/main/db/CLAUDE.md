@@ -2,6 +2,8 @@
 
 Owns database schema, migrations, repositories (data access), and domain services (complex multi-table transactions).
 
+
+
 ## Directory Structure
 
 ```

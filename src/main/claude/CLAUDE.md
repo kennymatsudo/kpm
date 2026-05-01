@@ -130,7 +130,14 @@ The `currentView` parameter ('plan' | 'workspace') adds context-aware suggestion
 | `tools/` | MCP tool implementations |
 | `tools/schemas.ts` | Shared Zod primitives (`StatusCategoryEnum`, `PlanActionsCallback`) reused across tool files |
 | `tools/review-assessment.ts` | Separate read-only MCP server used by `ReviewAssessmentService` (not part of the main-chat `createKpmServer`) |
+| `tools/plan-refs.ts` | `extract_plan_items_from_doc` — lift `@plan/<uuid>` tokens out of a project file by path |
+| `contextRefs.ts` | `formatPlanRefSection` — expand plan refs into agent context |
 | `prompts/` | System prompt builders |
+
+## Plan References (`@plan/<uuid>`)
+
+Descriptions, intents, and acceptance criteria may contain `@plan/<uuid>` tokens. Iteration-doc filenames and other ad-hoc references must not appear in fields that sync to external trackers, but `@plan/<uuid>` is the **sanctioned exception**: it gets rewritten to native syntax (Jira ADF, Linear ref, Confluence link, GitHub markdown) at every export boundary by `src/main/documents/planRefResolver.ts`.
+
 
 ## Plan Item Spec Fields
 

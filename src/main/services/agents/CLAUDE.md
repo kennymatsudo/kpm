@@ -165,6 +165,7 @@ The review session ID is always `toReviewSessionId(implSessionId)` from `shared/
 - `## Instructions` — instructs the agent not to commit. When acceptance criteria are present, the instruction explicitly tells the agent to satisfy every criterion.
 
 
+
 ## Common Pitfalls
 
 - Do not assume board `Play` always means "new worktree". It should usually mean "continue existing work" when prior work exists.

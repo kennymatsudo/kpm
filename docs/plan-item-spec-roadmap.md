@@ -2,6 +2,7 @@
 
 > and the CLAUDE.md files under `src/main/claude/`, `src/main/db/`, and
 > `src/renderer/`.
+>
 
 ## Why this work exists
 

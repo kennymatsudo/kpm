@@ -24,7 +24,9 @@ src/
 │   │   ├── tools/           # In-process MCP tools
 │   │   ├── prompts/         # System prompt modules
 │   │   └── streaming/       # Streaming session classes
+│   ├── documents/           # Plan-ref resolver + markdown codecs (used at every export boundary)
 │   ├── services/            # Application services (DI pattern)
+│   │   ├── generation/      # CustomPrompt, Onboarding
 │   │   ├── agents/          # AgentSessionManager, Claude/Codex/Gemini sessions, hooks, auto-review
 │   │   ├── confluence/      # ConfluenceSyncService
 │   │   ├── composition/     # Service composition helpers
@@ -95,10 +97,12 @@ src/
 | `sync_queue` | Items staged for export (with custom field overrides) |
 | `sync_snapshots` | Last-synced state for three-way conflict detection |
 | `chat_messages` | Persistent message history |
+| `documents` | Dormant — created by migration 018 but no repository/service writes to it. `BriefingService` is the only reader and tolerates emptiness. Filesystem path is the canonical doc identity. See `src/main/db/CLAUDE.md`. |
 | `app_settings` | Global key-value application preferences |
 | `confluence_page_links` | Document ↔ Confluence page links |
 | `groups` | Visual group containers |
 | `task_prompt_templates` | Task prompt templates |
+| `agent_prompts` | Dormant — agent-team mode was removed; table remains from a prior migration but no code reads or writes it. Board prompts are configured via settings. |
 | `tool_permissions` | Persisted per-project tool permission grants |
 | `project_briefings` | Cached generated project briefings |
 | `review_ownership` | Review-thread ownership decisions |
@@ -174,11 +178,13 @@ src/
    - Testable with dependency injection
    - Return `ServiceResult<T>` for explicit error handling
    - Organized by domain:
+     - `generation/` - CustomPromptGenerationService, OnboardingService
      - `confluence/` - ConfluenceSyncService
      - `toollog/` - ToolCallLogger, extractFilePaths
      - `PerfLogger.ts` - PerfLogger
 
 **Shared polling** (`PollScheduler`): a single timer drives all interval-based work — review polling, repo watching, project file watching, search reindex. Services register tasks instead of holding their own `setInterval`.
+
 **Composition Root** (`src/main/services/appServices.ts`):
 - Wires all services with their dependencies
 - Single point of service instantiation
@@ -198,6 +204,7 @@ src/
 - `project/resourceSlice.ts` - Repos, attachments, worktrees
 
 **Specialized Stores:**
+- `chat/` - Chat messages, streaming state, session history (Claude-only; provider selection was removed)
 - `devSessions/` - Plan-item dev sessions, PR context, review inbox, merge order
 - `workspaceStore.ts` - Workspace file tree, editor state
 - `trackerStore.ts` - Tracker associations
@@ -352,6 +359,11 @@ Tracks git branch changes for connected repositories in real-time.
 - `src/main/claude/tools/confluence.ts` - Confluence integration tools
 - `src/main/claude/tools/briefing.ts` - Project briefing generation
 - `src/main/claude/tools/file-move.ts` - File move tools
+- `src/main/claude/tools/plan-refs.ts` - Extract plan items from a doc; resolve `@plan/<uuid>` tokens
+- `src/main/claude/tools/list-project-files.ts` - Project file discovery
+- `src/main/claude/tools/review-assessment.ts` - Opposing-agent review structured output
+- `src/main/claude/contextRefs.ts` - Expand plan refs into agent context
+- `src/main/documents/planRefResolver.ts` - Pure resolver (renderer + main)
 - `src/main/claude/streaming/` - Streaming session classes
 - `src/main/claude/prompts/` - System prompt modules
 - `src/main/services/streaming/StreamingSessionService.ts` - Main chat session management
@@ -363,6 +375,7 @@ Tracks git branch changes for connected repositories in real-time.
 - `toolDocs.ts` - Tool usage guidance
 - `planFormatting.ts` - Plan display formatting
 - `focusedResources.ts` - Focused resource handling
+- `slackTriage.ts` - Slack triage prompt fragments
 - `promptRegistry.ts` - System prompt registry
 
 **Streaming Sessions:**
@@ -377,5 +390,16 @@ Tracks git branch changes for connected repositories in real-time.
 - Each runs in a separate git worktree
 - User approval required before starting
 - Automatic opposing-agent review can run after implementation completion and feed findings back into the implementation session before the plan item moves to `in_review`
+
+## Plan References (`@plan/<uuid>`)
+
+Markdown surfaces (descriptions, intents, acceptance criteria, chat, documents) can carry `@plan/<uuid>` tokens that resolve to a `PlanItem`.
+
+**Token shape:** `@plan/<uuid>` — pure structural primitive parsed in `src/shared/planRefs.ts`.
+
+**Layers:**
+- **Tools:** `plan-refs.ts` exposes `extract_plan_items_from_doc` so Claude can lift refs out of a project file by path.
+- **Validation:** `PlanActionService` rejects `create_item` / `update_item` actions whose text contains unresolved refs.
+- **Export boundary:** `src/main/documents/planRefResolver.ts` rewrites refs to native syntax at every export — Jira ADF (`markdown-to-adf.ts`), Linear (`ExportService`), Confluence (`ConfluenceSyncService`), GitHub (`GitHubService`). Refs never leak to external trackers.
 
 See `src/renderer/CLAUDE.md` for z-index hierarchy and renderer conventions.

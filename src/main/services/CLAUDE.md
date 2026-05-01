@@ -19,6 +19,10 @@ Plan items, projects, attachments, tracker connections, and groups—the domain 
 - `PlanService` — Modify plan items, manage relations
 - `AttachmentService` — Upload files, track metadata
 - `SearchService` — Global search across plan items and documents
+- `PromptOverrideService` — Manage prompt overrides for board implementation/review prompts (the previous "agent-team" subsystem was removed; this is the surviving customization path)
+- `AppLifecycleService` — App startup/shutdown coordination
+- `NotificationService` — System notifications via Electron
+- `UpdateEventBus` — Cross-service update broadcast helper
 - `TrackerService` — Tracker credential management, connection/scope/association CRUD, Jira API queries (issue search, labels, components, statuses, custom fields), import preview generation, and sync coordination. Wraps `TrackerClientService` + domain `ImportService`/`SyncService`.
 - `GroupService` — Group CRUD (create, update, delete, position, size) and item assignment. Delegates to `GroupAssignmentService` for assignment rule enforcement.
 - `slackTriageAdapter.ts` — Pure composition helper (no state). Owns Slack MCP block/JSON parsing, the Claude SDK adapter session, and plan-item mutation callbacks. `appServices.ts` calls `createSlackTriageAdapter()` and passes the returned deps straight into `createSlackTriageService()` — keeps `appServices.ts` focused on wiring.
@@ -34,6 +38,7 @@ Git repositories, worktrees, development sessions, environment capture.
 - `GitHubService` — PR description generation, PR creation, PR template enforcement, diff/commit log helpers
 - `ReviewService` — GitHub PR review thread CRUD (fetch threads, post replies, resolve)
 - `ReviewAssessmentService` — SDK-backed multi-turn assessment agent that classifies PR review threads and drafts replies (uses the standalone MCP server in `claude/tools/review-assessment.ts`)
+- `ReviewPollService` — Polls linked PRs (registered with `PollScheduler`), triggers assessments, broadcasts `review-poll:actionable` events that drive the board orange-dot indicator
 
 ### File Services (`services/files/`)
 
