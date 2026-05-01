@@ -501,10 +501,14 @@ select:focus-visible {
    Chat Styles
    ============================================ */
 
+.chat-message-user,
 .chat-message-assistant {
   position: relative;
 }
 
+.chat-message-assistant::before {
+  content: '';
+  position: absolute;
 }
 
 .chat-message-content {
@@ -579,6 +583,8 @@ select:focus-visible {
   }
 }
 
+/* User and assistant content sit flush-left under their author header.
+   Spacing/alignment is handled by Tailwind utilities in MessageRow. */
 
 /* ============================================
    Sidebar - Dense & Border-Separated

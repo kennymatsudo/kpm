@@ -236,6 +236,11 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
           .filter((s): s is { type: 'text'; content: string } => s.type === 'text')
           .reduce((sum, s) => sum + s.content.length, 0);
 
+        const durationMs =
+          session.streamStartedAt != null
+            ? Math.max(0, Date.now() - session.streamStartedAt)
+            : undefined;
+
         sessions.set(chatSessionId, {
           ...session,
           streamingContent: '',

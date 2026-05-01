@@ -63,16 +63,43 @@ const CopyButton = memo(function CopyButton({
   );
 });
 
+const StreamingHeader = memo(function StreamingHeader({
+  model,
+  elapsedSeconds,
+}: {
+  model?: string;
+  elapsedSeconds: number | null;
+}) {
+  const durationMs = elapsedSeconds != null ? elapsedSeconds * 1000 : undefined;
+  return (
+    <MessageHeader
+      isUser={false}
+      timestamp={new Date()}
+      model={model}
+      durationMs={durationMs}
+    />
+  );
+});
+
 const ThinkingIndicator = memo(function ThinkingIndicator({
   thinkingContent,
   activities,
   elapsedSeconds,
+  model,
 }: {
   thinkingContent?: string;
   activities: Activity[];
   elapsedSeconds: number | null;
+  model?: string;
 }) {
   return (
+        <ProcessTimeline
+          streamingThinking={thinkingContent}
+          streamingActivities={activities}
+          isStreaming
+          elapsedSeconds={elapsedSeconds}
+        />
+      </div>
     </div>
   );
 });
@@ -160,6 +187,62 @@ const StreamingContent = memo(function StreamingContent({
   );
 });
 
+/** Format an HH:MM AM/PM timestamp for the message header. */
+function formatClockTime(date: Date): string {
+  const hours24 = date.getHours();
+  const minutes = date.getMinutes();
+  const isPm = hours24 >= 12;
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+  const mm = minutes < 10 ? `0${minutes}` : String(minutes);
+  return `${hours12}:${mm} ${isPm ? 'PM' : 'AM'}`;
+}
+
+/** Format wall-clock duration with one decimal under a minute (e.g. "2.3s", "1m 5s"). */
+function formatTurnDuration(ms: number | undefined): string | null {
+  if (ms == null || ms < 0) return null;
+  if (ms < 60_000) {
+    const seconds = ms / 1000;
+    return seconds < 10 ? `${seconds.toFixed(1)}s` : `${Math.round(seconds)}s`;
+  }
+  const totalSeconds = Math.round(ms / 1000);
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return s === 0 ? `${m}m` : `${m}m ${s}s`;
+}
+
+/** Friendly model label derived from the model id stamped on the message. */
+function formatModelLabel(model: string | undefined): string | null {
+  if (!model) return null;
+}
+
+const MessageHeader = memo(function MessageHeader({
+  isUser,
+  timestamp,
+  model,
+  durationMs,
+}: {
+  isUser: boolean;
+  timestamp: Date;
+  model?: string;
+  durationMs?: number;
+}) {
+  const modelLabel = !isUser ? formatModelLabel(model) : null;
+  const durationLabel = !isUser ? formatTurnDuration(durationMs) : null;
+
+  return (
+      <span className="text-xs font-medium text-text-primary">{name}</span>
+      {modelLabel && (
+        <span className="font-mono text-xxs text-text-muted/80">{modelLabel}</span>
+      )}
+      {durationLabel && (
+        <span className="font-mono text-xxs text-text-muted/60">· {durationLabel}</span>
+      )}
+        {formatClockTime(timestamp)}
+      </span>
+    </div>
+  );
+});
+
 const MessageRow = memo(function MessageRow({
   message,
 }: {
@@ -171,8 +254,40 @@ const MessageRow = memo(function MessageRow({
   );
 
   return (
+    <div
+      className={`py-3 group relative ${isUser ? 'chat-message-user' : 'chat-message-assistant'}`}
+      aria-label={isUser ? 'Your message' : 'Assistant response'}
+    >
+      <MessageHeader
+        isUser={isUser}
+        timestamp={message.timestamp}
+        model={message.model}
+        durationMs={message.durationMs}
+      />
 
+      {isUser && userParsed && userParsed.imageCount > 0 && (
+          <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-accent-subtle text-accent text-xs rounded">
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z" />
+              <path d="M2.002 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2h-12zm12 1a1 1 0 0 1 1 1v6.5l-3.777-1.947a.5.5 0 0 0-.577.093l-3.71 3.71-2.66-1.772a.5.5 0 0 0-.63.062L1.002 12V3a1 1 0 0 1 1-1h12z" />
+            </svg>
+            <span>
+              {userParsed.imageCount} image{userParsed.imageCount > 1 ? 's' : ''} attached
+            </span>
+          </div>
         </div>
+      )}
+
+        {isUser ? (
+          <>
+            </div>
+          </>
+        ) : (
+          <AssistantMessageContent
+            segments={message.segments}
+            interrupted={message.interrupted}
+          />
+        )}
       </div>
     </div>
   );
@@ -223,6 +338,7 @@ interface MessageListProps {
 }
 
   // Access per-session chat state
+  const { viewedSession, viewedSessionId, model } = useChatStore(
         ? state.sessions.get(state.viewedSessionId) ?? null
   );
 
@@ -470,6 +586,7 @@ interface MessageListProps {
             thinkingContent={streamingThinking || undefined}
             activities={activities}
             elapsedSeconds={elapsedSeconds}
+            model={model}
           />
         )}
 

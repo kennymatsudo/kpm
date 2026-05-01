@@ -12,6 +12,10 @@ export interface Message {
    * on the message to explain the truncation.
    */
   interrupted?: boolean;
+  /** Wall-clock duration of the assistant turn that produced this message, in ms. */
+  durationMs?: number;
+  /** Model that produced this assistant message (e.g. "claude-sonnet-4-6"). */
+  model?: string;
 }
 
 // Re-export types for consumers
