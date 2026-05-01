@@ -803,6 +803,12 @@ export type DevSessionStatus =
   | 'pending'      // Awaiting user approval to start
   | 'inactive';    // Stopped (can resume or delete)
 
+/** Sessions that count as "currently running an agent". */
+export const ACTIVE_SESSION_STATUSES: readonly DevSessionStatus[] = ['pending', 'active'];
+
+/** Sessions whose detail pane can be opened (running or resumable). */
+export const OPENABLE_SESSION_STATUSES: readonly DevSessionStatus[] = ['pending', 'active', 'inactive'];
+
 export type DevSessionAutomationPhase =
   | 'idle'
   | 'reviewing'

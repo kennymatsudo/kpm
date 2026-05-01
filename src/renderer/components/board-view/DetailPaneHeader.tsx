@@ -125,6 +125,7 @@ export const DetailPaneHeader = memo(function DetailPaneHeader({
             <span className="text-tiny text-text-muted">{session.plan_item.external_key}</span>
           )}
         </div>
+              >
           {hasPr && (
             <button
               onClick={onOpenPr}

@@ -223,6 +223,7 @@ export function PlanView({
   // --- Agent start modal ---
 
   const [agentStartItemId, setAgentStartItemId] = useState<string | null>(null);
+  const [boardDetailSessionId, setBoardDetailSessionId] = useState<string | null>(null);
   const agentStartItem = agentStartItemId ? planItems.find((i) => i.id === agentStartItemId) : undefined;
   const updateStatusCategory = usePlanDomainStore((state) => state.updateStatusCategory);
   const loadSessions = useDevSessionsStore((state) => state.loadSessions);
@@ -276,6 +277,12 @@ export function PlanView({
       void loadSessions(currentProjectId);
     }
   }, [planItems, currentProjectId, loadSessions, updateStatusCategory]);
+
+  useEffect(() => {
+    if (viewMode !== 'board' && boardDetailSessionId !== null) {
+      setBoardDetailSessionId(null);
+    }
+  }, [boardDetailSessionId, viewMode]);
 
   // --- Auto layout & collision resolution ---
 
@@ -508,6 +515,8 @@ export function PlanView({
                 onContextMenu={handleTreeContextMenu}
                 onCreateItem={handleCreateItemFromBoard}
                 onStartAgent={handleStartAgent}
+                detailSessionId={boardDetailSessionId}
+                onDetailSessionChange={setBoardDetailSessionId}
               />
             </ErrorBoundary>
           )}
@@ -529,6 +538,7 @@ export function PlanView({
           trackerType={activeTrackerType}
           onLinkPr={() => handleLinkPr(contextMenu.singleItemId!)}
           onStartAgent={handleStartAgent}
+          onOpenDetail={viewMode === 'board' ? setBoardDetailSessionId : undefined}
         />
       ) : contextMenu ? (
         <BulkActionsMenu

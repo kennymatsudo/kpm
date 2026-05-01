@@ -11,6 +11,7 @@ import { useDevSessionsStore } from '../../stores/devSessions';
 import { stopAgentSession } from '../../services/agentSessionService';
 import { getStatusCategory, STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import { subscribe } from '../../stores/storeEvents';
+import { OPENABLE_SESSION_STATUSES } from '../../../shared/types';
 import type { PlanItem, StatusCategory, DevSessionWithPlanItem } from '../../../shared/types';
 import type { RangeSelectHandler } from '../../utils/rangeSelection';
 import { getBoardDropDecision } from './dropBehavior';
@@ -44,6 +45,8 @@ interface BoardViewProps {
   onCreateItem?: (status: StatusCategory) => void;
   /** Callback when user wants to start an agent on an item */
   onStartAgent?: (itemId: string) => void;
+  detailSessionId: string | null;
+  onDetailSessionChange: (sessionId: string | null) => void;
 }
 
 /**
@@ -64,6 +67,8 @@ export const BoardView = memo(function BoardView({
   onContextMenu,
   onCreateItem,
   onStartAgent: onStartAgentProp,
+  detailSessionId,
+  onDetailSessionChange,
 }: BoardViewProps) {
   const updateStatusCategory = usePlanDomainStore((state) => state.updateStatusCategory);
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
@@ -280,6 +285,7 @@ export const BoardView = memo(function BoardView({
   );
 
   const handleSelectQueueSession = useCallback((sessionId: string) => {
+    onDetailSessionChange(sessionId);
 
   const handleDragStart = useCallback((itemId: string) => {
     setDraggedItemId(itemId);
@@ -289,7 +295,16 @@ export const BoardView = memo(function BoardView({
     setDraggedItemId(null);
   }, []);
 
+  const handleOpenDetail = useCallback((itemId: string) => {
+      (s) => s.plan_item_id === itemId && OPENABLE_SESSION_STATUSES.includes(s.status)
     );
+    onDetailSessionChange(session?.id ?? null);
+
+  // Close the detail pane when the underlying session disappears (e.g. archived).
+  useEffect(() => {
+    if (!detailSessionId) return;
+      onDetailSessionChange(null);
+    }
 
   // Determine which columns to show
   const visibleColumns = useMemo(() => {
@@ -380,6 +395,7 @@ export const BoardView = memo(function BoardView({
             onCreateItem={onCreateItem}
             onStartAgent={handleStartAgent}
             onStopAgent={handleStopAgent}
+            onOpenDetail={handleOpenDetail}
           />
         ))}
       </div>

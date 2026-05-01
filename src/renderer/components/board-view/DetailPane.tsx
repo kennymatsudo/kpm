@@ -15,6 +15,7 @@ import { useAgentSession } from '../../hooks/useAgentSession';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { openExternalUrl } from '../../services/shellService';
 import { usePlanDomainStore, useProjectUiDomainStore, toast } from '../../stores';
+import { copyToClipboard } from '../../utils/clipboard';
 import { toReviewSessionId } from '../../../shared/agent-types';
 
 interface DetailPaneProps {
@@ -144,6 +145,8 @@ export const DetailPane = memo(function DetailPane({
   }, [session.pr_url]);
 
   const handleCopyWorktree = useCallback(() => {
+    const path = session.worktree_path;
+    void copyToClipboard(path ? `"${path}"` : '', 'Worktree path');
   }, [session.worktree_path]);
 
   const addFocusedResource = useProjectUiDomainStore((s) => s.addFocusedResource);

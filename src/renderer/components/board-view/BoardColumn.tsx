@@ -44,6 +44,7 @@ interface BoardColumnProps {
   onCreateItem?: (status: StatusCategory) => void;
   onStartAgent?: (itemId: string) => void;
   onStopAgent?: (devSessionId: string) => void;
+  onOpenDetail?: (itemId: string) => void;
 }
 
 /**
@@ -71,6 +72,7 @@ export const BoardColumn = memo(function BoardColumn({
   onCreateItem,
   onStartAgent,
   onStopAgent,
+  onOpenDetail,
 }: BoardColumnProps) {
   const config = STATUS_CATEGORY_CONFIG[status];
   const [isDragOver, setIsDragOver] = useState(false);
@@ -212,6 +214,7 @@ export const BoardColumn = memo(function BoardColumn({
             onDragEnd={onDragEnd}
             onStartAgent={onStartAgent}
             onStopAgent={onStopAgent}
+            onOpenDetail={onOpenDetail}
           />
         ))}
 
@@ -254,6 +257,7 @@ interface BoardTreeNodeRendererProps {
   onDragEnd: () => void;
   onStartAgent?: (itemId: string) => void;
   onStopAgent?: (devSessionId: string) => void;
+  onOpenDetail?: (itemId: string) => void;
 }
 
 const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
@@ -275,6 +279,7 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
   onDragEnd,
   onStartAgent,
   onStopAgent,
+  onOpenDetail,
 }: BoardTreeNodeRendererProps) {
   const { item, children } = node;
   const hasChildren = children.length > 0;
@@ -304,6 +309,7 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
         onDragEnd={onDragEnd}
         onStartAgent={onStartAgent}
         onStopAgent={onStopAgent}
+        onOpenDetail={onOpenDetail}
       />
       {hasChildren && isExpanded && (
         <div className="mt-1 space-y-1">
@@ -328,6 +334,7 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
               onDragEnd={onDragEnd}
               onStartAgent={onStartAgent}
               onStopAgent={onStopAgent}
+              onOpenDetail={onOpenDetail}
             />
           ))}
         </div>

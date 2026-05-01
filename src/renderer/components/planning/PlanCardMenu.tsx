@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
+import {
+  useResourceDomainStore,
+} from '../../stores';
+import { useDevSessionsStore } from '../../stores/devSessions';
+import { copyToClipboard } from '../../utils/clipboard';
 import { DeleteWorktreeDialog } from './DeleteWorktreeDialog';
 import { Modal } from '../ui/Modal';
 import { Z_INDEX } from '../../constants/zIndex';
@@ -29,6 +34,7 @@ interface PlanCardMenuProps {
   trackerType: TrackerType | null;
   onLinkPr?: () => void;
   onStartAgent?: (itemId: string) => void;
+  onOpenDetail?: (sessionId: string) => void;
 }
 
 export function PlanCardMenu({
@@ -44,6 +50,7 @@ export function PlanCardMenu({
   trackerType,
   onLinkPr,
   onStartAgent,
+  onOpenDetail,
 }: PlanCardMenuProps) {
   const {
     openWorktreeInEditor,
@@ -63,7 +70,17 @@ export function PlanCardMenu({
       worktreeLoadingOp: loadingOp,
     };
 
+  // Falls back to a session-recorded path when the worktree resource row has been
+  // cleaned up (e.g. after PR merge) but the session still records its details.
   const itemSessions = useDevSessionsStore((state) => state.sessionsByPlanItemId.get(itemId) ?? EMPTY_SESSIONS);
+      (a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at),
+    );
+    return {
+      itemSession: byRecency[0],
+      linkedPrSession: byRecency.find((s) => !!s.pr_url),
+    };
+  const canCopyWorktreeInfo = !!copyWorktreePath || !!copyBranchName;
+
   const [showDeleteWorktreeConfirm, setShowDeleteWorktreeConfirm] = useState(false);
   const [showDestroyWorktreeConfirm, setShowDestroyWorktreeConfirm] = useState(false);
 
@@ -122,6 +139,31 @@ export function PlanCardMenu({
             zIndex: Z_INDEX.dropdown,
           }}
         >
+          {onOpenDetail && openableSession && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenDetail(openableSession.id);
+                onClose();
+              }}
+              className="dropdown-item w-full flex items-center gap-2"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                viewBox="0 0 24 24"
+              >
+                <rect width="18" height="18" x="3" y="3" rx="2" />
+                <path d="M15 3v18" />
+                <path d="m8 9 3 3-3 3" />
+              </svg>
+              Open details
+            </button>
+          )}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -161,6 +203,43 @@ export function PlanCardMenu({
               )}
           )}
 
+          {canCopyWorktreeInfo && (
+            <>
+              <div className="dropdown-separator" />
+              {copyWorktreePath && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void copyToClipboard(`"${copyWorktreePath}"`, 'Worktree path');
+                    onClose();
+                  }}
+                  className="dropdown-item w-full flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  <span className="flex-1 text-left">Copy worktree path</span>
+                </button>
+              )}
+              {copyBranchName && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void copyToClipboard(copyBranchName, 'Branch name');
+                    onClose();
+                  }}
+                  title={copyBranchName}
+                  className="dropdown-item w-full flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 3v12m0 0a3 3 0 100 6 3 3 0 000-6zm12-6a3 3 0 11-6 0 3 3 0 016 0zm0 0v2a4 4 0 01-4 4H9" />
+                  </svg>
+                  <span className="flex-1 text-left font-mono text-xxs truncate">{copyBranchName}</span>
+                </button>
+              )}
+            </>
+          )}
+
           <div className="dropdown-separator" />
 
           <button
@@ -169,11 +248,17 @@ export function PlanCardMenu({
               onClose();
               onLinkPr?.();
             }}
+            title={
+              linkedPrSession?.pr_number != null
+                ? `Currently linked: PR #${linkedPrSession.pr_number}`
+                : undefined
+            }
             className="dropdown-item w-full flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
             </svg>
+            {linkedPrSession ? 'Replace linked PR' : 'Link PR'}
           </button>
 
           {hasTrackerAssociation && (
@@ -190,6 +275,40 @@ export function PlanCardMenu({
               </svg>
               Queue for {trackerLabel}
             </button>
+          )}
+
+          <div className="dropdown-separator" />
+
+          {hasWorktree && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDeleteWorktreeConfirm(true);
+                }}
+                disabled={isWorktreeLoading}
+                title="Removes the worktree folder and local branch"
+                className={`dropdown-item w-full flex items-center gap-2 ${isWorktreeLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                </svg>
+                Clean up worktree
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDestroyWorktreeConfirm(true);
+                }}
+                disabled={isWorktreeLoading}
+                title="Permanently deletes worktree, branch, and remote branch"
+                className={`dropdown-item dropdown-item-danger w-full flex items-center gap-2 ${isWorktreeLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Destroy worktree
+              </button>
+            </>
           )}
 
           <button

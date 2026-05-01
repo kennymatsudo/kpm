@@ -8,6 +8,7 @@ import type { DevSessionWithPlanItem } from '../../../shared/types';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { Modal } from '../ui/Modal';
 import { MotionButton } from '../ui/MotionButton';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface GeneratePrContentModalProps {
   isOpen: boolean;
@@ -50,6 +51,7 @@ export function GeneratePrContentModal({ isOpen, onClose, session }: GeneratePrC
       });
 
 
+  const handleCopy = (value: string, label: string) => copyToClipboard(value, label);
 
 
   return (

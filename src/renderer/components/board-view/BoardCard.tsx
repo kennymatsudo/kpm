@@ -33,6 +33,7 @@ interface BoardCardProps {
   onDragEnd: () => void;
   onStartAgent?: (itemId: string) => void;
   onStopAgent?: (devSessionId: string) => void;
+  onOpenDetail?: (itemId: string) => void;
 }
 
 function buildReviewActionableTooltip(
@@ -101,6 +102,7 @@ export const BoardCard = memo(function BoardCard({
   onDragEnd,
   onStartAgent,
   onStopAgent,
+  onOpenDetail,
 }: BoardCardProps) {
   // Single consolidated selector: re-renders only when this item's derived
   // session state actually changes, not on every store update. Using useShallow
@@ -109,6 +111,7 @@ export const BoardCard = memo(function BoardCard({
   const {
     activeSession,
     activeSessionCount,
+    hasOpenableSession,
     prSession,
     agentState,
     latestActivity,
@@ -118,6 +121,8 @@ export const BoardCard = memo(function BoardCard({
     reviewActionable,
   } = useDevSessionsStore(
     useShallow((state) => {
+      const activeCount = itemSessions.filter((s) => ACTIVE_SESSION_STATUSES.includes(s.status)).length;
+      const openable = itemSessions.some((s) => OPENABLE_SESSION_STATUSES.includes(s.status));
       const pr = itemSessions
         .filter((s) => s.pr_url)
         .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))[0];
@@ -146,6 +151,7 @@ export const BoardCard = memo(function BoardCard({
       return {
         activeSession: active,
         activeSessionCount: activeCount,
+        hasOpenableSession: openable,
         prSession: pr,
         agentState: active ? state.agentStateBySessionId.get(active.id) : undefined,
         latestActivity: active ? state.latestActivityBySessionId.get(active.id) : undefined,
@@ -176,6 +182,11 @@ export const BoardCard = memo(function BoardCard({
     e.stopPropagation();
     onStartAgent?.(item.id);
   }, [item.id, onStartAgent]);
+
+  const handleOpenDetailClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onOpenDetail?.(item.id);
+  }, [item.id, onOpenDetail]);
 
   const handleStopClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -404,6 +415,7 @@ export const BoardCard = memo(function BoardCard({
             </Tooltip>
           )}
 
+          {!hasOpenableSession && onStartAgent && (
             <Tooltip content="Start agent" side="top">
               <button
                 onClick={handlePlayClick}
@@ -415,6 +427,34 @@ export const BoardCard = memo(function BoardCard({
               >
                 <svg className="w-3.5 h-3.5 text-accent" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M4.5 2.5a.5.5 0 0 1 .765-.424l8 5a.5.5 0 0 1 0 .848l-8 5A.5.5 0 0 1 4.5 12.5v-10Z" />
+                </svg>
+              </button>
+            </Tooltip>
+          )}
+
+          {hasOpenableSession && onOpenDetail && (
+            <Tooltip content="Open details" side="top">
+              <button
+                onClick={handleOpenDetailClick}
+                className="
+                  p-1 hover:bg-accent/10 rounded transition-all duration-150
+                  opacity-0 group-hover:opacity-100
+                "
+                aria-label="Open details"
+              >
+                <svg
+                  className="w-3.5 h-3.5 text-accent"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect width="18" height="18" x="3" y="3" rx="2" />
+                  <path d="M15 3v18" />
+                  <path d="m8 9 3 3-3 3" />
                 </svg>
               </button>
             </Tooltip>
