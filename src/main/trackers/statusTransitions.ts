@@ -3,6 +3,7 @@
  *
  * - not_started: Work hasn't begun
  * - in_progress: Work is actively being done
+ * - in_review: Work is awaiting review
  * - done: Work is complete
  * - blocked: Work is blocked/on hold
  * - canceled: Work was canceled/won't be done
@@ -75,14 +76,31 @@ export function findBestTransition(
   }
 
   const targetJiraCategories = CATEGORY_TO_JIRA_STATUS_CATEGORY[targetCategory];
+  const keywords = STATUS_KEYWORDS[targetCategory];
 
+  const matchesKeyword = (t: JiraTransition): boolean => {
+    const lowerName = t.name.toLowerCase();
+    const lowerToName = t.to.name.toLowerCase();
+    return keywords.some((k) => lowerName.includes(k) || lowerToName.includes(k));
+  };
+
+  // Strategy 1: Match by tracker status category (most reliable for Jira).
   const categoryMatches = availableTransitions.filter((t) =>
     targetJiraCategories.includes(t.to.statusCategory.key.toLowerCase())
   );
 
   if (categoryMatches.length > 0) {
+    // Linear collapses every "started"-type state into `indeterminate`, so multiple
+    // category matches are common. Prefer transitions whose target name contains
+    // a category-relevant keyword before falling back to the shortest name —
+    // otherwise "Move to Blocked" wins over "Move to In Progress" purely on length.
+    const keywordPreferred = categoryMatches.filter(matchesKeyword);
+    const pool = keywordPreferred.length > 0 ? keywordPreferred : categoryMatches;
+    return pool.sort((a, b) => a.name.length - b.name.length)[0];
   }
 
+  // Strategy 2: No category matches — fall back to keyword matching across all transitions.
+  const keywordMatches = availableTransitions.filter(matchesKeyword);
 
   if (keywordMatches.length > 0) {
     return keywordMatches.sort((a, b) => a.name.length - b.name.length)[0];
@@ -101,6 +119,8 @@ export function findBestTransition(
 export function generateTransitionWarning(
   currentStatus: string,
   targetCategory: StatusCategory,
+  availableTransitions: JiraTransition[],
+  statusMapping?: StatusMapping | null
 ): string {
   const categoryLabels: Record<StatusCategory, string> = {
     not_started: 'Not Started',
@@ -117,6 +137,11 @@ export function generateTransitionWarning(
   }
 
   const availableNames = availableTransitions.map((t) => t.to.name).join(', ');
+  const mappedName = statusMapping?.[targetCategory];
+
+  if (mappedName) {
+  }
+
 }
 
 /**
@@ -135,6 +160,20 @@ export function isTransitionNeeded(
 }
 
 /**
+ * Check if a status change is needed using the same explicit mapping and
+ * tracker-native hints used by sync/import inference.
+ */
+export function isTransitionNeededWithMapping(
+  currentStatus: string,
+  targetCategory: StatusCategory,
+  statusMapping: StatusMapping | null,
+  hint?: { trackerType?: TrackerType; stateType?: string | null }
+): boolean {
+  const currentCategory = inferCategoryWithMapping(currentStatus, statusMapping, hint);
+  return currentCategory !== targetCategory;
+}
+
+/**
  * Uses keyword matching since we don't have status category info from just the name.
  */
 export function inferCategoryFromStatus(statusName: string): StatusCategory {
@@ -149,6 +188,10 @@ export function inferCategoryFromStatus(statusName: string): StatusCategory {
 
   // Default: assume not started for unknown statuses
   return 'not_started';
+}
+
+function normalizeStatusName(statusName: string): string {
+  return statusName.trim().toLowerCase();
 }
 
 // =============================================================================
@@ -178,7 +221,9 @@ export function findTransitionByMapping(
   }
 
   // Find a transition that leads to the mapped status (case-insensitive match)
+  const lowerMappedName = normalizeStatusName(mappedStatusName);
   return availableTransitions.find(
+    (t) => normalizeStatusName(t.to.name) === lowerMappedName
   ) ?? null;
 }
 
@@ -196,9 +241,11 @@ export function inferCategoryFromMapping(
     return null;
   }
 
+  const lowerStatusName = normalizeStatusName(statusName);
 
   // Check each category in the mapping
   for (const [category, mappedName] of Object.entries(statusMapping)) {
+    if (mappedName && normalizeStatusName(mappedName) === lowerStatusName) {
       return category as StatusCategory;
     }
   }
@@ -207,6 +254,7 @@ export function inferCategoryFromMapping(
 }
 
 /**
+ * Transition finder for export. Explicit mapping is the only source of truth.
  *
  * @param availableTransitions - Available transitions from Jira (from current state)
  * @param statusMapping - The explicit status mapping (if configured)
@@ -217,6 +265,10 @@ export function findTransitionWithMapping(
   availableTransitions: JiraTransition[],
   statusMapping: StatusMapping | null
 ): JiraTransition | null {
+  // The explicit mapping is the only source of truth. No heuristic fallback —
+  // if the user hasn't mapped this category, or the mapped state isn't a
+  // valid transition, we surface a warning instead of guessing.
+  return findTransitionByMapping(targetCategory, availableTransitions, statusMapping);
 }
 
 /**

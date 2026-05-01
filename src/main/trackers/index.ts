@@ -19,6 +19,7 @@ export {
   inferCategoryFromStatus,
   inferCategoryWithMapping,
   findTransitionWithMapping,
+  isTransitionNeededWithMapping,
   mapLinearStateTypeToCategory,
 } from './statusTransitions';
 export { TrackerClientService } from './TrackerClientService';

@@ -29,6 +29,7 @@ import { parseLinearFilter } from '../../tracker-clients/linear/filter-types';
 import {
   findTransitionWithMapping,
   generateTransitionWarning,
+  isTransitionNeededWithMapping,
   inferCategoryWithMapping,
 } from '../../trackers/statusTransitions';
 import { resolvePlanRefs, type RefDestination } from '../../documents/planRefResolver';
@@ -467,6 +468,14 @@ export function createExportService(deps: ExportServiceDeps) {
       itemsNeedingFetch.map(item => client!.fetchIssue(item.planItem.external_key!))
     );
 
+    // Build a map of external_key -> tracker issue data (matches JiraCurrentValues type)
+    const jiraDataMap = new Map<string, {
+      summary: string;
+      description: string | null;
+      status: string;
+      statusType?: string | null;
+      updated: string;
+    }>();
     itemsNeedingFetch.forEach((item, index) => {
       const result = jiraFetchResults[index];
       if (result.status === 'fulfilled') {
@@ -475,6 +484,7 @@ export function createExportService(deps: ExportServiceDeps) {
           summary: jiraIssue.title,
           description: jiraIssue.description,
           status: jiraIssue.status,
+          statusType: jiraIssue.statusType ?? null,
           updated: jiraIssue.updatedAt,
         });
       }
@@ -488,6 +498,12 @@ export function createExportService(deps: ExportServiceDeps) {
             item.queueEntry.target_status_category &&
             item.planItem.external_key &&
             jiraData &&
+            isTransitionNeededWithMapping(
+              jiraData.status,
+              item.queueEntry.target_status_category,
+              statusMapping,
+              { trackerType: association?.tracker_type, stateType: jiraData.statusType ?? null }
+            )
           );
         })
       : [];
@@ -532,6 +548,16 @@ export function createExportService(deps: ExportServiceDeps) {
       let statusTransition: StatusTransitionInfo | null = null;
       const targetStatusCategory = item.queueEntry.target_status_category;
 
+      if (
+        targetStatusCategory &&
+        jiraCurrent &&
+        isTransitionNeededWithMapping(
+          jiraCurrent.status,
+          targetStatusCategory,
+          statusMapping,
+          { trackerType: association?.tracker_type, stateType: jiraCurrent.statusType ?? null }
+        )
+      ) {
         const transitions = transitionsMap.get(item.planItem.external_key ?? '');
         if (transitions) {
           const bestTransition = findTransitionWithMapping(targetStatusCategory, transitions, statusMapping);
@@ -541,6 +567,7 @@ export function createExportService(deps: ExportServiceDeps) {
             availableTransition: bestTransition,
             warning: bestTransition
               ? null
+              : generateTransitionWarning(jiraCurrent.status, targetStatusCategory, transitions, statusMapping),
           };
         } else {
           statusTransition = {

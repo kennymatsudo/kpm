@@ -162,6 +162,7 @@ export interface TrackerProjectScope {
 export interface StatusMapping {
   not_started?: string;   // Jira status name for "Not Started" (e.g., "To Do")
   in_progress?: string;   // Jira status name for "In Progress" (e.g., "In Progress")
+  in_review?: string;     // Jira status name for "In Review" (e.g., "Code Review")
   done?: string;          // Jira status name for "Done" (e.g., "Done")
   blocked?: string;       // Jira status name for "Blocked" (e.g., "On Hold")
   canceled?: string;      // Jira status name for "Canceled" (e.g., "Won't Do")
@@ -612,6 +613,7 @@ export interface JiraCurrentValues {
   summary: string;
   description: string | null;
   status: string;  // Current Jira status name
+  statusType?: string | null; // Linear workflow-state type, when available
   updated: string; // ISO timestamp from Jira
 }
 

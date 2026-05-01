@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSyncReviewStore, useTrackerStore } from '../../../stores';
 import { DiffRenderer, StatusTransitionView } from '../DiffRenderer';
+import { StatusMappingForm } from '../mapping/StatusMappingForm';
+import type { CustomFieldValues, JiraCustomField, StatusMapping, SyncReviewItem, TrackerType } from '../../../../shared/types';
 import { CloseIcon } from '../../icons';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 import { useFocusTrap } from '../../../hooks/useFocusTrap';
@@ -38,6 +41,9 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
   } = useSyncReviewStore();
 
   // Extracted hooks
+  const { projectKey, trackerType, customFieldDefaults, statusMapping } = useAssociationData({ projectId, associationId });
+  const loadAssociations = useTrackerStore((state) => state.loadAssociations);
+  const [mappingMode, setMappingMode] = useState(false);
   const trackerLabel = trackerLabelFor(trackerType);
   const { selectedItemId, setSelectedItemId, selectedItem } = useSyncItemSelection({ items });
   const {
@@ -159,6 +165,15 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
     onClose();
   };
 
+  const handleMappingSaved = async (_saved: StatusMapping | null) => {
+    // Reload associations so useAssociationData reflects the new mapping,
+    // then re-run the preview so the export reflects it without losing
+    // the user's queue/decision state.
+    await loadAssociations(projectId);
+    void startReview(projectId, associationId);
+    setMappingMode(false);
+  };
+
   // Loading state
   if (phase === 'loading') {
     return (
@@ -263,7 +278,23 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
   // Main review view - Split layout
   const isExporting = phase === 'exporting';
 
+  const headerAction = !mappingMode && projectKey ? (
+    <button
+      type="button"
+      onClick={() => setMappingMode(true)}
+      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xxs font-medium text-text-tertiary hover:text-text-primary hover:bg-surface-2 transition-colors cursor-pointer"
+      title={`Configure status mappings for ${trackerLabel}`}
+    >
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+      Mappings
+    </button>
+  ) : null;
+
   return (
+    <ModalShell onClose={handleClose} wide trackerLabel={trackerLabel} headerAction={headerAction}>
       {/* Split view container */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* Left panel - Item list */}
@@ -318,7 +349,19 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
           </div>
         </div>
 
+        {/* Right panel - Detail view OR mapping configuration takeover */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden" style={{ background: 'var(--surface-0)' }}>
+          {mappingMode && projectKey && trackerType ? (
+            <MappingPanel
+              associationId={associationId}
+              projectKey={projectKey}
+              trackerType={trackerType}
+              currentMapping={statusMapping}
+              trackerLabel={trackerLabel}
+              onSaved={(saved) => void handleMappingSaved(saved)}
+              onBack={() => setMappingMode(false)}
+            />
+          ) : selectedItem ? (
             <DetailPanel
               item={selectedItem}
               onRemove={() => handleRemove(selectedItem.planItem.id)}
@@ -334,6 +377,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
               onSaveCustomFields={handleSaveCustomFields}
               onClearCustomFields={handleClearCustomFields}
               trackerLabel={trackerLabel}
+              onConfigureMappings={projectKey ? () => setMappingMode(true) : undefined}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center text-text-muted text-xs">
@@ -385,7 +429,58 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
           </button>
         </div>
       </div>
+
     </ModalShell>
+  );
+}
+
+interface MappingPanelProps {
+  associationId: string;
+  projectKey: string;
+  trackerType: TrackerType;
+  currentMapping: StatusMapping | null;
+  trackerLabel: string;
+  onSaved: (mapping: StatusMapping | null) => void;
+  onBack: () => void;
+}
+
+function MappingPanel({
+  associationId,
+  projectKey,
+  trackerType,
+  currentMapping,
+  trackerLabel,
+  onSaved,
+  onBack,
+}: MappingPanelProps) {
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="px-4 py-3 border-b border-border-subtle flex-shrink-0" style={{ background: 'var(--surface-1)' }}>
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1 text-xxs font-medium text-text-tertiary hover:text-text-primary mb-1.5 cursor-pointer"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to export
+        </button>
+        <h3 className="text-sm font-semibold text-text-primary leading-snug">Status Mappings</h3>
+        <p className="text-xxs text-text-muted mt-0.5">
+        </p>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4">
+        <StatusMappingForm
+          associationId={associationId}
+          projectKey={projectKey}
+          trackerType={trackerType}
+          currentMapping={currentMapping}
+          onSaved={onSaved}
+          onCancel={onBack}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -398,8 +493,10 @@ interface ModalShellProps {
   onClose: () => void;
   wide?: boolean;
   trackerLabel: string;
+  headerAction?: React.ReactNode;
 }
 
+function ModalShell({ children, onClose, wide, trackerLabel, headerAction }: ModalShellProps) {
   const { containerRef } = useFocusTrap<HTMLDivElement>({
     isOpen: true,
     onEscape: onClose,
@@ -435,6 +532,15 @@ interface ModalShellProps {
               <h2 className="text-sm font-semibold text-text-primary leading-tight">Export to {trackerLabel}</h2>
               <p className="text-xxs text-text-muted">Review and sync selected items</p>
             </div>
+          </div>
+          <div className="flex items-center gap-1">
+            {headerAction}
+            <button
+              onClick={onClose}
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface-2 transition-all duration-150 cursor-pointer"
+            >
+              <CloseIcon className="w-4 h-4" />
+            </button>
           </div>
         </div>
         {children}
@@ -584,6 +690,7 @@ interface DetailPanelProps {
   onSaveCustomFields: () => void;
   onClearCustomFields: () => void;
   trackerLabel: string;
+  onConfigureMappings?: () => void;
 }
 
 function DetailPanel({
@@ -601,6 +708,7 @@ function DetailPanel({
   onSaveCustomFields,
   onClearCustomFields,
   trackerLabel,
+  onConfigureMappings,
 }: DetailPanelProps) {
   const isCreate = item.queueEntry.operation === 'create';
   const hasErrors = item.validationErrors.length > 0;
@@ -721,6 +829,10 @@ function DetailPanel({
 
           {/* Status Transition */}
           {!isCreate && item.statusTransition && (
+            <StatusTransitionView
+              transition={item.statusTransition}
+              onConfigureMappings={onConfigureMappings}
+            />
           )}
 
           {/* Custom Fields - Collapsible Section */}

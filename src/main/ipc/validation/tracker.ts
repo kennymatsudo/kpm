@@ -232,6 +232,7 @@ export const TrackerSchemas = {
     statusMapping: z.object({
       not_started: optionalString,
       in_progress: optionalString,
+      in_review: optionalString,
       done: optionalString,
       blocked: optionalString,
       canceled: optionalString,

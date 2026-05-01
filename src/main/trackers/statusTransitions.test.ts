@@ -5,8 +5,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   findBestTransition,
+  findTransitionWithMapping,
   inferCategoryFromStatus,
   isTransitionNeeded,
+  isTransitionNeededWithMapping,
   generateTransitionWarning,
   inferCategoryWithMapping,
   mapLinearStateTypeToCategory,
@@ -66,6 +68,39 @@ describe('findBestTransition', () => {
   });
 });
 
+describe('findTransitionWithMapping', () => {
+  it('uses explicit mapping to find the target transition', () => {
+    const transitions = [
+      createTransition('Start Progress', 'In Progress', 'indeterminate'),
+      createTransition('Done', 'Done', 'done'),
+    ];
+
+    const result = findTransitionWithMapping('in_progress', transitions, {
+      in_progress: 'In Progress',
+    });
+
+    expect(result?.name).toBe('Start Progress');
+  });
+
+  it('does not fall back to heuristics when mapping is absent', () => {
+    const transitions = [
+      createTransition('Start Progress', 'In Progress', 'indeterminate'),
+    ];
+
+    expect(findTransitionWithMapping('in_progress', transitions, null)).toBeNull();
+  });
+
+  it('does not fall back to heuristics when explicit mapping is stale', () => {
+    const transitions = [
+      createTransition('Start Progress', 'In Progress', 'indeterminate'),
+    ];
+
+    expect(
+      findTransitionWithMapping('in_progress', transitions, { in_progress: 'Doing' })
+    ).toBeNull();
+  });
+});
+
 describe('inferCategoryFromStatus', () => {
   });
 
@@ -95,6 +130,26 @@ describe('isTransitionNeeded', () => {
   });
 });
 
+describe('isTransitionNeededWithMapping', () => {
+  it('does not request a transition when current status already matches explicit mapping', () => {
+    expect(
+      isTransitionNeededWithMapping('QA', 'in_review', { in_review: 'QA' })
+    ).toBe(false);
+  });
+
+  it('requests a transition when explicit mapping resolves to a different category', () => {
+    expect(
+      isTransitionNeededWithMapping('QA', 'done', { in_review: 'QA' })
+    ).toBe(true);
+  });
+
+  it('uses Linear state type hints when no explicit mapping matches', () => {
+    expect(
+      isTransitionNeededWithMapping('Custom State', 'in_progress', null, { stateType: 'started' })
+    ).toBe(false);
+  });
+});
+
 describe('generateTransitionWarning', () => {
   it('warns when no transitions available', () => {
     const warning = generateTransitionWarning('Done', 'not_started', []);
@@ -110,6 +165,16 @@ describe('generateTransitionWarning', () => {
     expect(warning).toContain('Available:');
     expect(warning).toContain('In Progress');
     expect(warning).toContain('Done');
+  });
+
+  it('distinguishes stale mapped statuses from absent mappings', () => {
+    const transitions = [
+      createTransition('In Progress', 'In Progress', 'indeterminate'),
+    ];
+    const warning = generateTransitionWarning('To Do', 'blocked', transitions, {
+      blocked: 'On Hold',
+    });
+
   });
 });
 

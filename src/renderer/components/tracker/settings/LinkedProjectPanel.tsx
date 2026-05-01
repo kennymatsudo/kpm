@@ -556,6 +556,7 @@ function StatusMappingsTab({
               </SelectTrigger>
               <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)', maxHeight: 320 }}>
                 <SelectItem value={NONE_VALUE}>
+                  <SelectItemText>-- Not mapped --</SelectItemText>
                 </SelectItem>
                 {Object.entries(statusesByCategory).map(([catKey, statuses]) => (
                   <SelectGroup key={catKey}>

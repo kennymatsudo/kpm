@@ -100,6 +100,7 @@ function cleanStatusMapping(statusMapping: StatusMapping): StatusMapping | null 
 
   if (statusMapping.not_started) cleanedMapping.not_started = statusMapping.not_started;
   if (statusMapping.in_progress) cleanedMapping.in_progress = statusMapping.in_progress;
+  if (statusMapping.in_review) cleanedMapping.in_review = statusMapping.in_review;
   if (statusMapping.done) cleanedMapping.done = statusMapping.done;
   if (statusMapping.blocked) cleanedMapping.blocked = statusMapping.blocked;
   if (statusMapping.canceled) cleanedMapping.canceled = statusMapping.canceled;
