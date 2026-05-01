@@ -20,6 +20,7 @@ import { configureMonaco } from '../../lib/monaco';
 import { useTheme } from '../../contexts';
 import { createMonacoThemeData } from '../../themes';
 import { registerPlanRefMonacoProviders } from './planRefMonaco';
+import { Tooltip } from './Tooltip';
 
 export interface MarkdownEditorProps {
   content: string;
@@ -34,6 +35,16 @@ interface ToolbarButtonProps {
 
 function ToolbarButton({ onClick, title, children }: ToolbarButtonProps) {
   return (
+    <Tooltip content={title} side="bottom">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={title}
+        className="p-1.5 rounded-md transition-colors text-text-muted hover:text-text-primary hover:bg-surface-2"
+      >
+        {children}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -718,6 +729,22 @@ export function MarkdownEditor({
           </div>
         </div>
 
+        <Tooltip content="Search in document (Cmd+F)" side="bottom">
+          <button
+            type="button"
+            onClick={handleSearchButton}
+            aria-label="Search in document"
+            className={`flex-shrink-0 p-1.5 rounded-md transition-colors ${
+              showSearch
+                ? 'bg-surface-3 text-text-primary'
+                : 'text-text-muted hover:text-text-primary hover:bg-surface-2'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </button>
+        </Tooltip>
       </div>
 
       {showSearch && activeTab === 'preview' && (
@@ -758,12 +785,48 @@ export function MarkdownEditor({
             )}
 
             <div className="flex items-center gap-0.5">
+              <Tooltip content="Previous match (Shift+Enter)" side="bottom">
+                <button
+                  type="button"
+                  onClick={goToPrevMatch}
+                  disabled={totalMatches === 0}
+                  className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-1
+                             transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  aria-label="Previous match"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                  </svg>
+                </button>
+              </Tooltip>
+              <Tooltip content="Next match (Enter)" side="bottom">
+                <button
+                  type="button"
+                  onClick={goToNextMatch}
+                  disabled={totalMatches === 0}
+                  className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-1
+                             transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  aria-label="Next match"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </Tooltip>
+            </div>
+
+            <Tooltip content="Close search (Esc)" side="bottom">
               <button
                 type="button"
+                onClick={closeSearch}
+                className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-1 transition-colors"
+                aria-label="Close search"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
+            </Tooltip>
           </div>
         </div>
       )}

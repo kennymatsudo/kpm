@@ -4,6 +4,7 @@
 import { memo, useState, useEffect, useRef } from 'react';
 import type { DevSessionWithPlanItem, AgentSessionState } from '../../../shared/types';
 import type { BackgroundCommitState } from '../../stores/devSessions';
+import { Tooltip } from '../ui';
 
 interface DetailPaneHeaderProps {
   session: DevSessionWithPlanItem;
@@ -47,6 +48,7 @@ function OverflowMenu({ items }: { items: OverflowItem[] }) {
 
   return (
     <div ref={containerRef} className="relative">
+      <Tooltip content="More actions" side="bottom">
       <button
         onClick={() => setIsOpen((p) => !p)}
         className="p-1 rounded text-text-muted hover:bg-surface-3 transition-colors"
@@ -58,6 +60,7 @@ function OverflowMenu({ items }: { items: OverflowItem[] }) {
           <circle cx="14" cy="8" r="1.5" />
         </svg>
       </button>
+      </Tooltip>
       {isOpen && (
         <div className="absolute right-0 top-full mt-1 z-50 bg-surface-2 border border-border-subtle rounded-lg shadow-lg py-1 min-w-[160px]">
           {items.map((item, i) => (
@@ -105,6 +108,17 @@ export const DetailPaneHeader = memo(function DetailPaneHeader({
 
   return (
       <div className="flex items-start gap-2">
+        <Tooltip content="Close" side="bottom">
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-surface-3 rounded transition-colors shrink-0 mt-0.5"
+            aria-label="Close detail pane"
+          >
+            <svg className="w-4 h-4 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </Tooltip>
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-medium text-text-primary line-clamp-2">{title}</h3>
           {session.plan_item?.external_key && (

@@ -6,6 +6,7 @@ import { CardActivityLine } from './CardActivityLine';
 import type { PlanItem, AgentSessionState } from '../../../shared/types';
 import { toReviewSessionId } from '../../../shared/agent-types';
 import { openExternalUrl } from '../../services/shellService';
+import { Tooltip } from '../ui';
 
 const STALE_ACTIVITY_MS = 5 * 60 * 1000;
 
@@ -296,24 +297,57 @@ export const BoardCard = memo(function BoardCard({
 
         {/* Attention indicator (waiting for input) */}
         {visualState === 'attention' && (
+          <Tooltip content="Agent needs your attention" side="top">
+            <span
+              className="flex-shrink-0 mt-1 w-2 h-2 rounded-full bg-amber-500"
+              aria-label="Agent needs your attention"
+            />
+          </Tooltip>
         )}
 
         {visualState === 'stale' && (
+          <Tooltip content="Session state is stale" side="top">
+            <span
+              className="flex-shrink-0 mt-1 w-2 h-2 rounded-full bg-amber-500"
+              aria-label="Session state is stale"
+            />
+          </Tooltip>
         )}
 
         {/* Needs attention indicator: automation interrupted OR review items need user action */}
         {(automationPhase === 'needs_attention' || reviewActionable?.hasActionable) && visualState !== 'active' && visualState !== 'attention' && (
+          <Tooltip
+            content={
               reviewActionable?.hasActionable
                 ? buildReviewActionableTooltip(reviewActionable.counts, automationPhase === 'needs_attention')
                 : 'Automation interrupted — click Play to continue'
             }
+            side="top"
+          >
+            <span
+              className="flex-shrink-0 mt-1 w-2 h-2 rounded-full bg-orange-500"
+              aria-label="Needs attention"
+            />
+          </Tooltip>
         )}
 
         {/* Active session indicator (legacy green dot) */}
+          <Tooltip content={activeSessionCount === 1 ? 'Agent running' : `${activeSessionCount} agents running`} side="top">
+            <span
+              className="flex-shrink-0 mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500"
+              aria-label={activeSessionCount === 1 ? 'Agent running' : `${activeSessionCount} agents running`}
+            />
+          </Tooltip>
         )}
 
         {/* Merge blocked indicator — PR open but a dependency hasn't merged yet */}
         {isMergeBlocked && (
+          <Tooltip content="Merge blocked — a dependency PR hasn't merged yet" side="top">
+            <span
+              className="flex-shrink-0 mt-1 w-2 h-2 rounded-full bg-amber-400"
+              aria-label="Merge blocked"
+            />
+          </Tooltip>
         )}
       </div>
 
@@ -357,15 +391,62 @@ export const BoardCard = memo(function BoardCard({
         <div className="flex items-center gap-1 ml-auto flex-shrink-0">
           {/* Stop button — visible when agent is active */}
           {(visualState === 'active' || visualState === 'attention') && onStopAgent && (
+            <Tooltip content="Stop agent" side="top">
+              <button
+                onClick={handleStopClick}
+                className="p-1 hover:bg-red-500/10 rounded transition-colors"
+                aria-label="Stop agent"
+              >
+                <svg className="w-3 h-3 text-red-400" viewBox="0 0 16 16" fill="currentColor">
+                  <rect x="3" y="3" width="10" height="10" rx="1.5" />
+                </svg>
+              </button>
+            </Tooltip>
           )}
 
+            <Tooltip content="Start agent" side="top">
+              <button
+                onClick={handlePlayClick}
+                className="
+                  p-1 hover:bg-accent/10 rounded transition-all duration-150
+                  opacity-0 group-hover:opacity-100
+                "
+                aria-label="Start agent"
+              >
+                <svg className="w-3.5 h-3.5 text-accent" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M4.5 2.5a.5.5 0 0 1 .765-.424l8 5a.5.5 0 0 1 0 .848l-8 5A.5.5 0 0 1 4.5 12.5v-10Z" />
+                </svg>
+              </button>
+            </Tooltip>
+          )}
+
+          {/* Edit button — appears on hover */}
+          <Tooltip content="Edit item" side="top">
             <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onPrepareEdit?.();
+                onEdit();
+              }}
+              onMouseEnter={onPrepareEdit}
+              onFocus={onPrepareEdit}
               className="
                 opacity-0 group-hover:opacity-100
+                p-1 hover:bg-surface-3 rounded
+                transition-all duration-150
               "
+              aria-label="Edit item"
             >
+              <svg className="w-3 h-3 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                />
               </svg>
             </button>
+          </Tooltip>
         </div>
       </div>
     </div>

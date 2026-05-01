@@ -2,6 +2,7 @@ import { useCallback, useState, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Layout } from './components/layout';
 import { ProjectOnboardingWizard } from './components/onboarding';
+import { TooltipProvider } from './components/ui';
 import {
   useStoreSubscriptions,
   useProjectDomainStore,
@@ -52,6 +53,7 @@ export default function App() {
   return (
     <MotionProvider>
       <ThemeProvider>
+        <TooltipProvider>
         <ErrorBoundary name="App">
           {/* data-testid for E2E tests to wait for app initialization */}
           <div data-testid={isAppReady ? 'app-ready' : undefined} />
@@ -67,6 +69,7 @@ export default function App() {
             onCreate={handleCreateProject}
           />
         </ErrorBoundary>
+        </TooltipProvider>
       </ThemeProvider>
     </MotionProvider>
   );

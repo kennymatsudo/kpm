@@ -14,3 +14,4 @@ export type { DiffLine, InlineDiffHunk } from './DiffViewer';
 export { ToastContainer } from './Toast';
 export { Badge } from './Badge';
 export type { BadgeVariant, BadgeSize } from './Badge';
+export { Tooltip, TooltipProvider } from './Tooltip';

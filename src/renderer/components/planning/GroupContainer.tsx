@@ -15,6 +15,7 @@ import { useState, useRef, useCallback, memo, useEffect } from 'react';
 import type { Group } from '../../../shared/types';
 import { Z_INDEX } from '../../constants/zIndex';
 import { GROUP_LAYOUT } from '../../constants/layout';
+import { Tooltip } from '../ui';
 
 interface GroupContainerProps {
   group: Group;
@@ -237,10 +238,12 @@ export const GroupContainer = memo(function GroupContainer({
         onMouseDown={handleMouseDown}
       >
         {/* Collapse toggle button */}
+        <Tooltip content={isCollapsed ? 'Expand group' : 'Collapse group'} side="bottom">
         <button
           className="p-0.5 rounded text-text-tertiary hover:text-text-primary hover:bg-surface-2
             transition-colors flex-shrink-0"
           onClick={handleCollapseToggle}
+          aria-label={isCollapsed ? 'Expand group' : 'Collapse group'}
         >
           <svg
             className={`w-4 h-4 transition-transform duration-150 ${isCollapsed ? '' : 'rotate-90'}`}
@@ -251,6 +254,7 @@ export const GroupContainer = memo(function GroupContainer({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </button>
+        </Tooltip>
 
         {/* Name (editable) */}
         {isEditingName ? (
@@ -270,6 +274,7 @@ export const GroupContainer = memo(function GroupContainer({
               {group.name}
             </span>
             {/* Edit name button */}
+            <Tooltip content="Edit name" side="bottom">
             <button
               className="opacity-0 group-hover:opacity-100 p-1 rounded
                 text-text-tertiary hover:text-text-primary hover:bg-surface-2
@@ -280,16 +285,19 @@ export const GroupContainer = memo(function GroupContainer({
                 setEditedName(group.name);
               }}
               onMouseDown={(e) => e.stopPropagation()}
+              aria-label="Edit group name"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
               </svg>
             </button>
+            </Tooltip>
           </>
         )}
 
         {/* Delete button */}
         {onDelete && (
+          <Tooltip content="Delete group" side="bottom">
           <button
             className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md
               text-text-tertiary hover:text-danger hover:bg-danger-muted
@@ -298,11 +306,13 @@ export const GroupContainer = memo(function GroupContainer({
               e.stopPropagation();
               onDelete(group.id);
             }}
+            aria-label="Delete group"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
           </button>
+          </Tooltip>
         )}
       </div>
 

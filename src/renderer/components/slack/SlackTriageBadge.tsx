@@ -9,6 +9,7 @@
 
 import { useEffect } from 'react';
 import { useSlackTriageStore } from '../../stores';
+import { Tooltip } from '../ui';
 
 interface SlackTriageBadgeProps {
   projectId: string;
@@ -35,8 +36,13 @@ export function SlackTriageBadge({ projectId }: SlackTriageBadgeProps) {
   if (!isAvailable) return null;
 
   return (
+    <Tooltip
+      content={pendingCount > 0 ? `Slack Triage (${pendingCount})` : 'Slack Triage'}
+      side="bottom"
+    >
       <button
         onClick={() => setPanelOpen(!isPanelOpen)}
+        className={`relative p-1.5 rounded-md transition-colors flex-shrink-0 ${
           isPanelOpen
             ? 'text-accent bg-accent/10'
             : 'text-text-muted hover:text-accent hover:bg-accent/10'
@@ -57,5 +63,6 @@ export function SlackTriageBadge({ projectId }: SlackTriageBadgeProps) {
           </span>
         )}
       </button>
+    </Tooltip>
   );
 }

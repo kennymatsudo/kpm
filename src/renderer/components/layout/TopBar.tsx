@@ -19,6 +19,7 @@ import { SlackTriageBadge, SlackTriagePanel } from '../slack';
 import { useProjectEdit } from './hooks/useProjectEdit';
 import { useProjectMenu } from './hooks/useProjectMenu';
 import { useTrackerTopBarIntegration } from './hooks/useTrackerTopBarIntegration';
+import { Tooltip } from '../ui';
 
 interface TopBarProps {
   // Sidebar controls
@@ -192,6 +193,7 @@ export function TopBar({
               {/* Action buttons - independent toggles, no shared container */}
               <div className="flex items-center gap-1">
                 {/* Briefing button - read-only context, small icon */}
+                <Tooltip content="Project Briefing" side="bottom">
                   <button
                     onClick={() => {
                       useBriefingStore.getState().openModal();
@@ -203,11 +205,22 @@ export function TopBar({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                     </svg>
                   </button>
+                </Tooltip>
 
                 {/* Slack triage button - conditional, small icon */}
                 <SlackTriageBadge projectId={currentProjectId!} />
 
                 {/* Tracker sync - mutating state with queue, labeled button */}
+                <Tooltip
+                  content={
+                    !hasTrackerCredentials
+                      ? `Connect ${trackerLabel}`
+                      : !hasAssociations
+                        ? `Link ${trackerLabel} Project`
+                        : `${trackerLabel} Sync`
+                  }
+                  side="bottom"
+                >
                   <button
                     onClick={handleTrackerClick}
                     className="relative flex items-center gap-1.5 pl-2 pr-2.5 h-7 rounded-md border border-border-subtle bg-surface-2 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface-3 hover:border-border-default transition-colors"
@@ -231,12 +244,33 @@ export function TopBar({
                       </span>
                     )}
                   </button>
+                </Tooltip>
               </div>
             </>
           )}
 
           {/* Chat toggle - panel chrome, sits at the far right edge to mirror the sidebar toggle on the left */}
           {(mainView === 'planning' || mainView === 'workspace') && (
+            <Tooltip content={chatCollapsed ? 'Show chat' : 'Hide chat'} side="bottom">
+              <button
+                onClick={onToggleChat}
+                className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ml-1 ${
+                  chatCollapsed
+                    ? 'text-text-muted hover:text-text-primary hover:bg-surface-3'
+                    : 'text-accent bg-accent/10 hover:bg-accent/20'
+                }`}
+                aria-label={chatCollapsed ? 'Expand chat panel' : 'Collapse chat panel'}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                  />
+                </svg>
+              </button>
+            </Tooltip>
           )}
         </div>
       </header>

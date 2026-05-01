@@ -417,11 +417,26 @@ export function ToolLogPanel() {
         )}
 
         {/* Enable/disable toggle */}
+        <Tooltip content={isEnabled ? 'Disable logging' : 'Enable logging'} side="top">
+          <button
+            onClick={() => setEnabled(!isEnabled)}
+            className={`text-xxs px-1.5 py-0.5 rounded font-medium transition-colors ${
+              isEnabled
+                ? 'bg-accent/10 text-accent'
+                : 'bg-surface-2 text-text-quaternary'
+            }`}
+            aria-label={isEnabled ? 'Disable logging' : 'Enable logging'}
+          >
+            {isEnabled ? 'ON' : 'OFF'}
+          </button>
+        </Tooltip>
 
         {/* Copy button */}
+        <Tooltip content={copyFeedback ? 'Copied!' : 'Copy logs to clipboard'} side="top">
         <button
           onClick={handleCopyLogs}
           className="text-text-quaternary hover:text-text-secondary transition-colors p-0.5"
+          aria-label="Copy logs to clipboard"
         >
           {copyFeedback ? (
             <svg className="w-3.5 h-3.5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -433,10 +448,31 @@ export function ToolLogPanel() {
             </svg>
           )}
         </button>
+        </Tooltip>
 
         {/* Clear button */}
+        <Tooltip content="Clear log" side="top">
+          <button
+            onClick={clearSession}
+            aria-label="Clear log"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </Tooltip>
 
         {/* Close button */}
+        <Tooltip content="Close (Cmd+Shift+T)" side="top">
+          <button
+            onClick={togglePanel}
+            aria-label="Close tool log"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </Tooltip>
       </div>
 
       {/* Timeline */}
