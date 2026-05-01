@@ -35,6 +35,11 @@ interface Props {
   onUnlink: () => void;
 }
 
+function isMissingProjectError(error: string): boolean {
+  const normalized = error.toLowerCase();
+  return normalized.includes('not found') || normalized.includes('404');
+}
+
 export function LinkedProjectPanel({ association, onUnlink }: Props) {
   const isLinear = association.tracker_type === 'linear';
   const trackerLabel = isLinear ? 'Linear' : 'Jira';
@@ -148,6 +153,8 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
   }
 
   const visibleTabs = (isLinear ? ['statuses'] : ['types', 'statuses', 'fields']) as readonly Tab[];
+  const hasTypesError = !isLinear && !!typesError;
+  const isMissingProject = hasTypesError && typesError ? isMissingProjectError(typesError) : false;
 
   return (
     <div className="space-y-5">
@@ -197,12 +204,28 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
         )}
       </div>
 
+      {/* Tracker metadata warning — stale project keys get an unlink CTA. */}
+      {hasTypesError && (
         <div className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
+          <p className="font-medium text-warning">
+            {isMissingProject ? 'Project not found in Jira' : 'Unable to load Jira project metadata'}
+          </p>
           <p className="mt-1 text-text-secondary text-xs">
             The project key <span className="font-mono">{projectKey}</span> returned an error: {typesError}
           </p>
           <p className="mt-1 text-text-secondary text-xs">
+            {isMissingProject
+              ? 'The project may have been deleted or its key changed. Consider unlinking it.'
+              : 'Check Jira credentials, permissions, or network connectivity, then reopen tracker settings.'}
           </p>
+          {isMissingProject && (
+            <button
+              onClick={() => setShowUnlinkConfirm(true)}
+              className="mt-2 btn btn-danger text-xs"
+            >
+              Unlink project
+            </button>
+          )}
         </div>
       )}
 

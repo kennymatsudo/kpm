@@ -14,6 +14,11 @@ function cacheKey(trackerType: TrackerType, projectKey: string): string {
   return `${trackerType}:${projectKey}`;
 }
 
+function isPermanentMissingProjectError(error: string): boolean {
+  const normalized = error.toLowerCase();
+  return normalized.includes('not found') || normalized.includes('404');
+}
+
 export interface TrackerProjectRef {
   key: string;
   name: string;
@@ -188,6 +193,12 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
       }
     }
 
+    // Don't retry permanent missing-project failures until the caller explicitly
+    // forces a refresh. Transient auth/network/server errors should remain
+    // retryable so they don't become sticky after one bad request.
+    const cachedError = state.issueTypesErrorByProject[projectKey];
+    if (!force && cachedError && isPermanentMissingProjectError(cachedError)) {
+      return { success: false, error: cachedError };
     }
 
     if (state.loadingIssueTypesFor.has(projectKey)) {

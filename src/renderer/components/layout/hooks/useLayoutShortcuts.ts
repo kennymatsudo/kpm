@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useSettingsUIStore, useArtifactsStore, useSearchStore } from '../../../stores';
+import { subscribeToCloseContextMenu } from '../../../services/menuService';
 
 export interface UseLayoutShortcutsOptions {
   onToggleSidebar: () => void;
@@ -122,6 +123,7 @@ export function useLayoutShortcuts({
     return () => window.removeEventListener('keydown', handleKeyDown, true);
 
   useEffect(() => {
+    return subscribeToCloseContextMenu(() => {
       onClose?.();
     });
   }, [onClose]);

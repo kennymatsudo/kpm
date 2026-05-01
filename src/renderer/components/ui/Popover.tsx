@@ -4,6 +4,7 @@
  * Thin wrapper over `@radix-ui/react-popover` that bakes in:
  * - Modal-layer-aware z-index (`useModalLayer() + 10`) so popovers spawned
  *   inside a Modal sit above it instead of behind
+ * - Sensible defaults for `sideOffset` and `collisionPadding`
  *
  * Usage mirrors Radix:
  *
@@ -33,6 +34,9 @@ type PopoverContentProps = ComponentPropsWithoutRef<typeof RadixPopover.Content>
 /**
  * Wrapped popover content: portal + standard surface styling + modal-aware
  * z-index. Forwards every other Radix `Content` prop (`side`, `align`,
+ * `sideOffset`, `collisionPadding`, `onOpenAutoFocus`, etc.). Call sites that
+ * should keep focus on the trigger can pass `onOpenAutoFocus={(e) =>
+ * e.preventDefault()}` explicitly.
  */
 export const PopoverContent = forwardRef<
   ElementRef<typeof RadixPopover.Content>,
@@ -63,6 +67,7 @@ export const PopoverContent = forwardRef<
         align={align}
         sideOffset={sideOffset}
         collisionPadding={collisionPadding}
+        onOpenAutoFocus={onOpenAutoFocus}
         className={`bg-surface-elevated rounded-xl overflow-hidden border border-border-default outline-none ${className}`}
         style={{
           zIndex: resolvedZIndex,
