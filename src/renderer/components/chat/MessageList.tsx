@@ -8,6 +8,7 @@ import { Markdown } from 'markdown-to-jsx';
 import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
 import { CopyIcon, CheckIcon } from '../icons';
 import { ProcessTimeline } from './ProcessTimeline';
+import { Tooltip } from '../ui/Tooltip';
 import { AttachmentChip } from './AttachmentChip';
 
 /** Extract text content from message segments for copy/display */
@@ -61,6 +62,22 @@ const CopyButton = memo(function CopyButton({
   };
 
   return (
+    <Tooltip content={copied ? 'Copied!' : 'Copy message'} side="top">
+      <button
+        onClick={handleCopy}
+        className={
+          className ??
+          'absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-surface-3 text-text-muted hover:text-text-primary'
+        }
+        aria-label={copied ? 'Message copied' : 'Copy message'}
+      >
+        {copied ? (
+          <CheckIcon className="w-3.5 h-3.5 text-success" />
+        ) : (
+          <CopyIcon className="w-3.5 h-3.5" />
+        )}
+      </button>
+    </Tooltip>
   );
 });
 

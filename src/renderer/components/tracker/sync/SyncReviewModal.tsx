@@ -4,6 +4,16 @@ import { CloseIcon } from '../../icons';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 import { useFocusTrap } from '../../../hooks/useFocusTrap';
 import { Z_INDEX } from '../../../constants/zIndex';
+import { ModalLayerProvider } from '../../ui/ModalLayerContext';
+import {
+  NONE_VALUE,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectItemText,
+  SelectTrigger,
+  SelectValue,
+} from '../../ui/Select';
 import { useAssociationData, useCustomFieldManagement, useSyncItemSelection } from './hooks';
 
 interface Props {
@@ -397,6 +407,8 @@ interface ModalShellProps {
   });
 
   return (
+    <ModalLayerProvider zIndex={Z_INDEX.modal}>
+      <div className="dialog-overlay p-6" style={{ zIndex: Z_INDEX.modal }}>
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-[2px]"
         onClick={onClose}
@@ -427,6 +439,8 @@ interface ModalShellProps {
         </div>
         {children}
       </div>
+      </div>
+    </ModalLayerProvider>
   );
 }
 
@@ -777,7 +791,32 @@ function DetailPanel({
                             </span>
                           </div>
                           {field.type === 'option' && field.allowedValues ? (
+                            <Select
+                              value={customFieldDraft[field.id] || NONE_VALUE}
+                              onValueChange={(next) => onCustomFieldChange(field.id, next === NONE_VALUE ? '' : next)}
                             >
+                              <SelectTrigger
+                                aria-label={field.name}
+                                className="w-full flex items-center justify-between bg-surface-3 text-text-primary text-tiny rounded px-2 py-1 border border-border-subtle focus:border-accent focus:outline-none cursor-pointer"
+                              >
+                                <SelectValue />
+                                <svg className="w-3 h-3 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </SelectTrigger>
+                              <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                                <SelectItem value={NONE_VALUE}>
+                                  <SelectItemText>
+                                    {hasDefault ? `Default: ${defaultDisplay}` : '-- No default --'}
+                                  </SelectItemText>
+                                </SelectItem>
+                                {field.allowedValues.map((opt) => (
+                                  <SelectItem key={opt.id} value={opt.id}>
+                                    <SelectItemText>{opt.value}</SelectItemText>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           ) : (
                             <input
                               type="text"

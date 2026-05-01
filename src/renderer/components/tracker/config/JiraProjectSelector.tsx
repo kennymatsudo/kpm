@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { CloseIcon } from '../../icons';
 import { LoadingSpinner } from '../../ui/LoadingButton';
+import { Tooltip } from '../../ui/Tooltip';
 import type { TrackerProjectRef } from '../../../stores/tracker/useMetadataStore';
 
 interface Props {
@@ -75,6 +76,14 @@ export function JiraProjectSelector({
             <span className="text-text-muted mx-2">·</span>
             <span className="text-sm text-text-secondary">{selectedProject.name}</span>
           </div>
+          <Tooltip content="Change project" side="top">
+            <button
+              onClick={() => onSelect(null)}
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface-3 transition-all duration-150 cursor-pointer opacity-0 group-hover:opacity-100"
+            >
+              <CloseIcon className="w-3.5 h-3.5" />
+            </button>
+          </Tooltip>
         </div>
       ) : (
         <>

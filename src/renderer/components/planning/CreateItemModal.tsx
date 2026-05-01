@@ -14,6 +14,15 @@ import { Modal, ModalHeader } from '../ui/Modal';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { MotionButton } from '../ui/MotionButton';
 import { LoadingSpinner } from '../ui/LoadingButton';
+import {
+  NONE_VALUE,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectItemText,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/Select';
 import type { PlanItem, StatusCategory } from '../../../shared/types';
 import { STATUS_CATEGORY_OPTIONS, STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 
@@ -348,9 +357,35 @@ export function CreateItemModal({
                       <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
                         Type
                       </label>
+                      <Select
+                        value={label === '' ? NONE_VALUE : label}
+                        onValueChange={(next) => setLabel(next === NONE_VALUE ? '' : next)}
+                        disabled={isSubmitting}
+                      >
+                        <SelectTrigger
+                          aria-label="Type"
+                          className="input w-full flex items-center gap-2 py-2.5 text-sm cursor-pointer"
                         >
+                          <span
+                            className="w-2 h-2 rounded-full shrink-0 transition-colors"
+                            style={{ background: typeColor || 'var(--color-text-muted)', opacity: label ? 1 : 0.3 }}
+                            aria-hidden="true"
+                          />
+                          <span className="flex-1 text-left">
+                            <SelectValue />
+                          </span>
+                          <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                           </svg>
+                        </SelectTrigger>
+                        <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                          {TYPE_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value === '' ? NONE_VALUE : opt.value}>
+                              <SelectItemText>{opt.label}</SelectItemText>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     {/* Status category selector */}
@@ -358,9 +393,37 @@ export function CreateItemModal({
                       <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
                         Status
                       </label>
+                      <Select
+                        value={statusCategory === '' ? NONE_VALUE : statusCategory}
+                        onValueChange={(next) =>
+                          setStatusCategory(next === NONE_VALUE ? '' : (next as StatusCategory))
+                        }
+                        disabled={isSubmitting}
+                      >
+                        <SelectTrigger
+                          aria-label="Status"
+                          className="input w-full flex items-center gap-2 py-2.5 text-sm cursor-pointer"
                         >
+                          <span
+                            className={`w-2 h-2 rounded-full shrink-0 transition-colors ${statusConfig?.bgClass ?? 'bg-surface-3'}`}
+                            style={{ opacity: statusCategory ? 1 : 0.3 }}
+                            aria-hidden="true"
+                          />
+                          <span className="flex-1 text-left">
+                            <SelectValue />
+                          </span>
+                          <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                           </svg>
+                        </SelectTrigger>
+                        <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                          {STATUS_CATEGORY_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value === '' ? NONE_VALUE : opt.value}>
+                              <SelectItemText>{opt.label}</SelectItemText>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
 
@@ -369,10 +432,42 @@ export function CreateItemModal({
                     <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
                       Parent Item
                     </label>
+                    <Select
+                      value={parentId === null ? NONE_VALUE : parentId}
+                      onValueChange={(next) => setParentId(next === NONE_VALUE ? null : next)}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger
+                        aria-label="Parent Item"
+                        className="input w-full flex items-center gap-2 py-2.5 text-sm cursor-pointer"
+                      >
+                        <span className="text-text-muted shrink-0" aria-hidden="true">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                          </svg>
+                        </span>
+                        <span className="flex-1 text-left truncate">
+                          <SelectValue />
+                        </span>
+                        <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
+                      </SelectTrigger>
+                      <SelectContent
+                        style={{ minWidth: 'var(--radix-select-trigger-width)', maxHeight: 320 }}
                       >
                         {parentOptions.map((opt) => (
+                          <SelectItem
+                            key={opt.value}
+                            value={opt.value === '' ? NONE_VALUE : opt.value}
+                          >
+                            <SelectItemText>
+                              {opt.parentLabel ? `${opt.parentLabel} › ${opt.label}` : opt.label}
+                            </SelectItemText>
+                          </SelectItem>
                         ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </m.div>

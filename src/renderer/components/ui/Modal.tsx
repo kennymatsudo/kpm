@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { Z_INDEX } from '../../constants/zIndex';
+import { ModalLayerProvider } from './ModalLayerContext';
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | 'full';
 
@@ -136,6 +137,7 @@ export function Modal({
             onAnimationComplete={onAnimationComplete}
             className={`dialog-content ${sizeClasses[size]} mx-4 ${className}`}
           >
+            <ModalLayerProvider zIndex={zIndex}>{children}</ModalLayerProvider>
           </m.div>
         </m.div>
       )}

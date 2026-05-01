@@ -3,6 +3,17 @@ import { m } from 'framer-motion';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 import { CloseIcon } from '../../icons';
 import {
+  NONE_VALUE,
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectItemText,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '../../ui/Select';
+import {
   useJiraDataLoader,
   useStatusMapping,
   useEpicKey,
@@ -356,8 +367,33 @@ function TypeMappingsTab({
                   <CloseIcon className="w-3.5 h-3.5" />
                 </button>
               </div>
+              <Select
                 value={mapping.tracker_issue_type_id}
+                onValueChange={(next) => void onSaveMapping(mapping.kpm_label, next)}
               >
+                <SelectTrigger
+                  aria-label={`Tracker type for ${mapping.kpm_label}`}
+                  className="w-full flex items-center justify-between bg-surface-3 text-text-primary text-xs rounded-lg px-2 py-1.5 border border-border-default focus:border-accent focus:outline-none cursor-pointer"
+                >
+                  <SelectValue placeholder={jiraIssueTypes.length === 0 ? 'Loading…' : 'Select type'} />
+                  <svg className="w-3.5 h-3.5 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </SelectTrigger>
+                <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                  {jiraIssueTypes.length === 0 ? (
+                    <SelectItem value="__loading__" disabled>
+                      <SelectItemText>Loading…</SelectItemText>
+                    </SelectItem>
+                  ) : (
+                    jiraIssueTypes.map((type) => (
+                      <SelectItem key={type.id} value={type.id}>
+                        <SelectItemText>{type.name}</SelectItemText>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
             </div>
           ))}
         </div>
@@ -376,7 +412,33 @@ function TypeMappingsTab({
             placeholder="Label (e.g., story, bug)..."
             className="input"
           />
+          <Select
+            value={selectedTypeForNew || undefined}
+            onValueChange={setSelectedTypeForNew}
           >
+            <SelectTrigger
+              aria-label="Jira type for new mapping"
+              className="w-full flex items-center justify-between bg-surface-2 text-text-primary text-sm rounded-lg px-3 py-2 border border-border-default focus:border-accent focus:outline-none cursor-pointer"
+            >
+              <SelectValue placeholder="Select Jira type..." />
+              <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </SelectTrigger>
+            <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+              {jiraIssueTypes.length === 0 ? (
+                <SelectItem value="__loading__" disabled>
+                  <SelectItemText>Loading…</SelectItemText>
+                </SelectItem>
+              ) : (
+                jiraIssueTypes.map((type) => (
+                  <SelectItem key={type.id} value={type.id}>
+                    <SelectItemText>{type.name}</SelectItemText>
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
           <button
             onClick={onAddMapping}
             disabled={!newLabel.trim() || !selectedTypeForNew}
@@ -446,7 +508,36 @@ function StatusMappingsTab({
               <span className="text-text-primary text-sm font-medium">{category.label}</span>
               <p className="text-text-tertiary text-xs">{category.description}</p>
             </div>
+            <Select
+              value={statusMapping[category.key] || NONE_VALUE}
+              onValueChange={(next) => onMappingChange(category.key, next === NONE_VALUE ? '' : next)}
             >
+              <SelectTrigger
+                aria-label={`Tracker status mapping for ${category.label}`}
+                className="w-full flex items-center justify-between bg-surface-3 text-text-primary text-xs rounded-lg px-2 py-1.5 border border-border-default focus:border-accent focus:outline-none cursor-pointer"
+              >
+                <SelectValue />
+                <svg className="w-3.5 h-3.5 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </SelectTrigger>
+              <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)', maxHeight: 320 }}>
+                <SelectItem value={NONE_VALUE}>
+                </SelectItem>
+                {Object.entries(statusesByCategory).map(([catKey, statuses]) => (
+                  <SelectGroup key={catKey}>
+                    <SelectLabel className="px-2 py-1 text-xxs font-medium uppercase tracking-wider text-text-muted">
+                      {getCategoryLabel(catKey)}
+                    </SelectLabel>
+                    {statuses.map((status) => (
+                      <SelectItem key={status.id} value={status.name}>
+                        <SelectItemText>{status.name}</SelectItemText>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         ))}
       </div>
@@ -530,7 +621,27 @@ function CustomFieldsTab({
         <label className="block text-xs font-medium text-text-muted uppercase tracking-wider mb-2">
           Browse Fields By Type
         </label>
+        <Select
+          value={selectedIssueType || undefined}
+          onValueChange={onIssueTypeChange}
         >
+          <SelectTrigger
+            aria-label="Browse Fields By Type"
+            className="w-full flex items-center justify-between bg-surface-2 text-text-primary text-sm rounded-lg px-3 py-2 border border-border-default focus:border-accent focus:outline-none cursor-pointer"
+          >
+            <SelectValue placeholder="Select issue type to view fields..." />
+            <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </SelectTrigger>
+          <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+            {jiraIssueTypes.map((type) => (
+              <SelectItem key={type.id} value={type.id}>
+                <SelectItemText>{type.name}</SelectItemText>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <p className="text-text-tertiary text-xs mt-1">Values apply across all issue types — pick one to view its fields.</p>
       </div>
 
@@ -583,7 +694,30 @@ function CustomFieldsTab({
                 </span>
               </div>
               {field.type === 'option' && field.allowedValues ? (
+                <Select
+                  value={activeFieldValues[field.id] || NONE_VALUE}
+                  onValueChange={(next) => onFieldValueChange(field.id, next === NONE_VALUE ? '' : next)}
                 >
+                  <SelectTrigger
+                    aria-label={field.name}
+                    className="w-full flex items-center justify-between bg-surface-3 text-text-primary text-xs rounded-lg px-2 py-1.5 border border-border-default focus:border-accent focus:outline-none cursor-pointer"
+                  >
+                    <SelectValue />
+                    <svg className="w-3.5 h-3.5 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </SelectTrigger>
+                  <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                    <SelectItem value={NONE_VALUE}>
+                      <SelectItemText>-- Not set --</SelectItemText>
+                    </SelectItem>
+                    {field.allowedValues.map((opt) => (
+                      <SelectItem key={opt.id} value={opt.id}>
+                        <SelectItemText>{opt.value}</SelectItemText>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               ) : (
                 <input
                   type="text"

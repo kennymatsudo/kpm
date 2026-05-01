@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { RepoEnvironmentMode } from '../../../shared/types';
 import { RepoIcon, FocusIcon } from './FileIcon';
+import { Tooltip } from '../ui/Tooltip';
 
 interface RepoItemProps {
   id: string;
@@ -69,6 +70,23 @@ export const RepoItem = memo(function RepoItem({
             {branch}
           </span>
         )}
+        <Tooltip content={isFocused ? 'Remove from this chat' : 'Add to this chat'} side="top">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFocus(id);
+            }}
+            className={`
+              w-5 h-5 flex items-center justify-center rounded transition-all flex-shrink-0
+              ${isFocused
+                ? 'text-accent'
+                : 'text-text-muted opacity-0 group-hover:opacity-100 hover:text-accent'
+              }
+            `}
+          >
+            <FocusIcon isFocused={isFocused} />
+          </button>
+        </Tooltip>
       </div>
     </div>
   );

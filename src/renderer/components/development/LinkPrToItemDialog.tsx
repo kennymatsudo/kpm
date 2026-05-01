@@ -7,6 +7,14 @@ import { useState, useRef } from 'react';
 import type { Repo } from '../../../shared/types';
 import { Modal } from '../ui/Modal';
 import { MotionButton } from '../ui/MotionButton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectItemText,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/Select';
 import { toast } from '../../stores/toastStore';
 import { linkPullRequestToPlanItem } from '../../services/githubService';
 import { getBaseName } from '../../utils/path';
@@ -91,6 +99,24 @@ export function LinkPrToItemDialog({
           {repos.length > 1 && (
             <div>
               <label className="block text-xs font-medium text-text-muted mb-1">Repository</label>
+              <Select value={selectedRepoId} onValueChange={setSelectedRepoId}>
+                <SelectTrigger
+                  aria-label="Repository"
+                  className="w-full flex items-center justify-between px-3 py-2 text-sm bg-surface-1 border border-border-subtle rounded-md text-text-primary focus:outline-none focus:border-accent transition-colors"
+                >
+                  <SelectValue />
+                  <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </SelectTrigger>
+                <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                  {repos.map((repo) => (
+                    <SelectItem key={repo.id} value={repo.id}>
+                      <SelectItemText>{getBaseName(repo.path, repo.path)}</SelectItemText>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
 

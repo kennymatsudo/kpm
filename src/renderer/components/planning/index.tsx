@@ -6,6 +6,7 @@ import { BulkDeleteConfirmDialog } from './BulkDeleteConfirmDialog';
 import { CreateItemModal } from './CreateItemModal';
 import { TreeView } from '../tree-view';
 import { BoardView } from '../board-view';
+import { AgentStartModal } from '../board-view/AgentStartModal';
 import { LinkPrToItemDialog } from '../development/LinkPrToItemDialog';
 import {
   toast,

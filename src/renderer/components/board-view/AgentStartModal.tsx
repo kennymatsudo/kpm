@@ -7,6 +7,14 @@
 
 import { memo, useState, useCallback, useEffect, useRef } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectItemText,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/Select';
 import { listContextFiles } from '../../services/contextFileService';
 import { listAllRepoBranches } from '../../services/repoService';
 
@@ -212,6 +220,22 @@ export const AgentStartModal = memo(function AgentStartModal({
 
                 {repos.length > 1 && (
                     <label className="mb-1 block text-tiny text-text-muted">Repository</label>
+                    <Select value={selectedRepoId} onValueChange={setSelectedRepoId}>
+                      <SelectTrigger
+                        aria-label="Repository"
+                      >
+                        <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </SelectTrigger>
+                      <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                        {repos.map((repo) => (
+                          <SelectItem key={repo.id} value={repo.id}>
+                            <SelectItemText>{repo.path.split('/').pop()}</SelectItemText>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
 
@@ -221,8 +245,26 @@ export const AgentStartModal = memo(function AgentStartModal({
                       Loading branches...
                     </div>
                   ) : (
+                    <Select
+                      value={selectedBranch || undefined}
+                      onValueChange={setSelectedBranch}
                       disabled={branches.length === 0}
                     >
+                      <SelectTrigger
+                        aria-label="Base branch"
+                      >
+                        <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </SelectTrigger>
+                      <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                        {branches.map((branch) => (
+                          <SelectItem key={branch} value={branch}>
+                            <SelectItemText>{branch}</SelectItemText>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
                 </div>
               </div>

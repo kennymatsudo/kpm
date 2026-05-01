@@ -2,6 +2,7 @@ import type { MouseEvent } from 'react';
 import type { StatusCategory, TrackerType } from '../../../shared/types';
 import type { TreeNode } from '../../utils/planHierarchy';
 import { StatusSelector } from '../ui/StatusSelector';
+import { Tooltip } from '../ui/Tooltip';
 import { HighlightedText } from './HighlightedText';
 import type { MenuPosition } from './PlanCardMenu';
 
@@ -109,8 +110,42 @@ export function PlanCardHeader({
         </div>
       )}
       {!isPreview && (
+        <Tooltip content="Edit (E or double-click)" side="top">
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit?.();
+            }}
+            onMouseEnter={() => onPrepareEdit?.()}
+            onFocus={() => onPrepareEdit?.()}
+            className="flex-shrink-0 opacity-0 group-hover:opacity-100 p-0.5 hover:bg-surface-3 rounded ml-auto transition-all duration-150"
+            aria-label="Edit item"
+          >
+            <svg className="w-3 h-3 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        </Tooltip>
       )}
       {!isPreview && (
+        <Tooltip content="More actions" side="top">
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleMenu?.(event);
+            }}
+            className="flex-shrink-0 opacity-0 group-hover:opacity-100 p-0.5 hover:bg-surface-3 rounded transition-all duration-150"
+            aria-label="More actions"
+            aria-expanded={showMenu}
+            aria-haspopup="menu"
+          >
+            <svg className="w-3 h-3 text-text-tertiary" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="8" cy="3" r="1.5" />
+              <circle cx="8" cy="8" r="1.5" />
+              <circle cx="8" cy="13" r="1.5" />
+            </svg>
+          </button>
+        </Tooltip>
       )}
     </div>
   );

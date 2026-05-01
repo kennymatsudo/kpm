@@ -16,6 +16,7 @@ import { useTreeDragDrop } from './hooks/useTreeDragDrop';
 import { useTreeContextMenu } from './hooks/useTreeContextMenu';
 import type { DragState, DropPosition } from './hooks/useTreeDragDrop';
 import type { OrderedIdsGetter, RangeSelectHandler } from '../../utils/rangeSelection';
+import { Tooltip } from '../ui/Tooltip';
 
 /**
  * TreeView - A compact outline view for plan items with drag-and-drop
@@ -294,6 +295,7 @@ const TreeRow = memo(function TreeRow({
         )}
 
         {/* Edit button - appears on hover */}
+        <Tooltip content="Edit (E)" side="top">
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -312,6 +314,7 @@ const TreeRow = memo(function TreeRow({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
           </svg>
         </button>
+        </Tooltip>
       </div>
 
       {/* Drop indicator - after */}

@@ -3,6 +3,15 @@ import { useShallow } from 'zustand/react/shallow';
 import { useToolLogStore } from '../../stores/toolLogStore';
 import type { ToolCallLogEntry, ToolCallTurnSummary, ActivityType } from '../../../shared/types';
 import { Z_INDEX } from '../../constants/zIndex';
+import {
+  NONE_VALUE,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectItemText,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/Select';
 
 const CATEGORY_LABELS: Record<ActivityType, string> = {
   search: 'Search',
@@ -402,7 +411,30 @@ export function ToolLogPanel() {
         </span>
 
         {/* Category filter */}
+        <Select
+          value={filterCategory ?? NONE_VALUE}
+          onValueChange={(next) => setFilterCategory(next === NONE_VALUE ? null : (next as ActivityType))}
         >
+          <SelectTrigger
+            aria-label="Filter tool log by category"
+            className="flex items-center gap-1 text-tiny bg-surface-2 border border-border-subtle rounded px-1.5 py-0.5 text-text-secondary ml-2"
+          >
+            <SelectValue />
+            <svg className="w-3 h-3 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </SelectTrigger>
+          <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+            <SelectItem value={NONE_VALUE}>
+              <SelectItemText>All</SelectItemText>
+            </SelectItem>
+            {categories.map((cat) => (
+              <SelectItem key={cat} value={cat}>
+                <SelectItemText>{CATEGORY_LABELS[cat]}</SelectItemText>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         <div className="flex-1" />
 

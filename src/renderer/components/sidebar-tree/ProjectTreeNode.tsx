@@ -3,6 +3,7 @@ import type { NodeRendererProps } from 'react-arborist';
 import { isEditableFile } from '../../stores';
 import { getParentPath } from '../../utils/path';
 import { FileIcon, FocusIcon } from './FileIcon';
+import { Tooltip } from '../ui/Tooltip';
 
 export interface ProjectTreeNodeExtraProps {
   loadingPaths: Set<string>;
@@ -300,6 +301,20 @@ export interface ProjectTreeNodeExtraProps {
             </div>
           )}
 
+          <Tooltip content={isFocused ? 'Remove from context' : 'Add to context'} side="top">
+            <button
+              onClick={handleFocusClick}
+              tabIndex={isFocused ? 0 : -1}
+              className={`
+                ${isFocused
+                  ? 'text-accent hover:bg-surface-3'
+                  : 'text-text-muted opacity-0 group-hover:opacity-100 hover:bg-surface-3 hover:text-accent'
+                }
+              `}
+            >
+              <FocusIcon isFocused={isFocused} />
+            </button>
+          </Tooltip>
         </div>
       </div>
     </div>

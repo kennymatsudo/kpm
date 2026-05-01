@@ -8,9 +8,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { toast, usePlanDomainStore, useProjectUiDomainStore } from '../../stores';
 import { STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import { selectNormalizedPlanItems } from '../../stores/project/selectors';
+import { PlanItemPreviewBody } from './PlanItemPreviewBody';
 
 const HOVER_OPEN_DELAY_MS = 220;
 const HOVER_CLOSE_DELAY_MS = 140;
@@ -20,6 +22,7 @@ interface PlanRefChipProps {
 }
 
 export function PlanRefChip({ id }: PlanRefChipProps) {
+  const [open, setOpen] = useState(false);
   const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Once the user pointer-downs inside the popover, "pin" it: hover-leave
@@ -51,11 +54,15 @@ export function PlanRefChip({ id }: PlanRefChipProps) {
   }, [clearTimers]);
 
   useEffect(() => clearTimers, [clearTimers]);
+
   const item = usePlanDomainStore((state) => {
     const { byId } = selectNormalizedPlanItems(state.planItems);
     return byId.get(id) ?? null;
   });
 
+  const { addFocusedResource } = useProjectUiDomainStore(
+    useShallow((state) => ({ addFocusedResource: state.addFocusedResource }))
+  );
 
   if (!item) {
     return (
@@ -72,9 +79,16 @@ export function PlanRefChip({ id }: PlanRefChipProps) {
     ? STATUS_CATEGORY_CONFIG[item.status_category]
     : null;
 
+  const handleAddToContext = () => {
     const result = addFocusedResource({
+      type: 'plan_item',
+      id: item.id,
+      title: item.title,
+    });
     if (result.added) toast.success(`Added "${item.title}" to chat context`);
     else toast.info(`"${item.title}" is already in chat context`);
+  };
+
   return (
     <Popover
       open={open}
@@ -84,12 +98,33 @@ export function PlanRefChip({ id }: PlanRefChipProps) {
         setOpen(next);
       }}
     >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
             clearTimers();
             pinnedRef.current = true;
             setOpen(true);
+          }}
           onMouseEnter={scheduleOpen}
           onMouseLeave={scheduleClose}
+          title={item.title}
         >
+          <span className="truncate max-w-[16rem]">{item.title}</span>
+          {item.external_key ? (
+            <span className="text-text-muted font-normal">{item.external_key}</span>
+          ) : null}
+          {statusConfig ? (
+            <span
+              className={`px-1 rounded text-[10px] font-medium ${statusConfig.bgClass} ${statusConfig.textClass}`}
+            >
+              {statusConfig.label}
+            </span>
+          ) : null}
+        </button>
+      </PopoverTrigger>
       <PopoverContent
         onOpenAutoFocus={(e) => e.preventDefault()}
         onMouseEnter={clearTimers}
@@ -99,10 +134,16 @@ export function PlanRefChip({ id }: PlanRefChipProps) {
           clearTimers();
         }}
       >
+        <PlanItemPreviewBody
+          item={item}
           onDismiss={() => {
             clearTimers();
             pinnedRef.current = false;
             setOpen(false);
           }}
+          onAddToContext={handleAddToContext}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }

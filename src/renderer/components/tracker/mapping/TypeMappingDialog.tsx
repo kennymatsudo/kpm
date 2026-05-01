@@ -5,6 +5,14 @@ import type { TrackerIssueTypeOption } from '../../../stores/tracker/useMetadata
 import { Modal, ModalBody, ModalFooter } from '../../ui/Modal';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 import { CloseIcon } from '../../icons';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectItemText,
+  SelectTrigger,
+  SelectValue,
+} from '../../ui/Select';
 
 interface Props {
   projectId: string;
@@ -206,8 +214,33 @@ export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: P
                   </button>
                 </div>
                 {/* Type selector */}
+                <Select
                   value={mapping.tracker_issue_type_id}
+                  onValueChange={(next) => void handleSaveMapping(mapping.kpm_label, next)}
                 >
+                  <SelectTrigger
+                    aria-label={`Tracker type for ${mapping.kpm_label}`}
+                    className="w-full flex items-center justify-between bg-surface-3 text-text-primary text-xs rounded-lg px-2 py-1.5 border border-border-default focus:border-info focus:outline-none cursor-pointer"
+                  >
+                    <SelectValue placeholder={jiraIssueTypes.length === 0 ? 'Loading…' : 'Select type'} />
+                    <svg className="w-3.5 h-3.5 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </SelectTrigger>
+                  <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                    {jiraIssueTypes.length === 0 ? (
+                      <SelectItem value="__loading__" disabled>
+                        <SelectItemText>Loading…</SelectItemText>
+                      </SelectItem>
+                    ) : (
+                      jiraIssueTypes.map(type => (
+                        <SelectItem key={type.id} value={type.id}>
+                          <SelectItemText>{type.name}</SelectItemText>
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
             ))}
           </div>
@@ -226,7 +259,33 @@ export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: P
               placeholder="Label (e.g., story, bug)..."
               className="w-full bg-surface-3 text-text-primary text-sm rounded-lg px-3 py-2 border border-border-default focus:border-info focus:outline-none placeholder:text-text-muted"
             />
+            <Select
+              value={selectedTypeForNew || undefined}
+              onValueChange={setSelectedTypeForNew}
             >
+              <SelectTrigger
+                aria-label="Jira type for new mapping"
+                className="w-full flex items-center justify-between bg-surface-3 text-text-primary text-sm rounded-lg px-3 py-2 border border-border-default focus:border-info focus:outline-none cursor-pointer"
+              >
+                <SelectValue placeholder="Select Jira type..." />
+                <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </SelectTrigger>
+              <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                {jiraIssueTypes.length === 0 ? (
+                  <SelectItem value="__loading__" disabled>
+                    <SelectItemText>Loading…</SelectItemText>
+                  </SelectItem>
+                ) : (
+                  jiraIssueTypes.map(type => (
+                    <SelectItem key={type.id} value={type.id}>
+                      <SelectItemText>{type.name}</SelectItemText>
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
             <button
               onClick={handleAddMapping}
               disabled={!newLabel.trim() || !selectedTypeForNew}

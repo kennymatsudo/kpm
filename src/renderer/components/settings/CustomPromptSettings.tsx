@@ -11,6 +11,14 @@ import { ensureBuiltinCustomPrompts } from '../../services/promptService';
 import { useCustomPromptStore } from '../../stores/customPromptStore';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { toast } from '../../stores/toastStore';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectItemText,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/Select';
 
 const ICON_OPTIONS: { value: CustomPromptIcon; label: string }[] = [
   { value: 'document', label: 'Document' },
@@ -252,6 +260,23 @@ export function CustomPromptSettings() {
               <label className="block text-xs font-medium text-text-secondary uppercase tracking-wide">
                 Icon
               </label>
+              <Select value={icon} onValueChange={(next) => setIcon(next as CustomPromptIcon)}>
+                <SelectTrigger
+                  aria-label="Icon"
+                >
+                  <SelectValue />
+                  <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </SelectTrigger>
+                <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                  {ICON_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      <SelectItemText>{opt.label}</SelectItemText>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-1.5">

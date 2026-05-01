@@ -1,6 +1,14 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { m } from 'framer-motion';
 import { useShallow } from 'zustand/react/shallow';
+import {
+  NONE_VALUE,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectItemText,
+  SelectTrigger,
+  SelectValue,
 
 // Stable empty array to avoid re-render loops
 const EMPTY_ISSUE_TYPES: TrackerIssueTypeOption[] = [];
@@ -358,9 +366,23 @@ export function TaskEditModal({
             </div>
           </div>
 
+              <Select
+              >
+                <SelectTrigger
+                  className="input w-full flex items-center justify-between cursor-pointer"
                 >
+                  <SelectValue />
+                  <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
+                </SelectTrigger>
+                <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                    <SelectItem key={opt.value} value={opt.value === '' ? NONE_VALUE : opt.value}>
+                      <SelectItemText>{opt.label}</SelectItemText>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
           </div>
 
           {(item.external_key || item.release_tag || (item.code_refs && item.code_refs.length > 0)) && (
