@@ -140,6 +140,8 @@ export function TaskEditModal({
     const criteriaChanged =
       sanitizedCriteria.length !== originalCriteria.length ||
       sanitizedCriteria.some((c, i) => c !== originalCriteria[i]);
+    return titleChanged || descChanged || labelChanged || intentChanged || criteriaChanged;
+  }, [title, description, label, intent, sanitizedCriteria, originalCriteria, item]);
 
   // Validate form
   const canSave = useMemo(() => {
@@ -169,6 +171,7 @@ export function TaskEditModal({
     } finally {
       setIsSaving(false);
     }
+  }, [canSave, title, description, label, intent, sanitizedCriteria, onSave, onClose]);
 
   // Criteria list helpers
   const updateCriterion = useCallback((index: number, value: string) => {
@@ -262,6 +265,7 @@ export function TaskEditModal({
             />
           </div>
 
+          {/* Description — long-form context */}
           <div>
             <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
               Description
@@ -271,6 +275,8 @@ export function TaskEditModal({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Add a description... (Markdown supported)"
+                rows={6}
+                className="input w-full min-h-[140px] resize-y text-sm font-mono leading-relaxed"
               />
               <div className="absolute bottom-2 right-2 text-xxs text-text-muted opacity-60 pointer-events-none">
                 Markdown
@@ -278,10 +284,15 @@ export function TaskEditModal({
             </div>
           </div>
 
+          {/* Spec — intent + acceptance criteria. Always rendered so legacy items
+              can have specs added. */}
           <div
             className="rounded-lg border border-border-subtle bg-surface-1/50 px-4 py-3 space-y-3"
             aria-label="Spec"
           >
+            <h3 className="text-xs font-medium text-text-muted uppercase tracking-wide">
+              Spec
+            </h3>
 
             {/* Intent */}
             <div>
@@ -305,6 +316,13 @@ export function TaskEditModal({
 
             {/* Acceptance Criteria */}
             <div>
+              <div className="text-xxs font-medium text-text-muted uppercase tracking-wide mb-1.5">
+                Acceptance Criteria
+                {sanitizedCriteria.length > 0 && (
+                  <span className="ml-1.5 text-text-muted/70 normal-case">
+                    ({sanitizedCriteria.length})
+                  </span>
+                )}
               </div>
 
               {criteria.length === 0 ? (
@@ -366,9 +384,23 @@ export function TaskEditModal({
             </div>
           </div>
 
+          {/* Type — single attribute we let the user edit */}
+          <div className="w-56">
+            <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
+              Type
+            </label>
+            {item.external_issue_type ? (
+              <div className="input w-full flex items-center gap-2 bg-surface-2 cursor-not-allowed">
+                <span className="text-text-primary truncate">{item.external_issue_type}</span>
+                <span className="text-xs text-text-tertiary shrink-0 ml-auto">from {trackerLabel}</span>
+              </div>
+            ) : (
               <Select
+                value={label === '' ? NONE_VALUE : label}
+                onValueChange={(next) => setLabel(next === NONE_VALUE ? '' : next)}
               >
                 <SelectTrigger
+                  aria-label="Type"
                   className="input w-full flex items-center justify-between cursor-pointer"
                 >
                   <SelectValue />
@@ -377,23 +409,57 @@ export function TaskEditModal({
                   </svg>
                 </SelectTrigger>
                 <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                  {typeOptions.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value === '' ? NONE_VALUE : opt.value}>
                       <SelectItemText>{opt.label}</SelectItemText>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+            )}
           </div>
 
+          {/* References — read-only chip strip. Tracker, release, code refs, all inline. */}
           {(item.external_key || item.release_tag || (item.code_refs && item.code_refs.length > 0)) && (
             <div className="pt-4 border-t border-border-subtle">
+              <h3 className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
+                References
               </h3>
+              <div className="flex flex-wrap items-center gap-1.5">
                 {item.external_key && item.external_url && (
+                  <a
+                    href={item.external_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`Open ${item.external_key} in ${trackerLabel}`}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded bg-info-muted text-info text-xs font-medium hover:bg-info/20 transition-colors"
+                  >
+                    <TrackerIcon trackerType={trackerType} className="w-3 h-3" />
+                    {item.external_key}
+                    <svg className="w-2.5 h-2.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
                 )}
 
                 {item.release_tag && (
+                  <span
+                    title="Release tag"
+                    className="px-2 py-1 rounded bg-accent-subtle text-accent text-xs font-medium"
+                  >
+                    {item.release_tag}
+                  </span>
                 )}
 
+                {item.code_refs?.map((ref, i) => (
+                  <span
+                    key={i}
+                    className="px-2 py-1 rounded bg-surface-3 text-xs text-text-secondary font-mono truncate max-w-[200px]"
+                    title={ref}
+                  >
+                    {ref}
+                  </span>
+                ))}
               </div>
             </div>
           )}

@@ -63,15 +63,19 @@ Don't create abstractions until you have 3+ actual uses of a pattern. Wait until
 
 ## Plan Item Spec Fields in UI
 
+Spec fields (`intent`, `acceptance_criteria`) surface in one place today:
 
 | Site | Mode | What it shows |
 |------|------|---------------|
 
+**Board `components/board-view/BoardCard.tsx` and canvas `components/planning/PlanCard.tsx` are intentionally NOT wired.** Card faces stay clean; users open the modal to view or edit specs. Surfacing spec fields on canvas cards would also require the three-file height-calc sync (`PlanCard.tsx` → `utils/planHierarchy.ts` → `constants/planCardStyles.ts`) — see the next section.
 
 
 **Conventions:**
+- **Editable section is always rendered in the modal.** The Spec block is how users discover and author specs — hiding it would bury the affordance.
 - **Sanitize on save, not on edit.** Keep the user's in-progress empty rows while typing; trim + drop empties + cap at the Zod limits (`MAX_CRITERIA = 50`, `CRITERION_MAX_CHARS = 1000`, `INTENT_MAX_CHARS = 500`) only when building the save payload. Limits must mirror `planItemUpdates` in `src/main/ipc/validation/plan.ts`.
 - **Save via `onSave` widening, not a side-channel.** `TaskEditModal.onSave` accepts optional `intent` and `acceptance_criteria`; `usePlanTaskEdit.handleSaveTask` passes them through to the existing `updatePlanItem` IPC path. The backing `planItemUpdates` Zod schema already accepts these fields — no service-layer changes needed when extending this pattern.
+- **`status_category` is not edited from `TaskEditModal`.** Column placement is handled by the board (drag-between-columns) and tracker sync — surfacing a Status select in the modal would let users override the tracker silently, which conflicts with treating the tracker as source of truth. Drag on the board if you need to move a card.
 - **New spec fields go through the modal first.** If a new spec-like field is added, wire it into the `TaskEditModal` Spec section before deciding whether it earns card-face surfacing.
 
 ## Plan Card Layout & Height Sync

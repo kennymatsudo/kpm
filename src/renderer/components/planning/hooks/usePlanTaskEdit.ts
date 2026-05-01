@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useProjectUiDomainStore, useTrackerMetadataStore, useTrackerStore } from '../../../stores';
+import type { PlanItem } from '../../../../shared/types';
 
 interface PlanTaskEditDeps {
   planItemsById: Map<string, PlanItem>;
