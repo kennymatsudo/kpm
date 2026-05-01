@@ -11,6 +11,7 @@ import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { JiraIcon, LinearIcon } from '../icons';
 import { Z_INDEX } from '../../constants/zIndex';
 import { TrackerConfigDialog, TrackerLinkProjectDialog, SyncReviewPanel, SyncReviewModal, TypeMappingDialog, TrackerSyncPanel } from '../tracker';
+import type { MainView } from './MainViewSwitcher';
 import type { ViewMode } from '../planning/ViewSwitcher';
 import type { StatusCategory, TrackerAssociationWithScope, TrackerCredentialInfo, TrackerType } from '../../../shared/types';
 import { TopBarPlanningControls } from './TopBarPlanningControls';

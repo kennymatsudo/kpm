@@ -1,5 +1,8 @@
 /**
+ * Default task prompt content shared by prompt construction and persistence.
  *
+ * Keeping this outside the Claude integration prevents database repositories
+ * from depending on agent-specific prompt modules.
  */
 
 export const TASK_DESCRIPTION_TEMPLATE = `\`\`\`
@@ -47,3 +50,15 @@ export const TASK_SECTION_RULES = `**Section rules:**
 
 **Document references:**
 - Only reference: file paths in connected repos, external URLs (Figma, Confluence, etc.)`;
+
+export const DEFAULT_TASK_PROMPT = `### Item Titles
+**Verb-first imperative** — start with an action verb, be specific, under 60 characters.
+- Good: "Add password reset flow to auth system"
+- Bad: "Password reset" *(no verb, too vague)*
+
+### Item Descriptions
+Use this structure:
+
+${TASK_DESCRIPTION_TEMPLATE}
+
+${TASK_SECTION_RULES}`;

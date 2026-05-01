@@ -11,6 +11,7 @@
 
 import { useMemo } from 'react';
 import { STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
+import { TrackerIcon, trackerLabelFor } from '../tracker/shared/trackerDisplay';
 import { openExternalUrl } from '../../services/shellService';
 import type { PlanItem } from '../../../shared/types';
 import { emit } from '../../stores';

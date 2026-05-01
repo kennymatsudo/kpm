@@ -196,6 +196,7 @@ export type {
   RepoGetBranchesInput,
   RepoWatchInput,
   RepoUnwatchInput,
+  RepoShowInFolderInput,
   // Attachment
   AttachmentAddInput,
   AttachmentRemoveInput,
@@ -246,6 +247,7 @@ export type {
   FileExplorerReadFileInput,
   FileExplorerWriteFileInput,
   FileExplorerGetSymlinkInfoInput,
+  FileExplorerShowItemInFolderInput,
   FileExplorerSelectFolderDialogInput,
   // Tracker
   TrackerSaveJiraCredentialsInput,
@@ -323,6 +325,7 @@ export type {
   TaskPromptTemplateDeleteInput,
   TaskPromptTemplateSetDefaultInput,
   // Shell
+  ShellOpenExternalInput,
 } from './types';
 
 export type {
@@ -331,4 +334,5 @@ export type {
   RepoFileReadFileInput,
   RepoFileWriteFileInput,
   RepoFileGetInfoInput,
+  RepoFileShowItemInFolderInput,
 } from './repoFiles';

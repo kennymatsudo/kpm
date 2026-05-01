@@ -158,6 +158,7 @@ function computeFencedCodeRanges(text: string): Range[] {
 
   for (const line of lines) {
     const lineLen = line.length;
+    const fenceMatch = FENCE_REGEX.exec(line);
     if (fenceMarker === null) {
       if (fenceMatch) {
         fenceMarker = fenceMatch[1];

@@ -1,4 +1,5 @@
 import { SettingsSection } from './SettingsSection';
+import { ShortcutsList } from '../keyboard-shortcuts/KeyboardShortcuts';
 
 export function KeyboardShortcutsSettings() {
   return (

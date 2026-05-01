@@ -1,3 +1,4 @@
+import { ipcMain, dialog, shell, type BrowserWindow } from 'electron';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { AttachmentService } from '../../services/core/AttachmentService';
@@ -140,5 +141,22 @@ export function registerAttachmentHandlers(
   ipcMain.handle(IPC_CHANNELS.attachment.readAsDataUrl, async (_event, params: unknown) => {
     const { filePath, mediaType } = ChatAttachmentSchemas.readAsDataUrl.parse(params);
     return readAttachmentAsDataUrl(filePath, mediaType);
+  });
+
+  /**
+   * Open a temp attachment with the OS default application. The schema scopes
+   */
+  ipcMain.handle(IPC_CHANNELS.attachment.openTemp, async (_event, params: unknown) => {
+    const { filePath } = ChatAttachmentSchemas.openTemp.parse(params);
+    const stats = await fs.lstat(filePath);
+    if (stats.isSymbolicLink()) {
+      return { success: false, error: 'Cannot open symlinks' };
+    }
+
+    const errorMessage = await shell.openPath(filePath);
+    if (errorMessage) {
+      return { success: false, error: errorMessage };
+    }
+    return { success: true };
   });
 }

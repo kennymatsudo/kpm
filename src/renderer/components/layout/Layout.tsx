@@ -5,6 +5,8 @@ import { PlanView } from '../planning';
 import { WorkspaceView } from '../workspace';
 import { Chat, ChatHeader } from '../chat';
 import { TopBar } from './TopBar';
+import { ErrorBoundary } from '../app/ErrorBoundary';
+import { KeyboardShortcuts } from '../keyboard-shortcuts/KeyboardShortcuts';
 import { CommandPalette } from '../command-palette';
 import { GlobalSearch } from '../global-search';
 import { ApprovalOverlays } from './ApprovalOverlays';

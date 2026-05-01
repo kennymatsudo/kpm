@@ -260,6 +260,23 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
     },
 
     /**
+     * Resolve a project-relative path to a validated absolute path.
+     */
+    async getFullPath(projectId: string, relativePath: string): AsyncResult<string> {
+      const projectFolder = deps.getProjectFolder(projectId);
+      if (!projectFolder) {
+        return failure('Project not found');
+      }
+
+
+      if (!(await pathExists(fullPath))) {
+        return failure('Path does not exist');
+      }
+
+      return success(fullPath);
+    },
+
+    /**
      * Read file content asynchronously to avoid blocking the main process.
      */
     async readFileAsync(projectId: string, relativePath: string): AsyncResult<string> {

@@ -100,6 +100,7 @@ export function useFileContextMenus({
   const handleRevealInFinder = useCallback(
     async (path: string) => {
       if (projectId && path) {
+        await showProjectItemInFolder(projectId, path);
       }
       setContextMenu(null);
     },

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ViewMode } from '../../planning/ViewSwitcher';
+import type { MainView } from '../MainViewSwitcher';
 
 export interface UsePersistedViewStateReturn {
   mainView: MainView;

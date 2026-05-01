@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useCredentialStore, useTrackerStore } from '../../stores';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { TrackerSettingsModal } from '../tracker/settings';
+import { TrackerIcon, trackerLabelFor } from '../tracker/shared/trackerDisplay';
 import type {
   TrackerAssociationWithScope,
   TrackerCredentialInfo,

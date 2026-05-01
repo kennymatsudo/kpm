@@ -1,3 +1,4 @@
+import { JiraIcon, LinearIcon } from '../../icons';
 
 type KnownTrackerType = 'jira' | 'linear';
 

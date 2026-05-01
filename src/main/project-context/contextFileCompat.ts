@@ -3,6 +3,7 @@ import path from 'path';
 import {
   COMPAT_CONTEXT_FILENAME,
   DEFAULT_CONTEXT_FILENAME,
+} from '../../shared/contextFile';
 
 const SYMLINK_TARGET = DEFAULT_CONTEXT_FILENAME;
 

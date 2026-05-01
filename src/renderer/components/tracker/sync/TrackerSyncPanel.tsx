@@ -6,8 +6,10 @@ import {
   usePlanDomainStore,
   useProjectDomainStore,
 } from '../../../stores';
+import { CloseIcon } from '../../icons';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 import { Z_INDEX } from '../../../constants/zIndex';
+import { TrackerIcon, trackerLabelFor } from '../shared/trackerDisplay';
 
 interface TrackerSyncPanelProps {
   associationId: string;

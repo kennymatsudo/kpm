@@ -3,6 +3,7 @@ import type { AppServices } from '../services/appServices';
 import { registerWorkspaceHandlers } from './register/workspace';
 import { registerDevelopmentHandlers } from './register/development';
 import { registerPlatformHandlers } from './register/platform';
+import { installTrustedIpcSenderGuard } from './senderValidation';
 
 /**
  * Register all IPC handlers.
@@ -13,6 +14,8 @@ export function registerAllIpcHandlers(
   getMainWindow: () => BrowserWindow | null,
   services: AppServices
 ): void {
+  installTrustedIpcSenderGuard();
+
   const chatRuntime = services.createChatRuntime(getMainWindow);
   services.appLifecycleService.attachChatRuntime(chatRuntime);
 

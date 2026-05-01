@@ -25,6 +25,7 @@ src/
 │   │   ├── prompts/         # System prompt modules
 │   │   └── streaming/       # Streaming session classes
 │   ├── documents/           # Plan-ref resolver + markdown codecs (used at every export boundary)
+│   ├── project-context/     # Project context file compatibility helpers
 │   ├── services/            # Application services (DI pattern)
 │   │   ├── generation/      # CustomPrompt, Onboarding
 │   │   ├── agents/          # AgentSessionManager, Claude/Codex/Gemini sessions, hooks, auto-review
@@ -65,6 +66,7 @@ src/
 │   │   └── tracker/         # Tracker-related stores
 │   └── constants/
 ├── preload/                 # IPC bridge (security boundary)
+└── shared/                  # Shared types and process-neutral contracts
 ```
 
 ## Project Folder Structure
@@ -377,6 +379,9 @@ Tracks git branch changes for connected repositories in real-time.
 - `focusedResources.ts` - Focused resource handling
 - `slackTriage.ts` - Slack triage prompt fragments
 - `promptRegistry.ts` - System prompt registry
+
+**Shared Prompt Defaults** (`src/shared/taskPromptDefaults.ts`):
+- Default task prompt template used by both prompt construction and persistence fallbacks
 
 **Streaming Sessions:**
 - Connects on project open (zero-latency first message)

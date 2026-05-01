@@ -67,6 +67,7 @@ Spec fields (`intent`, `acceptance_criteria`) surface in one place today:
 
 | Site | Mode | What it shows |
 |------|------|---------------|
+| `components/planning/TaskEditModal.tsx` | **Editable** | "Spec" section between Description and Type/Status: `intent` textarea + `acceptance_criteria` editable checklist with Add/Remove affordances. Always rendered so legacy items can adopt specs. |
 
 **Board `components/board-view/BoardCard.tsx` and canvas `components/planning/PlanCard.tsx` are intentionally NOT wired.** Card faces stay clean; users open the modal to view or edit specs. Surfacing spec fields on canvas cards would also require the three-file height-calc sync (`PlanCard.tsx` → `utils/planHierarchy.ts` → `constants/planCardStyles.ts`) — see the next section.
 

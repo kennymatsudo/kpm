@@ -11,12 +11,18 @@ import { registerSearchHandlers } from '../handlers/search';
 import { registerBriefingHandlers } from '../handlers/briefing';
 import { registerMcpServerHandlers } from '../handlers/mcpServers';
 import type { IpcRegistrationContext } from './types';
+import { assertTrustedIpcSender } from '../senderValidation';
 
 export function registerPlatformHandlers({
   services,
   chatRuntime,
 }: IpcRegistrationContext): void {
   ipcMain.on('window:close', (event) => {
+    try {
+      assertTrustedIpcSender(event);
+    } catch {
+      return;
+    }
     BrowserWindow.fromWebContents(event.sender)?.close();
   });
   registerTempImageHandlers();

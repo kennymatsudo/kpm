@@ -16,6 +16,7 @@ import { useTreeDragDrop } from './hooks/useTreeDragDrop';
 import { useTreeContextMenu } from './hooks/useTreeContextMenu';
 import type { DragState, DropPosition } from './hooks/useTreeDragDrop';
 import type { OrderedIdsGetter, RangeSelectHandler } from '../../utils/rangeSelection';
+import { TrackerIcon, trackerLabelFor } from '../tracker/shared/trackerDisplay';
 import { Tooltip } from '../ui/Tooltip';
 
 /**

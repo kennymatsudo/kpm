@@ -1,5 +1,6 @@
 import { useShallow } from 'zustand/react/shallow';
 import { Chat, ChatHeader } from '../chat';
+import { ErrorBoundary } from '../app/ErrorBoundary';
 import { FileEditor } from './FileEditor';
 import { WorkspaceHome } from './WorkspaceHome';
 import { getParentPath } from '../../utils/path';

@@ -1,3 +1,4 @@
+import { ipcMain, dialog, shell, type BrowserWindow } from 'electron';
 import type { RepoService } from '../../services/repo/RepoService';
 import { RepoSchemas, createIpcHandler, createSimpleIpcHandler } from '../validation';
 import { IPC_CHANNELS } from '../channels';
@@ -170,6 +171,19 @@ export function registerRepoHandlers(
         if (!result.ok) throw new Error(result.error);
       },
       'Failed to set active worktree path',
+    ),
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.repo.showInFolder,
+    createIpcHandler(
+      RepoSchemas.showInFolder,
+      ({ repoId }) => {
+        const result = repoService.getPath(repoId);
+        if (!result.ok) throw new Error(result.error);
+        shell.showItemInFolder(result.data);
+      },
+      'Failed to show repository in folder',
     ),
   );
 }

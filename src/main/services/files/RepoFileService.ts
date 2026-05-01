@@ -162,6 +162,28 @@ export function createRepoFileService(deps: RepoFileServiceDeps) {
         return failure(`Failed to get info: ${error}`);
       }
     },
+
+    /**
+     * Resolve a repo-relative path to a validated absolute path.
+     */
+    async getFullPath(repoId: string, relativePath: string): AsyncResult<string> {
+      const repo = deps.getRepoById(repoId);
+      if (!repo) {
+        return failure('Repository not found');
+      }
+
+      const repoPath = repo.path;
+      const { valid, fullPath } = resolveScopedPath(repoPath, relativePath);
+      if (!valid) {
+        return failure('Invalid path');
+      }
+
+      if (!(await pathExists(fullPath))) {
+        return failure('Path does not exist');
+      }
+
+      return success(fullPath);
+    },
   };
 }
 

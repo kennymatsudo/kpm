@@ -1,4 +1,5 @@
 import { ipcRenderer } from 'electron';
+import { IPC_CHANNELS } from '../shared/ipcChannels';
 import type {
   Project,
   Repo,
@@ -385,6 +386,8 @@ const repos = {
     ),
   setActiveWorktreePath: (repoId: string, worktreePath: string | null): Promise<{ success: boolean; error?: string }> =>
     invokeFlat<void>(IPC_CHANNELS.repo.setActiveWorktreePath, { repoId, worktreePath }),
+  showInFolder: (repoId: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.repo.showInFolder, { repoId }),
   onBranchChanged: (callback: (data: { repoId: string; repoPath: string; branch: string | null }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, data: { repoId: string; repoPath: string; branch: string | null }) => callback(data);
     ipcRenderer.on('repo:branch-changed', handler);
@@ -426,6 +429,8 @@ const attachments = {
     mediaType: string,
   ): Promise<{ success: true; dataUrl: string } | { success: false; error: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.attachment.readAsDataUrl, { filePath, mediaType }),
+  openTemp: (filePath: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.attachment.openTemp, { filePath }),
 };
 
 const plan = {
@@ -1209,6 +1214,10 @@ const fileExplorer = {
   getSymlinkInfo: (projectId: string, path: string): Promise<{ isSymlink: boolean; target?: string; isBroken?: boolean }> =>
     ipcRenderer.invoke(IPC_CHANNELS.fileExplorer.getSymlinkInfo, { projectId, path }),
 
+  // Show a project file/folder in Finder/Explorer
+  showItemInFolder: (projectId: string, path: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.fileExplorer.showItemInFolder, { projectId, path }),
+
   // Show folder selection dialog for linking external folders
   selectFolderDialog: (title?: string): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.fileExplorer.selectFolderDialog, { title }),
@@ -1267,6 +1276,10 @@ const repoFiles = {
   // Get info about a single file/folder
   getInfo: (repoId: string, path: string): Promise<FileNode> =>
     ipcRenderer.invoke(IPC_CHANNELS.repoFiles.getInfo, { repoId, path }),
+
+  // Show a repo file/folder in Finder/Explorer
+  showItemInFolder: (repoId: string, path: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.repoFiles.showItemInFolder, { repoId, path }),
 };
 
 // Shell API (for OS-level operations)

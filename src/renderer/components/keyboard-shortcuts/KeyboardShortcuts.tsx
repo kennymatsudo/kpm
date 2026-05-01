@@ -1,4 +1,5 @@
 import { useEffect, useCallback } from 'react';
+import { useSettingsUIStore } from '../../stores';
 
 interface ShortcutGroup {
   title: string;

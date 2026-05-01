@@ -1,3 +1,4 @@
+import { ipcMain, dialog, shell, type BrowserWindow } from 'electron';
 import { FileExplorerSchemas } from '../validation';
 import type { FileExplorerService } from '../../services/files/FileExplorerService';
 import type { ProjectWatcherService } from '../../services/files/ProjectWatcherService';
@@ -167,6 +168,14 @@ export function registerFileExplorerHandlers(
   ipcMain.handle(IPC_CHANNELS.fileExplorer.getSymlinkInfo, async (_event, params: unknown) => {
     const { projectId, path } = FileExplorerSchemas.getSymlinkInfo.parse(params);
     return unwrapOrThrow(await fileExplorerService.getSymlinkInfo(projectId, path));
+  });
+
+  // Show a project file/folder in Finder/Explorer
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.showItemInFolder, async (_event, params: unknown) => {
+    const { projectId, path } = FileExplorerSchemas.showItemInFolder.parse(params);
+    const fullPath = unwrapOrThrow(await fileExplorerService.getFullPath(projectId, path));
+    shell.showItemInFolder(fullPath);
+    return { success: true };
   });
 
   // Show folder selection dialog for linking external folders

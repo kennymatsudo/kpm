@@ -1,4 +1,5 @@
 import type { TrackerAssociationWithScope, TrackerType } from '../../../../shared/types';
+import { TrackerIcon } from '../shared/trackerDisplay';
 
 type SelectedItem = 'connection' | 'link-new' | { type: 'project'; associationId: string };
 

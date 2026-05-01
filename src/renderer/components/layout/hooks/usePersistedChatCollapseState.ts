@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { MainView } from '../MainViewSwitcher';
 
 type ChatCollapseView = 'planning' | 'workspace';
 

@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import type { ChatAttachment } from '../../../shared/types';
 import { CloseIcon } from '../icons';
+import { openTempAttachment, readAttachmentAsDataUrl } from '../../services/attachmentService';
 import { Modal } from '../ui/Modal';
 
 /**
@@ -202,7 +203,9 @@ function ImageLightbox({
 
 async function openWithOs(filePath: string): Promise<void> {
   try {
+    await openTempAttachment(filePath);
   } catch (err) {
+    console.error('[AttachmentChip] openTempAttachment failed:', err);
   }
 }
 

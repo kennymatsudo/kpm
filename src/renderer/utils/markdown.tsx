@@ -8,6 +8,7 @@
 import type { MarkdownToJSX } from 'markdown-to-jsx';
 import type { JSX } from 'react';
 import { openExternalUrl } from '../services/shellService';
+import { PlanRefChip } from '../components/plan-ref/PlanRefChip';
 import { findRefs, PLAN_REF_REGEX } from '../../shared/planRefs';
 
 /**
@@ -16,6 +17,7 @@ import { findRefs, PLAN_REF_REGEX } from '../../shared/planRefs';
  * of an anchor.
  */
 const PLAN_REF_SCHEME = 'kpm-plan:';
+const PLAN_REF_PLACEHOLDER = '\u00a0';
 
 /**
  * Click handler for markdown links - opens in external browser
@@ -32,6 +34,7 @@ function handleLinkClick(e: React.MouseEvent<HTMLAnchorElement>, href: string | 
  * links that the `a` override will replace with `<PlanRefChip>`. Skips refs
  * inside fenced code blocks (using the same skip logic as the resolver).
  *
+ * Tokens become `[\u00a0](kpm-plan:<uuid>)` — the link text is a non-breaking
  * space placeholder; the chip renders its own label.
  */
 export function transformPlanRefs(content: string): string {
@@ -47,6 +50,7 @@ export function transformPlanRefs(content: string): string {
   let cursor = 0;
   for (const match of matches) {
     out += content.slice(cursor, match.start);
+    out += `[${PLAN_REF_PLACEHOLDER}](${PLAN_REF_SCHEME}${match.id})`;
     cursor = match.end;
   }
   out += content.slice(cursor);
@@ -62,6 +66,7 @@ function renderAnchor({
   children,
   ...props
 }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+  if (href?.startsWith(PLAN_REF_SCHEME)) {
     return <PlanRefChip id={href.slice(PLAN_REF_SCHEME.length)} />;
   }
   return (
@@ -188,6 +193,7 @@ function highlightSearchMatches(
     // Link handling: chip for plan refs, external-open for everything else.
     a: {
       component: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
+        if (href?.startsWith(PLAN_REF_SCHEME)) {
           return <PlanRefChip id={href.slice(PLAN_REF_SCHEME.length)} />;
         }
         return (

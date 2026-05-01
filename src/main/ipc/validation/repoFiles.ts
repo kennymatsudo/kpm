@@ -40,6 +40,14 @@ export const RepoFileSchemas = {
     repoId: uuid,
     path: relativePath.min(1),
   }),
+
+  /**
+   * Show a file/folder in the OS file manager.
+   */
+  showItemInFolder: z.object({
+    repoId: uuid,
+    path: relativePath.min(1),
+  }),
 };
 
 // Type exports for use in handlers
@@ -47,3 +55,4 @@ export type RepoFileListDirectoryInput = z.infer<typeof RepoFileSchemas.listDire
 export type RepoFileReadFileInput = z.infer<typeof RepoFileSchemas.readFile>;
 export type RepoFileWriteFileInput = z.infer<typeof RepoFileSchemas.writeFile>;
 export type RepoFileGetInfoInput = z.infer<typeof RepoFileSchemas.getInfo>;
+export type RepoFileShowItemInFolderInput = z.infer<typeof RepoFileSchemas.showItemInFolder>;

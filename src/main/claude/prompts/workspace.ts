@@ -8,6 +8,11 @@
 import type { Attachment } from '../../../shared/types';
 
 // Re-export for consumers that import from workspace.ts
+export {
+  DEFAULT_TASK_PROMPT,
+  TASK_DESCRIPTION_TEMPLATE,
+  TASK_SECTION_RULES,
+} from '../../../shared/taskPromptDefaults';
 
 /**
  * Core constraints - the non-negotiable rules.

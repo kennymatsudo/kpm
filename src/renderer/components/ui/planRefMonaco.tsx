@@ -17,6 +17,9 @@ const PLAN_REF_OWNER = 'kpm-plan-ref';
 
 type MonacoNs = typeof Monaco;
 type EditorInstance = Monaco.editor.IStandaloneCodeEditor;
+interface Disposable {
+  dispose: () => void;
+}
 
 const DEFINITION_COMMAND_ID = 'kpm.openPlanRef';
 
@@ -42,6 +45,7 @@ function buildHoverMarkdown(item: PlanItem): string {
     lines.push('');
     lines.push(`**Intent:** ${item.intent}`);
   }
+  if (item.acceptance_criteria?.length) {
     const items = item.acceptance_criteria.slice(0, 5).map((c) => `- ${c}`);
     const extra = item.acceptance_criteria.length - items.length;
     lines.push('');

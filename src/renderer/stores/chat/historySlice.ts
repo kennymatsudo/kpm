@@ -82,6 +82,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         const currentViewed = get().viewedSessionId;
         if (currentViewed) {
           const session = get().sessions.get(currentViewed);
+          if (session?.messages.length === 0) {
             await get().loadFromHistory(projectId, currentViewed, shouldContinue);
           }
           return;

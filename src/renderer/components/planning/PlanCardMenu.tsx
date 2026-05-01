@@ -9,6 +9,7 @@ import { copyToClipboard } from '../../utils/clipboard';
 import { DeleteWorktreeDialog } from './DeleteWorktreeDialog';
 import { Modal } from '../ui/Modal';
 import { Z_INDEX } from '../../constants/zIndex';
+import { trackerLabelFor } from '../tracker/shared/trackerDisplay';
 import { OPENABLE_SESSION_STATUSES, type TrackerType, type DevSession } from '../../../shared/types';
 
 // Stable empty-sessions ref. The Zustand selector below returns this when an

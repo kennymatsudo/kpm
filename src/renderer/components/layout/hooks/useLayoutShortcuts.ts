@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import type { MainView } from '../MainViewSwitcher';
 import { useSettingsUIStore, useArtifactsStore, useSearchStore } from '../../../stores';
 import { subscribeToCloseContextMenu } from '../../../services/menuService';
 

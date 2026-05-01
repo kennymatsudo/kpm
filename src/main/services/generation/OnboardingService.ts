@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { gitExec } from '../repo/gitUtils';
 import { getConfig } from '../../config';
+import { writeProjectContextFilesSync } from '../../project-context/contextFileCompat';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 
 // =============================================================================

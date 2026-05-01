@@ -6,6 +6,11 @@ type Step =
   | { kind: 'tool'; activity: Activity; key: string };
 
 /** A grouped run of consecutive same-type tool calls. */
+interface ToolGroup {
+  kind: 'toolGroup';
+  activities: Activity[];
+  key: string;
+}
 type RenderRow =
   | { kind: 'thought'; content: string; key: string }
   | { kind: 'tool'; activity: Activity; key: string }

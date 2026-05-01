@@ -43,6 +43,7 @@ export type RepoGetBranchInput = z.infer<typeof RepoSchemas.getBranch>;
 export type RepoGetBranchesInput = z.infer<typeof RepoSchemas.getBranches>;
 export type RepoWatchInput = z.infer<typeof RepoSchemas.watch>;
 export type RepoUnwatchInput = z.infer<typeof RepoSchemas.unwatch>;
+export type RepoShowInFolderInput = z.infer<typeof RepoSchemas.showInFolder>;
 
 // =============================================================================
 // Attachment Types
@@ -122,6 +123,7 @@ export type FileExplorerGetInfoInput = z.infer<typeof FileExplorerSchemas.getInf
 export type FileExplorerReadFileInput = z.infer<typeof FileExplorerSchemas.readFile>;
 export type FileExplorerWriteFileInput = z.infer<typeof FileExplorerSchemas.writeFile>;
 export type FileExplorerGetSymlinkInfoInput = z.infer<typeof FileExplorerSchemas.getSymlinkInfo>;
+export type FileExplorerShowItemInFolderInput = z.infer<typeof FileExplorerSchemas.showItemInFolder>;
 export type FileExplorerSelectFolderDialogInput = z.infer<typeof FileExplorerSchemas.selectFolderDialog>;
 
 // =============================================================================
@@ -241,3 +243,4 @@ export type TaskPromptTemplateSetDefaultInput = z.infer<typeof TaskPromptTemplat
 // Shell Types
 // =============================================================================
 
+export type ShellOpenExternalInput = z.infer<typeof ShellSchemas.openExternal>;

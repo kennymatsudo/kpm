@@ -20,6 +20,7 @@ Bridges Electron's main process and renderer. Pattern: validate with Zod → del
 ```
 src/main/ipc/
 ├── index.ts              # Handler registration (composition root)
+├── channels.ts           # Re-export of shared channel constants
 ├── response.ts           # IpcResponse type and helpers
 ├── validation.ts         # Re-export from validation/
 ├── validation/           # Zod schemas by domain
@@ -31,6 +32,7 @@ src/main/ipc/
 
 ## Channel Registry
 
+All channels are defined in `src/shared/ipcChannels.ts` and re-exported from `channels.ts` for main-process handlers:
 
 ```typescript
 export const IPC_CHANNELS = {
@@ -76,6 +78,7 @@ Schemas in `validation/` organized by domain (one file per domain). See `validat
 
 ## Adding a New IPC Handler
 
+1. Define channel in `src/shared/ipcChannels.ts`
 2. Create Zod schema in `validation/{domain}.ts`
 
 ## Best Practices

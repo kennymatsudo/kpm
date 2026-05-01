@@ -1,7 +1,9 @@
 import { useCallback, useState, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Layout } from './components/layout';
+import { ErrorBoundary } from './components/app/ErrorBoundary';
 import { ProjectOnboardingWizard } from './components/onboarding';
+import { MotionProvider } from './components/app/MotionProvider';
 import { TooltipProvider } from './components/ui';
 import {
   useStoreSubscriptions,

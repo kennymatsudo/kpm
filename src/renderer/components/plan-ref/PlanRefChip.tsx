@@ -12,6 +12,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { toast, usePlanDomainStore, useProjectUiDomainStore } from '../../stores';
 import { STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import { selectNormalizedPlanItems } from '../../stores/project/selectors';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/Popover';
 import { PlanItemPreviewBody } from './PlanItemPreviewBody';
 
 const HOVER_OPEN_DELAY_MS = 220;

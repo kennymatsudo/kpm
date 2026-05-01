@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell } from 'electron';
 import path from 'path';
 import { getConfig } from '../config';
 import { isAllowedExternalUrl } from '../security/externalUrl';
+import { isTrustedAppUrl } from '../security/appUrl';
 
 export interface MainWindowManagerDeps {
   loadWindowBounds: () => Electron.Rectangle | null;
@@ -38,6 +39,34 @@ export function createMainWindowManager(deps: MainWindowManagerDeps) {
         console.warn(`[Main] Blocked unsafe external URL: ${url}`);
       }
       return { action: 'deny' };
+    });
+
+    mainWindow.webContents.on('will-navigate', (event) => {
+      const { url } = event;
+      if (isTrustedAppUrl(url)) {
+        return;
+      }
+
+      event.preventDefault();
+      if (isAllowedExternalUrl(url)) {
+        void shell.openExternal(url);
+      } else {
+        console.warn(`[Main] Blocked renderer navigation: ${url}`);
+      }
+    });
+
+    mainWindow.webContents.on('will-frame-navigate', (event) => {
+      if (event.isMainFrame) {
+        return;
+      }
+
+      const { url } = event;
+      if (isTrustedAppUrl(url)) {
+        return;
+      }
+
+      event.preventDefault();
+      console.warn(`[Main] Blocked renderer frame navigation: ${url}`);
     });
 
     const persistBounds = () => {

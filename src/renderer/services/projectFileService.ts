@@ -73,6 +73,13 @@ export function renameProjectEntry(
   return window.api.fileExplorer.rename(projectId, oldPath, newPath);
 }
 
+export function showProjectItemInFolder(
+  projectId: string,
+  path: string
+): Promise<{ success: boolean; error?: string }> {
+  return window.api.fileExplorer.showItemInFolder(projectId, path);
+}
+
 export function subscribeToProjectFileChanges(
   callback: (event: ProjectFileChangeEvent) => void
 ): () => void {

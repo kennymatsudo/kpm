@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   writeProjectContextFiles,
   writeProjectContextFilesSync,
+} from '../../src/main/project-context/contextFileCompat';
 
 describe('contextFileCompat', () => {
   let tempDir: string | null = null;

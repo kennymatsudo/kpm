@@ -9,6 +9,7 @@ import {
   getContextFilePriority,
 } from '../../../shared/contextFile';
 import { pathExists, resolveScopedPath } from './scopedFs';
+import { writeProjectContextFiles } from '../../project-context/contextFileCompat';
 
 /** Context file from the project folder */
 export interface ContextFile {

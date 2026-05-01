@@ -128,6 +128,11 @@ export const FileExplorerSchemas = {
     path: relativePath.min(1),
   }),
 
+  showItemInFolder: z.object({
+    projectId: uuid,
+    path: relativePath.min(1),
+  }),
+
   selectFolderDialog: z.object({
     title: z.string().optional(),
   }),

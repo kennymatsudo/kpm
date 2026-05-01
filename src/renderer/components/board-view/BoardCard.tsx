@@ -6,6 +6,7 @@ import { CardActivityLine } from './CardActivityLine';
 import type { PlanItem, AgentSessionState } from '../../../shared/types';
 import { toReviewSessionId } from '../../../shared/agent-types';
 import { openExternalUrl } from '../../services/shellService';
+import { TrackerIcon, trackerLabelFor } from '../tracker/shared/trackerDisplay';
 import { Tooltip } from '../ui';
 
 const STALE_ACTIVITY_MS = 5 * 60 * 1000;

@@ -5,6 +5,7 @@
  */
 
 import type { z, ZodError } from 'zod';
+import { assertTrustedIpcSender } from '../senderValidation';
 
 /**
  * Custom error class for validation failures.
@@ -84,6 +85,8 @@ export function createIpcHandler<TInput, TOutput extends object | void>(
 ): (event: Electron.IpcMainInvokeEvent, params: unknown) => Promise<IpcResponse<TOutput>> {
   return async (event, params) => {
     try {
+      assertTrustedIpcSender(event);
+
       // Validate input
       const parseResult = schema.safeParse(params);
       if (!parseResult.success) {
@@ -128,7 +131,10 @@ export function createSimpleIpcHandler<TOutput extends object | void>(
   handler: () => TOutput | Promise<TOutput>,
   fallbackError = 'Operation failed'
 ): (event: Electron.IpcMainInvokeEvent) => Promise<IpcResponse<TOutput>> {
+  return async (event) => {
     try {
+      assertTrustedIpcSender(event);
+
       const result = await handler();
 
       if (result === undefined || result === null) {

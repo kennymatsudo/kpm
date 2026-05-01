@@ -1,3 +1,4 @@
+import { ipcMain, shell } from 'electron';
 import { RepoFileSchemas } from '../validation';
 import type { RepoFileService } from '../../services/files/RepoFileService';
 import { unwrapOrThrow } from '../../services/result';
@@ -31,5 +32,13 @@ export function registerRepoFileHandlers(repoFileService: RepoFileService): void
   ipcMain.handle(IPC_CHANNELS.repoFiles.getInfo, async (_event, params: unknown) => {
     const { repoId, path } = RepoFileSchemas.getInfo.parse(params);
     return unwrapOrThrow(await repoFileService.getInfo(repoId, path));
+  });
+
+  // Show a repo file/folder in Finder/Explorer
+  ipcMain.handle(IPC_CHANNELS.repoFiles.showItemInFolder, async (_event, params: unknown) => {
+    const { repoId, path } = RepoFileSchemas.showItemInFolder.parse(params);
+    const fullPath = unwrapOrThrow(await repoFileService.getFullPath(repoId, path));
+    shell.showItemInFolder(fullPath);
+    return { success: true };
   });
 }

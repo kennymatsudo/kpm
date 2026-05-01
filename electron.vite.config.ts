@@ -10,7 +10,10 @@ const shouldAnalyze = process.env.ANALYZE === 'true'
 
 // Inject the package.json version at build time so the renderer can show it
 // without a round-trip through IPC. Read synchronously here — config evaluates once.
+const packageJson = JSON.parse(
   readFileSync(resolve(__dirname, 'package.json'), 'utf-8')
+) as { version: string }
+const pkgVersion = packageJson.version
 
 // Load visualizer plugin conditionally for bundle analysis (top-level await, ESM)
 let visualizerPlugin: Plugin | null = null

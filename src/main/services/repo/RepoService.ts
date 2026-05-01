@@ -58,6 +58,15 @@ export function createRepoService(deps: RepoServiceDeps) {
       }
     },
 
+    getPath(repoId: string): ServiceResult<string> {
+      try {
+        const repo = deps.repos.getById(repoId);
+        return repo ? success(repo.path) : failure('Repository not found');
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
     getBranch(repoPath: string): ServiceResult<string | null> {
       try {
         return success(deps.watcher.getBranch(repoPath));

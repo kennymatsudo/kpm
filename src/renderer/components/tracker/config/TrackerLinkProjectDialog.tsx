@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
 import { useProjectDomainStore } from '../../../stores';
 import type { TrackerType } from '../../../../shared/types';
+import { CloseIcon } from '../../icons';
 import { Z_INDEX } from '../../../constants/zIndex';
 import { JiraLinkProjectForm } from '../linking/JiraLinkProjectForm';
 import { LinearLinkProjectForm } from '../linking/LinearLinkProjectForm';
+import { TrackerIcon, trackerLabelFor } from '../shared/trackerDisplay';
 
 interface Props {
   trackerType: TrackerType;
@@ -13,6 +15,7 @@ interface Props {
 
 export function TrackerLinkProjectDialog({ trackerType, siteUrl, onClose }: Props) {
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
+  const trackerLabel = trackerLabelFor(trackerType);
 
   // Handle Escape key to close
   useEffect(() => {

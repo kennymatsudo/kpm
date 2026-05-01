@@ -1,4 +1,5 @@
 import type { KeyboardEvent, RefObject } from 'react';
+import { MainViewSwitcher, type MainView } from './MainViewSwitcher';
 import { useContextRegenerationStore } from '../../stores';
 import { DropdownMenu } from '../ui/DropdownMenu';
 

@@ -75,4 +75,8 @@ export const ChatAttachmentSchemas = {
     filePath: tempImagePath,
     mediaType: z.string().min(1).max(255),
   }),
+
+  openTemp: z.object({
+    filePath: tempImagePath,
+  }),
 };

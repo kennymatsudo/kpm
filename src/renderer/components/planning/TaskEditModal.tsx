@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { m } from 'framer-motion';
 import { useShallow } from 'zustand/react/shallow';
+import { Modal, ModalHeader } from '../ui/Modal';
+import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
+import { MotionButton } from '../ui/MotionButton';
+import { LoadingSpinner } from '../ui/LoadingButton';
 import {
   NONE_VALUE,
   Select,
@@ -9,6 +13,12 @@ import {
   SelectItemText,
   SelectTrigger,
   SelectValue,
+} from '../ui/Select';
+import { useTrackerStore } from '../../stores/trackerStore';
+import { useTrackerMetadataStore } from '../../stores';
+import type { TrackerIssueTypeOption } from '../../stores/tracker/useMetadataStore';
+import { TrackerIcon, trackerLabelFor } from '../tracker/shared/trackerDisplay';
+import type { PlanItem } from '../../../shared/types';
 
 // Stable empty array to avoid re-render loops
 const EMPTY_ISSUE_TYPES: TrackerIssueTypeOption[] = [];

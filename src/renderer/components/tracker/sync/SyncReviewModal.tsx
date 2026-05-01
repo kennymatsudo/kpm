@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '../../ui/Select';
 import { useAssociationData, useCustomFieldManagement, useSyncItemSelection } from './hooks';
+import { trackerLabelFor } from '../shared/trackerDisplay';
 
 interface Props {
   projectId: string;

@@ -7,6 +7,7 @@ import { SyncUpdateCard } from './SyncUpdateCard';
 import { Modal, ModalHeader, ModalFooter } from '../../ui/Modal';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 import { Z_INDEX } from '../../../constants/zIndex';
+import { trackerLabelFor } from '../shared/trackerDisplay';
 
 interface Props {
   projectId: string;

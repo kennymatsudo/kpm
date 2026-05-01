@@ -10,6 +10,7 @@
 import type { Database, Statement } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import type { TaskPromptTemplate } from '../../../../shared/types';
+import { DEFAULT_TASK_PROMPT } from '../../../../shared/taskPromptDefaults';
 import type { ITaskPromptTemplateRepository } from '../../interfaces';
 
 /**

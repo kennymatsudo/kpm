@@ -1,6 +1,7 @@
 import type { MouseEvent } from 'react';
 import type { StatusCategory, TrackerType } from '../../../shared/types';
 import type { TreeNode } from '../../utils/planHierarchy';
+import { TrackerIcon, trackerLabelFor } from '../tracker/shared/trackerDisplay';
 import { StatusSelector } from '../ui/StatusSelector';
 import { Tooltip } from '../ui/Tooltip';
 import { HighlightedText } from './HighlightedText';

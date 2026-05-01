@@ -34,3 +34,7 @@ export function listAllRepoBranches(repoPath: string): Promise<string[]> {
 export function listRepoWorktrees(repoPath: string): Promise<{ path: string; branch: string | null; isMain: boolean }[]> {
   return window.api.repos.listWorktrees(repoPath);
 }
+
+export function showRepoInFolder(repoId: string): Promise<{ success: boolean; error?: string }> {
+  return window.api.repos.showInFolder(repoId);
+}

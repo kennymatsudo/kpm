@@ -105,6 +105,10 @@ export const RepoSchemas = {
     repoId: uuid,
     worktreePath: z.string().nullable(),
   }),
+
+  showInFolder: z.object({
+    repoId: uuid,
+  }),
 };
 
 // =============================================================================

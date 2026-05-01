@@ -38,3 +38,7 @@ export async function saveDroppedFile(file: File): Promise<
 export function readAttachmentAsDataUrl(filePath: string, mediaType: string) {
   return window.api.attachments.readAsDataUrl(filePath, mediaType);
 }
+
+export function openTempAttachment(filePath: string): Promise<{ success: boolean; error?: string }> {
+  return window.api.attachments.openTemp(filePath);
+}

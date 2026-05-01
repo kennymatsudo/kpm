@@ -21,6 +21,7 @@ import type {
   IRepoRepository,
 } from '../../db/interfaces';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
+import { formatPlanRefSection } from '../../claude/contextRefs';
 import { getConfig } from '../../config';
 import {
   createStatusBroadcaster,
@@ -440,6 +441,16 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         ...contextResult.data,
         userPrompt,
       }));
+    },
+
+    /**
+     * Resolve any @plan/<uuid> tokens in agent launch prompts or attached
+     * context files so board agents receive the referenced plan item state.
+     */
+    buildPlanRefSection(projectId: string, content: string): string {
+      if (!content) return '';
+      const items = deps.planItems.getByProject(projectId);
+      return formatPlanRefSection(content, items);
     },
 
     /**

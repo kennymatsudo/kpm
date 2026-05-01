@@ -1,5 +1,6 @@
 import { DropdownMenu } from '../ui';
 import type { TrackerType } from '../../../shared/types';
+import { trackerLabelFor } from '../tracker/shared/trackerDisplay';
 
 interface BulkActionsMenuProps {
   x: number;

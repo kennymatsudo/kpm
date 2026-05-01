@@ -19,6 +19,7 @@ import {
   copyExternalProjectFile,
   createProjectBinaryFile,
   createProjectTextFile,
+  showProjectItemInFolder,
   unwatchProjectFiles,
   watchProjectFiles,
 } from '../../services/projectFileService';
@@ -281,6 +282,8 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
   );
 
   const handleRevealRepoInFinder = useCallback(
+    async (repoId: string) => {
+      await showRepoInFolder(repoId);
       fileContextMenus.setRepoContextMenu(null);
     },
     [fileContextMenus.setRepoContextMenu]
@@ -343,6 +346,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
       } else if (node.name.endsWith('.md')) {
         await fileViewers.openMarkdownViewer(path);
       } else {
+        await showProjectItemInFolder(projectId, path);
       }
     },
     [projectId, loadProjectDirectory, toggleProjectExpanded, onFileOpen, fileViewers.openImageViewer, fileViewers.openMarkdownViewer]
@@ -604,6 +608,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         }}
         onRevealRepoInFinder={() => {
           if (repoContextRepo) {
+            void handleRevealRepoInFinder(repoContextRepo.id);
           }
         }}
         onSetActiveWorktreePath={(path) => {
