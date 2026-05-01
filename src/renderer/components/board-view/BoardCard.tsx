@@ -236,6 +236,7 @@ export const BoardCard = memo(function BoardCard({
         ${isDimmed ? 'opacity-40' : ''}
         ${visualState === 'attention' || visualState === 'stale' ? 'shadow-sm shadow-amber-500/10' : ''}
         ${visualState === 'active' ? 'animate-pulse-subtle' : ''}
+        hover:shadow-sm ${isSelected ? '' : 'hover:border-border-default'}
         group
       `}
       onClick={(e) => {
