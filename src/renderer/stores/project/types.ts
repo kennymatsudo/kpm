@@ -16,6 +16,7 @@ import type { API } from '../../../preload/api';
 import type { emit } from '../storeEvents';
 
 // Re-export shared types for consumers of the store
+export type { Project, Repo, Attachment, PlanItem, PlanRelation, FocusedResource, Worktree };
 
 export interface ProjectStoreDependencies {
   api: API;
@@ -148,6 +149,7 @@ export type ResourceDomainState = Pick<
   'removeRepo' | 'removeRepoFromProject' | 'addAttachment' | 'removeAttachment' | 'refreshRepos' |
   'setRepoBranches' | 'setRepoBranch' | 'updateRepoEnvironmentMode' | 'setActiveWorktreePath' |
   'setWorktrees' | 'addWorktree' | 'removeWorktree' |
+  'openWorktreeInEditor' | 'deleteWorktree' | 'destroyWorktree'
 >;
 
 export type UiDomainState = Pick<

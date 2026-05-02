@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { FocusedResource } from '../../../../shared/types';
+import { getProjectAbsolutePath } from '../../../services/projectService';
 
 interface FileContextMenusDeps {
   projectId: string;

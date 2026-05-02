@@ -93,6 +93,7 @@ export function registerDevSessionHandlers(
     )
   );
 
+  // Delete a session (removes record, optionally cleans worktree)
   ipcMain.handle(
     IPC_CHANNELS.devSession.delete,
     createIpcHandler(

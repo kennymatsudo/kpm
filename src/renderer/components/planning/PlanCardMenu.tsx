@@ -87,6 +87,7 @@ export function PlanCardMenu({
 
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const showWorktreeSection = hasWorktree || !!onStartAgent;
   const trackerLabel = trackerLabelFor(trackerType);
 
   const handleStartAgentFromMenu = () => {
@@ -103,6 +104,7 @@ export function PlanCardMenu({
       const target = e.target as Node;
       if (menuRef.current?.contains(target)) return;
       const element = e.target as HTMLElement;
+      if (element.closest('[role="dialog"]')) return;
       onClose();
     };
 
@@ -192,16 +194,67 @@ export function PlanCardMenu({
             Add to Chat Context
           </button>
 
+          {showWorktreeSection && (
             <>
+              <div className="px-2 py-1.5 flex items-center gap-2">
+                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border-subtle to-transparent" />
+                <span className="text-xxs font-medium text-text-muted uppercase tracking-wider">Worktree</span>
+                <div className="flex-1 h-px bg-gradient-to-r from-border-subtle via-transparent to-transparent" />
               </div>
 
+              {hasWorktree ? (
+                <>
+                  {onStartAgent && (
                     <button
+                      onClick={(e) => {
                         e.stopPropagation();
+                        handleStartAgentFromMenu();
                       }}
+                      disabled={isWorktreeLoading}
+                      className={`dropdown-item dropdown-item-accent w-full flex items-center gap-2 ${isWorktreeLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
+                      <span className="flex-1">Start Agent</span>
                     </button>
+                  )}
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                    }}
+                    disabled={isWorktreeLoading}
+                    className={`dropdown-item w-full flex items-center gap-2 ${isWorktreeLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                      </svg>
+                    )}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleStartAgentFromMenu();
+                  }}
+                  disabled={isWorktreeLoading}
+                  className={`dropdown-item dropdown-item-accent w-full flex items-center gap-2 ${isWorktreeLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="flex-1">Start Agent</span>
+                </button>
               )}
+            </>
           )}
 
           {canCopyWorktreeInfo && (

@@ -3,6 +3,7 @@
  *
  * Each session:
  * - Creates an isolated git worktree from master/main
+ * - Starts an implementation agent through AgentSessionManager
  * - Tracks status (pending → active → inactive)
  * - Persists across app restarts
  */
@@ -721,6 +722,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     },
 
     /**
+     * Delete a session (removes record, optionally cleans worktree).
      * This is the unified action for stopping/removing sessions.
      */
     async deleteSession(

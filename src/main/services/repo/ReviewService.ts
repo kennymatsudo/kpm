@@ -316,6 +316,11 @@ export function createReviewService(deps: ReviewServiceDeps) {
     const contextResult = await deps.gitHubService.buildAddressReviewContext(sessionId, { threadIds });
     if (!contextResult.ok) return contextResult;
 
+    const followUpResult = await deps.devSessionService.sendAgentFollowUp(
+      sessionId,
+    );
+    if (!followUpResult.ok) {
+      return failure(followUpResult.error);
     }
 
     const now = new Date().toISOString();

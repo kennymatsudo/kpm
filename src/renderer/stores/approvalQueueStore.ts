@@ -12,6 +12,8 @@
 
 import { create } from 'zustand';
 import { isContextFile } from '../../shared/contextFile';
+import type { PlanAction } from '../../shared/types';
+import { usePlanDomainStore } from './projectDomains';
 import { useDevSessionsStore } from './devSessions';
 import { replyToSessionReviewThread } from '../services/reviewService';
 import { writeClaudeMdFile } from '../services/contextFileService';

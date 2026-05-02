@@ -41,6 +41,7 @@ export const DevSessionSchemas = {
     status: devSessionStatus,
   }),
 
+  /** Delete session (removes record, optionally cleans worktree) */
   delete: z.object({
     sessionId: uuid,
     cleanupWorktree: z.boolean().optional().default(true),

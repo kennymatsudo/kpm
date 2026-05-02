@@ -64,6 +64,9 @@ function createDeps(session: Record<string, unknown>, repoPath: string) {
       persistCompletedReview: vi.fn(),
       markLatestCompletedStale: vi.fn(),
     },
+    agentSessionManager: {
+      create: vi.fn(),
+      getByDevSession: vi.fn(),
     },
     userDataPath: '/tmp/kpm-test',
   } as unknown as Parameters<typeof createDevSessionService>[0];
@@ -122,6 +125,7 @@ describe('DevSessionService', () => {
     }) as never);
 
     const service = createDevSessionService(createDeps(session, repoPath));
+    const result = await service.startAgentSession('session-1');
 
     expect(result.ok).toBe(false);
     if (!result.ok) {

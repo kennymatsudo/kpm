@@ -2,6 +2,7 @@
  * ApprovalOverlays - Non-blocking side panel for pending approval items
  *
  * Renders a slide-in panel from the left for approval items (plan actions, CLAUDE.md edits,
+ * document updates, review replies). The panel overlays the sidebar, keeping the
  * chat visible so users can reference Claude's explanations while reviewing changes.
  *
  * Uses a unified approval queue to handle multiple pending items from Claude.

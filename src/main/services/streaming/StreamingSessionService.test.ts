@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserWindow } from 'electron';
+import type { PlanAction } from '../../../shared/types';
 import type {
   PlanActionsEvent,
 } from '../../claude/tools/createKpmServer';

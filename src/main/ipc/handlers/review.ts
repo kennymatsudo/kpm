@@ -83,6 +83,8 @@ export function registerReviewHandlers(
     IPC_CHANNELS.review.triggerAutomation,
     createIpcHandler(
       ReviewSchemas.triggerAutomation,
+      async ({ sessionId, taskIds }) => {
+        const result = unwrapOrThrow(await reviewService.triggerReviewAutomation(sessionId, taskIds));
         return result;
       },
       'Failed to trigger review automation'
