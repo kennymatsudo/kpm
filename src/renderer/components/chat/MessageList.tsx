@@ -19,6 +19,45 @@ function getTextContent(segments: MessageSegment[]): string {
     .join('');
 }
 
+type SegmentGroup =
+  | { kind: 'process'; segments: MessageSegment[] }
+
+/**
+ * Split segments into ordered runs separated by text. Each text segment becomes
+ * its own group; activity/thinking segments coalesce into a single process
+ * group until the next text breaks the run. This is what lets a single
+ * assistant turn render as alternating tool blocks and prose.
+ */
+  const groups: SegmentGroup[] = [];
+  let buffer: MessageSegment[] = [];
+
+  const flushProcess = () => {
+    if (buffer.length === 0) return;
+    const hasContent = buffer.some(
+      (s) =>
+        (s.type === 'thinking' && s.content.trim().length > 0) ||
+        (s.type === 'activity' && s.activities.length > 0)
+    );
+    if (hasContent) {
+      groups.push({ kind: 'process', segments: buffer });
+    }
+    buffer = [];
+  };
+
+  for (const seg of segments) {
+    if (seg.type === 'text') {
+      flushProcess();
+      if (seg.content.trim().length > 0) {
+        groups.push({ kind: 'text', content: seg.content });
+      }
+    } else {
+      buffer.push(seg);
+    }
+  }
+  flushProcess();
+  return groups;
+}
+
 
 /** Parse user message to extract image attachments and clean content */
 function parseUserMessage(content: string): { cleanContent: string; imageCount: number } {
@@ -166,7 +205,13 @@ const AssistantMessageContent = memo(function AssistantMessageContent({
 
   return (
     <>
+      {groups.map((group, idx) => {
+        if (group.kind === 'process') {
+          return <ProcessTimeline key={`p-${idx}`} segments={group.segments} />;
+        }
+        const segmentProcessed = processMessageContent(group.content);
         return (
+          <div key={`t-${idx}`} className="prose-themed">
             <Markdown options={markdownOptions}>
               {transformPlanRefs(segmentProcessed.displayContent)}
             </Markdown>
@@ -192,9 +237,68 @@ const StreamingContent = memo(function StreamingContent({
   activities: Activity[];
   elapsedSeconds: number | null;
 }) {
+
+  // The "active" group — the one still receiving live activities/thinking — is
+  // either the trailing process group (if no text has landed after the latest
+  // tool batch) or a synthetic block appended after a trailing text segment.
+  // Earlier process groups auto-collapse via ProcessTimeline's isStreaming flag.
+  type RenderItem =
+    | { kind: 'process'; segments: MessageSegment[]; isActive: boolean; liveActivities?: Activity[]; thinking?: string }
+    | { kind: 'text'; content: string };
+
+  const items: RenderItem[] = groups.map((g) =>
+    g.kind === 'process'
+      ? { kind: 'process', segments: g.segments, isActive: false }
+      : { kind: 'text', content: g.content }
+  );
+
+  const lastIdx = items.length - 1;
+  const last = items[lastIdx];
+  const liveThinking = thinkingContent?.trim() ? thinkingContent : undefined;
+  const hasLive = activities.length > 0 || !!liveThinking;
+
+  let activeIdx = -1;
+  if (last?.kind === 'process') {
+    activeIdx = lastIdx;
+  } else if (hasLive) {
+    items.push({ kind: 'process', segments: [], isActive: true });
+    activeIdx = items.length - 1;
+  }
+
+  if (activeIdx !== -1) {
+    const active = items[activeIdx] as Extract<RenderItem, { kind: 'process' }>;
+    active.isActive = true;
+    if (activities.length > 0) active.liveActivities = activities;
+  }
+
+  // Streaming thinking has no temporal anchor (it accumulates as one blob),
+  // so attach it to the first process group — matches the prior "thinking
+  // surfaces at the top" behavior.
+  if (liveThinking) {
+    const firstProcess = items.find(
+      (i): i is Extract<RenderItem, { kind: 'process' }> => i.kind === 'process'
+    );
+    if (firstProcess) firstProcess.thinking = liveThinking;
+  }
+
   return (
     <>
+      {items.map((item, idx) => {
+        if (item.kind === 'process') {
+          return (
+            <ProcessTimeline
+              key={`p-${idx}`}
+              segments={item.segments}
+              streamingActivities={item.liveActivities}
+              streamingThinking={item.thinking}
+              isStreaming={item.isActive}
+              elapsedSeconds={item.isActive ? elapsedSeconds : null}
+            />
+          );
+        }
+        const processed = processMessageContent(item.content);
         return (
+          <div key={`t-${idx}`} className="prose-themed">
             <Markdown options={markdownOptions}>
               {transformPlanRefs(processed.displayContent)}
             </Markdown>
