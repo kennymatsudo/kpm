@@ -53,6 +53,9 @@ export function DiffViewer({ oldContent, newContent, diffLines: diffLinesProp, a
   useEffect(() => {
     if (!autoScrollToFirstChange || !containerRef.current) return;
 
+    const firstChangedIndex = diffLines.findIndex((line) => line.type !== 'unchanged');
+    if (firstChangedIndex === -1) return;
+
   }, [autoScrollToFirstChange, diffLines]);
 
   return (
