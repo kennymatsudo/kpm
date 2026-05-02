@@ -213,6 +213,7 @@ export function ApprovalOverlays() {
       if (result.success) {
         removeById(item.id);
         // Refresh the parent directory so the new file appears in the tree
+        const parentPath = getParentPath(item.filePath, '');
         void useFileTreeStore.getState().refreshDirectory(parentPath);
         // Navigate to workspace and open the newly created document
         emit({
