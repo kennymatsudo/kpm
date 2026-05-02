@@ -181,9 +181,13 @@ export function CustomPromptSettings() {
   const isProcessing = isSaving || isDeleting;
 
   return (
+    <div className="flex flex-col h-full min-h-0">
       </div>
 
+      <div className="grid grid-cols-[240px_1fr] gap-5 min-w-0 flex-1 min-h-0">
         {/* Prompt list */}
+        <div className="flex flex-col min-w-0 min-h-0">
+          <div className="flex items-center justify-between gap-2 mb-3 shrink-0">
             <h4 className="text-xs font-medium text-text-secondary uppercase tracking-wide truncate">Prompts</h4>
             <button
               onClick={handleCreate}
@@ -196,6 +200,7 @@ export function CustomPromptSettings() {
             </button>
           </div>
 
+          <div className="bg-surface-2/50 rounded-xl p-2 flex-1 min-h-0 overflow-y-auto">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <LoadingSpinner className="w-5 h-5 text-text-muted" />
@@ -218,6 +223,8 @@ export function CustomPromptSettings() {
         </div>
 
         {/* Prompt editor */}
+        <div className="flex flex-col min-w-0 min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1 space-y-4">
           {/* Built-in prompt info */}
           {selectedPrompt?.is_builtin && !isCreating && (
             <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-surface-3 text-text-secondary text-sm">
@@ -300,6 +307,7 @@ export function CustomPromptSettings() {
             <textarea
               value={promptContent}
               onChange={(e) => setPromptContent(e.target.value)}
+              rows={8}
               placeholder="Enter instructions for what you want Claude to generate..."
             />
           </div>
@@ -307,7 +315,10 @@ export function CustomPromptSettings() {
           {/* Help text */}
           <div className="text-xs text-text-tertiary">
           </div>
+          </div>
 
+          {/* Sticky actions footer */}
+          <div className="shrink-0 flex items-center justify-between gap-3 pt-3 mt-3 border-t border-border">
             <div className="flex gap-2 min-w-0">
               {selectedPrompt && !selectedPrompt.is_builtin && !isCreating && (
                 <button
@@ -384,6 +395,7 @@ function PromptListItem({ prompt, isSelected, onClick }: PromptListItemProps) {
         )}
       </div>
       {prompt.description && (
+        <p className="text-xs text-text-tertiary truncate mt-0.5 ml-5.5">{prompt.description}</p>
       )}
     </button>
   );
