@@ -72,6 +72,12 @@ interface ApprovalQueueState {
 
   /**
    */
+
+  /** Current width of the approval side panel in pixels (user-resizable). */
+  panelWidth: number;
+
+  setPanelWidth: (width: number) => void;
+
   // ───────────────────────────────────────────────────────────────────────────
   // Enqueue methods
   // ───────────────────────────────────────────────────────────────────────────
@@ -180,6 +186,9 @@ function generateId(): string {
 
 export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
   queue: [],
+  panelWidth: 560,
+
+  setPanelWidth: (width) => set({ panelWidth: width }),
 
   // ─────────────────────────────────────────────────────────────────────────
   // Enqueue Methods

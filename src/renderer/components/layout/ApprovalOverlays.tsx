@@ -80,6 +80,8 @@ export function ApprovalOverlays() {
     useShallow((state) => ({
       queue: state.queue,
       removeById: state.removeById,
+      panelWidth: state.panelWidth,
+      setPanelWidth: state.setPanelWidth,
     }))
   );
 
