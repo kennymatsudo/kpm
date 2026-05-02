@@ -125,6 +125,12 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       const result = await executeCustomPrompt(currentProjectId!, command.promptId);
 
       if (result.success && result.taskId) {
+        useCustomPromptTaskStore.getState().startTask({
+          taskId: result.taskId,
+          promptName: command.label,
+          projectId: currentProjectId!,
+          startedAt: Date.now(),
+        });
         closeTimeoutRef.current = setTimeout(() => {
           onClose();
         }, 200);

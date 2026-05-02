@@ -7,6 +7,7 @@ import { MotionProvider } from './components/app/MotionProvider';
 import { TooltipProvider } from './components/ui';
 import {
   useStoreSubscriptions,
+  initCustomPromptTaskListeners,
   useProjectDomainStore,
   usePlanDomainStore,
   selectProjectSummary,
@@ -18,6 +19,11 @@ import { subscribeToRefreshRequested } from './services/planService';
 export default function App() {
   // Initialize cross-store event subscriptions
   useStoreSubscriptions();
+
+  // Track in-flight Cmd+K custom prompt generations
+  useEffect(() => {
+    return initCustomPromptTaskListeners();
+  }, []);
 
   // Track app ready state for E2E tests - app is ready when projects have been loaded
   const { projects, currentProjectId } = useProjectDomainStore(useShallow(selectProjectSummary));

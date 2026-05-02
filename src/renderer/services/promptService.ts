@@ -40,6 +40,18 @@ export function executeCustomPrompt(projectId: string, promptId: string) {
   return window.api.customPrompts.execute(projectId, promptId);
 }
 
+export function subscribeToCustomPromptComplete(
+  callback: (data: { taskId: string; filePath: string; promptName: string }) => void,
+): () => void {
+  return window.api.customPrompts.onComplete(callback);
+}
+
+export function subscribeToCustomPromptError(
+  callback: (data: { taskId: string; error: string }) => void,
+): () => void {
+  return window.api.customPrompts.onError(callback);
+}
+
 export function listPromptOverrides() {
   return window.api.promptOverrides.list();
 }

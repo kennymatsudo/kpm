@@ -17,6 +17,7 @@ import type { StatusCategory, TrackerAssociationWithScope, TrackerCredentialInfo
 import { TopBarPlanningControls } from './TopBarPlanningControls';
 import { TopBarProjectSection } from './TopBarProjectSection';
 import { SlackTriageBadge, SlackTriagePanel } from '../slack';
+import { CustomPromptTaskBadge } from './CustomPromptTaskBadge';
 import { useProjectEdit } from './hooks/useProjectEdit';
 import { useProjectMenu } from './hooks/useProjectMenu';
 import { useTrackerTopBarIntegration } from './hooks/useTrackerTopBarIntegration';
@@ -249,6 +250,9 @@ export function TopBar({
               </div>
             </>
           )}
+
+          {/* Cmd+K custom prompt indicator - persists across project switches */}
+          <CustomPromptTaskBadge />
 
           {/* Chat toggle - panel chrome, sits at the far right edge to mirror the sidebar toggle on the left */}
           {(mainView === 'planning' || mainView === 'workspace') && (

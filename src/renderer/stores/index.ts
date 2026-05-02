@@ -83,6 +83,11 @@ export { useMcpServersStore } from './mcpServersStore';
 
 // Custom Prompts
 export { useCustomPromptStore } from './customPromptStore';
+export {
+  useCustomPromptTaskStore,
+  initCustomPromptTaskListeners,
+} from './customPromptTaskStore';
+export type { RunningCustomPromptTask } from './customPromptTaskStore';
 export { useDevSessionsStore } from './devSessions';
 
 // Tool Call Logging
