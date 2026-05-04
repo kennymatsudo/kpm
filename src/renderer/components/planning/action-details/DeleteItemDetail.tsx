@@ -28,6 +28,7 @@ export function DeleteItemDetail({ action, planItems }: DeleteItemDetailProps) {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center gap-2">
+        <span className="text-xxs font-bold uppercase tracking-wider px-2 py-1 rounded bg-danger/12 text-danger">
           Delete
         </span>
         {item.label && (

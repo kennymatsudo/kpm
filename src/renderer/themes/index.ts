@@ -2,6 +2,8 @@ import type { CustomTheme, CustomThemeVsCodeData } from '../../shared/types';
 
 export type ThemeId =
   | 'system'
+  | 'graphite'
+  | 'fog';
 export type ColorScheme = 'light' | 'dark';
 
 /**
@@ -18,16 +20,25 @@ export interface ThemeColors {
   surface3: string; // Hover states
   surface4: string; // Active states
   surfaceElevated: string; // Modals, dropdowns
+  surfaceCode: string; // Code blocks, terminals, <pre>
+  surfaceSelected: string; // Selected list/tree/menu items (rgba string allowed)
 
   // Text colors
   textPrimary: string;
   textSecondary: string;
   textTertiary: string;
   textMuted: string;
+  textOnAccent: string; // Foreground on top of `accent` fills
 
   // Accent color (primary brand color)
   accent: string;
   accentHover: string;
+  accentActive: string; // Pressed state for accent fills
+  focusRing: string; // Focus ring color (rgba string)
+
+  // Link colors (markdown / prose)
+  link: string;
+  linkVisited: string;
 
   // Semantic colors (optional - defaults provided)
   success?: string;
@@ -96,16 +107,130 @@ function lighten(hex: string, factor: number): string {
   return `#${[l(r), l(g), l(b)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 }
 
+/** Darken a hex color by mixing with black. factor 0 = original, 1 = black */
+function darken(hex: string, factor: number): string {
+  const { r, g, b } = hexToRgb(hex);
+  const d = (v: number) => Math.round(v * (1 - factor));
+  return `#${[d(r), d(g), d(b)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** Compute relative luminance per WCAG; used to pick black/white as on-accent text. */
+function relativeLuminance(hex: string): number {
+  const { r, g, b } = hexToRgb(hex);
+  const channel = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+/**
+ * A relaxed version of ThemeColors where the 7 new extended tokens are optional.
+ * Used to accept custom (user-imported) themes that predate the extension.
+ */
+export type PartialThemeColors = Omit<
+  ThemeColors,
+  | 'surfaceCode'
+  | 'surfaceSelected'
+  | 'textOnAccent'
+  | 'accentActive'
+  | 'focusRing'
+  | 'link'
+  | 'linkVisited'
+> & {
+  surfaceCode?: string;
+  surfaceSelected?: string;
+  textOnAccent?: string;
+  accentActive?: string;
+  focusRing?: string;
+  link?: string;
+  linkVisited?: string;
+};
+
+/**
+ * Fill in any missing extended-token fields on a partial color set with
+ * sensible derivations. Built-in themes always declare the full 22 tokens —
+ * this exists so user-imported (custom) themes don't need to be re-imported
+ * after the token-system expansion.
+ */
+export function withDerivedExtendedTokens(colors: PartialThemeColors): ThemeColors {
+  const isDark = colors.colorScheme === 'dark';
+  const accentLuminance = relativeLuminance(colors.accent);
+  // Pick whichever of black/white has more contrast against the accent fill.
+  const onAccentDefault = accentLuminance > 0.45
+    ? '#0e0f12'
+    : '#ffffff';
+
+  return {
+    ...colors,
+    surfaceCode: colors.surfaceCode ?? (isDark ? darken(colors.surface1, 0.3) : colors.surface3),
+    surfaceSelected: colors.surfaceSelected ?? rgba(colors.accent, isDark ? 0.12 : 0.10),
+    textOnAccent: colors.textOnAccent ?? onAccentDefault,
+    accentActive: colors.accentActive ?? darken(colors.accent, 0.12),
+    focusRing: colors.focusRing ?? rgba(colors.accent, isDark ? 0.45 : 0.35),
+    link: colors.link ?? colors.accent,
+    linkVisited: colors.linkVisited ?? (isDark ? '#c69cff' : '#7a4fa0'),
+  };
+}
+
 // ============================================
 // Theme Definitions
 // ============================================
 
+// Graphite — cool neutral charcoal, electric blue accent
+const graphiteColors: ThemeColors = {
   colorScheme: 'dark',
+  surface0: '#0e0f12',
+  surface1: '#15171b',
+  surface2: '#1c1e23',
+  surface3: '#272a31',
+  surface4: '#363a44',
+  surfaceElevated: '#1f2229',
+  surfaceCode: '#0a0b0d',
+  surfaceSelected: 'rgba(110, 168, 254, 0.14)',
+  textPrimary: '#e8eaef',
+  textSecondary: '#a8adb8',
+  textTertiary: '#7a8090',
+  textMuted: '#4f5563',
+  textOnAccent: '#0e0f12',
+  accent: '#6ea8fe',
+  accentHover: '#8bbcff',
+  accentActive: '#5a92e8',
+  focusRing: 'rgba(110, 168, 254, 0.45)',
+  link: '#8bbcff',
+  linkVisited: '#c69cff',
+  success: '#7ec27a',
+  warning: '#e0b870',
+  danger: '#e78a8a',
+  info: '#6ea8fe',
 };
 
+// Fog — cool neutral gray, indigo accent
+const fogColors: ThemeColors = {
   colorScheme: 'light',
+  surface0: '#f4f5f7',
   surface1: '#ffffff',
+  surface2: '#eef0f3',
+  surface3: '#e2e5ea',
+  surface4: '#cdd2da',
   surfaceElevated: '#ffffff',
+  surfaceCode: '#eef0f3',
+  surfaceSelected: 'rgba(79, 86, 230, 0.10)',
+  textPrimary: '#16181c',
+  textSecondary: '#4a4f57',
+  textTertiary: '#717680',
+  textMuted: '#a0a4ad',
+  textOnAccent: '#ffffff',
+  accent: '#4f56e6',
+  accentHover: '#6970f0',
+  accentActive: '#3d44c8',
+  focusRing: 'rgba(79, 86, 230, 0.35)',
+  link: '#4f56e6',
+  linkVisited: '#7a4fa0',
+  success: '#1f8a4c',
+  warning: '#c87514',
+  danger: '#d04444',
+  info: '#1976d2',
 };
 
 export const THEMES: ThemeDefinition[] = [
@@ -113,10 +238,22 @@ export const THEMES: ThemeDefinition[] = [
     id: 'system',
     name: 'System',
     description: 'Follow OS preference',
+    colors: graphiteColors, // Used for preview only — matches the new dark default
+    preview: { surface: '#0e0f12', accent: '#6ea8fe', text: '#e8eaef' },
   },
   {
+    id: 'fog',
+    name: 'Fog',
+    description: 'Cool neutral gray',
+    colors: fogColors,
+    preview: { surface: '#f4f5f7', accent: '#4f56e6', text: '#16181c' },
   },
   {
+    id: 'graphite',
+    name: 'Graphite',
+    description: 'Cool neutral charcoal',
+    colors: graphiteColors,
+    preview: { surface: '#0e0f12', accent: '#6ea8fe', text: '#e8eaef' },
   },
 ];
 
@@ -209,12 +346,15 @@ export function generateThemeVariables(colors: ThemeColors): Record<string, stri
     '--color-surface-3': colors.surface3,
     '--color-surface-4': colors.surface4,
     '--color-surface-elevated': colors.surfaceElevated,
+    '--color-surface-code': colors.surfaceCode,
+    '--color-surface-selected': colors.surfaceSelected,
 
     // Text
     '--color-text-primary': colors.textPrimary,
     '--color-text-secondary': colors.textSecondary,
     '--color-text-tertiary': colors.textTertiary,
     '--color-text-muted': colors.textMuted,
+    '--color-text-on-accent': colors.textOnAccent,
 
     // Borders
     '--color-border-subtle': `rgba(${borderColor}, ${borderSubtleOpacity})`,
@@ -224,8 +364,14 @@ export function generateThemeVariables(colors: ThemeColors): Record<string, stri
     // Accent
     '--color-accent': colors.accent,
     '--color-accent-hover': colors.accentHover,
+    '--color-accent-active': colors.accentActive,
     '--color-accent-muted': rgba(colors.accent, mutedOpacity),
     '--color-accent-subtle': rgba(colors.accent, subtleOpacity),
+    '--color-focus-ring': colors.focusRing,
+
+    // Links
+    '--color-link': colors.link,
+    '--color-link-visited': colors.linkVisited,
 
     // Semantic colors
     '--color-success': success,
@@ -374,6 +520,7 @@ export function createMonacoThemeData(theme: ThemeOption): CustomThemeVsCodeData
     rules: [],
     colors: {
       // Editor body
+      'editor.background': colors.surfaceCode,
       'editor.foreground': colors.textPrimary,
       'editorLineNumber.foreground': colors.textMuted,
       'editorLineNumber.activeForeground': colors.textSecondary,
@@ -424,6 +571,7 @@ export function createMonacoThemeData(theme: ThemeOption): CustomThemeVsCodeData
 
       // Buttons inside widgets
       'button.background': colors.accent,
+      'button.foreground': colors.textOnAccent,
       'button.hoverBackground': colors.accentHover,
       'button.secondaryBackground': colors.surface3,
       'button.secondaryForeground': colors.textPrimary,

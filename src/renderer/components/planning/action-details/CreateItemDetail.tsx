@@ -20,6 +20,7 @@ export function CreateItemDetail({ action, planItems, placeholderMap }: CreateIt
     <div className="space-y-3">
       {/* Header badge */}
       <div className="flex items-center gap-2">
+        <span className="text-xxs font-bold uppercase tracking-wider px-2 py-1 rounded bg-success/12 text-success">
           New Item
         </span>
         {action.label && (

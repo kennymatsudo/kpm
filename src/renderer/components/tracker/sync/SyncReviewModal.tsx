@@ -643,6 +643,7 @@ function ItemRow({ item, depth = 0, isSelected, onSelect, onToggle, trackerLabel
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className={`
+            text-xxs font-bold uppercase tracking-wider px-1 py-px rounded
             ${isCreate ? 'bg-success/12 text-success' : 'bg-info/12 text-info'}
           `}>
             {isCreate ? 'New' : 'Upd'}
@@ -652,6 +653,7 @@ function ItemRow({ item, depth = 0, isSelected, onSelect, onToggle, trackerLabel
           </span>
         </div>
         {!isCreate && item.planItem.external_key && (
+          <p className="text-xxs text-text-muted/70 font-mono mt-0.5 ml-[18px]">{item.planItem.external_key}</p>
         )}
       </div>
 
@@ -742,6 +744,7 @@ function DetailPanel({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1">
               <span className={`
+                text-xxs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded
                 ${isCreate ? 'bg-success/12 text-success' : 'bg-info/12 text-info'}
               `}>
                 {isCreate ? 'Create' : 'Update'}
@@ -753,6 +756,7 @@ function DetailPanel({
                 <span className="text-xxs font-mono text-text-muted/80">{item.planItem.external_key}</span>
               )}
               {item.hasConflict && (
+                <span className="text-xxs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-warning/15 text-warning ml-auto">
                   Modified in {trackerLabel}
                 </span>
               )}
@@ -791,6 +795,7 @@ function DetailPanel({
             <div className="flex items-center gap-2 mb-1.5">
               <span className="text-xxs font-semibold text-text-muted uppercase tracking-wider">Title</span>
               {!isCreate && !item.diffs?.summary?.hasChanges && (
+                <span className="text-xxs text-text-tertiary px-1.5 py-0.5 rounded bg-surface-2">(unchanged)</span>
               )}
             </div>
             <div className="p-3 rounded-lg bg-surface-1 border border-border-subtle">
@@ -813,6 +818,7 @@ function DetailPanel({
             <div className="flex items-center gap-2 mb-1.5">
               <span className="text-xxs font-semibold text-text-muted uppercase tracking-wider">Description</span>
               {!isCreate && !item.diffs?.description?.hasChanges && (
+                <span className="text-xxs text-text-tertiary px-1.5 py-0.5 rounded bg-surface-2">(unchanged)</span>
               )}
             </div>
             <div className="p-3 rounded-lg bg-surface-1 border border-border-subtle max-h-48 overflow-y-auto">
@@ -855,11 +861,13 @@ function DetailPanel({
                   Custom Fields
                 </span>
                 {customFields.length > 0 && (
+                  <span className="text-xxs text-text-tertiary px-1.5 py-0.5 rounded bg-surface-2">
                     {customFields.length} field{customFields.length !== 1 ? 's' : ''}
                   </span>
                 )}
               </div>
               {customFieldDirty && (
+                <span className="text-xxs text-warning font-medium px-1.5 py-0.5 rounded bg-warning/10">Unsaved</span>
               )}
             </button>
 
@@ -886,6 +894,7 @@ function DetailPanel({
 
                 {!customFieldsError && !isLoadingCustomFields && customFields.length > 0 && (
                   <div className="space-y-2 mt-2">
+                    <p className="text-xxs text-text-tertiary leading-tight">
                       Leave empty to use defaults. Overrides apply only to this item.
                     </p>
                     {customFields.map((field) => {
@@ -897,9 +906,11 @@ function DetailPanel({
                           <div className="flex items-center gap-1.5 mb-1.5">
                             <span className="text-tiny text-text-primary font-medium">{field.name}</span>
                             {field.required && (
+                              <span className="px-1 py-px text-xxs font-bold uppercase tracking-wider bg-danger/15 text-danger rounded">
                                 Req
                               </span>
                             )}
+                            <span className="px-1 py-px text-xxs font-medium uppercase tracking-wider bg-surface-3 text-text-tertiary rounded ml-auto">
                               {field.type === 'option' ? 'Select' : 'Text'}
                             </span>
                           </div>

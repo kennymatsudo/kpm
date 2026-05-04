@@ -36,6 +36,7 @@ export function ActionCard({ action, index, isActive, planItems, placeholderMap,
 
       {/* Action type badge */}
       <span className={`
+        text-xxs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded flex-shrink-0
         ${color}
       `}>
         {label}

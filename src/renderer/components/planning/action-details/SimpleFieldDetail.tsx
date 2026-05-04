@@ -85,6 +85,7 @@ export function SetPositionDetail({ action, planItems }: SetPositionDetailProps)
         <div className="flex items-center gap-4">
           {/* Old position */}
           <div className="flex-1">
+            <div className="text-xxs font-medium text-danger/70 uppercase tracking-wide mb-2">From</div>
             <div className="p-2 rounded-md bg-danger/5 border border-danger/15 font-mono text-xs">
               {item.position_x !== null && item.position_y !== null ? (
                 <span>({item.position_x}, {item.position_y})</span>
@@ -98,6 +99,7 @@ export function SetPositionDetail({ action, planItems }: SetPositionDetailProps)
 
           {/* New position */}
           <div className="flex-1">
+            <div className="text-xxs font-medium text-success/70 uppercase tracking-wide mb-2">To</div>
             <div className="p-2 rounded-md bg-success/5 border border-success/15 font-mono text-xs">
               <span>({action.x}, {action.y})</span>
             </div>
@@ -152,6 +154,7 @@ export function QueueForTrackerDetail({ action, planItems }: QueueForTrackerDeta
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center gap-2">
+        <span className="text-xxs font-bold uppercase tracking-wider px-2 py-1 rounded bg-accent/12 text-accent">
           Queue for Export
         </span>
         <span className="text-xxs text-text-muted">
@@ -161,12 +164,14 @@ export function QueueForTrackerDetail({ action, planItems }: QueueForTrackerDeta
 
       {/* Items list */}
       <div className="p-4 rounded-lg bg-surface-1 border border-border-subtle">
+        <div className="text-xxs font-medium text-text-muted uppercase tracking-wide mb-2">Items to Queue</div>
         <ul className="space-y-1.5">
           {items.map((item) => (
             <li key={item.id} className="text-xs text-text-secondary flex items-center gap-2">
               <span className="text-accent">{'\u2022'}</span>
               <span className="truncate">{item.title}</span>
               {item.label && (
+                <span className="text-xxs font-medium px-1.5 py-0.5 rounded bg-surface-2 text-text-muted flex-shrink-0">
                   {item.label}
                 </span>
               )}
@@ -209,6 +214,7 @@ interface HeaderBadgeProps {
 function HeaderBadge({ type, color, itemTitle }: HeaderBadgeProps) {
   return (
     <div className="flex items-center gap-2">
+      <span className={`text-xxs font-bold uppercase tracking-wider px-2 py-1 rounded ${color}`}>
         {type}
       </span>
       <span className="text-xs text-text-secondary truncate">{itemTitle}</span>
@@ -229,10 +235,12 @@ function FieldChange<T>({ fieldName, oldValue, newValue, renderValue }: FieldCha
       <div className="text-xxs font-semibold text-text-muted uppercase tracking-wider mb-1.5">{fieldName}</div>
       <div className="flex items-center gap-4 p-4 rounded-lg bg-surface-1 border border-border-subtle">
         <div className="flex-1">
+          <div className="text-xxs font-medium text-danger/70 uppercase tracking-wide mb-2">Before</div>
           {renderValue(oldValue)}
         </div>
         <div className="text-text-muted text-lg">{'\u2192'}</div>
         <div className="flex-1">
+          <div className="text-xxs font-medium text-success/70 uppercase tracking-wide mb-2">After</div>
           {renderValue(newValue)}
         </div>
       </div>

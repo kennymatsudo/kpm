@@ -202,6 +202,7 @@ export function StatusMappingForm({
                 <p className="text-text-tertiary text-xs">{category.description}</p>
               </div>
               {autoFilled[category.key] && mapping[category.key] && (
+                <span className="text-xxs font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-info-muted text-info">
                   Auto
                 </span>
               )}

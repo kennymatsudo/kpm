@@ -147,6 +147,7 @@ export function TopBarProjectSection({
                         <span className="flex-1">{currentProject.name}</span>
                         <span className="sr-only">(current project)</span>
                         {currentProjectShortcut && (
+                          <kbd className="text-xxs px-1 py-0.5 rounded bg-surface-3 text-text-muted font-mono">
                             {currentProjectShortcut}
                           </kbd>
                         )}
@@ -162,6 +163,7 @@ export function TopBarProjectSection({
                             <span className="project-avatar">{project.name.slice(0, 2)}</span>
                             <span className="flex-1">{project.name}</span>
                             {shortcut && (
+                              <kbd className="text-xxs px-1 py-0.5 rounded bg-surface-3 text-text-muted font-mono">
                                 {shortcut}
                               </kbd>
                             )}

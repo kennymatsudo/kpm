@@ -10,6 +10,7 @@ import {
   getCustomThemeId,
   getThemeById,
   isCustomThemeOption,
+  withDerivedExtendedTokens,
 } from '../themes';
 import {
   deleteCustomTheme as deleteCustomThemeById,
@@ -60,6 +61,11 @@ function getSystemTheme(): 'light' | 'dark' {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
+/** Map an OS color scheme to its concrete default theme. */
+function systemSchemeToThemeId(scheme: 'light' | 'dark'): Exclude<ThemeId, 'system'> {
+  return scheme === 'dark' ? 'graphite' : 'fog';
+}
+
 function isStaticThemeId(value: string): value is ThemeId {
   return THEMES.some((theme) => theme.id === value);
 }
@@ -91,10 +97,12 @@ function resolveTheme(
   systemTheme: 'light' | 'dark',
 ): ResolvedTheme {
   if (preference === 'system') {
+    return systemSchemeToThemeId(systemTheme);
   }
 
   const customThemeId = getCustomThemeId(preference);
   if (customThemeId && !customThemes.some((theme) => theme.id === customThemeId)) {
+    return systemSchemeToThemeId(systemTheme);
   }
 
 }
@@ -108,6 +116,7 @@ function getResolvedThemeOption(resolved: ResolvedTheme, customThemes: CustomThe
     }
   }
 
+  return getThemeById(resolved as Exclude<ThemeId, 'system'>) ?? getThemeById('graphite')!;
 }
 
 function applyTheme(theme: ThemeOption) {
@@ -116,6 +125,12 @@ function applyTheme(theme: ThemeOption) {
 
   if (isCustomThemeOption(theme)) {
     root.classList.add('custom-theme');
+    // Custom themes may predate the 22-token expansion; fill in any missing
+    // extended tokens so the renderer always sees a complete ThemeColors.
+    return;
+  }
+
+  if (theme.id !== 'system') {
     root.classList.add(theme.id);
   }
 

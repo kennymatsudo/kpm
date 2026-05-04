@@ -10,12 +10,21 @@ export interface CustomThemeColors {
   surface3: string;
   surface4: string;
   surfaceElevated: string;
+  // Extended (22-token) fields — optional on custom themes so legacy persisted
+  // themes still load. Defaults are derived at apply time from accent/surfaces.
+  surfaceCode?: string;
+  surfaceSelected?: string;
   textPrimary: string;
   textSecondary: string;
   textTertiary: string;
   textMuted: string;
+  textOnAccent?: string;
   accent: string;
   accentHover: string;
+  accentActive?: string;
+  focusRing?: string;
+  link?: string;
+  linkVisited?: string;
   success?: string;
   warning?: string;
   danger?: string;

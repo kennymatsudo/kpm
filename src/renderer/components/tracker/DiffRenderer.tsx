@@ -113,6 +113,7 @@ export function StatusTransitionView({ transition, onConfigureMappings }: Status
       <div className="flex items-center gap-2 mb-1.5">
         <span className="text-xxs font-semibold text-text-muted uppercase tracking-wider">Status</span>
         {transition.warning && (
+          <span className="text-xxs font-medium px-1.5 py-0.5 rounded bg-warning/15 text-warning">
             {hasUnresolvedTransition ? 'Action needed' : 'Multi-step'}
           </span>
         )}

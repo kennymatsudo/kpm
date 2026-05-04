@@ -48,6 +48,7 @@ export function UpdateItemDetail({ action, planItems }: UpdateItemDetailProps) {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center gap-2">
+        <span className="text-xxs font-bold uppercase tracking-wider px-2 py-1 rounded bg-info/12 text-info">
           Update
         </span>
         <span className="text-xs text-text-secondary truncate">{item.title}</span>
@@ -100,6 +101,7 @@ function FieldChange({ field, oldValue, newValue }: FieldChangeProps) {
     <div className="flex items-center gap-3 p-3 rounded-lg bg-surface-1 border border-border-subtle">
       {/* Old value */}
       <div className="flex-1 min-w-0">
+        <div className="text-xxs font-medium text-danger/70 uppercase tracking-wide mb-1">Before</div>
         {renderFieldValue(field, oldValue, 'danger')}
       </div>
 
@@ -108,6 +110,7 @@ function FieldChange({ field, oldValue, newValue }: FieldChangeProps) {
 
       {/* New value */}
       <div className="flex-1 min-w-0">
+        <div className="text-xxs font-medium text-success/70 uppercase tracking-wide mb-1">After</div>
         {renderFieldValue(field, newValue, 'success')}
       </div>
     </div>

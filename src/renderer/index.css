@@ -14,6 +14,14 @@
    ============================================ */
 
 @theme {
+  /* Typography Scale — Geist-tuned
+     Base: 16px (browser default for accessibility).
+     Floor for UI text is 11px (--text-tiny); 10px (--text-xxs) is reserved
+     for kbd hints, chips, and badges only. Sub-10px sizes were removed —
+     they were below readable thresholds at 1× DPI. */
+  --text-xxs: 0.625rem;    /* 10px - kbd hints, badges, chips ONLY */
+  --text-tiny: 0.6875rem;  /* 11px - compact UI text (floor for UI) */
+  --text-xs: 0.75rem;      /* 12px - body floor */
   --text-sm: 0.875rem;     /* 14px - most UI labels */
   --text-base: 0.9375rem;  /* 15px - body text, inputs */
   --text-lg: 1rem;         /* 16px */
@@ -59,12 +67,15 @@
   --color-surface-3: var(--color-surface-3);
   --color-surface-4: var(--color-surface-4);
   --color-surface-elevated: var(--color-surface-elevated);
+  --color-surface-code: var(--color-surface-code);
+  --color-surface-selected: var(--color-surface-selected);
 
   /* Text */
   --color-text-primary: var(--color-text-primary);
   --color-text-secondary: var(--color-text-secondary);
   --color-text-tertiary: var(--color-text-tertiary);
   --color-text-muted: var(--color-text-muted);
+  --color-text-on-accent: var(--color-text-on-accent);
 
   /* Borders */
   --color-border-subtle: var(--color-border-subtle);
@@ -74,8 +85,14 @@
   /* Accent */
   --color-accent: var(--color-accent);
   --color-accent-hover: var(--color-accent-hover);
+  --color-accent-active: var(--color-accent-active);
   --color-accent-muted: var(--color-accent-muted);
   --color-accent-subtle: var(--color-accent-subtle);
+  --color-focus-ring: var(--color-focus-ring);
+
+  /* Links */
+  --color-link: var(--color-link);
+  --color-link-visited: var(--color-link-visited);
 
   /* Semantic Colors */
   --color-success: var(--color-success);
@@ -112,8 +129,54 @@
      html[data-platform]. */
   --traffic-light-inset: 92px;
 
+  /* Surfaces — Graphite (new dark default) */
+  --color-surface-0: #0e0f12;
+  --color-surface-1: #15171b;
+  --color-surface-2: #1c1e23;
+  --color-surface-3: #272a31;
+  --color-surface-4: #363a44;
+  --color-surface-elevated: #1f2229;
+  --color-surface-code: #0a0b0d;
+  --color-surface-selected: rgba(110, 168, 254, 0.14);
+
+  /* Text */
+  --color-text-primary: #e8eaef;
+  --color-text-secondary: #a8adb8;
+  --color-text-tertiary: #7a8090;
+  --color-text-muted: #4f5563;
+  --color-text-on-accent: #0e0f12;
+
+  /* Borders — cool gray tint */
+  --color-border-subtle: rgba(255, 255, 255, 0.04);
+  --color-border-default: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.14);
+
+  /* Accent — electric blue */
+  --color-accent: #6ea8fe;
+  --color-accent-hover: #8bbcff;
+  --color-accent-active: #5a92e8;
+  --color-accent-muted: rgba(110, 168, 254, 0.18);
+  --color-accent-subtle: rgba(110, 168, 254, 0.10);
+  --color-focus-ring: rgba(110, 168, 254, 0.45);
+
+  /* Links */
+  --color-link: #8bbcff;
+  --color-link-visited: #c69cff;
+
+  /* Semantic colors */
+  --color-success: #7ec27a;
+  --color-success-muted: rgba(126, 194, 122, 0.18);
+  --color-warning: #e0b870;
+  --color-warning-muted: rgba(224, 184, 112, 0.18);
+  --color-danger: #e78a8a;
+  --color-danger-muted: rgba(231, 138, 138, 0.18);
+  --color-info: #6ea8fe;
+  --color-info-muted: rgba(110, 168, 254, 0.18);
+  --color-purple: #c69cff;
+  --color-purple-subtle: rgba(198, 156, 255, 0.18);
 
   /* Inline code background */
+  --color-code-bg: rgba(110, 168, 254, 0.15);
 
   /* Shadows — minimal, structural only */
   --shadow-xs: none;
@@ -129,16 +192,40 @@
   --shadow-card-hover: none;
 
   /* Canvas dots */
+  --canvas-dot-color: rgba(232, 234, 239, 0.02);
 
   /* Scrollbar */
+  --scrollbar-thumb: rgba(232, 234, 239, 0.08);
+  --scrollbar-thumb-hover: rgba(232, 234, 239, 0.15);
 
   /* Overlay */
   --overlay-color: rgba(0, 0, 0, 0.6);
 
   /* Terminal (forced dark theme) */
+  --terminal-bg: #0e0f12;
+  --terminal-bg-elevated: #1f2229;
+  --terminal-fg: #e8eaef;
+  --terminal-cursor: #6ea8fe;
+  --terminal-cursor-accent: #0e0f12;
+  --terminal-selection-bg: rgba(110, 168, 254, 0.3);
+  --terminal-selection-fg: #e8eaef;
+  --terminal-black: #15171b;
+  --terminal-red: #e78a8a;
+  --terminal-green: #7ec27a;
+  --terminal-yellow: #e0b870;
+  --terminal-blue: #6ea8fe;
+  --terminal-magenta: #c69cff;
   --terminal-cyan: #22d3ee;
+  --terminal-white: #e8eaef;
+  --terminal-bright-black: #4f5563;
+  --terminal-bright-red: #ee9f9f;
+  --terminal-bright-green: #94d090;
+  --terminal-bright-yellow: #ebc788;
+  --terminal-bright-blue: #95bcfe;
+  --terminal-bright-magenta: #d3b3ff;
   --terminal-bright-cyan: #67e8f9;
   --terminal-bright-white: #ffffff;
+  --terminal-grid-color: rgba(232, 234, 239, 0.1);
 }
 
 [data-kpm-diff-viewer] > div {
@@ -167,6 +254,10 @@
    ============================================ */
 
 :root {
+  /* Geist + system-ui fallback. No 'SF Pro Display' / 'BlinkMacSystemFont' —
+     those don't exist on Windows/Linux. */
+  --font-sans: 'Geist', system-ui, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'JetBrains Mono', monospace;
 }
 
 html[data-platform="win32"],
@@ -183,6 +274,10 @@ html {
 
 body {
   font-family: var(--font-sans);
+  /* Geist variants: cv11 = single-storey 'a' (cleaner at small sizes),
+     ss01 = stylistic set with tabular figures + alt characters. Tabular
+     figures matter for timestamps, durations, counts. */
+  font-feature-settings: 'cv11', 'ss01';
   background: var(--color-surface-0);
   color: var(--color-text-primary);
   line-height: 1.5;
@@ -275,6 +370,7 @@ body {
 
 .focus-ring:focus-visible {
   outline: none;
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
 }
 
 input,
@@ -290,6 +386,7 @@ textarea:focus-visible,
 select:focus-visible {
   outline: none;
   border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
 }
 
 /* ============================================
@@ -317,12 +414,16 @@ select:focus-visible {
 }
 
 .btn-primary {
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
 }
 
 .btn-primary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
 }
 
 .btn-primary:active:not(:disabled) {
+  background: var(--color-accent-active);
 }
 
 .btn-secondary {
@@ -417,6 +518,7 @@ select:focus-visible {
 .input:focus {
   outline: none;
   border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
 }
 
 .input:disabled {
@@ -645,6 +747,7 @@ select:focus-visible {
 }
 
 .sidebar-item.active {
+  background: var(--color-surface-selected);
   color: var(--color-text-primary);
 }
 
@@ -688,6 +791,7 @@ select:focus-visible {
   display: inline-flex;
   align-items: center;
   padding: 2px 6px;
+  font-size: var(--text-xxs);
   font-weight: 500;
   border-radius: var(--radius-full);
   background: var(--color-surface-3);
@@ -913,6 +1017,7 @@ select:focus-visible {
 
 /* Submenu trigger highlight when submenu is open */
 .dropdown-item[data-state="open"] {
+  background: var(--color-surface-selected);
   color: var(--color-text-primary);
 }
 
@@ -1131,6 +1236,7 @@ select:focus-visible {
 /* Focus highlight */
 .glowable:focus-within,
 .glowable.active {
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
 }
 
 /* ============================================
@@ -1202,10 +1308,15 @@ select:focus-visible {
 }
 
 .prose-themed :where(a):not(:where([class~="not-prose"] *)) {
+  color: var(--color-link);
   text-decoration: underline;
   text-underline-offset: 3px;
   font-weight: 500;
   transition: color var(--transition-fast);
+}
+
+.prose-themed :where(a):not(:where([class~="not-prose"] *)):visited {
+  color: var(--color-link-visited);
 }
 
 .prose-themed :where(a):not(:where([class~="not-prose"] *)):hover {
@@ -1481,6 +1592,7 @@ select:focus-visible {
   font-weight: 500;
   font-size: 0.875em;
   font-family: var(--font-mono);
+  background: var(--color-surface-code);
   padding: 0.2em 0.4em;
   border-radius: var(--radius-sm);
 }
@@ -1525,6 +1637,7 @@ select:focus-visible {
 
 .prose-themed :where(pre):not(:where([class~="not-prose"] *)) {
   color: var(--color-text-primary);
+  background: var(--color-surface-code);
   overflow-x: auto;
   font-weight: 400;
   font-size: 0.85em;
@@ -1859,6 +1972,7 @@ select:focus-visible {
   font-weight: 500;
   font-size: 0.875em;
   font-family: var(--font-mono);
+  background: var(--color-surface-code);
   padding: 0.2em 0.4em;
   border-radius: var(--radius-sm);
 }
@@ -1870,6 +1984,7 @@ select:focus-visible {
 
 .prose-document :where(pre):not(:where([class~="not-prose"] *)) {
   color: var(--color-text-primary);
+  background: var(--color-surface-code);
   overflow-x: auto;
   font-weight: 400;
   font-size: 0.875em;
@@ -1913,9 +2028,14 @@ select:focus-visible {
 }
 
 .prose-document :where(a):not(:where([class~="not-prose"] *)) {
+  color: var(--color-link);
   text-decoration: underline;
   text-underline-offset: 3px;
   font-weight: 500;
+}
+
+.prose-document :where(a):not(:where([class~="not-prose"] *)):visited {
+  color: var(--color-link-visited);
 }
 
 .prose-document :where(a):not(:where([class~="not-prose"] *)):hover {
@@ -2074,9 +2194,12 @@ select:focus-visible {
 
 /* Primary action button (Apply) */
 .scratchpad-action-btn-primary {
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
 }
 
 .scratchpad-action-btn-primary:hover {
+  background: var(--color-accent-hover);
 }
 
 /* Ghost action button (Undo) */

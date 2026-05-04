@@ -320,6 +320,7 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
               {Object.entries(actionSummary).slice(0, 3).map(([type, count]) => (
                 <span
                   key={type}
+                  className="text-xxs font-semibold uppercase tracking-wider
                              px-2 py-0.5 rounded-md
                              bg-surface-3 text-text-muted"
                 >

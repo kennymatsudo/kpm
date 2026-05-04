@@ -28,6 +28,7 @@ export function ReparentDetail({ action, planItems, placeholderMap }: ReparentDe
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center gap-2">
+        <span className="text-xxs font-bold uppercase tracking-wider px-2 py-1 rounded bg-warning/12 text-warning">
           Move
         </span>
         {item.label && (
@@ -53,6 +54,7 @@ export function ReparentDetail({ action, planItems, placeholderMap }: ReparentDe
         <div className="flex items-center gap-4">
           {/* From */}
           <div className="flex-1 min-w-0">
+            <div className="text-xxs font-medium text-danger/70 uppercase tracking-wide mb-2">From</div>
             <div className="p-2.5 rounded-md bg-danger/5 border border-danger/15">
               {oldParent ? (
                 <span className="text-xs text-text-secondary">{oldParent.title}</span>
@@ -71,6 +73,7 @@ export function ReparentDetail({ action, planItems, placeholderMap }: ReparentDe
 
           {/* To */}
           <div className="flex-1 min-w-0">
+            <div className="text-xxs font-medium text-success/70 uppercase tracking-wide mb-2">To</div>
             <div className="p-2.5 rounded-md bg-success/5 border border-success/15">
               {newParent ? (
                 <span className="text-xs text-text-secondary">{newParent.title}</span>
