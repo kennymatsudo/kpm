@@ -23,12 +23,17 @@ const VIEW_BUTTONS: ViewButtonConfig[] = [
   },
   {
     id: 'planning',
+    label: 'Execute',
+    title: 'Execute view',
+    iconPath: 'M5 4h4v16H5zM11 4h4v10h-4zM17 4h4v6h-4z',
   },
 ];
 
 /**
+ * MainViewSwitcher - Toggle between Workspace and Execute views.
  *
  * Workspace: Chat-first interface with file browser and editor
+ * Execute: Plan hierarchy, cards, tree, board views (board includes agentic execution)
  */
 export const MainViewSwitcher = memo(function MainViewSwitcher({
   value,

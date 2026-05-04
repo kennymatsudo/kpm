@@ -22,6 +22,7 @@ const shortcuts: ShortcutGroup[] = [
       { keys: ['⌘', '⇧', 'T'], description: 'Toggle tool log' },
       { keys: ['⌘', 'W'], description: 'Close overlay, editor, or chat' },
       { keys: ['⌘', '1'], description: 'Workspace view' },
+      { keys: ['⌘', '2'], description: 'Execute view' },
       { keys: ['⌘', '⌥', '0–9'], description: 'Switch project by position' },
     ],
   },
