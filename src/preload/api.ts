@@ -74,6 +74,7 @@ import type {
   AgentEffortLevel,
   CustomTheme,
   ImportedCustomThemeResult,
+  ClaudeAvailability,
 } from '../shared/types';
 import type {
   AgentActivity,
@@ -762,7 +763,17 @@ const settings = {
     getAll: (): Promise<{ success: boolean; settings?: Record<string, string>; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.settings.app.getAll),
   },
+  claude: {
+    getAvailability: (): Promise<ClaudeAvailabilityResponse> =>
+      ipcRenderer.invoke(IPC_CHANNELS.settings.claude.getAvailability),
+    refreshAvailability: (): Promise<ClaudeAvailabilityResponse> =>
+      ipcRenderer.invoke(IPC_CHANNELS.settings.claude.refreshAvailability),
+  },
 };
+
+type ClaudeAvailabilityResponse =
+  | ({ success: true } & ClaudeAvailability)
+  | { success: false; error: string };
 
 const customThemes = {
   list: (): Promise<{ success: boolean; themes?: CustomTheme[]; error?: string }> =>

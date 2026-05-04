@@ -272,6 +272,10 @@ export const IPC_CHANNELS = {
       deleteKey: 'settings:anthropic:delete-key',
       testKey: 'settings:anthropic:test-key',
     },
+    claude: {
+      getAvailability: 'settings:claude:get-availability',
+      refreshAvailability: 'settings:claude:refresh-availability',
+    },
     app: {
       get: 'settings:app:get',
       set: 'settings:app:set',

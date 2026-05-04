@@ -1,4 +1,25 @@
+import { useEffect } from 'react';
 import { SettingsSection, StatusBadge } from './SettingsSection';
+
+  const { availability, isLoading, error, load, refresh } = useClaudeAvailabilityStore();
+
+  useEffect(() => {
+    if (!availability && !isLoading) {
+      void load();
+    }
+
+  let badge: React.ReactNode;
+  if (isLoading && !availability) {
+    badge = <StatusBadge variant="muted">Checking…</StatusBadge>;
+  } else if (!availability || error) {
+    badge = <StatusBadge variant="warning">Unknown</StatusBadge>;
+  } else if (availability.status === 'bundled') {
+    badge = <StatusBadge variant="success">Active</StatusBadge>;
+  } else if (availability.status === 'path-fallback') {
+    badge = <StatusBadge variant="warning">Using system claude</StatusBadge>;
+  } else {
+    badge = <StatusBadge variant="warning">Unreachable</StatusBadge>;
+  }
 
   return (
     <div className="space-y-4">
@@ -10,8 +31,40 @@ import { SettingsSection, StatusBadge } from './SettingsSection';
         }
         title="Claude"
         collapsible={false}
+        statusBadge={badge}
       >
         <div className="space-y-3">
+          {availability?.status === 'path-fallback' && (
+            <div className="rounded-lg bg-warning-muted/40 px-3 py-2 text-xs text-text-secondary">
+              <p className="font-medium text-text-primary">Using claude on your PATH</p>
+              <p className="mt-1 text-text-muted">{availability.reason}</p>
+              <p className="mt-1 break-all text-text-muted">Path: {availability.binaryPath}</p>
+            </div>
+          )}
+
+          {availability?.status === 'unreachable' && (
+            <div className="rounded-lg bg-danger-muted/40 px-3 py-2 text-xs text-text-secondary">
+              <p className="font-medium text-text-primary">Claude not found</p>
+              <p className="mt-1 text-text-muted">{availability.reason}</p>
+              <p className="mt-1 text-text-muted">
+              </p>
+            </div>
+          )}
+
+          {error && (
+            <p className="text-xs text-danger">Status check failed: {error}</p>
+          )}
+
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={isLoading}
+              className="text-xs text-accent hover:underline disabled:opacity-50"
+            >
+              {isLoading ? 'Checking…' : 'Recheck'}
+            </button>
+          </div>
         </div>
       </SettingsSection>
     </div>

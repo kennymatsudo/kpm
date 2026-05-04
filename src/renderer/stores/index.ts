@@ -26,6 +26,7 @@ export { useTrackerStore, useHasAssociations } from './trackerStore';
 
 export { useChatStore } from './chat';
 export type { Activity, ChatViewMode } from '../../shared/types';
+export { useClaudeAvailabilityStore } from './claudeAvailabilityStore';
 
 export { useFileTreeStore } from './fileTreeStore';
 

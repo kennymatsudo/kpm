@@ -1372,3 +1372,8 @@ export interface DiscoveredPlugin {
   /** Whether this plugin is enabled in Claude Code settings */
   enabledInClaudeCode: boolean;
 }
+
+export type ClaudeAvailability =
+  | { status: 'bundled'; binaryPath: string }
+  | { status: 'path-fallback'; binaryPath: string; reason: string }
+  | { status: 'unreachable'; reason: string; searchedPaths: string[] };

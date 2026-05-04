@@ -21,3 +21,11 @@ export function saveAnthropicApiKey(apiKey: string) {
 export function deleteAnthropicApiKey() {
   return window.api.settings.anthropic.deleteKey();
 }
+
+export function getClaudeAvailability() {
+  return window.api.settings.claude.getAvailability();
+}
+
+export function refreshClaudeAvailability() {
+  return window.api.settings.claude.refreshAvailability();
+}

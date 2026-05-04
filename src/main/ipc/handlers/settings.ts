@@ -5,6 +5,8 @@
 import { ipcMain } from 'electron';
 import type { SettingsService } from '../../services/core/SettingsService';
 import { createIpcHandler, createSimpleIpcHandler, SettingsSchemas } from '../validation';
+import { getClaudeAvailability, refreshClaudeAvailability } from '../../claude/availabilityState';
+import { IPC_CHANNELS } from '../channels';
 
 export function registerSettingsHandlers(settingsService: SettingsService): void {
   ipcMain.handle(
@@ -81,5 +83,15 @@ export function registerSettingsHandlers(settingsService: SettingsService): void
       if (!result.ok) throw new Error(result.error);
       return result.data;
     }, 'Failed to get settings'),
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.settings.claude.getAvailability,
+    createSimpleIpcHandler(() => getClaudeAvailability(), 'Failed to get Claude availability'),
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.settings.claude.refreshAvailability,
+    createSimpleIpcHandler(() => refreshClaudeAvailability(), 'Failed to refresh Claude availability'),
   );
 }

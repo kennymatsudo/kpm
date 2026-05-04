@@ -7,6 +7,7 @@ import { initializeRepositoryContainer } from './db/container';
 import { warmupMcpSdk } from './claude/tools/createKpmServer';
 import { initializeServices } from './services/container';
 import { getCommonDevToolPaths } from './claude/findClaude';
+import { initClaudeAvailability } from './claude/availabilityState';
 import type { IRepositoryContainer } from './db/interfaces';
 import type { AppServices } from './services/appServices';
 import { default as installExtension, REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
@@ -39,6 +40,21 @@ const e2eDataDir = process.env.NODE_ENV === 'test'
 app.setPath('userData', e2eDataDir || path.join(app.getPath('appData'), 'KPM - Planning Workbench'));
 // Fix PATH immediately at startup
 fixPath();
+
+// Probe Claude reachability once after PATH fixup. Cached so any IPC handler
+// or service can inspect it without re-walking the filesystem.
+const claudeAvailability = initClaudeAvailability();
+switch (claudeAvailability.status) {
+  case 'bundled':
+    console.log('[Main] Claude binary:', claudeAvailability.binaryPath);
+    break;
+  case 'path-fallback':
+    console.warn('[Main] Claude binary fallback to PATH:', claudeAvailability.binaryPath, '—', claudeAvailability.reason);
+    break;
+  case 'unreachable':
+    console.error('[Main] Claude binary unreachable:', claudeAvailability.reason);
+    break;
+}
 
 let runtimeRepositories: Pick<IRepositoryContainer, 'appSettings' | 'projects'> | null = null;
 let runtimeServices: AppServices | null = null;
