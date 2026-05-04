@@ -23,6 +23,9 @@ export function createMainWindowManager(deps: MainWindowManagerDeps) {
       y: savedBounds?.y,
       minWidth: windowConfig.minWidth,
       minHeight: windowConfig.minHeight,
+      icon: app.isPackaged
+        ? undefined
+        : path.join(process.cwd(), 'assets', 'icon.png'),
       webPreferences: {
         preload: path.join(__dirname, '../preload/index.js'),
         contextIsolation: true,
