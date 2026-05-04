@@ -506,9 +506,24 @@ select:focus-visible {
   position: relative;
 }
 
+/* Vertical rail on each message; assistant uses accent, user uses a muted tone. */
+.chat-message-user::before,
 .chat-message-assistant::before {
   content: '';
   position: absolute;
+  left: -12px; /* push into the list's px-4 gutter so it sits at the panel edge */
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 1px;
+}
+
+.chat-message-assistant::before {
+  background: color-mix(in srgb, var(--color-accent) 70%, transparent);
+}
+
+.chat-message-user::before {
+  background: color-mix(in srgb, var(--color-text-muted) 35%, transparent);
 }
 
 .chat-message-content {
