@@ -41,6 +41,7 @@ app.setPath('userData', e2eDataDir || path.join(app.getPath('appData'), 'KPM - P
 // Fix PATH immediately at startup
 fixPath();
 
+
 // Probe Claude reachability once after PATH fixup. Cached so any IPC handler
 // or service can inspect it without re-walking the filesystem.
 const claudeAvailability = initClaudeAvailability();
