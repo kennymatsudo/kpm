@@ -46,6 +46,7 @@ function createMocks(overrides?: Partial<PlanServiceDeps>) {
     getSiblings: vi.fn(() => [] as { id: string; item_order: number }[]),
     getChildrenByParent: vi.fn(() => [] as PlanItem[]),
     getMany: vi.fn((ids: string[]) => ids.map(id => itemStore.get(id)).filter((i): i is PlanItem => !!i)),
+    getExistingIds: vi.fn((ids: string[]) => new Set(ids.filter(id => itemStore.has(id)))),
     add: vi.fn(),
     delete: vi.fn((id: string) => itemStore.delete(id)),
     deleteWithDescendants: vi.fn(),

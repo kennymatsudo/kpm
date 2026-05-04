@@ -246,6 +246,18 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
 
   enqueueClaudeMdEdit: (oldContent, newContent) => {
     set((state) => {
+      // Replace any existing claude-md item (user should handle one at a time).
+      // Preserve the *first* event's oldContent so the diff shown is original
+      // disk → latest proposal, not intermediate → latest.
+      const existing = state.queue.find(
+        (item): item is PendingClaudeMdItem => item.type === 'claude-md'
+      );
+      const newItem: PendingClaudeMdItem = {
+        type: 'claude-md',
+        id: existing?.id ?? generateId(),
+        oldContent: existing?.oldContent ?? oldContent,
+        newContent,
+      };
       const filtered = state.queue.filter((item) => item.type !== 'claude-md');
     });
   },
@@ -258,9 +270,22 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
       );
 
       if (existingIndex !== -1) {
+        const existing = state.queue[existingIndex] as PendingDocumentItem;
         const updatedQueue = [...state.queue];
+        updatedQueue[existingIndex] = {
+          ...existing,
+          content,
+        };
         return { queue: updatedQueue };
       }
+
+      const newItem: PendingDocumentItem = {
+        type: 'document',
+        id: generateId(),
+        filePath,
+        content,
+        oldContent,
+      };
 
     });
   },

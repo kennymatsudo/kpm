@@ -10,6 +10,7 @@
  */
 
 import { z } from 'zod';
+import { tool, jsonResult, toolError, toolLog } from './index';
 import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
 import type { PlanItem, PlanAction } from '../../../shared/types';
 import { getDatabase } from '../../db/connection';
@@ -447,7 +448,14 @@ export function createPlanItemTools(
         }
         relatedIds.delete(itemId);
 
+        // Single batch query for all related items
         const relatedItems = new Map<string, PlanItem>();
+        if (relatedIds.size > 0) {
+          const fetched = planItemRepo.getMany(Array.from(relatedIds));
+          for (const relItem of fetched) {
+            if (relItem.project_id === projectId) {
+              relatedItems.set(relItem.id, relItem);
+            }
           }
         }
 
@@ -512,9 +520,21 @@ export function createPlanItemTools(
       },
       async ({ projectId }) => {
         try {
+          // Single self-join query: fetch each nested item plus its parent's
+          // external_key in one round trip. A Jira subtask is one whose
+          // external_parent_key equals its current parent's external_key.
           const nestedItems = db
             .prepare(
               `
+              SELECT
+                p.id,
+                p.title,
+                p.parent_id,
+                p.external_parent_key,
+                parent.external_key AS parent_external_key
+              FROM plan_items p
+              LEFT JOIN plan_items parent ON parent.id = p.parent_id
+              WHERE p.project_id = ? AND p.parent_id IS NOT NULL
             `
             )
             .all(projectId) as {
@@ -522,18 +542,25 @@ export function createPlanItemTools(
               title: string;
               parent_id: string;
               external_parent_key: string | null;
+              parent_external_key: string | null;
             }[];
 
           if (nestedItems.length === 0) {
             return jsonResult({ message: 'No nested items to flatten', count: 0 });
           }
 
+          // A Jira subtask cannot be unnested without breaking Jira sync
+          const isJiraSubtask = (i: typeof nestedItems[number]) =>
+            !!i.external_parent_key && i.external_parent_key === i.parent_external_key;
 
+          const itemsToFlatten = nestedItems.filter((i) => !isJiraSubtask(i));
+          const skippedJiraCount = nestedItems.length - itemsToFlatten.length;
 
           if (itemsToFlatten.length === 0) {
             return jsonResult({
               message: 'All nested items are Jira subtasks and cannot be unnested',
               count: 0,
+              skippedJiraSubtasks: skippedJiraCount,
             });
           }
 
@@ -548,6 +575,7 @@ export function createPlanItemTools(
           return jsonResult({
             success: true,
             actionCount: actions.length,
+            skippedJiraSubtasks: skippedJiraCount > 0 ? skippedJiraCount : undefined,
           });
         } catch (error) {
           return toolError(`Failed to flatten hierarchy: ${error instanceof Error ? error.message : String(error)}`);
@@ -724,8 +752,27 @@ export function createPlanItemTools(
             return jsonResult({ message: 'No items to reparent', count: 0 });
           }
 
+          // Single self-join: fetch each item plus its current parent's
+          // external_key in one round trip. Avoids a follow-up batch lookup
+          // on parents when newParentId === null.
           const placeholders = itemIds.map(() => '?').join(',');
           const items = db
+            .prepare(`
+              SELECT
+                p.id,
+                p.external_parent_key,
+                p.parent_id,
+                parent.external_key AS parent_external_key
+              FROM plan_items p
+              LEFT JOIN plan_items parent ON parent.id = p.parent_id
+              WHERE p.id IN (${placeholders}) AND p.project_id = ?
+            `)
+            .all(...itemIds, projectId) as {
+              id: string;
+              external_parent_key: string | null;
+              parent_id: string | null;
+              parent_external_key: string | null;
+            }[];
 
           if (items.length === 0) {
             return toolError('No valid items found in project');
@@ -737,6 +784,12 @@ export function createPlanItemTools(
 
           if (newParentId === null) {
             for (const item of items) {
+              if (
+                item.external_parent_key &&
+                item.parent_external_key === item.external_parent_key
+              ) {
+                skipped.push(item.id);
+                continue;
               }
               toUpdate.push({ id: item.id, parentId: null });
             }

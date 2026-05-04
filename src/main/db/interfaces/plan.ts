@@ -20,6 +20,11 @@ export interface IPlanItemRepository {
   get(id: string): PlanItem | undefined;
   add(item: Omit<PlanItem, 'created_at' | 'updated_at'>): PlanItem;
   getMany(ids: string[]): PlanItem[];
+  /**
+   * Existence-only batch check. Returns the subset of `ids` that exist in
+   * `plan_items`. Cheaper than `getMany` when callers don't need the row data.
+   */
+  getExistingIds(ids: string[]): Set<string>;
   update(id: string, updates: PlanItemUpdates | PlanItemSyncUpdates): void;
   delete(id: string): void;
   deleteWithDescendants(id: string): void;

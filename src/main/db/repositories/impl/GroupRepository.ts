@@ -26,6 +26,7 @@ function rowToGroup(row: Record<string, unknown>): Group {
 interface PreparedStatements {
   // Read operations
   getByProjectId: Statement;
+  getByProjectIdWithCounts: Statement;
   getById: Statement;
 
   // Write operations
@@ -42,6 +43,14 @@ export class GroupRepository implements IGroupRepository {
     this.stmts = {
       // Read operations
       getByProjectId: db.prepare('SELECT * FROM groups WHERE project_id = ? ORDER BY created_at'),
+      getByProjectIdWithCounts: db.prepare(`
+        SELECT g.*, COUNT(p.id) AS item_count
+        FROM groups g
+        LEFT JOIN plan_items p ON p.group_id = g.id
+        WHERE g.project_id = ?
+        GROUP BY g.id
+        ORDER BY g.created_at
+      `),
       getById: db.prepare('SELECT * FROM groups WHERE id = ?'),
 
       // Write operations - use RETURNING to avoid re-query
@@ -68,6 +77,22 @@ export class GroupRepository implements IGroupRepository {
   getById(id: string): Group | undefined {
     const row = this.stmts.getById.get(id) as Record<string, unknown> | undefined;
     return row ? rowToGroup(row) : undefined;
+  }
+
+  getExistingIds(ids: string[]): Set<string> {
+    if (ids.length === 0) return new Set();
+    const placeholders = ids.map(() => '?').join(',');
+    const stmt = this.db.prepare(`SELECT id FROM groups WHERE id IN (${placeholders})`);
+    const rows = stmt.all(...ids) as { id: string }[];
+    return new Set(rows.map((r) => r.id));
+  }
+
+  getByProjectIdWithCounts(projectId: string): (Group & { itemCount: number })[] {
+    const rows = this.stmts.getByProjectIdWithCounts.all(projectId) as Record<string, unknown>[];
+    return rows.map((row) => ({
+      ...rowToGroup(row),
+      itemCount: (row.item_count as number) ?? 0,
+    }));
   }
 
   create(group: Omit<Group, 'id' | 'created_at' | 'updated_at'>, id?: string): Group {

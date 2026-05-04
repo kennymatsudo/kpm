@@ -24,6 +24,16 @@ export interface IGroupRepository {
   /** Get a single group by ID */
   getById(id: string): Group | undefined;
 
+  /** Existence-only batch check. Returns the subset of `ids` that exist. */
+  getExistingIds(ids: string[]): Set<string>;
+
+  /**
+   * Get all groups for a project with item counts attached.
+   * Single LEFT JOIN query — replaces a `getByProjectId` + a separate
+   * `GROUP BY group_id` count query.
+   */
+  getByProjectIdWithCounts(projectId: string): (Group & { itemCount: number })[];
+
   /** Create a new group. If id is provided, use it; otherwise generate a new UUID. */
   create(group: Omit<Group, 'id' | 'created_at' | 'updated_at'>, id?: string): Group;
 

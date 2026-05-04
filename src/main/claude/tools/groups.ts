@@ -68,6 +68,7 @@ export function createGroupTools(
       },
       async ({ projectId }) => {
         try {
+          const groups = groupRepo.getByProjectIdWithCounts(projectId);
 
           const summaries: GroupSummary[] = groups.map((group) => ({
             id: group.id,
@@ -76,6 +77,7 @@ export function createGroupTools(
             position_y: group.position_y,
             width: group.width,
             height: group.height,
+            itemCount: group.itemCount,
           }));
 
           return jsonResult({ groups: summaries, count: summaries.length });
@@ -266,6 +268,9 @@ export function createGroupTools(
             }
           }
 
+          // Validate items exist (single batch query)
+          const existing = planItemRepo.getExistingIds(itemIds);
+          const validItems = itemIds.filter((id) => existing.has(id));
 
           if (validItems.length === 0) {
             return toolError('No valid items found');
@@ -338,6 +343,9 @@ export function createGroupTools(
       },
       async ({ groupIds }) => {
         try {
+          // Validate groups exist (single batch query)
+          const existing = groupRepo.getExistingIds(groupIds);
+          const validGroups = groupIds.filter((id) => existing.has(id));
 
           if (validGroups.length === 0) {
             return toolError('No valid groups found');

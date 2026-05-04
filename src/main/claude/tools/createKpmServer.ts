@@ -56,16 +56,36 @@ let cachedTools: Parameters<typeof createSdkMcpServer>[0]['tools'] | null = null
 }
 
 // Cache for pending document content (proposed but not yet accepted).
+// Keyed by `${chatSessionId}:${filePath}` for documents and
+// `${chatSessionId}:__context__` for the project context file. Scoping by
+// session prevents two concurrent sessions on the same project from polluting
+// each other's pending state. Cleared at the start of every new turn so prior
+// turns don't bleed in.
 const pendingDocumentContent = new Map<string, string>();
 
+const CONTEXT_FILE_CACHE_KEY = '__context__';
+
 /**
+ * Clear all pending document content entries for a chat session (documents +
+ * context file). Called at the start of a new message to avoid stale cache
+ * from prior turns.
  */
+export function clearPendingDocumentContent(chatSessionId: string): void {
+  const prefix = `${chatSessionId}:`;
   for (const key of pendingDocumentContent.keys()) {
     if (key.startsWith(prefix)) {
       pendingDocumentContent.delete(key);
     }
   }
+  // Also forget the resolved context filename — the user may have switched
+  // projects or renamed the file between turns.
+  resolvedContextFilename.delete(chatSessionId);
 }
+
+// Per-session memo of which context file (AGENTS.md vs CLAUDE.md) actually
+// exists on disk. Avoids stat'ing both candidates on every read. Cleared
+// alongside the pending cache.
+const resolvedContextFilename = new Map<string, string>();
 
 // Event emitter for plan actions - allows per-message callbacks with singleton server
 const planActionsEmitter = new EventEmitter();
@@ -111,11 +131,49 @@ async function readProjectFile(projectId: string, filePath: string): Promise<str
 
 /**
  * Read the project context file (AGENTS.md or CLAUDE.md).
+ * Checks the memoized filename first; otherwise probes AGENTS.md then CLAUDE.md.
+ * Returns content + the resolved filename, or null if neither exists.
  */
+async function readProjectContextFile(
+  projectId: string
+): Promise<{ content: string; filename: string } | null> {
+  const chatSessionId = toolExecutionContext.getStore()?.chatSessionId;
+  const memoized = chatSessionId ? resolvedContextFilename.get(chatSessionId) : undefined;
+  if (memoized) {
+    const content = await readProjectFile(projectId, memoized);
+    if (content !== null) return { content, filename: memoized };
+    // File was deleted/renamed since memoization — fall through to re-probe.
+    resolvedContextFilename.delete(chatSessionId!);
+  }
+
   for (const filename of CONTEXT_FILE_NAMES) {
     const content = await readProjectFile(projectId, filename);
+    if (content !== null) {
+      if (chatSessionId) resolvedContextFilename.set(chatSessionId, filename);
+      return { content, filename };
+    }
   }
   return null;
+}
+
+/**
+ * Read the project context file, checking the pending cache first so
+ * sequential edits within the same turn accumulate correctly.
+ */
+async function readProjectContextFileWithPending(
+  projectId: string
+): Promise<{ content: string; filename: string } | null> {
+  const chatSessionId = toolExecutionContext.getStore()?.chatSessionId;
+  if (chatSessionId) {
+    const cached = pendingDocumentContent.get(`${chatSessionId}:${CONTEXT_FILE_CACHE_KEY}`);
+    if (cached !== undefined) {
+      const filename = resolvedContextFilename.get(chatSessionId);
+      if (filename) return { content: cached, filename };
+      // Filename wasn't memoized yet — fall through to disk to learn it;
+      // cheap because it only happens once.
+    }
+  }
+  return readProjectContextFile(projectId);
 }
 
 /**
@@ -174,11 +232,22 @@ function emitPlanActions(actions: PlanAction[]): void {
 }
 
 /**
+ * Internal callback that emits project context file update to all subscribers.
+ * Also caches the proposed content so subsequent edits to the context file
+ * within the same turn accumulate correctly.
  */
 function emitClaudeMdUpdate(update: ClaudeMdUpdatePayload): void {
   const context = toolExecutionContext.getStore();
+  const chatSessionId = update.chatSessionId ?? context?.chatSessionId;
+  if (chatSessionId) {
+    pendingDocumentContent.set(`${chatSessionId}:${CONTEXT_FILE_CACHE_KEY}`, update.newContent);
+    // Memoize filename so subsequent reads can short-circuit the probe.
+    resolvedContextFilename.set(chatSessionId, update.filename);
+  }
+
   claudeMdUpdateEmitter.emit('claudeMdUpdate', {
     ...update,
+    chatSessionId,
   });
 }
 
@@ -189,9 +258,15 @@ function emitClaudeMdUpdate(update: ClaudeMdUpdatePayload): void {
  */
 function emitDocumentUpdate(update: DocumentUpdatePayload): void {
   const context = toolExecutionContext.getStore();
+  const chatSessionId = update.chatSessionId ?? context?.chatSessionId;
+  if (chatSessionId) {
+    // Cache proposed content for subsequent edits within the same turn
+    pendingDocumentContent.set(`${chatSessionId}:${update.filePath}`, update.content);
+  }
 
   documentUpdateEmitter.emit('documentUpdate', {
     ...update,
+    chatSessionId,
   });
 }
 
@@ -200,6 +275,12 @@ function emitDocumentUpdate(update: DocumentUpdatePayload): void {
  * Falls back to disk if no pending content exists for this file.
  */
 async function readProjectFileWithPending(projectId: string, filePath: string): Promise<string | null> {
+  const chatSessionId = toolExecutionContext.getStore()?.chatSessionId;
+  if (chatSessionId) {
+    const cached = pendingDocumentContent.get(`${chatSessionId}:${filePath}`);
+    if (cached !== undefined) {
+      return cached;
+    }
   }
   return readProjectFile(projectId, filePath);
 }
@@ -220,6 +301,7 @@ function collectTools() {
   const groupTools = createGroupTools(groupRepo, planItemRepo, emitPlanActions);
   const planChangeTools = createPlanChangeTools(emitPlanActions);
   const storybookTools = createStorybookTools(projectRepo);
+  const claudeMdEditTools = createClaudeMdEditTools(readProjectContextFileWithPending, emitClaudeMdUpdate);
   const documentCreateTools = createDocumentCreateTools(emitDocumentUpdate);
   const documentEditTools = createDocumentEditTools(readProjectFileWithPending, emitDocumentUpdate);
   const githubTools = createGitHubTools(planItemRepo, repoRepo, container.devSessions);

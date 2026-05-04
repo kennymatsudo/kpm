@@ -395,6 +395,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Clear pending document content cache from prior turns so edits
     // in this new message start fresh against on-disk content.
+    if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
 
     managed.lastTurnFinalized = false;
     managed.state = 'processing';
@@ -564,6 +565,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           update.projectId === projectId &&
           matchesSession
         ) {
+          // The tool already read the file to validate old_string; reuse what
+          // it captured rather than reading disk a second time.
+          mainWindow?.webContents.send('chat:file-update', {
+            projectId,
+            chatSessionId,
+            filePath: update.filename ?? DEFAULT_CONTEXT_FILENAME,
+            content: update.newContent,
+            oldContent: update.oldContent,
+          });
         }
       });
 
@@ -577,6 +587,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           update.projectId === projectId &&
           matchesSession
         ) {
+          // The tool already has the pre-edit content (or null for create);
+          // forward it instead of re-reading disk.
+          mainWindow?.webContents.send('chat:file-update', {
+            projectId,
+            chatSessionId,
+            filePath: update.filePath,
+            content: update.content,
+            oldContent: update.oldContent,
+          });
         }
       });
 
@@ -969,6 +988,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
       // Send the new user message as the next turn. Mirrors the happy-path
       // bookkeeping from sendMessageToSession for a fresh turn.
+      if (stillManaged.chatSessionId) clearPendingDocumentContent(stillManaged.chatSessionId);
       stillManaged.lastTurnFinalized = false;
       stillManaged.state = 'processing';
       stillManaged.processingStartTime = Date.now();

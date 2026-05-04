@@ -170,6 +170,7 @@ function createDeps(sendSpy: (channel: string, payload: unknown) => void): Strea
 
 function createDepsWithToolEvents(sendSpy: (channel: string, payload: unknown) => void) {
   const planActionSubscribers: ((event: PlanActionsEvent) => void)[] = [];
+  const contextFileSubscribers: ((update: { projectId: string; chatSessionId?: string; newContent: string; oldContent: string | null; filename: string }) => void)[] = [];
 
   const deps = createDeps(sendSpy);
   const depsWithEvents: StreamingSessionServiceDeps = {
@@ -195,6 +196,7 @@ function createDepsWithToolEvents(sendSpy: (channel: string, payload: unknown) =
     emitPlanActions: (event: PlanActionsEvent) => {
       for (const callback of planActionSubscribers) callback(event);
     },
+    emitContextFileUpdate: (update: { projectId: string; chatSessionId?: string; newContent: string; oldContent: string | null; filename: string }) => {
       for (const callback of contextFileSubscribers) callback(update);
     },
   };
@@ -335,6 +337,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     });
   });
 
+  it('forwards the resolved context filename and pre-edit content from the tool payload', async () => {
     const toolEvents = createDepsWithToolEvents(sendSpy);
     service = createStreamingSessionService(toolEvents.deps);
 
@@ -345,10 +348,15 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     expect(sendResult.ok).toBe(true);
 
     sentEvents.length = 0;
+    // The tool already read the file to validate old_string and now forwards
+    // both the resolved filename and the pre-edit content; the subscriber must
+    // not re-read disk.
     toolEvents.emitContextFileUpdate({
       projectId: 'project-1',
       chatSessionId: 'chat-1',
       newContent: '# Updated context',
+      oldContent: '# Existing context',
+      filename: 'CLAUDE.md',
     });
     await Promise.resolve();
 

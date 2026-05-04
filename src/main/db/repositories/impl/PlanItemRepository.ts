@@ -199,6 +199,14 @@ export class PlanItemRepository implements IPlanItemRepository {
     return rows.map(rowToPlanItem);
   }
 
+  getExistingIds(ids: string[]): Set<string> {
+    if (ids.length === 0) return new Set();
+    const placeholders = ids.map(() => '?').join(',');
+    const stmt = this.db.prepare(`SELECT id FROM plan_items WHERE id IN (${placeholders})`);
+    const rows = stmt.all(...ids) as { id: string }[];
+    return new Set(rows.map((r) => r.id));
+  }
+
   add(item: Omit<PlanItem, 'created_at' | 'updated_at'>): PlanItem {
     // Use RETURNING to get the inserted row in one query (no re-query needed)
     const row = this.stmts.insert.get(

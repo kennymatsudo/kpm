@@ -8,12 +8,18 @@
  */
 
 import { z } from 'zod';
+import { tool, jsonResult, toolError, toolLog } from './index';
 import type { DocumentUpdateCallback } from './document-update';
 
 export type ReadProjectFileFn = (projectId: string, filePath: string) => Promise<string | null>;
 
 
+For new files use \`propose_document_create\`. For the project context file (AGENTS.md / CLAUDE.md) use \`propose_context_edit\`.
 
+Rules:
+- old_string must match exactly one location (whitespace + indentation included). If missing or non-unique, the call fails — add more surrounding context.
+- old_string and new_string must differ.
+- Treat \`@plan/<uuid>\` tokens as atomic; never split one across the boundary or partially overwrite the UUID. Use only UUIDs from the system prompt's Item Reference. Refs in prose render as live chips locally and rewrite to native tracker syntax on export.
 
 /**
  * Create the document edit tool.
@@ -54,12 +60,15 @@ export function createDocumentEditTools(
 
 
         try {
+          onDocumentUpdate({ projectId, filePath, content: newContent, oldContent: currentContent });
         } catch (error) {
           return toolError(`Failed to propose document edit: ${error instanceof Error ? error.message : String(error)}`);
         }
 
+        return jsonResult({
           success: true,
           filePath,
+        });
       }
     ),
   ];

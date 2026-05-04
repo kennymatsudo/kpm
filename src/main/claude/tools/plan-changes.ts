@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { tool, jsonResult, toolError, toolLog } from './index';
 import { StatusCategoryEnum, type PlanActionsCallback } from './schemas';
 
 // Zod schemas matching the PlanAction type
@@ -221,8 +222,10 @@ All three items are root-level; the Group provides organization. Do not invent a
           return toolError(`Failed to emit plan actions: ${error instanceof Error ? error.message : String(error)}`);
         }
 
+        return jsonResult({
           success: true,
           actionCount: actions.length,
+        });
       }
     ),
   ];

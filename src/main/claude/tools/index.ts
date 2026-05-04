@@ -5,9 +5,20 @@
  */
 
 import { tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
+import { getConfig } from '../../config';
 
 // Re-export for easy imports
 export { tool, createSdkMcpServer };
+
+/**
+ * Per-invocation log for tool handlers. Silent unless `claude.debug` is on
+ * — sync stderr writes add up under bursty edit traffic.
+ */
+export function toolLog(...args: unknown[]): void {
+  if (getConfig().claude.debug) {
+    console.log(...args);
+  }
+}
 
 /**
  * Creates a standard tool result with text content
