@@ -1,6 +1,12 @@
 import { useEffect } from 'react';
 import { SettingsSection, StatusBadge } from './SettingsSection';
+import { UsageSettingsSection } from './UsageSettings';
 
+interface Props {
+  currentProjectId?: string | null;
+}
+
+export function GeneralSettings({ currentProjectId }: Props = {}) {
   const { availability, isLoading, error, load, refresh } = useClaudeAvailabilityStore();
 
   useEffect(() => {
@@ -67,6 +73,8 @@ import { SettingsSection, StatusBadge } from './SettingsSection';
           </div>
         </div>
       </SettingsSection>
+
+      <UsageSettingsSection currentProjectId={currentProjectId} />
     </div>
   );
 }

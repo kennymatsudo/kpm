@@ -37,6 +37,7 @@ import { createUpdateEventBus } from './core/UpdateEventBus';
 import { createNotificationService } from './core/NotificationService';
 
 // Generation services
+import { executeCustomPrompt, setCustomPromptUsageRecorder } from './generation/CustomPromptGenerationService';
 
 // Prompt override service
 import { createPromptOverrideService } from './core/PromptOverrideService';
@@ -50,6 +51,9 @@ import { createMcpDiscoveryService } from './core/McpDiscoveryService';
 // Slack triage
 import { createSlackTriageService } from './core/SlackTriageService';
 import { createSlackTriageAdapter } from './core/slackTriageAdapter';
+
+// Claude usage tracking
+import { createClaudeUsageService } from './core/ClaudeUsageService';
 
 // Confluence services
 import { createConfluenceSyncService } from './confluence';
@@ -112,6 +116,22 @@ export function createAppServices(container: IRepositoryContainer) {
     broadcastToWindows,
   });
   notificationService.start();
+
+  // Centralized Claude usage tracking — every Claude SDK call site funnels
+  // tokens + cost through this service. Created early so downstream services
+  // (chat runtime, board agents, briefing, etc.) can record into it.
+  const claudeUsageService = createClaudeUsageService({
+    claudeUsage: container.claudeUsage,
+    projects: container.projects,
+    getMainWindow: getPrimaryWindow,
+  });
+
+  // Wire the (singleton) custom prompt generation service into the central
+  // tracker. The function-level helper predates DI in this area, so we set
+  // the recorder globally rather than threading deps through executeCustomPrompt.
+  setCustomPromptUsageRecorder(({ projectId, source, model, usage, totalCostUsd }) => {
+    claudeUsageService.recordUsage({ projectId, source, model, usage, totalCostUsd });
+  });
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Repo Watcher (needed by RepoService)
@@ -270,6 +290,7 @@ export function createAppServices(container: IRepositoryContainer) {
     userDataPath: getUserDataPath(),
     agentSessionManager,
     getPromptContent,
+    claudeUsageService,
   });
   devSessionServiceRef = devSessionService;
 
@@ -316,6 +337,15 @@ export function createAppServices(container: IRepositoryContainer) {
     getPromptContent,
     fileExplorerService,
     projects: container.projects,
+    recordUsage: ({ projectId, model, usage, totalCostUsd }) => {
+      claudeUsageService.recordUsage({
+        projectId,
+        source: 'briefing',
+        model,
+        usage,
+        totalCostUsd,
+      });
+    },
   });
 
   const {
@@ -325,6 +355,7 @@ export function createAppServices(container: IRepositoryContainer) {
   } = createGenerationServices({
     container,
     getProjectFolder,
+    claudeUsageService,
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -354,6 +385,9 @@ export function createAppServices(container: IRepositoryContainer) {
     planItems: container.planItems,
     mcpDiscoveryService,
     queueTrackerUpdate,
+    recordUsage: ({ projectId, source, model, usage, totalCostUsd }) => {
+      claudeUsageService.recordUsage({ projectId, source, model, usage, totalCostUsd });
+    },
   });
 
   const slackTriageService = createSlackTriageService({
@@ -367,6 +401,9 @@ export function createAppServices(container: IRepositoryContainer) {
     sendSlackMessage: slackAdapter.sendSlackMessage,
     createTaskFromTriage: slackAdapter.createTaskFromTriage,
     applyDocumentUpdate: slackAdapter.applyDocumentUpdate,
+    recordUsage: ({ projectId, source, model, usage, totalCostUsd }) => {
+      claudeUsageService.recordUsage({ projectId, source, model, usage, totalCostUsd });
+    },
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -424,6 +461,9 @@ export function createAppServices(container: IRepositoryContainer) {
 
     // Slack
     slackTriageService,
+
+    // Claude usage tracking
+    claudeUsageService,
 
     // MCP
     mcpDiscoveryService,

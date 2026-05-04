@@ -14,6 +14,7 @@ import type { IAppSettingsRepository, ICustomThemeRepository, ITaskPromptTemplat
 import type { IConfluenceLinkRepository } from './confluence';
 import type { IAgentReviewRepository, IReviewOwnershipRepository, IReviewSyncStateRepository, IReviewTaskRepository } from './review';
 import type { ISlackChannelLinkRepository, ISlackTriageItemRepository } from './slack';
+import type { IClaudeUsageRepository } from './usage';
 
 /**
  * Container holding all repository instances.
@@ -47,4 +48,5 @@ export interface IRepositoryContainer {
   reviewSyncState: IReviewSyncStateRepository;
   slackChannelLinks: ISlackChannelLinkRepository;
   slackTriageItems: ISlackTriageItemRepository;
+  claudeUsage: IClaudeUsageRepository;
 }

@@ -10,6 +10,7 @@ import { registerPromptOverrideHandlers } from '../handlers/promptOverrides';
 import { registerSearchHandlers } from '../handlers/search';
 import { registerBriefingHandlers } from '../handlers/briefing';
 import { registerMcpServerHandlers } from '../handlers/mcpServers';
+import { registerUsageHandlers } from '../handlers/usage';
 import type { IpcRegistrationContext } from './types';
 import { assertTrustedIpcSender } from '../senderValidation';
 
@@ -36,4 +37,5 @@ export function registerPlatformHandlers({
   registerSearchHandlers(services.searchService);
   registerBriefingHandlers(services.briefingService);
   registerMcpServerHandlers(services.mcpDiscoveryService);
+  registerUsageHandlers(services.claudeUsageService);
 }

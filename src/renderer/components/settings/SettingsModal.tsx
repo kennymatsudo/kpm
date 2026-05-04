@@ -100,6 +100,7 @@ export function SettingsModal({ onClose, currentProjectId }: Props) {
     >
 
 
+          {activeTab === 'general' && <GeneralSettings currentProjectId={currentProjectId} />}
           {activeTab === 'workflow' && <WorkflowSettings currentProjectId={currentProjectId} />}
           {activeTab === 'shortcuts' && <KeyboardShortcutsSettings />}
           {activeTab === 'prompts' && <PromptsSettings currentProjectId={currentProjectId} />}

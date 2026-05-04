@@ -5,9 +5,12 @@
  */
 
 import { ipcMain } from 'electron';
+import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
+import { runClaudeQuery } from '../../claude/runClaudeQuery';
 import type { AgentSessionManager } from '../../services/agents/AgentSessionManager';
 import type { DevSessionService } from '../../services/repo/DevSessionService';
 import type { PromptOverrideService } from '../../services/core/PromptOverrideService';
+import type { ClaudeUsageService } from '../../services/core/ClaudeUsageService';
 import { getAvailableAgents } from '../../services/agents/agentCatalog';
 import { launchAutoReview } from '../../services/agents/autoReview';
 import { AgentSessionSchemas, createIpcHandler, createSimpleIpcHandler } from '../validation';
@@ -24,6 +27,7 @@ export function registerAgentSessionHandlers(
   agentSessionManager: AgentSessionManager,
   devSessionService: DevSessionService,
   promptOverrideService: PromptOverrideService,
+  claudeUsageService: ClaudeUsageService,
 ): void {
   // Create pending session + start agent in one atomic call
   // This is the primary entry point from the board UI (play button / drag-to-start)
@@ -234,6 +238,25 @@ export function registerAgentSessionHandlers(
         };
 
         const TIMEOUT_MS = getConfig().generation.prGenerationTimeoutMs;
+        const sdkModel = getConfig().generation.cheapModel;
+
+        const result = await runClaudeQuery({
+          prompt,
+          sdkOptions,
+          timeoutMs: TIMEOUT_MS,
+          timeoutMessage: 'Commit message generation timed out',
+          recordUsage: ({ usage, totalCostUsd }) => {
+            claudeUsageService.recordUsage({
+              projectId: session.project_id,
+              source: 'commit_message',
+              model: sdkModel,
+              usage,
+              totalCostUsd,
+            });
+          },
+        });
+
+        return { message: result.text.trim() };
       },
       'Failed to generate commit message'
     )

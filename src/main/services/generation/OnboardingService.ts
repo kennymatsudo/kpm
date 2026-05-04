@@ -9,12 +9,14 @@
  *   Phase 2: Claude Sonnet synthesis → AGENTS.md content
  */
 
+import type { query, Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
 import * as fs from 'fs';
 import * as path from 'path';
 import { gitExec } from '../repo/gitUtils';
 import { getConfig } from '../../config';
 import { writeProjectContextFilesSync } from '../../project-context/contextFileCompat';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
+import { runClaudeQuery, type ClaudeQueryUsage } from '../../claude/runClaudeQuery';
 
 // =============================================================================
 // Types
@@ -64,6 +66,14 @@ export interface OnboardingServiceDeps {
   getProjectFolder: (projectId: string) => string | null;
   queryFn?: typeof query;
   getTimeoutMs?: () => number;
+  /** Optional centralized usage recorder. */
+  recordUsage?: (event: {
+    projectId: string;
+    source: 'onboarding';
+    model: string;
+    usage: ClaudeQueryUsage;
+    totalCostUsd?: number | null;
+  }) => void;
 }
 
 // =============================================================================
@@ -388,9 +398,29 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
 
         console.log('[OnboardingService] Calling Claude Agent SDK query()...');
 
+        const sdkModel = getConfig().generation.deepModel;
+
+        const queryResult = await runClaudeQuery({
+          prompt: userPrompt,
+          sdkOptions,
+          timeoutMs,
+          timeoutMessage: 'Context generation timed out',
+          queryFn: deps.queryFn,
+          onThinking: callbacks.onThinking,
+          recordUsage: deps.recordUsage
+            ? ({ usage, totalCostUsd }) => {
+                deps.recordUsage!({
+                  projectId: options.projectId,
+                  source: 'onboarding',
+                  model: sdkModel,
+                  usage,
+                  totalCostUsd,
+                });
               }
+            : undefined,
         });
 
+        const generatedContent = queryResult.text;
 
         callbacks.onProgress('Context generated successfully');
         callbacks.onComplete(sanitizeGeneratedContext(generatedContent));

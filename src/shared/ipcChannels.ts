@@ -550,6 +550,16 @@ export const IPC_CHANNELS = {
   },
 
   // ===========================================================================
+  // Claude Usage Tracking
+  // ===========================================================================
+  usage: {
+    getProjectStats: 'usage:get-project-stats',
+    getGlobalStats: 'usage:get-global-stats',
+    listEvents: 'usage:list-events',
+    resetProject: 'usage:reset-project',
+  },
+
+  // ===========================================================================
   // Testing
   // ===========================================================================
   testing: {

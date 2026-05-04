@@ -32,3 +32,4 @@ export * from './ReviewOwnershipRepository';
 export * from './ReviewSyncStateRepository';
 export * from './SlackChannelLinkRepository';
 export * from './SlackTriageItemRepository';
+export * from './ClaudeUsageRepository';

@@ -6,6 +6,8 @@
  *
  */
 
+import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
+import { runClaudeQuery, type ClaudeQueryUsage } from '../../claude/runClaudeQuery';
 import { z } from 'zod';
 import type {
   IDevSessionRepository,
@@ -61,6 +63,14 @@ export interface ReviewAssessmentServiceDeps {
   reviewTasks: IReviewTaskRepository;
   gitHubService: GitHubService;
   fileExplorerService: FileExplorerService;
+  /** Centralized usage tracker. Optional so unit tests don't need to wire it. */
+  recordUsage?: (event: {
+    projectId: string;
+    source: 'review_assessment' | 'review_assessment_post_impl';
+    model: string;
+    usage: ClaudeQueryUsage;
+    totalCostUsd?: number | null;
+  }) => void;
 }
 
 // =============================================================================
@@ -113,11 +123,22 @@ async function runStructuredQuery<T>(
   sdkOptions: SDKOptions,
   schema: z.ZodType<T>,
   timeoutMs: number,
+  onUsage?: (event: { usage: ClaudeQueryUsage; totalCostUsd?: number | null }) => void,
 ): Promise<T> {
+  const result = await runClaudeQuery({
+    prompt: userPrompt,
+    sdkOptions,
+    timeoutMs,
+    timeoutMessage: 'Query timed out',
+    recordUsage: onUsage,
   });
 
+  if (result.resultSubtype !== 'success') {
+    const detail = result.errors.length > 0 ? `: ${result.errors.join('; ')}` : '';
+    throw new Error(`Query did not return a structured result (subtype=${result.resultSubtype ?? 'none'})${detail}`);
   }
 
+  const parsed = schema.safeParse(result.structuredOutput);
   if (!parsed.success) {
     throw new Error(`Structured output failed validation: ${parsed.error.message}`);
   }
@@ -543,6 +564,14 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
     try {
         userPrompt,
         sdkOptions,
+          deps.recordUsage?.({
+            projectId: session.project_id,
+            source: 'review_assessment',
+            model: getConfig().generation.fastModel,
+            usage,
+            totalCostUsd,
+          });
+        },
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : 'Unknown error';
       logError(`SDK query failed: ${errorMsg}`);
@@ -669,6 +698,14 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
     try {
         userPrompt,
         sdkOptions,
+          deps.recordUsage?.({
+            projectId: session.project_id,
+            source: 'review_assessment_post_impl',
+            model: getConfig().generation.fastModel,
+            usage,
+            totalCostUsd,
+          });
+        },
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : 'Unknown error';
       logError(`Post-implementation drafting failed: ${errorMsg}`);

@@ -32,6 +32,19 @@ export interface SlackTriageAdapterDeps {
   planItems: IPlanItemRepository;
   mcpDiscoveryService: McpDiscoveryService;
   queueTrackerUpdate: QueueTrackerUpdateIfNeeded;
+  /** Optional centralized Claude usage tracker. */
+  recordUsage?: (event: {
+    projectId: string | null;
+    source: 'slack_triage_adapter';
+    model: string;
+    usage: {
+      input_tokens?: number | null;
+      output_tokens?: number | null;
+      cache_creation_input_tokens?: number | null;
+      cache_read_input_tokens?: number | null;
+    };
+    totalCostUsd?: number | null;
+  }) => void;
 }
 
 // =============================================================================
@@ -212,6 +225,7 @@ export function createSlackTriageAdapter(deps: SlackTriageAdapterDeps) {
     };
 
     const queryGenerator = query({ prompt: userPrompt, options: sdkOptions });
+    const sdkModel = getConfig().generation.fastModel;
     let finalText = '';
     let usedSlackTool = false;
 
@@ -222,6 +236,22 @@ export function createSlackTriageAdapter(deps: SlackTriageAdapterDeps) {
         }
         if (message.type === 'tool_use_summary' && message.summary.toLowerCase().includes('slack')) {
           usedSlackTool = true;
+        }
+
+        if (message.type === 'result' && deps.recordUsage) {
+          const resultMsg = message as {
+            usage?: { input_tokens?: number | null; output_tokens?: number | null; cache_creation_input_tokens?: number | null; cache_read_input_tokens?: number | null };
+            total_cost_usd?: number | null;
+          };
+          if (resultMsg.usage) {
+            deps.recordUsage({
+              projectId: projectId ?? null,
+              source: 'slack_triage_adapter',
+              model: sdkModel,
+              usage: resultMsg.usage,
+              totalCostUsd: resultMsg.total_cost_usd ?? null,
+            });
+          }
         }
 
         const content = message.type === 'assistant'

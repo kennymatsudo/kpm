@@ -14,6 +14,7 @@ import { createFileExplorerService } from '../files/FileExplorerService';
 import { createProjectWatcherService } from '../files/ProjectWatcherService';
 import { createRepoFileService } from '../files/RepoFileService';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
+import type { ClaudeUsageService } from '../core/ClaudeUsageService';
 
 export interface RepoServicesCompositionDeps {
   container: IRepositoryContainer;
@@ -22,6 +23,8 @@ export interface RepoServicesCompositionDeps {
   userDataPath: string;
   agentSessionManager?: AgentSessionManager;
   getPromptContent: (key: string) => string;
+  /** Centralized Claude token + cost tracker. */
+  claudeUsageService: ClaudeUsageService;
 }
 
 export function createRepoServices({
@@ -31,6 +34,7 @@ export function createRepoServices({
   userDataPath,
   agentSessionManager,
   getPromptContent,
+  claudeUsageService,
 }: RepoServicesCompositionDeps) {
   const repoService = createRepoService({
     repos: container.repos,
@@ -73,6 +77,9 @@ export function createRepoServices({
     repos: container.repos,
     planItems: container.planItems,
     getPromptContent,
+    recordUsage: ({ projectId, source, model, usage, totalCostUsd }) => {
+      claudeUsageService.recordUsage({ projectId, source, model, usage, totalCostUsd });
+    },
   });
 
   const reviewService = createReviewService({
@@ -92,6 +99,9 @@ export function createRepoServices({
     reviewTasks: container.reviewTasks,
     gitHubService,
     fileExplorerService,
+    recordUsage: ({ projectId, source, model, usage, totalCostUsd }) => {
+      claudeUsageService.recordUsage({ projectId, source, model, usage, totalCostUsd });
+    },
   });
 
   const projectWatcherService = createProjectWatcherService({

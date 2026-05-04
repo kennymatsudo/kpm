@@ -3073,6 +3073,38 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1078,
+    name: '078_claude_usage_events',
+    up: (db: BetterSqliteDatabase) => {
+      // Append-only event log of Claude API usage. One row per result/turn.
+      // project_id is nullable so we can record usage for cross-project features
+      // (e.g. onboarding before a project is selected).
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS claude_usage_events (
+          id TEXT PRIMARY KEY,
+          project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+          source TEXT NOT NULL,
+          model TEXT NOT NULL,
+          input_tokens INTEGER NOT NULL DEFAULT 0,
+          output_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+          cost_micro_usd INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_claude_usage_project_created
+          ON claude_usage_events(project_id, created_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_claude_usage_created
+          ON claude_usage_events(created_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_claude_usage_source
+          ON claude_usage_events(source);
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

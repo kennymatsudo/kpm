@@ -13,6 +13,7 @@ import type {
   AgentActivity,
   AgentQuestion,
   AgentCompletionSummary,
+  AgentSessionUsage,
   ReviewFinding,
   IAgentSession,
 } from '../../../shared/agent-types';
@@ -55,6 +56,17 @@ export interface AgentSessionManagerDeps {
     role: AgentSessionRole;
     state: AgentSessionState;
   }) => void | Promise<void>;
+  /**
+   * Hook for the centralized usage tracker. Fires once per turn for
+   * Claude SDK sessions with billable usage. The manager forwards the
+   * project + role context so the recorder can categorize the event.
+   */
+  onSessionUsage?: (event: {
+    devSessionId: string;
+    projectId: string;
+    role: AgentSessionRole;
+    usage: AgentSessionUsage;
+  }) => void;
 }
 
 interface TrackedSession {
@@ -256,6 +268,19 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         devSessionId,
         question,
       });
+    });
+
+    agentSession.on('onUsage', (usage: AgentSessionUsage) => {
+      try {
+        deps.onSessionUsage?.({
+          devSessionId,
+          projectId: tracked.projectId,
+          role: agentSession.role,
+          usage,
+        });
+      } catch (error) {
+        console.error(`${LOG_PREFIX} onSessionUsage hook failed for ${devSessionId}:`, error);
+      }
     });
 
     agentSession.on('onComplete', (summary: AgentCompletionSummary) => {

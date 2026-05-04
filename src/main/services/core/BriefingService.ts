@@ -5,12 +5,14 @@
  * Two-stage pipeline:
  */
 
+import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
 import type { Database, Statement } from 'better-sqlite3';
 import type { BriefingResult, FileNode } from '../../../shared/types';
 import type { AsyncResult } from '../result';
 import { success, failure } from '../result';
 import { getConfig } from '../../config';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
+import { runClaudeQuery, type ClaudeQueryUsage } from '../../claude/runClaudeQuery';
 
 // =============================================================================
 // Types
@@ -81,6 +83,17 @@ export interface BriefingServiceDeps {
   projects: {
     get: (projectId: string) => { id: string; name: string; folder_path: string | null } | undefined;
   };
+  /**
+   * Optional centralized usage recorder. When provided, every Claude call in
+   * the briefing pipeline routes its result usage through this so the
+   * dashboard can attribute tokens + cost to the right project.
+   */
+  recordUsage?: (event: {
+    projectId: string;
+    model: string;
+    usage: ClaudeQueryUsage;
+    totalCostUsd?: number | null;
+  }) => void;
 }
 
 // =============================================================================
@@ -208,6 +221,13 @@ export interface BriefingServiceDeps {
           }
         }
 
+
+        const usageCtx: ClaudeCallContext | undefined = deps.recordUsage
+          ? {
+              onUsage: ({ model, usage, totalCostUsd }) =>
+                deps.recordUsage!({ projectId, model, usage, totalCostUsd }),
+            }
+          : undefined;
 
 
 Produce a structured summary with these sections:

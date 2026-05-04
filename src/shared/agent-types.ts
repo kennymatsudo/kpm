@@ -100,6 +100,24 @@ export interface PersistedAgentReview {
 // Agent Session Events (Main Process → Renderer)
 // =============================================================================
 
+/**
+ * Token usage emitted by a session when the underlying model returns a
+ * result message with billable token counts. Only Claude SDK sessions
+ * emit this — CLI agents (Codex, Gemini) are tracked separately.
+ */
+export interface AgentSessionUsage {
+  model: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  /**
+   * SDK-reported total cost in USD for this turn, when available.
+   * The centralized usage tracker prefers this over its local pricing table.
+   */
+  totalCostUsd: number | null;
+}
+
 /** Events emitted by an AgentSession to its manager */
 export interface AgentSessionEvents {
   onStateChange: (state: AgentSessionState) => void;
@@ -107,6 +125,7 @@ export interface AgentSessionEvents {
   onQuestion: (question: AgentQuestion) => void;
   onComplete: (summary: AgentCompletionSummary) => void;
   onError: (error: string) => void;
+  onUsage: (usage: AgentSessionUsage) => void;
 }
 
 // =============================================================================

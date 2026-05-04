@@ -47,6 +47,14 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
       get: container.projects.get.bind(container.projects),
       updateTokens: container.projects.updateTokens.bind(container.projects),
     },
+      services.claudeUsageService.recordUsage({
+        projectId,
+        source: 'chat',
+        model,
+        usage,
+        totalCostUsd,
+      });
+    },
     chatMessageRepository: {
       addMessage: container.chatMessages.addMessage.bind(container.chatMessages),
       getMessagesByChatSession: container.chatMessages.getMessagesByChatSession.bind(container.chatMessages),

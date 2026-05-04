@@ -7,11 +7,13 @@
  * Output is saved to project/outputs/ folder.
  */
 
+import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
 import * as path from 'path';
 import * as fs from 'fs';
 import { getKpmServer } from '../../claude/tools/createKpmServer';
 import { getConfig } from '../../config';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
+import { runClaudeQuery, type ClaudeQueryUsage } from '../../claude/runClaudeQuery';
 
 export interface CustomPromptExecutionOptions {
   promptId: string;
@@ -114,8 +116,31 @@ Generate markdown output that is clear, well-structured, and professional.`,
 
 
         const TIMEOUT_MS = getConfig().generation.artifactGenerationTimeoutMs;
-            }
+        const sdkModel = getConfig().generation.deepModel;
 
+        const result = await runClaudeQuery({
+          prompt: fullPrompt,
+          sdkOptions,
+          timeoutMs: TIMEOUT_MS,
+          timeoutMessage: `Generation timed out after ${TIMEOUT_MS / 60000} minutes`,
+          onToolUse: (toolName) => {
+            log(`Tool use: ${toolName}`);
+            callbacks.onProgress(`Querying ${toolName}...`);
+          },
+          recordUsage: ({ usage, totalCostUsd }) => {
+            if (_usageRecorder) {
+              _usageRecorder({
+                projectId: options.projectId,
+                source: 'custom_prompt',
+                model: sdkModel,
+                usage,
+                totalCostUsd,
+              });
+            }
+          },
+        });
+
+        const generatedContent = result.text;
 
         if (!generatedContent.trim()) {
           throw new Error('No content generated');
@@ -156,6 +181,32 @@ Generate markdown output that is clear, well-structured, and professional.`,
       }
     },
   };
+}
+
+// =============================================================================
+// Usage Recorder Hook
+// =============================================================================
+//
+// `executeCustomPrompt` is called via a top-level helper (the singleton was
+// established before DI was retrofitted in this part of the codebase), so the
+// usage recorder is registered globally at app startup. The composition root
+// calls `setCustomPromptUsageRecorder(...)` once; the function inside the
+// SDK loop reads it on each `result` message.
+
+interface CustomPromptUsageEvent {
+  projectId: string;
+  source: 'custom_prompt';
+  model: string;
+  usage: ClaudeQueryUsage;
+  totalCostUsd?: number | null;
+}
+
+let _usageRecorder: ((event: CustomPromptUsageEvent) => void) | null = null;
+
+export function setCustomPromptUsageRecorder(
+  recorder: ((event: CustomPromptUsageEvent) => void) | null,
+): void {
+  _usageRecorder = recorder;
 }
 
 // =============================================================================

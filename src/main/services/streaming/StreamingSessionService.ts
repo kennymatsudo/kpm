@@ -163,6 +163,23 @@ export interface StreamingSessionServiceDeps {
     updateTokens(id: string, tokens: { input: number; output: number; total: number }): void;
   };
 
+  /**
+   * Record token usage and cost for a chat result. Called once per turn
+   * when the SDK delivers a `result` message with usage stats. Falls back
+   * to no-op if not provided (so older tests don't break).
+   */
+  recordUsage?: (event: {
+    projectId: string;
+    model: string | null | undefined;
+    usage: {
+      input_tokens?: number | null;
+      output_tokens?: number | null;
+      cache_creation_input_tokens?: number | null;
+      cache_read_input_tokens?: number | null;
+    };
+    totalCostUsd?: number | null;
+  }) => void;
+
   /** Chat message repository for persisting messages */
   chatMessageRepository: {
     addMessage(
@@ -1429,8 +1446,20 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         void disconnectSession(key, { silent: true });
       }
 
+      // Update usage stats (non-critical). Prefer the centralized usage
+      // recorder when wired in — it persists per-event cost + the project
+      // token rollup. Fall back to the raw token rollup for tests/older
+      // callers that don't pass `recordUsage`.
       try {
         if (sdkMsg.usage) {
+          if (deps.recordUsage) {
+          } else {
+            deps.projectRepository.updateTokens(projectId, {
+              input: sdkMsg.usage.input_tokens ?? 0,
+              output: sdkMsg.usage.output_tokens ?? 0,
+              total: (sdkMsg.usage.input_tokens ?? 0) + (sdkMsg.usage.output_tokens ?? 0),
+            });
+          }
         }
       } catch (statsError) {
         console.error('[StreamingSessionService] Failed to update token stats:', statsError);

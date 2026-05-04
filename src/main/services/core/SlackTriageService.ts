@@ -5,7 +5,9 @@
  * Uses Claude (Sonnet) to classify messages and draft actions.
  */
 
+import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
+import { runClaudeQuery, type ClaudeQueryUsage } from '../../claude/runClaudeQuery';
 import type { ISlackChannelLinkRepository, ISlackTriageItemRepository, SlackTriageItemCreate } from '../../db/interfaces/slack';
 import type { IPlanItemRepository } from '../../db/interfaces/plan';
 import type {
@@ -40,6 +42,14 @@ export interface SlackTriageServiceDeps {
   getSlackAvailability: () => Promise<SlackMcpAvailability>;
   createTaskFromTriage: (projectId: string, action: SlackTriageCreateTaskAction) => void | Promise<void>;
   applyDocumentUpdate: (projectId: string, action: SlackTriageUpdateDocumentAction) => void | Promise<void>;
+  /** Optional centralized Claude usage tracker. */
+  recordUsage?: (event: {
+    projectId: string;
+    source: 'slack_triage';
+    model: string;
+    usage: ClaudeQueryUsage;
+    totalCostUsd?: number | null;
+  }) => void;
 }
 
 export interface SlackMessage {
@@ -334,6 +344,15 @@ export function createSlackTriageService(deps: SlackTriageServiceDeps) {
         )
       );
 
+      const triageResponse = await callClaude(systemPrompt, userMessage, (event) => {
+        deps.recordUsage?.({
+          projectId,
+          source: 'slack_triage',
+          model: event.model,
+          usage: event.usage,
+          totalCostUsd: event.totalCostUsd,
+        });
+      });
 
       const parsed = parseTriageResponse(triageResponse);
       const itemsToCreate: SlackTriageItemCreate[] = parsed.map(item => ({
@@ -504,7 +523,18 @@ export type SlackTriageService = ReturnType<typeof createSlackTriageService>;
 // Claude API Call
 // ============================================================================
 
+async function callClaude(
+  systemPrompt: string,
+  userMessage: string,
+  onUsage?: (event: {
+    model: string;
+    usage: ClaudeQueryUsage;
+    totalCostUsd?: number | null;
+  }) => void,
+): Promise<string> {
+  const model = getConfig().generation.fastModel;
   const sdkOptions: SDKOptions = {
+    model,
     tools: [],
     persistSession: false,
     systemPrompt,
@@ -512,9 +542,19 @@ export type SlackTriageService = ReturnType<typeof createSlackTriageService>;
     ...getClaudeSdkSpawnOptions(),
   };
 
+  const result = await runClaudeQuery({
+    prompt: userMessage,
+    sdkOptions,
+    timeoutMs: 60_000,
+    timeoutMessage: 'Slack triage Claude call timed out after 60s',
+    recordUsage: onUsage
+      ? ({ usage, totalCostUsd }) => {
+          onUsage({ model, usage, totalCostUsd });
         }
+      : undefined,
   });
 
+  return result.text;
 }
 
 // ============================================================================

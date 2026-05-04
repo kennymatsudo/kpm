@@ -5,7 +5,9 @@
  * Follows the factory + DI pattern used by other services.
  */
 
+import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync } from 'fs';
+import { runClaudeQuery, type ClaudeQueryUsage } from '../../claude/runClaudeQuery';
 import { randomUUID } from 'crypto';
 import type { IDevSessionRepository, IRepoRepository, IPlanItemRepository } from '../../db/interfaces';
 import type {
@@ -55,6 +57,16 @@ export interface GitHubServiceDeps {
   planItems: IPlanItemRepository;
   /** Resolves configurable prompt content (override > registry default). */
   getPromptContent?: (key: string) => string;
+  /**
+   * Centralized Claude usage recorder. Optional so existing tests don't need
+   */
+  recordUsage?: (event: {
+    projectId: string | null;
+    source: 'pr_description';
+    model: string;
+    usage: ClaudeQueryUsage;
+    totalCostUsd?: number | null;
+  }) => void;
 }
 
 export interface PrContextResult {
@@ -492,8 +504,27 @@ HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and 
         };
 
         const TIMEOUT_MS = getConfig().generation.prGenerationTimeoutMs;
-              }
+        const sdkModel = getConfig().generation.fastModel;
 
+        const result = await runClaudeQuery({
+          prompt,
+          sdkOptions,
+          timeoutMs: TIMEOUT_MS,
+          timeoutMessage: 'PR generation timed out',
+          recordUsage: deps.recordUsage
+            ? ({ usage, totalCostUsd }) => {
+                deps.recordUsage!({
+                  projectId: session.project_id,
+                  source: 'pr_description',
+                  model: sdkModel,
+                  usage,
+                  totalCostUsd,
+                });
+              }
+            : undefined,
+        });
+
+        const generatedContent = result.text;
 
         if (!generatedContent.trim()) {
           log('No content generated, falling back to raw context');

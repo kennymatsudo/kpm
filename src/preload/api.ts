@@ -79,6 +79,11 @@ import type {
 import type {
   AgentActivity,
 } from '../shared/agent-types';
+import type {
+  ClaudeUsageEvent,
+  ProjectUsageStats,
+  UsageLiveEvent,
+} from '../shared/usage-types';
 
 type IpcSuccess<T extends object | void> = T extends void ? { success: true } : { success: true } & T;
 interface IpcFailure {
@@ -1405,6 +1410,27 @@ const briefing = {
     ipcRenderer.invoke(IPC_CHANNELS.briefing.get, { projectId }),
 };
 
+// Claude usage tracking API
+const usage = {
+  getProjectStats: (projectId: string): Promise<ProjectUsageStats> =>
+    ipcRenderer.invoke(IPC_CHANNELS.usage.getProjectStats, { projectId }),
+  getGlobalStats: (): Promise<ProjectUsageStats> =>
+    ipcRenderer.invoke(IPC_CHANNELS.usage.getGlobalStats, {}),
+  listEvents: (projectId: string | null, limit?: number): Promise<ClaudeUsageEvent[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.usage.listEvents, { projectId, limit }),
+  resetProject: (projectId: string): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.usage.resetProject, { projectId }),
+  /**
+   * Subscribe to live usage events broadcast every time a Claude turn
+   * finishes. Returns an unsubscribe function.
+   */
+  onUsageEvent: (handler: (event: UsageLiveEvent) => void) => {
+    const listener = (_: unknown, payload: UsageLiveEvent) => handler(payload);
+    ipcRenderer.on('usage:event', listener);
+    return () => ipcRenderer.removeListener('usage:event', listener);
+  },
+};
+
 // MCP Servers API
 const mcpServers = {
   listAvailable: (): Promise<{
@@ -1552,6 +1578,7 @@ export const api = {
   search,
   promptOverrides,
   briefing,
+  usage,
   mcpServers,
   onboarding,
   slack,

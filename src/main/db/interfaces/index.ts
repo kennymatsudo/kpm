@@ -46,6 +46,15 @@ export type {
   SlackTriageItemCreate,
 } from './slack';
 
+// Claude usage tracking
+export type {
+  IClaudeUsageRepository,
+  ClaudeUsageEvent,
+  ClaudeUsageEventInsert,
+  ClaudeUsageTotals,
+  ClaudeUsageBreakdownRow,
+} from './usage';
+
 // Review workflow domain
 export type {
   IAgentReviewRepository,

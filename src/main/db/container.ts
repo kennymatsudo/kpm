@@ -38,6 +38,7 @@ import {
   ReviewSyncStateRepository as ReviewSyncStateRepositoryClass,
   SlackChannelLinkRepository as SlackChannelLinkRepositoryClass,
   SlackTriageItemRepository as SlackTriageItemRepositoryClass,
+  ClaudeUsageRepository as ClaudeUsageRepositoryClass,
 } from './repositories/impl';
 import type { IFileSystem, IPathUtils } from './repositories/impl/ProjectRepository';
 
@@ -122,6 +123,7 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
     reviewSyncState: new ReviewSyncStateRepositoryClass(database),
     slackChannelLinks: new SlackChannelLinkRepositoryClass(database),
     slackTriageItems: new SlackTriageItemRepositoryClass(database),
+    claudeUsage: new ClaudeUsageRepositoryClass(database),
   };
 }
 

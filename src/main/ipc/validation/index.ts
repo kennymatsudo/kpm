@@ -139,6 +139,9 @@ export { McpServerSchemas } from './mcpServers';
 // Briefing
 export { BriefingSchemas } from './briefing';
 
+// Claude Usage Tracking
+export { UsageSchemas } from './usage';
+
 // Onboarding
 export { OnboardingSchemas } from './onboarding';
 export type { OnboardingGenerateInput, OnboardingSaveContextInput } from './onboarding';

@@ -296,6 +296,29 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
     // Result message — turn complete
     if (msg.type === 'result') {
       this.markReady();
+
+      // Surface billable token usage so the manager can record it through
+      // the centralized usage service. Defensive: a result without usage
+      // (early aborts, structured-output retries) just emits zeros and
+      // the service drops it.
+      if (msg.usage) {
+        const usage = msg.usage as {
+          input_tokens?: number;
+          output_tokens?: number;
+          cache_creation_input_tokens?: number;
+          cache_read_input_tokens?: number;
+        };
+        const modelOption = this.sdkOptions.model;
+        this.emit('onUsage', {
+          model: typeof modelOption === 'string' ? modelOption : null,
+          inputTokens: usage.input_tokens ?? 0,
+          outputTokens: usage.output_tokens ?? 0,
+          cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
+          cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+          totalCostUsd: typeof totalCostUsd === 'number' ? totalCostUsd : null,
+        });
+      }
+
       const terminalReason = msg.terminal_reason;
       // Only stash non-normal reasons; 'completed' is the expected case and
       // surfacing it as "ended because completed" would be noise.
