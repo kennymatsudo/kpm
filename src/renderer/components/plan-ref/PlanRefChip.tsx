@@ -111,6 +111,7 @@ export function PlanRefChip({ id }: PlanRefChipProps) {
           }}
           onMouseEnter={scheduleOpen}
           onMouseLeave={scheduleClose}
+          className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-accent-subtle text-accent hover:bg-accent/20 transition-colors align-baseline cursor-pointer"
           title={item.title}
         >
           <span className="truncate max-w-[16rem]">{item.title}</span>
