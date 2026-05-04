@@ -658,10 +658,23 @@ interface MessageListProps {
   // - Follow while user is at bottom
   // - Stop following when user scrolls up
   // - Show "Jump to latest" when detached and new content arrives
+  // - Always re-snap to bottom when the user sends a message, even if scrolled up
   useLayoutEffect(() => {
     if (isInitialMount.current) {
       scrollToBottom('auto');
       isInitialMount.current = false;
+      return;
+    }
+
+    const prevMessages = prevMessagesRef.current;
+    const userJustSent =
+      messages.length > prevMessages.length &&
+      messages[messages.length - 1]?.role === 'user';
+
+    if (userJustSent) {
+      if (!autoFollow) setAutoFollow(true);
+      if (hasUnseenMessages) setHasUnseenMessages(false);
+      scrollToBottom('smooth');
       return;
     }
 
