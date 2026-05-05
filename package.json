@@ -12,6 +12,7 @@
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win",
     "dist:linux": "electron-builder --linux",
+    "postinstall": "electron-builder install-app-deps && node scripts/patch-electron-icon.js && node scripts/patch-electron-plist.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -36,6 +37,8 @@
     "jira.js": "5.3.1",
     "keytar": "7.9.0",
     "node-pty": "1.1.0",
+    "which": "6.0.1",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -44,6 +47,7 @@
     "@types/react-dom": "19.2.3",
     "@types/which": "3.0.4",
     "cmdk": "^1.1.1",
+    "electron": "41.5.0",
     "electron-devtools-installer": "4.0.0",
     "electron-playwright-helpers": "2.1.0",
     "electron-vite": "6.0.0-beta.1",
@@ -51,5 +55,6 @@
     "react-diff-viewer-continued": "^4.2.0",
     "rollup-plugin-visualizer": "7.0.1",
     "typescript": "6.0.3",
+    "vite": "8.0.10",
   }
 }

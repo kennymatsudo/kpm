@@ -222,6 +222,7 @@ export function createSlackTriageAdapter(deps: SlackTriageAdapterDeps) {
               message: 'Slack triage may only use Slack MCP tools in this adapter session.',
             }
       ),
+      skills: [],
       env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
       ...getClaudeSdkSpawnOptions(),
     };

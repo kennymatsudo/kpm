@@ -13,6 +13,7 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { failure, success, type AsyncResult, type ServiceResult } from '../result';
 } from '../../../shared/types';
+import { captureRepoEnvironment } from './EnvironmentService';
 import type {
   IAppSettingsRepository,
   IAgentReviewRepository,
@@ -574,6 +575,11 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           return failure(`Failed to create worktree: ${scaffoldResult.innerMessage}`);
         }
 
+        // Capture repo environment (direnv / auto-detect) after worktree is ready
+        const capturedEnv = await captureRepoEnvironment(
+          options?.environmentMode ?? repo.environment_mode ?? 'auto',
+        );
+
         // Use the user's prompt override if provided, otherwise the stored instructions
 
         deps.agentReviews.markLatestCompletedStale(sessionId);
@@ -587,6 +593,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           model: developerModel,
           maxTurns: getConfig().claude.maxTurns,
           permissionMode: getConfig().claude.defaultPermissionMode,
+          skills: [],
           env: { ...process.env, ...capturedEnv, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
           thinking: { type: 'adaptive' as const, display: 'summarized' as const },
           agentProgressSummaries: true,
