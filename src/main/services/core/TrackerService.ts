@@ -140,6 +140,7 @@ export function createTrackerService(deps: TrackerServiceDeps) {
     },
 
     /**
+     * Create an KPM ↔ tracker association.
      * @param trackerType Which tracker this association points at.
      * @param siteUrl For Jira: the hostname (e.g., "company.atlassian.net"). For
      *                Linear: "linear.app" (constant — Linear has no per-site URLs,

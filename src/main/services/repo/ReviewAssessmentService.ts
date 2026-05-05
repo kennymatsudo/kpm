@@ -155,6 +155,7 @@ You have read-only tools to explore beyond the PR diff before landing a disposit
 
 1. **Follow-up plan items** — does \`list_plan_items\` surface a planned (or in-progress) task that covers this concern? Use \`get_plan_item\` to confirm the scope matches. If yes, the thread is a \`push_back\` with the follow-up as the rationale.
 2. **In-flight work on this repo or a sibling repo** — call \`list_project_branches\` once to see every repo on the project. If a branch name or recent commit subject suggests the concern is being addressed elsewhere (commonly true for cross-repo changes like API/client pairs), use \`get_branch_activity\` to verify the commits touch the relevant files.
+3. **KPM project docs** — if the reviewer is questioning a design choice that was deliberately made, \`read_project_document\` against iteration docs / CLAUDE.md / AGENTS.md can surface the rationale.
 
 
 
@@ -194,6 +195,7 @@ Write like a developer replying on their own PR — not a bot, not a customer-su
 - No hedging or hypothetical framing: skip "it would be a real issue if...", "you're right that in theory...", "this could be a concern but...". Just state what's true now.
 - Short. One or two sentences is usually enough. Two short sentences beats one long one.
 - Casual-professional tone: contractions are fine, first person is fine, lowercase after em-dashes is fine.
+- Reference PRs, commits, branches, or follow-up work by their identifier (e.g., "#1234", "on branch foo-bar", "covered by PROJ-7012") — never by KPM-internal UUIDs.
 
 Examples of the voice you want:
 
@@ -316,6 +318,7 @@ function applyAssessmentBusinessRules(
 // =============================================================================
 
 function buildPostImplSystemPrompt(): string {
+  return `You are a code review reply drafting agent for KPM.
 
 Your job is to look at review threads that were marked for implementation, examine the current diff, and draft concise "addressed" replies for threads that were actually fixed.
 
@@ -337,6 +340,7 @@ Write like a developer replying on their own PR — not a bot.
 - No hedging or hypotheticals ("this would have been an issue if...", "you're right in theory...").
 - Short. One sentence is usually enough. Point at the fix in concrete terms.
 - Casual-professional. Contractions, first person, lowercase after em-dashes are all fine.
+- Reference commits, PRs, or files concretely when useful; never use KPM-internal UUIDs.
 
 Examples of the voice you want:
 

@@ -184,6 +184,7 @@ export class StreamingSession {
 
             this._isReady = false;
           } else {
+            // KPM server connected successfully
             this._isReady = true;
             this.config.onReady?.(this.sessionId, mcpServers);
             this.readyResolver?.();

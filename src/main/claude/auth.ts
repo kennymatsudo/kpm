@@ -4,6 +4,7 @@
 
 import keytar from 'keytar';
 
+// Keep the legacy keychain service name so existing API keys remain readable.
 const SERVICE = 'KPM';
 const ACCOUNT = 'anthropic-api-key';
 

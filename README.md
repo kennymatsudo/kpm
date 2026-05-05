@@ -1,3 +1,4 @@
+# KPM
 
 **A codebase-aware planning workbench for developers.** KPM is a local desktop cockpit where you plan, explore, and ship work across any number of repos — with AI grounded in your actual plan and code at every step.
 

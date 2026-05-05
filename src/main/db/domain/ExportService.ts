@@ -79,6 +79,7 @@ function trackerLabelFor(type: TrackerType): string {
 }
 
 /**
+ * Service for exporting KPM plan items to Jira.
  * Manages the sync queue and executes the export.
  */
 export function createExportService(deps: ExportServiceDeps) {
@@ -710,6 +711,7 @@ export function createExportService(deps: ExportServiceDeps) {
           }
         }
 
+        // If no parent resolved from KPM hierarchy, use association's epic_key
         if (!parentKey && association.epic_key) {
           parentKey = association.epic_key;
         }
@@ -726,12 +728,14 @@ export function createExportService(deps: ExportServiceDeps) {
 
         // Sync boundary: only title/description cross to the external tracker.
         // Spec fields (`intent`, `acceptance_criteria`, `source_document_id`) are
+        // intentionally local-only — they live in KPM as the developer's source of truth
         // and must not leak to Jira/Linear without an explicit product decision.
         // If you add new spec-like fields, default them to local-only and require sign-off
         // before adding to this payload. See `src/main/claude/CLAUDE.md` (Sync boundary).
         //
         // Labels: `planItem.label` is intentionally not forwarded. Jira would accept the
         // raw string, but Linear requires label UUIDs (not names) — wiring would need a
+        // per-team name→ID resolver. Treat labels as KPM-local until that resolver exists.
         // Sync boundary: rewrite @plan/<uuid> tokens to native syntax for the
         // tracker so the description never lands as literal `@plan/<uuid>` text
         // in Jira/Linear. Linked items become tracker-key links; unlinked

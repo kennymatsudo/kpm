@@ -30,6 +30,7 @@ interface ConfluencePageResponse {
   spaceId: string;
   version?: { number: number };
   body?: {
+    kpm_doc_format?: {
       value: string;
     };
   };
@@ -71,6 +72,7 @@ export class ConfluenceClient {
    */
   async getPage(pageId: string): Promise<ConfluencePage> {
     const response = await fetch(
+      `${this.baseUrl}/api/v2/pages/${pageId}?body-format=kpm_doc_format`,
       { headers: { Authorization: this.authHeader } }
     );
 
@@ -82,7 +84,9 @@ export class ConfluenceClient {
 
     // Parse ADF content
     let content = '';
+    if (data.body?.kpm_doc_format?.value) {
       try {
+        const adf: unknown = JSON.parse(data.body.kpm_doc_format.value);
         content = this.documentCodec.fromExternal(adf) ?? '';
       } catch {
         // If ADF parsing fails, leave content empty
@@ -125,6 +129,7 @@ export class ConfluenceClient {
         spaceId: currentPage.spaceId,
         version: { number: currentVersion + 1 },
         body: {
+          representation: 'kpm_doc_format',
           value: JSON.stringify(adfContent),
         },
       }),

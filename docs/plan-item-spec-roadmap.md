@@ -6,6 +6,7 @@
 
 ## Why this work exists
 
+KPM's core promise is **context continuity across discovery → planning → execution**.
 The lossy seam was at planning → execution: `PlanItem` carried only `title` +
 `description` (prose), and three separate prompt builders flattened that prose
 differently into agent context. Every downstream consumer (agent, reviewer, PR
@@ -59,6 +60,7 @@ plus the extended `tests/repositories/PlanItemRepository.test.ts`.
 
 - `modify_plan` tool docstring now labels each spec field **local-only** vs.
   **synced to Jira/Linear** and explicitly forbids embedding local-only
+  references (KPM doc IDs, `source_document_id` values, iteration-doc file
   paths) inside `description`. Repo-relative code paths remain fine.
 - Guard comments on both `createIssue` and `updateIssue` payloads in
   `ExportService.ts` — spec fields are intentionally local-only, don't add

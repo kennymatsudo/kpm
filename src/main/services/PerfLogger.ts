@@ -15,6 +15,7 @@ export interface PerfLogInfo {
   sessionId?: string;
 }
 
+const perfEnabled = process.env.KPM_PERF === '1' || process.env.KPM_PERF === 'true';
 
 let perfLogger: PerfLogger | null = null;
 

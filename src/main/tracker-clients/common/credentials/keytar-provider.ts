@@ -2,6 +2,7 @@ import keytar from 'keytar';
 import type { TrackerType, TrackerCredentials } from '../types.js';
 import type { CredentialProvider, CredentialOfType } from './index.js';
 
+// Keep the legacy keychain service name so existing tracker credentials remain readable.
 const SERVICE = 'KPM';
 
 export class KeytarCredentialProvider implements CredentialProvider {

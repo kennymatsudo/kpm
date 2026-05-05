@@ -5,6 +5,7 @@
  * - Quick mode (default): Title input only, Enter to create
  * - Full mode: Title, description, label, parent selector
  *
+ * Design: Refined minimalism matching KPM's developer tool aesthetic.
  * Quick mode is fast and lightweight; full mode provides clear structure.
  */
 

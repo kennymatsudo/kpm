@@ -22,6 +22,7 @@ import { Tooltip } from '../ui/Tooltip';
 /**
  * TreeView - A compact outline view for plan items with drag-and-drop
  *
+ * Design: Refined minimalism with warmth, matching KPM's Bear/Things 3 aesthetic.
  * Purpose: Quick scanning, keyboard navigation, hierarchy comprehension, and reorganization.
  */
 

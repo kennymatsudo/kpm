@@ -12,6 +12,8 @@
 import type { PlanItem } from '../../shared/types';
 import { findRefs } from '../../shared/planRefs';
 
+   * `[<title>](@plan/<uuid>)` so non-KPM readers see the title while
+   * KPM itself can still detect the ref on render and resolve live.
 
 /**
  * Replace every `@plan/<uuid>` in `markdown` with native syntax for

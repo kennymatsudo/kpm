@@ -83,6 +83,7 @@ const explainSlackAdapterFailure = (response: string): string | null => {
     || normalized.includes('slack mcp tools do not appear to be loaded or connected')
     || normalized.includes('slack tools available in my toolset')
   ) {
+    return 'Slack MCP tools were not available in the triage adapter session. Check that Slack is connected in Claude and enabled for KPM.';
   }
 
   return null;
@@ -221,6 +222,7 @@ export function createSlackTriageAdapter(deps: SlackTriageAdapterDeps) {
               message: 'Slack triage may only use Slack MCP tools in this adapter session.',
             }
       ),
+      env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
       ...getClaudeSdkSpawnOptions(),
     };
 
@@ -285,6 +287,7 @@ export function createSlackTriageAdapter(deps: SlackTriageAdapterDeps) {
       throw new Error('Slack adapter returned empty response — the model may not have produced text output after tool use');
     }
     if (cleaned === '[]' && options?.usedSlackTool === false) {
+      throw new Error('Slack adapter returned an empty result without using a Slack tool. Check that Slack is connected in Claude and enabled for KPM.');
     }
 
     const jsonPayload = extractJsonPayload(cleaned);
@@ -322,6 +325,7 @@ export function createSlackTriageAdapter(deps: SlackTriageAdapterDeps) {
 
     const { text: response, usedSlackTool } = await runSlackAdapterPrompt({
       projectId,
+      systemPrompt: `You are a Slack MCP adapter for KPM.
 
 Use Slack tools to resolve a Slack channel reference to an exact channel.
 The reference may be a Slack channel ID like C123ABC456 or a human-readable channel name like team-project-updates.
@@ -380,6 +384,7 @@ Return only JSON.`,
 
     const { text: response, usedSlackTool } = await runSlackAdapterPrompt({
       projectId,
+      systemPrompt: `You are a Slack MCP adapter for KPM.
 
 Use Slack tools to read channel history.
 Call slack_read_channel exactly once with limit: 100. Do not paginate — ignore any next_cursor in the response.
@@ -426,6 +431,7 @@ Return only JSON.`,
 
     const { text: response, usedSlackTool } = await runSlackAdapterPrompt({
       projectId,
+      systemPrompt: `You are a Slack MCP adapter for KPM.
 
 Use Slack tools to read a thread.
 Call slack_read_thread exactly once with limit: 100. Do not paginate — ignore any next_cursor in the response.
@@ -471,6 +477,7 @@ Return only JSON replies, excluding the root message.`,
 
     await runSlackAdapterPrompt({
       projectId,
+      systemPrompt: `You are a Slack MCP adapter for KPM.
 
 Use Slack tools to send the exact message provided by the user.
 Do not rewrite, summarize, or format the message differently.

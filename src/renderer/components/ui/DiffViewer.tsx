@@ -42,6 +42,7 @@ export function computeDiff(oldContent: string | null, newContent: string): Diff
 
 /**
  * DiffViewer component displays inline diffs using a packaged renderer while
+ * keeping KPM's existing diff helpers for summary counts and compatibility.
  */
 export function DiffViewer({ oldContent, newContent, diffLines: diffLinesProp, autoScrollToFirstChange }: DiffViewerProps) {
   const diffLines = useMemo(() => {

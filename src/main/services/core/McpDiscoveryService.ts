@@ -3,6 +3,7 @@
  *
  * Discovers installed Claude Code plugins from the user's Claude Code plugin ecosystem.
  * Starts from installed_plugins.json and records whether each plugin also has an MCP server config.
+ * Reads preferences from app_settings to determine which servers are enabled for KPM.
  *
  * Does NOT manage MCP server processes — the SDK handles that.
  */
@@ -281,6 +282,7 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
 
     /**
      * Get configs for enabled user MCP servers (to pass to SDK mcpServers option).
+     * Returns a Record<name, config> for servers the user has enabled in KPM.
      */
     getEnabledUserMcpConfigs(): ServiceResult<Record<string, Record<string, unknown>>> {
       const serversResult = this.discoverUserServers();
@@ -347,6 +349,7 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
 
     /**
      * Detect whether Slack MCP is available from the user's Claude environment.
+     * This is used to gate Slack-specific features in KPM.
      */
     async getSlackAvailability(): Promise<ServiceResult<SlackMcpAvailability>> {
       const prefsResult = this.getPreferences();
@@ -396,9 +399,13 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
       const slackManagedServer = managedServersResult.data.find((server) => isSlackIdentifier(server.name));
       if (slackManagedServer) {
         const available = slackManagedServer.status === 'connected';
+        const disabledInKpm = prefs[`managed:${slackManagedServer.name}`] === false;
         return success({
+          available: available && !disabledInKpm,
           source: 'claude-ai',
           serverName: slackManagedServer.name,
+          reason: disabledInKpm
+            ? 'Slack MCP is connected in Claude but disabled in KPM settings'
             : available
               ? null
               : `Slack MCP is detected but currently ${slackManagedServer.status}`,
@@ -410,6 +417,7 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
           available: false,
           source: 'plugin',
           serverName: slackPlugins[0].serverNames.find((serverName) => isSlackIdentifier(serverName)) ?? slackPlugins[0].name,
+          reason: 'Slack MCP plugin is enabled in Claude Code but not enabled in KPM settings',
         });
       }
 
@@ -418,6 +426,7 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
           available: false,
           source: 'user',
           serverName: slackUserServers[0].name,
+          reason: 'Slack MCP server is configured in Claude but not enabled in KPM settings',
         });
       }
 
@@ -430,6 +439,7 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
     },
 
     /**
+     * Get the user's MCP server preferences (which servers are enabled for KPM).
      */
     getPreferences(): ServiceResult<Record<string, boolean>> {
       try {
@@ -442,6 +452,7 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
     },
 
     /**
+     * Set whether a server is enabled or disabled for KPM.
      */
     setServerEnabled(serverName: string, enabled: boolean): ServiceResult<void> {
       try {

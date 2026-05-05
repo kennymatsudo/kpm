@@ -1,5 +1,16 @@
+import type { ElkNode } from 'elkjs/lib/elk.bundled.js';
 import { AUTO_LAYOUT, CARD_WIDTHS } from '../constants/layout';
 
+interface ElkInstance {
+  layout: (graph: ElkNode) => Promise<ElkNode>;
+}
+
+let elkPromise: Promise<ElkInstance> | null = null;
+
+function getElk(): Promise<ElkInstance> {
+  elkPromise ??= import('elkjs/lib/elk.bundled.js').then(({ default: ELK }) => new ELK() as unknown as ElkInstance);
+  return elkPromise;
+}
 
 export interface MacroLayoutInputItem {
   id: string;
@@ -38,6 +49,7 @@ export async function computeMacroLayoutWithElk(
     })),
   };
 
+  const elk = await getElk();
   const laidOut = await elk.layout(graph);
 
   const positions: { id: string; x: number; y: number }[] = [];

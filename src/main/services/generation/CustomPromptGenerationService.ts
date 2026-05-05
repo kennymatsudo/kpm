@@ -2,6 +2,7 @@
  * Custom Prompt Generation Service
  *
  * Executes custom prompts from Command+K palette using Claude Opus with extended thinking.
+ * Claude has access to all KPM MCP tools (get_plan_items, get_project_info, etc.)
  * and decides what context to query based on the user's prompt.
  *
  * Output is saved to project/outputs/ folder.
@@ -91,9 +92,12 @@ Be thorough but concise. Focus on what was requested.`;
         log(`Prompt length: ${fullPrompt.length} chars`);
 
         // Phase 2: Claude with tools
+        callbacks.onProgress('Generating with Claude Opus (with KPM tools)...');
 
+        // Get the KPM MCP server for tool access
         const kpmServer = getKpmServer();
         if (!kpmServer) {
+          throw new Error('KPM MCP server not available');
         }
 
         // Configure SDK for Opus with extended thinking and MCP server
@@ -102,6 +106,7 @@ Be thorough but concise. Focus on what was requested.`;
           // Adaptive thinking for high-quality generation.
           thinking: { type: 'adaptive' as const, display: 'summarized' as const },
           persistSession: false, // Ephemeral one-shot query, no need to persist
+          // Use KPM MCP server for tools
           mcpServers: {
             kpm: kpmServer,
           },
@@ -114,6 +119,7 @@ Generate markdown output that is clear, well-structured, and professional.`,
           ...getClaudeSdkSpawnOptions(),
         };
 
+        log('Calling Claude Agent SDK query() with KPM tools...');
 
         const TIMEOUT_MS = getConfig().generation.artifactGenerationTimeoutMs;
         const sdkModel = getConfig().generation.deepModel;

@@ -26,6 +26,7 @@ describe('ConfluenceClient', () => {
     vi.unstubAllGlobals();
   });
 
+  it('parses kpm_doc_format content into markdown when fetching a page', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -34,6 +35,7 @@ describe('ConfluenceClient', () => {
         spaceId: 'ENG',
         version: { number: 7 },
         body: {
+          kpm_doc_format: {
             value: JSON.stringify({
               version: 1,
               type: 'doc',
@@ -68,6 +70,7 @@ describe('ConfluenceClient', () => {
     });
   });
 
+  it('serializes markdown into kpm_doc_format when updating a page', async () => {
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
@@ -77,6 +80,7 @@ describe('ConfluenceClient', () => {
           spaceId: 'ENG',
           version: { number: 7 },
           body: {
+            kpm_doc_format: {
               value: JSON.stringify({
                 version: 1,
                 type: 'doc',
@@ -99,6 +103,7 @@ describe('ConfluenceClient', () => {
           spaceId: 'ENG',
           version: { number: 8 },
           body: {
+            kpm_doc_format: {
               value: JSON.stringify({
                 version: 1,
                 type: 'doc',

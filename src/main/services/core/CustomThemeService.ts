@@ -176,6 +176,7 @@ function normalizeThemeForRuntime(theme: CustomTheme): CustomTheme {
     return theme;
   }
 
+  const colors = buildKpmThemeColors(vscodeColors, theme.colors.colorScheme);
   return {
     ...theme,
     colors,
@@ -243,6 +244,7 @@ async function importThemeFromMarketplace(
   const uiTheme = typeof selected.contribution.uiTheme === 'string' ? selected.contribution.uiTheme : undefined;
   const colorScheme = inferColorScheme(uiTheme, selected.json);
   const vscodeColors = sanitizeVsCodeColors(selected.json.colors);
+  const colors = buildKpmThemeColors(vscodeColors, colorScheme);
   const vscode = buildMonacoThemeData(selected.json, vscodeColors, colorScheme, warnings);
   const importedAt = new Date().toISOString();
   const sourceKey = `vscodethemes:${parts.extensionId.toLowerCase()}:${parts.themeSlug}`;
@@ -284,6 +286,7 @@ async function fetchWithTimeout(fetchFn: typeof fetch, url: string, timeoutMs: n
       signal: controller.signal,
       headers: {
         Accept: 'application/octet-stream',
+        'User-Agent': 'KPM Theme Importer',
       },
     });
   } finally {
@@ -420,6 +423,7 @@ function sanitizeVsCodeColors(input: unknown): Record<string, string> {
   return sanitized;
 }
 
+function buildKpmThemeColors(vscodeColors: Record<string, string>, colorScheme: 'light' | 'dark'): CustomThemeColors {
   const isDark = colorScheme === 'dark';
   const defaultBg = isDark ? '#1e1e1e' : '#ffffff';
   const defaultFg = isDark ? '#d4d4d4' : '#1f2328';
@@ -528,6 +532,7 @@ function buildMonacoThemeData(
       }
     }
   } else if (typeof theme.tokenColors === 'string') {
+    warnings.push('Ignored tokenColors file reference; KPM only imports inline JSON token rules.');
   }
 
   const encodedTokensColors = Array.isArray(theme.encodedTokensColors)

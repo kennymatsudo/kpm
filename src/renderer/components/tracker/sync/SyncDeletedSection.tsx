@@ -22,6 +22,7 @@ export function SyncDeletedSection({ items, action, decisions, onActionChange, o
       </h3>
 
       <p className="text-text-muted text-xs mb-3">
+        These items were deleted in {trackerLabel} but exist in KPM. Choose what to do with them:
       </p>
 
       {/* Bulk action selector */}
@@ -33,6 +34,7 @@ export function SyncDeletedSection({ items, action, decisions, onActionChange, o
             checked={action === 'keep_local'}
             onChange={() => onActionChange('keep_local')}
           />
+          <span className="text-sm text-text-primary">Keep all in KPM (unlink from {trackerLabel})</span>
         </label>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
@@ -41,6 +43,7 @@ export function SyncDeletedSection({ items, action, decisions, onActionChange, o
             checked={action === 'delete'}
             onChange={() => onActionChange('delete')}
           />
+          <span className="text-sm text-text-primary">Delete all from KPM</span>
         </label>
         <label className="flex items-center gap-2 cursor-pointer">
           <input

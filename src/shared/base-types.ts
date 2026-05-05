@@ -1,4 +1,5 @@
 /**
+ * @kpm/shared-types
  *
  * Core domain types shared between the main Electron app and standalone packages
  * (MCP server, tracker-clients). This package has NO dependencies to avoid

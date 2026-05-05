@@ -581,11 +581,13 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
 
 
         // Build SDK options for the dev session
+        // Dev sessions use a minimal config — no KPM MCP server, no plan tools
         const sdkOptions: SDKOptions = {
           systemPrompt: deps.getPromptContent('agents.implementation_system'),
           model: developerModel,
           maxTurns: getConfig().claude.maxTurns,
           permissionMode: getConfig().claude.defaultPermissionMode,
+          env: { ...process.env, ...capturedEnv, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
           thinking: { type: 'adaptive' as const, display: 'summarized' as const },
           agentProgressSummaries: true,
           ...getClaudeSdkSpawnOptions(),

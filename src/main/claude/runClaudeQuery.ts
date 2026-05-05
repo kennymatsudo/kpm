@@ -3,6 +3,7 @@
  *
  * Wraps the Claude Agent SDK's `query()` for the common case of "send a
  * prompt, get text (or structured JSON) back, capture usage." Used by every
+ * one-off generation site in KPM (briefing stages, PR description, commit
  * message, review assessment, custom prompt generation, onboarding, Slack
  * triage).
  *

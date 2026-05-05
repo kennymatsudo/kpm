@@ -27,6 +27,7 @@ import type {
   CustomFieldValues,
   JiraCustomField,
 } from '../../../../shared/types';
+import { MAPPABLE_KPM_CATEGORIES } from '../mapping/categories';
 
 type Tab = 'types' | 'statuses' | 'fields';
 
@@ -536,6 +537,7 @@ function StatusMappingsTab({
   return (
     <div className="space-y-4">
       <div className="space-y-3">
+        {MAPPABLE_KPM_CATEGORIES.map((category) => (
           <div key={category.key} className="p-3 rounded-xl bg-surface-2">
             <div className="mb-2">
               <span className="text-text-primary text-sm font-medium">{category.label}</span>
@@ -603,6 +605,7 @@ function StatusMappingsTab({
             <p>Status mappings are used for:</p>
             <ul className="mt-1 ml-3 list-disc space-y-0.5">
               <li>Pushing status changes to {trackerLabel}</li>
+              <li>Inferring KPM category when syncing</li>
             </ul>
           </div>
         </div>

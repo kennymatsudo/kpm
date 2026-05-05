@@ -132,6 +132,7 @@ export async function resolveBaseBranch(
 
 /**
  * Prefer the remote tracking branch over the local branch name.
+ * After rebasing onto origin/master outside of KPM, the local base branch
  * ref (e.g. 'master') can be stale while origin/master points to the actual
  * rebase target. Using the upstream avoids showing master's new commits as
  * "ours" in the log and diff.

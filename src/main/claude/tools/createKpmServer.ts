@@ -1,5 +1,7 @@
 /**
+ * KPM Server Factory
  *
+ * Creates a singleton in-process SDK MCP server with all KPM tools.
  * The server is created once at app startup and reused across all messages.
  * Plan action callbacks are handled via an event emitter pattern.
  */
@@ -34,6 +36,7 @@ import type { PlanAction } from '../../../shared/types';
 // Cached tools array - collected once at warmup, reused per session
 let cachedTools: Parameters<typeof createSdkMcpServer>[0]['tools'] | null = null;
 
+interface KpmToolRuntimeDeps {
   container: Pick<
     IRepositoryContainer,
     | 'projects'
@@ -48,11 +51,18 @@ let cachedTools: Parameters<typeof createSdkMcpServer>[0]['tools'] | null = null
   getMainWindow: () => BrowserWindow | null;
 }
 
+let kpmToolRuntimeDeps: KpmToolRuntimeDeps | null = null;
 
+function initializeKpmToolRuntime(deps: KpmToolRuntimeDeps): void {
+  kpmToolRuntimeDeps = deps;
   cachedTools = null;
 }
 
+function getKpmToolRuntime(): KpmToolRuntimeDeps {
+  if (!kpmToolRuntimeDeps) {
+    throw new Error('KPM tool runtime not initialized. Call warmupMcpSdk() during app startup.');
   }
+  return kpmToolRuntimeDeps;
 }
 
 // Cache for pending document content (proposed but not yet accepted).
@@ -116,6 +126,7 @@ const toolExecutionContext = new AsyncLocalStorage<ToolExecutionContext>();
  * Returns file content or null if not found.
  */
 async function readProjectFile(projectId: string, filePath: string): Promise<string | null> {
+  const { container } = getKpmToolRuntime();
   const project = container.projects.get(projectId);
   if (!project) return null;
 
@@ -220,6 +231,7 @@ export function subscribeToDocumentUpdate(callback: DocumentUpdateCallback): () 
 function emitPlanActions(actions: PlanAction[]): void {
   const context = toolExecutionContext.getStore();
   if (!context?.projectId || !context?.chatSessionId) {
+    console.warn('[KPM Tools] Skipping unscoped plan actions event');
     return;
   }
 
@@ -286,10 +298,12 @@ async function readProjectFileWithPending(projectId: string, filePath: string): 
 }
 
 /**
+ * Collect all KPM tools. Cached after first call.
  */
 function collectTools() {
   if (cachedTools) return cachedTools;
 
+  const { container, services, getMainWindow } = getKpmToolRuntime();
   const projectRepo = container.projects;
   const planItemRepo = container.planItems;
   const planRelationRepo = container.planRelations;
@@ -339,17 +353,24 @@ function collectTools() {
 }
 
 /**
+ * Initialize KPM tools at app startup to avoid lazy initialization delays.
  */
+export function warmupMcpSdk(deps: KpmToolRuntimeDeps): void {
+  initializeKpmToolRuntime(deps);
   if (cachedTools) {
+    console.log('[KPM Server] Already initialized');
     return;
   }
 
+  console.log('[KPM Server] Initializing tools...');
   const startTime = Date.now();
   collectTools();
   const elapsed = Date.now() - startTime;
+  console.log(`[KPM Server] Tools initialized in ${elapsed}ms`);
 }
 
 /**
+ * Create a fresh KPM MCP server instance.
  *
  * Each session needs its own server instance because the SDK binds an
  * internal Protocol transport to the server on connect. Reusing a server

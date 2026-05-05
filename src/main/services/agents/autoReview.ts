@@ -104,6 +104,7 @@ async function startReviewSession(params: {
       cwd: worktreePath,
       maxTurns: 5,
       permissionMode: getConfig().claude.defaultPermissionMode,
+      env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
       ...getClaudeSdkSpawnOptions(),
     };
 

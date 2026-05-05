@@ -349,6 +349,7 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
 
   /**
    * The session is "ready" once the SDK begins emitting messages for the turn.
+   * This avoids a circular startup wait where KPM waited for `working` before
    * ever marking the session as `working`.
    */
   private markReady(): void {

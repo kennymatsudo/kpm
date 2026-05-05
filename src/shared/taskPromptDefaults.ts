@@ -49,6 +49,7 @@ export const TASK_SECTION_RULES = `**Section rules:**
 - Omit if acceptance criteria are already self-evident from existing tests
 
 **Document references:**
+- Do not reference any KPM project files or documents (attachments/, notes/, AGENTS.md, CLAUDE.md, or any file in the KPM project folder). These are local to KPM and won't exist when tickets sync to Jira/Linear.
 - Only reference: file paths in connected repos, external URLs (Figma, Confluence, etc.)`;
 
 export const DEFAULT_TASK_PROMPT = `### Item Titles

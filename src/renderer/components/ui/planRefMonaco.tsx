@@ -208,10 +208,14 @@ export function registerPlanRefMonacoProviders(
   // affordance as TypeScript errors. Re-runs on every content change and
   // when the plan store updates, since the same UUID can resolve again
   // after a sync.
+  const refreshPlanRefs = (): void => {
     const model = editor.getModel();
     if (!model) return;
     const text = model.getValue();
+    if (!/@plan\//i.test(text)) {
       monacoNs.editor.setModelMarkers(model, PLAN_REF_OWNER, []);
+      styleEl.textContent = '';
+      decorationsCollection.set([]);
       return;
     }
 
@@ -219,11 +223,33 @@ export function registerPlanRefMonacoProviders(
     const items = getPlanItems();
     const byId = new Map(items.map((i) => [i.id.toLowerCase(), i]));
 
+    if (matches.length === 0) {
+      monacoNs.editor.setModelMarkers(model, PLAN_REF_OWNER, []);
+      styleEl.textContent = '';
+      decorationsCollection.set([]);
+      return;
+    }
+
+    const markers: Monaco.editor.IMarkerData[] = [];
     const decorations: Monaco.editor.IModelDeltaDecoration[] = [];
     const cssRules: string[] = [];
 
     for (const match of matches) {
+      const start = model.getPositionAt(match.start);
+      const end = model.getPositionAt(match.end);
       const item = byId.get(match.id);
+      if (!item) {
+        markers.push({
+          severity: monacoNs.MarkerSeverity.Warning,
+          message: `Unresolved plan reference: ${match.id}`,
+          startLineNumber: start.lineNumber,
+          startColumn: start.column,
+          endLineNumber: end.lineNumber,
+          endColumn: end.column,
+          source: 'kpm',
+        });
+        continue;
+      }
 
       // Build the label: title truncated + optional key
       const label = buildRefLabel(item);
@@ -256,15 +282,29 @@ export function registerPlanRefMonacoProviders(
       );
     }
 
+    monacoNs.editor.setModelMarkers(model, PLAN_REF_OWNER, markers);
     styleEl.textContent = cssRules.join('\n');
     decorationsCollection.set(decorations);
   };
 
+  // Decorations visually replace the UUID portion of each resolved ref with a
+  // readable label. The underlying text is never modified.
+  const styleEl = document.createElement('style');
+  styleEl.setAttribute('data-kpm-plan-refs', '');
+  document.head.appendChild(styleEl);
+  disposables.push({ dispose: () => styleEl.remove() });
+
+  const decorationsCollection = editor.createDecorationsCollection([]);
+  disposables.push({ dispose: () => decorationsCollection.clear() });
+
+  refreshPlanRefs();
   disposables.push(editor.onDidChangeModelContent(() => {
+    refreshPlanRefs();
   }));
   // The plan store can update underneath us (sync, approval flow); subscribe
   // so a previously-broken ref re-resolves once its target item lands.
   const unsubscribePlanStore = usePlanDomainStore.subscribe(() => {
+    refreshPlanRefs();
   });
   disposables.push({ dispose: unsubscribePlanStore });
 

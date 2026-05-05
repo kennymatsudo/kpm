@@ -1,6 +1,7 @@
 /**
  * Slack Channel Link Repository Implementation
  *
+ * Associates KPM projects with Slack channels for triage.
  */
 
 import type { Database, Statement } from 'better-sqlite3';

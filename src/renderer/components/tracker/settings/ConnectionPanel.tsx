@@ -108,6 +108,7 @@ function JiraConnectionPanel() {
       <div>
         <h3 className="text-lg font-semibold text-text-primary">Jira Connection</h3>
         <p className="text-sm text-text-secondary mt-1">
+          Connect to your Jira instance to sync issues with KPM
         </p>
       </div>
 
@@ -323,6 +324,7 @@ function LinearConnectionPanel() {
       <div>
         <h3 className="text-lg font-semibold text-text-primary">Linear Connection</h3>
         <p className="text-sm text-text-secondary mt-1">
+          Connect to Linear with a personal API key to sync issues with KPM
         </p>
       </div>
 

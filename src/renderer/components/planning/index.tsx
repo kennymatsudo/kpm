@@ -248,6 +248,7 @@ export function PlanView({
     baseBranch?: string;
     contextPaths?: string[];
     effort?: AgentEffortLevel;
+    environmentMode?: RepoEnvironmentMode;
   }) => {
     const item = planItems.find((i) => i.id === params.planItemId);
     const currentStatus = item
@@ -313,6 +314,7 @@ export function PlanView({
       }));
       await executePlanActions(actions);
     },
+    [executePlanActions]
   );
 
   // Track previous group assignments to detect changes (for MCP tool updates)

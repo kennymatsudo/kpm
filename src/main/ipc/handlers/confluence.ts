@@ -1,6 +1,7 @@
 /**
  * Confluence IPC Handlers
  *
+ * Handles bidirectional sync between KPM documents and Confluence pages.
  */
 
 import { ipcMain } from 'electron';

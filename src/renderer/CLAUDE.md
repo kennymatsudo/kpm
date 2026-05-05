@@ -98,6 +98,7 @@ Three files must stay in sync:
 Tailwind v4 text utilities set `font-size` only (not `line-height`). Line-height is inherited from `body { line-height: 1.5 }`.
 
 ```
+text-sm  = 14px font × 1.5 = 21px line-height
 text-xs  = 12px font × 1.5 = 18px line-height
 text-[10px] = 10px × 1.5 = 15px line-height
 ```
@@ -108,6 +109,7 @@ For padding utilities: `p-2` = 8px each side (16px total), `p-1.5` = 6px (12px t
 
 
 ```
+padding (16) + title row (21) + metadata row (26) + description (24) = 87px
 ```
 
 **Gap between cards in groups:** `GROUP_LAYOUT.VERTICAL_GAP` in `constants/layout.ts` (currently 16px). This is added on top of the calculated height. If the calculated height is wrong, the visual gap = `VERTICAL_GAP + (calculated - actual)`.

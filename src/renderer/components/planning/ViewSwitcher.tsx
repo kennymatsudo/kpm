@@ -10,6 +10,7 @@ interface ViewSwitcherProps {
 /**
  * ViewSwitcher - Toggle between Board, Card, and Tree views
  *
+ * Design: Pill-shaped toggle with subtle active state, matching KPM's
  * refined minimalism aesthetic.
  */
 export const ViewSwitcher = memo(function ViewSwitcher({

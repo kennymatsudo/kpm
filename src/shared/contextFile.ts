@@ -6,8 +6,10 @@
  *   - AGENTS.md  — open standard (Linux Foundation / Agentic AI Foundation)
  *   - CLAUDE.md  — Claude Code convention
  *
+ * KPM checks for these in priority order and uses the first one found.
  */
 
+/** Canonical filename KPM owns and shows to users. */
 export const PRIMARY_CONTEXT_FILENAME = 'AGENTS.md';
 
 /** Compatibility filename for tools that still auto-load CLAUDE.md. */

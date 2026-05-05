@@ -1,4 +1,6 @@
+# KPM Feature Catalog
 
+Comprehensive inventory of all features in the KPM Electron app, organized by domain. Each feature includes its implementation locations, UI surfaces, external integrations, and maturity signals.
 
 ## Purpose of this Document
 
@@ -659,6 +661,7 @@ A feature that scores low on all four is a candidate for removal even if it is t
 ## Recently Audited Additions
 
 ### 96. Custom Themes and VS Code Theme Import
+- **What it does:** Users choose built-in themes or import a VS Code theme from `vscodethemes.com`. Imported themes are normalized into KPM color tokens, applied to the app shell, and reused by Monaco so the editor matches the selected theme.
 - **Key code locations:**
   - Service: `src/main/services/core/CustomThemeService.ts`
   - Repository: `src/main/db/repositories/impl/CustomThemeRepository.ts`
@@ -679,6 +682,7 @@ A feature that scores low on all four is a candidate for removal even if it is t
   - Local storage for current theme preference
 - **Maturity signal:** Mature. URL validation, package size limits, zip parsing, persistence, delete flow, and unit tests exist.
 
+- **What it does:** Connected repositories declare how KPM should capture shell environment (`auto`, `direnv`, `nix`, `none`) and which checkout/worktree should be active for chat context. Environment is captured at agent session start and injected into the agent's process environment.
 - **Key code locations:**
   - Service: `src/main/services/repo/RepoService.ts`
   - Service: `src/main/services/repo/EnvironmentService.ts`

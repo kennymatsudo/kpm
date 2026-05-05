@@ -1306,6 +1306,7 @@ const shell = {
 };
 
 const perf = {
+  enabled: process.env.KPM_PERF === '1' || process.env.KPM_PERF === 'true',
   log: (event: { name: string; durationMs?: number; meta?: Record<string, unknown> }): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.perf.log, event),
   getLogInfo: (): Promise<{ success: boolean; enabled?: boolean; logPath?: string; sessionId?: string; error?: string }> =>

@@ -1,6 +1,7 @@
 /**
  * Status transition mapping utilities for Jira sync.
  *
+ * KPM uses a platform-agnostic StatusCategory model:
  * - not_started: Work hasn't begun
  * - in_progress: Work is actively being done
  * - in_review: Work is awaiting review
@@ -17,6 +18,8 @@
 import type { StatusCategory, JiraTransition, StatusMapping, TrackerType } from '../../shared/types';
 
 /**
+ * Map a Linear WorkflowState `type` to a KPM StatusCategory. Linear's six state types
+ * correspond much more directly to KPM's model than Jira's three-bucket categories.
  */
 const LINEAR_STATE_TYPE_TO_CATEGORY: Record<string, StatusCategory> = {
   triage: 'not_started',
@@ -33,6 +36,7 @@ export function mapLinearStateTypeToCategory(stateType: string | null | undefine
 }
 
 /**
+ * Map KPM StatusCategory to Jira status category keys.
  * Note: Jira only has 3 categories, so we map blocked → indeterminate and canceled → done.
  */
 const CATEGORY_TO_JIRA_STATUS_CATEGORY: Record<StatusCategory, string[]> = {
@@ -58,12 +62,14 @@ const STATUS_KEYWORDS: Record<StatusCategory, string[]> = {
 };
 
 /**
+ * Find the best matching Jira transition for a target KPM status category.
  *
  * Strategy:
  * 1. First, try to match by Jira's status category (most reliable)
  * 2. If no match, fall back to keyword matching in transition names
  * 3. Return null if no suitable transition exists
  *
+ * @param targetCategory - The KPM status category to transition to
  * @param availableTransitions - Available transitions from Jira (from current state)
  * @returns The best matching transition, or null if none found
  */
@@ -113,6 +119,7 @@ export function findBestTransition(
  * Generate a warning message when no valid transition exists.
  *
  * @param currentStatus - Current Jira status name
+ * @param targetCategory - The KPM status category user wants
  * @param availableTransitions - What transitions are available
  * @returns Human-readable warning message
  */
@@ -148,6 +155,7 @@ export function generateTransitionWarning(
  * Check if a status change is needed (i.e., current status doesn't match target category).
  *
  * @param currentJiraStatus - Current Jira status name
+ * @param targetCategory - The KPM status category to check against
  * @returns true if a transition is needed
  */
 export function isTransitionNeeded(
@@ -174,6 +182,7 @@ export function isTransitionNeededWithMapping(
 }
 
 /**
+ * Infer KPM StatusCategory from a Jira status name.
  * Uses keyword matching since we don't have status category info from just the name.
  */
 export function inferCategoryFromStatus(statusName: string): StatusCategory {
@@ -202,6 +211,7 @@ function normalizeStatusName(statusName: string): string {
  * Find a transition that leads to an explicitly mapped Jira status.
  * Returns the first transition whose destination status name matches the mapped status.
  *
+ * @param targetCategory - The KPM status category to transition to
  * @param availableTransitions - Available transitions from Jira (from current state)
  * @param statusMapping - The explicit status mapping (if configured)
  * @returns The matching transition, or null if none found
@@ -228,6 +238,8 @@ export function findTransitionByMapping(
 }
 
 /**
+ * Infer KPM StatusCategory from a Jira status name using explicit mapping.
+ * Does a reverse lookup: given a Jira status name, find which KPM category it's mapped to.
  *
  * @param statusName - The Jira status name
  * @param statusMapping - The explicit status mapping (if configured)
@@ -256,6 +268,7 @@ export function inferCategoryFromMapping(
 /**
  * Transition finder for export. Explicit mapping is the only source of truth.
  *
+ * @param targetCategory - The KPM status category to transition to
  * @param availableTransitions - Available transitions from Jira (from current state)
  * @param statusMapping - The explicit status mapping (if configured)
  * @returns The best matching transition, or null if none found

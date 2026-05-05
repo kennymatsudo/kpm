@@ -1,4 +1,5 @@
 /**
+ * Stress test for KPM — measures performance degradation as item count grows.
  *
  * Creates items in batches (10, 25, 50, 75, 100) and measures key operations
  * at each threshold to identify where performance starts to degrade.
@@ -346,6 +347,7 @@ async function main(): Promise<void> {
 
   const lines: string[] = [];
   lines.push('╔══════════════════════════════════════════════════════════════════╗');
+  lines.push('║              KPM Stress Test Results                          ║');
   lines.push('╚══════════════════════════════════════════════════════════════════╝');
   lines.push(`Date: ${new Date().toISOString()}`);
   lines.push(`Max items: ${maxItems}`);

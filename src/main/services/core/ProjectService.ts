@@ -13,6 +13,7 @@ export function createProjectService(deps: ProjectServiceDeps) {
 
   return {
       try {
+          defaultLocation: path.join(os.homedir(), 'Documents', 'KPM Projects'),
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }

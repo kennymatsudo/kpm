@@ -114,12 +114,14 @@ export function getToolActivity(
     return { id, type: 'other' as ActivityType, label: domain, detail };
   }
 
+  // KPM MCP tools
   if (toolName.startsWith('mcp__kpm__')) {
     const mcpToolName = toolName.replace('mcp__kpm__', '');
     if (log) console.log(`[Claude]    Tool: ${toolName}`);
     return { id, type: 'other' as ActivityType, label: mcpToolName };
   }
 
+  // Non-KPM MCP tools (e.g. mcp__server__tool_name)
   const mcpPattern = /^mcp__([^_]+(?:_[^_]+)*)__(.+)$/;
   const mcpMatch = mcpPattern.exec(toolName);
   if (mcpMatch) {

@@ -183,11 +183,14 @@ export function createPlanItemTools(
         status: StatusEnum.optional().describe('Filter by status'),
       },
       async ({ projectId, status }) => {
+        toolLog('[KPM Tools] get_plan_hierarchy called with:', { projectId, status });
         try {
           const items = getPlanItemSummaries(projectId, { status });
+          toolLog('[KPM Tools] get_plan_hierarchy found', items.length, 'items');
           const tree = buildHierarchy(items);
           return jsonResult({ tree, totalItems: items.length });
         } catch (error) {
+          console.error('[KPM Tools] get_plan_hierarchy error:', error);
           return toolError(`Failed to get plan hierarchy: ${error instanceof Error ? error.message : String(error)}`);
         }
       },
@@ -217,6 +220,7 @@ export function createPlanItemTools(
         parentId: z.string().optional().describe('Filter by parent ID. Use "null" for root items only.'),
       },
       async ({ projectId, status, statusCategory, label, releaseTag, externalKey, hasExternalKey, search, parentId }) => {
+        toolLog('[KPM Tools] filter_plan_items called with:', { projectId, status, statusCategory, label });
         try {
           const normalizedParent = parentId === undefined ? undefined : parentId === 'null' ? null : parentId;
           const items = getPlanItemSummaries(projectId, {
@@ -230,6 +234,7 @@ export function createPlanItemTools(
             parentId: normalizedParent,
           });
 
+          toolLog('[KPM Tools] filter_plan_items found', items.length, 'items');
           const childCountMap = getChildCounts(projectId);
 
           const results = items.map((item) => ({
@@ -246,6 +251,7 @@ export function createPlanItemTools(
 
           return jsonResult({ items: results, count: results.length });
         } catch (error) {
+          console.error('[KPM Tools] filter_plan_items error:', error);
           return toolError(`Failed to filter plan items: ${error instanceof Error ? error.message : String(error)}`);
         }
       },
@@ -519,6 +525,7 @@ export function createPlanItemTools(
         projectId: z.string().uuid().describe('The project UUID'),
       },
       async ({ projectId }) => {
+        toolLog('[KPM Tools] flatten_hierarchy called for project:', projectId);
         try {
           // Single self-join query: fetch each nested item plus its parent's
           // external_key in one round trip. A Jira subtask is one whose
@@ -570,6 +577,7 @@ export function createPlanItemTools(
             new_parent_id: null,
           }));
 
+          toolLog(`[KPM Tools] flatten_hierarchy emitting ${actions.length} reparent actions for approval`);
           onPlanActions(actions);
 
           return jsonResult({
@@ -578,6 +586,7 @@ export function createPlanItemTools(
             skippedJiraSubtasks: skippedJiraCount > 0 ? skippedJiraCount : undefined,
           });
         } catch (error) {
+          console.error('[KPM Tools] flatten_hierarchy error:', error);
           return toolError(`Failed to flatten hierarchy: ${error instanceof Error ? error.message : String(error)}`);
         }
       },
@@ -600,6 +609,7 @@ export function createPlanItemTools(
         newStatusCategory: StatusCategoryEnum.describe('The new status category to set'),
       },
       async ({ projectId, itemIds, filter, newStatusCategory }) => {
+        toolLog('[KPM Tools] bulk_update_status called:', { projectId, itemIds, filter, newStatusCategory });
         try {
           let idsToUpdate: string[];
 
@@ -641,6 +651,7 @@ export function createPlanItemTools(
             updates: { status_category: newStatusCategory },
           }));
 
+          toolLog(`[KPM Tools] bulk_update_status emitting ${actions.length} update actions for approval`);
           onPlanActions(actions);
 
           return jsonResult({
@@ -648,6 +659,7 @@ export function createPlanItemTools(
             actionCount: actions.length,
           });
         } catch (error) {
+          console.error('[KPM Tools] bulk_update_status error:', error);
           return toolError(`Failed to bulk update status: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
@@ -668,6 +680,7 @@ export function createPlanItemTools(
           .describe('Filter criteria (ignored if itemIds provided)'),
       },
       async ({ projectId, itemIds, filter }) => {
+        toolLog('[KPM Tools] bulk_delete called:', { projectId, itemIds, filter });
         try {
           let idsToDelete: string[];
 
@@ -725,6 +738,7 @@ export function createPlanItemTools(
             item_id: id,
           }));
 
+          toolLog(`[KPM Tools] bulk_delete emitting ${actions.length} delete actions for approval (${allIds.size} total with descendants)`);
           onPlanActions(actions);
 
           return jsonResult({
@@ -733,6 +747,7 @@ export function createPlanItemTools(
             totalAffected: allIds.size,
           });
         } catch (error) {
+          console.error('[KPM Tools] bulk_delete error:', error);
           return toolError(`Failed to bulk delete: ${error instanceof Error ? error.message : String(error)}`);
         }
       },
@@ -747,6 +762,7 @@ export function createPlanItemTools(
         newParentId: z.string().uuid().nullable().describe('New parent ID, or null to move to root'),
       },
       async ({ projectId, itemIds, newParentId }) => {
+        toolLog('[KPM Tools] bulk_reparent called:', { projectId, itemIds, newParentId });
         try {
           if (itemIds.length === 0) {
             return jsonResult({ message: 'No items to reparent', count: 0 });
@@ -815,6 +831,7 @@ export function createPlanItemTools(
             new_parent_id: item.parentId,
           }));
 
+          toolLog(`[KPM Tools] bulk_reparent emitting ${actions.length} reparent actions for approval`);
           onPlanActions(actions);
 
           return jsonResult({
@@ -823,6 +840,7 @@ export function createPlanItemTools(
             skippedJiraSubtasks: skipped.length > 0 ? skipped.length : undefined,
           });
         } catch (error) {
+          console.error('[KPM Tools] bulk_reparent error:', error);
           return toolError(`Failed to bulk reparent: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
@@ -843,6 +861,7 @@ export function createPlanItemTools(
         newLabel: LabelEnum.describe('The new label to set'),
       },
       async ({ projectId, itemIds, filter, newLabel }) => {
+        toolLog('[KPM Tools] bulk_set_label called:', { projectId, itemIds, filter, newLabel });
         try {
           let idsToUpdate: string[];
 
@@ -879,6 +898,7 @@ export function createPlanItemTools(
             label: newLabel,
           }));
 
+          toolLog(`[KPM Tools] bulk_set_label emitting ${actions.length} set_label actions for approval`);
           onPlanActions(actions);
 
           return jsonResult({
@@ -886,6 +906,7 @@ export function createPlanItemTools(
             actionCount: actions.length,
           });
         } catch (error) {
+          console.error('[KPM Tools] bulk_set_label error:', error);
           return toolError(`Failed to bulk set label: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
@@ -907,6 +928,7 @@ export function createPlanItemTools(
         releaseTag: z.string().nullable().describe('The release tag to set (null to clear)'),
       },
       async ({ projectId, itemIds, filter, releaseTag }) => {
+        toolLog('[KPM Tools] bulk_set_release called:', { projectId, itemIds, filter, releaseTag });
         try {
           let idsToUpdate: string[];
 
@@ -947,6 +969,7 @@ export function createPlanItemTools(
             release_tag: releaseTag,
           }));
 
+          toolLog(`[KPM Tools] bulk_set_release emitting ${actions.length} set_release actions for approval`);
           onPlanActions(actions);
 
           return jsonResult({
@@ -955,6 +978,7 @@ export function createPlanItemTools(
             actionCount: actions.length,
           });
         } catch (error) {
+          console.error('[KPM Tools] bulk_set_release error:', error);
           return toolError(`Failed to bulk set release: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
@@ -967,16 +991,19 @@ export function createPlanItemTools(
         projectId: z.string().uuid().describe('The project UUID'),
       },
       async ({ projectId }) => {
+        toolLog('[KPM Tools] clear_positions called for project:', projectId);
         try {
           const result = db
             .prepare(`UPDATE plan_items SET position_x = NULL, position_y = NULL, updated_at = CURRENT_TIMESTAMP WHERE project_id = ? AND (position_x IS NOT NULL OR position_y IS NOT NULL)`)
             .run(projectId);
 
+          toolLog(`[KPM Tools] clear_positions cleared ${result.changes} items`);
           return jsonResult({
             message: `Cleared positions for ${result.changes} item(s)`,
             count: result.changes,
           });
         } catch (error) {
+          console.error('[KPM Tools] clear_positions error:', error);
           return toolError(`Failed to clear positions: ${error instanceof Error ? error.message : String(error)}`);
         }
       },
@@ -994,6 +1021,7 @@ export function createPlanItemTools(
           .describe('Which dependencies to clear: all (default), incoming (blocked by), or outgoing (blocks)'),
       },
       async ({ projectId, itemIds, direction = 'all' }) => {
+        toolLog('[KPM Tools] clear_dependencies called:', { projectId, itemIds, direction });
         try {
           if (itemIds.length === 0) {
             return jsonResult({ message: 'No items specified', count: 0 });
@@ -1023,6 +1051,7 @@ export function createPlanItemTools(
             relation_id: rel.id,
           }));
 
+          toolLog(`[KPM Tools] clear_dependencies emitting ${actions.length} remove_dependency actions for approval`);
           onPlanActions(actions);
 
           return jsonResult({
@@ -1030,6 +1059,7 @@ export function createPlanItemTools(
             actionCount: actions.length,
           });
         } catch (error) {
+          console.error('[KPM Tools] clear_dependencies error:', error);
           return toolError(`Failed to clear dependencies: ${error instanceof Error ? error.message : String(error)}`);
         }
       },

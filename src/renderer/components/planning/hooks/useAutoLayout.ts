@@ -57,6 +57,7 @@ interface AutoLayoutDeps {
  */
 function getGroupDimensions(
   group: Group,
+  assignedItems: PlanItem[],
   childrenMap: Map<string, string[]>,
   itemMap: Map<string, PlanItem>
 ): { width: number; height: number } {
@@ -113,6 +114,23 @@ export function useAutoLayout({
 
       // Separate ungrouped roots (participate in macro layout) from grouped items
       // (positioned by their group's internal layout).
+      const groupedItemIds = new Set<string>();
+      const itemsByGroupId = new Map<string, PlanItem[]>();
+      for (const item of fullItems) {
+        if (!item.group_id) continue;
+        const groupItems = itemsByGroupId.get(item.group_id) ?? [];
+        groupItems.push(item);
+        itemsByGroupId.set(item.group_id, groupItems);
+      }
+      for (const item of plannedItems) {
+        if (item.group_id) groupedItemIds.add(item.id);
+      }
+
+      const groupDimensionsMap = new Map<string, { width: number; height: number }>();
+      for (const group of groups) {
+        const groupItems = itemsByGroupId.get(group.id) ?? [];
+        groupDimensionsMap.set(group.id, getGroupDimensions(group, groupItems, fullChildrenMap, fullItemMap));
+      }
 
       const toPosition: SizedItem[] = [];
       const positioned: PlacedItem[] = [];
@@ -142,6 +160,7 @@ export function useAutoLayout({
 
       // Categorize groups the same way
       for (const group of groups) {
+        const dims = groupDimensionsMap.get(group.id) ?? { width: group.width, height: group.height };
         const hasPosition = group.position_x !== null && group.position_y !== null;
         const shouldReposition = forceFullLayout || !hasPosition;
 
@@ -285,6 +304,7 @@ export function useAutoLayout({
 
       // Reposition items inside groups that were moved.
       for (const [groupId, newGroupPos] of groupNewPositions) {
+        const groupItems = itemsByGroupId.get(groupId) ?? [];
         if (groupItems.length === 0) continue;
 
         const { itemPositions } = calculateGroupLayout(

@@ -54,12 +54,14 @@ ${attachments.map(a => `- ${a.filename}`).join('\n')}
  */
 export const PLAN_SYSTEM_RULES = `## Plan Structure
 
+**Default to root-level items** (\`parent_id: null\`). Most items should be flat. KPM is a developer's local plan, not an org rollup — most work is a list of things to do, not an epic→feature→task pyramid.
 
 **Only nest when expanding a specific existing item.** Acceptable: the user names or focuses an existing item and asks to break *it* down, OR explicitly asks for a multi-level breakdown of one named scope. Use \`reparent\` against an item ID you have already resolved (via \`get_plan_hierarchy\` or \`get_item_context\`). Never invent a parent ID, and never create a parent item just to group siblings under it.
 
 **For organization without semantic weight, use Groups** (visual containers). Groups are the right tool for "these N items belong to the OAuth effort" — hierarchy is not. Hierarchy is reserved for genuine parent/child relationships, which on export to Jira/Linear become sub-task links.`;
 
 /**
+ * Response style — KPM-specific UI constraints (chat bubble container) plus
  * formatting conventions. Generic anti-coaching ("don't say 'Certainly!'",
  * "don't narrate process") removed: modern Claude doesn't exhibit those failure
  * modes by default.

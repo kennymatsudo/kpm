@@ -1,4 +1,5 @@
 
+// Tier 1 — structural mapping. Each KPM category lives in one tracker bucket.
 // Linear's six state types collapse to Jira's three category keys via
 // `linearStateTypeToJiraCategoryKey`, so both trackers share this table.
 const CATEGORY_TO_BUCKET: Record<StatusCategory, string[]> = {
@@ -53,12 +54,14 @@ function normalize(name: string): string {
  * Rules, applied in order per category. The first match wins; everything else
  * is left empty so the user makes the call:
  *
+ * 1. Exact name match (case-insensitive) on the KPM category label
  *    e.g. `in_progress` matches a state literally named "In Progress".
  * 2. Convention keyword match — pre-fill from a catalog of common names
  *    ("review", "blocked", "waiting"). Used as a starting point the user
  *    reviews before save. Not a runtime fallback.
  * 3. Sole occupant of the bucket — if only one state belongs to an
  *    expected tracker bucket and no name signal claimed it, assign it to
+ *    that bucket's default KPM category.
  *
  * Categories that don't match any rule are omitted from the result so the
  * existing mapping (if any) isn't overwritten with empty values.

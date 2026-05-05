@@ -4,6 +4,7 @@
  *
  * Read-only MCP server used by ReviewAssessmentService. Lets the assessment
  * agent look beyond the PR diff + linked plan item before landing a
+ * disposition: KPM plan items, KPM project docs, and branches across every
  * repo on the project (including WIP branches that may already address or
  * defer a reviewer's concern).
  *
@@ -196,6 +197,7 @@ export function createReviewAssessmentTools(deps: ReviewAssessmentToolsDeps) {
 
     tool(
       'list_plan_items',
+      `Search KPM plan items in this project to check whether a reviewer concern is already captured as a follow-up task. Returns title, status_category, label, release_tag, external_key, and parent_id. A non-null external_key (e.g., "PROJ-7012") is safe to cite in a draft GitHub reply; the KPM-local \`id\` is NOT.`,
       {
         projectId: z.string().uuid().describe('The project UUID'),
         search: z.string().optional().describe('Case-insensitive substring match on title'),
@@ -316,6 +318,7 @@ export function createReviewAssessmentTools(deps: ReviewAssessmentToolsDeps) {
 
     tool(
       'read_project_document',
+      `Read a markdown or text document from the developer's KPM project folder (iteration docs, design notes, AGENTS.md, CLAUDE.md, etc.). Use when a reviewer's concern might be explained by a decision captured in a project doc. For files inside a connected code repo, don't use this — that content lives in the diff or the branch (use get_branch_activity). Content is truncated at ${MAX_DOCUMENT_CHARS} chars.`,
       {
         projectId: z.string().uuid().describe('The project UUID'),
         path: z.string().describe('Relative path under the project folder (e.g., "docs/foo.md")'),

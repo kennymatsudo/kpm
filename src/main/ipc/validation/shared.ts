@@ -41,6 +41,7 @@ export const projectPhase = z.enum(['discovery', 'high_level', 'detailed', 'read
 /** Plan item status - all items are now 'planned' (backlog concept removed) */
 export const planItemStatus = z.literal('planned');
 
+/** Status category for KPM-native status tracking */
 export const statusCategory = z.enum(['not_started', 'in_progress', 'in_review', 'done', 'blocked', 'canceled'], {
   message: 'Status category must be one of: not_started, in_progress, in_review, done, blocked, canceled',
 });

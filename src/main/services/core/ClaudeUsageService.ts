@@ -1,6 +1,7 @@
 /**
  * ClaudeUsageService
  *
+ * Centralized recording of Claude API usage across every place KPM invokes
  * the Claude Agent SDK (main chat, board agents, briefing, PR description,
  * commit message, review assessment, custom prompt generation, onboarding,
  * Slack triage). Codex/Gemini sessions are tracked separately and do NOT

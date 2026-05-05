@@ -220,6 +220,7 @@ export function createPermissionHandler(
       return { behavior: 'allow', updatedInput: input };
     }
 
+    // Rule 3: KPM MCP tools always allowed (read-only, approval-gated by tool implementation)
     if (toolName.startsWith('mcp__kpm__')) {
       console.log(`[Permissions] MCP tool auto-allowed: ${toolName}`);
       return { behavior: 'allow', updatedInput: input };

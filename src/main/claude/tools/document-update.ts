@@ -26,6 +26,7 @@ export type DocumentUpdateCallback = (update: DocumentUpdatePayload) => void;
 
 
 
+Cross-references: write \`@plan/<uuid>\` inline when mentioning plan items — KPM renders chips locally and rewrites to native tracker syntax on export. Use only UUIDs from the system prompt's Item Reference. Refs inside fenced code blocks won't resolve.
 
 Multiple files: call ONE AT A TIME, never in parallel. Verify path matches content each call.`;
 
@@ -35,6 +36,7 @@ Multiple files: call ONE AT A TIME, never in parallel. Verify path matches conte
  * @param onDocumentUpdate - Callback to emit proposed update to the UI for approval
  */
 export function createDocumentCreateTools(onDocumentUpdate: DocumentUpdateCallback) {
+  console.log('[KPM Tools] Creating propose_document_create tool');
 
   return [
     tool(
@@ -45,15 +47,19 @@ export function createDocumentCreateTools(onDocumentUpdate: DocumentUpdateCallba
         filePath: z.string().min(1)
         .refine(
           (p) => !p.startsWith('/') && !/^[a-zA-Z]:/.test(p) && !p.includes('..'),
+          'File path must be a relative path within the KPM project (e.g., "guide.md"). Do not use absolute paths from connected repositories or the local filesystem.'
         )
+        .describe('Relative file path within the KPM project (e.g., "guide.md", "meeting-notes.md"). Must be relative — never an absolute path like /Users/... or a path into a connected repo.'),
         content: z.string().min(1).describe('The complete new document content (not a diff). Must be valid Markdown.'),
       },
       async ({ projectId, filePath, content }) => {
+        toolLog(`[KPM Tools] propose_document_create ${projectId} ${filePath} (${content.length} chars)`);
 
         try {
           // propose_document_create is for new files — no prior content
           onDocumentUpdate({ projectId, filePath, content, oldContent: null });
         } catch (error) {
+          console.error(`[KPM Tools] Error emitting document create:`, error);
           return toolError(`Failed to propose document create: ${error instanceof Error ? error.message : String(error)}`);
         }
 

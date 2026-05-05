@@ -4,10 +4,12 @@ import { SessionHistory } from './SessionHistory';
 import { NewSessionButton } from './NewSessionButton';
 
 export function ChatHeader() {
+  const claudeSessionId = useChatStore(
     useShallow((state) => {
       const session = state.viewedSessionId
         ? state.sessions.get(state.viewedSessionId)
         : null;
+      return session?.claudeSessionId ?? null;
     })
   );
 
@@ -18,6 +20,7 @@ export function ChatHeader() {
 
   return (
       <div className="flex items-center gap-2 min-w-0">
+        <span className="text-sm font-medium text-text-primary flex-shrink-0">KPM</span>
         {claudeSessionId && (
           <button
             onClick={handleCopySessionId}

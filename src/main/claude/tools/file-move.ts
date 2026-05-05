@@ -41,6 +41,7 @@ Use when the user asks to reorganize, move, or relocate files/folders in the pro
 - Cannot move a file to its current location (no-op)`;
 
 export function createFileMoveTools(deps: FileMoveToolDeps) {
+  console.log('[KPM Tools] Creating move_project_file tool');
 
   return [
     tool(

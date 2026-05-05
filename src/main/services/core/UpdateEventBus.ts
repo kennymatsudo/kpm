@@ -33,6 +33,7 @@ export interface BaseUpdateEvent {
 export interface PrChangedEvent extends BaseUpdateEvent {
   kind: 'pr_changed';
   source: 'github';
+  /** KPM dev session id, when the PR is linked to one. */
   sessionId?: string;
   prNumber: number;
   /** Repo identifier — opaque to the bus. */
@@ -54,6 +55,7 @@ export interface TicketChangedEvent extends BaseUpdateEvent {
   source: 'linear' | 'jira';
   /** External ticket id (e.g. "ENG-1234"). */
   externalKey: string;
+  /** KPM plan item id, when linked. */
   planItemId?: string;
   change:
     | 'status_changed'

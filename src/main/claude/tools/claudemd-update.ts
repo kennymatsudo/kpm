@@ -36,6 +36,7 @@ export type ReadClaudeMdFn = (
 ) => Promise<{ content: string; filename: string } | null>;
 
 /**
+ * Tool description with embedded best practices for KPM's project management context.
  */
 
 Rules:
@@ -54,6 +55,7 @@ export function createClaudeMdEditTools(
   readContextFile: ReadClaudeMdFn,
   onContextFileUpdate: ClaudeMdUpdateCallback
 ) {
+  console.log('[KPM Tools] Creating propose_context_edit tool');
 
   return [
     tool(
@@ -65,12 +67,14 @@ export function createClaudeMdEditTools(
         new_string: z.string().describe('The replacement text. Can be empty to delete the old_string.'),
       },
       async ({ projectId, old_string, new_string }) => {
+        toolLog(`[KPM Tools] propose_context_edit ${projectId} (old=${old_string.length} new=${new_string.length})`);
 
         // Read current project context file content
         let currentRead: { content: string; filename: string } | null;
         try {
           currentRead = await readContextFile(projectId);
         } catch (error) {
+          console.error(`[KPM Tools] Error reading project context file:`, error);
           return toolError(`Failed to read project context file: ${error instanceof Error ? error.message : String(error)}`);
         }
 
@@ -109,6 +113,7 @@ export function createClaudeMdEditTools(
             filename: contextFilename,
           });
         } catch (error) {
+          console.error(`[KPM Tools] Error emitting project context edit:`, error);
           return toolError(`Failed to propose edit: ${error instanceof Error ? error.message : String(error)}`);
         }
 

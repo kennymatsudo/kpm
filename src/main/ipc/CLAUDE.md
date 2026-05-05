@@ -28,6 +28,8 @@ src/main/ipc/
 │   ├── shared.ts
 │   ├── utils.ts          # createIpcHandler helper
 │   └── [domain].ts       # Domain-specific schemas
+├── handlers/             # IPC handler implementations (one per domain)
+└── register/             # Handler registration groups (three files, called from index.ts)
 ```
 
 ## Channel Registry
@@ -80,6 +82,7 @@ Schemas in `validation/` organized by domain (one file per domain). See `validat
 
 1. Define channel in `src/shared/ipcChannels.ts`
 2. Create Zod schema in `validation/{domain}.ts`
+4. Import and call the handler in the appropriate `register/` file (`workspace.ts`, `development.ts`, or `platform.ts`); `index.ts` calls each register file's function, so adding to the right group is enough
 
 ## Best Practices
 

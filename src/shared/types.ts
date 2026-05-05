@@ -104,6 +104,7 @@ export interface CustomPrompt {
   updated_at: string;
 }
 
+// StatusCategory is re-exported from @kpm/shared-types above
 
 /**
  * Determines if an external issue type represents a "subtask" that must be nested under a parent.
@@ -156,6 +157,7 @@ export interface TrackerProjectScope {
 }
 
 /**
+ * Explicit mapping between KPM status categories and Jira status names.
  * Stored as JSON on tracker_associations.
  * Used for both pushing status changes to Jira and inferring category from Jira status.
  */
@@ -181,6 +183,7 @@ export interface JiraCustomField {
   defaultValue?: string;   // Default value (option ID for selects, text for strings)
 }
 
+/** Level 3: Filter-based association linking KPM project to tracker issues */
 export interface TrackerAssociation {
   id: string;
   kpm_project_id: string;
@@ -347,6 +350,7 @@ export interface PlanItem extends PlanItemBase {
   last_synced_at: string | null;
 }
 
+// PlanRelation is re-exported from @kpm/shared-types above
 
 // Type-safe updates for plan items (subset of fields that can be updated)
 export type PlanItemUpdates = Partial<Pick<PlanItem,
@@ -516,6 +520,7 @@ export interface PlanActionResult {
 // Tracker Export Types
 // =============================================================================
 
+/** Type mapping: KPM label -> Tracker issue type */
 export interface TrackerTypeMapping {
   id: string;
   kpm_project_id: string;
@@ -634,6 +639,7 @@ export interface JiraTransition {
 /** Status transition info for sync review */
 export interface StatusTransitionInfo {
   currentStatus: string;           // Current Jira status name
+  targetCategory: StatusCategory;  // KPM category to transition to
   availableTransition: JiraTransition | null;  // Best matching transition, null if none
   warning: string | null;          // Warning message if no valid transition
 }
@@ -1162,6 +1168,7 @@ export interface FileNode {
 // =============================================================================
 
 /**
+ * Link between an KPM document and a Confluence page.
  * Enables bidirectional sync of document content.
  */
 export interface ConfluencePageLink {
@@ -1295,6 +1302,7 @@ export interface UserMcpServer {
   config: Record<string, unknown>;
 }
 
+/** User preference for enabling/disabling an MCP server in KPM */
 export interface McpServerPreference {
   name: string;
   enabled: boolean;

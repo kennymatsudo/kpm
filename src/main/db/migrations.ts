@@ -1,6 +1,7 @@
 import type { Database as BetterSqliteDatabase } from 'better-sqlite3';
 
 /**
+ * Database migrations for KPM.
  *
  * Each migration is a function that receives the database instance and applies
  * schema changes. Migrations are run in order and tracked in the schema_migrations table.
@@ -83,6 +84,8 @@ interface Migration {
         );
 
         -- ============================================
+        -- KPM-TRACKER ASSOCIATIONS: Sync filters
+        -- Links KPM projects to specific tracker issues via filters (JQL for Jira, etc.)
         -- ============================================
         CREATE TABLE IF NOT EXISTS kpm_tracker_associations (
           id TEXT PRIMARY KEY,
@@ -117,6 +120,7 @@ interface Migration {
           external_type TEXT,                    -- 'jira' | 'linear'
           external_issue_type TEXT,              -- Original issue type: 'Story', 'Sub-task', etc.
           external_status TEXT,                  -- Status from tracker (display only)
+          status_category TEXT CHECK(status_category IN ('not_started', 'in_progress', 'done', 'blocked', 'canceled', 'none')),  -- KPM's editable status ('none' = container item)
           external_url TEXT,                     -- Direct link to issue
           external_parent_key TEXT,              -- Parent issue key (for sub-tasks)
           external_epic_key TEXT,                -- Epic/project key (metadata only)
@@ -152,6 +156,7 @@ interface Migration {
         );
 
         -- ============================================
+        -- TRACKER TYPE MAPPINGS: KPM label → Tracker issue type
         -- Per-project configuration for how labels map to tracker types (Jira/Linear)
         -- ============================================
         CREATE TABLE IF NOT EXISTS tracker_type_mappings (
@@ -377,6 +382,7 @@ interface Migration {
       db.exec(`
         -- ============================================
         -- Add status_mapping to tracker associations
+        -- JSON blob mapping KPM status categories to Jira status names
         -- e.g., {"in_progress": "In Progress", "done": "Done"}
         -- ============================================
         ALTER TABLE kpm_tracker_associations ADD COLUMN status_mapping TEXT;
@@ -1213,6 +1219,7 @@ interface Migration {
       db.exec(`
         -- ============================================
         -- CONFLUENCE PAGE LINKS: Document-to-page sync
+        -- Links KPM documents to Confluence pages for bidirectional sync
         -- ============================================
         CREATE TABLE IF NOT EXISTS confluence_page_links (
           id TEXT PRIMARY KEY,
@@ -3119,6 +3126,7 @@ interface Migration {
       `);
     },
   },
+      // Reverts the user-set git boundary added in 082. KPM now derives the
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

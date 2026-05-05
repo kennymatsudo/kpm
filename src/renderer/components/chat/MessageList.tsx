@@ -348,6 +348,7 @@ const MessageHeader = memo(function MessageHeader({
   model?: string;
   durationMs?: number;
 }) {
+  const name = isUser ? 'You' : 'KPM';
   const modelLabel = !isUser ? formatModelLabel(model) : null;
   const durationLabel = !isUser ? formatTurnDuration(durationMs) : null;
 

@@ -18,6 +18,7 @@ import {
 } from '../services/trackerService';
 
 interface TrackerState {
+  // Associations (KPM project to tracker JQL filter)
   associations: TrackerAssociationWithScope[];
   isLoadingAssociations: boolean;
 

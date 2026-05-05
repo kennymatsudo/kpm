@@ -470,6 +470,7 @@ function MappingPanel({
         </button>
         <h3 className="text-sm font-semibold text-text-primary leading-snug">Status Mappings</h3>
         <p className="text-xxs text-text-muted mt-0.5">
+          Map KPM categories to {trackerLabel} statuses for {projectKey}
         </p>
       </div>
       <div className="flex-1 overflow-y-auto p-4">

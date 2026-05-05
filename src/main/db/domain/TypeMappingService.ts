@@ -2,6 +2,7 @@ import type { ITypeMappingRepository } from '../interfaces';
 import type { TrackerTypeMapping, JiraIssueType, PlanItem } from '../../../shared/types';
 
 /**
+ * Default mappings from common KPM labels to Jira issue type names.
  * Used when creating default mappings for a new project/scope.
  */
 const DEFAULT_LABEL_MAPPINGS: Record<string, string[]> = {
@@ -94,6 +95,7 @@ export function createTypeMappingService(deps: TypeMappingServiceDeps) {
 
     /**
      * Create default mappings based on available Jira issue types.
+     * Matches common KPM labels to Jira types by name.
      */
     createDefaultMappings(
       kpmProjectId: string,

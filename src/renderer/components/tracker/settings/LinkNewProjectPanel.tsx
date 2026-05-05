@@ -30,6 +30,7 @@ export function LinkNewProjectPanel({
       <div>
         <h3 className="text-lg font-semibold text-text-primary">Link {trackerLabel} Project</h3>
         <p className="text-sm text-text-secondary mt-1">
+          Connect a {trackerLabel} {trackerType === 'linear' ? 'team' : 'project'} to sync issues with KPM
         </p>
       </div>
       {trackerType === 'jira' ? (

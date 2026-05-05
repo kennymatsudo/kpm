@@ -31,6 +31,7 @@ export function createDocumentEditTools(
   readFile: ReadProjectFileFn,
   onDocumentUpdate: DocumentUpdateCallback
 ) {
+  console.log('[KPM Tools] Creating propose_document_edit tool');
 
   return [
     tool(
@@ -41,13 +42,16 @@ export function createDocumentEditTools(
         filePath: z.string().min(1)
           .refine(
             (p) => !p.startsWith('/') && !/^[a-zA-Z]:/.test(p) && !p.includes('..'),
+            'File path must be a relative path within the KPM project (e.g., "guide.md"). Do not use absolute paths from connected repositories or the local filesystem.'
           )
+          .describe('Relative file path within the KPM project (e.g., "guide.md", "meeting-notes.md"). Must be relative — never an absolute path like /Users/... or a path into a connected repo.'),
       },
 
         let currentContent: string | null;
         try {
           currentContent = await readFile(projectId, filePath);
         } catch (error) {
+          console.error(`[KPM Tools] Error reading file:`, error);
           return toolError(`Failed to read file "${filePath}": ${error instanceof Error ? error.message : String(error)}`);
         }
 
@@ -62,6 +66,7 @@ export function createDocumentEditTools(
         try {
           onDocumentUpdate({ projectId, filePath, content: newContent, oldContent: currentContent });
         } catch (error) {
+          console.error(`[KPM Tools] Error emitting document edit:`, error);
           return toolError(`Failed to propose document edit: ${error instanceof Error ? error.message : String(error)}`);
         }
 

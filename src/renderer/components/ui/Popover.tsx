@@ -2,6 +2,7 @@
  * Shared popover primitive.
  *
  * Thin wrapper over `@radix-ui/react-popover` that bakes in:
+ * - KPM surface styling (border, shadow, surface-elevated background)
  * - Modal-layer-aware z-index (`useModalLayer() + 10`) so popovers spawned
  *   inside a Modal sit above it instead of behind
  * - Sensible defaults for `sideOffset` and `collisionPadding`

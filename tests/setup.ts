@@ -53,6 +53,7 @@ vi.mock('electron', () => ({
           return `/tmp/${name}`;
       }
     }),
+    getName: vi.fn(() => 'KPM Test'),
     getVersion: vi.fn(() => '0.0.0-test'),
     isPackaged: false,
     quit: vi.fn(),

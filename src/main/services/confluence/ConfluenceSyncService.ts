@@ -1,6 +1,7 @@
 /**
  * Confluence Sync Service
  *
+ * Provides bidirectional sync between KPM documents and Confluence pages.
  * Reuses Jira credentials since they share the same Atlassian Cloud account.
  */
 

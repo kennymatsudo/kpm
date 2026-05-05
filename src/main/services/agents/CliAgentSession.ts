@@ -1,6 +1,7 @@
 /**
  *
  * Spawns the CLI agent binary in a worktree via node-pty (hidden, no xterm.js).
+ * Hooks are configured to POST events to the KPM hook server, which are then
  * mapped to AgentActivity events.
  */
 
@@ -78,6 +79,7 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
       cols: 120,
       rows: 40,
       cwd: worktreePath,
+      env: { ...getCleanEnv(), ...env, KPM_HOOK_PORT: String(this.hookPort) },
     });
 
     // Buffer output (not rendered — available for debugging)

@@ -259,6 +259,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     }
   };
 
+  // Drag-and-drop handlers — accept either KPM file-tree drags (existing
   // behavior) or OS-native file drops (new in Phase 2).
   const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     const types = e.dataTransfer.types;

@@ -2,6 +2,7 @@
  * Repo access + plan modification guidance.
  *
  * Modern Claude doesn't need a mode taxonomy (EXPLORE/ANALYZE/ADVISE/CHAT)
+ * — it reads intent from the prompt. We only encode KPM-specific operational
  */
 
 import type { PlanItem } from '../../../shared/types';

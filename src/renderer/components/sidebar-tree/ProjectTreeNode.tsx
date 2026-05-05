@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useState } from 'react';
 import type { NodeRendererProps } from 'react-arborist';
+import type { FileNode } from '../../../shared/types';
 import { isEditableFile } from '../../stores';
 import { getParentPath } from '../../utils/path';
 import { FileIcon, FocusIcon } from './FileIcon';

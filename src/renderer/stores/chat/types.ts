@@ -56,6 +56,7 @@ export interface PerSessionState {
   title: string | null;
   /** Claude SDK session ID (for debugging) */
   claudeSessionId: string | null;
+  /** Whether the KPM MCP server is degraded (tools unavailable) */
   mcpDegraded: boolean;
   /** Error message when MCP is degraded */
   mcpError: string | null;

@@ -65,6 +65,7 @@ Terminal/PTY and Claude session management.
 
 Confluence wiki integration.
 
+- `ConfluenceSyncService` — Bidirectional sync between KPM documents and Confluence pages
 
 ### Tool Log Services (`services/toollog/`)
 
@@ -75,6 +76,7 @@ Tool call logging and analysis.
 
 ### Performance (`services/PerfLogger.ts`)
 
+- `PerfLogger` — Optional performance logging (enabled via `KPM_PERF=1`)
 
 ## Wiring
 

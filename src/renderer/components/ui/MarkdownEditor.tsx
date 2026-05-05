@@ -831,6 +831,7 @@ export function MarkdownEditor({
         </div>
       )}
 
+      {/* Keep Monaco mounted; render preview only when active so typing does not parse hidden markdown. */}
       <div className="flex-1 overflow-hidden relative">
         <div className={`absolute inset-0 px-4 bg-surface-1 ${activeTab === 'edit' ? 'block' : 'hidden'}`}>
           <MonacoEditor
@@ -844,9 +845,25 @@ export function MarkdownEditor({
           />
         </div>
 
+        {activeTab === 'preview' && (
+          <div className="absolute inset-0">
+            <div ref={previewRef} className="h-full overflow-y-auto p-4 select-text cursor-text">
+                {localContent ? (
+                ) : (
+                  <div className="flex items-center justify-center h-32 text-text-muted">
+                    <div className="text-center">
+                      <svg className="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <p className="text-sm">Preview will appear here...</p>
+                    </div>
                   </div>
+                )}
+              </div>
             </div>
           </div>
+        )}
       </div>
     </div>
   );

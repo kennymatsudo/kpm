@@ -28,12 +28,14 @@ function formatJiraError(error: unknown) {
   return [
     tool(
       'jira_list_projects',
+      'List available Jira projects. Requires Jira credentials to be configured in KPM app.',
       {},
       async () => {
         try {
           const hasCredentials = await TrackerClientService.hasJiraCredentials();
           if (!hasCredentials) {
             return jsonResult({
+              error: 'Jira not configured. Please set up Jira credentials in the KPM app.',
             });
           }
 
@@ -61,6 +63,7 @@ function formatJiraError(error: unknown) {
           const hasCredentials = await TrackerClientService.hasJiraCredentials();
           if (!hasCredentials) {
             return jsonResult({
+              error: 'Jira not configured. Please set up Jira credentials in the KPM app.',
             });
           }
 
@@ -91,6 +94,7 @@ function formatJiraError(error: unknown) {
           const hasCredentials = await TrackerClientService.hasJiraCredentials();
           if (!hasCredentials) {
             return jsonResult({
+              error: 'Jira not configured. Please set up Jira credentials in the KPM app.',
             });
           }
 
@@ -107,7 +111,9 @@ function formatJiraError(error: unknown) {
 
     tool(
       'jira_compare_plan',
+      'Compare Jira issues vs KPM plan items for gap analysis. Returns issues not yet in plan and plan items not in Jira.',
       {
+        projectId: z.string().uuid().describe('KPM project UUID'),
         jiraProjectKey: z.string().describe('Jira project key (e.g., "AUTH")'),
       },
       async ({ projectId, jiraProjectKey }) => {
@@ -115,6 +121,7 @@ function formatJiraError(error: unknown) {
           const hasCredentials = await TrackerClientService.hasJiraCredentials();
           if (!hasCredentials) {
             return jsonResult({
+              error: 'Jira not configured. Please set up Jira credentials in the KPM app.',
             });
           }
 

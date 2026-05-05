@@ -91,6 +91,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     ...(claudeConfig.debug && claudeConfig.debugFile && { debugFile: claudeConfig.debugFile }),
     // Handle MCP elicitation requests (auth flows, form inputs from managed servers)
     ...(onElicitation && { onElicitation }),
+    env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
   };
 
   // Add connected repos as accessible directories

@@ -255,6 +255,7 @@ function sanitizeGeneratedContext(content: string): string {
   return trimmed;
 }
 
+const SYSTEM_PROMPT = `You generate or update a project context file (AGENTS.md) for KPM.
 
 This file is for a future coding agent or developer who is joining an ongoing project. Its job is to orient them quickly and remain useful as the codebase evolves. Write for durable understanding, not for a point-in-time code inventory.
 
@@ -273,6 +274,7 @@ The reader does NOT need:
 - A dump of repository scan results
 - An exhaustive snapshot of current components, hooks, helpers, or other volatile implementation details
 
+This file may be read by tools both inside and outside KPM. Keep it tool-agnostic. Do NOT include KPM-specific behavioral rules unless they describe a real project constraint that also applies outside KPM.
 
 ## Regeneration Context
 
@@ -313,6 +315,7 @@ If an existing context document is provided, it is for REFERENCE ONLY:
   - Never commit secrets
   - Protected or generated areas that should not be edited casually
   - Repo-specific constraints (e.g. deploy freezes, required review flows, protected branches)
+  - Exclude KPM-only operational constraints unless they are explicitly relevant to external tools too
 
 7. **Documentation Pointers** -- point to docs/ directories, READMEs, wikis, or ADRs found in the repos. Use file paths so the assistant can read them when needed.
 

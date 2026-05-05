@@ -103,6 +103,7 @@ interface StatusTransitionViewProps {
 
 /**
  * Displays a status transition for sync review.
+ * Shows current Jira status → target KPM category with transition info or warning.
  */
 export function StatusTransitionView({ transition, onConfigureMappings }: StatusTransitionViewProps) {
   const targetConfig = STATUS_CATEGORY_CONFIG[transition.targetCategory];

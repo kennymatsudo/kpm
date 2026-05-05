@@ -1,3 +1,4 @@
+import { useState, useRef, useCallback, useEffect } from 'react';
 import type { PlanItem, Group } from '../../../../shared/types';
 import { checkCollisionWithObstacles, findEscapeOffset, type Rect } from '../../../utils/collision';
 import { CARD_WIDTHS, COLLISION } from '../../../constants/layout';
@@ -52,6 +53,20 @@ export function useGroupDrag({
   const [recentlyDraggedGroupId, setRecentlyDraggedGroupId] = useState<string | null>(null);
   const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null);
   const recentlyDraggedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeDragObstaclesRef = useRef<{ groupId: string; obstacles: Rect[] } | null>(null);
+  const dragOffsetFrameRef = useRef<number | null>(null);
+  const pendingGroupDragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  useEffect(() => {
+    return () => {
+      if (recentlyDraggedTimeoutRef.current) {
+        clearTimeout(recentlyDraggedTimeoutRef.current);
+      }
+      if (dragOffsetFrameRef.current !== null) {
+        cancelAnimationFrame(dragOffsetFrameRef.current);
+      }
+    };
+  }, []);
 
   // Find which group contains a given canvas point
   const findGroupAtPoint = useCallback((canvasX: number, canvasY: number): string | null => {
@@ -98,17 +113,38 @@ export function useGroupDrag({
     return obstacles;
   }, [groups, groupBounds, itemsWithPositions, heightMap, childrenMap, itemMap, collapsedGroupIds]);
 
+  const getObstacles = useCallback((groupId: string): Rect[] => {
+    const active = activeDragObstaclesRef.current;
+    if (active?.groupId === groupId) {
+      return active.obstacles;
+    }
+    return buildObstacles(groupId);
+  }, [buildObstacles]);
+
+  const scheduleGroupDragOffset = useCallback((offset: { x: number; y: number }) => {
+    pendingGroupDragOffsetRef.current = offset;
+    if (dragOffsetFrameRef.current !== null) return;
+
+    dragOffsetFrameRef.current = requestAnimationFrame(() => {
+      dragOffsetFrameRef.current = null;
+      setGroupDragOffset(pendingGroupDragOffsetRef.current);
+    });
+  }, []);
+
   // Check if a rectangle collides with other groups or ungrouped items
   const checkGroupCollision = useCallback((
     groupId: string,
     bounds: Rect
   ): boolean => {
+    const obstacles = getObstacles(groupId);
     return checkCollisionWithObstacles(bounds, obstacles, COLLISION.MIN_GAP);
+  }, [getObstacles]);
 
   // Check collision callback for GroupContainer during drag (uses delta from drag start)
   // Also updates groupDragOffset for items to use for their visual transform
   const checkGroupCollisionDelta = useCallback((groupId: string, deltaX: number, deltaY: number): boolean => {
     // Update drag offset for items in this group to follow visually
+    scheduleGroupDragOffset({ x: deltaX, y: deltaY });
 
     const currentBounds = groupBounds.get(groupId);
     const group = groups.find(g => g.id === groupId);
@@ -122,17 +158,25 @@ export function useGroupDrag({
     };
 
     return checkGroupCollision(groupId, newBounds);
+  }, [groups, groupBounds, checkGroupCollision, scheduleGroupDragOffset]);
 
   // Find the minimum offset needed to resolve collision, preferring directions with open space
   const findNearestValidOffsetForGroup = useCallback((
     groupId: string,
     bounds: Rect
   ): { dx: number; dy: number } => {
+    const obstacles = getObstacles(groupId);
     return findEscapeOffset(bounds, obstacles, COLLISION.MIN_GAP);
+  }, [getObstacles]);
 
   const handleGroupDragStart = useCallback((groupId: string) => {
+    activeDragObstaclesRef.current = {
+      groupId,
+      obstacles: buildObstacles(groupId),
+    };
     setDraggingGroupId(groupId);
     setGroupHasCollision(false);
+  }, [buildObstacles]);
 
   // Handle group drag complete - applies final delta to group and all assigned items
   const handleGroupDragComplete = useCallback((groupId: string, deltaX: number, deltaY: number) => {
@@ -185,6 +229,12 @@ export function useGroupDrag({
 
   // Handle group drag end - cleanup state (position updates happen in handleGroupDragComplete)
   const handleGroupDragEnd = useCallback((groupId: string) => {
+    activeDragObstaclesRef.current = null;
+    pendingGroupDragOffsetRef.current = { x: 0, y: 0 };
+    if (dragOffsetFrameRef.current !== null) {
+      cancelAnimationFrame(dragOffsetFrameRef.current);
+      dragOffsetFrameRef.current = null;
+    }
     setDraggingGroupId(null);
     setGroupHasCollision(false);
     setGroupDragOffset({ x: 0, y: 0 });

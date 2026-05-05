@@ -36,6 +36,7 @@ export function GeneralSettings({ currentProjectId }: Props = {}) {
           </svg>
         }
         title="Claude"
+        description="Sign in to Claude Code on your machine — KPM routes AI requests through your local session."
         collapsible={false}
         statusBadge={badge}
       >
@@ -53,6 +54,7 @@ export function GeneralSettings({ currentProjectId }: Props = {}) {
               <p className="font-medium text-text-primary">Claude not found</p>
               <p className="mt-1 text-text-muted">{availability.reason}</p>
               <p className="mt-1 text-text-muted">
+                Install Claude Code or reinstall KPM to restore AI features.
               </p>
             </div>
           )}

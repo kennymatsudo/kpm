@@ -1,4 +1,5 @@
 /**
+ * Automated performance profiler for KPM.
  *
  * Launches the packaged Electron app with CDP, connects via Playwright,
  * captures CPU profiles + Performance traces while running through
@@ -370,6 +371,7 @@ async function main(): Promise<void> {
 
   // Build summary
   const summary: string[] = [];
+  summary.push('KPM Performance Profile Summary');
   summary.push(`Date: ${new Date().toISOString()}`);
   summary.push(`Timestamp: ${timestamp}`);
   summary.push('');

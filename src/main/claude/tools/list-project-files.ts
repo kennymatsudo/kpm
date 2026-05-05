@@ -24,6 +24,7 @@ Use when the user asks what files or folders exist in the project, wants to brow
 - \`depth\`: Maximum recursion depth when \`recursive\` is true. Defaults to 10.
 
 ## Notes
+- Lists files in the developer's KPM project folder only. For files inside connected code repositories, use Glob/Read/Grep instead.`;
 
 export function createListProjectFilesTools(deps: ListProjectFilesToolDeps) {
   return [

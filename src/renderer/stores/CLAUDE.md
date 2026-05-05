@@ -9,6 +9,7 @@ UI state management with slice pattern, typed events for cross-store communicati
   - `useExportStore` — Export queue state. `addToQueueWithStatus()` stages items and tracks `recentlyImportedIds` for visual feedback.
   - `useCredentialStore` — Tracker credential loading/display.
   - `useSyncReviewStore` — Sync review state (project-scoped).
+- **Specialized stores** — One per feature domain (workspace, artifacts, groups, search, background tasks, Claude availability, etc.). Includes `backgroundTaskStore.ts`, `customPromptTaskStore.ts`, and `claudeAvailabilityStore.ts` in addition to the domain stores listed above.
 - **Infrastructure** — `storeEvents.ts` (typed event emitter), `projectScopedStores.ts` (lifecycle management — reset list includes `approvalQueue`, `syncReview`, and `devSessions`), `useStoreSubscriptions.ts` (event wiring)
 
 All stores exported from `index.ts`. See the directory for the full list.

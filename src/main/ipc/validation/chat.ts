@@ -15,12 +15,14 @@ import {
 // Temp Image Path Validation (used by chat)
 // =============================================================================
 
+/** Validates path is within KPM temp images directory (prevents path traversal) */
 export const tempImagePath = absolutePath.refine(
   (p) => {
     const tempDir = getTempImagesDir();
     const normalizedPath = path.normalize(p);
     return normalizedPath.startsWith(tempDir + path.sep);
   },
+  'Path must be within KPM temp images directory'
 );
 
 // =============================================================================

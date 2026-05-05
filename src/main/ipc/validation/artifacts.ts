@@ -36,12 +36,14 @@ export const ArtifactSchemas = {
 // Temp Image Schemas
 // =============================================================================
 
+/** Validates path is within KPM temp images directory (prevents path traversal) */
 const tempImagePath = absolutePath.refine(
   (p) => {
     const tempDir = getTempImagesDir();
     const normalizedPath = path.normalize(p);
     return normalizedPath.startsWith(tempDir + path.sep);
   },
+  'Path must be within KPM temp images directory'
 );
 
 export const TempImageSchemas = {

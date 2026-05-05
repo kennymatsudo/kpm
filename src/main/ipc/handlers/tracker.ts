@@ -67,6 +67,7 @@ export function registerTrackerHandlers(
     return result.ok ? { success: true, scope: result.data } : { success: false, error: result.error };
   });
 
+  // Level 3: KPM-Jira Associations
   ipcMain.handle(IPC_CHANNELS.tracker.associations.get, async (_e, params: unknown) => {
     const { projectId } = TrackerSchemas.getAssociations.parse(params);
     return trackerService.getAssociations(projectId);

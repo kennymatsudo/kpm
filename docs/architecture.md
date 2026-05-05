@@ -89,6 +89,7 @@ src/
 
 | Table | Purpose |
 |-------|---------|
+| `projects` | KPM projects (name, folder, phase, session state, token usage) |
 | `attachments` | Uploaded files |
 | `plan_items` | Plan hierarchy + external tracker fields + `completed_at` |
 | `plan_relations` | Dependencies (depends_on, blocks, relates_to) |
@@ -101,12 +102,14 @@ src/
 | `chat_messages` | Persistent message history |
 | `documents` | Dormant — created by migration 018 but no repository/service writes to it. `BriefingService` is the only reader and tolerates emptiness. Filesystem path is the canonical doc identity. See `src/main/db/CLAUDE.md`. |
 | `app_settings` | Global key-value application preferences |
+| `custom_themes` | Imported VS Code/KPM theme definitions |
 | `confluence_page_links` | Document ↔ Confluence page links |
 | `groups` | Visual group containers |
 | `task_prompt_templates` | Task prompt templates |
 | `agent_prompts` | Dormant — agent-team mode was removed; table remains from a prior migration but no code reads or writes it. Board prompts are configured via settings. |
 | `tool_permissions` | Persisted per-project tool permission grants |
 | `project_briefings` | Cached generated project briefings |
+| `review_tasks` | GitHub review threads normalized into KPM review tasks |
 | `review_ownership` | Review-thread ownership decisions |
 | `review_sync_state` | PR review polling cursors and sync state |
 | `agent_review_runs` | Opposing-agent review run metadata |
@@ -233,6 +236,8 @@ src/
 - `toolPermissionStore.ts` - Tool permission state
 - `contextRegenerationStore.ts` - Context regeneration modal state
 - `useSlackTriageStore.ts` - Slack triage panel and execution state
+- `backgroundTaskStore.ts` - Background task tracking
+- `claudeAvailabilityStore.ts` - Claude availability detection state
 
 Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and are accessed through `useProjectUiDomainStore`.
 

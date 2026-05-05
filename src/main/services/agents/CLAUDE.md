@@ -62,6 +62,8 @@ User drags a card to `in_progress` or clicks `Play`.
 
 The board start flow uses `agent-session:create-and-start`, but it now prefers continuing prior work:
 
+- if the latest session for that plan item and repo is `inactive` or `pending`, KPM starts that existing session again
+- otherwise KPM creates a new pending session and starts it
 
 This avoids silently creating a fresh worktree every time the user re-clicks `Play`.
 
@@ -93,11 +95,15 @@ Current phases:
 
 When the implementation session completes:
 
+- if the session was already in `addressing_review`, KPM marks it `ready_for_review` and moves the plan item to `In Review`
+- otherwise KPM marks it `reviewing` and launches one opposing review
 
 ### Review completion
 
 When the review session completes:
 
+- if there are no findings, KPM moves the task to `In Review`
+- if findings exist, KPM marks the implementation session `addressing_review` and sends one aggregated follow-up back to the implementation agent
 
 There is no infinite review/fix loop in the board workflow. The review runs once.
 
@@ -137,7 +143,9 @@ Expected behavior:
 
 - `Stop` terminates the live implementation run and the session becomes `inactive`
 - clicking `Play` again on the same task should prefer resuming/continuing the most recent session for that plan item and repo
+- a brand new worktree should only appear when KPM is truly starting fresh, not on a normal stop-then-play cycle
 
+If a session was destroyed rather than stopped, the old worktree is gone and KPM will create a new one.
 
 
 | File | Purpose |

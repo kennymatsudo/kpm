@@ -2,6 +2,7 @@
  * StreamingSessionService - Application service for streaming Claude sessions.
  *
  * This service manages the lifecycle of streaming sessions for main project chat.
+ * It follows KPM's DI pattern for testability.
  *
  * Key features:
  * - Connect on project open (zero-latency first message)
@@ -120,6 +121,7 @@ interface ManagedSession {
   currentView?: ViewMode;
   processingStartTime?: number; // Timestamp when processing started (for timeout detection)
   lastSdkActivity?: number; // Timestamp of most recent SDK message (for idle-while-processing detection)
+  mcpHealthStatus: 'healthy' | 'degraded' | 'recovering'; // KPM MCP server health
   mcpRecoveryAttempts: number; // Consecutive failed reconnect attempts
   segmentState: SegmentState; // Track message segments for splitting bubbles
   /**
@@ -820,6 +822,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     }
 
+    // When spawning a fresh SDK session for a chat that already has KPM-side
     // history (e.g. after a worktree switch cleared the claude_session_id),
     // seed the fresh session with a replay of prior turns so the conversation
     // keeps its thread. Skipped for normal resumes — the SDK's own transcript
@@ -1530,6 +1533,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   }
 
   /**
+   * Check KPM MCP server health and attempt recovery if disconnected.
    * Called from the cleanup interval for idle-ready sessions.
    * After 3 consecutive failures, tears down the session so the next
    * user message creates a fresh one via sendMessageToSession.
@@ -1548,6 +1552,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // If kpm server is connected (or not reported at all), mark healthy
       if (!kpmServer || kpmServer.status === 'connected') {
         if (managed.mcpRecoveryAttempts > 0) {
+          console.log(`[StreamingSessionService] KPM MCP server recovered for ${key}`);
           mainWindow?.webContents.send('chat:mcp-status', {
             projectId: managed.projectId,
             chatSessionId: managed.chatSessionId,
@@ -1561,6 +1566,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       }
 
       // Server is not connected — attempt reconnection
+      console.log(`[StreamingSessionService] KPM MCP server unhealthy (${kpmServer.status}) for ${key}, attempting reconnect`);
       await managed.session.reconnectMcpServer('kpm');
 
       // Verify reconnection
@@ -1568,6 +1574,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       const verifyKpm = verifyStatuses.find(s => s.name === 'kpm');
 
       if (verifyKpm?.status === 'connected') {
+        console.log(`[StreamingSessionService] KPM MCP server reconnected for ${key}`);
         managed.mcpHealthStatus = 'healthy';
         managed.mcpRecoveryAttempts = 0;
         mainWindow?.webContents.send('chat:mcp-status', {
@@ -1583,6 +1590,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       managed.mcpRecoveryAttempts++;
       managed.mcpHealthStatus = 'degraded';
       const errorMsg = verifyKpm?.error ?? `status: ${verifyKpm?.status ?? 'unknown'}`;
+      console.warn(`[StreamingSessionService] KPM MCP reconnect failed for ${key} (attempt ${managed.mcpRecoveryAttempts}/${maxRecoveryAttempts}): ${errorMsg}`);
 
       mainWindow?.webContents.send('chat:mcp-status', {
         projectId: managed.projectId,
@@ -1594,6 +1602,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
       // After max attempts, tear down the session
       if (managed.mcpRecoveryAttempts >= maxRecoveryAttempts) {
+        console.error(`[StreamingSessionService] KPM MCP recovery exhausted for ${key}, tearing down session`);
         await disconnectSession(key, {
           reason: 'mcp_recovery_failed',
           source: 'mcpHealthCheck',

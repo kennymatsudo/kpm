@@ -16,6 +16,7 @@ import { useTrackerMetadataStore } from '../../../stores';
 import type { TrackerStatusOption } from '../../../stores/tracker/useMetadataStore';
 import { useStatusMapping } from '../settings/hooks';
 import type { StatusCategory, StatusMapping, TrackerType } from '../../../../shared/types';
+import { MAPPABLE_KPM_CATEGORIES } from './categories';
 
 interface Props {
   associationId: string;
@@ -179,6 +180,7 @@ export function StatusMappingForm({
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xxs text-text-tertiary leading-snug">
+          {filledCount}/{MAPPABLE_KPM_CATEGORIES.length} categories mapped
         </p>
         {suggestedFillableCount > 0 && (
           <button
@@ -195,6 +197,7 @@ export function StatusMappingForm({
       </div>
 
       <div className="space-y-3">
+        {MAPPABLE_KPM_CATEGORIES.map((category) => (
           <div key={category.key} className="p-3 rounded-xl bg-surface-2">
             <div className="flex items-center justify-between gap-2 mb-2">
               <div>

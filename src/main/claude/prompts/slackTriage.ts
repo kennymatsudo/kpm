@@ -52,6 +52,8 @@ A discussion that implies work not yet tracked in the plan.
 - Check plan items first — if work is already tracked, skip or use update_document instead.
 - Use suggested_parent to nest under an existing plan item when the relationship is clear.
 - Keep titles and descriptions grounded in the Slack text and thread content.
+- Do NOT introduce KPM-specific framing, roleplay, or assumptions about who "you" are unless the Slack message explicitly says so.
+- Do NOT mention KPM, this triage system, internal tooling, or "the support agent lives in KPM" style narration unless those exact concepts appear in the source messages.
 
 ### update_document
 A decision, status update, or reference that should be captured on an existing plan item.

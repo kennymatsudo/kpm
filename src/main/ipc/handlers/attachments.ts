@@ -145,6 +145,7 @@ export function registerAttachmentHandlers(
 
   /**
    * Open a temp attachment with the OS default application. The schema scopes
+   * the path to KPM's temp attachment directory; lstat rejects symlink swaps.
    */
   ipcMain.handle(IPC_CHANNELS.attachment.openTemp, async (_event, params: unknown) => {
     const { filePath } = ChatAttachmentSchemas.openTemp.parse(params);

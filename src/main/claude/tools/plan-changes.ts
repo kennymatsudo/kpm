@@ -133,6 +133,7 @@ export type { PlanActionsCallback };
  * @param onPlanActions - Callback to emit proposed actions to the UI for approval
  */
 export function createPlanChangeTools(onPlanActions: PlanActionsCallback) {
+  console.log('[KPM Tools] Creating modify_plan tool');
 
   return [
     tool(
@@ -147,11 +148,13 @@ Plan items carry structured fields that flow to the agent, the reviewer, and gen
 Use intent + acceptance_criteria as the primary shape for implementation items. Use description for discovery/research items where criteria cannot be enumerated yet.
 
 **Sync boundary — critical.** When an item has a Jira/Linear association, its \`description\` is pushed to the external tracker as-is. Keep description sync-clean:
+- **Never** mention KPM document IDs (e.g., \`doc-42\`, \`source_document_id: ...\`) or other local-only resources inside description. Those references are dead outside the developer's machine.
 - **Never** cite iteration-doc filenames or local project-folder paths unless they correspond to files actually in the synced code repo.
 - Breadcrumbs to iteration docs live in the \`source_document_id\` field, never in prose.
 - Code references (repo-relative paths like \`src/auth/session.ts\`) are fine in description — they exist wherever the code does.
 - intent and acceptance_criteria are local-only and not synced today, so they can reference local context freely. Still, prefer self-contained phrasing so they survive if sync coverage expands later.
 
+**Cross-item references — use \`@plan/<uuid>\`.** When an item's description, intent, or criteria mentions another plan item, write \`@plan/<uuid>\` instead of restating the title or guessing a tracker key. KPM rewrites these to native syntax on export (Jira smart link, Linear URL, GitHub \`Closes ENG-123\`), so refs are sync-safe by default and degrade to the item's title for unlinked items. Use only UUIDs from the **Item Reference** in the system prompt — KPM rejects unknown UUIDs at save. Refs do not work inside fenced code blocks.
 
 Item actions:
 - create_item: see full example below
@@ -216,9 +219,11 @@ All three items are root-level; the Group provides organization. Do not invent a
         actions: z.array(PlanActionSchema).describe('The plan actions to propose'),
       },
       async ({ message, actions }) => {
+        toolLog(`[KPM Tools] modify_plan "${message}" (${actions.length} actions: ${actions.map(a => a.type).join(', ')})`);
 
         try {
         } catch (error) {
+          console.error(`[KPM Tools] Error emitting actions:`, error);
           return toolError(`Failed to emit plan actions: ${error instanceof Error ? error.message : String(error)}`);
         }
 

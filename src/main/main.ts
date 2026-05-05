@@ -32,12 +32,19 @@ function fixPath(): void {
   }
 }
 
+// Pin userData explicitly to avoid resolution drift if productName ever changes.
+// Must run before any app.getPath('userData') call (which happens during initDatabase).
 // E2E launches (NODE_ENV=test) pass an isolated --user-data-dir; honor it so tests
 // never touch the real database — the pin would otherwise override the flag.
 const e2eDataDir = process.env.NODE_ENV === 'test'
   ? app.commandLine.getSwitchValue('user-data-dir')
   : '';
 app.setPath('userData', e2eDataDir || path.join(app.getPath('appData'), 'KPM - Planning Workbench'));
+
+// Override the process name so the Dock tooltip and menu bar show "KPM"
+// in dev mode (where the binary is the system Electron process).
+app.setName('KPM');
+
 // Fix PATH immediately at startup
 fixPath();
 

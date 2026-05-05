@@ -19,6 +19,7 @@ export interface PlanContext {
   getPromptContent?: (key: string) => string;
   /**
    * Replay of earlier turns in this chat, injected when the previous SDK
+   * session was discarded (e.g. after a worktree switch) but the KPM-side
    * conversation should continue. Empty/undefined for normal sends.
    */
   continuationHistory?: ContinuationTurn[];

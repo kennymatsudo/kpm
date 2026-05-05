@@ -1,6 +1,7 @@
 /**
  * Slack Triage Repository Interfaces
  *
+ * Links KPM projects to Slack channels and manages the triage queue
  * of actionable items identified by Claude.
  */
 

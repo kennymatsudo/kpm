@@ -67,6 +67,7 @@ export function createGroupTools(
         projectId: z.string().uuid().describe('The project UUID'),
       },
       async ({ projectId }) => {
+        console.log('[KPM Tools] list_groups called for project:', projectId);
         try {
           const groups = groupRepo.getByProjectIdWithCounts(projectId);
 
@@ -82,6 +83,7 @@ export function createGroupTools(
 
           return jsonResult({ groups: summaries, count: summaries.length });
         } catch (error) {
+          console.error('[KPM Tools] list_groups error:', error);
           return toolError(`Failed to list groups: ${error instanceof Error ? error.message : String(error)}`);
         }
       },
@@ -95,6 +97,7 @@ export function createGroupTools(
         groupId: z.string().uuid().describe('The group UUID'),
       },
       async ({ groupId }) => {
+        console.log('[KPM Tools] get_group called for:', groupId);
         try {
           const group = groupRepo.getById(groupId);
           if (!group) {
@@ -109,6 +112,7 @@ export function createGroupTools(
             itemCount: items.length,
           });
         } catch (error) {
+          console.error('[KPM Tools] get_group error:', error);
           return toolError(`Failed to get group: ${error instanceof Error ? error.message : String(error)}`);
         }
       },
@@ -123,6 +127,7 @@ export function createGroupTools(
         limit: z.number().int().min(1).max(100).optional().describe('Max items to return (default 50)'),
       },
       async ({ projectId, limit = 50 }) => {
+        console.log('[KPM Tools] get_ungrouped_items called for project:', projectId);
         try {
           const items = db
             .prepare(
@@ -144,6 +149,7 @@ export function createGroupTools(
 
           return jsonResult({ items, count: items.length });
         } catch (error) {
+          console.error('[KPM Tools] get_ungrouped_items error:', error);
           return toolError(`Failed to get ungrouped items: ${error instanceof Error ? error.message : String(error)}`);
         }
       },
@@ -165,6 +171,7 @@ export function createGroupTools(
         height: z.number().optional().describe('Group height (defaults to 300)'),
       },
       async ({ projectId, name, position_x, position_y, width, height }) => {
+        console.log('[KPM Tools] create_group called:', { projectId, name });
         try {
           const action: PlanAction = {
             type: 'create_group',
@@ -176,12 +183,14 @@ export function createGroupTools(
             height: height ?? DEFAULT_GROUP_HEIGHT,
           };
 
+          console.log('[KPM Tools] create_group emitting action for approval');
           onPlanActions([action]);
 
           return jsonResult({
             success: true,
           });
         } catch (error) {
+          console.error('[KPM Tools] create_group error:', error);
           return toolError(`Failed to create group: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
@@ -198,6 +207,7 @@ export function createGroupTools(
         }).describe('Properties to update'),
       },
       async ({ groupId, updates }) => {
+        console.log('[KPM Tools] update_group called:', { groupId, updates });
         try {
           const group = groupRepo.getById(groupId);
           if (!group) {
@@ -210,12 +220,14 @@ export function createGroupTools(
             updates,
           };
 
+          console.log('[KPM Tools] update_group emitting action for approval');
           onPlanActions([action]);
 
           return jsonResult({
             success: true,
           });
         } catch (error) {
+          console.error('[KPM Tools] update_group error:', error);
           return toolError(`Failed to update group: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
@@ -227,6 +239,7 @@ export function createGroupTools(
         groupId: z.string().uuid().describe('The group UUID'),
       },
       async ({ groupId }) => {
+        console.log('[KPM Tools] delete_group called:', { groupId });
         try {
           const group = groupRepo.getById(groupId);
           if (!group) {
@@ -240,12 +253,14 @@ export function createGroupTools(
             group_id: groupId,
           };
 
+          console.log('[KPM Tools] delete_group emitting action for approval');
           onPlanActions([action]);
 
           return jsonResult({
             success: true,
           });
         } catch (error) {
+          console.error('[KPM Tools] delete_group error:', error);
           return toolError(`Failed to delete group: ${error instanceof Error ? error.message : String(error)}`);
         }
       },
@@ -259,6 +274,7 @@ export function createGroupTools(
         groupId: z.string().uuid().nullable().describe('Group UUID to assign to, or null to unassign'),
       },
       async ({ itemIds, groupId }) => {
+        console.log('[KPM Tools] assign_items_to_group called:', { itemIds: itemIds.length, groupId });
         try {
           // Validate group exists if assigning
           if (groupId) {
@@ -283,6 +299,7 @@ export function createGroupTools(
             group_id: groupId,
           }));
 
+          console.log(`[KPM Tools] assign_items_to_group emitting ${actions.length} actions for approval`);
           onPlanActions(actions);
 
           const actionDesc = groupId ? 'assigning to group' : 'unassigning from group';
@@ -292,6 +309,7 @@ export function createGroupTools(
             skippedCount: itemIds.length - validItems.length,
           });
         } catch (error) {
+          console.error('[KPM Tools] assign_items_to_group error:', error);
           return toolError(`Failed to assign items: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
@@ -308,6 +326,7 @@ export function createGroupTools(
         })).min(1).max(20).describe('Groups to create'),
       },
       async ({ projectId, groups }) => {
+        console.log('[KPM Tools] bulk_create_groups called:', { projectId, count: groups.length });
         try {
           // Calculate positions if not provided (arrange in a grid)
           const actions: PlanAction[] = groups.map((group, index) => {
@@ -324,6 +343,7 @@ export function createGroupTools(
               height: DEFAULT_GROUP_HEIGHT,
           });
 
+          console.log(`[KPM Tools] bulk_create_groups emitting ${actions.length} actions for approval`);
           onPlanActions(actions);
 
           return jsonResult({
@@ -331,6 +351,7 @@ export function createGroupTools(
             actionCount: actions.length,
           });
         } catch (error) {
+          console.error('[KPM Tools] bulk_create_groups error:', error);
           return toolError(`Failed to bulk create groups: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
@@ -342,6 +363,7 @@ export function createGroupTools(
         groupIds: z.array(z.string().uuid()).min(1).max(50).describe('Group UUIDs to delete'),
       },
       async ({ groupIds }) => {
+        console.log('[KPM Tools] bulk_delete_groups called:', { count: groupIds.length });
         try {
           // Validate groups exist (single batch query)
           const existing = groupRepo.getExistingIds(groupIds);
@@ -356,6 +378,7 @@ export function createGroupTools(
             group_id: groupId,
           }));
 
+          console.log(`[KPM Tools] bulk_delete_groups emitting ${actions.length} actions for approval`);
           onPlanActions(actions);
 
           return jsonResult({
@@ -364,6 +387,7 @@ export function createGroupTools(
             skippedCount: groupIds.length - validGroups.length,
           });
         } catch (error) {
+          console.error('[KPM Tools] bulk_delete_groups error:', error);
           return toolError(`Failed to bulk delete groups: ${error instanceof Error ? error.message : String(error)}`);
         }
       },
@@ -376,6 +400,7 @@ export function createGroupTools(
         projectId: z.string().uuid().describe('The project UUID'),
       },
       async ({ projectId }) => {
+        console.log('[KPM Tools] clear_all_group_assignments called for project:', projectId);
         try {
           // Find all items with group assignments
           const assignedItems = db
@@ -397,6 +422,7 @@ export function createGroupTools(
             group_id: null,
           }));
 
+          console.log(`[KPM Tools] clear_all_group_assignments emitting ${actions.length} actions for approval`);
           onPlanActions(actions);
 
           return jsonResult({
@@ -404,6 +430,7 @@ export function createGroupTools(
             actionCount: actions.length,
           });
         } catch (error) {
+          console.error('[KPM Tools] clear_all_group_assignments error:', error);
           return toolError(`Failed to clear group assignments: ${error instanceof Error ? error.message : String(error)}`);
         }
       },

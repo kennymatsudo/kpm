@@ -49,6 +49,7 @@ function isTrustedFileUrl(parsed: URL): boolean {
  * Returns true for the app's own renderer document.
  *
  * This is intentionally narrower than the external URL allowlist: renderer
+ * navigation and IPC sender validation should trust only the KPM app frame,
  * while external links continue to open in the user's default browser.
  */
 export function isTrustedAppUrl(url: string): boolean {

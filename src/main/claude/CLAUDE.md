@@ -24,6 +24,7 @@ createKpmServer() (singleton MCP server)
     ├─ confluence.ts (Confluence integration tools)
     ├─ briefing.ts (project briefing generation)
     ├─ file-move.ts (file move tools)
+    ├─ plan-refs.ts (extract plan items from a doc; resolve @plan/<uuid> tokens)
     ↓
 System prompts (prompts/ directory)
 ```
@@ -155,6 +156,7 @@ Guidance baked into the `modify_plan` tool prompt: prefer `intent` + `acceptance
 
 ### Sync boundary
 
+KPM is the developer's local source of truth; Jira/Linear are the org's. Keep the boundary clean:
 
 | Field | External tracker (Jira/Linear) |
 |-------|--------------------------------|
@@ -166,5 +168,6 @@ Guidance baked into the `modify_plan` tool prompt: prefer `intent` + `acceptance
 
 Enforced at `src/main/db/domain/ExportService.ts` (see the guard comments on `createIssue` / `updateIssue` payloads). Do not add spec fields to the outbound payload without an explicit product decision.
 
+**Descriptions must stay sync-clean.** Because `description` is pushed to Jira/Linear verbatim, it must not contain references to local-only resources: KPM document IDs (`doc-...`), `source_document_id` values, or iteration-doc filenames that live only in the developer's project folder. Those references are dead outside the developer's machine. The `modify_plan` tool prompt instructs Claude to use `source_document_id` for iteration-doc breadcrumbs and never to cite them in prose — preserve that guidance when editing the tool docstring.
 
 If you later want intent or criteria to reach external stakeholders, do it by appending them to the description payload at export time (under explicit section headers like `## Acceptance Criteria`) rather than by changing sync-direction defaults on the fields themselves. That keeps the "local by default" invariant intact.

@@ -1,6 +1,7 @@
 /**
  * Confluence Link Repository Interface
  *
+ * Links KPM documents to Confluence pages for bidirectional sync.
  */
 
 export interface ConfluencePageLink {

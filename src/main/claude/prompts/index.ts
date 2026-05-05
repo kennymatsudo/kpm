@@ -74,6 +74,7 @@ export function buildSystemPrompt(context: PlanContext): string {
     return PROMPT_REGISTRY_MAP.get(key)?.defaultContent ?? '';
   };
 
+  return `You are a technical planning partner in KPM. Help developers understand codebases, break down work, and create actionable plans.
 
 ${buildContinuationSection(continuationHistory)}# Project: ${project.name}
 ID: \`${project.id}\` (use for all tool calls)
@@ -106,8 +107,10 @@ ${buildItemReferenceTable(planItems)}
 
 ## Plan References
 
+Use \`@plan/<uuid>\` to reference a plan item inside any markdown you author (chat replies, plan-item description / intent / acceptance_criteria, document-edit proposals). KPM renders these as live chips that show the item's current title and status, and rewrites them to native syntax (Jira smart link, Linear URL, GitHub \`Closes ENG-123\`) on export.
 
 Rules:
+- Only use UUIDs from the **Item Reference** above, or from the **Focused Selection** section (focused plan items are always valid refs even when the plan is too large to list in full). KPM rejects unknown UUIDs at save — do not invent or guess.
 - Refs work mid-prose: "After @plan/<uuid>, we can…" is fine.
 - Don't put refs inside fenced code blocks — they won't resolve.
 - Prefer a ref over restating the item's title or external key in prose; readers get a live chip.`;

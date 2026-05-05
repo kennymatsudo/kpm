@@ -65,6 +65,7 @@ describe('McpDiscoveryService.getSlackAvailability', () => {
     appSettings.get.mockReturnValue(undefined);
   });
 
+  it('does not report a Slack plugin as available until it is enabled in KPM', async () => {
     files.set('/mock-home/.claude/plugins/installed_plugins.json', JSON.stringify({
       plugins: {
         'slack@claude-plugins-official': [{}],
@@ -90,10 +91,12 @@ describe('McpDiscoveryService.getSlackAvailability', () => {
         available: false,
         source: 'plugin',
         serverName: 'slack',
+        reason: 'Slack MCP plugin is enabled in Claude Code but not enabled in KPM settings',
       });
     }
   });
 
+  it('reports a user Slack server as available when it is enabled in KPM', async () => {
     files.set('/mock-home/.claude.json', JSON.stringify({
       mcpServers: {
         slack: {
@@ -178,6 +181,7 @@ describe('McpDiscoveryService plugin discovery', () => {
     }
   });
 
+  it('returns enabled plugin paths for non-MCP Claude plugins when enabled in KPM', () => {
     files.set('/mock-home/.claude/plugins/installed_plugins.json', JSON.stringify({
       plugins: {
         'codex@openai-codex': [{}],

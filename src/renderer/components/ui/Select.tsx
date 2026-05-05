@@ -2,6 +2,7 @@
  * Shared select primitive.
  *
  * Thin wrapper over `@radix-ui/react-select` that bakes in:
+ * - KPM surface styling (border, shadow, surface-elevated background)
  * - Modal-layer-aware z-index (`useModalLayer() + 10`) so selects spawned
  *   inside a Modal sit above it instead of behind
  * - Sensible defaults for `sideOffset`, `collisionPadding`, animation

@@ -5,6 +5,7 @@ import { Z_INDEX } from '../../constants/zIndex';
 
 /**
  * Session history dropdown showing recent chat sessions.
+ * Positioned at the top of the chat panel with KPM-styled dropdown.
  */
 export function SessionHistory() {
   const [isOpen, setIsOpen] = useState(false);
@@ -121,6 +122,7 @@ export function SessionHistory() {
         </svg>
       </button>
 
+      {/* Dropdown menu - KPM styled */}
       {isOpen && (
         <div
           className="dropdown-menu absolute right-0 top-full mt-1.5 w-72"

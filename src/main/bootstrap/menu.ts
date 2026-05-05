@@ -32,6 +32,7 @@ export function buildApplicationMenu(deps: ApplicationMenuDeps): void {
 
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{
+      label: 'KPM',
       submenu: [
         { role: 'about' as const },
         { type: 'separator' as const },

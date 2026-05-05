@@ -2,6 +2,7 @@
  * Claude Code Hook Config Generator
  *
  * Generates a temporary settings file with PreToolUse/PostToolUse/Stop hooks
+ * that POST events to the KPM hook ingestion server via curl.
  */
 
 import * as fs from 'fs';
@@ -58,6 +59,7 @@ export function generateClaudeCodeHookSettings(
   };
 
   // Write to a temp file
+  const settingsDir = path.join(os.tmpdir(), 'kpm-hooks');
   fs.mkdirSync(settingsDir, { recursive: true });
   const settingsPath = path.join(settingsDir, `claude-hooks-${sessionId}.json`);
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
@@ -69,6 +71,7 @@ export function generateClaudeCodeHookSettings(
  * Clean up the temporary settings file for a session.
  */
 export function cleanupClaudeCodeHookSettings(sessionId: string): void {
+  const settingsPath = path.join(os.tmpdir(), 'kpm-hooks', `claude-hooks-${sessionId}.json`);
   try {
     fs.unlinkSync(settingsPath);
   } catch {

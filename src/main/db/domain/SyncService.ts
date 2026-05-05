@@ -71,6 +71,7 @@ export function createSyncService(deps: SyncServiceDeps) {
     );
     preview.stats.total = externalIssues.length;
 
+    // Load existing KPM items with external keys
     const existingItems = ExternalPlanItemRepository.getLinkedItems(projectId, client.type);
     const existingByKey = new Map(existingItems.map(item => [item.external_key!, item]));
     const seenKeys = new Set<string>();
@@ -141,6 +142,8 @@ export function createSyncService(deps: SyncServiceDeps) {
   },
 
   /**
+   * Analyze changes between KPM item, external issue, and snapshot.
+   * Returns updates (tracker changed, KPM didn't) and conflicts (both changed).
    * Note: label is no longer synced - we use external_issue_type directly.
    */
   analyzeChanges(
@@ -171,6 +174,7 @@ export function createSyncService(deps: SyncServiceDeps) {
         // Only external changed - auto-update
         updates.push({ field, old_value: kpm, new_value: ext });
       }
+      // If only KPM changed, KPM wins - no action needed
     }
 
     if (kpmItem.external_status !== external.status) {
@@ -237,6 +241,7 @@ export function createSyncService(deps: SyncServiceDeps) {
   },
 
   /**
+   * Apply auto-resolved updates (tracker changed, KPM didn't).
    * Returns snapshots to be upserted.
    * @param itemCache - Pre-fetched items map to avoid N+1 queries
    */
@@ -379,6 +384,7 @@ export function createSyncService(deps: SyncServiceDeps) {
         snapshotsToDelete.push(item.id);
         result.deleted++;
       } else {
+        // Unlink from tracker (keep in KPM)
         ExternalPlanItemRepository.unlinkFromExternal(item.id);
         snapshotsToDelete.push(item.id);
       }

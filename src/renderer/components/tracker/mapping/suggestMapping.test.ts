@@ -30,6 +30,7 @@ describe('suggestStatusMapping', () => {
 
   it('sole-occupant of a bucket gets claimed when label-name does not match', () => {
     // Single started state named "Working" — no exact match on any started
+    // KPM category, but it's the only state in the indeterminate bucket so
     // it claims `in_progress` (the first started-bucket category).
     const states = [
       s('Backlog', 'new'),
