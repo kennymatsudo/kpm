@@ -130,6 +130,7 @@ The board workflow still uses opposing-agent review, but it is largely internal:
 | `codex` | `claude` |
 | `gemini` | `claude` |
 
+Review results are persisted in `agent_review_runs` / `agent_review_findings`, keyed to the implementation session (not only the `-review` session id). Used for restart-safe audit and stale review detection; not the primary board interaction model.
 
 ### Review diff
 
@@ -147,11 +148,14 @@ Expected behavior:
 
 If a session was destroyed rather than stopped, the old worktree is gone and KPM will create a new one.
 
+## Key Files
 
 | File | Purpose |
 |------|---------|
 | `src/shared/agent-types.ts` | shared types + `toReviewSessionId` / `toImplSessionId` helpers |
+| `src/main/services/agents/AgentSessionManager.ts` | session registry, event wiring, review persistence, 30 min TTL eviction |
 | `src/main/services/agents/autoReview.ts` | one-shot opposing review launch + findings parsing; accepts `baseBranch` |
+| `src/renderer/stores/devSessions/` | sliced renderer store: lifecycleSlice, prSlice, reviewSlice, background commit state, persisted review rehydration |
 
 ## Review Session ID
 

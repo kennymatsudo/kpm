@@ -84,18 +84,23 @@ db.exec(`
 
 ### 1. Cache Prepared Statements
 
+Every repository MUST cache prepared statements in the constructor — declare a `PreparedStatements` interface and populate it in `constructor(private db: Database)`. **NEVER** call `db.prepare()` inside a method body (except for dynamic IN clauses). See `PlanItemRepository.ts` for the canonical shape.
 
 ### 2. Use RETURNING Clause
 
+ALWAYS use `RETURNING *` on INSERT to get the inserted row in one query instead of a follow-up SELECT.
 
 ### 3. Use ON CONFLICT for Upserts
 
+NEVER check existence before insert/update. Use `INSERT ... ON CONFLICT(id) DO UPDATE SET ... RETURNING *` in a single prepared statement.
 
 ### 4. Use EXISTS for Existence Checks
 
+NEVER use `COUNT(*)` when you only need to check if rows exist. Use `SELECT EXISTS (SELECT 1 FROM ... LIMIT 1) as exists_flag` — it short-circuits at the first match.
 
 ### 5. Combine Sequential Queries
 
+If you find yourself running 2+ queries that could be combined, use a single query with priority ordering (`ORDER BY CASE WHEN ... END LIMIT 1`) rather than sequential calls with fallback logic.
 
 ### 6. Index Guidelines
 
@@ -124,6 +129,7 @@ String arrays (e.g., `code_refs`, `acceptance_criteria` on `plan_items`) are sto
 
 ### 9. Batch Operations
 
+Use `db.transaction()` for bulk operations — wrap a loop over prepared statements inside a transaction function.
 
 ## Key Design Decisions
 
