@@ -15,6 +15,7 @@
  *
  * The exported names match Radix's component names so the API is portable;
  * future callers can swap our wrapper for raw Radix if they need an escape
+ * hatch.
  */
 
 import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from 'react';

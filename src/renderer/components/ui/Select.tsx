@@ -8,6 +8,7 @@
  * - Scroll buttons for long option lists
  *
  * Mirrors the structure of `Popover.tsx`: re-export Radix sub-components
+ * directly, wrap only `Content` with our standard styling.
  */
 
 import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from 'react';
