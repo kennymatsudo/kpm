@@ -211,6 +211,8 @@ export class StreamingSession {
       if (error && typeof error === 'object') {
         if ('stderr' in error) console.error('[StreamingSession] stderr:', (error as { stderr: string }).stderr);
         if ('stdout' in error) console.error('[StreamingSession] stdout:', (error as { stdout: string }).stdout);
+        if ('code' in error) console.error('[StreamingSession] code:', (error).code);
+        if ('cause' in error) console.error('[StreamingSession] cause:', (error).cause);
       }
       this._isActive = false;
       this._isReady = false;

@@ -105,6 +105,7 @@ function resolveTheme(
     return systemSchemeToThemeId(systemTheme);
   }
 
+  return preference;
 }
 
 function getResolvedThemeOption(resolved: ResolvedTheme, customThemes: CustomTheme[]): ThemeOption {
@@ -127,6 +128,7 @@ function applyTheme(theme: ThemeOption) {
     root.classList.add('custom-theme');
     // Custom themes may predate the 22-token expansion; fill in any missing
     // extended tokens so the renderer always sees a complete ThemeColors.
+    applyThemeColors(withDerivedExtendedTokens(theme.colors));
     return;
   }
 

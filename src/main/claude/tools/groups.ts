@@ -341,6 +341,7 @@ export function createGroupTools(
               position_y: group.position_y ?? (100 + row * 350),
               width: DEFAULT_GROUP_WIDTH,
               height: DEFAULT_GROUP_HEIGHT,
+            };
           });
 
           console.log(`[KPM Tools] bulk_create_groups emitting ${actions.length} actions for approval`);

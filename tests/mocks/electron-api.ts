@@ -77,9 +77,11 @@ export function createMockApi() {
 
     repos: {
       list: vi.fn().mockResolvedValue([] as Repo[]),
+      add: vi.fn().mockResolvedValue({}),
       remove: vi.fn().mockResolvedValue({ success: true }),
       selectDialog: vi.fn().mockResolvedValue([] as string[]),
       getBranch: vi.fn().mockResolvedValue(null as string | null),
+      getBranches: vi.fn().mockResolvedValue({}),
       watch: vi.fn().mockResolvedValue({ success: true }),
       unwatch: vi.fn().mockResolvedValue({ success: true }),
       updateEnvironmentMode: vi.fn().mockResolvedValue({ success: true }),
@@ -88,6 +90,7 @@ export function createMockApi() {
 
     attachments: {
       list: vi.fn().mockResolvedValue([] as Attachment[]),
+      add: vi.fn().mockResolvedValue({}),
       remove: vi.fn().mockResolvedValue({ success: true }),
       selectDialog: vi.fn().mockResolvedValue([] as string[]),
     },
@@ -98,6 +101,8 @@ export function createMockApi() {
         success: true,
         createdIds: {},
         skippedActions: [],
+      }),
+      addRelation: vi.fn().mockResolvedValue({}),
       removeRelation: vi.fn().mockResolvedValue({ success: true }),
       getRelations: vi.fn().mockResolvedValue([] as PlanRelation[]),
       updatePosition: vi.fn().mockResolvedValue({ success: true }),
@@ -145,10 +150,13 @@ export function createMockApi() {
       },
       import: {
         getPreview: vi.fn().mockResolvedValue({ success: true, preview: null as unknown as ImportPreview }),
+        apply: vi.fn().mockResolvedValue({ success: true }),
+        importAll: vi.fn().mockResolvedValue({ success: true }),
         onProgress: noopUnsub,
       },
       sync: {
         getPreview: vi.fn().mockResolvedValue({ success: true, preview: null as unknown as SyncPreview }),
+        applyChanges: vi.fn().mockResolvedValue({ success: true }),
         onProgress: noopUnsub,
       },
       exportQueue: {

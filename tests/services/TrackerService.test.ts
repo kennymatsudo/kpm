@@ -105,6 +105,7 @@ describe('TrackerService', () => {
 
   it('loads Linear projects through the Linear client', async () => {
     const getProjectsForTeam = vi.fn().mockResolvedValue([{ id: 'proj-1', name: 'Roadmap' }]);
+    const getLinearClient = vi.fn().mockResolvedValue({ getProjectsForTeam });
     const service = createTrackerService({
       tracker: {} as never,
       clientService: {

@@ -277,6 +277,7 @@ export function createGitHubService(deps: GitHubServiceDeps) {
           status.reviewDecision
         );
 
+        return success(status);
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }
@@ -631,6 +632,7 @@ HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and 
           status.reviewDecision
         );
 
+        return success(status);
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }
@@ -703,6 +705,7 @@ HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and 
           status.reviewDecision
         );
 
+        return success(status);
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }

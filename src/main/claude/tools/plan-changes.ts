@@ -222,6 +222,7 @@ All three items are root-level; the Group provides organization. Do not invent a
         toolLog(`[KPM Tools] modify_plan "${message}" (${actions.length} actions: ${actions.map(a => a.type).join(', ')})`);
 
         try {
+          onPlanActions(actions);
         } catch (error) {
           console.error(`[KPM Tools] Error emitting actions:`, error);
           return toolError(`Failed to emit plan actions: ${error instanceof Error ? error.message : String(error)}`);

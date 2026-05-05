@@ -305,6 +305,7 @@ function applyAssessmentBusinessRules(
 
     results.push({
       threadId: item.thread_id,
+      disposition: item.disposition,
       rationale: item.rationale,
       draftReply,
     });
@@ -761,6 +762,7 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
 
     return success({ results: results.map((r) => ({
       threadId: r.threadId,
+      disposition: 'implement',
       rationale: r.reason || 'Addressed in implementation',
       draftReply: r.draftReply,
     })), errors });

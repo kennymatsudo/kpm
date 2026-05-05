@@ -449,14 +449,17 @@ export function createSlackTriageService(deps: SlackTriageServiceDeps) {
 
       switch (item.action_type) {
         case 'reply': {
+          const action = replyActionSchema.parse(item.suggested_action);
           await deps.sendSlackMessage(link.project_id, link.channel_id, action.reply_text, action.thread_ts ?? undefined);
           break;
         }
         case 'create_task': {
+          const action = createTaskActionSchema.parse(item.suggested_action);
           await deps.createTaskFromTriage(link.project_id, action);
           break;
         }
         case 'update_document': {
+          const action = updateDocumentActionSchema.parse(item.suggested_action);
           await deps.applyDocumentUpdate(link.project_id, action);
           break;
         }

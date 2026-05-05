@@ -55,6 +55,7 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
       interruptChatSession: vi.fn(),
       getActiveSessions: vi.fn(),
       getChatSessionState: vi.fn(),
+    },
     emitChatError,
     ...overrides,
   };

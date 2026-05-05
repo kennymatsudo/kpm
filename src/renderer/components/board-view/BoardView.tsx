@@ -230,6 +230,7 @@ export const BoardView = memo(function BoardView({
 
   // Count items in toggle columns (for showing count even when hidden)
   const toggleColumnCounts = useMemo(() => {
+    return {};
   }, []);
 
   // Agent start handler - delegates to parent

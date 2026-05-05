@@ -63,6 +63,7 @@ export function CodeEditor({
   const defineCurrentTheme = useCallback((monacoInstance: MonacoInstance) => {
     monacoInstance.editor.defineTheme(
       monacoThemeName,
+      createMonacoThemeData(resolvedTheme),
     );
   }, [monacoThemeName, resolvedTheme]);
 

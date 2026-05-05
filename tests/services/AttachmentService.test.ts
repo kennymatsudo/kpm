@@ -142,6 +142,7 @@ describe('AttachmentService', () => {
           mkdir: vi.fn(async () => undefined),
           copyFile: vi.fn(async () => { throw new Error('Permission denied'); }),
           unlink: vi.fn(async () => undefined),
+        },
       };
       const service = createAttachmentService(deps);
 

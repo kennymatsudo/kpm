@@ -113,6 +113,7 @@ export function StatusMappingForm({
     }
     setAutoFilled(Object.fromEntries(
       Object.keys(suggestion.mapping).map((c) => [c, true])
+    ));
     setAutofilledOnLoad(true);
   }, [autofilledOnLoad, hasInitialMapping, suggestion, handleStatusMappingChange]);
 
@@ -132,6 +133,7 @@ export function StatusMappingForm({
 
   const handleManualChange = (category: keyof StatusMapping, value: string) => {
     handleStatusMappingChange(category, value);
+    if (autoFilled[category]) {
       setAutoFilled((prev) => ({ ...prev, [category]: false }));
     }
   };

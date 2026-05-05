@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTheme } from '../../contexts';
 import { isCustomThemeOption, type ThemeOption } from '../../themes';
 import { LoadingButton } from '../ui/LoadingButton';
 import { toast } from '../../stores/toastStore';
@@ -77,9 +78,11 @@ export function ThemeSelector() {
         {themes.map((theme) => (
           <div
             key={theme.id}
+            onClick={() => setPreference(theme.id)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
+                setPreference(theme.id);
               }
             }}
             role="button"

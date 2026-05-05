@@ -83,6 +83,7 @@ describe('McpDiscoveryService.getSlackAvailability', () => {
     }));
     appSettings.get.mockImplementation((key: string) => key === 'mcp_enabled_servers' ? JSON.stringify({}) : undefined);
 
+    const service = createMcpDiscoveryService({ appSettings: appSettings });
     const result = await service.getSlackAvailability();
 
     expect(result.ok).toBe(true);
@@ -109,6 +110,7 @@ describe('McpDiscoveryService.getSlackAvailability', () => {
       ? JSON.stringify({ 'user:slack': true })
       : undefined);
 
+    const service = createMcpDiscoveryService({ appSettings: appSettings });
     const result = await service.getSlackAvailability();
 
     expect(result.ok).toBe(true);
@@ -164,6 +166,7 @@ describe('McpDiscoveryService plugin discovery', () => {
     }));
     files.set('/mock-home/.claude/plugins/marketplaces/openai-codex/external_plugins/codex', '');
 
+    const service = createMcpDiscoveryService({ appSettings: appSettings });
     const result = service.discoverPlugins();
 
     expect(result.ok).toBe(true);
@@ -200,6 +203,7 @@ describe('McpDiscoveryService plugin discovery', () => {
       ? JSON.stringify({ codex: true })
       : undefined);
 
+    const service = createMcpDiscoveryService({ appSettings: appSettings });
     const result = service.getEnabledPluginPaths();
 
     expect(result.ok).toBe(true);

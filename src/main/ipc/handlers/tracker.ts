@@ -219,6 +219,8 @@ export function registerTrackerHandlers(
       const result = trackerService.applySyncChanges(
         projectId,
         preview as SyncPreview,
+        new Map(Object.entries(resolutions)),
+        deletedAction,
         new Map<string, 'keep' | 'delete'>(Object.entries(deletedDecisions ?? {}))
       );
       return { success: result.success, result };

@@ -226,6 +226,7 @@ export function findTransitionByMapping(
   }
 
   // Get the mapped Jira status name for this category
+  const mappedStatusName = statusMapping[targetCategory];
   if (!mappedStatusName) {
     return null;
   }

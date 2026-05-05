@@ -101,6 +101,7 @@ describe('SlackTriageService triggerTriage history reads', () => {
         })),
         delete: vi.fn(),
         updateLastCheckedTs: vi.fn(),
+      },
     });
     const service = createSlackTriageService(deps);
 
@@ -150,6 +151,7 @@ describe('SlackTriageService createLink', () => {
         get: vi.fn(),
         delete: vi.fn(),
         updateLastCheckedTs: vi.fn(),
+      },
       resolveSlackChannel: vi.fn(async () => ({
         id: 'C024BE91L',
         name: 'team-project-updates',
@@ -178,6 +180,7 @@ describe('SlackTriageService createLink', () => {
         get: vi.fn(),
         delete: vi.fn(),
         updateLastCheckedTs: vi.fn(),
+      },
       resolveSlackChannel: vi.fn(async () => ({ name: 'team-project-updates' } as { id: string; name: string })),
     });
     const service = createSlackTriageService(deps);

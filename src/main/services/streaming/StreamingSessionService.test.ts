@@ -160,6 +160,7 @@ function createDeps(sendSpy: (channel: string, payload: unknown) => void): Strea
       },
     } as BrowserWindow),
     buildContext: () => ({ projectId: 'project-1' } as never),
+    buildSdkOptions: () => ({}),
     subscribeToPlanActions: () => () => {},
     subscribeToClaudeMdUpdate: () => () => {},
     subscribeToDocumentUpdate: () => () => {},
@@ -539,6 +540,7 @@ describe('createChatSession continuation wiring', () => {
       },
       buildSdkOptions: (ctx) => {
         capturedContexts.push(ctx);
+        return {};
       },
     };
 
@@ -577,6 +579,7 @@ describe('createChatSession continuation wiring', () => {
       },
       buildSdkOptions: (ctx) => {
         capturedContexts.push(ctx);
+        return {};
       },
     };
 

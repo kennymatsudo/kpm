@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Worktree } from '../../../shared/types';
+import { getWorktreesByProject, deleteWorktree, destroyWorktree } from '../../services/worktreeService';
 
 interface Props {
   projectId: string;
@@ -21,6 +22,7 @@ export function WorktreesSettings({ projectId }: Props) {
     setLoading(true);
     setError(null);
     try {
+      const result = await getWorktreesByProject(projectId);
       setWorktrees(result);
     } catch {
       setError('Failed to load worktrees.');
@@ -30,6 +32,7 @@ export function WorktreesSettings({ projectId }: Props) {
   }, [projectId]);
 
   useEffect(() => {
+    void load();
   }, [load]);
 
   const handleConfirm = async () => {
@@ -38,6 +41,8 @@ export function WorktreesSettings({ projectId }: Props) {
     try {
       const result =
         confirm.mode === 'destroy'
+          ? await destroyWorktree(confirm.worktree.id)
+          : await deleteWorktree(confirm.worktree.id);
 
       if (result.success) {
         setWorktrees((prev) => prev.filter((w) => w.id !== confirm.worktree.id));
