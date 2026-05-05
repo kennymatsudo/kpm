@@ -71,6 +71,7 @@ export type PlanAddRelationInput = z.infer<typeof PlanSchemas.addRelation>;
 export type PlanRemoveRelationInput = z.infer<typeof PlanSchemas.removeRelation>;
 export type PlanGetRelationsInput = z.infer<typeof PlanSchemas.getRelations>;
 export type PlanUpdatePositionInput = z.infer<typeof PlanSchemas.updatePosition>;
+export type PlanUpdatePositionsInput = z.infer<typeof PlanSchemas.updatePositions>;
 export type PlanUpdateItemInput = z.infer<typeof PlanSchemas.updateItem>;
 export type PlanDeleteItemInput = z.infer<typeof PlanSchemas.deleteItem>;
 export type PlanDeleteItemWithDescendantsInput = z.infer<typeof PlanSchemas.deleteItemWithDescendants>;

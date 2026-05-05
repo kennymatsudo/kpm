@@ -24,6 +24,7 @@ interface SyncReviewState {
   // Actions
   startReview: (projectId: string, associationId: string) => Promise<void>;
   setDecision: (itemId: string, decision: SyncReviewItem['decision']) => void;
+  setDecisions: (itemIds: string[], decision: SyncReviewItem['decision']) => void;
   executeApproved: (projectId: string, associationId: string) => Promise<ExportResult | null>;
   removeFromReview: (itemId: string) => Promise<void>;
   updateCustomFieldOverrides: (queueEntryId: string, overrides: CustomFieldValues | null) => Promise<void>;
@@ -61,6 +62,15 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
     set((state) => ({
       items: state.items.map((item) =>
         item.planItem.id === itemId ? { ...item, decision } : item
+      ),
+    }));
+  },
+
+  setDecisions: (itemIds, decision) => {
+    const selectedIds = new Set(itemIds);
+    set((state) => ({
+      items: state.items.map((item) =>
+        selectedIds.has(item.planItem.id) ? { ...item, decision } : item
       ),
     }));
   },

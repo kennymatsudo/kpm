@@ -180,6 +180,14 @@ export const PlanSchemas = {
     y: canvasPosition,
   }),
 
+  updatePositions: z.object({
+    updates: z.array(z.object({
+      id: uuid,
+      x: canvasPosition,
+      y: canvasPosition,
+    })).max(500),
+  }),
+
   updateItem: z.object({
     itemId: uuid,
     updates: planItemUpdates,

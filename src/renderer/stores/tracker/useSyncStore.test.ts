@@ -85,4 +85,44 @@ describe('useSyncStore', () => {
       changeCount: 0,
     });
   });
+
+  it('reuses a fresh preview between polling and opening review', async () => {
+    api.tracker.sync.getPreview.mockResolvedValue({
+      success: true,
+      preview: {
+        tracker_type: 'jira',
+        link_id: 'assoc-1',
+        external_project_key: 'PROJ',
+        new_items: [
+          {
+            external_id: '10001',
+            external_key: 'PROJ-1',
+            title: 'New issue',
+            description: null,
+            item_type: 'task',
+            status: 'To Do',
+            parent_external_key: null,
+          },
+        ],
+        updated_items: [],
+        conflicts: [],
+        deleted_in_tracker: [],
+        stats: {
+          total: 1,
+          new: 1,
+          updated: 0,
+          conflicts: 0,
+          deleted: 0,
+          unchanged: 0,
+        },
+      },
+    });
+
+    await useSyncStore.getState().checkForUpdates('project-1', 'assoc-1');
+    await useSyncStore.getState().startSync('project-1', 'assoc-1');
+
+    expect(api.tracker.sync.getPreview).toHaveBeenCalledTimes(1);
+    expect(useSyncStore.getState().showPanel).toBe(true);
+    expect(useSyncStore.getState().syncPreview?.stats.new).toBe(1);
+  });
 });

@@ -258,6 +258,7 @@ export const PlanCard = memo(function PlanCard({
   // session update anywhere in the store.
   const hasActiveDevSession = useDevSessionsStore((state) => {
     const activeStatuses = ACTIVE_SESSION_STATUSES as readonly string[];
+    return (state.sessionsByPlanItemId.get(item.id) ?? []).some((s) => activeStatuses.includes(s.status));
   });
   const activeTrackerType = useTrackerStore((state) => state.associations[0]?.tracker_type ?? null);
   const isWorktreeLoading = !!worktreeLoadingOp;
@@ -564,6 +565,7 @@ export const PlanCard = memo(function PlanCard({
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
+              {`${item.children.length} children`}
             </button>
           ) : (
             <div className="flex items-center gap-1 text-tiny text-text-muted mb-1">
@@ -610,6 +612,7 @@ export const PlanCard = memo(function PlanCard({
       )}
 
       {/* Context menu */}
+      {!isPreview && showMenu && menuPosition && (
         <PlanCardMenu
           itemId={item.id}
           isOpen={showMenu}

@@ -35,6 +35,7 @@ export interface ProjectStoreValues {
   repoBranches: Record<string, string | null>;  // repoId -> branch name
   attachments: Attachment[];
   worktrees: Worktree[];  // Git worktrees for agent development
+  worktreeByPlanItemId: Map<string, Worktree>;
   worktreeLoading: Record<string, WorktreeOperation | null>;  // planItemId or worktreeId -> operation in progress
   isLoading: boolean;
   isSwitchingProject: boolean;  // True while loading a different project
@@ -145,6 +146,7 @@ export type PlanDomainState = Pick<
 export type ResourceDomainState = Pick<
   ProjectState,
   'repos' | 'repoBranches' | 'attachments' | 'worktrees' | 'worktreeLoading' |
+  'worktreeByPlanItemId' |
   'setRepos' | 'setAttachments' | 'addRepo' | 'addReposToProject' | 'addReposFromDialog' |
   'removeRepo' | 'removeRepoFromProject' | 'addAttachment' | 'removeAttachment' | 'refreshRepos' |
   'setRepoBranches' | 'setRepoBranch' | 'updateRepoEnvironmentMode' | 'setActiveWorktreePath' |

@@ -9,6 +9,7 @@ export const createBaseState = (): ProjectStoreValues => ({
   repoBranches: {},
   attachments: [],
   worktrees: [],
+  worktreeByPlanItemId: new Map(),
   worktreeLoading: {},
   isLoading: false,
   isSwitchingProject: false,

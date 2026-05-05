@@ -122,6 +122,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         : { success: false, content: null, error: result.error };
     },
     toolCallLogger,
+    scheduler: services.pollScheduler,
     onMcpStatusReady: (mcpStatus) => {
       const managed = mcpStatus
         .filter(s => s.name.startsWith('claude.ai'))

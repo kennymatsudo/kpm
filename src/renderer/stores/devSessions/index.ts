@@ -27,6 +27,8 @@ export interface DevSessionsState {
   sessions: DevSessionWithPlanItem[];
   /** Alias for `sessions` retained so existing board code (`allSessions`) keeps working. */
   allSessions: DevSessionWithPlanItem[];
+  sessionById: Map<string, DevSessionWithPlanItem>;
+  sessionsByPlanItemId: Map<string, DevSessionWithPlanItem[]>;
   selectedSessionId: string | null;
   isLoading: boolean;
   deletingSessionIds: Set<string>;
@@ -130,6 +132,8 @@ const initialState = {
   projectId: null as string | null,
   sessions: [] as DevSessionWithPlanItem[],
   allSessions: [] as DevSessionWithPlanItem[],
+  sessionById: new Map<string, DevSessionWithPlanItem>(),
+  sessionsByPlanItemId: new Map<string, DevSessionWithPlanItem[]>(),
   selectedSessionId: null as string | null,
   isLoading: false,
   deletingSessionIds: new Set<string>(),
@@ -164,6 +168,7 @@ export type DevSessionsGet = StoreApi<DevSessionsState>['getState'];
 export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
   ...initialState,
 
+  setSessions: (sessions) => set({ sessions, ...buildSessionIndexes(sessions) }),
   setSelectedSessionId: (sessionId) => set({ selectedSessionId: sessionId }),
   setIsLoading: (isLoading) => set({ isLoading }),
 
@@ -336,6 +341,8 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
     invalidateLoadSessionsRequests();
     set({
       ...initialState,
+      sessionById: new Map<string, DevSessionWithPlanItem>(),
+      sessionsByPlanItemId: new Map<string, DevSessionWithPlanItem[]>(),
       deletingSessionIds: new Set<string>(),
     });
   },
@@ -344,6 +351,8 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
     invalidateLoadSessionsRequests();
     set({
       ...initialState,
+      sessionById: new Map<string, DevSessionWithPlanItem>(),
+      sessionsByPlanItemId: new Map<string, DevSessionWithPlanItem[]>(),
       deletingSessionIds: new Set<string>(),
     });
   },

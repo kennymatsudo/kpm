@@ -1,4 +1,5 @@
 import type {
+  DevSessionWithPlanItem,
   PrStatus,
   ReviewActionableSummary,
   ReviewInboxSnapshot,
@@ -63,6 +64,24 @@ export function setMapValue<T>(current: Map<string, T>, key: string, value: T): 
   const next = new Map(current);
   next.set(key, value);
   return next;
+}
+
+export function buildSessionIndexes(sessions: DevSessionWithPlanItem[]): {
+  sessionById: Map<string, DevSessionWithPlanItem>;
+  sessionsByPlanItemId: Map<string, DevSessionWithPlanItem[]>;
+} {
+  const sessionById = new Map<string, DevSessionWithPlanItem>();
+  const sessionsByPlanItemId = new Map<string, DevSessionWithPlanItem[]>();
+
+  for (const session of sessions) {
+    sessionById.set(session.id, session);
+    if (!session.plan_item_id) continue;
+    const itemSessions = sessionsByPlanItemId.get(session.plan_item_id) ?? [];
+    itemSessions.push(session);
+    sessionsByPlanItemId.set(session.plan_item_id, itemSessions);
+  }
+
+  return { sessionById, sessionsByPlanItemId };
 }
 
 interface SessionCacheState {

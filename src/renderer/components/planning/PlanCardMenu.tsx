@@ -74,12 +74,14 @@ export function PlanCardMenu({
   // Falls back to a session-recorded path when the worktree resource row has been
   // cleaned up (e.g. after PR merge) but the session still records its details.
   const itemSessions = useDevSessionsStore((state) => state.sessionsByPlanItemId.get(itemId) ?? EMPTY_SESSIONS);
+    const byRecency = [...itemSessions].sort(
       (a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at),
     );
     return {
       itemSession: byRecency[0],
       linkedPrSession: byRecency.find((s) => !!s.pr_url),
     };
+  }, [itemSessions]);
   const canCopyWorktreeInfo = !!copyWorktreePath || !!copyBranchName;
 
   const [showDeleteWorktreeConfirm, setShowDeleteWorktreeConfirm] = useState(false);
@@ -345,6 +347,7 @@ export function PlanCardMenu({
                 className={`dropdown-item w-full flex items-center gap-2 ${isWorktreeLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 9.75l4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
                 </svg>
                 Clean up worktree
               </button>

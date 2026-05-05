@@ -1,4 +1,15 @@
 import type { ResourceSlice, SliceCreator, WorktreeOperation } from './types';
+import type { Worktree } from '../../../shared/types';
+
+function buildWorktreeByPlanItemId(worktrees: Worktree[]): Map<string, Worktree> {
+  const map = new Map<string, Worktree>();
+  for (const worktree of worktrees) {
+    if (worktree.plan_item_id) {
+      map.set(worktree.plan_item_id, worktree);
+    }
+  }
+  return map;
+}
 
 /** Helper to set loading state for a worktree operation */
 const setWorktreeLoading = (
@@ -127,6 +138,10 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
     return true;
   },
   // Worktree actions
+  setWorktrees: (worktrees) => set({
+    worktrees,
+    worktreeByPlanItemId: buildWorktreeByPlanItemId(worktrees),
+  }),
   addWorktree: (worktree) => set((state) => ({
   })),
   removeWorktree: (worktreeId) => set((state) => ({

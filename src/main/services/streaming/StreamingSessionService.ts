@@ -33,6 +33,7 @@ import { getConfig } from '../../config';
 import { clientManager } from '../../claude/clientManager';
 import { DEFAULT_CONTEXT_FILENAME } from '../../../shared/contextFile';
 import { promptUser } from '../core/PermissionPromptService';
+import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import { extractFilePaths } from '../toollog/extractFilePaths';
 import { randomUUID } from 'crypto';
 
@@ -52,6 +53,7 @@ export type ModelType = 'opus' | 'sonnet' | 'haiku';
 const CONTINUATION_MAX_TURNS = 20;
 const CONTINUATION_MAX_CHARS = 60_000;
 const CONTINUATION_MAX_TURN_CHARS = 8_000;
+const CLEANUP_TASK_ID = 'streaming-session-cleanup';
 
 /**
  * Trim stored chat messages into a replay preface for a fresh SDK session.
@@ -252,6 +254,9 @@ export interface StreamingSessionServiceDeps {
     finalizeTurn(projectId: string, chatSessionId: string): unknown;
     getCurrentTurnIndex(chatSessionId: string): number;
   };
+
+  /** Optional centralized scheduler for cleanup/health ticks. */
+  scheduler?: Pick<PollScheduler, 'register' | 'start' | 'unregister'>;
 }
 
 // =============================================================================
@@ -261,7 +266,10 @@ export interface StreamingSessionServiceDeps {
 export function createStreamingSessionService(deps: StreamingSessionServiceDeps) {
   const sessions = new Map<string, ManagedSession>();
   let cleanupInterval: NodeJS.Timeout | null = null;
+  let cleanupTaskRegistered = false;
 
+  // Start cleanup task on creation
+  startCleanupTask();
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Multi-Session Helpers
@@ -672,6 +680,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // Log full error details for debugging
       console.error('[StreamingSessionService] Chat session connection failed:', error);
       if (error && typeof error === 'object') {
+        if ('stderr' in error) console.error('[StreamingSessionService] stderr:', error.stderr);
+        if ('stdout' in error) console.error('[StreamingSessionService] stdout:', error.stdout);
+        if ('code' in error) console.error('[StreamingSessionService] code:', error.code);
       }
 
       // Clean up subscriptions - check both the managed session AND our local references
@@ -1071,6 +1082,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
    * Called on app quit.
    */
   async function disposeAll(): Promise<void> {
+    if (cleanupTaskRegistered && deps.scheduler) {
+      deps.scheduler.unregister(CLEANUP_TASK_ID);
+      cleanupTaskRegistered = false;
+    } else if (cleanupInterval) {
       clearInterval(cleanupInterval);
       cleanupInterval = null;
     }
@@ -1617,12 +1632,104 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
   }
 
+  function runCleanupTick(): PollTickResult {
+    const sessionConfig = getSessionConfig();
+    const now = Date.now();
+    const mainWindow = deps.getMainWindow();
+    let processingTimeouts = 0;
+    let idleTimeouts = 0;
+    let healthChecks = 0;
+
+    for (const [key, managed] of sessions) {
+      if (managed.state === 'processing') {
+        // Check for hung sessions: no SDK messages for processingIdleTimeoutMs
+        const lastSdkMs = managed.lastSdkActivity ?? managed.processingStartTime;
+        const idleSinceLastSdk = lastSdkMs ? now - lastSdkMs : 0;
+        const totalProcessing = managed.processingStartTime ? now - managed.processingStartTime : 0;
+
+        const isIdleHung = idleSinceLastSdk > sessionConfig.processingIdleTimeoutMs;
+        const isHardTimeout = totalProcessing > sessionConfig.processingTimeoutMs;
+
+        if (isIdleHung || isHardTimeout) {
+          processingTimeouts++;
+          const reason = isIdleHung
+            ? `no SDK activity for ${Math.round(idleSinceLastSdk / 1000)}s`
+            : `total processing exceeded ${Math.round(sessionConfig.processingTimeoutMs / 60000)} minutes`;
+          console.log(`[StreamingSessionService] Processing timeout for ${key}: ${reason}`);
+          managed.state = 'ready';
+          managed.processingStartTime = undefined;
+          managed.lastSdkActivity = undefined;
+
+          void interrupt(key).catch((error) => {
+            console.error(`[StreamingSessionService] Failed to interrupt timed-out session ${key}:`, error);
+          });
+
+          const errorMessage = isIdleHung
+            ? 'Response appears stuck. Please try again.'
+            : `Response timed out after ${Math.round(sessionConfig.processingTimeoutMs / 60000)} minutes. Please try again.`;
+          mainWindow?.webContents.send('chat:error', {
+            projectId: managed.projectId,
+            chatSessionId: managed.chatSessionId,
+            error: errorMessage,
+          });
+          // Also send chat:done to ensure isStreaming clears in the renderer
+          mainWindow?.webContents.send('chat:done', {
+            projectId: managed.projectId,
+            chatSessionId: managed.chatSessionId,
+          });
+        }
+        continue; // Skip idle check for processing sessions
+      }
+
+      // Check for idle sessions (same timeout for all idle sessions)
+      const idleTimeout = sessionConfig.mainIdleTimeoutMs;
+
+      if (now - managed.lastActivity > idleTimeout) {
+        idleTimeouts++;
+        console.log(`[StreamingSessionService] Idle timeout for ${key}`);
+        disconnectSession(key, {
+          reason: 'idle_timeout',
+          source: 'cleanupTask',
+        }).catch(console.error);
+        continue;
+      }
+
+      // MCP health check for idle-ready sessions (not currently recovering)
+      if (managed.state === 'ready' && managed.mcpHealthStatus !== 'recovering') {
+        healthChecks++;
+        void checkAndRecoverMcpHealth(key, managed);
+      }
+    }
+
+    return {
+      outcome: sessions.size > 0 ? 'ok' : 'noop',
+      details: {
+        sessionCount: sessions.size,
+        processingTimeouts,
+        idleTimeouts,
+        healthChecks,
+      },
+    };
+  }
+
+  function startCleanupTask(): void {
     const sessionConfig = getSessionConfig();
 
+    if (deps.scheduler) {
+      deps.scheduler.register({
+        id: CLEANUP_TASK_ID,
+        intervalMs: sessionConfig.cleanupIntervalMs,
+        handler: () => Promise.resolve(runCleanupTick()),
+      });
+      deps.scheduler.start(CLEANUP_TASK_ID);
+      cleanupTaskRegistered = true;
+      return;
+    }
 
-        }
-
-      }
+    cleanupInterval = setInterval(() => {
+      Promise.resolve(runCleanupTick()).catch((error) => {
+        console.error('[StreamingSessionService] Cleanup tick failed:', error);
+      });
     }, sessionConfig.cleanupIntervalMs);
   }
 

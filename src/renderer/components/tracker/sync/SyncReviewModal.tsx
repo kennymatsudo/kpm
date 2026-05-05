@@ -35,6 +35,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
     error,
     startReview,
     setDecision,
+    setDecisions,
     executeApproved,
     removeFromReview,
     updateCustomFieldOverrides,
@@ -136,6 +137,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
 
   const handleToggleAll = () => {
     const newDecision = allValidChecked ? 'pending' : 'approved';
+    setDecisions(validItems.map(item => item.planItem.id), newDecision);
   };
 
   const handleRemove = async (itemId: string) => {

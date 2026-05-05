@@ -72,6 +72,7 @@ export const IPC_CHANNELS = {
     removeRelation: 'plan:remove-relation',
     getRelations: 'plan:get-relations',
     updatePosition: 'plan:update-position',
+    updatePositions: 'plan:update-positions',
     updateItem: 'plan:update-item',
     deleteItem: 'plan:delete-item',
     deleteItemWithDescendants: 'plan:delete-item-with-descendants',

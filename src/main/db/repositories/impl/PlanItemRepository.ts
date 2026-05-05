@@ -438,6 +438,16 @@ export class PlanItemRepository implements IPlanItemRepository {
     this.stmts.updatePosition.run(x, y, itemId);
   }
 
+  batchUpdatePositions(updates: { id: string; x: number; y: number }[]): void {
+    if (updates.length === 0) return;
+    const transaction = this.db.transaction((entries: { id: string; x: number; y: number }[]) => {
+      for (const entry of entries) {
+        this.stmts.updatePosition.run(entry.x, entry.y, entry.id);
+      }
+    });
+    transaction(updates);
+  }
+
   getNextOrder(projectId: string, parentId: string | null): number {
     const result = parentId
       ? this.stmts.getNextOrderWithParent.get(projectId, parentId) as { max_order: number | null }

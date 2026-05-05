@@ -158,9 +158,17 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
 
     const { refreshPlanItems } = get();
     try {
+      const result = await deps.api.plan.updatePositions(
+        Array.from(updateMap.entries()).map(([id, position]) => ({
+          id,
+          x: position.x,
+          y: position.y,
+        }))
       );
 
+      if (!result.success) {
         await refreshPlanItems();
+        set({ error: result.error || 'Failed to update item positions' });
       }
     } catch (error) {
       const errorMessage = `Failed to update item positions: ${String(error)}`;
@@ -232,6 +240,7 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
               projectId: currentProjectId,
               itemId,
               statusCategory,
+              syncSource: item.sync_source ?? 'local',
             },
           });
         }

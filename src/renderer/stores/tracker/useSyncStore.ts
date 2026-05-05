@@ -23,6 +23,61 @@ function getChangeCount(stats: SyncPreview['stats']): number {
   return stats.new + stats.updated + stats.conflicts + stats.deleted;
 }
 
+const SYNC_PREVIEW_CACHE_TTL_MS = 2 * 60 * 1000;
+
+interface CachedSyncPreview {
+  preview: SyncPreview;
+  fetchedAt: number;
+}
+
+const previewCacheByKey = new Map<string, CachedSyncPreview>();
+const inFlightPreviewByKey = new Map<string, Promise<SyncPreview>>();
+
+function previewCacheKey(projectId: string, associationId: string): string {
+  return `${projectId}:${associationId}`;
+}
+
+function getCachedPreview(key: string): SyncPreview | null {
+  const cached = previewCacheByKey.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.fetchedAt > SYNC_PREVIEW_CACHE_TTL_MS) {
+    previewCacheByKey.delete(key);
+    return null;
+  }
+  return cached.preview;
+}
+
+async function getPreviewWithCache(projectId: string, associationId: string): Promise<SyncPreview> {
+  const key = previewCacheKey(projectId, associationId);
+  const cached = getCachedPreview(key);
+  if (cached) return cached;
+
+  const inFlight = inFlightPreviewByKey.get(key);
+  if (inFlight) return inFlight;
+
+  const promise = getTrackerSyncPreview(projectId, associationId)
+    .then((result: { success: boolean; preview?: SyncPreview; error?: string }) => {
+      if (!result.success || !result.preview) {
+        throw new Error(result.error || 'Failed to load sync preview');
+      }
+      previewCacheByKey.set(key, { preview: result.preview, fetchedAt: Date.now() });
+      return result.preview;
+    })
+    .finally(() => {
+      inFlightPreviewByKey.delete(key);
+    });
+  inFlightPreviewByKey.set(key, promise);
+  return promise;
+}
+
+  previewCacheByKey.delete(previewCacheKey(projectId, associationId));
+}
+
+function clearPreviewCache(): void {
+  previewCacheByKey.clear();
+  inFlightPreviewByKey.clear();
+}
+
 /** Build a SyncAvailability entry that preserves previous values, with overrides applied. */
 function availabilityFromPrevious(
   previous: SyncAvailability | undefined,
@@ -106,6 +161,9 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     });
 
     try {
+      const preview = await getPreviewWithCache(projectId, associationId);
+      if (preview) {
+        const changeCount = getChangeCount(preview.stats);
 
         set((state) => ({
           syncAvailability: {
@@ -115,6 +173,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
               hasIncomingChanges: changeCount > 0,
               changeCount,
               lastCheckedAt: new Date().toISOString(),
+              stats: preview.stats,
               error: null,
             },
           },
@@ -125,6 +184,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         }
 
         set({
+          syncPreview: preview,
           showPanel: true,
         });
       }
@@ -146,12 +206,15 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     setAvailability(availabilityFromPrevious(previous, { isChecking: true }));
 
     try {
+      const preview = await getPreviewWithCache(projectId, associationId);
 
+      const changeCount = getChangeCount(preview.stats);
       const availability: SyncAvailability = {
         isChecking: false,
         hasIncomingChanges: changeCount > 0,
         changeCount,
         lastCheckedAt: new Date().toISOString(),
+        stats: preview.stats,
         error: null,
       };
 
@@ -278,4 +341,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     });
   },
 
+  reset: () => {
+    clearPreviewCache();
+    set(initialState);
+  },
 }));

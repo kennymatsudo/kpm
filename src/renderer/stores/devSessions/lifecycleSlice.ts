@@ -1,6 +1,7 @@
 import type { PrStatus, ReviewActionableSummary, ReviewInboxSnapshot } from '../../../shared/types';
 import {
   addToSet,
+  buildSessionIndexes,
   dropSessionCacheEntries,
   pruneMapByKeys,
   pruneSetByKeys,
@@ -53,6 +54,8 @@ export function createDevSessionsLifecycleSlice(
           projectId: null,
           sessions: [],
           allSessions: [],
+          sessionById: new Map(),
+          sessionsByPlanItemId: new Map(),
           selectedSessionId: null,
           isLoading: false,
           diffBySessionId: new Map<string, string | null>(),
@@ -79,6 +82,8 @@ export function createDevSessionsLifecycleSlice(
           projectId,
           sessions: [],
           allSessions: [],
+          sessionById: new Map(),
+          sessionsByPlanItemId: new Map(),
           selectedSessionId: null,
           isLoading: true,
         });
@@ -137,6 +142,7 @@ export function createDevSessionsLifecycleSlice(
           projectId,
           sessions: devSessions,
           allSessions,
+          ...buildSessionIndexes(devSessions),
           selectedSessionId: newSelectedId,
           isLoading: false,
           diffBySessionId: pruneMapByKeys(get().diffBySessionId, validSessionIds),
@@ -259,8 +265,16 @@ export function createDevSessionsLifecycleSlice(
         }
 
         set((state) => ({
+          sessions: state.sessions.map((entry) =>
+            entry.id === session.id ? { ...entry, name } : entry
+          ),
           allSessions: state.allSessions.map((entry) =>
             entry.id === session.id ? { ...entry, name } : entry
+          ),
+          ...buildSessionIndexes(
+            state.sessions.map((entry) =>
+              entry.id === session.id ? { ...entry, name } : entry
+            )
           ),
         }));
         return { success: true };

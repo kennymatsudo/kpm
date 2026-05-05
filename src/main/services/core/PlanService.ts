@@ -57,6 +57,22 @@ export function createPlanService(deps: PlanServiceDeps) {
       return withItem(deps, itemId, () => deps.planItems.updatePosition(itemId, x, y));
     },
 
+    updatePositions(updates: { id: string; x: number; y: number }[]): ServiceResult<void> {
+      if (updates.length === 0) {
+        return success(undefined);
+      }
+
+      return wrap(() => {
+        const ids = updates.map((update) => update.id);
+        const existingIds = deps.planItems.getExistingIds(ids);
+        const missingId = ids.find((id) => !existingIds.has(id));
+        if (missingId) {
+          throw new Error(`Item not found: ${missingId}`);
+        }
+        deps.planItems.batchUpdatePositions(updates);
+      });
+    },
+
     updateItem(itemId: string, updates: PlanItemUpdates): ServiceResult<void> {
       return withItem(deps, itemId, (item) => {
         deps.planItems.update(itemId, updates);

@@ -452,6 +452,8 @@ const plan = {
     invokeOrThrow<{ relations: PlanRelation[] }, PlanRelation[]>(IPC_CHANNELS.plan.getRelations, { projectId }, ({ relations }) => relations),
   updatePosition: (itemId: string, x: number, y: number): Promise<{ success: boolean; error?: string }> =>
     invokeFlat<void>(IPC_CHANNELS.plan.updatePosition, { itemId, x, y }),
+  updatePositions: (updates: { id: string; x: number; y: number }[]): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.plan.updatePositions, { updates }),
   updateItem: (itemId: string, updates: PlanItemUpdates): Promise<{ success: boolean; error?: string }> =>
     invokeFlat<void>(IPC_CHANNELS.plan.updateItem, { itemId, updates }),
   deleteItem: (itemId: string): Promise<{ success: boolean; error?: string }> =>

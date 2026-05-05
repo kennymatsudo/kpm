@@ -52,6 +52,7 @@ function createMocks(overrides?: Partial<PlanServiceDeps>) {
     deleteWithDescendants: vi.fn(),
     update: vi.fn(),
     updatePosition: vi.fn(),
+    batchUpdatePositions: vi.fn(),
     batchReparent: vi.fn((updates: { id: string; parentId: string | null }[]) => updates.map(u => u.id)),
     batchUpdateStatus: vi.fn(),
   };
@@ -122,5 +123,27 @@ describe('PlanService', () => {
 
     expect(executePlanActions).toHaveBeenCalledWith('project-1', [...actions]);
     expect(result).toEqual({ success: true, createdIds: {} });
+  });
+
+  it('batch updates item positions after validating all ids', () => {
+    const { deps, planItems } = createMocks();
+    const service = createPlanService(deps);
+    const updates = [{ id: '1', x: 12, y: 24 }];
+
+    const result = service.updatePositions(updates);
+
+    expect(result.ok).toBe(true);
+    expect(planItems.getExistingIds).toHaveBeenCalledWith(['1']);
+    expect(planItems.batchUpdatePositions).toHaveBeenCalledWith(updates);
+  });
+
+  it('does not batch update positions when any id is missing', () => {
+    const { deps, planItems } = createMocks();
+    const service = createPlanService(deps);
+
+    const result = service.updatePositions([{ id: 'missing-id', x: 12, y: 24 }]);
+
+    expect(result.ok).toBe(false);
+    expect(planItems.batchUpdatePositions).not.toHaveBeenCalled();
   });
 });

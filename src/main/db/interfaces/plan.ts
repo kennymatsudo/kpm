@@ -30,6 +30,7 @@ export interface IPlanItemRepository {
   deleteWithDescendants(id: string): void;
   getChildCount(itemId: string): number;
   updatePosition(itemId: string, x: number, y: number): void;
+  batchUpdatePositions(updates: { id: string; x: number; y: number }[]): void;
   getNextOrder(projectId: string, parentId: string | null): number;
   /** Get children of a specific parent, optionally filtered by external issue types */
   getChildrenByParent(projectId: string, parentId: string, externalIssueTypes?: string[]): PlanItem[];

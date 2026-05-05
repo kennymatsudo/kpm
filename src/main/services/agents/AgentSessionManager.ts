@@ -246,8 +246,13 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
       });
 
       if (state === 'complete' || state === 'failed' || state === 'stopped') {
+          if (sessions.get(agentSession.id) === tracked) {
+            sessions.delete(agentSession.id);
+          }
           // Drop every handler attached to the evicted session so captured IPC
           // callbacks don't hang on to the webContents reference for the full
+          // runtime of the app. Keep this outside the identity check so an old
+          // terminal session still releases handlers after a same-id restart.
           agentSession.clearHandlers();
           console.log(`${LOG_PREFIX} Evicted terminal session ${agentSession.id} after TTL`);
         }, getConfig().agentSession.terminalSessionTtlMs);

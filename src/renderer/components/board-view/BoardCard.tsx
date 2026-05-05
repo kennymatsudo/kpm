@@ -122,6 +122,7 @@ export const BoardCard = memo(function BoardCard({
     reviewActionable,
   } = useDevSessionsStore(
     useShallow((state) => {
+      const itemSessions = state.sessionsByPlanItemId.get(item.id) ?? [];
       const activeCount = itemSessions.filter((s) => ACTIVE_SESSION_STATUSES.includes(s.status)).length;
       const openable = itemSessions.some((s) => OPENABLE_SESSION_STATUSES.includes(s.status));
       const pr = itemSessions
@@ -135,6 +136,7 @@ export const BoardCard = memo(function BoardCard({
         const entry = state.mergeOrderBySessionId.get(pr.id);
         if (entry && entry.blockedBy.length > 0) {
           mergeBlocked = entry.blockedBy.some((blockerId) => {
+            const blocker = state.sessionById.get(blockerId);
             return blocker?.pr_state !== 'MERGED';
           });
         }

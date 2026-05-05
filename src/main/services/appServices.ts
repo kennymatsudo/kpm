@@ -65,6 +65,7 @@ import { createRepoServices } from './composition/repoServices';
 import { createGenerationServices } from './composition/generationServices';
 import { createAgentSessionManager } from './agents/AgentSessionManager';
 import { createHookServer } from './agents/hookServer';
+import { createBoardAgentOrchestrator } from './agents/BoardAgentOrchestrator';
 import { createReviewPollService } from './repo/ReviewPollService';
 
 // =============================================================================
@@ -254,10 +255,27 @@ export function createAppServices(container: IRepositoryContainer) {
   // ─────────────────────────────────────────────────────────────────────────────
 
   const hookServer = createHookServer();
+  let agentSessionManagerRef: ReturnType<typeof createAgentSessionManager> | null = null;
+  const boardAgentOrchestrator = createBoardAgentOrchestrator({
+    agentReviews: container.agentReviews,
+    planService,
+    getDevSessionService: () => devSessionServiceRef,
+    getAgentSessionManager: () => {
+      if (!agentSessionManagerRef) {
+        throw new Error('Agent session manager is not initialized');
       }
+      return agentSessionManagerRef;
     },
-
+    getPromptContent,
+    claudeUsageService,
+    requestPlanRefresh,
   });
+
+  const agentSessionManager = createAgentSessionManager({
+    getMainWindow: getPrimaryWindow,
+    ...boardAgentOrchestrator,
+  });
+  agentSessionManagerRef = agentSessionManager;
 
   // Wire hook server events to agent session manager
   hookServer.onHookEvent((sessionId, hookEvent) => {

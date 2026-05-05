@@ -70,6 +70,18 @@ export function registerPlanHandlers(planService: PlanService): void {
   );
 
   ipcMain.handle(
+    IPC_CHANNELS.plan.updatePositions,
+    createIpcHandler(
+      PlanSchemas.updatePositions,
+      ({ updates }) => {
+        const result = planService.updatePositions(updates);
+        if (!result.ok) throw new Error(result.error);
+      },
+      'Failed to update plan positions',
+    ),
+  );
+
+  ipcMain.handle(
     IPC_CHANNELS.plan.updateItem,
     createIpcHandler(
       PlanSchemas.updateItem,
