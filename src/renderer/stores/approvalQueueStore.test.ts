@@ -1,8 +1,13 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { installMockApi, type MockApi } from '../../../tests/mocks/electron-api';
 import { useApprovalQueueStore } from './approvalQueueStore';
 import { useDevSessionsStore } from './devSessions';
 
+describe('approvalQueueStore — review reply flow', () => {
+  let api: MockApi;
 
   beforeEach(() => {
+    api = installMockApi();
     useApprovalQueueStore.getState().clearQueue();
     useDevSessionsStore.getState().reset();
   });
@@ -10,6 +15,7 @@ import { useDevSessionsStore } from './devSessions';
   it('posts approved review replies and updates the review inbox cache', async () => {
     useDevSessionsStore.setState({ projectId: 'project-1' });
 
+    api.review.replyToThread.mockResolvedValue({
       success: true,
       inbox: {
         session_id: 'dev-session-1',
@@ -20,6 +26,7 @@ import { useDevSessionsStore } from './devSessions';
         tasks: [],
       },
     });
+    api.devSessions.getByProjectWithPlanItems.mockResolvedValue({
       success: true,
       sessions: [{
         id: 'dev-session-1',
@@ -58,6 +65,7 @@ import { useDevSessionsStore } from './devSessions';
     });
 
     expect(result).toEqual({ success: true });
+    expect(api.review.replyToThread).toHaveBeenCalledWith(
       'dev-session-1',
       'thread-1',
       'Fixed in the latest commit.',
@@ -71,5 +79,6 @@ import { useDevSessionsStore } from './devSessions';
       snapshot: null,
       tasks: [],
     });
+    expect(api.devSessions.getByProjectWithPlanItems).toHaveBeenCalledWith('project-1');
   });
 });

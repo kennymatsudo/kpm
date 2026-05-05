@@ -45,6 +45,11 @@ describe('adfToMarkdown', () => {
   });
 
   describe('text formatting', () => {
+      { mark: 'strong', leadIn: 'This is ', text: 'bold',    trailing: ' text', expected: 'This is **bold** text' },
+      { mark: 'em',     leadIn: 'This is ', text: 'italic',  trailing: ' text', expected: 'This is *italic* text' },
+      { mark: 'code',   leadIn: 'Use ',     text: 'const',   trailing: ' keyword', expected: 'Use `const` keyword' },
+      { mark: 'strike', leadIn: 'This is ', text: 'deleted', trailing: '',      expected: 'This is ~~deleted~~' },
+      ];
     });
 
     it('converts links', () => {

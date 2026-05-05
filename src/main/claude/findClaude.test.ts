@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getCommonDevToolPaths } from './findClaude';
 
 describe('getCommonDevToolPaths', () => {
   it('returns POSIX paths on darwin/linux', () => {

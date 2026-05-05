@@ -44,17 +44,29 @@ afterEach(() => {
 
 describe('fileTreeStore', () => {
   describe('expanded paths management', () => {
+    it('toggleExpanded flips presence on each call', () => {
+      const store = useFileTreeStore.getState();
+      store.toggleExpanded('folder');
       expect(useFileTreeStore.getState().expandedPaths.has('folder')).toBe(true);
+      store.toggleExpanded('folder');
       expect(useFileTreeStore.getState().expandedPaths.has('folder')).toBe(false);
     });
 
+    it('setExpanded forces presence to the given value', () => {
+      const store = useFileTreeStore.getState();
+      store.setExpanded('folder', true);
       expect(useFileTreeStore.getState().expandedPaths.has('folder')).toBe(true);
+      store.setExpanded('folder', false);
       expect(useFileTreeStore.getState().expandedPaths.has('folder')).toBe(false);
     });
   });
 
   describe('focused paths management', () => {
+    it('toggleFocused flips presence on each call', () => {
+      const store = useFileTreeStore.getState();
+      store.toggleFocused('file.txt');
       expect(useFileTreeStore.getState().focusedPaths.has('file.txt')).toBe(true);
+      store.toggleFocused('file.txt');
       expect(useFileTreeStore.getState().focusedPaths.has('file.txt')).toBe(false);
     });
 

@@ -130,6 +130,7 @@ describe('BriefingService', () => {
       }
     });
 
+    it('runs chat synthesis + Stage 2 when chat messages exist, feeding synthesis into the briefing', async () => {
       db.prepare(
         `INSERT INTO chat_messages (id, session_id, role, content) VALUES (?, ?, ?, ?)`,
       ).run('m1', PROJECT_ID, 'user', 'I will fix the bug.');
@@ -142,7 +143,11 @@ describe('BriefingService', () => {
       const result = await service.generateBriefing(PROJECT_ID);
 
       expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.summary).toBe('Final briefing');
       expect(runClaudeQueryMock).toHaveBeenCalledTimes(2);
+      const stage2Prompt = JSON.stringify(runClaudeQueryMock.mock.calls[1][0]);
+      expect(stage2Prompt).toContain('Chat synthesis output');
     });
 
     it('streams Stage 2 chunks via onChunk callback', async () => {

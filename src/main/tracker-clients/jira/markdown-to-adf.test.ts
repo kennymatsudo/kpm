@@ -101,8 +101,15 @@ describe('markdownToAdf', () => {
   });
 
   describe('inline formatting', () => {
+      { name: '**bold**',    input: 'This is **bold** text',     mark: 'strong', text: 'bold' },
+      { name: '__bold__',    input: 'This is __bold__ text',     mark: 'strong', text: 'bold' },
+      { name: '*italic*',    input: 'This is *italic* text',     mark: 'em',     text: 'italic' },
+      { name: '_italic_',    input: 'This is _italic_ text',     mark: 'em',     text: 'italic' },
+      { name: '`code`',      input: 'Use `const` keyword',       mark: 'code',   text: 'const' },
+      { name: '~~strike~~',  input: 'This is ~~deleted~~ text',  mark: 'strike', text: 'deleted' },
     });
 
+    it('converts [links](url) with the href attribute', () => {
       const result = markdownToAdf('Click [here](https://example.com)');
       const content = result?.content[0].content ?? [];
       const linkNode = content.find((n) => n.marks?.some((m) => m.type === 'link'));
@@ -114,6 +121,10 @@ describe('markdownToAdf', () => {
       const result = markdownToAdf('**bold** and *italic* and `code`');
       const content = result?.content[0].content ?? [];
 
+      const marks = ['strong', 'em', 'code'];
+      for (const mark of marks) {
+        expect(content.find((n) => n.marks?.some((m) => m.type === mark))).toBeDefined();
+      }
     });
   });
 

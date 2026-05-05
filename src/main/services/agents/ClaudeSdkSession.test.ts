@@ -2,11 +2,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ClaudeSdkSession } from './ClaudeSdkSession';
 import type { AgentActivity, AgentCompletionSummary } from '../../../shared/agent-types';
 
+/**
+ */
+interface SessionTestHarness {
   processMessage(msg: object): void;
   getCompletionSummary: () => Promise<AgentCompletionSummary>;
   setState(state: string): void;
 }
 
+function testHarness(session: ClaudeSdkSession): SessionTestHarness {
+  return session as unknown as SessionTestHarness;
 }
 
   });
@@ -17,6 +22,7 @@ import type { AgentActivity, AgentCompletionSummary } from '../../../shared/agen
       states.push(state);
     });
 
+    testHarness(session).processMessage({
       type: 'system',
       subtype: 'init',
       session_id: 'sdk-session-id',
@@ -27,6 +33,7 @@ import type { AgentActivity, AgentCompletionSummary } from '../../../shared/agen
   });
 
 
+    testHarness(session).processMessage({
       type: 'assistant',
       message: {
         content: [{ type: 'thinking', thinking: 'planning' }],
@@ -59,6 +66,7 @@ import type { AgentActivity, AgentCompletionSummary } from '../../../shared/agen
 
 
 
+    testHarness(session).setState('working');
 
   });
 
@@ -75,6 +83,7 @@ import type { AgentActivity, AgentCompletionSummary } from '../../../shared/agen
     const activities: AgentActivity[] = [];
     session.on('onActivity', (a) => activities.push(a));
 
+    testHarness(session).processMessage({
       type: 'system',
       subtype: 'task_progress',
       task_id: 'task-1',
@@ -103,6 +112,8 @@ import type { AgentActivity, AgentCompletionSummary } from '../../../shared/agen
       usage: { total_tokens: 0, tool_uses: 0, duration_ms: 0 },
       session_id: 'sdk-session-id',
     };
+    testHarness(session).processMessage(payload);
+    testHarness(session).processMessage(payload);
 
     const matches = activities.filter((a) => a.summary === 'Analyzing authentication module');
     expect(matches).toHaveLength(1);
