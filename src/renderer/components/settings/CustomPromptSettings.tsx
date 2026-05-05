@@ -182,7 +182,22 @@ export function CustomPromptSettings() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
+      {/* Section header */}
+      <div className="shrink-0 bg-surface-elevated px-5 pt-3 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent-subtle">
+            <svg className="w-4 h-4 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-sm font-medium text-text-primary">Commands</h3>
+            <p className="text-xs text-text-muted">Create custom prompts that appear in the ⌘K palette</p>
+          </div>
+        </div>
       </div>
+
+      <div className="flex-1 min-h-0 px-5 py-4 flex flex-col min-w-0">
 
       <div className="grid grid-cols-[240px_1fr] gap-5 min-w-0 flex-1 min-h-0">
         {/* Prompt list */}
@@ -360,6 +375,7 @@ export function CustomPromptSettings() {
             </button>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

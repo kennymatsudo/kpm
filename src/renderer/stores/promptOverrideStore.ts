@@ -13,6 +13,7 @@ import {
   savePromptOverride,
 } from '../services/promptService';
 
+export type PromptSubTab = PromptCategory | 'taskCreation';
 
 interface PromptDetail extends PromptDefinitionInfo {
   defaultContent: string;

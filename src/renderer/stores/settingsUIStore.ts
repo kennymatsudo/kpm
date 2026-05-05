@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 export type SettingsTab =
   | 'general'
+  | 'commands'
   | 'workflow'
   | 'shortcuts'
   | 'prompts'
@@ -23,6 +24,7 @@ interface SettingsUIState {
 /** Ordered list of tabs for index-based navigation */
 const TAB_ORDER: SettingsTab[] = [
   'general',
+  'commands',
   'workflow',
   'shortcuts',
   'prompts',

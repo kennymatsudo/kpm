@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { SettingsSection, StatusBadge } from './SettingsSection';
 import { UsageSettingsSection } from './UsageSettings';
+import { ThemesSettings } from './ThemesSettings';
 
 interface Props {
   currentProjectId?: string | null;
@@ -77,6 +78,7 @@ export function GeneralSettings({ currentProjectId }: Props = {}) {
       </SettingsSection>
 
       <UsageSettingsSection currentProjectId={currentProjectId} />
+      <ThemesSettings />
     </div>
   );
 }
