@@ -7,6 +7,8 @@ export type SettingsTab =
   | 'shortcuts'
   | 'prompts'
   | 'mcp'
+  | 'permissions'
+  | 'worktrees';
 
 interface SettingsUIState {
   isOpen: boolean;
@@ -30,6 +32,7 @@ const TAB_ORDER: SettingsTab[] = [
   'prompts',
   'mcp',
   'permissions',
+  'worktrees',
 ];
 
 export const useSettingsUIStore = create<SettingsUIState>((set, get) => ({

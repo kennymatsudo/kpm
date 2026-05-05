@@ -8,6 +8,7 @@ import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings';
 import { McpServersSettings } from './McpServersSettings';
 import { PermissionsSettings } from './PermissionsSettings';
 import { PromptsSettings } from './PromptsSettings';
+import { WorktreesSettings } from './WorktreesSettings';
 import { useSettingsUIStore, type SettingsTab } from '../../stores';
 
 interface Props {
@@ -82,7 +83,19 @@ const allTabs: { id: SettingsTab; label: string; icon: React.ReactNode; requires
       </svg>
     ),
   },
+  {
+    id: 'worktrees',
+    label: 'Worktrees',
+    requiresProject: true,
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v8.25m19.5 0v.188a2.25 2.25 0 0 1-2.25 2.25H4.5A2.25 2.25 0 0 1 2.25 18.938V15m19.5 0h-18" />
+      </svg>
+    ),
+  },
 ];
+
+const noPaddingTabs = new Set<SettingsTab>(['prompts', 'workflow', 'commands']);
 
 export function SettingsModal({ onClose, currentProjectId }: Props) {
   const { activeTab, setActiveTab, setVisibleTabCount } = useSettingsUIStore();
@@ -103,8 +116,36 @@ export function SettingsModal({ onClose, currentProjectId }: Props) {
       aria-labelledby="settings-title"
       className="!overflow-hidden flex flex-col !h-[80vh]"
     >
+      <div className="shrink-0">
+        <ModalHeader id="settings-title" onClose={onClose}>
+          Settings
+        </ModalHeader>
+      </div>
 
+      <div className="flex flex-1 min-h-0">
+        {/* Sidebar nav */}
+        <nav
+          className="w-48 shrink-0 border-r border-border-subtle py-2 bg-surface-2/30"
+          role="tablist"
+          aria-label="Settings sections"
+        >
+          {tabs.map((tab) => (
+            <NavItem
+              key={tab.id}
+              active={activeTab === tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              icon={tab.icon}
+            >
+              {tab.label}
+            </NavItem>
+          ))}
+        </nav>
 
+        {/* Content */}
+        <div
+          className={`flex-1 min-h-0 overflow-y-auto ${noPaddingTabs.has(activeTab) ? 'p-0' : 'px-5 pb-5 pt-4'}`}
+          style={{ scrollbarGutter: 'stable' }}
+        >
           {activeTab === 'general' && <GeneralSettings currentProjectId={currentProjectId} />}
           {activeTab === 'commands' && <CustomPromptSettings />}
           {activeTab === 'workflow' && <WorkflowSettings currentProjectId={currentProjectId} />}
@@ -114,33 +155,47 @@ export function SettingsModal({ onClose, currentProjectId }: Props) {
           {activeTab === 'permissions' && currentProjectId && (
             <PermissionsSettings currentProjectId={currentProjectId} />
           )}
+          {activeTab === 'worktrees' && currentProjectId && (
+            <WorktreesSettings projectId={currentProjectId} />
+          )}
         </div>
+      </div>
     </Modal>
   );
 }
 
+interface NavItemProps {
   active: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   children: React.ReactNode;
 }
 
+function NavItem({ active, onClick, icon, children }: NavItemProps) {
   return (
     <button
       onClick={onClick}
       role="tab"
       aria-selected={active}
       className={`
+        relative flex items-center gap-2.5 w-full px-3 py-2 text-sm text-left transition-colors duration-150
         ${active
+          ? 'text-text-primary bg-surface-elevated font-medium'
           : 'text-text-muted hover:text-text-secondary hover:bg-surface-3/50'
         }
       `}
     >
       {active && (
         <m.div
+          layoutId="settings-nav-indicator"
+          className="absolute left-0 inset-y-1.5 w-0.5 bg-accent rounded-full"
           transition={{ type: 'spring', stiffness: 500, damping: 35 }}
         />
       )}
+      <span className={`shrink-0 transition-colors ${active ? 'text-accent' : ''}`}>
+        {icon}
+      </span>
+      <span className="truncate">{children}</span>
     </button>
   );
 }

@@ -43,10 +43,16 @@ type Scope = 'project' | 'global';
 
 interface Props {
   currentProjectId?: string | null;
+  initialStats?: ProjectUsageStats;
+  initialEvents?: ClaudeUsageEvent[];
 }
 
+export function UsageSettings({ currentProjectId, initialStats, initialEvents }: Props) {
   const [scope, setScope] = useState<Scope>(currentProjectId ? 'project' : 'global');
+  const [stats, setStats] = useState<ProjectUsageStats | null>(initialStats ?? null);
+  const [recentEvents, setRecentEvents] = useState<ClaudeUsageEvent[]>(initialEvents ?? []);
   const [showRecent, setShowRecent] = useState(false);
+  const [isLoading, setIsLoading] = useState(!initialStats);
   const [error, setError] = useState<string | null>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -422,12 +428,20 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
  * users can see lifetime cost without expanding.
  */
 export function UsageSettingsSection({ currentProjectId }: { currentProjectId?: string | null }) {
+  const [preloaded, setPreloaded] = useState<{ stats: ProjectUsageStats; events: ClaudeUsageEvent[] } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    const projectIdForQuery = currentProjectId ?? null;
     const load = async () => {
       try {
+        const [stats, events] = await Promise.all([
+          currentProjectId ? getProjectUsageStats(currentProjectId) : getGlobalUsageStats(),
+          listUsageEvents(projectIdForQuery, 50),
+        ]);
+        if (!cancelled) setPreloaded({ stats, events });
       } catch {
+        // ignore — UsageSettings will handle its own error state on expand
       }
     };
     void load();
@@ -440,9 +454,11 @@ export function UsageSettingsSection({ currentProjectId }: { currentProjectId?: 
     };
   }, [currentProjectId]);
 
+  const badge = preloaded === null
     ? null
     : (
       <StatusBadge variant="muted">
+        {formatCurrency(preloaded.stats.totals.cost_micro_usd)}
       </StatusBadge>
     );
 
@@ -459,6 +475,11 @@ export function UsageSettingsSection({ currentProjectId }: { currentProjectId?: 
       defaultCollapsed
       statusBadge={badge}
     >
+      <UsageSettings
+        currentProjectId={currentProjectId}
+        initialStats={preloaded?.stats}
+        initialEvents={preloaded?.events}
+      />
     </SettingsSection>
   );
 }
