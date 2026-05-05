@@ -10,9 +10,11 @@
  */
 
 import { useMemo } from 'react';
+import { Markdown } from 'markdown-to-jsx';
 import { STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import { TrackerIcon, trackerLabelFor } from '../tracker/shared/trackerDisplay';
 import { openExternalUrl } from '../../services/shellService';
+import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
 import type { PlanItem } from '../../../shared/types';
 import { emit } from '../../stores';
 
@@ -139,6 +141,11 @@ export function PlanItemPreviewBody({
           <div>
             <div className="text-[10px] font-medium text-text-muted uppercase tracking-wide mb-1">
               Description
+            </div>
+            <div className="prose-themed text-xs text-text-secondary leading-relaxed">
+              <Markdown options={markdownOptions}>
+                {transformPlanRefs(descriptionExcerpt)}
+              </Markdown>
             </div>
           </div>
         )}
