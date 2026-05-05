@@ -19,6 +19,13 @@ import { getConfig } from '../../config';
 export interface ProjectWatcherServiceDeps {
   getMainWindow: () => BrowserWindow | null;
   getProjectFolder: (projectId: string) => string | null;
+  /** Optional callback invoked for each external file change after the renderer is notified */
+  onExternalFileChange?: (event: {
+    projectId: string;
+    type: 'created' | 'updated' | 'deleted';
+    path: string;
+    isDirectory: boolean;
+  }) => void;
 }
 
 // =============================================================================
@@ -47,6 +54,7 @@ export function createProjectWatcherService(deps: ProjectWatcherServiceDeps) {
   function flushPendingChanges(projectId: string): void {
     for (const [relativePath, { type, isDirectory }] of pendingChanges) {
       emitFileChange(projectId, type, relativePath, isDirectory);
+      deps.onExternalFileChange?.({ projectId, type, path: relativePath, isDirectory });
     }
     pendingChanges.clear();
   }

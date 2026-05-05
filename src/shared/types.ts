@@ -1164,6 +1164,8 @@ export interface FileNode {
   modifiedAt: string;
   /** File size in bytes (0 for directories) */
   size: number;
+  /** AI-generated summary of the file's content */
+  summary?: string;
 }
 
 // =============================================================================

@@ -15,6 +15,7 @@ import type { IConfluenceLinkRepository } from './confluence';
 import type { IAgentReviewRepository, IReviewOwnershipRepository, IReviewSyncStateRepository, IReviewTaskRepository } from './review';
 import type { ISlackChannelLinkRepository, ISlackTriageItemRepository } from './slack';
 import type { IClaudeUsageRepository } from './usage';
+import type { IProjectFileMetadataRepository } from './files';
 
 /**
  * Container holding all repository instances.
@@ -49,4 +50,5 @@ export interface IRepositoryContainer {
   slackChannelLinks: ISlackChannelLinkRepository;
   slackTriageItems: ISlackTriageItemRepository;
   claudeUsage: IClaudeUsageRepository;
+  projectFileMetadata: IProjectFileMetadataRepository;
 }

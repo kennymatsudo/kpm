@@ -13,6 +13,8 @@ import type { RepoWatcherService } from '../repo/RepoWatcherService';
 import { createFileExplorerService } from '../files/FileExplorerService';
 import { createProjectWatcherService } from '../files/ProjectWatcherService';
 import { createRepoFileService } from '../files/RepoFileService';
+import { resolveScopedPath } from '../files/scopedFs';
+import type { FileSummaryService } from '../files/FileSummaryService';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
 import type { ClaudeUsageService } from '../core/ClaudeUsageService';
 
@@ -25,6 +27,7 @@ export interface RepoServicesCompositionDeps {
   getPromptContent: (key: string) => string;
   /** Centralized Claude token + cost tracker. */
   claudeUsageService: ClaudeUsageService;
+  fileSummaryService?: FileSummaryService;
 }
 
 export function createRepoServices({
@@ -35,6 +38,7 @@ export function createRepoServices({
   agentSessionManager,
   getPromptContent,
   claudeUsageService,
+  fileSummaryService,
 }: RepoServicesCompositionDeps) {
   const repoService = createRepoService({
     repos: container.repos,
@@ -58,6 +62,7 @@ export function createRepoServices({
 
   const fileExplorerService = createFileExplorerService({
     getProjectFolder,
+    fileSummaryService,
   });
 
   const devSessionService = createDevSessionService({
@@ -107,6 +112,29 @@ export function createRepoServices({
   const projectWatcherService = createProjectWatcherService({
     getMainWindow,
     getProjectFolder,
+    onExternalFileChange: fileSummaryService
+      ? ({ projectId, type, path: filePath, isDirectory }) => {
+          if (isDirectory) {
+            if (type === 'deleted') fileSummaryService.deleteFolder(projectId, filePath);
+            return;
+          }
+          if (type === 'deleted') {
+            fileSummaryService.deleteEntry(projectId, filePath);
+          } else {
+            if (!fileSummaryService.shouldSummarizePath(filePath)) {
+              fileSummaryService.deleteEntry(projectId, filePath);
+              return;
+            }
+
+            const projectFolder = getProjectFolder(projectId);
+            if (projectFolder) {
+              const scopedPath = resolveScopedPath(projectFolder, filePath);
+              if (scopedPath.valid) {
+              }
+            }
+          }
+        }
+      : undefined,
   });
 
   const repoFileService = createRepoFileService({

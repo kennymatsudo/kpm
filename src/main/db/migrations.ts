@@ -3139,6 +3139,25 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1081,
+    name: '081_project_file_metadata',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS project_file_metadata (
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          path TEXT NOT NULL,
+          content_hash TEXT NOT NULL,
+          summary TEXT,
+          summarized_at DATETIME,
+          PRIMARY KEY (project_id, path)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_project_file_metadata_project
+          ON project_file_metadata(project_id);
+      `);
+    },
+  },
       // Reverts the user-set git boundary added in 082. KPM now derives the
 ];
 

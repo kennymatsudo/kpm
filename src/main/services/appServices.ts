@@ -63,6 +63,7 @@ import { AnthropicAuth } from '../claude/auth';
 import { clientManager } from '../claude/clientManager';
 import { createRepoServices } from './composition/repoServices';
 import { createGenerationServices } from './composition/generationServices';
+import { createFileSummaryService } from './files/FileSummaryService';
 import { createAgentSessionManager } from './agents/AgentSessionManager';
 import { createHookServer } from './agents/hookServer';
 import { createBoardAgentOrchestrator } from './agents/BoardAgentOrchestrator';
@@ -290,6 +291,17 @@ export function createAppServices(container: IRepositoryContainer) {
     console.error('[AppServices] Failed to start hook server:', err);
   });
 
+  const fileSummaryService = createFileSummaryService({
+    repository: container.projectFileMetadata,
+      claudeUsageService.recordUsage({
+        source: 'file-summary',
+        model,
+        usage,
+        totalCostUsd,
+      });
+    },
+  });
+
   const {
     repoService,
     worktreeService,
@@ -309,6 +321,7 @@ export function createAppServices(container: IRepositoryContainer) {
     agentSessionManager,
     getPromptContent,
     claudeUsageService,
+    fileSummaryService,
   });
   devSessionServiceRef = devSessionService;
 

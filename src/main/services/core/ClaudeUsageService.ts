@@ -48,6 +48,8 @@ export type UsageSource =
   | 'review_assessment_post_impl'
   | 'custom_prompt'
   | 'slack_triage'
+  | 'slack_triage_adapter'
+  | 'file-summary';
 
 /** Shape of the SDK's `result.usage` block (with the fields we care about). */
 export interface RawUsage {

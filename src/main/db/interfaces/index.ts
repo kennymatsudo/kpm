@@ -67,5 +67,8 @@ export type {
   ReviewSyncStateUpsert,
 } from './review';
 
+// File metadata
+export type { IProjectFileMetadataRepository, FileMetadataRow } from './files';
+
 // Container
 export type { IRepositoryContainer } from './container';

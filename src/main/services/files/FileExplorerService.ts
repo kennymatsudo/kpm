@@ -11,11 +11,71 @@ import {
   listScopedDirectory,
   pathExists,
 } from './scopedFs';
+import type { FileSummaryService } from './FileSummaryService';
 
 const MAX_BINARY_BYTES = 50 * 1024 * 1024; // 50MB
+const MAX_SUMMARY_BACKFILL_PER_LIST = 25;
 
 export interface FileExplorerServiceDeps {
   getProjectFolder: (projectId: string) => string | null;
+  fileSummaryService?: FileSummaryService;
+}
+
+export interface FileExplorerListDirectoryOptions {
+  recursive?: boolean;
+  depth?: number;
+  backfillMissingSummaries?: boolean;
+}
+
+function enrichWithSummaries(nodes: FileNode[], summaryMap: Map<string, string>): void {
+  for (const node of nodes) {
+    if (!node.isDirectory) {
+      const summary = summaryMap.get(node.path);
+      if (summary) node.summary = summary;
+    }
+    if (node.children) enrichWithSummaries(node.children, summaryMap);
+  }
+}
+
+function queueMissingSummaries(
+  projectId: string,
+  projectFolder: string,
+  nodes: FileNode[],
+  summaryMap: Map<string, string>,
+  fileSummaryService: FileSummaryService,
+  remaining: { count: number }
+): void {
+  if (remaining.count <= 0) {
+    return;
+  }
+
+  for (const node of nodes) {
+    if (remaining.count <= 0) {
+      return;
+    }
+
+    if (node.isDirectory) {
+      if (node.children) {
+        queueMissingSummaries(
+          projectId,
+          projectFolder,
+          node.children,
+          summaryMap,
+          fileSummaryService,
+          remaining
+        );
+      }
+      continue;
+    }
+
+    if (node.isSymlink || summaryMap.has(node.path) || !fileSummaryService.shouldSummarizePath(node.path)) {
+      continue;
+    }
+
+    if (fileSummaryService.enqueueFileFromDisk(projectId, node.path, path.join(projectFolder, node.path))) {
+      remaining.count -= 1;
+    }
+  }
 }
 
 export function createFileExplorerService(deps: FileExplorerServiceDeps) {
@@ -25,6 +85,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
     async listDirectory(
       projectId: string,
       relativePath = '',
+      options: FileExplorerListDirectoryOptions = {}
     ): AsyncResult<FileNode[]> {
       const projectFolder = deps.getProjectFolder(projectId);
       if (!projectFolder) {
@@ -46,6 +107,15 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         const isRootDirectory = relativePath === '' || relativePath === '.';
         if (isRootDirectory && await pathExists(path.join(projectFolder, DEFAULT_CONTEXT_FILENAME))) {
           nodes = nodes.filter((node) => node.name !== COMPAT_CONTEXT_FILENAME);
+        }
+
+        const summaryMap = deps.fileSummaryService?.getMetadataMap(projectId);
+          enrichWithSummaries(nodes, summaryMap);
+        }
+        if (options.backfillMissingSummaries && summaryMap && deps.fileSummaryService) {
+          queueMissingSummaries(projectId, projectFolder, nodes, summaryMap, deps.fileSummaryService, {
+            count: MAX_SUMMARY_BACKFILL_PER_LIST,
+          });
         }
 
         return success(nodes);
@@ -105,6 +175,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         await ensureParentDirectory(fullPath);
 
         await fs.promises.writeFile(fullPath, content, 'utf-8');
+        void deps.fileSummaryService?.processFile(projectId, relativePath, content);
         return success(await getScopedEntryInfo(fullPath, relativePath));
       } catch (error) {
         return failure(`Failed to create file: ${error}`);
@@ -192,6 +263,12 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
           await fs.promises.unlink(fullPath);
         }
 
+        if (stats.isDirectory() && !stats.isSymbolicLink()) {
+          deps.fileSummaryService?.deleteFolder(projectId, relativePath);
+        } else {
+          deps.fileSummaryService?.deleteEntry(projectId, relativePath);
+        }
+
         return success(undefined);
       } catch (error) {
         return failure(`Failed to delete: ${error}`);
@@ -233,6 +310,17 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         } else {
         }
 
+        const node = await getScopedEntryInfo(newFullPath, newPath, path.basename(projectFolder));
+        if (node.isDirectory && !node.isSymlink) {
+          deps.fileSummaryService?.deleteFolder(projectId, oldPath);
+        } else {
+          deps.fileSummaryService?.deleteEntry(projectId, oldPath);
+          if (!node.isSymlink) {
+            void deps.fileSummaryService?.processFileFromDisk(projectId, newPath, newFullPath);
+          }
+        }
+
+        return success(node);
       } catch (error) {
         return failure(`Failed to rename: ${error}`);
       }
@@ -443,6 +531,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         await fs.promises.copyFile(sourcePath, fullPath, fs.constants.COPYFILE_EXCL);
 
         const stats = await fs.promises.stat(fullPath);
+        void deps.fileSummaryService?.processFileFromDisk(projectId, relativePath, fullPath);
         return success({
           name: path.basename(relativePath),
           path: relativePath,
