@@ -2,7 +2,9 @@
 
 Owns database schema, migrations, repositories (data access), and domain services (complex multi-table transactions).
 
+## Document storage
 
+Markdown documents live as files on disk in the project folder. There is no DB-backed document store. `PlanItem.source_document_id` is a free-form text breadcrumb (no FK); the plan-refs feature uses `@plan/<uuid>` tokens for first-class cross-references. Claude's `propose_document_create` and `propose_document_edit` tools write files directly.
 
 ## Directory Structure
 

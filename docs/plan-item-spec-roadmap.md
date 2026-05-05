@@ -355,6 +355,7 @@ CLAUDE.md files that document conventions:
 | File | Section |
 |------|---------|
 | `src/main/claude/CLAUDE.md` | Plan Item Spec Fields + Sync boundary |
+| `src/main/db/CLAUDE.md` | Document storage convention; JSON-Encoded Array Columns |
 | `src/main/ipc/CLAUDE.md` | PlanAction Schema Sync (including spec sub-fields) |
 | `src/main/services/CLAUDE.md` | DevSessionService owns `buildAgentContext` |
 | `src/renderer/CLAUDE.md` | Plan Item Spec Fields in UI |

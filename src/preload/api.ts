@@ -1408,6 +1408,15 @@ const briefing = {
     ipcRenderer.invoke(IPC_CHANNELS.briefing.generate, { projectId }),
   get: (projectId: string): Promise<{ success: boolean; data?: BriefingResult | null; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.briefing.get, { projectId }),
+  /**
+   * Subscribe to streaming briefing chunks. Fires per text delta as Stage 2
+   * synthesizes. Returns an unsubscribe function.
+   */
+  onChunk: (handler: (event: { projectId: string; delta: string }) => void) => {
+    const listener = (_: unknown, payload: { projectId: string; delta: string }) => handler(payload);
+    ipcRenderer.on(IPC_CHANNELS.briefing.chunk, listener);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.briefing.chunk, listener);
+  },
 };
 
 // Claude usage tracking API

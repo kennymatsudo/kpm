@@ -3105,6 +3105,20 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1079,
+    name: '079_drop_documents_table',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+
+        DROP INDEX IF EXISTS idx_documents_project;
+        DROP TABLE IF EXISTS documents;
+
+        PRAGMA foreign_keys = ON;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

@@ -501,6 +501,7 @@ export const IPC_CHANNELS = {
   briefing: {
     generate: 'briefing:generate',
     get: 'briefing:get',
+    chunk: 'briefing:chunk',
   },
 
   // ===========================================================================

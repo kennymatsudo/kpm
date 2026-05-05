@@ -1,8 +1,13 @@
 /**
  * Briefing Service
  *
+ * Gathers structured project context via SQL, pre-synthesizes chat history
+ * with the fast model, then produces a prioritized briefing via the deep
+ * model — streamed to the caller via an optional onChunk callback.
  *
  * Two-stage pipeline:
+ *   Stage 1: SQL queries (sync) → file list → fast-model chat synthesis
+ *   Stage 2: deep-model synthesis of all Stage 1 outputs into the final briefing
  */
 
 import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
@@ -17,6 +22,10 @@ import { runClaudeQuery, type ClaudeQueryUsage } from '../../claude/runClaudeQue
 // =============================================================================
 // Types
 // =============================================================================
+
+const MAX_RECENT_FILES = 10;
+const CHAT_MESSAGE_LIMIT = 100;
+const CHAT_MESSAGE_CONTENT_LIMIT = 500;
 
 interface StatusSummaryRow {
   status_category: string;
@@ -71,6 +80,32 @@ interface BriefingContext {
   recentlyModifiedFiles: { path: string; modifiedAt: string; size: number }[];
 }
 
+interface BriefingRow {
+  project_id: string;
+  summary: string;
+  generated_at: string;
+  blocked_count: number;
+  stale_count: number;
+  ready_count: number;
+}
+
+interface BriefingStatements {
+  statusSummary: Statement;
+  blockedItems: Statement;
+  staleItems: Statement;
+  readyItems: Statement;
+  inProgressItems: Statement;
+  inactiveDevSessions: Statement;
+  recentMessages: Statement;
+  upsertBriefing: Statement;
+  getBriefing: Statement;
+  latestPlanItemUpdate: Statement;
+}
+
+interface LatestUpdateRow {
+  latest: string | null;
+}
+
 // =============================================================================
 // Dependencies
 // =============================================================================
@@ -79,6 +114,11 @@ export interface BriefingServiceDeps {
   getDatabase: () => Database;
   getPromptContent: (key: string) => string;
   fileExplorerService: {
+    listDirectory: (
+      projectId: string,
+      path: string,
+      options?: { recursive?: boolean; depth?: number },
+    ) => AsyncResult<FileNode[]>;
   };
   projects: {
     get: (projectId: string) => { id: string; name: string; folder_path: string | null } | undefined;
@@ -96,14 +136,74 @@ export interface BriefingServiceDeps {
   }) => void;
 }
 
-// =============================================================================
-// =============================================================================
-
+export interface GenerateBriefingOptions {
+  /**
+   * Called per text delta as Stage 2 streams. Stage 1 outputs are not
+   * streamed — they are intermediate context, not user-visible text.
+   */
+  onChunk?: (delta: string) => void;
 }
 
+// =============================================================================
+// Claude API Helper
+// =============================================================================
+
+interface ClaudeCallContext {
+  onUsage?: (event: { model: string; usage: ClaudeQueryUsage; totalCostUsd?: number | null }) => void;
+  onText?: (delta: string) => void;
 }
 
+async function callClaude(
+  model: 'sonnet' | 'opus' | 'haiku',
+  systemPrompt: string,
+  userPrompt: string,
+  timeoutMs: number,
+  ctx?: ClaudeCallContext,
+): Promise<string> {
+  const sdkOptions: SDKOptions = {
+    model,
+    tools: [],
+    persistSession: false,
+    systemPrompt,
+    maxTurns: 1,
+    ...getClaudeSdkSpawnOptions(),
+  };
 
+  const result = await runClaudeQuery({
+    prompt: userPrompt,
+    sdkOptions,
+    timeoutMs,
+    timeoutMessage: `Claude ${model} call timed out`,
+    onText: ctx?.onText,
+    recordUsage: ctx?.onUsage
+      ? ({ usage, totalCostUsd }) => {
+          ctx.onUsage!({ model, usage, totalCostUsd });
+        }
+      : undefined,
+  });
+
+  return result.text;
+}
+
+// =============================================================================
+// Service Factory
+// =============================================================================
+
+export function createBriefingService(deps: BriefingServiceDeps) {
+  const log = (msg: string) => console.log(`[BriefingService] ${msg}`);
+
+  // Statements are compiled lazily against whichever database handle deps
+  // returns. Storing the cache on the closure (rather than module scope)
+  // keeps it scoped to this service instance, so DB resets in tests and
+  // runtime reinit produce a fresh cache via a fresh service.
+  let stmts: BriefingStatements | null = null;
+  let stmtsDb: Database | null = null;
+
+  function getStatements(): BriefingStatements {
+    const db = deps.getDatabase();
+    if (stmts && stmtsDb === db) return stmts;
+    stmtsDb = db;
+    stmts = {
       statusSummary: db.prepare(`
         SELECT status_category, COUNT(*) as count
         FROM plan_items
@@ -177,6 +277,7 @@ export interface BriefingServiceDeps {
         FROM chat_messages
         WHERE session_id = ?
         ORDER BY created_at DESC
+        LIMIT ${CHAT_MESSAGE_LIMIT}
       `),
       upsertBriefing: db.prepare(`
         INSERT INTO project_briefings (project_id, summary, generated_at, blocked_count, stale_count, ready_count)
@@ -191,11 +292,32 @@ export interface BriefingServiceDeps {
       getBriefing: db.prepare(`
         SELECT * FROM project_briefings WHERE project_id = ?
       `),
+      latestPlanItemUpdate: db.prepare(`
+        SELECT MAX(updated_at) as latest FROM plan_items WHERE project_id = ?
+      `),
+    };
+    return stmts;
+  }
+
+  function gatherContext(projectId: string): BriefingContext {
+    const s = getStatements();
+    return {
+      statusSummary: s.statusSummary.all(projectId) as StatusSummaryRow[],
+      blockedItems: s.blockedItems.all(projectId) as BlockedItemRow[],
+      staleItems: s.staleItems.all(projectId) as StaleItemRow[],
+      readyItems: s.readyItems.all(projectId) as ReadyItemRow[],
+      inProgressItems: s.inProgressItems.all(projectId) as InProgressItemRow[],
+      inactiveDevSessions: s.inactiveDevSessions.all(projectId) as InactiveSessionRow[],
+      recentMessages: s.recentMessages.all(projectId) as ChatMessageRow[],
+      recentlyModifiedFiles: [],
     };
   }
 
-
   return {
+    async generateBriefing(
+      projectId: string,
+      options?: GenerateBriefingOptions,
+    ): AsyncResult<BriefingResult> {
       const project = deps.projects.get(projectId);
       if (!project) {
         return failure('Project not found');
@@ -208,12 +330,21 @@ export interface BriefingServiceDeps {
         log(`Generating briefing for project "${project.name}" (${projectId})`);
         const startTime = Date.now();
 
+        // ─── Stage 1a: SQL context (sync) ──────────────────────────────
+        const context = gatherContext(projectId);
 
+        // ─── Stage 1b: file mtimes (only when folder configured) ───────
         if (project.folder_path) {
           try {
+            const filesResult = await deps.fileExplorerService.listDirectory(projectId, '', {
+              recursive: true,
+              depth: 2,
+            });
             if (filesResult.ok) {
+              context.recentlyModifiedFiles = filesResult.data
                 .filter((f) => !f.isDirectory)
                 .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime())
+                .slice(0, MAX_RECENT_FILES)
                 .map((f) => ({ path: f.name, modifiedAt: f.modifiedAt, size: f.size }));
             }
           } catch {
@@ -221,6 +352,9 @@ export interface BriefingServiceDeps {
           }
         }
 
+        log(
+          `Stage 1: SQL queries complete. ${context.recentMessages.length} messages, ${context.blockedItems.length} blocked, ${context.staleItems.length} stale`,
+        );
 
         const usageCtx: ClaudeCallContext | undefined = deps.recordUsage
           ? {
@@ -229,6 +363,13 @@ export interface BriefingServiceDeps {
             }
           : undefined;
 
+        // ─── Stage 1c: chat synthesis (skipped when no messages) ───────
+        const chatSynthesis: string =
+          context.recentMessages.length > 0
+            ? await callClaude(
+                generationConfig.fastModel,
+                'You summarize project chat history into structured insights.',
+                `Analyze these recent chat messages from a project management tool (newest first).
 
 Produce a structured summary with these sections:
 - **Commitments made**: Things the user said they would do (e.g., "I'll handle X", "Let me work on Y")
@@ -238,9 +379,15 @@ Produce a structured summary with these sections:
 - **Unresolved threads**: Topics discussed but not concluded
 
 Messages:
+${context.recentMessages.map((m) => `[${m.created_at}] ${m.role}: ${m.content.substring(0, CHAT_MESSAGE_CONTENT_LIMIT)}`).join('\n\n')}`,
+                timeoutMs,
+                usageCtx,
+              ).catch((e) => `[Chat synthesis failed: ${e instanceof Error ? e.message : 'unknown error'}]`)
+            : 'No recent chat messages found.';
 
         log(`Stage 1 complete in ${Date.now() - startTime}ms`);
 
+        // ─── Stage 2: deep-model synthesis (streamed) ──────────────────
 
         const briefingPrompt = deps.getPromptContent('generation.briefing_instructions');
         const today = new Date().toISOString().split('T')[0];
@@ -268,8 +415,10 @@ ${context.inProgressItems.map((ip) => `- "${ip.title}" — ${ip.days_since_updat
 ${context.inactiveDevSessions.map((d) => `- "${d.plan_item_title}" on branch ${d.branch_name} — ${d.days_since_update} days idle`).join('\n') || 'None.'}
 
 ## Recently Modified Files
+${context.recentlyModifiedFiles.map((f) => `- ${f.path} (${f.modifiedAt})`).join('\n') || 'No recent file changes.'}
 
 ## Chat History Synthesis (PRIMARY PRIORITY SIGNAL)
+${chatSynthesis}`;
 
         const briefingSystemPrompt = `You are a project planning assistant generating a prioritized briefing for a developer.
 
@@ -285,10 +434,19 @@ Output a concise, actionable markdown briefing. Use sections like:
 
 NEVER use emojis, colored circles, or status indicators. No icons of any kind. Use plain markdown only — headers, bold, lists, and text. Be direct and utilitarian. Lead with actions, not narration.`;
 
+        log('Stage 2: streaming synthesis...');
+
+        const stage2Ctx: ClaudeCallContext = {
+          onUsage: usageCtx?.onUsage,
+          onText: options?.onChunk,
+        };
+
         const summary = await callClaude(
           generationConfig.deepModel,
           briefingSystemPrompt,
           synthesisContext,
+          timeoutMs * 2, // Give Stage 2 more time
+          stage2Ctx,
         );
 
         const elapsed = Date.now() - startTime;
@@ -305,6 +463,7 @@ NEVER use emojis, colored circles, or status indicators. No icons of any kind. U
         };
 
         try {
+          getStatements().upsertBriefing.run(
             projectId,
             briefingResult.summary,
             briefingResult.generatedAt,
@@ -325,9 +484,22 @@ NEVER use emojis, colored circles, or status indicators. No icons of any kind. U
       }
     },
 
+    /**
+     * Returns the persisted briefing for a project, or null if none exists
+     * or if any plan item has been updated since the briefing was generated
+     * (the cached briefing is structurally stale).
+     */
     getBriefing(projectId: string): BriefingResult | null {
       try {
+        const s = getStatements();
+        const row = s.getBriefing.get(projectId) as BriefingRow | undefined;
         if (!row) return null;
+
+        const latest = (s.latestPlanItemUpdate.get(projectId) as LatestUpdateRow | undefined)?.latest;
+        if (latest && latest > row.generated_at) {
+          return null;
+        }
+
         return {
           summary: row.summary,
           generatedAt: row.generated_at,

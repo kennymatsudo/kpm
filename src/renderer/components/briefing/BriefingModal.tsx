@@ -10,6 +10,7 @@ import { Markdown } from 'markdown-to-jsx';
 import { useShallow } from 'zustand/react/shallow';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { useBriefingStore, useProjectDomainStore } from '../../stores';
+import { isBriefingStale } from '../../stores/briefingStore';
 import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
 
 function SignalBadge({ label, count, color }: { label: string; count: number; color: string }) {
@@ -29,9 +30,24 @@ const briefingIcon = (
 );
 
 export function BriefingModal() {
+  const { briefings, streamingByProject, isLoading, error, isModalOpen, generateBriefing, loadBriefing, closeModal } =
+    useBriefingStore(
+      useShallow((state) => ({
+        briefings: state.briefings,
+        streamingByProject: state.streamingByProject,
+        isLoading: state.isLoading,
+        error: state.error,
+        isModalOpen: state.isModalOpen,
+        generateBriefing: state.generateBriefing,
+        loadBriefing: state.loadBriefing,
+        closeModal: state.closeModal,
+      }))
+    );
 
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
   const briefing = currentProjectId ? briefings[currentProjectId] ?? null : null;
+  const streamingText = currentProjectId ? streamingByProject[currentProjectId] ?? '' : '';
+  const isStale = briefing ? isBriefingStale(briefing) : false;
 
   useEffect(() => {
     if (isModalOpen && currentProjectId && (!briefing || isStale) && !isLoading && !error) {
@@ -66,12 +82,19 @@ export function BriefingModal() {
       </ModalHeader>
 
       <ModalBody className="flex-1 overflow-y-auto min-h-0">
+        {isLoading && !streamingText && (
           <div className="flex flex-col items-center justify-center py-16 gap-4">
             <div className="w-8 h-8 rounded-full border-2 border-accent/30 border-t-accent spinner-refined" />
             <div className="space-y-1 text-center">
               <div className="text-sm text-text-secondary">Reading the project…</div>
               <div className="text-xs text-text-tertiary">Usually takes 15–30 seconds</div>
             </div>
+          </div>
+        )}
+
+        {isLoading && streamingText && (
+          <div className="prose-themed">
+            <Markdown options={markdownOptions}>{transformPlanRefs(streamingText)}</Markdown>
           </div>
         )}
 
@@ -92,6 +115,7 @@ export function BriefingModal() {
           </div>
         )}
 
+        {briefing && !isLoading && !error && (
           <div className="space-y-5">
             {/* Signal summary */}
             {hasSignals && (

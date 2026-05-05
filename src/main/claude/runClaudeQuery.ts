@@ -57,6 +57,12 @@ export interface RunClaudeQueryOptions {
   /** Forwarded `tool_use` blocks (used by CustomPromptGenerationService progress). */
   onToolUse?: (toolName: string) => void;
   /**
+   * Called per assistant text block as it arrives, so callers can stream
+   * partial output to UI. Receives the delta only (not the running total) —
+   * the caller assembles. Result-message text blocks also fire this.
+   */
+  onText?: (delta: string) => void;
+  /**
    * Optional override for the SDK's `query()` function — used by tests to
    * inject a fake message stream. Defaults to the real SDK `query`.
    */
@@ -138,6 +144,7 @@ export async function runClaudeQuery<TStructured = unknown>(
         for (const block of content) {
           if (block.type === 'text' && typeof block.text === 'string') {
             acc.text += block.text;
+            options.onText?.(block.text);
           } else if (block.type === 'thinking' && typeof block.thinking === 'string' && options.onThinking) {
             options.onThinking(block.thinking);
           } else if (block.type === 'tool_use' && typeof block.name === 'string' && options.onToolUse) {
@@ -158,6 +165,7 @@ export async function runClaudeQuery<TStructured = unknown>(
           for (const block of resultContent) {
             if (block.type === 'text' && typeof block.text === 'string') {
               acc.text += block.text;
+              options.onText?.(block.text);
             }
           }
         }

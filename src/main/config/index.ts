@@ -205,6 +205,7 @@ function createDefaultConfig(): AppConfig {
 
     generation: {
       fastModel: 'sonnet',
+      deepModel: 'sonnet',
       cheapModel: 'haiku',
       noteRefinementTimeoutMs: 2 * 60 * 1000, // 2 minutes
       artifactGenerationTimeoutMs: 5 * 60 * 1000, // 5 minutes
