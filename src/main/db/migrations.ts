@@ -3126,6 +3126,19 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1080,
+    name: '080_drop_agent_prompts',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        DROP INDEX IF EXISTS idx_agent_prompts_project;
+        DROP INDEX IF EXISTS idx_agent_prompts_global_unique;
+        DROP INDEX IF EXISTS idx_agent_prompts_default_project_role;
+        DROP INDEX IF EXISTS idx_agent_prompts_default_global_role;
+        DROP TABLE IF EXISTS agent_prompts;
+      `);
+    },
+  },
       // Reverts the user-set git boundary added in 082. KPM now derives the
 ];
 
