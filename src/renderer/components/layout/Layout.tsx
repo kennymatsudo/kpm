@@ -47,6 +47,7 @@ interface LayoutProps {
   onDeleteProject?: () => void;
   onNewProject?: () => void;
   onOpenProject?: (projectId: string) => void;
+  onResumeOnboardingTask?: (taskId: string) => void;
   /** When true, sidebar floats over content instead of pushing it */
   sidebarOverlay?: boolean;
   /** When true, chat panel floats over content instead of pushing it */
@@ -57,6 +58,7 @@ export const Layout = memo(function Layout({
   onDeleteProject,
   onNewProject,
   onOpenProject,
+  onResumeOnboardingTask,
   sidebarOverlay = false,
   chatOverlay = false,
 }: LayoutProps) {
@@ -243,6 +245,7 @@ export const Layout = memo(function Layout({
           onDeleteProject={onDeleteProject}
           onNewProject={onNewProject}
           onOpenProject={onOpenProject}
+          onResumeOnboardingTask={onResumeOnboardingTask}
           mainView={mainView}
           onMainViewChange={handleMainViewChange}
           viewMode={viewMode}

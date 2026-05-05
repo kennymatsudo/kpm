@@ -11,10 +11,16 @@ import {
   useProjectDomainStore,
   usePlanDomainStore,
   selectProjectSummary,
+  useBackgroundTaskStore,
+  useContextRegenerationStore,
 } from './stores';
 import { ThemeProvider } from './contexts';
 import { useProjectLoader } from './hooks/useProjectLoader';
 import { subscribeToRefreshRequested } from './services/planService';
+import {
+  initOnboardingTaskBridge,
+  type OnboardingTaskMeta,
+} from './services/onboardingTaskBridge';
 
 export default function App() {
   // Initialize cross-store event subscriptions
@@ -23,6 +29,18 @@ export default function App() {
   // Track in-flight Cmd+K custom prompt generations
   useEffect(() => {
     return initCustomPromptTaskListeners();
+  }, []);
+
+  // Relay onboarding generation events into the generic background task store
+  useEffect(() => {
+    return initOnboardingTaskBridge();
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      useBackgroundTaskStore.getState().reapStale();
+    }, 60_000);
+    return () => window.clearInterval(intervalId);
   }, []);
 
   // Track app ready state for E2E tests - app is ready when projects have been loaded
@@ -41,11 +59,25 @@ export default function App() {
   }, [currentProjectId, refreshPlanItems]);
 
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
+  const [resumeTaskId, setResumeTaskId] = useState<string | null>(null);
   const handleOpenNewProjectDialog = useCallback(() => {
+    setResumeTaskId(null);
     setShowNewProjectDialog(true);
   }, []);
   const handleCloseNewProjectDialog = useCallback(() => {
     setShowNewProjectDialog(false);
+    setResumeTaskId(null);
+  }, []);
+  const handleResumeOnboardingTask = useCallback((taskId: string) => {
+    const task = useBackgroundTaskStore.getState().tasks[taskId];
+    const flow = (task?.meta as OnboardingTaskMeta | undefined)?.flow;
+    if (flow === 'regen') {
+      useContextRegenerationStore.getState().open(taskId);
+      return;
+    }
+    // Default to wizard for 'create' or unknown
+    setResumeTaskId(taskId);
+    setShowNewProjectDialog(true);
   }, []);
 
   const { createProject, deleteCurrentProject, loadProjectData } = useProjectLoader({
@@ -69,12 +101,14 @@ export default function App() {
             onDeleteProject={handleDeleteProject}
             onNewProject={handleOpenNewProjectDialog}
             onOpenProject={loadProjectData}
+            onResumeOnboardingTask={handleResumeOnboardingTask}
           />
 
           <ProjectOnboardingWizard
             isOpen={showNewProjectDialog}
             onClose={handleCloseNewProjectDialog}
             onCreate={handleCreateProject}
+            resumeTaskId={resumeTaskId}
           />
         </ErrorBoundary>
         </TooltipProvider>

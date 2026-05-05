@@ -31,6 +31,7 @@ export function StepContextGeneration({
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-xs text-text-secondary">
             <LoadingSpinner className="w-3.5 h-3.5" />
+            <span>Scanning your code and drafting project context...</span>
           </div>
           <div className="bg-surface-2 rounded-lg px-3 py-2 max-h-32 overflow-y-auto font-mono text-xs text-text-muted space-y-0.5">
             {messages.map((msg, i) => (
@@ -59,8 +60,14 @@ export function StepContextGeneration({
 
       {generatedContent !== null && generatedContent.length > 0 && (
         <div className="flex-1 flex flex-col min-h-0 space-y-2">
+          <div className="flex items-baseline justify-between">
+            <label className="block text-xs font-medium text-text-secondary uppercase tracking-wide">
+              Project context
+            </label>
             {!isGenerating && (
+              <span className="text-xs text-text-muted">Saved as CLAUDE.md · Editable</span>
             )}
+          </div>
           <textarea
             value={editableContent}
             onChange={e => onContentChange(e.target.value)}
@@ -73,6 +80,7 @@ export function StepContextGeneration({
 
       {!isGenerating && !error && (generatedContent === null || generatedContent.length === 0) && (
         <div className="flex-1 flex items-center justify-center text-sm text-text-muted">
+          No content was generated. You can skip this step or retry.
         </div>
       )}
     </div>

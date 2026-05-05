@@ -103,6 +103,13 @@ export { useBriefingStore } from './briefingStore';
 // Context Regeneration
 export { useContextRegenerationStore } from './contextRegenerationStore';
 
+// Background tasks (generic registry for long-running ops surfaced via topbar badge)
+export {
+  useBackgroundTaskStore,
+  selectAllTasks,
+} from './backgroundTaskStore';
+export type { BackgroundTask, BackgroundTaskStatus } from './backgroundTaskStore';
+
 // Global Search
 export { useSearchStore } from './searchStore';
 

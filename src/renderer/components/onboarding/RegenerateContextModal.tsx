@@ -12,15 +12,26 @@ import {
   saveOnboardingContextDirectories,
 } from '../../services/onboardingService';
 import { readClaudeMdFile } from '../../services/contextFileService';
+import type { OnboardingTaskMeta } from '../../services/onboardingTaskBridge';
 import {
   useContextRegenerationStore,
   useProjectDomainStore,
   useResourceDomainStore,
+  useBackgroundTaskStore,
 } from '../../stores';
 
 type Phase = 'configure' | 'generate' | 'review';
 
 export function RegenerateContextModal() {
+  const { isOpen, resumeTaskId, close } = useContextRegenerationStore(
+    useShallow((s) => ({ isOpen: s.isOpen, resumeTaskId: s.resumeTaskId, close: s.close })),
+  );
+  const { currentProjectId, currentProjectName } = useProjectDomainStore(
+    useShallow((s) => ({
+      currentProjectId: s.currentProjectId,
+      currentProjectName:
+        s.projects.find((p) => p.id === s.currentProjectId)?.name ?? '',
+    })),
   );
   const repos = useResourceDomainStore((s) => s.repos);
 
@@ -29,30 +40,54 @@ export function RegenerateContextModal() {
   const [repoDirectories, setRepoDirectories] = useState<Record<string, string[]>>({});
   const [existingContent, setExistingContent] = useState<string | null>(null);
   const [editableContent, setEditableContent] = useState('');
+  const [targetProjectId, setTargetProjectId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const {
+    taskId,
     messages,
     generatedContent,
     error: genError,
     isGenerating,
     startGeneration,
+    setActiveTaskId,
     reset: resetGeneration,
+  } = useOnboardingEvents(resumeTaskId ?? null);
 
   const repoPaths = repos.map((r) => r.path);
+  const contextProjectId = targetProjectId ?? currentProjectId;
+
+  // Resume entry: when modal opens with a resumeTaskId, hydrate from the store
+  // and skip configure phase.
+  useEffect(() => {
+    if (!isOpen || !resumeTaskId) return;
+    const task = useBackgroundTaskStore.getState().tasks[resumeTaskId];
+    if (!task) return;
+    const meta = task.meta as OnboardingTaskMeta;
+    setActiveTaskId(resumeTaskId);
+    setTargetProjectId(meta.projectId);
+    setPhase('generate');
+  }, [isOpen, resumeTaskId, setActiveTaskId]);
 
   // Load existing context file and persisted directories when modal opens
   useEffect(() => {
+    if (isOpen && contextProjectId) {
+      void readClaudeMdFile(contextProjectId).then((result) => {
         setExistingContent(result.success ? result.content : null);
       });
+      void getOnboardingContextDirectories(contextProjectId).then((dirs) => {
         if (dirs) setRepoDirectories(dirs);
       });
     }
+  }, [isOpen, contextProjectId]);
 
   const handleRepoDirectoriesChange = useCallback((nextRepoDirectories: Record<string, string[]>) => {
     setRepoDirectories(nextRepoDirectories);
+    if (!contextProjectId) return;
+    void saveOnboardingContextDirectories(contextProjectId, nextRepoDirectories);
+  }, [contextProjectId]);
 
   // Transition from generate -> review when generation completes
   useEffect(() => {
@@ -68,39 +103,82 @@ export function RegenerateContextModal() {
     setRepoDirectories({});
     setExistingContent(null);
     setEditableContent('');
+    setTargetProjectId(null);
     setIsEditing(false);
     setIsSaving(false);
     setError(null);
     resetGeneration();
   }, [resetGeneration]);
 
+  // Hard close — used by Discard / Cancel / Accept. Dismisses the task from
+  // the background store and closes the modal.
+  const handleHardClose = useCallback(() => {
+    if (taskId) useBackgroundTaskStore.getState().dismiss(taskId);
     resetModal();
     close();
+  }, [taskId, resetModal, close]);
+
+  // Soft close — used during generation. Modal disappears, task continues
+  // running; the topbar badge will surface it.
+  const handleBackgroundClose = useCallback(() => {
+    resetGeneration();
+    resetModal();
+    close();
+  }, [resetGeneration, resetModal, close]);
+
+  // Modal X / outside click router: soft-close while generating, hard-close
+  // otherwise. Saving is blocked entirely.
+  const handleClose = useCallback(() => {
+    if (isSaving) return;
+    if (isGenerating) {
+      handleBackgroundClose();
+      return;
+    }
+    handleHardClose();
+  }, [isGenerating, isSaving, handleBackgroundClose, handleHardClose]);
 
   const handleGenerate = useCallback(async () => {
     if (!currentProjectId) return;
+    const projectId = currentProjectId;
     setError(null);
+    setTargetProjectId(projectId);
     setPhase('generate');
     try {
+      await startGeneration({
+        projectId,
+        projectName: currentProjectName || 'project',
+        description,
+        repoDirectories,
+        flow: 'regen',
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to start generation');
+      setTargetProjectId(null);
       setPhase('configure');
     }
+  }, [currentProjectId, currentProjectName, description, repoDirectories, startGeneration]);
 
   const handleAccept = useCallback(async () => {
+    if (!contextProjectId || !editableContent.trim()) return;
     setIsSaving(true);
     setError(null);
     try {
+      const result = await saveOnboardingContext(contextProjectId, editableContent);
       if (!result.success) {
         setError(result.error || 'Failed to save context');
         return;
       }
+      handleHardClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save context');
     } finally {
       setIsSaving(false);
     }
+  }, [contextProjectId, editableContent, handleHardClose]);
 
+  // Saving is the only state we genuinely block close on; generation now
+  // releases to the background, configure/review let the user discard.
+  const closeBlocked = isSaving;
 
   const diffStats = phase === 'review' && editableContent
     ? getDiffStats(existingContent, editableContent)
@@ -111,6 +189,7 @@ export function RegenerateContextModal() {
       isOpen={isOpen}
       onClose={handleClose}
       size="xl"
+      preventClose={closeBlocked}
       aria-labelledby="regen-context-title"
     >
       {/* Header */}
@@ -127,6 +206,8 @@ export function RegenerateContextModal() {
         </div>
         <button
           onClick={handleClose}
+          disabled={closeBlocked}
+          className="text-text-muted hover:text-text-primary p-1 rounded hover:bg-surface-3 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           aria-label="Close dialog"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -203,6 +284,7 @@ export function RegenerateContextModal() {
       <ModalFooter>
         {phase === 'configure' && (
           <>
+            <button onClick={handleHardClose} className="btn btn-secondary">
               Cancel
             </button>
             <button
@@ -217,6 +299,13 @@ export function RegenerateContextModal() {
 
         {phase === 'generate' && (
           <>
+            {isGenerating && (
+              <button
+                onClick={handleBackgroundClose}
+                className="text-sm text-text-muted hover:text-text-primary transition-colors mr-auto"
+                title="Closes the modal. Generation continues in the background."
+              >
+                Continue in background
               </button>
             )}
             {isGenerating && (
@@ -225,21 +314,29 @@ export function RegenerateContextModal() {
                 Generating...
               </button>
             )}
+            {!isGenerating && (
+              <button onClick={handleHardClose} className="btn btn-secondary">
+                Cancel
+              </button>
+            )}
           </>
         )}
 
         {phase === 'review' && (
           <>
+            <button onClick={handleHardClose} disabled={closeBlocked} className="btn btn-secondary">
               Discard
             </button>
             <button
               onClick={() => setIsEditing(!isEditing)}
+              disabled={closeBlocked}
               className="btn btn-secondary"
             >
               {isEditing ? 'View Diff' : 'Edit'}
             </button>
             <button
               onClick={handleAccept}
+              disabled={closeBlocked || !editableContent.trim()}
               className="btn btn-primary"
             >
               {isSaving ? (

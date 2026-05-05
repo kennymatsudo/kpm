@@ -66,6 +66,13 @@ export function StepProjectInfo({
       </div>
 
       {/* Repositories */}
+        <div>
+          <span className="text-xs font-medium text-text-secondary uppercase tracking-wide">
+            Connect repositories
+          </span>
+            Claude scans these folders locally, then sends selected context to the configured model.
+          </p>
+        </div>
 
         <div className="space-y-2">
           <AnimatePresence>

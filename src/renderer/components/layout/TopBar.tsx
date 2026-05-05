@@ -18,6 +18,8 @@ import { TopBarPlanningControls } from './TopBarPlanningControls';
 import { TopBarProjectSection } from './TopBarProjectSection';
 import { SlackTriageBadge, SlackTriagePanel } from '../slack';
 import { CustomPromptTaskBadge } from './CustomPromptTaskBadge';
+import { BackgroundTaskBadge } from '../background-tasks';
+import { ONBOARDING_TASK_KIND } from '../../services/onboardingTaskBridge';
 import { useProjectEdit } from './hooks/useProjectEdit';
 import { useProjectMenu } from './hooks/useProjectMenu';
 import { useTrackerTopBarIntegration } from './hooks/useTrackerTopBarIntegration';
@@ -33,6 +35,7 @@ interface TopBarProps {
   onDeleteProject?: () => void;
   onNewProject?: () => void;
   onOpenProject?: (projectId: string) => void;
+  onResumeOnboardingTask?: (taskId: string) => void;
   // Main view controls (workspace vs planning)
   mainView: MainView;
   onMainViewChange: (view: MainView) => void;
@@ -60,6 +63,7 @@ export function TopBar({
   onDeleteProject,
   onNewProject,
   onOpenProject,
+  onResumeOnboardingTask,
   mainView,
   onMainViewChange,
   viewMode,
@@ -253,6 +257,15 @@ export function TopBar({
 
           {/* Cmd+K custom prompt indicator - persists across project switches */}
           <CustomPromptTaskBadge />
+
+          {/* Generic background task indicator (onboarding generation, future kinds) */}
+          <BackgroundTaskBadge
+            resumeHandlers={{
+              [ONBOARDING_TASK_KIND]: (task) => {
+                if (onResumeOnboardingTask) onResumeOnboardingTask(task.id);
+              },
+            }}
+          />
 
           {/* Chat toggle - panel chrome, sits at the far right edge to mirror the sidebar toggle on the left */}
           {(mainView === 'planning' || mainView === 'workspace') && (
