@@ -90,6 +90,7 @@ src/
 | Table | Purpose |
 |-------|---------|
 | `projects` | KPM projects (name, folder, phase, session state, token usage) |
+| `repos` | Connected repositories plus environment mode and active worktree override |
 | `attachments` | Uploaded files |
 | `plan_items` | Plan hierarchy + external tracker fields + `completed_at` |
 | `plan_relations` | Dependencies (depends_on, blocks, relates_to) |
@@ -123,6 +124,7 @@ src/
 - `plan_items.completed_at` - When item marked done (for weekly updates)
 - `chat_sessions.claude_session_id` - Claude SDK session ID for resuming conversations
 - `dev_sessions.worktree_path` - Path to isolated git worktree
+- `dev_sessions.status` - Session lifecycle state (pending, active, inactive)
 - `dev_sessions.merge_order` - Optional user override for merge queue ordering
 - `repos.active_worktree_path` - Active checkout used for repo context and branch watching
 - `chat_messages.chat_session_id` - Session boundary tracking for history browsing

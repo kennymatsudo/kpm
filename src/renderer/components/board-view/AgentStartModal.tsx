@@ -23,6 +23,12 @@ const EFFORT_OPTIONS: { value: AgentEffortLevel; label: string; title: string }[
   { value: 'max', label: 'Max', title: 'Maximum effort (Opus only)' },
 ];
 
+const ENV_OPTIONS: { value: RepoEnvironmentMode; label: string; title: string }[] = [
+  { value: 'auto', label: 'Auto', title: 'Detect .envrc and apply direnv automatically' },
+  { value: 'direnv', label: 'DirEnv', title: 'Always capture environment with direnv' },
+  { value: 'none', label: 'None', title: 'Skip environment capture' },
+];
+
 interface ContextFileEntry {
   path: string;
   name: string;
@@ -37,6 +43,7 @@ interface AgentStartModalProps {
     baseBranch?: string;
     contextPaths?: string[];
     effort?: AgentEffortLevel;
+    environmentMode?: RepoEnvironmentMode;
   }) => void;
   onClose: () => void;
   onMoveOnly?: () => void;
@@ -56,6 +63,7 @@ export const AgentStartModal = memo(function AgentStartModal({
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [effort, setEffort] = useState<AgentEffortLevel>('high');
+  const [environmentMode, setEnvironmentMode] = useState<RepoEnvironmentMode>('auto');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Context file attachment state
@@ -69,6 +77,12 @@ export const AgentStartModal = memo(function AgentStartModal({
       setSelectedRepoId(repos[0].id);
     }
   }, [repos]);
+
+  // Sync environment mode from the selected repo's stored setting
+  useEffect(() => {
+    const repo = repos.find((r) => r.id === selectedRepoId);
+    setEnvironmentMode(repo?.environment_mode ?? 'auto');
+  }, [selectedRepoId, repos]);
 
   // Focus textarea on open
   useEffect(() => {
@@ -132,6 +146,7 @@ export const AgentStartModal = memo(function AgentStartModal({
       baseBranch: selectedBranch || undefined,
       contextPaths: selectedContextPaths.length > 0 ? selectedContextPaths : undefined,
       effort,
+      environmentMode,
     });
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -281,6 +296,29 @@ export const AgentStartModal = memo(function AgentStartModal({
                       className={`
                         flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors
                         ${effort === opt.value
+                          ? 'bg-accent text-white'
+                          : 'border border-border-subtle bg-surface-1 text-text-secondary hover:bg-surface-2'
+                        }
+                      `}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-tiny text-text-muted">Environment</label>
+                <div className="flex gap-1">
+                  {ENV_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      title={opt.title}
+                      onClick={() => setEnvironmentMode(opt.value)}
+                      className={`
+                        flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors
+                        ${environmentMode === opt.value
                           ? 'bg-accent text-white'
                           : 'border border-border-subtle bg-surface-1 text-text-secondary hover:bg-surface-2'
                         }

@@ -12,6 +12,7 @@ import { useResourceDomainActions } from '../../hooks/useStoreActions';
 import { isImageFile, formatFileSize } from '../../utils/image';
 import { RepoListSection } from './RepoListSection';
 import { ProjectFilesTreeSection } from './ProjectFilesTreeSection';
+import type { FileNode, FocusedResource } from '../../../shared/types';
 import type { RepoWorktree } from './RepoContextMenu';
 import { getParentPath } from '../../utils/path';
 import { subscribe as subscribeToStoreEvent } from '../../stores/storeEvents';

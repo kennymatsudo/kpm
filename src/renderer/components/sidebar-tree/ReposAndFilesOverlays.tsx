@@ -1,5 +1,6 @@
 import type { RefObject } from 'react';
 import { isContextFile } from '../../../shared/contextFile';
+import type { ConfluencePageLink, FileNode } from '../../../shared/types';
 import type { RepoWorktree } from './RepoContextMenu';
 import { DropdownMenu } from '../ui/DropdownMenu';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';

@@ -804,11 +804,14 @@ export type SessionState = 'idle' | 'connecting' | 'ready' | 'processing' | 'err
  * - Is PTY running?
  *
  * State transitions:
+ * - pending → active (session approved, agent starting)
+ * - active → inactive (agent exits for any reason)
  * - inactive → active (user resumes)
  * - (any) → deleted (user deletes session)
  */
 export type DevSessionStatus =
   | 'pending'      // Awaiting user approval to start
+  | 'active'       // Agent process is running
   | 'inactive';    // Stopped (can resume or delete)
 
 /** Sessions that count as "currently running an agent". */

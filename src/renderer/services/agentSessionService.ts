@@ -23,6 +23,7 @@ export function createAndStartAgentSession(
   baseBranch?: string,
   contextPaths?: string[],
   effort?: AgentEffortLevel,
+  environmentMode?: RepoEnvironmentMode,
 ): Promise<{ success: boolean; session?: DevSession; error?: string }> {
 }
 

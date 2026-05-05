@@ -25,6 +25,7 @@ export const AgentSessionSchemas = {
     baseBranch: z.string().min(1).optional(),
     contextPaths: z.array(z.string().min(1)).optional(),
     effort: agentEffortLevel.optional(),
+    environmentMode: z.enum(['auto', 'direnv', 'none']).optional(),
   }),
 
   /** Start an agent session for an existing dev session */

@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from 'react';
+import { subscribeToSessionStatusChanges } from '../services/devSessionService';
 import {
   subscribeToAgentStateChanges,
   subscribeToAgentActivities,

@@ -682,13 +682,20 @@ A feature that scores low on all four is a candidate for removal even if it is t
   - Local storage for current theme preference
 - **Maturity signal:** Mature. URL validation, package size limits, zip parsing, persistence, delete flow, and unit tests exist.
 
+### 97. Repository Environment Configuration
 - **What it does:** Connected repositories declare how KPM should capture shell environment (`auto`, `direnv`, `nix`, `none`) and which checkout/worktree should be active for chat context. Environment is captured at agent session start and injected into the agent's process environment.
 - **Key code locations:**
   - Service: `src/main/services/repo/RepoService.ts`
   - Service: `src/main/services/repo/EnvironmentService.ts`
+  - Service: `src/main/services/repo/DevSessionService.ts` (environment injection)
   - Repository: `src/main/db/repositories/impl/RepoRepository.ts`
+  - Components: `src/renderer/components/board-view/AgentStartModal.tsx` (environment picker), `src/renderer/components/sidebar-tree/RepoContextMenu.tsx`, `src/renderer/components/sidebar-tree/RepoListSection.tsx`
   - Stores: `src/renderer/stores/project/resourceSlice.ts`
+  - IPC handlers: `src/main/ipc/handlers/repos.ts`
+  - DB fields: `repos.environment_mode`, `repos.active_worktree_path`
 - **Entry points / surfaces:**
+  - Start Agent modal: environment mode picker (Auto / DirEnv / None) per session
+  - Repository context menu: active worktree switcher
   - Chat context: active worktree path is preferred over the repo root when set
 - **Dependencies / integrations:**
   - Git worktree discovery

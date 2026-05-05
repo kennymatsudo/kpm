@@ -265,6 +265,7 @@ export function PlanView({
       params.baseBranch,
       params.contextPaths,
       params.effort,
+      params.environmentMode,
     );
 
     if (!result.success) {
