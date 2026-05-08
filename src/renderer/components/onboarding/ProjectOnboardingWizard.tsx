@@ -12,9 +12,16 @@ import {
   type OnboardingTaskMeta,
 } from '../../services/onboardingTaskBridge';
 
+export interface CreateProjectInput {
+  name: string;
+  repoPaths?: string[];
+  folderPath?: string;
+}
+
 interface ProjectOnboardingWizardProps {
   isOpen: boolean;
   onClose: () => void;
+  onCreate: (input: CreateProjectInput) => Promise<{ id: string }>;
   /**
    * When set, skip the form phase and resume into the generating phase against
    * an existing task in the background task store. Used by the topbar badge to
@@ -37,6 +44,7 @@ export function ProjectOnboardingWizard({
   const [phase, setPhase] = useState<'form' | 'generating'>('form');
   const [name, setName] = useState('');
   const [nameWasUserEdited, setNameWasUserEdited] = useState(false);
+  const [existingFolderPath, setExistingFolderPath] = useState('');
   const [repoPaths, setRepoPaths] = useState<string[]>([]);
   const [description, setDescription] = useState('');
   const [repoDirectories, setRepoDirectories] = useState<Record<string, string[]>>({});
@@ -80,6 +88,7 @@ export function ProjectOnboardingWizard({
     setPhase('form');
     setName('');
     setNameWasUserEdited(false);
+    setExistingFolderPath('');
     setRepoPaths([]);
     setDescription('');
     setRepoDirectories({});
@@ -117,13 +126,35 @@ export function ProjectOnboardingWizard({
     }
   }, [name, nameWasUserEdited]);
 
-      setError('Project name is required');
+  const handleExistingFolderChange = useCallback((next: string) => {
+    setExistingFolderPath(next);
+    if (!nameWasUserEdited && next) {
+      const basename = next.split(/[/\\]/).filter(Boolean).pop();
+      if (basename) setName(basename);
     }
+    if (error) setError(null);
+  }, [nameWasUserEdited, error]);
+
+  const buildCreateInput = useCallback((): CreateProjectInput | null => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError('Project name is required');
+      return null;
+    }
+    const trimmedExisting = existingFolderPath.trim();
+
     setError(null);
+    return {
+      name: trimmedName,
+      repoPaths: repoPaths.length > 0 ? repoPaths : undefined,
+    };
 
   const handleCreateOnly = useCallback(async () => {
+    const input = buildCreateInput();
+    if (!input) return;
     setIsCreating(true);
     try {
+      await onCreate(input);
       resetWizard();
       onClose();
     } catch (e) {
@@ -131,14 +162,19 @@ export function ProjectOnboardingWizard({
     } finally {
       setIsCreating(false);
     }
+  }, [buildCreateInput, onCreate, resetWizard, onClose]);
 
   const handleCreateAndGenerate = useCallback(async () => {
+    const input = buildCreateInput();
+    if (!input) return;
     setIsCreating(true);
     try {
+      const project = await onCreate(input);
       setProjectId(project.id);
       setPhase('generating');
       const newTaskId = await startOnboardingTask({
         projectId: project.id,
+        projectName: input.name,
         description,
         repoDirectories,
         flow: 'create',
@@ -150,6 +186,7 @@ export function ProjectOnboardingWizard({
     } finally {
       setIsCreating(false);
     }
+  }, [buildCreateInput, description, repoDirectories, onCreate, setActiveTaskId]);
 
   const handleRetry = useCallback(async () => {
     if (!projectId) return;
@@ -209,7 +246,9 @@ export function ProjectOnboardingWizard({
       size="xl"
       preventClose={closeBlocked}
       aria-labelledby="onboarding-title"
+      className="!flex !flex-col !overflow-hidden"
     >
+      <div className="px-5 py-4 flex items-center justify-between border-b border-border-default shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-accent-subtle flex items-center justify-center shrink-0">
             <svg
@@ -242,10 +281,20 @@ export function ProjectOnboardingWizard({
         </button>
       </div>
 
+      <ModalBody
+        className={
+          phase === 'generating'
+            ? 'flex flex-col flex-1 min-h-0 overflow-y-auto'
+            : 'flex-1 min-h-0 overflow-y-auto'
+        }
+      >
         {phase === 'form' && (
+          <div className="space-y-5">
             <StepProjectInfo
               name={name}
               onNameChange={handleNameChange}
+              existingFolderPath={existingFolderPath}
+              onExistingFolderPathChange={handleExistingFolderChange}
               repoPaths={repoPaths}
               onRepoPathsChange={handleRepoPathsChange}
               error={error}
@@ -273,6 +322,7 @@ export function ProjectOnboardingWizard({
         )}
       </ModalBody>
 
+      <ModalFooter className="shrink-0">
         {phase === 'form' && (
           <>
             <button onClick={handleClose} disabled={closeBlocked} className="btn btn-secondary">

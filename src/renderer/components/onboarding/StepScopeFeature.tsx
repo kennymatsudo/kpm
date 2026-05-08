@@ -28,6 +28,7 @@ export function StepScopeFeature({
   };
 
   return (
+    <div className="space-y-4">
       {/* Optional description */}
       <div className="space-y-2">
         <label
