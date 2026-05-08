@@ -8,6 +8,8 @@ import type { Database, Statement } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import type { Stats } from 'fs';
 import type { Project } from '../../../../shared/types';
+import type { IProjectRepository, ProjectCreateInput } from '../../interfaces/project';
+import { writeInitialProjectContextFilesSync } from '../../../project-context/contextFileCompat';
 
 /**
  * File system operations interface for testing
@@ -93,7 +95,10 @@ export class ProjectRepository implements IProjectRepository {
     };
   }
 
+  create(input: ProjectCreateInput): Project {
+    const { name } = input;
     const id = randomUUID();
+    const folderPath = input.folderPath ?? this.deriveLegacyFolderPath(name, id);
 
     this.fs.mkdirSync(folderPath, { recursive: true });
 
@@ -101,8 +106,19 @@ export class ProjectRepository implements IProjectRepository {
 
 This is your project workspace. Use this file to track context, conventions, and learnings.
 `;
+    writeInitialProjectContextFilesSync(this.fs, folderPath, initialContent);
 
     return this.stmts.insert.get(id, name, folderPath) as Project;
+  }
+
+  private deriveLegacyFolderPath(name: string, id: string): string {
+    const projectsRoot = this.path.join(this.userDataPath, 'projects');
+    if (!this.fs.existsSync(projectsRoot)) {
+      this.fs.mkdirSync(projectsRoot, { recursive: true });
+    }
+    const shortId = id.split('-')[0];
+    const safeName = name.replace(/[^a-zA-Z0-9-_]/g, '-');
+    return this.path.join(projectsRoot, `${safeName}-${shortId}`);
   }
 
   get(id: string): Project | undefined {

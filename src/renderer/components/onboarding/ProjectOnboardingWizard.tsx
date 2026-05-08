@@ -147,7 +147,9 @@ export function ProjectOnboardingWizard({
     return {
       name: trimmedName,
       repoPaths: repoPaths.length > 0 ? repoPaths : undefined,
+      folderPath: trimmedExisting || undefined,
     };
+  }, [name, existingFolderPath, repoPaths]);
 
   const handleCreateOnly = useCallback(async () => {
     const input = buildCreateInput();

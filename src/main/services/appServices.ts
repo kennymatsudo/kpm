@@ -167,6 +167,7 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const projectService = createProjectService({
     projects: container.projects,
+    appSettings: container.appSettings,
     openPath: (targetPath: string) => shell.openPath(targetPath),
   });
 

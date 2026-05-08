@@ -3158,7 +3158,24 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1082,
+    name: '082_projects_git_root',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`ALTER TABLE projects ADD COLUMN git_root TEXT;`);
+    },
+  },
+  {
+    id: 1083,
+    name: '083_drop_projects_git_root',
+    up: (db: BetterSqliteDatabase) => {
       // Reverts the user-set git boundary added in 082. KPM now derives the
+      // git boundary from disk on every project open (`findEnclosingGitRoot`),
+      // so the stored field is dead weight. Drop is safe — no other code reads
+      // the column after this migration applies.
+      db.exec(`ALTER TABLE projects DROP COLUMN git_root;`);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

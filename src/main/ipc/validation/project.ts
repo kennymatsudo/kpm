@@ -19,6 +19,7 @@ import {
 export const ProjectSchemas = {
   create: z.object({
     name: projectName,
+    folderPath: absolutePath.optional(),
   }),
 
   get: z.object({

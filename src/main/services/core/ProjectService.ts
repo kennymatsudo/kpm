@@ -1,9 +1,25 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import type { Project } from '../../../shared/types';
+import type { IAppSettingsRepository, IProjectRepository } from '../../db/interfaces';
 import { failure, success, type AsyncResult, type ServiceResult } from '../result';
 
 type ProjectUpdates = Partial<Pick<Project, 'name' | 'phase'>>;
 
+export interface CreateProjectInput {
+  name: string;
+  /**
+   * Absolute path where the project folder lives. When omitted, the repository
+   * falls back to its legacy `<userData>/projects/` location — used by tests
+   * and any internal caller that doesn't care about the on-disk location.
+   */
+  folderPath?: string;
+}
+
 export interface ProjectServiceDeps {
   projects: IProjectRepository;
+  appSettings: IAppSettingsRepository;
   openPath: (targetPath: string) => Promise<string>;
   fetchFn?: typeof fetch;
 }
@@ -12,8 +28,31 @@ export function createProjectService(deps: ProjectServiceDeps) {
   const fetchFn = deps.fetchFn ?? fetch;
 
   return {
+    async create(input: CreateProjectInput): AsyncResult<Project> {
+      const { name, folderPath } = input;
+
+      if (folderPath !== undefined) {
+        try {
+          const stat = await fs.promises.stat(folderPath);
+          if (!stat.isDirectory()) return failure(`${folderPath} is not a directory`);
+        } catch {
+          return failure(`${folderPath} does not exist`);
+        }
+      }
+
       try {
+        const project = deps.projects.create({ name, folderPath });
+        return success(project);
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
+    getDefaultLocation(): ServiceResult<{ defaultLocation: string }> {
+      try {
+        return success({
           defaultLocation: path.join(os.homedir(), 'Documents', 'KPM Projects'),
+        });
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }

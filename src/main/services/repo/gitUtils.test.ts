@@ -1,4 +1,5 @@
 import { execFileSync } from 'child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -44,5 +45,42 @@ describe('getDiff', () => {
     expect(headOnlyDiff).toContain('committed change');
     expect(headOnlyDiff).not.toContain('live worktree change');
     expect(worktreeDiff).toContain('live worktree change');
+  });
+});
+
+describe('findEnclosingGitRoot', () => {
+  const tempDirs: string[] = [];
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+  function freshTempDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'gitroot-find-'));
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  it('returns the path itself when it is a repo root', () => {
+    const root = freshTempDir();
+    mkdirSync(join(root, '.git'));
+    expect(findEnclosingGitRoot(root)).toBe(root);
+  });
+
+  it('walks up to find an enclosing repo', () => {
+    const root = freshTempDir();
+    mkdirSync(join(root, '.git'));
+    const sub = join(root, 'a', 'b');
+    mkdirSync(sub, { recursive: true });
+    expect(findEnclosingGitRoot(sub)).toBe(root);
+  });
+
+  it('treats a .git file (worktree gitlink) as a valid root', () => {
+    const root = freshTempDir();
+    writeFileSync(join(root, '.git'), 'gitdir: /elsewhere\n', 'utf-8');
+    expect(findEnclosingGitRoot(root)).toBe(root);
+  });
+
+  it('returns null when no repo exists up the tree', () => {
+    const root = freshTempDir();
+    expect(findEnclosingGitRoot(root)).toBeNull();
   });
 });

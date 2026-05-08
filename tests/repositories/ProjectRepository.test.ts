@@ -10,6 +10,7 @@ describe('ProjectRepository', () => {
   });
 
   it('creates the default context file when a project is created', () => {
+    const project = ctx.repos.projects.create({ name: 'Test Project' });
     const contextFilePath = `${project.folder_path}/${DEFAULT_CONTEXT_FILENAME}`;
     const compatFilePath = `${project.folder_path}/CLAUDE.md`;
 

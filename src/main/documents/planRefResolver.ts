@@ -12,8 +12,20 @@
 import type { PlanItem } from '../../shared/types';
 import { findRefs } from '../../shared/planRefs';
 
+export type RefDestination =
+  | 'jira'
+  | 'linear'
+  | 'confluence'
+  | 'github'
+  | 'plain'
+  /**
+   * Persisted form for git-tracked shared docs. Emits
    * `[<title>](@plan/<uuid>)` so non-KPM readers see the title while
    * KPM itself can still detect the ref on render and resolve live.
+   * Refs already wrapped in this form are skipped so re-saves stay
+   * idempotent.
+   */
+  | 'shared-doc';
 
 /**
  * Replace every `@plan/<uuid>` in `markdown` with native syntax for
@@ -36,10 +48,30 @@ export function resolvePlanRefs(
   let cursor = 0;
   for (const match of matches) {
     out += markdown.slice(cursor, match.start);
+    if (destination === 'shared-doc' && isAlreadyInLink(markdown, match.start)) {
+      // Re-save idempotency: an existing `[title](@plan/<uuid>)` already has
+      // the persisted form. Leaving it untouched keeps "Plan title at time of
+      // write" — re-rendering would silently update titles after they were
+      // captured.
+      out += markdown.slice(match.start, match.end);
+    } else {
+      out += renderRef(byId.get(match.id) ?? null, match.id, destination);
+    }
     cursor = match.end;
   }
   out += markdown.slice(cursor);
   return out;
+}
+
+/** True when the ref starts immediately after `](`, i.e. it's the URL of a
+ *  markdown link. Cheap two-char check; the resolver only uses it for the
+ *  `shared-doc` destination so the cost is paid only on disk writes. */
+function isAlreadyInLink(markdown: string, start: number): boolean {
+  return (
+    start >= 2 &&
+    markdown.charCodeAt(start - 1) === 40 /* '(' */ &&
+    markdown.charCodeAt(start - 2) === 93 /* ']' */
+  );
 }
 
 function renderRef(
@@ -54,6 +86,15 @@ function renderRef(
 
   const title = item.title;
 
+  // Shared-doc destination uses the @plan URL as the link target, so it
+  // never depends on tracker linkage being present.
+  if (destination === 'shared-doc') {
+    return `[${title}](@plan/${id.toLowerCase()})`;
+  }
+
+  // No tracker linkage — emit the title in every other destination.
+  // Exporters can still annotate this with a non-blocking "N unlinked
+  // references" warning at the call site.
   if (!item.external_key || !item.external_url) {
     return title;
   }

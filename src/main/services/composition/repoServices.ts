@@ -63,6 +63,7 @@ export function createRepoServices({
   const fileExplorerService = createFileExplorerService({
     getProjectFolder,
     fileSummaryService,
+    getPlanItems: (projectId) => container.planItems.getByProject(projectId),
   });
 
   const devSessionService = createDevSessionService({

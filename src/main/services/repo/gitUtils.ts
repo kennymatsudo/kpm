@@ -1,11 +1,37 @@
 /**
  * Git Utilities
  *
+ * Reusable git operations for PR description generation, worktree management,
+ * and review assessment. Uses execFile (no shell) to prevent command injection.
+ *
+ * Note: KPM does NOT perform end-user git operations (pull, push, commit,
+ * stage, status, branch sync). Users manage those through their own tooling.
  */
 
+import fs from 'fs';
+import path from 'path';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Walk up from `startPath` looking for a `.git` entry (directory for normal
+ * repos, file for worktree gitlinks). Returns the directory containing the
+ * `.git` entry, or `null` if no repo is found before hitting the filesystem
+ * root.
+ *
+ * `startPath` itself is checked first — so if `startPath` *is* a repo root,
+ * that path is returned.
+ */
+export function findEnclosingGitRoot(startPath: string): string | null {
+  let current = path.resolve(startPath);
+  while (true) {
+    if (fs.existsSync(path.join(current, '.git'))) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
 
 /**
  * Execute a git command safely without shell interpolation.

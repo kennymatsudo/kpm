@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
   useProjectDomainStore,

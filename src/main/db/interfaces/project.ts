@@ -15,7 +15,14 @@ import type {
 // Project Repository
 // =============================================================================
 
+export interface ProjectCreateInput {
+  name: string;
+  /** Absolute path where the project folder lives or should be created. */
+  folderPath?: string;
+}
+
 export interface IProjectRepository {
+  create(input: ProjectCreateInput): Project;
   get(id: string): Project | undefined;
   list(): Project[];
   update(id: string, updates: Partial<Pick<Project, 'name' | 'phase'>>): void;

@@ -77,6 +77,21 @@ export async function getLastOpenedProjectId(): Promise<string | undefined> {
   return result.success ? result.value : undefined;
 }
 
+export function createProjectRecord(input: {
+  name: string;
+  folderPath?: string;
+}): Promise<Project> {
+  return window.api.projects.create(input);
+}
+
+export function getDefaultProjectLocation(): Promise<string> {
+  return window.api.projects.getDefaultLocation();
+}
+
+export function selectProjectParentFolder(title?: string): Promise<string | null> {
+  return window.api.fileExplorer.selectFolderDialog(title);
+}
+
 export async function deleteProjectRecord(projectId: string): Promise<void> {
   await window.api.projects.delete(projectId);
 }

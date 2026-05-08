@@ -19,6 +19,7 @@ describe('PlanActionExecutor — create_item with spec fields', () => {
 
   beforeEach(() => {
     ctx = createTestRepositoryContext();
+    const project = ctx.repos.projects.create({ name: 'Spec Field Test' });
     projectId = project.id;
   });
 

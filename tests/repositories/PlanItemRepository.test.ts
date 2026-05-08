@@ -14,6 +14,7 @@ describe('PlanItemRepository', () => {
 
   beforeEach(() => {
     ctx = createTestRepositoryContext();
+    const project = ctx.repos.projects.create({ name: 'Test Project' });
     projectId = project.id;
   });
 

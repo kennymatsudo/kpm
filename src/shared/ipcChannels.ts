@@ -26,6 +26,7 @@ export const IPC_CHANNELS = {
     update: 'project:update',
     delete: 'project:delete',
     openFolder: 'project:open-folder',
+    getDefaultLocation: 'project:get-default-location',
   },
 
   // ===========================================================================

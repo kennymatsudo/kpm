@@ -165,3 +165,46 @@ describe('collectLinkedRefKeys', () => {
     expect(collectLinkedRefKeys(`@plan/${A} @plan/${B}`, items)).toEqual([]);
   });
 });
+
+describe('resolvePlanRefs(shared-doc)', () => {
+  it('rewrites a bare @plan token to a markdown link with the title', () => {
+    const items = [makeItem(A, { title: 'Auth refactor' })];
+    expect(resolvePlanRefs(`see @plan/${A}.`, items, 'shared-doc')).toBe(
+      `see [Auth refactor](@plan/${A}).`,
+    );
+  });
+
+  it('rewrites refs with no tracker linkage (no early-return)', () => {
+    const items = [makeItem(A, { title: 'Local-only', external_key: null, external_url: null })];
+    expect(resolvePlanRefs(`@plan/${A}`, items, 'shared-doc')).toBe(
+      `[Local-only](@plan/${A})`,
+    );
+  });
+
+  it('leaves refs already in [title](@plan/<uuid>) form untouched (idempotent re-saves)', () => {
+    const items = [makeItem(A, { title: 'New title' })];
+    const input = `prefix [Old title](@plan/${A}) suffix`;
+    expect(resolvePlanRefs(input, items, 'shared-doc')).toBe(input);
+  });
+
+  it('preserves bare-token form for unknown UUIDs (graceful degradation)', () => {
+    expect(resolvePlanRefs(`@plan/${B}`, [], 'shared-doc')).toBe(`@plan/${B}`);
+  });
+
+  it('rewrites only the bare token when the file mixes both forms', () => {
+    const items = [
+      makeItem(A, { title: 'A title' }),
+      makeItem(C, { title: 'C title' }),
+    ];
+    const input = `bare @plan/${A} and wrapped [C label](@plan/${C}).`;
+    expect(resolvePlanRefs(input, items, 'shared-doc')).toBe(
+      `bare [A title](@plan/${A}) and wrapped [C label](@plan/${C}).`,
+    );
+  });
+
+  it('does not rewrite refs inside fenced code blocks', () => {
+    const items = [makeItem(A, { title: 'X' })];
+    const input = '```\n@plan/' + A + '\n```';
+    expect(resolvePlanRefs(input, items, 'shared-doc')).toBe(input);
+  });
+});

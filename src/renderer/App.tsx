@@ -84,6 +84,13 @@ export default function App() {
     onRequestNewProject: handleOpenNewProjectDialog,
   });
 
+  // Create a new project (optionally cloning from a URL) — returns project for wizard
+  const handleCreateProject = useCallback(
+    async (input: { name: string; repoPaths?: string[]; folderPath?: string; cloneUrl?: string }) => {
+      return createProject(input);
+    },
+    [createProject],
+  );
 
   // Delete the current project
   const handleDeleteProject = useCallback(async () => {

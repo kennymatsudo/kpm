@@ -159,6 +159,7 @@ export type UiDomainState = Pick<
   'isLoading' | 'isSwitchingProject' | 'error' | 'focusedResources' | 'focusedResourcesBySession' | 'editingItemId' |
   'setFocusedResources' | 'addFocusedResource' | 'addFocusedResources' | 'removeFocusedResource' | 'clearFocusedResources' |
   'syncFocusedResourcesForSession' | 'setEditingItemId' | 'setLoading' | 'setSwitchingProject' |
+  'setError' | 'clearError'
 >;
 
 export type SliceCreator<TSlice> = (deps: ProjectStoreDependencies) => StateCreator<ProjectState, [], [], TSlice>;

@@ -13,6 +13,14 @@ import type {
 import type { PersistedAgentReview } from './agent-types';
 
 // Re-export core types from base types
+export type {
+  StatusCategory,
+  PlanRelation,
+  Worktree,
+  WorktreeStatus,
+  LaunchResult,
+  Group,
+} from './base-types';
 export type { AgentType, AgentSessionState, AgentSessionRole } from './base-types';
 export type {
   CustomTheme,

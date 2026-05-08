@@ -347,10 +347,18 @@ const chat = {
 };
 
 const projects = {
+  create: (input: { name: string; folderPath?: string }): Promise<Project> =>
+    invokeOrThrow<{ project: Project }, Project>(IPC_CHANNELS.project.create, input, ({ project }) => project),
   get: (projectId: string): Promise<Project | undefined> =>
     invokeOrThrow<{ project: Project | undefined }, Project | undefined>(IPC_CHANNELS.project.get, { projectId }, ({ project }) => project),
   list: (): Promise<Project[]> =>
     invokeOrThrow<{ projects: Project[] }, Project[]>(IPC_CHANNELS.project.list, undefined, ({ projects }) => projects),
+  getDefaultLocation: (): Promise<string> =>
+    invokeOrThrow<{ defaultLocation: string }, string>(
+      IPC_CHANNELS.project.getDefaultLocation,
+      undefined,
+      ({ defaultLocation }) => defaultLocation,
+    ),
   update: (projectId: string, updates: { name?: string; phase?: string }): Promise<Project | undefined> =>
     invokeOrThrow<{ project: Project | undefined }, Project | undefined>(IPC_CHANNELS.project.update, { projectId, updates }, ({ project }) => project),
   delete: (projectId: string): Promise<{ success: boolean }> =>

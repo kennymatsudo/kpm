@@ -22,6 +22,7 @@ export function registerWorkspaceHandlers({
   services,
   chatRuntime,
 }: IpcRegistrationContext): void {
+  registerProjectHandlers(services.projectService);
   registerRepoHandlers(getMainWindow, services.repoService);
   registerAttachmentHandlers(getMainWindow, services.attachmentService);
   registerPlanHandlers(services.planService);

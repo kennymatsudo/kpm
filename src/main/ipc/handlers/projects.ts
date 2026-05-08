@@ -1,11 +1,15 @@
+import { ipcMain } from 'electron';
 import type { ProjectService } from '../../services/core/ProjectService';
 import { createIpcHandler, createSimpleIpcHandler, ProjectSchemas, StorybookSchemas } from '../validation';
 import { IPC_CHANNELS } from '../channels';
 
+export function registerProjectHandlers(projectService: ProjectService): void {
   ipcMain.handle(
     IPC_CHANNELS.project.create,
     createIpcHandler(
       ProjectSchemas.create,
+      async ({ name, folderPath }) => {
+        const result = await projectService.create({ name, folderPath });
         if (!result.ok) throw new Error(result.error);
         return { project: result.data };
       },
@@ -33,6 +37,15 @@ import { IPC_CHANNELS } from '../channels';
       if (!result.ok) throw new Error(result.error);
       return { projects: result.data };
     }, 'Failed to list projects'),
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.project.getDefaultLocation,
+    createSimpleIpcHandler(() => {
+      const result = projectService.getDefaultLocation();
+      if (!result.ok) throw new Error(result.error);
+      return result.data;
+    }, 'Failed to resolve default project location'),
   );
 
   ipcMain.handle(

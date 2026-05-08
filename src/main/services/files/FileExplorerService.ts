@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { success, failure, type AsyncResult, type ServiceResult } from '../result';
+import type { FileNode, PlanItem } from '../../../shared/types';
 import {
   COMPAT_CONTEXT_FILENAME,
   DEFAULT_CONTEXT_FILENAME,
@@ -12,6 +13,9 @@ import {
   pathExists,
 } from './scopedFs';
 import type { FileSummaryService } from './FileSummaryService';
+import { resolvePlanRefs } from '../../documents/planRefResolver';
+
+const MARKDOWN_EXT_REGEX = /\.(md|mdx|markdown)$/i;
 
 const MAX_BINARY_BYTES = 50 * 1024 * 1024; // 50MB
 const MAX_SUMMARY_BACKFILL_PER_LIST = 25;
@@ -19,6 +23,14 @@ const MAX_SUMMARY_BACKFILL_PER_LIST = 25;
 export interface FileExplorerServiceDeps {
   getProjectFolder: (projectId: string) => string | null;
   fileSummaryService?: FileSummaryService;
+  /**
+   * Optional lookup for the save-time `@plan/<uuid>` rewrite. When provided
+   * and the saved file is markdown in a git-tracked folder, `writeFile`
+   * rewrites refs to `[title](@plan/<uuid>)` form before disk write so
+   * shared docs travel cleanly through GitHub. See
+   * `docs/shared-project-context.md` § "@plan/<uuid> references in shared docs".
+   */
+  getPlanItems?: (projectId: string) => readonly PlanItem[];
 }
 
 export interface FileExplorerListDirectoryOptions {
@@ -439,10 +451,20 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
       }
 
 
+      const finalContent = maybeRewritePlanRefsForDisk(
+        projectId,
+        projectFolder,
+        relativePath,
+        content,
+        deps,
+      );
+
       try {
         // Ensure parent directory exists
         await ensureParentDirectory(fullPath);
 
+        await fs.promises.writeFile(fullPath, finalContent, 'utf-8');
+        void deps.fileSummaryService?.processFile(projectId, relativePath, finalContent);
         return success(undefined);
       } catch (error) {
         return failure(`Failed to write file: ${error}`);
@@ -587,6 +609,27 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
       }
     },
   };
+}
+
+/**
+ * If the file being written is markdown and its project folder lives inside
+ * a git repo, rewrite `@plan/<uuid>` tokens to the persisted
+ * `[<title>](@plan/<uuid>)` form. No-op for non-markdown files, folders
+ * with no enclosing `.git`, or when the plan-items lookup wasn't supplied.
+ */
+function maybeRewritePlanRefsForDisk(
+  projectId: string,
+  projectFolder: string,
+  relativePath: string,
+  content: string,
+  deps: FileExplorerServiceDeps,
+): string {
+  if (!deps.getPlanItems) return content;
+  if (!MARKDOWN_EXT_REGEX.test(relativePath)) return content;
+  if (!findEnclosingGitRoot(projectFolder)) return content;
+  const planItems = deps.getPlanItems(projectId);
+  if (planItems.length === 0) return content;
+  return resolvePlanRefs(content, planItems, 'shared-doc');
 }
 
 // =============================================================================

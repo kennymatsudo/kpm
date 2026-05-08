@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { Markdown } from 'markdown-to-jsx';
@@ -168,6 +169,13 @@ export function MarkdownDocumentModal({
   const previewRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  // Tracks the content version we've already synced into `draft`, so we can
+  // tell apart "user is editing" from "the file changed underneath us."
+  // The working-tree change tiering described in
+  // `docs/shared-project-context.md` § "Detection layer" lives here.
+  const lastSyncedContentRef = useRef(content);
+  const [externalChange, setExternalChange] = useState(false);
+
   // Compute diff stats for display
   const diffLines = useMemo(() => {
     if (oldContent === undefined) return null;
@@ -188,13 +196,55 @@ export function MarkdownDocumentModal({
     goToNextMatch,
     goToPrevMatch,
 
+  // Reset draft to fresh content on open, and reset view mode + search.
+  // Intentionally only runs on `isOpen` — see the next effect for the in-flight
+  // case where `content` changes while the modal is open.
   useEffect(() => {
     if (isOpen) {
       setDraft(content);
+      lastSyncedContentRef.current = content;
+      setExternalChange(false);
       const newViewMode: ViewMode = oldContent !== undefined ? 'diff' : initialEditMode ? 'edit' : 'preview';
       setViewMode(newViewMode);
       closeSearch();
     }
+    // Note: `content` is deliberately not in the deps array. The next effect
+    // handles in-flight content changes — synchronizing here would clobber
+    // unsaved drafts.
+  }, [isOpen]);
+
+  // While the modal is open, if `content` changes from underneath us
+  // (someone else wrote the file, a `git pull` / `git merge` updated it,
+  // or the AI chat agent edited it), apply the appropriate tier:
+  //
+  //  - draft matches the last synced content → user has no unsaved edits;
+  //    silently take the new content (silent tier).
+  //  - draft differs → user has unsaved edits; surface a banner so they can
+  //    pick reload-from-disk or keep-mine (soft prompt tier). Strong-prompt
+  //    chat-stream gating is deferred — the modal is the user's active
+  //    surface, soft prompt is the right default until streams are in scope.
+  useEffect(() => {
+    if (!isOpen) return;
+    if (content === lastSyncedContentRef.current) return;
+    if (draft === lastSyncedContentRef.current) {
+      setDraft(content);
+      lastSyncedContentRef.current = content;
+      setExternalChange(false);
+    } else {
+      setExternalChange(true);
+    }
+  }, [content, isOpen, draft]);
+
+  const reloadFromDisk = useCallback(() => {
+    setDraft(content);
+    lastSyncedContentRef.current = content;
+    setExternalChange(false);
+  }, [content]);
+
+  const dismissExternalChange = useCallback(() => {
+    lastSyncedContentRef.current = content;
+    setExternalChange(false);
+  }, [content]);
 
   // Formatting actions
   const {
@@ -291,6 +341,46 @@ export function MarkdownDocumentModal({
                 </MotionButton>
               </div>
             </div>
+
+            {/* External change banner — soft prompt when the file changed
+                underneath an unsaved draft. */}
+            <AnimatePresence>
+              {externalChange && (
+                <m.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="px-6 py-3 bg-amber-500/10 border-b border-amber-500/30 overflow-hidden"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0 text-amber-200 text-sm">
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                          d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+                      </svg>
+                      <span className="truncate">
+                        This file changed on disk while you were editing.
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={dismissExternalChange}
+                        className="text-xs px-2.5 py-1 rounded-md text-amber-200 hover:bg-amber-500/20 transition-colors"
+                      >
+                        Keep mine
+                      </button>
+                      <button
+                        onClick={reloadFromDisk}
+                        className="text-xs px-2.5 py-1 rounded-md bg-amber-500/20 text-amber-100 hover:bg-amber-500/30 transition-colors font-medium"
+                      >
+                        Reload from disk
+                      </button>
+                    </div>
+                  </div>
+                </m.div>
+              )}
+            </AnimatePresence>
 
             {/* Tab bar */}
             <div className="px-6 pt-3 pb-0 flex flex-wrap gap-1 bg-surface-1/50">

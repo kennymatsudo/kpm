@@ -179,9 +179,20 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       endTotal();
     }
 
+  const createProject = useCallback(async (input: {
+    name: string;
+    repoPaths?: string[];
+    folderPath?: string;
+  }) => {
+    const project = await createProjectRecord({
+      name: input.name,
+      folderPath: input.folderPath,
+    });
     addProject(project);
     await loadProjectData(project.id);
 
+    if (input.repoPaths && input.repoPaths.length > 0) {
+      await addReposToProject(project.id, input.repoPaths);
     }
 
     return project;

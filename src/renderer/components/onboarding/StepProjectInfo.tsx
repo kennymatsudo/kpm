@@ -2,6 +2,7 @@ import { useRef, useCallback, useState } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import { CloseIcon } from '../icons';
 import { selectRepoPaths } from '../../services/repoService';
+import { selectProjectParentFolder } from '../../services/projectLoaderService';
 
 interface StepProjectInfoProps {
   name: string;
@@ -26,6 +27,7 @@ export function StepProjectInfo({
 }: StepProjectInfoProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [folderSectionOpen, setFolderSectionOpen] = useState(
+    existingFolderPath.length > 0,
   );
 
   const handleBrowse = useCallback(async () => {
@@ -42,6 +44,8 @@ export function StepProjectInfo({
   }, [onExistingFolderPathChange]);
 
   const handleToggleFolderSection = useCallback(() => {
+    setFolderSectionOpen(open => !open);
+  }, []);
 
   const handleRemovePath = useCallback((pathToRemove: string) => {
     onRepoPathsChange(repoPaths.filter(p => p !== pathToRemove));
@@ -102,9 +106,33 @@ export function StepProjectInfo({
 
         {folderSectionOpen && (
           <div className="space-y-3 pl-4">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="project-existing-folder"
+                className="block text-[11px] font-medium text-text-secondary uppercase tracking-wide"
               >
+                Folder
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="project-existing-folder"
+                  type="text"
+                  value={existingFolderPath}
+                  onChange={e => onExistingFolderPathChange(e.target.value)}
+                  placeholder="Path to an existing folder on your machine"
+                  className="input input-bordered flex-1 font-mono text-sm"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  onClick={handleBrowseExisting}
+                  className="btn btn-secondary shrink-0"
                 >
+                  Browse...
+                </button>
               </div>
+            </div>
           </div>
         )}
       </div>

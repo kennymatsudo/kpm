@@ -435,6 +435,7 @@ export interface TestRepositoryContext {
  * Usage:
  * ```ts
  * const ctx = createTestRepositoryContext();
+ * const project = ctx.repos.projects.create({ name: 'My Project' });
  * expect(ctx.mockFs.createdDirs).toContain(project.folder_path);
  * ```
  */

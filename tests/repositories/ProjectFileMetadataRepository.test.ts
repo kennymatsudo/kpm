@@ -7,6 +7,7 @@ describe('ProjectFileMetadataRepository', () => {
 
   beforeEach(() => {
     ctx = createTestRepositoryContext();
+    projectId = ctx.repos.projects.create({ name: 'Metadata Project' }).id;
   });
 
   it('clears the summary when the stored content hash changes', () => {

@@ -124,3 +124,22 @@ export function writeProjectContextFilesSync(
   fsImpl.writeFileSync(primaryPath, content, 'utf-8');
   ensureCompatPathSync(fsImpl, primaryPath, compatPath, content);
 }
+
+/**
+ * Initial-creation variant: leave any existing context file in place. Used when
+ * registering a folder that may already ship its own AGENTS.md / CLAUDE.md
+ * (e.g. a freshly cloned repo). For regeneration / save flows that should
+ * replace content, call `writeProjectContextFilesSync` directly instead.
+ */
+export function writeInitialProjectContextFilesSync(
+  fsImpl: ContextFileCompatSyncFs,
+  folderPath: string,
+  content: string,
+): void {
+  const primaryPath = path.join(folderPath, DEFAULT_CONTEXT_FILENAME);
+  const compatPath = path.join(folderPath, COMPAT_CONTEXT_FILENAME);
+  if (fsImpl.existsSync(primaryPath) || fsImpl.existsSync(compatPath)) {
+    return;
+  }
+  writeProjectContextFilesSync(fsImpl, folderPath, content);
+}
