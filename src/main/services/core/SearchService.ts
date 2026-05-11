@@ -6,7 +6,9 @@
  */
 
 import * as fs from 'fs/promises';
+import type { Dirent } from 'fs';
 import * as path from 'path';
+import { subscribe, type AsyncSubscription } from '@parcel/watcher';
 import type { Database } from 'better-sqlite3';
 import type { AsyncResult } from '../result';
 import { success, failure } from '../result';
@@ -47,6 +49,7 @@ interface DocumentSyncState {
   inFlight: Promise<void> | null;
   queued: boolean;
   debounceTimer: NodeJS.Timeout | null;
+  subscription: AsyncSubscription | null;
   watchedFolderPath: string | null;
 }
 
@@ -350,6 +353,7 @@ export function createSearchService(deps: SearchServiceDeps) {
       inFlight: null,
       queued: false,
       debounceTimer: null,
+      subscription: null,
       watchedFolderPath: null,
     };
     documentSyncState.set(projectId, initial);
@@ -364,10 +368,14 @@ export function createSearchService(deps: SearchServiceDeps) {
       clearTimeout(state.debounceTimer);
       state.debounceTimer = null;
     }
+    if (state.subscription) {
+      const sub = state.subscription;
+      state.subscription = null;
     }
     state.watchedFolderPath = null;
   }
 
+    return DOCUMENT_EXTENSIONS.has(path.extname(filePath).toLowerCase());
   }
 
   async function syncProjectDocuments(projectId: string): Promise<void> {
@@ -497,12 +505,33 @@ export function createSearchService(deps: SearchServiceDeps) {
       return;
     }
 
+    state.watchedFolderPath = projectFolderPath;
 
+      projectFolderPath,
+      (err, events) => {
+        if (err) {
+          console.error('[SearchService] Project watcher error:', err);
+          return;
+        }
+          scheduleFilesystemDocumentIndexSync(projectId, false);
+        }
+      },
+      // If the watcher was closed (or replaced) between subscribe() and
+      // resolution, dispose of the stale subscription.
+      const current = documentSyncState.get(projectId);
         return;
       }
+      current.subscription = sub;
+    }).catch((subscribeError) => {
+      console.error('[SearchService] Failed to start project watcher for indexing:', subscribeError);
+      const current = documentSyncState.get(projectId);
+      if (current?.watchedFolderPath === projectFolderPath) {
+        current.watchedFolderPath = null;
       }
+    });
   }
 
+  function reconcileProjectWatchers(): void {
     const projects = getProjectFolders();
     const activeProjectIds = new Set(projects.map((project) => project.id));
 
@@ -514,6 +543,7 @@ export function createSearchService(deps: SearchServiceDeps) {
 
     for (const project of projects) {
       const state = getOrCreateSyncState(project.id);
+      if (state.watchedFolderPath !== project.folder_path) {
         watchProjectFolderForDocs(project.id, project.folder_path);
         scheduleFilesystemDocumentIndexSync(project.id, false);
       }
@@ -532,6 +562,7 @@ export function createSearchService(deps: SearchServiceDeps) {
 
     reconcileProjectWatchers();
     watcherReconcileInterval = setInterval(() => {
+      reconcileProjectWatchers();
     }, getConfig().watcher.searchReconcileIntervalMs);
   }
 

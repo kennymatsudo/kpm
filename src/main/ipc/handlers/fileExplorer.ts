@@ -205,6 +205,7 @@ export function registerFileExplorerHandlers(
   // Stop watching project folder
   ipcMain.handle(IPC_CHANNELS.fileExplorer.unwatchProject, async (_event, params: unknown) => {
     FileExplorerSchemas.unwatchProject.parse(params);
+    await projectWatcherService.unwatchProject();
     return { success: true };
   });
 
