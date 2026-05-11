@@ -162,21 +162,33 @@ const ThinkingIndicator = memo(function ThinkingIndicator({
   );
 });
 
+const PLAN_EMPTY_STATE = {
+  title: 'What needs to get done?',
+  suggestions: [
+    'Create or update tickets',
+    'Ask what to prioritize next',
+    'Break a feature into tasks',
+  ],
+  hint: 'Tasks sync to your tracker when ready',
 };
 
+const PlanEmptyState = memo(function PlanEmptyState() {
   return (
       <div className="w-12 h-12 rounded bg-accent/10 flex items-center justify-center mb-5">
         <svg className="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
         </svg>
       </div>
+      <h2 className="text-text-primary text-base font-medium mb-4">{PLAN_EMPTY_STATE.title}</h2>
       <ul className="text-text-secondary text-sm space-y-2.5 mb-5">
+        {PLAN_EMPTY_STATE.suggestions.map((suggestion, idx) => (
           <li key={idx} className="flex items-center gap-2.5">
             <span className="w-1.5 h-1.5 rounded-full bg-accent/40 flex-shrink-0" />
             {suggestion}
           </li>
         ))}
       </ul>
+      <p className="text-text-muted text-xs">{PLAN_EMPTY_STATE.hint}</p>
     </div>
   );
 });

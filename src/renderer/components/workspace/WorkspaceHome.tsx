@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
   useBriefingStore,
@@ -60,6 +61,15 @@ function BullseyeIcon({ className = 'w-7 h-7' }: { className?: string }) {
 
 export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
   const openBriefing = useBriefingStore((state) => state.openModal);
+  const focusedResources = useProjectUiDomainStore((state) => state.focusedResources);
+
+  const {
+    viewedSessionId,
+    viewedSessionMessageCount,
+    setDraftMessage,
+    getChatSessionId,
+    getOrCreateSession,
+  } = useChatStore(
     useShallow((state) => {
       const viewedSession = state.viewedSessionId
         ? state.sessions.get(state.viewedSessionId) ?? null
@@ -68,12 +78,25 @@ export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
       return {
         viewedSessionId: state.viewedSessionId,
         viewedSessionMessageCount: viewedSession?.messages.length ?? 0,
+        setDraftMessage: state.setDraftMessage,
+        getChatSessionId: state.getChatSessionId,
+        getOrCreateSession: state.getOrCreateSession,
       };
     })
   );
 
   const hasConversation = viewedSessionId !== null && viewedSessionMessageCount > 0;
   const contextPreview = useMemo(() => focusedResources.slice(0, 4), [focusedResources]);
+
+  const handleQuickStart = useCallback(
+    (text: string) => {
+      const sessionId = viewedSessionId ?? getChatSessionId();
+      getOrCreateSession(sessionId);
+      setDraftMessage(sessionId, text);
+      onShowChat();
+    },
+    [viewedSessionId, getChatSessionId, getOrCreateSession, setDraftMessage, onShowChat]
+  );
 
   return (
     <div className="flex flex-1 min-h-0 flex-col bg-surface-0">
@@ -93,6 +116,7 @@ export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
               What are we shipping today?
             </h2>
             <p className="text-[13px] leading-snug text-text-tertiary max-w-[380px] mx-auto">
+              Pick a starting point, pull up your briefing, or open chat.
             </p>
           </div>
 
@@ -100,6 +124,7 @@ export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
             {QUICK_STARTS.map((q) => (
               <button
                 key={q.label}
+                onClick={() => handleQuickStart(q.text)}
                 className="text-left bg-surface-1 border border-border-subtle hover:border-border-strong rounded-lg px-3.5 py-3 transition-colors"
               >
                 <div className="text-[10px] font-mono uppercase tracking-[0.1em] text-text-tertiary mb-1">
@@ -112,6 +137,20 @@ export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
             ))}
           </div>
 
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+            <button
+              onClick={onShowChat}
+              className="rounded-md bg-accent text-surface-0 hover:bg-accent/90 px-3 py-1.5 text-[12px] font-medium transition-colors"
+            >
+              {hasConversation ? `Resume chat · ${viewedSessionMessageCount} msgs` : 'Open chat'}
+            </button>
+            <button
+              onClick={openBriefing}
+              className="rounded-md bg-surface-2 border border-border-subtle hover:border-border-default px-3 py-1.5 text-[12px] text-text-secondary transition-colors"
+            >
+              Project briefing
+            </button>
+          </div>
 
           {contextPreview.length > 0 && (
             <div className="w-full mt-2 pt-4 border-t border-border-subtle">
