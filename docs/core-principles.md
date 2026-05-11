@@ -2,6 +2,20 @@
 
 The commitments a contributor — human or agent — should consult when a feature decision is contested. These are descriptive first (they explain why KPM is built the way it is) and prescriptive second (they tell you which way to lean).
 
+## Skim summary
+
+| # | Principle | One-line rule |
+|---|-----------|---------------|
+| P1 | Single-user cockpit | No seats, permissions, shared state, or conflict resolution. |
+| P2 | Chat grounded in the project | Plan + briefing + repos are always in scope. |
+| P3 | Cross-repo first | A plan can span any number of connected repos. |
+| P4 | Plans live in KPM | SQLite, not files in the repo. |
+| P5 | Extend the dev setup | Inherit the user's MCP tools; don't replace their env. |
+| P6 | Internal stays internal | Translate at every export boundary; refs and spec fields are local-only. |
+| P7 | Reads by default | Chat is read-only against repos; writes are scoped to worktrees. |
+| P9 | Agent execution is a lifecycle | Implement → opposing review → one address pass → human review. Persisted state. |
+| P10 | Sync on your terms | No live feeds. Inbound queues; outbound drafts. |
+
 ---
 
 ## 1. Single-user cockpit

@@ -28,9 +28,11 @@ Artifacts  →  weekly updates, PR descriptions, test plans
 - **Communicate outward without busywork.** Generate weekly updates, test plans, and briefings from your real plan state and git history.
 
 KPM is single-user by design — it's your cockpit, not a team tool. And there's no API key to manage: it uses your existing Claude Code session.
+
 ## Getting started
 
 You'll need:
+
 - **Node.js 20+**
 - **Claude Code** — installed and logged in (powers all AI features)
 - **Git** — worktrees, diffs, and agent execution
@@ -50,14 +52,19 @@ On first launch, macOS asks to allow keychain access — that's KPM storing trac
 | Topic | File |
 |-------|------|
 | Design principles | [`docs/core-principles.md`](docs/core-principles.md) |
+| Feature catalog | [`docs/features.md`](docs/features.md) |
 | Architecture | [`docs/architecture.md`](docs/architecture.md) |
 | Development commands | [`CLAUDE.md`](CLAUDE.md#commands) |
+| Release notes | [`CHANGELOG.md`](CHANGELOG.md) |
+
 ## Contributing
 
 KPM is Electron + React 19 + TypeScript, with SQLite for storage and the Claude Agent SDK for AI integration.
 
 Start with [`docs/core-principles.md`](docs/core-principles.md) — KPM's design rules are deliberate and override patterns you might infer from the code. Then run `npm run check` (typecheck + lint + tests) before opening a PR against `main`.
+
 If you're contributing with a coding agent (Claude Code, Codex, Cursor, etc.), point it at [`AGENTS.md`](AGENTS.md) first. It maps each kind of change to the right deep-dive doc and lists the proposals that violate KPM's design — live tracker sync, multi-user features, plan files inside repos — so your agent doesn't build them.
+
 ## License
 
 [MIT](LICENSE)
