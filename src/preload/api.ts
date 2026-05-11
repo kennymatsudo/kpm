@@ -1272,6 +1272,31 @@ const fileExplorer = {
     return () => ipcRenderer.removeListener('file-explorer:file-changed', handler);
   },
 
+  // Listen for cross-boundary write/delete/rename/symlink events. Fires when
+  // an IPC file op succeeded against a path whose realpath sits outside the
+  // project root (i.e. via a symlink). Renderer can surface this in an
+  // activity feed for audit / observability.
+  onExternalAccess: (
+    callback: (data: {
+      projectId: string;
+      op: 'write' | 'delete' | 'rename' | 'create-symlink' | 'copy-into';
+      relativePath: string;
+      realpath: string;
+    }) => void
+  ): (() => void) => {
+    const handler = (
+      _: Electron.IpcRendererEvent,
+      data: {
+        projectId: string;
+        op: 'write' | 'delete' | 'rename' | 'create-symlink' | 'copy-into';
+        relativePath: string;
+        realpath: string;
+      }
+    ) => callback(data);
+    ipcRenderer.on('file-explorer:external-access', handler);
+    return () => ipcRenderer.removeListener('file-explorer:external-access', handler);
+  },
+
   // Watch project folder for external file changes (Finder, terminal, etc.)
   watchProject: (projectId: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.fileExplorer.watchProject, { projectId }),

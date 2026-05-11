@@ -159,6 +159,22 @@ export interface PollSchedulerConfig {
   maxBackoffMs: number;
 }
 
+export interface FileExplorerConfig {
+  /**
+   * Extra absolute paths whose contents IPC file operations must not touch
+   * even when reached via a symlink the user placed inside the project.
+   * Merged with platform defaults (SSH/AWS/GPG/Keychain dirs, etc.).
+   */
+  deniedRealpathRoots: string[];
+  /**
+   * Maximum number of symlinked-directory transitions allowed while
+   * recursively listing the project tree. Prevents a single in-project
+   * symlink (e.g. `home -> /Users/me`) from causing the listing to
+   * enumerate the entire home directory.
+   */
+  maxSymlinkDepth: number;
+}
+
 export interface AppConfig {
   database: DatabaseConfig;
   window: WindowConfig;
@@ -171,6 +187,7 @@ export interface AppConfig {
   reviewPoll: ReviewPollConfig;
   watcher: WatcherConfig;
   pollScheduler: PollSchedulerConfig;
+  fileExplorer: FileExplorerConfig;
 }
 
 // =============================================================================
@@ -261,6 +278,11 @@ function createDefaultConfig(): AppConfig {
       defaultJitterPct: 0.1,
       defaultBackoffMultiplier: 2,
       maxBackoffMs: 30 * 60 * 1000, // 30 minutes
+    },
+
+    fileExplorer: {
+      deniedRealpathRoots: [],
+      maxSymlinkDepth: 1,
     },
   };
 }

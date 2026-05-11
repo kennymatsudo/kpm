@@ -16,6 +16,15 @@ export interface ListScopedDirectoryOptions {
   recursive: boolean;
   maxDepth: number;
   currentDepth?: number;
+  /**
+   * Cap on the number of symlinked-directory transitions along the current
+   * recursion path. Defaults to 1 — i.e. enter one symlinked dir but don't
+   * follow further symlinked dirs nested inside. Prevents a single in-project
+   * symlink (e.g. `home -> /Users/me`) from blowing up the listing.
+   */
+  maxSymlinkDepth?: number;
+  /** Internal: current symlink-transition count along this recursion path. */
+  currentSymlinkDepth?: number;
   shouldHideEntry: (entryName: string) => boolean;
   onEntryReadError?: (entryPath: string, error: unknown) => void;
 }
@@ -38,8 +47,10 @@ export function resolveScopedPath(basePath: string, targetPath: string): ScopedP
     return { valid: false, fullPath: candidatePath };
   }
 
+  const relative = path.relative(normalizedBase, candidatePath);
   const isValid = relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 
+  return { valid: isValid, fullPath: candidatePath };
 }
 
 /**
@@ -186,9 +197,12 @@ export async function listScopedDirectory(options: ListScopedDirectoryOptions): 
     recursive,
     maxDepth,
     currentDepth = 0,
+    maxSymlinkDepth = 1,
+    currentSymlinkDepth = 0,
     shouldHideEntry,
     onEntryReadError,
   } = options;
+  const scopedRootPath = path.resolve(rootPath);
 
   const entries = await readDirectoryIfExists(directoryPath);
   const visibleEntries = entries.filter((entry) => !shouldHideEntry(entry.name));
@@ -203,6 +217,12 @@ export async function listScopedDirectory(options: ListScopedDirectoryOptions): 
         const node = await toFileNode(entryPath, relativePath, entry.isDirectory());
 
         if (node.isDirectory && recursive && currentDepth < maxDepth && !node.isSymlinkBroken) {
+          const nextSymlinkDepth = currentSymlinkDepth + (node.isSymlink ? 1 : 0);
+          if (node.isSymlink && nextSymlinkDepth > maxSymlinkDepth) {
+            // Hit the symlink-transition cap — show the node but don't expand.
+            return node;
+          }
+
           if (!scopedEntry.valid) {
             return node;
           }
@@ -212,6 +232,7 @@ export async function listScopedDirectory(options: ListScopedDirectoryOptions): 
             rootPath: scopedRootPath,
             directoryPath: scopedEntry.fullPath,
             currentDepth: currentDepth + 1,
+            currentSymlinkDepth: nextSymlinkDepth,
           });
         }
 

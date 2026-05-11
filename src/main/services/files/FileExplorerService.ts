@@ -12,13 +12,35 @@ import {
   listScopedDirectory,
   pathExists,
 } from './scopedFs';
+import {
+  checkRealpathAccess,
+  checkExternalTargetAllowed,
+  type RealpathAccessResult,
+} from './pathSecurity';
 import type { FileSummaryService } from './FileSummaryService';
 import { resolvePlanRefs } from '../../documents/planRefResolver';
+import { getConfig } from '../../config';
 
 const MARKDOWN_EXT_REGEX = /\.(md|mdx|markdown)$/i;
 
 const MAX_BINARY_BYTES = 50 * 1024 * 1024; // 50MB
 const MAX_SUMMARY_BACKFILL_PER_LIST = 25;
+
+export type ExternalAccessOp =
+  | 'write'
+  | 'delete'
+  | 'rename'
+  | 'create-symlink'
+  | 'copy-into';
+
+export interface ExternalAccessEvent {
+  projectId: string;
+  op: ExternalAccessOp;
+  /** Path inside the project (i.e. the symlink the user sees). */
+  relativePath: string;
+  /** Realpath of the on-disk target the op actually touched. */
+  realpath: string;
+}
 
 export interface FileExplorerServiceDeps {
   getProjectFolder: (projectId: string) => string | null;
@@ -31,6 +53,14 @@ export interface FileExplorerServiceDeps {
    * `docs/shared-project-context.md` § "@plan/<uuid> references in shared docs".
    */
   getPlanItems?: (projectId: string) => readonly PlanItem[];
+  /**
+   * Notified after a successful mutating op (write/delete/rename/create-symlink/
+   * copy-into) when the realpath of the target lands outside the project folder.
+   * Lets the IPC layer surface the cross-boundary access to the renderer for
+   * audit/observability. Reads are intentionally not audited — they're the
+   * common case for symlinked sources of truth.
+   */
+  onExternalAccess?: (event: ExternalAccessEvent) => void;
 }
 
 export interface FileExplorerListDirectoryOptions {
@@ -91,6 +121,30 @@ function queueMissingSummaries(
 }
 
 export function createFileExplorerService(deps: FileExplorerServiceDeps) {
+    projectFolder: string,
+    relativePath: string
+    if (!valid) {
+      return { error: failure('Invalid path') };
+    }
+    const access = await checkRealpathAccess(fullPath, projectFolder);
+    if (!access.allowed) {
+      return { error: failure(access.reason ?? 'Access denied') };
+    }
+  }
+
+  function audit(
+    projectId: string,
+    op: ExternalAccessOp,
+    relativePath: string,
+    access: RealpathAccessResult
+  ): void {
+    if (!access.external) return;
+    console.warn(
+      `[FileExplorer] ${op} on '${relativePath}' touched external path: ${access.realpath}`
+    );
+    deps.onExternalAccess?.({ projectId, op, relativePath, realpath: access.realpath });
+  }
+
     /**
      * List directory contents with optional recursion.
      */
@@ -111,6 +165,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
           directoryPath: fullPath,
           recursive: options.recursive ?? false,
           maxDepth: options.depth ?? 10,
+          maxSymlinkDepth: getConfig().fileExplorer.maxSymlinkDepth,
           onEntryReadError: (entryPath, error) => {
             console.error(`[FileExplorerService] Failed to read ${entryPath}:`, error);
           },
@@ -145,6 +200,8 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      if ('error' in gated) return gated.error;
+      const { fullPath, access } = gated;
 
       try {
         if (await pathExists(fullPath)) {
@@ -154,6 +211,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         await fs.promises.mkdir(fullPath, { recursive: true });
 
         const stats = await fs.promises.stat(fullPath);
+        audit(projectId, 'write', relativePath, access);
         return success({
           name: path.basename(relativePath),
           path: relativePath,
@@ -177,6 +235,8 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      if ('error' in gated) return gated.error;
+      const { fullPath, access } = gated;
 
       try {
         if (await pathExists(fullPath)) {
@@ -188,6 +248,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
 
         await fs.promises.writeFile(fullPath, content, 'utf-8');
         void deps.fileSummaryService?.processFile(projectId, relativePath, content);
+        audit(projectId, 'write', relativePath, access);
         return success(await getScopedEntryInfo(fullPath, relativePath));
       } catch (error) {
         return failure(`Failed to create file: ${error}`);
@@ -204,7 +265,12 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      if ('error' in gated) return gated.error;
+      const { fullPath: fullLinkPath } = gated;
 
+      const targetCheck = await checkExternalTargetAllowed(targetPath);
+      if (!targetCheck.allowed) {
+        return failure(targetCheck.reason ?? 'Symlink target is not allowed');
       }
 
       try {
@@ -226,6 +292,13 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         await fs.promises.symlink(targetPath, fullLinkPath);
 
         const info = await getScopedEntryInfo(fullLinkPath, linkPath);
+        // A symlink always points outside the link site; audit with the
+        // resolved target so the activity feed shows where writes will land.
+        audit(projectId, 'create-symlink', linkPath, {
+          allowed: true,
+          external: true,
+          realpath: targetCheck.realpath,
+        });
         return success({
           ...info,
           isDirectory: targetStats.isDirectory(),
@@ -332,6 +405,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
           }
         }
 
+        }
         return success(node);
       } catch (error) {
         return failure(`Failed to rename: ${error}`);
@@ -385,6 +459,8 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      if ('error' in gated) return gated.error;
+      const { fullPath } = gated;
 
       try {
         let stats: fs.Stats;
@@ -418,6 +494,8 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      if ('error' in gated) return gated.error;
+      const { fullPath } = gated;
 
       try {
         let stats: fs.Stats;
@@ -450,6 +528,8 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      if ('error' in gated) return gated.error;
+      const { fullPath, access } = gated;
 
       const finalContent = maybeRewritePlanRefsForDisk(
         projectId,
@@ -465,6 +545,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
 
         await fs.promises.writeFile(fullPath, finalContent, 'utf-8');
         void deps.fileSummaryService?.processFile(projectId, relativePath, finalContent);
+        audit(projectId, 'write', relativePath, access);
         return success(undefined);
       } catch (error) {
         return failure(`Failed to write file: ${error}`);
@@ -485,6 +566,8 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      if ('error' in gated) return gated.error;
+      const { fullPath, access } = gated;
 
       try {
         if (data.byteLength > MAX_BINARY_BYTES) {
@@ -501,6 +584,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         await fs.promises.writeFile(fullPath, data);
 
         const stats = await fs.promises.stat(fullPath);
+        audit(projectId, 'write', relativePath, access);
         return success({
           name: path.basename(relativePath),
           path: relativePath,
@@ -527,6 +611,12 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      if ('error' in gated) return gated.error;
+      const { fullPath, access } = gated;
+
+      const sourceCheck = await checkExternalTargetAllowed(sourcePath);
+      if (!sourceCheck.allowed) {
+        return failure(sourceCheck.reason ?? 'Source path is not allowed');
       }
 
       try {
@@ -554,6 +644,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
 
         const stats = await fs.promises.stat(fullPath);
         void deps.fileSummaryService?.processFileFromDisk(projectId, relativePath, fullPath);
+        audit(projectId, 'copy-into', relativePath, access);
         return success({
           name: path.basename(relativePath),
           path: relativePath,

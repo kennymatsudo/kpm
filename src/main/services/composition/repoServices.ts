@@ -64,6 +64,10 @@ export function createRepoServices({
     getProjectFolder,
     fileSummaryService,
     getPlanItems: (projectId) => container.planItems.getByProject(projectId),
+    onExternalAccess: (event) => {
+      const window = getMainWindow();
+      window?.webContents.send('file-explorer:external-access', event);
+    },
   });
 
   const devSessionService = createDevSessionService({
