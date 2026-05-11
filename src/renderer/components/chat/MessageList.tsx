@@ -150,6 +150,7 @@ const ThinkingIndicator = memo(function ThinkingIndicator({
   model?: string;
 }) {
   return (
+      <div className="pr-2">
         <ProcessTimeline
           streamingThinking={thinkingContent}
           streamingActivities={activities}
@@ -353,6 +354,7 @@ const MessageHeader = memo(function MessageHeader({
   const durationLabel = !isUser ? formatTurnDuration(durationMs) : null;
 
   return (
+    <div className={`flex items-center gap-2 mb-1.5 ${isUser ? 'flex-row-reverse' : ''}`}>
       <span className="text-xs font-medium text-text-primary">{name}</span>
       {modelLabel && (
         <span className="font-mono text-xxs text-text-muted/80">{modelLabel}</span>
@@ -360,6 +362,9 @@ const MessageHeader = memo(function MessageHeader({
       {durationLabel && (
         <span className="font-mono text-xxs text-text-muted/60">· {durationLabel}</span>
       )}
+      <span
+        className={`font-mono text-xxs text-text-muted/50 ${isUser ? 'mr-auto' : 'ml-auto'}`}
+      >
         {formatClockTime(timestamp)}
       </span>
     </div>
@@ -396,6 +401,9 @@ const MessageRow = memo(function MessageRow({
 
       {/* Structured attachment chips (current-session messages) */}
       {hasStructuredAttachments && (
+        <div
+          className={`mb-1.5 flex flex-wrap gap-2 ${isUser ? 'justify-end' : ''}`}
+        >
           {message.attachments!.map((attachment) => (
             <AttachmentChip
               key={attachment.path}
@@ -408,6 +416,7 @@ const MessageRow = memo(function MessageRow({
 
       {/* Legacy fallback: count chip for old "Images attached:" prefixed messages */}
       {isUser && userParsed && userParsed.imageCount > 0 && (
+        <div className="mb-1.5 flex justify-end">
           <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-accent-subtle text-accent text-xs rounded">
             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 16 16">
               <path d="M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z" />
@@ -420,9 +429,21 @@ const MessageRow = memo(function MessageRow({
         </div>
       )}
 
+      {/* pr-8 / pl-8 reserves space for the absolutely-positioned CopyButton */}
+      <div
+        className={`chat-message-content text-text-primary relative ${
+          isUser ? 'pl-8 pr-0' : 'pl-0 pr-8'
+        }`}
+      >
         {isUser ? (
           <>
+            <div className="flex justify-end">
+              </div>
             </div>
+            <CopyButton
+              content={userParsed?.cleanContent || textContent}
+              className="absolute top-2 left-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-surface-3 text-text-muted hover:text-text-primary"
+            />
           </>
         ) : (
           <AssistantMessageContent
@@ -722,6 +743,7 @@ interface MessageListProps {
         )}
 
         {isStreaming && (streamingSegments.length > 0 || streamingContent) && (
+            <div className="pr-2 chat-message-content text-text-primary">
               <StreamingContent
                 segments={streamingSegments}
                 thinkingContent={streamingThinking || undefined}

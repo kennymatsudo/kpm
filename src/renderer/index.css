@@ -626,6 +626,8 @@ select:focus-visible {
 }
 
 .chat-message-user::before {
+  left: auto;
+  right: -12px;
   background: color-mix(in srgb, var(--color-text-muted) 35%, transparent);
 }
 
