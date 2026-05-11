@@ -63,6 +63,8 @@ export interface ReviewSyncStateUpsert {
   last_head_oid: string | null;
   last_review_decision: ReviewSyncState['last_review_decision'];
   last_error?: string | null;
+  last_pr_updated_at?: string | null;
+  probe_digest?: string | null;
 }
 
 export interface PersistedAgentReviewUpsert {

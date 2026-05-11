@@ -335,6 +335,7 @@ export function createAppServices(container: IRepositoryContainer) {
     devSessions: container.devSessions,
     planItems: container.planItems,
     reviewTasks: container.reviewTasks,
+    reviewSyncState: container.reviewSyncState,
     reviewService,
     reviewAssessmentService,
     devSessionService,

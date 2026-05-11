@@ -21,6 +21,7 @@ import type {
   IDevSessionRepository,
   IPlanItemRepository,
   IProjectRepository,
+  IReviewSyncStateRepository,
   IReviewTaskRepository,
 } from '../../db/interfaces';
 import { getConfig } from '../../config';
@@ -42,6 +43,7 @@ export interface ReviewPollServiceDeps {
   devSessions: IDevSessionRepository;
   planItems: IPlanItemRepository;
   reviewTasks: IReviewTaskRepository;
+  reviewSyncState: IReviewSyncStateRepository;
   reviewService: ReviewService;
   reviewAssessmentService: ReviewAssessmentService;
   devSessionService: DevSessionService;
@@ -87,12 +89,19 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
   // not per-task — a transient error on session A shouldn't slow session B.
   const errorBackoff = new Map<string, number>();
 
+  // Per-session quiet-tick state: how many consecutive ticks produced no
+  // actionable change, and how many more ticks to skip before re-checking.
+  // In-memory by design — restarting the app should re-check eagerly.
+  const quietCount = new Map<string, number>();
+  const quietSkip = new Map<string, number>();
+
   // ---------------------------------------------------------------------------
   // Session Discovery
   // ---------------------------------------------------------------------------
 
   function discoverEligibleSessions(): DevSession[] {
     const config = getConfig().reviewPoll;
+    const now = Date.now();
     const allProjects = deps.projects.list();
     const eligible: DevSession[] = [];
 
@@ -111,11 +120,43 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         const activeCount = deps.agentSessionManager.getActiveCountForProject(session.project_id);
         if (activeCount >= getConfig().agentSession.maxConcurrentSessionsPerProject) continue;
 
+        const syncState = deps.reviewSyncState.get(session.repo_id, session.pr_number);
+        if (syncState?.last_successful_fetched_at && syncState.last_error == null) {
+          const lastMs = Date.parse(syncState.last_successful_fetched_at);
+          if (Number.isFinite(lastMs) && now - lastMs < config.minPerSessionIntervalMs) {
+            continue;
+          }
+        }
+
         eligible.push(session);
       }
     }
 
     return eligible.slice(0, config.maxSessionsPerTick);
+  }
+
+  function shouldSkipForQuiet(sessionId: string): boolean {
+    const remaining = quietSkip.get(sessionId);
+    if (remaining == null || remaining <= 0) {
+      quietSkip.delete(sessionId);
+      return false;
+    }
+    quietSkip.set(sessionId, remaining - 1);
+    return true;
+  }
+
+  function recordQuietTick(sessionId: string): void {
+    const config = getConfig().reviewPoll;
+    const next = (quietCount.get(sessionId) ?? 0) + 1;
+    quietCount.set(sessionId, next);
+    // Exponential skip with a cap: 1, 3, 7, 15, 31… clamped to maxQuietSkipTicks.
+    const skip = Math.min(Math.pow(2, next) - 1, config.maxQuietSkipTicks);
+    quietSkip.set(sessionId, skip);
+  }
+
+  function resetQuiet(sessionId: string): void {
+    quietCount.delete(sessionId);
+    quietSkip.delete(sessionId);
   }
 
   function isTerminalState(state: string): boolean {
@@ -172,8 +213,12 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
     if (shouldSkipForBackoff(sessionId)) {
       return { sessionId, action: 'skipped', newThreadCount: 0, implementCount: 0 };
     }
+    if (shouldSkipForQuiet(sessionId)) {
+      return { sessionId, action: 'skipped', newThreadCount: 0, implementCount: 0 };
+    }
 
     try {
+      const syncResult = await deps.reviewService.syncSessionReviewState(sessionId, { skipIfUnchanged: true });
       if (!syncResult.ok) {
         applyBackoff(sessionId);
         return { sessionId, action: 'error', newThreadCount: 0, implementCount: 0, error: syncResult.error };
@@ -183,8 +228,11 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       const needsReviewTasks = tasks.filter(t => t.session_id === sessionId && t.status === 'needs_review');
 
       if (needsReviewTasks.length === 0) {
+        recordQuietTick(sessionId);
         return { sessionId, action: 'synced', newThreadCount: 0, implementCount: 0 };
       }
+
+      resetQuiet(sessionId);
 
       // New review threads detected — emit to the event bus so notification
       // and metrics consumers can react without coupling to this service.
@@ -430,6 +478,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
     }
 
     errorBackoff.delete(sessionId);
+    resetQuiet(sessionId);
 
     return processSession(session);
   }

@@ -1062,6 +1062,7 @@ export interface PrReviewSnapshot {
   headOid: string;
   baseRefName: string;
   headRefName: string;
+  updatedAt: string;
   fetchedAt: string;
   summary: PrReviewSummary;
   threads: PrReviewThread[];
@@ -1118,6 +1119,8 @@ export interface ReviewSyncState {
   last_head_oid: string | null;
   last_review_decision: PrStatus['reviewDecision'];
   last_error: string | null;
+  last_pr_updated_at: string | null;
+  probe_digest: string | null;
 }
 
 

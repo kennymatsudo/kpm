@@ -3176,6 +3176,16 @@ interface Migration {
       db.exec(`ALTER TABLE projects DROP COLUMN git_root;`);
     },
   },
+  {
+    id: 1084,
+    name: '084_review_sync_state_probe',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE review_sync_state ADD COLUMN last_pr_updated_at DATETIME;
+        ALTER TABLE review_sync_state ADD COLUMN probe_digest TEXT;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

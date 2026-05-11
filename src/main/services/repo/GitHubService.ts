@@ -27,6 +27,8 @@ import {
   getPrByNumber,
   parsePrIdentifier,
   getPrReviewSnapshot as fetchPrReviewSnapshot,
+  probePrReviewState as fetchPrReviewProbe,
+  type PrReviewProbe,
   pushBranch,
   isBranchPushed,
   replyToReviewThread as postReviewThreadReply,
@@ -278,6 +280,29 @@ export function createGitHubService(deps: GitHubServiceDeps) {
         );
 
         return success(status);
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
+    /**
+     * Cheap probe — totals + head + updatedAt only.
+     *
+     * Lets callers decide whether the heavy thread-walk in `getPrReviewSnapshot`
+     * is worth running, without paying for the multi-page fetch.
+     */
+    async probePrReviewState(sessionId: string): AsyncResult<PrReviewProbe> {
+      const resolved = resolveSessionRepo(sessionId);
+      if ('error' in resolved) return failure(resolved.error);
+      const { repoPath, session } = resolved;
+
+      if (!session.pr_number) {
+        return failure('No PR associated with this session');
+      }
+
+      try {
+        const probe = await fetchPrReviewProbe(repoPath, session.pr_number);
+        return success(probe);
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }

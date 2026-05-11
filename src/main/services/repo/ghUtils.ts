@@ -705,6 +705,98 @@ async function fetchConversationComments(
   return comments;
 }
 
+export interface PrReviewProbe {
+  prNumber: number;
+  state: 'OPEN' | 'CLOSED' | 'MERGED';
+  reviewDecision: PrReviewSnapshot['reviewDecision'];
+  headOid: string;
+  updatedAt: string;
+  threadCount: number;
+  reviewCount: number;
+  conversationCommentCount: number;
+  digest: string;
+}
+
+/**
+ * Cheap probe used to decide whether the heavy thread-walk is necessary.
+ *
+ * One small GraphQL query — totals only, no node bodies — gives us enough
+ * signal to detect any change worth processing (new comment, new review,
+ * resolution toggle, head push, decision change). When the resulting digest
+ * matches the one persisted from the previous successful sync, the caller
+ * can skip the full snapshot.
+ */
+export async function probePrReviewState(
+  cwd: string,
+  prNumber: number
+): Promise<PrReviewProbe> {
+  const slug = await getRepoSlug(cwd);
+  const { owner, name } = splitRepoSlug(slug);
+
+  const response = await ghGraphQL<{
+    repository: {
+      pullRequest: {
+        number: number;
+        state: 'OPEN' | 'CLOSED' | 'MERGED';
+        reviewDecision: PrReviewSnapshot['reviewDecision'];
+        headRefOid: string;
+        updatedAt: string;
+        reviewThreads: { totalCount: number };
+        reviews: { totalCount: number };
+        comments: { totalCount: number };
+      } | null;
+    } | null;
+  }>(
+    cwd,
+    `query($owner: String!, $name: String!, $prNumber: Int!) {
+      repository(owner: $owner, name: $name) {
+        pullRequest(number: $prNumber) {
+          number
+          state
+          reviewDecision
+          headRefOid
+          updatedAt
+          reviewThreads(first: 0) { totalCount }
+          reviews(first: 0) { totalCount }
+          comments(first: 0) { totalCount }
+        }
+      }
+    }`,
+    { owner, name, prNumber }
+  );
+
+  const pullRequest = response.repository?.pullRequest;
+  if (!pullRequest) {
+    throw new Error(`PR #${prNumber} not found in ${slug}`);
+  }
+
+  const threadCount = pullRequest.reviewThreads.totalCount;
+  const reviewCount = pullRequest.reviews.totalCount;
+  const conversationCommentCount = pullRequest.comments.totalCount;
+  const reviewDecision = pullRequest.reviewDecision ?? null;
+  const digest = [
+    pullRequest.state,
+    reviewDecision ?? 'NONE',
+    pullRequest.headRefOid,
+    pullRequest.updatedAt,
+    threadCount,
+    reviewCount,
+    conversationCommentCount,
+  ].join('|');
+
+  return {
+    prNumber: pullRequest.number,
+    state: pullRequest.state,
+    reviewDecision,
+    headOid: pullRequest.headRefOid,
+    updatedAt: pullRequest.updatedAt,
+    threadCount,
+    reviewCount,
+    conversationCommentCount,
+    digest,
+  };
+}
+
 export async function getPrReviewSnapshot(
   cwd: string,
   prNumber: number
@@ -723,6 +815,7 @@ export async function getPrReviewSnapshot(
         headRefOid: string;
         baseRefName: string;
         headRefName: string;
+        updatedAt: string;
       } | null;
     } | null;
   }>(
@@ -738,6 +831,7 @@ export async function getPrReviewSnapshot(
           headRefOid
           baseRefName
           headRefName
+          updatedAt
         }
       }
     }`,
@@ -764,6 +858,7 @@ export async function getPrReviewSnapshot(
     headOid: pullRequest.headRefOid,
     baseRefName: pullRequest.baseRefName,
     headRefName: pullRequest.headRefName,
+    updatedAt: pullRequest.updatedAt,
     fetchedAt: new Date().toISOString(),
     summary: buildReviewSummary(threads, topLevelReviews, conversationComments),
     threads,

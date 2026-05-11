@@ -126,6 +126,17 @@ export interface ReviewPollConfig {
   enabled: boolean;
   /** Number of ticks to skip a session after an error */
   errorBackoffTicks: number;
+  /**
+   * Hard floor between successful syncs of the same session (ms). Protects
+   * against manual triggers and short poll intervals stacking refreshes.
+   */
+  minPerSessionIntervalMs: number;
+  /**
+   * Cap on the exponential backoff applied to a session after consecutive
+   * quiet ticks (no new threads, no fix started, no needs-attention).
+   * Skip = min(2^n - 1, this cap), reset on any non-quiet outcome.
+   */
+  maxQuietSkipTicks: number;
 }
 
 export interface WatcherConfig {
@@ -231,6 +242,8 @@ function createDefaultConfig(): AppConfig {
       maxSessionsPerTick: 5,
       enabled: true,
       errorBackoffTicks: 3,
+      minPerSessionIntervalMs: 90 * 1000, // 90s floor
+      maxQuietSkipTicks: 7, // ~14 min at 2-min base
     },
 
     reviewAssessment: {

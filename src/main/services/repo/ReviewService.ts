@@ -181,9 +181,50 @@ export function createReviewService(deps: ReviewServiceDeps) {
     deps.reviewSyncState.updateError(repoId, prNumber, error);
   }
 
+  /**
+   * @param skipIfUnchanged When true, do a cheap probe first and short-circuit
+   *   if nothing has changed since the last successful sync. Used by the
+   *   background poller; renderer paths leave it false to always refresh.
+   */
+  async function syncSessionReviewState(
+    sessionId: string,
+    options: { skipIfUnchanged?: boolean } = {}
+  ): AsyncResult<ReviewInboxSnapshot> {
     const sessionResult = getSessionContext(sessionId);
     if (!sessionResult.ok) return sessionResult;
     const session = sessionResult.data;
+
+    if (options.skipIfUnchanged) {
+      const probeResult = await deps.gitHubService.probePrReviewState(sessionId);
+      if (!probeResult.ok) {
+        syncError(session.repo_id, session.pr_number!, probeResult.error);
+        return probeResult;
+      }
+      const probe = probeResult.data;
+      const stored = deps.reviewSyncState.get(session.repo_id, session.pr_number!);
+        const ownership = resolveOwnership(sessionId) ?? deps.reviewOwnership.get(session.repo_id, session.pr_number!) ?? null;
+        const updatedSync = deps.reviewSyncState.upsert({
+          repo_id: session.repo_id,
+          pr_number: session.pr_number!,
+          session_id: ownership?.session_id ?? stored.session_id,
+          last_fetched_at: new Date().toISOString(),
+          last_successful_fetched_at: stored.last_successful_fetched_at,
+          last_head_oid: stored.last_head_oid,
+          last_review_decision: stored.last_review_decision,
+          last_error: null,
+          last_pr_updated_at: stored.last_pr_updated_at,
+          probe_digest: stored.probe_digest,
+        });
+        return success({
+          session_id: sessionId,
+          snapshot: null,
+          tasks: deps.reviewTasks.getByRepoPr(session.repo_id, session.pr_number!),
+          ownership: ownership,
+          sync_state: updatedSync,
+          fetched_at: updatedSync.last_fetched_at!,
+        });
+      }
+    }
 
     const snapshotResult = await deps.gitHubService.getPrReviewSnapshot(sessionId);
     if (!snapshotResult.ok) {
@@ -251,6 +292,16 @@ export function createReviewService(deps: ReviewServiceDeps) {
       });
     }
 
+    const probeDigest = [
+      snapshot.state,
+      snapshot.reviewDecision ?? 'NONE',
+      snapshot.headOid,
+      snapshot.updatedAt,
+      snapshot.threads.length,
+      snapshot.topLevelReviews.length,
+      snapshot.conversationComments.length,
+    ].join('|');
+
     const syncState = deps.reviewSyncState.upsert({
       repo_id: session.repo_id,
       pr_number: session.pr_number!,
@@ -260,6 +311,8 @@ export function createReviewService(deps: ReviewServiceDeps) {
       last_head_oid: snapshot.headOid,
       last_review_decision: snapshot.reviewDecision,
       last_error: null,
+      last_pr_updated_at: snapshot.updatedAt,
+      probe_digest: probeDigest,
     });
 
     return success({
