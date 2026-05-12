@@ -10,6 +10,7 @@ export function respondToPermissionRequest(
   requestId: string,
   projectId: string,
   action: PermissionAction
+): Promise<{ success: boolean; error?: string }> {
   return window.api.permission.respond(requestId, projectId, action);
 }
 
@@ -21,8 +22,10 @@ export function revokeToolPermission(
   permissionId: string,
   projectId: string,
   cacheKey: string
+): Promise<{ success: boolean }> {
   return window.api.permissions.revoke(permissionId, projectId, cacheKey);
 }
 
+export function revokeAllToolPermissions(projectId: string): Promise<{ success: boolean }> {
   return window.api.permissions.revokeAll(projectId);
 }

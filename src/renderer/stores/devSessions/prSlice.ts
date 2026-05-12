@@ -108,6 +108,8 @@ export function createDevSessionsPrSlice(
         let context: PrCreationContext = {
           suggestedTitle: rawTitle,
           body: rawBody,
+          branch: contextResult.branch ?? undefined,
+          baseBranch: contextResult.baseBranch ?? undefined,
           hasCommits,
           prTemplate,
           aiGenerated: false,

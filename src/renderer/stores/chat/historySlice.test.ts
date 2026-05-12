@@ -29,6 +29,7 @@ describe('historySlice.restoreLastSession', () => {
       success: true,
       sessions: [{
         chat_session_id: 'chat-a',
+        title: null,
         first_message: 'Hello',
         message_count: 2,
         created_at: '2026-01-01T00:00:00.000Z',
@@ -51,6 +52,8 @@ describe('historySlice.restoreLastSession', () => {
       success: true,
       messages: [{
         id: 'message-1',
+        session_id: 'project-a',
+        chat_session_id: 'chat-a',
         role: 'user',
         content: 'Hello',
         created_at: '2026-01-01T00:00:00.000Z',
@@ -73,6 +76,7 @@ describe('historySlice.restoreLastSession', () => {
       success: true,
       sessions: [{
         chat_session_id: 'chat-a',
+        title: null,
         first_message: 'Hello',
         message_count: 2,
         created_at: '2026-01-01T00:00:00.000Z',
@@ -82,6 +86,8 @@ describe('historySlice.restoreLastSession', () => {
       success: true,
       messages: [{
         id: 'message-1',
+        session_id: 'project-a',
+        chat_session_id: 'chat-a',
         role: 'user',
         content: 'Hello',
         created_at: '2026-01-01T00:00:00.000Z',
@@ -140,6 +146,7 @@ describe('historySlice.restoreLastSession', () => {
       success: true,
       sessions: [{
         chat_session_id: 'chat-a',
+        title: null,
         first_message: 'Hello',
         message_count: 1,
         created_at: '2026-01-01T00:00:00.000Z',
@@ -149,6 +156,8 @@ describe('historySlice.restoreLastSession', () => {
       success: true,
       messages: [{
         id: 'message-1',
+        session_id: 'project-a',
+        chat_session_id: 'chat-a',
         role: 'user',
         content: 'Hello',
         created_at: '2026-01-01T00:00:00.000Z',
@@ -201,6 +210,7 @@ describe('historySlice.restoreLastSession', () => {
       success: true,
       sessions: [{
         chat_session_id: 'chat-b',
+        title: null,
         first_message: 'Other',
         message_count: 1,
         created_at: '2026-01-01T00:00:00.000Z',

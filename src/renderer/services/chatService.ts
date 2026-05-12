@@ -1,6 +1,8 @@
 import type {
   Activity,
+  AgentEffortLevel,
   ChatViewMode,
+  ClaudeModel,
   FocusedResource,
   PlanAction,
 } from '../../shared/types';
@@ -106,10 +108,12 @@ export function sendChatMessage(params: {
     params.projectId,
     params.message,
     params.focusedResources,
+    params.model as ClaudeModel,
     params.tempImages,
     params.chatSessionId,
     params.currentView,
     params.clientMessageId,
+    params.effort as AgentEffortLevel | undefined,
   );
 }
 

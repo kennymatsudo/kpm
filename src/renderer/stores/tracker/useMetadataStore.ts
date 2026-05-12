@@ -148,10 +148,12 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
     try {
       const result = await listTrackerProjectStatuses(projectKey, trackerType);
       if (result.success && result.statuses) {
+        const statuses = result.statuses;
         set((s) => {
           const nextLoading = new Set(s.loadingStatusesFor);
           nextLoading.delete(key);
           return {
+            statusesByProject: { ...s.statusesByProject, [key]: statuses },
             loadingStatusesFor: nextLoading,
             statusesLastFetchedAt: { ...s.statusesLastFetchedAt, [key]: Date.now() },
           };
@@ -213,10 +215,12 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
     try {
       const result = await listTrackerIssueTypes(projectKey);
       if (result.success && result.issueTypes) {
+        const issueTypes = result.issueTypes;
         set((s) => {
           const nextLoading = new Set(s.loadingIssueTypesFor);
           nextLoading.delete(projectKey);
           return {
+            issueTypesByProject: { ...s.issueTypesByProject, [projectKey]: issueTypes },
             loadingIssueTypesFor: nextLoading,
             issueTypesLastFetchedAt: { ...s.issueTypesLastFetchedAt, [projectKey]: Date.now() },
           };

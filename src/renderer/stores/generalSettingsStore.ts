@@ -61,7 +61,9 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
     ]);
 
     set({
+      hasAnthropicKey: 'hasKey' in keyResult ? Boolean(keyResult.hasKey) : false,
       isLoadingAnthropicKey: false,
+      branchTemplate: 'value' in branchResult && branchResult.value ? branchResult.value : '',
       isLoadingBranchTemplate: false,
       error:
         (!keyResult.success && keyResult.error) ||

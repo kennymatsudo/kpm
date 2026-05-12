@@ -12,6 +12,7 @@ export function watchProjectFiles(projectId: string): Promise<{ success: boolean
   return window.api.fileExplorer.watchProject(projectId);
 }
 
+export function unwatchProjectFiles(): Promise<{ success: boolean }> {
   return window.api.fileExplorer.unwatchProject();
 }
 
@@ -19,6 +20,7 @@ export function copyExternalProjectFile(
   projectId: string,
   sourcePath: string,
   destinationPath: string
+): Promise<FileNode> {
   return window.api.fileExplorer.copyExternalFile(projectId, sourcePath, destinationPath);
 }
 

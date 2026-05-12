@@ -56,6 +56,9 @@ export function createDevSessionsReviewSlice(
           return { success: false, error };
         }
 
+        const inbox = result.inbox;
+        set((state) => setReviewInbox(state, sessionId, inbox, { ensureFilters: true }));
+        return { success: true, inbox };
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to load review inbox';
         set((state) => setReviewError(state, sessionId, message));
@@ -79,6 +82,9 @@ export function createDevSessionsReviewSlice(
           return { success: false, error };
         }
 
+        const inbox = result.inbox;
+        set((state) => setReviewInbox(state, sessionId, inbox));
+        return { success: true, inbox };
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to refresh review inbox';
         set((state) => setReviewError(state, sessionId, message));
@@ -97,6 +103,9 @@ export function createDevSessionsReviewSlice(
           return { success: false, error };
         }
 
+        const inbox = result.inbox;
+        set((state) => setReviewInbox(state, sessionId, inbox));
+        return { success: true, inbox };
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to assign review ownership';
         set((state) => setReviewError(state, sessionId, message));
@@ -111,6 +120,9 @@ export function createDevSessionsReviewSlice(
           return { success: false, error };
         }
 
+        const inbox = result.inbox;
+        set((state) => setReviewInbox(state, sessionId, inbox));
+        return { success: true, inbox };
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to assess review threads';
         set((state) => setReviewError(state, sessionId, message));
@@ -127,6 +139,9 @@ export function createDevSessionsReviewSlice(
           return { success: false, error };
         }
 
+        const inbox = result.inbox;
+        set((state) => setReviewInbox(state, sessionId, inbox));
+        return { success: true, inbox };
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to draft post-implementation replies';
         set((state) => setReviewError(state, sessionId, message));
@@ -144,6 +159,8 @@ export function createDevSessionsReviewSlice(
         }
 
         if (result.inbox) {
+          const inbox = result.inbox;
+          set((state) => setReviewInbox(state, sessionId, inbox));
         }
 
         const projectId = get().projectId;
@@ -174,6 +191,8 @@ export function createDevSessionsReviewSlice(
         }
 
         if (result.inbox) {
+          const inbox = result.inbox;
+          set((state) => setReviewInbox(state, sessionId, inbox));
         }
 
         return {
@@ -198,6 +217,9 @@ export function createDevSessionsReviewSlice(
           return { success: false, error };
         }
 
+        const inbox = result.inbox;
+        set((state) => setReviewInbox(state, sessionId, inbox));
+        return { success: true, inbox };
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to resolve review thread';
         set((state) => setReviewError(state, sessionId, message));
@@ -214,6 +236,9 @@ export function createDevSessionsReviewSlice(
           return { success: false, error };
         }
 
+        const inbox = result.inbox;
+        set((state) => setReviewInbox(state, sessionId, inbox));
+        return { success: true, inbox };
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to reopen review thread';
         set((state) => setReviewError(state, sessionId, message));
@@ -230,6 +255,9 @@ export function createDevSessionsReviewSlice(
           return { success: false, error };
         }
 
+        const inbox = result.inbox;
+        set((state) => setReviewInbox(state, sessionId, inbox));
+        return { success: true, inbox };
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to ignore review task';
         set((state) => setReviewError(state, sessionId, message));
@@ -246,6 +274,9 @@ export function createDevSessionsReviewSlice(
           return { success: false, error };
         }
 
+        const inbox = result.inbox;
+        set((state) => setReviewInbox(state, sessionId, inbox));
+        return { success: true, inbox };
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to override disposition';
         set((state) => setReviewError(state, sessionId, message));

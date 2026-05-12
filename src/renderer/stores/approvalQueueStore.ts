@@ -390,8 +390,10 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
       }
 
       if (result.inbox) {
+        const inbox = result.inbox;
         useDevSessionsStore.setState((state) => {
           const reviewInboxBySessionId = new Map(state.reviewInboxBySessionId);
+          reviewInboxBySessionId.set(draft.sessionId, inbox);
 
           const reviewErrorBySessionId = new Map(state.reviewErrorBySessionId);
           reviewErrorBySessionId.set(draft.sessionId, null);
