@@ -48,6 +48,8 @@ export interface PerSessionState {
   lastStreamUpdateAt: number | null;
   /** Draft message persisted across view switches */
   draftMessage: string;
+  /** Attachments staged for the next send, scoped to this session */
+  pendingAttachments: ChatAttachment[];
   /** Suggested next prompts from the SDK (populated after each turn) */
   suggestions: string[];
   /** Sequential session number for display (e.g., "Session 1") */
@@ -98,6 +100,7 @@ export interface ChatState {
   clearError: (chatSessionId: string) => void;
   setSessionState: (chatSessionId: string, state: SessionState) => void;
   setDraftMessage: (chatSessionId: string, message: string) => void;
+  setPendingAttachments: (chatSessionId: string, attachments: ChatAttachment[]) => void;
   setSuggestions: (chatSessionId: string, suggestions: string[]) => void;
   setClaudeSessionId: (chatSessionId: string, claudeSessionId: string) => void;
   setSessionTitle: (chatSessionId: string, title: string) => void;

@@ -89,6 +89,26 @@ export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
       return { sessions };
     }),
 
+    setPendingAttachments: (chatSessionId, pendingAttachments) => set((state) => {
+      const sessions = new Map(state.sessions);
+      const session = sessions.get(chatSessionId);
+      if (!session) {
+        sessions.set(
+          chatSessionId,
+          {
+            pendingAttachments,
+          }
+        );
+        return {
+          sessions,
+          nextSessionNumber: state.nextSessionNumber + 1,
+        };
+      }
+
+      sessions.set(chatSessionId, { ...session, pendingAttachments });
+      return { sessions };
+    }),
+
     setSuggestions: (chatSessionId, suggestions) => set((state) => {
       const sessions = new Map(state.sessions);
       const session = sessions.get(chatSessionId);

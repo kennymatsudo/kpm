@@ -12,6 +12,7 @@
   streamStartedAt: null,
   lastStreamUpdateAt: null,
   draftMessage: '',
+  pendingAttachments: [],
   suggestions: [],
   sessionNumber,
   claudeSessionId: null,

@@ -45,16 +45,26 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
       viewedSessionId: state.viewedSessionId,
       viewedSession: session,
       setDraftMessage: state.setDraftMessage,
+      setPendingAttachments: state.setPendingAttachments,
       getChatSessionId: state.getChatSessionId,
       getOrCreateSession: state.getOrCreateSession,
     };
   }));
 
+  const attachments = viewedSession?.pendingAttachments ?? [];
   const isStreaming = viewedSession?.isStreaming ?? false;
   const suggestions = viewedSession?.suggestions ?? [];
 
     const sessionId = viewedSessionId ?? getChatSessionId();
     getOrCreateSession(sessionId);
+
+  const setAttachments = useCallback((updater: ChatAttachment[] | ((prev: ChatAttachment[]) => ChatAttachment[])) => {
+    const sessionId = viewedSessionId ?? getChatSessionId();
+    getOrCreateSession(sessionId);
+    const current = useChatStore.getState().sessions.get(sessionId)?.pendingAttachments ?? [];
+    const next = typeof updater === 'function' ? updater(current) : updater;
+    setPendingAttachments(sessionId, next);
+  }, [viewedSessionId, setPendingAttachments, getChatSessionId, getOrCreateSession]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isPickingFiles, setIsPickingFiles] = useState(false);
