@@ -17,6 +17,7 @@ import type { TrackerStatusOption } from '../../../stores/tracker/useMetadataSto
 import { useStatusMapping } from '../settings/hooks';
 import type { StatusCategory, StatusMapping, TrackerType } from '../../../../shared/types';
 import { MAPPABLE_KPM_CATEGORIES } from './categories';
+import { suggestStatusMapping } from '../../../../shared/statusMappingSuggest';
 
 interface Props {
   associationId: string;

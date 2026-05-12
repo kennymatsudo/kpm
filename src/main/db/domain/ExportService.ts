@@ -33,6 +33,7 @@ import {
   inferCategoryWithMapping,
 } from '../../trackers/statusTransitions';
 import { resolvePlanRefs, type RefDestination } from '../../documents/planRefResolver';
+import { suggestStatusMapping } from '../../../shared/statusMappingSuggest';
 
 interface TrackerClientServiceLike {
   /** Polymorphic factory — preferred for any code path that handles both trackers. */
@@ -446,6 +447,7 @@ export function createExportService(deps: ExportServiceDeps) {
 
     // Get association for status mapping
     const association = TrackerRepository.getAssociationById(associationId);
+    let statusMapping = association?.status_mapping ?? null;
 
     // Get tracker client for fetching current state.
     let client: TrackerClient | null = null;
@@ -454,6 +456,29 @@ export function createExportService(deps: ExportServiceDeps) {
         client = await TrackerClientService.getClient(association.tracker_type);
       } catch {
         // Continue without client - diffs won't be available for updates
+      }
+    }
+
+    // Auto-bootstrap the status mapping on first export. Without this, the
+    // user opens the Mappings panel and sees suggestions with AUTO badges that
+    // look configured but were never persisted — closing the panel drops them
+    // and the export silently skips the state transition. Treating the
+    // suggestion as the default the user can edit later matches what the UI
+    // already implies and gets the common case (Linear states named "Done",
+    // "Backlog", "In Progress" etc.) working with zero clicks.
+      !statusMapping &&
+      association &&
+      client &&
+      try {
+        const { mapping: suggested } = suggestStatusMapping(statuses);
+        if (Object.keys(suggested).length > 0) {
+          statusMapping = suggested;
+        }
+      } catch (e) {
+        // Suggestion is best-effort. If fetching statuses fails, fall through
+        // to the existing "no mapping" warning so the user can configure
+        // manually.
+        console.warn(`[ExportService] Failed to bootstrap status mapping for ${associationId}:`, e);
       }
     }
 
@@ -580,8 +605,16 @@ export function createExportService(deps: ExportServiceDeps) {
         }
       }
 
+      // A queued status transition that can't resolve to a tracker state is a
+      // hard failure: silently exporting would push title/description but drop
+      // the state change — exactly the partial-update we saw burn users.
+      const validationErrors = statusTransition?.warning
+        ? [...item.validationErrors, statusTransition.warning]
+        : item.validationErrors;
+
       return {
         ...item,
+        validationErrors,
         jiraCurrent,
         diffs,
         statusTransition,
@@ -829,6 +862,7 @@ export function createExportService(deps: ExportServiceDeps) {
           try {
           } catch (transitionError) {
             console.error(`Failed to transition ${planItem.external_key}:`, transitionError);
+            throw transitionError;
           }
         }
 

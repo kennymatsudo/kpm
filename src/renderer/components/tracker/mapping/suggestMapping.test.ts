@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { suggestStatusMapping } from '../../../../shared/statusMappingSuggest';
 import type { TrackerStatusOption } from '../../../stores/tracker/useMetadataStore';
 
 const s = (name: string, categoryKey: string, id?: string): TrackerStatusOption => ({

@@ -59,6 +59,7 @@ function createMockClient(responses: Map<string, ExternalIssue[]>): TrackerClien
     updateIssue: vi.fn(),
     getTransitions: vi.fn(async () => []),
     transitionIssue: vi.fn(),
+    getProjectStatuses: vi.fn(async () => []),
   };
 }
 

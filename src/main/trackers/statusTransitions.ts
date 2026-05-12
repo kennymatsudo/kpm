@@ -141,14 +141,20 @@ export function generateTransitionWarning(
   const targetLabel = categoryLabels[targetCategory];
 
   if (availableTransitions.length === 0) {
+    return `Cannot transition from "${currentStatus}" — no destination states available`;
   }
 
   const availableNames = availableTransitions.map((t) => t.to.name).join(', ');
   const mappedName = statusMapping?.[targetCategory];
 
   if (mappedName) {
+    return `Status mapping for "${targetLabel}" is set to "${mappedName}", but "${mappedName}" isn't an available state. Available: ${availableNames}`;
   }
 
+  // statusMapping is either null or has no entry for this category — both surface
+  // the same fix path. The system requires an explicit mapping; there is no
+  // heuristic fallback (see findTransitionWithMapping).
+  return `No status mapping configured for "${targetLabel}". Open Mappings to pick a destination state. Available: ${availableNames}`;
 }
 
 /**

@@ -1,3 +1,14 @@
+import type { StatusCategory, StatusMapping } from './types';
+
+/**
+ * Tracker-state input for the suggester. Structural — only `name` and
+ * `categoryKey` are read, so any caller with `{ name, categoryKey }` rows
+ * (from `client.getProjectStatuses` or the renderer metadata store) works.
+ */
+export interface SuggesterStateInput {
+  name: string;
+  categoryKey: string;
+}
 
 // Tier 1 — structural mapping. Each KPM category lives in one tracker bucket.
 // Linear's six state types collapse to Jira's three category keys via
@@ -29,6 +40,7 @@ const CATEGORY_KEYWORDS: Record<StatusCategory, string[]> = {
   canceled: ['canceled', 'cancelled', 'won\'t do', 'wontdo', 'duplicate', 'invalid'],
 };
 
+export interface SuggestionResult {
   /** Suggested mapping. Only includes categories where a deterministic-or-principled match was found. */
   mapping: StatusMapping;
   /** Per-category provenance — useful for showing "auto" badges in the UI. */
@@ -67,11 +79,13 @@ function normalize(name: string): string {
  * existing mapping (if any) isn't overwritten with empty values.
  */
 export function suggestStatusMapping(
+  availableStates: readonly SuggesterStateInput[]
 ): SuggestionResult {
   const mapping: StatusMapping = {};
   const source: SuggestionResult['source'] = {};
 
   // Group states by their bucket (categoryKey: 'new' | 'indeterminate' | 'done').
+  const byBucket = new Map<string, SuggesterStateInput[]>();
   for (const state of availableStates) {
     const bucket = state.categoryKey.toLowerCase();
     const list = byBucket.get(bucket) ?? [];

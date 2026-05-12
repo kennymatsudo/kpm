@@ -153,18 +153,31 @@ describe('isTransitionNeededWithMapping', () => {
 describe('generateTransitionWarning', () => {
   it('warns when no transitions available', () => {
     const warning = generateTransitionWarning('Done', 'not_started', []);
+    expect(warning).toContain('no destination states available');
     expect(warning).toContain('Done');
   });
 
+  it('points to mappings when no mapping is configured', () => {
     const transitions = [
       createTransition('In Progress', 'In Progress', 'indeterminate'),
       createTransition('Done', 'Done', 'done'),
     ];
     const warning = generateTransitionWarning('To Do', 'blocked', transitions);
+    expect(warning).toContain('No status mapping configured');
     expect(warning).toContain('Blocked');
+    expect(warning).toContain('Open Mappings');
     expect(warning).toContain('Available:');
     expect(warning).toContain('In Progress');
     expect(warning).toContain('Done');
+  });
+
+  it('points to mappings when category is unmapped in an existing mapping', () => {
+    const transitions = [createTransition('Done', 'Done', 'done')];
+    const warning = generateTransitionWarning('To Do', 'blocked', transitions, {
+      done: 'Done',
+    });
+    expect(warning).toContain('No status mapping configured for "Blocked"');
+    expect(warning).toContain('Open Mappings');
   });
 
   it('distinguishes stale mapped statuses from absent mappings', () => {
@@ -175,6 +188,8 @@ describe('generateTransitionWarning', () => {
       blocked: 'On Hold',
     });
 
+    expect(warning).toContain('is set to "On Hold"');
+    expect(warning).toContain("isn't an available state");
   });
 });
 

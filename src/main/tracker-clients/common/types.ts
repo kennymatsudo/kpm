@@ -99,6 +99,8 @@ export interface TrackerClient {
   updateIssue(issueKey: string, params: UpdateIssueParams): Promise<void>;
   getTransitions(issueKey: string): Promise<JiraTransition[]>;
   transitionIssue(issueKey: string, transitionId: string, toDoneCategory?: boolean): Promise<void>;
+  /** All workflow states/statuses for the project. Used to seed status mappings. */
+  getProjectStatuses(projectKey: string): Promise<{ id: string; name: string; categoryKey: string }[]>;
 }
 
 /** Atlassian Cloud credentials (Jira and Confluence share the account). */
