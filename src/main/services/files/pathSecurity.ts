@@ -1,6 +1,10 @@
 /**
  * Realpath-aware security checks for file explorer operations.
  *
+ * FileExplorerService first enforces lexical containment (the relative path
+ * can't escape the project root with `..`). Once that passes, this module
+ * decides whether the operation is allowed to touch the actual on-disk target
+ * a symlink might point at:
  *
  * 1. The realpath of the target (or its nearest existing ancestor for paths
  *    that don't exist yet) is computed.
@@ -12,6 +16,8 @@
  *
  * This is the second-pass check called by `FileExplorerService` on every
  * operation that touches file content. It is deliberately separate from
+ * lexical path validation, so listing performance and dry-run validation
+ * don't pay a `realpath` syscall per entry.
  */
 
 import fs from 'fs';

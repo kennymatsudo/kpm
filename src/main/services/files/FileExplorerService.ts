@@ -11,6 +11,7 @@ import {
   getScopedEntryInfo,
   listScopedDirectory,
   pathExists,
+  resolveLexicalScopedPath,
 } from './scopedFs';
 import {
   checkRealpathAccess,
@@ -121,15 +122,41 @@ function queueMissingSummaries(
 }
 
 export function createFileExplorerService(deps: FileExplorerServiceDeps) {
+  function resolveFileExplorerPath(
     projectFolder: string,
     relativePath: string
+  ): { fullPath: string } | { error: ServiceResult<never> } {
+    const { valid, fullPath } = resolveLexicalScopedPath(projectFolder, relativePath);
     if (!valid) {
       return { error: failure('Invalid path') };
     }
+    return { fullPath };
+  }
+
+  async function checkTargetAccess(
+    projectFolder: string,
+    fullPath: string
+  ): Promise<RealpathAccessResult | { error: ServiceResult<never> }> {
     const access = await checkRealpathAccess(fullPath, projectFolder);
     if (!access.allowed) {
       return { error: failure(access.reason ?? 'Access denied') };
     }
+    return access;
+  }
+
+  /**
+   * Resolve lexical project containment, then check the realpath target.
+   * Use this for operations that follow symlinks and may touch external data.
+   */
+  async function gateTargetAccess(
+    projectFolder: string,
+    relativePath: string
+  ): Promise<{ fullPath: string; access: RealpathAccessResult } | { error: ServiceResult<never> }> {
+    const scoped = resolveFileExplorerPath(projectFolder, relativePath);
+    if ('error' in scoped) return scoped;
+    const access = await checkTargetAccess(projectFolder, scoped.fullPath);
+    if ('error' in access) return access;
+    return { fullPath: scoped.fullPath, access };
   }
 
   function audit(
@@ -158,6 +185,9 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      const scoped = resolveFileExplorerPath(projectFolder, relativePath);
+      if ('error' in scoped) return scoped.error;
+      const { fullPath } = scoped;
 
       try {
         let nodes = await listScopedDirectory({
@@ -200,6 +230,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      const gated = await gateTargetAccess(projectFolder, relativePath);
       if ('error' in gated) return gated.error;
       const { fullPath, access } = gated;
 
@@ -235,6 +266,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      const gated = await gateTargetAccess(projectFolder, relativePath);
       if ('error' in gated) return gated.error;
       const { fullPath, access } = gated;
 
@@ -265,6 +297,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      const gated = await gateTargetAccess(projectFolder, linkPath);
       if ('error' in gated) return gated.error;
       const { fullPath: fullLinkPath } = gated;
 
@@ -319,6 +352,9 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      const scoped = resolveFileExplorerPath(projectFolder, relativePath);
+      if ('error' in scoped) return scoped.error;
+      const { fullPath } = scoped;
 
         return failure('Cannot delete project root');
       }
@@ -340,6 +376,13 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
           throw error;
         }
 
+        let access: RealpathAccessResult | null = null;
+        if (!stats.isSymbolicLink()) {
+          const checked = await checkTargetAccess(projectFolder, fullPath);
+          if ('error' in checked) return checked.error;
+          access = checked;
+        }
+
         if (stats.isDirectory() && !stats.isSymbolicLink()) {
           // Recursively delete directory
           await fs.promises.rm(fullPath, { recursive: true, force: true });
@@ -354,6 +397,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
           deps.fileSummaryService?.deleteEntry(projectId, relativePath);
         }
 
+        if (access) audit(projectId, 'delete', relativePath, access);
         return success(undefined);
       } catch (error) {
         return failure(`Failed to delete: ${error}`);
@@ -369,16 +413,37 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      const oldScoped = resolveFileExplorerPath(projectFolder, oldPath);
+      if ('error' in oldScoped) return oldScoped.error;
+      const newScoped = resolveFileExplorerPath(projectFolder, newPath);
+      if ('error' in newScoped) return newScoped.error;
 
       try {
+        let oldLstat: fs.Stats;
+        try {
+          oldLstat = await fs.promises.lstat(oldScoped.fullPath);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+            return failure('Source path does not exist');
+          }
+          throw error;
+        }
+
+        let oldAccess: RealpathAccessResult | null = null;
+        if (!oldLstat.isSymbolicLink()) {
+          const checked = await checkTargetAccess(projectFolder, oldScoped.fullPath);
+          if ('error' in checked) return checked.error;
+          oldAccess = checked;
         }
 
         // Detect case-only renames on case-insensitive filesystems (e.g. macOS):
         // "Archive" -> "archive" reports destination as existing because the OS
         // treats them as the same path. Compare inodes to distinguish.
         let isCaseOnlyRename = false;
+        const newFullPath = newScoped.fullPath;
 
         if (await pathExists(newFullPath)) {
+          const oldStat = await fs.promises.stat(oldScoped.fullPath);
           const newStat = await fs.promises.stat(newFullPath);
           isCaseOnlyRename = oldStat.ino === newStat.ino && oldStat.dev === newStat.dev;
           if (!isCaseOnlyRename) {
@@ -386,13 +451,23 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
           }
         }
 
+        let newAccess: RealpathAccessResult | null = null;
+        if (!isCaseOnlyRename) {
+          const checked = await checkTargetAccess(projectFolder, newFullPath);
+          if ('error' in checked) return checked.error;
+          newAccess = checked;
+        }
+
         // Ensure parent directory of destination exists
         await ensureParentDirectory(newFullPath);
 
         if (isCaseOnlyRename) {
           // Direct rename is a no-op on case-insensitive FS; use a temporary intermediate name
+          const tmpPath = oldScoped.fullPath + `.__kpm_rename_${Date.now()}`;
+          await fs.promises.rename(oldScoped.fullPath, tmpPath);
           await fs.promises.rename(tmpPath, newFullPath);
         } else {
+          await fs.promises.rename(oldScoped.fullPath, newFullPath);
         }
 
         const node = await getScopedEntryInfo(newFullPath, newPath, path.basename(projectFolder));
@@ -405,6 +480,10 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
           }
         }
 
+        if (oldAccess?.external) {
+          audit(projectId, 'rename', oldPath, oldAccess);
+        } else if (newAccess?.external) {
+          audit(projectId, 'rename', newPath, newAccess);
         }
         return success(node);
       } catch (error) {
@@ -421,6 +500,9 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      const scoped = resolveFileExplorerPath(projectFolder, relativePath);
+      if ('error' in scoped) return scoped.error;
+      const { fullPath } = scoped;
 
       try {
         if (!(await pathExists(fullPath))) {
@@ -442,6 +524,9 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      const scoped = resolveFileExplorerPath(projectFolder, relativePath);
+      if ('error' in scoped) return scoped.error;
+      const { fullPath } = scoped;
 
       if (!(await pathExists(fullPath))) {
         return failure('Path does not exist');
@@ -459,6 +544,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      const gated = await gateTargetAccess(projectFolder, relativePath);
       if ('error' in gated) return gated.error;
       const { fullPath } = gated;
 
@@ -494,6 +580,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      const gated = await gateTargetAccess(projectFolder, relativePath);
       if ('error' in gated) return gated.error;
       const { fullPath } = gated;
 
@@ -528,6 +615,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      const gated = await gateTargetAccess(projectFolder, relativePath);
       if ('error' in gated) return gated.error;
       const { fullPath, access } = gated;
 
@@ -566,6 +654,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      const gated = await gateTargetAccess(projectFolder, relativePath);
       if ('error' in gated) return gated.error;
       const { fullPath, access } = gated;
 
@@ -611,6 +700,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      const gated = await gateTargetAccess(projectFolder, relativePath);
       if ('error' in gated) return gated.error;
       const { fullPath, access } = gated;
 
@@ -670,6 +760,9 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
+      const scoped = resolveFileExplorerPath(projectFolder, relativePath);
+      if ('error' in scoped) return scoped.error;
+      const { fullPath } = scoped;
 
       try {
         let stats: fs.Stats;

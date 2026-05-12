@@ -38,8 +38,66 @@ function isExplicitAbsolutePath(targetPath: string): boolean {
 }
 
 /**
+ * Resolve a path through symlinks by walking up to the nearest existing ancestor.
+ * This lets us safely validate both existing files and yet-to-be-created paths.
+ */
+function resolveThroughExistingAncestor(targetPath: string): string {
+  if (fs.existsSync(targetPath)) {
+    return fs.realpathSync.native(targetPath);
+  }
+
+  const missingSegments: string[] = [];
+  let current = targetPath;
+
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    missingSegments.unshift(path.basename(current));
+    current = parent;
+  }
+
+  const resolvedExisting = fs.existsSync(current)
+    ? fs.realpathSync.native(current)
+    : path.resolve(current);
+
+  return path.resolve(resolvedExisting, ...missingSegments);
+}
+
+/**
+ * Validate that a target path doesn't escape the base directory.
+ * This is the conservative shared helper: containment is checked after
+ * resolving symlinks through the nearest existing ancestor.
  */
 export function resolveScopedPath(basePath: string, targetPath: string): ScopedPathResult {
+  const normalizedBase = path.resolve(basePath);
+  const candidatePath = path.resolve(basePath, targetPath);
+
+  if (targetPath.includes('\0') || isExplicitAbsolutePath(targetPath)) {
+    return { valid: false, fullPath: candidatePath };
+  }
+
+  let resolvedBase: string;
+  try {
+    resolvedBase = fs.realpathSync.native(normalizedBase);
+  } catch {
+    resolvedBase = normalizedBase;
+  }
+
+  const resolvedTarget = resolveThroughExistingAncestor(candidatePath);
+  const relative = path.relative(resolvedBase, resolvedTarget);
+  const isValid = relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+
+  return { valid: isValid, fullPath: resolvedTarget };
+}
+
+/**
+ * Validate lexical containment only. FileExplorerService uses this for the
+ * explicit symlink-editing flow, then applies operation-specific realpath
+ * checks where the operation follows the target.
+ */
+export function resolveLexicalScopedPath(basePath: string, targetPath: string): ScopedPathResult {
   const normalizedBase = path.resolve(basePath);
   const candidatePath = path.resolve(basePath, targetPath);
 
@@ -223,6 +281,7 @@ export async function listScopedDirectory(options: ListScopedDirectoryOptions): 
             return node;
           }
 
+          const scopedEntry = resolveLexicalScopedPath(scopedRootPath, relativePath);
           if (!scopedEntry.valid) {
             return node;
           }

@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import {
   listScopedDirectory,
+  resolveLexicalScopedPath,
   resolveScopedPath,
 } from '../../src/main/services/files/scopedFs';
 
@@ -27,6 +28,7 @@ afterEach(() => {
 describe('resolveScopedPath', () => {
   it('accepts a normal in-project path', () => {
     const projectDir = mkTemp('scoped-fs-project-');
+    const resolvedProjectDir = fs.realpathSync.native(projectDir);
     const result = resolveScopedPath(projectDir, 'docs/guide.md');
 
     expect(result.valid).toBe(true);
@@ -47,6 +49,7 @@ describe('resolveScopedPath', () => {
     expect(result.valid).toBe(false);
   });
 
+  it('rejects a symlink that resolves outside project root', () => {
     const projectDir = mkTemp('scoped-fs-project-');
     const outsideDir = mkTemp('scoped-fs-outside-');
     const outsideFile = path.join(outsideDir, 'notes.txt');
@@ -56,8 +59,10 @@ describe('resolveScopedPath', () => {
     fs.symlinkSync(outsideFile, linkPath);
 
     const result = resolveScopedPath(projectDir, 'notes.txt');
+    expect(result.valid).toBe(false);
   });
 
+  it('rejects paths under a symlinked directory that points outside', () => {
     const projectDir = mkTemp('scoped-fs-project-');
     const outsideDir = mkTemp('scoped-fs-outside-');
     fs.writeFileSync(path.join(outsideDir, 'existing.md'), 'hello', 'utf-8');
@@ -66,8 +71,40 @@ describe('resolveScopedPath', () => {
     fs.symlinkSync(outsideDir, linkDirPath);
 
     const existing = resolveScopedPath(projectDir, 'shared/existing.md');
+    expect(existing.valid).toBe(false);
 
     const created = resolveScopedPath(projectDir, 'shared/new-file.md');
+    expect(created.valid).toBe(false);
+  });
+});
+
+describe('resolveLexicalScopedPath', () => {
+  it('accepts an in-project symlink while preserving the lexical link path', () => {
+    const projectDir = mkTemp('lexical-scoped-fs-project-');
+    const outsideDir = mkTemp('lexical-scoped-fs-outside-');
+    const outsideFile = path.join(outsideDir, 'notes.txt');
+    fs.writeFileSync(outsideFile, 'external content', 'utf-8');
+
+    fs.symlinkSync(outsideFile, path.join(projectDir, 'notes.txt'));
+
+    const result = resolveLexicalScopedPath(projectDir, 'notes.txt');
+    expect(result.valid).toBe(true);
+    expect(result.fullPath).toBe(path.resolve(projectDir, 'notes.txt'));
+    expect(fs.readFileSync(result.fullPath, 'utf-8')).toBe('external content');
+  });
+
+  it('accepts lexical paths under a symlinked directory', () => {
+    const projectDir = mkTemp('lexical-scoped-fs-project-');
+    const outsideDir = mkTemp('lexical-scoped-fs-outside-');
+    fs.writeFileSync(path.join(outsideDir, 'existing.md'), 'hello', 'utf-8');
+
+    fs.symlinkSync(outsideDir, path.join(projectDir, 'shared'));
+
+    const existing = resolveLexicalScopedPath(projectDir, 'shared/existing.md');
+    expect(existing.valid).toBe(true);
+    expect(existing.fullPath).toBe(path.resolve(projectDir, 'shared/existing.md'));
+
+    const created = resolveLexicalScopedPath(projectDir, 'shared/new-file.md');
     expect(created.valid).toBe(true);
   });
 });

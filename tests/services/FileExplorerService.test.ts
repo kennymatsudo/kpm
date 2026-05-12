@@ -4,6 +4,7 @@ import path from 'path';
 import os from 'os';
 import { createFileExplorerService } from '../../src/main/services/files/FileExplorerService';
 import type { FileSummaryService } from '../../src/main/services/files/FileSummaryService';
+import { createTestConfig, setConfig } from '../../src/main/config';
 
 // Create a temp directory for each test
 let tempDir: string;
@@ -24,6 +25,7 @@ function cleanupTestDir() {
 
 describe('FileExplorerService', () => {
   beforeEach(() => {
+    setConfig(createTestConfig({}));
     setupTestDir();
   });
 
@@ -368,6 +370,21 @@ describe('FileExplorerService', () => {
         expect(result.error).toBe('Path does not exist');
       }
     });
+
+    it('deletes a symlink without touching a denied target', async () => {
+      const protectedRoot = path.join(tempDir, 'protected');
+      fs.mkdirSync(protectedRoot);
+      const target = path.join(protectedRoot, 'secret.txt');
+      fs.writeFileSync(target, 'secret', 'utf-8');
+      fs.symlinkSync(target, path.join(tempDir, 'secret-link.txt'));
+      setConfig(createTestConfig({ fileExplorer: { deniedRealpathRoots: [protectedRoot] } }));
+
+      const result = await service.deleteEntry('test-project', 'secret-link.txt');
+
+      expect(result.ok).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, 'secret-link.txt'))).toBe(false);
+      expect(fs.readFileSync(target, 'utf-8')).toBe('secret');
+    });
   });
 
   describe('rename', () => {
@@ -479,6 +496,23 @@ describe('FileExplorerService', () => {
       expect(result.ok).toBe(true);
       expect(fs.existsSync(path.join(tempDir, 'nested', 'path', 'file.txt'))).toBe(true);
     });
+
+    it('blocks writes through a symlink into a denied target', async () => {
+      const protectedRoot = path.join(tempDir, 'protected');
+      fs.mkdirSync(protectedRoot);
+      const target = path.join(protectedRoot, 'secret.txt');
+      fs.writeFileSync(target, 'secret', 'utf-8');
+      fs.symlinkSync(target, path.join(tempDir, 'secret-link.txt'));
+      setConfig(createTestConfig({ fileExplorer: { deniedRealpathRoots: [protectedRoot] } }));
+
+      const result = await service.writeFile('test-project', 'secret-link.txt', 'changed');
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain('protected location');
+      }
+      expect(fs.readFileSync(target, 'utf-8')).toBe('secret');
+    });
   });
 
   describe('getInfo', () => {
@@ -527,6 +561,26 @@ describe('FileExplorerService', () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data).toEqual({ isSymlink: false });
+      }
+    });
+
+    it('inspects a symlink even when its target is denied', async () => {
+      const protectedRoot = path.join(tempDir, 'protected');
+      fs.mkdirSync(protectedRoot);
+      const target = path.join(protectedRoot, 'secret.txt');
+      fs.writeFileSync(target, 'secret', 'utf-8');
+      fs.symlinkSync(target, path.join(tempDir, 'secret-link.txt'));
+      setConfig(createTestConfig({ fileExplorer: { deniedRealpathRoots: [protectedRoot] } }));
+
+      const result = await service.getSymlinkInfo('test-project', 'secret-link.txt');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data).toEqual({
+          isSymlink: true,
+          target,
+          isBroken: false,
+        });
       }
     });
   });
