@@ -39,6 +39,9 @@ import { createNotificationService } from './core/NotificationService';
 // Generation services
 import { executeCustomPrompt, setCustomPromptUsageRecorder } from './generation/CustomPromptGenerationService';
 
+// Streaming services
+import { createTerminalService } from './streaming/TerminalService';
+
 // Prompt override service
 import { createPromptOverrideService } from './core/PromptOverrideService';
 
@@ -118,6 +121,10 @@ export function createAppServices(container: IRepositoryContainer) {
     broadcastToWindows,
   });
   notificationService.start();
+
+  // Embedded developer terminal panel PTY manager. Distinct from agent PTYs
+  // (CliAgentSession) — this is the user-driven shell exposed via Cmd+`.
+  const terminalService = createTerminalService();
 
   // Centralized Claude usage tracking — every Claude SDK call site funnels
   // tokens + cost through this service. Created early so downstream services
@@ -358,6 +365,7 @@ export function createAppServices(container: IRepositoryContainer) {
     repoWatcherService,
     projectWatcherService,
     notificationService,
+    terminalService,
     disposeClaudeClients: () => clientManager.disposeAll(),
   });
 
@@ -462,6 +470,7 @@ export function createAppServices(container: IRepositoryContainer) {
     pollScheduler,
     updateEventBus,
     notificationService,
+    terminalService,
 
     // Repo
     repoService,

@@ -5,6 +5,7 @@ import type { RepoWatcherService } from '../repo/RepoWatcherService';
 import type { ProjectWatcherService } from '../files/ProjectWatcherService';
 import type { PollScheduler } from './PollScheduler';
 import type { NotificationService } from './NotificationService';
+import type { TerminalService } from '../streaming/TerminalService';
 
 export interface AppLifecycleServiceDeps {
   searchService: Pick<SearchService, 'startBackgroundIndexing' | 'disposeBackgroundIndexing'>;
@@ -13,6 +14,7 @@ export interface AppLifecycleServiceDeps {
   repoWatcherService?: Pick<RepoWatcherService, 'unwatchAll'>;
   projectWatcherService?: Pick<ProjectWatcherService, 'unwatchProject'>;
   notificationService?: Pick<NotificationService, 'stop'>;
+  terminalService?: Pick<TerminalService, 'shutdown'>;
   disposeClaudeClients: () => void;
 }
 
@@ -62,6 +64,12 @@ export function createAppLifecycleService(deps: AppLifecycleServiceDeps) {
         deps.notificationService?.stop();
       } catch (err) {
         console.error('[AppLifecycleService] Error stopping notification service:', err);
+      }
+
+      try {
+        deps.terminalService?.shutdown();
+      } catch (err) {
+        console.error('[AppLifecycleService] Error shutting down terminal service:', err);
       }
 
       deps.disposeClaudeClients();

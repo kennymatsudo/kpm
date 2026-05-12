@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import { registerTempImageHandlers } from '../handlers/tempImages';
 import { registerShellHandlers } from '../handlers/shell';
+import { registerTerminalHandlers } from '../handlers/terminal';
 import { registerPerfHandlers } from '../handlers/perf';
 import { registerConfluenceHandlers } from '../handlers/confluence';
 import { registerDebugHandlers } from '../handlers/debug';
@@ -17,6 +18,7 @@ import { assertTrustedIpcSender } from '../senderValidation';
 export function registerPlatformHandlers({
   services,
   chatRuntime,
+  getMainWindow,
 }: IpcRegistrationContext): void {
   ipcMain.on('window:close', (event) => {
     try {
@@ -28,6 +30,7 @@ export function registerPlatformHandlers({
   });
   registerTempImageHandlers();
   registerShellHandlers();
+  registerTerminalHandlers(services.terminalService, getMainWindow);
   registerPerfHandlers();
   registerConfluenceHandlers(services.confluenceSyncService);
   registerDebugHandlers();

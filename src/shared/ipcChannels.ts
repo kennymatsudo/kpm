@@ -568,6 +568,18 @@ export const IPC_CHANNELS = {
   testing: {
     resetDatabase: 'testing:reset-database',
   },
+
+  // ===========================================================================
+  // Embedded Developer Terminal
+  // ===========================================================================
+  terminal: {
+    create: 'terminal:create',
+    write: 'terminal:write',
+    resize: 'terminal:resize',
+    kill: 'terminal:kill',
+    data: 'terminal:data',
+    exit: 'terminal:exit',
+  },
 } as const;
 
 // Type for channel names

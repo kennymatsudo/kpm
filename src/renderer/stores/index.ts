@@ -94,6 +94,10 @@ export { useDevSessionsStore } from './devSessions';
 // Tool Call Logging
 export { useToolLogStore } from './toolLogStore';
 
+// Embedded Developer Terminal
+export { useTerminalStore } from './terminalStore';
+export type { TerminalEntry } from './terminalStore';
+
 // Prompt Overrides
 export { usePromptOverrideStore } from './promptOverrideStore';
 

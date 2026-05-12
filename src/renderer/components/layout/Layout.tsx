@@ -26,7 +26,9 @@ import {
   useWorkspaceStore,
   useSettingsUIStore,
   useBriefingStore,
+  useTerminalStore,
 } from '../../stores';
+import { TerminalPanel } from '../terminal';
 import { cancelChatSession, disconnectChatSession } from '../../services/chatService';
 import { useToolLog } from '../../hooks/useToolLog';
 import { useChatIpcBridge } from '../../hooks/useChatIpcBridge';
@@ -75,6 +77,8 @@ export const Layout = memo(function Layout({
 
   const planItems = usePlanDomainStore((state) => state.planItems);
   const isSwitchingProject = useProjectUiDomainStore((state) => state.isSwitchingProject);
+  const isTerminalOpen = useTerminalStore((state) => state.isPanelOpen);
+  const toggleTerminal = useTerminalStore((state) => state.togglePanel);
 
   // Extracted hooks
   const { sidebarWidth, chatWidth, handleSidebarResizeStart, handleChatResizeStart } = usePanelResize();
@@ -220,6 +224,11 @@ export const Layout = memo(function Layout({
 
   }, [mainView, currentProjectId]);
 
+  // Resolve cwd for new terminals: the KPM project folder when one is active,
+  // otherwise TerminalService falls back to the user's home directory.
+  const currentProject = projects.find((p) => p.id === currentProjectId) ?? null;
+  const terminalCwd = currentProject?.folder_path;
+
   // Keyboard shortcuts
   useLayoutShortcuts({
     onToggleSidebar: () => setSidebarCollapsed((prev) => !prev),
@@ -229,6 +238,7 @@ export const Layout = memo(function Layout({
     onCreateItem: handleOpenCreateItem,
     onToggleToolLog: handleToggleToolLog,
     onOpenGlobalSearch: handleOpenGlobalSearch,
+    onToggleTerminal: toggleTerminal,
     onSwitchProjectByPosition: handleSwitchProjectByPosition,
     onClose: handleClose,
   });
@@ -359,6 +369,8 @@ export const Layout = memo(function Layout({
             </div>
           )}
         </div>
+
+        <TerminalPanel defaultCwd={terminalCwd} isOpen={isTerminalOpen} />
 
       </div>
       <LayoutOverlays currentProjectId={currentProjectId} />

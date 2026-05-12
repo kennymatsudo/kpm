@@ -1340,6 +1340,28 @@ const shell = {
     ipcRenderer.invoke(IPC_CHANNELS.shell.openExternal, { url }),
 };
 
+// Terminal API (embedded developer terminal panel)
+const terminal = {
+  create: (params: { id: string; cwd?: string; cols: number; rows: number }): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.terminal.create, params),
+  write: (id: string, data: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.terminal.write, { id, data }),
+  resize: (id: string, cols: number, rows: number): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.terminal.resize, { id, cols, rows }),
+  kill: (id: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.terminal.kill, { id }),
+  onData: (callback: (data: { id: string; data: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { id: string; data: string }) => callback(data);
+    ipcRenderer.on(IPC_CHANNELS.terminal.data, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.terminal.data, handler);
+  },
+  onExit: (callback: (data: { id: string; exitCode: number; signal?: number }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { id: string; exitCode: number; signal?: number }) => callback(data);
+    ipcRenderer.on(IPC_CHANNELS.terminal.exit, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.terminal.exit, handler);
+  },
+};
+
 const perf = {
   enabled: process.env.KPM_PERF === '1' || process.env.KPM_PERF === 'true',
   log: (event: { name: string; durationMs?: number; meta?: Record<string, unknown> }): Promise<{ success: boolean; error?: string }> =>
@@ -1615,6 +1637,7 @@ export const api = {
   fileExplorer,
   repoFiles,
   shell,
+  terminal,
   perf,
   confluence,
   debug,

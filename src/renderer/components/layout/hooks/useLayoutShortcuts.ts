@@ -11,6 +11,8 @@ export interface UseLayoutShortcutsOptions {
   onCreateItem?: () => void;
   onToggleToolLog?: () => void;
   onOpenGlobalSearch?: () => void;
+  /** Toggle the embedded terminal panel. Bound to Cmd/Ctrl+`. */
+  onToggleTerminal?: () => void;
   /** Switch project by 1-indexed position (1..10). Called via Cmd+Option+1..9 / Cmd+Option+0. */
   onSwitchProjectByPosition?: (position: number) => void;
   /** Close the currently focused context (file editor, chat session, or window). */
@@ -25,6 +27,7 @@ export function useLayoutShortcuts({
   onCreateItem,
   onToggleToolLog,
   onOpenGlobalSearch,
+  onToggleTerminal,
   onSwitchProjectByPosition,
   onClose,
 }: UseLayoutShortcutsOptions): void {
@@ -77,6 +80,13 @@ export function useLayoutShortcuts({
         e.preventDefault();
         e.stopPropagation();
         onOpenGlobalSearch?.();
+      }
+      // Cmd+` (Mac) or Ctrl+` (Windows/Linux) to toggle embedded terminal panel.
+      // Match VS Code: works even in editable elements — backtick is not a standard text shortcut.
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === '`' || e.code === 'Backquote')) {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggleTerminal?.();
       }
       // Cmd+Option+1-9 / Cmd+Option+0 - Switch projects by stable position.
       // Use e.code (Digit1..Digit9, Digit0) because Option held on macOS rewrites e.key

@@ -104,6 +104,9 @@ export type {
 // Shell
 export { ShellSchemas } from './shell';
 
+// Terminal (embedded developer terminal panel)
+export { TerminalSchemas } from './terminal';
+
 // Repo Files (workspace file browser for connected repos)
 export { RepoFileSchemas } from './repoFiles';
 
