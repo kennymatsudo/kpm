@@ -20,6 +20,7 @@ import type {
   SyncReviewItem,
   FieldDiff,
   DiffHunk,
+  JiraTransition,
   StatusTransitionInfo,
   CustomFieldValues,
   TrackerType,
@@ -466,12 +467,17 @@ export function createExportService(deps: ExportServiceDeps) {
     // suggestion as the default the user can edit later matches what the UI
     // already implies and gets the common case (Linear states named "Done",
     // "Backlog", "In Progress" etc.) working with zero clicks.
+    if (
       !statusMapping &&
       association &&
       client &&
+      preview.items.some(item => item.queueEntry.target_status_category)
+    ) {
       try {
+        const statuses = await client.getProjectStatuses(association.project_key);
         const { mapping: suggested } = suggestStatusMapping(statuses);
         if (Object.keys(suggested).length > 0) {
+          TrackerRepository.updateStatusMapping(association.id, suggested);
           statusMapping = suggested;
         }
       } catch (e) {
@@ -848,6 +854,39 @@ export function createExportService(deps: ExportServiceDeps) {
           ? client.formatCustomFieldsForApi(entry.custom_field_overrides)
           : undefined;
 
+        let transitionToApply: JiraTransition | null = null;
+        let newExternalStatus: string | null = null;
+
+        // Preflight status transitions before mutating title/description. If the
+        // queued status can't resolve to a tracker transition, fail the entry
+        // without creating a partial external update.
+          const currentIssue = await client.fetchIssue(planItem.external_key!);
+          const transitionNeeded = isTransitionNeededWithMapping(
+            currentIssue.status,
+            association.status_mapping,
+            { trackerType: association.tracker_type, stateType: currentIssue.statusType ?? null }
+          );
+
+          if (transitionNeeded) {
+            const transitions = await client.getTransitions(planItem.external_key!);
+            transitionToApply = findTransitionWithMapping(
+              transitions,
+              association.status_mapping
+            );
+            if (!transitionToApply) {
+              throw new Error(
+                generateTransitionWarning(
+                  currentIssue.status,
+                  transitions,
+                  association.status_mapping
+                )
+              );
+            }
+          } else {
+            newExternalStatus = currentIssue.status;
+          }
+        }
+
         // Sync boundary: same rule as createIssue above — spec fields are local-only.
         // Do not add `intent`, `acceptance_criteria`, or `source_document_id` to this payload.
         // Plan refs in the description are resolved to native syntax for the tracker.
@@ -859,7 +898,11 @@ export function createExportService(deps: ExportServiceDeps) {
         // Fetch the updated issue to get actual Jira data (after ADF roundtrip)
 
         // Execute status transition if queued
+        if (transitionToApply) {
           try {
+            const toDoneCategory = transitionToApply.to.statusCategory.key === 'done';
+            console.log(`[ExportService] Transitioning ${planItem.external_key} via transition "${transitionToApply.name}" (id: ${transitionToApply.id}) to "${transitionToApply.to.name}" (done=${toDoneCategory})`);
+            await client.transitionIssue(planItem.external_key!, transitionToApply.id, toDoneCategory);
           } catch (transitionError) {
             console.error(`Failed to transition ${planItem.external_key}:`, transitionError);
             throw transitionError;
