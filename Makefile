@@ -81,14 +81,18 @@ release-notes:
 	@echo "Generating release notes with Claude..."
 	@LAST_TAG=$$(git describe --tags --abbrev=0 2>/dev/null || echo ""); \
 	if [ -z "$$LAST_TAG" ]; then \
+		COMMITS=$$(git log --reverse --pretty=format:"%s" -20); \
 	else \
+		COMMITS=$$(git log --reverse $$LAST_TAG..HEAD --pretty=format:"%s" | grep -v "^Update release notes$$" | grep -v "^[0-9]\+\.[0-9]\+\.[0-9]\+$$"); \
 	fi; \
 	if [ -z "$$COMMITS" ]; then \
 		echo "No commits found since $$LAST_TAG"; \
 		exit 1; \
 	fi; \
+	echo "Commits since $$LAST_TAG (oldest first):"; \
 	echo "$$COMMITS"; \
 	echo ""; \
+	echo "$$COMMITS" | claude --model claude-opus-4-7 -p "Write release notes for these commits. The commits are listed oldest to newest, so later commits override earlier ones. Output ONLY the markdown body with no preamble or commentary. Reflect the NET final state only: if a feature was added and later removed, omit it entirely; if a name or label changed multiple times, keep only the final version; if a behavior was changed and then reverted, drop both. Include only user-facing changes; exclude tests, refactors, internal cleanup, dependency bumps, CI, docs, and architecture changes. Use these section headers in this order, skipping empty ones: ## New, ## Improved, ## Fixed, ## Removed. One concise bullet per change; merge related commits into a single bullet; lead with a strong verb matching the section; no commit hashes, no sub-bullets, no trailing periods. Aim for the shortest phrasing that stays clear." > release-notes.md
 	@echo ""
 	@echo "=== Generated release-notes.md ==="
 	@cat release-notes.md
