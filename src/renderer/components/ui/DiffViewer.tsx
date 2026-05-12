@@ -25,6 +25,18 @@ interface DiffViewerProps {
   autoScrollToFirstChange?: boolean;
 }
 
+function findScrollableParent(element: HTMLElement): HTMLElement | null {
+  let node: HTMLElement | null = element.parentElement;
+  while (node) {
+    const { overflowY } = window.getComputedStyle(node);
+    if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+
 export function computeDiff(oldContent: string | null, newContent: string): DiffLine[] {
   return diffLines(oldContent ?? '', newContent, { stripTrailingCr: true }).flatMap((change) => {
     const type: DiffLine['type'] = change.added
@@ -57,6 +69,35 @@ export function DiffViewer({ oldContent, newContent, diffLines: diffLinesProp, a
     const firstChangedIndex = diffLines.findIndex((line) => line.type !== 'unchanged');
     if (firstChangedIndex === -1) return;
 
+    let cancelled = false;
+    let attempts = 0;
+
+    const scrollToFirstChange = () => {
+      if (cancelled) return;
+      const container = containerRef.current;
+      if (!container) return;
+      const row = container.querySelectorAll<HTMLElement>('table tbody tr')[firstChangedIndex];
+      // ReactDiffViewer renders the table after its own effects; retry briefly until rows exist.
+      if (!row) {
+        if (attempts++ < 20) requestAnimationFrame(scrollToFirstChange);
+        return;
+      }
+      const scrollParent = findScrollableParent(container);
+      if (!scrollParent) {
+        row.scrollIntoView({ block: 'center' });
+        return;
+      }
+      const parentRect = scrollParent.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      const target =
+        scrollParent.scrollTop + (rowRect.top - parentRect.top) - parentRect.height / 2 + rowRect.height / 2;
+      scrollParent.scrollTop = Math.max(0, target);
+    };
+
+    requestAnimationFrame(scrollToFirstChange);
+    return () => {
+      cancelled = true;
+    };
   }, [autoScrollToFirstChange, diffLines]);
 
   return (
