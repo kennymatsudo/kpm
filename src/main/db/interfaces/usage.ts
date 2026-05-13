@@ -13,16 +13,25 @@ export type {
   ClaudeUsageEvent,
   ClaudeUsageTotals,
   ClaudeUsageBreakdownRow,
+  ClaudeUsageProjectBreakdownRow,
 } from '../../../shared/usage-types';
 
 import type {
   ClaudeUsageEvent,
   ClaudeUsageTotals,
   ClaudeUsageBreakdownRow,
+  ClaudeUsageProjectBreakdownRow,
 } from '../../../shared/usage-types';
 
 export interface ClaudeUsageEventInsert {
   project_id: string | null;
+  /**
+   * Project name captured at insert time. Used as the fallback display name in
+   * per-project breakdowns once the project row has been deleted; while the
+   * project still exists, the live `projects.name` is preferred so renames
+   * propagate through history.
+   */
+  project_name_snapshot: string | null;
   source: string;
   model: string;
   input_tokens: number;
@@ -40,6 +49,12 @@ export interface IClaudeUsageRepository {
   breakdownByProject(projectId: string | null): ClaudeUsageBreakdownRow[];
   /** Per-(source, model) breakdown across every project (and project-less events). */
   breakdownAll(): ClaudeUsageBreakdownRow[];
+  /**
+   * Per-project totals across every project. Joins with `projects` so callers
+   * can render names; events with a null project_id (cross-project work)
+   * roll up into a single row with `project_id = null`.
+   */
+  breakdownByProjectAll(): ClaudeUsageProjectBreakdownRow[];
   /** Global totals across every project. */
   globalTotals(): ClaudeUsageTotals;
   /** Most recent events for a project (or globally when null). */

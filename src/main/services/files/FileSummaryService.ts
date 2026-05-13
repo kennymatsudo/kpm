@@ -21,6 +21,7 @@ const SYSTEM_PROMPT = `You are a document indexer for a developer's project mana
 
 export interface FileSummaryServiceDeps {
   repository: IProjectFileMetadataRepository;
+  recordUsage?: (event: { projectId: string; model: string; usage: ClaudeQueryUsage; totalCostUsd?: number | null }) => void;
 }
 
 function computeHash(content: string): string {
@@ -38,6 +39,7 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
   const queuedDiskKeys = new Set<string>();
   let activeDiskJobs = 0;
 
+  async function generateSummary(projectId: string, filePath: string, content: string): Promise<string | null> {
     const truncated = content.length > MAX_CONTENT_CHARS ? content.slice(0, MAX_CONTENT_CHARS) : content;
     const prompt = `File: ${filePath}\n\n${truncated}`;
 
@@ -55,6 +57,7 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
         timeoutMs: 30_000,
         timeoutMessage: 'File summary timed out',
         recordUsage: deps.recordUsage
+          ? ({ usage, totalCostUsd }) => deps.recordUsage!({ projectId, model: 'haiku', usage, totalCostUsd })
           : undefined,
       });
 
@@ -109,6 +112,7 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
 
     inFlight.add(key);
     try {
+      const summary = await generateSummary(projectId, filePath, content);
         repository.setSummaryForHash(projectId, filePath, hash, summary);
       }
     } finally {

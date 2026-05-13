@@ -3186,6 +3186,66 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1086,
+    name: '086_claude_usage_project_name_snapshot',
+    up: (db: BetterSqliteDatabase) => {
+      // Two changes so deleted/renamed projects stay legible in the usage dashboard:
+      //   1. Drop the FK on project_id so ON DELETE SET NULL no longer collapses
+      //      every deleted project's events into one Unattributed bucket. The
+      //      column becomes plain TEXT — events keep their original project_id
+      //      even after the project row is gone, so each shows as its own row.
+      //   2. Add project_name_snapshot (captured at insert). Queries
+      //      COALESCE(projects.name, project_name_snapshot) so live renames
+      //      win while the project still exists, and the snapshot is the
+      //      fallback once it's deleted.
+      // Backfill snapshots from currently-live projects so existing rows pick
+      // up names retroactively. Rows whose project was already deleted (and
+      // therefore already nulled by the old SET NULL cascade) cannot be
+      // recovered and remain Unattributed.
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+
+        CREATE TABLE claude_usage_events_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT,
+          project_name_snapshot TEXT,
+          source TEXT NOT NULL,
+          model TEXT NOT NULL,
+          input_tokens INTEGER NOT NULL DEFAULT 0,
+          output_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+          cost_micro_usd INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        INSERT INTO claude_usage_events_new (
+          id, project_id, project_name_snapshot, source, model,
+          input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+          cost_micro_usd, created_at
+        )
+        SELECT
+          u.id, u.project_id, p.name, u.source, u.model,
+          u.input_tokens, u.output_tokens, u.cache_creation_tokens, u.cache_read_tokens,
+          u.cost_micro_usd, u.created_at
+        FROM claude_usage_events u
+        LEFT JOIN projects p ON p.id = u.project_id;
+
+        DROP TABLE claude_usage_events;
+        ALTER TABLE claude_usage_events_new RENAME TO claude_usage_events;
+
+        CREATE INDEX IF NOT EXISTS idx_claude_usage_project_created
+          ON claude_usage_events(project_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_claude_usage_created
+          ON claude_usage_events(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_claude_usage_source
+          ON claude_usage_events(source);
+
+        PRAGMA foreign_keys = ON;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

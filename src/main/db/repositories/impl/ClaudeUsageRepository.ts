@@ -14,6 +14,7 @@ import type {
   ClaudeUsageEventInsert,
   ClaudeUsageTotals,
   ClaudeUsageBreakdownRow,
+  ClaudeUsageProjectBreakdownRow,
 } from '../../interfaces/usage';
 
 interface PreparedStatements {
@@ -24,6 +25,7 @@ interface PreparedStatements {
   breakdownByProject: Statement;
   breakdownAllProjects: Statement;
   breakdownGlobal: Statement;
+  breakdownByProjectAll: Statement;
   listRecentByProject: Statement;
   listRecentAllProjects: Statement;
   deleteByProject: Statement;
@@ -68,6 +70,7 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
 
     this.stmts = {
       insert: db.prepare(`
+          id, project_id, project_name_snapshot, source, model,
           input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
         RETURNING *
       `),
@@ -91,6 +94,21 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
         GROUP BY source, model
         ORDER BY cost_micro_usd DESC
       `),
+      breakdownByProjectAll: db.prepare(`
+        SELECT
+          u.project_id AS project_id,
+          COALESCE(p.name, u.project_name_snapshot) AS project_name,
+          COUNT(*) AS events,
+          COALESCE(SUM(u.input_tokens), 0) AS input_tokens,
+          COALESCE(SUM(u.output_tokens), 0) AS output_tokens,
+          COALESCE(SUM(u.cache_creation_tokens), 0) AS cache_creation_tokens,
+          COALESCE(SUM(u.cache_read_tokens), 0) AS cache_read_tokens,
+          COALESCE(SUM(u.cost_micro_usd), 0) AS cost_micro_usd
+        FROM claude_usage_events u
+        LEFT JOIN projects p ON p.id = u.project_id
+        GROUP BY u.project_id
+        ORDER BY cost_micro_usd DESC
+      `),
       listRecentByProject: db.prepare(`
         SELECT * FROM claude_usage_events
         WHERE project_id = ?
@@ -110,6 +128,7 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
     const id = randomUUID();
       id,
       event.project_id,
+      event.project_name_snapshot,
       event.source,
       event.model,
       event.input_tokens,
@@ -135,6 +154,10 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
 
   breakdownAll(): ClaudeUsageBreakdownRow[] {
     return this.stmts.breakdownGlobal.all() as ClaudeUsageBreakdownRow[];
+  }
+
+  breakdownByProjectAll(): ClaudeUsageProjectBreakdownRow[] {
+    return this.stmts.breakdownByProjectAll.all() as ClaudeUsageProjectBreakdownRow[];
   }
 
   globalTotals(): ClaudeUsageTotals {

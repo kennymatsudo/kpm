@@ -36,6 +36,7 @@ import {
 } from '../../utils/usageFormatters';
 import type {
   ClaudeUsageEvent,
+  ClaudeUsageProjectBreakdownRow,
   ProjectUsageStats,
 } from '../../../shared/usage-types';
 
@@ -167,6 +168,10 @@ export function UsageSettings({ currentProjectId, initialStats, initialEvents }:
           />
 
           <BreakdownTable rows={stats?.breakdown ?? []} />
+
+          {stats?.byProject && stats.byProject.length > 0 && (
+            <ProjectBreakdownTable rows={stats.byProject} />
+          )}
 
           <div>
             <button
@@ -341,6 +346,54 @@ function BreakdownTable({ rows }: { rows: ProjectUsageStats['breakdown'] }) {
               </td>
             </tr>
           ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ProjectBreakdownTable({ rows }: { rows: ClaudeUsageProjectBreakdownRow[] }) {
+  const totalCost = rows.reduce((sum, r) => sum + r.cost_micro_usd, 0);
+  return (
+    <div className="rounded-xl border border-border-subtle overflow-hidden">
+      <div className="px-3 py-2 bg-surface-2 border-b border-border-subtle">
+        <p className="text-xs font-medium text-text-secondary uppercase tracking-wide">By project</p>
+      </div>
+      <table className="w-full text-sm">
+        <thead className="bg-surface-2 text-xs text-text-muted uppercase tracking-wide">
+          <tr>
+            <th scope="col" className="text-left font-medium px-3 py-2">Project</th>
+            <th scope="col" className="text-right font-medium px-3 py-2">Runs</th>
+            <th scope="col" className="text-right font-medium px-3 py-2">Tokens</th>
+            <th scope="col" className="text-right font-medium px-3 py-2">Share</th>
+            <th scope="col" className="text-right font-medium px-3 py-2">Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const tokens = row.input_tokens + row.output_tokens + row.cache_creation_tokens + row.cache_read_tokens;
+            const share = totalCost === 0 ? 0 : row.cost_micro_usd / totalCost;
+            return (
+              <tr
+                key={row.project_id ?? '__null__'}
+                className="border-t border-border-subtle hover:bg-surface-2/40"
+              >
+                <td className="px-3 py-2 text-text-primary">
+                  {row.project_name ?? (
+                    <span className="text-text-muted italic">Unattributed</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-text-secondary">{formatTokensFull(row.events)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-text-secondary">{formatTokensFull(tokens)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-text-muted">
+                  {totalCost === 0 ? '—' : `${Math.round(share * 100)}%`}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-text-primary font-medium">
+                  {formatCurrency(row.cost_micro_usd)}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

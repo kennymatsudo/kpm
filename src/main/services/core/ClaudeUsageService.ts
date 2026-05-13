@@ -24,6 +24,7 @@ import type {
   ClaudeUsageEvent,
   ClaudeUsageTotals,
   ClaudeUsageBreakdownRow,
+  ClaudeUsageProjectBreakdownRow,
 } from '../../db/interfaces/usage';
 import type { IProjectRepository } from '../../db/interfaces/project';
 import { computeCostMicroUsd, resolveModelPricing } from '../../config/claudePricing';
@@ -74,6 +75,7 @@ export interface ProjectUsageStats {
   projectId: string | null;
   totals: ClaudeUsageTotals;
   breakdown: ClaudeUsageBreakdownRow[];
+  byProject?: ClaudeUsageProjectBreakdownRow[];
 }
 
 export interface ClaudeUsageServiceDeps {
@@ -113,8 +115,17 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
 
       const { tier } = resolveModelPricing(input.model);
 
+      // Capture the project name at insert time so the by-project breakdown
+      // can show a meaningful label even after the project is deleted. While
+      // the project still exists, queries prefer the live `projects.name` so
+      // renames flow through to historical events.
+      const projectNameSnapshot = input.projectId
+        ? (deps.projects.get(input.projectId)?.name ?? null)
+        : null;
+
       const event = deps.claudeUsage.insert({
         project_id: input.projectId,
+        project_name_snapshot: projectNameSnapshot,
         source: input.source,
         // Persist the resolved tier (opus/sonnet/haiku) when the caller passed
         // an alias; otherwise persist the raw model string. Either way the
@@ -171,6 +182,7 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
       projectId,
       totals: deps.claudeUsage.totalsByProject(projectId),
       breakdown: deps.claudeUsage.breakdownByProject(projectId),
+      byProject: deps.claudeUsage.breakdownByProjectAll(),
     };
   }
 
@@ -179,6 +191,7 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
       projectId: null,
       totals: deps.claudeUsage.globalTotals(),
       breakdown: deps.claudeUsage.breakdownAll(),
+      byProject: deps.claudeUsage.breakdownByProjectAll(),
     };
   }
 

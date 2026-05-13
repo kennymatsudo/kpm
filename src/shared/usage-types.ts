@@ -31,10 +31,17 @@ export interface ClaudeUsageBreakdownRow extends ClaudeUsageTotals {
   model: string;
 }
 
+export interface ClaudeUsageProjectBreakdownRow extends ClaudeUsageTotals {
+  project_id: string | null;
+  project_name: string | null;
+}
+
 export interface ProjectUsageStats {
   projectId: string | null;
   totals: ClaudeUsageTotals;
   breakdown: ClaudeUsageBreakdownRow[];
+  /** Per-project totals. Only populated when querying global stats. */
+  byProject?: ClaudeUsageProjectBreakdownRow[];
 }
 
 /**

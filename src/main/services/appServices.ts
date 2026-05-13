@@ -301,7 +301,9 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const fileSummaryService = createFileSummaryService({
     repository: container.projectFileMetadata,
+    recordUsage: ({ projectId, model, usage, totalCostUsd }) => {
       claudeUsageService.recordUsage({
+        projectId,
         source: 'file-summary',
         model,
         usage,
