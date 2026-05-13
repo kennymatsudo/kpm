@@ -532,6 +532,9 @@ interface MessageListProps {
   const isInitialMount = useRef(true);
   const prevMessagesRef = useRef(messages);
   const prevStreamingContentRef = useRef(streamingContent);
+  const prevStreamingThinkingRef = useRef(streamingThinking);
+  const prevStreamingSegmentsLenRef = useRef(streamingSegments.length);
+  const prevActivitiesLenRef = useRef(activities.length);
   const [autoFollow, setAutoFollow] = useState(true);
   const [hasUnseenMessages, setHasUnseenMessages] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
@@ -694,9 +697,18 @@ interface MessageListProps {
   // - Show "Jump to latest" when detached and new content arrives
   // - Always re-snap to bottom when the user sends a message, even if scrolled up
   useLayoutEffect(() => {
+    const snapshotPrev = () => {
+      prevMessagesRef.current = messages;
+      prevStreamingContentRef.current = streamingContent;
+      prevStreamingThinkingRef.current = streamingThinking;
+      prevStreamingSegmentsLenRef.current = streamingSegments.length;
+      prevActivitiesLenRef.current = activities.length;
+    };
+
     if (isInitialMount.current) {
       scrollToBottom('auto');
       isInitialMount.current = false;
+      snapshotPrev();
       return;
     }
 
@@ -706,6 +718,7 @@ interface MessageListProps {
       messages[messages.length - 1]?.role === 'user';
 
     if (userJustSent) {
+      snapshotPrev();
       if (!autoFollow) setAutoFollow(true);
       if (hasUnseenMessages) setHasUnseenMessages(false);
       scrollToBottom('smooth');
@@ -717,11 +730,27 @@ interface MessageListProps {
       // (e.g. container resize on view switch, editor panel opening/closing).
       const isNewContent =
         messages !== prevMessagesRef.current ||
+        streamingContent !== prevStreamingContentRef.current ||
+        streamingThinking !== prevStreamingThinkingRef.current ||
+        streamingSegments.length !== prevStreamingSegmentsLenRef.current ||
+        activities.length !== prevActivitiesLenRef.current;
+      snapshotPrev();
       scrollToBottom(isStreaming || !isNewContent ? 'auto' : 'smooth');
       return;
     }
 
     setHasUnseenMessages(true);
+  }, [
+    messages,
+    streamingContent,
+    streamingThinking,
+    streamingSegments.length,
+    activities.length,
+    autoFollow,
+    isStreaming,
+    measurementVersion,
+    hasUnseenMessages,
+  ]);
 
   if (messages.length === 0 && !isStreaming) {
     return currentView === 'plan' ? <PlanEmptyState /> : <div className="flex-1 min-h-0" />;
