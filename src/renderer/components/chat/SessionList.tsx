@@ -91,6 +91,7 @@ function SessionTab({
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setViewedSession(sessionId); } }}
       className={`
         flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs cursor-pointer
+        transition-all duration-150 min-w-[80px] max-w-[200px]
         ${isViewed
           ? 'bg-accent/10 text-accent font-medium'
           : 'text-text-tertiary hover:text-text-secondary hover:bg-surface-2'
