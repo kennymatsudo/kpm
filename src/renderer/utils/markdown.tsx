@@ -9,7 +9,9 @@ import type { MarkdownToJSX } from 'markdown-to-jsx';
 import type { JSX } from 'react';
 import { openExternalUrl } from '../services/shellService';
 import { PlanRefChip } from '../components/plan-ref/PlanRefChip';
+import { FileRefLink } from '../components/file-ref/FileRefLink';
 import { findRefs, PLAN_REF_REGEX } from '../../shared/planRefs';
+import { isPathLike } from '../../shared/pathRefs';
 
 /**
  * URI scheme used to smuggle a plan reference through markdown-to-jsx as a
@@ -87,9 +89,48 @@ function renderAnchor({
  * <Markdown options={markdownOptions}>{transformPlanRefs(content)}</Markdown>
  * ```
  */
+/**
+ * Extract the inline-code content as a string if children is a single text
+ * node. markdown-to-jsx usually passes a bare string for inline `code`, but
+ * sometimes an array of one. Anything else (mixed children, formatting) is
+ * left alone so we never accidentally swallow a code span.
+ */
+function inlineCodeText(children: React.ReactNode): string | null {
+  if (typeof children === 'string') return children;
+  if (Array.isArray(children) && children.length === 1 && typeof children[0] === 'string') {
+    return children[0];
+  }
+  return null;
+}
+
+function renderCode({
+  children,
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLElement>) {
+  // Block code spans have a `lang-…` className from the fence; inline ones
+  // do not. Skip path detection inside fenced blocks to preserve syntax
+  // highlighting and avoid linkifying lines of source code.
+  const isInline = !className;
+  if (isInline) {
+    const text = inlineCodeText(children);
+    if (text && isPathLike(text)) {
+      return <FileRefLink text={text} />;
+    }
+  }
+  return (
+    <code className={className} {...props}>
+      {children}
+    </code>
+  );
+}
+
 export const markdownOverrides: MarkdownToJSX.Overrides = {
   a: {
     component: renderAnchor,
+  },
+  code: {
+    component: renderCode,
   },
 };
 
