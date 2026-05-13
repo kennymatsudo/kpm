@@ -87,6 +87,10 @@ function extractPath(toolName: string, input: Record<string, unknown>): string |
  * Check if a path is within a directory.
  * Handles symlinks and relative paths.
  */
+function isAbsolutePath(p: string): boolean {
+  return p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p);
+}
+
 function isWithinDirectory(targetPath: string, baseDir: string): boolean {
   try {
     const normalizedTarget = normalize(targetPath);

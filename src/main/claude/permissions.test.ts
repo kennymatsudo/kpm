@@ -93,6 +93,11 @@ describe('permissions', () => {
       });
 
         const result = await handler('Glob', { path: '/outside/project', pattern: '*.ts' }, createTestOptions());
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+      it('allows Grep without an explicit path (resolves from cwd)', async () => {
+        const result = await handler('Grep', { pattern: 'foo' }, createTestOptions());
         expect(result.behavior).toBe('allow');
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
