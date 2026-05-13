@@ -80,6 +80,18 @@ export function TerminalInstance({ id, cwd, hidden }: TerminalInstanceProps) {
       void writeToTerminal(ptyId, data);
     });
 
+    // Shift+Enter → ESC+CR. xterm.js sends plain `\r` for both Enter and
+    // Shift+Enter, which TUIs like Claude Code can't disambiguate. Real
+    // terminals (iTerm2, Terminal.app) map Shift/Option+Enter to `\x1b\r`,
+    // which Claude Code reads as "newline within message" rather than submit.
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.type === 'keydown' && event.key === 'Enter' && event.shiftKey) {
+        void writeToTerminal(ptyId, '\x1b\r');
+        return false;
+      }
+      return true;
+    });
+
     void createTerminal({ id: ptyId, cwd, cols, rows }).then((res) => {
       if (cancelled) {
         if (res.success) void killTerminal(ptyId);
@@ -120,6 +132,10 @@ export function TerminalInstance({ id, cwd, hidden }: TerminalInstanceProps) {
       const fit = fitRef.current;
       const ptyId = ptyIdRef.current;
       if (!term || !fit || !ptyId) return;
+      // Skip when the container is collapsed (display:none on hidden tabs).
+      // Fitting a zero-sized container drives cols/rows to a minimum and tells
+      // the PTY to wrap at that width, corrupting the buffer with vertical text.
+      if (target.offsetWidth === 0 || target.offsetHeight === 0) return;
       try {
         fit.fit();
         void resizeTerminal(ptyId, term.cols, term.rows);
@@ -138,10 +154,13 @@ export function TerminalInstance({ id, cwd, hidden }: TerminalInstanceProps) {
     if (hidden) return;
     const term = termRef.current;
     const fit = fitRef.current;
+    const target = containerRef.current;
+    if (!term || !fit || !target) return;
     requestAnimationFrame(() => {
       try {
         const ptyId = ptyIdRef.current;
         if (!ptyId) return;
+        if (target.offsetWidth === 0 || target.offsetHeight === 0) return;
         fit.fit();
         void resizeTerminal(ptyId, term.cols, term.rows);
         term.focus();
