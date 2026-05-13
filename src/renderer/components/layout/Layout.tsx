@@ -14,6 +14,7 @@ import { ToastContainer } from '../ui';
 import { BriefingModal } from '../briefing';
 import { RegenerateContextModal } from '../onboarding';
 import { ToolLogPanel } from '../tool-log';
+import { SettingsModal } from '../settings';
 import { Z_INDEX } from '../../constants/zIndex';
 import {
   useArtifactsStore,
@@ -379,6 +380,7 @@ export const Layout = memo(function Layout({
 });
 
 const LayoutOverlays = memo(function LayoutOverlays({
+  currentProjectId,
 }: {
   currentProjectId: string | null;
 }) {
@@ -388,6 +390,9 @@ const LayoutOverlays = memo(function LayoutOverlays({
       isCommandPaletteOpen: state.isCommandPaletteOpen,
       closeCommandPalette: state.closeCommandPalette,
     }))
+  );
+  const { isSettingsOpen, setSettingsOpen } = useSettingsUIStore(
+    useShallow((state) => ({ isSettingsOpen: state.isOpen, setSettingsOpen: state.setIsOpen }))
   );
 
   return (
@@ -400,6 +405,12 @@ const LayoutOverlays = memo(function LayoutOverlays({
       <BriefingModal />
       <RegenerateContextModal />
       <ToastContainer />
+      {isSettingsOpen && (
+        <SettingsModal
+          onClose={() => setSettingsOpen(false)}
+          currentProjectId={currentProjectId}
+        />
+      )}
     </>
   );
 });

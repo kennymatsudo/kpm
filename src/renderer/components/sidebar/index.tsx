@@ -60,11 +60,24 @@ export function Sidebar({ onDeleteProject: _onDeleteProject, onNewProject, onFil
       </div>
 
       {/* Fixed footer with Settings */}
+      <SidebarSettingsButton />
     </aside>
   );
 }
 
+const SidebarSettingsButton = memo(function SidebarSettingsButton() {
+  const setShowSettingsModal = useSettingsUIStore((state) => state.setIsOpen);
 
   return (
+    <div className="border-t border-border-subtle">
+      <button
+        onClick={() => setShowSettingsModal(true)}
+        className="w-full flex items-center gap-2 px-3.5 py-2.5 text-xs text-text-tertiary hover:text-text-primary hover:bg-surface-2 transition-colors"
+      >
+        <SettingsIcon className="w-3.5 h-3.5" />
+        <span>Settings</span>
+        <span className="ml-auto font-mono text-[10px] text-text-muted">v{__APP_VERSION__}</span>
+      </button>
+    </div>
   );
 });
