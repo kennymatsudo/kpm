@@ -46,13 +46,24 @@ export function Chat({ currentView }: ChatProps) {
     }))
   );
   // Access per-session chat state
+  const { viewedSessionId, viewedSession, clearError, loadFromHistory } = useChatStore(useShallow((state) => {
     const session = state.viewedSessionId ? state.sessions.get(state.viewedSessionId) : null;
     return {
       viewedSessionId: state.viewedSessionId,
       viewedSession: session,
       clearError: state.clearError,
+      loadFromHistory: state.loadFromHistory,
     };
   }));
+
+  // Lazy hydration: when a restored tab is focused for the first time, pull
+  // its messages from the DB. Non-restored sessions are created with
+  // hydrated:true and skip this round-trip.
+  const viewedHydrated = viewedSession?.hydrated ?? true;
+  useEffect(() => {
+    if (!currentProjectId || !viewedSessionId || viewedHydrated) return;
+    void loadFromHistory(currentProjectId, viewedSessionId);
+  }, [currentProjectId, viewedSessionId, viewedHydrated, loadFromHistory]);
 
   const error = viewedSession?.error ?? null;
   const mcpDegraded = viewedSession?.mcpDegraded ?? false;

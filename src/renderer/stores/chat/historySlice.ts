@@ -1,5 +1,7 @@
 import { getChatSessionHistory, loadChatSession } from '../../services/chatService';
+import type { ChatState, ChatSet, ChatGet, Message, PerSessionState } from './types';
 import { createInitialPerSessionState } from './baseState';
+import { readPersistedTabs } from './persistence';
 
 const SESSION_HISTORY_LIMIT = 10;
 
@@ -13,6 +15,12 @@ async function fetchRecentSessions(projectId: string): Promise<ChatSessionSummar
 }
 
 export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
+  | 'startNewChatSession'
+  | 'getChatSessionId'
+  | 'loadSessionHistory'
+  | 'loadFromHistory'
+  | 'restoreLastSession'
+  | 'hydrateOpenSessions'
 > {
   return {
     startNewChatSession: (_keepCurrentActive = true) => {
@@ -95,6 +103,53 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
       }
     },
 
+    // Restore every chat tab that was open at last shutdown from localStorage.
+    // Tabs are created as unhydrated shells; messages load lazily when the
+    // user focuses a tab. The most recently-focused tab gets eagerly hydrated
+    // so the user lands in a populated conversation. Also sets
+    // `persistedProjectId` so the subscription in `index.ts` knows which
+    // localStorage key to write on subsequent tab-state changes.
+    hydrateOpenSessions: async (projectId, shouldContinue) => {
+      try {
+        if (!isCurrent(shouldContinue)) return;
+
+        const persisted = readPersistedTabs(projectId);
+        if (!persisted || persisted.open.length === 0) {
+          set({ persistedProjectId: projectId });
+          return;
+        }
+
+        const state = get();
+        const sessions = new Map(state.sessions);
+        let nextSessionNumber = state.nextSessionNumber;
+        const newlyAdded: string[] = [];
+
+        for (const id of persisted.open) {
+          if (sessions.has(id)) continue;
+          const shell: PerSessionState = {
+            hydrated: false,
+          };
+          sessions.set(id, shell);
+          nextSessionNumber += 1;
+          newlyAdded.push(id);
+        }
+
+        // Persisted `open` is most-recent-first; persisted `viewed` (if valid)
+        // wins, otherwise focus the most recently active tab.
+        const persistedViewed =
+          persisted.viewed && sessions.has(persisted.viewed) ? persisted.viewed : null;
+        const viewedSessionId = state.viewedSessionId ?? persistedViewed ?? persisted.open[0];
+
+        set({ sessions, viewedSessionId, nextSessionNumber, persistedProjectId: projectId });
+
+        if (!isCurrent(shouldContinue)) return;
+          await get().loadFromHistory(projectId, viewedSessionId, shouldContinue);
+        }
+      } catch (error) {
+        console.error('[ChatStore] Failed to hydrate open sessions:', error);
+      }
+    },
+
     loadFromHistory: async (projectId, chatSessionId, shouldContinue) => {
       try {
         const result = await loadChatSession(projectId, chatSessionId);
@@ -111,6 +166,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
           sessions.set(chatSessionId, {
             messages,
             error: null,
+            hydrated: true,
           });
 
           if (!isCurrent(shouldContinue)) return;

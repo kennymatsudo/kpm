@@ -62,6 +62,12 @@ export interface PerSessionState {
   mcpDegraded: boolean;
   /** Error message when MCP is degraded */
   mcpError: string | null;
+  /**
+   * True once `messages` has been hydrated from the DB (or the session was
+   * created fresh in this process and never needed hydration). Restore tabs
+   * start at `false` so `setViewedSession` can lazy-load them on first focus.
+   */
+  hydrated: boolean;
 }
 
 export interface ChatState {
@@ -82,6 +88,11 @@ export interface ChatState {
 
   // Session number counter for sequential naming
   nextSessionNumber: number;
+
+  // Project this store is currently scoped to. Set by `hydrateOpenSessions`
+  // and consumed by the localStorage subscription in `index.ts` to know which
+  // localStorage key to write on every tab-state change.
+  persistedProjectId: string | null;
 
   // Session management
   setViewedSession: (chatSessionId: string | null) => void;
@@ -117,6 +128,7 @@ export interface ChatState {
   loadSessionHistory: (projectId: string) => Promise<void>;
   loadFromHistory: (projectId: string, chatSessionId: string, shouldContinue?: () => boolean) => Promise<void>;
   restoreLastSession: (projectId: string, shouldContinue?: () => boolean) => Promise<void>;
+  hydrateOpenSessions: (projectId: string, shouldContinue?: () => boolean) => Promise<void>;
 
   // Selectors
   getViewedSession: () => PerSessionState | null;

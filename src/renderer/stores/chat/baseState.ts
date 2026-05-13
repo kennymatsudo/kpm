@@ -19,6 +19,9 @@
   title: null,
   mcpDegraded: false,
   mcpError: null,
+  // Sessions created in-process have no DB history to fetch; restore shells
+  // explicitly set this to false so setViewedSession lazy-loads them.
+  hydrated: true,
 });
 
 export const createInitialChatState = (): Pick<ChatState,
@@ -31,4 +34,5 @@ export const createInitialChatState = (): Pick<ChatState,
   totalTokens: 0,
   sessionHistory: [],
   nextSessionNumber: 1,
+  persistedProjectId: null,
 });

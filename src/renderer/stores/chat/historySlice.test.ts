@@ -138,6 +138,7 @@ describe('historySlice.restoreLastSession', () => {
           title: null,
           mcpDegraded: false,
           mcpError: null,
+          hydrated: true,
         }],
       ]),
     });
@@ -202,6 +203,7 @@ describe('historySlice.restoreLastSession', () => {
           title: null,
           mcpDegraded: false,
           mcpError: null,
+          hydrated: true,
         }],
       ]),
     });

@@ -77,6 +77,9 @@ function SessionTab({
     if (isActive && isStreaming) {
     }
 
+    // Always call disconnect — streaming-layer cleanup is idempotent for
+    // inactive sessions, ensuring any active subprocess is torn down cleanly.
+    await disconnectChatSession(currentProjectId, chatSessionId);
 
     // Remove session entirely (handles view switching internally)
     removeSession(chatSessionId);

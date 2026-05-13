@@ -126,8 +126,13 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
         worktrees,
       });
 
+      // Restore every chat tab that was open at last shutdown, then lazy-load
+      // the focused tab's messages. Fire-and-forget, but guarded against stale
+      // async writes when another project load starts before the hydration
+      // round-trip returns.
       const shouldRestoreChat = () =>
         useProjectDomainStore.getState().currentProjectId === projectId;
+      void useChatStore.getState().hydrateOpenSessions(projectId, shouldRestoreChat);
 
       const scheduleRepoTasks = () => {
 

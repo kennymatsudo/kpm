@@ -7,6 +7,7 @@ import { createMessageSlice } from './messageSlice';
 import { createHistorySlice } from './historySlice';
 import { createSettingsSlice } from './settingsSlice';
 import { getAppSetting } from '../../services/settingsService';
+import { writePersistedTabs } from './persistence';
 
 export const useChatStore: UseBoundStore<StoreApi<ChatState>> = create<ChatState>((set, get) => ({
   ...createInitialChatState(),
@@ -34,5 +35,22 @@ if (typeof window !== 'undefined') {
     }
   });
 }
+
+// Persist open-tab state to localStorage on every change. The previous
+// snapshot is captured per-subscription tick so we only write when the tab
+// set or focused tab actually changes — streaming chunks and activity bumps
+// mutate per-session state constantly but don't affect tab persistence.
+let prevTabSignature = '';
+useChatStore.subscribe((state) => {
+  if (!state.persistedProjectId) return;
+  const ids = Array.from(state.sessions.keys());
+  const signature = `${ids.join(',')}|${state.viewedSessionId ?? ''}`;
+  if (signature === prevTabSignature) return;
+  prevTabSignature = signature;
+  writePersistedTabs(state.persistedProjectId, {
+    open: ids,
+    viewed: state.viewedSessionId,
+  });
+});
 
 // Re-export types
