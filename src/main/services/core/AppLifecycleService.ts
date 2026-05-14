@@ -36,6 +36,7 @@ export function createAppLifecycleService(deps: AppLifecycleServiceDeps) {
       deps.devSessionService.markActiveAsInactive();
     },
 
+    async shutdown(): Promise<void> {
       if (shutdownApplied) {
         return;
       }
@@ -53,6 +54,18 @@ export function createAppLifecycleService(deps: AppLifecycleServiceDeps) {
         });
       }
 
+      // Await both watcher teardowns so no in-flight unsubscribe async ops remain
+      // when Electron starts tearing down the NAPI environment. Fire-and-forgetting
+      // these caused PromiseRunner::onWorkComplete to fire against a partially-torn-
+      // down NAPI env, triggering napi_fatal_error → abort().
+      await Promise.all([
+        deps.searchService.disposeBackgroundIndexing().catch((err) => {
+          console.error('[AppLifecycleService] Error during search indexer cleanup:', err);
+        }),
+        deps.projectWatcherService?.unwatchProject().catch((err) => {
+          console.error('[AppLifecycleService] Error unwatching project:', err);
+        }),
+      ]);
 
       try {
         deps.repoWatcherService?.unwatchAll();

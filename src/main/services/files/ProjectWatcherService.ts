@@ -43,8 +43,11 @@ type ChangeType = 'created' | 'updated' | 'deleted';
 export function createProjectWatcherService(deps: ProjectWatcherServiceDeps) {
   let watchedProjectId: string | null = null;
   let subscription: AsyncSubscription | null = null;
+  let subscribeOperation: Promise<void> | null = null;
+  let watchGeneration = 0;
   let debounceTimer: NodeJS.Timeout | null = null;
   const pendingChanges = new Map<string, { type: ChangeType; isDirectory: boolean }>();
+  const pendingWatcherOperations = new Set<Promise<void>>();
 
   function emitFileChange(
     projectId: string,
@@ -105,9 +108,36 @@ export function createProjectWatcherService(deps: ProjectWatcherServiceDeps) {
     }, getConfig().watcher.projectDebounceMs);
   }
 
+  function trackWatcherOperation(operation: Promise<void>): Promise<void> {
+    pendingWatcherOperations.add(operation);
+    operation.then(
+      () => pendingWatcherOperations.delete(operation),
+      () => pendingWatcherOperations.delete(operation),
+    );
+    return operation;
+  }
+
+  function unsubscribeWatcher(sub: AsyncSubscription): Promise<void> {
+    return trackWatcherOperation(
+      sub.unsubscribe().catch((error) => {
+        console.error('[ProjectWatcher] Failed to unsubscribe:', error);
+      }),
+    );
+  }
+
+  async function waitForWatcherOperations(): Promise<void> {
+    while (pendingWatcherOperations.size > 0) {
+      await Promise.all(Array.from(pendingWatcherOperations));
+    }
+  }
+
   async function stopWatching(): Promise<void> {
+    watchGeneration += 1;
+
     if (subscription) {
+      const sub = subscription;
       subscription = null;
+      await unsubscribeWatcher(sub);
     }
     if (debounceTimer) {
       clearTimeout(debounceTimer);
@@ -118,6 +148,10 @@ export function createProjectWatcherService(deps: ProjectWatcherServiceDeps) {
       console.log(`[ProjectWatcher] Stopped watching project: ${watchedProjectId}`);
       watchedProjectId = null;
     }
+    if (subscribeOperation) {
+      await subscribeOperation;
+    }
+    await waitForWatcherOperations();
   }
 
   return {
@@ -136,7 +170,48 @@ export function createProjectWatcherService(deps: ProjectWatcherServiceDeps) {
         return { success: false, error: 'Project folder does not exist' };
       }
 
+      const generation = watchGeneration + 1;
+      watchGeneration = generation;
+
+      const startPromise = (async (): Promise<{ success: boolean; error?: string }> => {
+        try {
+          const sub = await subscribe(
+            projectFolder,
+            (err, events) => {
+              if (watchGeneration !== generation) {
+                return;
+              }
+              if (err) {
+                console.error(`[ProjectWatcher] Watch error for ${projectFolder}:`, err);
+                return;
+              }
+              void handleEvents(projectId, projectFolder, events);
+            },
+            { ignore: IGNORE_GLOBS }
+          );
+
+          if (watchGeneration !== generation) {
+            await unsubscribeWatcher(sub);
+            return { success: false, error: 'Watch cancelled' };
+          }
+
+          subscription = sub;
+          watchedProjectId = projectId;
+          console.log(`[ProjectWatcher] Watching: ${projectFolder}`);
+          return { success: true };
+        } catch (error) {
+          console.error(`[ProjectWatcher] Failed to watch ${projectFolder}:`, error);
+          return { success: false, error: `Failed to watch project: ${error}` };
+        }
+      })();
+
+      const pendingStart = trackWatcherOperation(startPromise.then(() => undefined));
+      subscribeOperation = pendingStart;
+      const result = await startPromise;
+      if (subscribeOperation === pendingStart) {
+        subscribeOperation = null;
       }
+      return result;
     },
 
     async unwatchProject(): Promise<void> {

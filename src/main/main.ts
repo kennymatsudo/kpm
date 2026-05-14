@@ -168,6 +168,19 @@ app.on('window-all-closed', () => {
   }
 });
 
+// Perform async cleanup before quitting so watcher unsubscribe ops can complete
+// before Electron tears down the NAPI environment (prevents napi_fatal_error crash).
+let cleanupDone = false;
+app.on('before-quit', (event) => {
+  if (cleanupDone) return;
+  event.preventDefault();
+  cleanupDone = true;
+
+  const cleanup = runtimeServices?.appLifecycleService.shutdown() ?? Promise.resolve();
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, 3000));
+  Promise.race([cleanup, timeout])
+    .catch((err) => console.error('[Main] Shutdown cleanup error:', err))
+    .finally(() => app.quit());
 });
 
 export { getMainWindow };

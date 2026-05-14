@@ -50,7 +50,9 @@ interface DocumentSyncState {
   queued: boolean;
   debounceTimer: NodeJS.Timeout | null;
   subscription: AsyncSubscription | null;
+  subscribeOperation: Promise<void> | null;
   watchedFolderPath: string | null;
+  watchGeneration: number;
 }
 
 const DOCUMENT_EXTENSIONS = new Set(['.md', '.mdx']);
@@ -297,6 +299,7 @@ export function createSearchService(deps: SearchServiceDeps) {
   let cachedFtsStatement: ReturnType<Database['prepare']> | null = null;
   let cachedHasFtsTables: boolean | null = null;
   const documentSyncState = new Map<string, DocumentSyncState>();
+  const pendingWatcherOperations = new Set<Promise<void>>();
   let watcherReconcileInterval: NodeJS.Timeout | null = null;
   let backgroundIndexerStarted = false;
 
@@ -354,25 +357,61 @@ export function createSearchService(deps: SearchServiceDeps) {
       queued: false,
       debounceTimer: null,
       subscription: null,
+      subscribeOperation: null,
       watchedFolderPath: null,
+      watchGeneration: 0,
     };
     documentSyncState.set(projectId, initial);
     return initial;
   }
 
+  function trackWatcherOperation(operation: Promise<void>): Promise<void> {
+    pendingWatcherOperations.add(operation);
+    operation.then(
+      () => pendingWatcherOperations.delete(operation),
+      () => pendingWatcherOperations.delete(operation),
+    );
+    return operation;
+  }
+
+  function unsubscribeWatcher(sub: AsyncSubscription): Promise<void> {
+    return trackWatcherOperation(
+      sub.unsubscribe().catch((err) => {
+        console.error('[SearchService] Failed to unsubscribe watcher:', err);
+      }),
+    );
+  }
+
+  async function waitForWatcherOperations(): Promise<void> {
+    while (pendingWatcherOperations.size > 0) {
+      await Promise.all(Array.from(pendingWatcherOperations));
+    }
+  }
+
+  async function closeProjectWatcher(projectId: string): Promise<void> {
     const state = documentSyncState.get(projectId);
     if (!state) {
       return;
     }
+    state.watchGeneration += 1;
+
     if (state.debounceTimer) {
       clearTimeout(state.debounceTimer);
       state.debounceTimer = null;
     }
+
+    const pending: Promise<void>[] = [];
+    if (state.subscribeOperation) {
+      pending.push(state.subscribeOperation);
+    }
     if (state.subscription) {
       const sub = state.subscription;
       state.subscription = null;
+      pending.push(unsubscribeWatcher(sub));
     }
     state.watchedFolderPath = null;
+
+    await Promise.all(pending);
   }
 
     return DOCUMENT_EXTENSIONS.has(path.extname(filePath).toLowerCase());
@@ -502,23 +541,41 @@ export function createSearchService(deps: SearchServiceDeps) {
 
   function watchProjectFolderForDocs(projectId: string, projectFolderPath: string): void {
     const state = getOrCreateSyncState(projectId);
+    if (state.watchedFolderPath === projectFolderPath && (state.subscription || state.subscribeOperation)) {
       return;
     }
 
+    void closeProjectWatcher(projectId);
+    const generation = state.watchGeneration + 1;
+    state.watchGeneration = generation;
     state.watchedFolderPath = projectFolderPath;
 
+    const subscribePromise = subscribe(
       projectFolderPath,
       (err, events) => {
+        if (!backgroundIndexerStarted) {
+          return;
+        }
         if (err) {
           console.error('[SearchService] Project watcher error:', err);
+          void closeProjectWatcher(projectId);
           return;
         }
           scheduleFilesystemDocumentIndexSync(projectId, false);
         }
       },
+    );
+
+    const subscribeOperation = trackWatcherOperation(subscribePromise.then(async (sub) => {
       // If the watcher was closed (or replaced) between subscribe() and
       // resolution, dispose of the stale subscription.
       const current = documentSyncState.get(projectId);
+      if (
+        current?.watchGeneration !== generation ||
+        current?.watchedFolderPath !== projectFolderPath ||
+        !backgroundIndexerStarted
+      ) {
+        await unsubscribeWatcher(sub);
         return;
       }
       current.subscription = sub;
@@ -527,6 +584,13 @@ export function createSearchService(deps: SearchServiceDeps) {
       const current = documentSyncState.get(projectId);
       if (current?.watchedFolderPath === projectFolderPath) {
         current.watchedFolderPath = null;
+      }
+    }));
+    state.subscribeOperation = subscribeOperation;
+    void subscribeOperation.then(() => {
+      const current = documentSyncState.get(projectId);
+      if (current?.subscribeOperation === subscribeOperation) {
+        current.subscribeOperation = null;
       }
     });
   }
@@ -537,6 +601,7 @@ export function createSearchService(deps: SearchServiceDeps) {
 
     for (const existingProjectId of documentSyncState.keys()) {
       if (!activeProjectIds.has(existingProjectId)) {
+        void closeProjectWatcher(existingProjectId);
         documentSyncState.delete(existingProjectId);
       }
     }
@@ -566,12 +631,19 @@ export function createSearchService(deps: SearchServiceDeps) {
     }, getConfig().watcher.searchReconcileIntervalMs);
   }
 
+  async function disposeBackgroundIndexing(): Promise<void> {
     if (watcherReconcileInterval) {
       clearInterval(watcherReconcileInterval);
       watcherReconcileInterval = null;
     }
 
     backgroundIndexerStarted = false;
+
+    const pending = Array.from(documentSyncState.keys()).map((projectId) => closeProjectWatcher(projectId));
+    documentSyncState.clear();
+
+    await Promise.all(pending);
+    await waitForWatcherOperations();
   }
 
   return {
