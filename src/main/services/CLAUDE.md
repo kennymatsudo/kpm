@@ -54,6 +54,7 @@ Project file system operations, repo file access.
 
 Terminal/PTY and Claude session management.
 
+- `TerminalService` — Create/manage pseudo-terminals (singleton)
 - `StreamingSessionService` — Main chat session lifecycle
 
 ### Generation Services (`services/generation/`)

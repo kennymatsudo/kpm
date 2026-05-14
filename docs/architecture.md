@@ -379,6 +379,7 @@ Tracks git branch changes for connected repositories in real-time.
 - `src/main/services/repo/DevSessionService.ts` - Plan-item dev session management
 - `src/main/services/agents/AgentSessionManager.ts` - Multi-agent lifecycle management
 - `src/main/services/agents/autoReview.ts` - Opposing-agent review pipeline
+- `src/main/services/streaming/TerminalService.ts` - Terminal emulation
 
 **System Prompt Organization** (`src/main/claude/prompts/`):
 - `toolDocs.ts` - Tool usage guidance
