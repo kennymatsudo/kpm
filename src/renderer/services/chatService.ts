@@ -35,6 +35,7 @@ export interface SessionEventData {
   reason?: string;
   source?: string;
   previousState?: string;
+  model?: string;
 }
 
 export interface ErrorEventData {

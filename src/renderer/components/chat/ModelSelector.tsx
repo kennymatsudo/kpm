@@ -1,6 +1,8 @@
 import { useChatStore, type ChatClaudeModel } from '../../stores';
 
 const MODELS: { value: ChatClaudeModel; label: string; description: string }[] = [
+  { value: 'sonnet', label: 'Sonnet', description: 'Claude Sonnet — Fast, balanced' },
+  { value: 'opus', label: 'Opus', description: 'Claude Opus — Most capable' },
 ];
 
 export function ModelSelector() {

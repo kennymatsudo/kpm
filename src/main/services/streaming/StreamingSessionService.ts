@@ -144,6 +144,7 @@ interface ManagedSession {
   /**
    */
   interruptInProgress: boolean;
+  resolvedModel?: string;
   unsubscribePlanActions: () => void;
   unsubscribeClaudeMdUpdate: () => void;
   unsubscribeDocumentUpdate: () => void;
@@ -1174,6 +1175,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Handle assistant messages (text chunks)
     if (sdkMsg.type === 'assistant') {
+      // display it accurately in the chat header instead of the short alias.
+
       const content = sdkMsg.message?.content || [];
       const segState = managed.segmentState;
 

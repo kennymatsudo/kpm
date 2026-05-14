@@ -10,6 +10,7 @@ import { CopyIcon, CheckIcon } from '../icons';
 import { ProcessTimeline } from './ProcessTimeline';
 import { Tooltip } from '../ui/Tooltip';
 import { AttachmentChip } from './AttachmentChip';
+import { formatModel } from '../../utils/usageFormatters';
 
 /** Extract text content from message segments for copy/display */
 function getTextContent(segments: MessageSegment[]): string {
@@ -348,6 +349,7 @@ function formatTurnDuration(ms: number | undefined): string | null {
 /** Friendly model label derived from the model id stamped on the message. */
 function formatModelLabel(model: string | undefined): string | null {
   if (!model) return null;
+  return formatModel(model).toLowerCase();
 }
 
 const MessageHeader = memo(function MessageHeader({
