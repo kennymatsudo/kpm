@@ -84,7 +84,20 @@ describe('permissions', () => {
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
+      it('allows Read with a relative path inside the project', async () => {
+        const result = await handler('Read', { file_path: 'src/file.ts' }, createTestOptions());
+        expect(result.behavior).toBe('allow');
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
         const result = await handler('Read', { file_path: '/outside/project/file.ts' }, createTestOptions());
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+        const result = await handler('Read', { file_path: '../outside/file.ts' }, createTestOptions());
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 

@@ -1,3 +1,4 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'fs';
 import type { FileMetadataRow, IProjectFileMetadataRepository } from '../../db/interfaces/files';
 import { createFileSummaryService } from './FileSummaryService';
@@ -40,6 +41,7 @@ class FakeProjectFileMetadataRepository implements IProjectFileMetadataRepositor
 
   setSummaryForHash(projectId: string, path: string, hash: string, summary: string): boolean {
     const existing = this.getByPath(projectId, path);
+    if (existing?.content_hash !== hash) {
       return false;
     }
 
@@ -79,6 +81,10 @@ describe('FileSummaryService', () => {
     repository = new FakeProjectFileMetadataRepository();
     service = createFileSummaryService({ repository });
     runClaudeQueryMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('only stores a generated summary when the content hash still matches', async () => {
@@ -156,5 +162,51 @@ describe('FileSummaryService', () => {
 
     readSpy.mockRestore();
     debugSpy.mockRestore();
+  });
+
+  it('debounces disk summaries for rapid external edits', async () => {
+    vi.useFakeTimers();
+    const readSpy = vi.spyOn(fs.promises, 'readFile').mockResolvedValue('latest content');
+    runClaudeQueryMock.mockResolvedValue({ text: 'Latest summary', errors: [] });
+
+    expect(service.enqueueFileFromDisk('project-1', 'notes.md', '/tmp/notes.md', 1000)).toBe(true);
+    expect(service.enqueueFileFromDisk('project-1', 'notes.md', '/tmp/notes.md', 1000)).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(readSpy).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.waitFor(() => expect(runClaudeQueryMock).toHaveBeenCalledTimes(1));
+
+    expect(readSpy).toHaveBeenCalledTimes(1);
+    expect(repository.getByPath('project-1', 'notes.md')?.summary).toBe('Latest summary');
+
+    readSpy.mockRestore();
+  });
+
+  it('reruns disk summary when a debounced edit lands during active processing', async () => {
+    vi.useFakeTimers();
+    const firstSummary = deferred<{ text: string; errors: string[] }>();
+    const readSpy = vi
+      .spyOn(fs.promises, 'readFile')
+      .mockResolvedValueOnce('first content')
+      .mockResolvedValueOnce('second content');
+    runClaudeQueryMock
+      .mockReturnValueOnce(firstSummary.promise)
+      .mockResolvedValueOnce({ text: 'Second summary', errors: [] });
+
+    expect(service.enqueueFileFromDisk('project-1', 'notes.md', '/tmp/notes.md')).toBe(true);
+    await vi.waitFor(() => expect(runClaudeQueryMock).toHaveBeenCalledTimes(1));
+
+    expect(service.enqueueFileFromDisk('project-1', 'notes.md', '/tmp/notes.md', 1000)).toBe(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(runClaudeQueryMock).toHaveBeenCalledTimes(1);
+
+    firstSummary.resolve({ text: 'First summary', errors: [] });
+    await vi.waitFor(() => expect(runClaudeQueryMock).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(repository.getByPath('project-1', 'notes.md')?.summary).toBe('Second summary'));
+
+    expect(readSpy).toHaveBeenCalledTimes(2);
+    readSpy.mockRestore();
   });
 });

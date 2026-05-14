@@ -19,6 +19,13 @@ const MAX_DISK_SUMMARY_CONCURRENCY = 2;
 
 const SYSTEM_PROMPT = `You are a document indexer for a developer's project management tool. Given a project document, write exactly 1–2 sentences summarizing what it covers. Include the document type (e.g. spec, research, meeting notes, design doc, implementation plan), the main subject or feature, and any notable scope. Output only the summary sentences — no preamble, no markdown, no labels.`;
 
+interface DiskSummaryTask {
+  projectId: string;
+  filePath: string;
+  fullPath: string;
+  key: string;
+}
+
 export interface FileSummaryServiceDeps {
   repository: IProjectFileMetadataRepository;
   recordUsage?: (event: { projectId: string; model: string; usage: ClaudeQueryUsage; totalCostUsd?: number | null }) => void;
@@ -37,8 +44,10 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
   const { repository } = deps;
   const inFlight = new Set<string>();
   const queuedDiskKeys = new Set<string>();
+  const diskQueue: DiskSummaryTask[] = [];
   let activeDiskJobs = 0;
   const pendingDebounce = new Map<string, ReturnType<typeof setTimeout>>();
+  const pendingAfterActive = new Map<string, DiskSummaryTask>();
 
   async function generateSummary(projectId: string, filePath: string, content: string): Promise<string | null> {
     const truncated = content.length > MAX_CONTENT_CHARS ? content.slice(0, MAX_CONTENT_CHARS) : content;
@@ -151,10 +160,30 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
       activeDiskJobs += 1;
       void processFileFromDisk(task.projectId, task.filePath, task.fullPath).finally(() => {
         queuedDiskKeys.delete(task.key);
+        const pendingTask = pendingAfterActive.get(task.key);
+        if (pendingTask) {
+          pendingAfterActive.delete(task.key);
+          queuedDiskKeys.add(pendingTask.key);
+          diskQueue.push(pendingTask);
+        }
         activeDiskJobs -= 1;
         drainDiskQueue();
       });
     }
+  }
+
+  function enqueueDiskTask(task: DiskSummaryTask, options: { rerunAfterActive?: boolean } = {}): boolean {
+    if (queuedDiskKeys.has(task.key)) {
+      if (options.rerunAfterActive) {
+        pendingAfterActive.set(task.key, task);
+      }
+      return false;
+    }
+
+    queuedDiskKeys.add(task.key);
+    diskQueue.push(task);
+    drainDiskQueue();
+    return true;
   }
 
   function enqueueFileFromDisk(projectId: string, filePath: string, fullPath: string, delayMs = 0): boolean {
@@ -164,6 +193,7 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
     }
 
     const key = diskQueueKey(projectId, filePath);
+    const task = { projectId, filePath, fullPath, key };
 
     if (delayMs > 0) {
       const existing = pendingDebounce.get(key);
@@ -172,11 +202,13 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
         key,
         setTimeout(() => {
           pendingDebounce.delete(key);
+          enqueueDiskTask(task, { rerunAfterActive: true });
         }, delayMs)
       );
       return true;
     }
 
+    return enqueueDiskTask(task);
   }
 
   return {

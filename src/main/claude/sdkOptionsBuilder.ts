@@ -42,10 +42,12 @@ export interface BuildSdkOptionsParams {
  * Build SDK options for a Claude session.
  */
 export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
+  const effectiveRepoPaths = context.repos.map(r => r.active_worktree_path ?? r.path);
 
   const permissionContext: PermissionContext = {
     projectPath: context.project.folder_path,
     projectId: context.project.id,
+    repoPaths: effectiveRepoPaths,
     currentView,
     onClaudeMdEdit,
     onProjectFileWrite,
@@ -96,6 +98,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
 
   // Add connected repos as accessible directories
   if (context.repos.length > 0) {
+    sdkOptions.additionalDirectories = effectiveRepoPaths;
   }
 
   return sdkOptions;

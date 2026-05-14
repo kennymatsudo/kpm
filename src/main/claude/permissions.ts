@@ -8,6 +8,7 @@
  */
 
 import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import { normalize, relative, resolve } from 'path';
 import { isContextFile } from '../../shared/contextFile';
 import { clientManager } from './clientManager';
 const READ_TOOLS = ['Read', 'Grep', 'Glob'];
@@ -89,6 +90,14 @@ function extractPath(toolName: string, input: Record<string, unknown>): string |
  */
 function isAbsolutePath(p: string): boolean {
   return p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p);
+}
+
+function resolvePathForScope(targetPath: string, projectPath: string): string {
+  const trimmedPath = targetPath.trim();
+  if (!trimmedPath || trimmedPath.startsWith('~')) {
+    return normalize(trimmedPath);
+  }
+  return isAbsolutePath(trimmedPath) ? normalize(trimmedPath) : resolve(projectPath, trimmedPath);
 }
 
 function isWithinDirectory(targetPath: string, baseDir: string): boolean {
