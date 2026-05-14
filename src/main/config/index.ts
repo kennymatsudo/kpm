@@ -148,6 +148,8 @@ export interface WatcherConfig {
   searchDocSyncDebounceMs: number;
   /** How often the search indexer reconciles project watchers (ms) */
   searchReconcileIntervalMs: number;
+  /** Delay before summarizing a file after an external edit — prevents Haiku from firing on every save during active editing (ms) */
+  summarizationDebounceMs: number;
 }
 
 export interface PollSchedulerConfig {
@@ -272,6 +274,7 @@ function createDefaultConfig(): AppConfig {
       repoDebounceMs: 100,
       searchDocSyncDebounceMs: 400,
       searchReconcileIntervalMs: 30 * 1000,
+      summarizationDebounceMs: 30 * 1000,
     },
 
     pollScheduler: {

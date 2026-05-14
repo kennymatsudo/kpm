@@ -13,6 +13,7 @@ import type { RepoWatcherService } from '../repo/RepoWatcherService';
 import { createFileExplorerService } from '../files/FileExplorerService';
 import { createProjectWatcherService } from '../files/ProjectWatcherService';
 import { createRepoFileService } from '../files/RepoFileService';
+import { getConfig } from '../../config';
 import { resolveScopedPath } from '../files/scopedFs';
 import type { FileSummaryService } from '../files/FileSummaryService';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
@@ -135,6 +136,7 @@ export function createRepoServices({
             if (projectFolder) {
               const scopedPath = resolveScopedPath(projectFolder, filePath);
               if (scopedPath.valid) {
+                fileSummaryService.enqueueFileFromDisk(projectId, filePath, scopedPath.fullPath, getConfig().watcher.summarizationDebounceMs);
               }
             }
           }

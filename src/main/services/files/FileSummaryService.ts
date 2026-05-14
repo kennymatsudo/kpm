@@ -38,6 +38,7 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
   const inFlight = new Set<string>();
   const queuedDiskKeys = new Set<string>();
   let activeDiskJobs = 0;
+  const pendingDebounce = new Map<string, ReturnType<typeof setTimeout>>();
 
   async function generateSummary(projectId: string, filePath: string, content: string): Promise<string | null> {
     const truncated = content.length > MAX_CONTENT_CHARS ? content.slice(0, MAX_CONTENT_CHARS) : content;
@@ -156,12 +157,26 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
     }
   }
 
+  function enqueueFileFromDisk(projectId: string, filePath: string, fullPath: string, delayMs = 0): boolean {
     if (!isSummarizable(filePath)) {
       repository.deleteByPath(projectId, filePath);
       return false;
     }
 
     const key = diskQueueKey(projectId, filePath);
+
+    if (delayMs > 0) {
+      const existing = pendingDebounce.get(key);
+      if (existing) clearTimeout(existing);
+      pendingDebounce.set(
+        key,
+        setTimeout(() => {
+          pendingDebounce.delete(key);
+        }, delayMs)
+      );
+      return true;
+    }
+
   }
 
   return {
