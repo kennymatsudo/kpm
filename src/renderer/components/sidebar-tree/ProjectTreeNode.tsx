@@ -51,6 +51,7 @@ function PhantomCreateRow({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      e.stopPropagation();
       if (e.key === 'Enter') handleSubmit();
       else if (e.key === 'Escape') onCancel();
     },
