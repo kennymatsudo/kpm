@@ -63,6 +63,8 @@ interface ReposAndFilesOverlaysProps {
   contextNode: FileNode | null;
   isContextPathFocused: boolean;
   onCloseFileContextMenu: () => void;
+  onNewFileInContext: () => void;
+  onNewFolderInContext: () => void;
   onToggleContextFileFocus: () => void;
   onRenameContextFile: () => void;
   onRevealContextFileInFinder: () => void;
@@ -127,6 +129,8 @@ export function ReposAndFilesOverlays({
   contextNode,
   isContextPathFocused,
   onCloseFileContextMenu,
+  onNewFileInContext,
+  onNewFolderInContext,
   onToggleContextFileFocus,
   onRenameContextFile,
   onRevealContextFileInFinder,
@@ -204,6 +208,8 @@ export function ReposAndFilesOverlays({
           node={contextNode}
           isFocused={isContextPathFocused}
           onClose={onCloseFileContextMenu}
+          onNewFile={onNewFileInContext}
+          onNewFolder={onNewFolderInContext}
           onToggleFocus={onToggleContextFileFocus}
           onRename={onRenameContextFile}
           onRevealInFinder={onRevealContextFileInFinder}

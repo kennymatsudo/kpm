@@ -106,6 +106,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     creatingItem,
     loadDirectory: loadProjectDirectory,
     toggleExpanded: toggleProjectExpanded,
+    setExpanded: setProjectExpanded,
     setSelectedPath: selectPath,
     setSelectedPaths,
     setRenamingPath,
@@ -316,10 +317,32 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
   );
 
   const handleStartCreate = useCallback(
+    (type: 'file' | 'folder', parentPath = '') => {
+      setCreatingItem({ type, parentPath });
       setFilesCollapsed(false);
       addMenu.closeAddMenu();
       fileContextMenus.setEmptySpaceMenu(null);
+      fileContextMenus.setContextMenu(null);
+      if (parentPath) {
+        setProjectExpanded(parentPath, true);
+        const node = getNodeByPath(parentPath);
+        if (projectId && node?.isDirectory && node.children === undefined) {
+          void loadProjectDirectory(projectId, parentPath);
+        }
+      }
     },
+    [setCreatingItem, addMenu.closeAddMenu, fileContextMenus.setEmptySpaceMenu, fileContextMenus.setContextMenu, setProjectExpanded, getNodeByPath, projectId, loadProjectDirectory]
+  );
+
+  const handleStartCreateInContext = useCallback(
+    (type: 'file' | 'folder') => {
+      const menu = fileContextMenus.contextMenu;
+      if (!menu) return;
+      const node = getNodeByPath(menu.path);
+      const parentPath = node?.isDirectory ? menu.path : getParentPath(menu.path);
+      handleStartCreate(type, parentPath);
+    },
+    [fileContextMenus.contextMenu, getNodeByPath, handleStartCreate]
   );
 
   const handleCreateSubmit = useCallback(
@@ -558,6 +581,8 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         contextNode={contextNode}
         isContextPathFocused={fileContextMenus.contextMenu ? isPathFocused(fileContextMenus.contextMenu.path) : false}
         onCloseFileContextMenu={fileContextMenus.handleCloseContextMenu}
+        onNewFileInContext={() => handleStartCreateInContext('file')}
+        onNewFolderInContext={() => handleStartCreateInContext('folder')}
         onToggleContextFileFocus={() => {
           if (fileContextMenus.contextMenu && contextNode) {
             handleToggleFileFocus(fileContextMenus.contextMenu.path, contextNode.isDirectory);

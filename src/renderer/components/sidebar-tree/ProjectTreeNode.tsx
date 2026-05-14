@@ -6,6 +6,12 @@ import { getParentPath } from '../../utils/path';
 import { FileIcon, FocusIcon } from './FileIcon';
 import { Tooltip } from '../ui/Tooltip';
 
+/** FileNode extended with optional phantom fields for inline creation rows. */
+export type UIFileNode = FileNode & {
+  _phantom?: boolean;
+  _phantomType?: 'file' | 'folder';
+};
+
 export interface ProjectTreeNodeExtraProps {
   loadingPaths: Set<string>;
   editingPath: string | null;
@@ -18,9 +24,108 @@ export interface ProjectTreeNodeExtraProps {
   onRename: (oldPath: string, newPath: string) => Promise<FileNode | null>;
   onEndRename: () => void;
   onExternalDrop: (files: FileList, targetPath: string) => void | Promise<void>;
+  onCreateSubmit?: (name: string) => void;
+  onCreateCancel?: () => void;
 }
 
+type ProjectTreeNodeProps = NodeRendererProps<UIFileNode> & ProjectTreeNodeExtraProps;
 
+function PhantomCreateRow({
+  level,
+  type,
+  onSubmit,
+  onCancel,
+}: {
+  level: number;
+  type: 'file' | 'folder';
+  onSubmit: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState('');
+
+  const handleSubmit = useCallback(() => {
+    const trimmed = value.trim();
+    if (trimmed) onSubmit(trimmed);
+    else onCancel();
+  }, [value, onSubmit, onCancel]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') handleSubmit();
+      else if (e.key === 'Escape') onCancel();
+    },
+    [handleSubmit, onCancel]
+  );
+
+  return (
+    <div className="h-full px-2">
+      <div className="flex h-full items-center gap-2 px-3 rounded-lg bg-surface-2/40 ring-1 ring-accent/20">
+        <div
+          className="flex items-center gap-2 flex-1 min-w-0"
+          style={{ paddingLeft: `${level * 16}px` }}
+        >
+          <div className="w-4 h-4 flex-shrink-0" />
+          {type === 'folder' ? (
+            <svg
+              className="w-4 h-4 flex-shrink-0 text-text-muted"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+              />
+            </svg>
+          ) : (
+            <svg
+              className="w-4 h-4 flex-shrink-0 text-text-muted"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+          )}
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onBlur={handleSubmit}
+            onKeyDown={handleKeyDown}
+            className="flex-1 bg-surface-2 rounded-md px-2 py-0.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+            placeholder={type === 'folder' ? 'Folder name' : 'File name'}
+            autoFocus
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export const ProjectTreeNode = memo(function ProjectTreeNode(props: ProjectTreeNodeProps) {
+  if (props.node.data._phantom) {
+    return (
+      <PhantomCreateRow
+        level={props.node.level}
+        type={props.node.data._phantomType ?? 'file'}
+        onSubmit={props.onCreateSubmit ?? (() => {})}
+        onCancel={props.onCreateCancel ?? (() => {})}
+      />
+    );
+  }
+  return <FileTreeRow {...props} />;
+});
+
+const FileTreeRow = memo(function FileTreeRow({
   node,
   dragHandle,
   loadingPaths,

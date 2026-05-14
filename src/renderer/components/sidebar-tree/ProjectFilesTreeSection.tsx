@@ -5,7 +5,27 @@ import type { FileNode } from '../../../shared/types';
 import { getParentPath } from '../../utils/path';
 import { SidebarSection } from './SidebarSection';
 import { NewItemInput } from './NewItemInput';
+import { ProjectTreeNode, type UIFileNode } from './ProjectTreeNode';
 import { areSetsEqual, getOpenPathSet } from './treeUtils';
+
+function injectPhantomNode(
+  nodes: UIFileNode[],
+  parentPath: string,
+  phantom: UIFileNode,
+): UIFileNode[] {
+  return nodes.map((node) => {
+    if (node.path === parentPath && node.isDirectory) {
+      const existing = (node.children as UIFileNode[]) ?? [];
+      return { ...node, children: [phantom, ...existing] };
+    }
+    if (node.children) {
+      return {
+        ...node,
+      };
+    }
+    return node;
+  });
+}
 
 interface ProjectFilesTreeSectionProps {
   projectNodes: FileNode[];
@@ -62,6 +82,7 @@ export const ProjectFilesTreeSection = memo(function ProjectFilesTreeSection({
   onCreateSubmit,
   onCreateCancel,
 }: ProjectFilesTreeSectionProps) {
+  const treeRef = useRef<TreeApi<UIFileNode> | null>(null);
   const treeContainerRef = useRef<HTMLDivElement | null>(null);
   const syncingOpenPathsRef = useRef(new Set<string>());
   const [treeHeight, setTreeHeight] = useState(0);
@@ -71,6 +92,20 @@ export const ProjectFilesTreeSection = memo(function ProjectFilesTreeSection({
     () => Object.fromEntries(Array.from(expandedPaths).map((path) => [path, true])),
     [expandedPaths]
   );
+
+  const displayNodes = useMemo((): UIFileNode[] => {
+    const phantom: UIFileNode = {
+      name: '',
+      path: `${creatingItem.parentPath}/__creating__`,
+      isDirectory: false,
+      isSymlink: false,
+      modifiedAt: '',
+      size: 0,
+      _phantom: true,
+      _phantomType: creatingItem.type,
+    };
+  }, [projectNodes, creatingItem]);
+
   const showEmptyState = projectNodes.length === 0 && !creatingItem;
   const shouldMeasureTree = !isCollapsed && !showEmptyState;
 
@@ -297,8 +332,13 @@ export const ProjectFilesTreeSection = memo(function ProjectFilesTreeSection({
         ) : (
           <div ref={treeContainerRef} className="flex-1 min-h-0">
             {renderTree && (
+              <Tree<UIFileNode>
                 ref={treeRef}
+                data={displayNodes}
                 idAccessor={(node) => node.path}
+                childrenAccessor={(node) =>
+                  node.isDirectory ? ((node.children as UIFileNode[]) ?? []) : null
+                }
                 width="100%"
                 height={treeHeight}
                 indent={16}
@@ -310,6 +350,9 @@ export const ProjectFilesTreeSection = memo(function ProjectFilesTreeSection({
                 onMove={handleTreeMove}
                 onRename={handleTreeRename}
                 disableDrop={disableDrop}
+                onActivate={(node) => {
+                  if (!node.data._phantom) void onOpen(node.id, node.data);
+                }}
                 overscanCount={8}
               >
                 {(props) => (
@@ -326,6 +369,8 @@ export const ProjectFilesTreeSection = memo(function ProjectFilesTreeSection({
                     onRename={onRename}
                     onEndRename={onEndRename}
                     onExternalDrop={onExternalDrop}
+                    onCreateSubmit={onCreateSubmit}
+                    onCreateCancel={onCreateCancel}
                   />
                 )}
               </Tree>
