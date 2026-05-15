@@ -223,6 +223,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       }
       endTotal();
     }
+  }, [cancelScheduledRepoTasks, setRepoBranches, teardownWatchers]);
 
   const createProject = useCallback(async (input: {
     name: string;

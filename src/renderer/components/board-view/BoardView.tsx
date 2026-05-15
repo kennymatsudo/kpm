@@ -86,12 +86,15 @@ export const BoardView = memo(function BoardView({
     const session = state.sessionById.get(detailSessionId);
     return !!session && OPENABLE_SESSION_STATUSES.includes(session.status);
   });
+  const hasOpenPrs = openPrCount > 0;
 
   const boardRef = useRef<HTMLDivElement>(null);
 
   // Merge queue panel visibility — auto-show when PRs first appear
   const [showMergeQueue, setShowMergeQueue] = useState(false);
   useEffect(() => {
+    if (hasOpenPrs) setShowMergeQueue(true);
+  }, [hasOpenPrs]);
 
   // Column visibility - persisted per project
   const [columnVisibility, setColumnVisibility] = useState<Record<StatusCategory, boolean>>(() => {
@@ -346,6 +349,7 @@ export const BoardView = memo(function BoardView({
 
         <div className="ml-auto flex items-center gap-1">
           {/* Merge queue toggle — only shown when there are open PRs */}
+          {hasOpenPrs && (
             <button
               onClick={() => setShowMergeQueue((v) => !v)}
               className={`
@@ -389,6 +393,7 @@ export const BoardView = memo(function BoardView({
       </div>
 
       {/* Merge queue panel — between header and columns */}
+      {showMergeQueue && hasOpenPrs && (
         <MergeQueuePanel onSelectSession={handleSelectQueueSession} />
       )}
 
