@@ -15,8 +15,10 @@ import * as path from 'path';
 import { subscribe, type AsyncSubscription, type Event as WatcherEvent } from '@parcel/watcher';
 import type { BrowserWindow } from 'electron';
 import { getConfig } from '../../config';
+import { containsHiddenFileTreeSegment, getNativeWatcherIgnoreGlobs } from './fileTreeVisibility';
 
 /** Glob patterns the watcher ignores natively (no event delivery for these). */
+const IGNORE_GLOBS = getNativeWatcherIgnoreGlobs();
 
 // =============================================================================
 // Dependencies
@@ -82,6 +84,7 @@ export function createProjectWatcherService(deps: ProjectWatcherServiceDeps) {
     for (const event of events) {
       const relativePath = path.relative(projectFolder, event.path);
       if (!relativePath || relativePath.startsWith('..')) continue;
+      if (containsHiddenFileTreeSegment(relativePath)) continue;
 
       const changeType: ChangeType =
         event.type === 'create' ? 'created' : event.type === 'update' ? 'updated' : 'deleted';

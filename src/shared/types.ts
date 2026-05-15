@@ -1177,6 +1177,8 @@ export interface FileNode {
   size: number;
   /** AI-generated summary of the file's content */
   summary?: string;
+  /** Whether this path is ignored by .gitignore */
+  isIgnored?: boolean;
 }
 
 // =============================================================================

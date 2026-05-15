@@ -8,11 +8,34 @@
  * stage, status, branch sync). Users manage those through their own tooling.
  */
 
+import { execFile, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Batch-check which paths are ignored by git using `git check-ignore --stdin`.
+ * Paths must be relative to `repoRoot`. Returns a Set of the ignored ones.
+ * Resolves to an empty Set when no paths are ignored (exit code 1) or when
+ * git is unavailable — always fails open so the UI stays functional.
+ */
+export function getIgnoredPaths(repoRoot: string, relativePaths: string[]): Promise<Set<string>> {
+  if (relativePaths.length === 0) return Promise.resolve(new Set());
+  return new Promise((resolve) => {
+    const proc = spawn('git', ['check-ignore', '--stdin'], { cwd: repoRoot });
+    let stdout = '';
+    proc.stdout.on('data', (data: Buffer) => { stdout += data.toString(); });
+    proc.on('close', () => {
+      // exit 1 means no paths were ignored — treat the same as exit 0
+      resolve(new Set(stdout.split('\n').filter(Boolean)));
+    });
+    proc.on('error', () => resolve(new Set()));
+    proc.stdin.write(relativePaths.join('\n'));
+    proc.stdin.end();
+  });
+}
 
 /**
  * Walk up from `startPath` looking for a `.git` entry (directory for normal

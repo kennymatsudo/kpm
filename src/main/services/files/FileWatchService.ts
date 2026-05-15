@@ -10,6 +10,7 @@ import {
 } from '../../../shared/contextFile';
 import { pathExists, resolveScopedPath } from './scopedFs';
 import { writeProjectContextFiles } from '../../project-context/contextFileCompat';
+import { shouldHideFileTreeEntry } from './fileTreeVisibility';
 
 /** Context file from the project folder */
 export interface ContextFile {
@@ -60,6 +61,7 @@ class FileWatchServiceClass {
 
         for (const entry of entries) {
           if (entry.isDirectory()) {
+            if (shouldHideFileTreeEntry(entry.name)) continue;
             const subRelDir = relDir ? `${relDir}/${entry.name}` : entry.name;
             await walkDir(path.join(dirPath, entry.name), subRelDir);
           } else if (entry.isFile() && entry.name.endsWith('.md')) {

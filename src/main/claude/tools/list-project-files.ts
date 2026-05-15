@@ -8,10 +8,13 @@
 import { z } from 'zod';
 import { tool, jsonResult, toolError } from './index';
 import type { FileExplorerService } from '../../services/files/FileExplorerService';
+import { HIDDEN_FILE_TREE_ENTRIES } from '../../services/files/fileTreeVisibility';
 
 interface ListProjectFilesToolDeps {
   fileExplorerService: FileExplorerService;
 }
+
+const HIDDEN_FILE_TREE_ENTRIES_DESCRIPTION = HIDDEN_FILE_TREE_ENTRIES.map((entry) => `\`${entry}\``).join(', ');
 
 const TOOL_DESCRIPTION = `List files and folders within the project's file tree.
 
@@ -24,6 +27,7 @@ Use when the user asks what files or folders exist in the project, wants to brow
 - \`depth\`: Maximum recursion depth when \`recursive\` is true. Defaults to 10.
 
 ## Notes
+- Generated/cache paths (${HIDDEN_FILE_TREE_ENTRIES_DESCRIPTION}) are hidden. All other files, including dotfiles, are visible.
 - Lists files in the developer's KPM project folder only. For files inside connected code repositories, use Glob/Read/Grep instead.`;
 
 export function createListProjectFilesTools(deps: ListProjectFilesToolDeps) {

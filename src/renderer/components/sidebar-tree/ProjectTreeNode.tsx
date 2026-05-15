@@ -311,6 +311,7 @@ const FileTreeRow = memo(function FileTreeRow({
           transition-all duration-150 ease-out
           ${isEditingFile ? 'bg-accent/10' : node.isSelected ? 'bg-surface-4' : 'hover:bg-surface-2/60'}
 
+          ${node.isDragging ? 'opacity-50' : node.data.isIgnored ? 'opacity-60' : ''}
           ${node.willReceiveDrop ? 'bg-accent/20 ring-2 ring-inset ring-accent ring-dashed' : ''}
           ${isExternalDragOver ? 'bg-accent/20 ring-2 ring-inset ring-accent ring-dashed' : ''}
         `}
