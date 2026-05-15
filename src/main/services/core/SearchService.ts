@@ -15,6 +15,11 @@ import { success, failure } from '../result';
 import type { PlanItem, SearchResult, StatusCategory } from '../../../shared/types';
 import { getConfig } from '../../config';
 import { findRefs } from '../../../shared/planRefs';
+import {
+  containsHiddenFileTreeSegment,
+  getNativeWatcherIgnoreGlobs,
+  shouldHideFileTreeEntry,
+} from '../files/fileTreeVisibility';
 
 export interface SearchServiceDeps {
   getDatabase: () => Database;
@@ -56,6 +61,7 @@ interface DocumentSyncState {
 }
 
 const DOCUMENT_EXTENSIONS = new Set(['.md', '.mdx']);
+const SEARCH_SKIP_DIRECTORIES = new Set(['outputs', 'attachments']);
 const MAX_DOCUMENT_BYTES_FOR_INDEX = 256 * 1024;
 const DOCUMENT_TRUNCATION_SUFFIX = '\n\n[content truncated for search]';
 const DOCUMENT_INDEX_READ_CONCURRENCY = 8;
@@ -155,6 +161,16 @@ function toEntityTitle(relativePath: string): string {
 
 function toIndexTimestamp(date: Date): string {
   return date.toISOString();
+}
+
+function shouldSkipDocumentDirectory(name: string): boolean {
+  return name.startsWith('.') || SEARCH_SKIP_DIRECTORIES.has(name) || shouldHideFileTreeEntry(name);
+}
+
+function containsSearchSkippedSegment(filePath: string): boolean {
+  const segments = filePath.split(/[\\/]+/);
+  return segments.some((segment) => SEARCH_SKIP_DIRECTORIES.has(segment)) ||
+    containsHiddenFileTreeSegment(filePath);
 }
 
 /**
@@ -271,6 +287,7 @@ async function listDocumentFiles(projectFolder: string): Promise<IndexedDocument
       const absolutePath = path.join(current.absoluteDir, entry.name);
 
       if (entry.isDirectory()) {
+        if (shouldSkipDocumentDirectory(entry.name)) continue;
         const childEntries = await fs.readdir(absolutePath, { withFileTypes: true });
         queue.push({ absoluteDir: absolutePath, entries: childEntries });
         continue;
@@ -414,6 +431,14 @@ export function createSearchService(deps: SearchServiceDeps) {
     await Promise.all(pending);
   }
 
+  function shouldSyncForWatchPath(filePath: string, projectFolderPath: string): boolean {
+    const relativePath = path.relative(projectFolderPath, filePath);
+    const pathForFilter = relativePath.startsWith('..') || path.isAbsolute(relativePath)
+      ? filePath
+      : relativePath;
+    if (containsSearchSkippedSegment(pathForFilter)) {
+      return false;
+    }
     return DOCUMENT_EXTENSIONS.has(path.extname(filePath).toLowerCase());
   }
 
@@ -561,8 +586,16 @@ export function createSearchService(deps: SearchServiceDeps) {
           void closeProjectWatcher(projectId);
           return;
         }
+        if (events.some((event) => shouldSyncForWatchPath(event.path, projectFolderPath))) {
           scheduleFilesystemDocumentIndexSync(projectId, false);
         }
+      },
+      {
+        ignore: [
+          ...getNativeWatcherIgnoreGlobs(),
+          '**/outputs/**',
+          '**/attachments/**',
+        ],
       },
     );
 

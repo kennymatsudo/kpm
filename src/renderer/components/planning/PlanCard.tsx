@@ -253,6 +253,14 @@ export const PlanCard = memo(function PlanCard({
   const { addToQueue } = useExportActions();
 
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
+  const worktreeLoadingOp = useResourceDomainStore((state) => {
+    const worktreeMatch = state.worktreeByPlanItemId.get(item.id);
+    return (
+      state.worktreeLoading[item.id] ??
+      (worktreeMatch ? state.worktreeLoading[worktreeMatch.id] : null) ??
+      null
+    );
+  });
   // Narrow the sessions subscription to a scalar boolean so this card only
   // re-renders when its own active-session status changes, rather than on any
   // session update anywhere in the store.

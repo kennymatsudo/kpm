@@ -368,6 +368,9 @@ export function createAppServices(container: IRepositoryContainer) {
     projectWatcherService,
     notificationService,
     terminalService,
+    agentSessionManager,
+    hookServer,
+    fileSummaryService,
     disposeClaudeClients: () => clientManager.disposeAll(),
   });
 

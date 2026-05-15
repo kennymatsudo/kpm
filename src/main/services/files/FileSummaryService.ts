@@ -16,6 +16,7 @@ import type { IProjectFileMetadataRepository } from '../../db/interfaces/files';
 const SUMMARIZABLE_EXTENSIONS = new Set(['.md', '.txt', '.mdx', '.rst', '.yaml', '.yml', '.json', '.toml']);
 const MAX_CONTENT_CHARS = 16_000;
 const MAX_DISK_SUMMARY_CONCURRENCY = 2;
+const MAX_DISK_SUMMARY_QUEUE_SIZE = 500;
 
 const SYSTEM_PROMPT = `You are a document indexer for a developer's project management tool. Given a project document, write exactly 1–2 sentences summarizing what it covers. Include the document type (e.g. spec, research, meeting notes, design doc, implementation plan), the main subject or feature, and any notable scope. Output only the summary sentences — no preamble, no markdown, no labels.`;
 
@@ -46,6 +47,7 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
   const queuedDiskKeys = new Set<string>();
   const diskQueue: DiskSummaryTask[] = [];
   let activeDiskJobs = 0;
+  let disposed = false;
   const pendingDebounce = new Map<string, ReturnType<typeof setTimeout>>();
   const pendingAfterActive = new Map<string, DiskSummaryTask>();
 
@@ -98,6 +100,8 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
   }
 
   async function processFile(projectId: string, filePath: string, content: string): Promise<void> {
+    if (disposed) return;
+
     if (!content.trim() || !isSummarizable(filePath)) {
       // Empty or non-summarizable writes evict prior metadata so stale summaries cannot leak into listings.
       repository.deleteByPath(projectId, filePath);
@@ -123,6 +127,7 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
     inFlight.add(key);
     try {
       const summary = await generateSummary(projectId, filePath, content);
+      if (summary && !disposed) {
         repository.setSummaryForHash(projectId, filePath, hash, summary);
       }
     } finally {
@@ -131,6 +136,8 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
   }
 
   async function processFileFromDisk(projectId: string, filePath: string, fullPath: string): Promise<void> {
+    if (disposed) return;
+
     if (!isSummarizable(filePath)) {
       repository.deleteByPath(projectId, filePath);
       return;
@@ -155,11 +162,17 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
   }
 
   function drainDiskQueue(): void {
+    if (disposed) return;
+
     while (activeDiskJobs < MAX_DISK_SUMMARY_CONCURRENCY && diskQueue.length > 0) {
       const task = diskQueue.shift()!;
       activeDiskJobs += 1;
       void processFileFromDisk(task.projectId, task.filePath, task.fullPath).finally(() => {
         queuedDiskKeys.delete(task.key);
+        if (disposed) {
+          activeDiskJobs -= 1;
+          return;
+        }
         const pendingTask = pendingAfterActive.get(task.key);
         if (pendingTask) {
           pendingAfterActive.delete(task.key);
@@ -172,7 +185,18 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
     }
   }
 
+  function hasQueueCapacityForNewKey(key: string): boolean {
+    if (queuedDiskKeys.has(key) || pendingDebounce.has(key) || pendingAfterActive.has(key)) {
+      return true;
+    }
+    return queuedDiskKeys.size + pendingDebounce.size + pendingAfterActive.size < MAX_DISK_SUMMARY_QUEUE_SIZE;
+  }
+
   function enqueueDiskTask(task: DiskSummaryTask, options: { rerunAfterActive?: boolean } = {}): boolean {
+    if (disposed || !hasQueueCapacityForNewKey(task.key)) {
+      return false;
+    }
+
     if (queuedDiskKeys.has(task.key)) {
       if (options.rerunAfterActive) {
         pendingAfterActive.set(task.key, task);
@@ -187,6 +211,8 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
   }
 
   function enqueueFileFromDisk(projectId: string, filePath: string, fullPath: string, delayMs = 0): boolean {
+    if (disposed) return false;
+
     if (!isSummarizable(filePath)) {
       repository.deleteByPath(projectId, filePath);
       return false;
@@ -196,6 +222,9 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
     const task = { projectId, filePath, fullPath, key };
 
     if (delayMs > 0) {
+      if (!hasQueueCapacityForNewKey(key)) {
+        return false;
+      }
       const existing = pendingDebounce.get(key);
       if (existing) clearTimeout(existing);
       pendingDebounce.set(
@@ -217,6 +246,16 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
     enqueueFileFromDisk,
     getMetadataMap,
     shouldSummarizePath: isSummarizable,
+    dispose(): void {
+      disposed = true;
+      for (const timer of pendingDebounce.values()) {
+        clearTimeout(timer);
+      }
+      pendingDebounce.clear();
+      pendingAfterActive.clear();
+      queuedDiskKeys.clear();
+      diskQueue.length = 0;
+    },
     deleteEntry(projectId: string, filePath: string): void {
       repository.deleteByPath(projectId, filePath);
     },

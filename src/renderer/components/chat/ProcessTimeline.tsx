@@ -372,6 +372,15 @@ function formatDuration(sec: number | null | undefined): string | null {
   return s === 0 ? `${m}m` : `${m}m ${s}s`;
 }
 
+export const ProcessTimeline = memo(function ProcessTimeline({
+  segments,
+  streamingThinking,
+  streamingActivities,
+  isStreaming = false,
+  elapsedSeconds,
+}: ProcessTimelineProps) {
+  const steps = useMemo(
+  );
   const rows = useMemo(() => collapseToolRuns(steps), [steps]);
 
   // Default-expanded while streaming so the user sees live progress; auto-collapse

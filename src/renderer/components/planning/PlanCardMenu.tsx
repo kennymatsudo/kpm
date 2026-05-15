@@ -64,12 +64,17 @@ export function PlanCardMenu({
       destroyWorktree: state.destroyWorktree,
     }))
   );
+  const { worktree, worktreeLoadingOp } = useResourceDomainStore(useShallow((state) => {
+    const worktreeMatch = state.worktreeByPlanItemId.get(itemId);
     const loadingOp =
+      state.worktreeLoading[itemId] ??
+      (worktreeMatch ? state.worktreeLoading[worktreeMatch.id] : null) ??
       null;
     return {
       worktree: worktreeMatch,
       worktreeLoadingOp: loadingOp,
     };
+  }));
 
   // Falls back to a session-recorded path when the worktree resource row has been
   // cleaned up (e.g. after PR merge) but the session still records its details.

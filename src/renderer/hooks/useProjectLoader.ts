@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { useChatStore, useGroupStore, useProjectDomainStore, useResourceDomainStore, selectProjectSummary } from '../stores';
 import { applyLoadedProjectData, setProjectSwitching } from '../stores/project/domainService';
 import { resetAllProjectScopedStores } from '../stores/projectScopedStores';
 import {
@@ -31,6 +32,10 @@ interface UseProjectLoaderOptions {
 // Track the previously connected project to disconnect on switch
 let previousConnectedProjectId: string | null = null;
 
+type ScheduledRepoTask =
+  | { type: 'idle'; id: number }
+  | { type: 'timeout'; id: ReturnType<typeof setTimeout> };
+
 /**
  * Centralized controller for loading project data and wiring repo watchers.
  * Keeps App.tsx focused on UI concerns and makes this logic easier to test.
@@ -50,13 +55,36 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
 
   const watchedRepoPathsRef = useRef<string[]>([]);
   const loadSequenceRef = useRef(0);
+  const isMountedRef = useRef(false);
+  const scheduledRepoTaskRef = useRef<ScheduledRepoTask | null>(null);
+
+  const cancelScheduledRepoTasks = useCallback(() => {
+    const scheduled = scheduledRepoTaskRef.current;
+    if (!scheduled) return;
+
+    if (scheduled.type === 'idle') {
+      if (typeof window === 'undefined') {
+        scheduledRepoTaskRef.current = null;
+        return;
+      }
+      const idleWindow = window as Window & { cancelIdleCallback?: (id: number) => void };
+      idleWindow.cancelIdleCallback?.(scheduled.id);
+    } else {
+      clearTimeout(scheduled.id);
+    }
+
+    scheduledRepoTaskRef.current = null;
+  }, []);
 
   const teardownWatchers = useCallback(async () => {
+    cancelScheduledRepoTasks();
     await unwatchProjectRepos(watchedRepoPathsRef.current);
     watchedRepoPathsRef.current = [];
+  }, [cancelScheduledRepoTasks]);
 
   const loadProjectData = useCallback(async (projectId: string) => {
     const loadSequence = ++loadSequenceRef.current;
+    const isCurrentLoad = () => isMountedRef.current && loadSequenceRef.current === loadSequence;
     const isSwitching = previousConnectedProjectId !== null && previousConnectedProjectId !== projectId;
 
     const endTotal = startPerfSpan('project.load.total', { projectId, switching: isSwitching });
@@ -89,6 +117,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
         throw error;
       }
 
+      if (!isCurrentLoad()) {
         return;
       }
 
@@ -105,6 +134,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       // 2. Tear down old project resources
       await teardownWatchers();
 
+      if (!isCurrentLoad()) {
         return;
       }
 
@@ -114,6 +144,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
         resetAllProjectScopedStores();
       }
 
+      if (!isCurrentLoad()) {
         return;
       }
 
@@ -131,10 +162,13 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       // async writes when another project load starts before the hydration
       // round-trip returns.
       const shouldRestoreChat = () =>
+        isCurrentLoad() &&
         useProjectDomainStore.getState().currentProjectId === projectId;
       void useChatStore.getState().hydrateOpenSessions(projectId, shouldRestoreChat);
 
       const scheduleRepoTasks = () => {
+        scheduledRepoTaskRef.current = null;
+        if (!isCurrentLoad()) return;
 
         // 4. Setup new watchers (deferred)
         if (repos.length > 0) {
@@ -155,12 +189,18 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
             return;
           }
 
+          if (!isCurrentLoad() || useProjectDomainStore.getState().currentProjectId !== projectId) return;
           setRepoBranches(branchesById);
         })();
       };
 
+      cancelScheduledRepoTasks();
       if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+        const id = (window as { requestIdleCallback: (cb: () => void) => number }).requestIdleCallback(scheduleRepoTasks);
+        scheduledRepoTaskRef.current = { type: 'idle', id };
       } else {
+        const id = setTimeout(scheduleRepoTasks, 200);
+        scheduledRepoTaskRef.current = { type: 'timeout', id };
       }
 
       // Track project for session cleanup on switch
@@ -237,15 +277,20 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
 
   // Load projects on startup
   useEffect(() => {
+    isMountedRef.current = true;
+    let active = true;
+
     const loadProjects = async () => {
       const endList = startPerfSpan('project.list');
       const projects = await listProjects();
       endList({ projectCount: projects.length });
+      if (!active || !isMountedRef.current) return;
       setProjects(projects);
 
       if (projects.length > 0) {
         // Try to load the last opened project
         const lastProjectId = await getLastOpenedProjectId();
+        if (!active || !isMountedRef.current) return;
         const projectToLoad = lastProjectId && projects.some((p: { id: string }) => p.id === lastProjectId)
           ? lastProjectId
           : projects[0].id;
@@ -255,6 +300,9 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
     };
 
     void loadProjects();
+    return () => {
+      active = false;
+    };
   }, [setProjects, loadProjectData]);
 
   // Listen for menu events
@@ -269,6 +317,11 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
   useEffect(() => {
     const unsubBranchChange = subscribeToRepoBranchChanges(
       ({ repoId, branch }) => {
+        if (!isMountedRef.current) return;
+        const belongsToCurrentProject = useResourceDomainStore
+          .getState()
+          .repos.some((repo) => repo.id === repoId);
+        if (!belongsToCurrentProject) return;
         setRepoBranch(repoId, branch);
       }
     );
@@ -280,8 +333,12 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
 
   useEffect(() => {
     return () => {
+      isMountedRef.current = false;
+      loadSequenceRef.current += 1;
+      cancelScheduledRepoTasks();
       void teardownWatchers();
     };
+  }, [cancelScheduledRepoTasks, teardownWatchers]);
 
   return {
     loadProjectData,

@@ -132,6 +132,14 @@ export async function runClaudeQuery<TStructured = unknown>(
   options: RunClaudeQueryOptions,
 ): Promise<RunClaudeQueryResult<TStructured>> {
   const queryFn = options.queryFn ?? query;
+  const abortController = options.sdkOptions.abortController ?? new AbortController();
+  const queryGenerator = queryFn({
+    prompt: options.prompt,
+    options: {
+      ...options.sdkOptions,
+      abortController,
+    },
+  });
 
   const acc: RunClaudeQueryResult<TStructured> = {
     text: '',
@@ -201,7 +209,19 @@ export async function runClaudeQuery<TStructured = unknown>(
     return consume();
   }
 
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
   const timeoutPromise = new Promise<RunClaudeQueryResult<TStructured>>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      abortController.abort();
+      reject(new Error(options.timeoutMessage ?? `Claude query timed out after ${options.timeoutMs}ms`));
+    }, options.timeoutMs);
   });
 
+  try {
+    return await Promise.race([consume(), timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }

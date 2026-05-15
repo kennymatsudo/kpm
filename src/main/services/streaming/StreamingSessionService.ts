@@ -1110,6 +1110,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     if (!managed) return;
     const stateBefore = managed.state;
 
+    if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
     managed.state = 'closing';
     managed.unsubscribePlanActions();
     managed.unsubscribeClaudeMdUpdate();
@@ -1505,6 +1506,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       return;
     }
 
+    if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
     managed.unsubscribePlanActions();
     managed.unsubscribeClaudeMdUpdate();
     managed.unsubscribeDocumentUpdate();

@@ -96,6 +96,7 @@ export interface CreateSessionParams {
 export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
   /** Active sessions keyed by agent session ID */
   const sessions = new Map<string, TrackedSession>();
+  const terminalEvictionTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let hookPort = deps.hookPort ?? 0;
 
   // ===========================================================================
@@ -194,6 +195,12 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
   // ===========================================================================
 
   function remove(sessionId: string): void {
+    const evictionTimer = terminalEvictionTimers.get(sessionId);
+    if (evictionTimer) {
+      clearTimeout(evictionTimer);
+      terminalEvictionTimers.delete(sessionId);
+    }
+
     const tracked = sessions.get(sessionId);
     if (!tracked) return;
 
@@ -218,6 +225,10 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     for (const tracked of allTracked) {
       tracked.agentSession.clearHandlers();
     }
+    for (const timer of terminalEvictionTimers.values()) {
+      clearTimeout(timer);
+    }
+    terminalEvictionTimers.clear();
     sessions.clear();
   }
 
@@ -246,6 +257,10 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
       });
 
       if (state === 'complete' || state === 'failed' || state === 'stopped') {
+        const existingTimer = terminalEvictionTimers.get(agentSession.id);
+        if (existingTimer) clearTimeout(existingTimer);
+        const evictionTimer = setTimeout(() => {
+          terminalEvictionTimers.delete(agentSession.id);
           if (sessions.get(agentSession.id) === tracked) {
             sessions.delete(agentSession.id);
           }
@@ -256,6 +271,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
           agentSession.clearHandlers();
           console.log(`${LOG_PREFIX} Evicted terminal session ${agentSession.id} after TTL`);
         }, getConfig().agentSession.terminalSessionTtlMs);
+        terminalEvictionTimers.set(agentSession.id, evictionTimer);
       }
     });
 

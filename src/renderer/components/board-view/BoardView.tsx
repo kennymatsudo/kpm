@@ -73,6 +73,19 @@ export const BoardView = memo(function BoardView({
   const updateStatusCategory = usePlanDomainStore((state) => state.updateStatusCategory);
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
 
+  const openPrCount = useDevSessionsStore((state) =>
+    state.sessions.reduce((count, session) => (
+      session.pr_url && session.pr_state !== 'MERGED' ? count + 1 : count
+    ), 0)
+  );
+  const detailSession: DevSessionWithPlanItem | undefined = useDevSessionsStore((state) =>
+    detailSessionId ? state.sessionById.get(detailSessionId) : undefined
+  );
+  const detailSessionIsOpenable = useDevSessionsStore((state) => {
+    if (!detailSessionId) return true;
+    const session = state.sessionById.get(detailSessionId);
+    return !!session && OPENABLE_SESSION_STATUSES.includes(session.status);
+  });
 
   const boardRef = useRef<HTMLDivElement>(null);
 
@@ -254,6 +267,7 @@ export const BoardView = memo(function BoardView({
 
       const previousStatus =
         item.status_category ?? getStatusCategory(item.external_status, item.external_type) ?? 'not_started';
+      const activeSession = useDevSessionsStore.getState().sessions.find(
         (s) => s.plan_item_id === itemId && ['pending', 'active'].includes(s.status)
       );
       const decision = getBoardDropDecision(previousStatus, newStatus, !!activeSession);
@@ -283,6 +297,7 @@ export const BoardView = memo(function BoardView({
         },
       });
     },
+    [allItems, updateStatusCategory, handleStartAgent]
   );
 
   const handleSelectQueueSession = useCallback((sessionId: string) => {
@@ -297,6 +312,7 @@ export const BoardView = memo(function BoardView({
   }, []);
 
   const handleOpenDetail = useCallback((itemId: string) => {
+    const session = useDevSessionsStore.getState().sessions.find(
       (s) => s.plan_item_id === itemId && OPENABLE_SESSION_STATUSES.includes(s.status)
     );
     onDetailSessionChange(session?.id ?? null);
@@ -304,8 +320,10 @@ export const BoardView = memo(function BoardView({
   // Close the detail pane when the underlying session disappears (e.g. archived).
   useEffect(() => {
     if (!detailSessionId) return;
+    if (!detailSessionIsOpenable) {
       onDetailSessionChange(null);
     }
+  }, [detailSessionId, detailSessionIsOpenable, onDetailSessionChange]);
 
   // Determine which columns to show
   const visibleColumns = useMemo(() => {

@@ -6,6 +6,9 @@ import type { ProjectWatcherService } from '../files/ProjectWatcherService';
 import type { PollScheduler } from './PollScheduler';
 import type { NotificationService } from './NotificationService';
 import type { TerminalService } from '../streaming/TerminalService';
+import type { AgentSessionManager } from '../agents/AgentSessionManager';
+import type { HookServer } from '../agents/hookServer';
+import type { FileSummaryService } from '../files/FileSummaryService';
 
 export interface AppLifecycleServiceDeps {
   searchService: Pick<SearchService, 'startBackgroundIndexing' | 'disposeBackgroundIndexing'>;
@@ -15,6 +18,9 @@ export interface AppLifecycleServiceDeps {
   projectWatcherService?: Pick<ProjectWatcherService, 'unwatchProject'>;
   notificationService?: Pick<NotificationService, 'stop'>;
   terminalService?: Pick<TerminalService, 'shutdown'>;
+  agentSessionManager?: Pick<AgentSessionManager, 'stopAll'>;
+  hookServer?: Pick<HookServer, 'stop'>;
+  fileSummaryService?: Pick<FileSummaryService, 'dispose'>;
   disposeClaudeClients: () => void;
 }
 
@@ -49,10 +55,25 @@ export function createAppLifecycleService(deps: AppLifecycleServiceDeps) {
         console.error('[AppLifecycleService] Error stopping poll scheduler:', err);
       }
 
+      try {
+        deps.fileSummaryService?.dispose();
+      } catch (err) {
+        console.error('[AppLifecycleService] Error disposing file summaries:', err);
+      }
+
       if (chatRuntime) {
+        await chatRuntime.streamingSessionService.disposeAll().catch((err) => {
           console.error('[AppLifecycleService] Error during session cleanup:', err);
         });
       }
+
+      await deps.agentSessionManager?.stopAll().catch((err) => {
+        console.error('[AppLifecycleService] Error stopping agent sessions:', err);
+      });
+
+      await deps.hookServer?.stop().catch((err) => {
+        console.error('[AppLifecycleService] Error stopping hook server:', err);
+      });
 
       // Await both watcher teardowns so no in-flight unsubscribe async ops remain
       // when Electron starts tearing down the NAPI environment. Fire-and-forgetting

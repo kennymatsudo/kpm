@@ -617,6 +617,13 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
 
         // Start the agent session asynchronously
           console.error(`[DevSessionService] Agent session start failed for ${sessionId}:`, error);
+          try {
+            await agentSession.stop();
+          } catch (stopError) {
+            console.warn(`[DevSessionService] Failed to stop failed agent session ${sessionId}:`, stopError);
+          } finally {
+            deps.agentSessionManager?.remove(agentSession.id);
+          }
           deps.devSessions.updateStatus(sessionId, 'inactive');
           const failedSession = deps.devSessions.get(sessionId);
           if (failedSession) {

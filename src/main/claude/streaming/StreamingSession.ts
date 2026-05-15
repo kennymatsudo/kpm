@@ -64,9 +64,11 @@ export class StreamingSession {
   private messageQueue: AsyncMessageQueue;
   private queryInstance: Query | null = null;
   private messageLoopPromise: Promise<void> | null = null;
+  private abortController: AbortController | null = null;
   private sessionId: string | null = null;
   private _isActive = false;
   private _isReady = false;
+  private _isClosing = false;
   private readyResolver: (() => void) | null = null;
   private readyRejecter: ((error: Error) => void) | null = null;
 
@@ -111,6 +113,10 @@ export class StreamingSession {
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
         this._isReady = false;
+        const error = new Error(`Session start timed out after ${Math.round(startTimeoutMs / 1000)} seconds. MCP servers may not be responding.`);
+        this.abortController?.abort();
+        this.messageQueue.close();
+        reject(error);
       }, startTimeoutMs);
     });
 
@@ -130,9 +136,15 @@ export class StreamingSession {
       parent_tool_use_id: null,
     });
 
+    this.abortController = this.config.sdkOptions.abortController ?? new AbortController();
+
     // Create the query with async generator for streaming input
     this.queryInstance = query({
       prompt: this.createInputGenerator(),
+      options: {
+        ...this.config.sdkOptions,
+        abortController: this.abortController,
+      },
     });
 
     // Start message loop (runs in background)
@@ -141,6 +153,11 @@ export class StreamingSession {
     try {
       // Wait for init message (MCP connected) OR timeout
       await Promise.race([readyPromise, timeoutPromise]);
+    } catch (error) {
+      void this.close().catch((closeError) => {
+        console.error('[StreamingSession] Failed to close after startup failure:', closeError);
+      });
+      throw error;
     } finally {
       if (timeoutId) {
         clearTimeout(timeoutId);
@@ -206,6 +223,13 @@ export class StreamingSession {
       this._isActive = false;
       this._isReady = false;
     } catch (error) {
+      if (this._isClosing) {
+        this._isActive = false;
+        this._isReady = false;
+        this.readyRejecter?.(error as Error);
+        return;
+      }
+
       // Log full error details for debugging
       console.error('[StreamingSession] Message loop error:', error);
       if (error && typeof error === 'object') {

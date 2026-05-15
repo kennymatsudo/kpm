@@ -69,18 +69,24 @@ export function useChatIpcBridge(projectId: string | null): void {
   useEffect(() => {
     if (!projectId) return;
 
+    let active = true;
+    const isActiveForProject = (eventProjectId: string) => active && eventProjectId === projectId;
+
     void (async () => {
       const usage = await getChatUsage(projectId);
+      if (!active) return;
       setTokens(usage.totalTokens);
     })();
 
     // Load active sessions from backend on mount
     void (async () => {
       const result = await getActiveChatSessions(projectId);
+      if (!active) return;
       if (result.success && result.sessions) {
         let preferredSessionId: string | null = useChatStore.getState().viewedSessionId;
 
         for (const session of result.sessions) {
+          if (!active) return;
           markSessionActive(session.chatSessionId);
 
           // Seed live tab title from the persisted SDK summary so reloads
@@ -115,6 +121,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     // Events now include chatSessionId for routing to correct session
     const unsubscribeChatEvents = subscribeToChatEvents({
       onChunk: (data) => {
+        if (!isActiveForProject(data.projectId)) return;
         const sessionId = data.chatSessionId;
           appendChunk(sessionId, data.text, data.segmentId, data.precedingActivities);
         }
@@ -127,13 +134,16 @@ export function useChatIpcBridge(projectId: string | null): void {
       },
       onDone: (data) => {
         void (async () => {
+          if (!isActiveForProject(data.projectId)) return;
           const sessionId = data.chatSessionId;
           }
           const usage = await getChatUsage(projectId);
+          if (!isActiveForProject(data.projectId)) return;
           setTokens(usage.totalTokens);
         })();
       },
       onError: (data) => {
+        if (!isActiveForProject(data.projectId)) return;
         const sessionId = data.chatSessionId ?? useChatStore.getState().viewedSessionId ?? undefined;
           if (data.error.includes('still responding')) {
             setRetrying(sessionId);
@@ -145,6 +155,7 @@ export function useChatIpcBridge(projectId: string | null): void {
         }
       },
       onActivity: (data) => {
+        if (!isActiveForProject(data.projectId)) return;
         const sessionId = data.chatSessionId;
         // Result-side updates carry diffStats/diffHunks and reuse the original
         // activity id — route them to updateActivity so we don't duplicate cards.
@@ -156,17 +167,20 @@ export function useChatIpcBridge(projectId: string | null): void {
         }
       },
       onThinking: (data) => {
+        if (!isActiveForProject(data.projectId)) return;
         const sessionId = data.chatSessionId;
           appendThinking(sessionId, data.text);
         }
       },
       onSessionConnecting: (data) => {
+        if (!isActiveForProject(data.projectId)) return;
         const sessionId = data.chatSessionId;
           setSessionState(sessionId, 'connecting');
           markSessionActive(sessionId);
         }
       },
       onSessionReady: (data) => {
+        if (!isActiveForProject(data.projectId)) return;
         const sessionId = data.chatSessionId;
           setSessionState(sessionId, 'ready');
           markSessionActive(sessionId);
@@ -177,11 +191,13 @@ export function useChatIpcBridge(projectId: string | null): void {
         }
       },
       onSessionTitle: (data) => {
+        if (!isActiveForProject(data.projectId)) return;
         const sessionId = data.chatSessionId;
           setSessionTitle(sessionId, data.title);
         }
       },
       onSessionError: (data) => {
+        if (!isActiveForProject(data.projectId)) return;
         const sessionId = data.chatSessionId;
           setSessionState(sessionId, 'error');
           setError(sessionId, data.error);
@@ -189,16 +205,19 @@ export function useChatIpcBridge(projectId: string | null): void {
         }
       },
       onSuggestions: (data) => {
+        if (!isActiveForProject(data.projectId)) return;
         const sessionId = data.chatSessionId;
           setSuggestions(sessionId, data.suggestions);
         }
       },
       onMcpStatus: (data) => {
+        if (!isActiveForProject(data.projectId)) return;
         const sessionId = data.chatSessionId ?? useChatStore.getState().viewedSessionId ?? undefined;
         const isDegraded = data.status !== 'connected';
         setMcpStatus(sessionId, isDegraded, isDegraded ? (data.error ?? `Tools unavailable (${data.status})`) : null);
       },
       onSessionDeactivated: (data) => {
+        if (!isActiveForProject(data.projectId)) return;
         const sessionId = data.chatSessionId;
           // Always finalize on teardown. This safely no-ops after completed
           // turns and ensures buffered-only viewed chunks are not dropped.
@@ -216,6 +235,7 @@ export function useChatIpcBridge(projectId: string | null): void {
 
     const watchdogInterval = setInterval(() => {
       void (async () => {
+        if (!active) return;
         if (isWatchdogPolling) return;
         isWatchdogPolling = true;
 
@@ -258,6 +278,7 @@ export function useChatIpcBridge(projectId: string | null): void {
             }
 
             const stateResult = await getChatSessionState(projectId, sessionId);
+            if (!active) return;
             const backendState = stateResult.success ? stateResult.state : undefined;
 
             if (
@@ -287,6 +308,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     }, WATCHDOG_POLL_MS);
 
     return () => {
+      active = false;
       clearInterval(watchdogInterval);
       unsubscribeChatEvents();
     };
