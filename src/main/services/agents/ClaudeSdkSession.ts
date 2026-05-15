@@ -157,11 +157,24 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
     // The SDK sends an init message when MCP is connected.
     // We wait for the first `working` state or for the timeout.
     return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timeoutMs = getConfig().agentSession.sessionStartTimeoutMs;
+      const listenerRef: { current?: (state: AgentSessionState) => void } = {};
       const timeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        if (listenerRef.current) {
+          this.off('onStateChange', listenerRef.current);
+        }
+        this.abortController?.abort();
+        this.setState('failed');
         reject(new Error(`Agent session start timed out after ${timeoutMs / 1000}s`));
+      }, timeoutMs);
 
       const onState = (state: AgentSessionState) => {
+        if (settled) return;
         if (state === 'working' || state === 'complete' || state === 'failed') {
+          settled = true;
           clearTimeout(timeoutId);
           this.off('onStateChange', onState);
           if (state === 'failed') {
@@ -171,6 +184,8 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
           }
         }
       };
+
+      listenerRef.current = onState;
       this.on('onStateChange', onState);
     });
   }

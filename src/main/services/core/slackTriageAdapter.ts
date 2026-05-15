@@ -195,6 +195,7 @@ export function createSlackTriageAdapter(deps: SlackTriageAdapterDeps) {
     const userConfigsResult = mcpDiscoveryService.getEnabledUserMcpConfigs();
     const enabledUserMcpConfigs = userConfigsResult.ok ? userConfigsResult.data : {};
 
+    const abortController = new AbortController();
     const sdkOptions: SDKOptions = {
       model: getConfig().generation.fastModel,
       systemPrompt: {
@@ -206,6 +207,7 @@ export function createSlackTriageAdapter(deps: SlackTriageAdapterDeps) {
       maxTurns: 15,
       tools: [],
       persistSession: false,
+      abortController,
       // Always pass mcpServers (even if empty) so the SDK initializes the MCP
       // subsystem — this ensures managed servers (like claude.ai Slack) are loaded.
       mcpServers: enabledUserMcpConfigs as SDKOptions['mcpServers'],
@@ -277,9 +279,21 @@ export function createSlackTriageAdapter(deps: SlackTriageAdapterDeps) {
       return { text: finalText, usedSlackTool };
     })();
 
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        abortController.abort();
+        reject(new Error(`Slack MCP call timed out after ${Math.round(timeoutMs / 1000)}s`));
+      }, timeoutMs);
     });
 
+    try {
+      return await Promise.race([generatePromise, timeoutPromise]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
   };
 
   const parseSlackJson = <T,>(response: string, options?: { usedSlackTool?: boolean }): T => {

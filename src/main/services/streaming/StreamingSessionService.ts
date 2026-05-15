@@ -691,14 +691,24 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       const managed = sessions.get(key);
       if (managed) {
         managed.state = 'error';
+        managed.suppressLifecycleEventsOnEnd = true;
+        if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
         managed.unsubscribePlanActions();
         managed.unsubscribeClaudeMdUpdate();
         managed.unsubscribeDocumentUpdate();
+        try {
+          await managed.session.close();
+        } catch (closeError) {
+          console.error('[StreamingSessionService] Failed to close session after connection failure:', closeError);
+        }
       } else {
         // Session wasn't stored in map - clean up local references directly
         unsubscribePlanActions?.();
         unsubscribeClaudeMdUpdate?.();
         unsubscribeDocumentUpdate?.();
+      }
+      if (sessions.get(key)?.session === managed?.session) {
+        sessions.delete(key);
       }
 
       mainWindow?.webContents.send('chat:session-error', {

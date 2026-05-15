@@ -64,6 +64,7 @@ export class StreamingSession {
   private messageQueue: AsyncMessageQueue;
   private queryInstance: Query | null = null;
   private messageLoopPromise: Promise<void> | null = null;
+  private closePromise: Promise<void> | null = null;
   private abortController: AbortController | null = null;
   private sessionId: string | null = null;
   private _isActive = false;
@@ -222,6 +223,9 @@ export class StreamingSession {
       // Generator exhausted normally
       this._isActive = false;
       this._isReady = false;
+      if (!this._isClosing) {
+        this.config.onSessionEnd?.('completed');
+      }
     } catch (error) {
       if (this._isClosing) {
         this._isActive = false;
@@ -414,9 +418,37 @@ export class StreamingSession {
    * The session will end after any pending messages are processed.
    */
   async close(): Promise<void> {
+    if (this.closePromise) return this.closePromise;
+    if (!this._isActive && !this.messageLoopPromise && !this.queryInstance) return;
 
+    this.closePromise = (async () => {
+      this._isReady = false;
+      this._isClosing = true;
+      this.readyRejecter?.(new Error('Session closed before it became ready'));
+      this.readyResolver = null;
+      this.readyRejecter = null;
+      this.abortController?.abort();
+      this.messageQueue.close();
+
+      try {
+        await this.messageLoopPromise;
+      } catch {
+        // Ignore errors during close
+      }
+
+      this._isActive = false;
+      this._isReady = false;
+      this.queryInstance = null;
+      this.messageLoopPromise = null;
+      this.abortController = null;
+      this._isClosing = false;
+      this.config.onSessionEnd?.('closed');
+    })();
 
     try {
+      await this.closePromise;
+    } finally {
+      this.closePromise = null;
     }
   }
 }
