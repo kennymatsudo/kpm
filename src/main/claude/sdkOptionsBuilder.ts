@@ -87,6 +87,30 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     // Periodic AI-generated progress summaries for Task-tool subagents.
     // Forks the subagent every ~30s and emits a short description on
     // `task_progress.summary`; reuses the prompt cache, so cost is minimal.
+    // Read-only exploration subagent. Routes file/symbol/pattern searches
+    // off the main conversation so file contents never enter the parent's
+    // context — only the summary returns. Sonnet (not Haiku) because the
+    // Haiku Explore subagent has a documented context-overflow failure in
+    // MCP-heavy setups (anthropics/claude-code#45357); Sonnet is still ~5x
+    // cheaper than Opus on cache_read.
+      explorer: {
+        description:
+          'Use proactively for any read-heavy task: codebase exploration (finding ' +
+          'files, searching for symbols, locating definitions, "where is X"), and ' +
+          'reading lengthy documents (specs, design docs, iteration docs, README, ' +
+          'external web pages). The subagent works in an isolated context and ' +
+          'returns a concise summary — large file or document content never enters ' +
+          'this conversation. Do NOT use for code review, multi-file design ' +
+          'reasoning, or anything requiring the main conversation\'s context.',
+        prompt:
+          'You are a fast, read-only research agent. Locate or read what is ' +
+          'requested, then return a concise summary with file:line citations or ' +
+          'section anchors. Do not include large file excerpts — synthesize and ' +
+          'quote selectively. Do not propose changes. If you cannot find or access ' +
+          'what was asked, say so explicitly rather than guessing.',
+        tools: ['Read', 'Grep', 'Glob', 'WebFetch'],
+        model: 'sonnet',
+      },
     // Effort level: guides how much thinking Claude applies (works with adaptive thinking)
     ...(effort && { effort }),
     // Fallback to Sonnet if the primary model is unavailable (e.g., rate limited)

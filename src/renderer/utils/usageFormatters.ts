@@ -63,6 +63,23 @@ function modelWithVersion(label: string, raw: string): string {
   return versionMatch ? `${label} ${versionMatch[1]}.${versionMatch[2]}` : label;
 }
 
+export type ModelTier = 'opus' | 'sonnet' | 'haiku' | 'other';
+
+export function resolveModelTier(model: string): ModelTier {
+  const lower = model.toLowerCase();
+  if (lower.includes('opus')) return 'opus';
+  if (lower.includes('sonnet')) return 'sonnet';
+  if (lower.includes('haiku')) return 'haiku';
+  return 'other';
+}
+
+export function modelTierLabel(tier: ModelTier): string {
+  if (tier === 'opus') return 'Opus';
+  if (tier === 'sonnet') return 'Sonnet';
+  if (tier === 'haiku') return 'Haiku';
+  return 'Other';
+}
+
 /** ISO timestamp → "Mar 5, 2:14 PM". */
 export function formatEventTimestamp(iso: string): string {
   const date = new Date(iso);

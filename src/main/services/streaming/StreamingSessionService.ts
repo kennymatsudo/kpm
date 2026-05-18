@@ -1482,9 +1482,52 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // recorder when wired in — it persists per-event cost + the project
       // token rollup. Fall back to the raw token rollup for tests/older
       // callers that don't pass `recordUsage`.
+      //
+      // Per-model split: when a turn spawned subagents on a different model
+      // (e.g. main Opus delegates to the `explorer` Sonnet subagent), the SDK
+      // reports a per-model breakdown via `modelUsage`. Recording each model
+      // separately is the correct attribution; collapsing into the parent
+      // model would mislabel the subagent's tokens.
       try {
+        const resultMsg = sdkMsg as {
+          usage?: typeof sdkMsg.usage;
+          total_cost_usd?: number | null;
+          modelUsage?: Record<string, {
+            inputTokens?: number;
+            outputTokens?: number;
+            cacheCreationInputTokens?: number;
+            cacheReadInputTokens?: number;
+            costUSD?: number;
+          }>;
+        };
         if (sdkMsg.usage) {
           if (deps.recordUsage) {
+            const totalCostUsd = resultMsg.total_cost_usd;
+            const perModel = resultMsg.modelUsage && Object.keys(resultMsg.modelUsage).length > 0
+              ? Object.entries(resultMsg.modelUsage)
+              : null;
+
+            if (perModel) {
+              for (const [modelId, mu] of perModel) {
+                deps.recordUsage({
+                  projectId,
+                  model: modelId,
+                  usage: {
+                    input_tokens: mu.inputTokens ?? 0,
+                    output_tokens: mu.outputTokens ?? 0,
+                    cache_creation_input_tokens: mu.cacheCreationInputTokens ?? 0,
+                    cache_read_input_tokens: mu.cacheReadInputTokens ?? 0,
+                  },
+                  totalCostUsd: typeof mu.costUSD === 'number' ? mu.costUSD : null,
+                });
+              }
+            } else {
+              deps.recordUsage({
+                projectId,
+                usage: sdkMsg.usage,
+                totalCostUsd: totalCostUsd ?? null,
+              });
+            }
           } else {
             deps.projectRepository.updateTokens(projectId, {
               input: sdkMsg.usage.input_tokens ?? 0,

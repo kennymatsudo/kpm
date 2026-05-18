@@ -33,6 +33,9 @@ import {
   formatSource,
   formatModel,
   formatEventTimestamp,
+  resolveModelTier,
+  modelTierLabel,
+  type ModelTier,
 } from '../../utils/usageFormatters';
 import type {
   ClaudeUsageEvent,
@@ -41,6 +44,29 @@ import type {
 } from '../../../shared/usage-types';
 
 type Scope = 'project' | 'global';
+
+interface TierRow {
+  tier: ModelTier;
+  events: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_tokens: number;
+  cache_read_tokens: number;
+  cost_micro_usd: number;
+}
+
+/**
+ * Per-tier accent classes. Chosen for clear visual differentiation without
+ * implying value judgement: Opus is the priciest (warmer), Sonnet the
+ * workhorse (accent blue), Haiku the cheapest (cool green). Uses existing
+ * theme tokens — see index.css.
+ */
+const TIER_STYLE: Record<ModelTier, { bg: string; dot: string; ring: string }> = {
+  opus:   { bg: 'bg-warning',  dot: 'bg-warning',  ring: 'ring-warning/30' },
+  sonnet: { bg: 'bg-accent',   dot: 'bg-accent',   ring: 'ring-accent/30' },
+  haiku:  { bg: 'bg-success',  dot: 'bg-success',  ring: 'ring-success/30' },
+  other:  { bg: 'bg-text-muted', dot: 'bg-text-muted', ring: 'ring-text-muted/30' },
+};
 
 interface Props {
   currentProjectId?: string | null;
@@ -136,6 +162,38 @@ export function UsageSettings({ currentProjectId, initialStats, initialEvents }:
     return cachedInput / totalInput;
   }, [totals]);
 
+  // Aggregate the (source, model) breakdown into a per-tier view. Subagents
+  // run on a different model than the parent (e.g. Sonnet under an Opus chat),
+  // so the per-tier rollup reveals routing patterns the source breakdown hides.
+  const byModelTier = useMemo<TierRow[]>(() => {
+    const map = new Map<ModelTier, TierRow>();
+    for (const row of stats?.breakdown ?? []) {
+      const tier = resolveModelTier(row.model);
+      const existing = map.get(tier);
+      if (existing) {
+        existing.events += row.events;
+        existing.input_tokens += row.input_tokens;
+        existing.output_tokens += row.output_tokens;
+        existing.cache_creation_tokens += row.cache_creation_tokens;
+        existing.cache_read_tokens += row.cache_read_tokens;
+        existing.cost_micro_usd += row.cost_micro_usd;
+      } else {
+        map.set(tier, {
+          tier,
+          events: row.events,
+          input_tokens: row.input_tokens,
+          output_tokens: row.output_tokens,
+          cache_creation_tokens: row.cache_creation_tokens,
+          cache_read_tokens: row.cache_read_tokens,
+          cost_micro_usd: row.cost_micro_usd,
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.cost_micro_usd - a.cost_micro_usd);
+  }, [stats?.breakdown]);
+
+  const totalCostMicroUsd = totals?.cost_micro_usd ?? 0;
+
   return (
     <div className="space-y-5">
       {/* Scope toggle (top-right of section content) */}
@@ -165,7 +223,12 @@ export function UsageSettings({ currentProjectId, initialStats, initialEvents }:
             totalTokens={totalTokens}
             events={totals.events}
             cacheReadRate={cacheReadRate}
+            byModelTier={byModelTier}
           />
+
+          {byModelTier.length > 1 && (
+            <ModelBreakdownPanel rows={byModelTier} totalCostMicroUsd={totalCostMicroUsd} />
+          )}
 
           <BreakdownTable rows={stats?.breakdown ?? []} />
 
@@ -274,14 +337,22 @@ function SummaryRow({
   totalTokens,
   events,
   cacheReadRate,
+  byModelTier,
 }: {
   costMicroUsd: number;
   totalTokens: number;
   events: number;
   cacheReadRate: number | null;
+  byModelTier: TierRow[];
 }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <SummaryCard
+        label="Estimated cost"
+        value={formatCurrency(costMicroUsd)}
+        accent
+        footer={byModelTier.length > 0 ? <ModelDistributionBar rows={byModelTier} totalCostMicroUsd={costMicroUsd} /> : undefined}
+      />
       <SummaryCard label="Total tokens" value={formatTokensFull(totalTokens)} />
       <SummaryCard label="Runs" value={formatTokensFull(events)} />
       <SummaryCard
@@ -293,6 +364,19 @@ function SummaryRow({
   );
 }
 
+function SummaryCard({
+  label,
+  value,
+  accent,
+  hint,
+  footer,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+  hint?: string;
+  footer?: React.ReactNode;
+}) {
   return (
     <div className={`p-3 rounded-xl border ${accent ? 'bg-accent-subtle border-accent/30' : 'bg-surface-2 border-border-subtle'}`}>
       <p className="text-xs text-text-muted uppercase tracking-wide">{label}</p>
@@ -300,6 +384,115 @@ function SummaryRow({
         {value}
       </p>
       {hint && <p className="mt-1 text-[11px] text-text-muted">{hint}</p>}
+      {footer && <div className="mt-2">{footer}</div>}
+    </div>
+  );
+}
+
+/**
+ * Thin horizontal stacked bar showing cost share by model tier. Sits inside
+ * the cost summary card so users see the routing split at a glance — Opus
+ * vs Sonnet vs Haiku — without expanding the panel below.
+ */
+function ModelDistributionBar({
+  rows,
+  totalCostMicroUsd,
+}: {
+  rows: TierRow[];
+  totalCostMicroUsd: number;
+}) {
+  if (totalCostMicroUsd === 0 || rows.length === 0) return null;
+  // Filter zero-cost rows so the bar matches the visible legend.
+  const visible = rows.filter((r) => r.cost_micro_usd > 0);
+  if (visible.length === 0) return null;
+  return (
+    <div className="space-y-1.5" aria-label="Cost share by model tier">
+      <div
+        className="flex h-1.5 w-full overflow-hidden rounded-full bg-surface-2"
+        role="img"
+        aria-label={visible
+          .map((r) => `${modelTierLabel(r.tier)} ${Math.round((r.cost_micro_usd / totalCostMicroUsd) * 100)}%`)
+          .join(', ')}
+      >
+        {visible.map((r) => {
+          const share = r.cost_micro_usd / totalCostMicroUsd;
+          if (share <= 0) return null;
+          return (
+            <div
+              key={r.tier}
+              className={TIER_STYLE[r.tier].bg}
+              style={{ width: `${share * 100}%` }}
+            />
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap gap-x-2.5 gap-y-1 text-[10px] text-text-muted">
+        {visible.map((r) => (
+          <span key={r.tier} className="inline-flex items-center gap-1">
+            <span className={`inline-block w-1.5 h-1.5 rounded-full ${TIER_STYLE[r.tier].dot}`} aria-hidden />
+            {modelTierLabel(r.tier)} {Math.round((r.cost_micro_usd / totalCostMicroUsd) * 100)}%
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Per-tier rollup. Distinct from the (source × model) BreakdownTable: this
+ * answers "where is my money going across models?" — useful now that subagents
+ * route work to cheaper tiers under the same source label.
+ */
+function ModelBreakdownPanel({
+  rows,
+  totalCostMicroUsd,
+}: {
+  rows: TierRow[];
+  totalCostMicroUsd: number;
+}) {
+  return (
+    <div className="rounded-xl border border-border-subtle overflow-hidden">
+      <div className="px-3 py-2 bg-surface-2 border-b border-border-subtle flex items-baseline justify-between gap-3">
+        <p className="text-xs font-medium text-text-secondary uppercase tracking-wide">By model</p>
+        <p className="text-[11px] text-text-muted">
+          Subagents (e.g. <span className="font-medium">explorer</span>) route reads to cheaper models in an isolated context.
+        </p>
+      </div>
+      <table className="w-full text-sm">
+        <thead className="bg-surface-2 text-xs text-text-muted uppercase tracking-wide">
+          <tr>
+            <th scope="col" className="text-left font-medium px-3 py-2">Model</th>
+            <th scope="col" className="text-right font-medium px-3 py-2">Runs</th>
+            <th scope="col" className="text-right font-medium px-3 py-2">Tokens</th>
+            <th scope="col" className="text-right font-medium px-3 py-2">Share</th>
+            <th scope="col" className="text-right font-medium px-3 py-2">Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const tokens = row.input_tokens + row.output_tokens + row.cache_creation_tokens + row.cache_read_tokens;
+            const share = totalCostMicroUsd === 0 ? 0 : row.cost_micro_usd / totalCostMicroUsd;
+            return (
+              <tr key={row.tier} className="border-t border-border-subtle hover:bg-surface-2/40">
+                <td className="px-3 py-2 text-text-primary">
+                  <span className="inline-flex items-center gap-2">
+                    <span className={`inline-block w-2 h-2 rounded-full ${TIER_STYLE[row.tier].dot}`} aria-hidden />
+                    {modelTierLabel(row.tier)}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-text-secondary">{formatTokensFull(row.events)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-text-secondary">{formatTokensFull(tokens)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-text-muted">
+                  {totalCostMicroUsd === 0 ? '—' : `${Math.round(share * 100)}%`}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-text-primary font-medium">
+                  {formatCurrency(row.cost_micro_usd)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -333,6 +526,12 @@ function BreakdownTable({ rows }: { rows: ProjectUsageStats['breakdown'] }) {
               className="border-t border-border-subtle hover:bg-surface-2/40"
             >
               <td className="px-3 py-2 text-text-primary">{formatSource(row.source)}</td>
+              <td className="px-3 py-2 text-text-secondary">
+                <span className="inline-flex items-center gap-2">
+                  <span className={`inline-block w-1.5 h-1.5 rounded-full ${TIER_STYLE[resolveModelTier(row.model)].dot}`} aria-hidden />
+                  {formatModel(row.model)}
+                </span>
+              </td>
               <td className="px-3 py-2 text-right tabular-nums text-text-secondary">{formatTokensFull(row.events)}</td>
               <td className="px-3 py-2 text-right tabular-nums text-text-secondary">
                 {formatTokensFull(row.input_tokens + row.cache_creation_tokens)}
