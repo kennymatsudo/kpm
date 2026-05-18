@@ -125,6 +125,74 @@ describe('McpDiscoveryService.getSlackAvailability', () => {
   });
 });
 
+describe('McpDiscoveryService managed server cache', () => {
+  const appSettings = {
+    get: vi.fn<(key: string) => string | undefined>(),
+    set: vi.fn(),
+    delete: vi.fn(),
+    getAll: vi.fn(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    appSettings.get.mockReturnValue(undefined);
+  });
+
+  it('preserves known tool names when a managed server is pending', () => {
+    appSettings.get.mockImplementation((key: string) => key === 'mcp_managed_servers'
+      ? JSON.stringify([
+        {
+          name: 'claude.ai Slack',
+          source: 'claude-ai',
+          status: 'connected',
+          tools: ['mcp__slack__search'],
+        },
+      ])
+      : undefined);
+
+    const service = createMcpDiscoveryService({ appSettings });
+    const result = service.saveManagedServers([
+      {
+        name: 'claude.ai Slack',
+        source: 'claude-ai',
+        status: 'pending',
+        tools: [],
+      },
+    ]);
+
+    expect(result.ok).toBe(true);
+    expect(appSettings.set).toHaveBeenCalledWith('mcp_managed_servers', JSON.stringify([
+      {
+        name: 'claude.ai Slack',
+        source: 'claude-ai',
+        status: 'pending',
+        tools: ['mcp__slack__search'],
+      },
+    ]));
+  });
+
+  it('returns disabled managed server names even when tools are not known yet', () => {
+    appSettings.get.mockImplementation((key: string) => key === 'mcp_enabled_servers'
+      ? JSON.stringify({ 'managed:claude.ai Slack': false })
+      : undefined);
+
+    const service = createMcpDiscoveryService({ appSettings });
+    const result = service.getDisabledMcpServerNames([
+      {
+        name: 'claude.ai Slack',
+        source: 'claude-ai',
+        status: 'pending',
+        tools: [],
+      },
+    ]);
+
+    expect(result).toEqual({
+      ok: true,
+      data: ['claude.ai Slack'],
+    });
+  });
+});
+
 describe('McpDiscoveryService plugin discovery', () => {
   const files = new Map<string, string>();
 

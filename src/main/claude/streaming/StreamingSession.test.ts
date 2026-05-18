@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { McpServerStatus, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { StreamingSession, type StreamingSessionConfig } from './StreamingSession';
 
 interface QueryMockState {
@@ -31,10 +32,23 @@ const { queryMockState } = vi.hoisted(() => {
 }
 
 
+function initMessage(opts: {
+  sessionId?: string;
+  kpmStatus?: McpServerStatus['status'] | null;
+  extraServers?: McpServerStatus[];
+} = {}): SDKMessage {
+  const mcpServers = [
+    ...(opts.kpmStatus === null
+      ? []
+      : [{ name: 'kpm', status: opts.kpmStatus ?? 'connected' }]),
+    ...(opts.extraServers ?? []),
+  ];
+
   return {
     type: 'system',
     subtype: 'init',
     session_id: opts.sessionId ?? 'sdk-session-1',
+    mcp_servers: mcpServers,
   } as unknown as SDKMessage;
 }
 
@@ -99,6 +113,53 @@ describe('StreamingSession', () => {
     await expect(startPromise).rejects.toThrow(/MCP connection failed/);
     expect(config.onMcpError).toHaveBeenCalledTimes(1);
     expect(session.isReady()).toBe(false);
+  });
+
+  it.each(['pending', 'disabled', 'needs-auth'] as const)(
+    'rejects start() when kpm MCP is %s',
+    async (status) => {
+      makeFakeQuery();
+      const config = createConfig();
+      const session = new StreamingSession(config);
+
+      const startPromise = session.start('hello');
+      lastHandle!.emit(initMessage({ kpmStatus: status }));
+
+      await expect(startPromise).rejects.toThrow(new RegExp(`kpm \\(${status}\\)`));
+      expect(config.onMcpError).toHaveBeenCalledWith([{ name: 'kpm', status }]);
+      expect(session.isReady()).toBe(false);
+    }
+  );
+
+  it('rejects start() when kpm MCP is missing from init status', async () => {
+    makeFakeQuery();
+    const config = createConfig();
+    const session = new StreamingSession(config);
+
+    const startPromise = session.start('hello');
+    lastHandle!.emit(initMessage({ kpmStatus: null }));
+
+    await expect(startPromise).rejects.toThrow(/kpm \(missing\)/);
+    expect(config.onMcpError).toHaveBeenCalledWith([]);
+    expect(session.isReady()).toBe(false);
+  });
+
+  it('allows external MCP servers to be pending at init', async () => {
+    makeFakeQuery();
+    const config = createConfig();
+    const session = new StreamingSession(config);
+
+    const externalServer = { name: 'slack', status: 'pending' } as McpServerStatus;
+    const startPromise = session.start('hello');
+    lastHandle!.emit(initMessage({ extraServers: [externalServer] }));
+    await startPromise;
+
+    expect(session.isReady()).toBe(true);
+    expect(config.onReady).toHaveBeenCalledWith('sdk-session-1', [
+      { name: 'kpm', status: 'connected' },
+      externalServer,
+    ]);
+    expect(config.onMcpError).not.toHaveBeenCalled();
   });
 
   it('forwards SDK messages received after init to onMessage', async () => {

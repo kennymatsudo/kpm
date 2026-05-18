@@ -382,5 +382,10 @@ export function getKpmServer() {
     name: 'kpm',
     version: '1.0.0',
     tools,
+    // Ensures KPM tools are always present in Claude's context (not deferred
+    // behind tool search) and that the server is connected before the first
+    // turn — required since the init message would otherwise report kpm as
+    // 'pending' under the SDK's background-connection default.
+    alwaysLoad: true,
   });
 }

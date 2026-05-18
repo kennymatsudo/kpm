@@ -32,6 +32,8 @@ export interface BuildSdkOptionsParams {
   enabledUserMcpConfigs?: Record<string, Record<string, unknown>>;
   /** Tool names to disallow (for disabled managed MCP servers) */
   disabledMcpTools?: string[];
+  /** Server names to deny in canUseTool (for disabled managed MCP servers) */
+  disabledMcpServerNames?: string[];
   /** Callback for MCP elicitation requests (auth flows, form input) */
   onElicitation?: OnElicitation;
   /** When true, skip permission prompts and auto-allow all non-denied tool calls */
@@ -51,6 +53,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     currentView,
     onClaudeMdEdit,
     onProjectFileWrite,
+    disabledMcpServerNames,
     autoApprove,
   };
 

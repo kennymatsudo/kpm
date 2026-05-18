@@ -198,9 +198,28 @@ export class StreamingSession {
           // Check MCP server status (cast from init message's loose `status: string`)
           const mcpServers = (msg.mcp_servers ?? []) as McpServerStatus[];
 
+          // With background MCP connection as the SDK default, external servers
+          // routinely show 'pending' at init time — treat that as expected, not
+          // failed. Only 'failed' / 'needs-auth' are genuine errors.
+          const kpmServer = mcpServers.find(s => s.name === 'kpm');
+          const kpmConnected = kpmServer?.status === 'connected';
+
+          const externalNotReady = mcpServers.filter(
+            s => s.name !== 'kpm' && s.status !== 'connected' && s.status !== 'pending' && s.status !== 'disabled',
+          );
+          if (externalNotReady.length > 0) {
+            console.warn(`[StreamingSession] External MCP servers not connected (non-fatal): ${externalNotReady.map(s => `${s.name}(${s.status})`).join(', ')}`);
           }
 
+          if (!kpmConnected) {
+            // KPM's own server is required for plan grounding and approvals.
+            // Since it is marked alwaysLoad, pending/missing/disabled at init
+            // means the session cannot safely accept chat turns.
             this._isReady = false;
+            this.config.onMcpError?.(kpmServer ? [kpmServer] : []);
+            this.readyRejecter?.(
+              new Error(`MCP connection failed: kpm${kpmServer ? ` (${kpmServer.status})` : ' (missing)'}`)
+            );
           } else {
             // KPM server connected successfully
             this._isReady = true;

@@ -53,6 +53,8 @@ export interface PermissionContext {
   onClaudeMdEdit?: ClaudeMdInterceptFn;
   /** Optional callback to intercept project file writes for approval */
   onProjectFileWrite?: ProjectFileInterceptFn;
+  /** External MCP servers disabled in KPM settings. */
+  disabledMcpServerNames?: string[];
   /** When true, skip permission prompts and auto-allow all non-denied tool calls */
   autoApprove?: boolean;
 }
@@ -142,6 +144,35 @@ function getToolPreview(toolName: string, input: Record<string, unknown>): strin
     return `Run: ${input.command}`;
   }
   return toolName;
+}
+
+function extractMcpServerName(toolName: string): string | null {
+  const match = /^mcp__(.+?)__/.exec(toolName);
+  return match?.[1] ?? null;
+}
+
+function mcpServerNameVariants(value: string): Set<string> {
+  const lower = value.trim().toLowerCase();
+  const withoutManagedPrefix = lower.replace(/^claude\.ai\s+/, '');
+  const variants = new Set<string>();
+
+  for (const candidate of [lower, withoutManagedPrefix]) {
+    if (!candidate) continue;
+    variants.add(candidate);
+    variants.add(candidate.replace(/[^a-z0-9]/g, ''));
+  }
+
+  return variants;
+}
+
+function mcpServerNamesMatch(disabledServerName: string, toolServerName: string): boolean {
+  const disabledVariants = mcpServerNameVariants(disabledServerName);
+  const toolVariants = mcpServerNameVariants(toolServerName);
+
+  for (const variant of toolVariants) {
+    if (disabledVariants.has(variant)) return true;
+  }
+  return false;
 }
 
 /**
@@ -242,6 +273,17 @@ export function createPermissionHandler(
     // Rule 3.5: External MCP tools (e.g., Slack, GitHub) — prompt user
     // These are from claude.ai managed servers or user-loaded plugins
     if (toolName.startsWith('mcp__')) {
+      const toolServerName = extractMcpServerName(toolName);
+      const disabledServer = toolServerName
+        ? context.disabledMcpServerNames?.find(serverName => mcpServerNamesMatch(serverName, toolServerName))
+        : undefined;
+      if (disabledServer) {
+        return {
+          behavior: 'deny',
+          message: `The ${disabledServer} MCP server is disabled in KPM settings.`,
+        };
+      }
+
       const mcpCacheKey = `${toolName}:mcp-external`;
       if (context.autoApprove || clientManager.hasPermissionCached(context.projectId, mcpCacheKey)) {
         return { behavior: 'allow', updatedInput: input };

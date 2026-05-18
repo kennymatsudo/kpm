@@ -89,6 +89,10 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         ? services.mcpDiscoveryService.getDisabledMcpTools(managedServersResult.data)
         : { ok: false as const, error: '' };
       const disabledMcpTools = disabledToolsResult.ok ? disabledToolsResult.data : [];
+      const disabledServerNamesResult = managedServersResult.ok
+        ? services.mcpDiscoveryService.getDisabledMcpServerNames(managedServersResult.data)
+        : { ok: false as const, error: '' };
+      const disabledMcpServerNames = disabledServerNamesResult.ok ? disabledServerNamesResult.data : [];
 
       return buildSdkOptions({
         context,
@@ -104,6 +108,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         enabledPluginPaths,
         enabledUserMcpConfigs,
         disabledMcpTools,
+        disabledMcpServerNames,
       });
     },
     subscribeToPlanActions,

@@ -121,6 +121,17 @@ describe('permissions', () => {
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
+        context = {
+          projectPath: '/test/project',
+          projectId: 'test-project-id',
+          disabledMcpServerNames: ['claude.ai Slack'],
+        };
+        handler = createPermissionHandler(context, mockPromptUser);
+
+
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
       it('does not auto-allow Bash even when extracted path is in project', async () => {
         vi.mocked(clientManager.hasPermissionCached).mockReturnValue(false);
 

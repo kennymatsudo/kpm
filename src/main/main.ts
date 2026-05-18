@@ -142,6 +142,8 @@ void app.whenReady().then(async () => {
   runtimeServices = services;
   services.appLifecycleService.start();
 
+  // Pre-build the KPM tool array at app startup so the first session start
+  // doesn't pay the initialization cost during an active user interaction.
   warmupMcpSdk({
     container,
     services,

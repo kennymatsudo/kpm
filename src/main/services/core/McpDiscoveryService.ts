@@ -309,6 +309,21 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
     saveManagedServers(servers: DiscoveredMcpServer[]): ServiceResult<void> {
       try {
         const managed = servers.filter(s => s.source === 'claude-ai');
+        const existingRaw = deps.appSettings.get(MCP_MANAGED_SERVERS_KEY);
+        const existing = existingRaw
+          ? JSON.parse(existingRaw) as DiscoveredMcpServer[]
+          : [];
+        const existingByName = new Map(existing.map(server => [server.name, server]));
+        const merged = managed.map(server => {
+          const previous = existingByName.get(server.name);
+          return {
+            ...(previous ?? {}),
+            ...server,
+            tools: server.tools.length > 0 ? server.tools : previous?.tools ?? [],
+          };
+        });
+
+        deps.appSettings.set(MCP_MANAGED_SERVERS_KEY, JSON.stringify(merged));
         return success(undefined);
       } catch (error) {
         return failure(`Failed to save managed servers: ${error instanceof Error ? error.message : String(error)}`);
@@ -510,6 +525,28 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
       }
 
       return success(disabledTools);
+    },
+
+    /**
+     * Get server names that should be denied in canUseTool for disabled
+     * claude.ai managed servers. This covers the first session where a server
+     * may still be pending and has not reported its tool list yet.
+     */
+    getDisabledMcpServerNames(knownServers: DiscoveredMcpServer[]): ServiceResult<string[]> {
+      const prefsResult = this.getPreferences();
+      if (!prefsResult.ok) return failure(prefsResult.error);
+
+      const prefs = prefsResult.data;
+      const disabledServers: string[] = [];
+
+      for (const server of knownServers) {
+        if (server.source !== 'claude-ai') continue;
+        if (prefs[`managed:${server.name}`] === false) {
+          disabledServers.push(server.name);
+        }
+      }
+
+      return success(disabledServers);
     },
   };
 }
