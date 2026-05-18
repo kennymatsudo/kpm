@@ -260,6 +260,7 @@ export function CustomPromptSettings() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g., Weekly Update, Release Notes"
+              className="w-full px-3.5 py-2.5 bg-surface-2 border border-border-subtle rounded-xl text-text-primary placeholder-text-muted text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:bg-surface-1 transition-all"
             />
           </div>
 
@@ -273,6 +274,7 @@ export function CustomPromptSettings() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Brief description shown in Command+K"
+              className="w-full px-3.5 py-2.5 bg-surface-2 border border-border-subtle rounded-xl text-text-primary placeholder-text-muted text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:bg-surface-1 transition-all"
             />
           </div>
 
@@ -285,6 +287,7 @@ export function CustomPromptSettings() {
               <Select value={icon} onValueChange={(next) => setIcon(next as CustomPromptIcon)}>
                 <SelectTrigger
                   aria-label="Icon"
+                  className="w-full flex items-center justify-between px-3.5 py-2.5 bg-surface-2 border border-border-subtle rounded-xl text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:bg-surface-1 transition-all cursor-pointer"
                 >
                   <SelectValue />
                   <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -310,6 +313,7 @@ export function CustomPromptSettings() {
                 value={keywords}
                 onChange={(e) => setKeywords(e.target.value)}
                 placeholder="weekly, report, summary"
+                className="w-full px-3.5 py-2.5 bg-surface-2 border border-border-subtle rounded-xl text-text-primary placeholder-text-muted text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:bg-surface-1 transition-all"
               />
             </div>
           </div>
@@ -323,6 +327,7 @@ export function CustomPromptSettings() {
               value={promptContent}
               onChange={(e) => setPromptContent(e.target.value)}
               rows={8}
+              className="w-full px-3.5 py-2.5 bg-surface-2 border border-border-subtle rounded-xl text-text-primary placeholder-text-muted text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/50 focus:bg-surface-1 transition-all resize-y min-h-[160px]"
               placeholder="Enter instructions for what you want Claude to generate..."
             />
           </div>

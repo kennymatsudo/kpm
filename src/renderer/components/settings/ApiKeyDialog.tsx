@@ -103,6 +103,7 @@ export function ApiKeyDialog({ onClose }: Props) {
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder={hasAnthropicKey ? 'Enter new API key to update' : 'sk-ant-...'}
+            className="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-xl text-text-primary placeholder-text-muted text-sm focus:outline-none focus:ring-2 focus:ring-accent"
           />
           <p className="text-xs text-text-muted mt-1.5">
             Your API key is stored securely in the system keychain and is never sent anywhere except Anthropic's API.

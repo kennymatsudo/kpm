@@ -261,6 +261,7 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g., Default, Detailed Tasks"
+              className="w-full px-3.5 py-2.5 bg-surface-2 border border-border-subtle rounded-xl text-text-primary placeholder-text-muted text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:bg-surface-1 transition-all"
             />
           </div>
 
@@ -289,6 +290,7 @@ export function TaskPromptSettings({ currentProjectId }: Props) {
               value={promptContent}
               onChange={(e) => setPromptContent(e.target.value)}
               rows={16}
+              className="w-full px-3.5 py-2.5 bg-surface-2 border border-border-subtle rounded-xl text-text-primary placeholder-text-muted text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/50 focus:bg-surface-1 transition-all resize-none"
               placeholder="Define how Claude should structure plan item titles, descriptions, and acceptance criteria..."
             />
           </div>

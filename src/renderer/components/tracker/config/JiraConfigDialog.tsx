@@ -96,6 +96,7 @@ export function JiraConfigDialog({ credential, onClose }: Props) {
             value={siteUrl}
             onChange={(e) => setSiteUrl(e.target.value)}
             placeholder="yourcompany.atlassian.net"
+            className="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-xl text-text-primary placeholder-text-muted text-sm focus:outline-none focus:ring-2 focus:ring-accent"
           />
           <p className="text-xs text-text-muted mt-1">
             The domain of your Jira Cloud instance
@@ -111,6 +112,7 @@ export function JiraConfigDialog({ credential, onClose }: Props) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@company.com"
+            className="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-xl text-text-primary placeholder-text-muted text-sm focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 

@@ -115,6 +115,7 @@ export function StorybookSettings({ currentProjectId }: Props) {
           onChange={(e) => setStorybookUrl(e.target.value)}
           placeholder="http://localhost:6006"
           disabled={isProcessing}
+          className="w-full px-4 py-2.5 bg-surface-2 border border-border-subtle rounded-xl text-text-primary placeholder-text-muted text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:bg-surface-1 transition-all disabled:opacity-50"
         />
         <p className="text-xs text-text-muted">
           Enter the URL where your Storybook is running
