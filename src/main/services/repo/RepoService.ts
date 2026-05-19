@@ -209,6 +209,7 @@ export function createRepoService(deps: RepoServiceDeps) {
           worktrees.push({ path: current.path, branch: current.branch ?? null, isMain: isFirst });
         }
 
+        return worktrees;
       }, 'Failed to list worktrees');
     },
 
