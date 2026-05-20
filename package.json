@@ -44,6 +44,33 @@
     "which": "6.0.1",
     "zod": "4.4.3"
   },
+  "overrides": {
+    "axios": "^1.16.1",
+    "follow-redirects": "^1.16.0",
+    "@xmldom/xmldom": "^0.9.10",
+    "brace-expansion": "^5.0.6",
+    "tar": "^7.5.15",
+    "lodash": "^4.18.1",
+    "ip-address": "^10.2.0",
+    "@electron/asar": {
+      "minimatch": "^3.1.5",
+      "brace-expansion": "^1.1.14"
+    },
+    "dir-compare": {
+      "minimatch": "^3.1.5",
+      "brace-expansion": "^1.1.14"
+    },
+    "glob": {
+      "minimatch": "^3.1.5",
+      "brace-expansion": "^1.1.14"
+    },
+    "@electron/universal": {
+      "minimatch": "^9.0.9"
+    },
+    "cacache": {
+      "minimatch": "^9.0.9"
+    }
+  },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@monaco-editor/react": "^4.7.0",
