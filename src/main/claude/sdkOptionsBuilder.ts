@@ -76,6 +76,8 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
         description: opts.description,
       });
     }),
+    // Load user settings so claude.ai managed MCP servers (Whimsical, Glean, etc.) connect.
+    // KPM's canUseTool handler takes precedence over any permission grants in settings.json.
     mcpServers: {
       kpm: kpmServer,
       // Merge in user-configured MCP servers (from ~/.claude.json)
