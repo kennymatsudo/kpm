@@ -1,4 +1,5 @@
 import { useShallow } from 'zustand/react/shallow';
+import { useWorkspaceStore, useHasUnsavedChanges, useFileTreeStore } from '../../stores';
 import { Chat, ChatHeader } from '../chat';
 import { ErrorBoundary } from '../app/ErrorBoundary';
 import { FileEditor } from './FileEditor';
@@ -175,12 +176,14 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
         <WorkspaceHome onShowChat={onShowChat} />
       )}
 
+      {/* Chat Panel */}
       {!chatCollapsed && (
         <div
           className={`
             panel-right flex flex-col bg-surface-1
             ${isEditing ? 'flex-shrink-0' : 'flex-1'}
           `}
+          style={isEditing ? { width: workspaceChatWidth } : undefined}
         >
           <ChatHeader />
 
