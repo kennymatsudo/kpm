@@ -10,6 +10,7 @@ import type { JSX } from 'react';
 import { openExternalUrl } from '../services/shellService';
 import { PlanRefChip } from '../components/plan-ref/PlanRefChip';
 import { FileRefLink } from '../components/file-ref/FileRefLink';
+import { MermaidDiagram } from '../components/ui/MermaidDiagram';
 import { findRefs, PLAN_REF_REGEX } from '../../shared/planRefs';
 import { isPathLike } from '../../shared/pathRefs';
 
@@ -103,6 +104,15 @@ function inlineCodeText(children: React.ReactNode): string | null {
   return null;
 }
 
+function codeBlockText(children: React.ReactNode): string | null {
+  if (typeof children === 'string') return children;
+  const parts = Children.toArray(children);
+  if (parts.every((part) => typeof part === 'string')) {
+    return parts.join('');
+  }
+  return null;
+}
+
 function renderCode({
   children,
   className,
@@ -125,12 +135,29 @@ function renderCode({
   );
 }
 
+function renderPre({ children, ...props }: React.HTMLAttributes<HTMLPreElement>) {
+  const child = Children.toArray(children)[0];
+  if (isValidElement<React.HTMLAttributes<HTMLElement>>(child)) {
+    const cls = child.props.className ?? '';
+    if (cls.includes('lang-mermaid')) {
+      const source = codeBlockText(child.props.children);
+      if (source !== null) {
+        return <MermaidDiagram source={source.trim()} />;
+      }
+    }
+  }
+  return <pre {...props}>{children}</pre>;
+}
+
 export const markdownOverrides: MarkdownToJSX.Overrides = {
   a: {
     component: renderAnchor,
   },
   code: {
     component: renderCode,
+  },
+  pre: {
+    component: renderPre,
   },
 };
 
@@ -276,6 +303,9 @@ function highlightSearchMatches(
           </code>
         );
       },
+    },
+    pre: {
+      component: renderPre,
     },
   };
 }

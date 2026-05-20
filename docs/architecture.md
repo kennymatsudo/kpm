@@ -24,9 +24,12 @@ src/
 │   │   ├── tools/           # In-process MCP tools
 │   │   ├── prompts/         # System prompt modules
 │   │   └── streaming/       # Streaming session classes
+│   ├── config/              # Runtime configuration and defaults
 │   ├── documents/           # Plan-ref resolver + markdown codecs (used at every export boundary)
 │   ├── project-context/     # Project context file compatibility helpers
+│   ├── security/            # URL and app-navigation safety helpers
 │   ├── services/            # Application services (DI pattern)
+│   │   ├── files/           # FileExplorer, FileSummary, TempImage, RepoFile, watchers, scoped FS
 │   │   ├── generation/      # CustomPrompt, Onboarding
 │   │   ├── agents/          # AgentSessionManager, Claude/Codex/Gemini sessions, hooks, auto-review
 │   │   ├── confluence/      # ConfluenceSyncService
@@ -38,6 +41,8 @@ src/
 │   └── wiki-clients/        # Confluence API client
 ├── renderer/                # React frontend
 │   ├── components/
+│   │   ├── app/             # App-shell providers and boundaries
+│   │   ├── background-tasks/ # Background task badge/surfaces
 │   │   ├── ui/              # Shared primitives (Modal, Button, StatusBadge)
 │   │   ├── layout/          # App shell (Layout, TopBar) + hooks
 │   │   ├── planning/        # Plan views (Canvas, TreeView, BoardView, PlanCard)
@@ -57,13 +62,25 @@ src/
 │   │   ├── onboarding/      # Project onboarding wizard
 │   │   ├── slack/           # Slack triage UI
 │   │   ├── icons/           # SVG icon components
+│   │   ├── file-ref/        # File reference link rendering
 │   │   ├── markdown-document-modal/ # Markdown document modal
 │   │   ├── global-search/   # Global search UI
 │   │   ├── image-viewer-modal/ # Image viewer modal
+│   │   ├── keyboard-shortcuts/ # Shortcut help UI
+│   │   ├── terminal/        # Integrated terminal panel
 │   │   └── tool-log/        # Tool call log panel
 │   ├── stores/              # Zustand state management
 │   │   ├── project/         # Sliced project store
+│   │   ├── chat/            # Chat store slices
+│   │   ├── devSessions/     # Dev-session store slices
 │   │   └── tracker/         # Tracker-related stores
+│   ├── contexts/            # Stable providers (currently theme)
+│   ├── hooks/               # Cross-feature renderer hooks
+│   ├── lib/                 # Renderer library integrations
+│   ├── services/            # Renderer-side API wrappers
+│   ├── themes/              # Theme loading and normalization
+│   ├── types/               # Renderer/global type declarations
+│   ├── utils/               # Renderer utilities
 │   └── constants/
 ├── preload/                 # IPC bridge (security boundary)
 └── shared/                  # Shared types and process-neutral contracts
@@ -71,11 +88,17 @@ src/
 
 ## Project Folder Structure
 
+A KPM project has a KPM-owned project folder. That folder may be a git repository if the user chooses, but it is not assumed to be one of the connected code repos. Plans live in SQLite; project files are local working documents and generated artifacts.
 
 ```
 {project_folder}/
+├── attachments/             # Uploaded attachment copies
 ├── outputs/                 # Generated artifacts (weekly updates, test plans)
+├── AGENTS.md                # Preferred project context file, when present
+└── CLAUDE.md                # Backward-compatible project context file
 ```
+
+Do not create `.kpm/` folders or store plan hierarchy data inside connected repos. Connected repos are linked through the `repos` table and read/write rules, not by embedding KPM metadata in their working trees.
 
 ## Domain Model
 
@@ -119,6 +142,8 @@ src/
 | `slack_triage_items` | Triaged Slack messages and suggested actions |
 | `global_search_index` | Full-text search metadata |
 | `global_search_fts` | Virtual FTS5 table for full-text search |
+| `claude_usage_events` | Claude usage/cost accounting events |
+| `project_file_metadata` | Cached summaries and indexing metadata for project files |
 
 **Key fields for features:**
 - `plan_items.completed_at` - When item marked done (for weekly updates)
@@ -172,6 +197,8 @@ src/
 | `AgentReviewRepository` | Opposing-agent review runs and findings |
 | `SlackChannelLinkRepository` | Slack channel links |
 | `SlackTriageItemRepository` | Slack triage items and action suggestions |
+| `ClaudeUsageRepository` | Claude usage and cost accounting |
+| `ProjectFileMetadataRepository` | Project file summary metadata |
 
 ## Service Architecture
 
@@ -180,11 +207,13 @@ src/
 1. **Domain Services** (`src/main/db/domain/`):
    - Tightly coupled to database
    - Handle multi-table transactions
+   - Services: `SyncService`, `ExportService`, `ImportService`, `PlanActionService`, `PlanItemService`, `TypeMappingService`, `GroupAssignmentService`
 
 2. **Application Services** (`src/main/services/`):
    - Testable with dependency injection
    - Return `ServiceResult<T>` for explicit error handling
    - Organized by domain:
+     - `files/` - FileExplorerService, FileSummaryService, TempImageService, RepoFileService, FileWatchService, ProjectWatcherService, scoped file-system/path-security helpers
      - `generation/` - CustomPromptGenerationService, OnboardingService
      - `confluence/` - ConfluenceSyncService
      - `toollog/` - ToolCallLogger, extractFilePaths
@@ -219,10 +248,13 @@ src/
 - `tracker/useSyncReviewStore.ts` - Sync review state
 - `tracker/useExportStore.ts` - Export queue
 - `tracker/useCredentialStore.ts` - Tracker credentials
+- `tracker/useConfigStore.ts` - Tracker config UI state
+- `tracker/useMetadataStore.ts` - Tracker metadata cache
 - `artifactsStore.ts` - Generated artifacts
 - `permissionStore.ts` - Permission requests
 - `fileTreeStore.ts` - File explorer state
 - `customPromptStore.ts` - Custom prompts
+- `customPromptTaskStore.ts` - Custom prompt task execution state
 - `confluenceStore.ts` - Confluence sync state
 - `groupStore.ts` - Group management state
 - `approvalQueueStore.ts` - Plan action approval queue
@@ -231,6 +263,7 @@ src/
 - `taskPromptTemplateStore.ts` - Task prompt templates
 - `toastStore.ts` - Toast notifications
 - `toolLogStore.ts` - Tool call log state
+- `terminalStore.ts` - Integrated terminal state
 - `promptOverrideStore.ts` - Prompt override state
 - `briefingStore.ts` - Project briefing state
 - `generalSettingsStore.ts` - General settings state
@@ -263,6 +296,7 @@ Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and
 | `chat/` | Claude chat interface with streaming |
 | `development/` | Shared PR/review components (CreatePrModal, ReviewTab, etc.) used by the board |
 | `workspace/` | Chat-first view with file browser and editor (default view) |
+| `background-tasks/` | Background task badge/surfaces |
 | `sidebar/` | Project list, sources, context editor |
 | `sidebar-tree/` | Hierarchical tree navigation (repos, files, context menus) |
 | `command-palette/` | Cmd+K command interface |
@@ -273,8 +307,11 @@ Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and
 | `settings/` | Application settings dialogs |
 | `permission/` | Permission request UI |
 | `ui/` | Shared UI primitives (Modal, Button, StatusBadge) |
+| `file-ref/` | File reference links in markdown surfaces |
 | `global-search/` | Global search UI |
 | `image-viewer-modal/` | Image viewer modal |
+| `keyboard-shortcuts/` | Keyboard shortcut reference UI |
+| `terminal/` | Integrated terminal panel |
 | `tool-log/` | Tool call log panel |
 | `icons/` | SVG icon components |
 | `slack/` | Slack triage panel, badge, channel settings |
