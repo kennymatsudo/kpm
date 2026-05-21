@@ -66,6 +66,10 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
       ? attachments.map((a) => a.path)
       : undefined;
 
+    const sessionState = useChatStore.getState().sessions.get(chatSessionId);
+    const model = sessionState?.model ?? 'sonnet';
+    const effort = sessionState?.effort ?? 'medium';
+
 
     return effectiveClientMessageId;
 
@@ -84,6 +88,9 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     // Resolve context for the specific chat session (session-scoped "Add to context").
     const { focusedResources, focusedResourcesBySession } = useProjectUiDomainStore.getState();
     const sessionFocusedResources = focusedResourcesBySession[chatSessionId] ?? focusedResources;
+
+    const retrySessionState = useChatStore.getState().sessions.get(chatSessionId);
+    const model = retrySessionState?.model ?? 'sonnet';
 
 
   const newSession = useCallback(async (keepCurrentActive = true) => {

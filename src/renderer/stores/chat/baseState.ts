@@ -1,5 +1,10 @@
 
 /** Create initial state for a new session */
+export const createInitialPerSessionState = (
+  sessionNumber: number,
+  model: ClaudeModel = 'sonnet',
+  effort: AgentEffortLevel = 'medium',
+): PerSessionState => ({
   messages: [],
   streamingSegments: [],
   streamingContent: '',
@@ -15,6 +20,8 @@
   pendingAttachments: [],
   suggestions: [],
   sessionNumber,
+  model,
+  effort,
   claudeSessionId: null,
   title: null,
   mcpDegraded: false,

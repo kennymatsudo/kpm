@@ -68,6 +68,10 @@ export interface PerSessionState {
    * start at `false` so `setViewedSession` can lazy-load them on first focus.
    */
   hydrated: boolean;
+  /** Model selected for this session. Independent per tab. */
+  model: ClaudeModel;
+  /** Effort level selected for this session. Independent per tab. */
+  effort: AgentEffortLevel;
 }
 
 export interface ChatState {
@@ -119,6 +123,8 @@ export interface ChatState {
 
   // Shared actions
   setTokens: (tokens: number) => void;
+  setModel: (chatSessionId: string, model: ClaudeModel) => void;
+  setEffort: (chatSessionId: string, effort: AgentEffortLevel) => void;
   reset: () => void;
   resetProjectState: () => void;
 
