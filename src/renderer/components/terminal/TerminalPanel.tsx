@@ -53,6 +53,13 @@ export function TerminalPanel({ defaultCwd, isOpen }: TerminalPanelProps) {
     localStorage.setItem(STORAGE_KEY_HEIGHT, String(panelHeight));
   }, [panelHeight]);
 
+  // Re-clamp when the viewport shrinks so the terminal doesn't squash the main content.
+  useEffect(() => {
+    const handleResize = () => setPanelHeight(panelHeight);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [panelHeight, setPanelHeight]);
+
   // Spawn the first terminal on first open. Run only once per mount —
   // a ref guard avoids the lint suppression and the closure-over-defaultCwd hazard.
   const seededRef = useRef(false);

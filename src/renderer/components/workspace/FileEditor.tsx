@@ -144,9 +144,13 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
     return (
       <div className="flex flex-col h-full bg-surface-1">
         {/* Header */}
+        <div className="flex items-center gap-3 px-4 py-3 min-w-0">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
             <FileTypeIcon />
+            <span className="text-sm font-medium text-text-primary truncate" title={editingFile.path}>
               {filename}
             </span>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
               <div
                 className={`
                   w-1.5 h-1.5 rounded-full transition-colors duration-200
@@ -188,7 +192,10 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
   return (
     <div className="flex flex-col h-full bg-surface-1">
       {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 min-w-0">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           <FileTypeIcon />
+          <span className="text-sm font-medium text-text-primary truncate" title={editingFile.path}>
             {filename}
           </span>
 
@@ -215,6 +222,7 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
           )}
         </div>
 
+        <div className="flex items-center gap-2 flex-shrink-0">
           <ContextButton />
           <button
             onClick={handleClose}

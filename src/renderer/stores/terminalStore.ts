@@ -26,6 +26,7 @@ interface TerminalState {
 const DEFAULT_HEIGHT = 280;
 const MIN_HEIGHT = 120;
 const MAX_HEIGHT = 800;
+const MAX_VIEWPORT_FRACTION = 0.65;
 
 export const useTerminalStore = create<TerminalState>((set) => ({
   isPanelOpen: false,
@@ -42,6 +43,11 @@ export const useTerminalStore = create<TerminalState>((set) => ({
   },
 
   setPanelHeight(height) {
+    const viewportMax = Math.floor(
+      (typeof window !== 'undefined' ? window.innerHeight : 1080) * MAX_VIEWPORT_FRACTION,
+    );
+    const effectiveMax = Math.min(MAX_HEIGHT, viewportMax);
+    const clamped = Math.min(effectiveMax, Math.max(MIN_HEIGHT, height));
     set({ panelHeight: clamped });
   },
 

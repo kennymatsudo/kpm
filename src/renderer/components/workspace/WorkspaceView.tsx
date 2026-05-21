@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useWorkspaceStore, useHasUnsavedChanges, useFileTreeStore } from '../../stores';
 import { Chat, ChatHeader } from '../chat';
@@ -118,6 +119,9 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
     return unsubscribe;
   }, [projectId, markRecentlyChanged, expandToPath, refreshDirectory]);
 
+  // Workspace chat resize — pass containerRef so the max chat width accounts for sidebar space
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { workspaceChatWidth, handleResizeStart } = useWorkspaceResize(containerRef);
 
   // Track if we're in editing mode for layout transitions
   const isEditing = editingFile !== null;
@@ -138,6 +142,7 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
   }, [closeEditor]);
 
   return (
+    <div ref={containerRef} className="flex flex-1 h-full overflow-hidden bg-surface-0">
       {/* Editor Panel (only shown when editing) */}
       {isEditing && (
         <div

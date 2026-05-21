@@ -1,3 +1,4 @@
+import { clampWidth } from '../../utils/panelSizing';
 
 const CHAT_MIN = 320;
 const CHAT_MAX_ABS = 1600;
@@ -6,12 +7,24 @@ const CHAT_DEFAULT = 420;
 const EDITOR_MIN = 480;
 const STORAGE_KEY = 'kpm-workspace-chat-width';
 
+function getChatMax(containerRef?: RefObject<HTMLDivElement | null>): number {
+  const availableWidth = containerRef?.current?.offsetWidth ?? window.innerWidth;
+  return Math.max(
+    CHAT_MIN,
+    Math.min(
+      availableWidth * CHAT_MAX_VIEWPORT_FRACTION,
+      availableWidth - EDITOR_MIN,
+      CHAT_MAX_ABS,
+    ),
+  );
 }
 
+function readStoredWidth(containerRef?: RefObject<HTMLDivElement | null>): number {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return CHAT_DEFAULT;
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed)) return CHAT_DEFAULT;
+  return clampWidth(parsed, CHAT_MIN, getChatMax(containerRef));
 }
 
 export interface UseWorkspaceResizeReturn {
@@ -20,6 +33,10 @@ export interface UseWorkspaceResizeReturn {
   handleResizeStart: (e: React.MouseEvent) => void;
 }
 
+export function useWorkspaceResize(
+  containerRef?: RefObject<HTMLDivElement | null>,
+): UseWorkspaceResizeReturn {
+  const [width, setWidth] = useState(() => readStoredWidth(containerRef));
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(0);
@@ -28,9 +45,22 @@ export interface UseWorkspaceResizeReturn {
     localStorage.setItem(STORAGE_KEY, width.toString());
   }, [width]);
 
+  // Re-clamp when the container resizes so the chat always leaves room for the editor.
   useEffect(() => {
+    const reclamp = () => {
+      const max = getChatMax(containerRef);
       setWidth((current) => (current > max ? max : current));
     };
+
+    if (containerRef?.current) {
+      const observer = new ResizeObserver(reclamp);
+      observer.observe(containerRef.current);
+      return () => observer.disconnect();
+    }
+
+    window.addEventListener('resize', reclamp);
+    return () => window.removeEventListener('resize', reclamp);
+  }, [containerRef]);
 
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -51,6 +81,7 @@ export interface UseWorkspaceResizeReturn {
     const handleMouseMove = (e: MouseEvent) => {
       // Dragging left = chat wider (inverted delta)
       const delta = resizeStartX.current - e.clientX;
+      const newWidth = clampWidth(resizeStartWidth.current + delta, CHAT_MIN, getChatMax(containerRef));
       pendingWidth.current = newWidth;
 
       if (rafRef.current === null) {
