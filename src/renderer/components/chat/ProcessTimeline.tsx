@@ -54,6 +54,7 @@ function buildSteps(props: ProcessTimelineProps): Step[] {
         for (const a of seg.activities) {
           if (seenToolIds.has(a.id)) continue;
           seenToolIds.add(a.id);
+          steps.push({ kind: 'tool', activity: a, key: a.id ?? `tool-${steps.length}` });
         }
       }
     }
@@ -289,6 +290,7 @@ const ToolGroupRow = memo(function ToolGroupRow({
       {expanded && (
           {activities.map((a, idx) => (
             <ToolRow
+              key={a.id ?? `tool-inner-${idx}`}
               activity={a}
               isActive={isActive && idx === activities.length - 1}
               indent
