@@ -139,9 +139,17 @@ interface ManagedSession {
   suppressLifecycleEventsOnEnd: boolean; // Suppress renderer lifecycle events when session ends
   /**
    * Resolver for interrupt-and-send orchestration: fires when the next
+   * 'result' message for the in-flight turn is processed. Used by the
+   * session-restart path (view/model change mid-turn) to wait for the
+   * aborted turn to finalize before sending on a fresh session.
    */
   pendingInterruptResolver?: () => void;
   /**
+   * True while a session-restart-with-message orchestration is in flight
+   * (e.g. view changed mid-turn so we must tear down and re-spawn with new
+   * system prompt). Suppresses late chunk emission from the aborted turn.
+   * NOT set for the normal queue path — queued follow-ups stream on the
+   * same session and don't interrupt anything.
    */
   interruptInProgress: boolean;
   resolvedModel?: string;
@@ -360,11 +368,16 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   async function sendMessageToSession(
     key: string,
     envelope: MessageEnvelope,
+    clientMessageId: string | undefined,
     createSession: () => Promise<ServiceResult<{ sessionId: string }>>
   ): AsyncResult<void> {
     let managed = sessions.get(key);
 
+    // Reject concurrent sends only while a session-restart-with-message is
+    // mid-flight (view/model change). The default queue path no longer sets
+    // this flag, so most follow-ups go straight to the queue.
     if (managed?.interruptInProgress) {
+      return failure('Session is restarting. Please wait a moment before sending again.');
     }
 
     // Create new session with this message if none exists or error state
@@ -389,6 +402,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     if (managed?.state !== 'ready') {
       switch (managed?.state) {
         case 'processing':
+          // Queue the follow-up behind the in-flight turn. The SDK pulls it
+          // when the current turn finishes, preserving the partial response
+          // and avoiding wasted compute. Explicit interrupt (chat:cancel)
+          // remains available if the user actually wants to stop the turn.
+          return queueMessageOnSession(key, envelope, clientMessageId);
         case 'connecting':
           return failure('Session is still connecting. Please wait a moment.');
         case 'error':
@@ -763,6 +781,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     currentView?: ViewMode;
     /** File attachments to attach to this turn as native multimodal content blocks */
     attachments?: ChatAttachment[];
+    /** Renderer-supplied id for matching the queued user bubble back to its IPC event */
+    clientMessageId?: string;
   }
 
   /**
@@ -791,6 +811,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       });
     }
 
+    return sendMessageToSession(
+      key,
+      envelope,
+      options.clientMessageId,
+      () => createChatSession(projectId, envelope, options),
+    );
   }
 
   /**
@@ -893,6 +919,19 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       return failure('No active session');
     }
 
+    // Drop any queued follow-up before interrupting. Stop means "halt
+    // everything" — if the user wanted the queued message to still go out
+    // after Stop, they wouldn't have pressed Stop. Tell the renderer so it
+    // can clear the queued bubble.
+      const mainWindow = deps.getMainWindow();
+      mainWindow?.webContents.send('chat:queue-cleared', {
+        projectId: managed.projectId,
+        chatSessionId: managed.chatSessionId,
+        clientMessageId: cancelledClientMessageId,
+        reason: 'cancelled',
+      });
+    }
+
     const INTERRUPT_TIMEOUT_MS = 5000; // 5 seconds max for interrupt
 
     try {
@@ -949,6 +988,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
    *   while the SDK might still emit a late result would let `chat:done` for
    *   the old turn clear the new turn's streaming state mid-response.
    */
+  async function _interruptAndSendInSession(
     key: string,
     envelope: MessageEnvelope,
   ): AsyncResult<void> {
@@ -1071,6 +1111,101 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   }
 
   /**
+   */
+  async function queueMessageOnSession(
+    key: string,
+    envelope: MessageEnvelope,
+    clientMessageId: string | undefined,
+  ): AsyncResult<void> {
+    const managed = sessions.get(key);
+    if (!managed) {
+      return failure('No active session');
+    }
+
+    if (!managed.session.isReady()) {
+      return failure('Session is not ready to accept messages.');
+    }
+
+
+    try {
+      if (envelope.attachments && envelope.attachments.length > 0) {
+        const blocks = await buildUserContentBlocks(envelope.text, envelope.attachments);
+        managed.session.sendUserContent(blocks);
+      } else {
+        managed.session.send(envelope.text);
+      }
+    } catch (error) {
+    }
+
+    const mainWindow = deps.getMainWindow();
+    mainWindow?.webContents.send('chat:queued', {
+      projectId: managed.projectId,
+      chatSessionId: managed.chatSessionId,
+      clientMessageId,
+    });
+
+    return success(undefined);
+  }
+
+  /**
+   * Cancel the message queued behind an in-flight turn, if any. The SDK
+   * does not consume queued messages until a turn boundary, so cancelling
+   * is reliable as long as the in-flight turn has not yet finished.
+   */
+  function cancelQueuedMessage(
+    projectId: string,
+    chatSessionId: string,
+    requestedClientMessageId?: string,
+  ): ServiceResult<void> {
+    const key = buildSessionKey(projectId, chatSessionId);
+    const managed = sessions.get(key);
+    if (!managed) {
+      const mainWindow = deps.getMainWindow();
+      mainWindow?.webContents.send('chat:queue-cleared', {
+        projectId,
+        chatSessionId,
+        clientMessageId: requestedClientMessageId,
+        reason: 'session_disconnected',
+      });
+      return failure('No active session');
+    }
+
+      const mainWindow = deps.getMainWindow();
+      mainWindow?.webContents.send('chat:queue-cleared', {
+        projectId,
+        chatSessionId,
+        clientMessageId: requestedClientMessageId,
+        reason: 'already_sent',
+      });
+      return failure('No queued message to cancel');
+    }
+
+    const cancelled = managed.session.cancelLastQueued();
+
+    if (!cancelled) {
+      // SDK already pulled it — too late to cancel. Surface so the renderer
+      // can clear the "queued" badge but keep the bubble (it's now in flight).
+      const mainWindow = deps.getMainWindow();
+      mainWindow?.webContents.send('chat:queue-cleared', {
+        projectId,
+        chatSessionId,
+        clientMessageId,
+        reason: 'already_sent',
+      });
+      return failure('Message was already sent to the model.');
+    }
+
+    const mainWindow = deps.getMainWindow();
+    mainWindow?.webContents.send('chat:queue-cleared', {
+      projectId,
+      chatSessionId,
+      clientMessageId,
+      reason: 'cancelled',
+    });
+    return success(undefined);
+  }
+
+  /**
    * Change the model for a session.
    */
   async function setModel(sessionKey: string, model: ModelType): AsyncResult<void> {
@@ -1126,6 +1261,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     managed.unsubscribeClaudeMdUpdate();
     managed.unsubscribeDocumentUpdate();
     managed.suppressLifecycleEventsOnEnd = !!options.silent;
+
+    // If a follow-up was queued behind a turn that never got to deliver it,
+    // tell the renderer so the queued bubble can clear its pending indicator
+    // (the message is lost — the user can resend after reconnect).
+      const mainWindow = deps.getMainWindow();
+    }
 
     try {
       await managed.session.close();
@@ -1346,6 +1487,19 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Handle result message (final stats)
     if (sdkMsg.type === 'result') {
+      // A queued follow-up means the SDK is about to pull the next message
+      // and start another turn. Stay in 'processing' so concurrent sends
+      // still route to the queue path (rather than racing into the brief
+      // 'ready' window). Reset turn-timing fields for the new turn.
+      if (hasQueuedFollowUp) {
+        if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
+        managed.processingStartTime = Date.now();
+        managed.lastSdkActivity = Date.now();
+      } else {
+        managed.state = 'ready';
+        managed.processingStartTime = undefined;
+        managed.lastSdkActivity = undefined;
+      }
       const maxTokensReached = isMaxTokensReached(sdkMsg);
 
       // Check if response was truncated
@@ -1424,6 +1578,21 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       managed.toolUseActivities.clear();
 
       managed.lastTurnFinalized = true;
+      if (!hasQueuedFollowUp) {
+        mainWindow?.webContents.send('chat:session-ready', { projectId, chatSessionId });
+      }
+      mainWindow?.webContents.send('chat:done', {
+        projectId,
+        chatSessionId,
+        model: managed.resolvedModel,
+        hasQueuedFollowUp,
+      });
+
+      // Clear the queued envelope now — the SDK has the message and is about
+      // to feed it to Claude as the next turn. Any further sends on this
+      // session start fresh.
+      if (hasQueuedFollowUp) {
+      }
 
       // Fire-and-forget: fetch the SDK's session summary so the renderer can
       // show a meaningful tab title instead of the numeric "Claude N" label.
@@ -1803,6 +1972,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     getActiveSessions,
     interruptChatSession: (projectId: string, chatSessionId: string) =>
       interrupt(buildSessionKey(projectId, chatSessionId)),
+    cancelQueuedChatMessage: (projectId: string, chatSessionId: string, clientMessageId?: string) =>
+      cancelQueuedMessage(projectId, chatSessionId, clientMessageId),
     setChatModel: (projectId: string, chatSessionId: string, model: ModelType) =>
       setModel(buildSessionKey(projectId, chatSessionId), model),
     disposeAll,

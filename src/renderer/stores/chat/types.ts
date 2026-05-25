@@ -22,6 +22,12 @@ export interface Message {
    * yet. Phase 3 plumbs DB persistence so attachments appear after reload.
    */
   attachments?: ChatAttachment[];
+  /**
+   * Renderer-supplied id used to correlate user messages with backend
+   * `chat:queued` / `chat:queue-cleared` events. Only set on user messages.
+   */
+  clientMessageId?: string;
+  queued?: boolean;
 }
 
 // Re-export types for consumers
@@ -105,10 +111,29 @@ export interface ChatState {
   removeSession: (chatSessionId: string) => void;
 
   // Per-session actions (operate on specific session by chatSessionId)
+  addUserMessage: (
+    chatSessionId: string,
+    content: string,
+    attachments?: ChatAttachment[],
+  ) => void;
+  /**
+   * Find the user message with the given clientMessageId and clear its queued
+   * flag. Called when the backend reports the queued message has been pulled
+   * by the SDK (a new turn is starting) or cancelled/disconnected.
+   */
+  clearQueuedFlag: (chatSessionId: string, clientMessageId?: string) => void;
+  /**
+   * Remove a queued user message from the transcript when the backend confirms
+   * that it was cancelled or lost before reaching the model.
+   */
+  removeQueuedUserMessage: (chatSessionId: string, clientMessageId: string) => void;
   setRetrying: (chatSessionId: string) => void;
   appendChunk: (chatSessionId: string, chunk: string, segmentId?: number, precedingActivities?: Activity[]) => void;
   appendThinking: (chatSessionId: string, text: string) => void;
   flushStreamingContent: (chatSessionId: string) => void;
+  finalizeMessage: (
+    chatSessionId: string,
+  ) => void;
   setError: (chatSessionId: string, error: string) => void;
   addActivity: (chatSessionId: string, activity: Activity) => void;
   updateActivity: (chatSessionId: string, activity: Activity) => void;

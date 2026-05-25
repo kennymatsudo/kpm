@@ -241,6 +241,10 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
             ? Math.max(0, Date.now() - session.streamStartedAt)
             : undefined;
 
+        } else {
+          }
+        }
+
         sessions.set(chatSessionId, {
           ...session,
           streamingContent: '',

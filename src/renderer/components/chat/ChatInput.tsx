@@ -242,6 +242,9 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   const handleSend = () => {
     const trimmed = message.trim();
     // Allow sending if there's text OR if there are attachments.
+    // Sending while streaming is allowed for Claude — the backend queues this
+    // as the next turn. For Codex, keep the old behavior (block until the
+    // current response finishes) since its service rejects mid-stream sends.
     if ((trimmed || attachments.length > 0) && !disabled && !sendDisabledWhileStreaming) {
       const chatSessionId = viewedSessionId ?? getChatSessionId();
       getOrCreateSession(chatSessionId);
@@ -418,6 +421,8 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
             </button>
           </div>
 
+          {/* Stop button is the only way to cancel an in-flight turn now —
+              sending a new message no longer interrupts; it queues. */}
           {isStreaming && (
             <button
               onClick={onCancel}

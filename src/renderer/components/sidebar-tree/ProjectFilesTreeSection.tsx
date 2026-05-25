@@ -21,6 +21,7 @@ function injectPhantomNode(
     if (node.children) {
       return {
         ...node,
+        children: injectPhantomNode(node.children, parentPath, phantom),
       };
     }
     return node;
@@ -94,6 +95,7 @@ export const ProjectFilesTreeSection = memo(function ProjectFilesTreeSection({
   );
 
   const displayNodes = useMemo((): UIFileNode[] => {
+    if (!creatingItem?.parentPath) return projectNodes;
     const phantom: UIFileNode = {
       name: '',
       path: `${creatingItem.parentPath}/__creating__`,
@@ -104,10 +106,12 @@ export const ProjectFilesTreeSection = memo(function ProjectFilesTreeSection({
       _phantom: true,
       _phantomType: creatingItem.type,
     };
+    return injectPhantomNode(projectNodes, creatingItem.parentPath, phantom);
   }, [projectNodes, creatingItem]);
 
   const showEmptyState = projectNodes.length === 0 && !creatingItem;
   const shouldMeasureTree = !isCollapsed && !showEmptyState;
+  const renderTree = treeHeight > 0 && displayNodes.length > 0;
 
   useLayoutEffect(() => {
     if (!shouldMeasureTree) {
@@ -168,6 +172,7 @@ export const ProjectFilesTreeSection = memo(function ProjectFilesTreeSection({
         tree.close(path);
       }
     }
+  }, [expandedPaths, projectNodes, renderTree]);
 
   useEffect(() => {
     if (!renamingPath) return;

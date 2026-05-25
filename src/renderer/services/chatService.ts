@@ -36,6 +36,23 @@ export interface SessionEventData {
   source?: string;
   previousState?: string;
   model?: string;
+  /** True when the SDK is about to pull a queued follow-up as the next turn. */
+  hasQueuedFollowUp?: boolean;
+  /** clientMessageId of the queued user message about to be promoted. */
+  queuedClientMessageId?: string;
+}
+
+export interface QueuedEventData {
+  projectId: string;
+  chatSessionId?: string;
+  clientMessageId?: string;
+}
+
+export interface QueueClearedEventData {
+  projectId: string;
+  chatSessionId?: string;
+  clientMessageId?: string;
+  reason?: 'cancelled' | 'already_sent' | 'session_disconnected';
 }
 
 export interface ErrorEventData {
@@ -128,6 +145,10 @@ export function startNewBackendChatSession(projectId: string) {
 
 }
 
+export function cancelQueuedChatMessage(projectId: string, chatSessionId: string, clientMessageId?: string) {
+  return window.api.chat.cancelQueued(projectId, chatSessionId, clientMessageId);
+}
+
 export function getChatSessionHistory(projectId: string, limit: number) {
   return window.api.chat.getSessionHistory(projectId, limit);
 }
@@ -151,6 +172,8 @@ export function subscribeToChatEvents(handlers: {
   onSessionDeactivated?: (data: SessionEventData) => void;
   onSuggestions?: (data: SuggestionsEventData) => void;
   onMcpStatus?: (data: McpStatusEventData) => void;
+  onQueued?: (data: QueuedEventData) => void;
+  onQueueCleared?: (data: QueueClearedEventData) => void;
 }): () => void {
   const cleanups = [
     handlers.onChunk ? window.api.chat.onChunk(handlers.onChunk) : null,
@@ -167,6 +190,8 @@ export function subscribeToChatEvents(handlers: {
     handlers.onSessionDeactivated ? window.api.chat.onSessionDeactivated(handlers.onSessionDeactivated) : null,
     handlers.onSuggestions ? window.api.chat.onSuggestions(handlers.onSuggestions) : null,
     handlers.onMcpStatus ? window.api.chat.onMcpStatus(handlers.onMcpStatus) : null,
+    handlers.onQueued ? window.api.chat.onQueued(handlers.onQueued) : null,
+    handlers.onQueueCleared ? window.api.chat.onQueueCleared(handlers.onQueueCleared) : null,
   ].filter((cleanup): cleanup is (() => void) => Boolean(cleanup));
 
   return () => {

@@ -24,6 +24,7 @@ export interface ChatServiceDeps {
     StreamingSessionService,
     | 'sendChatMessage'
     | 'interruptChatSession'
+    | 'cancelQueuedChatMessage'
     | 'disconnectChatSession'
     | 'getActiveSessions'
     | 'getChatSessionState'
@@ -109,6 +110,27 @@ export function createChatService(deps: ChatServiceDeps) {
     deps.emitChatError?.({ projectId, chatSessionId, error });
   }
 
+  function persistAcceptedUserMessage(
+    projectId: string,
+    message: string,
+    chatSessionId: string | undefined,
+    clientMessageId: string | undefined,
+  ): void {
+    try {
+      // Persist the plain user text — no attachment prefix. Attachment
+      // metadata persistence lands in Phase 3.
+      deps.chatMessages.addMessage(
+        projectId,
+        'user',
+        message,
+        chatSessionId,
+        clientMessageId,
+      );
+    } catch (error) {
+      console.error('[ChatService] Failed to persist accepted user message:', error);
+    }
+  }
+
   return {
     async sendMessage(
       input: SendChatMessageInput,
@@ -151,6 +173,7 @@ export function createChatService(deps: ChatServiceDeps) {
             chatSessionId,
             currentView: promptContext?.currentView,
             attachments: attachments.length > 0 ? attachments : undefined,
+            clientMessageId,
           }
         );
 
@@ -169,6 +192,10 @@ export function createChatService(deps: ChatServiceDeps) {
 
       const result = await deps.streamingSessionService.interruptChatSession(projectId, chatSessionId);
       return result.ok ? success(undefined) : failure(result.error);
+    },
+
+    cancelQueued(projectId: string, chatSessionId: string, clientMessageId?: string): ServiceResult<void> {
+      return deps.streamingSessionService.cancelQueuedChatMessage(projectId, chatSessionId, clientMessageId);
     },
 
     newSession(projectId: string): ServiceResult<void> {

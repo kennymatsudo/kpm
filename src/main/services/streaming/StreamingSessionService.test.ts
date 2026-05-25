@@ -10,14 +10,17 @@ import {
   type StreamingSessionServiceDeps,
 } from './StreamingSessionService';
 
+const { mockSessionInstances, mockSessionCounter, clearPendingDocumentContentCalls } = vi.hoisted(() => ({
   mockSessionInstances: [] as {
     emitMessage: (msg: unknown) => void;
     emitSessionEnd: (reason: 'completed' | 'error' | 'closed', error?: Error) => void;
     setReady: (value: boolean) => void;
     sentMessages: string[];
     interruptCallCount: { value: number };
+    cancelLastQueued: () => unknown;
   }[],
   mockSessionCounter: { nextId: 1 },
+  clearPendingDocumentContentCalls: [] as string[],
 }));
 
 const { sdkTypeGuardState } = vi.hoisted(() => ({
@@ -60,6 +63,10 @@ vi.mock('../../claude/streaming', () => {
       this.sentMessages.push(text);
     }
 
+    cancelLastQueued(): unknown {
+      return this.sentMessages.pop() ?? null;
+    }
+
     isReady(): boolean {
       return this.ready;
     }
@@ -95,6 +102,9 @@ vi.mock('../../claude/streaming', () => {
 
 vi.mock('../../claude/tools/createKpmServer', () => ({
   runWithToolExecutionContext: (_context: unknown, run: () => unknown) => run(),
+  clearPendingDocumentContent: (chatSessionId: string) => {
+    clearPendingDocumentContentCalls.push(chatSessionId);
+  },
 }));
 
 vi.mock('../../claude/clientManager', () => ({
@@ -213,6 +223,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
   beforeEach(() => {
     sentEvents.length = 0;
     mockSessionInstances.length = 0;
+    clearPendingDocumentContentCalls.length = 0;
     mockSessionCounter.nextId = 1;
     sdkTypeGuardState.maxTokensReached = false;
     sdkTypeGuardState.maxTurnsReached = false;
@@ -383,16 +394,54 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     const session = mockSessionInstances[0];
     expect(session.sentMessages).toEqual(['first prompt']);
 
+    sentEvents.length = 0;
+    const secondClientMessageId = '11111111-1111-4111-8111-111111111111';
+    const secondSend = await service.sendChatMessage('project-1', 'second prompt', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+      clientMessageId: secondClientMessageId,
+    });
+
+    expect(secondSend.ok).toBe(true);
+    expect(session.interruptCallCount.value).toBe(0);
+    expect(session.sentMessages).toEqual(['first prompt', 'second prompt']);
+    expect(sentEvents.find((e) => e.channel === 'chat:queued')?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      clientMessageId: secondClientMessageId,
+    });
+
+    const concurrent = await service.sendChatMessage('project-1', 'third prompt', {
       chatSessionId: 'chat-1',
       model: 'sonnet',
     });
 
-    expect(secondSend.ok).toBe(true);
-    expect(session.sentMessages).toEqual(['first prompt', 'second prompt']);
+    sentEvents.length = 0;
+    session.emitMessage({ type: 'result' });
+    expect(sentEvents.some((e) => e.channel === 'chat:session-ready')).toBe(false);
+    expect(sentEvents.find((e) => e.channel === 'chat:done')?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      hasQueuedFollowUp: true,
+      queuedClientMessageId: secondClientMessageId,
+    });
+    expect(clearPendingDocumentContentCalls).toContain('chat-1');
+    expect(service.getActiveSessions('project-1')[0]).toMatchObject({
+      chatSessionId: 'chat-1',
+      state: 'processing',
+      isProcessing: true,
+    });
 
+    const thirdAfterTurnBoundary = await service.sendChatMessage('project-1', 'third prompt', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+      clientMessageId: '33333333-3333-4333-8333-333333333333',
+    });
+    expect(thirdAfterTurnBoundary.ok).toBe(true);
     expect(mockSessionInstances).toHaveLength(1);
   });
 
+  it('cancels a queued follow-up before the turn boundary', async () => {
     service = createStreamingSessionService(createDeps(sendSpy));
 
     const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
@@ -402,15 +451,29 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     expect(firstSend.ok).toBe(true);
 
     const session = mockSessionInstances[0];
+    const clientMessageId = '44444444-4444-4444-8444-444444444444';
 
+    const queued = await service.sendChatMessage('project-1', 'second prompt', {
       chatSessionId: 'chat-1',
       model: 'sonnet',
+      clientMessageId,
     });
+    expect(queued.ok).toBe(true);
+    expect(session.sentMessages).toEqual(['first prompt', 'second prompt']);
 
+    sentEvents.length = 0;
+    const cancelled = service.cancelQueuedChatMessage('project-1', 'chat-1', clientMessageId);
+    expect(cancelled.ok).toBe(true);
+    expect(session.sentMessages).toEqual(['first prompt']);
+    expect(sentEvents.find((e) => e.channel === 'chat:queue-cleared')?.payload).toMatchObject({
+      projectId: 'project-1',
       chatSessionId: 'chat-1',
+      clientMessageId,
+      reason: 'cancelled',
     });
   });
 
+  it('continues streaming the current turn while a follow-up is queued', async () => {
     service = createStreamingSessionService(createDeps(sendSpy));
 
     const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
@@ -422,12 +485,21 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     const session = mockSessionInstances[0];
     sentEvents.length = 0;
 
+    const queued = await service.sendChatMessage('project-1', 'second prompt', {
       chatSessionId: 'chat-1',
       model: 'sonnet',
+      clientMessageId: '55555555-5555-4555-8555-555555555555',
     });
+    expect(queued.ok).toBe(true);
 
     session.emitMessage({
       type: 'assistant',
+      message: { content: [{ type: 'text', text: 'still finishing first turn' }] },
+    });
+    expect(sentEvents.find((e) => e.channel === 'chat:chunk')?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      text: 'still finishing first turn',
     });
   });
 

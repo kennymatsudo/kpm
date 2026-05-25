@@ -182,6 +182,8 @@ const tempImages = {
 const chat = {
   newSession: (projectId: string): Promise<{ success: boolean }> =>
     invokeFlat<void>(IPC_CHANNELS.chat.newSession, { projectId }),
+  cancelQueued: (projectId: string, chatSessionId: string, clientMessageId?: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.chat.cancelQueued, { projectId, chatSessionId, clientMessageId }),
   getUsage: (projectId: string): Promise<{ totalTokens: number; inputTokens: number; outputTokens: number }> =>
     invokeOrThrow<
       { usage: { totalTokens: number; inputTokens: number; outputTokens: number } },
@@ -220,8 +222,42 @@ const chat = {
     ipcRenderer.on('chat:plan-actions', handler);
     return () => ipcRenderer.removeListener('chat:plan-actions', handler);
   },
+  onDone: (callback: (data: {
+    projectId: string;
+    chatSessionId?: string;
+    model?: string;
+    hasQueuedFollowUp?: boolean;
+    queuedClientMessageId?: string;
+  }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: {
+      projectId: string;
+      chatSessionId?: string;
+      model?: string;
+      hasQueuedFollowUp?: boolean;
+      queuedClientMessageId?: string;
+    }) => callback(data);
     ipcRenderer.on('chat:done', handler);
     return () => ipcRenderer.removeListener('chat:done', handler);
+  },
+  onQueued: (callback: (data: { projectId: string; chatSessionId?: string; clientMessageId?: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; clientMessageId?: string }) => callback(data);
+    ipcRenderer.on('chat:queued', handler);
+    return () => ipcRenderer.removeListener('chat:queued', handler);
+  },
+  onQueueCleared: (callback: (data: {
+    projectId: string;
+    chatSessionId?: string;
+    clientMessageId?: string;
+    reason?: 'cancelled' | 'already_sent' | 'session_disconnected';
+  }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: {
+      projectId: string;
+      chatSessionId?: string;
+      clientMessageId?: string;
+      reason?: 'cancelled' | 'already_sent' | 'session_disconnected';
+    }) => callback(data);
+    ipcRenderer.on('chat:queue-cleared', handler);
+    return () => ipcRenderer.removeListener('chat:queue-cleared', handler);
   },
   onError: (callback: (data: { projectId: string; chatSessionId?: string; error: string }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; error: string }) => callback(data);

@@ -64,6 +64,12 @@ export const ChatSchemas = {
     chatSessionId: uuid, // Required for multi-session support
   }),
 
+  cancelQueued: z.object({
+    projectId: uuid,
+    chatSessionId: uuid,
+    clientMessageId: uuid.optional(),
+  }),
+
   newSession: z.object({
     projectId: uuid,
   }),

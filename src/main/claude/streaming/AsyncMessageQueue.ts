@@ -101,6 +101,20 @@ export class AsyncMessageQueue {
   }
 
   /**
+   * Remove and return the most recently pushed message that has not yet been
+   * pulled by the generator. Used to cancel a queued follow-up before the
+   * SDK consumes it. Returns null if the queue is empty or only the
+   * currently-streaming turn's seed message remains pulled.
+   *
+   * Note: messages already pulled by `pull()` cannot be cancelled — the SDK
+   * has them in-flight.
+   */
+  cancelLast(): StreamingUserMessage | null {
+    if (this.queue.length === 0) return null;
+    return this.queue.pop() ?? null;
+  }
+
+  /**
    * Reset the queue to initial state.
    * Used when restarting a session.
    */

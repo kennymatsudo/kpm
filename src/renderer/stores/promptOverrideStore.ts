@@ -81,6 +81,7 @@ export const usePromptOverrideStore = create<PromptOverrideState>((set, get) => 
       const result = await getPromptOverride(key);
       if (result.success && result.prompt) {
         set({
+          selectedPrompt: result.prompt,
           editContent: result.prompt.currentContent,
         });
       }

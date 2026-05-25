@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { ChatAttachment, ChatViewMode } from '../../shared/types';
 import {
   cancelChatSession,
+  cancelQueuedChatMessage,
   disconnectChatSession,
   sendChatMessage,
   startNewBackendChatSession,
@@ -27,6 +28,7 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     getChatSessionId,
     getOrCreateSession,
     startNewChatSession,
+    removeQueuedUserMessage,
   } = useChatStore(useShallow((state) => ({
     addUserMessage: state.addUserMessage,
     setRetrying: state.setRetrying,
@@ -36,6 +38,7 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     getChatSessionId: state.getChatSessionId,
     getOrCreateSession: state.getOrCreateSession,
     startNewChatSession: state.startNewChatSession,
+    removeQueuedUserMessage: state.removeQueuedUserMessage,
   })));
 
   const send = useCallback(async (
@@ -53,8 +56,22 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     // Ensure session exists in store
     getOrCreateSession(chatSessionId);
 
+    // If the session is already streaming, queue this message behind the
+    // in-flight turn rather than interrupting it. The user bubble appears
+    // immediately with a "queued" indicator; the backend pushes the message
+    // into the SDK's input generator, which pulls it when the current turn
     const currentSession = useChatStore.getState().sessions.get(chatSessionId);
+    const sendingWhileStreaming = !!currentSession?.isStreaming;
 
+    addUserMessage(
+      chatSessionId,
+      message,
+      attachments,
+      {
+        queued: sendingWhileStreaming,
+        clientMessageId: effectiveClientMessageId,
+      },
+    );
 
     // Resolve context for the specific chat session (session-scoped "Add to context").
     const { focusedResources, focusedResourcesBySession } = useProjectUiDomainStore.getState();
@@ -70,6 +87,10 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     const model = sessionState?.model ?? 'sonnet';
     const effort = sessionState?.effort ?? 'medium';
 
+
+    if (sendingWhileStreaming && sendResult && 'success' in sendResult && !sendResult.success) {
+      removeQueuedUserMessage(chatSessionId, effectiveClientMessageId);
+    }
 
     return effectiveClientMessageId;
 
@@ -121,10 +142,28 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
       console.error('[useChat] Cancel failed:', err);
     });
 
+  /**
+   * Cancel a queued follow-up before the SDK pulls it. Wait for the backend
+   * queue-cleared event before removing the bubble so a turn-boundary race
+   * cannot drop a message that has already been sent.
+   */
+  const cancelQueued = useCallback((clientMessageId: string) => {
+    if (!projectId || !viewedSessionId) return;
+    cancelQueuedChatMessage(projectId, viewedSessionId, clientMessageId).then((result) => {
+      if (!result.success) {
+        useChatStore.getState().clearQueuedFlag(viewedSessionId, clientMessageId);
+      }
+    }).catch((err: unknown) => {
+      console.error('[useChat] Cancel queued failed:', err);
+      useChatStore.getState().clearQueuedFlag(viewedSessionId, clientMessageId);
+    });
+  }, [projectId, viewedSessionId]);
+
   const closeSession = useCallback(async (chatSessionId: string) => {
     if (!projectId) return;
     await disconnectChatSession(projectId, chatSessionId);
     markSessionInactive(chatSessionId);
   }, [projectId, markSessionInactive]);
 
+  return { send, retry, newSession, cancel, cancelQueued, closeSession };
 }

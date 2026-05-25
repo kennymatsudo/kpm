@@ -331,6 +331,23 @@ export class StreamingSession {
   }
 
   /**
+   * Number of user messages waiting in the input queue (pushed via send/
+   * sendUserContent/sendRaw but not yet pulled by the SDK generator). Reflects
+   * follow-ups queued while a prior turn is still streaming.
+   */
+  pendingQueuedCount(): number {
+    return this.messageQueue.pendingCount;
+  }
+
+  /**
+   * Cancel the most recent queued follow-up before the SDK consumes it.
+   * Returns the cancelled message, or null if nothing was pending.
+   */
+  cancelLastQueued(): StreamingUserMessage | null {
+    return this.messageQueue.cancelLast();
+  }
+
+  /**
    * Change the model mid-session.
    * The next message will use the new model.
    */

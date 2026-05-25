@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef, useCallback, type RefObject } from 'react';
 import { clampWidth } from '../../utils/panelSizing';
 
 const CHAT_MIN = 320;

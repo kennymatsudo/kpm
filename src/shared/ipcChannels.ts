@@ -101,6 +101,7 @@ export const IPC_CHANNELS = {
   chat: {
     send: 'chat:send',
     cancel: 'chat:cancel',
+    cancelQueued: 'chat:cancel-queued',
     connectSession: 'chat:connect-session',
     newSession: 'chat:new-session',
     disconnectSession: 'chat:disconnect-session',

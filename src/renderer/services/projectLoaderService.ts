@@ -42,6 +42,7 @@ export function getEffectiveRepoPath(repo: Repo): string {
 
 export function watchProjectRepos(repos: Repo[]): string[] {
   for (const repo of repos) {
+    void window.api.repos.watch(repo.id, getEffectiveRepoPath(repo));
   }
 
   return repos.map(getEffectiveRepoPath);
@@ -108,6 +109,8 @@ export function subscribeToProjectMenuEvents(handlers: {
     handlers.onNewProject?.();
   });
 
+  const unsubOpenProject = window.api.menu.onOpenProject(({ projectId }: { projectId: string }) => {
+    void handlers.onOpenProject?.(projectId);
   });
 
   return () => {

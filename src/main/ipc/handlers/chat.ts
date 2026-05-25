@@ -25,6 +25,18 @@ import { IPC_CHANNELS } from '../channels';
   );
 
   ipcMain.handle(
+    IPC_CHANNELS.chat.cancelQueued,
+    createIpcHandler(
+      ChatSchemas.cancelQueued,
+      ({ projectId, chatSessionId, clientMessageId }) => {
+        const result = chatService.cancelQueued(projectId, chatSessionId, clientMessageId);
+        if (!result.ok) throw new Error(result.error);
+      },
+      'Failed to cancel queued message',
+    ),
+  );
+
+  ipcMain.handle(
     IPC_CHANNELS.chat.newSession,
     createIpcHandler(
       ChatSchemas.newSession,

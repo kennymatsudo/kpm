@@ -91,6 +91,41 @@ describe('streamingSlice.finalizeMessage', () => {
     expect(session?.messages).toHaveLength(1);
     expect(warnSpy).not.toHaveBeenCalled();
   });
+
+  it('inserts a completed assistant turn before a promoted queued user message', () => {
+    const sessionId = 'session-queued-follow-up';
+    const queuedClientMessageId = 'queued-client-message';
+
+    const store = createTestStore(sessionId, {
+      ...base,
+      isStreaming: true,
+      streamingSegments: [{ type: 'text', content: 'first answer' }],
+      streamingContent: 'first answer',
+      messages: [
+        {
+          id: 'user-1',
+          role: 'user',
+          segments: [{ type: 'text', content: 'first prompt' }],
+          timestamp: new Date('2026-01-01T00:00:00.000Z'),
+        },
+        {
+          id: 'user-2',
+          role: 'user',
+          segments: [{ type: 'text', content: 'queued prompt' }],
+          timestamp: new Date('2026-01-01T00:00:01.000Z'),
+          queued: true,
+          clientMessageId: queuedClientMessageId,
+        },
+      ],
+    });
+
+    store.getState().finalizeMessage(sessionId, { beforeClientMessageId: queuedClientMessageId });
+
+    const messages = store.getState().sessions.get(sessionId)?.messages ?? [];
+    expect(messages.map((message) => message.role)).toEqual(['user', 'assistant', 'user']);
+    expect(messages[1].segments).toEqual([{ type: 'text', content: 'first answer' }]);
+    expect(messages[2].clientMessageId).toBe(queuedClientMessageId);
+  });
 });
 
 describe('streamingSlice streaming state recovery', () => {

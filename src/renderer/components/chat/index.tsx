@@ -69,6 +69,7 @@ export function Chat({ currentView }: ChatProps) {
   const mcpDegraded = viewedSession?.mcpDegraded ?? false;
   const mcpError = viewedSession?.mcpError ?? null;
 
+  const { send, retry, cancel, cancelQueued } = useChat(currentProjectId, currentView);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [lastClientMessageId, setLastClientMessageId] = useState<string | null>(null);
 

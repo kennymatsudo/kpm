@@ -185,6 +185,7 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-unused-vars': 'off',
       '@typescript-eslint/no-this-alias': 'off',
+      'import-x/no-unresolved': 'off',
     },
   },
 );

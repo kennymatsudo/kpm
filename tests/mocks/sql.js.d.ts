@@ -11,6 +11,7 @@ declare module 'sql.js' {
   export interface Database {
     run(sql: string, params?: unknown[]): Database;
     prepare(sql: string): Statement;
+    exec(sql: string): { columns: string[]; values: unknown[][] }[];
     close(): void;
     export(): Uint8Array;
   }

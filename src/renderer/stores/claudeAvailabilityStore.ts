@@ -17,6 +17,7 @@ function unwrap(
     return { availability: null, error: response.error };
   }
   const { success: _success, ...rest } = response;
+  return { availability: rest, error: null };
 }
 
 export const useClaudeAvailabilityStore = create<ClaudeAvailabilityState>((set) => ({

@@ -202,6 +202,7 @@ export function createReviewService(deps: ReviewServiceDeps) {
       }
       const probe = probeResult.data;
       const stored = deps.reviewSyncState.get(session.repo_id, session.pr_number!);
+      if (stored?.probe_digest === probe.digest && stored.last_error == null) {
         const ownership = resolveOwnership(sessionId) ?? deps.reviewOwnership.get(session.repo_id, session.pr_number!) ?? null;
         const updatedSync = deps.reviewSyncState.upsert({
           repo_id: session.repo_id,

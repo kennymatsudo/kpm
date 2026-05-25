@@ -1,17 +1,85 @@
+import type { ChatState, ChatSet, ChatGet, Message, PerSessionState } from './types';
 import { createInitialPerSessionState, createInitialChatState } from './baseState';
 import { streamingBuffer } from './utils';
 
 export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
 > {
   return {
+    addUserMessage: (chatSessionId, content, attachments, options) => set((state) => {
       const sessions = new Map(state.sessions);
       const now = Date.now();
+      const isQueued = options?.queued ?? false;
 
+      const newUserMessage: Message = {
+        id: crypto.randomUUID(),
+        role: 'user',
+        segments: [{ type: 'text', content }],
+        timestamp: new Date(),
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
+        ...(options?.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
+        ...(isQueued ? { queued: true } : {}),
+      };
+
+      const nextSession: PerSessionState = isQueued
+        ? { ...session, messages: [...session.messages, newUserMessage] }
+        : {
+            ...session,
+            messages: [...session.messages, newUserMessage],
+            isStreaming: true,
+            streamingContent: '',
+            streamingThinking: '',
+            streamingSegments: [],
+            pendingActivities: [],
+            error: null,
+            activities: [],
+            suggestions: [],
+            streamStartedAt: now,
+            lastStreamUpdateAt: now,
+          };
+
+      sessions.set(chatSessionId, nextSession);
 
       return {
         sessions,
         nextSessionNumber: sessions.has(chatSessionId) ? state.nextSessionNumber : state.nextSessionNumber + 1,
       };
+    }),
+
+    clearQueuedFlag: (chatSessionId, clientMessageId) => set((state) => {
+      const sessions = new Map(state.sessions);
+      const session = sessions.get(chatSessionId);
+      if (!session) return state;
+
+      // Find the message to clear. If a clientMessageId was supplied, target
+      // that specific message; otherwise clear the most recent queued user
+      // message (covers callers that don't track ids — e.g. legacy paths).
+      let touched = false;
+      const messages = session.messages.map((m) => {
+        if (touched) return m;
+        if (m.role !== 'user' || !m.queued) return m;
+        if (clientMessageId && m.clientMessageId !== clientMessageId) return m;
+        touched = true;
+        const { queued: _queued, ...rest } = m;
+        return rest;
+      });
+
+      if (!touched) return state;
+      sessions.set(chatSessionId, { ...session, messages });
+      return { sessions };
+    }),
+
+    removeQueuedUserMessage: (chatSessionId, clientMessageId) => set((state) => {
+      const sessions = new Map(state.sessions);
+      const session = sessions.get(chatSessionId);
+      if (!session) return state;
+
+      const idx = session.messages.findIndex(
+      );
+      if (idx === -1) return state;
+
+      const messages = [...session.messages.slice(0, idx), ...session.messages.slice(idx + 1)];
+      sessions.set(chatSessionId, { ...session, messages });
+      return { sessions };
     }),
 
     setRetrying: (chatSessionId) => set((state) => {
@@ -31,6 +99,7 @@ export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         pendingActivities: [],
         streamStartedAt: now,
         lastStreamUpdateAt: now,
+        suggestions: [],
       });
 
       return { sessions };

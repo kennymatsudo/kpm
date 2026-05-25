@@ -38,6 +38,8 @@ export function useChatIpcBridge(projectId: string | null): void {
     setClaudeSessionId,
     setSessionTitle,
     setMcpStatus,
+    clearQueuedFlag,
+    removeQueuedUserMessage,
   } = useChatStore(useShallow((state) => ({
     appendChunk: state.appendChunk,
     appendThinking: state.appendThinking,
@@ -56,6 +58,8 @@ export function useChatIpcBridge(projectId: string | null): void {
     setClaudeSessionId: state.setClaudeSessionId,
     setSessionTitle: state.setSessionTitle,
     setMcpStatus: state.setMcpStatus,
+    clearQueuedFlag: state.clearQueuedFlag,
+    removeQueuedUserMessage: state.removeQueuedUserMessage,
   })));
 
   const {
@@ -136,11 +140,35 @@ export function useChatIpcBridge(projectId: string | null): void {
         void (async () => {
           if (!isActiveForProject(data.projectId)) return;
           const sessionId = data.chatSessionId;
+            });
           }
           const usage = await getChatUsage(projectId);
           if (!isActiveForProject(data.projectId)) return;
           setTokens(usage.totalTokens);
         })();
+      },
+      onQueued: (data) => {
+        // No-op for now — the user bubble is added optimistically with
+        // queued=true in `useChat.send`. This event exists so the renderer
+        // can confirm the backend accepted the queue, but we don't need
+        // to mutate state here.
+        if (!isActiveForProject(data.projectId)) return;
+      },
+      onQueueCleared: (data) => {
+        if (!isActiveForProject(data.projectId)) return;
+        const sessionId = data.chatSessionId;
+        if (data.reason === 'already_sent') {
+          // Race lost — the SDK pulled the message between cancel intent and
+          // the IPC arriving. Drop the queued badge but keep the bubble; the
+          // turn will stream normally.
+          clearQueuedFlag(sessionId, data.clientMessageId);
+          return;
+        }
+        // Cancelled by user or lost to a session disconnect — drop the
+        // bubble entirely. The message never reached the model.
+        if (data.clientMessageId) {
+          removeQueuedUserMessage(sessionId, data.clientMessageId);
+        }
       },
       onError: (data) => {
         if (!isActiveForProject(data.projectId)) return;

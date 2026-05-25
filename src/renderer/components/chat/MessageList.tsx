@@ -387,8 +387,10 @@ const MessageHeader = memo(function MessageHeader({
 
 const MessageRow = memo(function MessageRow({
   message,
+  onCancelQueued,
 }: {
   message: Message;
+  onCancelQueued?: (clientMessageId: string) => void;
 }) {
   const isUser = message.role === 'user';
   const textContent = useMemo(() => getTextContent(message.segments), [message.segments]);
@@ -452,6 +454,27 @@ const MessageRow = memo(function MessageRow({
         {isUser ? (
           <>
             <div className="flex justify-end">
+              <div className="flex flex-col items-end max-w-[80%] gap-1">
+                <div
+                  className={`whitespace-pre-wrap text-right rounded-lg px-3 py-1.5 ${
+                    message.queued
+                      : 'bg-surface-2/60'
+                  }`}
+                >
+                </div>
+                  <div className="flex items-center gap-2 text-xxs text-text-muted">
+                    <span className="inline-flex items-center gap-1">
+                    </span>
+                      <button
+                        type="button"
+                        onClick={() => onCancelQueued(message.clientMessageId!)}
+                        className="underline hover:text-text-primary"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <CopyButton
@@ -479,10 +502,12 @@ const VirtualizedMessageRow = memo(function VirtualizedMessageRow({
   message,
   top,
   onHeightChange,
+  onCancelQueued,
 }: {
   message: Message;
   top: number;
   onHeightChange: (id: string, height: number) => void;
+  onCancelQueued?: (clientMessageId: string) => void;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
 
@@ -506,14 +531,17 @@ const VirtualizedMessageRow = memo(function VirtualizedMessageRow({
       className="absolute left-0 right-0"
       style={{ top }}
     >
+      <MessageRow message={message} onCancelQueued={onCancelQueued} />
     </div>
   );
 });
 
 interface MessageListProps {
   currentView?: ChatViewMode;
+  onCancelQueued?: (clientMessageId: string) => void;
 }
 
+export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
   // Access per-session chat state
   const { viewedSession, viewedSessionId, model } = useChatStore(
         ? state.sessions.get(state.viewedSessionId) ?? null
@@ -773,6 +801,7 @@ interface MessageListProps {
               message={message}
               top={top}
               onHeightChange={handleMessageHeightChange}
+              onCancelQueued={onCancelQueued}
             />
           ))}
         </div>

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createChatService, type ChatServiceDeps } from './ChatService';
+import { failure, success } from '../result';
 import type { ChatAttachment, Project } from '../../../shared/types';
 
 function makeProject(): Project {
@@ -53,6 +54,7 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
     streamingSessionService: {
       sendChatMessage,
       interruptChatSession: vi.fn(),
+      cancelQueuedChatMessage: vi.fn(),
       getActiveSessions: vi.fn(),
       getChatSessionState: vi.fn(),
     },
@@ -119,6 +121,35 @@ describe('ChatService.sendMessage', () => {
     expect(role).toBe('user');
     expect(content).toBe('describe this');
     expect(content).not.toMatch(/Images attached/i);
+  });
+
+  it('does not persist a user message when the streaming service rejects it', async () => {
+    const { deps, spies } = makeDeps({
+      streamingSessionService: {
+        sendChatMessage: vi.fn(async () => failure('A follow-up is already queued.')),
+        interruptChatSession: vi.fn(),
+        cancelQueuedChatMessage: vi.fn(),
+        disconnectChatSession: vi.fn(),
+        getActiveSessions: vi.fn(),
+        getChatSessionState: vi.fn(),
+      },
+    });
+    const service = createChatService(deps);
+
+    const result = await service.sendMessage({
+      projectId: 'project-1',
+      message: 'queued too soon',
+      chatSessionId: 'session-1',
+      clientMessageId: 'client-1',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(spies.addMessage).not.toHaveBeenCalled();
+    expect(spies.emitChatError).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      chatSessionId: 'session-1',
+      error: 'A follow-up is already queued.',
+    });
   });
 
   it('rejects an unsupported attachment extension with a clear error', async () => {
