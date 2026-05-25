@@ -84,6 +84,7 @@ describe('FileExplorerService', () => {
       }
     });
 
+    it('filters hidden paths (.git, node_modules, .DS_Store)', async () => {
       fs.mkdirSync(path.join(tempDir, '.git'));
       fs.mkdirSync(path.join(tempDir, 'node_modules'));
       fs.writeFileSync(path.join(tempDir, '.DS_Store'), '');

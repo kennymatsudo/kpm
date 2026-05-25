@@ -131,6 +131,11 @@ describe('AttachmentService', () => {
 
       await service.add('p1', '/source/file.png', '../../../etc/passwd');
 
+      expect(deps.attachments.add).toHaveBeenCalledWith(
+        'p1',
+        expect.any(String),
+        'passwd',
+      );
     });
 
     it('returns failure when file copy fails', async () => {

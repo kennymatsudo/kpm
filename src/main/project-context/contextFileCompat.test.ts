@@ -27,6 +27,8 @@ function createMockFs(initial: Record<string, string> = {}): ContextFileCompatSy
 }
 
 const FOLDER = '/tmp/project';
+const PRIMARY_PATH = '/tmp/project/AGENTS.md';
+const COMPAT_PATH = '/tmp/project/CLAUDE.md';
 
 describe('writeInitialProjectContextFilesSync', () => {
   it('writes both context files when neither exists', () => {
@@ -41,6 +43,13 @@ describe('writeInitialProjectContextFilesSync', () => {
     writeInitialProjectContextFilesSync(fsImpl, FOLDER, '# Replacement');
     expect(fsImpl.writes.has(PRIMARY_PATH)).toBe(false);
     expect(fsImpl.writes.get(COMPAT_PATH)).toBe('# Upstream claude');
+  });
+
+  it('skips when an upstream AGENTS.md is already present', () => {
+    const fsImpl = createMockFs({ [PRIMARY_PATH]: '# Upstream agents' });
+    writeInitialProjectContextFilesSync(fsImpl, FOLDER, '# Replacement');
+    expect(fsImpl.writes.get(PRIMARY_PATH)).toBe('# Upstream agents');
+    expect(fsImpl.writes.has(COMPAT_PATH)).toBe(false);
   });
 });
 
