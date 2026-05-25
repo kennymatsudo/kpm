@@ -11,6 +11,8 @@ import type {
   SDKSessionStateChangedMessage,
   SDKRateLimitEvent,
   SDKRateLimitInfo,
+  SDKPermissionDeniedMessage,
+  SDKToolUseSummaryMessage,
   TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
 
@@ -70,4 +72,22 @@ export function isSessionStateChanged(msg: SDKMessage): msg is SDKSessionStateCh
  */
 export function isRateLimitEvent(msg: SDKMessage): msg is SDKRateLimitEvent {
   return msg.type === 'rate_limit_event';
+}
+
+/**
+ * Check if a message is a permission denied notification (SDK v0.3.144+).
+ * Emitted when canUseTool denies a tool call. Carries tool_name, tool_use_id,
+ * and optionally agent_id (if the denial originated inside a subagent).
+ */
+export function isPermissionDeniedMessage(msg: SDKMessage): msg is SDKPermissionDeniedMessage {
+  return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'permission_denied';
+}
+
+/**
+ * Check if a message is a tool-use summary (SDK v0.3.144+).
+ * Emitted after a batch of tool calls to summarise what ran. Carries a
+ * human-readable summary string and the IDs of the tool calls it covers.
+ */
+export function isToolUseSummary(msg: SDKMessage): msg is SDKToolUseSummaryMessage {
+  return msg.type === 'tool_use_summary';
 }

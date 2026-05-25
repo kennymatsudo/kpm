@@ -85,6 +85,8 @@ export interface RunClaudeQueryResult<TStructured = unknown> {
   structuredOutput?: TStructured;
   /** Result subtype reported by the SDK ('success' or an error code). */
   resultSubtype?: string;
+  /** HTTP status code from the API when an error occurred (SDK v0.3.144+). Useful for diagnosing rate limits vs auth failures. */
+  apiErrorStatus?: number;
   /** Errors array for non-success structured-output results. */
   errors: string[];
 }
@@ -99,6 +101,8 @@ interface ResultMessageLike {
   subtype?: string;
   usage?: ClaudeQueryUsage;
   total_cost_usd?: number | null;
+  /** HTTP status code from the API when an error occurred during a successful result (SDK v0.3.144+). */
+  api_error_status?: number | null;
   errors?: string[];
   structured_output?: unknown;
   message?: { content?: { type: string; text?: string }[] };
@@ -191,6 +195,9 @@ export async function runClaudeQuery<TStructured = unknown>(
         }
         if (typeof msg.total_cost_usd === 'number') {
           acc.totalCostUsd = msg.total_cost_usd;
+        }
+        if (typeof msg.api_error_status === 'number') {
+          acc.apiErrorStatus = msg.api_error_status;
         }
 
         if (options.recordUsage && msg.usage) {
