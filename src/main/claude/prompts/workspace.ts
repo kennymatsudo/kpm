@@ -20,6 +20,7 @@ export {
  */
 export const CONSTRAINTS = `## Constraints
 
+
 - **Never create plan items unprompted.** Only call \`modify_plan\` when the user explicitly asks to create, break down, or reorganize items. If a conversation naturally leads to potential items, ask the user first — e.g., "Want me to add these as plan items?" — before calling any modification tool.
 - **Attachments are read-only** reference material provided by the user.
 - **No emojis** in responses, plan items, group names, or documents. The UI uses SVG icons for visual elements, so emojis create inconsistency.`;
@@ -33,6 +34,7 @@ export const WORKSPACE_SECTION = `## Your Workspace
 - Project context file (AGENTS.md or CLAUDE.md) — persistent knowledge (via \`propose_context_edit\`)
 - Project files — create new (via \`propose_document_create\`), edit existing (via \`propose_document_edit\`)
 
+**You don't control:** attachments, connected repo git state.
 
 **Context file principles:** Keep lean, extract verbose content to project files, focus on reusable patterns.`;
 

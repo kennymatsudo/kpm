@@ -33,12 +33,17 @@ Each finding should have:
 - line: the line number, or null when not applicable
 - description: the concrete issue, why it matters, and the smallest reasonable fix direction
 
+Severity guide: critical = correctness bug or security issue that must be fixed before merging; warning = likely problem worth addressing but not a blocker; suggestion = style, naming, or optimization that can safely be ignored.
+
 Return ONLY the JSON object, no other text. If there are no issues, return \`{"findings":[]}\`.
 
 Example:
 \`\`\`json
 {
   "findings": [
+    { "severity": "critical", "file": "src/auth.ts", "line": 42, "description": "Password comparison uses == instead of constant-time comparison, vulnerable to timing attacks. Use crypto.timingSafeEqual instead." },
+    { "severity": "warning", "file": "src/api.ts", "line": 17, "description": "Error from external call is swallowed — callers receive undefined instead of a failure signal. Return the error or rethrow." },
+    { "severity": "suggestion", "file": "src/utils.ts", "line": 5, "description": "Variable name 'd' is ambiguous in context. Renaming to 'durationMs' would improve readability." }
   ]
 }
 \`\`\``;

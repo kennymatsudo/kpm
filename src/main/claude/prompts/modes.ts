@@ -17,7 +17,9 @@ import type { PlanItem } from '../../../shared/types';
  */
   return `## Plan Modifications
 
+When asked to break down, create, or reorganize work:
 
+- Include \`code_refs\` whenever you have relevant file paths.
 }
 
 /**
