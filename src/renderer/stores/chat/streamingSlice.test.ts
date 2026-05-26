@@ -92,6 +92,29 @@ describe('streamingSlice.finalizeMessage', () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
+  it('clears thinking content after finalizing a turn', () => {
+    const sessionId = 'session-thinking';
+
+    const store = createTestStore(sessionId, {
+      ...base,
+      isStreaming: true,
+      streamingThinking: 'private reasoning',
+      streamingSegments: [{ type: 'text', content: 'answer' }],
+      streamingContent: 'answer',
+    });
+
+    store.getState().finalizeMessage(sessionId);
+    store.getState().finalizeMessage(sessionId);
+
+    const session = store.getState().sessions.get(sessionId);
+    expect(session?.streamingThinking).toBe('');
+    expect(session?.messages).toHaveLength(1);
+    expect(session?.messages[0].segments).toEqual([
+      { type: 'thinking', content: 'private reasoning' },
+      { type: 'text', content: 'answer' },
+    ]);
+  });
+
   it('inserts a completed assistant turn before a promoted queued user message', () => {
     const sessionId = 'session-queued-follow-up';
     const queuedClientMessageId = 'queued-client-message';

@@ -16,25 +16,56 @@ export function NewSessionButton() {
     currentProjectId: state.currentProjectId,
   })));
 
+  const { viewedSessionId, activeSessionCount, startNewChatSession, markSessionInactive } = useChatStore(
+    useShallow((state) => {
+      const visibleActiveSessionCount = Array.from(state.activeSessionIds)
+        .filter((sessionId) => state.sessions.has(sessionId))
+        .length;
+
+      return {
+        viewedSessionId: state.viewedSessionId,
+        activeSessionCount: visibleActiveSessionCount,
+        startNewChatSession: state.startNewChatSession,
+        markSessionInactive: state.markSessionInactive,
+      };
+    })
   );
 
   const [keepActive, setKeepActive] = useState(true);
 
+  const handleNewSession = useCallback(() => {
     if (!currentProjectId) return;
+    const previousSessionId = viewedSessionId;
 
+    // Open the tab immediately. Backend reset/disconnect work must not make
+    // the header control feel dead if IPC is slow or fails.
     startNewChatSession(keepActive);
 
+    if (!keepActive && previousSessionId) {
+      void disconnectChatSession(currentProjectId, previousSessionId)
+        .then(() => markSessionInactive(previousSessionId))
+        .catch((error: unknown) => {
+          console.error('[NewSessionButton] Failed to disconnect previous session:', error);
+        });
+    }
+
+    void startNewBackendChatSession(currentProjectId).catch((error: unknown) => {
+      console.error('[NewSessionButton] Failed to reset backend chat session:', error);
+    });
+  }, [currentProjectId, viewedSessionId, keepActive, startNewChatSession, markSessionInactive]);
 
   return (
     <div className="flex items-center gap-1">
       <button
         onClick={handleNewSession}
+        disabled={!currentProjectId}
         className={`
           flex items-center gap-1.5 px-2 py-1 rounded-lg
           transition-all duration-150
           text-text-tertiary hover:text-text-secondary hover:bg-surface-3
           disabled:opacity-40 disabled:cursor-not-allowed
         `}
+        title="New session"
         aria-label="New session"
       >
         <svg

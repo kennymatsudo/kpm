@@ -248,6 +248,7 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
         sessions.set(chatSessionId, {
           ...session,
           streamingContent: '',
+          streamingThinking: '',
           streamingSegments: [],
           pendingActivities: [],
           activities: [],

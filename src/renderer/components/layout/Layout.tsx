@@ -362,6 +362,7 @@ export const Layout = memo(function Layout({
               </div>
               <div className="flex-1 panel-right flex flex-col min-w-0">
                 <ChatHeader />
+                <div className="flex-1 min-h-0 overflow-hidden">
                   <ErrorBoundary name="Chat">
                     <Chat currentView="plan" />
                   </ErrorBoundary>

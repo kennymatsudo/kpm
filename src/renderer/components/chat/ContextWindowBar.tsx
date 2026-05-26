@@ -24,6 +24,7 @@ export function ContextWindowBar({ usage, model }: ContextWindowBarProps) {
   else if (pct >= 75) barColor = 'bg-warning';
 
   return (
+    <div className="pointer-events-none mb-1.5 px-1 flex items-center gap-2">
       <div className="flex-1 h-px bg-surface-3 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-500 ${barColor}`}

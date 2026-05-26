@@ -158,6 +158,7 @@ export interface ChatState {
 
   // Shared actions
   setTokens: (tokens: number) => void;
+  setDefaultModel: (model: ClaudeModel) => void;
   setModel: (chatSessionId: string, model: ClaudeModel) => void;
   setEffort: (chatSessionId: string, effort: AgentEffortLevel) => void;
   reset: () => void;

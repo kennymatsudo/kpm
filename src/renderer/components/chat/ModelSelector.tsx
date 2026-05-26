@@ -1,4 +1,5 @@
 import { useChatStore, type ChatClaudeModel } from '../../stores';
+import { useShallow } from 'zustand/react/shallow';
 
 const MODELS: { value: ChatClaudeModel; label: string; description: string }[] = [
   { value: 'sonnet', label: 'Sonnet', description: 'Claude Sonnet — Fast, balanced' },
@@ -6,10 +7,36 @@ const MODELS: { value: ChatClaudeModel; label: string; description: string }[] =
 ];
 
 export function ModelSelector() {
+  const {
+    viewedSessionId,
+    hasViewedSession,
+    model,
+    setDefaultModel,
+    setModel,
+    isStreaming,
+  } = useChatStore(useShallow((state) => {
+    const viewedSession = state.viewedSessionId
+      ? state.sessions.get(state.viewedSessionId) ?? null
+      : null;
+
+    return {
+      viewedSessionId: state.viewedSessionId,
+      hasViewedSession: viewedSession !== null,
+      model: viewedSession?.model ?? state.model,
+      setDefaultModel: state.setDefaultModel,
+      setModel: state.setModel,
+      isStreaming: viewedSession?.isStreaming ?? false,
+    };
+  }));
 
   const handleModelChange = (newModel: ChatClaudeModel, e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    if (viewedSessionId && hasViewedSession) {
+      setModel(viewedSessionId, newModel);
+    } else {
+      setDefaultModel(newModel);
+    }
   };
 
   return (

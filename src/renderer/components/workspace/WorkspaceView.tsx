@@ -196,6 +196,7 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
           <div className="divider mx-4" />
 
           {/* Chat content */}
+          <div className="flex-1 min-h-0 overflow-hidden">
             <ErrorBoundary name="Chat">
               <Chat currentView="workspace" />
             </ErrorBoundary>

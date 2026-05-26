@@ -365,6 +365,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   return (
     <div
       ref={containerRef}
+      className={`flex-shrink-0 p-2 transition-colors ${isDragOver ? 'bg-accent/10 ring-2 ring-accent/50 ring-inset rounded-lg' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}

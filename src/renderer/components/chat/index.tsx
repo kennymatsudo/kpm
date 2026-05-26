@@ -145,6 +145,7 @@ export function Chat({ currentView }: ChatProps) {
   const focusCount = focusedResources.length;
 
   return (
+    <div className="flex flex-col h-full min-h-0 bg-surface-1 overflow-x-hidden">
       {/* Session tabs */}
       <SessionList />
 

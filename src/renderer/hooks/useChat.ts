@@ -10,6 +10,10 @@ import {
   startNewBackendChatSession,
 } from '../services/chatService';
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.length > 0 ? error.message : fallback;
+}
+
 /**
  * Chat hook for managing unified chat sessions.
  * Chat is shared between Plan and Workspace views.
@@ -21,6 +25,7 @@ import {
 export function useChat(projectId: string | null, currentView?: ChatViewMode) {
   const {
     addUserMessage,
+    setError,
     setRetrying,
     finalizeMessage,
     markSessionInactive,
@@ -31,6 +36,7 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     removeQueuedUserMessage,
   } = useChatStore(useShallow((state) => ({
     addUserMessage: state.addUserMessage,
+    setError: state.setError,
     setRetrying: state.setRetrying,
     finalizeMessage: state.finalizeMessage,
     markSessionInactive: state.markSessionInactive,
@@ -87,9 +93,33 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     const model = sessionState?.model ?? 'sonnet';
     const effort = sessionState?.effort ?? 'medium';
 
+    let sendResult: Awaited<ReturnType<typeof sendChatMessage>>;
+    try {
+      sendResult = await sendChatMessage({
+        projectId,
+        message,
+        focusedResources: sessionFocusedResources,
+        model,
+        effort: model === 'opus' ? undefined : effort,
+        tempImages,
+        chatSessionId,
+        currentView,
+        clientMessageId: effectiveClientMessageId,
+      });
+    } catch (error) {
+      if (sendingWhileStreaming) {
+        removeQueuedUserMessage(chatSessionId, effectiveClientMessageId);
+      } else {
+        setError(chatSessionId, getErrorMessage(error, 'Failed to send message'));
+      }
+      return effectiveClientMessageId;
+    }
 
     if (sendingWhileStreaming && sendResult && 'success' in sendResult && !sendResult.success) {
       removeQueuedUserMessage(chatSessionId, effectiveClientMessageId);
+    }
+    if (!sendingWhileStreaming && sendResult && 'success' in sendResult && !sendResult.success) {
+      setError(chatSessionId, sendResult.error ?? 'Failed to send message');
     }
 
     return effectiveClientMessageId;
@@ -113,6 +143,23 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     const retrySessionState = useChatStore.getState().sessions.get(chatSessionId);
     const model = retrySessionState?.model ?? 'sonnet';
 
+    try {
+      const result = await sendChatMessage({
+        projectId,
+        message,
+        focusedResources: sessionFocusedResources,
+        model,
+        tempImages,
+        chatSessionId,
+        currentView,
+        clientMessageId,
+      });
+      if (!result.success) {
+        setError(chatSessionId, result.error ?? 'Failed to retry message');
+      }
+    } catch (error) {
+      setError(chatSessionId, getErrorMessage(error, 'Failed to retry message'));
+    }
 
   const newSession = useCallback(async (keepCurrentActive = true) => {
     if (!projectId) return;

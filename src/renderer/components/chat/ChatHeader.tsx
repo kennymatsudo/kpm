@@ -19,6 +19,7 @@ export function ChatHeader() {
   };
 
   return (
+    <div className="relative z-10 flex items-center justify-between flex-shrink-0 px-4 py-2.5 border-b border-border-subtle/60 bg-surface-1">
       <div className="flex items-center gap-2 min-w-0">
         <span className="text-sm font-medium text-text-primary flex-shrink-0">KPM</span>
         {claudeSessionId && (

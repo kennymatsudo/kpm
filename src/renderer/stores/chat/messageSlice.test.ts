@@ -57,3 +57,31 @@ describe('messageSlice.addUserMessage', () => {
     expect(messages[0].attachments).toBeUndefined();
   });
 });
+
+describe('messageSlice.setError', () => {
+  it('clears partial streaming state when a send fails', () => {
+    const sessionId = 'session-error';
+    const session = {
+      isStreaming: true,
+      streamingContent: 'partial',
+      streamingThinking: 'thinking',
+      streamingSegments: [{ type: 'text' as const, content: 'partial' }],
+      pendingActivities: [{ id: 'activity-1', type: 'command' as const, label: 'Running test' }],
+      streamStartedAt: 100,
+      lastStreamUpdateAt: 200,
+    };
+    const store = createTestStore(sessionId, session);
+
+    store.getState().setError(sessionId, 'Failed');
+
+    const nextSession = store.getState().sessions.get(sessionId);
+    expect(nextSession?.error).toBe('Failed');
+    expect(nextSession?.isStreaming).toBe(false);
+    expect(nextSession?.streamingContent).toBe('');
+    expect(nextSession?.streamingThinking).toBe('');
+    expect(nextSession?.streamingSegments).toEqual([]);
+    expect(nextSession?.pendingActivities).toEqual([]);
+    expect(nextSession?.streamStartedAt).toBeNull();
+    expect(nextSession?.lastStreamUpdateAt).toBeNull();
+  });
+});
