@@ -46,10 +46,26 @@ export interface AgentActivity {
   status?: 'running' | 'success' | 'failed';
 }
 
+export interface AgentQuestionOption {
+  label: string;
+  description: string;
+  preview?: string;
+}
+
+export interface AgentQuestionItem {
+  question: string;
+  header: string;
+  options: AgentQuestionOption[];
+  multiSelect: boolean;
+}
+
 /** A question the agent is asking the user */
 export interface AgentQuestion {
   id: string;
+  /** First question text — used as fallback when no structured questions */
   text: string;
+  /** Structured multi-question format from AskUserQuestion tool */
+  questions?: AgentQuestionItem[];
   timestamp: number;
 }
 

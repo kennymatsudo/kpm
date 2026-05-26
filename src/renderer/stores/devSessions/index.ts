@@ -207,6 +207,16 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
   // Agent session handlers — called from IPC event listeners
   handleAgentStateChanged: (devSessionId, state) => {
     set((s) => {
+      const nextState = new Map(s.agentStateBySessionId);
+      nextState.set(devSessionId, state);
+      const updates: Partial<typeof s> = { agentStateBySessionId: nextState };
+      // Clear the pending question when the session resumes working
+      if (state === 'working') {
+        const nextQuestion = new Map(s.questionBySessionId);
+        nextQuestion.set(devSessionId, null);
+        updates.questionBySessionId = nextQuestion;
+      }
+      return updates;
     });
   },
 
