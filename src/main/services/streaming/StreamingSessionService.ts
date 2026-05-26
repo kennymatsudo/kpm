@@ -1440,6 +1440,13 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       }
     }
 
+    // The SDK echoes every user turn back through onMessage as type:'user'.
+    // When a plain user turn arrives (no tool_use_result), it means the SDK
+    // has dequeued the message and started processing it. Use this as the
+    // authoritative "message left the queue" signal to clear the queued badge
+    // in the renderer immediately — earlier than waiting for chat:done.
+    }
+
     // Handle tool_use_result on user messages — attach diff stats to the
     // matching activity by tool_use_id and re-emit so the renderer updates
     // the existing card instead of pushing a new one.
