@@ -78,6 +78,15 @@ export interface PerSessionState {
   model: ClaudeModel;
   /** Effort level selected for this session. Independent per tab. */
   effort: AgentEffortLevel;
+  /** Token counts from the most recently completed turn, for context window display. */
+  lastTurnUsage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+    /** Actual context window size for the model used, as reported by the SDK. */
+    contextWindow: number | null;
+  } | null;
 }
 
 export interface ChatState {
@@ -145,6 +154,7 @@ export interface ChatState {
   setClaudeSessionId: (chatSessionId: string, claudeSessionId: string) => void;
   setSessionTitle: (chatSessionId: string, title: string) => void;
   setMcpStatus: (chatSessionId: string, degraded: boolean, error?: string | null) => void;
+  setLastTurnUsage: (chatSessionId: string, usage: PerSessionState['lastTurnUsage']) => void;
 
   // Shared actions
   setTokens: (tokens: number) => void;

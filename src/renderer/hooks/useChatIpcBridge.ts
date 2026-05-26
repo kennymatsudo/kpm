@@ -38,6 +38,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     setClaudeSessionId,
     setSessionTitle,
     setMcpStatus,
+    setLastTurnUsage,
     clearQueuedFlag,
     removeQueuedUserMessage,
   } = useChatStore(useShallow((state) => ({
@@ -58,6 +59,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     setClaudeSessionId: state.setClaudeSessionId,
     setSessionTitle: state.setSessionTitle,
     setMcpStatus: state.setMcpStatus,
+    setLastTurnUsage: state.setLastTurnUsage,
     clearQueuedFlag: state.clearQueuedFlag,
     removeQueuedUserMessage: state.removeQueuedUserMessage,
   })));

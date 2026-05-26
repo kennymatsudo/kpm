@@ -26,6 +26,7 @@ export const createInitialPerSessionState = (
   title: null,
   mcpDegraded: false,
   mcpError: null,
+  lastTurnUsage: null,
   // Sessions created in-process have no DB history to fetch; restore shells
   // explicitly set this to false so setViewedSession lazy-loads them.
   hydrated: true,

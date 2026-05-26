@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent, type ClipboardEvent, type DragEvent, useRef, useEffect, useCallback } from 'react';
 import { useChatStore } from '../../stores';
 import { deleteTempImage, saveTempImage } from '../../services/tempImageService';
+import { ContextWindowBar } from './ContextWindowBar';
 import {
   pickChatAttachments,
   saveDroppedFile,
@@ -40,10 +41,12 @@ interface ChatInputProps {
 
 export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, currentView }: ChatInputProps) {
   // Draft message and streaming state from viewed session
+  const { viewedSessionId, viewedSession, lastTurnUsage, setDraftMessage, setPendingAttachments, getChatSessionId, getOrCreateSession } = useChatStore(useShallow((state) => {
     const session = state.viewedSessionId ? state.sessions.get(state.viewedSessionId) : null;
     return {
       viewedSessionId: state.viewedSessionId,
       viewedSession: session,
+      lastTurnUsage: session?.lastTurnUsage ?? null,
       setDraftMessage: state.setDraftMessage,
       setPendingAttachments: state.setPendingAttachments,
       getChatSessionId: state.getChatSessionId,
@@ -389,6 +392,11 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
       {attachmentError && (
           {attachmentError}
         </div>
+      )}
+
+      {/* Context window usage — sits below the composer, inside the input padding zone */}
+      {viewedSessionId && (
+        <ContextWindowBar usage={lastTurnUsage} model={viewedSession?.model} />
       )}
 
         <textarea

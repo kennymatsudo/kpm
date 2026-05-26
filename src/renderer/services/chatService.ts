@@ -40,6 +40,16 @@ export interface SessionEventData {
   hasQueuedFollowUp?: boolean;
   /** clientMessageId of the queued user message about to be promoted. */
   queuedClientMessageId?: string;
+  /** Total input tokens sent in this turn (includes conversation history). */
+  inputTokens?: number;
+  /** Output tokens produced in this turn. */
+  outputTokens?: number;
+  /** Tokens read from prompt cache. */
+  cacheReadTokens?: number;
+  /** Tokens written to prompt cache. */
+  cacheCreationTokens?: number;
+  /** Context window size for the model used in this turn (tokens). */
+  contextWindow?: number;
 }
 
 export interface QueuedEventData {

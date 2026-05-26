@@ -215,6 +215,15 @@ export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
       return { sessions };
     }),
 
+    setLastTurnUsage: (chatSessionId, usage) => set((state) => {
+      const sessions = new Map(state.sessions);
+      const session = sessions.get(chatSessionId);
+      if (!session) return state;
+
+      sessions.set(chatSessionId, { ...session, lastTurnUsage: usage });
+      return { sessions };
+    }),
+
     setSessionState: (chatSessionId, sessionState) => set((state) => {
       const sessions = new Map(state.sessions);
       const session = sessions.get(chatSessionId);

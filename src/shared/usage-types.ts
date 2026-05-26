@@ -45,6 +45,26 @@ export interface ProjectUsageStats {
 }
 
 /**
+ * Default context window sizes in tokens by model tier.
+ * Used as a pre-first-turn fallback; the SDK reports the actual contextWindow
+ * in ModelUsage on every result message and takes precedence after turn 1.
+ *
+ */
+const CONTEXT_WINDOW_BY_TIER: Record<string, number> = {
+  opus: 1_000_000,
+  sonnet: 200_000,
+  haiku: 200_000,
+};
+
+/**
+ * Resolve a model identifier to its context window size in tokens.
+ * Accepts SDK aliases ("opus" / "sonnet" / "haiku") and full model IDs
+ */
+export function resolveModelContextWindow(model: string | null | undefined): number {
+  const m = (model ?? '').toLowerCase();
+}
+
+/**
  * Live event broadcast to renderer on every tracked Claude turn.
  * Mirrors the payload sent on the `usage:event` IPC channel.
  */
