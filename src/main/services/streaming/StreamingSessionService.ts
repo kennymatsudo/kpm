@@ -27,6 +27,7 @@ import {
   type PlanActionsEvent,
 } from '../../claude/tools/createKpmServer';
 import { buildUserContentBlocks } from '../../claude/attachmentBlocks';
+import { buildFocusedSection } from '../../claude/prompts/focusedResources';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../claude/prompts';
 import { getConfig } from '../../config';
@@ -809,6 +810,20 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         reason: 'view_changed',
         source: 'sendChatMessage',
       });
+    }
+
+    // Inject focused-resource context into the message text so it is
+    // accurate for every turn, regardless of when the session was created.
+    // Context is captured at send time; plan-item bodies are inlined when
+    // needed (requires a fresh context read for the current plan state).
+    const focused = options.focusedResources as FocusedResource[] | undefined;
+    let messageText = message;
+      const hasPlanItem = focused.some((r) => r.type === 'plan_item');
+      const planItems = hasPlanItem ? (deps.buildContext(projectId)?.planItems ?? []) : [];
+      const prefix = buildFocusedSection(focused, planItems);
+      if (prefix.trim()) {
+        messageText = `${prefix}\n\n${message}`;
+      }
     }
 
     return sendMessageToSession(

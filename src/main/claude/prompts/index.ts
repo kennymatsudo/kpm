@@ -62,6 +62,7 @@ Default action: \`propose_document_create\` for new documents, \`propose_documen
  * 5. Reference (plan items, examples)
  */
 export function buildSystemPrompt(context: PlanContext): string {
+  const { project, repos, attachments, planItems, currentView, taskPromptTemplate, claudeMdContent, getPromptContent, continuationHistory } = context;
 
   const hasAttachments = attachments.length > 0;
   const hasRepos = repos.length > 0;
@@ -80,9 +81,11 @@ ${buildContinuationSection(continuationHistory)}# Project: ${project.name}
 ID: \`${project.id}\` (use for all tool calls)
 Phase: ${project.phase}
 Project folder: \`${project.folder_path}\`
+
 ${buildViewContextSection(currentView)}
 ${getPrompt('system.constraints')}
 
+${buildResponseModesSection(hasRepos, planItems, getPromptContent)}
 
 ${getPrompt('system.workspace')}
 

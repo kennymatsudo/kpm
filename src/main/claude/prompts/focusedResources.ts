@@ -63,9 +63,15 @@ export function buildFocusedSection(
 
   const { blocks, truncatedPlanItemIds } = renderFocusedBlocks(focusedResources, planItems);
 
+  const hasFocusedRepo = focusedResources.some((r) => r.type === 'repo');
+
   const readHint = hasReadableFile
     ? `\nUse the \`Read\` tool on the path(s) above to access file content directly — do not call \`list_project_files\` or plan query tools to find them.\n`
     : '';
+
+  const repoHint = hasFocusedRepo
+    ? `\nExplore the focused repo freely with parallel Grep/Glob/Read calls. Check \`code_refs\` on existing plan items before proposing new patterns.\n`
+    : (hasReadableFile ? `\nCheck \`code_refs\` on relevant plan items before proposing new patterns.\n` : '');
 
   const planItemHint = hasPlanItem
     ? truncatedPlanItemIds.length > 0
@@ -79,6 +85,7 @@ export function buildFocusedSection(
 ${focusDescription}
 
 ${blocks.join('\n\n')}
+${readHint}${repoHint}${planItemHint}
 Treat these as the implicit subject of the conversation unless the user explicitly names something else.
 `;
 }
