@@ -688,6 +688,7 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
 
   const { totalStaticHeight, virtualizedMessages } = useMemo(() => {
     let runningTop = 0;
+    const measurements = staticMessages.map((message) => {
       const measuredHeight = messageHeightsRef.current.get(message.id) ?? ESTIMATED_MESSAGE_HEIGHT;
       const item = {
         message,
@@ -702,6 +703,7 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
     // render all rows to avoid clipped/missing messages from virtualization math.
     const shouldVirtualize =
       viewportHeight > 0
+      && staticMessages.length >= VIRTUALIZATION_MIN_MESSAGES
       && !isInitialMount.current;
     if (!shouldVirtualize) {
       return {
@@ -720,6 +722,7 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
       totalStaticHeight: runningTop,
       virtualizedMessages: visibleItems,
     };
+  }, [staticMessages, measurementVersion, scrollTop, viewportHeight]);
 
   // Smart autoscroll:
   // - Follow while user is at bottom
