@@ -123,6 +123,7 @@ The `currentView` parameter ('plan' | 'workspace') adds context-aware suggestion
 |------|---------|
 | `clientManager.ts` | Singleton Claude client |
 | `contextBuilders.ts` | Context fetching for sessions |
+| `sdkOptionsBuilder.ts` | SDK config construction (applies `thinking: { type: 'adaptive', display: 'summarized' }` for opus and sonnet so thinking content streams in the response) |
 | `auth.ts` | API key management |
 | `activity.ts` | Activity tracking |
 | `findClaude.ts` | Claude binary discovery |

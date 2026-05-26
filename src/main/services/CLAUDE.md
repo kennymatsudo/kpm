@@ -23,6 +23,7 @@ Plan items, projects, attachments, tracker connections, and groups—the domain 
 - `AppLifecycleService` — App startup/shutdown coordination
 - `NotificationService` — System notifications via Electron
 - `UpdateEventBus` — Cross-service update broadcast helper
+- `BriefingService` — Two-stage project briefing pipeline: Stage 1 gathers SQL context and synthesizes chat history with `fastModel`; Stage 2 produces the final briefing with `deepModel` (both default to sonnet; configured via `getConfig().generation`)
 - `TrackerService` — Tracker credential management, connection/scope/association CRUD, Jira API queries (issue search, labels, components, statuses, custom fields), import preview generation, and sync coordination. Wraps `TrackerClientService` + domain `ImportService`/`SyncService`.
 - `GroupService` — Group CRUD (create, update, delete, position, size) and item assignment. Delegates to `GroupAssignmentService` for assignment rule enforcement.
 - `slackTriageAdapter.ts` — Pure composition helper (no state). Owns Slack MCP block/JSON parsing, the Claude SDK adapter session, and plan-item mutation callbacks. `appServices.ts` calls `createSlackTriageAdapter()` and passes the returned deps straight into `createSlackTriageService()` — keeps `appServices.ts` focused on wiring.

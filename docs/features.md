@@ -316,6 +316,7 @@ A feature that scores low on all four is a candidate for removal even if it is t
   - Filters available: entity type (plan item, document), status, label
 - **Dependencies / integrations:**
   - File system watcher: SearchService watches project folder for .md file changes and re-indexes
+  - Databases: queries across multiple tables (plan_items including externally-linked tracker rows, documents)
   - FTS5: substring matching, phrase search with quotes, ranking by relevance
 - **Maturity signal:** Mature. Search engine robust with incremental indexing.
 
@@ -761,6 +762,7 @@ A feature that scores low on all four is a candidate for removal even if it is t
 - **Dependencies / integrations:**
   - Plan items: token resolves to `PlanItem` by id
   - Export pipeline: every export path calls the resolver before sending
+- **Maturity signal:** Mature. Backlinks panel and `set_external_link` PlanAction deferred.
 
 ---
 

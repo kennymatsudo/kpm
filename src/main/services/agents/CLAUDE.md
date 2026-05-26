@@ -32,6 +32,7 @@ The older opposing-agent review findings (`agent_review_runs` / `agent_review_fi
 
 ```text
 Board card (drag to in_progress / play button)
+  ↓ AgentStartModal (repo, base branch, prompt)
   ↓ IPC: agent-session:create-and-start
 Main process
   ├── DevSessionService

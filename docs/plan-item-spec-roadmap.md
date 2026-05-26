@@ -217,6 +217,7 @@ the `documents` DB table today and building that pipeline is out of scope.
 | Layer | Work |
 |-------|------|
 | `src/shared/base-types.ts` | Rename `source_document_id` → `source_document_path` (string, project-relative) |
+| `src/main/db/migrations.ts` | New migration (next after the phase 4a migration): rename column via table-recreation pattern (see CLAUDE.md "Table Recreation") |
 | `PlanItemRepository` | Rename in INSERT/UPDATE/rowToPlanItem |
 | `PlanItemUpdates`, `PlanAction`, Zod | Rename |
 | `PlanActionService` | Rename in executor |
