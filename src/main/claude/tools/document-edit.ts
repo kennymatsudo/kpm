@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod';
+import { createHash } from 'crypto';
 import { tool, jsonResult, toolError, toolLog } from './index';
 import type { DocumentUpdateCallback } from './document-update';
 
@@ -45,6 +46,7 @@ export function createDocumentEditTools(
             'File path must be a relative path within the KPM project (e.g., "guide.md"). Do not use absolute paths from connected repositories or the local filesystem.'
           )
           .describe('Relative file path within the KPM project (e.g., "guide.md", "meeting-notes.md"). Must be relative — never an absolute path like /Users/... or a path into a connected repo.'),
+        expectedHash: z.string().optional().describe('Hash returned by read_project_file. If provided and the file has changed since the read, the call fails so you can re-read before editing.'),
       },
 
         let currentContent: string | null;
@@ -59,6 +61,16 @@ export function createDocumentEditTools(
           return toolError(`File "${filePath}" not found. Use propose_document_create to create a new file.`);
         }
 
+        // Hash guard: if caller supplied a hash, verify the file hasn't changed since their read
+        if (expectedHash !== undefined) {
+          const actualHash = createHash('sha256').update(currentContent).digest('hex').slice(0, 16);
+          if (actualHash !== expectedHash) {
+            return toolError(
+              `File "${filePath}" changed since last read (hash mismatch). Call read_project_file again before editing.`
+            );
+          }
+        }
+
 
 
 
@@ -70,9 +82,15 @@ export function createDocumentEditTools(
           return toolError(`Failed to propose document edit: ${error instanceof Error ? error.message : String(error)}`);
         }
 
+        const linesBefore = currentContent.split('\n').length;
+        const linesAfter = newContent.split('\n').length;
+
         return jsonResult({
           success: true,
           filePath,
+          linesAdded: Math.max(0, linesAfter - linesBefore),
+          linesRemoved: Math.max(0, linesBefore - linesAfter),
+          totalLines: linesAfter,
         });
       }
     ),

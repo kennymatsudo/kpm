@@ -25,6 +25,7 @@ export interface DocumentUpdatePayload {
 export type DocumentUpdateCallback = (update: DocumentUpdatePayload) => void;
 
 
+For targeted find-and-replace within a file use \`propose_document_edit\`. For the project context file use \`propose_context_edit\`. When asked to create "using X as reference", use a NEW file path.
 
 Cross-references: write \`@plan/<uuid>\` inline when mentioning plan items — KPM renders chips locally and rewrites to native tracker syntax on export. Use only UUIDs from the system prompt's Item Reference. Refs inside fenced code blocks won't resolve.
 

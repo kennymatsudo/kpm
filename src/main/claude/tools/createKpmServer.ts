@@ -23,6 +23,7 @@ import { createPlanChangeTools } from './plan-changes';
 import { createClaudeMdEditTools, type ClaudeMdUpdateCallback, type ClaudeMdUpdatePayload } from './claudemd-update';
 import { createDocumentCreateTools, type DocumentUpdateCallback, type DocumentUpdatePayload } from './document-update';
 import { createDocumentEditTools } from './document-edit';
+import { createDocumentReadTools } from './document-read';
 import { resolveScopedPath } from '../../services/files/scopedFs';
 import fs from 'fs';
 import { createGitHubTools } from './github';
@@ -316,6 +317,7 @@ function collectTools() {
   const planChangeTools = createPlanChangeTools(emitPlanActions);
   const storybookTools = createStorybookTools(projectRepo);
   const claudeMdEditTools = createClaudeMdEditTools(readProjectContextFileWithPending, emitClaudeMdUpdate);
+  const documentReadTools = createDocumentReadTools(readProjectFileWithPending);
   const documentCreateTools = createDocumentCreateTools(emitDocumentUpdate);
   const documentEditTools = createDocumentEditTools(readProjectFileWithPending, emitDocumentUpdate);
   const githubTools = createGitHubTools(planItemRepo, repoRepo, container.devSessions);
@@ -340,6 +342,7 @@ function collectTools() {
     ...jiraTools,
     ...storybookTools,
     ...claudeMdEditTools,
+    ...documentReadTools,
     ...documentCreateTools,
     ...documentEditTools,
     ...githubTools,
