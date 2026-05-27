@@ -193,6 +193,19 @@ export function TerminalPanel({ defaultCwd, isOpen }: TerminalPanelProps) {
       )}
 
       <div className="flex-1 min-h-0 relative">
+        {terminals.map((t) => {
+          const hidden = !isOpen || t.id !== activeTerminalId;
+          return (
+            <div
+              key={t.id}
+              className="absolute inset-0"
+              style={{ display: hidden ? 'none' : 'block' }}
+              aria-hidden={hidden}
+            >
+              <TerminalInstance id={t.id} cwd={t.cwd} hidden={hidden} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
