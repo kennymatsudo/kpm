@@ -1603,11 +1603,32 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       if (!hasQueuedFollowUp) {
         mainWindow?.webContents.send('chat:session-ready', { projectId, chatSessionId });
       }
+      // The aggregate sdkMsg.usage token counts are CUMULATIVE SUMS across all API
+      // calls in the agent turn (one call per tool-use loop iteration). For the
+      // context-window bar we want the occupancy of the FINAL API call, not the
+      // billing total. BetaUsage.iterations is an array of per-call usage objects;
+      // the last entry is the true context window snapshot. Fall back to the
+      // aggregate only when iterations is empty (single-call, no-tool turns).
+      const rawIterations = sdkMsg.usage?.iterations;
+      const lastIter =
+        Array.isArray(rawIterations) && rawIterations.length > 0
+          ? rawIterations[rawIterations.length - 1]
+          : null;
+      const ctxSource = lastIter ?? sdkMsg.usage;
+
       mainWindow?.webContents.send('chat:done', {
         projectId,
         chatSessionId,
         model: managed.resolvedModel,
         hasQueuedFollowUp,
+        inputTokens: ctxSource?.input_tokens ?? undefined,
+        outputTokens: ctxSource?.output_tokens ?? undefined,
+        cacheReadTokens: ctxSource?.cache_read_input_tokens ?? undefined,
+        cacheCreationTokens: ctxSource?.cache_creation_input_tokens ?? undefined,
+        // BetaUsage has no context_window field; ModelUsage (sdkMsg.modelUsage)
+        // has it but as the model's max capacity, not current usage. Leave it
+        // undefined so ContextWindowBar falls back to resolveModelContextWindow.
+        contextWindow: undefined,
       });
 
       // Clear the queued envelope now — the SDK has the message and is about
