@@ -1635,6 +1635,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // to feed it to Claude as the next turn. Any further sends on this
       // session start fresh.
       if (hasQueuedFollowUp) {
+        // Reset so that if the session ends before the second turn produces
+        // its own result message, handleSessionEnd will NOT suppress lifecycle
+        // events. Without this reset, lastTurnFinalized=true + state='processing'
+        // triggers the suppression guard and the renderer never receives
+        // chat:session-deactivated / chat:done — leaving isStreaming stuck.
+        managed.lastTurnFinalized = false;
       }
 
       // Fire-and-forget: fetch the SDK's session summary so the renderer can
