@@ -545,7 +545,16 @@ interface MessageListProps {
 export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
   // Access per-session chat state
   const { viewedSession, viewedSessionId, model } = useChatStore(
+    useShallow((state) => {
+      const session = state.viewedSessionId
         ? state.sessions.get(state.viewedSessionId) ?? null
+        : null;
+      return {
+        viewedSession: session,
+        viewedSessionId: state.viewedSessionId,
+        model: session?.model ?? state.model,
+      };
+    })
   );
 
   const messages = viewedSession?.messages ?? [];
