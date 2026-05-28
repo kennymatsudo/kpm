@@ -154,6 +154,14 @@ export interface ChatState {
        * alongside a fresh thinking indicator. Implies `beforeClientMessageId`.
        */
       promoteQueuedClientMessageId?: string;
+      /**
+       * When set, this finalize ends the turn (no follow-up): clear the queued
+       * flag from this message because the SDK absorbed it into the turn being
+       * finalized. Unlike `promoteQueuedClientMessageId` it does NOT re-enter
+       * streaming and does NOT anchor the assistant bubble before it — the
+       * message was answered by this turn, so the bubble lands after it.
+       */
+      clearQueuedClientMessageId?: string;
     },
   ) => void;
   setError: (chatSessionId: string, error: string) => void;

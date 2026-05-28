@@ -157,10 +157,22 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
       // When promoting a queued follow-up, anchor the finalized bubble before
       // that follow-up and re-enter streaming in this same update.
       const promoteId = options?.promoteQueuedClientMessageId;
+      // A follow-up the SDK absorbed into the turn being finalized: strip its
+      // queued flag, but (unlike promotion) do NOT re-enter streaming and do NOT
+      // anchor the bubble before it — this turn answered it, so the bubble lands
+      // after it in chronological order.
+      const clearQueuedId = options?.clearQueuedClientMessageId;
       const beforeClientMessageId = options?.beforeClientMessageId ?? promoteId;
       const now = Date.now();
 
+      // Clears `queued` from the promoted/consumed follow-up (by id). When
+      // promoting, also resets streaming fields so the next turn's thinking
+      // indicator renders without a stale queued bubble lingering beside it.
+      // Applied in the same `set()` as the finalize so the two never render in
+      // an inconsistent pair.
+      const stripQueuedId = promoteId ?? clearQueuedId;
       const applyPromotion = (messages: Message[]): Message[] => {
+        if (!stripQueuedId) return messages;
       };
       const promotionStreamingState = promoteId
         ? {
@@ -266,12 +278,20 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
             ? Math.max(0, Date.now() - session.streamStartedAt)
             : undefined;
 
+        // Strip the queued flag (from a promoted or consumed follow-up) BEFORE
+        // positioning so the insertion logic sees an accurate `queued` state.
+        // For a consumed follow-up this matters: once it is no longer flagged
+        // queued, the fallback walk below won't step over it, so the assistant
+        // bubble lands AFTER it — chronologically correct, since this turn
+        // answered it.
+
         } else {
           }
         }
 
         sessions.set(chatSessionId, {
           ...session,
+          messages: nextMessages,
           streamingContent: '',
           streamingThinking: '',
           streamingSegments: [],

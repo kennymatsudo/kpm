@@ -18,6 +18,8 @@ const { mockSessionInstances, mockSessionCounter, clearPendingDocumentContentCal
     sentMessages: string[];
     interruptCallCount: { value: number };
     cancelLastQueued: () => unknown;
+    pendingQueuedCount: () => number;
+    steerPendingIntoCurrentTurn: () => void;
   }[],
   mockSessionCounter: { nextId: 1 },
   clearPendingDocumentContentCalls: [] as string[],
@@ -42,6 +44,10 @@ vi.mock('../../claude/streaming', () => {
   class MockStreamingSession {
     private readonly config: MockSessionConfig;
     private ready = true;
+    // Follow-ups pushed via send() that the (simulated) SDK input generator has
+    // not yet pulled. The seed message from start() is consumed immediately, so
+    // it never counts here. Mirrors AsyncMessageQueue.pendingCount.
+    private pendingQueued = 0;
     readonly sentMessages: string[] = [];
     readonly interruptCallCount = { value: 0 };
 
@@ -61,10 +67,27 @@ vi.mock('../../claude/streaming', () => {
         throw new Error('Session is not ready');
       }
       this.sentMessages.push(text);
+      this.pendingQueued += 1;
     }
 
     cancelLastQueued(): unknown {
+      if (this.pendingQueued <= 0) return null;
+      this.pendingQueued -= 1;
       return this.sentMessages.pop() ?? null;
+    }
+
+    pendingQueuedCount(): number {
+      return this.pendingQueued;
+    }
+
+    /**
+     * Simulate the SDK absorbing a queued follow-up into the in-flight turn
+     * (streaming-input steering) rather than deferring it to a new turn. After
+     * this, pendingQueuedCount() drops, so the next `result` reports the
+     * follow-up as consumed — not as a pending new turn.
+     */
+    steerPendingIntoCurrentTurn(): void {
+      if (this.pendingQueued > 0) this.pendingQueued -= 1;
     }
 
     isReady(): boolean {
@@ -439,6 +462,57 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     });
     expect(thirdAfterTurnBoundary.ok).toBe(true);
     expect(mockSessionInstances).toHaveLength(1);
+  });
+
+  it('finalizes (no phantom turn) when the SDK absorbed the follow-up into this turn', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(firstSend.ok).toBe(true);
+    const session = mockSessionInstances[0];
+
+    const followUpClientMessageId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const queued = await service.sendChatMessage('project-1', 'follow-up while streaming', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+      clientMessageId: followUpClientMessageId,
+    });
+    expect(queued.ok).toBe(true);
+
+    // The SDK pulls the follow-up into the in-flight turn (steering) instead of
+    // deferring it. By the time the turn's `result` lands, nothing is pending.
+    session.steerPendingIntoCurrentTurn();
+
+    sentEvents.length = 0;
+    session.emitMessage({ type: 'result' });
+
+    const donePayload = sentEvents.find((e) => e.channel === 'chat:done')?.payload as {
+      hasQueuedFollowUp?: boolean;
+      queuedClientMessageId?: string;
+      consumedQueuedClientMessageId?: string;
+    };
+    // No phantom follow-up turn is promised — the turn is finalized normally.
+    expect(donePayload.hasQueuedFollowUp).toBe(false);
+    expect(donePayload.queuedClientMessageId).toBeUndefined();
+    // The absorbed follow-up is surfaced so the renderer drops its queued badge.
+    expect(donePayload.consumedQueuedClientMessageId).toBe(followUpClientMessageId);
+    // Session returns to ready (the watchdog can now recover it if needed) and
+    // the consumed envelope is cleared so later sends aren't rejected.
+    expect(sentEvents.some((e) => e.channel === 'chat:session-ready')).toBe(true);
+    expect(service.getActiveSessions('project-1')[0]).toMatchObject({
+      chatSessionId: 'chat-1',
+      state: 'ready',
+    });
+
+    const nextSend = await service.sendChatMessage('project-1', 'a genuinely new turn', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+      clientMessageId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    });
+    expect(nextSend.ok).toBe(true);
   });
 
   it('cancels a queued follow-up before the turn boundary', async () => {

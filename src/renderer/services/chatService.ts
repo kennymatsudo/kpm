@@ -40,6 +40,13 @@ export interface SessionEventData {
   hasQueuedFollowUp?: boolean;
   /** clientMessageId of the queued user message about to be promoted. */
   queuedClientMessageId?: string;
+  /**
+   * clientMessageId of a follow-up the SDK absorbed into THIS turn rather than
+   * deferring to a new one (streaming-input steering). The renderer clears its
+   * optimistic "queued" badge without re-entering streaming — the message was
+   * already answered in this turn.
+   */
+  consumedQueuedClientMessageId?: string;
   /** Total input tokens sent in this turn (includes conversation history). */
   inputTokens?: number;
   /** Output tokens produced in this turn. */

@@ -236,6 +236,53 @@ describe('streamingSlice.finalizeMessage', () => {
     expect(messages[2].clientMessageId).toBe(queuedClientMessageId);
     expect(session?.isStreaming).toBe(true);
   });
+
+  it('clears a consumed follow-up without re-streaming and lands the bubble after it', () => {
+    const sessionId = 'session-consumed-followup';
+    const consumedClientMessageId = 'consumed-client-message';
+
+    // The SDK steered "follow-up" into this turn and answered it. The turn's
+    // result carries that text; the follow-up bubble was added optimistically
+    // with queued=true and must now drop its badge — but NOT spawn a new turn.
+    const store = createTestStore(sessionId, {
+      ...base,
+      isStreaming: true,
+      streamingSegments: [{ type: 'text', content: 'answer to the follow-up' }],
+      streamingContent: 'answer to the follow-up',
+      messages: [
+        {
+          id: 'user-1',
+          role: 'user',
+          segments: [{ type: 'text', content: 'first prompt' }],
+          timestamp: new Date('2026-01-01T00:00:00.000Z'),
+        },
+        {
+          id: 'user-2',
+          role: 'user',
+          segments: [{ type: 'text', content: 'follow-up while streaming' }],
+          timestamp: new Date('2026-01-01T00:00:01.000Z'),
+          queued: true,
+          clientMessageId: consumedClientMessageId,
+        },
+      ],
+    });
+
+    store.getState().finalizeMessage(sessionId, {
+      clearQueuedClientMessageId: consumedClientMessageId,
+    });
+
+    const session = store.getState().sessions.get(sessionId);
+    const messages = session?.messages ?? [];
+    // Chronology: the follow-up was answered by THIS turn, so the assistant
+    // bubble lands AFTER it (not before, as in the promotion case).
+    expect(messages.map((message) => message.role)).toEqual(['user', 'user', 'assistant']);
+    // The consumed follow-up's queued badge is cleared.
+    expect(messages[1].clientMessageId).toBe(consumedClientMessageId);
+    expect(messages[1].queued).toBeUndefined();
+    // No phantom turn: streaming ends, indicator goes away.
+    expect(session?.isStreaming).toBe(false);
+    expect(session?.streamStartedAt).toBeNull();
+  });
 });
 
 describe('streamingSlice streaming state recovery', () => {

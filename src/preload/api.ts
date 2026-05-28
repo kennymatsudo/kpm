@@ -228,6 +228,7 @@ const chat = {
     model?: string;
     hasQueuedFollowUp?: boolean;
     queuedClientMessageId?: string;
+    consumedQueuedClientMessageId?: string;
   }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, data: {
       projectId: string;
@@ -235,6 +236,7 @@ const chat = {
       model?: string;
       hasQueuedFollowUp?: boolean;
       queuedClientMessageId?: string;
+      consumedQueuedClientMessageId?: string;
     }) => callback(data);
     ipcRenderer.on('chat:done', handler);
     return () => ipcRenderer.removeListener('chat:done', handler);

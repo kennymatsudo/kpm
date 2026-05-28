@@ -1512,6 +1512,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Handle result message (final stats)
     if (sdkMsg.type === 'result') {
+      const hasQueuedFollowUp = managed.session.pendingQueuedCount() > 0;
       // A queued follow-up means the SDK is about to pull the next message
       // and start another turn. Stay in 'processing' so concurrent sends
       // still route to the queue path (rather than racing into the brief
@@ -1524,6 +1525,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         managed.state = 'ready';
         managed.processingStartTime = undefined;
         managed.lastSdkActivity = undefined;
+        // The SDK consumed any follow-up into this turn (or there was none).
       }
       const maxTokensReached = isMaxTokensReached(sdkMsg);
 
