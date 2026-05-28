@@ -77,10 +77,13 @@ function getItemTypeIcon(type: ApprovalItem['type']): React.ReactNode {
 
 export function ApprovalOverlays() {
   // Get queue state
+  const { queue, removeById, userMinimized, panelWidth, setUserMinimized, setPanelWidth } = useApprovalQueueStore(
     useShallow((state) => ({
       queue: state.queue,
       removeById: state.removeById,
+      userMinimized: state.userMinimized,
       panelWidth: state.panelWidth,
+      setUserMinimized: state.setUserMinimized,
       setPanelWidth: state.setPanelWidth,
     }))
   );
@@ -173,6 +176,10 @@ export function ApprovalOverlays() {
   const currentItem = queue.length > 0 ? queue[0] : null;
   const queueLength = queue.length;
 
+  // Panel is open iff there's something to show and the user hasn't explicitly
+  // minimized this batch. The store resets userMinimized on any meaningful new
+  // enqueue, so subsequent approvals re-surface even after the user minimized.
+  const isPanelOpen = queueLength > 0 && !userMinimized;
 
   // Handlers for different approval types
 
@@ -256,9 +263,12 @@ export function ApprovalOverlays() {
   }, [removeById]);
 
   const handleCollapse = useCallback(() => {
+    setUserMinimized(true);
+  }, [setUserMinimized]);
 
   // Collapsed badge (shown when panel is collapsed and there are pending items)
   const collapsedBadge = useMemo(() => {
+    if (queueLength === 0 || isPanelOpen) return null;
 
     return (
       <m.button
@@ -268,6 +278,7 @@ export function ApprovalOverlays() {
         whileHover={{ scale: 1.02, y: -2 }}
         whileTap={{ scale: 0.98 }}
         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+        onClick={() => setUserMinimized(false)}
       >
         <div className="relative flex items-center gap-2.5 px-3 py-2
                         bg-[color-mix(in_srgb,var(--color-accent)_85%,black)]
@@ -350,6 +361,7 @@ export function ApprovalOverlays() {
 
       {/* Side panel - slides from left, no blocking backdrop */}
       <AnimatePresence>
+        {isPanelOpen && currentItem && (
           <m.div
             initial={{ x: -24, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
@@ -410,6 +422,7 @@ export function ApprovalOverlays() {
       </AnimatePresence>
 
       {/* Resize handle - plain div outside overflow-hidden panel */}
+      {isPanelOpen && currentItem && (
         <div
           onMouseDown={handlePanelResizeStart}
           className="fixed cursor-col-resize group"

@@ -8,6 +8,7 @@
  */
 
 import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import { promises as fs } from 'fs';
 import { normalize, relative, resolve } from 'path';
 import { isContextFile } from '../../shared/contextFile';
 import { clientManager } from './clientManager';
@@ -53,6 +54,11 @@ export interface PermissionContext {
   onClaudeMdEdit?: ClaudeMdInterceptFn;
   /** Optional callback to intercept project file writes for approval */
   onProjectFileWrite?: ProjectFileInterceptFn;
+  /**
+   * Reads a file from disk so Edit-tool interception can compute the post-edit
+   * content. Defaults to fs.readFile; tests inject a fake.
+   */
+  readProjectFile?: (absolutePath: string) => Promise<string>;
   /** External MCP servers disabled in KPM settings. */
   disabledMcpServerNames?: string[];
   /** When true, skip permission prompts and auto-allow all non-denied tool calls */
@@ -250,8 +256,50 @@ export function createPermissionHandler(
           behavior: 'deny',
         };
       }
+      // Edit tool on project files: read the file, apply old_string -> new_string
+      // ourselves, and route the full new content through onProjectFileWrite so
+      // it lands in the same approval queue as Write. Avoids relying on Claude
+      // following a prose hint to use propose_document_edit.
       if (toolName === 'Edit' && context.onProjectFileWrite) {
         const relativePath = relative(normalize(context.projectPath), normalize(targetPath));
+        const oldString = typeof input.old_string === 'string' ? input.old_string : null;
+        const newString = typeof input.new_string === 'string' ? input.new_string : null;
+
+        if (!oldString || newString === null) {
+          return {
+            behavior: 'deny',
+            message: 'Edit requires old_string and new_string. Pass exact text from the file (whitespace-sensitive).',
+          };
+        }
+        if (oldString === newString) {
+          return {
+            behavior: 'deny',
+            message: 'old_string and new_string are identical. No change would be made.',
+          };
+        }
+
+        let currentContent: string;
+        }
+
+        const firstIndex = currentContent.indexOf(oldString);
+        if (firstIndex === -1) {
+          return {
+            behavior: 'deny',
+            message: `old_string not found in "${relativePath}". Read the file first and copy exact text including whitespace.`,
+          };
+        }
+        const secondIndex = currentContent.indexOf(oldString, firstIndex + 1);
+        if (secondIndex !== -1) {
+          return {
+            behavior: 'deny',
+            message: `old_string appears multiple times in "${relativePath}". Include more surrounding context to make the match unique.`,
+          };
+        }
+
+        const newContent =
+          currentContent.slice(0, firstIndex) + newString + currentContent.slice(firstIndex + oldString.length);
+        console.log(`[Permissions] Project file Edit intercepted - capturing for approval: ${relativePath}`);
+        context.onProjectFileWrite(context.projectId, relativePath, newContent);
         return {
           behavior: 'deny',
         };

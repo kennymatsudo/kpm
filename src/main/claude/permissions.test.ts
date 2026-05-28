@@ -282,6 +282,71 @@ describe('permissions', () => {
         expect(result.behavior).toBe('allow');
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
+
+      it('intercepts Edit to project directory by applying old_string→new_string and routing the full content', async () => {
+        const mockOnProjectFileWrite = vi.fn();
+        const mockReadFile = vi.fn().mockResolvedValue('alpha beta gamma');
+        context = {
+          projectPath: '/test/project',
+          projectId: 'test-project-id',
+          onProjectFileWrite: mockOnProjectFileWrite,
+          readProjectFile: mockReadFile,
+        };
+        handler = createPermissionHandler(context, mockPromptUser);
+
+        const result = await handler(
+          'Edit',
+          { file_path: '/test/project/docs/guide.md', old_string: 'beta', new_string: 'BETA' },
+          createTestOptions()
+        );
+
+        expect(result.behavior).toBe('deny');
+        expect(mockReadFile).toHaveBeenCalledWith('/test/project/docs/guide.md');
+        expect(mockOnProjectFileWrite).toHaveBeenCalledWith('test-project-id', 'docs/guide.md', 'alpha BETA gamma');
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+      it('denies Edit on project file when old_string is not unique', async () => {
+        const mockOnProjectFileWrite = vi.fn();
+        const mockReadFile = vi.fn().mockResolvedValue('foo bar foo');
+        context = {
+          projectPath: '/test/project',
+          projectId: 'test-project-id',
+          onProjectFileWrite: mockOnProjectFileWrite,
+          readProjectFile: mockReadFile,
+        };
+        handler = createPermissionHandler(context, mockPromptUser);
+
+        const result = await handler(
+          'Edit',
+          { file_path: '/test/project/notes.md', old_string: 'foo', new_string: 'baz' },
+          createTestOptions()
+        );
+
+        expect(result.behavior).toBe('deny');
+        expect(mockOnProjectFileWrite).not.toHaveBeenCalled();
+      });
+
+      it('denies Edit on project file when old_string is missing from file', async () => {
+        const mockOnProjectFileWrite = vi.fn();
+        const mockReadFile = vi.fn().mockResolvedValue('nothing matches here');
+        context = {
+          projectPath: '/test/project',
+          projectId: 'test-project-id',
+          onProjectFileWrite: mockOnProjectFileWrite,
+          readProjectFile: mockReadFile,
+        };
+        handler = createPermissionHandler(context, mockPromptUser);
+
+        const result = await handler(
+          'Edit',
+          { file_path: '/test/project/notes.md', old_string: 'missing', new_string: 'replacement' },
+          createTestOptions()
+        );
+
+        expect(result.behavior).toBe('deny');
+        expect(mockOnProjectFileWrite).not.toHaveBeenCalled();
+      });
     });
 
       beforeEach(() => {

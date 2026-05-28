@@ -71,11 +71,17 @@ interface ApprovalQueueState {
   queue: ApprovalItem[];
 
   /**
+   * True iff the user explicitly minimized the panel this batch.
+   * Resets to false on any meaningful new enqueue (new item, new file, new
+   * plan-actions batch) so subsequent approvals always surface. Same-file
+   * dedupes during streaming preserve the user's minimize choice.
    */
+  userMinimized: boolean;
 
   /** Current width of the approval side panel in pixels (user-resizable). */
   panelWidth: number;
 
+  setUserMinimized: (minimized: boolean) => void;
   setPanelWidth: (width: number) => void;
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -186,8 +192,10 @@ function generateId(): string {
 
 export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
   queue: [],
+  userMinimized: false,
   panelWidth: 560,
 
+  setUserMinimized: (minimized) => set({ userMinimized: minimized }),
   setPanelWidth: (width) => set({ panelWidth: width }),
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -239,8 +247,10 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
           ...existing,
           actions: merged,
         };
+        return { queue: updatedQueue, userMinimized: false };
       }
 
+      return { queue: [...state.queue, newItem], userMinimized: false };
     });
   },
 
@@ -259,6 +269,11 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
         newContent,
       };
       const filtered = state.queue.filter((item) => item.type !== 'claude-md');
+      // Same-content replacement during streaming preserves the user's minimize
+      // choice; a brand-new claude-md edit re-opens the panel.
+      return existing
+        ? { queue: [...filtered, newItem] }
+        : { queue: [...filtered, newItem], userMinimized: false };
     });
   },
 
@@ -270,6 +285,9 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
       );
 
       if (existingIndex !== -1) {
+        // Same-file replacement — Claude is still editing this file. Preserve
+        // both the *first* event's oldContent (so the diff stays anchored to
+        // the original disk content) and the user's minimize choice.
         const existing = state.queue[existingIndex] as PendingDocumentItem;
         const updatedQueue = [...state.queue];
         updatedQueue[existingIndex] = {
@@ -287,6 +305,8 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
         oldContent,
       };
 
+      // New file (first or different) — surface it.
+      return { queue: [...state.queue, newItem], userMinimized: false };
     });
   },
 
@@ -303,6 +323,7 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
         item.sessionId !== draft.sessionId ||
         item.threadId !== draft.threadId
       ));
+      return { queue: [...filtered, newItem], userMinimized: false };
     });
   },
 
@@ -332,6 +353,7 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
   },
 
   resetProjectState: () => {
+    set({ queue: [], userMinimized: false });
   },
 
   // ─────────────────────────────────────────────────────────────────────────
