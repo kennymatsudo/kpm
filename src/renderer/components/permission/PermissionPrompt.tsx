@@ -19,6 +19,17 @@ export function PermissionPrompt() {
   }
 
   return (
+    <div
+      role="group"
+      aria-label="Permission request"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          respond('deny');
+        }
+      }}
+      className="mx-4 my-2 border border-border rounded-lg overflow-hidden bg-surface-2"
+    >
       {/* Header */}
       <div className="bg-surface-3 px-4 py-2.5 flex items-center gap-2">
         <svg className="w-4 h-4 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -55,24 +66,31 @@ export function PermissionPrompt() {
           </div>
         )}
 
+        {/* Actions. Safe-by-default: the prominent button grants the narrowest
+            scope (single action); broader-scope options are visually muted. */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
+            autoFocus
             onClick={() => respond('deny')}
+            className="px-3 py-1.5 text-sm font-medium text-text-secondary bg-surface-3 hover:bg-surface-4 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             Don't Allow
           </button>
           <button
             onClick={() => respond('allow')}
+            className="px-3 py-1.5 text-sm font-medium text-white bg-accent hover:bg-accent-hover rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             Allow
           </button>
           <button
             onClick={() => respond('allow-all-remaining')}
+            className="px-3 py-1.5 text-sm font-medium text-text-secondary bg-surface-3 hover:bg-surface-4 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             Allow All Remaining
           </button>
           <button
             onClick={() => respond('allow-always')}
+            className="px-3 py-1.5 text-sm font-medium text-text-secondary bg-surface-3 hover:bg-surface-4 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             Allow Always
           </button>

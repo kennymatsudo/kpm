@@ -15,9 +15,11 @@ export function JiraConfigDialog({ credential, onClose }: Props) {
   const [siteUrl, setSiteUrl] = useState(credential?.site_url ?? '');
   const [email, setEmail] = useState(credential?.email ?? '');
   const [apiToken, setApiToken] = useState('');
+  const [showToken, setShowToken] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [testSucceeded, setTestSucceeded] = useState(false);
 
   const handleTest = async () => {
     if (!siteUrl || !email || !apiToken) {
@@ -27,10 +29,13 @@ export function JiraConfigDialog({ credential, onClose }: Props) {
 
     setIsTesting(true);
     setError(null);
+    setTestSucceeded(false);
 
     try {
       const result = await testCredentials({ type: 'jira', siteUrl, email, apiToken });
       if (result.success) {
+        setTestSucceeded(true);
+        setTimeout(() => setTestSucceeded(false), 4000);
       } else {
         setError(result.error || 'Connection failed');
       }
@@ -49,6 +54,7 @@ export function JiraConfigDialog({ credential, onClose }: Props) {
 
     setIsSaving(true);
     setError(null);
+    setTestSucceeded(false);
 
     try {
       const result = await saveCredentials({ type: 'jira', siteUrl, email, apiToken });
@@ -120,6 +126,22 @@ export function JiraConfigDialog({ credential, onClose }: Props) {
           <label className="block text-sm font-medium text-text-primary mb-1.5">
             API Token
           </label>
+          <div className="relative">
+            <input
+              type={showToken ? 'text' : 'password'}
+              value={apiToken}
+              onChange={(e) => setApiToken(e.target.value)}
+              placeholder={credential ? '••••••••••••' : 'Enter your API token'}
+              className="w-full px-3 py-2 pr-16 bg-surface-2 border border-border-subtle rounded-xl text-text-primary placeholder-text-muted text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <button
+              type="button"
+              onClick={() => setShowToken((v) => !v)}
+              className="absolute inset-y-0 right-0 px-3 text-xs text-text-muted hover:text-text-primary"
+            >
+              {showToken ? 'Hide' : 'Show'}
+            </button>
+          </div>
           <p className="text-xs text-text-muted mt-1">
             <a
               href="https://id.atlassian.com/manage-profile/security/api-tokens"
@@ -137,7 +159,14 @@ export function JiraConfigDialog({ credential, onClose }: Props) {
           </p>
         </div>
 
+        {testSucceeded && !error && (
+          <div className="text-sm p-3 rounded-lg bg-success-muted text-success">
+            Connection successful!
+          </div>
+        )}
+
         {error && (
+          <div className="text-sm p-3 rounded-lg bg-danger-muted text-danger">
             {error}
           </div>
         )}

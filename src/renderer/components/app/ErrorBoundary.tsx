@@ -46,7 +46,11 @@ export class ErrorBoundary extends Component<Props, State> {
           <div className="text-danger text-base font-medium mb-2">
             Something went wrong
           </div>
+          <div className="text-text-muted text-sm mb-2 max-w-md">
             {this.state.error?.message || 'An unexpected error occurred'}
+          </div>
+          <div className="text-text-tertiary text-xs mb-4 max-w-md">
+            Try again below. If this keeps happening, reload the window (Cmd+R) or restart the app.
           </div>
           <button
             onClick={this.handleRetry}

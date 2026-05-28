@@ -98,6 +98,7 @@ export function ReviewTab({ session }: ReviewTabProps) {
 
   const snapshot = inbox?.snapshot ?? null;
   const isOwner = inbox?.ownership?.session_id === session.id;
+  const ownerTitle = isOwner ? undefined : 'Only the agent session that owns this review can act on it';
 
 
 

@@ -70,6 +70,17 @@ export const toast = {
   success: (message: string, action?: Toast['action']) =>
     useToastStore.getState().addToast({ type: 'success', message, action }),
   error: (message: string, action?: Toast['action']) =>
+    useToastStore.getState().addToast({
+      type: 'error',
+      message,
+      // Default to a Copy action so the user can preserve the error text before
+      // the toast auto-dismisses. Longer duration gives time to read it.
+      action: action ?? {
+        label: 'Copy',
+        onClick: () => void navigator.clipboard?.writeText(message),
+      },
+      duration: 8000,
+    }),
   info: (message: string, action?: Toast['action']) =>
     useToastStore.getState().addToast({ type: 'info', message, action }),
   warning: (message: string, action?: Toast['action']) =>

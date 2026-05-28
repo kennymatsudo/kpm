@@ -271,6 +271,9 @@ export function ToolLogPanel() {
   const clearSession = useCallback(() => useToolLogStore.getState().clearSession(), []);
 
   const listRef = useRef<HTMLDivElement>(null);
+  // Tracks whether the user is pinned to the bottom of the log. Starts true so
+  // the first batch of entries scrolls into view.
+  const isAtBottomRef = useRef(true);
   const [panelHeight, setPanelHeight] = useState(() => {
     const saved = localStorage.getItem('kpm-toollog-height');
     return saved ? parseInt(saved, 10) : 300;
@@ -311,10 +314,20 @@ export function ToolLogPanel() {
     document.body.style.userSelect = 'none';
   }, [panelHeight]);
 
+  // Auto-scroll to bottom on new entries, but only when the user is already at
+  // the bottom — otherwise we'd yank them away from an entry they're inspecting.
   useEffect(() => {
+    if (listRef.current && isAtBottomRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
   }, [entries.length]);
+
+  const handleListScroll = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    // Small threshold so near-bottom still counts as "following".
+    isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  }, []);
 
   // Filter entries
   const filteredEntries = useMemo(() => {
@@ -508,6 +521,7 @@ export function ToolLogPanel() {
       </div>
 
       {/* Timeline */}
+      <div ref={listRef} onScroll={handleListScroll} className="flex-1 overflow-y-auto overflow-x-hidden">
         {filteredEntries.length === 0 ? (
           </div>
         ) : (

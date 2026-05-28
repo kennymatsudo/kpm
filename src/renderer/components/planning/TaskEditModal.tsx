@@ -19,6 +19,7 @@ import { useTrackerMetadataStore } from '../../stores';
 import type { TrackerIssueTypeOption } from '../../stores/tracker/useMetadataStore';
 import { TrackerIcon, trackerLabelFor } from '../tracker/shared/trackerDisplay';
 import type { PlanItem } from '../../../shared/types';
+import { toast } from '../../stores/toastStore';
 
 // Stable empty array to avoid re-render loops
 const EMPTY_ISSUE_TYPES: TrackerIssueTypeOption[] = [];
@@ -178,6 +179,7 @@ export function TaskEditModal({
       onClose();
     } catch (error) {
       console.error('Failed to save task:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save changes');
     } finally {
       setIsSaving(false);
     }
@@ -381,6 +383,7 @@ export function TaskEditModal({
                 type="button"
                 onClick={addCriterion}
                 disabled={criteria.length >= MAX_CRITERIA}
+                title={criteria.length >= MAX_CRITERIA ? `Maximum ${MAX_CRITERIA} criteria reached` : undefined}
                 className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

@@ -309,6 +309,7 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
         {showUnlinkConfirm ? (
           <div className="flex items-center gap-3">
             <p className="text-sm text-text-secondary flex-1">
+              Unlink this project? Syncing will stop and your field and type mappings will be lost — relinking later requires reconfiguring them. Your plan items won't be deleted.
             </p>
             <button
               onClick={() => setShowUnlinkConfirm(false)}
@@ -476,6 +477,7 @@ function TypeMappingsTab({
           <button
             onClick={onAddMapping}
             disabled={!newLabel.trim() || !selectedTypeForNew}
+            title={!newLabel.trim() || !selectedTypeForNew ? 'Enter a label and select an issue type' : undefined}
             className="btn btn-secondary w-full"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

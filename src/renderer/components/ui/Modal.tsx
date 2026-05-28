@@ -1,3 +1,4 @@
+import type { ReactNode, RefObject } from 'react';
 import { CloseIcon } from '../icons';
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
@@ -93,6 +94,9 @@ export function Modal({
   const { containerRef } = useFocusTrap<HTMLDivElement>({
     isOpen,
     onEscape: closeOnEscape ? handleClose : undefined,
+    // When no explicit target is given, let the focus trap fall back to the
+    // first focusable element rather than a non-interactive placeholder.
+    initialFocusRef,
     restoreFocus: true,
   });
 

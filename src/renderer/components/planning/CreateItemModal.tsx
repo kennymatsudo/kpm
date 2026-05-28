@@ -26,6 +26,7 @@ import {
 } from '../ui/Select';
 import type { PlanItem, StatusCategory } from '../../../shared/types';
 import { STATUS_CATEGORY_OPTIONS, STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
+import { toast } from '../../stores/toastStore';
 
 // Type options with visual indicators
 const TYPE_OPTIONS: { value: string; label: string; color?: string }[] = [
@@ -161,6 +162,7 @@ export function CreateItemModal({
       onClose();
     } catch (error) {
       console.error('[CreateItemModal] Failed to create item:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create item');
     } finally {
       setIsSubmitting(false);
     }
@@ -526,6 +528,7 @@ export function CreateItemModal({
               variant="primary"
               onClick={handleSubmit}
               disabled={!canSubmit}
+              title={!canSubmit && !isSubmitting ? 'Enter a title to create this item' : undefined}
             >
               {isSubmitting ? (
                 <span className="flex items-center gap-2">

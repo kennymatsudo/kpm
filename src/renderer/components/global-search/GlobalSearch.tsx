@@ -111,6 +111,12 @@ export function GlobalSearch() {
     return results.filter((r) => r.entityType === activeTab);
   }, [results, activeTab]);
 
+  // Reset selection when switching tabs so the highlight doesn't point past the
+  // end of the newly filtered list.
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [activeTab, setSelectedIndex]);
+
   // Grouped results (only used when activeTab is 'all')
   const grouped = useMemo(() => groupResults(filteredResults), [filteredResults]);
 

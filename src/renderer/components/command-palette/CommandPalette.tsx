@@ -67,6 +67,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     }))
   );
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openSettings = useSettingsUIStore((state) => state.setIsOpen);
+  const setSettingsTab = useSettingsUIStore((state) => state.setActiveTab);
+
+  const openCustomPromptSettings = useCallback(() => {
+    onClose();
+    setSettingsTab('prompts');
+    openSettings(true);
+  }, [onClose, setSettingsTab, openSettings]);
 
   useEffect(() => {
     if (isOpen) {
@@ -237,7 +245,17 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                   </svg>
                   <p className="text-text-muted text-sm font-medium">No commands found</p>
                   <p className="text-text-tertiary text-xs mt-1">
+                    {prompts.length === 0 ? 'Create a custom prompt to run it from here' : 'Try different keywords'}
                   </p>
+                  {prompts.length === 0 && (
+                    <button
+                      type="button"
+                      onClick={openCustomPromptSettings}
+                      className="btn btn-secondary mt-3"
+                    >
+                      Open Custom Prompts settings
+                    </button>
+                  )}
                 </Command.Empty>
 
                 {groupedCommands.project.length > 0 && (

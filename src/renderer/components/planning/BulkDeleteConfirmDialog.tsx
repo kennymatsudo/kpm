@@ -47,12 +47,14 @@ export function BulkDeleteConfirmDialog({
           {
             label: 'Keep children on canvas',
             description: `Delete ${itemCount} selected item${itemCount > 1 ? 's' : ''}, children become root items`,
+            loadingText: 'Deleting...',
             variant: 'primary',
             onClick: onDeleteOrphan,
           },
           {
             label: 'Delete all',
             description: `Delete all ${totalToDelete} items (selected + children)`,
+            loadingText: 'Deleting...',
             variant: 'danger',
             onClick: onDeleteAll,
           },
@@ -69,6 +71,7 @@ export function BulkDeleteConfirmDialog({
       onCancel={onCancel}
       action={{
         label: `Delete ${itemCount} Item${itemCount > 1 ? 's' : ''}`,
+        loadingText: 'Deleting...',
         variant: 'danger',
         onClick: onDeleteOrphan,
       }}

@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useState, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { CodeEditor, MarkdownEditor } from '../ui';
+import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import type { FocusedResource } from '../../../shared/types';
 import { getBaseName } from '../../utils/path';
 
@@ -27,6 +28,7 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
   );
   const hasUnsavedChanges = useHasUnsavedChanges();
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
+  const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
 
   // Context management for chat
   const { focusedResources, addFocusedResource, removeFocusedResource } = useProjectUiDomainStore(
@@ -91,6 +93,8 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
   // Handle close with unsaved changes check
   const handleClose = useCallback(() => {
     if (hasUnsavedChanges) {
+      setShowUnsavedConfirm(true);
+      return;
     }
     onClose();
   }, [hasUnsavedChanges, onClose]);
@@ -112,6 +116,26 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
       </svg>
     );
   };
+
+  // Confirmation shown when closing with unsaved changes. Shared across both
+  // editor layouts (markdown / non-markdown).
+  const unsavedConfirmDialog = showUnsavedConfirm ? (
+    <ConfirmActionDialog
+      title="Discard unsaved changes?"
+      message="This file has unsaved changes that will be lost if you close it now."
+      dialogId="file-editor-unsaved"
+      cancelLabel="Keep editing"
+      onCancel={() => setShowUnsavedConfirm(false)}
+      action={{
+        label: 'Discard changes',
+        variant: 'danger',
+        onClick: () => {
+          setShowUnsavedConfirm(false);
+          onClose();
+        },
+      }}
+    />
+  ) : null;
 
   // Context button for adding file to chat context
   const ContextButton = () => (
@@ -184,6 +208,7 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
             onChange={handleContentChange}
           />
         </div>
+        {unsavedConfirmDialog}
       </div>
     );
   }
@@ -265,6 +290,7 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
           <p className="text-xs text-danger">{saveError}</p>
         </div>
       )}
+      {unsavedConfirmDialog}
     </div>
   );
 });

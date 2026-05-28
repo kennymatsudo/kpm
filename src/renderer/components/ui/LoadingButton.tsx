@@ -18,6 +18,8 @@ interface LoadingButtonProps {
   onClick?: () => void;
   type?: 'button' | 'submit' | 'reset';
   'aria-label'?: string;
+  /** Native tooltip — useful for explaining why a disabled button is disabled */
+  title?: string;
 }
 
 type SpinnerColor = 'current' | 'accent' | 'info' | 'white';
@@ -91,6 +93,7 @@ export const LoadingButton = forwardRef<HTMLButtonElement, LoadingButtonProps>(
       onClick,
       type = 'button',
       'aria-label': ariaLabel,
+      title,
     },
     ref
   ) {
@@ -126,6 +129,7 @@ export const LoadingButton = forwardRef<HTMLButtonElement, LoadingButtonProps>(
         className={`btn ${variantClasses[variant]} ${sizeClasses[size]} flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed ${className}`}
         aria-busy={isLoading}
         aria-label={ariaLabel}
+        title={title}
       >
         {isLoading && showSpinner && (
           <LoadingSpinner className={spinnerSizes[size]} />

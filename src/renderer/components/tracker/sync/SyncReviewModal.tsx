@@ -27,6 +27,27 @@ interface Props {
   onExportComplete: () => void;
 }
 
+/** Map a raw review-load error to an actionable next step, when recognizable. */
+function syncErrorHint(error: string, trackerLabel: string): string | null {
+  const lower = error.toLowerCase();
+  if (lower.includes('401') || lower.includes('unauthor') || lower.includes('authentic')) {
+    return `Check your ${trackerLabel} credentials in Settings.`;
+  }
+  if (lower.includes('403') || lower.includes('forbidden') || lower.includes('permission')) {
+    return `Your ${trackerLabel} account may not have access to this project.`;
+  }
+  if (lower.includes('404') || lower.includes('not found') || lower.includes('project key')) {
+    return 'Check that the linked project key still exists.';
+  }
+  if (lower.includes('429') || lower.includes('rate limit')) {
+    return 'Rate limited. Wait a moment and retry.';
+  }
+  if (lower.includes('network') || lower.includes('fetch') || lower.includes('timeout') || lower.includes('econn')) {
+    return 'Check your network connection and retry.';
+  }
+  return null;
+}
+
 export function SyncReviewModal({ projectId, associationId, onClose, onExportComplete }: Props) {
   const {
     phase,
@@ -196,6 +217,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
 
   // Error with no items
   if (error && items.length === 0) {
+    const hint = syncErrorHint(error, trackerLabel);
     return (
       <ModalShell onClose={handleClose} trackerLabel={trackerLabel}>
         <div className="flex-1 flex flex-col items-center justify-center px-6">
@@ -205,6 +227,20 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
             </svg>
           </div>
           <h3 className="text-text-primary font-semibold mb-2">Failed to load review</h3>
+          <p className="text-text-secondary text-sm text-center max-w-xs mb-2">{error}</p>
+          {hint && (
+            <p className="text-text-muted text-xs text-center max-w-xs mb-6">{hint}</p>
+          )}
+          {!hint && <div className="mb-6" />}
+          <div className="flex gap-2">
+            <button onClick={handleClose} className="btn btn-secondary">Close</button>
+            <button
+              onClick={() => void startReview(projectId, associationId)}
+              className="btn btn-primary"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       </ModalShell>
     );
