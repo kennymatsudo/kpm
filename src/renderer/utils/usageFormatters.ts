@@ -51,6 +51,7 @@ const MODEL_LABELS: Record<string, string> = {
 
 export function formatModel(model: string): string {
   if (MODEL_LABELS[model]) return MODEL_LABELS[model];
+  // Compact a full model id like "claude-opus-4-8" → "Opus 4.8"
   const lower = model.toLowerCase();
   if (lower.includes('opus')) return modelWithVersion('Opus', model);
   if (lower.includes('sonnet')) return modelWithVersion('Sonnet', model);

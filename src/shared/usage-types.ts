@@ -59,6 +59,7 @@ const CONTEXT_WINDOW_BY_TIER: Record<string, number> = {
 /**
  * Resolve a model identifier to its context window size in tokens.
  * Accepts SDK aliases ("opus" / "sonnet" / "haiku") and full model IDs
+ * ("claude-opus-4-8"). Falls back to Sonnet's 200k for unknown strings.
  */
 export function resolveModelContextWindow(model: string | null | undefined): number {
   const m = (model ?? '').toLowerCase();

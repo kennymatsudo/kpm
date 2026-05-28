@@ -153,6 +153,7 @@ interface ManagedSession {
    * same session and don't interrupt anything.
    */
   interruptInProgress: boolean;
+  /** Actual model ID returned by the SDK (e.g. "claude-opus-4-8"). Set from the first assistant message each turn. */
   resolvedModel?: string;
   unsubscribePlanActions: () => void;
   unsubscribeClaudeMdUpdate: () => void;
@@ -553,6 +554,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             const currentContent = await deps.readDocumentFile(writeProjectId, filePath);
             mainWindow?.webContents.send('chat:file-update', {
               projectId: writeProjectId,
+              chatSessionId,
               filePath,
               content,
               oldContent: currentContent.success ? currentContent.content : null,
@@ -1342,6 +1344,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Handle assistant messages (text chunks)
     if (sdkMsg.type === 'assistant') {
+      // Capture the SDK-resolved model ID (e.g. "claude-opus-4-8") so we can
       // display it accurately in the chat header instead of the short alias.
 
       const content = sdkMsg.message?.content || [];
