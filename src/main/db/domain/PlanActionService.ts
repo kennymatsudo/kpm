@@ -253,6 +253,12 @@ function executeQueueForTracker(
 
   const association = associations[0]; // Use first association
 
+  // Prefetch all queued items for this project once, then check membership in
+  // memory — avoids an N+1 getByItemId query per item in the loop below.
+  const alreadyQueued = new Set(
+    ctx.deps.syncQueue.getByProject(ctx.projectId).map((entry) => entry.plan_item_id)
+  );
+
   let queuedCount = 0;
   for (const itemId of resolvedIds) {
     const item = getItem(ctx, itemId);
@@ -265,6 +271,7 @@ function executeQueueForTracker(
     const operation = item.external_key ? 'update' : 'create';
 
     // Check if already queued
+    if (alreadyQueued.has(itemId)) {
       continue; // Already queued, skip silently
     }
 

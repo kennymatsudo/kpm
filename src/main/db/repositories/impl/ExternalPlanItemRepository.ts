@@ -214,6 +214,12 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
 
     transaction();
 
+    // Return all created items. getMany batches into a single IN-clause query
+    // instead of one SELECT per id (N+1 on large imports). SQLite's IN clause
+    // doesn't guarantee row order, so re-order to match createdIds (insertion
+    // order) to preserve the previous per-id-fetch contract.
+    const byId = new Map(this.planItemRepository.getMany(createdIds).map(item => [item.id, item]));
+    return createdIds.map(id => byId.get(id)!);
   }
 
   updateFromExternal(
