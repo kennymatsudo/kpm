@@ -75,9 +75,12 @@ export function Chat({ currentView }: ChatProps) {
 
   const handleSend = useCallback((message: string, attachments?: ChatAttachment[], chatSessionId?: string) => {
     const clientMessageId = crypto.randomUUID();
+    // Clear any stale error from a previous turn so it doesn't linger over the new send.
+    if (viewedSessionId) clearError(viewedSessionId);
     setLastMessage(message);
     setLastClientMessageId(clientMessageId);
     void send(message, attachments, clientMessageId, chatSessionId);
+  }, [send, clearError, viewedSessionId]);
 
   const handleRetry = useCallback(() => {
     if (lastMessage && lastClientMessageId && viewedSessionId) {

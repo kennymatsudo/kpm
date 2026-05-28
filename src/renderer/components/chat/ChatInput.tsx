@@ -265,6 +265,11 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      // Enter must obey the same gate as the Send button. When the composer is
+      // disabled (no project) or a follow-up is already queued, swallow the
+      // keypress instead of optimistically sending and letting the backend
+      // reject it — that path flashed a bubble in, then yanked it back out.
+      if (disabled || sendDisabledWhileStreaming) return;
       handleSend();
     }
     // Tab accepts the current suggestion into the textarea

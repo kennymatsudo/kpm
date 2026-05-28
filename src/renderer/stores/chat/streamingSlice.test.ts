@@ -149,6 +149,93 @@ describe('streamingSlice.finalizeMessage', () => {
     expect(messages[1].segments).toEqual([{ type: 'text', content: 'first answer' }]);
     expect(messages[2].clientMessageId).toBe(queuedClientMessageId);
   });
+
+  it('promotes a queued follow-up atomically: clears its flag and re-enters streaming', () => {
+    const sessionId = 'session-promote-queued';
+    const queuedClientMessageId = 'promote-client-message';
+
+    const store = createTestStore(sessionId, {
+      ...base,
+      isStreaming: true,
+      streamingSegments: [{ type: 'text', content: 'first answer' }],
+      streamingContent: 'first answer',
+      messages: [
+        {
+          id: 'user-1',
+          role: 'user',
+          segments: [{ type: 'text', content: 'first prompt' }],
+          timestamp: new Date('2026-01-01T00:00:00.000Z'),
+        },
+        {
+          id: 'user-2',
+          role: 'user',
+          segments: [{ type: 'text', content: 'queued prompt' }],
+          timestamp: new Date('2026-01-01T00:00:01.000Z'),
+          queued: true,
+          clientMessageId: queuedClientMessageId,
+        },
+      ],
+    });
+
+    store.getState().finalizeMessage(sessionId, {
+      promoteQueuedClientMessageId: queuedClientMessageId,
+    });
+
+    const session = store.getState().sessions.get(sessionId);
+    const messages = session?.messages ?? [];
+    // Assistant bubble is positioned before the promoted follow-up.
+    expect(messages.map((message) => message.role)).toEqual(['user', 'assistant', 'user']);
+    // The follow-up's queued flag is cleared in the same update (no stale badge).
+    expect(messages[2].queued).toBeUndefined();
+    expect(messages[2].clientMessageId).toBe(queuedClientMessageId);
+    // Streaming re-enters for the next turn so the thinking indicator is correct.
+    expect(session?.isStreaming).toBe(true);
+    expect(session?.streamingSegments).toEqual([]);
+    expect(session?.streamingContent).toBe('');
+    expect(session?.streamStartedAt).not.toBeNull();
+  });
+
+  it('promotes the follow-up even if a racing event already stripped its queued flag', () => {
+    const sessionId = 'session-promote-already-cleared';
+    const queuedClientMessageId = 'race-client-message';
+
+    // Simulate the race: `chat:queue-cleared:already_sent` arrived first and
+    // removed the `queued` flag before `chat:done` finalizes the prior turn.
+    const store = createTestStore(sessionId, {
+      ...base,
+      isStreaming: true,
+      streamingSegments: [{ type: 'text', content: 'first answer' }],
+      streamingContent: 'first answer',
+      messages: [
+        {
+          id: 'user-1',
+          role: 'user',
+          segments: [{ type: 'text', content: 'first prompt' }],
+          timestamp: new Date('2026-01-01T00:00:00.000Z'),
+        },
+        {
+          id: 'user-2',
+          role: 'user',
+          segments: [{ type: 'text', content: 'queued prompt' }],
+          timestamp: new Date('2026-01-01T00:00:01.000Z'),
+          // No `queued` flag — already cleared by the racing event.
+          clientMessageId: queuedClientMessageId,
+        },
+      ],
+    });
+
+    store.getState().finalizeMessage(sessionId, {
+      promoteQueuedClientMessageId: queuedClientMessageId,
+    });
+
+    const session = store.getState().sessions.get(sessionId);
+    const messages = session?.messages ?? [];
+    // Anchoring by clientMessageId (not the `queued` flag) keeps chronology
+    // correct: the assistant bubble still lands before the follow-up.
+    expect(messages.map((message) => message.role)).toEqual(['user', 'assistant', 'user']);
+    expect(messages[2].clientMessageId).toBe(queuedClientMessageId);
+    expect(session?.isStreaming).toBe(true);
+  });
 });
 
 describe('streamingSlice streaming state recovery', () => {

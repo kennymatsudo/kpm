@@ -142,6 +142,19 @@ export interface ChatState {
   flushStreamingContent: (chatSessionId: string) => void;
   finalizeMessage: (
     chatSessionId: string,
+    options?: {
+      interrupted?: boolean;
+      model?: string;
+      beforeClientMessageId?: string;
+      /**
+       * When set, atomically hand off to a queued follow-up in the same update:
+       * after committing the assistant bubble, clear this message's queued flag
+       * and re-enter streaming for the next turn. Keeping it in one `set()`
+       * prevents an intermediate render where a stale queued bubble shows
+       * alongside a fresh thinking indicator. Implies `beforeClientMessageId`.
+       */
+      promoteQueuedClientMessageId?: string;
+    },
   ) => void;
   setError: (chatSessionId: string, error: string) => void;
   addActivity: (chatSessionId: string, activity: Activity) => void;

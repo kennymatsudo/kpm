@@ -154,6 +154,26 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
       const isViewed = get().viewedSessionId === chatSessionId;
       const buffered = isViewed ? streamingBuffer.flush() : '';
       const interrupted = options?.interrupted ?? false;
+      // When promoting a queued follow-up, anchor the finalized bubble before
+      // that follow-up and re-enter streaming in this same update.
+      const promoteId = options?.promoteQueuedClientMessageId;
+      const beforeClientMessageId = options?.beforeClientMessageId ?? promoteId;
+      const now = Date.now();
+
+      const applyPromotion = (messages: Message[]): Message[] => {
+      };
+      const promotionStreamingState = promoteId
+        ? {
+            isStreaming: true,
+            error: null,
+            streamStartedAt: now,
+            lastStreamUpdateAt: now,
+          }
+        : {
+            isStreaming: false,
+            streamStartedAt: null,
+            lastStreamUpdateAt: null,
+          };
 
       set((state) => {
         const sessions = new Map(state.sessions);
@@ -166,7 +186,11 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
         const segments = [...session.streamingSegments];
 
         // Idempotency guard: repeated chat:done/session-deactivated events can
+        // arrive after we've already finalized and cleared this turn. When
+        // promoting a queued follow-up we still must clear its queued flag and
+        // re-enter streaming, so don't bail early in that case.
         if (
+          !promoteId &&
           !session.isStreaming &&
           segments.length === 0 &&
           !buffered &&
@@ -228,6 +252,7 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
             streamingSegments: [],
             pendingActivities: [],
             activities: [],
+            ...promotionStreamingState,
           });
           return { sessions };
         }
@@ -252,6 +277,7 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
           streamingSegments: [],
           pendingActivities: [],
           activities: [],
+          ...promotionStreamingState,
         });
 
         return { sessions };
