@@ -35,6 +35,7 @@ When asked to break down, create, or reorganize work:
  */
 export function buildResponseModesSection(
   hasRepos: boolean,
+  _planItems: PlanItem[],
   _getPromptContent?: (key: string) => string
 ): string {
   const repoAccess = buildRepoAccessSection(hasRepos);

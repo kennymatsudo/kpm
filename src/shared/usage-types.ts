@@ -63,6 +63,9 @@ const CONTEXT_WINDOW_BY_TIER: Record<string, number> = {
  */
 export function resolveModelContextWindow(model: string | null | undefined): number {
   const m = (model ?? '').toLowerCase();
+  if (m.includes('opus')) return CONTEXT_WINDOW_BY_TIER.opus;
+  if (m.includes('haiku')) return CONTEXT_WINDOW_BY_TIER.haiku;
+  return CONTEXT_WINDOW_BY_TIER.sonnet;
 }
 
 /**
