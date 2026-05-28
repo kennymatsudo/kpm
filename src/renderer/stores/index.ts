@@ -67,6 +67,7 @@ export type {
   PendingPlanActionsItem,
   PendingClaudeMdItem,
   PendingDocumentItem,
+  PendingDeleteItem,
 } from './approvalQueueStore';
 
 // Toast notifications

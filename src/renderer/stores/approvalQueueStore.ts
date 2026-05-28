@@ -17,6 +17,7 @@ import { usePlanDomainStore } from './projectDomains';
 import { useDevSessionsStore } from './devSessions';
 import { replyToSessionReviewThread } from '../services/reviewService';
 import { writeClaudeMdFile } from '../services/contextFileService';
+import { writeProjectFile, deleteProjectFile } from '../services/workspaceFileService';
 
 // =============================================================================
 // Approval Item Types (Discriminated Union)
@@ -43,6 +44,13 @@ export interface PendingDocumentItem {
   oldContent: string | null;
 }
 
+export interface PendingDeleteItem {
+  type: 'delete';
+  id: string;
+  filePath: string;
+  isDirectory: boolean;
+}
+
 export interface PendingReviewReplyItem {
   type: 'review-reply';
   id: string;
@@ -60,6 +68,7 @@ export type ApprovalItem =
   | PendingPlanActionsItem
   | PendingClaudeMdItem
   | PendingDocumentItem
+  | PendingDeleteItem
   | PendingReviewReplyItem;
 
 // =============================================================================
@@ -96,6 +105,9 @@ interface ApprovalQueueState {
 
   /** Add a document update to the queue */
   enqueueDocumentUpdate: (filePath: string, content: string, oldContent: string | null) => void;
+
+  /** Add a file/folder deletion to the queue */
+  enqueueFileDelete: (filePath: string, isDirectory: boolean) => void;
 
   /** Add a staged GitHub review reply for approval */
   enqueueReviewReply: (draft: Omit<PendingReviewReplyItem, 'type' | 'id'>) => void;
@@ -136,6 +148,12 @@ interface ApprovalQueueState {
     content: string,
   ) => void;
 
+  processFileDelete: (
+    projectId: string,
+    filePath: string,
+    isDirectory: boolean
+  ) => void;
+
   /** Process a staged GitHub review reply draft - queues for approval */
   processReviewReplyDraft: (draft: {
     sessionId: string;
@@ -166,6 +184,12 @@ interface ApprovalQueueState {
     projectId: string,
     filePath: string,
     content: string
+  ) => Promise<{ success: boolean; error?: string }>;
+
+  /** Execute a file/folder deletion */
+  executeFileDelete: (
+    projectId: string,
+    filePath: string
   ) => Promise<{ success: boolean; error?: string }>;
 
   /** Execute a staged GitHub review reply */
@@ -310,6 +334,24 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
     });
   },
 
+  enqueueFileDelete: (filePath, isDirectory) => {
+    set((state) => {
+      // Dedupe repeat proposals for the same path; keep a single confirmation.
+      const existing = state.queue.find(
+        (item): item is PendingDeleteItem => item.type === 'delete' && item.filePath === filePath
+      );
+      if (existing) return state;
+
+      const newItem: PendingDeleteItem = {
+        type: 'delete',
+        id: generateId(),
+        filePath,
+        isDirectory,
+      };
+      return { queue: [...state.queue, newItem], userMinimized: false };
+    });
+  },
+
   enqueueReviewReply: (draft) => {
     const newItem: PendingReviewReplyItem = {
       type: 'review-reply',
@@ -369,6 +411,8 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
 
   },
 
+  },
+
   processReviewReplyDraft: (draft) => {
     get().enqueueReviewReply(draft);
   },
@@ -398,6 +442,15 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
   executeFileWrite: async (projectId, filePath, content) => {
     try {
       const result = await writeProjectFile(projectId, filePath, content);
+      return result;
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  },
+
+  executeFileDelete: async (projectId, filePath) => {
+    try {
+      const result = await deleteProjectFile(projectId, filePath);
       return result;
     } catch (error) {
       return { success: false, error: (error as Error).message };

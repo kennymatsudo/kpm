@@ -197,6 +197,7 @@ function createDeps(sendSpy: (channel: string, payload: unknown) => void): Strea
     subscribeToPlanActions: () => () => {},
     subscribeToClaudeMdUpdate: () => () => {},
     subscribeToDocumentUpdate: () => () => {},
+    subscribeToFileDelete: () => () => {},
     readClaudeMd: async () => ({ success: true, content: '', filename: 'AGENTS.md' }),
     readDocumentFile: async () => ({ success: true, content: '' }),
   };

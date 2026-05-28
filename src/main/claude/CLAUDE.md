@@ -24,6 +24,7 @@ createKpmServer() (singleton MCP server)
     ├─ confluence.ts (Confluence integration tools)
     ├─ briefing.ts (project briefing generation)
     ├─ file-move.ts (file move tools)
+    ├─ file-delete.ts (file delete tools)
     ├─ plan-refs.ts (extract plan items from a doc; resolve @plan/<uuid> tokens)
     ↓
 System prompts (prompts/ directory)

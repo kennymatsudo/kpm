@@ -345,6 +345,18 @@ describe('FileExplorerService', () => {
       }
     });
 
+    it('prevents deleting project root through a normalized path alias', async () => {
+      fs.mkdirSync(path.join(tempDir, 'folder'));
+
+      const result = await service.deleteEntry('test-project', 'folder/..');
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe('Cannot delete project root');
+      }
+      expect(fs.existsSync(tempDir)).toBe(true);
+    });
+
     it.each(['AGENTS.md', 'CLAUDE.md'])('prevents deleting %s', async (filename) => {
       fs.writeFileSync(path.join(tempDir, filename), `# ${filename}`);
       const result = await service.deleteEntry('test-project', filename);

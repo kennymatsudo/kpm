@@ -280,6 +280,11 @@ const chat = {
     ipcRenderer.on('chat:file-update', handler);
     return () => ipcRenderer.removeListener('chat:file-update', handler);
   },
+  onFileDelete: (callback: (data: { projectId: string; chatSessionId?: string; path: string; isDirectory: boolean }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; path: string; isDirectory: boolean }) => callback(data);
+    ipcRenderer.on('chat:file-delete', handler);
+    return () => ipcRenderer.removeListener('chat:file-delete', handler);
+  },
 
   // ─── Streaming Session Methods ───
 

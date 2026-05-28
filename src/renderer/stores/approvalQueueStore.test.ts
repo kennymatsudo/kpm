@@ -82,3 +82,37 @@ describe('approvalQueueStore — review reply flow', () => {
     expect(api.devSessions.getByProjectWithPlanItems).toHaveBeenCalledWith('project-1');
   });
 });
+
+describe('approvalQueueStore — file delete flow', () => {
+  let api: MockApi;
+
+  beforeEach(() => {
+    api = installMockApi();
+    useApprovalQueueStore.getState().clearQueue();
+  });
+
+  it('queues a delete proposal for explicit confirmation rather than deleting immediately', () => {
+    useApprovalQueueStore.getState().processFileDelete('project-1', 'drafts/old.md', false);
+
+    const queue = useApprovalQueueStore.getState().queue;
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({ type: 'delete', filePath: 'drafts/old.md', isDirectory: false });
+    // Nothing is deleted until the user approves.
+    expect(api.fileExplorer.delete).not.toHaveBeenCalled();
+  });
+
+  it('dedupes repeat proposals for the same path', () => {
+    const store = useApprovalQueueStore.getState();
+    store.processFileDelete('project-1', 'drafts/old.md', false);
+    store.processFileDelete('project-1', 'drafts/old.md', false);
+
+    expect(useApprovalQueueStore.getState().queue).toHaveLength(1);
+  });
+
+  it('deletes via the file explorer only when executed', async () => {
+    const result = await useApprovalQueueStore.getState().executeFileDelete('project-1', 'drafts/old.md');
+
+    expect(result).toEqual({ success: true });
+    expect(api.fileExplorer.delete).toHaveBeenCalledWith('project-1', 'drafts/old.md');
+  });
+});

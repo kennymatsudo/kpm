@@ -30,6 +30,7 @@ import { createGitHubTools } from './github';
 import { createConfluenceTools } from './confluence';
 import { createBriefingTools } from './briefing';
 import { createFileMoveTools } from './file-move';
+import { createFileDeleteTools, type FileDeleteCallback, type FileDeletePayload } from './file-delete';
 import { createListProjectFilesTools } from './list-project-files';
 import { createPlanRefTools } from './plan-refs';
 import type { PlanAction } from '../../../shared/types';
@@ -106,6 +107,9 @@ const claudeMdUpdateEmitter = new EventEmitter();
 
 // Event emitter for document updates
 const documentUpdateEmitter = new EventEmitter();
+
+// Event emitter for file deletion proposals
+const fileDeleteEmitter = new EventEmitter();
 
 interface ToolExecutionContext {
   projectId: string;
@@ -227,6 +231,15 @@ export function subscribeToDocumentUpdate(callback: DocumentUpdateCallback): () 
 }
 
 /**
+ * Subscribe to file deletion proposals.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToFileDelete(callback: (payload: FileDeletePayload) => void): () => void {
+  fileDeleteEmitter.on('fileDelete', callback);
+  return () => fileDeleteEmitter.off('fileDelete', callback);
+}
+
+/**
  * Internal callback that emits to all subscribers
  */
 function emitPlanActions(actions: PlanAction[]): void {
@@ -284,6 +297,20 @@ function emitDocumentUpdate(update: DocumentUpdatePayload): void {
 }
 
 /**
+ * Internal callback that emits a file deletion proposal to all subscribers,
+ * scoped to the originating chat session. Unlike document updates there is no
+ * pending-content cache — the proposal carries only the target path.
+ */
+const emitFileDelete: FileDeleteCallback = (payload) => {
+  const context = toolExecutionContext.getStore();
+  const chatSessionId = payload.chatSessionId ?? context?.chatSessionId;
+  fileDeleteEmitter.emit('fileDelete', {
+    ...payload,
+    chatSessionId,
+  });
+};
+
+/**
  * Read a project file, checking the pending content cache first.
  * Falls back to disk if no pending content exists for this file.
  */
@@ -327,6 +354,10 @@ function collectTools() {
     fileExplorerService: services.fileExplorerService,
     getMainWindow,
   });
+  const fileDeleteTools = createFileDeleteTools({
+    fileExplorerService: services.fileExplorerService,
+    onFileDelete: emitFileDelete,
+  });
   const listProjectFilesTools = createListProjectFilesTools({
     fileExplorerService: services.fileExplorerService,
   });
@@ -349,6 +380,7 @@ function collectTools() {
     ...confluenceTools,
     ...briefingTools,
     ...fileMoveTools,
+    ...fileDeleteTools,
     ...listProjectFilesTools,
     ...planRefTools,
   ];

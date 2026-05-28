@@ -63,3 +63,14 @@ export function writeProjectFile(
 
   return window.api.fileExplorer.writeFile(projectId, path, content);
 }
+
+export function deleteProjectFile(
+  projectId: string | null | undefined,
+  path: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!projectId) {
+    throw new Error('No project selected');
+  }
+
+  return window.api.fileExplorer.delete(projectId, path);
+}

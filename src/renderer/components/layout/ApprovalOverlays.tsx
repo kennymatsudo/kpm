@@ -24,6 +24,7 @@ import { toast } from '../../stores/toastStore';
 import { emit } from '../../stores/storeEvents';
 import { PendingActionsPanel } from '../planning/PendingActionsPanel';
 import { PendingDocumentPanel } from '../planning/PendingDocumentPanel';
+import { PendingDeletePanel } from '../planning/PendingDeletePanel';
 import { ReviewReplyApprovalPanel } from '../development/ReviewReplyApprovalPanel';
 import { Z_INDEX } from '../../constants/zIndex';
 import { getParentPath } from '../../utils/path';
@@ -34,6 +35,7 @@ function getItemTypeLabel(type: ApprovalItem['type']): string {
     case 'plan-actions': return 'Plan Changes';
     case 'claude-md': return 'Project Context Update';
     case 'document': return 'Document Update';
+    case 'delete': return 'Confirm Deletion';
     case 'review-reply': return 'Review Reply';
     default: return 'Pending Approval';
   }
@@ -58,6 +60,12 @@ function getItemTypeIcon(type: ApprovalItem['type']): React.ReactNode {
       return (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+      );
+    case 'delete':
+      return (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
         </svg>
       );
     case 'review-reply':
@@ -97,12 +105,14 @@ export function ApprovalOverlays() {
     executePlanActions,
     executeClaudeMdWrite,
     executeFileWrite,
+    executeFileDelete,
     executeReviewReply,
   } = useApprovalQueueStore(
     useShallow((state) => ({
       executePlanActions: state.executePlanActions,
       executeClaudeMdWrite: state.executeClaudeMdWrite,
       executeFileWrite: state.executeFileWrite,
+      executeFileDelete: state.executeFileDelete,
       executeReviewReply: state.executeReviewReply,
     }))
   );
@@ -234,6 +244,24 @@ export function ApprovalOverlays() {
       setIsApplying(false);
     }
 
+  const handleConfirmDelete = useCallback(async (item: ApprovalItem & { type: 'delete' }) => {
+    if (!currentProjectId) return;
+    setIsApplying(true);
+    try {
+      const result = await executeFileDelete(currentProjectId, item.filePath);
+      if (result.success) {
+        removeById(item.id);
+        // Refresh the parent directory so the deleted entry disappears from the tree
+        const parentPath = getParentPath(item.filePath, '');
+        void useFileTreeStore.getState().refreshDirectory(parentPath);
+      } else {
+        toast.error(`Failed to delete ${item.filePath}: ${result.error}`);
+      }
+    } finally {
+      setIsApplying(false);
+    }
+  }, [currentProjectId, executeFileDelete, removeById]);
+
   const handleApproveReviewReply = useCallback(async (
     item: ApprovalItem & { type: 'review-reply' },
     body: string,
@@ -335,6 +363,17 @@ export function ApprovalOverlays() {
           content={currentItem.content}
           oldContent={currentItem.oldContent}
           onAccept={(content) => handleAcceptDocument(currentItem, content)}
+          onDismiss={() => handleDismiss(currentItem.id)}
+          isApplying={isApplying}
+          embedded
+        />
+      )}
+
+      {currentItem.type === 'delete' && (
+        <PendingDeletePanel
+          filePath={currentItem.filePath}
+          isDirectory={currentItem.isDirectory}
+          onConfirm={() => handleConfirmDelete(currentItem)}
           onDismiss={() => handleDismiss(currentItem.id)}
           isApplying={isApplying}
           embedded

@@ -9,6 +9,7 @@ import {
   subscribeToPlanActions,
   subscribeToClaudeMdUpdate,
   subscribeToDocumentUpdate,
+  subscribeToFileDelete,
 } from '../../claude/tools/createKpmServer';
 import { createToolCallLogger } from '../toollog';
 import type { PlanContext } from '../../claude/prompts';
@@ -114,6 +115,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     subscribeToPlanActions,
     subscribeToClaudeMdUpdate,
     subscribeToDocumentUpdate,
+    subscribeToFileDelete,
     readClaudeMd: async (projectId: string) => {
       const result = await services.contextFileService.readClaudeMd(projectId);
       return result.ok

@@ -21,6 +21,7 @@ import { StreamingSession, type McpServerStatus } from '../../claude/streaming';
 import { getToolActivity, extractDiffFromToolResult } from '../../claude/activity';
 import type { ClaudeMdUpdatePayload } from '../../claude/tools/claudemd-update';
 import type { DocumentUpdatePayload } from '../../claude/tools/document-update';
+import type { FileDeletePayload } from '../../claude/tools/file-delete';
 import {
   runWithToolExecutionContext,
   clearPendingDocumentContent,
@@ -158,6 +159,7 @@ interface ManagedSession {
   unsubscribePlanActions: () => void;
   unsubscribeClaudeMdUpdate: () => void;
   unsubscribeDocumentUpdate: () => void;
+  unsubscribeFileDelete: () => void;
 }
 
 // =============================================================================
@@ -246,6 +248,9 @@ export interface StreamingSessionServiceDeps {
 
   /** Subscribe to document update proposals from MCP tools */
   subscribeToDocumentUpdate: (callback: (update: DocumentUpdatePayload) => void) => () => void;
+
+  /** Subscribe to file deletion proposals from MCP tools */
+  subscribeToFileDelete: (callback: (payload: FileDeletePayload) => void) => () => void;
 
   /** Read project context file (AGENTS.md or CLAUDE.md) content for a project */
   readClaudeMd: (projectId: string) => Promise<{ success: boolean; content: string | null; filename?: string; error?: string }>;
@@ -524,6 +529,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     let unsubscribePlanActions: (() => void) | null = null;
     let unsubscribeClaudeMdUpdate: (() => void) | null = null;
     let unsubscribeDocumentUpdate: (() => void) | null = null;
+    let unsubscribeFileDelete: (() => void) | null = null;
 
     try {
         model,
@@ -648,6 +654,22 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         }
       });
 
+      // Subscribe to file deletion proposals from the tool
+      unsubscribeFileDelete = deps.subscribeToFileDelete((payload) => {
+        const matchesSession = payload.chatSessionId
+          ? payload.chatSessionId === chatSessionId
+          : ['connecting', 'processing'].includes(sessions.get(key)?.state ?? '');
+
+        if (payload.projectId === projectId && matchesSession) {
+          mainWindow?.webContents.send('chat:file-delete', {
+            projectId,
+            chatSessionId,
+            path: payload.path,
+            isDirectory: payload.isDirectory,
+          });
+        }
+      });
+
       // Create streaming session — let required: const can't be referenced in its own initializer closures
       // eslint-disable-next-line prefer-const
             chatSessionId,
@@ -680,6 +702,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         unsubscribePlanActions,
         unsubscribeClaudeMdUpdate,
         unsubscribeDocumentUpdate,
+        unsubscribeFileDelete,
       });
 
       // Start session WITH the initial message (required by SDK).
@@ -717,6 +740,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         managed.unsubscribePlanActions();
         managed.unsubscribeClaudeMdUpdate();
         managed.unsubscribeDocumentUpdate();
+        managed.unsubscribeFileDelete();
         try {
           await managed.session.close();
         } catch (closeError) {
@@ -727,6 +751,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         unsubscribePlanActions?.();
         unsubscribeClaudeMdUpdate?.();
         unsubscribeDocumentUpdate?.();
+        unsubscribeFileDelete?.();
       }
       if (sessions.get(key)?.session === managed?.session) {
         sessions.delete(key);
@@ -1277,6 +1302,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     managed.unsubscribePlanActions();
     managed.unsubscribeClaudeMdUpdate();
     managed.unsubscribeDocumentUpdate();
+    managed.unsubscribeFileDelete();
     managed.suppressLifecycleEventsOnEnd = !!options.silent;
 
     // If a follow-up was queued behind a turn that never got to deliver it,
@@ -1786,6 +1812,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     managed.unsubscribePlanActions();
     managed.unsubscribeClaudeMdUpdate();
     managed.unsubscribeDocumentUpdate();
+    managed.unsubscribeFileDelete();
 
     sessions.delete(key);
 

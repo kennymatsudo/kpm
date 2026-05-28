@@ -152,6 +152,10 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
     return { fullPath };
   }
 
+  function isProjectRootTarget(projectFolder: string, fullPath: string): boolean {
+    return path.relative(path.resolve(projectFolder), path.resolve(fullPath)) === '';
+  }
+
   async function checkTargetAccess(
     projectFolder: string,
     fullPath: string
@@ -381,6 +385,8 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
       if ('error' in scoped) return scoped.error;
       const { fullPath } = scoped;
 
+      // Prevent deleting the project root, including aliases like "folder/..".
+      if (isProjectRootTarget(projectFolder, fullPath)) {
         return failure('Cannot delete project root');
       }
 

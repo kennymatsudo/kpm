@@ -275,6 +275,10 @@ export function createMockApi() {
       buildAddressCommentsContext: vi.fn().mockResolvedValue({ success: true, context: '' }),
     },
 
+    fileExplorer: {
+      writeFile: vi.fn().mockResolvedValue({ success: true }),
+      delete: vi.fn().mockResolvedValue({ success: true }),
+    },
     review: {
       getInbox: vi.fn().mockResolvedValue({ success: true, inbox: null }),
       refreshSession: vi.fn().mockResolvedValue({ success: true, inbox: null }),

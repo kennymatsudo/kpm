@@ -29,6 +29,13 @@ export interface FileUpdateEventData {
   oldContent?: string | null;
 }
 
+export interface FileDeleteEventData {
+  projectId: string;
+  chatSessionId?: string;
+  path: string;
+  isDirectory: boolean;
+}
+
 export interface SessionEventData {
   projectId: string;
   chatSessionId?: string;
@@ -178,6 +185,7 @@ export function subscribeToChatEvents(handlers: {
   onChunk?: (data: ChunkEventData) => void;
   onPlanActions?: (data: PlanActionsEventData) => void;
   onFileUpdate?: (data: FileUpdateEventData) => void;
+  onFileDelete?: (data: FileDeleteEventData) => void;
   onDone?: (data: SessionEventData) => void;
   onError?: (data: ErrorEventData) => void;
   onActivity?: (data: ActivityEventData) => void;
@@ -196,6 +204,7 @@ export function subscribeToChatEvents(handlers: {
     handlers.onChunk ? window.api.chat.onChunk(handlers.onChunk) : null,
     handlers.onPlanActions ? window.api.chat.onPlanActions(handlers.onPlanActions) : null,
     handlers.onFileUpdate ? window.api.chat.onFileUpdate(handlers.onFileUpdate) : null,
+    handlers.onFileDelete ? window.api.chat.onFileDelete(handlers.onFileDelete) : null,
     handlers.onDone ? window.api.chat.onDone(handlers.onDone) : null,
     handlers.onError ? window.api.chat.onError(handlers.onError) : null,
     handlers.onActivity ? window.api.chat.onActivity(handlers.onActivity) : null,

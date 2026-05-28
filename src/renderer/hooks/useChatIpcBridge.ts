@@ -67,9 +67,11 @@ export function useChatIpcBridge(projectId: string | null): void {
   const {
     processPlanActions,
     processFileUpdate,
+    processFileDelete,
   } = useApprovalQueueStore(useShallow((state) => ({
     processPlanActions: state.processPlanActions,
     processFileUpdate: state.processFileUpdate,
+    processFileDelete: state.processFileDelete,
   })));
 
   useEffect(() => {
@@ -136,6 +138,9 @@ export function useChatIpcBridge(projectId: string | null): void {
         }
       },
       onFileUpdate: (data) => {
+        }
+      },
+      onFileDelete: (data) => {
         }
       },
       onDone: (data) => {
