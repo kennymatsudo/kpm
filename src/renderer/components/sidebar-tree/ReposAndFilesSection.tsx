@@ -186,8 +186,19 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     }
   }, [editingPath, projectId, expandToPath]);
 
+  // Load project files and Confluence links on mount.
+  // Skip the directory load when the tree is already populated for this project so
+  // remounting the sidebar (e.g. toggling it with Cmd+B) doesn't replace the tree with
+  // root-only nodes — that wiped lazily-loaded children while leaving expandedPaths set,
+  // leaving folders showing as open but empty. The file watcher keeps the tree fresh
+  // while mounted, and a project switch still triggers a fresh load.
   useEffect(() => {
     if (projectId) {
+      const { projectId: loadedProjectId, nodes } = useFileTreeStore.getState();
+      const alreadyLoaded = loadedProjectId === projectId && nodes.length > 0;
+      if (!alreadyLoaded) {
+        void loadProjectDirectory(projectId);
+      }
       void loadLinks(projectId);
     }
   }, [projectId, loadProjectDirectory, loadLinks]);
