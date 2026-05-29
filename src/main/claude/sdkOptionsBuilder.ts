@@ -89,6 +89,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     // Load user-enabled external MCP plugins (Slack, GitHub, etc.)
       plugins: enabledPluginPaths.map(p => ({ type: 'local' as const, path: p })),
     }),
+    // Always disable the built-in option-picker tool; Claude asks clarifying
     maxTurns: claudeConfig.maxTurns,
     // Periodic AI-generated progress summaries for Task-tool subagents.
     // Forks the subagent every ~30s and emits a short description on

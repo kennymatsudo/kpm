@@ -593,6 +593,8 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           model: developerModel,
           maxTurns: getConfig().claude.maxTurns,
           permissionMode: getConfig().claude.defaultPermissionMode,
+          // Board agents are one-shot — never pause for the built-in
+          // option-picker; the agent proceeds on assumptions instead.
           skills: [],
           env: { ...process.env, ...capturedEnv, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
           thinking: { type: 'adaptive' as const, display: 'summarized' as const },
