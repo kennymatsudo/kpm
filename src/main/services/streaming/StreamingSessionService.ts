@@ -25,6 +25,8 @@ import type { FileDeletePayload } from '../../claude/tools/file-delete';
 import {
   runWithToolExecutionContext,
   clearPendingDocumentContent,
+  peekPendingDocumentContent,
+  recordPendingDocumentContent,
   type PlanActionsEvent,
 } from '../../claude/tools/createKpmServer';
 import { buildUserContentBlocks } from '../../claude/attachmentBlocks';
@@ -235,6 +237,7 @@ export interface StreamingSessionServiceDeps {
       mainWindow: BrowserWindow | null;
       onClaudeMdEdit?: (projectId: string, newContent: string) => void;
       onProjectFileWrite?: (projectId: string, filePath: string, content: string) => void;
+      peekPendingFile?: (relativeFilePath: string) => string | undefined;
       onElicitation?: OnElicitation;
       autoApprove?: boolean;
     }
@@ -553,8 +556,16 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             console.error('[StreamingSessionService] Failed to read context file for intercepted edit:', error);
           });
         },
+        // Returns pending content for a project-relative path so successive
+        // Edit/Write calls to the same file in one turn accumulate instead of
+        // each reading stale on-disk content (the interception denies the write).
+        peekPendingFile: (relativeFilePath: string) =>
+          peekPendingDocumentContent(chatSessionId, relativeFilePath),
         // Callback for intercepted project file writes from the permission handler
         onProjectFileWrite: (writeProjectId: string, filePath: string, content: string) => {
+          // Record the proposed content so the next same-file edit this turn
+          // builds on it rather than re-reading unchanged disk.
+          recordPendingDocumentContent(chatSessionId, filePath, content);
           // Read current file for diff display
           void (async () => {
             const currentContent = await deps.readDocumentFile(writeProjectId, filePath);

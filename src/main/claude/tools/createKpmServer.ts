@@ -326,6 +326,39 @@ async function readProjectFileWithPending(projectId: string, filePath: string): 
 }
 
 /**
+ * Read pending (proposed-but-unapproved) content for a project-relative file
+ * path under an explicit chat session, or undefined if nothing is pending.
+ *
+ * Used by the built-in Edit/Write interception (permissions.ts), which runs in
+ * the SDK's `canUseTool` callback where the AsyncLocalStorage context is not
+ * relied upon. Keyed identically to `readProjectFileWithPending` /
+ * `emitDocumentUpdate` so the interception and the `propose_document_edit` tool
+ * share one accumulation cache.
+ */
+export function peekPendingDocumentContent(
+  chatSessionId: string | undefined,
+  filePath: string
+): string | undefined {
+  if (!chatSessionId) return undefined;
+  return pendingDocumentContent.get(`${chatSessionId}:${filePath}`);
+}
+
+/**
+ * Record proposed content for a project-relative file path so subsequent edits
+ * to the same file within the turn build on it instead of re-reading stale disk.
+ * Mirrors the cache write that `emitDocumentUpdate` performs for the tool path.
+ * Cleared per turn via `clearPendingDocumentContent`.
+ */
+export function recordPendingDocumentContent(
+  chatSessionId: string | undefined,
+  filePath: string,
+  content: string
+): void {
+  if (!chatSessionId) return;
+  pendingDocumentContent.set(`${chatSessionId}:${filePath}`, content);
+}
+
+/**
  * Collect all KPM tools. Cached after first call.
  */
 function collectTools() {

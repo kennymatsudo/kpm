@@ -26,6 +26,8 @@ export interface BuildSdkOptionsParams {
   onClaudeMdEdit?: ClaudeMdInterceptFn;
   /** Callback for intercepted project file writes */
   onProjectFileWrite?: ProjectFileInterceptFn;
+  /** Returns pending content for a project-relative path so same-file edits accumulate */
+  peekPendingFile?: (relativeFilePath: string) => string | undefined;
   /** External plugin paths to load (for non-managed MCP servers) */
   enabledPluginPaths?: string[];
   /** User MCP server configs to load (from ~/.claude.json) */
@@ -44,6 +46,7 @@ export interface BuildSdkOptionsParams {
  * Build SDK options for a Claude session.
  */
 export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
+  const { context, model, effort, currentView, resumeSessionId, mainWindow, onClaudeMdEdit, onProjectFileWrite, peekPendingFile, enabledPluginPaths, enabledUserMcpConfigs, disabledMcpTools, disabledMcpServerNames, onElicitation, autoApprove } = params;
   const effectiveRepoPaths = context.repos.map(r => r.active_worktree_path ?? r.path);
 
   const permissionContext: PermissionContext = {
@@ -53,6 +56,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     currentView,
     onClaudeMdEdit,
     onProjectFileWrite,
+    peekPendingFile,
     disabledMcpServerNames,
     autoApprove,
   };

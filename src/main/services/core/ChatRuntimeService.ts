@@ -76,6 +76,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
       mainWindow: BrowserWindow | null;
       onClaudeMdEdit?: (projectId: string, newContent: string) => void;
       onProjectFileWrite?: (projectId: string, filePath: string, content: string) => void;
+      peekPendingFile?: (relativeFilePath: string) => string | undefined;
       onElicitation?: OnElicitation;
       autoApprove?: boolean;
     }) => {
@@ -104,6 +105,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         mainWindow: options.mainWindow,
         onClaudeMdEdit: options.onClaudeMdEdit,
         onProjectFileWrite: options.onProjectFileWrite,
+        peekPendingFile: options.peekPendingFile,
         onElicitation: options.onElicitation,
         autoApprove: options.autoApprove,
         enabledPluginPaths,

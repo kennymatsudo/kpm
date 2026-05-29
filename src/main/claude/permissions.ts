@@ -59,6 +59,14 @@ export interface PermissionContext {
    * content. Defaults to fs.readFile; tests inject a fake.
    */
   readProjectFile?: (absolutePath: string) => Promise<string>;
+  /**
+   * Returns proposed-but-unapproved content for a project-relative path from the
+   * current turn's pending cache, or undefined when nothing is pending. Lets
+   * successive Edit/Write calls to the same file accumulate instead of each
+   * computing against stale on-disk content (interception denies the write, so
+   * disk never reflects earlier edits in the turn).
+   */
+  peekPendingFile?: (relativeFilePath: string) => string | undefined;
   /** External MCP servers disabled in KPM settings. */
   disabledMcpServerNames?: string[];
   /** When true, skip permission prompts and auto-allow all non-denied tool calls */
@@ -278,7 +286,23 @@ export function createPermissionHandler(
           };
         }
 
+        // Prefer pending content from earlier edits this turn so multiple edits
+        // to the same file accumulate. The interception denies the write, so
+        // disk never reflects prior edits — reading it would silently drop them.
         let currentContent: string;
+        const pending = context.peekPendingFile?.(relativePath);
+        if (pending !== undefined) {
+          currentContent = pending;
+        } else {
+          const reader = context.readProjectFile ?? ((p) => fs.readFile(p, 'utf-8'));
+          try {
+            currentContent = await reader(targetPath);
+          } catch (error) {
+            return {
+              behavior: 'deny',
+              message: `Could not read "${relativePath}" for editing: ${error instanceof Error ? error.message : String(error)}`,
+            };
+          }
         }
 
         const firstIndex = currentContent.indexOf(oldString);
