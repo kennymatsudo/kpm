@@ -48,6 +48,8 @@ interface RepoScanResult {
   manifests: Record<string, string>;
   readmeContent: string | null;
   existingClaudeMd: string | null;
+  /** Directory-only map of the repo root, so the agent knows where to investigate. */
+  repoTree: string;
   scopedDirectories: ScopedDirectoryScan[];
 }
 
@@ -80,6 +82,9 @@ export interface OnboardingServiceDeps {
 // Helpers
 // =============================================================================
 
+/** Source file extensions we read snippets from when scanning scoped directories. */
+const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java', '.rb']);
+
 function readFileSafe(filePath: string, maxChars = 2000): string | null {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
@@ -89,6 +94,13 @@ function readFileSafe(filePath: string, maxChars = 2000): string | null {
   }
 }
 
+function getDirectoryTree(
+  dirPath: string,
+  maxDepth: number,
+  currentDepth = 0,
+  dirsOnly = false,
+  maxEntriesPerLevel = 30,
+): string {
   const SKIP = new Set([
     'node_modules', '.git', '__pycache__', 'dist', 'build', '.next',
     '.venv', 'venv', '.tox', '.mypy_cache', 'target', '.gradle',
@@ -109,13 +121,16 @@ function readFileSafe(filePath: string, maxChars = 2000): string | null {
       if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
       return a.name.localeCompare(b.name);
     })
+    .slice(0, maxEntriesPerLevel); // Cap entries per level
 
   const indent = '  '.repeat(currentDepth);
   for (const entry of filtered) {
     if (entry.isDirectory()) {
       lines.push(`${indent}${entry.name}/`);
       if (currentDepth < maxDepth) {
+        lines.push(getDirectoryTree(path.join(dirPath, entry.name), maxDepth, currentDepth + 1, dirsOnly, maxEntriesPerLevel));
       }
+    } else if (!dirsOnly) {
       lines.push(`${indent}${entry.name}`);
     }
   }
@@ -152,6 +167,12 @@ async function scanRepo(
     readFileSafe(path.join(repoPath, 'AGENTS.md')) ??
     readFileSafe(path.join(repoPath, 'CLAUDE.md'));
 
+  // Directory-only map of the repo root (top two levels, wider per-level cap so a
+  // monorepo's full top level is captured). This is the agent's starting map: it
+  // decides which areas the description points at, then uses Grep/Glob/Read to
+  // investigate them. Cheap, and present even when no scoped dirs were provided.
+  const repoTree = getDirectoryTree(repoPath, 2, 0, true, 60);
+
   // Scoped directory scans
   const scopedDirectories: ScopedDirectoryScan[] = [];
   for (const dir of scopedDirs) {
@@ -167,6 +188,7 @@ async function scanRepo(
     try {
       const allFiles = fs.readdirSync(fullDir, { withFileTypes: true });
       const sourceFiles = allFiles
+        .filter(f => f.isFile() && SOURCE_EXTENSIONS.has(path.extname(f.name)))
         .slice(0, 5);
 
       for (const sf of sourceFiles) {
@@ -191,6 +213,7 @@ async function scanRepo(
     manifests,
     readmeContent,
     existingClaudeMd,
+    repoTree,
     scopedDirectories,
   };
 }
@@ -232,6 +255,13 @@ function buildPrompt(
       sections.push(`### Existing AGENTS.md / CLAUDE.md\n${repo.existingClaudeMd}`);
     }
 
+    if (repo.repoTree) {
+      sections.push(
+        `### Repository Structure (top levels, directories only)\n\`\`\`\n${repo.repoTree}\n\`\`\`\n` +
+        `Use this as your starting map: pick the directories the user description points at, then Grep/Glob/Read inside them to find the specific files and sections. This is truncated -- Glob for deeper or wider structure when a relevant area is not shown.`,
+      );
+    }
+
     for (const scoped of repo.scopedDirectories) {
       sections.push(`### Scoped Directory: ${repo.repoName}/${scoped.directory}\n\`\`\`\n${scoped.fileTree}\n\`\`\``);
       for (const kf of scoped.keyFiles) {
@@ -259,6 +289,18 @@ const SYSTEM_PROMPT = `You generate or update a project context file (AGENTS.md)
 
 This file is for a future coding agent or developer who is joining an ongoing project. Its job is to orient them quickly and remain useful as the codebase evolves. Write for durable understanding, not for a point-in-time code inventory.
 
+You will receive pre-scanned repository data (git metadata, a directory-structure map of each repo, manifests, READMEs, and any user-scoped directories) in the user message. The connected repositories are available to your Read, Grep, and Glob tools. Do NOT write any files -- the application handles saving; just return the content as your text response.
+
+## Investigation
+
+Treat the user's description as your investigation brief. Do not synthesize only from the pre-scanned data -- actively locate the code that matters:
+
+- Use the description to decide which areas are relevant, then read the directory-structure map to choose concrete starting directories. The description states intent in plain language; you map that intent to real paths in the repos. The literal words of the description need not appear in a path.
+- Run targeted Grep/Glob inside those directories to confirm relevance and find the specific files and sections involved (for example, for a dependency upgrade, grep the manifests and the deprecated APIs). Prefer narrow, targeted searches over broad repo-wide ones.
+- Read the files you find to verify before relying on them; drop candidates that turn out to be unrelated.
+- The directory map is truncated and shallow. When a relevant area is not shown (a wide or deeply nested monorepo folder), Glob for it rather than assuming it does not exist.
+- If no scoped directories were provided, this investigation is how you determine the relevant areas -- the directory map, manifests, and recent commits are your starting points.
+- Keep the investigation focused and bounded: read enough to write an accurate, specific document, not everything.
 
 ## Audience And Goal
 
@@ -305,6 +347,7 @@ If an existing context document is provided, it is for REFERENCE ONLY:
 
 2. **Connected Repos** -- table with each repo's basename, inferred purpose, and tech stack with versions where detectable. This is how the assistant knows what it's working with.
 
+3. **Feature Entry Points** -- the user-specified scoped directories are the strongest signal when present. List them prominently as the paths where this feature's code lives. If no directories were specified, use your investigation (above) to identify the areas where this work lives, citing the concrete directories and files you confirmed.
    Keep this at the directory or subsystem level unless a specific file is the durable entry point.
 
 4. **Architecture** -- how the repos relate to each other (frontend -> backend -> service, monorepo packages, shared libraries). Include data flow if detectable. This helps the assistant reason about cross-repo impact during planning.
@@ -388,6 +431,9 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
           cwd: options.projectPath,
           additionalDirectories: scanResults.map(result => result.repoPath),
           persistSession: false, // Ephemeral one-shot query, no need to persist
+          // Room to actually investigate (read the map, Grep/Glob/Read across repos)
+          // before writing. The onboardingTimeoutMs is the hard cap.
+          maxTurns: 20,
           canUseTool: (toolName, input) => Promise.resolve(
             toolName === 'Write' || toolName === 'Edit' || toolName === 'Bash'
               ? {
@@ -401,6 +447,7 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
 
         console.log('[OnboardingService] Calling Claude Agent SDK query()...');
 
+        const timeoutMs = deps.getTimeoutMs?.() ?? getConfig().generation.onboardingTimeoutMs;
         const sdkModel = getConfig().generation.deepModel;
 
         const queryResult = await runClaudeQuery({

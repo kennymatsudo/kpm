@@ -19,6 +19,8 @@ export interface BackgroundTask<TMeta = unknown> {
   label: string;
   status: BackgroundTaskStatus;
   startedAt: number;
+  /** Last time any event arrived for this task (start or progress). Drives stale reaping. */
+  lastUpdatedAt: number;
   completedAt?: number;
   messages: string[];
   result?: string;
@@ -30,6 +32,7 @@ export interface BackgroundTask<TMeta = unknown> {
 interface BackgroundTaskState {
   tasks: Record<string, BackgroundTask>;
 
+  start: (task: Omit<BackgroundTask, 'status' | 'startedAt' | 'lastUpdatedAt' | 'messages'>) => void;
   appendProgress: (id: string, message: string) => void;
   complete: (id: string, opts?: { result?: string }) => void;
   fail: (id: string, error: string) => void;
@@ -37,6 +40,12 @@ interface BackgroundTaskState {
   reapStale: () => void;
 }
 
+// Silence threshold: a task is only reaped after this long with no event of any
+// kind. Kept comfortably above the longest backend operation timeout (onboarding
+// synthesis at generation.onboardingTimeoutMs = 10 min) so a task that is still
+// legitimately working is never pre-empted — its own backend timeout fires first
+// and reports the real error. This only catches tasks the backend abandoned silently.
+const STALE_TASK_TIMEOUT_MS = 15 * 60 * 1000;
 
 export const useBackgroundTaskStore = create<BackgroundTaskState>((set, get) => ({
   tasks: {},
@@ -49,6 +58,7 @@ export const useBackgroundTaskStore = create<BackgroundTaskState>((set, get) => 
           ...task,
           status: 'running',
           startedAt: Date.now(),
+          lastUpdatedAt: Date.now(),
           messages: [],
         },
       },
@@ -62,6 +72,7 @@ export const useBackgroundTaskStore = create<BackgroundTaskState>((set, get) => 
       return {
         tasks: {
           ...state.tasks,
+          [id]: { ...existing, messages: [...existing.messages, message], lastUpdatedAt: Date.now() },
         },
       };
     });
@@ -116,14 +127,17 @@ export const useBackgroundTaskStore = create<BackgroundTaskState>((set, get) => 
     const cutoff = Date.now() - STALE_TASK_TIMEOUT_MS;
     const tasks = get().tasks;
     const stale = Object.values(tasks).filter(
+      (t) => t.status === 'running' && t.lastUpdatedAt < cutoff,
     );
     if (stale.length === 0) return;
+    const staleMinutes = Math.round(STALE_TASK_TIMEOUT_MS / 60_000);
     set((state) => {
       const next = { ...state.tasks };
       for (const t of stale) {
         next[t.id] = {
           ...t,
           status: 'error',
+          error: `Task status unknown — no update for over ${staleMinutes} minutes`,
           completedAt: Date.now(),
         };
       }
