@@ -211,6 +211,7 @@ const ActivityEntry = memo(function ActivityEntry({ activity }: { activity: Agen
       </button>
 
       {isExpanded && activity.content && (
+        <div className="collapse-reveal ml-[52px] mr-4 mb-2 p-2.5 bg-surface-1 rounded border border-border-subtle overflow-x-auto">
           <pre className="text-tiny text-text-secondary whitespace-pre-wrap break-words font-mono">
             {activity.content}
           </pre>

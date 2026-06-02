@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useToolLogStore } from '../../stores/toolLogStore';
 import type { ToolCallLogEntry, ToolCallTurnSummary, ActivityType } from '../../../shared/types';
 import { Z_INDEX } from '../../constants/zIndex';
+import { Tooltip, EmptyState } from '../ui';
 import {
   NONE_VALUE,
   Select,
@@ -499,6 +500,7 @@ export function ToolLogPanel() {
         <Tooltip content="Clear log" side="top">
           <button
             onClick={clearSession}
+            className="text-text-quaternary hover:text-text-secondary hover:bg-surface-3 active:scale-90 rounded p-1 transition-all"
             aria-label="Clear log"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -511,6 +513,7 @@ export function ToolLogPanel() {
         <Tooltip content="Close (Cmd+Shift+T)" side="top">
           <button
             onClick={togglePanel}
+            className="text-text-quaternary hover:text-text-secondary hover:bg-surface-3 active:scale-90 rounded p-1 transition-all"
             aria-label="Close tool log"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -523,6 +526,25 @@ export function ToolLogPanel() {
       {/* Timeline */}
       <div ref={listRef} onScroll={handleListScroll} className="flex-1 overflow-y-auto overflow-x-hidden">
         {filteredEntries.length === 0 ? (
+          <div className="flex items-center justify-center h-full">
+            {entries.length === 0 ? (
+              <EmptyState
+                title="No tool calls yet"
+                description="Send a message — Claude's reads, edits, and commands appear here as it works."
+                size="sm"
+              />
+            ) : (
+              <EmptyState
+                icon={
+                  <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L14 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 018 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+                  </svg>
+                }
+                title={`No ${filterCategory ? CATEGORY_LABELS[filterCategory].toLowerCase() : ''} calls`}
+                description="Nothing matches this filter. Clear it to see all tool activity."
+                size="sm"
+              />
+            )}
           </div>
         ) : (
           [...turnGroups.entries()].map(([turn, turnEntries]) => (

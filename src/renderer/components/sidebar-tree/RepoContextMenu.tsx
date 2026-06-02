@@ -1,4 +1,5 @@
 import { DropdownMenu } from '../ui';
+import { copyToClipboard } from '../../utils/clipboard';
 
 export interface RepoWorktree {
   path: string;
@@ -171,6 +172,7 @@ export function RepoContextMenu({
       {/* Copy Path */}
       <DropdownMenu.Item
         onClick={() => {
+          void copyToClipboard(`"${activeWorktreePath ?? repoPath}"`, 'Path');
           onClose();
         }}
         closeOnClick={false}

@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import type { Project } from '../../../../shared/types';
 import { openProjectFolder } from '../../../services/projectService';
 import { getBaseName } from '../../../utils/path';
+import { copyToClipboard } from '../../../utils/clipboard';
 
 interface ProjectMenuDeps {
   currentProject: Project | null;
@@ -78,6 +79,7 @@ export function useProjectMenu({
 
   const handleCopyPath = useCallback(() => {
     if (currentProject?.folder_path) {
+      void copyToClipboard(`"${currentProject.folder_path}"`, 'Path');
     }
     setShowMenu(false);
   }, [currentProject?.folder_path]);
@@ -85,6 +87,7 @@ export function useProjectMenu({
   const handleCopyRelativePath = useCallback(() => {
     if (currentProject?.folder_path) {
       const folderName = getBaseName(currentProject.folder_path, currentProject.folder_path);
+      void copyToClipboard(`"${folderName}"`, 'Folder name');
     }
     setShowMenu(false);
   }, [currentProject?.folder_path]);

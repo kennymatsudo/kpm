@@ -220,6 +220,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
           </div>
 
           {commandError && (
+            <div className="collapse-reveal mx-2 mt-2 px-4 py-3 bg-danger-muted rounded-xl border border-danger/20">
               <p className="text-sm text-danger">{commandError}</p>
             </div>
           )}

@@ -78,6 +78,7 @@ export const RepoItem = memo(function RepoItem({
             }}
             className={`
               w-5 h-5 flex items-center justify-center rounded transition-all flex-shrink-0
+              hover:bg-accent/10 active:scale-90
               ${isFocused
                 ? 'text-accent'
                 : 'text-text-muted opacity-0 group-hover:opacity-100 hover:text-accent'

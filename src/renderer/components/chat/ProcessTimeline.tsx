@@ -209,6 +209,7 @@ const ToolRow = memo(function ToolRow({
         </span>
       </button>
       {expanded && expandable && (
+        <div className={`collapse-reveal mt-1.5 ${indent ? 'ml-0' : 'ml-5'}`}>
           {hasHunks ? (
             <div className="px-2 py-1 bg-surface-1 border border-border-subtle/60 rounded font-mono text-xxs leading-relaxed overflow-x-auto">
               {activity.diffHunks!.map((line, idx) => {
@@ -288,6 +289,7 @@ const ToolGroupRow = memo(function ToolGroupRow({
         </span>
       </button>
       {expanded && (
+        <div className="collapse-reveal mt-1">
           {activities.map((a, idx) => (
             <ToolRow
               key={a.id ?? `tool-inner-${idx}`}
@@ -330,6 +332,7 @@ const ThoughtRow = memo(function ThoughtRow({
         )}
       </button>
       {expanded && isLong && (
+        <p className="collapse-reveal mt-1.5 ml-5 text-xxs text-text-muted/80 italic whitespace-pre-wrap break-words">
           {content}
         </p>
       )}

@@ -148,6 +148,7 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
           {/* Close */}
           <button
             type="button"
+            className="absolute top-3 right-3 w-8 h-8 rounded bg-surface-2/80 hover:bg-surface-2 active:scale-90 text-text-primary flex items-center justify-center transition-all"
             aria-label="Close diagram"
             title="Close"
             onMouseDown={e => e.stopPropagation()}
@@ -164,12 +165,14 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
           >
             <button
               type="button"
+              className="w-8 h-8 rounded bg-surface-2/80 hover:bg-surface-2 active:scale-90 text-text-primary text-lg leading-none flex items-center justify-center transition-all"
               aria-label="Zoom in"
               title="Zoom in"
               onClick={() => zoom(SCALE_STEP)}
             >+</button>
             <button
               type="button"
+              className="w-8 h-8 rounded bg-surface-2/80 hover:bg-surface-2 active:scale-90 text-text-primary text-lg leading-none flex items-center justify-center transition-all"
               aria-label="Zoom out"
               title="Zoom out"
               onClick={() => zoom(1 / SCALE_STEP)}

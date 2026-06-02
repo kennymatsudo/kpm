@@ -377,6 +377,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     >
       {/* Drop zone indicator */}
       {isDragOver && (
+        <div className="collapse-reveal mb-2 px-3 py-2 bg-accent-subtle text-accent text-xs rounded-lg text-center">
           Drop files to attach
         </div>
       )}
@@ -396,6 +397,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
 
       {/* Attachment error message */}
       {attachmentError && (
+        <div className="collapse-reveal mb-2 px-3 py-2 bg-danger-muted text-danger text-xs rounded-lg">
           {attachmentError}
         </div>
       )}

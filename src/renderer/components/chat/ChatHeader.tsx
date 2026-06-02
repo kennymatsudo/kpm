@@ -1,5 +1,6 @@
 import { useChatStore } from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
+import { copyToClipboard } from '../../utils/clipboard';
 import { SessionHistory } from './SessionHistory';
 import { NewSessionButton } from './NewSessionButton';
 
@@ -15,6 +16,7 @@ export function ChatHeader() {
 
   const handleCopySessionId = () => {
     if (claudeSessionId) {
+      void copyToClipboard(claudeSessionId, 'Session ID');
     }
   };
 

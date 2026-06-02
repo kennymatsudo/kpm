@@ -414,6 +414,7 @@ const FileTreeRow = memo(function FileTreeRow({
               onClick={handleFocusClick}
               tabIndex={isFocused ? 0 : -1}
               className={`
+                w-6 h-6 flex items-center justify-center rounded-md transition-all flex-shrink-0 active:scale-90
                 ${isFocused
                   ? 'text-accent hover:bg-surface-3'
                   : 'text-text-muted opacity-0 group-hover:opacity-100 hover:bg-surface-3 hover:text-accent'

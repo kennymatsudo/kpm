@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { FocusedResource } from '../../../../shared/types';
 import { getProjectAbsolutePath } from '../../../services/projectService';
+import { copyToClipboard } from '../../../utils/clipboard';
 
 interface FileContextMenusDeps {
   projectId: string;
@@ -113,6 +114,7 @@ export function useFileContextMenus({
       if (projectId && path) {
         const fullPath = await getProjectAbsolutePath(projectId, path);
         if (fullPath) {
+          await copyToClipboard(`"${fullPath}"`, 'Path');
         }
       }
       setContextMenu(null);
@@ -122,6 +124,7 @@ export function useFileContextMenus({
 
   const handleCopyRelativePath = useCallback((path: string) => {
     if (path) {
+      void copyToClipboard(`"${path}"`, 'Relative path');
     }
     setContextMenu(null);
   }, []);
