@@ -158,6 +158,13 @@ interface ManagedSession {
   interruptInProgress: boolean;
   /** Actual model ID returned by the SDK (e.g. "claude-opus-4-8"). Set from the first assistant message each turn. */
   resolvedModel?: string;
+  /**
+   * True once a specific error banner has been surfaced for the in-flight turn
+   * (from an assistant-message `error` field). Suppresses the generic
+   * terminal-reason banner in the result handler so a single failure (e.g.
+   * `overloaded`) doesn't double-up. Reset at each turn boundary.
+   */
+  turnErrorSurfaced?: boolean;
   unsubscribePlanActions: () => void;
   unsubscribeClaudeMdUpdate: () => void;
   unsubscribeDocumentUpdate: () => void;
@@ -1384,6 +1391,17 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // Capture the SDK-resolved model ID (e.g. "claude-opus-4-8") so we can
       // display it accurately in the chat header instead of the short alias.
 
+      // An assistant message can carry an `error` category when the turn aborts
+      // on an API/model failure (`overloaded`, `server_error`, `billing_error`,
+      // …). Without surfacing it the turn just stops silently. Suppressed during
+      // interrupt-and-send so a late old-turn error can't leak into the next turn.
+        const errorText = describeAssistantError(sdkMsg.error);
+        if (errorText) {
+          managed.turnErrorSurfaced = true;
+          mainWindow?.webContents.send('chat:error', { projectId, chatSessionId, error: errorText });
+        }
+      }
+
       const content = sdkMsg.message?.content || [];
       const segState = managed.segmentState;
 
@@ -1587,7 +1605,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         });
       }
 
+      // Surface other terminal reasons that stopped the session. Skip when a
+      // specific assistant-message error was already surfaced this turn (e.g.
+      // an `overloaded` failure that also reports terminal_reason 'model_error')
+      // so the user sees one actionable banner, not two.
       const terminalReason = getTerminalReason(sdkMsg);
+      if (terminalReason && terminalReason !== 'completed' && terminalReason !== 'max_turns' && !managed.turnErrorSurfaced) {
         const terminalMessages: Partial<Record<typeof terminalReason, string>> = {
           aborted_tools: 'Response stopped: tool execution was aborted.',
           blocking_limit: 'Response stopped: rate limit reached. Send another message to continue.',
@@ -1799,6 +1822,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       } catch (statsError) {
         console.error('[StreamingSessionService] Failed to update token stats:', statsError);
       }
+
+      // Turn boundary: clear the per-turn error flag so the next turn starts
+      // clean. Done after every error-banner check above (including the late
+      // max-tokens one) so suppression only applies within this turn.
+      managed.turnErrorSurfaced = false;
     }
 
     // Handle prompt suggestion (arrives after result message)

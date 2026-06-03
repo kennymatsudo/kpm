@@ -117,6 +117,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
           'what was asked, say so explicitly rather than guessing.',
         tools: ['Read', 'Grep', 'Glob', 'WebFetch'],
         model: 'sonnet',
+        maxTurns: 50,
       },
     // Effort level: guides how much thinking Claude applies (works with adaptive thinking)
     ...(effort && { effort }),

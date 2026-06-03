@@ -13,6 +13,7 @@ import type {
   SDKRateLimitInfo,
   SDKPermissionDeniedMessage,
   SDKToolUseSummaryMessage,
+  SDKAssistantMessageError,
   TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
 
@@ -90,4 +91,43 @@ export function isPermissionDeniedMessage(msg: SDKMessage): msg is SDKPermission
  */
 export function isToolUseSummary(msg: SDKMessage): msg is SDKToolUseSummaryMessage {
   return msg.type === 'tool_use_summary';
+}
+
+/**
+ * Map an assistant-message `error` category to a human-readable, actionable
+ * message for the chat UI. An assistant message carries this field when the
+ * turn aborts on an API/model failure (e.g. `overloaded` → HTTP 529 added in
+ * SDK v0.3.161); without surfacing it the turn just stops with no explanation.
+ *
+ * Returns `undefined` for categories that already have dedicated handling so we
+ * don't double-surface: `authentication_failed` is caught by the auth-teardown
+ * path, and `max_output_tokens` by the result max-tokens path.
+ */
+export function describeAssistantError(error: SDKAssistantMessageError): string | undefined {
+  switch (error) {
+    case 'overloaded':
+      return 'Claude is temporarily overloaded. Wait a moment, then send another message to retry.';
+    case 'server_error':
+      return 'Claude had a server error. Wait a moment, then send another message to retry.';
+    case 'rate_limit':
+      return 'Rate limited. Wait a moment, then send another message to continue.';
+    case 'billing_error':
+      return 'A billing error occurred. Check your Claude plan or billing settings, then retry.';
+    case 'model_not_found':
+      return 'The selected model is unavailable. Switch models in the chat header and retry.';
+    case 'invalid_request':
+      return 'The request was invalid and could not be processed.';
+    case 'oauth_org_not_allowed':
+      return 'Your organization is not permitted to use this Claude Code session.';
+    case 'unknown':
+      return 'The response stopped due to an unexpected error. Send another message to retry.';
+    case 'authentication_failed':
+    case 'max_output_tokens':
+      // Handled by dedicated paths in StreamingSessionService (auth teardown /
+      // result max-tokens). Returning undefined avoids a duplicate banner.
+      return undefined;
+    default:
+      // Forward-compat: a future SDK error category we don't map yet.
+      return 'The response stopped due to an error. Send another message to retry.';
+  }
 }

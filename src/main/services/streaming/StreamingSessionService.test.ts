@@ -9,6 +9,7 @@ import {
   createStreamingSessionService,
   type StreamingSessionServiceDeps,
 } from './StreamingSessionService';
+import type * as SdkTypeGuardsModule from '../../claude/sdkTypeGuards';
 
 const { mockSessionInstances, mockSessionCounter, clearPendingDocumentContentCalls } = vi.hoisted(() => ({
   mockSessionInstances: [] as {
@@ -30,6 +31,7 @@ const { sdkTypeGuardState } = vi.hoisted(() => ({
     maxTokensReached: false,
     maxTurnsReached: false,
     apiRetry: false,
+    terminalReason: undefined as string | undefined,
   },
 }));
 
@@ -142,6 +144,20 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   getSessionInfo: vi.fn(async () => undefined),
 }));
 
+vi.mock('../../claude/sdkTypeGuards', async () => {
+  // sdkTypeGuards has only type-imports from the SDK (erased at runtime), so
+  // importActual is safe and lets us exercise the real describeAssistantError
+  // mapping while still stubbing the stateful guards.
+  const actual = await vi.importActual<typeof SdkTypeGuardsModule>('../../claude/sdkTypeGuards');
+  return {
+    isMaxTokensReached: () => sdkTypeGuardState.maxTokensReached,
+    isMaxTurnsReached: () => sdkTypeGuardState.maxTurnsReached,
+    isApiRetryMessage: () => sdkTypeGuardState.apiRetry,
+    isRateLimitEvent: () => false,
+    getTerminalReason: () => sdkTypeGuardState.terminalReason,
+    describeAssistantError: actual.describeAssistantError,
+  };
+});
 
 vi.mock('../../config', () => ({
   getConfig: () => ({
@@ -252,6 +268,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     sdkTypeGuardState.maxTokensReached = false;
     sdkTypeGuardState.maxTurnsReached = false;
     sdkTypeGuardState.apiRetry = false;
+    sdkTypeGuardState.terminalReason = undefined;
     sendSpy.mockClear();
   });
 
@@ -603,6 +620,54 @@ it('surfaces max-token truncation after finalizing the partial response', async 
       projectId: 'project-1',
       chatSessionId: 'chat-1',
       error: 'Response reached the output limit. Send another message to continue.',
+    });
+  });
+
+  it('surfaces an assistant-message error (overloaded) instead of failing silently', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(sendResult.ok).toBe(true);
+
+    const session = mockSessionInstances[0];
+    expect(session).toBeDefined();
+
+    sentEvents.length = 0;
+    session.emitMessage({ type: 'assistant', error: 'overloaded', message: { content: [] } });
+
+    const errorEvent = sentEvents.find((e) => e.channel === 'chat:error');
+    expect(errorEvent?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      error: 'Claude is temporarily overloaded. Wait a moment, then send another message to retry.',
+    });
+  });
+
+  it('does not double-surface the generic terminal-reason banner after an assistant error', async () => {
+    sdkTypeGuardState.terminalReason = 'model_error';
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(sendResult.ok).toBe(true);
+
+    const session = mockSessionInstances[0];
+    expect(session).toBeDefined();
+
+    sentEvents.length = 0;
+    // Assistant error arrives first, then the result reports terminal_reason.
+    session.emitMessage({ type: 'assistant', error: 'server_error', message: { content: [] } });
+    session.emitMessage({ type: 'result' });
+
+    const errorEvents = sentEvents.filter((e) => e.channel === 'chat:error');
+    expect(errorEvents).toHaveLength(1);
+    expect(errorEvents[0]?.payload).toMatchObject({
+      error: 'Claude had a server error. Wait a moment, then send another message to retry.',
     });
   });
 });
