@@ -27,7 +27,10 @@ export interface Message {
    * `chat:queued` / `chat:queue-cleared` events. Only set on user messages.
    */
   clientMessageId?: string;
+  /** True while a live follow-up has not yet been accepted by the SDK input stream. */
   queued?: boolean;
+  /** Marks a user message sent while KPM was responding so it renders as a live interjection. */
+  liveFollowUp?: boolean;
 }
 
 // Re-export types for consumers
@@ -124,6 +127,7 @@ export interface ChatState {
     chatSessionId: string,
     content: string,
     attachments?: ChatAttachment[],
+    options?: { queued?: boolean; liveFollowUp?: boolean; clientMessageId?: string },
   ) => void;
   /**
    * Find the user message with the given clientMessageId and clear its queued

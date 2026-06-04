@@ -47,6 +47,8 @@ export interface SessionEventData {
   hasQueuedFollowUp?: boolean;
   /** clientMessageId of the queued user message about to be promoted. */
   queuedClientMessageId?: string;
+  /** clientMessageId before which the finalized assistant bubble should be inserted. */
+  beforeClientMessageId?: string;
   /**
    * clientMessageId of a follow-up the SDK absorbed into THIS turn rather than
    * deferring to a new one (streaming-input steering). The renderer clears its

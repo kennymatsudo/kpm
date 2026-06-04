@@ -18,8 +18,12 @@ export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         ...(attachments && attachments.length > 0 ? { attachments } : {}),
         ...(options?.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
         ...(isQueued ? { queued: true } : {}),
+        ...(options?.liveFollowUp ? { liveFollowUp: true } : {}),
       };
 
+      // Live follow-ups slip in behind a still-streaming turn — preserve the
+      // in-flight assistant state so the response can finish naturally and
+      // its bubble doesn't get blown away.
       const nextSession: PerSessionState = isQueued
         ? { ...session, messages: [...session.messages, newUserMessage] }
         : {
@@ -74,6 +78,7 @@ export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
       if (!session) return state;
 
       const idx = session.messages.findIndex(
+        (m) => m.role === 'user' && m.liveFollowUp && m.clientMessageId === clientMessageId,
       );
       if (idx === -1) return state;
 

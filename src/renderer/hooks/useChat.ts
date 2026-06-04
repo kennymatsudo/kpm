@@ -75,6 +75,7 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
       attachments,
       {
         queued: sendingWhileStreaming,
+        liveFollowUp: sendingWhileStreaming,
         clientMessageId: effectiveClientMessageId,
       },
     );
@@ -115,8 +116,12 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
       return effectiveClientMessageId;
     }
 
+    // If the backend rejected the live follow-up, pull the optimistic bubble
+    // back out of the transcript and surface why — silently dropping the
+    // bubble reads as a glitch.
     if (sendingWhileStreaming && sendResult && 'success' in sendResult && !sendResult.success) {
       removeQueuedUserMessage(chatSessionId, effectiveClientMessageId);
+      setError(chatSessionId, sendResult.error ?? 'Could not add your message. Please try again.');
     }
     if (!sendingWhileStreaming && sendResult && 'success' in sendResult && !sendResult.success) {
       setError(chatSessionId, sendResult.error ?? 'Failed to send message');

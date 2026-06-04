@@ -455,6 +455,11 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
             onClick={handleSend}
             disabled={(!message.trim() && attachments.length === 0) || disabled || sendDisabledWhileStreaming}
             title={
+              sendDisabledWhileStreaming
+                ? 'Wait for the current response to finish'
+                : isStreaming
+                  ? 'Add to current response (Enter)'
+                  : 'Send message (Enter)'
             }
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

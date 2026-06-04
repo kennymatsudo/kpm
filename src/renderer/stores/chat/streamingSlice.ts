@@ -173,6 +173,30 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
       const stripQueuedId = promoteId ?? clearQueuedId;
       const applyPromotion = (messages: Message[]): Message[] => {
         if (!stripQueuedId) return messages;
+        return messages.map((m) => {
+          if (m.role !== 'user' || m.clientMessageId !== stripQueuedId) return m;
+          if (promoteId && m.liveFollowUp) {
+            const { queued: _queued, liveFollowUp: _liveFollowUp, ...rest } = m;
+            return rest;
+          }
+          if (m.queued) {
+            const { queued: _queued, ...rest } = m;
+            return rest;
+          }
+          return m;
+        });
+      };
+      const clearCompletedLiveFollowUps = (messages: Message[]): Message[] => {
+        const promoteIndex = promoteId
+          ? messages.findIndex((m) => m.role === 'user' && m.clientMessageId === promoteId)
+          : -1;
+        return messages.map((m, index) => {
+          if (m.role !== 'user' || !m.liveFollowUp) return m;
+          const belongsToCompletedTurn = promoteId ? index < promoteIndex : true;
+          if (!belongsToCompletedTurn) return m;
+          const { queued: _queued, liveFollowUp: _liveFollowUp, ...rest } = m;
+          return rest;
+        });
       };
       const promotionStreamingState = promoteId
         ? {
@@ -259,6 +283,7 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
           }
           sessions.set(chatSessionId, {
             ...session,
+            messages: clearCompletedLiveFollowUps(applyPromotion(session.messages)),
             streamingContent: '',
             streamingThinking: '',
             streamingSegments: [],
@@ -284,6 +309,7 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
         // queued, the fallback walk below won't step over it, so the assistant
         // bubble lands AFTER it — chronologically correct, since this turn
         // answered it.
+        const baseMessages = clearCompletedLiveFollowUps(applyPromotion(session.messages));
 
         } else {
           }

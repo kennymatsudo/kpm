@@ -459,13 +459,22 @@ const MessageRow = memo(function MessageRow({
                 <div
                   className={`whitespace-pre-wrap text-right rounded-lg px-3 py-1.5 ${
                     message.queued
+                      ? 'bg-surface-2/50 ring-1 ring-border-default'
                       : 'bg-surface-2/60'
                   }`}
                 >
                 </div>
+                {message.liveFollowUp && (
                   <div className="flex items-center gap-2 text-xxs text-text-muted">
                     <span className="inline-flex items-center gap-1">
+                      {message.queued && (
+                        <svg className="w-3 h-3 animate-pulse" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                          <circle cx="8" cy="8" r="6" />
+                        </svg>
+                      )}
+                      {message.queued ? 'Adding to current response…' : 'Added while KPM was responding'}
                     </span>
+                    {message.queued && onCancelQueued && message.clientMessageId && (
                       <button
                         type="button"
                         onClick={() => onCancelQueued(message.clientMessageId!)}

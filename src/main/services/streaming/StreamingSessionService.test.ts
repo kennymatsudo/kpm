@@ -423,6 +423,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     });
   });
 
+  it('accepts multiple live follow-ups behind the in-flight turn without interrupting', async () => {
     service = createStreamingSessionService(createDeps(sendSpy));
 
     const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
@@ -452,10 +453,14 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       clientMessageId: secondClientMessageId,
     });
 
+    const thirdClientMessageId = '22222222-2222-4222-8222-222222222222';
     const concurrent = await service.sendChatMessage('project-1', 'third prompt', {
       chatSessionId: 'chat-1',
       model: 'sonnet',
+      clientMessageId: thirdClientMessageId,
     });
+    expect(concurrent.ok).toBe(true);
+    expect(session.sentMessages).toEqual(['first prompt', 'second prompt', 'third prompt']);
 
     sentEvents.length = 0;
     session.emitMessage({ type: 'result' });
@@ -479,6 +484,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       clientMessageId: '33333333-3333-4333-8333-333333333333',
     });
     expect(thirdAfterTurnBoundary.ok).toBe(true);
+    expect(session.sentMessages).toEqual(['first prompt', 'second prompt', 'third prompt', 'third prompt']);
     expect(mockSessionInstances).toHaveLength(1);
   });
 

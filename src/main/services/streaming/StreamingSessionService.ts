@@ -177,6 +177,12 @@ interface ManagedSession {
    * same session and don't interrupt anything.
    */
   interruptInProgress: boolean;
+  /** Client ids for follow-ups sent while a turn is processing and not yet echoed by the SDK. */
+  pendingFollowUpClientMessageIds: string[];
+  /** Client ids for follow-ups accepted into the current turn. Used to anchor the assistant bubble before interjections. */
+  acceptedFollowUpClientMessageIds: string[];
+  /** Follow-ups promoted to a clean next turn; their SDK echo should not be treated as a live interjection. */
+  promotedFollowUpClientMessageIds: Set<string>;
   /** Actual model ID returned by the SDK (e.g. "claude-opus-4-8"). Set from the first assistant message each turn. */
   resolvedModel?: string;
   /**
@@ -739,6 +745,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         lastTurnFinalized: false,
         suppressLifecycleEventsOnEnd: false,
         interruptInProgress: false,
+        pendingFollowUpClientMessageIds: [],
+        acceptedFollowUpClientMessageIds: [],
+        promotedFollowUpClientMessageIds: new Set(),
         unsubscribePlanActions,
         unsubscribeClaudeMdUpdate,
         unsubscribeDocumentUpdate,
@@ -1006,6 +1015,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // everything" — if the user wanted the queued message to still go out
     // after Stop, they wouldn't have pressed Stop. Tell the renderer so it
     // can clear the queued bubble.
+    while (managed.pendingFollowUpClientMessageIds.length > 0 && managed.session.cancelLastQueued()) {
+      const cancelledClientMessageId = managed.pendingFollowUpClientMessageIds.pop();
       const mainWindow = deps.getMainWindow();
       mainWindow?.webContents.send('chat:queue-cleared', {
         projectId: managed.projectId,
@@ -1194,6 +1205,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   }
 
   /**
+   * Send a live follow-up while a turn is streaming. The Claude SDK may pull
+   * this immediately as steering input for the current turn, or leave it in
+   * the input queue to become the next turn. The renderer presents it as a
+   * live interjection until the SDK/result events tell us which happened.
    */
   async function queueMessageOnSession(
     key: string,
@@ -1209,6 +1224,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       return failure('Session is not ready to accept messages.');
     }
 
+    if (clientMessageId) {
+      managed.pendingFollowUpClientMessageIds.push(clientMessageId);
+    }
 
     try {
       if (envelope.attachments && envelope.attachments.length > 0) {
@@ -1218,6 +1236,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         managed.session.send(envelope.text);
       }
     } catch (error) {
+      if (clientMessageId) {
+        managed.pendingFollowUpClientMessageIds = managed.pendingFollowUpClientMessageIds.filter(id => id !== clientMessageId);
+      }
+      return failure(`Failed to add follow-up: ${(error as Error).message}`);
     }
 
     const mainWindow = deps.getMainWindow();
@@ -1253,6 +1275,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       return failure('No active session');
     }
 
+    if (managed.pendingFollowUpClientMessageIds.length === 0) {
       const mainWindow = deps.getMainWindow();
       mainWindow?.webContents.send('chat:queue-cleared', {
         projectId,
@@ -1261,6 +1284,19 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         reason: 'already_sent',
       });
       return failure('No queued message to cancel');
+    }
+
+    const lastPendingId = managed.pendingFollowUpClientMessageIds[managed.pendingFollowUpClientMessageIds.length - 1];
+    const clientMessageId = requestedClientMessageId ?? lastPendingId;
+    if (requestedClientMessageId && requestedClientMessageId !== lastPendingId) {
+      const mainWindow = deps.getMainWindow();
+      mainWindow?.webContents.send('chat:queue-cleared', {
+        projectId,
+        chatSessionId,
+        clientMessageId,
+        reason: 'already_sent',
+      });
+      return failure('Only the most recent unsent follow-up can be cancelled.');
     }
 
     const cancelled = managed.session.cancelLastQueued();
@@ -1277,6 +1313,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       });
       return failure('Message was already sent to the model.');
     }
+
+    managed.pendingFollowUpClientMessageIds.pop();
 
     const mainWindow = deps.getMainWindow();
     mainWindow?.webContents.send('chat:queue-cleared', {
@@ -1349,8 +1387,20 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // If a follow-up was queued behind a turn that never got to deliver it,
     // tell the renderer so the queued bubble can clear its pending indicator
     // (the message is lost — the user can resend after reconnect).
+    if (managed.pendingFollowUpClientMessageIds.length > 0 && !options.silent) {
       const mainWindow = deps.getMainWindow();
+      for (const clientMessageId of managed.pendingFollowUpClientMessageIds) {
+        mainWindow?.webContents.send('chat:queue-cleared', {
+          projectId: managed.projectId,
+          chatSessionId: managed.chatSessionId,
+          clientMessageId,
+          reason: 'session_disconnected',
+        });
+      }
     }
+    managed.pendingFollowUpClientMessageIds = [];
+    managed.acceptedFollowUpClientMessageIds = [];
+    managed.promotedFollowUpClientMessageIds.clear();
 
     try {
       await managed.session.close();
@@ -1526,6 +1576,20 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // has dequeued the message and started processing it. Use this as the
     // authoritative "message left the queue" signal to clear the queued badge
     // in the renderer immediately — earlier than waiting for chat:done.
+    if (sdkMsg.type === 'user' && !sdkMsg.tool_use_result && managed.pendingFollowUpClientMessageIds.length > 0) {
+      const acceptedClientMessageId = managed.pendingFollowUpClientMessageIds.shift();
+      if (acceptedClientMessageId) {
+        const wasPromoted = managed.promotedFollowUpClientMessageIds.delete(acceptedClientMessageId);
+        if (!wasPromoted) {
+          managed.acceptedFollowUpClientMessageIds.push(acceptedClientMessageId);
+        }
+        mainWindow?.webContents.send('chat:queue-cleared', {
+          projectId,
+          chatSessionId,
+          clientMessageId: acceptedClientMessageId,
+          reason: 'already_sent',
+        });
+      }
     }
 
     // Handle tool_use_result on user messages — attach diff stats to the
@@ -1590,7 +1654,29 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Handle result message (final stats)
     if (sdkMsg.type === 'result') {
+      // In streaming-input mode the SDK input generator may already be waiting
+      // on pull(), so a mid-turn send can be handed straight to the model as
+      // steering input for THIS turn and answered in place; no second `result`
+      // ever arrives. Treat a follow-up as pending only when it is still sitting
+      // unconsumed in the SDK input queue.
       const hasQueuedFollowUp = managed.session.pendingQueuedCount() > 0;
+      const nextQueuedClientMessageId = hasQueuedFollowUp ? managed.pendingFollowUpClientMessageIds[0] : undefined;
+      const firstLiveFollowUpClientMessageId =
+        managed.acceptedFollowUpClientMessageIds[0]
+        ?? (!hasQueuedFollowUp ? managed.pendingFollowUpClientMessageIds[0] : undefined);
+
+      if (!hasQueuedFollowUp && managed.pendingFollowUpClientMessageIds.length > 0) {
+        for (const clientMessageId of managed.pendingFollowUpClientMessageIds) {
+          mainWindow?.webContents.send('chat:queue-cleared', {
+            projectId,
+            chatSessionId,
+            clientMessageId,
+            reason: 'already_sent',
+          });
+          managed.acceptedFollowUpClientMessageIds.push(clientMessageId);
+        }
+        managed.pendingFollowUpClientMessageIds = [];
+      }
       // A queued follow-up means the SDK is about to pull the next message
       // and start another turn. Stay in 'processing' so concurrent sends
       // still route to the queue path (rather than racing into the brief
@@ -1709,6 +1795,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         chatSessionId,
         model: managed.resolvedModel,
         hasQueuedFollowUp,
+        queuedClientMessageId: nextQueuedClientMessageId,
+        consumedQueuedClientMessageId: firstLiveFollowUpClientMessageId,
         inputTokens: ctxSource?.input_tokens ?? undefined,
         outputTokens: ctxSource?.output_tokens ?? undefined,
         cacheReadTokens: ctxSource?.cache_read_input_tokens ?? undefined,
@@ -1722,6 +1810,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // Clear the queued envelope now — the SDK has the message and is about
       // to feed it to Claude as the next turn. Any further sends on this
       // session start fresh.
+      if (hasQueuedFollowUp && nextQueuedClientMessageId) {
+        managed.promotedFollowUpClientMessageIds.add(nextQueuedClientMessageId);
+      }
+
       if (hasQueuedFollowUp) {
         // Reset so that if the session ends before the second turn produces
         // its own result message, handleSessionEnd will NOT suppress lifecycle
@@ -1729,6 +1821,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         // triggers the suppression guard and the renderer never receives
         // chat:session-deactivated / chat:done — leaving isStreaming stuck.
         managed.lastTurnFinalized = false;
+        managed.acceptedFollowUpClientMessageIds = [];
+      } else {
+        managed.acceptedFollowUpClientMessageIds = [];
+        managed.promotedFollowUpClientMessageIds.clear();
       }
 
       // Fire-and-forget: fetch the SDK's session summary so the renderer can
