@@ -5,6 +5,7 @@ import type { IRepoRepository } from '../../db/interfaces';
 import type { RepoWatcherService } from './RepoWatcherService';
 import { failure, success, type ServiceResult, type AsyncResult, wrapAsync } from '../result';
 import type { gitExec } from './gitUtils';
+import { openDirectoryInCodeEditor } from './editorLauncher';
 
 interface RepoFs {
   existsSync: typeof fs.existsSync;
@@ -80,6 +81,7 @@ export function createRepoService(deps: RepoServiceDeps) {
           throw new Error(`Repository path does not exist: ${targetPath}`);
         }
 
+        await openDirectoryInCodeEditor(targetPath);
       }, 'Failed to open repository in editor');
     },
 

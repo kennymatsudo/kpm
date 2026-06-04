@@ -3,6 +3,7 @@ import { WorktreeSchemas } from '../validation';
 import { IPC_CHANNELS } from '../channels';
 import type { createWorktreeService } from '../../services/repo/WorktreeService';
 import { unwrapOrThrow } from '../../services/result';
+import { toIpcResponse, toIpcResponseAsync } from '../response';
 
 type WorktreeService = ReturnType<typeof createWorktreeService>;
 
@@ -17,7 +18,9 @@ export function registerWorktreeHandlers(worktreeService: WorktreeService): void
     return worktreeService.getByPlanItem(planItemId);
   });
 
+  ipcMain.handle(IPC_CHANNELS.worktree.openEditor, async (_event, params: unknown) => {
     const { worktreeId } = WorktreeSchemas.openEditor.parse(params);
+    return toIpcResponseAsync(worktreeService.openInEditor(worktreeId));
   });
 
   ipcMain.handle(IPC_CHANNELS.worktree.getStatus, async (_event, params: unknown) => {

@@ -7,6 +7,7 @@ import type {
   IRepoRepository,
 } from '../../db/interfaces';
 import { gitExec } from './gitUtils';
+import { openDirectoryInCodeEditor } from './editorLauncher';
 
 export interface WorktreeServiceDeps {
   worktrees: IWorktreeRepository;
@@ -52,6 +53,8 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
     /**
      * Open worktree in default code editor
      */
+    async openInEditor(worktreeId: string): AsyncResult<void> {
+      return wrapAsync(async () => {
         const worktree = deps.worktrees.get(worktreeId);
         if (!worktree) {
           throw new Error(`Worktree not found: ${worktreeId}`);
@@ -61,6 +64,7 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
           throw new Error(`Worktree path does not exist: ${worktree.worktree_path}`);
         }
 
+        await openDirectoryInCodeEditor(worktree.worktree_path);
       });
     },
 
