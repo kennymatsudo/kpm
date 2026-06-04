@@ -88,6 +88,7 @@ interface ReposAndFilesOverlaysProps {
   onToggleRepoFocus: () => void;
   onRemoveRepo: () => void;
   onRevealRepoInFinder: () => void;
+  onOpenRepoInEditor: () => void;
   onSetActiveWorktreePath: (path: string | null) => void;
   deleteConfirmPath: string | null;
   deleteNode: FileNode | null;
@@ -150,6 +151,7 @@ export function ReposAndFilesOverlays({
   onToggleRepoFocus,
   onRemoveRepo,
   onRevealRepoInFinder,
+  onOpenRepoInEditor,
   onSetActiveWorktreePath,
   deleteConfirmPath,
   deleteNode,
@@ -237,6 +239,7 @@ export function ReposAndFilesOverlays({
           onToggleFocus={onToggleRepoFocus}
           onRemove={onRemoveRepo}
           onRevealInFinder={onRevealRepoInFinder}
+          onOpenInEditor={onOpenRepoInEditor}
           onSetActiveWorktreePath={onSetActiveWorktreePath}
         />
       )}

@@ -60,6 +60,7 @@ function createMocks(overrides?: Partial<RepoServiceDeps>): RepoServiceDeps {
   };
 
   const fs = {
+    existsSync: vi.fn(() => true),
     readdirSync: vi.fn(() => []),
   };
 

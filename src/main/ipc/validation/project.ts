@@ -110,6 +110,10 @@ export const RepoSchemas = {
   showInFolder: z.object({
     repoId: uuid,
   }),
+
+  openEditor: z.object({
+    repoId: uuid,
+  }),
 };
 
 // =============================================================================

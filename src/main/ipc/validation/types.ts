@@ -44,6 +44,7 @@ export type RepoGetBranchesInput = z.infer<typeof RepoSchemas.getBranches>;
 export type RepoWatchInput = z.infer<typeof RepoSchemas.watch>;
 export type RepoUnwatchInput = z.infer<typeof RepoSchemas.unwatch>;
 export type RepoShowInFolderInput = z.infer<typeof RepoSchemas.showInFolder>;
+export type RepoOpenEditorInput = z.infer<typeof RepoSchemas.openEditor>;
 
 // =============================================================================
 // Attachment Types

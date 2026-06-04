@@ -2,6 +2,7 @@ import { ipcMain, dialog, shell, type BrowserWindow } from 'electron';
 import type { RepoService } from '../../services/repo/RepoService';
 import { RepoSchemas, createIpcHandler, createSimpleIpcHandler } from '../validation';
 import { IPC_CHANNELS } from '../channels';
+import { toIpcResponseAsync } from '../response';
 
 export function registerRepoHandlers(
   getMainWindow: () => BrowserWindow | null,
@@ -186,4 +187,9 @@ export function registerRepoHandlers(
       'Failed to show repository in folder',
     ),
   );
+
+  ipcMain.handle(IPC_CHANNELS.repo.openEditor, async (_event, params: unknown) => {
+    const { repoId } = RepoSchemas.openEditor.parse(params);
+    return toIpcResponseAsync(repoService.openInEditor(repoId));
+  });
 }

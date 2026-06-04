@@ -445,6 +445,8 @@ const repos = {
     invokeFlat<void>(IPC_CHANNELS.repo.setActiveWorktreePath, { repoId, worktreePath }),
   showInFolder: (repoId: string): Promise<{ success: boolean; error?: string }> =>
     invokeFlat<void>(IPC_CHANNELS.repo.showInFolder, { repoId }),
+  openEditor: (repoId: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.repo.openEditor, { repoId }),
   onBranchChanged: (callback: (data: { repoId: string; repoPath: string; branch: string | null }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, data: { repoId: string; repoPath: string; branch: string | null }) => callback(data);
     ipcRenderer.on('repo:branch-changed', handler);

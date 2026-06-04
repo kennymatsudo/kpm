@@ -38,3 +38,7 @@ export function listRepoWorktrees(repoPath: string): Promise<{ path: string; bra
 export function showRepoInFolder(repoId: string): Promise<{ success: boolean; error?: string }> {
   return window.api.repos.showInFolder(repoId);
 }
+
+export function openRepoInEditor(repoId: string): Promise<{ success: boolean; error?: string }> {
+  return window.api.repos.openEditor(repoId);
+}

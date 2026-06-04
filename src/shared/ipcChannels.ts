@@ -47,6 +47,7 @@ export const IPC_CHANNELS = {
     listWorktrees: 'repo:list-worktrees',
     setActiveWorktreePath: 'repo:set-active-worktree-path',
     showInFolder: 'repo:show-in-folder',
+    openEditor: 'repo:open-editor',
   },
 
   // ===========================================================================

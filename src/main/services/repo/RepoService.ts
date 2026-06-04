@@ -7,6 +7,7 @@ import { failure, success, type ServiceResult, type AsyncResult, wrapAsync } fro
 import type { gitExec } from './gitUtils';
 
 interface RepoFs {
+  existsSync: typeof fs.existsSync;
   readdirSync: typeof fs.readdirSync;
 }
 
@@ -65,6 +66,21 @@ export function createRepoService(deps: RepoServiceDeps) {
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }
+    },
+
+    async openInEditor(repoId: string): AsyncResult<void> {
+      return wrapAsync(async () => {
+        const repo = deps.repos.getById(repoId);
+        if (!repo) {
+          throw new Error('Repository not found');
+        }
+
+        const targetPath = repo.active_worktree_path ?? repo.path;
+        if (!deps.fs.existsSync(targetPath)) {
+          throw new Error(`Repository path does not exist: ${targetPath}`);
+        }
+
+      }, 'Failed to open repository in editor');
     },
 
     getBranch(repoPath: string): ServiceResult<string | null> {

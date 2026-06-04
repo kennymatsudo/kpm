@@ -19,6 +19,7 @@ interface RepoContextMenuProps {
   onToggleFocus: () => void;
   onRemove: () => void;
   onRevealInFinder: () => void;
+  onOpenInEditor: () => void;
   onSetActiveWorktreePath: (path: string | null) => void;
 }
 
@@ -34,6 +35,7 @@ export function RepoContextMenu({
   onToggleFocus,
   onRemove,
   onRevealInFinder,
+  onOpenInEditor,
   onSetActiveWorktreePath,
 }: RepoContextMenuProps) {
 
@@ -146,6 +148,28 @@ export function RepoContextMenu({
 
 
       <DropdownMenu.Separator />
+
+      {/* Open in Editor */}
+      <DropdownMenu.Item
+        onClick={onOpenInEditor}
+        icon={
+          <svg
+            className="w-4 h-4 text-text-tertiary"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M17.25 6.75L21 12l-3.75 5.25M6.75 6.75L3 12l3.75 5.25M14 4l-4 16"
+            />
+          </svg>
+        }
+      >
+        Open in Editor
+      </DropdownMenu.Item>
 
       {/* Reveal in Finder */}
       <DropdownMenu.Item

@@ -24,6 +24,7 @@ import {
   unwatchProjectFiles,
   watchProjectFiles,
 } from '../../services/projectFileService';
+import { listRepoWorktrees, openRepoInEditor, showRepoInFolder } from '../../services/repoService';
 import { ReposAndFilesOverlays } from './ReposAndFilesOverlays';
 import {
   useFileViewers,
@@ -298,6 +299,17 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
   const handleRevealRepoInFinder = useCallback(
     async (repoId: string) => {
       await showRepoInFolder(repoId);
+      fileContextMenus.setRepoContextMenu(null);
+    },
+    [fileContextMenus.setRepoContextMenu]
+  );
+
+  const handleOpenRepoInEditor = useCallback(
+    async (repoId: string) => {
+      const result = await openRepoInEditor(repoId);
+      if (!result.success) {
+        console.error('Failed to open repository in editor:', result.error);
+      }
       fileContextMenus.setRepoContextMenu(null);
     },
     [fileContextMenus.setRepoContextMenu]
@@ -647,6 +659,11 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         onRevealRepoInFinder={() => {
           if (repoContextRepo) {
             void handleRevealRepoInFinder(repoContextRepo.id);
+          }
+        }}
+        onOpenRepoInEditor={() => {
+          if (repoContextRepo) {
+            void handleOpenRepoInEditor(repoContextRepo.id);
           }
         }}
         onSetActiveWorktreePath={(path) => {
