@@ -2,6 +2,9 @@
 /**
  * Document Update Tool
  *
+ * Allows Claude to submit updates to project files (docs, notes, specs, etc.).
+ * KPM either queues them for review or applies them immediately based on the
+ * user's approval setting.
  *
  * Note: Tool handlers are declared async per SDK requirements, though most don't await.
  */
@@ -24,6 +27,7 @@ export interface DocumentUpdatePayload {
 
 export type DocumentUpdateCallback = (update: DocumentUpdatePayload) => void;
 
+const TOOL_DESCRIPTION = `Create a new file or fully replace an existing file's content (relative path, e.g. "guide.md"). Provide the COMPLETE content; KPM will queue or apply it according to the user's approval setting. Do NOT use propose_document_edit when replacing an entire file.
 
 For targeted find-and-replace within a file use \`propose_document_edit\`. For the project context file use \`propose_context_edit\`. When asked to create "using X as reference", use a NEW file path.
 
@@ -69,6 +73,7 @@ export function createDocumentCreateTools(onDocumentUpdate: DocumentUpdateCallba
           success: true,
           filePath,
           contentPreview: preview,
+          message: `Submitted new file "${filePath}". Preview: ${preview}`,
         });
       }
     ),

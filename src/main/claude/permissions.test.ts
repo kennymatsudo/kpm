@@ -256,6 +256,7 @@ describe('permissions', () => {
 
           expect(result).toMatchObject({
             behavior: 'deny',
+            message: 'Project context file edits must use KPM change handling. Use the propose_context_edit tool.',
           });
         }
 

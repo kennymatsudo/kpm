@@ -12,6 +12,7 @@
 export type { PlanContext } from './types';
 
 import type { PlanContext, ContinuationTurn } from './types';
+import { DEFAULT_CHAT_APPROVAL_MODE, type ChatApprovalMode } from '../../../shared/appSettings';
 import { FULL_HIERARCHY_THRESHOLD, buildItemReferenceTable } from './planFormatting';
 import { buildResponseModesSection } from './modes';
 import { buildToolDecisionTree } from './toolDocs';
@@ -36,6 +37,18 @@ ${turns}
 
 ---
 `;
+}
+
+function buildApprovalBehaviorSection(approvalMode: ChatApprovalMode): string {
+  if (approvalMode === 'auto_apply') {
+    return `## Change Application
+
+The user has turned off review prompts for Claude changes. When you use KPM change tools for plan edits, document updates, project context updates, or deletions, KPM applies those changes immediately. Do not tell the user they will need to approve a modal.`;
+  }
+
+  return `## Change Application
+
+Claude-proposed changes require user review before KPM applies them. Use the appropriate change tool and the user will approve, edit, or dismiss the proposal.`;
 }
 
 function buildViewContextSection(currentView?: ChatViewMode): string {
@@ -63,6 +76,7 @@ Default action: \`propose_document_create\` for new documents, \`propose_documen
  */
 export function buildSystemPrompt(context: PlanContext): string {
   const { project, repos, attachments, planItems, currentView, taskPromptTemplate, claudeMdContent, getPromptContent, continuationHistory } = context;
+  const approvalMode = context.approvalMode ?? DEFAULT_CHAT_APPROVAL_MODE;
 
   const hasAttachments = attachments.length > 0;
   const hasRepos = repos.length > 0;
@@ -85,11 +99,14 @@ Project folder: \`${project.folder_path}\`
 ${buildViewContextSection(currentView)}
 ${getPrompt('system.constraints')}
 
+${buildApprovalBehaviorSection(approvalMode)}
+
 ${buildResponseModesSection(hasRepos, planItems, getPromptContent)}
 
 ${getPrompt('system.workspace')}
 
 ${hasAttachments ? buildAttachmentsSection(attachments) : ''}
+${buildToolDecisionTree(project.id, approvalMode)}
 
 ${getPrompt('system.plan_rules')}
 

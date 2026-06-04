@@ -3,8 +3,10 @@
  * Plan Item Tools
  *
  * Query tools for reading plan items, and bulk modification tools that emit
+ * PlanActions to KPM (never modify directly).
  *
  * IMPORTANT: All modification tools MUST emit actions via onPlanActions callback.
+ * Direct database modifications bypass the review UI and confuse users.
  *
  * Note: Tool handlers are declared async per SDK requirements, though most don't await.
  */
@@ -521,6 +523,7 @@ export function createPlanItemTools(
 
     tool(
       'flatten_hierarchy',
+      'Move ALL nested items to the root level. Submits reparent actions to KPM. Use when user asks to "unnest all", "flatten the plan", or "move everything to root".',
       {
         projectId: z.string().uuid().describe('The project UUID'),
       },
@@ -571,6 +574,7 @@ export function createPlanItemTools(
             });
           }
 
+          // Emit reparent actions to KPM
           const actions: PlanAction[] = itemsToFlatten.map((item) => ({
             type: 'reparent' as const,
             item_id: item.id,
@@ -582,6 +586,7 @@ export function createPlanItemTools(
 
           return jsonResult({
             success: true,
+            message: `Proposed flattening ${actions.length} item(s) to root level. Submitted to KPM.`,
             actionCount: actions.length,
             skippedJiraSubtasks: skippedJiraCount > 0 ? skippedJiraCount : undefined,
           });
@@ -595,6 +600,7 @@ export function createPlanItemTools(
 
     tool(
       'bulk_update_status',
+      'Update status_category for multiple items at once. Submits update actions to KPM. Use when user asks to "mark items as done", "set to in progress", etc.',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemIds: z.array(z.string().uuid()).optional().describe('Specific item IDs to update'),
@@ -645,6 +651,7 @@ export function createPlanItemTools(
             return jsonResult({ message: 'No items matched criteria', count: 0 });
           }
 
+          // Emit update_item actions to KPM
           const actions: PlanAction[] = idsToUpdate.map((id) => ({
             type: 'update_item' as const,
             item_id: id,
@@ -656,6 +663,7 @@ export function createPlanItemTools(
 
           return jsonResult({
             success: true,
+            message: `Proposed updating ${actions.length} item(s) to ${newStatusCategory}. Submitted to KPM.`,
             actionCount: actions.length,
           });
         } catch (error) {
@@ -667,6 +675,7 @@ export function createPlanItemTools(
 
     tool(
       'bulk_delete',
+      'Delete multiple items at once. Submits delete actions to KPM. Use when user asks to "delete completed items", "remove canceled tasks", etc. Descendants are also deleted.',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemIds: z.array(z.string().uuid()).optional().describe('Specific item IDs to delete'),
@@ -733,6 +742,7 @@ export function createPlanItemTools(
             }
           }
 
+          // Emit delete_item actions to KPM (only for top-level items, descendants cascade)
           const actions: PlanAction[] = idsToDelete.map((id) => ({
             type: 'delete_item' as const,
             item_id: id,
@@ -743,6 +753,7 @@ export function createPlanItemTools(
 
           return jsonResult({
             success: true,
+            message: `Proposed deleting ${idsToDelete.length} item(s) (${allIds.size} total including descendants). Submitted to KPM.`,
             actionCount: actions.length,
             totalAffected: allIds.size,
           });
@@ -756,6 +767,7 @@ export function createPlanItemTools(
 
     tool(
       'bulk_reparent',
+      'Move multiple items under a new parent (or to root). Submits reparent actions to KPM. Use when user asks to "nest these under X", "group items under Y", or "move A, B, C under parent".',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemIds: z.array(z.string().uuid()).describe('Item IDs to move'),
@@ -825,6 +837,7 @@ export function createPlanItemTools(
             });
           }
 
+          // Emit reparent actions to KPM
           const actions: PlanAction[] = toUpdate.map((item) => ({
             type: 'reparent' as const,
             item_id: item.id,
@@ -836,6 +849,7 @@ export function createPlanItemTools(
 
           return jsonResult({
             success: true,
+            message: `Proposed moving ${actions.length} item(s) to ${newParentId ? 'new parent' : 'root'}. Submitted to KPM.`,
             actionCount: actions.length,
             skippedJiraSubtasks: skipped.length > 0 ? skipped.length : undefined,
           });
@@ -848,6 +862,7 @@ export function createPlanItemTools(
 
     tool(
       'bulk_set_label',
+      'Set label for multiple items at once. Submits set_label actions to KPM. Use when user asks to "label these as tasks", "mark all as features", etc.',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemIds: z.array(z.string().uuid()).optional().describe('Specific item IDs to update'),
@@ -892,6 +907,7 @@ export function createPlanItemTools(
             return jsonResult({ message: 'No items matched criteria', count: 0 });
           }
 
+          // Emit set_label actions to KPM
           const actions: PlanAction[] = idsToUpdate.map((id) => ({
             type: 'set_label' as const,
             item_id: id,
@@ -903,6 +919,7 @@ export function createPlanItemTools(
 
           return jsonResult({
             success: true,
+            message: `Proposed setting label to '${newLabel}' for ${actions.length} item(s). Submitted to KPM.`,
             actionCount: actions.length,
           });
         } catch (error) {
@@ -914,6 +931,7 @@ export function createPlanItemTools(
 
     tool(
       'bulk_set_release',
+      'Set release tag for multiple items at once. Submits set_release actions to KPM. Use when user asks to "tag for v1.0", "assign to release X", etc.',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemIds: z.array(z.string().uuid()).optional().describe('Specific item IDs to update'),
@@ -963,6 +981,7 @@ export function createPlanItemTools(
             return jsonResult({ message: 'No items matched criteria', count: 0 });
           }
 
+          // Emit set_release actions to KPM
           const actions: PlanAction[] = idsToUpdate.map((id) => ({
             type: 'set_release' as const,
             item_id: id,
@@ -975,6 +994,8 @@ export function createPlanItemTools(
           return jsonResult({
             success: true,
             message: releaseTag
+              ? `Proposed tagging ${actions.length} item(s) for release '${releaseTag}'. Submitted to KPM.`
+              : `Proposed clearing release tag from ${actions.length} item(s). Submitted to KPM.`,
             actionCount: actions.length,
           });
         } catch (error) {
@@ -1012,6 +1033,7 @@ export function createPlanItemTools(
 
     tool(
       'clear_dependencies',
+      'Remove all dependencies (relations) from specific items. Submits remove_dependency actions to KPM. Use when user asks to "remove all blockers", "clear dependencies from X".',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         itemIds: z.array(z.string().uuid()).describe('Item IDs to clear dependencies from'),
@@ -1046,6 +1068,7 @@ export function createPlanItemTools(
             return jsonResult({ message: 'No dependencies found to remove', count: 0 });
           }
 
+          // Emit remove_dependency actions to KPM
           const actions: PlanAction[] = relations.map((rel) => ({
             type: 'remove_dependency' as const,
             relation_id: rel.id,
@@ -1056,6 +1079,7 @@ export function createPlanItemTools(
 
           return jsonResult({
             success: true,
+            message: `Proposed removing ${actions.length} dependency relation(s). Submitted to KPM.`,
             actionCount: actions.length,
           });
         } catch (error) {

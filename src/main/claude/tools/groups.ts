@@ -3,6 +3,7 @@
  * Group Tools
  *
  * Query tools for reading visual group containers (Figma-style frames),
+ * and modification tools that emit PlanActions to KPM.
  *
  * Groups are purely visual - they organize plan items without affecting hierarchy.
  *
@@ -162,6 +163,7 @@ export function createGroupTools(
 
     tool(
       'create_group',
+      'Create a new visual group container. Submits a structured action to KPM. Use when user asks to "create a group", "add a container", "make a frame for X items".',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         name: z.string().min(1).max(100).describe('Group name'),
@@ -188,6 +190,7 @@ export function createGroupTools(
 
           return jsonResult({
             success: true,
+            message: `Proposed creating group "${name}". Submitted to KPM.`,
           });
         } catch (error) {
           console.error('[KPM Tools] create_group error:', error);
@@ -198,6 +201,7 @@ export function createGroupTools(
 
     tool(
       'update_group',
+      'Update a group\'s properties (name, size). Submits a structured action to KPM.',
       {
         groupId: z.string().uuid().describe('The group UUID'),
         updates: z.object({
@@ -225,6 +229,7 @@ export function createGroupTools(
 
           return jsonResult({
             success: true,
+            message: `Proposed updating group "${group.name}". Submitted to KPM.`,
           });
         } catch (error) {
           console.error('[KPM Tools] update_group error:', error);
@@ -235,6 +240,7 @@ export function createGroupTools(
 
     tool(
       'delete_group',
+      'Delete a visual group container. Items in the group are unassigned (not deleted). Submits a structured action to KPM.',
       {
         groupId: z.string().uuid().describe('The group UUID'),
       },
@@ -258,6 +264,7 @@ export function createGroupTools(
 
           return jsonResult({
             success: true,
+            message: `Proposed deleting group "${group.name}" (${items.length} items will be unassigned). Submitted to KPM.`,
           });
         } catch (error) {
           console.error('[KPM Tools] delete_group error:', error);
@@ -269,6 +276,7 @@ export function createGroupTools(
 
     tool(
       'assign_items_to_group',
+      'Assign multiple plan items to a group (or unassign by passing null). Submits structured actions to KPM. Use when user asks to "add items to group", "put these in container X", "organize items into groups".',
       {
         itemIds: z.array(z.string().uuid()).min(1).max(100).describe('Plan item UUIDs to assign'),
         groupId: z.string().uuid().nullable().describe('Group UUID to assign to, or null to unassign'),
@@ -305,6 +313,7 @@ export function createGroupTools(
           const actionDesc = groupId ? 'assigning to group' : 'unassigning from group';
           return jsonResult({
             success: true,
+            message: `Proposed ${actionDesc} for ${actions.length} item(s). Submitted to KPM.`,
             actionCount: actions.length,
             skippedCount: itemIds.length - validItems.length,
           });
@@ -317,6 +326,7 @@ export function createGroupTools(
 
     tool(
       'bulk_create_groups',
+      'Create multiple groups at once. Submits structured actions to KPM. Use for organizing a plan into multiple themed groups.',
       {
         projectId: z.string().uuid().describe('The project UUID'),
         groups: z.array(z.object({
@@ -349,6 +359,7 @@ export function createGroupTools(
 
           return jsonResult({
             success: true,
+            message: `Proposed creating ${actions.length} group(s). Submitted to KPM.`,
             actionCount: actions.length,
           });
         } catch (error) {
@@ -360,6 +371,7 @@ export function createGroupTools(
 
     tool(
       'bulk_delete_groups',
+      'Delete multiple groups at once. Items in the groups are unassigned (not deleted). Submits structured actions to KPM.',
       {
         groupIds: z.array(z.string().uuid()).min(1).max(50).describe('Group UUIDs to delete'),
       },
@@ -384,6 +396,7 @@ export function createGroupTools(
 
           return jsonResult({
             success: true,
+            message: `Proposed deleting ${actions.length} group(s). Submitted to KPM.`,
             actionCount: actions.length,
             skippedCount: groupIds.length - validGroups.length,
           });
@@ -397,6 +410,7 @@ export function createGroupTools(
 
     tool(
       'clear_all_group_assignments',
+      'Remove all items from all groups in a project. Items are unassigned (not deleted). Submits structured actions to KPM.',
       {
         projectId: z.string().uuid().describe('The project UUID'),
       },
@@ -428,6 +442,7 @@ export function createGroupTools(
 
           return jsonResult({
             success: true,
+            message: `Proposed unassigning ${actions.length} item(s) from all groups. Submitted to KPM.`,
             actionCount: actions.length,
           });
         } catch (error) {

@@ -238,6 +238,7 @@ export function createPermissionHandler(
           console.log('[Permissions] Context file Edit intercepted - guiding to use tool');
           return {
             behavior: 'deny',
+            message: 'Project context file edits must use KPM change handling. Use the propose_context_edit tool.'
           };
         }
 
@@ -246,6 +247,7 @@ export function createPermissionHandler(
           context.onClaudeMdEdit(context.projectId, newContent);
           return {
             behavior: 'deny',
+            message: 'Project context file update captured by KPM.'
           };
         }
       }
@@ -262,6 +264,7 @@ export function createPermissionHandler(
         context.onProjectFileWrite(context.projectId, relativePath, input.content);
         return {
           behavior: 'deny',
+          message: 'File update captured by KPM.',
         };
       }
       // Edit tool on project files: read the file, apply old_string -> new_string
@@ -326,6 +329,7 @@ export function createPermissionHandler(
         context.onProjectFileWrite(context.projectId, relativePath, newContent);
         return {
           behavior: 'deny',
+          message: 'File update captured by KPM.',
         };
       }
       // Allow other tools (Read, Grep, etc.) in project directory

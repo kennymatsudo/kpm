@@ -13,6 +13,7 @@ The commitments a contributor — human or agent — should consult when a featu
 | P5 | Extend the dev setup | Inherit the user's MCP tools; don't replace their env. |
 | P6 | Internal stays internal | Translate at every export boundary; refs and spec fields are local-only. |
 | P7 | Reads by default | Chat is read-only against repos; writes are scoped to worktrees. |
+| P8 | Claude proposes, user configures disposal | Plan mutations go through the `PlanAction` approval flow unless the user explicitly enables auto-apply. |
 | P9 | Agent execution is a lifecycle | Implement → opposing review → one address pass → human review. Persisted state. |
 | P10 | Sync on your terms | No live feeds. Inbound queues; outbound drafts. |
 
@@ -76,9 +77,16 @@ In the chat context, repos are read-only by default. Claude can scan, analyze, a
 
 ---
 
+## 8. Claude proposes, user configures disposal
 
+By default, every Claude action that mutates the plan emits a `PlanAction[]` that surfaces in an approval modal before anything is written. The user is the last reviewer unless they explicitly choose the global auto-apply setting.
 
+When auto-apply is enabled, Claude still uses the same structured KPM change paths (`PlanAction[]`, document update events, context update events, deletion events); KPM applies them immediately instead of showing an approval modal. Tools must not bypass those paths or write directly to the database.
 
+The plan is the developer's mental model externalized. Approval remains the safe default, but a single-user cockpit can let the user trade review friction for speed when they deliberately opt in.
+
+**Lean toward:** making approvals fast (preview, batch, undo) and making auto-apply explicit, reversible, and clearly labeled.
+**Lean away from:** hidden bypasses, per-tool direct database writes, or silently changing the default review behavior.
 
 ---
 

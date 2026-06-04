@@ -37,6 +37,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     const context = buildContext(projectId);
     if (context) {
       context.getPromptContent = (key: string) => unwrapOrThrow(services.promptOverrideService.getContent(key));
+      context.approvalMode = parseChatApprovalMode(container.appSettings.get(CHAT_APPROVAL_MODE_KEY));
     }
     return context;
   };

@@ -6,9 +6,12 @@
  * Detailed action schemas live in tool descriptions, not here.
  */
 
+import type { ChatApprovalMode } from '../../../shared/appSettings';
+
 /**
  * Tool decision tree - compact routing guide.
  */
+export function buildToolDecisionTree(projectId: string, approvalMode: ChatApprovalMode): string {
 
   return `## Tools
 

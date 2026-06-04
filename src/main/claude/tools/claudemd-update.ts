@@ -1,6 +1,7 @@
 /**
  * Project Context File Edit Tool
  *
+ * Allows Claude to submit edits to the project context file (AGENTS.md / CLAUDE.md)
  * using old_string → new_string. Only the changed portion is sent as output tokens;
  * the full new content is computed server-side and emitted as a ContextFileUpdatePayload.
  *
@@ -38,6 +39,7 @@ export type ReadClaudeMdFn = (
 /**
  * Tool description with embedded best practices for KPM's project management context.
  */
+const TOOL_DESCRIPTION = `Submit an edit to the project context file (AGENTS.md or CLAUDE.md) — persistent knowledge that primes future sessions. KPM queues or applies it according to the user's approval setting.
 
 Rules:
 - old_string must match exactly one location (whitespace included); add more context if non-unique.
@@ -119,6 +121,7 @@ export function createClaudeMdEditTools(
 
         return jsonResult({
           success: true,
+          message: 'Project context file edit submitted to KPM.',
         });
       }
     ),

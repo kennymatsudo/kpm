@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useChatStore, useApprovalQueueStore, useGeneralSettingsStore } from '../stores';
 import { useShallow } from 'zustand/react/shallow';
 import { emit } from '../stores/storeEvents';
 import {
@@ -80,6 +81,8 @@ export function useChatIpcBridge(projectId: string | null): void {
     let active = true;
     const isActiveForProject = (eventProjectId: string) => active && eventProjectId === projectId;
 
+    // Load persisted token count and chat approval preference on project select
+    void useGeneralSettingsStore.getState().loadApprovalMode();
     void (async () => {
       const usage = await getChatUsage(projectId);
       if (!active) return;

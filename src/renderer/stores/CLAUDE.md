@@ -5,6 +5,7 @@ UI state management with slice pattern, typed events for cross-store communicati
 ## Store Organization
 
 - **`projectStore.ts`** — Main store factory (sliced into `project/` subdirectory: projectSlice, planSlice, resourceSlice, uiSlice)
+- **`approvalQueueStore.ts`** — Unified queue/executor for Claude-proposed changes (plan actions, context-file edits, document updates, implementation proposals, review replies). Owns both the **process methods** (called by `useChatIpcBridge` when Claude emits events — they enqueue for review or auto-apply based on the global setting) and the **execute methods** (called by `ApprovalOverlays` when the user approves, or by process methods in auto-apply mode — they call the backing services). Project-scoped.
   - `useSyncStore` — Sync preview state, conflict resolutions, and `syncAvailability` (keyed by associationId). `checkForUpdates()` is called by `useTrackerTopBarIntegration` on a 2-minute polling interval; badge UI reads from `syncAvailability`.
   - `useExportStore` — Export queue state. `addToQueueWithStatus()` stages items and tracks `recentlyImportedIds` for visual feedback.
   - `useCredentialStore` — Tracker credential loading/display.

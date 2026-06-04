@@ -2,6 +2,7 @@
  * Types for Claude prompt context.
  */
 
+import type { ChatApprovalMode } from '../../../shared/appSettings';
 
 export interface PlanContext {
   project: Project;
@@ -11,6 +12,8 @@ export interface PlanContext {
   focusedResources: FocusedResource[];
   /** Current UI view - used for context-aware suggestions */
   currentView?: ChatViewMode;
+  /** Whether Claude-proposed changes require review or apply immediately */
+  approvalMode?: ChatApprovalMode;
   /** Custom task prompt template - if set, overrides default PLAN_STRUCTURE */
   taskPromptTemplate?: TaskPromptTemplate | null;
   /** Project context file content (AGENTS.md or CLAUDE.md), if it exists */

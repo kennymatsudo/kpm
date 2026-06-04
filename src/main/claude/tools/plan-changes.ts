@@ -138,6 +138,7 @@ export function createPlanChangeTools(onPlanActions: PlanActionsCallback) {
   return [
     tool(
       'modify_plan',
+      `Modify the plan. KPM will either queue these changes for review or apply them immediately, depending on the user's approval setting.
 
 Plan items carry structured fields that flow to the agent, the reviewer, and generated artifacts:
 - **intent** (one sentence, local-only): what "done" means at a glance. The decided outcome.
@@ -230,6 +231,7 @@ All three items are root-level; the Group provides organization. Do not invent a
 
         return jsonResult({
           success: true,
+          message: 'Plan changes submitted to KPM.',
           actionCount: actions.length,
         });
       }

@@ -1,5 +1,6 @@
 # Claude Integration
 
+Bridge between Electron main process and Claude via the Agent SDK. In-process MCP tools, streaming sessions, and structured plan modifications that are approval-gated by default or auto-applied when the user opts in.
 
 ## Architecture
 
@@ -57,14 +58,20 @@ Tools are direct function calls registered with the SDK at startup—no subproce
 
 ### 3. Plan Modification Workflow
 
+**CRITICAL: All plan modifications MUST go through the structured PlanAction flow.**
 
+Claude proposes changes via tools; KPM either shows the approval modal or auto-applies the actions based on the user's global setting.
 
 ```
 Claude calls modification tool (modify_plan, bulk_reparent, etc.)
   ↓ Tool validates input via Zod
   ↓ Tool emits PlanAction[] via onPlanActions callback
+  ↓ UI receives event
+  ↓ Manual mode: approval modal → user approves → actions applied atomically
+  ↓ Auto-apply mode: actions applied atomically immediately
 ```
 
+**Modification tools that emit actions for approval or auto-apply:**
 - `modify_plan` - General plan modifications
 - `flatten_hierarchy` - Move nested items to root
 - `bulk_update_status` - Update status for multiple items
@@ -115,7 +122,9 @@ The `currentView` parameter ('plan' | 'workspace') adds context-aware suggestion
 
 ### Plan Modifications
 - **ALL modification tools MUST emit PlanAction[] via onPlanActions callback**
+- **NEVER modify the database directly from a tool** - this bypasses review, auto-apply handling, validation, and renderer synchronization
 - Actions are atomic (all succeed or all fail)
+- In manual mode, user approval happens after Claude finishes responding; in auto-apply mode, the renderer executes proposals as they arrive
 - If adding a new bulk modification tool, pass `onPlanActions` callback and emit actions
 
 ## File Organization

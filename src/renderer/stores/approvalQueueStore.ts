@@ -6,8 +6,14 @@
  * - Project context file edits (AGENTS.md / CLAUDE.md)
  * - Document updates (markdown files in the project folder)
  *
+ * Items are queued and processed one at a time in manual review mode to prevent
+ * UI conflicts when Claude proposes multiple changes in a single response.
+ * In auto-apply mode, process methods execute the same backing operations
+ * immediately without rendering approval UI.
  *
  * Also contains process methods (called by IPC bridge when events arrive)
+ * and execute methods (called by approval modal when user approves or by
+ * process methods in auto-apply mode).
  */
 
 import { create } from 'zustand';
@@ -15,9 +21,13 @@ import { isContextFile } from '../../shared/contextFile';
 import type { PlanAction } from '../../shared/types';
 import { usePlanDomainStore } from './projectDomains';
 import { useDevSessionsStore } from './devSessions';
+import { useGeneralSettingsStore } from './generalSettingsStore';
+import { useFileTreeStore } from './fileTreeStore';
+import { toast } from './toastStore';
 import { replyToSessionReviewThread } from '../services/reviewService';
 import { writeClaudeMdFile } from '../services/contextFileService';
 import { writeProjectFile, deleteProjectFile } from '../services/workspaceFileService';
+import { getParentPath } from '../utils/path';
 
 // =============================================================================
 // Approval Item Types (Discriminated Union)
@@ -132,22 +142,27 @@ interface ApprovalQueueState {
 
   // ───────────────────────────────────────────────────────────────────────────
   // Process methods — called by useChatIpcBridge when IPC events arrive.
+  // Changes are queued for review or auto-applied based on the global setting.
   // ───────────────────────────────────────────────────────────────────────────
 
+  /** Process plan actions from Claude */
   processPlanActions: (projectId: string, actions: PlanAction[]) => void;
 
+  /** Process project context file update from Claude */
   processClaudeMdUpdate: (
     projectId: string,
     oldContent: string | null,
     newContent: string
   ) => void;
 
+  /** Process document/file update from Claude */
   processFileUpdate: (
     projectId: string,
     filePath: string,
     content: string,
   ) => void;
 
+  /** Process a file/folder deletion proposal from Claude */
   processFileDelete: (
     projectId: string,
     filePath: string,
@@ -208,6 +223,14 @@ interface ApprovalQueueState {
 let idCounter = 0;
 function generateId(): string {
   return `approval-${Date.now()}-${++idCounter}`;
+}
+
+function shouldAutoApplyApprovals(): boolean {
+  const settings = useGeneralSettingsStore.getState();
+  if (!settings.approvalModeLoaded) {
+    void settings.loadApprovalMode();
+  }
+  return settings.approvalMode === 'auto_apply';
 }
 
 // =============================================================================
@@ -399,18 +422,90 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
   },
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Process Methods - Queue or auto-apply changes
   // ─────────────────────────────────────────────────────────────────────────
 
   processPlanActions: (_projectId, actions) => {
     if (actions.length === 0) return;
 
-  },
-
+    if (!shouldAutoApplyApprovals()) {
+      get().enqueuePlanActions(actions);
       return;
     }
 
+    void (async () => {
+      const result = await get().executePlanActions(actions);
+      if (result.success) {
+        toast.success('Plan changes applied');
+      } else {
+        toast.error(`Failed to apply plan changes: ${result.error}`);
+      }
+    })();
   },
 
+  processClaudeMdUpdate: (projectId, oldContent, newContent) => {
+    if (!shouldAutoApplyApprovals()) {
+      get().enqueueClaudeMdEdit(oldContent, newContent);
+      return;
+    }
+
+    void (async () => {
+      const result = await get().executeClaudeMdWrite(projectId, newContent);
+      if (result.success) {
+        toast.success('Project context updated');
+      } else {
+        toast.error(`Failed to update project context file: ${result.error}`);
+      }
+    })();
+  },
+
+    void (async () => {
+      // Handle project context files specially
+      if (isContextFile(filePath)) {
+          get().enqueueClaudeMdEdit(oldContent, content);
+          return;
+        }
+
+        const result = await get().executeClaudeMdWrite(projectId, content);
+        if (result.success) {
+          toast.success('Project context updated');
+        } else {
+          toast.error(`Failed to update project context file: ${result.error}`);
+        }
+        return;
+      }
+
+        get().enqueueDocumentUpdate(filePath, content, oldContent);
+        return;
+      }
+
+      const result = await get().executeFileWrite(projectId, filePath, content);
+      if (result.success) {
+        const parentPath = getParentPath(filePath, '');
+        void useFileTreeStore.getState().refreshDirectory(parentPath);
+        toast.success(`Updated ${filePath}`);
+      } else {
+        toast.error(`Failed to update ${filePath}: ${result.error}`);
+      }
+    })();
+  },
+
+  processFileDelete: (projectId, filePath, isDirectory) => {
+    if (!shouldAutoApplyApprovals()) {
+      get().enqueueFileDelete(filePath, isDirectory);
+      return;
+    }
+
+    void (async () => {
+      const result = await get().executeFileDelete(projectId, filePath);
+      if (result.success) {
+        const parentPath = getParentPath(filePath, '');
+        void useFileTreeStore.getState().refreshDirectory(parentPath);
+        toast.success(`Deleted ${filePath}`);
+      } else {
+        toast.error(`Failed to delete ${filePath}: ${result.error}`);
+      }
+    })();
   },
 
   processReviewReplyDraft: (draft) => {

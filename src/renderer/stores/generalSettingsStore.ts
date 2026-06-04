@@ -7,6 +7,12 @@ import {
   setAppSetting,
   testAnthropicApiKey,
 } from '../services/settingsService';
+import {
+  CHAT_APPROVAL_MODE_KEY,
+  DEFAULT_CHAT_APPROVAL_MODE,
+  parseChatApprovalMode,
+  type ChatApprovalMode,
+} from '../../shared/appSettings';
 
 const BRANCH_TEMPLATE_KEY = 'branch_name_template';
 
@@ -18,6 +24,9 @@ interface GeneralSettingsState {
   isDeletingAnthropicKey: boolean;
   branchTemplate: string;
   isLoadingBranchTemplate: boolean;
+  approvalMode: ChatApprovalMode;
+  isLoadingApprovalMode: boolean;
+  approvalModeLoaded: boolean;
   error: string | null;
   loadGeneralSettings: () => Promise<void>;
   loadAnthropicKeyStatus: () => Promise<{ success: boolean; hasKey?: boolean; error?: string }>;
@@ -25,6 +34,8 @@ interface GeneralSettingsState {
   saveAnthropicKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>;
   deleteAnthropicKey: () => Promise<{ success: boolean; error?: string }>;
   saveBranchTemplate: (branchTemplate: string) => Promise<{ success: boolean; error?: string }>;
+  loadApprovalMode: () => Promise<ChatApprovalMode>;
+  saveApprovalMode: (approvalMode: ChatApprovalMode) => Promise<{ success: boolean; error?: string }>;
   clearError: () => void;
   reset: () => void;
 }
@@ -37,6 +48,9 @@ const initialState = {
   isDeletingAnthropicKey: false,
   branchTemplate: '',
   isLoadingBranchTemplate: true,
+  approvalMode: DEFAULT_CHAT_APPROVAL_MODE,
+  isLoadingApprovalMode: true,
+  approvalModeLoaded: false,
   error: null as string | null,
 };
 
@@ -47,9 +61,11 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
     set({
       isLoadingAnthropicKey: true,
       isLoadingBranchTemplate: true,
+      isLoadingApprovalMode: true,
       error: null,
     });
 
+    const [keyResult, branchResult, approvalResult] = await Promise.all([
       hasAnthropicApiKey().catch((error: unknown) => ({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to load API key status',
@@ -58,6 +74,10 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
         success: false,
         error: error instanceof Error ? error.message : 'Failed to load branch template',
       })),
+      getAppSetting(CHAT_APPROVAL_MODE_KEY).catch((error: unknown) => ({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to load chat approval mode',
+      })),
     ]);
 
     set({
@@ -65,9 +85,13 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
       isLoadingAnthropicKey: false,
       branchTemplate: 'value' in branchResult && branchResult.value ? branchResult.value : '',
       isLoadingBranchTemplate: false,
+      approvalMode: 'value' in approvalResult ? parseChatApprovalMode(approvalResult.value) : DEFAULT_CHAT_APPROVAL_MODE,
+      isLoadingApprovalMode: false,
+      approvalModeLoaded: true,
       error:
         (!keyResult.success && keyResult.error) ||
         (!branchResult.success && branchResult.error) ||
+        (!approvalResult.success && approvalResult.error) ||
         null,
     });
   },
@@ -174,6 +198,47 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
       return { success: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save branch template';
+      set({ error: message });
+      return { success: false, error: message };
+    }
+  },
+
+  loadApprovalMode: async () => {
+    const state = get();
+    if (state.approvalModeLoaded) return state.approvalMode;
+
+    set({ isLoadingApprovalMode: true, error: null });
+    try {
+      const result = await getAppSetting(CHAT_APPROVAL_MODE_KEY);
+      const approvalMode = result.success ? parseChatApprovalMode(result.value) : DEFAULT_CHAT_APPROVAL_MODE;
+      set({ approvalMode, isLoadingApprovalMode: false, approvalModeLoaded: true });
+      return approvalMode;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load chat approval mode';
+      set({
+        approvalMode: DEFAULT_CHAT_APPROVAL_MODE,
+        isLoadingApprovalMode: false,
+        approvalModeLoaded: true,
+        error: message,
+      });
+      return DEFAULT_CHAT_APPROVAL_MODE;
+    }
+  },
+
+  saveApprovalMode: async (approvalMode) => {
+    set({ error: null });
+    try {
+      const result = await setAppSetting(CHAT_APPROVAL_MODE_KEY, approvalMode);
+      if (!result.success) {
+        const error = result.error || 'Failed to save chat approval mode';
+        set({ error });
+        return { success: false, error };
+      }
+
+      set({ approvalMode, approvalModeLoaded: true });
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save chat approval mode';
       set({ error: message });
       return { success: false, error: message };
     }

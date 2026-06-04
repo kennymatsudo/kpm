@@ -1311,6 +1311,14 @@ select:focus-visible {
   cursor: text;
 }
 
+/* Preserve pointer affordances for clickable inline references inside selectable markdown. */
+.prose :where(a, button, [role="button"]):not(:disabled),
+.prose :where(a, button, [role="button"]):not(:disabled) *,
+.prose-themed :where(a, button, [role="button"]):not(:disabled),
+.prose-themed :where(a, button, [role="button"]):not(:disabled) * {
+  cursor: pointer;
+}
+
 .prose-themed :where(p):not(:where([class~="not-prose"] *)) {
   margin-top: 0.35em;
   margin-bottom: 0.35em;

@@ -1,6 +1,7 @@
 /**
  * Document Edit Tool
  *
+ * Allows Claude to submit edits to existing project files using old_string → new_string.
  * Only the changed portion is sent as output tokens; the full new content is computed
  * server-side and emitted as a DocumentUpdatePayload (same shape as document-update.ts).
  *
