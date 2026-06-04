@@ -26,6 +26,8 @@ Use when the user asks what files or folders exist in the project, wants to brow
 - \`path\`: Relative path to list. Use "" (empty string) for the project root. Example: "specs", "docs/archive".
 - \`depth\`: Maximum recursion depth when \`recursive\` is true. Defaults to 10.
 
+## Choosing what to read
+
 ## Notes
 - Generated/cache paths (${HIDDEN_FILE_TREE_ENTRIES_DESCRIPTION}) are hidden. All other files, including dotfiles, are visible.
 - Lists files in the developer's KPM project folder only. For files inside connected code repositories, use Glob/Read/Grep instead.`;

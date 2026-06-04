@@ -236,6 +236,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         }
 
         const summaryMap = deps.fileSummaryService?.getMetadataMap(projectId);
+        if (summaryMap) {
           enrichWithSummaries(nodes, summaryMap);
         }
         if (options.backfillMissingSummaries && summaryMap && deps.fileSummaryService) {
