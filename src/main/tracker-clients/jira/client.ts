@@ -44,12 +44,25 @@ interface JiraIssueResponse {
     description?: unknown; // ADF format
     issuetype?: { name?: string };
     status?: { name?: string };
+    assignee?: JiraUser | null;
+    creator?: JiraUser | null;
     parent?: {
       key: string;
       fields?: { issuetype?: { name?: string } };
     };
     updated: string;
     customfield_10014?: string; // Epic link (common field)
+  };
+}
+
+interface JiraUser {
+  accountId?: string;
+  displayName?: string;
+  avatarUrls?: {
+    '48x48'?: string;
+    '32x32'?: string;
+    '24x24'?: string;
+    '16x16'?: string;
   };
 }
 
@@ -206,8 +219,19 @@ export class JiraClient implements TrackerClient {
       status: issue.fields.status?.name ?? 'Unknown',
       parentKey: issue.fields.parent?.key ?? null,
       epicKey: this.extractEpicKey(issue),
+      assignee: this.mapUser(issue.fields.assignee),
+      creator: this.mapUser(issue.fields.creator),
       updatedAt: issue.fields.updated,
       url: `https://${this.siteUrl}/browse/${issue.key}`,
+    };
+  }
+
+  private mapUser(user: JiraUser | null | undefined): ExternalIssue['assignee'] {
+    if (!user?.accountId && !user?.displayName) return null;
+    return {
+      id: user.accountId ?? user.displayName ?? 'unknown',
+      name: user.displayName ?? user.accountId ?? 'Unknown',
+      avatarUrl: user.avatarUrls?.['48x48'] ?? user.avatarUrls?.['32x32'] ?? user.avatarUrls?.['24x24'] ?? null,
     };
   }
 

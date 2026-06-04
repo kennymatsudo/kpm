@@ -1,8 +1,10 @@
 import { CloseIcon } from '../icons';
 import { SearchInput } from '../planning/SearchInput';
 import { StatusFilter } from '../planning/StatusFilter';
+import { PeopleFilter } from '../planning/PeopleFilter';
 import { ViewSwitcher, type ViewMode } from '../planning/ViewSwitcher';
 import type { StatusCategory } from '../../../shared/types';
+import type { PersonFilterOption } from './hooks/useLayoutPlanViewState';
 
 interface TopBarPlanningControlsProps {
   isVisible: boolean;
@@ -15,6 +17,9 @@ interface TopBarPlanningControlsProps {
   searchResultCount: number | undefined;
   hiddenStatusCategories: Set<StatusCategory>;
   onHiddenStatusCategoriesChange: (categories: Set<StatusCategory>) => void;
+  selectedPeopleFilterKeys: Set<string>;
+  onSelectedPeopleFilterKeysChange: (keys: Set<string>) => void;
+  personFilterOptions: PersonFilterOption[];
   statusCounts: { total: number; visible: number };
 }
 
@@ -29,6 +34,9 @@ export function TopBarPlanningControls({
   searchResultCount,
   hiddenStatusCategories,
   onHiddenStatusCategoriesChange,
+  selectedPeopleFilterKeys,
+  onSelectedPeopleFilterKeysChange,
+  personFilterOptions,
   statusCounts,
 }: TopBarPlanningControlsProps) {
   if (!isVisible) {
@@ -72,6 +80,14 @@ export function TopBarPlanningControls({
           onChange={onHiddenStatusCategoriesChange}
           totalCount={statusCounts.total}
           visibleCount={statusCounts.visible}
+        />
+      </div>
+
+      <div className="flex-shrink-0">
+        <PeopleFilter
+          selectedKeys={selectedPeopleFilterKeys}
+          onChange={onSelectedPeopleFilterKeysChange}
+          options={personFilterOptions}
         />
       </div>
     </div>

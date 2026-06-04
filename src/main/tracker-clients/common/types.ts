@@ -2,6 +2,12 @@ import type { DocumentCodec } from '../../documents/types';
 
 export type TrackerType = 'jira' | 'linear';
 
+export interface ExternalPerson {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
 export interface ExternalIssue {
   key: string;              // 'PROJ-123' or Linear 'ENG-42'
   id: string;
@@ -12,6 +18,8 @@ export interface ExternalIssue {
   statusType?: string;      // Linear workflow-state type: 'triage'|'backlog'|'unstarted'|'started'|'completed'|'canceled'
   parentKey: string | null;
   epicKey: string | null;   // Jira epic link or Linear project id
+  assignee?: ExternalPerson | null;
+  creator?: ExternalPerson | null;
   updatedAt: string;
   url: string;
 }

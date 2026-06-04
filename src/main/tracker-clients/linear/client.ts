@@ -46,6 +46,18 @@ const ISSUE_FIELDS = gql`
     project {
       id
     }
+    assignee {
+      id
+      name
+      displayName
+      avatarUrl
+    }
+    creator {
+      id
+      name
+      displayName
+      avatarUrl
+    }
     labels {
       nodes {
         id
@@ -54,6 +66,13 @@ const ISSUE_FIELDS = gql`
     }
   }
 `;
+
+interface LinearPerson {
+  id: string;
+  name?: string | null;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+}
 
 interface LinearIssue {
   id: string;
@@ -67,6 +86,8 @@ interface LinearIssue {
   team?: { id: string; key: string };
   parent?: { identifier: string } | null;
   project?: { id: string } | null;
+  assignee?: LinearPerson | null;
+  creator?: LinearPerson | null;
   labels?: { nodes: { id: string; name: string }[] };
 }
 
@@ -461,10 +482,18 @@ export class LinearClient implements TrackerClient {
       parentKey: issue.parent?.identifier ?? null,
       // Linear "Projects" are our epic proxy.
       epicKey: issue.project?.id ?? null,
+      assignee: mapLinearPerson(issue.assignee),
+      creator: mapLinearPerson(issue.creator),
       updatedAt: issue.updatedAt,
       url: issue.url,
     };
   }
+}
+
+function mapLinearPerson(person: LinearPerson | null | undefined): ExternalIssue['assignee'] {
+  if (!person) return null;
+  const name = person.displayName ?? person.name ?? person.id;
+  return { id: person.id, name, avatarUrl: person.avatarUrl ?? null };
 }
 
 function toErrorMessage(e: unknown): string {

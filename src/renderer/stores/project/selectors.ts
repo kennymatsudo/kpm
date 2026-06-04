@@ -58,8 +58,11 @@ const filteredPlannedItemsCache = new WeakMap<readonly PlanItem[], WeakMap<Reado
 
 export function selectFilteredPlannedItems(
   planItems: readonly PlanItem[],
+  hiddenStatusCategories: ReadonlySet<StatusCategory>,
+  peopleFilterKeys: ReadonlySet<string> = new Set()
 ): PlanItem[] {
   const { plannedItems } = selectNormalizedPlanItems(planItems);
+  if (hiddenStatusCategories.size === 0 && peopleFilterKeys.size === 0) return plannedItems;
 
   let cacheForPlanItems = filteredPlannedItemsCache.get(planItems);
   if (!cacheForPlanItems) {
@@ -67,10 +70,23 @@ export function selectFilteredPlannedItems(
     filteredPlannedItemsCache.set(planItems, cacheForPlanItems);
   }
 
+  if (peopleFilterKeys.size === 0) {
+    const cached = cacheForPlanItems.get(hiddenStatusCategories);
+    if (cached) return cached;
+  }
 
   const filtered = plannedItems.filter((item) => {
     const effectiveStatus = item.status_category ?? getStatusCategory(item.external_status, item.external_type);
+    if (effectiveStatus && hiddenStatusCategories.has(effectiveStatus)) return false;
+    if (peopleFilterKeys.size === 0) return true;
+
+    const assigneeKey = item.external_assignee_id ? `assignee:${item.external_assignee_id}` : 'assignee:__unassigned__';
+    const creatorKey = item.external_creator_id ? `creator:${item.external_creator_id}` : 'creator:__unassigned__';
+    return peopleFilterKeys.has(assigneeKey) || peopleFilterKeys.has(creatorKey);
   });
+  if (peopleFilterKeys.size === 0) {
+    cacheForPlanItems.set(hiddenStatusCategories, filtered);
+  }
   return filtered;
 }
 

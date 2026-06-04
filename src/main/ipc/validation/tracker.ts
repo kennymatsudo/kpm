@@ -148,6 +148,12 @@ export const TrackerSchemas = {
           external_url: z.string(),
           external_parent_key: z.string().nullable(),
           external_epic_key: z.string().nullable(),
+          external_assignee_id: z.string().nullable().optional(),
+          external_assignee_name: z.string().nullable().optional(),
+          external_assignee_avatar_url: z.string().nullable().optional(),
+          external_creator_id: z.string().nullable().optional(),
+          external_creator_name: z.string().nullable().optional(),
+          external_creator_avatar_url: z.string().nullable().optional(),
         })
       ),
       updated_items: z.array(
@@ -156,6 +162,20 @@ export const TrackerSchemas = {
           external_key: z.string(),
           changes: z.array(
             z.object({
+              field: z.enum([
+                'title',
+                'description',
+                'label',
+                'release_tag',
+                'external_status',
+                'status_category',
+                'external_assignee_id',
+                'external_assignee_name',
+                'external_assignee_avatar_url',
+                'external_creator_id',
+                'external_creator_name',
+                'external_creator_avatar_url',
+              ]),
               old_value: z.string().nullable(),
               new_value: z.string().nullable(),
             })
@@ -198,6 +218,12 @@ export const TrackerSchemas = {
           external_url: z.string().nullable().optional(),
           external_parent_key: z.string().nullable().optional(),
           external_epic_key: z.string().nullable().optional(),
+          external_assignee_id: z.string().nullable().optional(),
+          external_assignee_name: z.string().nullable().optional(),
+          external_assignee_avatar_url: z.string().nullable().optional(),
+          external_creator_id: z.string().nullable().optional(),
+          external_creator_name: z.string().nullable().optional(),
+          external_creator_avatar_url: z.string().nullable().optional(),
           sync_source: z.enum(['local', 'jira', 'linear']).optional(),
           last_synced_at: z.string().nullable().optional(),
         })

@@ -53,6 +53,10 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
       createFromExternal: db.prepare(`
         INSERT INTO plan_items (
           id, project_id, parent_id, title, description, label, item_order,
+          external_url, external_parent_key, external_epic_key,
+          external_assignee_id, external_assignee_name, external_assignee_avatar_url,
+          external_creator_id, external_creator_name, external_creator_avatar_url,
+          sync_source, last_synced_at, association_id
         )
         RETURNING *
       `),
@@ -66,6 +70,12 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
           external_url = NULL,
           external_parent_key = NULL,
           external_epic_key = NULL,
+          external_assignee_id = NULL,
+          external_assignee_name = NULL,
+          external_assignee_avatar_url = NULL,
+          external_creator_id = NULL,
+          external_creator_name = NULL,
+          external_creator_avatar_url = NULL,
           sync_source = 'local',
           last_synced_at = NULL,
           association_id = NULL,
@@ -97,6 +107,12 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
     external_url?: string;
     external_parent_key: string | null;
     external_epic_key: string | null;
+    external_assignee_id?: string | null;
+    external_assignee_name?: string | null;
+    external_assignee_avatar_url?: string | null;
+    external_creator_id?: string | null;
+    external_creator_name?: string | null;
+    external_creator_avatar_url?: string | null;
   }): PlanItem {
     const id = randomUUID();
     const itemOrder = this.planItemRepository.getNextOrder(input.project_id, null);
@@ -119,6 +135,12 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
       input.external_url ?? null,
       input.external_parent_key,
       input.external_epic_key,
+      input.external_assignee_id ?? null,
+      input.external_assignee_name ?? null,
+      input.external_assignee_avatar_url ?? null,
+      input.external_creator_id ?? null,
+      input.external_creator_name ?? null,
+      input.external_creator_avatar_url ?? null,
       input.external_type, // sync_source
       input.association_id
     ) as Record<string, unknown>;
@@ -141,6 +163,12 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
     external_parent_key: string | null;
     external_epic_key: string | null;
     external_issue_type: string;
+    external_assignee_id?: string | null;
+    external_assignee_name?: string | null;
+    external_assignee_avatar_url?: string | null;
+    external_creator_id?: string | null;
+    external_creator_name?: string | null;
+    external_creator_avatar_url?: string | null;
     title: string;
     description: string | null;
     label: string | null;
@@ -154,7 +182,12 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
       INSERT INTO plan_items (
         id, project_id, parent_id, title, description, label, item_order,
         status, status_category, external_key, external_id, external_type, external_issue_type, external_status,
+        external_url, external_parent_key, external_epic_key,
+        external_assignee_id, external_assignee_name, external_assignee_avatar_url,
+        external_creator_id, external_creator_name, external_creator_avatar_url,
+        sync_source, last_synced_at, association_id
       )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
     `);
 
     const transaction = this.db.transaction(() => {
@@ -203,6 +236,12 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
             item.external_url ?? null,
             item.external_parent_key,
             item.external_epic_key,
+            item.external_assignee_id ?? null,
+            item.external_assignee_name ?? null,
+            item.external_assignee_avatar_url ?? null,
+            item.external_creator_id ?? null,
+            item.external_creator_name ?? null,
+            item.external_creator_avatar_url ?? null,
             item.external_type, // sync_source = tracker type
             item.association_id
           );
@@ -224,6 +263,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
 
   updateFromExternal(
     planItemId: string,
+    updates: Partial<Pick<PlanItem, 'title' | 'description' | 'label' | 'release_tag' | 'external_status' | 'status_category' | 'external_assignee_id' | 'external_assignee_name' | 'external_assignee_avatar_url' | 'external_creator_id' | 'external_creator_name' | 'external_creator_avatar_url'>>
   ): void {
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -251,6 +291,30 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
     if (updates.status_category !== undefined) {
       fields.push('status_category = ?');
       values.push(updates.status_category);
+    }
+    if (updates.external_assignee_id !== undefined) {
+      fields.push('external_assignee_id = ?');
+      values.push(updates.external_assignee_id);
+    }
+    if (updates.external_assignee_name !== undefined) {
+      fields.push('external_assignee_name = ?');
+      values.push(updates.external_assignee_name);
+    }
+    if (updates.external_assignee_avatar_url !== undefined) {
+      fields.push('external_assignee_avatar_url = ?');
+      values.push(updates.external_assignee_avatar_url);
+    }
+    if (updates.external_creator_id !== undefined) {
+      fields.push('external_creator_id = ?');
+      values.push(updates.external_creator_id);
+    }
+    if (updates.external_creator_name !== undefined) {
+      fields.push('external_creator_name = ?');
+      values.push(updates.external_creator_name);
+    }
+    if (updates.external_creator_avatar_url !== undefined) {
+      fields.push('external_creator_avatar_url = ?');
+      values.push(updates.external_creator_avatar_url);
     }
 
     if (fields.length === 0) return;

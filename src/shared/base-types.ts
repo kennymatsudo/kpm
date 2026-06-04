@@ -65,6 +65,12 @@ export interface PlanItem {
   external_url: string | null;
   external_parent_key?: string | null;
   external_epic_key?: string | null;
+  external_assignee_id?: string | null;
+  external_assignee_name?: string | null;
+  external_assignee_avatar_url?: string | null;
+  external_creator_id?: string | null;
+  external_creator_name?: string | null;
+  external_creator_avatar_url?: string | null;
   sync_source?: 'local' | TrackerType;
   last_synced_at?: string | null;
   completed_at?: string | null;

@@ -25,6 +25,7 @@ import { useProjectEdit } from './hooks/useProjectEdit';
 import { useProjectMenu } from './hooks/useProjectMenu';
 import { useTrackerTopBarIntegration } from './hooks/useTrackerTopBarIntegration';
 import { Tooltip } from '../ui';
+import type { PersonFilterOption } from './hooks/useLayoutPlanViewState';
 
 interface TopBarProps {
   // Sidebar controls
@@ -48,6 +49,9 @@ interface TopBarProps {
   onSearchChange: (query: string) => void;
   hiddenStatusCategories: Set<StatusCategory>;
   onHiddenStatusCategoriesChange: (categories: Set<StatusCategory>) => void;
+  selectedPeopleFilterKeys: Set<string>;
+  onSelectedPeopleFilterKeysChange: (keys: Set<string>) => void;
+  personFilterOptions: PersonFilterOption[];
   // Selection state
   selectedItemCount: number;
   onClearSelection: () => void;
@@ -73,6 +77,9 @@ export function TopBar({
   onSearchChange,
   hiddenStatusCategories,
   onHiddenStatusCategoriesChange,
+  selectedPeopleFilterKeys,
+  onSelectedPeopleFilterKeysChange,
+  personFilterOptions,
   selectedItemCount,
   onClearSelection,
   statusCounts,
@@ -194,6 +201,9 @@ export function TopBar({
                 searchResultCount={searchResultCount}
                 hiddenStatusCategories={hiddenStatusCategories}
                 onHiddenStatusCategoriesChange={onHiddenStatusCategoriesChange}
+                selectedPeopleFilterKeys={selectedPeopleFilterKeys}
+                onSelectedPeopleFilterKeysChange={onSelectedPeopleFilterKeysChange}
+                personFilterOptions={personFilterOptions}
                 statusCounts={statusCounts}
               />
 

@@ -3246,6 +3246,28 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1087,
+    name: '087_plan_item_tracker_people',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE plan_items ADD COLUMN external_assignee_id TEXT;
+        ALTER TABLE plan_items ADD COLUMN external_assignee_name TEXT;
+        ALTER TABLE plan_items ADD COLUMN external_assignee_avatar_url TEXT;
+        ALTER TABLE plan_items ADD COLUMN external_creator_id TEXT;
+        ALTER TABLE plan_items ADD COLUMN external_creator_name TEXT;
+        ALTER TABLE plan_items ADD COLUMN external_creator_avatar_url TEXT;
+
+        CREATE INDEX IF NOT EXISTS idx_plan_items_external_assignee
+          ON plan_items(project_id, external_assignee_id)
+          WHERE external_assignee_id IS NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_plan_items_external_creator
+          ON plan_items(project_id, external_creator_id)
+          WHERE external_creator_id IS NOT NULL;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

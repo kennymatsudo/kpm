@@ -97,6 +97,9 @@ export const Layout = memo(function Layout({
     hiddenStatusCategories,
     hiddenStatusCategoriesRef,
     setHiddenStatusCategories,
+    selectedPeopleFilterKeys,
+    setSelectedPeopleFilterKeys,
+    personFilterOptions,
     selectedItemIds,
     setSelectedItemIds,
     clearSelectedItemIds,
@@ -265,6 +268,9 @@ export const Layout = memo(function Layout({
           onSearchChange={setSearchQuery}
           hiddenStatusCategories={hiddenStatusCategories}
           onHiddenStatusCategoriesChange={setHiddenStatusCategories}
+          selectedPeopleFilterKeys={selectedPeopleFilterKeys}
+          onSelectedPeopleFilterKeysChange={setSelectedPeopleFilterKeys}
+          personFilterOptions={personFilterOptions}
           selectedItemCount={selectedItemIds.size}
           onClearSelection={clearSelectedItemIds}
           statusCounts={statusCounts}

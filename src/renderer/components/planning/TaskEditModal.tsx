@@ -49,6 +49,19 @@ const INTENT_MAX_CHARS = 500;
 const CRITERION_MAX_CHARS = 1000;
 const MAX_CRITERIA = 50;
 
+function TrackerPerson({ label, name, emptyLabel = 'Not available' }: { label: string; name: string | null | undefined; emptyLabel?: string }) {
+  return (
+    <div>
+      <div className="text-xxs text-text-muted uppercase tracking-wide mb-1">{label}</div>
+      {name ? (
+        <span className="text-sm text-text-primary truncate block">{name}</span>
+      ) : (
+        <span className="text-sm text-text-muted">{emptyLabel}</span>
+      )}
+    </div>
+  );
+}
+
 export function TaskEditModal({
   item,
   isOpen,
@@ -431,6 +444,19 @@ export function TaskEditModal({
               </Select>
             )}
           </div>
+
+          {/* Tracker people — read-only metadata from the connected tracker. */}
+          {(item.external_assignee_name || item.external_creator_name) && (
+            <div className="pt-4 border-t border-border-subtle">
+              <h3 className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
+                Tracker people
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <TrackerPerson label="Assigned to" name={item.external_assignee_name} emptyLabel="Unassigned" />
+                <TrackerPerson label="Created by" name={item.external_creator_name} />
+              </div>
+            </div>
+          )}
 
           {/* References — read-only chip strip. Tracker, release, code refs, all inline. */}
           {(item.external_key || item.release_tag || (item.code_refs && item.code_refs.length > 0)) && (

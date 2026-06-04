@@ -79,6 +79,12 @@ export interface IExternalPlanItemRepository {
     external_url?: string;
     external_parent_key: string | null;
     external_epic_key: string | null;
+    external_assignee_id?: string | null;
+    external_assignee_name?: string | null;
+    external_assignee_avatar_url?: string | null;
+    external_creator_id?: string | null;
+    external_creator_name?: string | null;
+    external_creator_avatar_url?: string | null;
   }): PlanItem;
   importExternalIssues(items: {
     project_id: string;
@@ -91,6 +97,12 @@ export interface IExternalPlanItemRepository {
     external_parent_key: string | null;
     external_epic_key: string | null;
     external_issue_type: string;
+    external_assignee_id?: string | null;
+    external_assignee_name?: string | null;
+    external_assignee_avatar_url?: string | null;
+    external_creator_id?: string | null;
+    external_creator_name?: string | null;
+    external_creator_avatar_url?: string | null;
     title: string;
     description: string | null;
     label?: string | null; // Optional - we now use external_issue_type directly
@@ -105,6 +117,12 @@ export interface IExternalPlanItemRepository {
       release_tag?: string | null;
       external_status?: string | null;
       status_category?: string | null;
+      external_assignee_id?: string | null;
+      external_assignee_name?: string | null;
+      external_assignee_avatar_url?: string | null;
+      external_creator_id?: string | null;
+      external_creator_name?: string | null;
+      external_creator_avatar_url?: string | null;
     }
   ): void;
   linkSubtasksToParentIssues(projectId: string, externalType: string): void;

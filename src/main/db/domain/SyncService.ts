@@ -99,6 +99,12 @@ export function createSyncService(deps: SyncServiceDeps) {
           external_url: issue.url,
           external_parent_key: issue.parentKey,
           external_epic_key: issue.epicKey,
+          external_assignee_id: issue.assignee?.id ?? null,
+          external_assignee_name: issue.assignee?.name ?? null,
+          external_assignee_avatar_url: issue.assignee?.avatarUrl ?? null,
+          external_creator_id: issue.creator?.id ?? null,
+          external_creator_name: issue.creator?.name ?? null,
+          external_creator_avatar_url: issue.creator?.avatarUrl ?? null,
         });
         preview.stats.new++;
       } else {
@@ -177,8 +183,22 @@ export function createSyncService(deps: SyncServiceDeps) {
       // If only KPM changed, KPM wins - no action needed
     }
 
+    // Always update tracker metadata (no conflict, just display/filtering).
     if (kpmItem.external_status !== external.status) {
       updates.push({ field: 'external_status', old_value: kpmItem.external_status, new_value: external.status });
+    }
+    const trackerPeopleFields = [
+      { field: 'external_assignee_id' as const, kpm: kpmItem.external_assignee_id ?? null, external: external.assignee?.id ?? null },
+      { field: 'external_assignee_name' as const, kpm: kpmItem.external_assignee_name ?? null, external: external.assignee?.name ?? null },
+      { field: 'external_assignee_avatar_url' as const, kpm: kpmItem.external_assignee_avatar_url ?? null, external: external.assignee?.avatarUrl ?? null },
+      { field: 'external_creator_id' as const, kpm: kpmItem.external_creator_id ?? null, external: external.creator?.id ?? null },
+      { field: 'external_creator_name' as const, kpm: kpmItem.external_creator_name ?? null, external: external.creator?.name ?? null },
+      { field: 'external_creator_avatar_url' as const, kpm: kpmItem.external_creator_avatar_url ?? null, external: external.creator?.avatarUrl ?? null },
+    ];
+    for (const { field, kpm, external: ext } of trackerPeopleFields) {
+      if (kpm !== ext) {
+        updates.push({ field, old_value: kpm, new_value: ext });
+      }
     }
 
     // Check if status_category is out of sync with what the tracker status implies.
@@ -220,6 +240,12 @@ export function createSyncService(deps: SyncServiceDeps) {
           external_url: item.external_url,
           external_parent_key: item.external_parent_key,
           external_epic_key: item.external_epic_key,
+          external_assignee_id: item.external_assignee_id,
+          external_assignee_name: item.external_assignee_name,
+          external_assignee_avatar_url: item.external_assignee_avatar_url,
+          external_creator_id: item.external_creator_id,
+          external_creator_name: item.external_creator_name,
+          external_creator_avatar_url: item.external_creator_avatar_url,
         });
 
         snapshotsToUpsert.push({
@@ -262,6 +288,12 @@ export function createSyncService(deps: SyncServiceDeps) {
           release_tag?: string | null;
           external_status?: string | null;
           status_category?: string | null;
+          external_assignee_id?: string | null;
+          external_assignee_name?: string | null;
+          external_assignee_avatar_url?: string | null;
+          external_creator_id?: string | null;
+          external_creator_name?: string | null;
+          external_creator_avatar_url?: string | null;
         } = {};
 
         for (const change of item.changes) {
@@ -274,6 +306,12 @@ export function createSyncService(deps: SyncServiceDeps) {
           } else if (change.field === 'status_category') {
             // Direct status_category update (e.g., fixing out-of-sync state)
             updates.status_category = change.new_value;
+          } else if (change.field === 'external_assignee_id') updates.external_assignee_id = change.new_value;
+          else if (change.field === 'external_assignee_name') updates.external_assignee_name = change.new_value;
+          else if (change.field === 'external_assignee_avatar_url') updates.external_assignee_avatar_url = change.new_value;
+          else if (change.field === 'external_creator_id') updates.external_creator_id = change.new_value;
+          else if (change.field === 'external_creator_name') updates.external_creator_name = change.new_value;
+          else if (change.field === 'external_creator_avatar_url') updates.external_creator_avatar_url = change.new_value;
         }
 
         ExternalPlanItemRepository.updateFromExternal(item.plan_item_id, updates);

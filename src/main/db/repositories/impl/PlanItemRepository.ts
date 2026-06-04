@@ -133,9 +133,12 @@ export class PlanItemRepository implements IPlanItemRepository {
           code_refs, status, status_category, release_tag, position_x, position_y,
           association_id, external_key, external_id, external_type, external_issue_type,
           external_status, external_url, external_parent_key, external_epic_key,
+          external_assignee_id, external_assignee_name, external_assignee_avatar_url,
+          external_creator_id, external_creator_name, external_creator_avatar_url,
           sync_source, last_synced_at, group_id,
           intent, acceptance_criteria, source_document_id
         )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *
       `),
       deleteById: db.prepare('DELETE FROM plan_items WHERE id = ?'),
@@ -232,6 +235,12 @@ export class PlanItemRepository implements IPlanItemRepository {
       item.external_url ?? null,
       item.external_parent_key ?? null,
       item.external_epic_key ?? null,
+      item.external_assignee_id ?? null,
+      item.external_assignee_name ?? null,
+      item.external_assignee_avatar_url ?? null,
+      item.external_creator_id ?? null,
+      item.external_creator_name ?? null,
+      item.external_creator_avatar_url ?? null,
       item.sync_source ?? 'local',
       item.last_synced_at ?? null,
       item.group_id ?? null,
@@ -372,6 +381,30 @@ export class PlanItemRepository implements IPlanItemRepository {
     if (syncUpdates.external_url !== undefined) {
       fields.push('external_url = ?');
       values.push(syncUpdates.external_url);
+    }
+    if (syncUpdates.external_assignee_id !== undefined) {
+      fields.push('external_assignee_id = ?');
+      values.push(syncUpdates.external_assignee_id);
+    }
+    if (syncUpdates.external_assignee_name !== undefined) {
+      fields.push('external_assignee_name = ?');
+      values.push(syncUpdates.external_assignee_name);
+    }
+    if (syncUpdates.external_assignee_avatar_url !== undefined) {
+      fields.push('external_assignee_avatar_url = ?');
+      values.push(syncUpdates.external_assignee_avatar_url);
+    }
+    if (syncUpdates.external_creator_id !== undefined) {
+      fields.push('external_creator_id = ?');
+      values.push(syncUpdates.external_creator_id);
+    }
+    if (syncUpdates.external_creator_name !== undefined) {
+      fields.push('external_creator_name = ?');
+      values.push(syncUpdates.external_creator_name);
+    }
+    if (syncUpdates.external_creator_avatar_url !== undefined) {
+      fields.push('external_creator_avatar_url = ?');
+      values.push(syncUpdates.external_creator_avatar_url);
     }
     if (syncUpdates.association_id !== undefined) {
       fields.push('association_id = ?');

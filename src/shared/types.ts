@@ -282,6 +282,12 @@ export interface SyncNewItem {
   external_url: string;                 // Direct link to issue in tracker
   external_parent_key: string | null;
   external_epic_key: string | null;
+  external_assignee_id?: string | null;
+  external_assignee_name?: string | null;
+  external_assignee_avatar_url?: string | null;
+  external_creator_id?: string | null;
+  external_creator_name?: string | null;
+  external_creator_avatar_url?: string | null;
 }
 
 export interface SyncUpdatedItem {
@@ -289,6 +295,7 @@ export interface SyncUpdatedItem {
   external_key: string;
   title: string;
   changes: {
+    field: 'title' | 'description' | 'label' | 'release_tag' | 'external_status' | 'status_category' | 'external_assignee_id' | 'external_assignee_name' | 'external_assignee_avatar_url' | 'external_creator_id' | 'external_creator_name' | 'external_creator_avatar_url';
     old_value: string | null;
     new_value: string | null;
   }[];
@@ -354,6 +361,12 @@ export interface PlanItem extends PlanItemBase {
   external_issue_type: string | null;
   external_parent_key: string | null;
   external_epic_key: string | null;
+  external_assignee_id?: string | null;
+  external_assignee_name?: string | null;
+  external_assignee_avatar_url?: string | null;
+  external_creator_id?: string | null;
+  external_creator_name?: string | null;
+  external_creator_avatar_url?: string | null;
   sync_source: 'local' | TrackerType;
   last_synced_at: string | null;
 }
@@ -386,6 +399,12 @@ export type PlanItemSyncUpdates = PlanItemUpdates & Partial<Pick<PlanItem,
   | 'external_type'
   | 'external_status'
   | 'external_url'
+  | 'external_assignee_id'
+  | 'external_assignee_name'
+  | 'external_assignee_avatar_url'
+  | 'external_creator_id'
+  | 'external_creator_name'
+  | 'external_creator_avatar_url'
   | 'association_id'
   | 'sync_source'
   | 'last_synced_at'
