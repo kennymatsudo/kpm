@@ -59,6 +59,23 @@ const CONTINUATION_MAX_CHARS = 60_000;
 const CONTINUATION_MAX_TURN_CHARS = 8_000;
 const CLEANUP_TASK_ID = 'streaming-session-cleanup';
 
+function compactTitleSeed(text: string): string | null {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) return null;
+  return normalized.length > 80 ? `${normalized.slice(0, 77).trimEnd()}…` : normalized;
+}
+
+function sanitizeSessionTitle(summary: string, fallbackSeed?: string): string | null {
+  const normalized = summary.replace(/\s+/g, ' ').trim();
+  if (!normalized) return null;
+
+  if (normalized.startsWith('# Focused Selection') || normalized.startsWith('Focused Selection')) {
+    return fallbackSeed ? compactTitleSeed(fallbackSeed) : null;
+  }
+
+  return normalized;
+}
+
 /**
  * Trim stored chat messages into a replay preface for a fresh SDK session.
  * Drops a trailing user turn (the just-sent message persists before we run)
@@ -96,6 +113,8 @@ export function buildContinuationHistory(
  */
 interface MessageEnvelope {
   text: string;
+  /** Raw user text before per-turn context injection; used for clean session titles. */
+  titleSeed?: string;
   attachments?: ChatAttachment[];
 }
 
@@ -129,6 +148,8 @@ interface ManagedSession {
   lastSdkActivity?: number; // Timestamp of most recent SDK message (for idle-while-processing detection)
   mcpHealthStatus: 'healthy' | 'degraded' | 'recovering'; // KPM MCP server health
   mcpRecoveryAttempts: number; // Consecutive failed reconnect attempts
+  /** Raw first user message before focused-resource context injection. */
+  titleSeed?: string;
   segmentState: SegmentState; // Track message segments for splitting bubbles
   /**
    * Maps SDK tool_use id → the Activity we emitted for it.
@@ -705,6 +726,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         model,
         lastActivity: Date.now(),
         currentView,
+        titleSeed: initialMessage.titleSeed,
         mcpHealthStatus: 'healthy',
         mcpRecoveryAttempts: 0,
         segmentState: {
@@ -871,6 +893,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       }
     }
 
+    const envelope: MessageEnvelope = { text: messageText, titleSeed: message, attachments: options.attachments };
     return sendMessageToSession(
       key,
       envelope,
@@ -1717,15 +1740,19 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         void getSessionInfo(sdkSessionId)
           .then((info) => {
             if (!info?.summary) return;
+            const title = sanitizeSessionTitle(info.summary, managed.titleSeed);
+            if (!title) return;
             // Persist for the history dropdown so old sessions keep their
             // meaningful label after a reload, then notify the live UI.
             try {
+              deps.chatSessionRepository.updateTitle(chatSessionId, title);
             } catch (err) {
               console.warn('[StreamingSessionService] updateTitle failed:', err);
             }
             mainWindow?.webContents.send('chat:session-title', {
               projectId,
               chatSessionId,
+              title,
             });
           })
           .catch((err: unknown) => {
