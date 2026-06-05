@@ -29,6 +29,8 @@ interface PreparedStatements {
   listRecentByProject: Statement;
   listRecentAllProjects: Statement;
   deleteByProject: Statement;
+  lastSdkCumulativeCost: Statement;
+  findBySdkResultScope: Statement;
 }
 
 const EMPTY_TOTALS: ClaudeUsageTotals = {
@@ -70,8 +72,12 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
 
     this.stmts = {
       insert: db.prepare(`
+        INSERT OR IGNORE INTO claude_usage_events (
           id, project_id, project_name_snapshot, source, model,
           input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+          cost_micro_usd, sdk_session_id, sdk_result_uuid, sdk_cost_scope,
+          sdk_cumulative_cost_micro_usd, cost_source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *
       `),
       totalsByProject: db.prepare(`${totalsSelect} WHERE project_id = ?`),
@@ -121,11 +127,29 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
         LIMIT ?
       `),
       deleteByProject: db.prepare('DELETE FROM claude_usage_events WHERE project_id = ?'),
+      lastSdkCumulativeCost: db.prepare(`
+        SELECT sdk_cumulative_cost_micro_usd
+        FROM claude_usage_events
+        WHERE sdk_session_id = ?
+          AND sdk_cost_scope = ?
+          AND sdk_cumulative_cost_micro_usd IS NOT NULL
+        ORDER BY created_at DESC, rowid DESC
+        LIMIT 1
+      `),
+      findBySdkResultScope: db.prepare(`
+        SELECT * FROM claude_usage_events
+        WHERE sdk_session_id = ?
+          AND sdk_result_uuid = ?
+          AND sdk_cost_scope = ?
+          AND source = ?
+        LIMIT 1
+      `),
     };
   }
 
   insert(event: ClaudeUsageEventInsert): ClaudeUsageEvent {
     const id = randomUUID();
+    const inserted = this.stmts.insert.get(
       id,
       event.project_id,
       event.project_name_snapshot,
@@ -136,6 +160,33 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
       event.cache_creation_tokens,
       event.cache_read_tokens,
       event.cost_micro_usd,
+      event.sdk_session_id ?? null,
+      event.sdk_result_uuid ?? null,
+      event.sdk_cost_scope ?? null,
+      event.sdk_cumulative_cost_micro_usd ?? null,
+      event.cost_source ?? 'local_pricing_fallback',
+    ) as ClaudeUsageEvent | undefined;
+
+    if (inserted) return inserted;
+
+    if (event.sdk_session_id && event.sdk_result_uuid && event.sdk_cost_scope) {
+      const existing = this.stmts.findBySdkResultScope.get(
+        event.sdk_session_id,
+        event.sdk_result_uuid,
+        event.sdk_cost_scope,
+        event.source,
+      ) as ClaudeUsageEvent | undefined;
+      if (existing) return existing;
+    }
+
+    throw new Error('Failed to insert Claude usage event');
+  }
+
+  getLastSdkCumulativeCostMicroUsd(sdkSessionId: string, sdkCostScope: string): number | null {
+    const row = this.stmts.lastSdkCumulativeCost.get(sdkSessionId, sdkCostScope) as
+      | { sdk_cumulative_cost_micro_usd: number | null }
+      | undefined;
+    return row?.sdk_cumulative_cost_micro_usd ?? null;
   }
 
   totalsByProject(projectId: string | null): ClaudeUsageTotals {

@@ -23,6 +23,10 @@ export interface ModelPricing {
 }
 
 const OPUS_PRICING: ModelPricing = {
+  input: 5.0,
+  output: 25.0,
+  cacheWrite: 6.25,
+  cacheRead: 0.5,
 };
 
 const SONNET_PRICING: ModelPricing = {

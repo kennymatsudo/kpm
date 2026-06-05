@@ -3268,6 +3268,32 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1088,
+    name: '088_claude_usage_sdk_cost_snapshots',
+    up: (db: BetterSqliteDatabase) => {
+      // SDK result costs are cumulative for persistent Agent SDK sessions.
+      // Keep the raw cumulative snapshot for audit/delta calculation, while
+      // cost_micro_usd remains the additive per-event value used by dashboards.
+      db.exec(`
+        ALTER TABLE claude_usage_events ADD COLUMN sdk_session_id TEXT;
+        ALTER TABLE claude_usage_events ADD COLUMN sdk_result_uuid TEXT;
+        ALTER TABLE claude_usage_events ADD COLUMN sdk_cost_scope TEXT;
+        ALTER TABLE claude_usage_events ADD COLUMN sdk_cumulative_cost_micro_usd INTEGER;
+        ALTER TABLE claude_usage_events ADD COLUMN cost_source TEXT NOT NULL DEFAULT 'legacy';
+
+        CREATE INDEX IF NOT EXISTS idx_claude_usage_sdk_cost_scope
+          ON claude_usage_events(sdk_session_id, sdk_cost_scope, created_at DESC)
+          WHERE sdk_session_id IS NOT NULL AND sdk_cost_scope IS NOT NULL;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_claude_usage_sdk_result_scope
+          ON claude_usage_events(sdk_session_id, sdk_result_uuid, sdk_cost_scope, source)
+          WHERE sdk_session_id IS NOT NULL
+            AND sdk_result_uuid IS NOT NULL
+            AND sdk_cost_scope IS NOT NULL;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

@@ -231,6 +231,10 @@ export interface StreamingSessionServiceDeps {
       cache_read_input_tokens?: number | null;
     };
     totalCostUsd?: number | null;
+    sdkSessionId?: string | null;
+    sdkResultUuid?: string | null;
+    sdkCostScope?: string | null;
+    isCumulativeCostSnapshot?: boolean;
   }) => void;
 
   /** Chat message repository for persisting messages */
@@ -1898,6 +1902,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         const resultMsg = sdkMsg as {
           usage?: typeof sdkMsg.usage;
           total_cost_usd?: number | null;
+          session_id?: string | null;
+          uuid?: string | null;
           modelUsage?: Record<string, {
             inputTokens?: number;
             outputTokens?: number;
@@ -1925,6 +1931,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
                     cache_read_input_tokens: mu.cacheReadInputTokens ?? 0,
                   },
                   totalCostUsd: typeof mu.costUSD === 'number' ? mu.costUSD : null,
+                  sdkSessionId: resultMsg.session_id ?? null,
+                  sdkResultUuid: resultMsg.uuid ?? null,
+                  sdkCostScope: modelId,
+                  isCumulativeCostSnapshot: true,
                 });
               }
             } else {
@@ -1932,6 +1942,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
                 projectId,
                 usage: sdkMsg.usage,
                 totalCostUsd: totalCostUsd ?? null,
+                sdkSessionId: resultMsg.session_id ?? null,
+                sdkResultUuid: resultMsg.uuid ?? null,
+                sdkCostScope: '__total__',
+                isCumulativeCostSnapshot: true,
               });
             }
           } else {

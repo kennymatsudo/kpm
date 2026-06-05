@@ -52,6 +52,8 @@ export interface RunClaudeQueryOptions {
   recordUsage?: (event: {
     usage: ClaudeQueryUsage;
     totalCostUsd?: number | null;
+    sdkSessionId?: string | null;
+    sdkResultUuid?: string | null;
   }) => void;
   /** Forwarded `thinking` content blocks (used by OnboardingService's UI). */
   onThinking?: (text: string) => void;
@@ -204,6 +206,8 @@ export async function runClaudeQuery<TStructured = unknown>(
           options.recordUsage({
             usage: msg.usage,
             totalCostUsd: msg.total_cost_usd ?? null,
+            sdkSessionId: typeof msg.session_id === 'string' ? msg.session_id : null,
+            sdkResultUuid: typeof msg.uuid === 'string' ? msg.uuid : null,
           });
         }
       }

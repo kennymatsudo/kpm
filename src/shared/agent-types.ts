@@ -132,6 +132,10 @@ export interface AgentSessionUsage {
    * The centralized usage tracker prefers this over its local pricing table.
    */
   totalCostUsd: number | null;
+  sdkSessionId?: string | null;
+  sdkResultUuid?: string | null;
+  sdkCostScope?: string | null;
+  isCumulativeCostSnapshot?: boolean;
 }
 
 /** Events emitted by an AgentSession to its manager */

@@ -195,6 +195,10 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           cache_read_input_tokens: usage.cacheReadTokens,
         },
         totalCostUsd: usage.totalCostUsd,
+        sdkSessionId: usage.sdkSessionId,
+        sdkResultUuid: usage.sdkResultUuid,
+        sdkCostScope: usage.sdkCostScope,
+        isCumulativeCostSnapshot: usage.isCumulativeCostSnapshot,
       });
     },
   };

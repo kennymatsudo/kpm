@@ -67,8 +67,18 @@ export interface RecordUsageInput {
   model: string | null | undefined;
   usage: RawUsage | null | undefined;
   /**
+   * SDK-reported cost in USD when available. For one-shot queries this is the
+   * query total; for persistent Agent SDK sessions it is a cumulative snapshot
+   * and must be converted to a delta before storing in the summable ledger.
    */
   totalCostUsd?: number | null;
+  /** SDK session/result identifiers used for delta calculation and deduping. */
+  sdkSessionId?: string | null;
+  sdkResultUuid?: string | null;
+  /** Scope of the cumulative cost stream, usually a modelUsage key or '__total__'. */
+  sdkCostScope?: string | null;
+  /** True when totalCostUsd is cumulative for sdkSessionId/sdkCostScope. */
+  isCumulativeCostSnapshot?: boolean;
 }
 
 export interface ProjectUsageStats {
@@ -101,6 +111,43 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
     };
   }
 
+  function computeStoredCost(input: RecordUsageInput, tokens: ReturnType<typeof normalizeUsage>) {
+    if (typeof input.totalCostUsd === 'number' && Number.isFinite(input.totalCostUsd)) {
+      const cumulativeCostMicroUsd = Math.max(0, Math.round(input.totalCostUsd * 1_000_000));
+
+      const sdkCostScope = input.sdkCostScope ?? '__total__';
+      if (input.isCumulativeCostSnapshot && input.sdkSessionId) {
+        const previous = deps.claudeUsage.getLastSdkCumulativeCostMicroUsd(input.sdkSessionId, sdkCostScope);
+        const delta = previous === null || cumulativeCostMicroUsd < previous
+          ? cumulativeCostMicroUsd
+          : cumulativeCostMicroUsd - previous;
+
+        return {
+          costMicroUsd: Math.max(0, delta),
+          sdkCumulativeCostMicroUsd: cumulativeCostMicroUsd,
+          costSource: 'sdk_cumulative_delta',
+        };
+      }
+
+      return {
+        costMicroUsd: cumulativeCostMicroUsd,
+        sdkCumulativeCostMicroUsd: cumulativeCostMicroUsd,
+        costSource: 'sdk_total',
+      };
+    }
+
+    return {
+      costMicroUsd: computeCostMicroUsd(input.model, {
+        inputTokens: tokens.input,
+        outputTokens: tokens.output,
+        cacheCreationTokens: tokens.cacheCreation,
+        cacheReadTokens: tokens.cacheRead,
+      }),
+      sdkCumulativeCostMicroUsd: null,
+      costSource: 'local_pricing_fallback',
+    };
+  }
+
   function recordUsage(input: RecordUsageInput): ClaudeUsageEvent | null {
     try {
       const tokens = normalizeUsage(input.usage);
@@ -114,6 +161,10 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
       }
 
       const { tier } = resolveModelPricing(input.model);
+      // Prefer SDK cost when present. For persistent sessions the SDK emits
+      // cumulative snapshots, so convert to an additive delta before storing.
+      // The local pricing table is only a fallback for calls without SDK cost.
+      const { costMicroUsd, sdkCumulativeCostMicroUsd, costSource } = computeStoredCost(input, tokens);
 
       // Capture the project name at insert time so the by-project breakdown
       // can show a meaningful label even after the project is deleted. While
@@ -136,6 +187,11 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
         cache_creation_tokens: tokens.cacheCreation,
         cache_read_tokens: tokens.cacheRead,
         cost_micro_usd: costMicroUsd,
+        sdk_session_id: input.sdkSessionId ?? null,
+        sdk_result_uuid: input.sdkResultUuid ?? null,
+        sdk_cost_scope: input.sdkCostScope ?? (input.isCumulativeCostSnapshot ? '__total__' : null),
+        sdk_cumulative_cost_micro_usd: sdkCumulativeCostMicroUsd,
+        cost_source: costSource,
       });
 
       // Roll up to the existing project token columns so legacy UI surfaces

@@ -323,6 +323,8 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
           cache_creation_input_tokens?: number;
           cache_read_input_tokens?: number;
         };
+        const resultMsg = msg as { total_cost_usd?: number | null; session_id?: string | null; uuid?: string | null };
+        const totalCostUsd = resultMsg.total_cost_usd;
         const modelOption = this.sdkOptions.model;
         this.emit('onUsage', {
           model: typeof modelOption === 'string' ? modelOption : null,
@@ -331,6 +333,10 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
           cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
           cacheReadTokens: usage.cache_read_input_tokens ?? 0,
           totalCostUsd: typeof totalCostUsd === 'number' ? totalCostUsd : null,
+          sdkSessionId: resultMsg.session_id ?? this.id,
+          sdkResultUuid: resultMsg.uuid ?? null,
+          sdkCostScope: '__total__',
+          isCumulativeCostSnapshot: true,
         });
       }
 
