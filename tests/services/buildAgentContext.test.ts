@@ -30,6 +30,8 @@ describe('buildAgentContext', () => {
     expect(prompt).not.toContain('## Intent');
     expect(prompt).not.toContain('## Acceptance Criteria');
     expect(prompt).not.toContain('## Context');
+    expect(prompt).toContain('Implement this task. In your final response');
+    expect(prompt).toContain('Do not commit');
   });
 
   it('renders intent and acceptance_criteria above description when both are set', () => {
@@ -134,6 +136,70 @@ describe('buildAgentContext', () => {
     expect(prompt).not.toContain('## Acceptance Criteria');
     expect(prompt).toContain('## Description');
     expect(prompt).not.toContain('so that every acceptance criterion above is satisfied');
+  });
+
+  it('promotes known description sections into execution-specific sections', () => {
+    const item = createPlanItem({
+      project_id: project.id,
+      title: 'Structured description item',
+      description: [
+        'Background context for the task.',
+        '',
+        '## Acceptance Criteria',
+        '- [ ] Duplicated legacy criterion should not render when structured criteria exist',
+        '',
+        '## Out of Scope',
+        'Do not modify billing flows.',
+        '',
+        '## Dependencies',
+        '- @plan/abc123 must land first',
+        '',
+        '## Code References',
+        '- src/auth/session.ts (refreshSession) — existing behavior',
+        '',
+        '## Verification',
+        'npm test -- src/auth/session.test.ts',
+      ].join('\n'),
+      acceptance_criteria: ['Session refresh keeps active users signed in'],
+      code_refs: ['src/auth/client.ts (extendSession)'],
+    });
+
+    const prompt = buildAgentContext({ item, project, children: [], parent: null });
+
+    expect(prompt).toContain('## Acceptance Criteria\n\n- [ ] Session refresh keeps active users signed in');
+    expect(prompt).not.toContain('Duplicated legacy criterion should not render');
+    expect(prompt).toContain('## Out of Scope\n\nDo not modify billing flows.');
+    expect(prompt).toContain('## Dependencies\n\n- @plan/abc123 must land first');
+    expect(prompt).toContain('## Context\n\nBackground context for the task.');
+    expect(prompt).toContain('## Relevant Files');
+    expect(prompt).toContain('- src/auth/client.ts (extendSession)');
+    expect(prompt).toContain('- src/auth/session.ts (refreshSession) — existing behavior');
+    expect(prompt).toContain('## Verification\n\nnpm test -- src/auth/session.test.ts');
+    expect(prompt).toContain('Run the Verification command(s) above before finishing unless impossible');
+    expect(prompt).toContain('criterion-by-criterion status');
+  });
+
+  it('uses acceptance criteria from a legacy description section when structured criteria are absent', () => {
+    const item = createPlanItem({
+      project_id: project.id,
+      title: 'Legacy structured description',
+      description: [
+        'Background context.',
+        '',
+        '## Acceptance Criteria',
+        '- [ ] Endpoint returns 200 for valid input',
+        '- [ ] Endpoint returns 400 for invalid input',
+      ].join('\n'),
+      acceptance_criteria: null,
+    });
+
+    const prompt = buildAgentContext({ item, project, children: [], parent: null });
+
+    expect(prompt).toContain('## Acceptance Criteria');
+    expect(prompt).toContain('- [ ] Endpoint returns 200 for valid input');
+    expect(prompt).toContain('- [ ] Endpoint returns 400 for invalid input');
+    expect(prompt).toContain('## Context\n\nBackground context.');
+    expect(prompt).not.toContain('## Description');
   });
 });
 

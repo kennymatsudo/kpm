@@ -41,8 +41,10 @@ function buildReviewAssessmentPrompt(findings: ReviewFinding[]): string {
     '- If you decide to address a finding, make the code changes directly.',
     '- If no findings are worth addressing, do not change code unnecessarily.',
     '',
+    'In your final summary, include three short sections:',
     '1. Addressed findings',
     '2. Ignored findings',
+    '3. Verification after addressing findings (include exact commands, or "not run" with reason)',
     '',
     'Review findings:',
   ];
