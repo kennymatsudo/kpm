@@ -80,6 +80,8 @@ Out-of-sync surfaces as `ZodError: Invalid input` / "No matching discriminator".
 **Add a Claude tool**
 1. Implement in `src/main/claude/tools/`
 2. Register in `tools/createKpmServer.ts`
+3. Document usage in `prompts/toolDocs.ts`
+4. If it should be hidden in a mode or disabled state, enforce that in `permissions.ts` / `canUseTool`; do not use SDK `allowedTools` because it hides external MCP tools
 5. If it mutates the plan: emit `PlanAction[]` via `onPlanActions` — do **not** write to the DB.
 
 **Add an IPC handler**

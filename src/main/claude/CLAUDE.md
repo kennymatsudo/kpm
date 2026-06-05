@@ -92,6 +92,8 @@ Claude calls modification tool (modify_plan, bulk_reparent, etc.)
 
 1. Create tool in `tools/` directory — see `tools/plan-items.ts` for read-only example, `tools/plan-changes.ts` for modification example
 2. Register in `tools/createKpmServer.ts`
+3. Add usage guidance in `prompts/toolDocs.ts`
+4. If the tool should be hidden in a mode or disabled state, enforce that in `permissions.ts` / `canUseTool`; do not use SDK `allowedTools` because it hides external MCP tools
 5. Restart Electron (no rebuild required)
 
 **CRITICAL:** Modification tools MUST emit `PlanAction[]` via `onPlanActions` callback — NEVER modify the database directly from a tool.
@@ -112,6 +114,7 @@ The `currentView` parameter ('plan' | 'workspace') adds context-aware suggestion
 - 30-minute idle timeout auto-disconnects; next message auto-resumes
 
 ### Tools
+- Tool names are exposed to Claude with the `mcp__kpm__` prefix
 - Callbacks emit during tool execution (UI must handle mid-response updates)
 - Restart required for tool changes (no hot reload)
 

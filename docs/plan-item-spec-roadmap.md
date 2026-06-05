@@ -223,6 +223,7 @@ the `documents` DB table today and building that pipeline is out of scope.
 | `PlanActionService` | Rename in executor |
 | `modify_plan` tool docstring | Update — instruct Claude to set `source_document_path` when extracting items from a project markdown file the user has referenced; path must be project-relative |
 | New Claude tool: `list_project_markdown_files` | Thin wrapper over `FileExplorerService.listDirectory` filtered to `.md`/`.mdx`. Returns `{path, title (first H1 or filename), modified_at}[]` |
+| `createKpmServer.ts` | Register the new tool |
 | `TaskEditModal` | Show "Extracted from: `{path}`" with a click-to-open action (uses existing `openExternalUrl` or `shell.openPath`) when `source_document_path` is set |
 | `BoardCard` | Optional: small paperclip icon when item has a source doc. Skip for sprint-1 cut. |
 | Sync boundary | `source_document_path` stays **local-only** per existing policy; add to the what-syncs table in `src/main/claude/CLAUDE.md` |
