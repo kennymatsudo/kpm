@@ -12,6 +12,7 @@
 export type { PlanContext } from './types';
 
 import type { PlanContext, ContinuationTurn } from './types';
+import type { ChatViewMode, TaskPromptTemplate } from '../../../shared/types';
 import { DEFAULT_CHAT_APPROVAL_MODE, type ChatApprovalMode } from '../../../shared/appSettings';
 import { FULL_HIERARCHY_THRESHOLD, buildItemReferenceTable } from './planFormatting';
 import { buildResponseModesSection } from './modes';
@@ -65,8 +66,16 @@ The user is in the workspace for documents and exploration. Plan modification to
 Default action: \`propose_document_create\` for new documents, \`propose_document_edit\` for existing files.`;
 }
 
+function buildTaskCreationGuidance(taskPromptTemplate?: TaskPromptTemplate | null): string {
+  const templateName = taskPromptTemplate?.name;
+  const templateContent = taskPromptTemplate?.prompt_content?.trim();
+  const activeTemplateSection = templateName && templateContent
+    ? `\n\n### Active task template: ${templateName}\n\nFollow this template when writing new plan item titles and details. Map template sections into KPM's structured fields where appropriate: use \`intent\` for the concise outcome, \`acceptance_criteria\` for acceptance criteria, and \`description\` for the synced markdown body.\n\n${templateContent}`
+    : '';
+
   return `## Plan Item Creation
 
+Only create or modify plan items when the user explicitly asks. When creating implementation items, use clear verb-first titles, a one-sentence \`intent\`, testable \`acceptance_criteria\`, and code references in \`description\` when repo exploration found relevant files. Keep synced descriptions free of KPM-local document paths and other local-only references.${activeTemplateSection}`;
 }
 
 /**
@@ -115,6 +124,7 @@ ${buildToolDecisionTree(project.id, approvalMode)}
 
 ${getPrompt('system.plan_rules')}
 
+${buildTaskCreationGuidance(taskPromptTemplate)}
 
 ${getPrompt('system.response_style')}
 ${hasClaudeMd ? `
