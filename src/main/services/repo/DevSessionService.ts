@@ -460,6 +460,50 @@ async function _scaffoldWorktree(params: {
   }
 }
 
+async function assertSessionWorktreeCheckout(params: {
+  session: DevSession;
+  repoPath: string;
+}): Promise<ServiceResult<{ cwd: string }>> {
+  const { session, repoPath } = params;
+  const expectedWorktreePath = path.resolve(session.worktree_path);
+  const primaryRepoPath = path.resolve(repoPath);
+
+  if (!fs.existsSync(expectedWorktreePath)) {
+    return failure(`Cannot use session worktree: path does not exist at ${expectedWorktreePath}`);
+  }
+
+  const [resolvedWorktreePath, resolvedPrimaryRepoPath] = await Promise.all([
+    fs.promises.realpath(expectedWorktreePath),
+    fs.promises.realpath(primaryRepoPath),
+  ]);
+
+  if (resolvedWorktreePath === resolvedPrimaryRepoPath) {
+    return failure(
+      `Refusing task run: session worktree resolves to the primary checkout (${resolvedPrimaryRepoPath}).`
+    );
+  }
+
+  const { stdout: topLevelStdout } = await gitExec(['rev-parse', '--show-toplevel'], {
+    cwd: resolvedWorktreePath,
+  });
+  const gitTopLevel = await fs.promises.realpath(topLevelStdout.trim());
+  if (gitTopLevel !== resolvedWorktreePath) {
+    return failure(
+      `Refusing task run: git cwd resolved to ${gitTopLevel}, expected session worktree ${resolvedWorktreePath}.`
+    );
+  }
+
+  const currentBranch = await getCurrentBranch(resolvedWorktreePath);
+  if (currentBranch !== session.branch_name) {
+    return failure(
+      `Refusing task run: ${resolvedWorktreePath} is on branch '${currentBranch ?? 'detached HEAD'}', ` +
+      `expected '${session.branch_name}'.`
+    );
+  }
+
+  return success({ cwd: resolvedWorktreePath });
+}
+
 export function createDevSessionService(deps: DevSessionServiceDeps) {
   function getAgentContextInput(planItemId: string): ServiceResult<AgentContextInput> {
     const item = deps.planItems.get(planItemId);
@@ -707,9 +751,19 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           return failure(`Failed to create worktree: ${scaffoldResult.innerMessage}`);
         }
 
+        const worktreeGuard = await assertSessionWorktreeCheckout({
+          session,
+          repoPath: repo.path,
+        });
+        if (!worktreeGuard.ok) {
+          return worktreeGuard;
+        }
+        const worktreeCwd = worktreeGuard.data.cwd;
+
         // Capture repo environment (direnv / auto-detect) after worktree is ready
         const capturedEnv = await captureRepoEnvironment(
           options?.environmentMode ?? repo.environment_mode ?? 'auto',
+          worktreeCwd,
         );
 
         // Use the user's prompt override if provided, otherwise the stored instructions
@@ -723,6 +777,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         const sdkOptions: SDKOptions = {
           systemPrompt: deps.getPromptContent('agents.implementation_system'),
           model: developerModel,
+          cwd: worktreeCwd,
           maxTurns: getConfig().claude.maxTurns,
           permissionMode: getConfig().claude.defaultPermissionMode,
           // Board agents are one-shot — never pause for the built-in
@@ -750,6 +805,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         broadcastSessionStatusChange(updatedSession);
 
         // Start the agent session asynchronously
+        agentSession.start(worktreeCwd, prompt).catch(async (error) => {
           console.error(`[DevSessionService] Agent session start failed for ${sessionId}:`, error);
           try {
             await agentSession.stop();
@@ -1034,6 +1090,15 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       if (!session) {
         return failure(`Session not found: ${sessionId}`);
       }
+      const repo = deps.repos.getById(session.repo_id);
+      if (!repo) {
+        return failure(`Repository not found: ${session.repo_id}`);
+      }
+      const target = await assertSessionWorktreeCheckout({ session, repoPath: repo.path });
+      if (!target.ok) {
+        return target;
+      }
+      const cwd = target.data.cwd;
 
       const extractSha = (stdout: string): string => {
         const shaMatch = /\[[\w/.-]+ ([0-9a-f]{7,})\]/.exec(stdout);
