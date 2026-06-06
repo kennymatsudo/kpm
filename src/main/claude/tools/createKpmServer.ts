@@ -7,6 +7,7 @@
  */
 
 import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
+import { z } from 'zod';
 import { EventEmitter } from 'events';
 import { AsyncLocalStorage } from 'async_hooks';
 import type { BrowserWindow } from 'electron';
@@ -356,6 +357,46 @@ export function recordPendingDocumentContent(
 ): void {
   if (!chatSessionId) return;
   pendingDocumentContent.set(`${chatSessionId}:${filePath}`, content);
+}
+
+/**
+ * Logs the context-window footprint of the tool definitions sent to the model.
+ *
+ * Tool definitions (name + description + JSON Schema) are injected into context
+ * before the conversation starts, so this answers "are the first-party tools
+ * actually a context problem for KPM?" with a real number rather than a guess.
+ * Runs once at warmup (tools are cached), so it is not a hot path. Token figures
+ * are a rough estimate (chars / 4) and exclude the `mcp__kpm__` name prefix the
+ * SDK prepends and any per-server framing — so treat them as a lower bound.
+ */
+function logToolDefinitionFootprint(tools: NonNullable<typeof cachedTools>): void {
+  const CHARS_PER_TOKEN = 4;
+  const estTok = (chars: number) => Math.round(chars / CHARS_PER_TOKEN);
+
+  const rows = tools.map((t) => {
+    let schemaChars = -1; // -1 = schema could not be serialized to JSON Schema
+    try {
+      const jsonSchema = z.toJSONSchema(z.object(t.inputSchema), { unrepresentable: 'any' });
+      schemaChars = JSON.stringify(jsonSchema).length;
+    } catch {
+      // Leave at -1; the name + description still count toward the footprint.
+    }
+    const descChars = t.description.length;
+    const totalChars = t.name.length + descChars + Math.max(0, schemaChars);
+    return { name: t.name, descChars, schemaChars, totalChars };
+  });
+
+  rows.sort((a, b) => b.totalChars - a.totalChars);
+  const totalChars = rows.reduce((sum, r) => sum + r.totalChars, 0);
+
+  console.log(
+    `[KPM Server] Tool-definition footprint: ${rows.length} tools, ~${totalChars.toLocaleString()} chars ` +
+    `(~${estTok(totalChars).toLocaleString()} est. tokens). Largest first:`
+  );
+  for (const r of rows) {
+    const schemaNote = r.schemaChars < 0 ? 'schema n/a' : `schema ${r.schemaChars}c`;
+    console.log(`  ${r.name}: ~${estTok(r.totalChars)} tok (desc ${r.descChars}c, ${schemaNote})`);
+  }
 }
 
 /**

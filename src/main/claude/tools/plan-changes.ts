@@ -110,6 +110,41 @@ const QueueForTrackerAction = z.object({
   item_ids: z.array(z.string()),
 });
 
+// Group actions (visual containers). Shapes mirror `planActionSchema` in
+// `src/main/ipc/validation/plan.ts` exactly — the executor (PlanActionService)
+// already handles these, including `$1` placeholder resolution for a group
+// created earlier in the same batch. Keep these in sync with that schema.
+const CreateGroupAction = z.object({
+  type: z.literal('create_group'),
+  project_id: z.string(),
+  name: z.string(),
+  position_x: z.number(),
+  position_y: z.number(),
+  width: z.number(),
+  height: z.number(),
+});
+
+const UpdateGroupAction = z.object({
+  type: z.literal('update_group'),
+  group_id: z.string(),
+  updates: z.object({
+    name: z.string().optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+  }),
+});
+
+const DeleteGroupAction = z.object({
+  type: z.literal('delete_group'),
+  group_id: z.string(),
+});
+
+const AssignToGroupAction = z.object({
+  type: z.literal('assign_to_group'),
+  item_id: z.string(),
+  group_id: z.string().nullable(),
+});
+
 // Union of all action types
 const PlanActionSchema = z.discriminatedUnion('type', [
   CreateItemAction,
@@ -123,6 +158,10 @@ const PlanActionSchema = z.discriminatedUnion('type', [
   DeleteItemAction,
   SetPositionAction,
   QueueForTrackerAction,
+  CreateGroupAction,
+  UpdateGroupAction,
+  DeleteGroupAction,
+  AssignToGroupAction,
 ]);
 
 export type { PlanActionsCallback };

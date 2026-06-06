@@ -559,6 +559,139 @@ describe('FileExplorerService', () => {
     });
   });
 
+  describe('listDirectoryPaged', () => {
+    it('returns flat DFS-ordered nodes with no children field', async () => {
+      fs.mkdirSync(path.join(tempDir, 'folder'));
+      fs.writeFileSync(path.join(tempDir, 'folder', 'nested.txt'), '');
+      fs.writeFileSync(path.join(tempDir, 'root.txt'), '');
+
+      const result = await service.listDirectoryPaged('test-project', '', { recursive: true });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const { nodes, truncated } = result.data;
+        expect(truncated).toBe(false);
+        // All 3 nodes present
+        const names = nodes.map(n => n.name);
+        expect(names).toContain('folder');
+        expect(names).toContain('nested.txt');
+        expect(names).toContain('root.txt');
+        // No children field in flat list
+        expect(nodes.every(n => n.children === undefined)).toBe(true);
+      }
+    });
+
+    it('returns truncated result and nextCursor when limit is exceeded', async () => {
+      for (let i = 0; i < 5; i++) {
+        fs.writeFileSync(path.join(tempDir, `file${i}.txt`), '');
+      }
+
+      const result = await service.listDirectoryPaged('test-project', '', { recursive: true, limit: 3 });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const { nodes, truncated, nextCursor } = result.data;
+        expect(nodes).toHaveLength(3);
+        expect(truncated).toBe(true);
+        expect(nextCursor).toBeDefined();
+      }
+    });
+
+    it('continues from cursor on subsequent calls, covering all nodes without overlap', async () => {
+      for (let i = 0; i < 5; i++) {
+        fs.writeFileSync(path.join(tempDir, `file${i}.txt`), '');
+      }
+
+      const first = await service.listDirectoryPaged('test-project', '', { recursive: true, limit: 3 });
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+      expect(first.data.truncated).toBe(true);
+
+      const second = await service.listDirectoryPaged('test-project', '', {
+        recursive: true,
+        limit: 3,
+        cursor: first.data.nextCursor!,
+      });
+      expect(second.ok).toBe(true);
+      if (!second.ok) return;
+      expect(second.data.truncated).toBe(false);
+
+      const allNames = [
+        ...first.data.nodes.map(n => n.name),
+        ...second.data.nodes.map(n => n.name),
+      ];
+      expect(allNames).toHaveLength(5);
+      expect(new Set(allNames).size).toBe(5); // no overlap
+    });
+
+    it('applies structureOnly mode — strips size, modifiedAt, summary', async () => {
+      fs.writeFileSync(path.join(tempDir, 'test.txt'), 'content');
+
+      const result = await service.listDirectoryPaged('test-project', '', { structureOnly: true });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const node = result.data.nodes[0];
+        expect(node.name).toBe('test.txt');
+        expect(node.path).toBe('test.txt');
+        expect(node.isDirectory).toBe(false);
+        expect(node.isSymlink).toBe(false);
+        // Metadata stripped
+        const keys = Object.keys(node);
+        expect(keys).not.toContain('modifiedAt');
+        expect(keys).not.toContain('size');
+        expect(keys).not.toContain('summary');
+      }
+    });
+
+    it('applies the 500-node default limit for recursive listings', async () => {
+      // Create more files than the default limit
+      for (let i = 0; i < 10; i++) {
+        fs.writeFileSync(path.join(tempDir, `file${i}.txt`), '');
+      }
+
+      // Explicit small limit to verify the cap works (default 500 would require 501 files)
+      const result = await service.listDirectoryPaged('test-project', '', { recursive: true, limit: 4 });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.nodes).toHaveLength(4);
+        expect(result.data.truncated).toBe(true);
+        expect(result.data.nextCursor).toBeDefined();
+      }
+    });
+
+    it('returns no truncation when node count is under the limit', async () => {
+      fs.writeFileSync(path.join(tempDir, 'a.txt'), '');
+      fs.writeFileSync(path.join(tempDir, 'b.txt'), '');
+
+      const result = await service.listDirectoryPaged('test-project', '', { recursive: true, limit: 10 });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.nodes).toHaveLength(2);
+        expect(result.data.truncated).toBe(false);
+        expect(result.data.nextCursor).toBeUndefined();
+      }
+    });
+
+    it('returns empty nodes and no truncation when cursor is past the end', async () => {
+      fs.writeFileSync(path.join(tempDir, 'file.txt'), '');
+
+      // Build a cursor manually pointing well past the only node (offset 999)
+      const farCursor = Buffer.from(JSON.stringify({ o: 999 })).toString('base64');
+      const result = await service.listDirectoryPaged('test-project', '', { recursive: true, cursor: farCursor });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.nodes).toHaveLength(0);
+        expect(result.data.truncated).toBe(false);
+      }
+    });
+
+    it('returns failure for unknown project', async () => {
+      const result = await service.listDirectoryPaged('unknown-project');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe('Project not found');
+      }
+    });
+  });
+
   describe('getSymlinkInfo', () => {
     it('returns failure for non-existent path', async () => {
       const result = await service.getSymlinkInfo('test-project', 'missing-link');

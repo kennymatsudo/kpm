@@ -115,9 +115,37 @@ export function renderFocusedBlocks(
       if (block.truncated) truncatedPlanItemIds.push(item.id);
       return block.text;
     }
+    return renderTypedResourceLine(r);
   });
 
   return { blocks, truncatedPlanItemIds };
+}
+
+/**
+ * Render a non-plan-item focused resource as a type-annotated line so Claude
+ * can identify the resource kind without calling lookup tools.
+ *
+ * Repos without a local path are explicitly flagged as unresolved rather than
+ * presenting a bare UUID that could be mistaken for a plan-item ID and trigger
+ * a spurious batch_get_items call.
+ */
+function renderTypedResourceLine(resource: FocusedResource): string {
+  switch (resource.type) {
+    case 'project_file':
+      return resource.isDirectory
+        ? `- Directory: ${resource.path}`
+        : `- File: ${resource.path}`;
+    case 'repo':
+      if (resource.path) {
+        return `- Repo: ${resource.path}`;
+      }
+      return `- Repo: [unresolved — id \`${resource.id}\` has no local path; do not attempt Read or Grep]`;
+    case 'document':
+      return `- Document: "${resource.title}" (path: ${resource.path})`;
+    case 'plan_item':
+      // Handled by the caller; included only for exhaustiveness.
+      return `- ${formatFocusedResource(resource)}`;
+  }
 }
 
 /**

@@ -90,6 +90,22 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
       plugins: enabledPluginPaths.map(p => ({ type: 'local' as const, path: p })),
     }),
     // Always disable the built-in option-picker tool; Claude asks clarifying
+    // questions in plain text instead.
+    // Disable built-in task-tracking tools (TaskCreate, TaskGet, etc.): grounded
+    // chat sessions are overwhelmingly single-deliverable research or document
+    // edits, and the SDK injects a recurring "use task tools" system reminder
+    // whenever these are enabled. KPM's own plan tools cover multi-step tracking.
+    // Also disable any managed MCP tools the user has turned off.
+    disallowedTools: [
+      'AskUserQuestion',
+      'TaskCreate',
+      'TaskGet',
+      'TaskList',
+      'TaskOutput',
+      'TaskStop',
+      'TaskUpdate',
+      ...(disabledMcpTools ?? []),
+    ],
     maxTurns: claudeConfig.maxTurns,
     // Periodic AI-generated progress summaries for Task-tool subagents.
     // Forks the subagent every ~30s and emits a short description on

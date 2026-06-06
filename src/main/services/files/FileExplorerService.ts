@@ -45,6 +45,33 @@ async function enrichWithIgnoreStatus(nodes: FileNode[], projectRoot: string, gi
 
 const MAX_BINARY_BYTES = 50 * 1024 * 1024; // 50MB
 const MAX_SUMMARY_BACKFILL_PER_LIST = 25;
+const DEFAULT_RECURSIVE_NODE_LIMIT = 500;
+
+/** Flatten a nested FileNode tree into a DFS-ordered flat list, stripping the children field. */
+function flattenDFS(nodes: FileNode[]): FileNode[] {
+  const result: FileNode[] = [];
+  const walk = (ns: FileNode[]) => {
+    for (const n of ns) {
+      const { children, ...rest } = n;
+      if (children) walk(children);
+    }
+  };
+  walk(nodes);
+  return result;
+}
+
+function encodeCursor(offset: number): string {
+  return Buffer.from(JSON.stringify({ o: offset })).toString('base64');
+}
+
+function decodeCursor(cursor: string): number {
+  try {
+    const { o } = JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8')) as { o?: unknown };
+    return typeof o === 'number' && Number.isFinite(o) && o >= 0 ? Math.floor(o) : 0;
+  } catch {
+    return 0;
+  }
+}
 
 export type ExternalAccessOp =
   | 'write'
@@ -87,6 +114,27 @@ export interface FileExplorerListDirectoryOptions {
   recursive?: boolean;
   depth?: number;
   backfillMissingSummaries?: boolean;
+}
+
+export interface FileExplorerListDirectoryPagedOptions {
+  recursive?: boolean;
+  depth?: number;
+  backfillMissingSummaries?: boolean;
+  /** Max nodes to return. Defaults to 500 when recursive is true. */
+  limit?: number;
+  /** Opaque cursor from a previous truncated response. */
+  cursor?: string;
+  /** When true, each node contains only name, path, isDirectory, isSymlink — omits size, modifiedAt, summary, etc. */
+  structureOnly?: boolean;
+}
+
+export interface FileNodeListing {
+  /** Flat, DFS-ordered list of file and folder nodes. */
+  nodes: FileNode[];
+  /** True when the listing was cut off at the requested limit. */
+  truncated: boolean;
+  /** Pass as cursor in the next call to continue from where this response stopped. */
+  nextCursor?: string;
 }
 
 function enrichWithSummaries(nodes: FileNode[], summaryMap: Map<string, string>): void {
@@ -195,6 +243,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
     deps.onExternalAccess?.({ projectId, op, relativePath, realpath: access.realpath });
   }
 
+  const service = {
     /**
      * List directory contents with optional recursion.
      */
@@ -824,7 +873,63 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure(`Failed to get symlink info: ${error}`);
       }
     },
+
+    /**
+     * List directory contents with bounding — returns a flat, DFS-ordered page of nodes.
+     *
+     * Unlike listDirectory, this always returns a flat array (no nested children field).
+     * Use limit + cursor to page through trees that would otherwise overflow the
+     * tool-output budget.  Use structureOnly for a name/path/type-only view.
+     */
+    async listDirectoryPaged(
+      projectId: string,
+      relativePath = '',
+      options: FileExplorerListDirectoryPagedOptions = {}
+    ): AsyncResult<FileNodeListing> {
+      const directoryResult = await service.listDirectory(projectId, relativePath, {
+        recursive: options.recursive,
+        depth: options.depth,
+        // Skip summary backfill when structureOnly — summaries are dropped from the response anyway.
+        backfillMissingSummaries: options.structureOnly ? false : (options.backfillMissingSummaries ?? false),
+      });
+
+      if (!directoryResult.ok) {
+        return directoryResult;
+      }
+
+      // Flatten nested tree into a DFS-ordered list with the children field stripped.
+      const allNodes = flattenDFS(directoryResult.data);
+
+      // Apply limit — default to 500 for recursive listings to prevent output overflow.
+      const limit = options.limit ?? (options.recursive ? DEFAULT_RECURSIVE_NODE_LIMIT : undefined);
+
+      // Decode cursor into a starting offset.
+      let startOffset = 0;
+      if (options.cursor) {
+        startOffset = decodeCursor(options.cursor);
+        if (startOffset >= allNodes.length) {
+          return success({ nodes: [], truncated: false });
+        }
+      }
+
+      // Slice to the requested page.
+      const pageEnd = limit !== undefined ? startOffset + limit : allNodes.length;
+      const slice = allNodes.slice(startOffset, pageEnd);
+      const truncated = pageEnd < allNodes.length;
+
+      // Strip metadata when structureOnly.
+      const nodes: FileNode[] = options.structureOnly
+        ? (slice.map(n => ({ name: n.name, path: n.path, isDirectory: n.isDirectory, isSymlink: n.isSymlink })) as unknown as FileNode[])
+        : slice;
+
+      return success({
+        nodes,
+        truncated,
+        nextCursor: truncated ? encodeCursor(pageEnd) : undefined,
+      });
+    },
   };
+  return service;
 }
 
 /**
