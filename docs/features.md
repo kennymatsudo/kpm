@@ -63,6 +63,7 @@ A feature that scores low on all four is a candidate for removal even if it is t
   - Types: `src/shared/base-types.ts` (PlanItem interface)
   - Claude tool: `src/main/claude/tools/plan-changes.ts` (CreateItemAction schema)
   - IPC validation: `src/main/ipc/validation/plan.ts`
+  - Components: `src/renderer/components/planning/TaskEditModal.tsx`, `src/renderer/components/planning/action-details/UpdateItemDetail.tsx`
 - **Entry points / surfaces:**
   - Plan card modal (full details tab)
   - Agent context builder (`DevSessionService.buildAgentContext`): specs shape the agent's task definition
@@ -276,6 +277,7 @@ A feature that scores low on all four is a candidate for removal even if it is t
 
 - **Key code locations:**
   - IPC handlers: `src/main/ipc/handlers/artifacts.ts`
+  - Surface: `src/renderer/components/layout/Layout.tsx` (consumes `artifactsStore`; opened via `useLayoutShortcuts`)
 - **Entry points / surfaces:**
 - **Dependencies / integrations:**
 
@@ -752,6 +754,7 @@ A feature that scores low on all four is a candidate for removal even if it is t
   - Agent context: `src/main/claude/contextRefs.ts` (`formatPlanRefSection` prepends a `<plan-refs>` block)
   - Claude tool: `src/main/claude/tools/plan-refs.ts` (`extract_plan_items_from_doc`)
   - Validation: `src/main/db/domain/PlanActionService.ts` (rejects unresolved refs)
+  - Renderer chip: `src/renderer/components/plan-ref/PlanRefChip.tsx`, `src/renderer/utils/markdown.tsx`
   - Monaco integration: `src/renderer/components/ui/planRefMonaco.tsx` (folds UUIDs to titles, surfaces unresolved-ref diagnostics)
   - Search: refs surface in approval UI and global search index
   - Export sites: `markdown-to-adf.ts` (Jira), `ExportService.ts` (Linear), `ConfluenceSyncService.ts`, `GitHubService.ts`
@@ -847,6 +850,7 @@ A feature that scores low on all four is a candidate for removal even if it is t
 
 ### settings/ Components
 - `SettingsModal.tsx`: Settings hub with tabs
+- `TrackerSettings.tsx`: Tracker configuration and Jira/Linear credential management
 - `McpServersSettings.tsx`: MCP server registration
   - Features: 62 (MCP Server Configuration)
 - `PermissionsSettings.tsx`: Tool permissions management

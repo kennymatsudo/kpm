@@ -30,6 +30,7 @@ src/main/ipc/
 │   └── [domain].ts       # Domain-specific schemas
 ├── handlers/             # IPC handler implementations (one per domain)
 └── register/             # Handler registration groups (three files, called from index.ts)
+    ├── development.ts    # Worktree, GitHub, review, dev sessions, file explorer, repo files, agent sessions
 ```
 
 ## Channel Registry
@@ -61,8 +62,15 @@ export const IPC_CHANNELS = {
 
 ```typescript
 ipcMain.handle(
+  IPC_CHANNELS.artifact.list,
   createIpcHandler(
+    ArtifactSchemas.list,  // Zod schema
+    async ({ projectId }) => {
+      const result = artifactService.list(projectId);
+      if (!result.ok) throw new Error(result.error);
+      return result.data;
     },
+    'Failed to list artifacts'
   )
 );
 ```

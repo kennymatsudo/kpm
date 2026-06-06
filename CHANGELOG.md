@@ -16,6 +16,7 @@ Each release groups changes into:
 - **Improved** — enhancements to existing features
 - **Fixed** — bug fixes
 
+Internal-only changes (refactors, dependency bumps, CI, docs) are intentionally excluded from release notes — see the [git log](https://github.com/kennymatsudo/kpm/commits/main) for the full history.
 
 ## Unreleased
 

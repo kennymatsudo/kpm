@@ -1,5 +1,6 @@
 # Plan Item Spec — Continuation Roadmap
 
+> Read this after `docs/core-principles.md`
 > and the CLAUDE.md files under `src/main/claude/`, `src/main/db/`, and
 > `src/renderer/`.
 >
@@ -103,6 +104,7 @@ audits:
   markdown **files to disk** in the project folder (not DB rows).
 - `DocumentUpdatePayload` plumbing — used by the tools above.
 
+See `src/main/db/CLAUDE.md` section "Document storage" for the full state.
 
 ## What to observe before starting phase 4
 
@@ -348,9 +350,11 @@ Code that carries the spec-fields pattern today:
 | `src/main/claude/tools/plan-changes.ts` | `modify_plan` tool docstring with sync-boundary rules |
 | `src/main/services/repo/DevSessionService.ts` | `buildAgentContext` renders Intent + Acceptance Criteria |
 | `src/main/db/domain/ExportService.ts` | Sync-boundary guard comments on `createIssue` / `updateIssue` |
+| `src/renderer/components/planning/TaskEditModal.tsx` | Editable Spec section |
 | `src/renderer/components/board-view/BoardCard.tsx` | Criteria-count chip |
 | `src/renderer/components/planning/hooks/usePlanTaskEdit.ts` | `handleSaveTask` passes spec fields through |
 | `tests/services/buildAgentContext.test.ts` | Prompt rendering branches |
+| `src/main/ipc/validation/plan.test.ts` | Zod validation (`planActionSchema` discriminator + spec-field pass-through) |
 | `tests/services/PlanActionExecutor.specFields.test.ts` | End-to-end through executor |
 | `tests/repositories/PlanItemRepository.test.ts` | Round-trip |
 
@@ -358,6 +362,7 @@ CLAUDE.md files that document conventions:
 
 | File | Section |
 |------|---------|
+| `CLAUDE.md` (root) | Multi-file recipes (Add a plan item field; Add a `PlanAction` type) |
 | `src/main/claude/CLAUDE.md` | Plan Item Spec Fields + Sync boundary |
 | `src/main/db/CLAUDE.md` | Document storage convention; JSON-Encoded Array Columns |
 | `src/main/ipc/CLAUDE.md` | PlanAction Schema Sync (including spec sub-fields) |

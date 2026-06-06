@@ -71,12 +71,15 @@ db.exec(`
 
 ## Repository Pattern
 
+Follow the pattern in `PlanItemRepository.ts` for new repositories. See `../services/CLAUDE.md` for service vs repository guidance.
 
 ### Adding a New Repository
 
 1. Create interface in `interfaces/{domain}.ts`
 2. Implement class in `repositories/impl/FooRepository.ts`
 3. Add to `IRepositoryContainer` in `interfaces/container.ts`
+4. Wire in container (`container.ts`) — add the implementation to the `createRepositoryContainer` function
+5. Export the class from `repositories/impl/index.ts` (the barrel `container.ts` imports from)
 
 ## SQL Performance Rules
 
@@ -138,6 +141,7 @@ Use `db.transaction()` for bulk operations — wrap a loop over prepared stateme
 3. **ON CONFLICT upserts** — Single query instead of check + insert/update
 4. **EXISTS over COUNT** — Short-circuit existence checks
 5. **Recursive CTEs** — Hierarchical queries use SQL `WITH RECURSIVE`
+6. **Constructor-injected repositories** — Each repository takes the `Database` (and any deps) as constructor params; `createRepositoryContainer` wires them eagerly, so tests can inject a mock database without refactoring
 7. **DI for complex services** — Business logic accepts dependencies
 8. **Foreign key constraints** — `ON DELETE CASCADE` cleans up related rows
 

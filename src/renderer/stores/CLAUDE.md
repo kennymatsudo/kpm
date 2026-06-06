@@ -50,6 +50,7 @@ Simpler domains use `create()` directly. See `briefingStore.ts` or `searchStore.
 
 ## Chat Store (Unified Sessions)
 
+Multiple concurrent sessions per project, each shared between Plan and Workspace views. Per-session state lives in a `sessions: Map<string, PerSessionState>` keyed by a `crypto.randomUUID()` session id; `viewedSessionId` tracks the focused tab and `activeSessionIds` the sessions with a running subprocess. Which tabs were open (and which was focused) is persisted per project to localStorage (see `chat/persistence.ts`) and restored via `hydrateOpenSessions`. Chat history carries over when switching views. `currentView` parameter passed to prompts for context-aware AI suggestions.
 
 ## Cross-Store Communication
 

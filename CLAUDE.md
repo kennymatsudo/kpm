@@ -66,12 +66,17 @@ Each is tied to a principle. Breaking one breaks the cockpit's safety guarantees
 When you touch one of these, every file listed must stay in sync.
 
 **Add a plan item field**
+1. `src/shared/base-types.ts` — add to `PlanItem`
+2. `src/shared/types.ts` — add to `PlanItemUpdates` Pick union
 3. `src/main/db/migrations.ts` — new migration
+4. `src/main/db/repositories/impl/PlanItemRepository.ts` — INSERT/UPDATE + `rowToPlanItem`
 5. `src/main/ipc/validation/plan.ts` — `planItemUpdates` Zod schema
+6. `src/main/db/domain/PlanActionService.ts` — `executeCreateItem` / `executeUpdateItem`
 
 Then conditionally: the **`PlanAction` recipe** below if writable via tool; `DevSessionService.buildAgentContext` + the `modify_plan` tool prompt if the field should reach the implementation agent; `components/planning/TaskEditModal.tsx` if user-visible.
 
 **Add a `PlanAction` type**
+1. `PlanAction` union in `src/shared/types.ts`
 2. `planActionSchema` in `src/main/ipc/validation/plan.ts`
 3. Handler case in `src/main/db/domain/PlanActionService.ts`
 
