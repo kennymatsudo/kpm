@@ -189,6 +189,7 @@ export function registerDevSessionHandlers(
     createIpcHandler(
       DevSessionSchemas.getMergeOrder,
       ({ projectId }) => {
+        return { mergeOrder: devSessionService.getMergeOrder(projectId) };
       },
       'Failed to compute merge order'
     )

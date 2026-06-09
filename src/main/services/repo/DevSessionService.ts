@@ -19,9 +19,11 @@ import type {
   IAgentReviewRepository,
   IDevSessionRepository,
   IPlanItemRepository,
+  IPlanRelationRepository,
   IProjectRepository,
   IRepoRepository,
 } from '../../db/interfaces';
+import { computeMergeOrder, type MergeOrderEntry } from './mergeOrder';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import { formatPlanRefSection } from '../../claude/contextRefs';
 import { getConfig } from '../../config';
@@ -270,6 +272,7 @@ export function buildBoardStartInstructions(
 export interface DevSessionServiceDeps {
   devSessions: IDevSessionRepository;
   planItems: IPlanItemRepository;
+  planRelations: IPlanRelationRepository;
   projects: IProjectRepository;
   repos: IRepoRepository;
   appSettings: IAppSettingsRepository;
@@ -277,6 +280,8 @@ export interface DevSessionServiceDeps {
   userDataPath: string;
   /** Resolves configurable prompt content (override > registry default). */
   getPromptContent: (key: string) => string;
+  /** Wraps attached context files for prepending to agent prompts. */
+  buildContextPrefix: (projectId: string, contextPaths: string[]) => AsyncResult<string>;
   /** Optional — when provided, dev sessions use the Agent SDK instead of PTY */
   agentSessionManager?: AgentSessionManager;
 }
@@ -603,6 +608,16 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     },
 
     /**
+     * Compute the merge order for all sessions in a project from the plan
+     * dependency graph (user overrides win over the computed layer).
+     */
+    getMergeOrder(projectId: string): Record<string, MergeOrderEntry> {
+      const sessions = deps.devSessions.getByProject(projectId);
+      const relations = deps.planRelations.getByProject(projectId);
+      return Object.fromEntries(computeMergeOrder(sessions, relations));
+    },
+
+    /**
      * Build the structured prompt used when a board action starts a session.
      * This keeps board launches aligned with the richer plan-item execution path.
      */
@@ -629,6 +644,62 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       if (!content) return '';
       const items = deps.planItems.getByProject(projectId);
       return formatPlanRefSection(content, items);
+    },
+
+    /**
+     * Board entry point: reuse the latest pending/inactive session for the
+     * plan item (same repo) or create a new pending session, then start the
+     * agent with the augmented prompt (context files + plan refs + instructions).
+     */
+    async createAndStartFromBoard(input: {
+      planItemId: string;
+      repoId: string;
+      prompt?: string;
+      baseBranch?: string;
+      contextPaths?: string[];
+      effort?: AgentEffortLevel;
+      environmentMode?: RepoEnvironmentMode;
+    }): AsyncResult<{ session: DevSession }> {
+      const instructionsResult = service.buildBoardStartInstructions(input.planItemId, input.prompt);
+      if (!instructionsResult.ok) {
+        return instructionsResult;
+      }
+      const instructions = instructionsResult.data;
+
+      let sessionId: string;
+      let projectId: string;
+
+      const existing = deps.devSessions.getByPlanItem(input.planItemId);
+      if (
+        && (existing.status === 'inactive' || existing.status === 'pending')
+      ) {
+        sessionId = existing.id;
+        projectId = existing.project_id;
+      } else {
+        const createResult = await service.createPendingSession(
+          input.planItemId,
+          input.repoId,
+          instructions,
+        );
+        if (!createResult.ok) {
+          return createResult;
+        }
+        sessionId = createResult.data.id;
+        projectId = createResult.data.project_id;
+      }
+
+      const prefixResult = input.contextPaths?.length
+        ? await deps.buildContextPrefix(projectId, input.contextPaths)
+        : null;
+      const contextPrefix = prefixResult?.ok ? prefixResult.data : '';
+      const baseAugmented = contextPrefix + instructions;
+      const augmentedPrompt = service.buildPlanRefSection(projectId, baseAugmented) + baseAugmented;
+
+      return service.startAgentSession(sessionId, {
+        prompt: augmentedPrompt,
+        effort: input.effort,
+        environmentMode: input.environmentMode,
+      });
     },
 
     /**

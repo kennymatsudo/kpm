@@ -35,7 +35,12 @@ export function registerAgentSessionHandlers(
     IPC_CHANNELS.agentSession.createAndStart,
     createIpcHandler(
       AgentSessionSchemas.createAndStart,
+      async (params) => {
+        const result = await devSessionService.createAndStartFromBoard(params);
+        if (!result.ok) {
+          throw new Error(result.error);
         }
+        return { session: result.data.session };
       },
       'Failed to create and start agent session'
     )

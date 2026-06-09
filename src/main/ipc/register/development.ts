@@ -14,6 +14,7 @@ export function registerDevelopmentHandlers({
   registerWorktreeHandlers(services.worktreeService);
   registerGitHubHandlers(services.gitHubService);
   registerReviewHandlers(services.reviewService, services.reviewAssessmentService, services.reviewPollService);
+  registerDevSessionHandlers(services.devSessionService, getMainWindow);
   registerFileExplorerHandlers(services.fileExplorerService, services.projectWatcherService, getMainWindow);
   registerRepoFileHandlers(services.repoFileService);
   registerAgentSessionHandlers(

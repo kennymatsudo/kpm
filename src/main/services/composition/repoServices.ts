@@ -18,6 +18,7 @@ import { resolveScopedPath } from '../files/scopedFs';
 import type { FileSummaryService } from '../files/FileSummaryService';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
 import type { ClaudeUsageService } from '../core/ClaudeUsageService';
+import type { ContextFileService } from '../core/ContextFileService';
 
 export interface RepoServicesCompositionDeps {
   container: IRepositoryContainer;
@@ -26,6 +27,8 @@ export interface RepoServicesCompositionDeps {
   userDataPath: string;
   agentSessionManager?: AgentSessionManager;
   getPromptContent: (key: string) => string;
+  /** Wraps attached context files for prepending to agent prompts. */
+  buildContextPrefix: (projectId: string, contextPaths: string[]) => ReturnType<ContextFileService['buildContextPrefix']>;
   /** Centralized Claude token + cost tracker. */
   claudeUsageService: ClaudeUsageService;
   fileSummaryService?: FileSummaryService;
@@ -38,6 +41,7 @@ export function createRepoServices({
   userDataPath,
   agentSessionManager,
   getPromptContent,
+  buildContextPrefix,
   claudeUsageService,
   fileSummaryService,
 }: RepoServicesCompositionDeps) {
@@ -74,6 +78,7 @@ export function createRepoServices({
   const devSessionService = createDevSessionService({
     devSessions: container.devSessions,
     planItems: container.planItems,
+    planRelations: container.planRelations,
     projects: container.projects,
     repos: container.repos,
     appSettings: container.appSettings,
@@ -81,6 +86,7 @@ export function createRepoServices({
     userDataPath,
     agentSessionManager,
     getPromptContent,
+    buildContextPrefix,
   });
 
   const gitHubService = createGitHubService({

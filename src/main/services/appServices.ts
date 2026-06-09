@@ -330,6 +330,8 @@ export function createAppServices(container: IRepositoryContainer) {
     userDataPath: getUserDataPath(),
     agentSessionManager,
     getPromptContent,
+    buildContextPrefix: (projectId, contextPaths) =>
+      contextFileService.buildContextPrefix(projectId, contextPaths),
     claudeUsageService,
     fileSummaryService,
   });
