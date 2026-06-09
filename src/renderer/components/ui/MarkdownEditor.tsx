@@ -19,6 +19,8 @@ import type * as Monaco from 'monaco-editor';
 import { configureMonaco } from '../../lib/monaco';
 import { useTheme } from '../../contexts';
 import { createMonacoThemeData } from '../../themes';
+import { splitFrontmatter } from '../../utils/frontmatter';
+import { FrontmatterBlock } from './FrontmatterBlock';
 import { registerPlanRefMonacoProviders } from './planRefMonaco';
 import { Tooltip } from './Tooltip';
 
@@ -497,11 +499,18 @@ export function MarkdownEditor({
     };
   }, []);
 
+  // Frontmatter is split off in preview and shown as a collapsed metadata
+  // block; edit mode keeps showing the raw file.
+  const { frontmatter, body } = useMemo(() => splitFrontmatter(localContent), [localContent]);
+
   // ----- Preview-mode search -----
+  // Counts against the body because the preview renders only the body —
+  // counting the full content would desync navigation from rendered marks.
   const matchIndexes = useMemo(() => {
     if (!showSearch || !searchQuery) return [];
 
     const results: number[] = [];
+    const lowerContent = body.toLowerCase();
     const lowerQuery = searchQuery.toLowerCase();
     let index = lowerContent.indexOf(lowerQuery);
 
@@ -511,6 +520,7 @@ export function MarkdownEditor({
     }
 
     return results;
+  }, [body, searchQuery, showSearch]);
 
   const totalMatches = matchIndexes.length;
 
@@ -849,6 +859,9 @@ export function MarkdownEditor({
           <div className="absolute inset-0">
             <div ref={previewRef} className="h-full overflow-y-auto p-4 select-text cursor-text">
                 {localContent ? (
+                  <>
+                    {frontmatter !== null && <FrontmatterBlock source={frontmatter} />}
+                  </>
                 ) : (
                   <div className="flex items-center justify-center h-32 text-text-muted">
                     <div className="text-center">

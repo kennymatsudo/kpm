@@ -294,6 +294,7 @@ export function ReposAndFilesOverlays({
         onSave={onSaveMarkdown}
         onDelete={undefined}
         isDeleting={false}
+        documentKey={viewingPath ?? undefined}
         title={viewingFilename.replace(/\.md$/, '')}
         subtitle={isViewingClaudeMd ? 'Project context for AI agents' : 'Markdown document'}
         content={viewingContent}

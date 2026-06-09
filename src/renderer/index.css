@@ -1788,6 +1788,16 @@ select:focus-visible {
   accent-color: var(--color-accent);
 }
 
+.prose-themed :where(li):not(:where([class~="not-prose"] *)):has(> input[type="checkbox"]:checked) {
+  color: var(--color-text-secondary);
+}
+
+/* Strikethrough */
+.prose-themed :where(del):not(:where([class~="not-prose"] *)) {
+  text-decoration: line-through;
+  color: var(--color-text-secondary);
+}
+
 /* Nested list spacing */
 .prose-themed :where(li ul, li ol):not(:where([class~="not-prose"] *)) {
   margin-top: 0.15em;
@@ -2096,6 +2106,16 @@ select:focus-visible {
 .prose-document :where(li > input[type="checkbox"]):not(:where([class~="not-prose"] *)) {
   margin-right: 0.5em;
   accent-color: var(--color-accent);
+}
+
+.prose-document :where(li):not(:where([class~="not-prose"] *)):has(> input[type="checkbox"]:checked) {
+  color: var(--color-text-secondary);
+}
+
+/* Strikethrough */
+.prose-document :where(del):not(:where([class~="not-prose"] *)) {
+  text-decoration: line-through;
+  color: var(--color-text-secondary);
 }
 
 /* First/last child margin resets */

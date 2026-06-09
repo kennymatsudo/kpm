@@ -6,6 +6,14 @@ import { MotionButton } from '../ui/MotionButton';
 import { DiffViewer, computeDiff, getDiffStatsFromDiff } from '../ui/DiffViewer';
 import { Z_INDEX } from '../../constants/zIndex';
 import { useMarkdownSearch, useMarkdownFormatting, useMarkdownKeyboard } from './hooks';
+import { splitFrontmatter } from '../../utils/frontmatter';
+import { FrontmatterBlock } from '../ui/FrontmatterBlock';
+
+/**
+ * Preview scroll offsets keyed by `documentKey`, so reopening a document
+ * restores the reader's place. Session-only by design — not worth persisting.
+ */
+const previewScrollMemory = new Map<string, number>();
 
 // Toolbar button component
 interface ToolbarButtonProps {
@@ -144,6 +152,8 @@ interface MarkdownDocumentModalProps {
   showAcceptButton?: boolean;
   /** Original content for diff view (null for new documents) */
   oldContent?: string | null;
+  /** Stable identity for the document (e.g. file path), used to remember scroll position across opens */
+  documentKey?: string;
 }
 
 export function MarkdownDocumentModal({
@@ -160,6 +170,7 @@ export function MarkdownDocumentModal({
   initialEditMode = false,
   showAcceptButton = false,
   oldContent,
+  documentKey,
 }: MarkdownDocumentModalProps) {
   // Determine initial view mode based on oldContent
   const initialViewMode: ViewMode = oldContent !== undefined ? 'diff' : initialEditMode ? 'edit' : 'preview';
@@ -183,6 +194,34 @@ export function MarkdownDocumentModal({
   }, [oldContent, content]);
   const diffStats = diffLines ? getDiffStatsFromDiff(diffLines) : null;
 
+  // Frontmatter is split off in preview and shown as a collapsed metadata
+  // block; edit mode keeps showing the raw file.
+  const { frontmatter, body } = useMemo(() => splitFrontmatter(draft), [draft]);
+
+  // Preview scroll position. The preview pane is unmounted on every tab
+  // switch (AnimatePresence mode="wait"), so restoration happens in the ref
+  // callback below — an effect would fire before the node remounts.
+  const previewScrollTopRef = useRef(0);
+
+  const attachPreviewNode = useCallback((node: HTMLDivElement | null) => {
+    previewRef.current = node;
+    if (node) {
+      // The browser clamps to scrollHeight, so a stale offset (file shrank
+      // since last view) degrades to "scroll to bottom" rather than erroring.
+      node.scrollTop = previewScrollTopRef.current;
+    }
+  }, []);
+
+  const handlePreviewScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      previewScrollTopRef.current = e.currentTarget.scrollTop;
+      if (documentKey) {
+        previewScrollMemory.set(documentKey, e.currentTarget.scrollTop);
+      }
+    },
+    [documentKey]
+  );
+
   // Search functionality
   const {
     showSearch,
@@ -195,6 +234,9 @@ export function MarkdownDocumentModal({
     closeSearch,
     goToNextMatch,
     goToPrevMatch,
+    // Preview renders only the body, so count matches against it — counting
+    // the full draft would desync match navigation from the rendered marks.
+  } = useMarkdownSearch({ draft: viewMode === 'preview' ? body : draft, viewMode, previewRef, searchInputRef });
 
   // Reset draft to fresh content on open, and reset view mode + search.
   // Intentionally only runs on `isOpen` — see the next effect for the in-flight
@@ -207,6 +249,7 @@ export function MarkdownDocumentModal({
       const newViewMode: ViewMode = oldContent !== undefined ? 'diff' : initialEditMode ? 'edit' : 'preview';
       setViewMode(newViewMode);
       closeSearch();
+      previewScrollTopRef.current = documentKey ? previewScrollMemory.get(documentKey) ?? 0 : 0;
     }
     // Note: `content` is deliberately not in the deps array. The next effect
     // handles in-flight content changes — synchronizing here would clobber
@@ -650,6 +693,8 @@ export function MarkdownDocumentModal({
                 ) : (
                   <m.div
                     key="preview"
+                    ref={attachPreviewNode}
+                    onScroll={handlePreviewScroll}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 20 }}
@@ -658,6 +703,7 @@ export function MarkdownDocumentModal({
                   >
                     {draft ? (
                       <div className="p-8 max-w-3xl mx-auto">
+                        {frontmatter !== null && <FrontmatterBlock source={frontmatter} />}
                         <div className="prose-themed">
                         </div>
                       </div>
