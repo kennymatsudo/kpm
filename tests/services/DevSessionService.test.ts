@@ -9,6 +9,7 @@ vi.mock('child_process', () => ({
 
 import { execFile } from 'child_process';
 import { createDevSessionService } from '../../src/main/services/repo/DevSessionService';
+import { createExecFileMock } from '../mocks/git';
 
 const mockExecFile = vi.mocked(execFile);
 

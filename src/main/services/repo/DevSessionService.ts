@@ -671,6 +671,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
 
       const existing = deps.devSessions.getByPlanItem(input.planItemId);
       if (
+        existing?.repo_id === input.repoId
         && (existing.status === 'inactive' || existing.status === 'pending')
       ) {
         sessionId = existing.id;

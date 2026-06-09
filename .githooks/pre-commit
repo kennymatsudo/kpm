@@ -1,0 +1,12 @@
+#!/bin/sh
+# Runs lint + typecheck before every commit (see CLAUDE.md "Git workflow").
+# Wired via `git config core.hooksPath .githooks` in `make install`.
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "[pre-commit] typecheck"
+npm run --silent typecheck
+
+echo "[pre-commit] lint"
+npm run --silent lint

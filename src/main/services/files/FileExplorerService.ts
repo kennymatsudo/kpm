@@ -53,6 +53,7 @@ function flattenDFS(nodes: FileNode[]): FileNode[] {
   const walk = (ns: FileNode[]) => {
     for (const n of ns) {
       const { children, ...rest } = n;
+      result.push(rest);
       if (children) walk(children);
     }
   };

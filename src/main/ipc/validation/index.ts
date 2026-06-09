@@ -138,6 +138,7 @@ export { ReviewSchemas } from './review';
 
 // MCP Servers
 export { McpServerSchemas } from './mcpServers';
+export type { McpServerSetEnabledInput } from './mcpServers';
 
 // Briefing
 export { BriefingSchemas } from './briefing';

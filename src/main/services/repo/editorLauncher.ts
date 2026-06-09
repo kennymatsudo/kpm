@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { sync as whichSync } from 'which';
 
 const ENV_EDITOR_KEYS = ['KPM_CODE_EDITOR', 'KPM_EDITOR', 'VISUAL', 'EDITOR'] as const;
 
@@ -150,6 +151,7 @@ export async function openDirectoryInCodeEditor(targetPath: string): Promise<voi
   }
 
   for (const command of GUI_EDITOR_COMMANDS) {
+    const resolved = whichSync(command, { nothrow: true });
     if (!resolved) continue;
 
     await launch(resolved, [targetPath]);

@@ -6,10 +6,13 @@ help:
 	@echo "  make dev            Start dev server"
 	@echo "  make app            Build the app and install it to /Applications (macOS)"
 	@echo "  make start          Run production build"
+	@echo "  make check          Typecheck + lint + unit tests"
+	@echo "  make db             Open the local database in sqlite3"
 	@echo "  make db:reset       Delete local database (for schema changes)"
 	@echo "  make package        Build and package Electron app (directory only)"
 	@echo "  make dist           Build distributable app (DMG, installer, etc.)"
 	@echo "  make test:e2e       Run Playwright E2E tests (packages app first)"
+	@echo "  make test:e2e:dev   Run E2E tests against the existing package (skips rebuild)"
 	@echo "  make test:e2e:ui    Run E2E tests with interactive UI"
 	@echo "  make screenshots    Regenerate README screenshots in docs/images (packages app first)"
 	@echo "  make screenshots:dev  Regenerate screenshots against the existing package"
@@ -25,6 +28,7 @@ install:
 	rm -rf node_modules/better-sqlite3/build
 	rm -rf node_modules/better-sqlite3/prebuilds
 	CPPFLAGS="" npm install
+	git config core.hooksPath .githooks
 
 
 # Start dev server
@@ -34,6 +38,14 @@ dev:
 # Build and run production build
 start:
 	npm run build && npm run start
+
+# Typecheck + lint + unit tests (same gate as the pre-commit hook plus tests)
+check:
+	npm run check
+
+# Open the local database in an interactive sqlite3 shell
+db:
+	sqlite3 ~/Library/Application\ Support/KPM\ -\ Planning\ Workbench/planner.db
 
 db\:reset:
 	rm -f ~/Library/Application\ Support/KPM\ -\ Planning\ Workbench/planner.db
@@ -60,6 +72,10 @@ dist:
 
 # E2E tests (packages app first, then runs Playwright)
 test\:e2e: package
+	npx playwright test
+
+# Re-run E2E against the already-packaged app (use while iterating on spec files)
+test\:e2e\:dev:
 	npx playwright test
 
 test\:e2e\:ui: package

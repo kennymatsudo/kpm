@@ -8,11 +8,16 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { McpServerStatus, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import {
+  createControlledSdkStream,
+  type SdkStreamHandle,
+} from '../../../../tests/mocks/claudeSdk';
 import { StreamingSession, type StreamingSessionConfig } from './StreamingSession';
 
 interface QueryMockState {
   build: () => {
     iterable: AsyncIterable<SDKMessage>;
+    handle: SdkStreamHandle;
   };
 }
 
@@ -26,11 +31,24 @@ const { queryMockState } = vi.hoisted(() => {
   return { queryMockState: state };
 });
 
+let lastHandle: SdkStreamHandle | null = null;
 
+function makeFakeQuery(): SdkStreamHandle {
+  const { iterable, handle } = createControlledSdkStream();
+  queryMockState.build = () => ({ iterable, handle });
   lastHandle = handle;
   return handle;
 }
 
+vi.mock('@anthropic-ai/claude-agent-sdk', async () => {
+  const { createQueryControls } = await import('../../../../tests/mocks/claudeSdk');
+  return {
+    query: vi.fn(() => {
+      const built = queryMockState.build();
+      return Object.assign(built.iterable, createQueryControls());
+    }),
+  };
+});
 
 function initMessage(opts: {
   sessionId?: string;
