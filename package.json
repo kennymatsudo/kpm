@@ -1,6 +1,7 @@
 {
   "name": "kpm",
   "productName": "KPM - Planning Workbench",
+  "version": "0.10.16",
   "description": "A codebase-aware planning workbench for developers",
   "main": "dist/main/index.js",
   "scripts": {
