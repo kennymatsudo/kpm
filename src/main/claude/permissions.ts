@@ -50,6 +50,11 @@ export interface PermissionContext {
   projectId: string;
   /** Connected repository paths (read-only, writes are denied) */
   repoPaths?: string[];
+  /**
+   * Current view mode. Not used for tool gating here — view affects prompt
+   * hints only (see buildViewContextSection), not which tools Claude may call.
+   * All KPM tools are available in both plan and workspace views.
+   */
   /** Optional callback to intercept CLAUDE.md edits */
   onClaudeMdEdit?: ClaudeMdInterceptFn;
   /** Optional callback to intercept project file writes for approval */

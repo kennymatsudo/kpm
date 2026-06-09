@@ -49,6 +49,10 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   const { context, model, effort, currentView, resumeSessionId, mainWindow, onClaudeMdEdit, onProjectFileWrite, peekPendingFile, enabledPluginPaths, enabledUserMcpConfigs, disabledMcpTools, disabledMcpServerNames, onElicitation, autoApprove } = params;
   const effectiveRepoPaths = context.repos.map(r => r.active_worktree_path ?? r.path);
 
+  // Create permission handler. canUseTool scopes file access (repos read-only,
+  // project-file writes intercepted) and gates external MCP servers. It does
+  // NOT gate KPM tools by view — all KPM tools are callable in both plan and
+  // workspace views; view affects prompt hints only.
   const permissionContext: PermissionContext = {
     projectPath: context.project.folder_path,
     projectId: context.project.id,
@@ -66,6 +70,9 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   // Build options
   const claudeConfig = getConfig().claude;
   const sdkOptions: SDKOptions = {
+    // No allowedTools: setting it would hide external MCP tools (Slack, etc.)
+    // from Claude. Tool access is governed by canUseTool instead. There is no
+    // plan/workspace tool gating — view affects prompt hints only.
     systemPrompt,
     model,
     cwd: context.project.folder_path ?? context.repos[0]?.active_worktree_path ?? context.repos[0]?.path,
