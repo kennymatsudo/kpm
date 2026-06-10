@@ -9,6 +9,8 @@ import {
 import { useShallow } from 'zustand/react/shallow';
 import { ModelSelector } from './ModelSelector';
 import { AttachmentChip } from './AttachmentChip';
+import { SlashCommandMenu } from './SlashCommandMenu';
+import { useSlashCommandTypeahead } from './useSlashCommandTypeahead';
 import type { ChatAttachment, FocusedResource, ChatViewMode } from '../../../shared/types';
 
 const WORKSPACE_PLACEHOLDERS = [
@@ -70,6 +72,11 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   }, [viewedSessionId, setPendingAttachments, getChatSessionId, getOrCreateSession]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+
+  const slashTypeahead = useSlashCommandTypeahead(
+    message,
+    setMessage,
+  );
   const [isPickingFiles, setIsPickingFiles] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -263,6 +270,8 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Menu navigation wins over send (Enter) and placeholder accept (Tab)
+    if (slashTypeahead.handleKeyDown(e)) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       // Enter must obey the same gate as the Send button. When the composer is
@@ -407,6 +416,29 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
         <ContextWindowBar usage={lastTurnUsage} model={viewedSession?.model} />
       )}
 
+      {/* Argument hint for the chosen slash command, until arguments are typed */}
+      {slashTypeahead.pendingHint && (
+        <div className="collapse-reveal mb-2 px-3 py-1.5 bg-surface-2/60 rounded-lg text-xs flex items-center gap-2 min-w-0">
+          <span className="font-mono text-text-secondary whitespace-nowrap">/{slashTypeahead.pendingHint.name}</span>
+          {slashTypeahead.pendingHint.argumentHint && (
+            <span className="font-mono text-text-muted whitespace-nowrap">{slashTypeahead.pendingHint.argumentHint}</span>
+          )}
+          <span className="text-text-muted truncate">{slashTypeahead.pendingHint.description}</span>
+        </div>
+      )}
+
+      {/* Single rounded composer panel: textarea on top, action row below.
+          The relative wrapper anchors the slash command popover above it. */}
+      <div className="relative">
+      {(slashTypeahead.isOpen || slashTypeahead.showEmptyState) && (
+        <SlashCommandMenu
+          matches={slashTypeahead.matches}
+          highlightIndex={slashTypeahead.highlightIndex}
+          onHighlight={slashTypeahead.setHighlightIndex}
+          onSelect={slashTypeahead.accept}
+          showEmptyState={slashTypeahead.showEmptyState}
+        />
+      )}
         <textarea
           ref={textareaRef}
           value={message}
@@ -467,6 +499,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
             </svg>
           </button>
         </div>
+      </div>
       </div>
     </div>
   );

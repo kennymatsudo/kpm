@@ -36,6 +36,7 @@ import type {
   StatusCategory,
   ChatMessage,
   ChatSessionSummary,
+  SlashCommandInfo,
   PermissionRequest,
   PermissionAction,
   FocusedResource,
@@ -144,6 +145,7 @@ export type {
   SyncReviewData,
   ChatMessage,
   ChatSessionSummary,
+  SlashCommandInfo,
   PermissionRequest,
   PermissionAction,
   TaskPromptTemplate,
@@ -193,6 +195,8 @@ const chat = {
     invokeFlat<{ messages: ChatMessage[] }>(IPC_CHANNELS.chat.getMessages, { projectId }).then((result) =>
       result.success ? { success: true, messages: result.messages } : result
     ),
+  getSlashCommands: (): Promise<{ success: boolean; commands?: SlashCommandInfo[]; error?: string }> =>
+    invokeFlat<{ commands: SlashCommandInfo[] }>(IPC_CHANNELS.chat.getSlashCommands),
   getSessionHistory: (projectId: string, limit?: number): Promise<{ success: boolean; sessions?: ChatSessionSummary[]; error?: string }> =>
     invokeFlat<{ sessions: ChatSessionSummary[] }>(IPC_CHANNELS.chat.getSessionHistory, { projectId, limit }).then((result) =>
       result.success ? { success: true, sessions: result.sessions } : result
@@ -347,6 +351,13 @@ const chat = {
     const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; suggestions: string[] }) => callback(data);
     ipcRenderer.on('chat:suggestions', handler);
     return () => ipcRenderer.removeListener('chat:suggestions', handler);
+  },
+
+  /** Slash command list event — SDK-derived full list; replaces any scanned list */
+  onSlashCommands: (callback: (data: { projectId: string; chatSessionId?: string; commands: SlashCommandInfo[] }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; commands: SlashCommandInfo[] }) => callback(data);
+    ipcRenderer.on('chat:slash-commands', handler);
+    return () => ipcRenderer.removeListener('chat:slash-commands', handler);
   },
 
   /** Session deactivated event (multi-session support) */

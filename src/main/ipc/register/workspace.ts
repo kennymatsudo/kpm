@@ -27,6 +27,7 @@ export function registerWorkspaceHandlers({
   registerAttachmentHandlers(getMainWindow, services.attachmentService);
   registerPlanHandlers(services.planService);
   registerGroupHandlers(services.groupService);
+  registerChatHandlers(chatRuntime.chatService, services.slashCommandService);
   registerFileHandlers(getMainWindow, services.contextFileService);
   registerExportHandlers(services.exportFacadeService);
   registerTrackerHandlers(getMainWindow, services.trackerService);

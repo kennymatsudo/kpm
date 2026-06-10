@@ -37,6 +37,7 @@ import { getConfig } from '../../config';
 import { clientManager } from '../../claude/clientManager';
 import { DEFAULT_CONTEXT_FILENAME } from '../../../shared/contextFile';
 import { promptUser } from '../core/PermissionPromptService';
+import { selectVisibleSlashCommands } from '../core/SlashCommandService';
 import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import { extractFilePaths } from '../toollog/extractFilePaths';
 import { randomUUID } from 'crypto';
@@ -314,6 +315,13 @@ export interface StreamingSessionServiceDeps {
 
   /** Optional centralized scheduler for cleanup/health ticks. */
   scheduler?: Pick<PollScheduler, 'register' | 'start' | 'unregister'>;
+
+  /**
+   * Whether the text invokes a known user slash command. The SDK only expands
+   * commands at the start of a message, so command turns must skip context
+   * prefixes that would displace the leading slash.
+   */
+  isSlashCommand?: (text: string) => boolean;
 }
 
 // =============================================================================
@@ -898,6 +906,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // needed (requires a fresh context read for the current plan state).
     const focused = options.focusedResources as FocusedResource[] | undefined;
     let messageText = message;
+    const isCommandTurn = deps.isSlashCommand?.(message) ?? false;
+    if (focused && focused.length > 0 && !isCommandTurn) {
       const hasPlanItem = focused.some((r) => r.type === 'plan_item');
       const planItems = hasPlanItem ? (deps.buildContext(projectId)?.planItems ?? []) : [];
       const prefix = buildFocusedSection(focused, planItems);

@@ -750,6 +750,20 @@ export interface ChatSession {
   created_at: string;
 }
 
+/**
+ * A user-defined slash command from ~/.claude/commands.
+ * Discovered by scanning markdown files; expansion happens in the Agent SDK,
+ * which loads the same files via settingSources: ['user'].
+ */
+export interface SlashCommandInfo {
+  /** Command name without the leading slash. Subdirectory segments join with ':' (sub/foo.md → 'sub:foo'). */
+  name: string;
+  /** From frontmatter `description`, falling back to the first body line. */
+  description: string;
+  /** From frontmatter `argument-hint` (e.g. "<file>"). */
+  argumentHint?: string;
+}
+
 // =============================================================================
 // Permission System Types
 // =============================================================================

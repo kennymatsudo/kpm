@@ -24,11 +24,21 @@ import {
   type SDKControlGetContextUsageResponse,
   type ModelInfo,
   type AccountInfo,
+  type SlashCommand,
 } from '@anthropic-ai/claude-agent-sdk';
 export type { McpServerStatus, SDKControlGetContextUsageResponse, ModelInfo, AccountInfo } from '@anthropic-ai/claude-agent-sdk';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
 import { AsyncMessageQueue, type StreamingUserMessage } from './AsyncMessageQueue';
+import { isCommandsChangedMessage, isInitMessage } from '../sdkTypeGuards';
 import { getConfig } from '../../config';
+
+/** Init-message context that lets consumers classify slash commands by source. */
+export interface SlashCommandContext {
+  /** Skill-backed command names (init message `skills`) */
+  skillNames: string[];
+  /** Installed plugin names (init message `plugins[].name`) */
+  pluginNames: string[];
+}
 
 /**
  * Configuration for creating a StreamingSession.
@@ -48,6 +58,13 @@ export interface StreamingSessionConfig {
 
   /** Called if MCP connection fails */
   onMcpError?: (failedServers: McpServerStatus[]) => void;
+
+  /**
+   * Called with the SDK's slash-command list: once after init (fetched via
+   * supportedCommands()) and again on every mid-session commands_changed push.
+   * Each delivery is the full list — consumers should replace, not merge.
+   */
+  onSlashCommands?: (commands: SlashCommand[], context: SlashCommandContext) => void;
 }
 
 /**
@@ -72,6 +89,7 @@ export class StreamingSession {
   private _isClosing = false;
   private readyResolver: (() => void) | null = null;
   private readyRejecter: ((error: Error) => void) | null = null;
+  private slashCommandContext: SlashCommandContext = { skillNames: [], pluginNames: [] };
 
   constructor(config: StreamingSessionConfig) {
     this.config = config;
@@ -225,10 +243,19 @@ export class StreamingSession {
             this._isReady = true;
             this.config.onReady?.(this.sessionId, mcpServers);
             this.readyResolver?.();
+            this.slashCommandContext = {
+              skillNames: msg.skills ?? [],
+              pluginNames: (msg.plugins ?? []).map((plugin) => plugin.name),
+            };
+            this.fetchSlashCommands();
           }
 
           this.readyResolver = null;
           this.readyRejecter = null;
+        }
+
+        if (isCommandsChangedMessage(msg)) {
+          this.config.onSlashCommands?.(msg.commands, this.slashCommandContext);
         }
 
         // Dispatch all messages to handler — errors must not kill the SDK message loop
@@ -267,6 +294,18 @@ export class StreamingSession {
       this.config.onSessionEnd?.('error', error as Error);
       throw error;
     }
+  }
+
+  /**
+   * Fetch the full slash-command list once after init. Fire-and-forget:
+   * it feeds the composer typeahead, never the critical session path.
+   */
+  private fetchSlashCommands(): void {
+    if (!this.config.onSlashCommands || !this.queryInstance) return;
+    void this.queryInstance
+      .supportedCommands()
+      .then((commands) => this.config.onSlashCommands?.(commands, this.slashCommandContext))
+      .catch((error) => console.warn('[StreamingSession] supportedCommands failed (menu list only):', error));
   }
 
   /**

@@ -30,6 +30,7 @@ import { createTaskPromptTemplateService } from './core/TaskPromptTemplateServic
 import { createAttachmentService } from './core/AttachmentService';
 import { createGroupService } from './core/GroupService';
 import { createSearchService } from './core/SearchService';
+import { createSlashCommandService } from './core/SlashCommandService';
 import { createTrackerService } from './core/TrackerService';
 import { createRepoWatcherService } from './repo/RepoWatcherService';
 import { createPollScheduler } from './core/PollScheduler';
@@ -220,6 +221,8 @@ export function createAppServices(container: IRepositoryContainer) {
   const searchService = createSearchService({
     getDatabase,
   });
+
+  const slashCommandService = createSlashCommandService();
 
   const trackerService = createTrackerService({
     tracker: container.tracker,
@@ -473,6 +476,7 @@ export function createAppServices(container: IRepositoryContainer) {
     exportFacadeService,
     trackerService,
     searchService,
+    slashCommandService,
     appLifecycleService,
     pollScheduler,
     updateEventBus,

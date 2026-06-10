@@ -75,6 +75,26 @@ function parseUserMessage(content: string): { cleanContent: string; imageCount: 
   return { cleanContent: content, imageCount: 0 };
 }
 
+/** Leading /name token (no '/' allowed inside, so paths like /Users/... never match) */
+const COMMAND_TOKEN_PATTERN = /^\/([A-Za-z0-9_:-]+)(?=\s|$)/;
+
+/** User message text, with a leading known slash command styled as a chip */
+const UserMessageText = memo(function UserMessageText({ content }: { content: string }) {
+  const slashCommands = useChatStore((state) => state.slashCommands);
+  const match = COMMAND_TOKEN_PATTERN.exec(content);
+  const command = match && slashCommands.some((c) => c.name === match[1]) ? match[1] : null;
+
+  if (!command) return <>{content}</>;
+  return (
+    <>
+      <span className="inline-flex items-baseline px-1.5 py-0.5 rounded text-[11px] font-mono font-medium bg-accent-subtle text-accent align-baseline">
+        /{command}
+      </span>
+      {content.slice(command.length + 1)}
+    </>
+  );
+});
+
 const PlanUpdateIndicator = memo(function PlanUpdateIndicator() {
   return (
     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border-subtle">
@@ -463,6 +483,7 @@ const MessageRow = memo(function MessageRow({
                       : 'bg-surface-2/60'
                   }`}
                 >
+                  <UserMessageText content={userParsed?.cleanContent || textContent} />
                 </div>
                 {message.liveFollowUp && (
                   <div className="flex items-center gap-2 text-xxs text-text-muted">

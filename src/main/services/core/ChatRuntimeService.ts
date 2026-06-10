@@ -138,6 +138,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     },
     toolCallLogger,
     scheduler: services.pollScheduler,
+    isSlashCommand: (text: string) => services.slashCommandService.isCommandInvocation(text),
     onMcpStatusReady: (mcpStatus) => {
       const managed = mcpStatus
         .filter(s => s.name.startsWith('claude.ai'))

@@ -107,6 +107,14 @@ export interface ChatState {
   effort: AgentEffortLevel;
   totalTokens: number;
   sessionHistory: ChatSessionSummary[];
+  /** User slash commands and skills shown in the composer typeahead */
+  slashCommands: SlashCommandInfo[];
+  /**
+   * Where the current list came from. The filesystem scan seeds the menu at
+   * boot; once a live session delivers the SDK's own list (which adds plugin
+   * commands), later scans must not overwrite it.
+   */
+  slashCommandsSource: 'scan' | 'sdk';
 
   // Session number counter for sequential naming
   nextSessionNumber: number;
@@ -183,6 +191,10 @@ export interface ChatState {
 
   // Shared actions
   setTokens: (tokens: number) => void;
+  /** Refresh the slash command list from disk (cheap; called at boot and when the menu opens) */
+  loadSlashCommands: () => Promise<void>;
+  /** Replace the list with the SDK's authoritative one (init fetch or commands_changed push) */
+  setSlashCommands: (commands: SlashCommandInfo[]) => void;
   setDefaultModel: (model: ClaudeModel) => void;
   setModel: (chatSessionId: string, model: ClaudeModel) => void;
   setEffort: (chatSessionId: string, effort: AgentEffortLevel) => void;

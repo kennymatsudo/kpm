@@ -30,6 +30,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     addActivity,
     updateActivity,
     setSuggestions,
+    setSlashCommands,
     setSessionState,
     setRetrying,
     markSessionActive,
@@ -51,6 +52,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     addActivity: state.addActivity,
     updateActivity: state.updateActivity,
     setSuggestions: state.setSuggestions,
+    setSlashCommands: state.setSlashCommands,
     setSessionState: state.setSessionState,
     setRetrying: state.setRetrying,
     markSessionActive: state.markSessionActive,
@@ -248,6 +250,11 @@ export function useChatIpcBridge(projectId: string | null): void {
           setSuggestions(sessionId, data.suggestions);
         }
       },
+      // No project filter: the command list comes from the user's own Claude
+      // settings, so it's the same for every project.
+      onSlashCommands: (data) => {
+        setSlashCommands(data.commands);
+      },
       onMcpStatus: (data) => {
         if (!isActiveForProject(data.projectId)) return;
         const sessionId = data.chatSessionId ?? useChatStore.getState().viewedSessionId ?? undefined;
@@ -350,4 +357,5 @@ export function useChatIpcBridge(projectId: string | null): void {
       clearInterval(watchdogInterval);
       unsubscribeChatEvents();
     };
+  }, [projectId, appendChunk, appendThinking, finalizeMessage, processPlanActions, processFileUpdate, processFileDelete, setError, setTokens, addActivity, updateActivity, setSuggestions, setSlashCommands, setSessionState, setRetrying, markSessionActive, markSessionInactive, setViewedSession, getOrCreateSession, setClaudeSessionId, setSessionTitle, setMcpStatus, setLastTurnUsage]);
 }

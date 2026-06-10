@@ -26,6 +26,7 @@ export const useChatStore: UseBoundStore<StoreApi<ChatState>> = create<ChatState
 
 // Load persisted model and effort preferences (guarded for Node.js test environments)
 if (typeof window !== 'undefined') {
+  void useChatStore.getState().loadSlashCommands();
   void getAppSetting('chat_model').then((result: { success: boolean; value?: string }) => {
     if (result.value === 'sonnet' || result.value === 'opus') {
       useChatStore.setState({ model: result.value });

@@ -113,6 +113,7 @@ export const IPC_CHANNELS = {
     loadSession: 'chat:load-session',
     getUsage: 'chat:get-usage',
     getMessages: 'chat:get-messages',
+    getSlashCommands: 'chat:get-slash-commands',
   },
 
   // ===========================================================================

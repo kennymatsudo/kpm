@@ -41,6 +41,8 @@ export const createInitialChatState = (): Pick<ChatState,
   effort: 'medium',
   totalTokens: 0,
   sessionHistory: [],
+  slashCommands: [],
+  slashCommandsSource: 'scan',
   nextSessionNumber: 1,
   persistedProjectId: null,
 });

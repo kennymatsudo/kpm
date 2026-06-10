@@ -1,7 +1,25 @@
 import { ipcMain } from 'electron';
 import type { ChatService } from '../../services/core/ChatService';
+import type { SlashCommandService } from '../../services/core/SlashCommandService';
 import { ChatSchemas, StreamingSessionSchemas, createIpcHandler } from '../validation';
+import { createSimpleIpcHandler } from '../validation/utils';
 import { IPC_CHANNELS } from '../channels';
+
+export function registerChatHandlers(
+  chatService: ChatService,
+  slashCommandService: SlashCommandService,
+): void {
+  ipcMain.handle(
+    IPC_CHANNELS.chat.getSlashCommands,
+    createSimpleIpcHandler(
+      () => {
+        const result = slashCommandService.listCommands();
+        if (!result.ok) throw new Error(result.error);
+        return { commands: result.data };
+      },
+      'Failed to list slash commands',
+    ),
+  );
 
   ipcMain.handle(
     IPC_CHANNELS.chat.send,

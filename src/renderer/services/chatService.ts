@@ -5,6 +5,7 @@ import type {
   ClaudeModel,
   FocusedResource,
   PlanAction,
+  SlashCommandInfo,
 } from '../../shared/types';
 
 export interface ChunkEventData {
@@ -117,6 +118,12 @@ export interface SuggestionsEventData {
   suggestions: string[];
 }
 
+export interface SlashCommandsEventData {
+  projectId: string;
+  chatSessionId?: string;
+  commands: SlashCommandInfo[];
+}
+
 export interface McpStatusEventData {
   projectId: string;
   chatSessionId?: string;
@@ -127,6 +134,10 @@ export interface McpStatusEventData {
 
 export function getChatUsage(projectId: string) {
   return window.api.chat.getUsage(projectId);
+}
+
+export function getSlashCommands() {
+  return window.api.chat.getSlashCommands();
 }
 
 export function getActiveChatSessions(projectId: string) {
@@ -198,6 +209,7 @@ export function subscribeToChatEvents(handlers: {
   onSessionError?: (data: ErrorEventData) => void;
   onSessionDeactivated?: (data: SessionEventData) => void;
   onSuggestions?: (data: SuggestionsEventData) => void;
+  onSlashCommands?: (data: SlashCommandsEventData) => void;
   onMcpStatus?: (data: McpStatusEventData) => void;
   onQueued?: (data: QueuedEventData) => void;
   onQueueCleared?: (data: QueueClearedEventData) => void;
@@ -217,6 +229,7 @@ export function subscribeToChatEvents(handlers: {
     handlers.onSessionError ? window.api.chat.onSessionError(handlers.onSessionError) : null,
     handlers.onSessionDeactivated ? window.api.chat.onSessionDeactivated(handlers.onSessionDeactivated) : null,
     handlers.onSuggestions ? window.api.chat.onSuggestions(handlers.onSuggestions) : null,
+    handlers.onSlashCommands ? window.api.chat.onSlashCommands(handlers.onSlashCommands) : null,
     handlers.onMcpStatus ? window.api.chat.onMcpStatus(handlers.onMcpStatus) : null,
     handlers.onQueued ? window.api.chat.onQueued(handlers.onQueued) : null,
     handlers.onQueueCleared ? window.api.chat.onQueueCleared(handlers.onQueueCleared) : null,

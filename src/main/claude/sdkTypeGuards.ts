@@ -8,6 +8,7 @@ import type {
   SDKResultMessage,
   SDKSystemMessage,
   SDKAPIRetryMessage,
+  SDKCommandsChangedMessage,
   SDKSessionStateChangedMessage,
   SDKRateLimitEvent,
   SDKRateLimitInfo,
@@ -23,6 +24,14 @@ import type {
  */
 export function isInitMessage(msg: SDKMessage): msg is SDKSystemMessage & { subtype: 'init' } {
   return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'init';
+}
+
+/**
+ * Check if a message is a mid-session slash-command list update.
+ * Clients should replace their cached command list with the payload.
+ */
+export function isCommandsChangedMessage(msg: SDKMessage): msg is SDKCommandsChangedMessage {
+  return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'commands_changed';
 }
 
 /**

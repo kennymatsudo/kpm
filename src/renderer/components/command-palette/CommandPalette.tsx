@@ -187,6 +187,8 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       label="Command palette"
       filter={filterCommand}
       loop
+      overlayClassName="fixed inset-0 z-[400] [background:var(--overlay-color)] backdrop-blur-[8px]"
+      contentClassName="fixed left-1/2 top-[15vh] z-[401] w-full max-w-2xl -translate-x-1/2 px-4 outline-none"
     >
       <div
         className="bg-surface-elevated rounded-2xl overflow-hidden"
