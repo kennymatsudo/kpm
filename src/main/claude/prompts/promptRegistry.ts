@@ -6,6 +6,7 @@
  * prompts exist and can be overridden.
  */
 
+import { GROUNDING, CONSTRAINTS, WORKSPACE_SECTION, PLAN_SYSTEM_RULES, RESPONSE_STYLE } from './workspace';
 
 // =============================================================================
 // Types
@@ -32,6 +33,13 @@ export interface PromptDefinition {
 // =============================================================================
 
 const SYSTEM_PROMPTS: PromptDefinition[] = [
+  {
+    key: 'system.grounding',
+    name: 'Grounding',
+    description: 'Which project source settles which kind of question, and when to validate against it.',
+    category: 'system',
+    defaultContent: GROUNDING,
+  },
   {
     key: 'system.constraints',
     name: 'Constraints',

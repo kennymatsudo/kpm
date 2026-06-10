@@ -110,6 +110,8 @@ ID: \`${project.id}\` (use for all tool calls)
 Phase: ${project.phase}
 Project folder: \`${project.folder_path}\`
 
+${getPrompt('system.grounding')}
+
 ${buildViewContextSection(currentView)}
 ${getPrompt('system.constraints')}
 
