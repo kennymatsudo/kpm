@@ -85,7 +85,10 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
   const loadProjectData = useCallback(async (projectId: string) => {
     const loadSequence = ++loadSequenceRef.current;
     const isCurrentLoad = () => isMountedRef.current && loadSequenceRef.current === loadSequence;
+    // Show loading overlay while the project loads — both on initial launch
+    // (previousConnectedProjectId is null) and when switching projects.
     const isSwitching = previousConnectedProjectId !== null && previousConnectedProjectId !== projectId;
+    setProjectSwitching(true);
 
     const endTotal = startPerfSpan('project.load.total', { projectId, switching: isSwitching });
 
@@ -219,6 +222,8 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
         worktreeCount: worktrees.length,
       });
     } finally {
+      // Hide loading overlay unless a newer load has taken over the flag
+      if (isCurrentLoad()) {
         setProjectSwitching(false);
       }
       endTotal();

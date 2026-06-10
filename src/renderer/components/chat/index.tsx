@@ -14,6 +14,7 @@ import {
 import type { ChatAttachment, FocusedResource } from '../../../shared/types';
 import { useShallow } from 'zustand/react/shallow';
 import { CloseIcon } from '../icons';
+import { LoadingSpinner } from '../ui';
 import { getBaseName } from '../../utils/path';
 
 // Re-export components for use in Layout and other consumers
@@ -234,6 +235,20 @@ export function Chat({ currentView }: ChatProps) {
         </div>
       )}
 
+      {viewedHydrated ? (
+        <MessageList
+          key={viewedSessionId ?? 'no-session'}
+          currentView={currentView}
+          onCancelQueued={cancelQueued}
+        />
+      ) : (
+        <div className="flex-1 min-h-0 flex items-center justify-center">
+          <div className="flex items-center gap-2 text-text-muted">
+            <LoadingSpinner className="w-4 h-4" />
+            <span className="text-sm">Loading conversation</span>
+          </div>
+        </div>
+      )}
       <PermissionPrompt />
       <ChatInput
         onSend={handleSend}

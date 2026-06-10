@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/Select';
+import { toast, useResourceDomainStore } from '../../stores';
 import { listContextFiles } from '../../services/contextFileService';
 import { listAllRepoBranches } from '../../services/repoService';
 
@@ -62,6 +63,8 @@ export const AgentStartModal = memo(function AgentStartModal({
   const [branches, setBranches] = useState<string[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [loadingBranches, setLoadingBranches] = useState(false);
+  const [branchError, setBranchError] = useState<string | null>(null);
+  const [branchReloadToken, setBranchReloadToken] = useState(0);
   const [effort, setEffort] = useState<AgentEffortLevel>('high');
   const [environmentMode, setEnvironmentMode] = useState<RepoEnvironmentMode>('auto');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -98,6 +101,7 @@ export const AgentStartModal = memo(function AgentStartModal({
     setLoadingBranches(true);
     setSelectedBranch('');
     setBranches([]);
+    setBranchError(null);
 
     listAllRepoBranches(repo.path)
       .then((branchList: string[]) => {
@@ -106,10 +110,13 @@ export const AgentStartModal = memo(function AgentStartModal({
         const defaultBranch = branchList.find((b: string) => b === 'main' || b === 'master') ?? branchList[0] ?? '';
         setSelectedBranch(defaultBranch);
       })
+      .catch((error: unknown) => {
         setBranches([]);
         setSelectedBranch('');
+        setBranchError(`Failed to load branches: ${String(error)}`);
       })
       .finally(() => setLoadingBranches(false));
+  }, [selectedRepoId, repos, branchReloadToken]);
 
   // Load context files for the project
   useEffect(() => {
@@ -124,8 +131,14 @@ export const AgentStartModal = memo(function AgentStartModal({
               .filter((f) => !f.isClaudeMd)
               .map((f) => ({ path: f.path, name: f.name }))
           );
+        } else if (!result.success) {
+          toast.error(result.error || 'Failed to load context files');
         }
       })
+      .catch((error: unknown) => {
+        setContextFiles([]);
+        toast.error(`Failed to load context files: ${String(error)}`);
+      });
   }, [item.project_id]);
 
   const toggleContextFile = useCallback((filePath: string) => {
@@ -258,6 +271,17 @@ export const AgentStartModal = memo(function AgentStartModal({
                   {loadingBranches ? (
                     <div className="w-full rounded-lg border border-border-subtle bg-surface-1 px-2.5 py-2 text-sm text-text-muted">
                       Loading branches...
+                    </div>
+                  ) : branchError ? (
+                    <div className="w-full rounded-lg border border-danger/40 bg-danger-muted px-2.5 py-2 text-sm text-danger flex items-center justify-between gap-2">
+                      <span className="truncate" title={branchError}>{branchError}</span>
+                      <button
+                        type="button"
+                        onClick={() => setBranchReloadToken((t) => t + 1)}
+                        className="text-xs underline shrink-0 hover:opacity-80"
+                      >
+                        Retry
+                      </button>
                     </div>
                   ) : (
                     <Select

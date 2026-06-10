@@ -151,6 +151,18 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
     },
 
     loadFromHistory: async (projectId, chatSessionId, shouldContinue) => {
+      // Mark the session hydrated even when loading fails, so the UI stops
+      // showing a loading placeholder, and surface the failure on the
+      // session's error banner.
+      const markHydrationFailed = (message: string) => {
+        const state = get();
+        const existing = state.sessions.get(chatSessionId);
+        if (!existing) return;
+        const sessions = new Map(state.sessions);
+        sessions.set(chatSessionId, { ...existing, hydrated: true, error: message });
+        set({ sessions });
+      };
+
       try {
         const result = await loadChatSession(projectId, chatSessionId);
         if (!isCurrent(shouldContinue)) return;
@@ -176,9 +188,13 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
             viewedSessionId: chatSessionId,
             nextSessionNumber: existingSession ? state.nextSessionNumber : state.nextSessionNumber + 1,
           });
+        } else {
+          markHydrationFailed(result.error || 'Failed to load conversation history');
         }
       } catch (error) {
         console.error('[ChatStore] Failed to load session from history:', error);
+        if (!isCurrent(shouldContinue)) return;
+        markHydrationFailed('Failed to load conversation history');
       }
     },
 

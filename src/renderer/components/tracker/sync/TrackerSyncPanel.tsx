@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  toast,
   useSyncStore,
   useTrackerStore,
   useExportStore,
@@ -22,7 +23,10 @@ export function TrackerSyncPanel({ associationId, onClose }: TrackerSyncPanelPro
 
   const {
     isSyncing,
+    syncProgress,
+    error: syncError,
     startSync,
+    clearError: clearSyncError,
     setupProgressListener: setupSyncProgressListener,
   } = useSyncStore();
 
@@ -60,6 +64,8 @@ export function TrackerSyncPanel({ associationId, onClose }: TrackerSyncPanelPro
   // Clear any stale errors when panel opens
   useEffect(() => {
     clearError();
+    clearSyncError();
+  }, [clearError, clearSyncError]);
 
   // Check if association has imported items
   useEffect(() => {
@@ -114,6 +120,11 @@ export function TrackerSyncPanel({ associationId, onClose }: TrackerSyncPanelPro
   const handleSync = async () => {
     if (!currentProjectId) return;
     await startSync(currentProjectId, associationId);
+    // No preview and no error means the check completed with nothing to pull.
+    const { error, syncPreview } = useSyncStore.getState();
+    if (!error && !syncPreview) {
+      toast.success('Already up to date');
+    }
     await handleRefresh();
   };
 
@@ -256,6 +267,11 @@ export function TrackerSyncPanel({ associationId, onClose }: TrackerSyncPanelPro
                       {isSyncing ? (
                         <>
                           <LoadingSpinner className="w-4 h-4" color="white" />
+                          {syncProgress?.phase === 'analyzing'
+                            ? `Analyzing changes... ${syncProgress.current}/${syncProgress.total}`
+                            : syncProgress?.phase === 'fetching'
+                              ? `Fetching issues... ${syncProgress.current}`
+                              : 'Syncing...'}
                         </>
                       ) : (
                         <>
@@ -266,6 +282,11 @@ export function TrackerSyncPanel({ associationId, onClose }: TrackerSyncPanelPro
                         </>
                       )}
                     </button>
+                    {syncError && (
+                      <div className="p-3 rounded-lg bg-danger/10 border border-danger/20">
+                        <p className="text-sm text-danger">{syncError}</p>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <>

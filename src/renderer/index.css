@@ -394,6 +394,13 @@ select:focus-visible {
   box-shadow: 0 0 0 2px var(--color-focus-ring);
 }
 
+/* Keyboard-driven focus on buttons (mouse clicks don't trigger :focus-visible).
+   Without this, arrow-key navigation between dialog buttons is invisible. */
+button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
+}
+
 /* ============================================
    Buttons - Flat & Fast
    ============================================ */

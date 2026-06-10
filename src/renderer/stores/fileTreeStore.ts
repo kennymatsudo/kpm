@@ -8,6 +8,7 @@ import {
   listProjectDirectory,
   renameProjectEntry,
 } from '../services/projectFileService';
+import { toast } from './toastStore';
 import { getBaseName, getParentPath } from '../utils/path';
 
 /** Information about a recently changed file */
@@ -413,6 +414,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       return node;
     } catch (error) {
       console.error('[FileTreeStore] Failed to create folder:', error);
+      toast.error(`Failed to create folder "${getBaseName(path, path)}": ${String(error)}`);
       return null;
     }
   },
@@ -431,6 +433,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       return node;
     } catch (error) {
       console.error('[FileTreeStore] Failed to create file:', error);
+      toast.error(`Failed to create file "${getBaseName(path, path)}": ${String(error)}`);
       return null;
     }
   },
@@ -449,6 +452,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       return node;
     } catch (error) {
       console.error('[FileTreeStore] Failed to create symlink:', error);
+      toast.error(`Failed to create symlink "${getBaseName(linkPath, linkPath)}": ${String(error)}`);
       return null;
     }
   },
@@ -484,9 +488,11 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
         return true;
       }
 
+      toast.error(result.error || `Failed to delete "${getBaseName(path, path)}"`);
       return false;
     } catch (error) {
       console.error('[FileTreeStore] Failed to delete:', error);
+      toast.error(`Failed to delete "${getBaseName(path, path)}": ${String(error)}`);
       return false;
     }
   },
@@ -524,6 +530,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       return node;
     } catch (error) {
       console.error('[FileTreeStore] Failed to rename:', error);
+      toast.error(`Failed to rename "${getBaseName(oldPath, oldPath)}": ${String(error)}`);
       return null;
     }
   },
@@ -570,6 +577,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       return node;
     } catch (error) {
       console.error('[FileTreeStore] Failed to move:', error);
+      toast.error(`Failed to move "${fileName}": ${String(error)}`);
       return null;
     }
   },

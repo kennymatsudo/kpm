@@ -10,6 +10,7 @@ import { AgentStartModal } from '../board-view/AgentStartModal';
 import { LinkPrToItemDialog } from '../development/LinkPrToItemDialog';
 import { TaskEditModal } from './TaskEditModal';
 import { ErrorBoundary } from '../app/ErrorBoundary';
+import { LoadingSpinner } from '../ui';
 import {
   toast,
   useProjectDomainStore,
@@ -80,11 +81,13 @@ export function PlanView({
   );
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
   const {
+    isLoading,
     focusedResources,
     addFocusedResource,
     addFocusedResources,
   } = useProjectUiDomainStore(
     useShallow((state) => ({
+      isLoading: state.isLoading,
       focusedResources: state.focusedResources,
       addFocusedResource: state.addFocusedResource,
       addFocusedResources: state.addFocusedResources,
@@ -437,6 +440,19 @@ export function PlanView({
   );
 
 
+
+  // Initial fetch for this project: distinguish "still loading" from "empty plan"
+  // so the view area doesn't render as a blank canvas while items load.
+  if (currentProjectId && isLoading && planItems.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full w-full bg-surface-0">
+        <div className="flex items-center gap-3 text-text-muted">
+          <LoadingSpinner className="w-4 h-4" />
+          <span className="text-sm">Loading plan</span>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentProjectId) {
     return (
