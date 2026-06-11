@@ -55,12 +55,15 @@ export function registerCustomPromptHandlers(
     IPC_CHANNELS.customPrompts.create,
     createIpcHandler(
       CustomPromptSchemas.create,
+      async ({ name, description, promptContent, icon, keywords, targetType, runMode }) => {
         const result = customPromptService.create({
           name,
           description,
           promptContent,
           icon,
           keywords,
+          targetType,
+          runMode,
         });
         if (!result.ok) throw new Error(result.error);
         return { prompt: result.data };
@@ -76,12 +79,15 @@ export function registerCustomPromptHandlers(
     IPC_CHANNELS.customPrompts.update,
     createIpcHandler(
       CustomPromptSchemas.update,
+      async ({ promptId, name, description, promptContent, icon, keywords, targetType, runMode }) => {
         const result = customPromptService.update(promptId, {
           name,
           description,
           promptContent,
           icon,
           keywords,
+          targetType,
+          runMode,
         });
         if (!result.ok) throw new Error(result.error);
       },

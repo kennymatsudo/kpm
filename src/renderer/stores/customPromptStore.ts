@@ -6,6 +6,7 @@
  */
 
 import { create } from 'zustand';
+import type { CustomPrompt, CustomPromptIcon, CustomPromptTargetType, CustomPromptRunMode } from '../../shared/types';
 import {
   createCustomPrompt,
   deleteCustomPrompt,
@@ -37,6 +38,8 @@ interface CustomPromptState {
       description?: string | null;
       icon?: CustomPromptIcon;
       keywords?: string | null;
+      targetType?: CustomPromptTargetType;
+      runMode?: CustomPromptRunMode;
     }
   ) => Promise<CustomPrompt | null>;
   updatePrompt: (
@@ -47,6 +50,8 @@ interface CustomPromptState {
       promptContent?: string;
       icon?: CustomPromptIcon;
       keywords?: string | null;
+      targetType?: CustomPromptTargetType;
+      runMode?: CustomPromptRunMode;
     }
   ) => Promise<boolean>;
   deletePrompt: (promptId: string) => Promise<boolean>;
@@ -153,6 +158,8 @@ export const useCustomPromptStore = create<CustomPromptState>((set, get) => ({
               ...(updates.promptContent !== undefined && { prompt_content: updates.promptContent }),
               ...(updates.icon !== undefined && { icon: updates.icon }),
               ...(updates.keywords !== undefined && { keywords: updates.keywords }),
+              ...(updates.targetType !== undefined && { target_type: updates.targetType }),
+              ...(updates.runMode !== undefined && { run_mode: updates.runMode }),
               updated_at: new Date().toISOString(),
             };
           }

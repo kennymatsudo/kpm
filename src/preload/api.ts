@@ -55,6 +55,8 @@ import type {
   ConfluenceSyncPreview,
   CustomPrompt,
   CustomPromptIcon,
+  CustomPromptTargetType,
+  CustomPromptRunMode,
   SearchResult,
   PromptDefinitionInfo,
   PromptCategory,
@@ -162,6 +164,8 @@ export type {
   ConfluenceSyncPreview,
   CustomPrompt,
   CustomPromptIcon,
+  CustomPromptTargetType,
+  CustomPromptRunMode,
   SearchResult,
   PromptDefinitionInfo,
   PromptCategory,
@@ -941,6 +945,8 @@ const customPrompts = {
       description?: string | null;
       icon?: CustomPromptIcon;
       keywords?: string | null;
+      targetType?: CustomPromptTargetType;
+      runMode?: CustomPromptRunMode;
     }
   ): Promise<{ success: boolean; data?: CustomPrompt; error?: string }> =>
     invokeFlat<{ prompt: CustomPrompt }>(IPC_CHANNELS.customPrompts.create, { name, promptContent, ...options }).then((result) =>
@@ -956,6 +962,8 @@ const customPrompts = {
       promptContent?: string;
       icon?: CustomPromptIcon;
       keywords?: string | null;
+      targetType?: CustomPromptTargetType;
+      runMode?: CustomPromptRunMode;
     }
   ): Promise<{ success: boolean; error?: string }> =>
     invokeFlat<void>(IPC_CHANNELS.customPrompts.update, { promptId, ...updates }),

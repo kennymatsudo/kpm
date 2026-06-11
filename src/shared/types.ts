@@ -94,6 +94,16 @@ export type AgentEffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 /** Icon types available for custom prompts in Command+K */
 export type CustomPromptIcon = 'chart' | 'check' | 'document' | 'sparkles' | 'clipboard';
 
+/** Entity a custom prompt runs on. Picked in the palette before the prompt runs. */
+export type CustomPromptTargetType = 'none' | 'document' | 'repo';
+
+/**
+ * How a custom prompt executes.
+ * - 'artifact': background generation task that writes a file (original pipeline)
+ * - 'chat': sent as a chat message, with the picked target attached as a focused resource
+ */
+export type CustomPromptRunMode = 'artifact' | 'chat';
+
 /**
  * Custom prompt for Command+K palette.
  * All prompts are global (no project-specific scope).
@@ -108,6 +118,8 @@ export interface CustomPrompt {
   keywords: string | null;  // Comma-separated search keywords
   is_builtin: boolean;      // Built-in prompts cannot be deleted
   sort_order: number;
+  target_type: CustomPromptTargetType;
+  run_mode: CustomPromptRunMode;
   created_at: string;
   updated_at: string;
 }

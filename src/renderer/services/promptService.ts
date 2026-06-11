@@ -1,3 +1,4 @@
+import type { CustomPromptIcon, CustomPromptTargetType, CustomPromptRunMode } from '../../shared/types';
 
 export function listCustomPrompts() {
   return window.api.customPrompts.list();
@@ -10,6 +11,8 @@ export function createCustomPrompt(
     description?: string | null;
     icon?: CustomPromptIcon;
     keywords?: string | null;
+    targetType?: CustomPromptTargetType;
+    runMode?: CustomPromptRunMode;
   }
 ) {
   return window.api.customPrompts.create(name, promptContent, options);
@@ -23,6 +26,8 @@ export function updateCustomPrompt(
     promptContent?: string;
     icon?: CustomPromptIcon;
     keywords?: string | null;
+    targetType?: CustomPromptTargetType;
+    runMode?: CustomPromptRunMode;
   }
 ) {
   return window.api.customPrompts.update(promptId, updates);

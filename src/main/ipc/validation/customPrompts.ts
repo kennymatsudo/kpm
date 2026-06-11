@@ -12,6 +12,8 @@ import { uuid, nonEmptyString } from './shared';
 // =============================================================================
 
 const customPromptIcon = z.enum(['chart', 'check', 'document', 'sparkles', 'clipboard']);
+const customPromptTargetType = z.enum(['none', 'document', 'repo']);
+const customPromptRunMode = z.enum(['artifact', 'chat']);
 
 // =============================================================================
 // Custom Prompt Schemas
@@ -30,6 +32,8 @@ export const CustomPromptSchemas = {
     promptContent: z.string().max(50000, 'Prompt content too long'),
     icon: customPromptIcon.optional(),
     keywords: z.string().max(500, 'Keywords must be under 500 characters').nullable().optional(),
+    targetType: customPromptTargetType.optional(),
+    runMode: customPromptRunMode.optional(),
   }),
 
   update: z.object({
@@ -39,6 +43,8 @@ export const CustomPromptSchemas = {
     promptContent: z.string().max(50000, 'Prompt content too long').optional(),
     icon: customPromptIcon.optional(),
     keywords: z.string().max(500, 'Keywords must be under 500 characters').nullable().optional(),
+    targetType: customPromptTargetType.optional(),
+    runMode: customPromptRunMode.optional(),
   }),
 
   delete: z.object({

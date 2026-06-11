@@ -3307,6 +3307,21 @@ interface Migration {
       db.exec(`ALTER TABLE dev_sessions ADD COLUMN base_sha TEXT;`);
     },
   },
+  {
+    id: 1090,
+    name: '090_custom_prompt_targets',
+    up: (db: BetterSqliteDatabase) => {
+      // Custom prompts can target an entity (a document or a connected repo).
+      // Targeted prompts run through chat with the target attached as a
+      // focused resource; untargeted prompts keep the artifact pipeline.
+      db.exec(`
+        ALTER TABLE custom_prompts ADD COLUMN target_type TEXT NOT NULL DEFAULT 'none'
+          CHECK(target_type IN ('none', 'document', 'repo'));
+        ALTER TABLE custom_prompts ADD COLUMN run_mode TEXT NOT NULL DEFAULT 'artifact'
+          CHECK(run_mode IN ('artifact', 'chat'));
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

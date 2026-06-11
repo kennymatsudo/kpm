@@ -47,6 +47,8 @@ export function createCustomPromptService(deps: CustomPromptServiceDeps) {
       promptContent: string;
       icon?: CustomPrompt['icon'];
       keywords?: string | null;
+      targetType?: CustomPrompt['target_type'];
+      runMode?: CustomPrompt['run_mode'];
     }): ServiceResult<CustomPrompt> {
       try {
         const existing = deps.customPrompts.getByName(input.name);
@@ -60,6 +62,8 @@ export function createCustomPromptService(deps: CustomPromptServiceDeps) {
           prompt_content: input.promptContent,
           icon: input.icon ?? 'document',
           keywords: input.keywords ?? null,
+          target_type: input.targetType ?? 'none',
+          run_mode: input.runMode ?? 'artifact',
         });
         return success(prompt);
       } catch (error) {
@@ -73,6 +77,8 @@ export function createCustomPromptService(deps: CustomPromptServiceDeps) {
       promptContent?: string;
       icon?: CustomPrompt['icon'];
       keywords?: string | null;
+      targetType?: CustomPrompt['target_type'];
+      runMode?: CustomPrompt['run_mode'];
     }): ServiceResult<void> {
       try {
         const existing = deps.customPrompts.get(promptId);
@@ -93,6 +99,8 @@ export function createCustomPromptService(deps: CustomPromptServiceDeps) {
         if (updates.promptContent !== undefined) repoUpdates.prompt_content = updates.promptContent;
         if (updates.icon !== undefined) repoUpdates.icon = updates.icon;
         if (updates.keywords !== undefined) repoUpdates.keywords = updates.keywords;
+        if (updates.targetType !== undefined) repoUpdates.target_type = updates.targetType;
+        if (updates.runMode !== undefined) repoUpdates.run_mode = updates.runMode;
 
         deps.customPrompts.update(promptId, repoUpdates);
         return success(undefined);

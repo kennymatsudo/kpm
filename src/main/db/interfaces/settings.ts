@@ -4,6 +4,15 @@
  * Interfaces for app settings, task prompt templates, and custom prompts.
  */
 
+import type {
+  TaskPromptTemplate,
+  CustomPrompt,
+  CustomPromptIcon,
+  CustomPromptTargetType,
+  CustomPromptRunMode,
+  ToolPermission,
+  CustomTheme,
+} from '../../../shared/types';
 
 // =============================================================================
 // App Settings Repository
@@ -79,6 +88,8 @@ export interface CustomPromptCreate {
   keywords?: string | null;
   is_builtin?: boolean;
   sort_order?: number;
+  target_type?: CustomPromptTargetType;
+  run_mode?: CustomPromptRunMode;
 }
 
 /** Input type for updating a custom prompt */
@@ -89,6 +100,8 @@ export interface CustomPromptUpdate {
   icon?: CustomPromptIcon;
   keywords?: string | null;
   sort_order?: number;
+  target_type?: CustomPromptTargetType;
+  run_mode?: CustomPromptRunMode;
 }
 
 export interface ICustomPromptRepository {

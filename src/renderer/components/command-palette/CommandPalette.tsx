@@ -1,6 +1,20 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Command } from 'cmdk';
+import {
+  useProjectDomainStore,
+  useCustomPromptStore,
+  useContextRegenerationStore,
+  useCustomPromptTaskStore,
+  useSettingsUIStore,
+  useResourceDomainStore,
+  useProjectUiDomainStore,
+  useChatStore,
+} from '../../stores';
+import { emit } from '../../stores/storeEvents';
 import { executeCustomPrompt } from '../../services/promptService';
+import { listProjectDirectory } from '../../services/projectFileService';
+import { useChat } from '../../hooks/useChat';
+import { getBaseName } from '../../utils/path';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -12,6 +26,23 @@ interface CommandItem {
   action: () => void;
   keywords: string[];
   promptId?: string;
+}
+
+interface DocumentTarget {
+  name: string;
+  path: string;
+}
+
+/** Markdown files under the project folder — same definition the global search index uses. */
+function flattenMarkdownFiles(nodes: FileNode[], acc: DocumentTarget[] = []): DocumentTarget[] {
+  for (const node of nodes) {
+    if (node.isDirectory) {
+      if (node.children) flattenMarkdownFiles(node.children, acc);
+    } else if (/\.mdx?$/i.test(node.name)) {
+      acc.push({ name: node.name, path: node.path });
+    }
+  }
+  return acc;
 }
 
 function CommandIcon({ icon, className }: { icon: CustomPromptIcon; className?: string }) {
@@ -69,6 +100,57 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openSettings = useSettingsUIStore((state) => state.setIsOpen);
   const setSettingsTab = useSettingsUIStore((state) => state.setActiveTab);
+  const repos = useResourceDomainStore((state) => state.repos);
+  const { send } = useChat(currentProjectId, 'workspace');
+
+  // Target-picker page state: set when a targeted chat prompt was selected and
+  // is waiting for the user to pick which document/repo it runs on.
+  const [pickerPrompt, setPickerPrompt] = useState<CustomPrompt | null>(null);
+  const [docTargets, setDocTargets] = useState<DocumentTarget[] | null>(null);
+  const [docsLoading, setDocsLoading] = useState(false);
+
+  const closePicker = useCallback(() => {
+    setPickerPrompt(null);
+    setSearch('');
+  }, []);
+
+  // Load the project's markdown documents when the document picker opens.
+  useEffect(() => {
+    if (pickerPrompt?.target_type !== 'document' || !currentProjectId) return;
+    let cancelled = false;
+    setDocsLoading(true);
+    listProjectDirectory(currentProjectId, undefined, { recursive: true })
+      .then((nodes) => {
+        if (!cancelled) setDocTargets(flattenMarkdownFiles(nodes));
+      })
+      .catch((error: unknown) => {
+        console.error('[CommandPalette] Failed to list documents:', error);
+        if (!cancelled) setDocTargets([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDocsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pickerPrompt, currentProjectId]);
+
+  const sendPromptToChat = useCallback((prompt: CustomPrompt, resource?: FocusedResource) => {
+    const chatStore = useChatStore.getState();
+    const sessionId = chatStore.getChatSessionId();
+    chatStore.getOrCreateSession(sessionId);
+    if (resource) {
+      useProjectUiDomainStore.getState().addFocusedResource(resource);
+    }
+    emit({ type: 'navigate-to-view', payload: { view: 'workspace', showChat: true } });
+    onClose();
+    void send(prompt.prompt_content, undefined, undefined, sessionId);
+  }, [onClose, send]);
+
+  const handleTargetSelect = useCallback((resource: FocusedResource) => {
+    if (!pickerPrompt) return;
+    sendPromptToChat(pickerPrompt, resource);
+  }, [pickerPrompt, sendPromptToChat]);
 
   const openCustomPromptSettings = useCallback(() => {
     onClose();
@@ -126,6 +208,17 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       return;
     }
 
+    const prompt = prompts.find((p) => p.id === command.promptId);
+    if (prompt?.run_mode === 'chat') {
+      if (prompt.target_type === 'none') {
+        sendPromptToChat(prompt);
+      } else {
+        setPickerPrompt(prompt);
+        setSearch('');
+      }
+      return;
+    }
+
     setExecutingCommand(command.id);
     setCommandError(null);
 
@@ -150,6 +243,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       setCommandError(error instanceof Error ? error.message : 'An error occurred');
       setExecutingCommand(null);
     }
+  }, [executingCommand, currentProjectId, onClose, prompts, sendPromptToChat]);
 
   const filterCommand = useCallback((value: string, searchValue: string, keywords?: string[]) => {
     const haystack = `${value} ${(keywords ?? []).join(' ')}`.toLowerCase();
@@ -163,16 +257,26 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     return tokens.every((token) => haystack.includes(token)) ? 1 : 0;
   }, []);
 
+  // Escape steps back to the command list when the target picker is open,
+  // and only closes the palette from the root page.
   const handleOpenChange = useCallback((open: boolean) => {
     if (!open) {
+      if (pickerPrompt) {
+        closePicker();
+        return;
+      }
       onClose();
     }
+  }, [onClose, pickerPrompt, closePicker]);
 
   useEffect(() => {
     if (!isOpen) {
       setSearch('');
       setExecutingCommand(null);
       setCommandError(null);
+      setPickerPrompt(null);
+      setDocTargets(null);
+      setDocsLoading(false);
       if (closeTimeoutRef.current) {
         clearTimeout(closeTimeoutRef.current);
         closeTimeoutRef.current = null;
@@ -212,6 +316,19 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
               autoFocus
               value={search}
               onValueChange={setSearch}
+              onKeyDown={(e) => {
+                if (pickerPrompt && e.key === 'Backspace' && search === '') {
+                  e.preventDefault();
+                  closePicker();
+                }
+              }}
+              placeholder={
+                pickerPrompt
+                  ? pickerPrompt.target_type === 'document'
+                    ? 'Search documents...'
+                    : 'Search repos...'
+                  : 'Type a command or search...'
+              }
               className="w-full pl-14 pr-20 py-4.5 bg-transparent text-text-primary text-base placeholder:text-text-muted focus:outline-none font-medium tracking-tight"
             />
             <div className="absolute right-5 top-1/2 -translate-y-1/2 flex items-center gap-2">
@@ -227,7 +344,61 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             </div>
           )}
 
+          {pickerPrompt && (
+            <div className="flex items-center gap-2 px-5 py-2 border-b border-border-default bg-surface-2/50">
+              <CommandIcon icon={pickerPrompt.icon} className="w-3.5 h-3.5 text-accent shrink-0" />
+              <span className="text-xs font-medium text-text-secondary truncate">
+                {pickerPrompt.name}
+              </span>
+              <span className="text-xs text-text-muted shrink-0">
+                — pick {pickerPrompt.target_type === 'document' ? 'a document' : 'a repo'}
+              </span>
+            </div>
+          )}
+
           <Command.List className="max-h-[60vh] overflow-y-auto py-2">
+            {pickerPrompt ? (
+              docsLoading ? (
+                <Command.Loading className="px-6 py-12 text-center">
+                  <LoadingSpinner className="w-6 h-6 mx-auto mb-3" color="accent" />
+                  <p className="text-text-muted text-sm font-medium">Loading documents...</p>
+                </Command.Loading>
+              ) : (
+                <>
+                  <Command.Empty className="px-6 py-12 text-center">
+                    <p className="text-text-muted text-sm font-medium">
+                      {pickerPrompt.target_type === 'document' ? 'No documents found' : 'No connected repos'}
+                    </p>
+                  </Command.Empty>
+                  <Command.Group
+                    heading={pickerPrompt.target_type === 'document' ? 'Documents' : 'Repos'}
+                    className="px-2 [&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-text-muted"
+                  >
+                    {pickerPrompt.target_type === 'document'
+                      ? (docTargets ?? []).map((doc) => (
+                          <TargetItem
+                            key={doc.path}
+                            value={`doc-${doc.path}`}
+                            label={doc.name}
+                            detail={doc.path}
+                            icon="document"
+                            onSelect={() => handleTargetSelect({ type: 'project_file', path: doc.path, isDirectory: false })}
+                          />
+                        ))
+                      : repos.map((repo) => (
+                          <TargetItem
+                            key={repo.id}
+                            value={`repo-${repo.id}`}
+                            label={getBaseName(repo.path, repo.path)}
+                            detail={repo.path}
+                            icon="repo"
+                            onSelect={() => handleTargetSelect({ type: 'repo', id: repo.id, path: repo.path })}
+                          />
+                        ))}
+                  </Command.Group>
+                </>
+              )
+            ) : promptsLoading ? (
               <Command.Loading className="px-6 py-12 text-center">
                 <LoadingSpinner className="w-6 h-6 mx-auto mb-3" color="accent" />
                 <p className="text-text-muted text-sm font-medium">Loading prompts...</p>
@@ -307,6 +478,46 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         </div>
       </div>
     </Command.Dialog>
+  );
+}
+
+interface TargetItemProps {
+  value: string;
+  label: string;
+  detail: string;
+  icon: 'document' | 'repo';
+  onSelect: () => void;
+}
+
+function TargetItem({ value, label, detail, icon, onSelect }: TargetItemProps) {
+  return (
+    <Command.Item
+      value={value}
+      keywords={[label, detail]}
+      onSelect={onSelect}
+      className="group w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-150 cursor-pointer aria-selected:bg-accent-muted aria-selected:shadow-sm"
+    >
+      <div className="text-text-secondary group-aria-selected:text-accent shrink-0">
+        {icon === 'document' ? (
+          <CommandIcon icon="document" className="w-4 h-4" />
+        ) : (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+          </svg>
+        )}
+      </div>
+      <div className="flex-1 min-w-0 flex items-baseline gap-2">
+        <span className="text-sm font-medium text-text-primary group-aria-selected:text-accent truncate">
+          {label}
+        </span>
+        <span className="text-xs text-text-tertiary truncate">{detail}</span>
+      </div>
+      <div className="opacity-0 transition-opacity group-aria-selected:opacity-100 shrink-0">
+        <kbd className="px-2 py-1 bg-surface-4 text-text-muted text-xs font-medium rounded border border-border-subtle">
+          ↵
+        </kbd>
+      </div>
+    </Command.Item>
   );
 }
 

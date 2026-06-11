@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import type { CustomPrompt, CustomPromptIcon, CustomPromptTargetType, CustomPromptRunMode } from '../../../shared/types';
 import { ensureBuiltinCustomPrompts } from '../../services/promptService';
 import { useCustomPromptStore } from '../../stores/customPromptStore';
 import { LoadingSpinner } from '../ui/LoadingButton';
@@ -26,6 +27,17 @@ const ICON_OPTIONS: { value: CustomPromptIcon; label: string }[] = [
   { value: 'check', label: 'Check' },
   { value: 'sparkles', label: 'Sparkles' },
   { value: 'clipboard', label: 'Clipboard' },
+];
+
+const TARGET_OPTIONS: { value: CustomPromptTargetType; label: string }[] = [
+  { value: 'none', label: 'Nothing' },
+  { value: 'document', label: 'A document' },
+  { value: 'repo', label: 'A connected repo' },
+];
+
+const RUN_MODE_OPTIONS: { value: CustomPromptRunMode; label: string }[] = [
+  { value: 'artifact', label: 'Generated file' },
+  { value: 'chat', label: 'Chat message' },
 ];
 
 export function CustomPromptSettings() {
@@ -54,6 +66,8 @@ export function CustomPromptSettings() {
   const [promptContent, setPromptContent] = useState('');
   const [icon, setIcon] = useState<CustomPromptIcon>('document');
   const [keywords, setKeywords] = useState('');
+  const [targetType, setTargetType] = useState<CustomPromptTargetType>('none');
+  const [runMode, setRunMode] = useState<CustomPromptRunMode>('artifact');
 
   // Load prompts on mount
   const loadPrompts = useCallback(async () => {
@@ -78,6 +92,8 @@ export function CustomPromptSettings() {
       setPromptContent(selectedPrompt.prompt_content);
       setIcon(selectedPrompt.icon);
       setKeywords(selectedPrompt.keywords || '');
+      setTargetType(selectedPrompt.target_type);
+      setRunMode(selectedPrompt.run_mode);
     }
   }, [selectedPrompt, isCreating]);
 
@@ -95,6 +111,8 @@ export function CustomPromptSettings() {
     setPromptContent(prompt.prompt_content);
     setIcon(prompt.icon);
     setKeywords(prompt.keywords || '');
+    setTargetType(prompt.target_type);
+    setRunMode(prompt.run_mode);
     setIsCreating(false);
   };
 
@@ -104,6 +122,16 @@ export function CustomPromptSettings() {
     setPromptContent('');
     setIcon('document');
     setKeywords('');
+    setTargetType('none');
+    setRunMode('artifact');
+  };
+
+  // The artifact pipeline has no concept of a target; targeted prompts always run through chat.
+  const handleTargetTypeChange = (next: CustomPromptTargetType) => {
+    setTargetType(next);
+    if (next !== 'none') {
+      setRunMode('chat');
+    }
   };
 
   const handleCreate = () => {
@@ -134,6 +162,8 @@ export function CustomPromptSettings() {
           promptContent: promptContent.trim(),
           icon,
           keywords: keywords.trim() || null,
+          targetType,
+          runMode,
         });
         if (saved) {
           toast.success('Prompt saved');
@@ -145,6 +175,8 @@ export function CustomPromptSettings() {
           description: description.trim() || null,
           icon,
           keywords: keywords.trim() || null,
+          targetType,
+          runMode,
         });
         if (created) {
           toast.success('Prompt created');
@@ -318,6 +350,61 @@ export function CustomPromptSettings() {
             </div>
           </div>
 
+          {/* Target and Output row */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-text-secondary uppercase tracking-wide">
+                Runs On
+              </label>
+              <Select value={targetType} onValueChange={(next) => handleTargetTypeChange(next as CustomPromptTargetType)}>
+                <SelectTrigger
+                  aria-label="Runs on"
+                  className="w-full flex items-center justify-between px-3.5 py-2.5 bg-surface-2 border border-border-subtle rounded-xl text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:bg-surface-1 transition-all cursor-pointer"
+                >
+                  <SelectValue />
+                  <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </SelectTrigger>
+                <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                  {TARGET_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      <SelectItemText>{opt.label}</SelectItemText>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-text-secondary uppercase tracking-wide">
+                Output
+              </label>
+              <Select
+                value={runMode}
+                onValueChange={(next) => setRunMode(next as CustomPromptRunMode)}
+                disabled={targetType !== 'none'}
+              >
+                <SelectTrigger
+                  aria-label="Output"
+                  className="w-full flex items-center justify-between px-3.5 py-2.5 bg-surface-2 border border-border-subtle rounded-xl text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:bg-surface-1 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <SelectValue />
+                  <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </SelectTrigger>
+                <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                  {RUN_MODE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      <SelectItemText>{opt.label}</SelectItemText>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           {/* Prompt content textarea */}
           <div className="space-y-1.5">
             <label className="block text-xs font-medium text-text-secondary uppercase tracking-wide">
@@ -334,6 +421,17 @@ export function CustomPromptSettings() {
 
           {/* Help text */}
           <div className="text-xs text-text-tertiary">
+            {runMode === 'chat' ? (
+              <p>
+                {targetType === 'none'
+                  ? 'Sends the prompt as a chat message.'
+                  : targetType === 'document'
+                    ? 'Asks which document to use, then sends the prompt to chat with that document attached.'
+                    : 'Asks which connected repo to use, then sends the prompt to chat with that repo attached.'}
+              </p>
+            ) : (
+              <p>Output is saved to the <code className="text-xs bg-surface-3 px-1 py-0.5 rounded">outputs/</code> folder.</p>
+            )}
           </div>
           </div>
 
