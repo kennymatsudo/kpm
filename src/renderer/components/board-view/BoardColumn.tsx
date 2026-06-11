@@ -176,6 +176,7 @@ export const BoardColumn = memo(function BoardColumn({
   return (
     <div
       className={`
+        transition-[background-color,box-shadow] duration-150
         ${isDragOver && draggedItemId ? 'ring-2 ring-accent ring-inset bg-accent/5' : ''}
       `}
       onDragOver={handleDragOver}

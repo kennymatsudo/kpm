@@ -234,6 +234,7 @@ export const BoardCard = memo(function BoardCard({
       data-plan-item-id={item.id}
       draggable
       className={`
+        transition-[border-color,box-shadow,opacity] duration-150 ease-out
         ${borderClass}
         ${isFocused && !isSelected ? 'ring-1 ring-accent/50' : ''}
         ${isDimmed ? 'opacity-40' : ''}
