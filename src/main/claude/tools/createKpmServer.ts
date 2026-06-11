@@ -34,6 +34,7 @@ import { createFileMoveTools } from './file-move';
 import { createFileDeleteTools, type FileDeleteCallback, type FileDeletePayload } from './file-delete';
 import { createListProjectFilesTools } from './list-project-files';
 import { createPlanRefTools } from './plan-refs';
+import { createSpillReadTools } from './spill-read';
 import type { PlanAction } from '../../../shared/types';
 
 // Cached tools array - collected once at warmup, reused per session
@@ -439,6 +440,7 @@ function collectTools() {
     planItems: planItemRepo,
     projects: projectRepo,
   });
+  const spillReadTools = createSpillReadTools();
 
     ...planItemTools,
     ...relationTools,
@@ -457,6 +459,7 @@ function collectTools() {
     ...fileDeleteTools,
     ...listProjectFilesTools,
     ...planRefTools,
+    ...spillReadTools,
   ];
 
 }

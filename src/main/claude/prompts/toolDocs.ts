@@ -30,4 +30,5 @@ Use \`projectId: "${projectId}"\` for all KPM tool calls.
 - **External systems:** when the user references Slack, GitHub, Linear, or similar systems and tools are available, use those tools and report what you found.
 - **Plan creation from code:** inspect relevant repo files first when implementation details matter, then include \`code_refs\` in created items.
 - **Efficiency:** issue independent reads in parallel and gather enough evidence before answering or acting.
+- **MCP result overflow:** when a tool call fails with "result exceeds maximum allowed tokens" and the error names a spill file under \`~/.claude/projects/\`, use \`read_spill_file\` to page the saved payload. Call it with just \`file_path\` first to get \`totalChars\`, then page with \`offset\`/\`length\` (up to 50 000 chars each) until \`hasMore\` is false. Do not abandon the data or re-query via a different tool.`;
 }
