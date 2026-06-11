@@ -30,6 +30,7 @@ import { getConfig } from '../../config';
 import {
   createStatusBroadcaster,
 } from './sessionOrchestration';
+import { gitExec, getCurrentBranch, resolveUpstreamBranch, getMergeBase, resolveBaseSha } from './gitUtils';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
 
 interface AgentContextInput {
@@ -509,6 +510,19 @@ async function assertSessionWorktreeCheckout(params: {
   return success({ cwd: resolvedWorktreePath });
 }
 
+/**
+ */
+async function resolveSessionBaseRef(session: DevSession): Promise<string> {
+  if (session.base_sha) {
+    return session.base_sha;
+  }
+  try {
+    return await getMergeBase(session.worktree_path, session.base_branch);
+  } catch {
+    return resolveUpstreamBranch(session.worktree_path, session.base_branch);
+  }
+}
+
 export function createDevSessionService(deps: DevSessionServiceDeps) {
   function getAgentContextInput(planItemId: string): ServiceResult<AgentContextInput> {
     const item = deps.planItems.get(planItemId);
@@ -754,6 +768,9 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           worktree_path: worktreePath,
           branch_name: branchName,
           base_branch: baseBranch,
+          // Captured once the worktree (and its fork point) actually exists,
+          // in startAgentSession after _scaffoldWorktree.
+          base_sha: null,
           status: 'pending',
           agent_type: 'claude',
           automation_phase: null,
@@ -831,6 +848,18 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           return worktreeGuard;
         }
         const worktreeCwd = worktreeGuard.data.cwd;
+
+        // Capture the immutable fork-point SHA once, now that the worktree
+        // exists. Commit/diff views range against this so a task's "Changes"
+        // reflect only its own work — never commits that landed on a moving
+        // base ref (e.g. local main advancing while origin/main lags).
+        if (!session.base_sha) {
+          const baseSha = await resolveBaseSha(worktreeCwd, session.base_branch);
+          if (baseSha) {
+            deps.devSessions.updateBaseSha(sessionId, baseSha);
+            session.base_sha = baseSha;
+          }
+        }
 
         // Capture repo environment (direnv / auto-detect) after worktree is ready
         const capturedEnv = await captureRepoEnvironment(

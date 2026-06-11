@@ -37,6 +37,7 @@ describe('approvalQueueStore — review reply flow', () => {
         repo_name: 'my-repo',
         branch_name: 'kpm/test-branch',
         base_branch: 'main',
+        base_sha: null,
         worktree_path: '/tmp/worktree',
         status: 'active',
         initial_instructions: 'Implement the task',

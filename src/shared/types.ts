@@ -885,6 +885,10 @@ export interface DevSession {
   worktree_path: string;
   branch_name: string;
   base_branch: string;  // Usually 'master' or 'main'
+  // Immutable fork-point SHA captured when the worktree was created. Commit/diff
+  // ranges use this so a task's "Changes" reflect only its own work, never
+  // commits that landed on a moving base ref. Null for legacy/pre-capture rows.
+  base_sha: string | null;
 
   // Status
   status: DevSessionStatus;

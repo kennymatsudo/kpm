@@ -39,6 +39,8 @@ export interface IDevSessionRepository {
   updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null): void;
   /** Update session name */
   updateName(id: string, name: string): void;
+  /** Persist the immutable fork-point SHA captured at worktree creation */
+  updateBaseSha(id: string, baseSha: string): void;
   /** Update user-explicit merge order override (null = derive from plan graph) */
   updateMergeOrder(id: string, order: number | null): void;
   /** Delete a session */

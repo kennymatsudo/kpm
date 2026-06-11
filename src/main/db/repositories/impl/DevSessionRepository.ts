@@ -34,6 +34,7 @@ interface PreparedStatements {
   updateAutomationPhase: Statement;
   updatePrInfo: Statement;
   updateName: Statement;
+  updateBaseSha: Statement;
   updateMergeOrder: Statement;
   delete: Statement;
   markActiveAsInactive: Statement;
@@ -96,6 +97,7 @@ export class DevSessionRepository implements IDevSessionRepository {
         WHERE id = ?
       `),
       updateName: db.prepare('UPDATE dev_sessions SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
+      updateBaseSha: db.prepare('UPDATE dev_sessions SET base_sha = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
       updateMergeOrder: db.prepare('UPDATE dev_sessions SET merge_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
       delete: db.prepare('DELETE FROM dev_sessions WHERE id = ?'),
       markActiveAsInactive: db.prepare(`
@@ -133,6 +135,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       worktree_path: row.worktree_path,
       branch_name: row.branch_name,
       base_branch: row.base_branch,
+      base_sha: row.base_sha ?? null,
       status: row.status,
       agent_type: row.agent_type,
       automation_phase: row.automation_phase ?? null,
@@ -200,6 +203,10 @@ export class DevSessionRepository implements IDevSessionRepository {
 
   updateName(id: string, name: string): void {
     this.stmts.updateName.run(name, id);
+  }
+
+  updateBaseSha(id: string, baseSha: string): void {
+    this.stmts.updateBaseSha.run(baseSha, id);
   }
 
   updateMergeOrder(id: string, order: number | null): void {

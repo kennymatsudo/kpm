@@ -691,6 +691,7 @@ HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and 
           worktree_path: '',
           branch_name: '',
           base_branch: '',
+          base_sha: null,
           status: 'inactive',
           agent_type: 'claude',
           automation_phase: null,

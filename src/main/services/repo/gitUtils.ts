@@ -69,6 +69,7 @@ export async function gitExec(
 /**
  * Resolve the merge-base between a base branch and HEAD.
  */
+export async function getMergeBase(
   repoPath: string,
   baseBranch: string
 ): Promise<string> {
@@ -77,6 +78,34 @@ export async function gitExec(
     { cwd: repoPath }
   );
   return stdout.trim();
+}
+
+/**
+ * Resolve the immutable fork-point SHA for a worktree, to be captured once when
+ * the worktree is created and stored on the session. For a freshly created
+ * branch HEAD equals the base, so the merge-base is exactly the fork point;
+ * computing it also stays correct if the agent has already committed. Falls back
+ * to the base branch's current tip, then to HEAD, so a SHA is always returned.
+ */
+export async function resolveBaseSha(
+  repoPath: string,
+  baseBranch: string
+): Promise<string | null> {
+  try {
+    return await getMergeBase(repoPath, baseBranch);
+  } catch {
+    // No common ancestor (e.g. unrelated histories) — fall through.
+  }
+  for (const ref of [baseBranch, 'HEAD']) {
+    try {
+      const { stdout } = await gitExec(['rev-parse', ref], { cwd: repoPath });
+      const sha = stdout.trim();
+      if (sha) return sha;
+    } catch {
+      // try next ref
+    }
+  }
+  return null;
 }
 
 /**

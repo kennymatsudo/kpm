@@ -3294,6 +3294,19 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1089,
+    name: '089_dev_sessions_base_sha',
+    up: (db: BetterSqliteDatabase) => {
+      // The commit/diff "Changes" views identify a task's work as the range
+      // base..HEAD. Storing only the base branch *name* (e.g. 'main') meant the
+      // base was re-resolved at query time against a moving ref (origin/main),
+      // so an unrelated commit could be attributed to the wrong task. Capture
+      // the immutable fork-point SHA when the worktree is created and range
+      // against that instead. Nullable; legacy rows fall back to merge-base.
+      db.exec(`ALTER TABLE dev_sessions ADD COLUMN base_sha TEXT;`);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

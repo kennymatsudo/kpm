@@ -59,6 +59,26 @@ function buildReviewAssessmentPrompt(findings: ReviewFinding[]): string {
   return sections.join('\n');
 }
 
+/**
+ * Commit the implementation agent's worktree changes onto the task's own branch.
+ *
+ * The implementation prompt never commits, so without this step the work stays
+ * as uncommitted worktree edits: the branch remains pinned at its fork point,
+ * review/PR flows see nothing on the branch, and the changes are eventually
+ * stranded or re-applied onto the base branch by hand — which is how one task's
+ * commit ends up attributed to another. A clean tree ("nothing to commit") is
+ * expected when the agent committed itself, and is not an error.
+ */
+async function captureWorkOnBranch(
+  devSessionService: DevSessionAutomationService,
+  session: DevSession,
+    ? 'Address review findings'
+    : session.name?.trim() || 'KPM task changes';
+
+  const result = await devSessionService.commitSessionChanges(session.id, subject);
+  }
+}
+
 export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): AgentManagerCallbacks {
   function moveSessionPlanItemToReview(sessionId: string): void {
     const devSessionService = deps.getDevSessionService();
@@ -105,6 +125,9 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       }
 
       if (role === 'implement') {
+        // Capture the agent's work onto the task's own branch before anything
+        // else, so the isolated branch actually holds the task's commits.
+
           moveSessionPlanItemToReview(implSessionId);
           return;
         }

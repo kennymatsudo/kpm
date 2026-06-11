@@ -12,6 +12,7 @@ function createDevSession() {
     repo_name: 'my-repo',
     branch_name: 'kpm/test-branch',
     base_branch: 'main',
+    base_sha: null,
     worktree_path: '/tmp/worktree',
     status: 'inactive' as const,
     initial_instructions: 'Implement the task',
