@@ -1,7 +1,9 @@
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import purify from 'dompurify';
 import mermaid from 'mermaid';
 import { useTheme } from '../../contexts';
+import { createMermaidThemeVariables } from '../../themes';
 import { CloseIcon } from '../icons';
 
 interface MermaidDiagramProps {
@@ -14,8 +16,21 @@ const SCALE_STEP = 1.15;
 const MERMAID_CONFIG = {
   startOnLoad: false,
   securityLevel: 'strict' as const,
+  theme: 'base' as const,
+  // Layout font size must match themeVariables.fontSize, or node boxes are
+  // measured for larger text than they display.
+  fontSize: 14,
+  // SVG <text> labels only: the default HTML labels render inside
+  // <foreignObject>, which DOMPurify strips — nodes come out as empty boxes.
+  // Mermaid 11 reads the root-level flag for node labels; the deprecated
+  // flowchart-level flag still covers some edge-label paths.
+  htmlLabels: false,
   flowchart: {
     htmlLabels: false,
+    nodeSpacing: 40,
+    rankSpacing: 40,
+    // Default 200 breaks long identifiers mid-word; wider boxes wrap less.
+    wrappingWidth: 320,
   },
 };
 
@@ -23,6 +38,10 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
   const rawId = useId();
   const id = `mermaid${rawId.replace(/[^a-zA-Z0-9]/g, '')}`;
   const { resolvedTheme } = useTheme();
+  const themeVariables = useMemo(
+    () => createMermaidThemeVariables(resolvedTheme.colors),
+    [resolvedTheme],
+  );
 
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState(false);
@@ -41,12 +60,14 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
     let cancelled = false;
     setSvg(null);
     setError(false);
+    mermaid.initialize({ ...MERMAID_CONFIG, themeVariables });
     mermaid.render(id, source)
       .then(({ svg: rendered }) => {
         if (!cancelled) setSvg(purify.sanitize(rendered));
       })
       .catch(() => { if (!cancelled) setError(true); });
     return () => { cancelled = true; };
+  }, [id, source, themeVariables]);
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -112,8 +133,12 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
 
   return (
     <>
+      {/* The SVG scales to fit the pane width (mermaid's useMaxWidth) but tall
+          diagrams are capped at 30rem — the viewBox scales the drawing down to
+          fit, and the expand overlay provides full-size pan/zoom. */}
       <button
         type="button"
+        className="block w-full overflow-x-auto my-4 px-4 py-3 rounded-lg border border-border-subtle hover:border-border-default bg-surface-1 text-center cursor-zoom-in transition-colors [&_svg]:max-h-[30rem]"
         title="Click to expand"
         aria-label="Expand diagram"
         onClick={open}
@@ -133,8 +158,11 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
           onMouseLeave={handleMouseUp}
           onClick={() => setIsExpanded(false)}
         >
+          {/* surface-1 panel: diagram colors are blended against surface1, and it
+              keeps light-theme diagrams readable on the dark backdrop. */}
           <div
             ref={svgContainerRef}
+            className="bg-surface-1 rounded-xl border border-border-default p-6 shadow-xl"
             style={{
               transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
               transformOrigin: 'center',

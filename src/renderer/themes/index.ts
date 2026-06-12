@@ -114,6 +114,14 @@ function darken(hex: string, factor: number): string {
   return `#${[d(r), d(g), d(b)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 }
 
+/** Mix `amount` of `tint` into `base`. amount 0 = base, 1 = tint. */
+function mix(base: string, tint: string, amount: number): string {
+  const a = hexToRgb(base);
+  const b = hexToRgb(tint);
+  const m = (x: number, y: number) => Math.round(x + (y - x) * amount);
+  return `#${[m(a.r, b.r), m(a.g, b.g), m(a.b, b.b)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
 /** Compute relative luminance per WCAG; used to pick black/white as on-accent text. */
 function relativeLuminance(hex: string): number {
   const { r, g, b } = hexToRgb(hex);
@@ -495,6 +503,113 @@ export function applyThemeVariables(themeId: Exclude<ThemeId, 'system'>): void {
   if (!theme) return;
 
   applyThemeColors(theme.colors);
+}
+
+/**
+ * Map theme tokens to mermaid `base`-theme variables so rendered diagrams
+ * match the app like Monaco and the terminal do. Diagrams sit on surface1
+ * (the chat pane and the expanded-overlay panel), so fills and label masks
+ * are blended against it.
+ */
+export function createMermaidThemeVariables(themeColors: PartialThemeColors): Record<string, string | boolean> {
+  const colors = withDerivedExtendedTokens(themeColors);
+  const isDark = colors.colorScheme === 'dark';
+
+  // Semantic fallbacks mirror generateThemeVariables.
+  const success = colors.success ?? (isDark ? '#4ade80' : '#16a34a');
+  const warning = colors.warning ?? (isDark ? '#fbbf24' : '#ca8a04');
+  const danger = colors.danger ?? (isDark ? '#f87171' : '#dc2626');
+  const info = colors.info ?? (isDark ? '#60a5fa' : '#2563eb');
+  const purple = colors.purple ?? (isDark ? '#c084fc' : '#9333ea');
+
+  const surface = colors.surface1;
+  const nodeFill = mix(surface, colors.accent, isDark ? 0.16 : 0.1);
+  const nodeBorder = mix(surface, colors.accent, isDark ? 0.55 : 0.45);
+  const neutralBorder = mix(surface, colors.textPrimary, isDark ? 0.16 : 0.22);
+
+  return {
+    darkMode: isDark,
+    background: surface,
+    fontFamily: 'var(--font-sans)',
+    fontSize: '14px',
+
+    // Nodes (flowchart shapes, sequence actors, state/class boxes)
+    primaryColor: nodeFill,
+    primaryTextColor: colors.textPrimary,
+    primaryBorderColor: nodeBorder,
+    secondaryColor: colors.surface2,
+    secondaryTextColor: colors.textPrimary,
+    secondaryBorderColor: neutralBorder,
+    tertiaryColor: colors.surface2,
+    tertiaryTextColor: colors.textPrimary,
+    tertiaryBorderColor: neutralBorder,
+
+    // Edges and labels
+    lineColor: colors.textTertiary,
+    defaultLinkColor: colors.textTertiary,
+    arrowheadColor: colors.textTertiary,
+    textColor: colors.textPrimary,
+    titleColor: colors.textPrimary,
+    nodeTextColor: colors.textPrimary,
+    edgeLabelBackground: surface,
+
+    // Subgraphs / clusters
+    clusterBkg: mix(surface, colors.textPrimary, 0.04),
+    clusterBorder: neutralBorder,
+
+    // Notes (sequence/state)
+    noteBkgColor: mix(surface, warning, isDark ? 0.18 : 0.14),
+    noteTextColor: colors.textPrimary,
+    noteBorderColor: mix(surface, warning, 0.5),
+
+    // Sequence diagrams
+    actorLineColor: colors.textMuted,
+    activationBkgColor: colors.surface2,
+    activationBorderColor: neutralBorder,
+    labelBoxBkgColor: nodeFill,
+    labelBoxBorderColor: nodeBorder,
+
+    // ER attribute rows (defaults are white regardless of dark mode)
+    attributeBackgroundColorOdd: surface,
+    attributeBackgroundColorEven: colors.surface2,
+
+    // Gantt
+    gridColor: colors.textMuted,
+    todayLineColor: danger,
+
+    // Pie slices (defaults derive dull tints from the neutral secondary/tertiary)
+    pie1: colors.accent,
+    pie2: purple,
+    pie3: success,
+    pie4: warning,
+    pie5: danger,
+    pie6: info,
+    pieOpacity: '0.85',
+    pieTitleTextColor: colors.textPrimary,
+    pieSectionTextColor: colors.textPrimary,
+    pieLegendTextColor: colors.textPrimary,
+    pieStrokeColor: surface,
+    pieOuterStrokeColor: neutralBorder,
+
+    // Git graph branches (same neutral-derivation problem as pie)
+    git0: colors.accent,
+    git1: purple,
+    git2: success,
+    git3: warning,
+    git4: danger,
+    git5: info,
+    git6: lighten(colors.accent, 0.3),
+    git7: lighten(purple, 0.3),
+    commitLabelColor: colors.textPrimary,
+    commitLabelBackground: colors.surface2,
+    tagLabelColor: colors.textPrimary,
+    tagLabelBackground: nodeFill,
+    tagLabelBorder: nodeBorder,
+
+    // Invalid diagram fragments
+    errorBkgColor: mix(surface, danger, 0.18),
+    errorTextColor: danger,
+  };
 }
 
 export function createMonacoThemeData(theme: ThemeOption): CustomThemeVsCodeData {
