@@ -150,6 +150,7 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 - `chat_sessions.claude_session_id` - Claude SDK session ID for resuming conversations
 - `dev_sessions.worktree_path` - Path to isolated git worktree
 - `dev_sessions.status` - Session lifecycle state (pending, active, inactive)
+- `dev_sessions.base_sha` - Immutable fork-point SHA captured when worktree is created; used to compute commit range for Changes tab (falls back to merge-base for legacy rows)
 - `dev_sessions.merge_order` - Optional user override for merge queue ordering
 - `repos.active_worktree_path` - Active checkout used for repo context and branch watching
 - `chat_messages.chat_session_id` - Session boundary tracking for history browsing
@@ -408,6 +409,7 @@ Tracks git branch changes for connected repositories in real-time.
 - `src/main/claude/tools/plan-refs.ts` - Extract plan items from a doc; resolve `@plan/<uuid>` tokens
 - `src/main/claude/tools/list-project-files.ts` - Project file discovery
 - `src/main/claude/tools/review-assessment.ts` - Opposing-agent review structured output
+- `src/main/claude/tools/spill-read.ts` - `read_spill_file` tool: read-only access to SDK tool-result spill files under `~/.claude/projects/` (recovery when MCP results exceed SDK token budget)
 - `src/main/claude/contextRefs.ts` - Expand plan refs into agent context
 - `src/main/documents/planRefResolver.ts` - Pure resolver (renderer + main)
 - `src/main/claude/streaming/` - Streaming session classes

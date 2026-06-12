@@ -27,6 +27,7 @@ createKpmServer() (singleton MCP server)
     ├─ file-move.ts (file move tools)
     ├─ file-delete.ts (file delete tools)
     ├─ plan-refs.ts (extract plan items from a doc; resolve @plan/<uuid> tokens)
+    ├─ list-project-files.ts (project file listing)
     ↓
 System prompts (prompts/ directory)
 ```
@@ -146,6 +147,7 @@ The `currentView` parameter ('plan' | 'workspace') adds context-aware suggestion
 | `tools/schemas.ts` | Shared Zod primitives (`StatusCategoryEnum`, `PlanActionsCallback`) reused across tool files |
 | `tools/review-assessment.ts` | Separate read-only MCP server used by `ReviewAssessmentService` (not part of the main-chat `createKpmServer`) |
 | `tools/plan-refs.ts` | `extract_plan_items_from_doc` — lift `@plan/<uuid>` tokens out of a project file by path |
+| `tools/spill-read.ts` | `read_spill_file` — read-only recovery of SDK tool-result spill files in `~/.claude/projects/` |
 | `contextRefs.ts` | `formatPlanRefSection` — expand plan refs into agent context |
 | `prompts/` | System prompt builders |
 

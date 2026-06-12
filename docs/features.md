@@ -323,6 +323,7 @@ A feature that scores low on all four is a candidate for removal even if it is t
 - **Maturity signal:** Mature. Search engine robust with incremental indexing.
 
 ### 51. Command Palette (Cmd+K)
+- **What it does:** Quick command palette for actions: create plan item, navigate to item, run custom prompts, execute saved commands. Supports fuzzy search on command names and descriptions. Targeted prompts open a second picker page to select the document or repo they should run against before executing.
 - **Key code locations:**
   - Component: `src/renderer/components/command-palette/CommandPalette.tsx`
   - Store: `src/renderer/stores/customPromptStore.ts` (custom prompts as commands)
@@ -333,7 +334,9 @@ A feature that scores low on all four is a candidate for removal even if it is t
   - Modal popup with command search
   - Categories: Prompts, Project, Navigation
   - Execute command or navigate
+  - For targeted prompts (`target_type: 'document'` or `'repo'`): second picker page lists available targets; Backspace returns to command list
 - **Dependencies / integrations:**
+  - Custom prompts: listed as executables in palette; targeted prompts attach selected entity as focused resource before sending
   - Plan navigation: can search and navigate to plan items
   - Project actions: create new project, etc.
 - **Maturity signal:** Mature. Command palette functional. Extensible via custom prompts.
@@ -440,14 +443,23 @@ A feature that scores low on all four is a candidate for removal even if it is t
 - **Dependencies / integrations:**
 
 ### 65. Custom Prompts (User-Defined Prompt Library)
+- **What it does:** Users create global custom prompts that appear as commands in the command palette and can be executed independently. Each prompt has name, description, icon, keywords, content, a target type (`none` / `document` / `repo`), and a run mode (`artifact` / `chat`). Targeted prompts require the user to pick a document or repo before running. Built-in prompts are protected from deletion.
 - **Key code locations:**
   - Service: `src/main/services/core/CustomPromptService.ts`
+  - Service: `src/main/services/generation/CustomPromptGenerationService.ts` (execution for artifact mode)
+  - Component: `src/renderer/components/settings/CustomPromptSettings.tsx` (editor — "Runs On" and "Output" selectors; picking a target auto-locks output to chat)
+  - Component: `src/renderer/components/command-palette/CommandPalette.tsx` (execution + target picker page)
   - Store: `src/renderer/stores/customPromptStore.ts`
   - IPC handlers: `src/main/ipc/handlers/customPrompts.ts`
 - **Entry points / surfaces:**
   - Settings → Custom Prompts tab
+  - Create new: name, description, icon, prompt text, "Runs On" selector (none/document/repo), "Output" selector (artifact/chat)
+  - Execute from command palette (Cmd+K); targeted prompts open a second page to pick the entity
   - Edit/delete existing
 - **Dependencies / integrations:**
+  - Command palette: prompts listed as executable commands; chat-mode targeted prompts attach selected entity as focused resource and send prompt via chat
+  - Claude SDK: artifact-mode prompts executed as user message via generation service; chat-mode prompts navigate to chat view and send directly
+  - Effort selection: users can choose effort level (low/medium/high/max) when executing artifact prompts
 - **Maturity signal:** Mature. Custom prompt system functional and extensible.
 
 ---
@@ -822,6 +834,7 @@ A feature that scores low on all four is a candidate for removal even if it is t
 - `ModelSelector.tsx`: Choose Claude model
 - `SessionHistory.tsx`: Past messages in session
 - `ProcessTimeline.tsx`: Consolidated thinking + tool activity
+- `SlashCommandMenu.tsx`: Floating slash command typeahead
 
 ### development/ Components
 - `ReviewTab.tsx`: Review thread list rendered in the board detail pane
