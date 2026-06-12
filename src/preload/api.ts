@@ -1583,6 +1583,9 @@ const testing = {
   // Reset database - truncates all tables while preserving schema
   resetDatabase: (): Promise<{ success: boolean; tablesReset?: number; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.testing.resetDatabase),
+  // Report which database file the app actually opened (isolation check)
+  getDbPath: (): Promise<{ dbPath: string | null }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.testing.getDbPath),
 };
 
 // Debug API - console-only toggle used to gate other diagnostic handlers.

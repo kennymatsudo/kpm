@@ -24,6 +24,7 @@ src/main/db/
 Schema lives in `connection.ts` (initial tables) and `migrations.ts`.
 
 **New install:** Gets full schema + migrations applied.
+**Existing user:** Only pending migrations run at startup. Before any pending migration runs against an existing database, `runMigrations` checkpoints the WAL and copies the file to `planner.db.bak` (best-effort, single rolling backup; skipped for fresh databases so an empty file never overwrites a useful backup).
 
 ### Adding a Column
 

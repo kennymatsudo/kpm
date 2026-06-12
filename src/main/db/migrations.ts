@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import type { Database as BetterSqliteDatabase } from 'better-sqlite3';
 
 /**
@@ -3350,6 +3351,41 @@ function recordMigration(db: BetterSqliteDatabase, id: number, name: string): vo
 }
 
 /**
+ * Copy the database file aside before applying migrations so a buggy or
+ * interrupted migration can't destroy the only copy of the user's data.
+ *
+ * Skipped for in-memory databases and for brand-new databases (no recorded
+ * migrations yet): backing up a fresh empty file would overwrite a backup
+ * that may still hold data from a previous install. Best-effort — a failed
+ * backup logs a warning but does not block migrations.
+ */
+function backupBeforeMigrations(db: BetterSqliteDatabase): void {
+  const hasHistory = (
+    db.prepare('SELECT EXISTS (SELECT 1 FROM schema_migrations LIMIT 1) AS has_history').get() as {
+      has_history: number;
+    }
+  ).has_history;
+  if (!hasHistory) {
+    return;
+  }
+
+  const row = db.prepare('PRAGMA database_list').get() as { file?: string } | undefined;
+  const file = row?.file;
+  if (!file) {
+    return; // in-memory database
+  }
+
+  try {
+    // Fold the WAL into the main file so the copy is complete
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    fs.copyFileSync(file, `${file}.bak`);
+    console.log(`[Migrations] Backed up database to ${file}.bak`);
+  } catch (err) {
+    console.warn('[Migrations] Pre-migration backup failed:', err);
+  }
+}
+
+/**
  * Run all pending migrations.
  * Call this after setupSchema() to apply any new migrations.
  */
@@ -3359,8 +3395,16 @@ export function runMigrations(db: BetterSqliteDatabase): void {
   // Ensure the migrations table exists before checking applied migrations
   ensureMigrationsTable(db);
 
+  const pending = migrations.filter((migration) => !isMigrationApplied(db, migration.name));
 
+  if (pending.length === 0) {
+    console.log('[Migrations] No pending migrations.');
+    return;
+  }
 
+  backupBeforeMigrations(db);
+
+  for (const migration of pending) {
     console.log(`[Migrations] Applying migration: ${migration.name}`);
 
     // Run migration in a transaction for safety
@@ -3372,4 +3416,5 @@ export function runMigrations(db: BetterSqliteDatabase): void {
     transaction();
   }
 
+  console.log(`[Migrations] Applied ${pending.length} migration(s).`);
 }

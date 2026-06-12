@@ -24,7 +24,15 @@ export async function createProject(window: Page, name: string): Promise<void> {
 
   const projectNameInput = window.getByPlaceholder('My Feature');
   await projectNameInput.fill(name);
+  await window.getByRole('button', { name: 'Create project' }).click();
   await expect(window.getByText(name)).toBeVisible();
+  // Navigate to the Execute view (app defaults to Workspace view)
+  await window.getByRole('button', { name: 'Execute' }).click();
+  // Wait for the planning view to be ready (new projects default to Board view)
+  await expect(window.locator('button[title="Card view (spatial canvas)"]')).toBeVisible();
+  // Land on the canvas: specs written against the original helper contract
+  // expect canvas-viewport to be visible after createProject
+  await switchViewMode(window, 'Cards');
   await expect(window.getByTestId('canvas-viewport')).toBeVisible();
 }
 
@@ -241,6 +249,8 @@ export async function resetDatabase(window: Page): Promise<void> {
 }
 
 /**
+ * Full app reset: clears the database, reloads the page, and waits for app
+ * ready. Call this in beforeAll() for each spec file.
  */
 export async function ensureAppReady(window: Page): Promise<void> {
   await resetDatabase(window);

@@ -570,6 +570,7 @@ export const IPC_CHANNELS = {
   // ===========================================================================
   testing: {
     resetDatabase: 'testing:reset-database',
+    getDbPath: 'testing:get-db-path',
   },
 
   // ===========================================================================

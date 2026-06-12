@@ -162,6 +162,13 @@ void app.whenReady().then(async () => {
       createWindow();
     }
   });
+}).catch((err: unknown) => {
+  // Without this, a boot failure (e.g. a migration error) becomes an
+  // unhandled rejection and the app hangs with no window.
+  const message = err instanceof Error ? err.message : String(err);
+  console.error('[Main] Startup failed:', message);
+  dialog.showErrorBox('KPM failed to start', message);
+  app.quit();
 });
 
 app.on('window-all-closed', () => {
