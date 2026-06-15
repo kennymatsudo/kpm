@@ -128,6 +128,19 @@ function getToolName(activity: Activity): string {
 /** Right-aligned status indicator for a single tool row. */
 function toolStatus(activity: Activity, isActive: boolean): React.ReactNode {
   if (isActive) {
+    // A still-running tool gets a live elapsed timer (from the SDK's
+    // tool_progress heartbeat) next to the pulse, so long calls don't look
+    // frozen. Fast tools never report elapsed time, so they just pulse.
+    return (
+      <span className="flex items-center gap-1.5">
+        {activity.elapsedSeconds != null && (
+          <span className="font-mono text-xxs text-text-muted/60 tabular-nums">
+            {activity.elapsedSeconds}s
+          </span>
+        )}
+        <span className="pulse-dot" style={{ width: 6, height: 6 }} />
+      </span>
+    );
   }
   if (activity.diffStats) {
     const { additions, deletions } = activity.diffStats;

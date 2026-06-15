@@ -1634,6 +1634,26 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       }
     }
 
+    // Handle tool-progress heartbeats — the SDK emits these for a still-running
+    // tool. Attach the elapsed seconds to the matching activity by tool_use_id
+    // and re-emit so the renderer shows a live timer on long calls (e.g. a
+    // wide Grep or a slow Bash) instead of a frozen pulse. Merge-by-id on the
+    // renderer means this updates the existing card rather than pushing a new
+    // one — same mechanism as the diff-stats re-emit above.
+    if (isToolProgressMessage(sdkMsg) && !managed.interruptInProgress) {
+      const original = managed.toolUseActivities.get(sdkMsg.tool_use_id);
+      // Only surface once a tool has run long enough to be worth a timer —
+      // fast tools never get a distracting "0s/1s" flash.
+      if (original && sdkMsg.elapsed_time_seconds >= 2) {
+        const updated: Activity = {
+          ...original,
+          elapsedSeconds: Math.round(sdkMsg.elapsed_time_seconds),
+        };
+        managed.toolUseActivities.set(sdkMsg.tool_use_id, updated);
+        mainWindow?.webContents.send('chat:activity', { projectId, chatSessionId, activity: updated });
+      }
+    }
+
     // Handle API retry messages — surface to UI as activity
     if (isApiRetryMessage(sdkMsg)) {
       const delaySec = Math.round(sdkMsg.retry_delay_ms / 1000);

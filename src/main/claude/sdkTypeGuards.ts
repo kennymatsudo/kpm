@@ -14,6 +14,7 @@ import type {
   SDKRateLimitInfo,
   SDKPermissionDeniedMessage,
   SDKToolUseSummaryMessage,
+  SDKToolProgressMessage,
   SDKAssistantMessageError,
   TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
@@ -100,6 +101,15 @@ export function isPermissionDeniedMessage(msg: SDKMessage): msg is SDKPermission
  */
 export function isToolUseSummary(msg: SDKMessage): msg is SDKToolUseSummaryMessage {
   return msg.type === 'tool_use_summary';
+}
+
+/**
+ * Check if a message is a tool-progress heartbeat. Emitted periodically for a
+ * still-running tool, carrying `tool_use_id`, `tool_name`, and
+ * `elapsed_time_seconds` — lets the UI show a live timer on long calls.
+ */
+export function isToolProgressMessage(msg: SDKMessage): msg is SDKToolProgressMessage {
+  return msg.type === 'tool_progress';
 }
 
 /**

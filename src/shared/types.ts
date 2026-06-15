@@ -440,6 +440,8 @@ export interface Activity {
   };
   /** Diff hunk lines (each prefixed `+`, `-`, or ` `) from the SDK's structuredPatch — for inline diff rendering. */
   diffHunks?: string[];
+  /** Live wall-clock seconds a still-running tool has been executing, from the SDK's tool_progress heartbeat. Only set while the tool is in flight. */
+  elapsedSeconds?: number;
 }
 
 // =============================================================================
