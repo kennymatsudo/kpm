@@ -32,9 +32,17 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
             const segments = [...session.streamingSegments];
             let newContent = session.streamingContent;
             let pendingActivities = session.pendingActivities;
+            let activities = session.activities;
 
             if (pendingActivities.length > 0) {
               segments.push({ type: 'activity', activities: pendingActivities });
+              // These tools just landed in an inline segment at their
+              // chronological position. Drop them from the live `activities`
+              // list so the streaming view's trailing "active" group stops
+              // re-rendering them pinned at the bottom — a duplicate of the
+              // now-inline copy. `activities` then holds only the in-flight batch.
+              const committedIds = new Set(pendingActivities.map((a) => a.id));
+              activities = activities.filter((a) => !committedIds.has(a.id));
               pendingActivities = [];
             }
 
@@ -52,6 +60,7 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
               streamingSegments: segments,
               streamingContent: newContent,
               pendingActivities,
+              activities,
               isStreaming: true,
               streamStartedAt: session.streamStartedAt ?? now,
               lastStreamUpdateAt: now,
@@ -70,9 +79,14 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
           const segments = [...session.streamingSegments];
           let newContent = session.streamingContent;
           let pendingActivities = session.pendingActivities;
+          let activities = session.activities;
 
           if (pendingActivities.length > 0) {
             segments.push({ type: 'activity', activities: pendingActivities });
+            // Mirror the viewed branch: committed tools leave the live list so
+            // they don't double-render in the trailing "active" group.
+            const committedIds = new Set(pendingActivities.map((a) => a.id));
+            activities = activities.filter((a) => !committedIds.has(a.id));
             pendingActivities = [];
           }
 
@@ -90,6 +104,7 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
             streamingSegments: segments,
             streamingContent: newContent,
             pendingActivities,
+            activities,
             isStreaming: true,
             streamStartedAt: session.streamStartedAt ?? now,
             lastStreamUpdateAt: now,

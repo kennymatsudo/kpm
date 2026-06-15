@@ -323,3 +323,53 @@ describe('streamingSlice streaming state recovery', () => {
     expect(session?.activities).toEqual([activity]);
   });
 });
+
+describe('streamingSlice tool interleaving', () => {
+  it('drops committed tools from the live activities list when text follows', () => {
+    // Discovery flow: tools run first, then the model streams its analysis.
+    // Once the tools land in an inline segment they must leave `activities` so
+    // the streaming view stops re-rendering them pinned at the bottom.
+    const sessionId = 'session-interleave';
+    const t1 = makeActivity('t1', 'bash: rg ssrf');
+    const t2 = makeActivity('t2', 'read_file: views.py');
+
+    // viewedSessionId stays null -> appendChunk takes the synchronous
+    // (non-viewed) branch, which shares the pruning logic with the viewed one.
+    const store = createTestStore(sessionId, { ...base, isStreaming: true });
+
+    store.getState().addActivity(sessionId, t1);
+    store.getState().addActivity(sessionId, t2);
+    expect(store.getState().sessions.get(sessionId)?.activities).toEqual([t1, t2]);
+
+    store.getState().appendChunk(sessionId, 'So the proxy already exists.', 0, [t1, t2]);
+
+    const session = store.getState().sessions.get(sessionId);
+    expect(session?.streamingSegments).toEqual([
+      { type: 'activity', activities: [t1, t2] },
+      { type: 'text', content: 'So the proxy already exists.' },
+    ]);
+    // The committed batch is gone from the live list; only an in-flight batch
+    // would remain to drive the trailing "active" group.
+    expect(session?.activities).toEqual([]);
+    expect(session?.pendingActivities).toEqual([]);
+  });
+
+  it('keeps an uncommitted in-flight batch in the live activities list', () => {
+    // Tools that arrive after the latest text have no following text yet, so
+    // they stay live and render as the trailing active group (correct: they
+    // are the latest action).
+    const sessionId = 'session-inflight';
+    const committed = makeActivity('c1', 'bash: ls');
+    const inflight = makeActivity('f1', 'read_file: composer.py');
+
+    const store = createTestStore(sessionId, { ...base, isStreaming: true });
+
+    store.getState().addActivity(sessionId, committed);
+    store.getState().appendChunk(sessionId, 'Reading the file.', 0, [committed]);
+    // A fresh tool starts after that text, with no text after it yet.
+    store.getState().addActivity(sessionId, inflight);
+
+    const session = store.getState().sessions.get(sessionId);
+    expect(session?.activities).toEqual([inflight]);
+  });
+});
