@@ -15,10 +15,12 @@ import type {
   SDKPermissionDeniedMessage,
   SDKToolUseSummaryMessage,
   SDKToolProgressMessage,
+  SDKInformationalMessage,
   SDKAssistantMessageError,
   TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
 
+export type { TerminalReason, SDKRateLimitInfo, SDKPermissionDeniedMessage, SDKToolUseSummaryMessage, SDKInformationalMessage };
 
 /**
  * Check if a message is an init system message (sent when SDK initializes).
@@ -110,6 +112,17 @@ export function isToolUseSummary(msg: SDKMessage): msg is SDKToolUseSummaryMessa
  */
 export function isToolProgressMessage(msg: SDKMessage): msg is SDKToolProgressMessage {
   return msg.type === 'tool_progress';
+}
+
+/**
+ * Check if a message is an informational banner (SDK v0.3.178+). Emitted by the
+ * loop for non-error status lines, hook feedback (e.g. a UserPromptSubmit or Stop
+ * hook's block reason), and slash-command output. Carries plaintext `content`, a
+ * render `level` ('info' | 'notice' | 'suggestion' | 'warning'), and an optional
+ * `prevent_continuation` flag set when a hook stops the turn after this message.
+ */
+export function isInformationalMessage(msg: SDKMessage): msg is SDKInformationalMessage {
+  return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'informational';
 }
 
 /**

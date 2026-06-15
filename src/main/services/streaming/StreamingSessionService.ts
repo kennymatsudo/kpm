@@ -1654,6 +1654,35 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       }
     }
 
+    // Handle informational banners — the SDK emits these for non-error status
+    // lines, hook feedback (e.g. a UserPromptSubmit/Stop hook's block reason),
+    // and slash-command output. Without surfacing them this feedback is dropped
+    // silently. Suppressed during interrupt-and-send so a late old-turn banner
+    // can't leak into the next turn.
+    if (isInformationalMessage(sdkMsg) && !managed.interruptInProgress) {
+      const content = (sdkMsg.content ?? '').trim();
+      if (content) {
+        if (sdkMsg.prevent_continuation) {
+          // A hook denied continuation — the turn stops after this message.
+          // Surface the reason prominently and mark the turn as already
+          // explained so the generic terminal-reason banner is suppressed.
+          managed.turnErrorSurfaced = true;
+          mainWindow?.webContents.send('chat:error', { projectId, chatSessionId, error: content });
+        } else if (sdkMsg.level !== 'info') {
+          // 'info' is transcript-only per the SDK; surface notice/suggestion/
+          // warning as a lightweight activity (same channel as api_retry below).
+          const label = sdkMsg.level === 'warning' ? 'Warning'
+            : sdkMsg.level === 'suggestion' ? 'Suggestion'
+            : 'Notice';
+          mainWindow?.webContents.send('chat:activity', {
+            projectId,
+            chatSessionId,
+            activity: { type: 'other' as const, label, detail: content },
+          });
+        }
+      }
+    }
+
     // Handle API retry messages — surface to UI as activity
     if (isApiRetryMessage(sdkMsg)) {
       const delaySec = Math.round(sdkMsg.retry_delay_ms / 1000);

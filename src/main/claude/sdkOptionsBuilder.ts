@@ -108,6 +108,11 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     // chat sessions are overwhelmingly single-deliverable research or document
     // edits, and the SDK injects a recurring "use task tools" system reminder
     // whenever these are enabled. KPM's own plan tools cover multi-step tracking.
+    // Disable claude.ai-oriented built-ins that conflict with KPM's local-first,
+    // single-user model: Artifact publishes HTML/MD to an external Anthropic-hosted
+    // URL (violates the SQLite-only / export-boundary principles and bypasses KPM's
+    // own document system), Projects reads/writes a claude.ai cloud knowledge base,
+    // and ShowOnboardingRolePicker drives a claude.ai onboarding UI KPM never shows.
     // Also disable any managed MCP tools the user has turned off.
     disallowedTools: [
       'AskUserQuestion',
@@ -117,6 +122,9 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
       'TaskOutput',
       'TaskStop',
       'TaskUpdate',
+      'Artifact',
+      'Projects',
+      'ShowOnboardingRolePicker',
       ...(disabledMcpTools ?? []),
     ],
     maxTurns: claudeConfig.maxTurns,

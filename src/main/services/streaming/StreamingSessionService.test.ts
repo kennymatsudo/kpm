@@ -154,6 +154,10 @@ vi.mock('../../claude/sdkTypeGuards', async () => {
     isMaxTurnsReached: () => sdkTypeGuardState.maxTurnsReached,
     isApiRetryMessage: () => sdkTypeGuardState.apiRetry,
     isRateLimitEvent: () => false,
+    // Pure shape predicates — use the real implementations so emitted messages
+    // route correctly without a boolean toggle.
+    isToolProgressMessage: actual.isToolProgressMessage,
+    isInformationalMessage: actual.isInformationalMessage,
     getTerminalReason: () => sdkTypeGuardState.terminalReason,
     describeAssistantError: actual.describeAssistantError,
   };
@@ -675,6 +679,89 @@ it('surfaces max-token truncation after finalizing the partial response', async 
     expect(errorEvents[0]?.payload).toMatchObject({
       error: 'Claude had a server error. Wait a moment, then send another message to retry.',
     });
+  });
+
+  it('surfaces an informational warning banner as an activity', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(sendResult.ok).toBe(true);
+
+    const session = mockSessionInstances[0];
+    expect(session).toBeDefined();
+
+    sentEvents.length = 0;
+    session.emitMessage({
+      type: 'system',
+      subtype: 'informational',
+      level: 'warning',
+      content: 'Heads up: something to note.',
+    });
+
+    const activityEvent = sentEvents.find((e) => e.channel === 'chat:activity');
+    expect(activityEvent?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      activity: { type: 'other', label: 'Warning', detail: 'Heads up: something to note.' },
+    });
+  });
+
+  it('ignores transcript-only informational banners (level info)', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(sendResult.ok).toBe(true);
+
+    const session = mockSessionInstances[0];
+    expect(session).toBeDefined();
+
+    sentEvents.length = 0;
+    session.emitMessage({
+      type: 'system',
+      subtype: 'informational',
+      level: 'info',
+      content: 'low-priority status line',
+    });
+
+    expect(sentEvents.some((e) => e.channel === 'chat:activity')).toBe(false);
+    expect(sentEvents.some((e) => e.channel === 'chat:error')).toBe(false);
+  });
+
+  it('surfaces a hook block reason as an error when continuation is prevented', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(sendResult.ok).toBe(true);
+
+    const session = mockSessionInstances[0];
+    expect(session).toBeDefined();
+
+    sentEvents.length = 0;
+    session.emitMessage({
+      type: 'system',
+      subtype: 'informational',
+      level: 'warning',
+      content: 'Stop hook denied continuation.',
+      prevent_continuation: true,
+    });
+
+    const errorEvent = sentEvents.find((e) => e.channel === 'chat:error');
+    expect(errorEvent?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      error: 'Stop hook denied continuation.',
+    });
+    // prevent_continuation routes to chat:error only — not also chat:activity.
+    expect(sentEvents.some((e) => e.channel === 'chat:activity')).toBe(false);
   });
 });
 
