@@ -1473,15 +1473,85 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Note: Claude SDK session ID is captured in onReady callback and stored in chat_sessions table
 
+    // When partial streaming is on, the main response text is revealed from
+    // `stream_event` deltas below; the complete assistant message is then used
+    // only for accumulation/persistence so we don't double-emit each segment.
+    const streamPartialsEnabled = getConfig().claude.includePartialMessages;
+
+    // Partial assistant deltas (includePartialMessages): reveal response text
+    // token-by-token instead of one block per turn step. Only the main turn
+    // drives the transcript — subagent deltas (parent_tool_use_id set) are
+    // ignored here and surface as activity-card detail from the complete
+    // subagent message instead. Suppressed during interrupt-and-send so late
+    // old-turn tokens can't repopulate the next turn's empty streaming bubble.
+    if (isPartialAssistantMessage(sdkMsg)) {
+      if (sdkMsg.parent_tool_use_id == null && !managed.interruptInProgress) {
+        const event = sdkMsg.event;
+        if (event?.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+          const deltaText: string = event.delta.text ?? '';
+          if (deltaText) {
+            const segState = managed.segmentState;
+            // Drain activities queued by tool_use blocks since the last text run
+            // so they render as a boundary before this segment's first token.
+            const precedingActivities = segState.pendingActivities.length > 0
+              ? [...segState.pendingActivities]
+              : undefined;
+            if (precedingActivities) segState.pendingActivities = [];
+            mainWindow?.webContents.send('chat:chunk', {
+              projectId,
+              chatSessionId,
+              text: deltaText,
+              segmentId: segState.currentSegmentId,
+              precedingActivities,
+            });
+          }
+        }
+      }
+      return;
+    }
+
+    // Context-compaction boundary: the SDK summarized earlier conversation to
+    // stay under the context limit. Surface a lightweight notice so the user
+    // understands why earlier turns may now appear condensed.
+    if (isCompactBoundaryMessage(sdkMsg)) {
+      const trigger = sdkMsg.compact_metadata?.trigger;
+      mainWindow?.webContents.send('chat:activity', {
+        projectId,
+        chatSessionId,
+        activity: {
+          type: 'other' as const,
+          label: 'Context compacted',
+          detail: trigger === 'manual'
+            ? 'Earlier conversation summarized'
+            : 'Earlier conversation summarized to free up context',
+        },
+      });
+      return;
+    }
+
     // Handle assistant messages (text chunks)
     if (sdkMsg.type === 'assistant') {
+      // Subagent messages (e.g. the read-only explorer) arrive with
+      // parent_tool_use_id set when forwardSubagentText is on. Their text/
+      // thinking must NOT enter the main transcript or persisted response —
+      // we surface their progress on the parent activity card instead.
+      const isSubagentMessage = sdkMsg.parent_tool_use_id != null;
+
       // Capture the SDK-resolved model ID (e.g. "claude-opus-4-8") so we can
       // display it accurately in the chat header instead of the short alias.
+      // Skip subagent messages — the explorer runs on Sonnet and would mislabel
+      // the header.
+      if (!isSubagentMessage) {
+        const msgModel = (sdkMsg.message as { model?: string } | undefined)?.model;
+        if (msgModel) managed.resolvedModel = msgModel;
+      }
 
       // An assistant message can carry an `error` category when the turn aborts
       // on an API/model failure (`overloaded`, `server_error`, `billing_error`,
       // …). Without surfacing it the turn just stops silently. Suppressed during
       // interrupt-and-send so a late old-turn error can't leak into the next turn.
+      // Subagent errors surface via the Task tool_result, so don't double-band them here.
+      if (!isSubagentMessage && typeof sdkMsg.error === 'string' && !managed.interruptInProgress) {
         const errorText = describeAssistantError(sdkMsg.error);
         if (errorText) {
           managed.turnErrorSurfaced = true;
@@ -1493,6 +1563,26 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       const segState = managed.segmentState;
 
       for (const block of content) {
+        // Subagent text: roll the latest line onto the parent activity card's
+        // detail (merge-by-id) so the user sees live progress, then skip — it
+        // must not accumulate into the main response or stream as a chunk.
+        if (isSubagentMessage) {
+          if (block.type === 'text' && typeof block.text === 'string' && !managed.interruptInProgress) {
+            const parentId = sdkMsg.parent_tool_use_id as string;
+            const parent = managed.toolUseActivities.get(parentId);
+            const line = block.text.split('\n').map((l: string) => l.trim()).find((l: string) => l.length > 0);
+            if (parent && line) {
+              const detail = line.length > 100 ? `${line.slice(0, 100)}…` : line;
+              const updated: Activity = { ...parent, detail };
+              managed.toolUseActivities.set(parentId, updated);
+              mainWindow?.webContents.send('chat:activity', { projectId, chatSessionId, activity: updated });
+            }
+          }
+          // Subagent thinking/tool_use carry no main-transcript meaning beyond
+          // the heartbeat already handled elsewhere — ignore the rest.
+          continue;
+        }
+
         if (block.type === 'tool_use') {
           // Tool use after text = new segment boundary
           if (segState.hasTextInCurrentSegment) {
@@ -1560,7 +1650,17 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           segState.hasTextInCurrentSegment = true;
 
           // Accumulate text for persistence (the partial response still gets
+          // saved to the DB when the aborted turn's result is processed). This
+          // is the authoritative copy regardless of streaming mode.
           managed.accumulatedResponse += block.text;
+
+          // With partial streaming on, this text was already revealed token-by-
+          // token from `stream_event` deltas (which also drained pendingActivities).
+          // Re-emitting the whole block here would duplicate it, so stop after
+          // accumulating.
+          if (streamPartialsEnabled) {
+            continue;
+          }
 
           // Suppress chunk emission for the aborted turn while an
           // interrupt-and-send orchestration is in flight. The renderer has

@@ -17,6 +17,8 @@ import type {
   SDKToolProgressMessage,
   SDKInformationalMessage,
   SDKAssistantMessageError,
+  SDKPartialAssistantMessage,
+  SDKCompactBoundaryMessage,
   TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
 
@@ -123,6 +125,25 @@ export function isToolProgressMessage(msg: SDKMessage): msg is SDKToolProgressMe
  */
 export function isInformationalMessage(msg: SDKMessage): msg is SDKInformationalMessage {
   return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'informational';
+}
+
+/**
+ * Check if a message is a partial/streaming assistant event (emitted when
+ * `includePartialMessages` is on). Carries a raw Anthropic stream event in
+ * `event` (e.g. `content_block_delta` with a `text_delta`) plus
+ * `parent_tool_use_id` so subagent deltas can be told apart from the main turn.
+ */
+export function isPartialAssistantMessage(msg: SDKMessage): msg is SDKPartialAssistantMessage {
+  return msg.type === 'stream_event';
+}
+
+/**
+ * Check if a message marks a context-compaction boundary. Emitted when the SDK
+ * summarizes earlier conversation to stay under the context limit;
+ * `compact_metadata.trigger` distinguishes 'auto' from a manual `/compact`.
+ */
+export function isCompactBoundaryMessage(msg: SDKMessage): msg is SDKCompactBoundaryMessage {
+  return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'compact_boundary';
 }
 
 /**

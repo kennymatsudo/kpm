@@ -50,6 +50,21 @@ export interface ClaudeConfig {
   maxTurns: number;
   /** Default permission mode for Claude-driven automation outside plan mode */
   defaultPermissionMode: PermissionMode;
+  /**
+   * Stream partial assistant messages so response text renders token-by-token
+   * instead of arriving as one block per turn step.
+   */
+  includePartialMessages: boolean;
+  /**
+   * Forward a subagent's text/thinking (e.g. the read-only explorer) so its
+   * progress can be surfaced on the parent activity card.
+   */
+  forwardSubagentText: boolean;
+  /**
+   * Automatically summarize earlier conversation when a session approaches the
+   * context limit, so long discovery sessions don't stall on overflow.
+   */
+  autoCompact: boolean;
 }
 
 export interface SessionConfig {
@@ -221,6 +236,9 @@ function createDefaultConfig(): AppConfig {
       debugFile: null,
       maxTurns: 200,
       defaultPermissionMode: 'bypassPermissions',
+      includePartialMessages: true,
+      forwardSubagentText: true,
+      autoCompact: true,
     },
 
     session: {

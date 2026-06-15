@@ -128,6 +128,18 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
       ...(disabledMcpTools ?? []),
     ],
     maxTurns: claudeConfig.maxTurns,
+    // Stream partial assistant messages so the renderer can reveal response text
+    // token-by-token. Without this the SDK only emits a complete assistant message
+    // per turn step, so a paragraph lands all at once after a pause.
+    includePartialMessages: claudeConfig.includePartialMessages,
+    // Forward the explorer subagent's text/thinking (default only emits its
+    // tool_use/tool_result). Lets us surface live "what the explorer is doing"
+    // progress on its activity card without the text entering the main transcript.
+    // Force auto-compaction on regardless of the user's ~/.claude/settings.json
+    // (loaded via settingSources). The flag-settings layer has the highest
+    // priority, so long discovery sessions summarize earlier context instead of
+    // hitting the context ceiling. Compaction boundaries surface in the activity feed.
+    ...(claudeConfig.autoCompact && { settings: { autoCompactEnabled: true } }),
     // Periodic AI-generated progress summaries for Task-tool subagents.
     // Forks the subagent every ~30s and emits a short description on
     // `task_progress.summary`; reuses the prompt cache, so cost is minimal.

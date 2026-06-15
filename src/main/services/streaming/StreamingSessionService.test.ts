@@ -35,6 +35,13 @@ const { sdkTypeGuardState } = vi.hoisted(() => ({
   },
 }));
 
+const { configState } = vi.hoisted(() => ({
+  // Lets individual tests flip the streaming mode the service reads from config.
+  // Defaults to the non-partial path so the existing complete-message lifecycle
+  // tests keep asserting on chat:chunk.
+  configState: { includePartialMessages: false },
+}));
+
 vi.mock('../../claude/streaming', () => {
   type SessionEndReason = 'completed' | 'error' | 'closed';
   interface MockSessionConfig {
@@ -158,6 +165,8 @@ vi.mock('../../claude/sdkTypeGuards', async () => {
     // route correctly without a boolean toggle.
     isToolProgressMessage: actual.isToolProgressMessage,
     isInformationalMessage: actual.isInformationalMessage,
+    isPartialAssistantMessage: actual.isPartialAssistantMessage,
+    isCompactBoundaryMessage: actual.isCompactBoundaryMessage,
     getTerminalReason: () => sdkTypeGuardState.terminalReason,
     describeAssistantError: actual.describeAssistantError,
   };
@@ -171,6 +180,14 @@ vi.mock('../../config', () => ({
       processingIdleTimeoutMs: 60_000,
       processingTimeoutMs: 300_000,
       mainIdleTimeoutMs: 60_000,
+    },
+    claude: {
+      // Existing lifecycle tests emit complete assistant messages and assert on
+      // chat:chunk, which is the non-partial path. The partial-delta path is
+      // covered by dedicated tests that flip configState.includePartialMessages.
+      includePartialMessages: configState.includePartialMessages,
+      forwardSubagentText: true,
+      autoCompact: true,
     },
   }),
 }));
@@ -273,6 +290,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     sdkTypeGuardState.maxTurnsReached = false;
     sdkTypeGuardState.apiRetry = false;
     sdkTypeGuardState.terminalReason = undefined;
+    configState.includePartialMessages = false;
     sendSpy.mockClear();
   });
 
@@ -603,6 +621,121 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       chatSessionId: 'chat-1',
       text: 'still finishing first turn',
     });
+  });
+
+  it('streams partial text deltas as chunks without double-emitting the complete block', async () => {
+    configState.includePartialMessages = true;
+    const deps = createDeps(sendSpy);
+    service = createStreamingSessionService(deps);
+
+    await service.sendChatMessage('project-1', 'hello', { chatSessionId: 'chat-1', model: 'sonnet' });
+    const session = mockSessionInstances[0];
+    sentEvents.length = 0;
+
+    session.emitMessage({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Hel' } },
+    });
+    session.emitMessage({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'lo' } },
+    });
+
+    const chunkTexts = sentEvents
+      .filter((e) => e.channel === 'chat:chunk')
+      .map((e) => (e.payload as { text: string }).text);
+    expect(chunkTexts).toEqual(['Hel', 'lo']);
+
+    // The complete assistant message carrying the same text must NOT re-emit a
+    // chunk (deltas already revealed it) but must still be persisted.
+    sentEvents.length = 0;
+    session.emitMessage({
+      type: 'assistant',
+      parent_tool_use_id: null,
+      message: { content: [{ type: 'text', text: 'Hello' }] },
+    });
+    expect(sentEvents.some((e) => e.channel === 'chat:chunk')).toBe(false);
+
+    session.emitMessage({ type: 'result' });
+    expect(deps.chatMessageRepository.addMessage).toHaveBeenCalledWith(
+      'project-1',
+      'assistant',
+      'Hello',
+      'chat-1',
+      'claude',
+    );
+  });
+
+  it('ignores subagent deltas and never leaks subagent text into the transcript', async () => {
+    configState.includePartialMessages = true;
+    const deps = createDeps(sendSpy);
+    service = createStreamingSessionService(deps);
+
+    await service.sendChatMessage('project-1', 'find the login handler', { chatSessionId: 'chat-1', model: 'sonnet' });
+    const session = mockSessionInstances[0];
+
+    // Main agent delegates to the explorer subagent — registers the parent card.
+    session.emitMessage({
+      type: 'assistant',
+      parent_tool_use_id: null,
+      message: { content: [{ type: 'tool_use', id: 'task-1', name: 'Task', input: { subagent_type: 'explorer', description: 'find login' } }] },
+    });
+    sentEvents.length = 0;
+
+    // A subagent text delta must not stream as a chunk.
+    session.emitMessage({
+      type: 'stream_event',
+      parent_tool_use_id: 'task-1',
+      event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'reading auth.ts' } },
+    });
+    expect(sentEvents.some((e) => e.channel === 'chat:chunk')).toBe(false);
+
+    // A complete subagent message rolls its latest line onto the parent activity
+    // card's detail (merge-by-id) instead of the transcript.
+    session.emitMessage({
+      type: 'assistant',
+      parent_tool_use_id: 'task-1',
+      subagent_type: 'explorer',
+      message: { content: [{ type: 'text', text: 'Found the login handler in auth.ts' }] },
+    });
+    expect(sentEvents.some((e) => e.channel === 'chat:chunk')).toBe(false);
+    const activity = sentEvents
+      .filter((e) => e.channel === 'chat:activity')
+      .map((e) => (e.payload as { activity: { label: string; detail?: string } }).activity)
+      .find((a) => a.label === 'explorer');
+    expect(activity?.detail).toBe('Found the login handler in auth.ts');
+
+    // Subagent text is not persisted as the assistant response.
+    session.emitMessage({ type: 'result' });
+    expect(deps.chatMessageRepository.addMessage).not.toHaveBeenCalledWith(
+      'project-1',
+      'assistant',
+      expect.stringContaining('Found the login handler'),
+      'chat-1',
+      'claude',
+    );
+  });
+
+  it('surfaces a context-compaction boundary as an activity notice', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    await service.sendChatMessage('project-1', 'long discovery session', { chatSessionId: 'chat-1', model: 'sonnet' });
+    const session = mockSessionInstances[0];
+    sentEvents.length = 0;
+
+    session.emitMessage({
+      type: 'system',
+      subtype: 'compact_boundary',
+      compact_metadata: { trigger: 'auto', pre_tokens: 150_000 },
+    });
+
+    const activity = sentEvents
+      .find((e) => e.channel === 'chat:activity')
+      ?.payload as { activity: { label: string; detail: string } } | undefined;
+    expect(activity?.activity.label).toBe('Context compacted');
+    expect(activity?.activity.detail).toMatch(/free up context/);
   });
 
 it('surfaces max-token truncation after finalizing the partial response', async () => {
