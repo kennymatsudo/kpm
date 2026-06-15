@@ -60,8 +60,69 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   const isStreaming = viewedSession?.isStreaming ?? false;
   const suggestions = viewedSession?.suggestions ?? [];
 
+  // Local draft state so keystrokes feel instant: the textarea never waits on a
+  // global store write (which replaces the session object and re-renders its
+  // subscribers). The store is the durable copy — persists across view switches
+  // and first-keystroke session creation — so we mirror local → store on idle,
+  // on blur, on send, and on unmount rather than on every character.
+  const [draft, setDraft] = useState(viewedSession?.draftMessage ?? '');
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRef = useRef<{ sessionId: string; value: string } | null>(null);
+  const syncedSessionRef = useRef(viewedSessionId);
+
+  const flushDraft = useCallback(() => {
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    const pending = pendingRef.current;
+    if (pending) {
+      getOrCreateSession(pending.sessionId);
+      setDraftMessage(pending.sessionId, pending.value);
+      pendingRef.current = null;
+    }
+  }, [getOrCreateSession, setDraftMessage]);
+
+  // Typing path: update local immediately; persist to the store on idle.
+  const handleDraftChange = useCallback((value: string) => {
+    setDraft(value);
+    const sessionId = viewedSessionId ?? getChatSessionId();
+    // Ensure a session exists right away (first keystroke) — cheap when it
+    // already does — but defer the per-character draft write.
+    getOrCreateSession(sessionId);
+    pendingRef.current = { sessionId, value };
+    if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    flushTimerRef.current = setTimeout(flushDraft, 200);
+  }, [viewedSessionId, getChatSessionId, getOrCreateSession, flushDraft]);
+
+  // Programmatic path (slash-command accept, suggestion accept, clear-on-send):
+  // set local and store together, no debounce.
+  const setMessage = useCallback((value: string) => {
+    setDraft(value);
+    pendingRef.current = null;
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
     const sessionId = viewedSessionId ?? getChatSessionId();
     getOrCreateSession(sessionId);
+    setDraftMessage(sessionId, value);
+  }, [viewedSessionId, getChatSessionId, getOrCreateSession, setDraftMessage]);
+
+  // Re-sync the local draft only when the viewed session changes — flush the
+  // previous session's pending edit first so nothing is lost on the swap.
+  useEffect(() => {
+    if (syncedSessionRef.current !== viewedSessionId) {
+      flushDraft();
+      syncedSessionRef.current = viewedSessionId;
+      setDraft(viewedSession?.draftMessage ?? '');
+    }
+  }, [viewedSessionId, viewedSession?.draftMessage, flushDraft]);
+
+  // Persist any pending edit if the composer unmounts (e.g., view switch).
+  useEffect(() => () => flushDraft(), [flushDraft]);
+
+  const message = draft;
 
   const setAttachments = useCallback((updater: ChatAttachment[] | ((prev: ChatAttachment[]) => ChatAttachment[])) => {
     const sessionId = viewedSessionId ?? getChatSessionId();
@@ -439,15 +500,19 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
           showEmptyState={slashTypeahead.showEmptyState}
         />
       )}
+      <div className="rounded-xl border border-border-default bg-surface-2/40 transition-all duration-150 focus-within:border-accent/40 focus-within:bg-surface-2/60 focus-within:ring-4 focus-within:ring-accent/10">
         <textarea
           ref={textareaRef}
           value={message}
+          onChange={(e) => handleDraftChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           onFocus={handleFocus}
+          onBlur={flushDraft}
           placeholder={currentPlaceholder}
           disabled={disabled || sendDisabledWhileStreaming}
           rows={1}
+          className="w-full bg-transparent border-0 outline-none px-3.5 pt-3 pb-1 resize-none text-sm leading-relaxed text-text-primary placeholder:text-text-muted caret-accent selection:bg-accent/30 transition-[height] duration-100 ease-out"
           style={{ minHeight: '40px', maxHeight: '200px' }}
         />
 
@@ -486,6 +551,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
           <button
             onClick={handleSend}
             disabled={(!message.trim() && attachments.length === 0) || disabled || sendDisabledWhileStreaming}
+            className="btn btn-primary h-8 w-8 !p-0 flex-shrink-0 rounded-lg transition-transform active:scale-90"
             title={
               sendDisabledWhileStreaming
                 ? 'Wait for the current response to finish'

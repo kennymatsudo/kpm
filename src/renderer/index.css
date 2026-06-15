@@ -690,7 +690,18 @@ button:focus-visible {
   margin-top: 0.08em;
 }
 
+/* Paragraph rhythm for chat: enough air between points that bold lead-ins
+   read as distinct thoughts rather than one slab. */
 .chat-message-content.prose-themed p {
+  margin-top: 0.7em;
+  margin-bottom: 0.7em;
+}
+
+/* Cap assistant prose to a comfortable reading measure. User bubbles keep
+   their own max-w-[80%]; this only narrows the full-width assistant column
+   so long lines don't run the whole panel. Tune to taste. */
+.chat-message-assistant .chat-message-content {
+  max-width: 46rem;
 }
 
 /* Allow text selection in prose/markdown content */
@@ -703,14 +714,25 @@ button:focus-visible {
 
 .chat-message-user,
 .chat-message-assistant {
+  animation: message-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @keyframes message-in {
   from {
     opacity: 0;
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Respect reduced-motion: keep the fade, drop the travel. */
+@media (prefers-reduced-motion: reduce) {
+  .chat-message-user,
+  .chat-message-assistant {
+    animation: none;
   }
 }
 
