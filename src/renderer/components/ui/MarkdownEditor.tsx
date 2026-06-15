@@ -858,6 +858,7 @@ export function MarkdownEditor({
         {activeTab === 'preview' && (
           <div className="absolute inset-0">
             <div ref={previewRef} className="h-full overflow-y-auto p-4 select-text cursor-text">
+              <div className="prose-document mx-auto max-w-[70ch]">
                 {localContent ? (
                   <>
                     {frontmatter !== null && <FrontmatterBlock source={frontmatter} />}

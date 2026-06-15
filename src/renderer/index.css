@@ -1896,6 +1896,7 @@ button:focus-visible {
 
 .prose-document {
   color: var(--color-text-primary);
+  font-size: var(--text-lg);
   line-height: 1.7;
   max-width: none;
 }
