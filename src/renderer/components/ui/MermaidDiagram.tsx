@@ -53,6 +53,7 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
   const [overlayReady, setOverlayReady] = useState(false);
 
   const dragOrigin = useRef<{ mouseX: number; mouseY: number; tx: number; ty: number } | null>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const svgContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -74,6 +75,21 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsExpanded(false); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
+  }, [isExpanded]);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? SCALE_STEP : 1 / SCALE_STEP;
+      setScale(s => Math.min(SCALE_MAX, Math.max(SCALE_MIN, s * factor)));
+    };
+
+    overlay.addEventListener('wheel', handleWheel, { passive: false });
+    return () => overlay.removeEventListener('wheel', handleWheel);
   }, [isExpanded]);
 
   // After the overlay paints at scale=1, measure the SVG's actual rendered size and
@@ -147,6 +163,7 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
 
       {isExpanded && createPortal(
         <div
+          ref={overlayRef}
           className="fixed inset-0 z-[9999] bg-black/85 flex items-center justify-center overflow-hidden select-none"
           role="dialog"
           aria-modal="true"
