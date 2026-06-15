@@ -93,4 +93,6 @@ export const PLAN_SYSTEM_RULES = `## Plan Structure
 export const RESPONSE_STYLE = `## Response Style
 
 
+
+
 - Lead with the answer. Cut preamble, restated context, and recaps of what you just said.

@@ -95,6 +95,8 @@ Treat these as the implicit subject of the conversation unless the user explicit
  * shared char budget. Returns one block per resource plus the IDs of any plan
  * items whose body was truncated (or omitted because the item wasn't loaded).
  *
+ * Exported separately so the block-rendering and truncation logic can be
+ * unit-tested in isolation from the natural-language preamble.
  */
 export function renderFocusedBlocks(
   focusedResources: readonly FocusedResource[],

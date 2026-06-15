@@ -47,6 +47,12 @@ export interface BuildSdkOptionsParams {
  */
 export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   const { context, model, effort, currentView, resumeSessionId, mainWindow, onClaudeMdEdit, onProjectFileWrite, peekPendingFile, enabledPluginPaths, enabledUserMcpConfigs, disabledMcpTools, disabledMcpServerNames, onElicitation, autoApprove } = params;
+  // Resume restores conversation history only — the SDK applies whatever
+  // systemPrompt we pass now and discards the one persisted in the transcript.
+  // So always send the full prompt; slimming it on resume silently drops
+  // RESPONSE_STYLE, constraints, grounding, the tool tree, and plan rules on
+  // every post-idle turn. Prompt caching absorbs the cost (a 30-min idle has
+  // already expired the cache TTL).
   const effectiveRepoPaths = context.repos.map(r => r.active_worktree_path ?? r.path);
 
   // Create permission handler. canUseTool scopes file access (repos read-only,
