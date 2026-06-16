@@ -350,6 +350,7 @@ describe('permissions', () => {
       });
     });
 
+    describe('connected repos (read-only)', () => {
       beforeEach(() => {
         context = {
           projectPath: '/test/project',
@@ -361,8 +362,16 @@ describe('permissions', () => {
         vi.mocked(clientManager.hasAllowAllRemaining).mockReturnValue(false);
       });
 
+      it('denies Write to connected repo', async () => {
+        const result = await handler('Write', { file_path: '/repos/my-app/docs/file.md', content: 'hello' }, createTestOptions());
+        expect(result.behavior).toBe('deny');
+        expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
+      it('denies Edit to connected repo', async () => {
+        const result = await handler('Edit', { file_path: '/repos/shared-lib/src/index.ts' }, createTestOptions());
+        expect(result.behavior).toBe('deny');
+        expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
       it('allows Read from connected repo', async () => {

@@ -714,6 +714,13 @@ export interface SyncReviewData {
 }
 
 /** UI view mode - indicates which view the user is currently in (for prompt customization) */
+export type ChatViewMode = 'plan' | 'workspace' | 'focus';
+
+export interface FocusChatDocument {
+  path: string;
+  title: string;
+  content: string;
+}
 
 /**
  * A file attachment sent with a chat message.

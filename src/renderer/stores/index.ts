@@ -32,6 +32,9 @@ export { useFileTreeStore } from './fileTreeStore';
 
 export { useArtifactsStore } from './artifactsStore';
 
+export { useFocusModeStore } from './focusModeStore';
+export type { FocusModeDoc } from './focusModeStore';
+
 export { usePermissionStore } from './permissionStore';
 export { useToolPermissionStore } from './toolPermissionStore';
 

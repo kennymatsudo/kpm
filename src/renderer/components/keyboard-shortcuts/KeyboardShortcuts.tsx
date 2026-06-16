@@ -20,6 +20,7 @@ const shortcuts: ShortcutGroup[] = [
       { keys: ['⌘', '⇧', 'F'], description: 'Open global search' },
       { keys: ['⌘', '⇧', 'I'], description: 'Create plan item' },
       { keys: ['⌘', '⇧', 'T'], description: 'Toggle tool log' },
+      { keys: ['⌘', '⇧', 'M'], description: 'Toggle focus reader (current document)' },
       { keys: ['⌘', '`'], description: 'Toggle terminal' },
       { keys: ['⌘', 'W'], description: 'Close overlay, editor, or chat' },
       { keys: ['⌘', '1'], description: 'Workspace view' },

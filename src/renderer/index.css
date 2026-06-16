@@ -2081,6 +2081,34 @@ button:focus-visible {
   line-height: inherit;
 }
 
+.prose-document :where(.focus-code-block):not(:where([class~="not-prose"] *)) {
+  margin-top: 1.5em;
+  margin-bottom: 1.5em;
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-code);
+}
+
+.prose-document :where(.focus-code-block-header):not(:where([class~="not-prose"] *)) {
+  display: flex;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding: 0.25rem 0.5rem 0.25rem 0.75rem;
+  background: var(--color-surface-2);
+}
+
+.prose-document :where(.focus-code-block pre):not(:where([class~="not-prose"] *)) {
+  margin-top: 0;
+  margin-bottom: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .prose-document :where(blockquote):not(:where([class~="not-prose"] *)) {
   font-weight: 400;
   font-style: normal;

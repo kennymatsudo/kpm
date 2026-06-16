@@ -50,6 +50,7 @@ export type SessionState = 'idle' | 'connecting' | 'ready' | 'processing' | 'err
 export type SessionType = 'chat';
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
 /** UI view mode - passed to prompts for context-aware suggestions */
+export type ViewMode = 'plan' | 'workspace' | 'focus';
 
 // Budgets for the history replay seeded into a fresh SDK session after a
 // worktree switch. MAX_TURNS caps ping-pong depth; MAX_CHARS (~15k tokens)
@@ -160,6 +161,10 @@ interface ManagedSession {
    */
   toolUseActivities: Map<string, Activity>;
   chatSessionId?: string; // For persisting main chat messages
+  /** Focus-reader sessions are ephemeral and excluded from normal chat history. */
+  persistHistory: boolean;
+  /** Document proposals from focus chat always surface for review. */
+  forceApprovalReview: boolean;
   accumulatedResponse: string; // Accumulate assistant response for persistence
   lastTurnFinalized: boolean; // True after a turn has emitted chat:done
   suppressLifecycleEventsOnEnd: boolean; // Suppress renderer lifecycle events when session ends
@@ -371,6 +376,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const prefix = `chat:${projectId}:`;
 
     for (const [key, managed] of sessions) {
+      if (key.startsWith(prefix) && managed.chatSessionId && managed.persistHistory) {
         const persisted = deps.chatSessionRepository.get(managed.chatSessionId);
         result.push({
           chatSessionId: managed.chatSessionId,
@@ -543,6 +549,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     resumeSessionId?: string;
     context: PlanContext;
     currentView?: ViewMode;
+    persistHistory: boolean;
+    forceApprovalReview: boolean;
   }
 
   /**
@@ -559,6 +567,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       resumeSessionId,
       context,
       currentView,
+      persistHistory,
+      forceApprovalReview,
       onMessage,
     } = config;
 
@@ -596,6 +606,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
               projectId: editProjectId,
               oldContent: currentContent.success ? currentContent.content : null,
               newContent,
+              forceReview: forceApprovalReview,
             });
             console.log(`[StreamingSessionService] Context file edit intercepted and emitted for project ${editProjectId}`);
           })().catch((error) => {
@@ -621,6 +632,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
               filePath,
               content,
               oldContent: currentContent.success ? currentContent.content : null,
+              forceReview: forceApprovalReview,
             });
             console.log(`[StreamingSessionService] Project file write intercepted and emitted: ${filePath}`);
           })().catch((error) => {
@@ -685,6 +697,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             filePath: update.filename ?? DEFAULT_CONTEXT_FILENAME,
             content: update.newContent,
             oldContent: update.oldContent,
+            forceReview: sessions.get(key)?.forceApprovalReview ?? forceApprovalReview,
           });
         }
       });
@@ -707,6 +720,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             filePath: update.filePath,
             content: update.content,
             oldContent: update.oldContent,
+            forceReview: sessions.get(key)?.forceApprovalReview ?? forceApprovalReview,
           });
         }
       });
@@ -753,6 +767,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           pendingActivities: [],
         },
         toolUseActivities: new Map(),
+        persistHistory,
+        forceApprovalReview,
         accumulatedResponse: '',
         lastTurnFinalized: false,
         suppressLifecycleEventsOnEnd: false,
@@ -868,10 +884,14 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     chatSessionId?: string;
     /** Current UI view - used for prompt customization */
     currentView?: ViewMode;
+    /** Focus-reader document context for slim focused chat sessions */
+    focusDocument?: FocusChatDocument;
     /** File attachments to attach to this turn as native multimodal content blocks */
     attachments?: ChatAttachment[];
     /** Renderer-supplied id for matching the queued user bubble back to its IPC event */
     clientMessageId?: string;
+    /** Persist accepted messages and SDK metadata to normal chat history. */
+    persistHistory?: boolean;
   }
 
   /**
@@ -947,6 +967,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
 
     const sessionKey = buildSessionKey(projectId, chatSessionId);
+    const persistHistory = options.persistHistory ?? true;
 
     // Check if this specific session already exists (resuming)
     const existingSession = sessions.get(sessionKey);
@@ -969,11 +990,22 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     if (options.currentView) {
       (context as PlanContext & { currentView?: ViewMode }).currentView = options.currentView;
     }
+    if (options.focusDocument) {
+      context.focusDocument = options.focusDocument;
+    }
 
     // Get or create chat session for Claude SDK session tracking
     let resumeSessionId: string | undefined;
 
+    if (persistHistory) {
+      // Look up existing chat session for resume
+      const chatSession = deps.chatSessionRepository.get(chatSessionId);
+        resumeSessionId = chatSession.claude_session_id;
+      }
 
+      // Create chat session entry if it doesn't exist yet
+      if (!deps.chatSessionRepository.get(chatSessionId)) {
+      }
     }
 
     // When spawning a fresh SDK session for a chat that already has KPM-side
@@ -981,6 +1013,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // seed the fresh session with a replay of prior turns so the conversation
     // keeps its thread. Skipped for normal resumes — the SDK's own transcript
     // carries that context.
+    if (persistHistory && !resumeSessionId) {
       const stored = deps.chatMessageRepository.getMessagesByChatSession(projectId, chatSessionId);
       const continuationHistory = buildContinuationHistory(stored);
       if (continuationHistory.length > 0) {
@@ -998,6 +1031,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       resumeSessionId,
       context,
       currentView: options.currentView,
+      persistHistory,
+      forceApprovalReview: !!options.focusDocument,
       onMessage: (session, msg) => handleChatSessionMessage(projectId, chatSessionId, session, msg),
     });
   }
@@ -1909,6 +1944,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
       // Persist and finalize — errors here must not prevent chat:done from being sent
       try {
+        if (finalResponse && managed.persistHistory) {
           deps.chatMessageRepository.addMessage(
             projectId,
             'assistant',

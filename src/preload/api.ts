@@ -62,6 +62,7 @@ import type {
   PromptCategory,
   BriefingResult,
   ToolPermission,
+  FocusChatDocument,
   PrStatus,
   PrComment,
   ReviewInboxSnapshot,
@@ -284,6 +285,7 @@ const chat = {
     ipcRenderer.on('chat:thinking', handler);
     return () => ipcRenderer.removeListener('chat:thinking', handler);
   },
+  onFileUpdate: (callback: (data: { projectId: string; chatSessionId?: string; filePath: string; content: string; oldContent?: string | null; forceReview?: boolean }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; filePath: string; content: string; oldContent?: string | null }) => callback(data);
     ipcRenderer.on('chat:file-update', handler);
     return () => ipcRenderer.removeListener('chat:file-update', handler);

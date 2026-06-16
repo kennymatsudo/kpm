@@ -7,8 +7,10 @@
 
 import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import type { BrowserWindow } from 'electron';
+import { buildFocusSystemPrompt, buildSystemPrompt, type PlanContext } from './prompts/index';
 import type { ChatViewMode } from '../../shared/types';
 import { createPermissionHandler, type PermissionContext, type ClaudeMdInterceptFn, type ProjectFileInterceptFn } from './permissions';
+import { getFocusKpmServer, getKpmServer } from './tools/createKpmServer';
 import { getConfig } from '../config';
 import { getClaudeSdkSpawnOptions } from './findClaude';
 import { promptUser } from '../services/core/PermissionPromptService';
@@ -53,6 +55,8 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   // RESPONSE_STYLE, constraints, grounding, the tool tree, and plan rules on
   // every post-idle turn. Prompt caching absorbs the cost (a 30-min idle has
   // already expired the cache TTL).
+  const isFocusSession = !!context.focusDocument;
+  const systemPrompt = isFocusSession ? buildFocusSystemPrompt(context) : buildSystemPrompt(context);
   const effectiveRepoPaths = context.repos.map(r => r.active_worktree_path ?? r.path);
 
   // Create permission handler. canUseTool scopes file access (repos read-only,
@@ -72,6 +76,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   };
 
   // Get MCP server
+  const kpmServer = isFocusSession ? getFocusKpmServer() : getKpmServer();
 
   // Build options
   const claudeConfig = getConfig().claude;
@@ -98,8 +103,10 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     mcpServers: {
       kpm: kpmServer,
       // Merge in user-configured MCP servers (from ~/.claude.json)
+      ...(!isFocusSession ? (enabledUserMcpConfigs ?? {}) : {}),
     },
     // Load user-enabled external MCP plugins (Slack, GitHub, etc.)
+    ...(!isFocusSession && enabledPluginPaths && enabledPluginPaths.length > 0 && {
       plugins: enabledPluginPaths.map(p => ({ type: 'local' as const, path: p })),
     }),
     // Always disable the built-in option-picker tool; Claude asks clarifying
@@ -128,6 +135,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
       ...(disabledMcpTools ?? []),
     ],
     maxTurns: claudeConfig.maxTurns,
+    promptSuggestions: !isFocusSession,
     // Stream partial assistant messages so the renderer can reveal response text
     // token-by-token. Without this the SDK only emits a complete assistant message
     // per turn step, so a paragraph lands all at once after a pause.
@@ -135,6 +143,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     // Forward the explorer subagent's text/thinking (default only emits its
     // tool_use/tool_result). Lets us surface live "what the explorer is doing"
     // progress on its activity card without the text entering the main transcript.
+    forwardSubagentText: !isFocusSession && claudeConfig.forwardSubagentText,
     // Force auto-compaction on regardless of the user's ~/.claude/settings.json
     // (loaded via settingSources). The flag-settings layer has the highest
     // priority, so long discovery sessions summarize earlier context instead of
@@ -143,12 +152,14 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     // Periodic AI-generated progress summaries for Task-tool subagents.
     // Forks the subagent every ~30s and emits a short description on
     // `task_progress.summary`; reuses the prompt cache, so cost is minimal.
+    agentProgressSummaries: !isFocusSession,
     // Read-only exploration subagent. Routes file/symbol/pattern searches
     // off the main conversation so file contents never enter the parent's
     // context — only the summary returns. Sonnet (not Haiku) because the
     // Haiku Explore subagent has a documented context-overflow failure in
     // MCP-heavy setups (anthropics/claude-code#45357); Sonnet is still ~5x
     // cheaper than Opus on cache_read.
+    ...(!isFocusSession && { agents: {
       explorer: {
         description:
           'Use proactively for any read-heavy task: codebase exploration (finding ' +
@@ -168,6 +179,8 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
         model: 'sonnet',
         maxTurns: 50,
       },
+    } }),
+    ...(!isFocusSession && (model === 'opus' || model === 'sonnet') && { thinking: { type: 'adaptive' as const, display: 'summarized' as const } }),
     // Effort level: guides how much thinking Claude applies (works with adaptive thinking)
     ...(effort && { effort }),
     // Fallback to Sonnet if the primary model is unavailable (e.g., rate limited)

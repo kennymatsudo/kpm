@@ -78,6 +78,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     buildSdkOptions: (context: PlanContext, options: {
       model: ModelType;
       effort?: 'low' | 'medium' | 'high' | 'max';
+      currentView?: 'plan' | 'workspace' | 'focus';
       resumeSessionId?: string;
       mainWindow: BrowserWindow | null;
       onClaudeMdEdit?: (projectId: string, newContent: string) => void;

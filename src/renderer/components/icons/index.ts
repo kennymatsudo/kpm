@@ -1,7 +1,14 @@
+export { BookOpenIcon } from './BookOpenIcon';
 export { CheckIcon } from './CheckIcon';
+export { ChevronRightIcon } from './ChevronRightIcon';
 export { CloseIcon } from './CloseIcon';
 export { CopyIcon } from './CopyIcon';
 export { FileTextIcon } from './FileTextIcon';
 export { JiraIcon } from './JiraIcon';
 export { LinearIcon } from './LinearIcon';
+export { ListIcon } from './ListIcon';
+export { MessageCircleIcon } from './MessageCircleIcon';
+export { MoonIcon } from './MoonIcon';
+export { SearchIcon } from './SearchIcon';
 export { SettingsIcon } from './SettingsIcon';
+export { SunIcon } from './SunIcon';

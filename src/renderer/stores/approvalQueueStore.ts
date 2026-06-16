@@ -160,6 +160,8 @@ interface ApprovalQueueState {
     projectId: string,
     filePath: string,
     content: string,
+    oldContent: string | null,
+    options?: { forceReview?: boolean }
   ) => void;
 
   /** Process a file/folder deletion proposal from Claude */
@@ -459,9 +461,12 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
     })();
   },
 
+  processFileUpdate: (projectId, filePath, content, oldContent, options) => {
     void (async () => {
+      const forceReview = options?.forceReview ?? false;
       // Handle project context files specially
       if (isContextFile(filePath)) {
+        if (forceReview || !shouldAutoApplyApprovals()) {
           get().enqueueClaudeMdEdit(oldContent, content);
           return;
         }
@@ -475,6 +480,7 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
         return;
       }
 
+      if (forceReview || !shouldAutoApplyApprovals()) {
         get().enqueueDocumentUpdate(filePath, content, oldContent);
         return;
       }

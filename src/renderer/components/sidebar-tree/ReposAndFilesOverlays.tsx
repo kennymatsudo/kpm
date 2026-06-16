@@ -5,6 +5,7 @@ import type { RepoWorktree } from './RepoContextMenu';
 import { DropdownMenu } from '../ui/DropdownMenu';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { MarkdownDocumentModal } from '../markdown-document-modal';
+import { useFocusModeStore } from '../../stores/focusModeStore';
 import { ImageViewerModal } from '../image-viewer-modal';
 import { LinkToConfluenceModal, ConfluenceSyncPreviewModal } from '../confluence';
 import { FileContextMenu } from './FileContextMenu';
@@ -177,6 +178,7 @@ export function ReposAndFilesOverlays({
   onConfluenceContentUpdated,
 }: ReposAndFilesOverlaysProps) {
   const isViewingClaudeMd = isContextFile(viewingFilename);
+  const openFocusMode = useFocusModeStore((s) => s.open);
 
   return (
     <>
@@ -299,6 +301,18 @@ export function ReposAndFilesOverlays({
         subtitle={isViewingClaudeMd ? 'Project context for AI agents' : 'Markdown document'}
         content={viewingContent}
         placeholder="Start writing..."
+        onEnterFocusMode={
+          viewingPath
+            ? () => {
+                openFocusMode({
+                  path: viewingPath,
+                  title: viewingFilename.replace(/\.md$/, ''),
+                  content: viewingContent,
+                });
+                onCloseViewer();
+              }
+            : undefined
+        }
         icon={
           <div
             className={`w-8 h-8 rounded-lg flex items-center justify-center ${

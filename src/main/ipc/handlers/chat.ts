@@ -26,6 +26,8 @@ export function registerChatHandlers(
     createIpcHandler(
       ChatSchemas.send,
       async (params) => {
+        const { focusedResources, currentView, focusDocument, ...input } = params;
+        const result = await chatService.sendMessage(input, { focusedResources, currentView, focusDocument });
         if (!result.ok) throw new Error(result.error);
       },
       'Failed to send chat message',

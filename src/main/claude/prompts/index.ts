@@ -152,3 +152,42 @@ Rules:
 - Don't put refs inside fenced code blocks — they won't resolve.
 - Prefer a ref over restating the item's title or external key in prose; readers get a live chip.`;
 }
+
+export function buildFocusSystemPrompt(context: PlanContext): string {
+  const { project, repos, focusDocument } = context;
+  const connectedRepos = repos.length > 0
+    ? repos.map((repo) => `- \`${repo.active_worktree_path ?? repo.path}\``).join('\n')
+    : 'No repos connected.';
+
+  const focusedDocumentSection = focusDocument
+    ? `# Focused Document
+Path: \`${focusDocument.path}\`
+Title: ${focusDocument.title}
+
+<document>
+${focusDocument.content}
+</document>`
+    : '# Focused Document\nNo focused document was provided.';
+
+  return `You are a focused document assistant in KPM. The document below is already loaded and is the user's implicit subject unless they ask about something else.
+
+# Project
+Name: ${project.name}
+ID: \`${project.id}\`
+Project folder: \`${project.folder_path}\`
+
+${connectedRepos}
+
+${focusedDocumentSection}
+
+# Operating Rules
+- Answer from the focused document first.
+- Use KPM project-file tools when you need other project documents.
+- Use Read/Grep/Glob for connected repo validation and cite file paths when you reference code.
+- Connected repos are read-only in chat. Do not modify repo files.
+- To change project documents, use \`propose_document_edit\` or \`propose_document_create\`.
+- To change project context files, use \`propose_context_edit\`.
+- All document and context changes from this focused session must go through KPM review before applying.
+- Do not create or modify plan items unless the user explicitly asks.
+- Keep replies concise and utilitarian.`;
+}

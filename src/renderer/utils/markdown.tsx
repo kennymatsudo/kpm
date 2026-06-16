@@ -6,13 +6,17 @@
  */
 
 import type { MarkdownToJSX } from 'markdown-to-jsx';
+import { Children, Fragment, isValidElement, useState } from 'react';
 import type { JSX } from 'react';
 import { openExternalUrl } from '../services/shellService';
 import { PlanRefChip } from '../components/plan-ref/PlanRefChip';
 import { FileRefLink } from '../components/file-ref/FileRefLink';
 import { MermaidDiagram } from '../components/ui/MermaidDiagram';
+import { CheckIcon, CopyIcon } from '../components/icons';
+import { copyToClipboard } from './clipboard';
 import { findRefs, PLAN_REF_REGEX } from '../../shared/planRefs';
 import { isPathLike } from '../../shared/pathRefs';
+import { extractHeadings, slugify, type DocHeading } from './headingOutline';
 
 /**
  * URI scheme used to smuggle a plan reference through markdown-to-jsx as a
@@ -149,6 +153,79 @@ function renderPre({ children, ...props }: React.HTMLAttributes<HTMLPreElement>)
   return <pre {...props}>{children}</pre>;
 }
 
+function codeBlockLanguage(className: string): string | null {
+  const match = /\blang(?:uage)?-([^\s]+)/.exec(className);
+  return match?.[1] ?? null;
+}
+
+function normalizedCodeBlockText(text: string): string {
+  return text.endsWith('\n') ? text.slice(0, -1) : text;
+}
+
+function FocusCodeBlock({
+  children,
+  className = '',
+  source,
+  language,
+  ...props
+}: React.HTMLAttributes<HTMLPreElement> & { source: string; language: string | null }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const ok = await copyToClipboard(normalizedCodeBlockText(source), 'Code');
+    if (!ok) return;
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1400);
+  };
+
+  return (
+    <div className="focus-code-block group/code">
+      <div className="focus-code-block-header">
+        {language ? (
+          <span className="truncate font-mono text-[11px] text-text-muted">{language}</span>
+        ) : (
+          <span aria-hidden="true" />
+        )}
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="rounded p-1 text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary"
+          title={copied ? 'Copied' : 'Copy code'}
+          aria-label={copied ? 'Copied' : 'Copy code'}
+        >
+          {copied ? <CheckIcon className="h-3.5 w-3.5" /> : <CopyIcon className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+      <pre className={className} {...props}>
+        {children}
+      </pre>
+    </div>
+  );
+}
+
+function renderFocusPre({ children, ...props }: React.HTMLAttributes<HTMLPreElement>) {
+  const child = Children.toArray(children)[0];
+  if (isValidElement<React.HTMLAttributes<HTMLElement>>(child)) {
+    const cls = child.props.className ?? '';
+    const source = codeBlockText(child.props.children);
+    if (cls.includes('lang-mermaid') && source !== null) {
+      return <MermaidDiagram source={source.trim()} />;
+    }
+    if (source !== null) {
+      return (
+        <FocusCodeBlock
+          {...props}
+          source={source}
+          language={codeBlockLanguage(cls)}
+        >
+          {children}
+        </FocusCodeBlock>
+      );
+    }
+  }
+  return <pre {...props}>{children}</pre>;
+}
+
 export const markdownOverrides: MarkdownToJSX.Overrides = {
   a: {
     component: renderAnchor,
@@ -170,6 +247,122 @@ export const markdownOptions: MarkdownToJSX.Options = {
   overrides: markdownOverrides,
   disableParsingRawHTML: true,
 };
+
+// Heading extraction lives in a React-free module so it can be unit-tested in
+// isolation; re-exported here since the Focus Mode components import it from
+// this file alongside the renderer-only helpers below.
+export { extractHeadings, slugify };
+export type { DocHeading };
+
+/** Recursively collect the plain text of a React node tree (for heading ids). */
+function nodeText(node: React.ReactNode): string {
+  if (node == null || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join('');
+  if (isValidElement<{ children?: React.ReactNode }>(node)) return nodeText(node.props.children);
+  return '';
+}
+
+interface FocusMarkdownOptions {
+  searchQuery?: string;
+  currentMatchIndex?: number;
+}
+
+/**
+ * Markdown options for the Focus Mode reader: the base overrides plus `h1`–`h6`
+ * components that emit a slug `id`, so the outline can anchor-jump and the
+ * scroll-spy can observe each heading. When search is active, highlights are
+ * rendered inside those same heading components so ids stay stable.
+ *
+ * IMPORTANT: create a fresh instance per *content/search state* and memoize the
+ * rendered `<Markdown>` element on those inputs too. The dedup counter lives in
+ * this closure and advances in document order; reusing one instance across
+ * re-renders would drift the ids.
+ */
+export function createFocusMarkdownOptions({
+  searchQuery = '',
+  currentMatchIndex = 0,
+}: FocusMarkdownOptions = {}): MarkdownToJSX.Options {
+  const seen = new Map<string, number>();
+  const trimmedSearch = searchQuery.trim();
+  const hasSearch = trimmedSearch.length > 0;
+  const processChildren = hasSearch
+    ? createSearchChildrenProcessor(trimmedSearch, currentMatchIndex, { count: 0 })
+    : (children: React.ReactNode) => children;
+
+  const searchableOverride = (Tag: keyof JSX.IntrinsicElements) => ({
+    component: ({ children, ...props }: React.HTMLAttributes<HTMLElement>) => {
+      const Element = Tag as React.ElementType;
+      return <Element {...props}>{processChildren(children)}</Element>;
+    },
+  });
+
+  const heading = (level: number) => ({
+    component: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => {
+      const Tag = `h${level}` as React.ElementType;
+      const base = slugify(nodeText(children)) || 'section';
+      const count = seen.get(base) ?? 0;
+      seen.set(base, count + 1);
+      const id = count === 0 ? base : `${base}-${count}`;
+      return (
+        <Tag id={id} {...props}>
+          {processChildren(children)}
+        </Tag>
+      );
+    },
+  });
+
+  const overrides: MarkdownToJSX.Overrides = {
+    ...markdownOverrides,
+    h1: heading(1),
+    h2: heading(2),
+    h3: heading(3),
+    h4: heading(4),
+    h5: heading(5),
+    h6: heading(6),
+    pre: {
+      component: renderFocusPre,
+    },
+  };
+
+  if (hasSearch) {
+    Object.assign(overrides, {
+      a: {
+        component: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
+          if (href?.startsWith(PLAN_REF_SCHEME)) {
+            return <PlanRefChip id={href.slice(PLAN_REF_SCHEME.length)} />;
+          }
+          return (
+            <a href={href} onClick={(e) => handleLinkClick(e, href)} {...props}>
+              {processChildren(children)}
+            </a>
+          );
+        },
+      },
+      p: searchableOverride('p'),
+      li: searchableOverride('li'),
+      td: searchableOverride('td'),
+      th: searchableOverride('th'),
+      strong: searchableOverride('strong'),
+      em: searchableOverride('em'),
+      code: {
+        component: ({ children, className, ...props }: React.HTMLAttributes<HTMLElement>) => {
+          const isInline = !className;
+          return (
+            <code className={className} {...props}>
+              {isInline ? processChildren(children) : children}
+            </code>
+          );
+        },
+      },
+    });
+  }
+
+  return {
+    overrides,
+    disableParsingRawHTML: true,
+  };
+}
 
 /**
  * Highlights search matches in a text string.
@@ -228,7 +421,12 @@ function highlightSearchMatches(
   return parts.length > 0 ? parts : [text];
 }
 
+function createSearchChildrenProcessor(
   searchQuery: string,
+  currentMatchIndex: number,
+  matchCounter: { count: number }
+) {
+  return (children: React.ReactNode): React.ReactNode => {
     if (typeof children === 'string') {
       const highlighted = highlightSearchMatches(children, searchQuery, currentMatchIndex, matchCounter);
       return highlighted.length === 1 && typeof highlighted[0] === 'string'
@@ -248,6 +446,26 @@ function highlightSearchMatches(
     }
     return children;
   };
+}
+
+/**
+ * Creates markdown-to-jsx overrides with search highlighting.
+ * Wraps text content in highlight marks when matching the search query.
+ *
+ * Usage:
+ * ```tsx
+ * import Markdown from 'markdown-to-jsx';
+ * const options = createSearchHighlightOptions('search term', 0);
+ * <Markdown options={options}>{content}</Markdown>
+ * ```
+ */
+export function createSearchHighlightOverrides(
+  searchQuery: string,
+  currentMatchIndex: number
+): MarkdownToJSX.Overrides {
+  // Shared counter to track match index across all text nodes
+  const matchCounter = { count: 0 };
+  const processChildren = createSearchChildrenProcessor(searchQuery, currentMatchIndex, matchCounter);
 
   // Helper to create a component override
   const createOverride = (Tag: keyof JSX.IntrinsicElements) => ({

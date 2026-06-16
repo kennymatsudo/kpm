@@ -15,6 +15,8 @@ export interface UseLayoutShortcutsOptions {
   onToggleTerminal?: () => void;
   /** Switch project by 1-indexed position (1..10). Called via Cmd+Option+1..9 / Cmd+Option+0. */
   onSwitchProjectByPosition?: (position: number) => void;
+  /** Toggle the focus reader. Bound to Cmd/Ctrl+Shift+M. */
+  onToggleFocusMode?: () => void;
   /** Close the currently focused context (file editor, chat session, or window). */
   onClose?: () => void;
 }
@@ -29,6 +31,7 @@ export function useLayoutShortcuts({
   onOpenGlobalSearch,
   onToggleTerminal,
   onSwitchProjectByPosition,
+  onToggleFocusMode,
   onClose,
 }: UseLayoutShortcutsOptions): void {
   useEffect(() => {
@@ -81,6 +84,14 @@ export function useLayoutShortcuts({
         e.stopPropagation();
         onOpenGlobalSearch?.();
       }
+      // Cmd+Shift+M (Mac) or Ctrl+Shift+M (Windows/Linux) to toggle the focus reader.
+      // Works even in editable elements because Markdown editing already has its
+      // own formatting controls, and the same shortcut exits the reader.
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'M' || e.key === 'm')) {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggleFocusMode?.();
+      }
       // Cmd+` (Mac) or Ctrl+` (Windows/Linux) to toggle embedded terminal panel.
       // Match VS Code: works even in editable elements — backtick is not a standard text shortcut.
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === '`' || e.code === 'Backquote')) {
@@ -132,6 +143,7 @@ export function useLayoutShortcuts({
     // Use capture phase to catch event before it reaches other elements
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [onToggleSidebar, onToggleChat, onMainViewChange, onOpenCommandPalette, onCreateItem, onToggleToolLog, onOpenGlobalSearch, onToggleTerminal, onSwitchProjectByPosition, onToggleFocusMode]);
 
   useEffect(() => {
     return subscribeToCloseContextMenu(() => {

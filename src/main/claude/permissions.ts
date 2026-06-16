@@ -55,6 +55,7 @@ export interface PermissionContext {
    * hints only (see buildViewContextSection), not which tools Claude may call.
    * All KPM tools are available in both plan and workspace views.
    */
+  currentView?: 'plan' | 'workspace' | 'focus';
   /** Optional callback to intercept CLAUDE.md edits */
   onClaudeMdEdit?: ClaudeMdInterceptFn;
   /** Optional callback to intercept project file writes for approval */
@@ -339,6 +340,22 @@ export function createPermissionHandler(
       }
       // Allow other tools (Read, Grep, etc.) in project directory
       return { behavior: 'allow', updatedInput: input };
+    }
+
+    // Connected repos are read-only in chat. Writes happen through board
+    // worktrees, not the chat session.
+    if (targetPath && WRITE_TOOLS.includes(toolName)) {
+      const resolvedTargetPath = resolvePathForScope(targetPath, context.projectPath);
+      const isProjectPath = isWithinDirectory(resolvedTargetPath, context.projectPath);
+      const isConnectedRepoPath = (context.repoPaths ?? []).some(dir =>
+        isWithinDirectory(resolvedTargetPath, dir)
+      );
+      if (isConnectedRepoPath && !isProjectPath) {
+        return {
+          behavior: 'deny',
+          message: 'Connected repositories are read-only in KPM chat. Use a board agent worktree for repository changes.',
+        };
+      }
     }
 
     if (READ_TOOLS.includes(toolName)) {

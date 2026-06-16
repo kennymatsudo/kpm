@@ -18,6 +18,7 @@ import {
   usePlanDomainStore,
   useApprovalQueueStore,
   useFileTreeStore,
+  useFocusModeStore,
 } from '../../stores';
 import type { ApprovalItem } from '../../stores';
 import { toast } from '../../stores/toastStore';
@@ -99,6 +100,13 @@ export function ApprovalOverlays() {
   // Get project store data needed for panels
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
   const planItems = usePlanDomainStore((state) => state.planItems);
+  const { focusModeOpen, focusedDocPath, updateFocusedDocContent } = useFocusModeStore(
+    useShallow((state) => ({
+      focusModeOpen: state.isOpen,
+      focusedDocPath: state.docPath,
+      updateFocusedDocContent: state.updateContent,
+    }))
+  );
 
   // Get execution methods from approval queue store
   const {
@@ -232,6 +240,10 @@ export function ApprovalOverlays() {
         // Refresh the parent directory so the new file appears in the tree
         const parentPath = getParentPath(item.filePath, '');
         void useFileTreeStore.getState().refreshDirectory(parentPath);
+        if (focusModeOpen && focusedDocPath === item.filePath) {
+          updateFocusedDocContent(item.filePath, content);
+          return;
+        }
         // Navigate to workspace and open the newly created document
         emit({
           type: 'navigate-to-view',
@@ -243,6 +255,7 @@ export function ApprovalOverlays() {
     } finally {
       setIsApplying(false);
     }
+  }, [currentProjectId, executeFileWrite, focusModeOpen, focusedDocPath, removeById, updateFocusedDocContent]);
 
   const handleConfirmDelete = useCallback(async (item: ApprovalItem & { type: 'delete' }) => {
     if (!currentProjectId) return;
@@ -307,6 +320,7 @@ export function ApprovalOverlays() {
         whileTap={{ scale: 0.98 }}
         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
         onClick={() => setUserMinimized(false)}
+        className="fixed left-5 bottom-5 group" style={{ zIndex: focusModeOpen ? Z_INDEX.modal + 30 : Z_INDEX.panel }}
       >
         <div className="relative flex items-center gap-2.5 px-3 py-2
                         bg-[color-mix(in_srgb,var(--color-accent)_85%,black)]
@@ -328,6 +342,7 @@ export function ApprovalOverlays() {
         </div>
       </m.button>
     );
+  }, [queueLength, isPanelOpen, focusModeOpen]);
 
   if (!currentItem && !collapsedBadge) return null;
 
@@ -410,6 +425,12 @@ export function ApprovalOverlays() {
                        bg-surface-1
                        border-r border-border-strong
                        flex flex-col overflow-hidden"
+            style={{
+              zIndex: focusModeOpen ? Z_INDEX.modal + 20 : Z_INDEX.panel - 10,
+              top: focusModeOpen ? 0 : 'var(--titlebar-height)',
+              height: focusModeOpen ? '100%' : 'calc(100% - var(--titlebar-height))',
+              width: panelWidth,
+            }}
           >
             {/* Panel header */}
             <div className="relative flex items-center justify-between px-4 py-2.5

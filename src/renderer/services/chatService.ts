@@ -3,6 +3,7 @@ import type {
   AgentEffortLevel,
   ChatViewMode,
   ClaudeModel,
+  FocusChatDocument,
   FocusedResource,
   PlanAction,
   SlashCommandInfo,
@@ -28,6 +29,7 @@ export interface FileUpdateEventData {
   filePath: string;
   content: string;
   oldContent?: string | null;
+  forceReview?: boolean;
 }
 
 export interface FileDeleteEventData {
@@ -158,6 +160,7 @@ export function sendChatMessage(params: {
   chatSessionId: string;
   currentView?: ChatViewMode;
   clientMessageId: string;
+  focusDocument?: FocusChatDocument;
 }) {
   return window.api.chat.sendMessage(
     params.projectId,
@@ -169,6 +172,7 @@ export function sendChatMessage(params: {
     params.currentView,
     params.clientMessageId,
     params.effort as AgentEffortLevel | undefined,
+    params.focusDocument,
   );
 }
 

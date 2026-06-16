@@ -9,6 +9,7 @@ import type {
   ChatSessionSummary,
   ChatViewMode,
   ClaudeModel,
+  FocusChatDocument,
   FocusedResource,
   SessionState,
 } from '../../../shared/types';
@@ -59,6 +60,7 @@ export interface SendChatMessageInput {
 export interface ChatPromptContext {
   focusedResources: FocusedResource[];
   currentView?: ChatViewMode;
+  focusDocument?: FocusChatDocument;
 }
 
 /**
@@ -172,6 +174,7 @@ export function createChatService(deps: ChatServiceDeps) {
             focusedResources: (promptContext?.focusedResources ?? []) as { type: string; path: string }[],
             chatSessionId,
             currentView: promptContext?.currentView,
+            focusDocument: promptContext?.focusDocument,
             attachments: attachments.length > 0 ? attachments : undefined,
             clientMessageId,
           }

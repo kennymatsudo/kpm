@@ -2,6 +2,7 @@
  * Types for Claude prompt context.
  */
 
+import type { Project, Repo, Attachment, PlanItem, FocusedResource, ChatViewMode, TaskPromptTemplate, FocusChatDocument } from '../../../shared/types';
 import type { ChatApprovalMode } from '../../../shared/appSettings';
 
 export interface PlanContext {
@@ -18,6 +19,8 @@ export interface PlanContext {
   taskPromptTemplate?: TaskPromptTemplate | null;
   /** Project context file content (AGENTS.md or CLAUDE.md), if it exists */
   claudeMdContent?: string | null;
+  /** Focus-reader document context for slim focused chat sessions */
+  focusDocument?: FocusChatDocument;
   /** Prompt content resolver for configurable prompts (user override > default) */
   getPromptContent?: (key: string) => string;
   /**

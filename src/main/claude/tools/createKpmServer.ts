@@ -39,6 +39,7 @@ import type { PlanAction } from '../../../shared/types';
 
 // Cached tools array - collected once at warmup, reused per session
 let cachedTools: Parameters<typeof createSdkMcpServer>[0]['tools'] | null = null;
+let cachedFocusTools: Parameters<typeof createSdkMcpServer>[0]['tools'] | null = null;
 
 interface KpmToolRuntimeDeps {
   container: Pick<
@@ -60,6 +61,7 @@ let kpmToolRuntimeDeps: KpmToolRuntimeDeps | null = null;
 function initializeKpmToolRuntime(deps: KpmToolRuntimeDeps): void {
   kpmToolRuntimeDeps = deps;
   cachedTools = null;
+  cachedFocusTools = null;
 }
 
 function getKpmToolRuntime(): KpmToolRuntimeDeps {
@@ -465,6 +467,38 @@ function collectTools() {
 }
 
 /**
+ * Collect the reduced KPM tool set used by focus-reader chat sessions.
+ */
+function collectFocusTools() {
+  if (cachedFocusTools) return cachedFocusTools;
+
+  const { container, services } = getKpmToolRuntime();
+  const projectRepo = container.projects;
+  const planItemRepo = container.planItems;
+
+  const claudeMdEditTools = createClaudeMdEditTools(readProjectContextFileWithPending, emitClaudeMdUpdate);
+  const documentReadTools = createDocumentReadTools(readProjectFileWithPending);
+  const documentCreateTools = createDocumentCreateTools(emitDocumentUpdate);
+  const documentEditTools = createDocumentEditTools(readProjectFileWithPending, emitDocumentUpdate);
+  const listProjectFilesTools = createListProjectFilesTools({
+    fileExplorerService: services.fileExplorerService,
+  });
+  const planRefTools = createPlanRefTools({
+    planItems: planItemRepo,
+    projects: projectRepo,
+  });
+
+    ...claudeMdEditTools,
+    ...documentReadTools,
+    ...documentCreateTools,
+    ...documentEditTools,
+    ...listProjectFilesTools,
+    ...planRefTools,
+  ];
+
+}
+
+/**
  * Initialize KPM tools at app startup to avoid lazy initialization delays.
  */
 export function warmupMcpSdk(deps: KpmToolRuntimeDeps): void {
@@ -477,6 +511,7 @@ export function warmupMcpSdk(deps: KpmToolRuntimeDeps): void {
   console.log('[KPM Server] Initializing tools...');
   const startTime = Date.now();
   collectTools();
+  collectFocusTools();
   const elapsed = Date.now() - startTime;
   console.log(`[KPM Server] Tools initialized in ${elapsed}ms`);
 }
@@ -498,6 +533,16 @@ export function getKpmServer() {
     // behind tool search) and that the server is connected before the first
     // turn — required since the init message would otherwise report kpm as
     // 'pending' under the SDK's background-connection default.
+    alwaysLoad: true,
+  });
+}
+
+export function getFocusKpmServer() {
+  const tools = collectFocusTools();
+  return createSdkMcpServer({
+    name: 'kpm',
+    version: '1.0.0',
+    tools,
     alwaysLoad: true,
   });
 }

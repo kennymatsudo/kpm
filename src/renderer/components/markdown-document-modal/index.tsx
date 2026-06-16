@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { Markdown } from 'markdown-to-jsx';
+import { BookOpenIcon, CloseIcon } from '../icons';
 import { MotionButton } from '../ui/MotionButton';
 import { DiffViewer, computeDiff, getDiffStatsFromDiff } from '../ui/DiffViewer';
 import { Z_INDEX } from '../../constants/zIndex';
@@ -154,6 +155,8 @@ interface MarkdownDocumentModalProps {
   oldContent?: string | null;
   /** Stable identity for the document (e.g. file path), used to remember scroll position across opens */
   documentKey?: string;
+  /** When provided, shows a "Focus" action that opens the document in the distraction-free reader. */
+  onEnterFocusMode?: () => void;
 }
 
 export function MarkdownDocumentModal({
@@ -171,6 +174,7 @@ export function MarkdownDocumentModal({
   showAcceptButton = false,
   oldContent,
   documentKey,
+  onEnterFocusMode,
 }: MarkdownDocumentModalProps) {
   // Determine initial view mode based on oldContent
   const initialViewMode: ViewMode = oldContent !== undefined ? 'diff' : initialEditMode ? 'edit' : 'preview';
@@ -355,6 +359,16 @@ export function MarkdownDocumentModal({
                 </div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                {onEnterFocusMode && !hasChanges && (
+                  <button
+                    onClick={onEnterFocusMode}
+                    className="text-text-muted hover:text-text-primary transition-colors p-2 hover:bg-surface-2 rounded-lg"
+                    title="Open in focus reader"
+                    aria-label="Open in focus reader"
+                  >
+                    <BookOpenIcon className="w-5 h-5" />
+                  </button>
+                )}
                 {onDelete && (
                   <button
                     onClick={onDelete}

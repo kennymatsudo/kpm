@@ -42,6 +42,13 @@ const focusedResourceSchema = z.discriminatedUnion('type', [
 // =============================================================================
 
 /** Current UI view mode - used for prompt customization, not session separation */
+export const chatViewModeSchema = z.enum(['plan', 'workspace', 'focus']).optional();
+
+const focusChatDocumentSchema = z.object({
+  path: z.string().min(1).max(1000),
+  title: z.string().min(1).max(300),
+  content: z.string().max(300000),
+});
 
 // =============================================================================
 // Chat Schemas
@@ -58,6 +65,8 @@ export const ChatSchemas = {
       clientMessageId: uuid.optional(),
       /** Current UI view - used for prompt customization */
       currentView: chatViewModeSchema,
+      /** Focus-reader document context for slim focused chat sessions */
+      focusDocument: focusChatDocumentSchema.optional(),
 
   cancel: z.object({
     projectId: uuid,

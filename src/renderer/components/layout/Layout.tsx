@@ -10,6 +10,7 @@ import { KeyboardShortcuts } from '../keyboard-shortcuts/KeyboardShortcuts';
 import { CommandPalette } from '../command-palette';
 import { GlobalSearch } from '../global-search';
 import { ApprovalOverlays } from './ApprovalOverlays';
+import { FocusMode } from '../focus-mode/FocusMode';
 import { ToastContainer } from '../ui';
 import { BriefingModal } from '../briefing';
 import { RegenerateContextModal } from '../onboarding';
@@ -28,7 +29,9 @@ import {
   useSettingsUIStore,
   useBriefingStore,
   useTerminalStore,
+  useFocusModeStore,
 } from '../../stores';
+import { getBaseName } from '../../utils/path';
 import { TerminalPanel } from '../terminal';
 import { cancelChatSession, disconnectChatSession } from '../../services/chatService';
 import { useToolLog } from '../../hooks/useToolLog';
@@ -233,6 +236,24 @@ export const Layout = memo(function Layout({
   const currentProject = projects.find((p) => p.id === currentProjectId) ?? null;
   const terminalCwd = currentProject?.folder_path;
 
+  // Toggle the focus reader: close it if open, otherwise open it for the
+  // markdown document currently in the workspace editor (no-op if none).
+  const handleToggleFocusMode = useCallback(() => {
+    const focus = useFocusModeStore.getState();
+    if (focus.isOpen) {
+      focus.close();
+      return;
+    }
+    const editing = useWorkspaceStore.getState().editingFile;
+    if (editing?.path.toLowerCase().endsWith('.md')) {
+      focus.open({
+        path: editing.path,
+        title: getBaseName(editing.path, 'Untitled'),
+        content: editing.content,
+      });
+    }
+  }, []);
+
   // Keyboard shortcuts
   useLayoutShortcuts({
     onToggleSidebar: () => setSidebarCollapsed((prev) => !prev),
@@ -244,6 +265,7 @@ export const Layout = memo(function Layout({
     onOpenGlobalSearch: handleOpenGlobalSearch,
     onToggleTerminal: toggleTerminal,
     onSwitchProjectByPosition: handleSwitchProjectByPosition,
+    onToggleFocusMode: handleToggleFocusMode,
     onClose: handleClose,
   });
 
@@ -409,6 +431,7 @@ const LayoutOverlays = memo(function LayoutOverlays({
       <KeyboardShortcuts />
       <CommandPalette isOpen={isCommandPaletteOpen} onClose={closeCommandPalette} />
       <GlobalSearch />
+      <FocusMode />
       <ApprovalOverlays />
       <BriefingModal />
       <RegenerateContextModal />

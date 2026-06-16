@@ -1,7 +1,9 @@
 import { memo, useCallback, useEffect, useState, useMemo } from 'react';
+import { useWorkspaceStore, useHasUnsavedChanges, useProjectUiDomainStore, useFocusModeStore } from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
 import { CodeEditor, MarkdownEditor } from '../ui';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
+import { BookOpenIcon } from '../icons';
 import type { FocusedResource } from '../../../shared/types';
 import { getBaseName } from '../../utils/path';
 
@@ -27,6 +29,7 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
     }))
   );
   const hasUnsavedChanges = useHasUnsavedChanges();
+  const openFocusMode = useFocusModeStore((s) => s.open);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
 
@@ -98,6 +101,26 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
     }
     onClose();
   }, [hasUnsavedChanges, onClose]);
+
+  const handleEnterFocus = useCallback(() => {
+    if (!editingFile) return;
+    openFocusMode({
+      path: editingFile.path,
+      title: filename,
+      content: editingFile.content,
+    });
+  }, [editingFile, filename, openFocusMode]);
+
+  const focusButton = isMarkdown ? (
+    <button
+      onClick={handleEnterFocus}
+      className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-surface-3 text-text-muted hover:text-text-primary transition-all flex-shrink-0"
+      title="Open in focus reader"
+      aria-label="Open in focus reader"
+    >
+      <BookOpenIcon className="w-4 h-4" />
+    </button>
+  ) : null;
 
   // Get file type icon
   const FileTypeIcon = () => {
@@ -188,6 +211,18 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
               </span>
             </div>
           </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {focusButton}
+            <button
+              onClick={handleClose}
+              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-surface-3 text-text-muted hover:text-text-primary transition-all"
+              title="Close editor (Esc)"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Error display */}
@@ -248,6 +283,7 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
+          {focusButton}
           <ContextButton />
           <button
             onClick={handleClose}
