@@ -65,6 +65,7 @@ export { useWorkspaceStore, isEditableFile, useHasUnsavedChanges } from './works
 export type { FileSource, SelectedFile, EditingFile } from './workspaceStore';
 
 // Approval Queue
+export { useApprovalQueueStore } from './approvalQueueStore';
 export type {
   ApprovalItem,
   PendingPlanActionsItem,

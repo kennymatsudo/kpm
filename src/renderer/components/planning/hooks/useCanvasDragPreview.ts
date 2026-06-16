@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import type { TreeNode } from '../../../utils/planHierarchy';
 
 interface DragPreviewState {
@@ -16,6 +17,7 @@ interface CanvasDragPreviewDeps {
 
 interface UseCanvasDragPreviewReturn {
   dragPreview: DragPreviewState | null;
+  setDragPreview: Dispatch<SetStateAction<DragPreviewState | null>>;
   handleDragStart: (item: TreeNode, x: number, y: number, offsetX: number, offsetY: number, depth: number, selectedIds: string[]) => void;
   handleDragEnd: () => void;
   handleDragEnter: () => void;
@@ -53,6 +55,7 @@ export function useCanvasDragPreview({
     setDragPreview(null);
   }, []);
 
+  const handleDragEnter = useCallback(() => {}, []);
 
   const handleContainerDragEnd = useCallback(() => {
     setDragPreview(null);

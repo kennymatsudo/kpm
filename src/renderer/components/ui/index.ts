@@ -12,6 +12,7 @@ export type { CodeEditorProps } from './CodeEditor';
 export { DiffViewer, InlineDiff, computeDiff, getDiffStats, getInlineDiffHunks } from './DiffViewer';
 export type { DiffLine, InlineDiffHunk } from './DiffViewer';
 export { ToastContainer } from './Toast';
+export { DropdownMenu } from './DropdownMenu';
 export { Badge } from './Badge';
 export type { BadgeVariant, BadgeSize } from './Badge';
 export { Tooltip, TooltipProvider } from './Tooltip';

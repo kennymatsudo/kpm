@@ -398,6 +398,8 @@ export const ProcessTimeline = memo(function ProcessTimeline({
   elapsedSeconds,
 }: ProcessTimelineProps) {
   const steps = useMemo(
+    () => buildSteps({ segments, streamingThinking, streamingActivities }),
+    [segments, streamingThinking, streamingActivities],
   );
   const rows = useMemo(() => collapseToolRuns(steps), [steps]);
 

@@ -82,6 +82,10 @@ import type {
 } from '../shared/types';
 import type {
   AgentActivity,
+  AgentSessionStatePayload,
+  AgentSessionActivityPayload,
+  AgentSessionQuestionPayload,
+  AgentSessionCompletePayload,
 } from '../shared/agent-types';
 import type {
   ClaudeUsageEvent,
@@ -1226,18 +1230,26 @@ const agentSessions = {
     ipcRenderer.invoke(IPC_CHANNELS.agentSession.getCommitFiles, { devSessionId, sha }),
 
   // Event listeners
+  onStateChanged: (callback: (event: AgentSessionStatePayload) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, event: AgentSessionStatePayload) => callback(event);
     ipcRenderer.on('agent-session:state-changed', handler);
     return () => ipcRenderer.removeListener('agent-session:state-changed', handler);
   },
 
+  onActivity: (callback: (event: AgentSessionActivityPayload) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, event: AgentSessionActivityPayload) => callback(event);
     ipcRenderer.on('agent-session:activity', handler);
     return () => ipcRenderer.removeListener('agent-session:activity', handler);
   },
 
+  onQuestion: (callback: (event: AgentSessionQuestionPayload) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, event: AgentSessionQuestionPayload) => callback(event);
     ipcRenderer.on('agent-session:question', handler);
     return () => ipcRenderer.removeListener('agent-session:question', handler);
   },
 
+  onComplete: (callback: (event: AgentSessionCompletePayload) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, event: AgentSessionCompletePayload) => callback(event);
     ipcRenderer.on('agent-session:complete', handler);
     return () => ipcRenderer.removeListener('agent-session:complete', handler);
   },

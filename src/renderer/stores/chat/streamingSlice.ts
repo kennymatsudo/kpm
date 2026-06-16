@@ -1,6 +1,7 @@
 import { streamingBuffer } from './utils';
 
 export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
+  'appendChunk' | 'appendThinking' | 'flushStreamingContent' | 'finalizeMessage' | 'addActivity' | 'updateActivity'
 > {
   return {
     appendChunk: (chatSessionId, chunk, _segmentId = 0, precedingActivities) => {

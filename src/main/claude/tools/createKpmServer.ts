@@ -419,6 +419,7 @@ function collectTools() {
   const relationTools = createRelationTools(planItemRepo);
   const groupTools = createGroupTools(groupRepo, planItemRepo, emitPlanActions);
   const planChangeTools = createPlanChangeTools(emitPlanActions);
+  const jiraTools = createJiraTools();
   const storybookTools = createStorybookTools(projectRepo);
   const claudeMdEditTools = createClaudeMdEditTools(readProjectContextFileWithPending, emitClaudeMdUpdate);
   const documentReadTools = createDocumentReadTools(readProjectFileWithPending);

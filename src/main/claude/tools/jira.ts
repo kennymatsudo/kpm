@@ -23,6 +23,7 @@ function formatJiraError(error: unknown) {
   return toolError(error instanceof Error ? error.message : 'Unknown error');
 }
 
+export function createJiraTools() {
   const db = getDatabase();
 
   return [

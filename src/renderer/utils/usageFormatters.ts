@@ -3,6 +3,7 @@
  *
  * - Currency: always 2 decimals when >= $0.01; auto-extends to 4 decimals
  *   for sub-cent amounts so "$0.0023" doesn't round to "$0.00".
+ * - Tokens: thousands-separated for tables.
  * - Sources/models: pretty labels for the dashboard taxonomy.
  */
 

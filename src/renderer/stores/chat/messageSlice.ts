@@ -3,6 +3,7 @@ import { createInitialPerSessionState, createInitialChatState } from './baseStat
 import { streamingBuffer } from './utils';
 
 export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
+  'addUserMessage' | 'clearQueuedFlag' | 'removeQueuedUserMessage' | 'setRetrying' | 'setError' | 'clearError' | 'setDraftMessage' | 'setPendingAttachments' | 'setSuggestions' | 'setClaudeSessionId' | 'setSessionTitle' | 'setMcpStatus' | 'setLastTurnUsage' | 'setSessionState' | 'reset' | 'resetProjectState'
 > {
   return {
     addUserMessage: (chatSessionId, content, attachments, options) => set((state) => {
