@@ -3,6 +3,7 @@ import * as path from 'path';
 import {
   clearSessionCache as clearPermissionSessionCache,
 } from '../../claude/permissions';
+import type { IChatMessageRepository, IChatSessionRepository, IProjectRepository } from '../../db/interfaces';
 import type {
   ChatAttachment,
   ChatMessage,
@@ -19,6 +20,7 @@ import type { StreamingSessionService } from '../streaming/StreamingSessionServi
 export interface ChatServiceDeps {
   projects: IProjectRepository;
   chatMessages: IChatMessageRepository;
+  chatSessions: IChatSessionRepository;
   loadPersistedPermissions: (projectId: string) => void;
   clearSessionCache?: (projectId: string) => void;
   streamingSessionService: Pick<
@@ -61,6 +63,18 @@ export interface ChatPromptContext {
   focusedResources: FocusedResource[];
   currentView?: ChatViewMode;
   focusDocument?: FocusChatDocument;
+}
+
+export interface FocusDocumentSessionInput {
+  projectId: string;
+  path: string;
+  title: string;
+  contentHash: string;
+}
+
+export interface FocusDocumentSessionResult {
+  chatSessionId: string;
+  messages: ChatMessage[];
 }
 
 /**
@@ -177,6 +191,7 @@ export function createChatService(deps: ChatServiceDeps) {
             focusDocument: promptContext?.focusDocument,
             attachments: attachments.length > 0 ? attachments : undefined,
             clientMessageId,
+            persistHistory: true,
           }
         );
 
@@ -310,6 +325,58 @@ export function createChatService(deps: ChatServiceDeps) {
         return success({
           messages,
           chatSessionId,
+        });
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
+    async getOrCreateFocusDocumentSession(
+      input: FocusDocumentSessionInput,
+    ): AsyncResult<FocusDocumentSessionResult> {
+      const { projectId, path: documentPath, title, contentHash } = input;
+
+      try {
+        const project = deps.projects.get(projectId);
+        if (!project) {
+          return failure('Project not found');
+        }
+
+        const trimmedTitle = title.trim() || documentPath;
+        const existing = deps.chatSessions.getFocusDocument(projectId, documentPath);
+        let chatSession = existing;
+
+        if (chatSession) {
+          const contentChanged = chatSession.focus_document_hash !== contentHash;
+          if (contentChanged) {
+            const disconnectResult = await deps.streamingSessionService.disconnectChatSession(
+              projectId,
+              chatSession.id,
+            );
+            if (!disconnectResult.ok) {
+              return failure(disconnectResult.error);
+            }
+          }
+          chatSession = deps.chatSessions.updateFocusDocument(
+            chatSession.id,
+            trimmedTitle,
+            contentHash,
+            contentChanged,
+          );
+        } else {
+          chatSession = deps.chatSessions.createFocusDocument(
+            randomUUID(),
+            projectId,
+            documentPath,
+            trimmedTitle,
+            contentHash,
+          );
+        }
+
+        const messages = deps.chatMessages.getMessagesByChatSession(projectId, chatSession.id);
+        return success({
+          chatSessionId: chatSession.id,
+          messages,
         });
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));

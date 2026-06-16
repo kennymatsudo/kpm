@@ -198,6 +198,15 @@ export function loadChatSession(projectId: string, chatSessionId: string) {
   return window.api.chat.loadSession(projectId, chatSessionId);
 }
 
+export function getFocusDocumentChatSession(
+  projectId: string,
+  path: string,
+  title: string,
+  contentHash: string,
+) {
+  return window.api.chat.getFocusDocumentSession(projectId, path, title, contentHash);
+}
+
 export function subscribeToChatEvents(handlers: {
   onChunk?: (data: ChunkEventData) => void;
   onPlanActions?: (data: PlanActionsEventData) => void;

@@ -3323,6 +3323,27 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1091,
+    name: '091_focus_document_chat_sessions',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE chat_sessions ADD COLUMN scope TEXT NOT NULL DEFAULT 'main'
+          CHECK(scope IN ('main', 'focus_document'));
+        ALTER TABLE chat_sessions ADD COLUMN focus_document_path TEXT;
+        ALTER TABLE chat_sessions ADD COLUMN focus_document_title TEXT;
+        ALTER TABLE chat_sessions ADD COLUMN focus_document_hash TEXT;
+        ALTER TABLE chat_sessions ADD COLUMN last_opened_at DATETIME;
+
+        CREATE INDEX IF NOT EXISTS idx_chat_sessions_project_scope
+          ON chat_sessions(project_id, scope);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_sessions_focus_document
+          ON chat_sessions(project_id, focus_document_path)
+          WHERE scope = 'focus_document' AND focus_document_path IS NOT NULL;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

@@ -105,6 +105,13 @@ export const ChatSchemas = {
     chatSessionId: uuid,
   }),
 
+  getFocusDocumentSession: z.object({
+    projectId: uuid,
+    path: z.string().min(1).max(1000),
+    title: z.string().max(300).default(''),
+    contentHash: z.string().min(1).max(128),
+  }),
+
   getActiveSessions: z.object({
     projectId: uuid,
   }),

@@ -37,6 +37,9 @@ export type {
 /** Available Claude models for chat sessions */
 export type ClaudeModel = 'opus' | 'sonnet';
 
+/** Chat session scope controls where a persisted conversation is surfaced. */
+export type ChatSessionScope = 'main' | 'focus_document';
+
 export interface CodexStatus {
   installed: boolean;
   authenticated: boolean;
@@ -767,6 +770,11 @@ export interface ChatSession {
   id: string;  // Same as chat_session_id in chat_messages
   project_id: string;
   claude_session_id: string | null;  // Claude SDK session ID for resume
+  scope: ChatSessionScope;
+  focus_document_path: string | null;
+  focus_document_title: string | null;
+  focus_document_hash: string | null;
+  last_opened_at: string | null;
   title: string | null;
   created_at: string;
 }

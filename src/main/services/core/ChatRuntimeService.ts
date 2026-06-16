@@ -156,6 +156,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
   const chatService = createChatService({
     projects: container.projects,
     chatMessages: container.chatMessages,
+    chatSessions: container.chatSessions,
     loadPersistedPermissions: (projectId: string) => {
       const result = services.permissionService.loadPersistedPermissions(projectId);
       if (!result.ok) {

@@ -23,7 +23,10 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
   deps: ChatServiceDeps;
   spies: {
     addMessage: ReturnType<typeof vi.fn>;
+    createFocusDocument: ReturnType<typeof vi.fn>;
+    updateFocusDocument: ReturnType<typeof vi.fn>;
     sendChatMessage: ReturnType<typeof vi.fn>;
+    disconnectChatSession: ReturnType<typeof vi.fn>;
     emitChatError: ReturnType<typeof vi.fn>;
   };
 } {
@@ -39,7 +42,32 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
   }));
 
   const sendChatMessage = vi.fn(async () => success(undefined));
+  const disconnectChatSession = vi.fn(async () => success(undefined));
   const emitChatError = vi.fn();
+  const createFocusDocument = vi.fn((id: string, projectId: string, documentPath: string, title: string, contentHash: string) => ({
+    id,
+    project_id: projectId,
+    claude_session_id: null,
+    scope: 'focus_document' as const,
+    focus_document_path: documentPath,
+    focus_document_title: title,
+    focus_document_hash: contentHash,
+    last_opened_at: '2026-01-01T00:00:00.000Z',
+    title: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+  }));
+  const updateFocusDocument = vi.fn((id: string, title: string, contentHash: string) => ({
+    id,
+    project_id: project.id,
+    claude_session_id: null,
+    scope: 'focus_document' as const,
+    focus_document_path: 'docs/a.md',
+    focus_document_title: title,
+    focus_document_hash: contentHash,
+    last_opened_at: '2026-01-01T00:00:00.000Z',
+    title: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+  }));
 
   const deps: ChatServiceDeps = {
     projects: {
@@ -48,13 +76,26 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
     } as unknown as ChatServiceDeps['projects'],
     chatMessages: {
       addMessage,
+      getMessagesByChatSession: vi.fn(() => []),
     } as unknown as ChatServiceDeps['chatMessages'],
+    chatSessions: {
+      create: vi.fn(),
+      createFocusDocument,
+      get: vi.fn(),
+      getFocusDocument: vi.fn(),
+      updateFocusDocument,
+      updateClaudeSessionId: vi.fn(),
+      updateTitle: vi.fn(),
+      clearClaudeSessionIdsByProject: vi.fn(),
+      delete: vi.fn(),
+    },
     loadPersistedPermissions: vi.fn(),
     clearSessionCache: vi.fn(),
     streamingSessionService: {
       sendChatMessage,
       interruptChatSession: vi.fn(),
       cancelQueuedChatMessage: vi.fn(),
+      disconnectChatSession,
       getActiveSessions: vi.fn(),
       getChatSessionState: vi.fn(),
     },
@@ -184,5 +225,112 @@ describe('ChatService.sendMessage', () => {
     expect(spies.sendChatMessage).toHaveBeenCalledTimes(1);
     const [, , options] = spies.sendChatMessage.mock.calls[0];
     expect(options.attachments).toBeUndefined();
+  });
+
+  it('persists focus document chat turns', async () => {
+    const { deps, spies } = makeDeps();
+    const service = createChatService(deps);
+
+    const result = await service.sendMessage(
+      {
+        projectId: 'project-1',
+        message: 'summarize this section',
+        chatSessionId: 'session-1',
+      },
+      {
+        focusedResources: [],
+        currentView: 'focus',
+        focusDocument: {
+          path: 'docs/a.md',
+          title: 'A',
+          content: '# A',
+        },
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    const [, , options] = spies.sendChatMessage.mock.calls[0];
+    expect(options.persistHistory).toBe(true);
+    expect(options.focusDocument).toEqual({ path: 'docs/a.md', title: 'A', content: '# A' });
+    expect(spies.addMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ChatService.getOrCreateFocusDocumentSession', () => {
+  it('creates a scoped focus document session when none exists', async () => {
+    const { deps, spies } = makeDeps();
+    const service = createChatService(deps);
+
+    const result = await service.getOrCreateFocusDocumentSession({
+      projectId: 'project-1',
+      path: 'docs/a.md',
+      title: 'A',
+      contentHash: 'hash-a',
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.chatSessionId).toBeTruthy();
+      expect(result.data.messages).toEqual([]);
+    }
+    expect(spies.createFocusDocument).toHaveBeenCalledWith(
+      expect.any(String),
+      'project-1',
+      'docs/a.md',
+      'A',
+      'hash-a',
+    );
+    expect(spies.disconnectChatSession).not.toHaveBeenCalled();
+  });
+
+  it('disconnects the live SDK session when document content changed', async () => {
+    const existing = {
+      id: 'session-1',
+      project_id: 'project-1',
+      claude_session_id: 'claude-1',
+      scope: 'focus_document' as const,
+      focus_document_path: 'docs/a.md',
+      focus_document_title: 'A',
+      focus_document_hash: 'old-hash',
+      last_opened_at: '2026-01-01T00:00:00.000Z',
+      title: null,
+      created_at: '2026-01-01T00:00:00.000Z',
+    };
+    const { deps, spies } = makeDeps({
+      chatSessions: {
+        create: vi.fn(),
+        createFocusDocument: vi.fn(),
+        get: vi.fn(),
+        getFocusDocument: vi.fn(() => existing),
+        updateFocusDocument: vi.fn((id: string, title: string, contentHash: string, clearClaudeSessionId: boolean) => ({
+          ...existing,
+          id,
+          focus_document_title: title,
+          focus_document_hash: contentHash,
+          claude_session_id: clearClaudeSessionId ? null : existing.claude_session_id,
+        })),
+        updateClaudeSessionId: vi.fn(),
+        updateTitle: vi.fn(),
+        clearClaudeSessionIdsByProject: vi.fn(),
+        delete: vi.fn(),
+      },
+    });
+    const service = createChatService(deps);
+
+    const result = await service.getOrCreateFocusDocumentSession({
+      projectId: 'project-1',
+      path: 'docs/a.md',
+      title: 'A',
+      contentHash: 'new-hash',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(spies.disconnectChatSession).toHaveBeenCalledWith('project-1', 'session-1');
+    expect(deps.chatSessions.updateFocusDocument).toHaveBeenCalledWith(
+      'session-1',
+      'A',
+      'new-hash',
+      true,
+    );
   });
 });

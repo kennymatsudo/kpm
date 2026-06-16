@@ -111,6 +111,7 @@ export const IPC_CHANNELS = {
     getSessionState: 'chat:get-session-state',
     getSessionHistory: 'chat:get-session-history',
     loadSession: 'chat:load-session',
+    getFocusDocumentSession: 'chat:get-focus-document-session',
     getUsage: 'chat:get-usage',
     getMessages: 'chat:get-messages',
     getSlashCommands: 'chat:get-slash-commands',

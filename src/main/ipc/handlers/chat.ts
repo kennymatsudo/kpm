@@ -181,4 +181,17 @@ export function registerChatHandlers(
       'Failed to load chat session',
     ),
   );
+
+  ipcMain.handle(
+    IPC_CHANNELS.chat.getFocusDocumentSession,
+    createIpcHandler(
+      ChatSchemas.getFocusDocumentSession,
+      async (params) => {
+        const result = await chatService.getOrCreateFocusDocumentSession(params);
+        if (!result.ok) throw new Error(result.error);
+        return result.data;
+      },
+      'Failed to load focus document chat session',
+    ),
+  );
 }

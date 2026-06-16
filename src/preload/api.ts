@@ -48,6 +48,7 @@ import type {
   DevSession,
   DevSessionWithPlanItem,
   ClaudeModel,
+  ChatSessionScope,
   ChatViewMode,
   FileNode,
   Group,
@@ -213,6 +214,9 @@ const chat = {
       IPC_CHANNELS.chat.loadSession,
       { projectId, chatSessionId },
     ).then((result) => (result.success ? result : result)),
+      IPC_CHANNELS.chat.getFocusDocumentSession,
+      { projectId, path, title, contentHash },
+    ).then((result) => (result.success ? result : result)),
   onChunk: (callback: (data: {
     projectId: string;
     chatSessionId?: string;
@@ -313,7 +317,9 @@ const chat = {
   /** Get all active sessions for a project (multi-session support) */
   getActiveSessions: (projectId: string): Promise<{
     success: boolean;
+    sessions?: { chatSessionId: string; scope: ChatSessionScope; state: SessionState; isProcessing: boolean; title?: string | null }[];
     error?: string;
+  }> => invokeFlat<{ sessions: { chatSessionId: string; scope: ChatSessionScope; state: SessionState; isProcessing: boolean; title?: string | null }[] }>(
     IPC_CHANNELS.chat.getActiveSessions,
     { projectId },
   ).then((result) => (result.success ? { success: true, sessions: result.sessions } : result)),

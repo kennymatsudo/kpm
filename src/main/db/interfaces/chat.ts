@@ -34,8 +34,25 @@ export interface IChatMessageRepository {
 
 export interface IChatSessionRepository {
   /** Create a new chat session with a specific ID (called when starting a new conversation) */
+  /** Create a focus-document chat session with a specific ID. */
+  createFocusDocument(
+    id: string,
+    projectId: string,
+    path: string,
+    title: string,
+    contentHash: string,
+  ): ChatSession;
   /** Get a chat session by ID */
   get(id: string): ChatSession | undefined;
+  /** Get the persisted focus-document chat session for a project file path. */
+  getFocusDocument(projectId: string, path: string): ChatSession | undefined;
+  /** Update focus-document metadata after opening the reader. */
+  updateFocusDocument(
+    id: string,
+    title: string,
+    contentHash: string,
+    clearClaudeSessionId: boolean,
+  ): ChatSession;
   /** Update the Claude SDK session ID for resume functionality */
   updateClaudeSessionId(id: string, claudeSessionId: string): void;
   /** Update the SDK-derived display title (auto-summary or user-renamed). */

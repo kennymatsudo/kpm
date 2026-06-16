@@ -13,7 +13,11 @@ import type { IChatSessionRepository } from '../../interfaces';
  */
 interface PreparedStatements {
   getById: Statement;
+  getFocusDocument: Statement;
   insert: Statement;
+  insertFocusDocument: Statement;
+  updateFocusDocument: Statement;
+  updateFocusDocumentAndClearClaudeSession: Statement;
   updateClaudeSessionId: Statement;
   updateTitle: Statement;
   clearClaudeSessionIdsByProject: Statement;
@@ -26,7 +30,40 @@ export class ChatSessionRepository implements IChatSessionRepository {
   constructor(db: Database) {
     this.stmts = {
       getById: db.prepare('SELECT * FROM chat_sessions WHERE id = ?'),
+      getFocusDocument: db.prepare(`
+        SELECT * FROM chat_sessions
+        WHERE project_id = ? AND scope = 'focus_document' AND focus_document_path = ?
+        LIMIT 1
+      `),
       insert: db.prepare(`
+        RETURNING *
+      `),
+      insertFocusDocument: db.prepare(`
+        INSERT INTO chat_sessions (
+          id,
+          project_id,
+          scope,
+          focus_document_path,
+          focus_document_title,
+          focus_document_hash,
+          last_opened_at
+        )
+        RETURNING *
+      `),
+      updateFocusDocument: db.prepare(`
+        UPDATE chat_sessions
+        SET focus_document_title = ?,
+            focus_document_hash = ?,
+            last_opened_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        RETURNING *
+      `),
+      updateFocusDocumentAndClearClaudeSession: db.prepare(`
+        UPDATE chat_sessions
+        SET focus_document_title = ?,
+            focus_document_hash = ?,
+            last_opened_at = CURRENT_TIMESTAMP,
+        WHERE id = ?
         RETURNING *
       `),
       updateClaudeSessionId: db.prepare(`
@@ -50,8 +87,40 @@ export class ChatSessionRepository implements IChatSessionRepository {
 
   }
 
+  createFocusDocument(
+    id: string,
+    projectId: string,
+    path: string,
+    title: string,
+    contentHash: string,
+  ): ChatSession {
+    return this.stmts.insertFocusDocument.get(
+      id,
+      projectId,
+      path,
+      title,
+      contentHash,
+    ) as ChatSession;
+  }
+
   get(id: string): ChatSession | undefined {
     return this.stmts.getById.get(id) as ChatSession | undefined;
+  }
+
+  getFocusDocument(projectId: string, path: string): ChatSession | undefined {
+    return this.stmts.getFocusDocument.get(projectId, path) as ChatSession | undefined;
+  }
+
+  updateFocusDocument(
+    id: string,
+    title: string,
+    contentHash: string,
+    clearClaudeSessionId: boolean,
+  ): ChatSession {
+    const stmt = clearClaudeSessionId
+      ? this.stmts.updateFocusDocumentAndClearClaudeSession
+      : this.stmts.updateFocusDocument;
+    return stmt.get(title, contentHash, id) as ChatSession;
   }
 
   updateClaudeSessionId(id: string, claudeSessionId: string): void {

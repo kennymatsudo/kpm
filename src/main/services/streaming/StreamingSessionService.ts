@@ -123,6 +123,7 @@ interface MessageEnvelope {
 /** Info about an active session (for UI display) */
 export interface ActiveSessionInfo {
   chatSessionId: string;
+  scope: ChatSessionScope;
   state: SessionState;
   isProcessing: boolean;
   /** Persisted SDK-derived title (null for legacy rows). */
@@ -380,6 +381,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         const persisted = deps.chatSessionRepository.get(managed.chatSessionId);
         result.push({
           chatSessionId: managed.chatSessionId,
+          scope: persisted?.scope ?? 'main',
           state: managed.state,
           isProcessing: managed.state === 'processing',
           title: persisted?.title ?? null,

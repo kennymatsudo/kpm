@@ -30,6 +30,11 @@ export class ChatMessageRepository implements IChatMessageRepository {
   constructor(private db: Database) {
     this.stmts = {
       getMessages: db.prepare(`
+        SELECT m.* FROM chat_messages m
+        LEFT JOIN chat_sessions s ON s.id = m.chat_session_id
+        WHERE m.session_id = ?
+          AND COALESCE(s.scope, 'main') = 'main'
+        ORDER BY m.created_at ASC
       `),
       getMessagesByChatSession: db.prepare(`
         SELECT * FROM chat_messages
@@ -62,6 +67,9 @@ export class ChatMessageRepository implements IChatMessageRepository {
           COUNT(*) as message_count,
         FROM chat_messages m
         LEFT JOIN chat_sessions s ON s.id = m.chat_session_id
+        WHERE m.session_id = ?
+          AND m.chat_session_id IS NOT NULL
+          AND COALESCE(s.scope, 'main') = 'main'
         GROUP BY m.chat_session_id
         ORDER BY MAX(m.created_at) DESC
         LIMIT ?
@@ -73,6 +81,13 @@ export class ChatMessageRepository implements IChatMessageRepository {
         DELETE FROM chat_messages
         WHERE session_id = ?
           AND chat_session_id IN (
+            SELECT m.chat_session_id FROM chat_messages m
+            LEFT JOIN chat_sessions s ON s.id = m.chat_session_id
+            WHERE m.session_id = ?
+              AND m.chat_session_id IS NOT NULL
+              AND COALESCE(s.scope, 'main') = 'main'
+            GROUP BY m.chat_session_id
+            ORDER BY MAX(m.created_at) DESC
             LIMIT -1 OFFSET ?
           )
       `),

@@ -102,6 +102,7 @@ export function useChatIpcBridge(projectId: string | null): void {
 
         for (const session of result.sessions) {
           if (!active) return;
+          if (session.scope !== 'main') continue;
           markSessionActive(session.chatSessionId);
 
           // Seed live tab title from the persisted SDK summary so reloads

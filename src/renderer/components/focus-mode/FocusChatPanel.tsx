@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Markdown } from 'markdown-to-jsx';
+import type { ChatMessage } from '../../../shared/types';
 import { useProjectDomainStore } from '../../stores';
+import { cancelChatSession, getFocusDocumentChatSession, sendChatMessage, subscribeToChatEvents } from '../../services/chatService';
+import { useFocusModeStore } from '../../stores/focusModeStore';
 import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
 import { ChevronRightIcon, CloseIcon } from '../icons';
 
@@ -21,6 +24,20 @@ interface FocusChatPanelProps {
   onClose: () => void;
 }
 
+async function hashText(text: string): Promise<string> {
+  const bytes = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function toFocusChatMessages(messages: ChatMessage[]): FocusChatMessage[] {
+  return messages.map((message) => ({
+    id: message.id,
+    role: message.role,
+    content: message.content,
+  }));
+}
+
 export function FocusChatPanel({
   isOpen,
   sessionId,
@@ -34,11 +51,20 @@ export function FocusChatPanel({
   const [draft, setDraft] = useState('');
   const [streamingContent, setStreamingContent] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const streamRef = useRef('');
 
+  const canSend = !!projectId && !!sessionId && !!docPath && !isStreaming && !isLoadingSession && draft.trim().length > 0;
+  const composerStatus = isStreaming
+    ? 'Working'
+    : isLoadingSession
+      ? 'Loading'
+    : docPath
+      ? 'Document focused'
+      : 'No document selected';
 
   useEffect(() => {
     setMessages([]);
@@ -46,8 +72,63 @@ export function FocusChatPanel({
     setStreamingContent('');
     streamRef.current = '';
     setIsStreaming(false);
+    setIsLoadingSession(false);
     setError(null);
+  }, [projectId, docPath]);
+
+  useEffect(() => {
+    if (sessionId) return;
+    setStreamingContent('');
+    streamRef.current = '';
+    setIsStreaming(false);
   }, [sessionId]);
+
+  useEffect(() => {
+    if (!isOpen || !projectId || !docPath || sessionId) return;
+
+    let cancelled = false;
+
+    const loadSession = async () => {
+      setIsLoadingSession(true);
+      setError(null);
+
+      try {
+        const contentHash = await hashText(docContent);
+        if (cancelled) return;
+
+        const result = await getFocusDocumentChatSession(
+          projectId,
+          docPath,
+          docTitle || docPath,
+          contentHash,
+        );
+
+        if (cancelled) return;
+
+        if (!result.success || !result.chatSessionId) {
+          setError(result.error ?? 'Failed to load document chat');
+          return;
+        }
+
+        setMessages(toFocusChatMessages(result.messages ?? []));
+        useFocusModeStore.getState().setChatSessionId(docPath, result.chatSessionId);
+      } catch (loadError: unknown) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : 'Failed to load document chat');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingSession(false);
+        }
+      }
+    };
+
+    void loadSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [docContent, docPath, docTitle, isOpen, projectId, sessionId]);
 
   useEffect(() => {
     if (!isOpen || !sessionId || !projectId) return;
@@ -130,6 +211,7 @@ export function FocusChatPanel({
 
   const send = useCallback(() => {
     const text = draft.trim();
+    if (!projectId || !sessionId || !docPath || !text || isStreaming || isLoadingSession) return;
 
     setMessages((current) => [
       ...current,
@@ -164,6 +246,7 @@ export function FocusChatPanel({
       setError(sendError instanceof Error ? sendError.message : 'Failed to send message');
       setIsStreaming(false);
     });
+  }, [docContent, docPath, docTitle, draft, isLoadingSession, isStreaming, projectId, sessionId]);
 
   const cancel = useCallback(() => {
     if (!projectId || !sessionId) return;
@@ -214,14 +297,26 @@ export function FocusChatPanel({
         </button>
       </div>
 
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-4">
         {messages.length === 0 && !streamingContent && !isStreaming ? emptyState : null}
         <div className="space-y-3">
           {messages.map((message) => (
             <FocusChatBubble key={message.id} message={message} />
           ))}
           {(streamingContent || isStreaming) && (
+            <div
+              className="min-w-0 overflow-hidden rounded-lg border border-border-subtle bg-surface-0 px-3 py-2.5"
+              aria-busy={isStreaming}
+            >
               {streamingContent ? (
+                <>
+                  <div className="prose-document prose-document-compact prose-panel text-sm">
+                    <Markdown options={markdownOptions}>{transformPlanRefs(streamingContent)}</Markdown>
+                  </div>
+                  {isStreaming && <FocusChatActivity className="mt-3 border-t border-border-subtle/60 pt-2" />}
+                </>
               ) : (
+                <FocusChatActivity />
               )}
             </div>
           )}
@@ -242,9 +337,15 @@ export function FocusChatPanel({
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
             rows={2}
+            disabled={!projectId || !sessionId || !docPath || isStreaming || isLoadingSession}
+            placeholder={isStreaming ? 'Waiting for response' : isLoadingSession ? 'Loading' : 'Ask about this document'}
             className="block max-h-32 min-h-[58px] w-full resize-none bg-transparent px-3 py-2 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted disabled:opacity-60"
           />
           <div className="flex items-center justify-between px-2 pb-2">
+            <span className="inline-flex min-w-0 items-center gap-1.5 text-[11px] text-text-muted">
+              {isStreaming && <span className="pulse-dot shrink-0" style={{ width: 5, height: 5 }} />}
+              <span className="truncate">{composerStatus}</span>
+            </span>
             <div className="flex items-center gap-1.5">
               {isStreaming && (
                 <button
@@ -273,9 +374,19 @@ export function FocusChatPanel({
   );
 }
 
+function FocusChatActivity({ className = '' }: { className?: string }) {
+  return (
+    <div className={`flex items-center gap-2 text-xs text-text-muted ${className}`} aria-live="polite">
+      <span className="pulse-dot shrink-0" style={{ width: 6, height: 6 }} />
+      <span>Working</span>
+    </div>
+  );
+}
+
 function FocusChatBubble({ message }: { message: FocusChatMessage }) {
   if (message.role === 'status') {
     return (
+      <div className="min-w-0 overflow-hidden rounded-md border border-accent/20 bg-accent-subtle px-3 py-2 text-xs text-accent break-words">
         <Markdown options={markdownOptions}>{message.content}</Markdown>
       </div>
     );
@@ -283,14 +394,18 @@ function FocusChatBubble({ message }: { message: FocusChatMessage }) {
 
   const isUser = message.role === 'user';
   return (
+    <div className={`flex min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
+        className={`min-w-0 max-w-[92%] overflow-hidden rounded-lg px-3 py-2.5 text-sm leading-relaxed ${
           isUser
             ? 'bg-accent text-white'
             : 'border border-border-subtle bg-surface-0 text-text-primary'
         }`}
       >
         {isUser ? (
+          <div className="whitespace-pre-wrap break-words">{message.content}</div>
         ) : (
+          <div className="prose-document prose-document-compact prose-panel">
             <Markdown options={markdownOptions}>{transformPlanRefs(message.content)}</Markdown>
           </div>
         )}

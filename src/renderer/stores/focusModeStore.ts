@@ -64,6 +64,7 @@ interface FocusModeState {
 
   open: (doc: FocusModeDoc) => void;
   close: () => void;
+  setChatSessionId: (path: string, chatSessionId: string) => void;
   updateContent: (path: string, content: string) => void;
   toggleReadingTheme: () => void;
   getReadingPosition: (path: string) => FocusReadingPosition | null;
@@ -89,13 +90,22 @@ export const useFocusModeStore = create<FocusModeState>((set) => ({
       docPath: doc.path,
       docTitle: doc.title,
       docContent: doc.content,
+      chatSessionId: null,
     }),
 
   close: () => set({ ...INITIAL }),
 
+  setChatSessionId: (path, chatSessionId) =>
+    set((state) => (
+      state.isOpen && state.docPath === path
+        ? { chatSessionId }
+        : {}
+    )),
+
   updateContent: (path, content) =>
     set((state) => (
       state.isOpen && state.docPath === path
+        ? { docContent: content, chatSessionId: state.docContent === content ? state.chatSessionId : null }
         : {}
     )),
 
