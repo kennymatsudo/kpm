@@ -9,6 +9,10 @@ export interface MainWindowManagerDeps {
   saveWindowBounds: (bounds: Electron.Rectangle) => void;
 }
 
+function shouldOpenDevToolsOnStartup(): boolean {
+  return process.env.KPM_OPEN_DEVTOOLS === '1' || process.env.KPM_OPEN_DEVTOOLS === 'true';
+}
+
 export function createMainWindowManager(deps: MainWindowManagerDeps) {
   let mainWindow: BrowserWindow | null = null;
 
@@ -84,6 +88,9 @@ export function createMainWindowManager(deps: MainWindowManagerDeps) {
     const rendererUrl = process.env.ELECTRON_RENDERER_URL;
     if (!app.isPackaged && rendererUrl) {
       void mainWindow.loadURL(rendererUrl);
+      if (shouldOpenDevToolsOnStartup()) {
+        mainWindow.webContents.openDevTools();
+      }
     } else {
       void mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
     }
