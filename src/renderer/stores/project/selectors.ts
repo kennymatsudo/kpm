@@ -79,6 +79,8 @@ export function selectFilteredPlannedItems(
     const effectiveStatus = item.status_category ?? getStatusCategory(item.external_status, item.external_type);
     if (effectiveStatus && hiddenStatusCategories.has(effectiveStatus)) return false;
     if (peopleFilterKeys.size === 0) return true;
+    // Local-only KPM items have no tracker people fields until export.
+    if (!item.external_key) return true;
 
     const assigneeKey = item.external_assignee_id ? `assignee:${item.external_assignee_id}` : 'assignee:__unassigned__';
     const creatorKey = item.external_creator_id ? `creator:${item.external_creator_id}` : 'creator:__unassigned__';
