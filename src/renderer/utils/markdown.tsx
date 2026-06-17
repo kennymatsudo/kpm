@@ -248,6 +248,21 @@ export const markdownOptions: MarkdownToJSX.Options = {
   disableParsingRawHTML: true,
 };
 
+/**
+ * Converts single newlines to Markdown hard breaks (two trailing spaces + newline)
+ * so that line-by-line content (e.g. metadata blocks) renders as separate lines.
+ * Code fences and inline code are left untouched.
+ */
+export function addSoftBreaks(markdown: string): string {
+  const parts = markdown.split(/(```[\s\S]*?```|`[^`]+`)/g);
+  return parts
+    .map((part, i) => {
+      if (i % 2 === 1) return part;
+      return part.replace(/(?<!\n)\n(?!\n)/g, '  \n');
+    })
+    .join('');
+}
+
 // Heading extraction lives in a React-free module so it can be unit-tested in
 // isolation; re-exported here since the Focus Mode components import it from
 // this file alongside the renderer-only helpers below.

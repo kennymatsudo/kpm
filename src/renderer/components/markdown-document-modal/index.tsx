@@ -7,6 +7,7 @@ import { MotionButton } from '../ui/MotionButton';
 import { DiffViewer, computeDiff, getDiffStatsFromDiff } from '../ui/DiffViewer';
 import { Z_INDEX } from '../../constants/zIndex';
 import { useMarkdownSearch, useMarkdownFormatting, useMarkdownKeyboard } from './hooks';
+import { transformPlanRefs, addSoftBreaks } from '../../utils/markdown';
 import { splitFrontmatter } from '../../utils/frontmatter';
 import { FrontmatterBlock } from '../ui/FrontmatterBlock';
 
@@ -719,6 +720,7 @@ export function MarkdownDocumentModal({
                       <div className="p-8 max-w-3xl mx-auto">
                         {frontmatter !== null && <FrontmatterBlock source={frontmatter} />}
                         <div className="prose-themed">
+                          <Markdown options={searchOptions}>{addSoftBreaks(transformPlanRefs(body))}</Markdown>
                         </div>
                       </div>
                     ) : (

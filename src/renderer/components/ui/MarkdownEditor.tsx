@@ -19,6 +19,7 @@ import type * as Monaco from 'monaco-editor';
 import { configureMonaco } from '../../lib/monaco';
 import { useTheme } from '../../contexts';
 import { createMonacoThemeData } from '../../themes';
+import { addSoftBreaks, createSearchHighlightOptions, markdownOptions, transformPlanRefs } from '../../utils/markdown';
 import { splitFrontmatter } from '../../utils/frontmatter';
 import { FrontmatterBlock } from './FrontmatterBlock';
 import { registerPlanRefMonacoProviders } from './planRefMonaco';
@@ -862,6 +863,7 @@ export function MarkdownEditor({
                 {localContent ? (
                   <>
                     {frontmatter !== null && <FrontmatterBlock source={frontmatter} />}
+                    <Markdown options={searchOptions}>{addSoftBreaks(transformPlanRefs(body))}</Markdown>
                   </>
                 ) : (
                   <div className="flex items-center justify-center h-32 text-text-muted">

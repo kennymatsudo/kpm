@@ -14,6 +14,7 @@ import { CloseIcon } from '../icons';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { MotionButton } from '../ui/MotionButton';
 import { DiffViewer, computeDiff, getDiffStatsFromDiff } from '../ui/DiffViewer';
+import { addSoftBreaks, markdownOptions, transformPlanRefs } from '../../utils/markdown';
 import { Z_INDEX } from '../../constants/zIndex';
 import { getBaseName } from '../../utils/path';
 
@@ -239,6 +240,7 @@ export function PendingDocumentPanel({
               ) : viewMode === 'preview' ? (
                 <div className="prose-themed prose-panel bg-surface-2 p-4 rounded-lg border border-border-subtle overflow-y-auto overflow-x-hidden">
                   <Markdown options={markdownOptions}>
+                    {addSoftBreaks(transformPlanRefs(editedContent))}
                   </Markdown>
                 </div>
               ) : (

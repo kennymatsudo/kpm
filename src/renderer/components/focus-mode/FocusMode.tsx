@@ -5,6 +5,7 @@ import { Markdown } from 'markdown-to-jsx';
 import { useShallow } from 'zustand/react/shallow';
 import { useFocusModeStore } from '../../stores/focusModeStore';
 import {
+  addSoftBreaks,
   createFocusMarkdownOptions,
   extractHeadings,
   transformPlanRefs,
@@ -68,6 +69,7 @@ export function FocusMode() {
           currentMatchIndex,
         })}
       >
+        {addSoftBreaks(transformPlanRefs(docContent))}
       </Markdown>
     ),
     [docContent, showSearch, searchQuery, currentMatchIndex]
