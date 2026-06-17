@@ -47,6 +47,7 @@ System prompts (prompts/ directory)
 2. `AsyncMessageQueue` converts push (IPC) to pull (SDK generator)
 3. Init message received → MCP servers connect → session ready
 4. `send()` queues user messages; session processes asynchronously
+5. Session disconnects after 30min idle, explicit close, project delete, or app teardown
 
 ### 2. In-Process MCP Tools
 

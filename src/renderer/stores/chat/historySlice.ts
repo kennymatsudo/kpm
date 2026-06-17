@@ -143,6 +143,11 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         set({ sessions, viewedSessionId, nextSessionNumber, persistedProjectId: projectId });
 
         if (!isCurrent(shouldContinue)) return;
+        const viewedSession = viewedSessionId ? sessions.get(viewedSessionId) : null;
+        if (
+          viewedSessionId &&
+          (newlyAdded.includes(viewedSessionId) || viewedSession?.hydrated === false)
+        ) {
           await get().loadFromHistory(projectId, viewedSessionId, shouldContinue);
         }
       } catch (error) {
@@ -174,10 +179,24 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
           const state = get();
           const sessions = new Map(state.sessions);
           const existingSession = sessions.get(chatSessionId);
+          const preserveLiveState =
+            existingSession?.isStreaming ||
+            existingSession?.sessionState === 'processing' ||
+            existingSession?.sessionState === 'connecting';
 
           sessions.set(chatSessionId, {
+            ...baseSession,
             messages,
+            streamingContent: preserveLiveState ? baseSession.streamingContent : '',
+            streamingThinking: preserveLiveState ? baseSession.streamingThinking : '',
+            streamingSegments: preserveLiveState ? baseSession.streamingSegments : [],
+            pendingActivities: preserveLiveState ? baseSession.pendingActivities : [],
+            isStreaming: preserveLiveState ? baseSession.isStreaming : false,
             error: null,
+            activities: preserveLiveState ? baseSession.activities : [],
+            sessionState: baseSession.sessionState,
+            streamStartedAt: preserveLiveState ? baseSession.streamStartedAt : null,
+            lastStreamUpdateAt: preserveLiveState ? baseSession.lastStreamUpdateAt : null,
             hydrated: true,
           });
 

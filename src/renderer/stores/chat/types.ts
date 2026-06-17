@@ -125,6 +125,7 @@ export interface ChatState {
   persistedProjectId: string | null;
 
   // Session management
+  getOrCreateSession: (chatSessionId: string, options?: { hydrated?: boolean }) => PerSessionState;
   setViewedSession: (chatSessionId: string | null) => void;
   markSessionActive: (chatSessionId: string) => void;
   markSessionInactive: (chatSessionId: string) => void;

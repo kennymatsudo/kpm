@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import { getChatSessionHistory, loadChatSession } from '../../services/chatService';
+import { createInitialChatState, createInitialPerSessionState } from './baseState';
 import { createHistorySlice } from './historySlice';
 
 vi.mock('../../services/chatService', () => ({
@@ -229,5 +230,54 @@ describe('historySlice.restoreLastSession', () => {
 
     expect(loadChatSession).not.toHaveBeenCalled();
     expect(store.getState().viewedSessionId).toBe('chat-a');
+  });
+
+  it('preserves live stream state when hydrating a backend-restored active session', async () => {
+    const store = createTestStore();
+    const activeShell = {
+      hydrated: false,
+      isStreaming: true,
+      sessionState: 'processing' as const,
+      streamingContent: 'partial',
+      streamingThinking: 'thinking',
+      streamingSegments: [{ type: 'text' as const, content: 'partial' }],
+      pendingActivities: [{ id: 'activity-1', type: 'command' as const, label: 'Running tests' }],
+      activities: [{ id: 'activity-2', type: 'command' as const, label: 'Reading files' }],
+      streamStartedAt: 100,
+      lastStreamUpdateAt: 200,
+    };
+
+    store.setState({
+      viewedSessionId: 'chat-a',
+      sessions: new Map([['chat-a', activeShell]]),
+    });
+
+    vi.mocked(loadChatSession).mockResolvedValue({
+      success: true,
+      messages: [{
+        id: 'message-1',
+        session_id: 'project-a',
+        chat_session_id: 'chat-a',
+        role: 'user',
+        content: 'Hello',
+        created_at: '2026-01-01T00:00:00.000Z',
+      }],
+      chatSessionId: 'chat-a',
+    });
+
+    await store.getState().loadFromHistory('project-a', 'chat-a', () => true);
+
+    const session = store.getState().sessions.get('chat-a');
+    expect(session?.hydrated).toBe(true);
+    expect(session?.messages).toHaveLength(1);
+    expect(session?.isStreaming).toBe(true);
+    expect(session?.sessionState).toBe('processing');
+    expect(session?.streamingContent).toBe('partial');
+    expect(session?.streamingThinking).toBe('thinking');
+    expect(session?.streamingSegments).toEqual([{ type: 'text', content: 'partial' }]);
+    expect(session?.pendingActivities).toEqual([{ id: 'activity-1', type: 'command', label: 'Running tests' }]);
+    expect(session?.activities).toEqual([{ id: 'activity-2', type: 'command', label: 'Reading files' }]);
+    expect(session?.streamStartedAt).toBe(100);
+    expect(session?.lastStreamUpdateAt).toBe(200);
   });
 });

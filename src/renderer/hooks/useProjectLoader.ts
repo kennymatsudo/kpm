@@ -337,12 +337,16 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
     };
   }, [setRepoBranch]);
 
+  // Cleanup watchers and active sessions on unmount.
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
       loadSequenceRef.current += 1;
       cancelScheduledRepoTasks();
       void teardownWatchers();
+      const projectIds = useProjectDomainStore.getState().projects.map((project) => project.id);
+      previousConnectedProjectId = null;
+      void Promise.all(projectIds.map((projectId) => disconnectActiveChatSessions(projectId))).catch(() => {});
     };
   }, [cancelScheduledRepoTasks, teardownWatchers]);
 

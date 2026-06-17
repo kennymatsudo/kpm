@@ -52,4 +52,20 @@ describe('sessionManagementSlice.setViewedSession', () => {
     expect(sessionA?.streamingContent).toBe('buffered chunk');
     expect(sessionA?.streamingSegments).toEqual([{ type: 'text', content: 'buffered chunk' }]);
   });
+
+  it('creates backend-restored session shells as unhydrated', () => {
+    const store = createTestStore();
+
+    store.getState().getOrCreateSession('session-c', { hydrated: false });
+
+    expect(store.getState().sessions.get('session-c')?.hydrated).toBe(false);
+  });
+
+  it('marks empty existing shells as unhydrated when the backend reports them active', () => {
+    const store = createTestStore();
+
+    store.getState().getOrCreateSession('session-a', { hydrated: false });
+
+    expect(store.getState().sessions.get('session-a')?.hydrated).toBe(false);
+  });
 });

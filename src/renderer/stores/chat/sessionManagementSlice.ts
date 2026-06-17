@@ -6,9 +6,23 @@ export function createSessionManagementSlice(set: ChatSet, get: ChatGet): Pick<C
   'getOrCreateSession' | 'setViewedSession' | 'markSessionActive' | 'markSessionInactive' | 'removeSession'
 > {
   return {
+    getOrCreateSession: (chatSessionId, options) => {
       const state = get();
       const existing = state.sessions.get(chatSessionId);
+      if (existing) {
+        if (options?.hydrated === false && existing.hydrated && existing.messages.length === 0) {
+          const sessions = new Map(state.sessions);
+          const updated = { ...existing, hydrated: false };
+          sessions.set(chatSessionId, updated);
+          set({ sessions });
+          return updated;
+        }
+        return existing;
+      }
 
+      const newSession = {
+        hydrated: options?.hydrated ?? true,
+      };
       const sessions = new Map(state.sessions);
       sessions.set(chatSessionId, newSession);
       set({ sessions, nextSessionNumber: state.nextSessionNumber + 1 });

@@ -6,8 +6,23 @@ import {
   getActiveChatSessions,
   getChatSessionState,
   getChatUsage,
+  type FileDeleteEventData,
+  type FileUpdateEventData,
+  type PlanActionsEventData,
   subscribeToChatEvents,
 } from '../services/chatService';
+
+type BufferedApprovalEvent =
+  | { type: 'plan-actions'; data: PlanActionsEventData }
+  | { type: 'file-update'; data: FileUpdateEventData }
+  | { type: 'file-delete'; data: FileDeleteEventData };
+
+const bufferedApprovalEventsByProject = new Map<string, BufferedApprovalEvent[]>();
+
+function bufferApprovalEvent(projectId: string, event: BufferedApprovalEvent): void {
+  const existing = bufferedApprovalEventsByProject.get(projectId) ?? [];
+  bufferedApprovalEventsByProject.set(projectId, [...existing, event]);
+}
 
 /**
  * Bridge hook that registers ALL chat IPC listeners at the Layout level.
@@ -84,6 +99,38 @@ export function useChatIpcBridge(projectId: string | null): void {
     const isActiveForProject = (eventProjectId: string) => active && eventProjectId === projectId;
     const isKnownChatSession = (sessionId: string | undefined): sessionId is string =>
       !!sessionId && useChatStore.getState().sessions.has(sessionId);
+    const processPlanActionsEvent = (data: PlanActionsEventData) => {
+      if (data.actions.length > 0) {
+        processPlanActions(data.projectId, data.actions);
+      }
+    };
+    const processFileUpdateEvent = (data: FileUpdateEventData) => {
+      processFileUpdate(
+        data.projectId,
+        data.filePath,
+        data.content,
+        data.oldContent ?? null,
+        { forceReview: data.forceReview }
+      );
+      emit({
+        type: 'chat-file-updated',
+        payload: data,
+      });
+    };
+    const processFileDeleteEvent = (data: FileDeleteEventData) => {
+      processFileDelete(data.projectId, data.path, data.isDirectory);
+    };
+
+    const bufferedApprovalEvents = bufferedApprovalEventsByProject.get(projectId);
+    if (bufferedApprovalEvents && bufferedApprovalEvents.length > 0) {
+      bufferedApprovalEventsByProject.delete(projectId);
+      for (const event of bufferedApprovalEvents) {
+        if (!active) break;
+        if (event.type === 'plan-actions') processPlanActionsEvent(event.data);
+        if (event.type === 'file-update') processFileUpdateEvent(event.data);
+        if (event.type === 'file-delete') processFileDeleteEvent(event.data);
+      }
+    }
 
     // Load persisted token count and chat approval preference on project select
     void useGeneralSettingsStore.getState().loadApprovalMode();
@@ -104,6 +151,10 @@ export function useChatIpcBridge(projectId: string | null): void {
           if (!active) return;
           if (session.scope !== 'main') continue;
           markSessionActive(session.chatSessionId);
+          // Ensure session exists in store. Backend-restored sessions need DB
+          // hydration so switching back mid-run shows prior messages, while
+          // any new live chunks continue to append to the same tab.
+          getOrCreateSession(session.chatSessionId, { hydrated: false });
 
           // Seed live tab title from the persisted SDK summary so reloads
           // don't drop back to the numeric "Claude N" label until the next turn.
@@ -144,13 +195,28 @@ export function useChatIpcBridge(projectId: string | null): void {
         }
       },
       onPlanActions: (data) => {
+        if (!active || data.actions.length === 0) return;
+        if (!isActiveForProject(data.projectId)) {
+          bufferApprovalEvent(data.projectId, { type: 'plan-actions', data });
+          return;
         }
+        processPlanActionsEvent(data);
       },
       onFileUpdate: (data) => {
+        if (!active) return;
+        if (!isActiveForProject(data.projectId)) {
+          bufferApprovalEvent(data.projectId, { type: 'file-update', data });
+          return;
         }
+        processFileUpdateEvent(data);
       },
       onFileDelete: (data) => {
+        if (!active) return;
+        if (!isActiveForProject(data.projectId)) {
+          bufferApprovalEvent(data.projectId, { type: 'file-delete', data });
+          return;
         }
+        processFileDeleteEvent(data);
       },
       onDone: (data) => {
         void (async () => {
