@@ -81,6 +81,21 @@ export function registerDevSessionHandlers(
     )
   );
 
+  // Open a session worktree in the user's editor
+  ipcMain.handle(
+    IPC_CHANNELS.devSession.openEditor,
+    createIpcHandler(
+      DevSessionSchemas.openEditor,
+      async ({ sessionId }) => {
+        const result = await devSessionService.openInEditor(sessionId);
+        if (!result.ok) {
+          throw new Error(result.error);
+        }
+      },
+      'Failed to open session in editor'
+    )
+  );
+
   // Update session status
   ipcMain.handle(
     IPC_CHANNELS.devSession.updateStatus,

@@ -348,6 +348,7 @@ export const IPC_CHANNELS = {
     getActive: 'dev-session:get-active',
     get: 'dev-session:get',
     hasActive: 'dev-session:has-active',
+    openEditor: 'dev-session:open-editor',
     updateStatus: 'dev-session:update-status',
     delete: 'dev-session:delete',
     destroy: 'dev-session:destroy',

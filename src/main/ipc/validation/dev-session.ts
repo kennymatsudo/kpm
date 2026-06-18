@@ -35,6 +35,11 @@ export const DevSessionSchemas = {
     planItemId: uuid,
   }),
 
+  /** Open session worktree in editor */
+  openEditor: z.object({
+    sessionId: uuid,
+  }),
+
   /** Update session status */
   updateStatus: z.object({
     sessionId: uuid,

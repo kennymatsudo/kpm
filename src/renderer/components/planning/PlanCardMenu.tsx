@@ -2,9 +2,11 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import {
+  toast,
   useResourceDomainStore,
 } from '../../stores';
 import { useDevSessionsStore } from '../../stores/devSessions';
+import { openDevSessionInEditor } from '../../services/devSessionService';
 import { copyToClipboard } from '../../utils/clipboard';
 import { DeleteWorktreeDialog } from './DeleteWorktreeDialog';
 import { Modal } from '../ui/Modal';
@@ -75,25 +77,114 @@ export function PlanCardMenu({
       worktreeLoadingOp: loadingOp,
     };
   }));
+  const {
+    deleteDevSession,
+    deletingSessionIds,
+  } = useDevSessionsStore(
+    useShallow((state) => ({
+      deleteDevSession: state.deleteDevSession,
+      deletingSessionIds: state.deletingSessionIds,
+    }))
+  );
 
   // Falls back to a session-recorded path when the worktree resource row has been
   // cleaned up (e.g. after PR merge) but the session still records its details.
   const itemSessions = useDevSessionsStore((state) => state.sessionsByPlanItemId.get(itemId) ?? EMPTY_SESSIONS);
+  const { itemSession, openableSession, linkedPrSession, actionableSession } = useMemo(() => {
     const byRecency = [...itemSessions].sort(
       (a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at),
     );
+    const openable = byRecency.find((s) => OPENABLE_SESSION_STATUSES.includes(s.status));
     return {
       itemSession: byRecency[0],
+      openableSession: openable,
       linkedPrSession: byRecency.find((s) => !!s.pr_url),
+      actionableSession: openable ?? byRecency[0],
     };
   }, [itemSessions]);
+
+  const targetWorktree = useMemo(() => {
+    if (actionableSession?.worktree_path) {
+      return {
+        source: 'session' as const,
+        id: actionableSession.id,
+        plan_item_id: actionableSession.plan_item_id ?? itemId,
+        project_id: actionableSession.project_id,
+        worktree_path: actionableSession.worktree_path,
+        branch_name: actionableSession.branch_name,
+      };
+    }
+
+    if (worktree) {
+      return {
+        source: 'worktree' as const,
+        ...worktree,
+      };
+    }
+
+    return null;
+  }, [actionableSession, itemId, worktree]);
+
+  const copyWorktreePath = targetWorktree?.worktree_path ?? itemSession?.worktree_path ?? '';
+  const copyBranchName = targetWorktree?.branch_name ?? itemSession?.branch_name ?? '';
   const canCopyWorktreeInfo = !!copyWorktreePath || !!copyBranchName;
 
+  const [isOpeningSessionEditor, setIsOpeningSessionEditor] = useState(false);
+
+  const onOpenWorktreeInEditor = async () => {
+    if (!targetWorktree) return;
+
+    if (targetWorktree.source === 'worktree') {
+      await openWorktreeInEditor(targetWorktree.id);
+      return;
+    }
+
+    setIsOpeningSessionEditor(true);
+    try {
+      const result = await openDevSessionInEditor(targetWorktree.id);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to open editor');
+      }
+    } finally {
+      setIsOpeningSessionEditor(false);
+    }
+  };
+  const onDeleteWorktree = async () => {
+    if (!targetWorktree) return;
+
+    if (targetWorktree.source === 'session') {
+      const result = await deleteDevSession(targetWorktree.id, 'cleanup');
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to clean up worktree');
+      }
+      return;
+    }
+
+    await deleteWorktree(targetWorktree.id, true);
+  };
+  const onDestroyWorktree = async () => {
+    if (!targetWorktree) return;
+
+    if (targetWorktree.source === 'session') {
+      const result = await deleteDevSession(targetWorktree.id, 'destroy');
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to destroy worktree');
+      }
+      return;
+    }
+
+    await destroyWorktree(targetWorktree.id);
+  };
   const [showDeleteWorktreeConfirm, setShowDeleteWorktreeConfirm] = useState(false);
   const [showDestroyWorktreeConfirm, setShowDestroyWorktreeConfirm] = useState(false);
+  const isWorktreeConfirmOpen = showDeleteWorktreeConfirm || showDestroyWorktreeConfirm;
 
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const isDeletingSessionWorktree = targetWorktree?.source === 'session' && deletingSessionIds.has(targetWorktree.id);
+  const hasWorktree = !!targetWorktree;
+  const isWorktreeLoading = !!worktreeLoadingOp || isOpeningSessionEditor || isDeletingSessionWorktree;
+  const isOpeningEditor = worktreeLoadingOp === 'openEditor' || isOpeningSessionEditor;
   const showWorktreeSection = hasWorktree || !!onStartAgent;
   const trackerLabel = trackerLabelFor(trackerType);
 
@@ -117,6 +208,7 @@ export function PlanCardMenu({
 
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (isWorktreeConfirmOpen) return;
         onClose();
       }
     };
@@ -127,11 +219,13 @@ export function PlanCardMenu({
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
+  }, [isOpen, isWorktreeConfirmOpen, onClose]);
 
   if (!isOpen && !position) return null;
 
   return (
     <>
+      {isOpen && position && !isWorktreeConfirmOpen && createPortal(
         <div
           ref={menuRef}
           className="dropdown-menu fixed max-w-[200px] max-h-[calc(100vh-32px)] overflow-y-auto"
@@ -230,10 +324,17 @@ export function PlanCardMenu({
                   <button
                     onClick={async (e) => {
                       e.stopPropagation();
+                      try {
+                        await onOpenWorktreeInEditor();
+                        onClose();
+                      } catch (error) {
+                        toast.error(error instanceof Error ? error.message : 'Failed to open editor');
+                      }
                     }}
                     disabled={isWorktreeLoading}
                     className={`dropdown-item w-full flex items-center gap-2 ${isWorktreeLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
+                    {isOpeningEditor ? (
                       <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -243,6 +344,7 @@ export function PlanCardMenu({
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                       </svg>
                     )}
+                    <span className="flex-1">{isOpeningEditor ? 'Opening...' : 'Open in Editor'}</span>
                   </button>
                 </>
               ) : (
@@ -391,13 +493,30 @@ export function PlanCardMenu({
       )}
 
       {/* Delete worktree confirmation dialog */}
+      {showDeleteWorktreeConfirm && targetWorktree && (
         <DeleteWorktreeDialog
+          worktree={targetWorktree}
+          isDeleting={worktreeLoadingOp === 'delete' || isDeletingSessionWorktree}
+              toast.error(error instanceof Error ? error.message : 'Failed to clean up worktree');
+          }}
+          onCancel={() => {
             setShowDeleteWorktreeConfirm(false);
+            onClose();
           }}
         />
       )}
 
       {/* Destroy worktree confirmation dialog */}
+      {showDestroyWorktreeConfirm && targetWorktree && (
+        <Modal
+          isOpen={true}
+          onClose={() => {
+            setShowDestroyWorktreeConfirm(false);
+            onClose();
+          }}
+          size="sm"
+          preventClose={worktreeLoadingOp === 'delete' || isDeletingSessionWorktree}
+        >
           <div className="p-5">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-danger/10 flex items-center justify-center">
@@ -421,6 +540,7 @@ export function PlanCardMenu({
               </li>
               <li className="flex items-center gap-2">
                 <span className="w-1 h-1 rounded-full bg-danger/60 flex-shrink-0" />
+                The local branch <code className="text-xxs font-mono bg-surface-3 px-1 py-0.5 rounded">{targetWorktree.branch_name}</code>
               </li>
               <li className="flex items-center gap-2">
                 <span className="w-1 h-1 rounded-full bg-danger/60 flex-shrink-0" />
@@ -430,14 +550,22 @@ export function PlanCardMenu({
 
             <div className="flex items-center gap-2">
               <button
+                onClick={() => {
+                  setShowDestroyWorktreeConfirm(false);
+                  onClose();
+                }}
                 className="flex-1 px-3 py-2 text-xs font-medium text-text-secondary bg-surface-3 hover:bg-surface-4 rounded-lg transition-colors"
+                disabled={worktreeLoadingOp === 'delete' || isDeletingSessionWorktree}
               >
                 Cancel
               </button>
               <button
+                    toast.error(error instanceof Error ? error.message : 'Failed to destroy worktree');
                 }}
                 className="flex-1 px-3 py-2 text-xs font-medium text-white bg-danger hover:bg-danger/90 rounded-lg transition-colors"
+                disabled={worktreeLoadingOp === 'delete' || isDeletingSessionWorktree}
               >
+                {worktreeLoadingOp === 'delete' || isDeletingSessionWorktree ? 'Destroying...' : 'Destroy'}
               </button>
             </div>
           </div>

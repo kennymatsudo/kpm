@@ -1121,6 +1121,10 @@ const devSessions = {
   hasActive: (planItemId: string): Promise<{ success: boolean; hasActive?: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.devSession.hasActive, { planItemId }),
 
+  // Open session worktree in editor
+  openEditor: (sessionId: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.devSession.openEditor, { sessionId }),
+
   // Update session status
   updateStatus: (sessionId: string, status: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.devSession.updateStatus, { sessionId, status }),

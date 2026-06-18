@@ -34,6 +34,12 @@ export function checkDevSessionDirty(sessionId: string): Promise<SessionDirtyRes
   return window.api.devSessions.checkDirty(sessionId);
 }
 
+export function openDevSessionInEditor(
+  sessionId: string
+): Promise<{ success: boolean; error?: string }> {
+  return window.api.devSessions.openEditor(sessionId);
+}
+
 export function deleteDevSessionRecord(
   sessionId: string,
   mode: 'cleanup' | 'destroy'

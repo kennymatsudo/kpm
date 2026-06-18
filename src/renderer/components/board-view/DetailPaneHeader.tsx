@@ -17,6 +17,8 @@ interface DetailPaneHeaderProps {
   onGeneratePrContent: () => void;
   onLinkPr: () => void;
   onOpenPr: () => void;
+  onOpenEditor?: () => void;
+  isOpeningEditor?: boolean;
   onCopyWorktree: () => void;
   /** Optional — when provided, surfaces an "Add to context" action in the overflow menu. */
   onAddToContext?: () => void;
@@ -89,6 +91,8 @@ export const DetailPaneHeader = memo(function DetailPaneHeader({
   onGeneratePrContent,
   onLinkPr,
   onOpenPr,
+  onOpenEditor,
+  isOpeningEditor,
   onCopyWorktree,
   onAddToContext,
 }: DetailPaneHeaderProps) {
@@ -101,6 +105,7 @@ export const DetailPaneHeader = memo(function DetailPaneHeader({
 
   const overflowItems: OverflowItem[] = [
     ...(onAddToContext ? [{ label: 'Add to chat context', onClick: onAddToContext }] : []),
+    ...(onOpenEditor ? [{ label: isOpeningEditor ? 'Opening...' : 'Open in Editor', onClick: onOpenEditor }] : []),
     { label: 'Copy worktree path', onClick: onCopyWorktree },
     ...(canManagePostRun ? [{ label: 'PR content', onClick: onGeneratePrContent }] : []),
     ...(canManagePostRun && !hasPr ? [{ label: 'Link existing PR', onClick: onLinkPr }] : []),

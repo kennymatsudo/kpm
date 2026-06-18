@@ -256,6 +256,7 @@ export function createMockApi() {
       getActive: vi.fn().mockResolvedValue({ success: true, sessions: [] }),
       get: vi.fn().mockResolvedValue({ success: true, session: null }),
       hasActive: vi.fn().mockResolvedValue({ success: true, hasActive: false }),
+      openEditor: vi.fn().mockResolvedValue({ success: true }),
       updateStatus: vi.fn().mockResolvedValue({ success: true }),
       delete: vi.fn().mockResolvedValue({ success: true }),
       destroy: vi.fn().mockResolvedValue({ success: true }),

@@ -180,6 +180,7 @@ export type DevSessionGetByProjectWithPlanItemsInput = z.infer<typeof DevSession
 export type DevSessionGetActiveInput = z.infer<typeof DevSessionSchemas.getActive>;
 export type DevSessionGetInput = z.infer<typeof DevSessionSchemas.get>;
 export type DevSessionHasActiveInput = z.infer<typeof DevSessionSchemas.hasActive>;
+export type DevSessionOpenEditorInput = z.infer<typeof DevSessionSchemas.openEditor>;
 export type DevSessionUpdateStatusInput = z.infer<typeof DevSessionSchemas.updateStatus>;
 export type DevSessionDeleteInput = z.infer<typeof DevSessionSchemas.delete>;
 export type DevSessionGetDiffInput = z.infer<typeof DevSessionSchemas.getDiff>;

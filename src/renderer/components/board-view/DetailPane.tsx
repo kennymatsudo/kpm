@@ -13,6 +13,7 @@ import { LinkPrDialog } from '../development/LinkPrDialog';
 import { ReviewTab } from '../development/ReviewTab';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useDevSessionsStore } from '../../stores/devSessions';
+import { openDevSessionInEditor } from '../../services/devSessionService';
 import { openExternalUrl } from '../../services/shellService';
 import { usePlanDomainStore, useProjectUiDomainStore, toast } from '../../stores';
 import { copyToClipboard } from '../../utils/clipboard';
@@ -33,6 +34,7 @@ export const DetailPane = memo(function DetailPane({
   const [showCreatePr, setShowCreatePr] = useState(false);
   const [showGeneratePrContent, setShowGeneratePrContent] = useState(false);
   const [showLinkPr, setShowLinkPr] = useState(false);
+  const [isOpeningEditor, setIsOpeningEditor] = useState(false);
   const [changesRefreshToken, setChangesRefreshToken] = useState(0);
   // When true, committing also transitions the card to in_review (Ready for Review path).
   // When false, committing is standalone — no status change (Changes tab path).
@@ -149,6 +151,26 @@ export const DetailPane = memo(function DetailPane({
     void copyToClipboard(path ? `"${path}"` : '', 'Worktree path');
   }, [session.worktree_path]);
 
+  const handleOpenEditor = useCallback(() => {
+    if (isOpeningEditor) return;
+
+    setIsOpeningEditor(true);
+    void (async () => {
+      try {
+        const result = await openDevSessionInEditor(session.id);
+        if (!result.success) {
+          toast.error(result.error || 'Failed to open editor');
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to open editor');
+      } finally {
+        if (isMountedRef.current) {
+          setIsOpeningEditor(false);
+        }
+      }
+    })();
+  }, [isOpeningEditor, session.id]);
+
   const addFocusedResource = useProjectUiDomainStore((s) => s.addFocusedResource);
   const handleAddToContext = useMemo(() => {
     if (!planItem) return undefined;
@@ -248,6 +270,8 @@ export const DetailPane = memo(function DetailPane({
         onGeneratePrContent={() => setShowGeneratePrContent(true)}
         onLinkPr={() => setShowLinkPr(true)}
         onOpenPr={handleOpenPr}
+        onOpenEditor={session.worktree_path ? handleOpenEditor : undefined}
+        isOpeningEditor={isOpeningEditor}
         onCopyWorktree={handleCopyWorktree}
         onAddToContext={handleAddToContext}
       />

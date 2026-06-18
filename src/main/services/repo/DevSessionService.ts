@@ -31,6 +31,7 @@ import {
   createStatusBroadcaster,
 } from './sessionOrchestration';
 import { gitExec, getCurrentBranch, resolveUpstreamBranch, getMergeBase, resolveBaseSha } from './gitUtils';
+import { openDirectoryInCodeEditor } from './editorLauncher';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
 
 interface AgentContextInput {
@@ -610,6 +611,31 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
      */
     hasActiveSession(planItemId: string): boolean {
       return !!deps.devSessions.getActiveByPlanItem(planItemId);
+    },
+
+    /**
+     * Open a session's worktree in the user's code editor.
+     */
+    async openInEditor(sessionId: string): AsyncResult<void> {
+      try {
+        const session = deps.devSessions.get(sessionId);
+        if (!session) {
+          return failure(`Session not found: ${sessionId}`);
+        }
+
+        if (!session.worktree_path) {
+          return failure('Session has no worktree path');
+        }
+
+        if (!fs.existsSync(session.worktree_path)) {
+          return failure(`Worktree path does not exist: ${session.worktree_path}`);
+        }
+
+        await openDirectoryInCodeEditor(session.worktree_path);
+        return success(undefined);
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
     },
 
     /**
