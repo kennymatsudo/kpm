@@ -22,6 +22,33 @@ import type { AgentSessionManager } from './AgentSessionManager';
 
 const LOG_PREFIX = '[AutoReview]';
 
+export const REVIEW_FINDINGS_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['findings'],
+  properties: {
+    findings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['severity', 'file', 'line', 'description'],
+        properties: {
+          severity: {
+            type: 'string',
+            enum: ['critical', 'warning', 'suggestion'],
+          },
+          file: { type: 'string' },
+          line: {
+            type: ['integer', 'null'],
+          },
+          description: { type: 'string' },
+        },
+      },
+    },
+  },
+} as const;
+
 // Static output format appended to every review prompt regardless of user customizations.
 // parseReviewFindings() depends on this exact shape — do not make it user-editable.
 const REVIEW_OUTPUT_FORMAT = `Return ONLY a JSON object with this shape:
@@ -102,6 +129,10 @@ async function startReviewSession(params: {
     model,
   } = params;
 
+  const prompt = reviewAgentType === 'claude'
+    ? reviewPrompt
+    : `${reviewSystemPrompt}\n\n${reviewPrompt}`;
+
   if (reviewAgentType === 'claude') {
     const sdkOptions: SDKOptions = {
       systemPrompt: reviewSystemPrompt,
@@ -136,6 +167,14 @@ async function startReviewSession(params: {
     model: reviewAgentType === 'codex' ? model : undefined,
   });
 
+  await session.start(worktreePath, prompt);
+}
+
+async function isReviewAgentAvailable(agentType: AgentType): Promise<boolean> {
+  if (agentType === 'codex') {
+    return hasCodexAuth();
+  }
+  return isAgentAvailable(agentType);
 }
 
 function extractJsonCandidate(output: string): string | null {
@@ -243,6 +282,8 @@ export async function launchAutoReview(params: {
   let reviewAgentType = getReviewOpponent(implementationAgentType);
 
   // Check if the review agent is available; fall back to claude
+  if (!await isReviewAgentAvailable(reviewAgentType)) {
+    if (reviewAgentType !== 'claude' && await isReviewAgentAvailable('claude')) {
       console.log(`${LOG_PREFIX} ${reviewAgentType} not available, falling back to claude for review`);
       reviewAgentType = 'claude';
     } else {
@@ -251,7 +292,10 @@ export async function launchAutoReview(params: {
     }
   }
 
+  // For Codex, verify SDK credentials directly. The SDK binary is bundled, so
+  // review availability is auth-based rather than PATH-based.
   if (reviewAgentType === 'codex' && !await hasCodexAuth()) {
+    if (await isReviewAgentAvailable('claude')) {
       console.log(`${LOG_PREFIX} Codex not authenticated, falling back to claude for review`);
       reviewAgentType = 'claude';
     } else {
@@ -290,6 +334,7 @@ export async function launchAutoReview(params: {
     console.log(`${LOG_PREFIX} Started ${reviewAgentType} review for session ${implementationSessionId}`);
     return reviewSessionId;
   } catch (error) {
+    if (reviewAgentType !== 'claude' && await isReviewAgentAvailable('claude')) {
       try {
         console.warn(`${LOG_PREFIX} ${reviewAgentType} review failed to start, falling back to claude`, error);
         await startReviewSession({

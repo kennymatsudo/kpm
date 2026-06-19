@@ -7,6 +7,12 @@
 import { randomUUID } from 'crypto';
 import type { Database, Statement } from 'better-sqlite3';
 import type { AgentType, PersistedAgentReview, ReviewFinding } from '../../../../shared/agent-types';
+import type {
+  IAgentReviewRepository,
+  PersistedAgentReviewFailure,
+  PersistedAgentReviewStart,
+  PersistedAgentReviewUpsert,
+} from '../../interfaces';
 
 interface AgentReviewRunRow {
   id: string;
@@ -16,8 +22,10 @@ interface AgentReviewRunRow {
   status: PersistedAgentReview['status'];
   diff_fingerprint: string | null;
   raw_output: string | null;
+  error: string | null;
   created_at: string;
   updated_at: string;
+  completed_at: string | null;
 }
 
 interface AgentReviewFindingRow {
@@ -33,6 +41,13 @@ interface AgentReviewFindingRow {
 }
 
 interface PreparedStatements {
+  insertStartedRun: Statement;
+  insertTerminalRun: Statement;
+  getLatestRunningRun: Statement;
+  completeRun: Statement;
+  failRun: Statement;
+  failRunningByImplementation: Statement;
+  deleteFindingsByRunId: Statement;
   insertFinding: Statement;
   getLatestByImplementationSessionIds: (placeholders: string) => Statement;
   getReviewerAgentsByImplementationSessionIds: (placeholders: string) => Statement;
@@ -64,6 +79,7 @@ export class AgentReviewRepository implements IAgentReviewRepository {
   constructor(db: Database) {
     this.db = db;
     this.stmts = {
+      insertStartedRun: db.prepare(`
         INSERT INTO agent_review_runs (
           id,
           implementation_session_id,
@@ -71,7 +87,68 @@ export class AgentReviewRepository implements IAgentReviewRepository {
           reviewer_agent,
           status,
           diff_fingerprint,
+          raw_output,
+          error,
+          completed_at
         )
+        VALUES (?, ?, ?, ?, 'running', ?, NULL, NULL, NULL)
+      `),
+      insertTerminalRun: db.prepare(`
+        INSERT INTO agent_review_runs (
+          id,
+          implementation_session_id,
+          review_session_id,
+          reviewer_agent,
+          status,
+          diff_fingerprint,
+          raw_output,
+          error,
+          completed_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `),
+      getLatestRunningRun: db.prepare(`
+        SELECT id
+        FROM agent_review_runs
+        WHERE implementation_session_id = ?
+          AND review_session_id = ?
+          AND reviewer_agent = ?
+          AND status = 'running'
+        ORDER BY datetime(created_at) DESC, id DESC
+        LIMIT 1
+      `),
+      completeRun: db.prepare(`
+        UPDATE agent_review_runs
+        SET status = 'complete',
+            diff_fingerprint = ?,
+            raw_output = ?,
+            error = NULL,
+            updated_at = CURRENT_TIMESTAMP,
+            completed_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `),
+      failRun: db.prepare(`
+        UPDATE agent_review_runs
+        SET status = 'failed',
+            diff_fingerprint = ?,
+            raw_output = ?,
+            error = ?,
+            updated_at = CURRENT_TIMESTAMP,
+            completed_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `),
+      failRunningByImplementation: db.prepare(`
+        UPDATE agent_review_runs
+        SET status = 'failed',
+            error = ?,
+            updated_at = CURRENT_TIMESTAMP,
+            completed_at = CURRENT_TIMESTAMP
+        WHERE implementation_session_id = ?
+          AND status = 'running'
+      `),
+      deleteFindingsByRunId: db.prepare(`
+        DELETE FROM agent_review_findings
+        WHERE review_run_id = ?
       `),
       insertFinding: db.prepare(`
         INSERT INTO agent_review_findings (
@@ -96,6 +173,7 @@ export class AgentReviewRepository implements IAgentReviewRepository {
           status,
           diff_fingerprint,
           raw_output,
+          error,
           created_at,
           updated_at,
           completed_at
@@ -104,6 +182,10 @@ export class AgentReviewRepository implements IAgentReviewRepository {
             arr.*,
             ROW_NUMBER() OVER (
               PARTITION BY arr.implementation_session_id
+              ORDER BY
+                datetime(COALESCE(arr.completed_at, arr.updated_at, arr.created_at)) DESC,
+                datetime(arr.created_at) DESC,
+                arr.id DESC
             ) AS row_num
           FROM agent_review_runs arr
           WHERE arr.implementation_session_id IN (${placeholders})
@@ -114,6 +196,7 @@ export class AgentReviewRepository implements IAgentReviewRepository {
         SELECT DISTINCT implementation_session_id, reviewer_agent
         FROM agent_review_runs
         WHERE implementation_session_id IN (${placeholders})
+          AND status IN ('complete', 'stale')
       `),
       getFindingsByRunIds: (placeholders: string) => db.prepare(`
         SELECT
@@ -140,14 +223,59 @@ export class AgentReviewRepository implements IAgentReviewRepository {
     };
   }
 
+  persistStartedReview(review: PersistedAgentReviewStart): PersistedAgentReview {
     const runId = randomUUID();
 
     const tx = this.db.transaction(() => {
+      this.stmts.failRunningByImplementation.run(
+        'Superseded by a newer review run',
+        review.implementation_session_id
+      );
+      this.stmts.insertStartedRun.run(
         runId,
         review.implementation_session_id,
         review.review_session_id,
         review.reviewer_agent,
+        review.diff_fingerprint ?? null
       );
+    });
+
+    tx();
+
+    return this.getLatestByImplementationSessionIds([review.implementation_session_id])[0];
+  }
+
+  persistCompletedReview(review: PersistedAgentReviewUpsert): PersistedAgentReview {
+    let runId: string = randomUUID();
+
+    const tx = this.db.transaction(() => {
+      this.stmts.markLatestCompletedStale.run(review.implementation_session_id);
+
+      const running = this.stmts.getLatestRunningRun.get(
+        review.implementation_session_id,
+        review.review_session_id,
+        review.reviewer_agent
+      ) as { id: string } | undefined;
+      if (running) {
+        runId = running.id;
+        this.stmts.deleteFindingsByRunId.run(runId);
+        this.stmts.completeRun.run(
+          review.diff_fingerprint ?? null,
+          review.raw_output ?? null,
+          runId
+        );
+      } else {
+        this.stmts.insertTerminalRun.run(
+          runId,
+          review.implementation_session_id,
+          review.review_session_id,
+          review.reviewer_agent,
+          'complete',
+          review.diff_fingerprint ?? null,
+          review.raw_output ?? null,
+          null
+        );
+      }
 
       review.findings.forEach((finding: ReviewFinding, index: number) => {
         this.stmts.insertFinding.run(
@@ -162,6 +290,43 @@ export class AgentReviewRepository implements IAgentReviewRepository {
           finding.source
         );
       });
+    });
+
+    tx();
+
+    return this.getLatestByImplementationSessionIds([review.implementation_session_id])[0];
+  }
+
+  persistFailedReview(review: PersistedAgentReviewFailure): PersistedAgentReview {
+    let runId: string = randomUUID();
+
+    const tx = this.db.transaction(() => {
+      const running = this.stmts.getLatestRunningRun.get(
+        review.implementation_session_id,
+        review.review_session_id,
+        review.reviewer_agent
+      ) as { id: string } | undefined;
+      if (running) {
+        runId = running.id;
+        this.stmts.deleteFindingsByRunId.run(runId);
+        this.stmts.failRun.run(
+          review.diff_fingerprint ?? null,
+          review.raw_output ?? null,
+          review.error,
+          runId
+        );
+      } else {
+        this.stmts.insertTerminalRun.run(
+          runId,
+          review.implementation_session_id,
+          review.review_session_id,
+          review.reviewer_agent,
+          'failed',
+          review.diff_fingerprint ?? null,
+          review.raw_output ?? null,
+          review.error
+        );
+      }
     });
 
     tx();

@@ -105,11 +105,14 @@ export interface PersistedAgentReview {
   implementation_session_id: string;
   review_session_id: string;
   reviewer_agent: AgentType;
+  status: 'running' | 'complete' | 'failed' | 'stale';
   diff_fingerprint: string | null;
   raw_output: string | null;
+  error: string | null;
   findings: ReviewFinding[];
   created_at: string;
   updated_at: string;
+  completed_at: string | null;
 }
 
 // =============================================================================

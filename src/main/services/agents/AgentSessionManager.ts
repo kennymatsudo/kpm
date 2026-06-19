@@ -38,6 +38,11 @@ export interface AgentSessionManagerDeps {
   getMainWindow: () => BrowserWindow | null;
   /** Hook server port for CLI agent sessions. 0 = hook server not started yet. */
   hookPort?: number;
+  persistReviewStarted?: (result: {
+    implementationSessionId: string;
+    reviewSessionId: string;
+    reviewerAgent: AgentType;
+  }) => void | Promise<void>;
   persistReviewResult?: (result: {
     implementationSessionId: string;
     reviewSessionId: string;
@@ -45,11 +50,19 @@ export interface AgentSessionManagerDeps {
     findings: ReviewFinding[];
     rawOutput: string | null;
   }) => void | Promise<void>;
+  persistReviewFailure?: (result: {
+    implementationSessionId: string;
+    reviewSessionId: string;
+    reviewerAgent: AgentType;
+    rawOutput: string | null;
+    error: string;
+  }) => void | Promise<void>;
   onSessionComplete?: (event: {
     devSessionId: string;
     role: AgentSessionRole;
     summary: AgentCompletionSummary;
     findings?: ReviewFinding[];
+    reviewError?: string;
   }) => void | Promise<void>;
   onSessionStateChange?: (event: {
     devSessionId: string;
@@ -97,6 +110,8 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
   /** Active sessions keyed by agent session ID */
   const sessions = new Map<string, TrackedSession>();
   const terminalEvictionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const persistedReviewStartIds = new Set<string>();
+  const persistedReviewFailureIds = new Set<string>();
   let hookPort = deps.hookPort ?? 0;
 
   // ===========================================================================
@@ -131,6 +146,10 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         role,
         sdkOptions,
       });
+        id: devSessionId,
+        role,
+        model,
+      });
     } else {
       if (!hookPort) {
         throw new Error('Hook server is not running — cannot start CLI agent session');
@@ -149,6 +168,15 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
       devSessionId,
       projectId,
     };
+    const existingTimer = terminalEvictionTimers.get(agentSession.id);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      terminalEvictionTimers.delete(agentSession.id);
+    }
+    const existingTracked = sessions.get(agentSession.id);
+    existingTracked?.agentSession.clearHandlers();
+    persistedReviewStartIds.delete(agentSession.id);
+    persistedReviewFailureIds.delete(agentSession.id);
     sessions.set(agentSession.id, tracked);
 
     // Wire up event listeners for IPC broadcasting
@@ -200,6 +228,8 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
       clearTimeout(evictionTimer);
       terminalEvictionTimers.delete(sessionId);
     }
+    persistedReviewStartIds.delete(sessionId);
+    persistedReviewFailureIds.delete(sessionId);
 
     const tracked = sessions.get(sessionId);
     if (!tracked) return;
@@ -229,6 +259,8 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
       clearTimeout(timer);
     }
     terminalEvictionTimers.clear();
+    persistedReviewStartIds.clear();
+    persistedReviewFailureIds.clear();
     sessions.clear();
   }
 
@@ -240,6 +272,10 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     const { agentSession, devSessionId } = tracked;
 
     agentSession.on('onStateChange', (state: AgentSessionState) => {
+      if (agentSession.role === 'review' && state === 'working') {
+        persistReviewStartedOnce(agentSession);
+      }
+
       void Promise.resolve(
         deps.onSessionStateChange?.({
           devSessionId,
@@ -264,6 +300,8 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
           if (sessions.get(agentSession.id) === tracked) {
             sessions.delete(agentSession.id);
           }
+          persistedReviewStartIds.delete(agentSession.id);
+          persistedReviewFailureIds.delete(agentSession.id);
           // Drop every handler attached to the evicted session so captured IPC
           // callbacks don't hang on to the webContents reference for the full
           // runtime of the app. Keep this outside the identity check so an old
@@ -305,6 +343,11 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     });
 
     agentSession.on('onComplete', (summary: AgentCompletionSummary) => {
+      const reviewOutput = agentSession.role === 'review'
+        ? parseReviewOutput(agentSession)
+        : null;
+      const findings = reviewOutput?.findings;
+      const reviewError = reviewOutput?.error;
 
       if (agentSession.role === 'review' && findings) {
         const implementationSessionId = toImplSessionId(devSessionId);
@@ -314,9 +357,17 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
             reviewSessionId: devSessionId,
             reviewerAgent: agentSession.agentType,
             findings,
+            rawOutput: reviewOutput.rawOutput,
           })
         ).catch((error) => {
           console.error(`${LOG_PREFIX} Failed to persist review result for ${devSessionId}:`, error);
+        });
+      } else if (agentSession.role === 'review' && reviewError) {
+        persistReviewFailureOnce(agentSession, reviewError, reviewOutput?.rawOutput ?? null);
+        broadcast('agent-session:error', {
+          sessionId: agentSession.id,
+          devSessionId,
+          error: reviewError,
         });
       }
 
@@ -334,6 +385,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
           role: agentSession.role,
           summary,
           findings,
+          reviewError,
         })
       ).catch((error) => {
         console.error(`${LOG_PREFIX} Session completion hook failed for ${devSessionId}:`, error);
@@ -341,6 +393,10 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     });
 
     agentSession.on('onError', (error: string) => {
+      if (agentSession.role === 'review') {
+        persistReviewFailureOnce(agentSession, error, extractReviewOutput(agentSession));
+      }
+
       broadcast('agent-session:error', {
         sessionId: agentSession.id,
         devSessionId,
@@ -364,11 +420,65 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     return state === 'starting' || state === 'working' || state === 'waiting_for_input';
   }
 
+  function persistReviewStartedOnce(agentSession: IAgentSession): void {
+    if (persistedReviewStartIds.has(agentSession.id)) {
+      return;
+    }
+
+    persistedReviewStartIds.add(agentSession.id);
+    void Promise.resolve(
+      deps.persistReviewStarted?.({
+        implementationSessionId: toImplSessionId(agentSession.id),
+        reviewSessionId: agentSession.id,
+        reviewerAgent: agentSession.agentType,
+      })
+    ).catch((error) => {
+      console.error(`${LOG_PREFIX} Failed to persist review start for ${agentSession.id}:`, error);
+    });
+  }
+
+  function persistReviewFailureOnce(agentSession: IAgentSession, error: string, rawOutput: string | null): void {
+    if (persistedReviewFailureIds.has(agentSession.id)) {
+      return;
+    }
+
+    persistedReviewFailureIds.add(agentSession.id);
+    void Promise.resolve(
+      deps.persistReviewFailure?.({
+        implementationSessionId: toImplSessionId(agentSession.id),
+        reviewSessionId: agentSession.id,
+        reviewerAgent: agentSession.agentType,
+        rawOutput,
+        error,
+      })
+    ).catch((persistError) => {
+      console.error(`${LOG_PREFIX} Failed to persist review failure for ${agentSession.id}:`, persistError);
+    });
+  }
+
+  function parseReviewOutput(agentSession: IAgentSession): {
+    findings?: ReviewFinding[];
+    rawOutput: string | null;
+    error?: string;
+  } {
     const output = extractReviewOutput(agentSession);
 
     if (!output?.trim()) {
+      return {
+        rawOutput: output,
+        error: 'Review agent completed without findings output',
+      };
     }
 
+    const findings = parseReviewFindings(output, agentSession.agentType);
+    if (!findings) {
+      return {
+        rawOutput: output,
+        error: 'Review agent returned output that did not match the required findings JSON schema',
+      };
+    }
+
+    return { findings, rawOutput: output };
   }
 
   function extractReviewOutput(agentSession: IAgentSession): string | null {
@@ -380,6 +490,9 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     }
 
     if (agentSession instanceof CliAgentSession) {
+      return agentSession.getOutput() || null;
+    }
+
       return agentSession.getOutput() || null;
     }
 

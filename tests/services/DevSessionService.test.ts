@@ -62,7 +62,9 @@ function createDeps(session: Record<string, unknown>, repoPath: string) {
     },
     agentReviews: {
       getLatestByImplementationSessionIds: vi.fn(() => []),
+      persistStartedReview: vi.fn(),
       persistCompletedReview: vi.fn(),
+      persistFailedReview: vi.fn(),
       markLatestCompletedStale: vi.fn(),
     },
     agentSessionManager: {

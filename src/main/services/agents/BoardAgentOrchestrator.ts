@@ -14,6 +14,10 @@ type DevSessionAutomationService = Pick<
 >;
 
 interface BoardAgentOrchestratorDeps {
+  agentReviews: Pick<
+    IAgentReviewRepository,
+    'persistStartedReview' | 'persistCompletedReview' | 'persistFailedReview'
+  >;
   planService: Pick<PlanService, 'updateItem'>;
   getDevSessionService: () => DevSessionAutomationService | null;
   getAgentSessionManager: () => AgentSessionManager;
@@ -24,6 +28,12 @@ interface BoardAgentOrchestratorDeps {
 
 type AgentManagerCallbacks = Pick<
   AgentSessionManagerDeps,
+  | 'persistReviewStarted'
+  | 'persistReviewResult'
+  | 'persistReviewFailure'
+  | 'onSessionComplete'
+  | 'onSessionStateChange'
+  | 'onSessionUsage'
 >;
 
 function isActiveAgentState(state: AgentSessionState): boolean {
@@ -103,6 +113,14 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
   }
 
   return {
+    persistReviewStarted: ({ implementationSessionId, reviewSessionId, reviewerAgent }) => {
+      deps.agentReviews.persistStartedReview({
+        implementation_session_id: implementationSessionId,
+        review_session_id: reviewSessionId,
+        reviewer_agent: reviewerAgent,
+      });
+    },
+
     persistReviewResult: ({ implementationSessionId, reviewSessionId, reviewerAgent, findings, rawOutput }) => {
       deps.agentReviews.persistCompletedReview({
         implementation_session_id: implementationSessionId,
@@ -113,6 +131,17 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       });
     },
 
+    persistReviewFailure: ({ implementationSessionId, reviewSessionId, reviewerAgent, rawOutput, error }) => {
+      deps.agentReviews.persistFailedReview({
+        implementation_session_id: implementationSessionId,
+        review_session_id: reviewSessionId,
+        reviewer_agent: reviewerAgent,
+        raw_output: rawOutput,
+        error,
+      });
+    },
+
+    onSessionComplete: async ({ devSessionId, role, findings, reviewError }) => {
       const devSessionService = deps.getDevSessionService();
       if (!devSessionService) {
         return;
@@ -147,6 +176,14 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         if (!reviewSessionId) {
           moveSessionPlanItemToReview(implSessionId);
         }
+        return;
+      }
+
+      if (findings === undefined) {
+        console.warn(
+          `${LOG_PREFIX} Review session ${devSessionId} completed without valid findings: ${reviewError ?? 'unknown error'}`
+        );
+        devSessionService.updateAutomationPhase(implSessionId, 'needs_attention');
         return;
       }
 

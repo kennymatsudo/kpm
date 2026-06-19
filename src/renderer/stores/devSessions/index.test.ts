@@ -44,6 +44,7 @@ function createPersistedReview() {
     status: 'complete' as const,
     diff_fingerprint: null,
     raw_output: '{"findings":[]}',
+    error: null,
     findings: [{
       severity: 'warning' as const,
       file: 'src/file.ts',

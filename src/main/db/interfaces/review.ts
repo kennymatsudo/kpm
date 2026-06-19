@@ -76,6 +76,22 @@ export interface PersistedAgentReviewUpsert {
   findings: PersistedAgentReview['findings'];
 }
 
+export interface PersistedAgentReviewStart {
+  implementation_session_id: string;
+  review_session_id: string;
+  reviewer_agent: PersistedAgentReview['reviewer_agent'];
+  diff_fingerprint?: string | null;
+}
+
+export interface PersistedAgentReviewFailure {
+  implementation_session_id: string;
+  review_session_id: string;
+  reviewer_agent: PersistedAgentReview['reviewer_agent'];
+  diff_fingerprint?: string | null;
+  raw_output?: string | null;
+  error: string;
+}
+
 export interface IReviewTaskRepository {
   get(id: string): ReviewTask | undefined;
   getByRepoPr(repoId: string, prNumber: number): ReviewTask[];
@@ -96,7 +112,9 @@ export interface IReviewSyncStateRepository {
 }
 
 export interface IAgentReviewRepository {
+  persistStartedReview(review: PersistedAgentReviewStart): PersistedAgentReview;
   persistCompletedReview(review: PersistedAgentReviewUpsert): PersistedAgentReview;
+  persistFailedReview(review: PersistedAgentReviewFailure): PersistedAgentReview;
   getLatestByImplementationSessionIds(sessionIds: string[]): PersistedAgentReview[];
   /**
    * For each implementation session, the distinct reviewer agents that have

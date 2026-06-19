@@ -61,6 +61,8 @@ export type {
   IReviewTaskRepository,
   IReviewOwnershipRepository,
   IReviewSyncStateRepository,
+  PersistedAgentReviewFailure,
+  PersistedAgentReviewStart,
   PersistedAgentReviewUpsert,
   ReviewTaskUpsert,
   ReviewTaskStatusUpdate,

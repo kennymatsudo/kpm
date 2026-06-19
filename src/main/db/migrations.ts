@@ -3344,6 +3344,100 @@ interface Migration {
       `);
     },
   },
+  {
+    id: 1092,
+    name: '092_agent_review_running_failed_states',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        CREATE TABLE agent_review_runs_new (
+          id TEXT PRIMARY KEY,
+          implementation_session_id TEXT NOT NULL REFERENCES dev_sessions(id) ON DELETE CASCADE,
+          review_session_id TEXT NOT NULL,
+          reviewer_agent TEXT NOT NULL CHECK(reviewer_agent IN ('claude', 'codex', 'gemini')),
+          status TEXT NOT NULL CHECK(status IN ('running', 'complete', 'failed', 'stale')),
+          diff_fingerprint TEXT,
+          raw_output TEXT,
+          error TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE agent_review_findings_new (
+          id TEXT PRIMARY KEY,
+          review_run_id TEXT NOT NULL REFERENCES agent_review_runs_new(id) ON DELETE CASCADE,
+          finding_order INTEGER NOT NULL,
+          severity TEXT NOT NULL CHECK(severity IN ('critical', 'warning', 'suggestion')),
+          file TEXT NOT NULL,
+          line INTEGER,
+          description TEXT NOT NULL,
+          agent TEXT NOT NULL CHECK(agent IN ('claude', 'codex', 'gemini')),
+          source TEXT NOT NULL CHECK(source IN ('agent', 'pr')),
+          UNIQUE(review_run_id, finding_order)
+        );
+
+        INSERT INTO agent_review_runs_new (
+          id,
+          implementation_session_id,
+          review_session_id,
+          reviewer_agent,
+          status,
+          diff_fingerprint,
+          raw_output,
+          error,
+          created_at,
+          updated_at,
+          completed_at
+        )
+        SELECT
+          id,
+          implementation_session_id,
+          review_session_id,
+          reviewer_agent,
+          status,
+          diff_fingerprint,
+          raw_output,
+          NULL,
+          created_at,
+          updated_at,
+          completed_at
+
+        INSERT INTO agent_review_findings_new (
+          id,
+          review_run_id,
+          finding_order,
+          severity,
+          file,
+          line,
+          description,
+          agent,
+          source
+        )
+        SELECT
+          id,
+          review_run_id,
+          finding_order,
+          severity,
+          file,
+          line,
+          description,
+          agent,
+          source
+
+        DROP TABLE agent_review_findings;
+        DROP TABLE agent_review_runs;
+        ALTER TABLE agent_review_runs_new RENAME TO agent_review_runs;
+        ALTER TABLE agent_review_findings_new RENAME TO agent_review_findings;
+
+        CREATE INDEX IF NOT EXISTS idx_agent_review_runs_implementation
+          ON agent_review_runs(implementation_session_id, completed_at DESC, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_agent_review_runs_status
+          ON agent_review_runs(implementation_session_id, status);
+        CREATE INDEX IF NOT EXISTS idx_agent_review_findings_run
+          ON agent_review_findings(review_run_id, finding_order);
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {
