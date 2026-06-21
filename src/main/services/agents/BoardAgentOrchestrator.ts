@@ -161,6 +161,11 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           return;
         }
 
+        if (session.review_policy === 'skip') {
+          moveSessionPlanItemToReview(implSessionId);
+          return;
+        }
+
         devSessionService.updateAutomationPhase(implSessionId, 'reviewing');
 
         const reviewSessionId = await launchAutoReview({

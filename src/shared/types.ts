@@ -90,6 +90,12 @@ export interface TaskPromptTemplate {
  */
 export type AgentEffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
+/** Board implementation strategy. Standard preserves the existing one-agent flow. */
+export type AgentExecutionMode = 'standard' | 'workflow';
+
+/** Opposing-agent review policy for a board implementation session. */
+export type AgentReviewPolicy = 'auto' | 'skip';
+
 // =============================================================================
 // Custom Prompt Types
 // =============================================================================
@@ -924,6 +930,8 @@ export interface DevSession {
 
   // Agent type used for this session
   agent_type: AgentType;
+  execution_mode: AgentExecutionMode;
+  review_policy: AgentReviewPolicy;
   automation_phase: DevSessionAutomationPhase | null;
 
   // Context passed to Claude Code

@@ -9,6 +9,8 @@
 
 import type { Database, Statement } from 'better-sqlite3';
 import type {
+  AgentExecutionMode,
+  AgentReviewPolicy,
   DevSessionAutomationPhase,
   DevSession,
   DevSessionStatus,
@@ -32,6 +34,7 @@ interface PreparedStatements {
   insert: Statement;
   updateStatus: Statement;
   updateAutomationPhase: Statement;
+  updateWorkflowControls: Statement;
   updatePrInfo: Statement;
   updateName: Statement;
   updateBaseSha: Statement;
@@ -81,13 +84,20 @@ export class DevSessionRepository implements IDevSessionRepository {
         INSERT INTO dev_sessions (
           id, project_id, plan_item_id, repo_id, name,
           worktree_path, branch_name, base_branch,
+          status, agent_type, execution_mode, review_policy, automation_phase, initial_instructions
         )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *
       `),
       updateStatus: db.prepare('UPDATE dev_sessions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
       updateAutomationPhase: db.prepare(`
         UPDATE dev_sessions
         SET automation_phase = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `),
+      updateWorkflowControls: db.prepare(`
+        UPDATE dev_sessions
+        SET execution_mode = ?, review_policy = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `),
       updatePrInfo: db.prepare(`
@@ -138,6 +148,8 @@ export class DevSessionRepository implements IDevSessionRepository {
       base_sha: row.base_sha ?? null,
       status: row.status,
       agent_type: row.agent_type,
+      execution_mode: row.execution_mode ?? 'standard',
+      review_policy: row.review_policy ?? 'auto',
       automation_phase: row.automation_phase ?? null,
       initial_instructions: row.initial_instructions,
       pr_number: row.pr_number ?? null,
@@ -184,6 +196,8 @@ export class DevSessionRepository implements IDevSessionRepository {
       session.base_branch,
       session.status,
       session.agent_type,
+      session.execution_mode,
+      session.review_policy,
       session.automation_phase ?? null,
       session.initial_instructions,
     ) as DevSession;
@@ -195,6 +209,10 @@ export class DevSessionRepository implements IDevSessionRepository {
 
   updateAutomationPhase(id: string, phase: DevSessionAutomationPhase | null): void {
     this.stmts.updateAutomationPhase.run(phase, id);
+  }
+
+  updateWorkflowControls(id: string, executionMode: AgentExecutionMode, reviewPolicy: AgentReviewPolicy): void {
+    this.stmts.updateWorkflowControls.run(executionMode, reviewPolicy, id);
   }
 
   updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null): void {

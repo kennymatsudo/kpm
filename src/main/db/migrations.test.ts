@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import BetterSqlite3 from 'better-sqlite3';
+import { migrations, runMigrations } from './migrations';
 
 const FTS5_AVAILABLE = (() => {
   const db = new BetterSqlite3(':memory:');
@@ -147,6 +148,133 @@ describeIfFts('runMigrations', () => {
 
       expect(runCount.count).toBe(0);
       expect(findingCount.count).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('review table migrations', () => {
+  it('drops orphaned agent review runs when rebuilding review tables', () => {
+    const db = new BetterSqlite3(':memory:');
+
+    try {
+      db.exec(`
+        CREATE TABLE schema_migrations (
+          id INTEGER PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE dev_sessions (
+          id TEXT PRIMARY KEY
+        );
+
+        CREATE TABLE agent_review_runs (
+          id TEXT PRIMARY KEY,
+          implementation_session_id TEXT NOT NULL REFERENCES dev_sessions(id) ON DELETE CASCADE,
+          review_session_id TEXT NOT NULL,
+          reviewer_agent TEXT NOT NULL CHECK(reviewer_agent IN ('claude', 'codex', 'gemini')),
+          status TEXT NOT NULL CHECK(status IN ('complete', 'stale')),
+          diff_fingerprint TEXT,
+          raw_output TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE agent_review_findings (
+          id TEXT PRIMARY KEY,
+          review_run_id TEXT NOT NULL REFERENCES agent_review_runs(id) ON DELETE CASCADE,
+          finding_order INTEGER NOT NULL,
+          severity TEXT NOT NULL CHECK(severity IN ('critical', 'warning', 'suggestion')),
+          file TEXT NOT NULL,
+          line INTEGER,
+          description TEXT NOT NULL,
+          agent TEXT NOT NULL CHECK(agent IN ('claude', 'codex', 'gemini')),
+          source TEXT NOT NULL CHECK(source IN ('agent', 'pr')),
+          UNIQUE(review_run_id, finding_order)
+        );
+      `);
+
+      const recordMigration = db.prepare('INSERT INTO schema_migrations (id, name) VALUES (?, ?)');
+      for (const migration of migrations) {
+          recordMigration.run(migration.id, migration.name);
+        }
+      }
+
+      db.prepare('INSERT INTO dev_sessions (id) VALUES (?)').run('session-1');
+      db.prepare(`
+        INSERT INTO agent_review_runs (
+          id, implementation_session_id, review_session_id, reviewer_agent, status, raw_output
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        'review-run-valid',
+        'session-1',
+        'session-1-review',
+        'codex',
+        'complete',
+        '{"findings":[]}'
+      );
+      db.prepare(`
+        INSERT INTO agent_review_findings (
+          id, review_run_id, finding_order, severity, file, line, description, agent, source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'review-finding-valid',
+        'review-run-valid',
+        0,
+        'warning',
+        'src/file.ts',
+        12,
+        'Needs stronger validation.',
+        'codex',
+        'agent'
+      );
+
+      db.pragma('foreign_keys = OFF');
+      db.prepare(`
+        INSERT INTO agent_review_runs (
+          id, implementation_session_id, review_session_id, reviewer_agent, status, raw_output
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        'review-run-orphan',
+        'deleted-session',
+        'deleted-session-review',
+        'codex',
+        'stale',
+        '{"findings":[]}'
+      );
+      db.prepare(`
+        INSERT INTO agent_review_findings (
+          id, review_run_id, finding_order, severity, file, line, description, agent, source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'review-finding-orphan',
+        'review-run-orphan',
+        0,
+        'warning',
+        'src/deleted.ts',
+        1,
+        'Belongs to a deleted session.',
+        'codex',
+        'agent'
+      );
+      db.pragma('foreign_keys = ON');
+
+      expect(() => runMigrations(db)).not.toThrow();
+
+      const runIds = db.prepare('SELECT id FROM agent_review_runs ORDER BY id').all() as { id: string }[];
+      const findingIds = db.prepare('SELECT id FROM agent_review_findings ORDER BY id').all() as { id: string }[];
+      const columns = db.prepare('PRAGMA table_info(dev_sessions)').all() as { name: string }[];
+      const violations = db.prepare('PRAGMA foreign_key_check').all();
+
+      expect(runIds).toEqual([{ id: 'review-run-valid' }]);
+      expect(findingIds).toEqual([{ id: 'review-finding-valid' }]);
+      expect(columns.map((column) => column.name)).toEqual(
+        expect.arrayContaining(['execution_mode', 'review_policy'])
+      );
+      expect(violations).toEqual([]);
     } finally {
       db.close();
     }

@@ -21,6 +21,7 @@ interface Migration {
  * All migrations in order. Add new migrations to the end of this array.
  * Migrations run automatically on app start.
  */
+export const migrations: Migration[] = [
   {
     id: 1,
     name: '001_initial_schema',
@@ -3401,6 +3402,12 @@ interface Migration {
           created_at,
           updated_at,
           completed_at
+        FROM agent_review_runs
+        WHERE EXISTS (
+          SELECT 1
+          FROM dev_sessions
+          WHERE dev_sessions.id = agent_review_runs.implementation_session_id
+        );
 
         INSERT INTO agent_review_findings_new (
           id,
@@ -3423,6 +3430,12 @@ interface Migration {
           description,
           agent,
           source
+        FROM agent_review_findings
+        WHERE EXISTS (
+          SELECT 1
+          FROM agent_review_runs_new
+          WHERE agent_review_runs_new.id = agent_review_findings.review_run_id
+        );
 
         DROP TABLE agent_review_findings;
         DROP TABLE agent_review_runs;
@@ -3435,6 +3448,18 @@ interface Migration {
           ON agent_review_runs(implementation_session_id, status);
         CREATE INDEX IF NOT EXISTS idx_agent_review_findings_run
           ON agent_review_findings(review_run_id, finding_order);
+      `);
+    },
+  },
+  {
+    id: 1093,
+    name: '093_dev_session_workflow_controls',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE dev_sessions ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'standard'
+          CHECK(execution_mode IN ('standard', 'workflow'));
+        ALTER TABLE dev_sessions ADD COLUMN review_policy TEXT NOT NULL DEFAULT 'auto'
+          CHECK(review_policy IN ('auto', 'skip'));
       `);
     },
   },

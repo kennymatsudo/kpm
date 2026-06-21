@@ -18,9 +18,17 @@ import {
 import { toast, useResourceDomainStore } from '../../stores';
 import { listContextFiles } from '../../services/contextFileService';
 import { listAllRepoBranches } from '../../services/repoService';
+import type {
+  PlanItem,
+  AgentEffortLevel,
+  AgentExecutionMode,
+  AgentReviewPolicy,
+  RepoEnvironmentMode,
+} from '../../../shared/types';
 
 const EFFORT_OPTIONS: { value: AgentEffortLevel; label: string; title: string }[] = [
   { value: 'high', label: 'High', title: 'Deep thinking for complex tasks' },
+  { value: 'xhigh', label: 'XHigh', title: 'Extended thinking for workflow runs' },
   { value: 'max', label: 'Max', title: 'Maximum effort (Opus only)' },
 ];
 
@@ -28,6 +36,16 @@ const ENV_OPTIONS: { value: RepoEnvironmentMode; label: string; title: string }[
   { value: 'auto', label: 'Auto', title: 'Detect .envrc and apply direnv automatically' },
   { value: 'direnv', label: 'DirEnv', title: 'Always capture environment with direnv' },
   { value: 'none', label: 'None', title: 'Skip environment capture' },
+];
+
+const EXECUTION_MODE_OPTIONS: { value: AgentExecutionMode; label: string; title: string }[] = [
+  { value: 'standard', label: 'Standard', title: 'Single-agent execution' },
+  { value: 'workflow', label: 'Workflow', title: 'Structured discovery, implementation, verification, and review' },
+];
+
+const REVIEW_POLICY_OPTIONS: { value: AgentReviewPolicy; label: string; title: string }[] = [
+  { value: 'auto', label: 'Review', title: 'Run opposing-agent review when changes are ready' },
+  { value: 'skip', label: 'Skip', title: 'Move to human review without opposing-agent review' },
 ];
 
 interface ContextFileEntry {
@@ -45,6 +63,8 @@ interface AgentStartModalProps {
     contextPaths?: string[];
     effort?: AgentEffortLevel;
     environmentMode?: RepoEnvironmentMode;
+    executionMode?: AgentExecutionMode;
+    reviewPolicy?: AgentReviewPolicy;
   }) => void;
   onClose: () => void;
   onMoveOnly?: () => void;
@@ -66,6 +86,8 @@ export const AgentStartModal = memo(function AgentStartModal({
   const [branchError, setBranchError] = useState<string | null>(null);
   const [branchReloadToken, setBranchReloadToken] = useState(0);
   const [effort, setEffort] = useState<AgentEffortLevel>('high');
+  const [executionMode, setExecutionMode] = useState<AgentExecutionMode>('standard');
+  const [reviewPolicy, setReviewPolicy] = useState<AgentReviewPolicy>('auto');
   const [environmentMode, setEnvironmentMode] = useState<RepoEnvironmentMode>('auto');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -149,6 +171,13 @@ export const AgentStartModal = memo(function AgentStartModal({
     );
   }, []);
 
+  const handleExecutionModeChange = useCallback((mode: AgentExecutionMode) => {
+    setExecutionMode(mode);
+    if (mode === 'workflow' && effort === 'high') {
+      setEffort('xhigh');
+    }
+  }, [effort]);
+
   const handleStart = useCallback(() => {
     if (!selectedRepoId || isStarting) return;
     setIsStarting(true);
@@ -160,7 +189,23 @@ export const AgentStartModal = memo(function AgentStartModal({
       contextPaths: selectedContextPaths.length > 0 ? selectedContextPaths : undefined,
       effort,
       environmentMode,
+      executionMode,
+      reviewPolicy,
     });
+  }, [
+    item.id,
+    item.title,
+    selectedRepoId,
+    prompt,
+    selectedBranch,
+    selectedContextPaths,
+    isStarting,
+    effort,
+    environmentMode,
+    executionMode,
+    reviewPolicy,
+    onStart,
+  ]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -305,6 +350,54 @@ export const AgentStartModal = memo(function AgentStartModal({
                       </SelectContent>
                     </Select>
                   )}
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-tiny text-text-muted">Run mode</label>
+                  <div className="flex gap-1">
+                    {EXECUTION_MODE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        title={opt.title}
+                        onClick={() => handleExecutionModeChange(opt.value)}
+                        className={`
+                          flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors
+                          ${executionMode === opt.value
+                            ? 'bg-accent text-white'
+                            : 'border border-border-subtle bg-surface-1 text-text-secondary hover:bg-surface-2'
+                          }
+                        `}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-tiny text-text-muted">Review</label>
+                  <div className="flex gap-1">
+                    {REVIEW_POLICY_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        title={opt.title}
+                        onClick={() => setReviewPolicy(opt.value)}
+                        className={`
+                          flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors
+                          ${reviewPolicy === opt.value
+                            ? 'bg-accent text-white'
+                            : 'border border-border-subtle bg-surface-1 text-text-secondary hover:bg-surface-2'
+                          }
+                        `}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 

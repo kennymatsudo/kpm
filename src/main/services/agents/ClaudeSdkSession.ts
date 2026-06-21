@@ -89,6 +89,8 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
   private sdkOptions: SDKOptions;
   private abortController: AbortController | null = null;
   private completing = false;
+  private workflowTaskIds = new Set<string>();
+  private workflowTaskLabels = new Map<string, string>();
   private lastProgressSummary: string | null = null;
   private terminalReason: string | null = null;
 
@@ -222,12 +224,14 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
 
     if (msg.type === 'system' && msg.subtype === 'task_started') {
       this.markReady();
+      this.trackWorkflowTaskStart(msg);
       return;
     }
 
     if (msg.type === 'system' && msg.subtype === 'task_updated') {
       this.markReady();
       const status = msg.patch?.status;
+        this.trackWorkflowTaskEnd(msg.task_id, status);
       }
       return;
     }
@@ -252,6 +256,9 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
 
     if (msg.type === 'system' && msg.subtype === 'task_notification') {
       this.markReady();
+      if (msg.status === 'completed' || msg.status === 'failed' || msg.status === 'stopped') {
+        this.trackWorkflowTaskEnd(msg.task_id, msg.status === 'stopped' ? 'killed' : msg.status);
+      }
       return;
     }
 
@@ -364,6 +371,52 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
       || '';
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private trackWorkflowTaskStart(msg: any): void {
+    const taskId = typeof msg.task_id === 'string' ? msg.task_id : '';
+    if (!taskId) {
+      return;
+    }
+
+    const taskType = typeof msg.task_type === 'string' ? msg.task_type : '';
+    const workflowName = typeof msg.workflow_name === 'string' ? msg.workflow_name.trim() : '';
+    if (taskType !== 'local_workflow' && !workflowName) {
+      return;
+    }
+
+    const description = typeof msg.description === 'string' ? msg.description.trim() : '';
+    const label = workflowName || description || 'workflow';
+    this.workflowTaskIds.add(taskId);
+    this.workflowTaskLabels.set(taskId, label);
+    this.emitActivity({
+      type: 'system',
+      timestamp: Date.now(),
+      summary: `Workflow started: ${label}`,
+      status: 'running',
+    });
+  }
+
+  private trackWorkflowTaskEnd(taskId: string, status: 'completed' | 'failed' | 'killed'): void {
+    if (!this.workflowTaskIds.has(taskId)) {
+      return;
+    }
+
+    const label = this.workflowTaskLabels.get(taskId) ?? 'workflow';
+    this.workflowTaskIds.delete(taskId);
+    this.workflowTaskLabels.delete(taskId);
+    const statusLabel = status === 'completed'
+      ? 'completed'
+      : status === 'failed'
+        ? 'failed'
+        : 'stopped';
+    this.emitActivity({
+      type: 'system',
+      timestamp: Date.now(),
+      summary: `Workflow ${statusLabel}: ${label}`,
+      status: status === 'completed' ? 'success' : 'failed',
+    });
+  }
+
   // ===========================================================================
   // Internal: State & Events
   // ===========================================================================
@@ -380,6 +433,8 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
   }
 
   private beginTurn(): void {
+    this.workflowTaskIds.clear();
+    this.workflowTaskLabels.clear();
     this.lastProgressSummary = null;
     this.terminalReason = null;
   }

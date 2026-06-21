@@ -39,6 +39,14 @@ import {
   usePlanItemSelection,
 } from './hooks';
 import type { ViewMode } from './ViewSwitcher';
+import type {
+  PlanItem,
+  StatusCategory,
+  AgentEffortLevel,
+  AgentExecutionMode,
+  AgentReviewPolicy,
+  RepoEnvironmentMode,
+} from '../../../shared/types';
 
 interface PlanViewProps {
   viewMode: ViewMode;
@@ -252,6 +260,8 @@ export function PlanView({
     contextPaths?: string[];
     effort?: AgentEffortLevel;
     environmentMode?: RepoEnvironmentMode;
+    executionMode?: AgentExecutionMode;
+    reviewPolicy?: AgentReviewPolicy;
   }) => {
     const item = planItems.find((i) => i.id === params.planItemId);
     const currentStatus = item
@@ -269,6 +279,8 @@ export function PlanView({
       params.contextPaths,
       params.effort,
       params.environmentMode,
+      params.executionMode,
+      params.reviewPolicy,
     );
 
     if (!result.success) {

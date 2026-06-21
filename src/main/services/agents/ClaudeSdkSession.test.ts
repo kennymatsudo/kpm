@@ -59,10 +59,24 @@ function testHarness(session: ClaudeSdkSession): SessionTestHarness {
 
   });
 
+    testHarness(session).getCompletionSummary = vi.fn().mockResolvedValue({
+      filesChanged: 0,
+      additions: 0,
+      deletions: 0,
+    });
+
 
 
   });
 
+    testHarness(session).getCompletionSummary = vi.fn().mockResolvedValue({
+      filesChanged: 0,
+      additions: 0,
+      deletions: 0,
+    });
+
+
+    expect(session.state).toBe('complete');
 
 
 

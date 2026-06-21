@@ -694,6 +694,8 @@ HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and 
           base_sha: null,
           status: 'inactive',
           agent_type: 'claude',
+          execution_mode: 'standard',
+          review_policy: 'auto',
           automation_phase: null,
           initial_instructions: '',
           pr_number: null,

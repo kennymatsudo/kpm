@@ -10,6 +10,8 @@ const agentType = z.enum(['claude', 'codex', 'gemini'], {
 });
 
 const agentEffortLevel = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+const agentExecutionMode = z.enum(['standard', 'workflow']);
+const agentReviewPolicy = z.enum(['auto', 'skip']);
 
 const agentSessionRole = z.enum(['implement', 'review'], {
   message: 'Role must be "implement" or "review"',
@@ -26,6 +28,8 @@ export const AgentSessionSchemas = {
     contextPaths: z.array(z.string().min(1)).optional(),
     effort: agentEffortLevel.optional(),
     environmentMode: z.enum(['auto', 'direnv', 'none']).optional(),
+    executionMode: agentExecutionMode.optional().default('standard'),
+    reviewPolicy: agentReviewPolicy.optional().default('auto'),
   }),
 
   /** Start an agent session for an existing dev session */

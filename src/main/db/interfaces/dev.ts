@@ -6,6 +6,8 @@
 
 import type {
   DevSessionAutomationPhase,
+  AgentExecutionMode,
+  AgentReviewPolicy,
   DevSession,
   DevSessionStatus,
   DevSessionWithPlanItem,
@@ -35,6 +37,8 @@ export interface IDevSessionRepository {
   updateStatus(id: string, status: DevSessionStatus): void;
   /** Update persisted automation phase for session orchestration. */
   updateAutomationPhase(id: string, phase: DevSessionAutomationPhase | null): void;
+  /** Update persisted run mode/review policy for session orchestration. */
+  updateWorkflowControls(id: string, executionMode: AgentExecutionMode, reviewPolicy: AgentReviewPolicy): void;
   /** Update PR tracking info on a session */
   updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null): void;
   /** Update session name */

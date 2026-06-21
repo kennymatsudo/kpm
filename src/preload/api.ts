@@ -77,6 +77,8 @@ import type {
   AgentSessionState,
   AgentSessionRole,
   AgentEffortLevel,
+  AgentExecutionMode,
+  AgentReviewPolicy,
   CustomTheme,
   ImportedCustomThemeResult,
   ClaudeAvailability,
@@ -182,6 +184,8 @@ export type {
   SlackTriageItem,
   CustomTheme,
   ImportedCustomThemeResult,
+  AgentExecutionMode,
+  AgentReviewPolicy,
 };
 
 const tempImages = {
@@ -1181,6 +1185,30 @@ const devSessions = {
 
 const agentSessions = {
   // Create pending session + start agent in one call (primary entry point from board UI)
+  createAndStart: (
+    planItemId: string,
+    repoId: string,
+    prompt: string,
+    agentType?: AgentType,
+    baseBranch?: string,
+    contextPaths?: string[],
+    effort?: AgentEffortLevel,
+    environmentMode?: RepoEnvironmentMode,
+    executionMode?: AgentExecutionMode,
+    reviewPolicy?: AgentReviewPolicy,
+  ): Promise<{ success: boolean; session?: DevSession; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.agentSession.createAndStart, {
+      planItemId,
+      repoId,
+      prompt,
+      agentType,
+      baseBranch,
+      contextPaths,
+      effort,
+      environmentMode,
+      executionMode,
+      reviewPolicy,
+    }),
 
   // Start an agent session for an existing pending/inactive dev session
   startAgent: (devSessionId: string, agentType?: AgentType, role?: AgentSessionRole): Promise<{ success: boolean; session?: DevSession; error?: string }> =>

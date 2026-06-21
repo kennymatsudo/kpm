@@ -5,6 +5,16 @@
  * "no direct window.api outside services" lint rule.
  */
 
+import type {
+  AgentSessionState,
+  AgentSessionRole,
+  AgentType,
+  AgentEffortLevel,
+  AgentExecutionMode,
+  AgentReviewPolicy,
+  DevSession,
+  RepoEnvironmentMode,
+} from '../../shared/types';
 import type { AgentActivity, AgentQuestion, AgentCompletionSummary, ReviewFinding } from '../../shared/agent-types';
 
 // =============================================================================
@@ -24,7 +34,21 @@ export function createAndStartAgentSession(
   contextPaths?: string[],
   effort?: AgentEffortLevel,
   environmentMode?: RepoEnvironmentMode,
+  executionMode?: AgentExecutionMode,
+  reviewPolicy?: AgentReviewPolicy,
 ): Promise<{ success: boolean; session?: DevSession; error?: string }> {
+  return window.api.agentSessions.createAndStart(
+    planItemId,
+    repoId,
+    prompt,
+    agentType,
+    baseBranch,
+    contextPaths,
+    effort,
+    environmentMode,
+    executionMode,
+    reviewPolicy,
+  );
 }
 
 /**

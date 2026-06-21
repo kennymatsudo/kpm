@@ -24,6 +24,7 @@ import type {
   IRepoRepository,
 } from '../../db/interfaces';
 import { computeMergeOrder, type MergeOrderEntry } from './mergeOrder';
+import type { Options as SDKOptions, Settings as SDKSettings } from '@anthropic-ai/claude-agent-sdk';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import { formatPlanRefSection } from '../../claude/contextRefs';
 import { getConfig } from '../../config';
@@ -132,6 +133,61 @@ function splitMarkdownListItems(section: string | undefined): string[] {
     .filter(Boolean)
     .map((line) => line.replace(/^[-*]\s+(?:\[[ xX]\]\s*)?/, '').trim())
     .filter(Boolean);
+}
+
+type BoardClaudeModel = 'opus' | 'sonnet' | 'haiku';
+
+const WORKFLOW_EXECUTION_INSTRUCTIONS = `## KPM Structured Workflow Mode
+
+You are running in KPM workflow mode. Use Claude Code's Workflow tool before making repository edits when it is available. Create an in-memory workflow script; do not write .claude/workflows, .kpm, or other orchestration files into the repository.
+
+The workflow should use these phases:
+1. Inspect: read the task, repo instructions, likely touched files, current tests, and verification commands.
+2. Discover: use read-only subagents for independent codebase questions. Use web search only when current external APIs, releases, security guidance, or software-development best practices materially affect the implementation.
+3. Plan: choose a small implementation path, identify file ownership, and avoid parallel writers unless files are clearly partitioned.
+4. Implement: make the code changes in this worktree only.
+5. Verify: run targeted tests/checks and inspect the diff. Treat verification as a gate; if a command cannot run, record the exact reason.
+6. Self-review: use a fresh-context review pass for correctness, requirements, security/data-loss risk, migrations, tests, and scope. Do not report style nits.
+7. Finalize: produce the normal concise final summary with files changed, verification commands, and residual risks.
+
+KPM will run the external opposing-agent review gate after your implementation completes when the session policy allows it. Do not ask the user for input. If the Workflow tool is unavailable, follow the same phases manually and say so in the final summary.`;
+
+function resolveBoardModel(executionMode: AgentExecutionMode, agentType: AgentType): BoardClaudeModel {
+  return executionMode === 'workflow' && agentType === 'claude' ? 'opus' : 'sonnet';
+}
+
+function resolveBoardEffort(
+  model: BoardClaudeModel,
+  requestedEffort: AgentEffortLevel | undefined,
+  executionMode: AgentExecutionMode,
+): AgentEffortLevel | undefined {
+  const effort = requestedEffort ?? (executionMode === 'workflow' ? 'xhigh' : undefined);
+  if (model !== 'opus' && (effort === 'xhigh' || effort === 'max')) {
+    return 'high';
+  }
+  return effort;
+}
+
+function buildBoardSdkSettings(executionMode: AgentExecutionMode, effectiveEffort: AgentEffortLevel | undefined): SDKSettings {
+  if (executionMode !== 'workflow') {
+    return {
+      disableWorkflows: true,
+      workflowKeywordTriggerEnabled: false,
+    };
+  }
+
+  return {
+    enableWorkflows: true,
+    workflowKeywordTriggerEnabled: true,
+    ...(effectiveEffort === 'xhigh' && { ultracode: true }),
+  };
+}
+
+function buildExecutionPrompt(basePrompt: string, executionMode: AgentExecutionMode): string {
+  if (executionMode !== 'workflow') {
+    return basePrompt;
+  }
+  return `${WORKFLOW_EXECUTION_INSTRUCTIONS}\n\n${basePrompt}`;
 }
 
 /**
@@ -699,7 +755,11 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       contextPaths?: string[];
       effort?: AgentEffortLevel;
       environmentMode?: RepoEnvironmentMode;
+      executionMode?: AgentExecutionMode;
+      reviewPolicy?: AgentReviewPolicy;
     }): AsyncResult<{ session: DevSession }> {
+      const executionMode = input.executionMode ?? 'standard';
+      const reviewPolicy = input.reviewPolicy ?? 'auto';
       const instructionsResult = service.buildBoardStartInstructions(input.planItemId, input.prompt);
       if (!instructionsResult.ok) {
         return instructionsResult;
@@ -716,11 +776,13 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       ) {
         sessionId = existing.id;
         projectId = existing.project_id;
+        deps.devSessions.updateWorkflowControls(sessionId, executionMode, reviewPolicy);
       } else {
         const createResult = await service.createPendingSession(
           input.planItemId,
           input.repoId,
           instructions,
+          { baseBranch: input.baseBranch, executionMode, reviewPolicy },
         );
         if (!createResult.ok) {
           return createResult;
@@ -740,6 +802,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         prompt: augmentedPrompt,
         effort: input.effort,
         environmentMode: input.environmentMode,
+        executionMode,
       });
     },
 
@@ -750,6 +813,12 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       planItemId: string,
       repoId: string,
       instructions: string,
+      options?: {
+        freshStart?: boolean;
+        baseBranch?: string;
+        executionMode?: AgentExecutionMode;
+        reviewPolicy?: AgentReviewPolicy;
+      }
     ): AsyncResult<DevSession> {
       try {
         // Validate plan item exists
@@ -799,6 +868,8 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           base_sha: null,
           status: 'pending',
           agent_type: 'claude',
+          execution_mode: options?.executionMode ?? 'standard',
+          review_policy: options?.reviewPolicy ?? 'auto',
           automation_phase: null,
           initial_instructions: instructions,
           pr_number: null,
@@ -824,6 +895,12 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
      */
     async startAgentSession(
       sessionId: string,
+      options?: {
+        prompt?: string;
+        effort?: AgentEffortLevel;
+        environmentMode?: RepoEnvironmentMode;
+        executionMode?: AgentExecutionMode;
+      },
     ): AsyncResult<{ session: DevSession }> {
       try {
         if (!deps.agentSessionManager) {
@@ -894,10 +971,18 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         );
 
         // Use the user's prompt override if provided, otherwise the stored instructions
+        const executionMode = options?.executionMode ?? session.execution_mode ?? 'standard';
+        const prompt = buildExecutionPrompt(options?.prompt || session.initial_instructions, executionMode);
 
         deps.agentReviews.markLatestCompletedStale(sessionId);
         deps.devSessions.updateAutomationPhase(sessionId, 'idle');
 
+        const developerModel = resolveBoardModel(executionMode, session.agent_type);
+        const effectiveEffort = resolveBoardEffort(developerModel, options?.effort, executionMode);
+        const sdkSettings = buildBoardSdkSettings(executionMode, effectiveEffort);
+        const disallowedTools = executionMode === 'workflow'
+          ? ['AskUserQuestion']
+          : ['AskUserQuestion', 'Workflow'];
 
         // Build SDK options for the dev session
         // Dev sessions use a minimal config — no KPM MCP server, no plan tools
@@ -909,10 +994,13 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           permissionMode: getConfig().claude.defaultPermissionMode,
           // Board agents are one-shot — never pause for the built-in
           // option-picker; the agent proceeds on assumptions instead.
+          disallowedTools,
+          settings: sdkSettings,
           skills: [],
           env: { ...process.env, ...capturedEnv, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
           thinking: { type: 'adaptive' as const, display: 'summarized' as const },
           agentProgressSummaries: true,
+          ...(effectiveEffort && { effort: effectiveEffort }),
           ...getClaudeSdkSpawnOptions(),
         };
 
