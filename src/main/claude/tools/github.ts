@@ -10,6 +10,7 @@ import * as path from 'path';
 import { tool, jsonResult, toolError } from './index';
 import type { IPlanItemRepository, IRepoRepository, IDevSessionRepository } from '../../db/interfaces';
 import {
+  getCommittedDiff,
   getCommitLog,
   getCurrentBranch,
   detectBaseBranch,
@@ -81,6 +82,7 @@ Requires at least a plan_item_id (to find the repo and context) or a repo_id.`,
           // Gather context
           const baseBranch = base_branch || await detectBaseBranch(repo.path);
           const currentBranch = await getCurrentBranch(repo.path);
+          const diff = await getCommittedDiff(repo.path, baseBranch, 80_000);
           const commitLog = await getCommitLog(repo.path, baseBranch);
 
           // Build context sections

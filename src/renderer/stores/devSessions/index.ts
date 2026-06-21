@@ -95,6 +95,7 @@ export interface DevSessionsState {
   setReviewActionable: (summary: ReviewActionableSummary) => void;
   loadPrContext: (
     sessionId: string,
+    options?: { force?: boolean; featureContextPath?: string | null }
   ) => Promise<{ success: boolean; context?: PrCreationContext; error?: string }>;
   createPullRequest: (
     sessionId: string,

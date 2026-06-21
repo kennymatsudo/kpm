@@ -236,6 +236,15 @@ describe('devSessionsStore', () => {
 
     expect(api.github.checkAuth).toHaveBeenCalledWith('dev-session-1');
     expect(api.github.buildPrContext).toHaveBeenCalledWith('dev-session-1');
+    expect(api.github.generatePrContent).toHaveBeenCalledWith(
+      'dev-session-1',
+      'Implement feature',
+      '## Summary',
+      null,
+      '',
+      '',
+      null
+    );
     expect(result).toEqual({
       success: true,
       context: {
@@ -246,11 +255,121 @@ describe('devSessionsStore', () => {
         hasCommits: true,
         prTemplate: null,
         aiGenerated: true,
+        featureContextPath: null,
       },
     });
     expect(useDevSessionsStore.getState().prContextBySessionId.get('dev-session-1')).toEqual(
       result.context
     );
+  });
+
+  it('returns raw PR context when generated content is unavailable', async () => {
+    api.github.checkAuth.mockResolvedValue({
+      success: true,
+      authenticated: true,
+      account: 'test-user',
+    });
+    api.github.buildPrContext.mockResolvedValue({
+      success: true,
+      suggestedTitle: 'Implement feature',
+      body: '## Summary',
+      branch: 'feature/test',
+      baseBranch: 'main',
+      hasCommits: true,
+      prTemplate: null,
+    });
+    api.github.generatePrContent.mockResolvedValue({
+      success: false,
+      error: 'Generation failed',
+    });
+
+    const result = await useDevSessionsStore.getState().loadPrContext('dev-session-1', { force: true });
+
+    expect(api.github.generatePrContent).toHaveBeenCalledWith(
+      'dev-session-1',
+      'Implement feature',
+      '## Summary',
+      null,
+      '',
+      '',
+      null
+    );
+    expect(result).toEqual({
+      success: true,
+      context: {
+        suggestedTitle: 'Implement feature',
+        body: '## Summary',
+        branch: 'feature/test',
+        baseBranch: 'main',
+        hasCommits: true,
+        prTemplate: null,
+        aiGenerated: false,
+        featureContextPath: null,
+      },
+    });
+  });
+
+  it('passes selected feature context document when generating PR content', async () => {
+    api.github.checkAuth.mockResolvedValue({
+      success: true,
+      authenticated: true,
+      account: 'test-user',
+    });
+    api.github.buildPrContext.mockResolvedValue({
+      success: true,
+      suggestedTitle: 'Implement feature',
+      body: '## Summary',
+      branch: 'feature/test',
+      baseBranch: 'main',
+      hasCommits: true,
+      prTemplate: null,
+    });
+    api.github.generatePrContent.mockResolvedValue({
+      success: true,
+      title: 'AI: Implement feature',
+      body: 'AI generated description',
+    });
+
+    const result = await useDevSessionsStore.getState().loadPrContext('dev-session-1', {
+      force: true,
+      featureContextPath: 'docs/support-attachments.md',
+    });
+
+    expect(api.github.generatePrContent).toHaveBeenCalledWith(
+      'dev-session-1',
+      'Implement feature',
+      '## Summary',
+      null,
+      '',
+      '',
+      'docs/support-attachments.md'
+    );
+    expect(result.context?.featureContextPath).toBe('docs/support-attachments.md');
+    expect(useDevSessionsStore.getState().prContextBySessionId.get('dev-session-1')?.featureContextPath)
+      .toBe('docs/support-attachments.md');
+  });
+
+  it('does not generate PR content when there are no commits ahead', async () => {
+    api.github.checkAuth.mockResolvedValue({
+      success: true,
+      authenticated: true,
+      account: 'test-user',
+    });
+    api.github.buildPrContext.mockResolvedValue({
+      success: true,
+      suggestedTitle: 'Implement feature',
+      body: '',
+      branch: 'feature/test',
+      baseBranch: 'main',
+      hasCommits: false,
+      prTemplate: null,
+    });
+
+    const result = await useDevSessionsStore.getState().loadPrContext('dev-session-1', { force: true });
+
+    expect(api.github.generatePrContent).not.toHaveBeenCalled();
+    expect(result.context?.aiGenerated).toBe(false);
+    expect(result.context?.hasCommits).toBe(false);
   });
 
   it('creates a pull request through the store and refreshes sessions', async () => {

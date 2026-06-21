@@ -76,6 +76,8 @@ export function registerGitHubHandlers(gitHubService: GitHubService): void {
     IPC_CHANNELS.github.generatePrContent,
     createIpcHandler(
       GitHubSchemas.generatePrContent,
+      async ({ sessionId, rawTitle, rawBody, prTemplate, diff, commitLog, featureContextPath }) => {
+        return unwrapOrThrow(await gitHubService.generatePrContent(sessionId, rawTitle, rawBody, prTemplate, diff, commitLog, featureContextPath));
       },
       'Failed to generate PR content'
     )

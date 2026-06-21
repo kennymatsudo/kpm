@@ -75,7 +75,9 @@ export function createDevSessionsPrSlice(
 
     loadPrContext: async (sessionId, options) => {
       const force = options?.force ?? false;
+      const featureContextPath = options?.featureContextPath ?? null;
       const cachedContext = get().prContextBySessionId.get(sessionId);
+      if (!force && cachedContext && (cachedContext.featureContextPath ?? null) === featureContextPath) {
         return { success: true, context: cachedContext };
       }
 
@@ -113,6 +115,7 @@ export function createDevSessionsPrSlice(
           hasCommits,
           prTemplate,
           aiGenerated: false,
+          featureContextPath,
         };
 
         set((state) => {
@@ -123,6 +126,7 @@ export function createDevSessionsPrSlice(
 
         if (hasCommits) {
           try {
+            const aiResult = await generateSessionPrContent(sessionId, rawTitle, rawBody, prTemplate, '', '', featureContextPath);
             if (aiResult.success && aiResult.title && aiResult.body) {
               context = {
                 ...context,

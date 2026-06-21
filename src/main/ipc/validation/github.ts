@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod';
+import { relativePath, uuid } from './shared';
 
 export const GitHubSchemas = {
   checkAuth: z.object({
@@ -35,6 +36,11 @@ export const GitHubSchemas = {
     prTemplate: z.string().nullable(),
     diff: z.string(),
     commitLog: z.string(),
+    featureContextPath: relativePath
+      .refine((value) => value.length > 0, 'Path cannot be empty')
+      .refine((value) => /\.mdx?$/i.test(value), 'Feature context path must be markdown')
+      .nullable()
+      .optional(),
   }),
 
   buildAddressCommentsContext: z.object({

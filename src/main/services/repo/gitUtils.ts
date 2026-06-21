@@ -130,6 +130,28 @@ export async function getDiff(
 }
 
 /**
+ * Get the diff for committed PR contents only.
+ * This intentionally excludes staged and unstaged worktree changes so generated
+ * PR text describes exactly what `git push` will put on the branch.
+ */
+export async function getCommittedDiff(
+  repoPath: string,
+  baseBranch: string,
+  maxChars = 100_000
+): Promise<string> {
+  const effectiveBranch = await resolveUpstreamBranch(repoPath, baseBranch);
+  const mergeBase = await getMergeBase(repoPath, effectiveBranch);
+  const { stdout } = await gitExec(
+    ['diff', mergeBase, 'HEAD'],
+    { cwd: repoPath, maxBuffer: 10 * 1024 * 1024 }
+  );
+  if (stdout.length > maxChars) {
+    return stdout.slice(0, maxChars) + '\n\n... (diff truncated)';
+  }
+  return stdout;
+}
+
+/**
  * Get the commit log between a base branch and HEAD.
  */
 export async function getCommitLog(

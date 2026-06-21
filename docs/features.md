@@ -218,8 +218,12 @@ A feature that scores low on all four is a candidate for removal even if it is t
   - Approval queue: replies queued for approval before posting
 
 - **Key code locations:**
+  - Store: `src/renderer/stores/devSessions/prSlice.ts`
+  - IPC handlers: `src/main/ipc/handlers/github.ts`
+  - Claude chat tool: `src/main/claude/tools/github.ts` (`generate_pr_description`, returns context for chat rather than creating a PR)
 - **Entry points / surfaces:**
 - **Dependencies / integrations:**
+  - Project documents: optional markdown file summarized into reviewer-facing feature context
 
 - **Key code locations:**
 - **Entry points / surfaces:**
@@ -275,6 +279,7 @@ A feature that scores low on all four is a candidate for removal even if it is t
 
 ## Artifacts & Generation
 
+### 43. Artifact Generation (Weekly Updates, Test Plans, Custom Outputs)
 - **Key code locations:**
   - IPC handlers: `src/main/ipc/handlers/artifacts.ts`
   - Surface: `src/renderer/components/layout/Layout.tsx` (consumes `artifactsStore`; opened via `useLayoutShortcuts`)

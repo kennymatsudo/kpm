@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { afterEach, describe, expect, it } from 'vitest';
+import { findEnclosingGitRoot, getCommittedDiff, getDiff } from './gitUtils';
 
 function runGit(repoPath: string, args: string[]): string {
   return execFileSync('git', args, {
@@ -45,6 +46,31 @@ describe('getDiff', () => {
     expect(headOnlyDiff).toContain('committed change');
     expect(headOnlyDiff).not.toContain('live worktree change');
     expect(worktreeDiff).toContain('live worktree change');
+  });
+
+  it('excludes live worktree changes when diffing committed PR contents', async () => {
+    const repoPath = mkdtempSync(join(tmpdir(), 'git-utils-'));
+    tempDirs.push(repoPath);
+
+    runGit(repoPath, ['init', '-b', 'main']);
+    runGit(repoPath, ['config', 'user.name', 'Test User']);
+    runGit(repoPath, ['config', 'user.email', 'test@example.com']);
+
+    const filePath = join(repoPath, 'feature.txt');
+    writeFileSync(filePath, 'base\n');
+    runGit(repoPath, ['add', 'feature.txt']);
+    runGit(repoPath, ['commit', '-m', 'base']);
+
+    runGit(repoPath, ['checkout', '-b', 'feature/committed-pr-copy']);
+    writeFileSync(filePath, 'committed change\n');
+    runGit(repoPath, ['commit', '-am', 'committed change']);
+
+    writeFileSync(filePath, 'live worktree change\n');
+
+    const committedDiff = await getCommittedDiff(repoPath, 'main');
+
+    expect(committedDiff).toContain('committed change');
+    expect(committedDiff).not.toContain('live worktree change');
   });
 });
 

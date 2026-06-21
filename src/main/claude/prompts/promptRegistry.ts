@@ -91,8 +91,15 @@ Description guidance:
 {{description_guidance}}
 
 Universal rules:
+- Write for a reviewer who has little project context and is deciding what to inspect. Explain the change in plain language before naming internal mechanisms.
+- If Feature Context is provided, treat it as an attached project document. Infer the larger user-facing feature or workflow from that document and include it in the opening paragraph when the context supports it. This is reviewer orientation, not roadmap content. Also explain this PR's role in that feature and the boundary around this PR. Do not mention future tickets, phases, or dependencies unless they directly explain the current PR's boundary.
+- Start the description with a short context paragraph (2-4 sentences) explaining the problem, the larger user-facing feature or workflow when known, how this PR fits that feature, and the approach. Then call out only the most important review areas: behavior, ownership boundaries, data model or migration, authorization/security, idempotency/concurrency, rollout/compatibility risk, and test coverage.
+- Prefer reviewer-relevant concepts over implementation inventory. Avoid "What's added" sections that enumerate every endpoint, DTO, field, helper, test, index, or file. Mention a concrete API, table, index, or class only when it changes the review focus or risk.
+- If the description needs bullets, group them by reviewer concern or behavior rather than by file/class/endpoint. Keep each bullet to one short sentence.
+- Never state non-implemented follow-up work as current behavior. If the diff does not implement cleanup, expiration, routing, rendering, or another process, phrase it as outside this PR or omit it.
 - Do not paste commit SHAs, enumerate file paths, list test names, or quote diff hunks. The reviewer has the diff and the commit log.
 - Include a sentence or bullet only if it teaches the reviewer something they cannot get from the diff, the title, or the commit log.
+- Keep the body concise enough to skim in one screen unless the repository template explicitly asks for more detail.
 - Do not fabricate rationale. When the provided context is thin, the description is thin — invented tradeoffs or made-up risk analysis are worse than brevity.
 
 Respond in this exact format (no other text):
@@ -110,7 +117,9 @@ BODY:
     category: 'generation',
     defaultContent: `Write for a reviewer who is skimming. A description that is too long does not get read. Aim for something that fits on one screen.
 
+Lead with a short context paragraph (2-4 sentences) framing the problem, the larger user-facing feature or workflow when known, how this change fits into that feature or system, and the approach. Use plain language first; keep internal service/table/API names only where they help the reviewer orient.
 
+Only add bullets or further sections when they teach the reviewer something beyond the opening paragraph: reviewer focus, behavior changes, data model or migration impact, authorization/security decisions, idempotency/concurrency behavior, rollout/compatibility risk, non-obvious tradeoffs, or test coverage. Group bullets by reviewer concern or behavior rather than by file/class/endpoint. Avoid "What's added" inventory lists. Keep bullets to one line or a short sentence — not mini-paragraphs. If none of that applies, the opening paragraph is the whole description.`,
   },
   {
     key: 'generation.commit_message_instructions',

@@ -11,6 +11,7 @@ import { runClaudeQuery, type ClaudeQueryUsage } from '../../claude/runClaudeQue
 import { randomUUID } from 'crypto';
 import type { IDevSessionRepository, IRepoRepository, IPlanItemRepository } from '../../db/interfaces';
 import type {
+  PlanItem,
   PrComment,
   PrReviewSnapshot,
   PrReviewThread,
@@ -38,6 +39,7 @@ import {
   unresolveReviewThread as unresolveGhReviewThread,
 } from './ghUtils';
 import {
+  getCommittedDiff,
   getCommitLog,
   getCurrentBranch,
   resolveBaseBranch,
@@ -57,10 +59,14 @@ export interface GitHubServiceDeps {
   devSessions: IDevSessionRepository;
   repos: IRepoRepository;
   planItems: IPlanItemRepository;
+  /** Reads an optional project markdown document used as high-level PR context. */
+  readProjectDocument?: (projectId: string, path: string) => AsyncResult<string>;
   /** Resolves configurable prompt content (override > registry default). */
   getPromptContent?: (key: string) => string;
   /**
    * Centralized Claude usage recorder. Optional so existing tests don't need
+   * to wire it. PR-description generation calls in this service should funnel
+   * through here.
    */
   recordUsage?: (event: {
     projectId: string | null;
@@ -82,6 +88,7 @@ export interface PrContextResult {
 
 /** Branches that must never be pushed directly. */
 const PROTECTED_BRANCHES = new Set(['main', 'master', 'develop', 'release']);
+const MAX_FEATURE_CONTEXT_DOC_CHARS = 24_000;
 
 export interface BuildAddressReviewContextOptions {
   threadIds?: string[];
@@ -147,6 +154,11 @@ function formatReviewContext(
   return lines.join('\n');
 }
 
+function truncateFeatureContextDoc(content: string): string {
+  if (content.length <= MAX_FEATURE_CONTEXT_DOC_CHARS) return content;
+  return `${content.slice(0, MAX_FEATURE_CONTEXT_DOC_CHARS)}\n\n... (feature context document truncated)`;
+}
+
 // =============================================================================
 // Service Factory
 // =============================================================================
@@ -163,6 +175,94 @@ export function createGitHubService(deps: GitHubServiceDeps) {
     // PR operations need the session branch's HEAD, which lives in the worktree.
     // Fall back to the main repo path only if the worktree no longer exists.
     const repoPath = existsSync(session.worktree_path) ? session.worktree_path : repo.path;
+  }
+
+  async function buildFeatureContextBrief(input: {
+    projectId: string | null;
+    featureContextPath?: string | null;
+    planItem: PlanItem | null;
+    branchName: string;
+    baseBranch: string;
+    diff: string;
+    commitLog: string;
+    recordUsage?: GitHubServiceDeps['recordUsage'];
+  }): Promise<string | null> {
+    if (!input.projectId || !input.featureContextPath || !deps.readProjectDocument) {
+      return null;
+    }
+
+    const documentResult = await deps.readProjectDocument(input.projectId, input.featureContextPath);
+    if (!documentResult.ok || !documentResult.data.trim()) {
+      return null;
+    }
+
+    const taskParts: string[] = [];
+    if (input.planItem) {
+      taskParts.push(`Title: ${input.planItem.title}`);
+      if (input.planItem.intent) taskParts.push(`Intent: ${input.planItem.intent}`);
+      if (input.planItem.description) taskParts.push(`Description: ${input.planItem.description}`);
+      if (input.planItem.acceptance_criteria?.length) {
+        taskParts.push(`Acceptance Criteria:\n${input.planItem.acceptance_criteria.map((criterion) => `- ${criterion}`).join('\n')}`);
+      }
+      if (input.planItem.external_key) taskParts.push(`Tracker Key: ${input.planItem.external_key}`);
+    }
+
+    const truncatedDiff = input.diff.length > 12_000
+      ? `${input.diff.slice(0, 12_000)}\n\n... (diff truncated for feature-context extraction)`
+      : input.diff;
+    const truncatedDocument = truncateFeatureContextDoc(documentResult.data);
+
+    const prompt = `Extract high-level feature context for a PR description.
+
+
+Return 3-6 concise bullets. Cover only what is supported by the inputs:
+- Larger user-facing feature or workflow goal
+- This PR's role in that feature
+- Boundaries or intentionally excluded work only when they explain why this PR stops where it does
+- Reviewer focus implied by this PR's role
+
+Do not write a PR description. Do not create a roadmap. The larger user-facing feature is reviewer orientation, not roadmap content, so include it when the document supports it. Do not include a list of future tickets or later phases unless a specific dependency changes how reviewers should read this PR. If cleanup, expiration, routing, rendering, or another process is not implemented in this diff, describe it only as outside this PR, not as current behavior.
+
+[REFERENCE - Feature Document]
+Path: ${input.featureContextPath}
+
+${truncatedDocument}
+
+[REFERENCE - Task]
+${taskParts.join('\n') || 'No task context provided.'}
+
+[REFERENCE - Branch]
+${input.branchName} -> ${input.baseBranch}
+
+
+
+    const sdkModel = getConfig().generation.fastModel;
+    const result = await runClaudeQuery({
+      prompt,
+      sdkOptions: {
+        model: sdkModel,
+        tools: [],
+        persistSession: false,
+        systemPrompt: 'You extract concise feature context for pull request reviewers. Return only bullets, no preamble.',
+        stderr: () => {},
+        ...getClaudeSdkSpawnOptions(),
+      },
+      timeoutMs: getConfig().generation.prGenerationTimeoutMs,
+      timeoutMessage: 'Feature context extraction timed out',
+      recordUsage: input.recordUsage
+        ? ({ usage, totalCostUsd }) => {
+            input.recordUsage!({
+              projectId: input.projectId,
+              source: 'pr_description',
+              model: sdkModel,
+              usage,
+              totalCostUsd,
+            });
+          }
+        : undefined,
+    });
+
+    return result.text.trim() || null;
   }
 
   return {
@@ -419,6 +519,7 @@ export function createGitHubService(deps: GitHubServiceDeps) {
         const sections: string[] = [];
 
         // Plan item context
+        const planItem = session.plan_item_id ? deps.planItems.get(session.plan_item_id) ?? null : null;
         if (planItem) {
           if (planItem.description) {
             sections.push(`## Description\n\n${planItem.description}`);
@@ -461,6 +562,8 @@ export function createGitHubService(deps: GitHubServiceDeps) {
       rawBody: string,
       prTemplate: string | null,
       diff: string,
+      commitLog: string,
+      featureContextPath?: string | null
     ): AsyncResult<{ title: string; body: string }> {
       const log = (msg: string) => console.log(`[GitHubService:generatePr] ${msg}`);
       const logError = (msg: string) => console.error(`[GitHubService:generatePr] ${msg}`);
@@ -474,9 +577,21 @@ export function createGitHubService(deps: GitHubServiceDeps) {
         const [sessionDiff, sessionCommitLog] = diff && commitLog
           ? [diff, commitLog]
           : await Promise.all([
+              getCommittedDiff(repoPath, baseBranch, 80_000),
               getCommitLog(repoPath, baseBranch),
             ]);
 
+        const planItem = session.plan_item_id ? deps.planItems.get(session.plan_item_id) ?? null : null;
+        const featureContextBrief = await buildFeatureContextBrief({
+          projectId: session.project_id,
+          featureContextPath,
+          planItem,
+          branchName: session.branch_name,
+          baseBranch,
+          diff: sessionDiff,
+          commitLog: sessionCommitLog,
+          recordUsage: deps.recordUsage,
+        });
 
         // Build the generation prompt
         const contextParts: string[] = [];
@@ -486,9 +601,19 @@ export function createGitHubService(deps: GitHubServiceDeps) {
           if (planItem.description) {
             contextParts.push(`Description: ${planItem.description}`);
           }
+          if (planItem.intent) {
+            contextParts.push(`Intent: ${planItem.intent}`);
+          }
+          if (planItem.acceptance_criteria?.length) {
+            contextParts.push(`Acceptance Criteria:\n${planItem.acceptance_criteria.map((criterion) => `- ${criterion}`).join('\n')}`);
+          }
           if (planItem.external_key) {
             contextParts.push(`Tracker Key: ${planItem.external_key}`);
           }
+        }
+
+        if (featureContextBrief) {
+          contextParts.push(`[REFERENCE — Feature Context]\n${featureContextBrief}`);
         }
 
         contextParts.push(`[REFERENCE — Branch]\n${session.branch_name} -> ${baseBranch}`);
@@ -502,6 +627,15 @@ export function createGitHubService(deps: GitHubServiceDeps) {
 
 - Do NOT omit sections the template contains.
 - Within each section, keep the answer concise. Aim for a description that fits on one screen.
+  1. A short context paragraph (2-4 sentences) explaining the larger user-facing feature or workflow being built, this PR's role in that feature, and the ownership boundary.
+  2. A short reviewer-focus sentence or 3-5 bullets naming what reviewers should inspect.
+  3. At most 3-5 "what changed" bullets, grouped by behavior or risk area rather than by files/classes/endpoints.
+  4. A short out-of-scope sentence only when it prevents reviewer confusion.
+- Prefer reviewer-relevant concepts over implementation inventory. Avoid "What's added" sections that enumerate every endpoint, DTO, field, helper, test, index, or file. Mention a concrete API, table, index, or class only when it changes the review focus, rollout risk, or system behavior.
+- Translate domain jargon into ordinary engineering language where possible. Keep necessary service names, table names, and API names, but explain what role they play.
+- Call out the highest-signal review areas: behavior changes, ownership boundaries, data model or migration implications, authorization/security decisions, idempotency/concurrency behavior, rollout/compatibility risk, and test coverage.
+- If feature context is provided, the opening paragraph must include the larger user-facing feature or workflow when the context supports it. This is reviewer orientation, not roadmap content. Also explain this PR's role in that feature and the boundary around this PR. Do not mention future tickets, phases, or dependencies unless they directly explain the current PR's boundary.
+- Never state non-implemented follow-up work as current behavior. If the diff does not implement cleanup, expiration, routing, rendering, or another process, phrase it as outside this PR or omit it.
 - If a section asks a question that does not apply, answer "N/A" on one line. Do not explain why unless the absence is itself surprising.
 - If a section expects a value after a colon (e.g. "Tested on ondemand (if applicable): "), put the value or "N/A" directly after the colon. One line, no elaboration.
 

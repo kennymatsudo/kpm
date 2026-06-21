@@ -19,12 +19,14 @@ export function generateSessionPrContent(
   title: string,
   body: string,
   prTemplate: string | null,
+  featureContextPath?: string | null
 ) {
   return window.api.github.generatePrContent(
     sessionId,
     title,
     body,
     prTemplate,
+    featureContextPath
   );
 }
 

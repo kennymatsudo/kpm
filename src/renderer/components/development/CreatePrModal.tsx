@@ -3,11 +3,13 @@
  * Fetches context from GitHubService, lets user edit title/body, then creates the PR.
  */
 
+import { useCallback, useEffect, useState, useRef } from 'react';
 import type { DevSessionWithPlanItem } from '../../../shared/types';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { Modal } from '../ui/Modal';
 import { MotionButton } from '../ui/MotionButton';
 import { toast } from '../../stores/toastStore';
+import { listPrContextDocuments, type PrContextDocumentTarget } from './prContextDocuments';
 
 interface CreatePrModalProps {
   isOpen: boolean;
@@ -22,18 +24,35 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [draft, setDraft] = useState(true);
+  const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [noCommits, setNoCommits] = useState(false);
+  const [aiGenerated, setAiGenerated] = useState(false);
+  const [hasGeneratedContext, setHasGeneratedContext] = useState(false);
+  const [contextDocuments, setContextDocuments] = useState<PrContextDocumentTarget[]>([]);
+  const [isLoadingContextDocuments, setIsLoadingContextDocuments] = useState(false);
+  const [featureContextPath, setFeatureContextPath] = useState<string>('');
   const titleRef = useRef<HTMLInputElement>(null);
+  const loadContextRequestIdRef = useRef(0);
 
+  const loadContext = useCallback((selectedFeatureContextPath: string | null) => {
+    const requestId = loadContextRequestIdRef.current + 1;
+    loadContextRequestIdRef.current = requestId;
     setIsLoadingContext(true);
     setAuthError(null);
     setNoCommits(false);
+    setAiGenerated(false);
+    setHasGeneratedContext(false);
     setTitle('');
     setBody('');
 
+    void loadPrContext(session.id, {
+      force: true,
+      featureContextPath: selectedFeatureContextPath,
+    })
       .then((result) => {
+        if (loadContextRequestIdRef.current !== requestId) return;
         if (!result.success || !result.context) {
           setAuthError(result.error || 'Failed to load PR context');
           setIsLoadingContext(false);
@@ -48,11 +67,60 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
 
         setTitle(result.context.suggestedTitle);
         setBody(result.context.body);
+        setAiGenerated(result.context.aiGenerated === true);
+        setHasGeneratedContext(true);
         setIsLoadingContext(false);
       })
       .catch(() => {
+        if (loadContextRequestIdRef.current !== requestId) return;
+        setAuthError('Failed to load PR context');
+        setIsLoadingContext(false);
+      });
+  }, [loadPrContext, session.id]);
+
+  // Fetch PR context when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setFeatureContextPath('');
+    setContextDocuments([]);
+    setIsLoadingContext(false);
+    setAuthError(null);
+    setNoCommits(false);
+    setAiGenerated(false);
+    setHasGeneratedContext(false);
+    setTitle('');
+    setBody('');
+
+    let cancelled = false;
+    setIsLoadingContextDocuments(true);
+    listPrContextDocuments(session.project_id)
+      .then((documents) => {
+        if (!cancelled) setContextDocuments(documents);
+      })
+      .catch(() => {
+        if (!cancelled) setContextDocuments([]);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingContextDocuments(false);
       });
 
+    return () => {
+      cancelled = true;
+      loadContextRequestIdRef.current += 1;
+    };
+  }, [isOpen, loadContext, session.project_id]);
+
+  const handleFeatureContextChange = (value: string) => {
+    setFeatureContextPath(value);
+    if (hasGeneratedContext) {
+      loadContext(value || null);
+    }
+  };
+
+  const handleGenerate = () => {
+    loadContext(featureContextPath || null);
+  };
 
   const handleSubmit = async () => {
     if (!title.trim()) {
@@ -120,6 +188,34 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
               </svg>
               Generating PR title and description...
             </div>
+          ) : !hasGeneratedContext ? (
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="pr-feature-context" className="block text-xs font-medium text-text-secondary mb-1.5">
+                  Feature context
+                </label>
+                <select
+                  id="pr-feature-context"
+                  value={featureContextPath}
+                  onChange={(event) => handleFeatureContextChange(event.target.value)}
+                  disabled={isCreating || isLoadingContextDocuments || contextDocuments.length === 0}
+                  className="w-full px-3 py-2 text-sm bg-surface-1 border border-border-subtle rounded-md text-text-primary focus:outline-none focus:border-accent transition-colors disabled:opacity-60"
+                >
+                  <option value="">
+                    {isLoadingContextDocuments
+                      ? 'Loading documents...'
+                      : contextDocuments.length === 0
+                        ? 'No markdown documents found'
+                        : 'No document'}
+                  </option>
+                  {contextDocuments.map((document) => (
+                    <option key={document.path} value={document.path}>
+                      {document.path}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           ) : (
             <>
               {/* Title */}
@@ -144,6 +240,31 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
                 <label htmlFor="pr-body" className="block text-xs font-medium text-text-secondary mb-1.5">
                   Description
                 </label>
+                <div className="mb-3">
+                  <label htmlFor="pr-feature-context" className="block text-xs font-medium text-text-secondary mb-1.5">
+                    Feature context
+                  </label>
+                  <select
+                    id="pr-feature-context"
+                    value={featureContextPath}
+                    onChange={(event) => handleFeatureContextChange(event.target.value)}
+                    disabled={isLoadingContext || isCreating || isLoadingContextDocuments || contextDocuments.length === 0}
+                    className="w-full px-3 py-2 text-sm bg-surface-1 border border-border-subtle rounded-md text-text-primary focus:outline-none focus:border-accent transition-colors disabled:opacity-60"
+                  >
+                    <option value="">
+                      {isLoadingContextDocuments
+                        ? 'Loading documents...'
+                        : contextDocuments.length === 0
+                          ? 'No markdown documents found'
+                          : 'No document'}
+                    </option>
+                    {contextDocuments.map((document) => (
+                      <option key={document.path} value={document.path}>
+                        {document.path}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <textarea
                   id="pr-body"
                   value={body}
@@ -152,6 +273,11 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
                   rows={12}
                   className="w-full px-3 py-2 text-sm bg-surface-1 border border-border-subtle rounded-md text-text-primary placeholder-text-tertiary focus:outline-none focus:border-accent transition-colors font-mono resize-y"
                 />
+                <p className={`mt-1 text-tiny ${aiGenerated ? 'text-text-muted' : 'text-amber-500'}`}>
+                  {aiGenerated
+                    ? 'Drafted from committed changes and plan context.'
+                    : 'Using commit summary because drafting was unavailable.'}
+                </p>
               </div>
 
               {/* Draft toggle */}
@@ -178,8 +304,28 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
             Cancel
           </MotionButton>
           <MotionButton
+            onClick={hasGeneratedContext ? handleSubmit : handleGenerate}
+            disabled={
+              isCreating ||
+              isLoadingContext ||
+              isLoadingContextDocuments ||
+              !!authError ||
+              noCommits ||
+              (hasGeneratedContext && !title.trim())
+            }
             className="px-3 py-1.5 text-xs font-medium text-white bg-accent hover:bg-accent/90 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {isLoadingContext ? (
+              <span className="flex items-center gap-1.5">
+                <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+                Generating...
+              </span>
+            ) : !hasGeneratedContext ? (
+              'Generate'
+            ) : isCreating ? (
               <span className="flex items-center gap-1.5">
                 <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>

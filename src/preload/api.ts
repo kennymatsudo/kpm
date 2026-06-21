@@ -1038,6 +1038,8 @@ const github = {
     ipcRenderer.invoke(IPC_CHANNELS.github.getPrComments, { sessionId }),
   buildPrContext: (sessionId: string): Promise<{ success: boolean; suggestedTitle?: string; body?: string; branch?: string | null; baseBranch?: string; hasCommits?: boolean; prTemplate?: string | null; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.github.buildPrContext, { sessionId }),
+  generatePrContent: (sessionId: string, rawTitle: string, rawBody: string, prTemplate: string | null, diff: string, commitLog: string, featureContextPath?: string | null): Promise<{ success: boolean; title?: string; body?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.github.generatePrContent, { sessionId, rawTitle, rawBody, prTemplate, diff, commitLog, featureContextPath }),
   buildAddressCommentsContext: (sessionId: string): Promise<{ success: boolean; context?: string; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.github.buildAddressCommentsContext, { sessionId }),
   detectAndLinkPr: (sessionId: string): Promise<{ success: boolean; status?: PrStatus | null; error?: string }> =>

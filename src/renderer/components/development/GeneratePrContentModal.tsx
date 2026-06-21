@@ -4,11 +4,13 @@
  * and wants to paste (or API-insert) the description.
  */
 
+import { useCallback, useEffect, useState, useRef } from 'react';
 import type { DevSessionWithPlanItem } from '../../../shared/types';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { Modal } from '../ui/Modal';
 import { MotionButton } from '../ui/MotionButton';
 import { copyToClipboard } from '../../utils/clipboard';
+import { listPrContextDocuments, type PrContextDocumentTarget } from './prContextDocuments';
 
 interface GeneratePrContentModalProps {
   isOpen: boolean;
@@ -20,17 +22,34 @@ export function GeneratePrContentModal({ isOpen, onClose, session }: GeneratePrC
   const loadPrContext = useDevSessionsStore((state) => state.loadPrContext);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [noCommits, setNoCommits] = useState(false);
+  const [aiGenerated, setAiGenerated] = useState(false);
+  const [hasGeneratedContext, setHasGeneratedContext] = useState(false);
+  const [contextDocuments, setContextDocuments] = useState<PrContextDocumentTarget[]>([]);
+  const [isLoadingContextDocuments, setIsLoadingContextDocuments] = useState(false);
+  const [featureContextPath, setFeatureContextPath] = useState<string>('');
   const titleRef = useRef<HTMLInputElement>(null);
+  const loadContextRequestIdRef = useRef(0);
 
+  const loadContext = useCallback((selectedFeatureContextPath: string | null) => {
+    const requestId = loadContextRequestIdRef.current + 1;
+    loadContextRequestIdRef.current = requestId;
     setIsLoadingContext(true);
     setAuthError(null);
     setNoCommits(false);
+    setAiGenerated(false);
+    setHasGeneratedContext(false);
     setTitle('');
     setBody('');
 
+    void loadPrContext(session.id, {
+      force: true,
+      featureContextPath: selectedFeatureContextPath,
+    })
       .then((result) => {
+        if (loadContextRequestIdRef.current !== requestId) return;
         if (!result.success || !result.context) {
           setAuthError(result.error || 'Failed to load PR context');
           setIsLoadingContext(false);
@@ -45,14 +64,63 @@ export function GeneratePrContentModal({ isOpen, onClose, session }: GeneratePrC
 
         setTitle(result.context.suggestedTitle);
         setBody(result.context.body);
+        setAiGenerated(result.context.aiGenerated === true);
+        setHasGeneratedContext(true);
         setIsLoadingContext(false);
       })
       .catch(() => {
+        if (loadContextRequestIdRef.current !== requestId) return;
+        setAuthError('Failed to load PR context');
+        setIsLoadingContext(false);
+      });
+  }, [loadPrContext, session.id]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setFeatureContextPath('');
+    setContextDocuments([]);
+    setIsLoadingContext(false);
+    setAuthError(null);
+    setNoCommits(false);
+    setAiGenerated(false);
+    setHasGeneratedContext(false);
+    setTitle('');
+    setBody('');
+
+    let cancelled = false;
+    setIsLoadingContextDocuments(true);
+    listPrContextDocuments(session.project_id)
+      .then((documents) => {
+        if (!cancelled) setContextDocuments(documents);
+      })
+      .catch(() => {
+        if (!cancelled) setContextDocuments([]);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingContextDocuments(false);
       });
 
+    return () => {
+      cancelled = true;
+      loadContextRequestIdRef.current += 1;
+    };
+  }, [isOpen, loadContext, session.project_id]);
+
+  const handleFeatureContextChange = (value: string) => {
+    setFeatureContextPath(value);
+    if (hasGeneratedContext) {
+      loadContext(value || null);
+    }
+  };
+
+  const handleGenerate = () => {
+    loadContext(featureContextPath || null);
+  };
 
   const handleCopy = (value: string, label: string) => copyToClipboard(value, label);
 
+  const canCopy = hasGeneratedContext && !isLoadingContext && !authError && !noCommits;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg" initialFocusRef={titleRef}>
@@ -97,6 +165,34 @@ export function GeneratePrContentModal({ isOpen, onClose, session }: GeneratePrC
               </svg>
               Generating PR title and description...
             </div>
+          ) : !hasGeneratedContext ? (
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="pr-content-feature-context" className="block text-xs font-medium text-text-secondary mb-1.5">
+                  Feature context
+                </label>
+                <select
+                  id="pr-content-feature-context"
+                  value={featureContextPath}
+                  onChange={(event) => handleFeatureContextChange(event.target.value)}
+                  disabled={isLoadingContextDocuments || contextDocuments.length === 0}
+                  className="w-full px-3 py-2 text-sm bg-surface-1 border border-border-subtle rounded-md text-text-primary focus:outline-none focus:border-accent transition-colors disabled:opacity-60"
+                >
+                  <option value="">
+                    {isLoadingContextDocuments
+                      ? 'Loading documents...'
+                      : contextDocuments.length === 0
+                        ? 'No markdown documents found'
+                        : 'No document'}
+                  </option>
+                  {contextDocuments.map((document) => (
+                    <option key={document.path} value={document.path}>
+                      {document.path}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           ) : (
             <>
               {/* Title */}
@@ -139,6 +235,31 @@ export function GeneratePrContentModal({ isOpen, onClose, session }: GeneratePrC
                     Copy Description
                   </button>
                 </div>
+                <div className="mb-3">
+                  <label htmlFor="pr-content-feature-context" className="block text-xs font-medium text-text-secondary mb-1.5">
+                    Feature context
+                  </label>
+                  <select
+                    id="pr-content-feature-context"
+                    value={featureContextPath}
+                    onChange={(event) => handleFeatureContextChange(event.target.value)}
+                    disabled={isLoadingContext || isLoadingContextDocuments || contextDocuments.length === 0}
+                    className="w-full px-3 py-2 text-sm bg-surface-1 border border-border-subtle rounded-md text-text-primary focus:outline-none focus:border-accent transition-colors disabled:opacity-60"
+                  >
+                    <option value="">
+                      {isLoadingContextDocuments
+                        ? 'Loading documents...'
+                        : contextDocuments.length === 0
+                          ? 'No markdown documents found'
+                          : 'No document'}
+                    </option>
+                    {contextDocuments.map((document) => (
+                      <option key={document.path} value={document.path}>
+                        {document.path}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <textarea
                   id="pr-content-body"
                   value={body}
@@ -147,6 +268,11 @@ export function GeneratePrContentModal({ isOpen, onClose, session }: GeneratePrC
                   rows={14}
                   className="w-full px-3 py-2 text-sm bg-surface-1 border border-border-subtle rounded-md text-text-primary placeholder-text-tertiary focus:outline-none focus:border-accent transition-colors font-mono resize-y"
                 />
+                <p className={`mt-1 text-tiny ${aiGenerated ? 'text-text-muted' : 'text-amber-500'}`}>
+                  {aiGenerated
+                    ? 'Drafted from committed changes and plan context.'
+                    : 'Using commit summary because drafting was unavailable.'}
+                </p>
               </div>
             </>
           )}
@@ -161,8 +287,15 @@ export function GeneratePrContentModal({ isOpen, onClose, session }: GeneratePrC
             Close
           </MotionButton>
           <MotionButton
+            onClick={hasGeneratedContext ? () => void handleCopy(body, 'Description') : handleGenerate}
+            disabled={
+              isLoadingContext ||
+              isLoadingContextDocuments ||
+              (hasGeneratedContext && (!canCopy || !body.trim()))
+            }
             className="px-3 py-1.5 text-xs font-medium text-white bg-accent hover:bg-accent/90 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {isLoadingContext ? 'Generating...' : hasGeneratedContext ? 'Copy Description' : 'Generate'}
           </MotionButton>
         </div>
       </div>

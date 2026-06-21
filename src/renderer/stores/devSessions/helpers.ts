@@ -14,6 +14,7 @@ export interface PrCreationContext {
   hasCommits?: boolean;
   prTemplate?: string | null;
   aiGenerated?: boolean;
+  featureContextPath?: string | null;
 }
 
 export interface ReviewFilters {
