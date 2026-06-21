@@ -86,6 +86,82 @@ describe('DevSessionService', () => {
     vi.clearAllMocks();
   });
 
+  it('filters current upstream commits from the session commit log', async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kpm-dev-session-'));
+    const repoPath = path.join(tempDir, 'repo');
+    const worktreePath = path.join(tempDir, '.kpm-worktrees', 'repo', 'feature-branch');
+
+    fs.mkdirSync(repoPath, { recursive: true });
+    fs.mkdirSync(worktreePath, { recursive: true });
+
+    const session = {
+      id: 'session-1',
+      project_id: 'project-1',
+      plan_item_id: 'plan-1',
+      repo_id: 'repo-1',
+      worktree_path: worktreePath,
+      branch_name: 'feature-branch',
+      base_branch: 'main',
+      base_sha: 'old-base',
+      status: 'inactive',
+      agent_type: 'claude',
+      automation_phase: null,
+      initial_instructions: '',
+      pr_number: null,
+      pr_url: null,
+      pr_state: null,
+      review_state: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      completed_at: null,
+    };
+
+    mockExecFile.mockImplementation(createExecFileMock({
+      onCall: (args) => {
+        if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref' && args[2] === 'main@{u}') {
+          return { stdout: 'origin/main\n', stderr: '' };
+        }
+        if (args[0] === 'rev-parse' && args[1] === '--verify' && args[2] === 'origin/main') {
+          return { stdout: 'origin/main\n', stderr: '' };
+        }
+        if (args[0] === 'log') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'rev-list') {
+          return { stdout: '0\n', stderr: '' };
+        }
+        return new Error(`Unexpected git call: ${args.join(' ')}`);
+      },
+    }) as never);
+
+    const service = createDevSessionService(createDeps(session, repoPath));
+
+    const logResult = await service.getSessionCommitLog('session-1');
+    expect(logResult.ok).toBe(true);
+    if (logResult.ok) {
+      expect(logResult.data).toEqual([]);
+    }
+
+    const countResult = await service.getCommitsAhead('session-1');
+    expect(countResult.ok).toBe(true);
+    if (countResult.ok) {
+      expect(countResult.data).toBe(0);
+    }
+
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'git',
+      ['log', 'old-base..HEAD', '--not', 'origin/main', expect.stringMatching(/^--format=/)],
+      expect.objectContaining({ cwd: worktreePath }),
+      expect.any(Function)
+    );
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'git',
+      ['rev-list', '--count', 'old-base..HEAD', '--not', 'origin/main'],
+      expect.objectContaining({ cwd: worktreePath }),
+      expect.any(Function)
+    );
+  });
+
   it('commits from the session worktree on the session branch', async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kpm-dev-session-'));
     const repoPath = path.join(tempDir, 'repo');

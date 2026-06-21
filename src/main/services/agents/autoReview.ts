@@ -14,6 +14,7 @@
 import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import { getConfig } from '../../config';
+import { getDiff, gitExec } from '../repo/gitUtils';
 import type { AgentType, ReviewFinding } from '../../../shared/agent-types';
 import { toReviewSessionId } from '../../../shared/agent-types';
 import { getReviewOpponent, isAgentAvailable } from './agentCatalog';
@@ -94,12 +95,15 @@ ${REVIEW_OUTPUT_FORMAT}`;
 
 /**
  * Get the diff for a worktree against the base branch.
+ * Uses the base branch merge-base so committed and uncommitted task changes
+ * are included without dragging in base commits from a rebased worktree.
  * Falls back to `git diff HEAD` (uncommitted only) when no base branch is provided.
  */
 async function getWorktreeDiff(worktreePath: string, baseBranch?: string | null): Promise<string> {
   const maxBuffer = 5 * 1024 * 1024; // 5MB
   try {
     if (baseBranch) {
+      if (diff.trim()) return diff;
     }
     // Fall back to uncommitted-only diff when no base branch or branch diff is empty
     return stdout;

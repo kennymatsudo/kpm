@@ -172,6 +172,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           implementationSessionId: implSessionId,
           implementationAgentType: session.agent_type,
           worktreePath: session.worktree_path,
+          baseBranch: session.base_branch,
           taskDescription: session.initial_instructions,
           projectId: session.project_id,
           agentSessionManager: deps.getAgentSessionManager(),

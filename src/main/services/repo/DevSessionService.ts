@@ -567,7 +567,20 @@ async function assertSessionWorktreeCheckout(params: {
   return success({ cwd: resolvedWorktreePath });
 }
 
+async function refExists(repoPath: string, ref: string): Promise<boolean> {
+  try {
+    await gitExec(['rev-parse', '--verify', ref], { cwd: repoPath });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
+ * Resolve the lower bound for a session's commit/diff range. Prefers the
+ * immutable fork-point SHA captured when the worktree was created. For legacy
+ * rows without a stored SHA, falls back to the merge-base with the current base
+ * branch, then to the upstream-resolved base branch name.
  */
 async function resolveSessionBaseRef(session: DevSession): Promise<string> {
   if (session.base_sha) {
@@ -578,6 +591,28 @@ async function resolveSessionBaseRef(session: DevSession): Promise<string> {
   } catch {
     return resolveUpstreamBranch(session.worktree_path, session.base_branch);
   }
+}
+
+/**
+ * Build rev-list/log arguments for commits that belong to this session. The
+ * stored base SHA keeps legacy fork-point attribution stable, while `--not
+ * <current-upstream>` removes base-branch commits that entered the task branch
+ * through a rebase/fast-forward after the session was created.
+ */
+async function resolveSessionCommitRangeArgs(session: DevSession): Promise<string[]> {
+  const baseRef = await resolveSessionBaseRef(session);
+  const args = [`${baseRef}..HEAD`];
+
+  if (!session.base_sha || !session.base_branch) {
+    return args;
+  }
+
+  const currentBaseRef = await resolveUpstreamBranch(session.worktree_path, session.base_branch);
+  if (currentBaseRef && (await refExists(session.worktree_path, currentBaseRef))) {
+    args.push('--not', currentBaseRef);
+  }
+
+  return args;
 }
 
 export function createDevSessionService(deps: DevSessionServiceDeps) {
@@ -1280,7 +1315,9 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           return success(0);
         }
 
+        const rangeArgs = await resolveSessionCommitRangeArgs(session);
         const { stdout } = await gitExec(
+          ['rev-list', '--count', ...rangeArgs],
           { cwd: session.worktree_path }
         );
 
@@ -1359,7 +1396,9 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         }
 
         const SEP = '\x1f';
+        const rangeArgs = await resolveSessionCommitRangeArgs(session);
         const { stdout } = await gitExec(
+          ['log', ...rangeArgs, `--format=%h${SEP}%s${SEP}%aN${SEP}%aI`],
           { cwd: session.worktree_path },
         );
 

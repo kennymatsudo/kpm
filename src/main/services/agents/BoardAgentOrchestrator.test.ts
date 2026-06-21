@@ -1,3 +1,4 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createBoardAgentOrchestrator } from './BoardAgentOrchestrator';
 import { launchAutoReview } from './autoReview';
 import type { DevSession } from '../../../shared/types';
@@ -36,6 +37,56 @@ function createSession(overrides: Partial<DevSession> = {}): DevSession {
 }
 
 describe('BoardAgentOrchestrator', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('launches opposing review against the session base branch, not the captured base sha', async () => {
+    const session = createSession({ base_branch: 'main', base_sha: 'base-sha' });
+    const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
+    const updateAutomationPhase = vi.fn();
+    const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
+    const requestPlanRefresh = vi.fn();
+    vi.mocked(launchAutoReview).mockResolvedValue('session-1-review');
+
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(),
+        persistCompletedReview: vi.fn(),
+        persistFailedReview: vi.fn(),
+      },
+      planService: { updateItem },
+      getDevSessionService: () => ({
+        get: vi.fn(() => session),
+        sendAgentFollowUp: vi.fn(),
+        updateAutomationPhase,
+        updateStatus: vi.fn(),
+        commitSessionChanges,
+      }),
+      getAgentSessionManager: () => ({
+        getByDevSession: vi.fn(),
+      } as never),
+      getPromptContent: vi.fn(),
+      claudeUsageService: { recordUsage: vi.fn() },
+      requestPlanRefresh,
+    });
+
+    await callbacks.onSessionComplete?.({
+      devSessionId: session.id,
+      role: 'implement',
+      summary: { filesChanged: 1, additions: 2, deletions: 0 },
+    });
+
+    expect(launchAutoReview).toHaveBeenCalledWith(expect.objectContaining({
+      baseBranch: 'main',
+    }));
+    expect(launchAutoReview).not.toHaveBeenCalledWith(expect.objectContaining({
+      baseBranch: 'base-sha',
+    }));
+    expect(updateAutomationPhase).toHaveBeenCalledWith(session.id, 'reviewing');
+    expect(updateItem).not.toHaveBeenCalled();
+  });
+
   it('skips opposing review when the session review policy is skip', async () => {
     const session = createSession({ review_policy: 'skip' });
     const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
