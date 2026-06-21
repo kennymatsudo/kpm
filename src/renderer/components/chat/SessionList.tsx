@@ -66,6 +66,7 @@ function SessionTab({
     };
   }));
 
+  if (sessionNumber === null) {
     return null;
   }
 
@@ -75,6 +76,7 @@ function SessionTab({
 
     // If streaming, cancel first (interrupt with timeout + force-disconnect fallback)
     if (isActive && isStreaming) {
+      await cancelChatSession(currentProjectId, chatSessionId);
     }
 
     // Always call disconnect — streaming-layer cleanup is idempotent for

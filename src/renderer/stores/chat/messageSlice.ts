@@ -8,6 +8,7 @@ export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
   return {
     addUserMessage: (chatSessionId, content, attachments, options) => set((state) => {
       const sessions = new Map(state.sessions);
+      const session = sessions.get(chatSessionId) ?? createInitialPerSessionState(state.nextSessionNumber);
       const now = Date.now();
       const isQueued = options?.queued ?? false;
 
@@ -153,6 +154,7 @@ export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         sessions.set(
           chatSessionId,
           {
+            ...createInitialPerSessionState(state.nextSessionNumber),
             draftMessage,
           }
         );
@@ -173,6 +175,7 @@ export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         sessions.set(
           chatSessionId,
           {
+            ...createInitialPerSessionState(state.nextSessionNumber),
             pendingAttachments,
           }
         );

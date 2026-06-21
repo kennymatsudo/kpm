@@ -66,6 +66,7 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     // in-flight turn rather than interrupting it. The user bubble appears
     // immediately with a "queued" indicator; the backend pushes the message
     // into the SDK's input generator, which pulls it when the current turn
+    // finishes.
     const currentSession = useChatStore.getState().sessions.get(chatSessionId);
     const sendingWhileStreaming = !!currentSession?.isStreaming;
 
@@ -128,6 +129,7 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     }
 
     return effectiveClientMessageId;
+  }, [projectId, currentView, addUserMessage, getChatSessionId, getOrCreateSession, removeQueuedUserMessage, setError]);
 
   const retry = useCallback(async (message: string, clientMessageId: string, tempImages?: string[]) => {
     if (!projectId) return;
@@ -165,6 +167,7 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     } catch (error) {
       setError(chatSessionId, getErrorMessage(error, 'Failed to retry message'));
     }
+  }, [projectId, currentView, getChatSessionId, getOrCreateSession, setRetrying, setError]);
 
   const newSession = useCallback(async (keepCurrentActive = true) => {
     if (!projectId) return;
@@ -191,8 +194,10 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     finalizeMessage(viewedSessionId, { interrupted: true });
 
     // Backend cleanup happens in background - don't await
+    cancelChatSession(projectId, viewedSessionId).catch((err: unknown) => {
       console.error('[useChat] Cancel failed:', err);
     });
+  }, [projectId, viewedSessionId, finalizeMessage]);
 
   /**
    * Cancel a queued follow-up before the SDK pulls it. Wait for the backend

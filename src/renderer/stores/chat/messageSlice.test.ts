@@ -25,6 +25,7 @@ function createTestStore(sessionId: string, session: SessionState) {
 describe('messageSlice.addUserMessage', () => {
   it('persists structured attachments on the user message', () => {
     const sessionId = 'session-attachments';
+    const session = createInitialPerSessionState(1);
     const store = createTestStore(sessionId, session);
 
     const attachments: ChatAttachment[] = [
@@ -48,6 +49,7 @@ describe('messageSlice.addUserMessage', () => {
 
   it('omits the attachments field when none are provided (back-compat)', () => {
     const sessionId = 'session-plain';
+    const session = createInitialPerSessionState(1);
     const store = createTestStore(sessionId, session);
 
     store.getState().addUserMessage(sessionId, 'plain text');
@@ -62,6 +64,7 @@ describe('messageSlice.setError', () => {
   it('clears partial streaming state when a send fails', () => {
     const sessionId = 'session-error';
     const session = {
+      ...createInitialPerSessionState(1),
       isStreaming: true,
       streamingContent: 'partial',
       streamingThinking: 'thinking',

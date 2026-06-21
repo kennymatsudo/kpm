@@ -24,12 +24,14 @@ src/
 │   │   ├── tools/           # In-process MCP tools
 │   │   ├── prompts/         # System prompt modules
 │   │   └── streaming/       # Streaming session classes
+│   ├── codex/               # Codex auth, binary, and error helpers
 │   ├── config/              # Runtime configuration and defaults
 │   ├── documents/           # Plan-ref resolver + markdown codecs (used at every export boundary)
 │   ├── project-context/     # Project context file compatibility helpers
 │   ├── security/            # URL and app-navigation safety helpers
 │   ├── services/            # Application services (DI pattern)
 │   │   ├── files/           # FileExplorer, FileSummary, TempImage, RepoFile, watchers, scoped FS
+│   │   ├── streaming/       # Terminal and Claude StreamingSession
 │   │   ├── generation/      # CustomPrompt, Onboarding
 │   │   ├── agents/          # AgentSessionManager, Claude/Codex/Gemini sessions, hooks, auto-review
 │   │   ├── confluence/      # ConfluenceSyncService
@@ -215,6 +217,7 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
    - Return `ServiceResult<T>` for explicit error handling
    - Organized by domain:
      - `files/` - FileExplorerService, FileSummaryService, TempImageService, RepoFileService, FileWatchService, ProjectWatcherService, scoped file-system/path-security helpers
+     - `streaming/` - TerminalService, StreamingSessionService
      - `generation/` - CustomPromptGenerationService, OnboardingService
      - `confluence/` - ConfluenceSyncService
      - `toollog/` - ToolCallLogger, extractFilePaths

@@ -219,6 +219,7 @@ export const Layout = memo(function Layout({
       void (async () => {
         if (currentProjectId && session) {
           if (activeSessionIds.has(viewedSessionId) && session.isStreaming) {
+            await cancelChatSession(currentProjectId, viewedSessionId);
           }
           if (activeSessionIds.has(viewedSessionId)) {
             await disconnectChatSession(currentProjectId, viewedSessionId);

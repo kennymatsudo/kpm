@@ -184,6 +184,8 @@ export function startNewBackendChatSession(projectId: string) {
   return window.api.chat.newSession(projectId);
 }
 
+export function cancelChatSession(projectId: string, chatSessionId: string) {
+  return window.api.chat.cancel(projectId, chatSessionId);
 }
 
 export function cancelQueuedChatMessage(projectId: string, chatSessionId: string, clientMessageId?: string) {

@@ -59,6 +59,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   const attachments = viewedSession?.pendingAttachments ?? [];
   const isStreaming = viewedSession?.isStreaming ?? false;
   const suggestions = viewedSession?.suggestions ?? [];
+  const sendDisabledWhileStreaming = false;
 
   // Local draft state so keystrokes feel instant: the textarea never waits on a
   // global store write (which replaces the session object and re-renders its
@@ -134,9 +135,11 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
+  // Slash command typeahead comes from the Claude SDK.
   const slashTypeahead = useSlashCommandTypeahead(
     message,
     setMessage,
+    !disabled,
   );
   const [isPickingFiles, setIsPickingFiles] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -559,6 +562,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
                   ? 'Add to current response (Enter)'
                   : 'Send message (Enter)'
             }
+            aria-label={isStreaming ? 'Add to current response' : 'Send message'}
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" />

@@ -250,6 +250,7 @@ export function FocusChatPanel({
 
   const cancel = useCallback(() => {
     if (!projectId || !sessionId) return;
+    void cancelChatSession(projectId, sessionId);
     setIsStreaming(false);
   }, [projectId, sessionId]);
 

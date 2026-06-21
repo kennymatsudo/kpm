@@ -21,6 +21,7 @@ export function createSessionManagementSlice(set: ChatSet, get: ChatGet): Pick<C
       }
 
       const newSession = {
+        ...createInitialPerSessionState(state.nextSessionNumber, state.model, state.effort),
         hydrated: options?.hydrated ?? true,
       };
       const sessions = new Map(state.sessions);
@@ -38,6 +39,7 @@ export function createSessionManagementSlice(set: ChatSet, get: ChatGet): Pick<C
         get().flushStreamingContent(previousViewedSessionId);
       }
 
+      set({ viewedSessionId: chatSessionId });
     },
 
     markSessionActive: (chatSessionId) => {
@@ -92,6 +94,7 @@ export function createSessionManagementSlice(set: ChatSet, get: ChatGet): Pick<C
         viewedSessionId = activeRemaining[0] ?? remainingSessions[0] ?? null;
       }
 
+      set({ sessions, activeSessionIds, viewedSessionId });
     },
   };
 }

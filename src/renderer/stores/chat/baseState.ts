@@ -1,3 +1,4 @@
+import type { ClaudeModel, AgentEffortLevel, PerSessionState, ChatState } from './types';
 
 /** Create initial state for a new session */
 export const createInitialPerSessionState = (
@@ -33,6 +34,7 @@ export const createInitialPerSessionState = (
 });
 
 export const createInitialChatState = (): Pick<ChatState,
+  'sessions' | 'activeSessionIds' | 'viewedSessionId' | 'model' | 'effort' | 'totalTokens' | 'sessionHistory' | 'slashCommands' | 'slashCommandsSource' | 'nextSessionNumber' | 'persistedProjectId'
 > => ({
   sessions: new Map(),
   activeSessionIds: new Set(),

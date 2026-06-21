@@ -42,6 +42,7 @@ describe('settingsSlice', () => {
     const store = createTestStore();
     store.setState({
       sessions: new Map([
+        ['chat-a', createInitialPerSessionState(1, 'sonnet')],
       ]),
     });
 

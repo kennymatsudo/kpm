@@ -403,6 +403,7 @@ export function useChatIpcBridge(projectId: string | null): void {
           const currentlyStreaming = new Set<string>();
 
           for (const [sessionId, session] of sessions.entries()) {
+            if (!session.isStreaming) continue;
             currentlyStreaming.add(sessionId);
 
             const lastStreamUpdateAt = session.lastStreamUpdateAt ?? session.streamStartedAt;

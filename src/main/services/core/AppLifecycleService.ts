@@ -27,8 +27,10 @@ export interface AppLifecycleServiceDeps {
 export function createAppLifecycleService(deps: AppLifecycleServiceDeps) {
   let startupApplied = false;
   let shutdownApplied = false;
+  let chatRuntime: Pick<ChatRuntimeService, 'streamingSessionService'> | null = null;
 
   return {
+    attachChatRuntime(runtime: Pick<ChatRuntimeService, 'streamingSessionService'>): void {
       chatRuntime = runtime;
     },
 

@@ -65,6 +65,7 @@ export class ChatMessageRepository implements IChatMessageRepository {
           s.title as title,
           MIN(CASE WHEN m.role = 'user' THEN SUBSTR(m.content, 1, 100) END) as first_message,
           COUNT(*) as message_count,
+          MIN(m.created_at) as created_at
         FROM chat_messages m
         LEFT JOIN chat_sessions s ON s.id = m.chat_session_id
         WHERE m.session_id = ?

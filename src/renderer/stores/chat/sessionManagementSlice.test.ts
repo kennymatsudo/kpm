@@ -17,6 +17,8 @@ type TestState = {
 } & SessionActions & StreamingActions;
 
 function createTestStore(): StoreApi<TestState> {
+  const sessionA = createInitialPerSessionState(1);
+  const sessionB = createInitialPerSessionState(2);
 
   return createStore<TestState>()((set, get) => ({
     sessions: new Map([

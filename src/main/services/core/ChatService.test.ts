@@ -105,6 +105,7 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
 
   return {
     deps,
+    spies: { addMessage, createFocusDocument, updateFocusDocument, sendChatMessage, disconnectChatSession, emitChatError },
   };
 }
 

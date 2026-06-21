@@ -57,3 +57,4 @@ useChatStore.subscribe((state) => {
 });
 
 // Re-export types
+export type { Message, PerSessionState, ChatState, Activity, ClaudeModel, MessageSegment, AgentEffortLevel } from './types';

@@ -235,6 +235,7 @@ describe('historySlice.restoreLastSession', () => {
   it('preserves live stream state when hydrating a backend-restored active session', async () => {
     const store = createTestStore();
     const activeShell = {
+      ...createInitialPerSessionState(1),
       hydrated: false,
       isStreaming: true,
       sessionState: 'processing' as const,

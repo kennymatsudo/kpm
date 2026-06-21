@@ -1,3 +1,4 @@
+import type { Activity, ChatAttachment, SessionState, ClaudeModel, ChatSessionSummary, MessageSegment, AgentEffortLevel, SlashCommandInfo } from '../../../shared/types';
 import type { StoreApi } from 'zustand';
 
 export interface Message {
@@ -34,6 +35,7 @@ export interface Message {
 }
 
 // Re-export types for consumers
+export type { Activity, ClaudeModel, MessageSegment, AgentEffortLevel } from '../../../shared/types';
 
 /** Per-session state (each concurrent session has its own state) */
 export interface PerSessionState {

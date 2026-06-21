@@ -26,6 +26,7 @@ function makeActivity(id: string, label: string): Activity {
 describe('streamingSlice.finalizeMessage', () => {
   it('commits activity-only turns as an assistant message', () => {
     const sessionId = 'session-activity-only';
+    const base = createInitialPerSessionState(1);
     const activities = [
       makeActivity('a1', 'Running: npm test'),
       makeActivity('a2', 'edit: src/file.ts'),
@@ -52,6 +53,7 @@ describe('streamingSlice.finalizeMessage', () => {
 
   it('commits pending activities even when no text was streamed', () => {
     const sessionId = 'session-pending-activities';
+    const base = createInitialPerSessionState(1);
     const pendingActivities = [makeActivity('p1', 'Read: src/main.ts')];
 
     const store = createTestStore(sessionId, {
@@ -74,6 +76,7 @@ describe('streamingSlice.finalizeMessage', () => {
 
   it('is idempotent when finalize is called repeatedly after completion', () => {
     const sessionId = 'session-idempotent';
+    const base = createInitialPerSessionState(1);
     const activities = [makeActivity('i1', 'Thinking...')];
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -94,6 +97,7 @@ describe('streamingSlice.finalizeMessage', () => {
 
   it('clears thinking content after finalizing a turn', () => {
     const sessionId = 'session-thinking';
+    const base = createInitialPerSessionState(1);
 
     const store = createTestStore(sessionId, {
       ...base,
@@ -117,6 +121,7 @@ describe('streamingSlice.finalizeMessage', () => {
 
   it('inserts a completed assistant turn before a promoted queued user message', () => {
     const sessionId = 'session-queued-follow-up';
+    const base = createInitialPerSessionState(1);
     const queuedClientMessageId = 'queued-client-message';
 
     const store = createTestStore(sessionId, {
@@ -152,6 +157,7 @@ describe('streamingSlice.finalizeMessage', () => {
 
   it('promotes a queued follow-up atomically: clears its flag and re-enters streaming', () => {
     const sessionId = 'session-promote-queued';
+    const base = createInitialPerSessionState(1);
     const queuedClientMessageId = 'promote-client-message';
 
     const store = createTestStore(sessionId, {
@@ -197,6 +203,7 @@ describe('streamingSlice.finalizeMessage', () => {
 
   it('promotes the follow-up even if a racing event already stripped its queued flag', () => {
     const sessionId = 'session-promote-already-cleared';
+    const base = createInitialPerSessionState(1);
     const queuedClientMessageId = 'race-client-message';
 
     // Simulate the race: `chat:queue-cleared:already_sent` arrived first and
@@ -239,6 +246,7 @@ describe('streamingSlice.finalizeMessage', () => {
 
   it('clears a consumed follow-up without re-streaming and lands the bubble after it', () => {
     const sessionId = 'session-consumed-followup';
+    const base = createInitialPerSessionState(1);
     const consumedClientMessageId = 'consumed-client-message';
 
     // The SDK steered "follow-up" into this turn and answered it. The turn's
@@ -288,6 +296,7 @@ describe('streamingSlice.finalizeMessage', () => {
 describe('streamingSlice streaming state recovery', () => {
   it('appendChunk re-enters streaming state when chunks arrive', () => {
     const sessionId = 'session-recovery-chunk';
+    const base = createInitialPerSessionState(1);
 
     const store = createTestStore(sessionId, {
       ...base,
@@ -306,6 +315,7 @@ describe('streamingSlice streaming state recovery', () => {
 
   it('addActivity re-enters streaming state when activity arrives', () => {
     const sessionId = 'session-recovery-activity';
+    const base = createInitialPerSessionState(1);
     const activity = makeActivity('ar1', 'Running: yarn test');
 
     const store = createTestStore(sessionId, {
@@ -330,6 +340,7 @@ describe('streamingSlice tool interleaving', () => {
     // Once the tools land in an inline segment they must leave `activities` so
     // the streaming view stops re-rendering them pinned at the bottom.
     const sessionId = 'session-interleave';
+    const base = createInitialPerSessionState(1);
     const t1 = makeActivity('t1', 'bash: rg ssrf');
     const t2 = makeActivity('t2', 'read_file: views.py');
 
@@ -359,6 +370,7 @@ describe('streamingSlice tool interleaving', () => {
     // they stay live and render as the trailing active group (correct: they
     // are the latest action).
     const sessionId = 'session-inflight';
+    const base = createInitialPerSessionState(1);
     const committed = makeActivity('c1', 'bash: ls');
     const inflight = makeActivity('f1', 'read_file: composer.py');
 

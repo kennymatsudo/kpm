@@ -38,6 +38,8 @@ export function registerChatHandlers(
     IPC_CHANNELS.chat.cancel,
     createIpcHandler(
       ChatSchemas.cancel,
+      async ({ projectId, chatSessionId }) => {
+        const result = await chatService.cancel(projectId, chatSessionId);
         if (!result.ok) throw new Error(result.error);
       },
       'Failed to cancel chat message',

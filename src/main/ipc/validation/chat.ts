@@ -55,6 +55,7 @@ const focusChatDocumentSchema = z.object({
 // =============================================================================
 
 export const ChatSchemas = {
+  send: z.object({
       projectId: uuid,
       message: z.string().min(1, 'Message cannot be empty').max(100000, 'Message too long'),
       focusedResources: z.array(focusedResourceSchema).default([]),
@@ -67,6 +68,7 @@ export const ChatSchemas = {
       currentView: chatViewModeSchema,
       /** Focus-reader document context for slim focused chat sessions */
       focusDocument: focusChatDocumentSchema.optional(),
+    }),
 
   cancel: z.object({
     projectId: uuid,

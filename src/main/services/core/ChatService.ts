@@ -182,6 +182,7 @@ export function createChatService(deps: ChatServiceDeps) {
 
         const result = await deps.streamingSessionService.sendChatMessage(
           projectId,
+          message,
           {
             model: model ?? 'sonnet',
             effort,
@@ -208,6 +209,7 @@ export function createChatService(deps: ChatServiceDeps) {
       }
     },
 
+    async cancel(projectId: string, chatSessionId: string): AsyncResult<void> {
       const result = await deps.streamingSessionService.interruptChatSession(projectId, chatSessionId);
       return result.ok ? success(undefined) : failure(result.error);
     },
@@ -315,6 +317,7 @@ export function createChatService(deps: ChatServiceDeps) {
     loadSession(
       projectId: string,
       chatSessionId: string,
+    ): ServiceResult<{ messages: ChatMessage[]; chatSessionId: string }> {
       try {
         const project = deps.projects.get(projectId);
         if (!project) {

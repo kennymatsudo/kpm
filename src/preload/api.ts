@@ -198,6 +198,8 @@ const tempImages = {
 const chat = {
   newSession: (projectId: string): Promise<{ success: boolean }> =>
     invokeFlat<void>(IPC_CHANNELS.chat.newSession, { projectId }),
+  cancel: (projectId: string, chatSessionId: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.chat.cancel, { projectId, chatSessionId }),
   cancelQueued: (projectId: string, chatSessionId: string, clientMessageId?: string): Promise<{ success: boolean; error?: string }> =>
     invokeFlat<void>(IPC_CHANNELS.chat.cancelQueued, { projectId, chatSessionId, clientMessageId }),
   getUsage: (projectId: string): Promise<{ totalTokens: number; inputTokens: number; outputTokens: number }> =>
@@ -215,9 +217,13 @@ const chat = {
     invokeFlat<{ sessions: ChatSessionSummary[] }>(IPC_CHANNELS.chat.getSessionHistory, { projectId, limit }).then((result) =>
       result.success ? { success: true, sessions: result.sessions } : result
     ),
+  loadSession: (projectId: string, chatSessionId: string): Promise<{ success: boolean; messages?: ChatMessage[]; chatSessionId?: string; error?: string }> =>
+    invokeFlat<{ messages: ChatMessage[]; chatSessionId: string }>(
       IPC_CHANNELS.chat.loadSession,
       { projectId, chatSessionId },
     ).then((result) => (result.success ? result : result)),
+  getFocusDocumentSession: (projectId: string, path: string, title: string, contentHash: string): Promise<{ success: boolean; messages?: ChatMessage[]; chatSessionId?: string; error?: string }> =>
+    invokeFlat<{ messages: ChatMessage[]; chatSessionId: string }>(
       IPC_CHANNELS.chat.getFocusDocumentSession,
       { projectId, path, title, contentHash },
     ).then((result) => (result.success ? result : result)),

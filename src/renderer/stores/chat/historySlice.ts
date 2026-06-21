@@ -1,3 +1,4 @@
+import type { ChatMessage, ChatSessionSummary, MessageSegment } from '../../../shared/types';
 import { getChatSessionHistory, loadChatSession } from '../../services/chatService';
 import type { ChatState, ChatSet, ChatGet, Message, PerSessionState } from './types';
 import { createInitialPerSessionState } from './baseState';
@@ -27,6 +28,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
       const newSessionId = crypto.randomUUID();
       const state = get();
 
+      const newSession = createInitialPerSessionState(state.nextSessionNumber, state.model, state.effort);
       const sessions = new Map(state.sessions);
       sessions.set(newSessionId, newSession);
 
@@ -50,6 +52,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         const sessions = new Map(state.sessions);
         sessions.set(
           state.viewedSessionId,
+          createInitialPerSessionState(state.nextSessionNumber, state.model, state.effort)
         );
         set({
           sessions,
@@ -127,6 +130,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         for (const id of persisted.open) {
           if (sessions.has(id)) continue;
           const shell: PerSessionState = {
+            ...createInitialPerSessionState(nextSessionNumber, state.model, state.effort),
             hydrated: false,
           };
           sessions.set(id, shell);
@@ -179,6 +183,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
           const state = get();
           const sessions = new Map(state.sessions);
           const existingSession = sessions.get(chatSessionId);
+          const baseSession = existingSession ?? createInitialPerSessionState(state.nextSessionNumber);
           const preserveLiveState =
             existingSession?.isStreaming ||
             existingSession?.sessionState === 'processing' ||
