@@ -497,7 +497,13 @@ export function PlanCardMenu({
         <DeleteWorktreeDialog
           worktree={targetWorktree}
           isDeleting={worktreeLoadingOp === 'delete' || isDeletingSessionWorktree}
+          onConfirm={() => {
+            const deletePromise = onDeleteWorktree();
+            setShowDeleteWorktreeConfirm(false);
+            onClose();
+            void deletePromise.catch((error) => {
               toast.error(error instanceof Error ? error.message : 'Failed to clean up worktree');
+            });
           }}
           onCancel={() => {
             setShowDeleteWorktreeConfirm(false);
@@ -560,7 +566,13 @@ export function PlanCardMenu({
                 Cancel
               </button>
               <button
+                onClick={() => {
+                  const destroyPromise = onDestroyWorktree();
+                  setShowDestroyWorktreeConfirm(false);
+                  onClose();
+                  void destroyPromise.catch((error) => {
                     toast.error(error instanceof Error ? error.message : 'Failed to destroy worktree');
+                  });
                 }}
                 className="flex-1 px-3 py-2 text-xs font-medium text-white bg-danger hover:bg-danger/90 rounded-lg transition-colors"
                 disabled={worktreeLoadingOp === 'delete' || isDeletingSessionWorktree}

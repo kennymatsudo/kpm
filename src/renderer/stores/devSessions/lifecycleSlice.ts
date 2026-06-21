@@ -23,6 +23,38 @@ import {
   loadDevSessions,
   updateExistingSessionName,
 } from '../../services/devSessionService';
+import { toReviewSessionId } from '../../../shared/agent-types';
+
+function removeMapEntries<T>(current: Map<string, T>, keys: string[]): Map<string, T> {
+  const next = new Map(current);
+  for (const key of keys) {
+    next.delete(key);
+  }
+  return next;
+}
+
+function removeSessionFromState(state: DevSessionsState, sessionId: string) {
+  const sessions = state.sessions.filter((session) => session.id !== sessionId);
+  const allSessions = state.allSessions.filter((session) => session.id !== sessionId);
+  const trackedSessionIds = [sessionId, toReviewSessionId(sessionId)];
+
+  return {
+    sessions,
+    allSessions,
+    ...buildSessionIndexes(sessions),
+    selectedSessionId: state.selectedSessionId === sessionId ? null : state.selectedSessionId,
+    deletingSessionIds: removeFromSet(state.deletingSessionIds, sessionId),
+    ...dropSessionCacheEntries(state, sessionId),
+    lastActivityMap: removeMapEntries(state.lastActivityMap, trackedSessionIds),
+    diffErrorBySessionId: removeMapEntries(state.diffErrorBySessionId, trackedSessionIds),
+    agentStateBySessionId: removeMapEntries(state.agentStateBySessionId, trackedSessionIds),
+    activitiesBySessionId: removeMapEntries(state.activitiesBySessionId, trackedSessionIds),
+    latestActivityBySessionId: removeMapEntries(state.latestActivityBySessionId, trackedSessionIds),
+    questionBySessionId: removeMapEntries(state.questionBySessionId, trackedSessionIds),
+    completionBySessionId: removeMapEntries(state.completionBySessionId, trackedSessionIds),
+    reviewFindingsBySessionId: removeMapEntries(state.reviewFindingsBySessionId, trackedSessionIds),
+  };
+}
 
 export function createDevSessionsLifecycleSlice(
   set: DevSessionsSet,
@@ -206,13 +238,21 @@ export function createDevSessionsLifecycleSlice(
     },
 
     deleteDevSession: async (sessionId, mode) => {
+      const projectId = get().projectId;
       get().markDeleting(sessionId);
+      set((state) => removeSessionFromState(state, sessionId));
+
       try {
         const result = await deleteDevSessionRecord(sessionId, mode);
         if (!result.success) {
+          if (projectId) {
+            await get().loadSessions(projectId);
+          }
           return { success: false, error: result.error || 'Failed to delete session' };
         }
 
+        return { success: true };
+      } catch (error) {
         if (projectId) {
           await get().loadSessions(projectId);
         }

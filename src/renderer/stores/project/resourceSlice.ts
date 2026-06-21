@@ -11,6 +11,29 @@ function buildWorktreeByPlanItemId(worktrees: Worktree[]): Map<string, Worktree>
   return map;
 }
 
+function removeWorktreeFromState(worktrees: Worktree[], worktreeId: string) {
+  const remaining = worktrees.filter((w) => w.id !== worktreeId);
+  return {
+    worktrees: remaining,
+    worktreeByPlanItemId: buildWorktreeByPlanItemId(remaining),
+  };
+}
+
+function addWorktreeToState(worktrees: Worktree[], worktree: Worktree) {
+  if (worktrees.some((w) => w.id === worktree.id)) {
+    return {
+      worktrees,
+      worktreeByPlanItemId: buildWorktreeByPlanItemId(worktrees),
+    };
+  }
+
+  const next = [...worktrees, worktree];
+  return {
+    worktrees: next,
+    worktreeByPlanItemId: buildWorktreeByPlanItemId(next),
+  };
+}
+
 /** Helper to set loading state for a worktree operation */
 const setWorktreeLoading = (
   set: Parameters<ReturnType<SliceCreator<ResourceSlice>>>[0],
@@ -143,8 +166,10 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
     worktreeByPlanItemId: buildWorktreeByPlanItemId(worktrees),
   }),
   addWorktree: (worktree) => set((state) => ({
+    ...addWorktreeToState(state.worktrees, worktree),
   })),
   removeWorktree: (worktreeId) => set((state) => ({
+    ...removeWorktreeFromState(state.worktrees, worktreeId),
   })),
   openWorktreeInEditor: async (worktreeId) => {
     setWorktreeLoading(set, worktreeId, 'openEditor');
@@ -158,6 +183,11 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
     }
   },
   deleteWorktree: async (worktreeId, force = false) => {
+    const deletedWorktree = get().worktrees.find((w) => w.id === worktreeId);
+    set((state) => ({
+      ...removeWorktreeFromState(state.worktrees, worktreeId),
+      worktreeLoading: { ...state.worktreeLoading, [worktreeId]: 'delete' },
+    }));
     try {
       const result = await deps.api.worktrees.delete(worktreeId, force);
       if (!result.success) {
@@ -170,11 +200,23 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
         };
       });
     } catch (error) {
+      set((state) => {
+        const { [worktreeId]: _, ...remainingLoading } = state.worktreeLoading;
+        return {
+          ...(deletedWorktree ? addWorktreeToState(state.worktrees, deletedWorktree) : {}),
+          worktreeLoading: remainingLoading,
+        };
+      });
       throw error;
     }
   },
 
   destroyWorktree: async (worktreeId) => {
+    const deletedWorktree = get().worktrees.find((w) => w.id === worktreeId);
+    set((state) => ({
+      ...removeWorktreeFromState(state.worktrees, worktreeId),
+      worktreeLoading: { ...state.worktreeLoading, [worktreeId]: 'delete' },
+    }));
     try {
       const result = await deps.api.worktrees.destroy(worktreeId);
       if (!result.success) {
@@ -187,6 +229,13 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
         };
       });
     } catch (error) {
+      set((state) => {
+        const { [worktreeId]: _, ...remainingLoading } = state.worktreeLoading;
+        return {
+          ...(deletedWorktree ? addWorktreeToState(state.worktrees, deletedWorktree) : {}),
+          worktreeLoading: remainingLoading,
+        };
+      });
       throw error;
     }
   },
