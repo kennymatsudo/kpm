@@ -1839,13 +1839,24 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // Handle rate limit events — surface warnings/rejections to UI
     if (isRateLimitEvent(sdkMsg)) {
       const info = sdkMsg.rate_limit_info;
+      // Credit exhaustion (claude.ai subscription) is a distinct rejection from a
+      // time-based rate limit: credits don't reset on a timer, so "resets in Xm"
+      // would be misleading. The SDK flags it via errorCode (v0.3.179+).
+      const outOfCredits = info.errorCode === 'credits_required';
       if (info.status === 'allowed_warning' || info.status === 'rejected') {
         const resetsIn = info.resetsAt ? Math.round((info.resetsAt - Date.now()) / 60_000) : undefined;
+        const detail = outOfCredits
+          ? `Out of credits${info.canUserPurchaseCredits ? ' — purchase more in your Claude account to continue' : ''}`
+          : info.status === 'rejected'
+            ? `Rate limited${resetsIn ? ` — resets in ${resetsIn}m` : ''}`
+            : `Approaching rate limit${info.utilization ? ` (${Math.round(info.utilization * 100)}% used)` : ''}`;
+        console.log(`[StreamingSessionService] Rate limit ${info.status}${outOfCredits ? ' (credits_required)' : ''}: ${detail} for ${key}`);
         mainWindow?.webContents.send('chat:activity', {
           projectId,
           chatSessionId,
           activity: {
             type: 'other' as const,
+            label: outOfCredits ? 'Out of Credits' : info.status === 'rejected' ? 'Rate Limited' : 'Rate Limit Warning',
             detail,
           },
         });
