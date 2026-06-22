@@ -1261,6 +1261,7 @@ const agentSessions = {
     taskTitle: string,
     externalKey?: string,
   ): Promise<{ success: boolean; message?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.agentSession.generateCommitMessage, { devSessionId, taskTitle, externalKey }),
 
   // Commit uncommitted changes in the session's worktree
   commit: (

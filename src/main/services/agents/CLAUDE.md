@@ -55,6 +55,7 @@ devSessionsStore
   ├── commitStateBySessionId
   └── persisted review findings rehydration
   ↓
+BoardCard / DetailPane / ChangesTab / ActivityTab / CommitComposer
 ```
 
 ## Session Lifecycle

@@ -219,6 +219,7 @@ export function registerAgentSessionHandlers(
     IPC_CHANNELS.agentSession.generateCommitMessage,
     createIpcHandler(
       AgentSessionSchemas.generateCommitMessage,
+      async ({ devSessionId, taskTitle, externalKey }) => {
         const session = devSessionService.get(devSessionId);
         if (!session) {
           throw new Error(`Session not found: ${devSessionId}`);
@@ -227,11 +228,27 @@ export function registerAgentSessionHandlers(
         const instructionsResult = promptOverrideService.getContent('generation.commit_message_instructions');
         const instructions = instructionsResult.ok ? instructionsResult.data : '';
 
+        // Ground the message in the actual worktree diff (the same diff the
+        // Changes tab shows). Passing only summary stats left the model with
+        // nothing concrete to describe — it would refuse with "I don't see any
+        // changes, run git diff" when the stat was momentarily absent.
+        const diffResult = await devSessionService.getSessionDiff(devSessionId);
+        const rawDiff = diffResult.ok ? diffResult.data.trim() : '';
+        const MAX_DIFF_CHARS = 16000;
+        const diff = rawDiff.length > MAX_DIFF_CHARS
+          ? `${rawDiff.slice(0, MAX_DIFF_CHARS)}\n\n…(diff truncated)`
+          : rawDiff;
+
         const contextLines: string[] = [`Task: ${taskTitle}`];
         if (externalKey) {
           contextLines.push(`Ticket key: ${externalKey}`);
         }
 
+        const diffSection = diff
+          ? `\n\nDiff (staged + unstaged vs HEAD):\n\`\`\`diff\n${diff}\n\`\`\``
+          : '';
+
+        const prompt = `Generate a git commit message for these changes:\n\n${contextLines.join('\n')}${diffSection}\n\n${instructions}`;
 
         const sdkOptions: SDKOptions = {
           model: getConfig().generation.cheapModel,
@@ -274,6 +291,7 @@ export function registerAgentSessionHandlers(
       AgentSessionSchemas.commit,
         const result = await devSessionService.commitSessionChanges(devSessionId, message);
         if (!result.ok) {
+          return { success: false as const, error: result.error };
         }
         return result.data;
       },

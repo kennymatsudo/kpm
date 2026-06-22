@@ -9,11 +9,23 @@ import { memo, useState, useCallback, useEffect, useMemo } from 'react';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import type { BackgroundCommitState } from '../../stores/devSessions';
 import { getAgentCommitLog, getAgentCommitFiles } from '../../services/agentSessionService';
+import { CommitComposer } from './CommitComposer';
+import type { DevSessionWithPlanItem } from '../../../shared/types';
 
 interface ChangesTabProps {
+  session: DevSessionWithPlanItem;
   sessionId: string;
   commitState?: BackgroundCommitState;
   refreshToken?: number;
+  /** Whether the inline commit composer is open. */
+  commitComposerOpen?: boolean;
+  commitSubmitLabel?: string;
+  showCommitSkip?: boolean;
+  /** Open the inline commit composer (Changes-tab "Commit" button). */
+  onCommitOpen?: () => void;
+  onCommitSubmit?: (message: string) => void;
+  onCommitCancel?: () => void;
+  onCommitComplete?: () => void;
 }
 
 interface CommitEntry {
@@ -266,9 +278,17 @@ const CommitList = memo(function CommitList({
 });
 
 export const ChangesTab = memo(function ChangesTab({
+  session,
   sessionId,
   commitState,
   refreshToken = 0,
+  commitComposerOpen = false,
+  commitSubmitLabel = 'Commit',
+  showCommitSkip = false,
+  onCommitOpen,
+  onCommitSubmit,
+  onCommitCancel,
+  onCommitComplete,
 }: ChangesTabProps) {
   const diff = useDevSessionsStore((s) => s.diffBySessionId.get(sessionId));
   const diffError = useDevSessionsStore((s) => s.diffErrorBySessionId.get(sessionId));
@@ -408,9 +428,44 @@ export const ChangesTab = memo(function ChangesTab({
   }
 
   return (
+    <div className="flex-1 min-h-0 flex flex-col">
+      {/* Inline commit composer — pinned above the scrollable diff so it reads
+          as part of the panel rather than a floating layer. */}
+      {commitComposerOpen && onCommitSubmit && onCommitCancel && onCommitComplete && (
+        <CommitComposer
+          session={session}
+          initialMessage={commitState?.message}
+          submitLabel={commitSubmitLabel}
+          showSkip={showCommitSkip}
+          onCancel={onCommitCancel}
+          onSubmit={onCommitSubmit}
+          onComplete={onCommitComplete}
+        />
+      )}
+
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {/* Uncommitted changes header */}
+            {onCommitOpen && !isAgentActive && !commitComposerOpen && (
+              <button
+                onClick={onCommitOpen}
+                disabled={isCommitting}
+              >
+              </button>
+            )}
+            {refreshButton}
+          </div>
         </div>
 
+        {/* File list */}
+        {files.map((file) => (
+          <FileEntry key={file.path} file={file} />
+        ))}
 
+        {/* Commits ahead of base branch */}
+        {(hasCommits || isLoadingCommits) && (
+          <CommitList commits={commits} isLoading={isLoadingCommits} sessionId={sessionId} />
+        )}
+      </div>
     </div>
   );
 });

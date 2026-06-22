@@ -42,6 +42,10 @@ export const DetailPane = memo(function DetailPane({
   onClose,
 }: DetailPaneProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>('activity');
+  // Whether the inline commit composer is open in the Changes tab. Both entry
+  // points ("Ready for Review" in the Next strip, "Commit" in the Changes tab)
+  // open the same inline composer rather than a floating popover.
+  const [commitComposerOpen, setCommitComposerOpen] = useState(false);
   const [showCreatePr, setShowCreatePr] = useState(false);
   const [showGeneratePrContent, setShowGeneratePrContent] = useState(false);
   const [showLinkPr, setShowLinkPr] = useState(false);
@@ -136,6 +140,7 @@ export const DetailPane = memo(function DetailPane({
     }
   }, [session.plan_item_id, session.plan_item?.title, session.name, updateStatusCategory]);
 
+  const handleReadyForReview = useCallback(() => {
     if (commitState?.status === 'running') {
       toast.info('Commit already in progress');
       return;
@@ -143,17 +148,21 @@ export const DetailPane = memo(function DetailPane({
 
     if (typeof diff === 'string' && diff.trim().length > 0) {
       setCommitTransitionsToReview(true);
+      setActiveTab('changes');
+      setCommitComposerOpen(true);
     } else {
       moveToReview();
     }
   }, [commitState?.status, diff, moveToReview]);
 
+  const handleChangesTabCommit = useCallback(() => {
     if (commitState?.status === 'running') {
       toast.info('Commit already in progress');
       return;
     }
 
     setCommitTransitionsToReview(false);
+    setCommitComposerOpen(true);
   }, [commitState?.status]);
 
   const handleOpenPr = useCallback(() => {
@@ -207,11 +216,13 @@ export const DetailPane = memo(function DetailPane({
   // Map the strip's semantic action ids to handlers. Review-queue ids route to
   // the Review tab (where ReviewTab's own next-action bar performs them with
   // full context); everything else acts directly.
+  const handlePanelAction = useCallback((id: PanelActionId) => {
     switch (id) {
       case 'stop':
         handleStop();
         break;
       case 'ready_for_review':
+        handleReadyForReview();
         break;
       case 'run_review':
         handleRunReview();
@@ -246,6 +257,7 @@ export const DetailPane = memo(function DetailPane({
 
   const handleCommitSubmit = useCallback((message: string) => {
     const shouldMoveToReview = commitTransitionsToReview;
+    setCommitComposerOpen(false);
     setCommitState(session.id, {
       status: 'running',
       message,
@@ -373,9 +385,22 @@ export const DetailPane = memo(function DetailPane({
         )}
         {activeTab === 'changes' && (
           <ChangesTab
+            session={session}
             sessionId={session.id}
             commitState={commitState}
             refreshToken={changesRefreshToken}
+            commitComposerOpen={commitComposerOpen}
+            commitSubmitLabel={commitTransitionsToReview ? 'Commit & Ready for Review' : 'Commit'}
+            showCommitSkip={commitTransitionsToReview}
+            onCommitOpen={handleChangesTabCommit}
+            onCommitSubmit={handleCommitSubmit}
+            onCommitCancel={() => setCommitComposerOpen(false)}
+            onCommitComplete={() => {
+              setCommitComposerOpen(false);
+              if (commitTransitionsToReview) {
+                moveToReview();
+              }
+            }}
           />
         )}
         {activeTab === 'review' && session.pr_number != null && (

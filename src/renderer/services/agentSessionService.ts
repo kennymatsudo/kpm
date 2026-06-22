@@ -88,6 +88,7 @@ export function generateCommitMessage(
   taskTitle: string,
   externalKey?: string,
 ): Promise<{ success: boolean; message?: string; error?: string }> {
+  return window.api.agentSessions.generateCommitMessage(devSessionId, taskTitle, externalKey);
 }
 
 /**
