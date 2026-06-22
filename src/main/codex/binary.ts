@@ -1,4 +1,5 @@
 import { app } from 'electron';
+import { existsSync } from 'fs';
 import { join } from 'path';
 
 /**
@@ -8,6 +9,10 @@ import { join } from 'path';
  * electron-vite the base directory shifts to dist/main/ and require.resolve
  * can't find the platform package. We resolve it from node_modules directly.
  *
+ * Current @openai/codex-sdk versions put the binary in a per-platform package
+ * under vendor/<target>/bin/codex, pulled in via @openai/codex's
+ * optionalDependencies. Older versions used vendor/<target>/codex/codex, so
+ * keep probing that path for compatibility.
  *
  * - Dev: app.getAppPath() = project root -> node_modules/@openai/codex-<platform>/vendor/...
  * - Packaged: binaries are in app.asar.unpacked (configured in electron-builder.yml)
@@ -43,4 +48,18 @@ export function findCodexBinaryPath(): string {
   const basePath = app.isPackaged
     ? appPath.replace('app.asar', 'app.asar.unpacked')
     : appPath;
+  const packageRoot = join(basePath, 'node_modules', platformPackage, 'vendor', targetTriple);
+  const candidates = [
+    join(packageRoot, 'bin', binaryName),
+    join(packageRoot, 'codex', binaryName),
+  ];
+
+  const binaryPath = candidates.find((candidate) => existsSync(candidate));
+  if (binaryPath) {
+    return binaryPath;
+  }
+
+  throw new Error(
+    `Unable to locate Codex CLI binary for ${targetTriple}. Searched: ${candidates.join(', ')}`
+  );
 }
