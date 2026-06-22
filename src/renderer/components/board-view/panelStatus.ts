@@ -35,6 +35,7 @@ export type PanelPhase =
   | 'awaiting_input'  // agent paused with a question (Gemini-only path)
   | 'reviewing'       // opposing-agent review is running
   | 'addressing'      // a code update is running to address review feedback
+  | 'needs_attention' // automation was interrupted and needs a user decision
   | 'review_open'     // PR exists with review work waiting on the user
   | 'ready'           // PR approved and unblocked — ready to merge
   | 'merged'          // PR merged — nothing left to do
@@ -53,6 +54,7 @@ export type PanelStep = 'build' | 'review' | 'address' | 'merge';
 export type PanelActionId =
   | 'stop'
   | 'retry'
+  | 'resume'
   | 'follow_up'
   | 'ready_for_review'
   | 'run_review'
@@ -162,6 +164,7 @@ const PHASE_TO_STEP: Record<PanelPhase, PanelStep> = {
   failed: 'build',
   stopped: 'build',
   idle: 'build',
+  needs_attention: 'build',
   reviewing: 'review',
   review_open: 'review',
   addressing: 'address',
@@ -343,6 +346,17 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
     }, progressFor('Implementing', i));
   }
 
+  // 6. Persisted automation interruptions outrank quiet decision points.
+  if (i.automationPhase === 'needs_attention') {
+    return withStep('needs_attention', {
+      tone: 'warning',
+      text: 'Automation interrupted',
+      primary: { label: 'Resume', action: 'resume' },
+      secondary: { label: 'New instructions', action: 'follow_up' },
+    }, null);
+  }
+
+  // 7-8. Terminal agent failures outrank quiet decision points.
   if (i.implAgentState === 'failed') {
     return withStep('failed', {
       tone: 'danger',
@@ -359,6 +373,7 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
     }, null);
   }
 
+  // 9. PR merged — nothing left.
   if (i.prState === 'MERGED') {
     return withStep('merged', {
       tone: 'neutral',
@@ -370,6 +385,7 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
   const stats = i.reviewStats;
   const reviewWork = stats ? hasReviewWork(stats) : false;
 
+  // 10. Approved, unblocked, queue clear — ready to merge.
   if (i.hasPr && i.reviewState === 'APPROVED' && i.mergeBlockedBy.length === 0 && !reviewWork) {
     return withStep('ready', {
       tone: 'accent',
@@ -378,6 +394,7 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
     }, null);
   }
 
+  // 11. PR open — surface the review queue's next action (or awaiting/blocked).
   if (i.hasPr) {
     const action = stats ? reviewNextAction(stats, i.mergeBlockedBy) : {
       tone: 'neutral' as const,
@@ -387,6 +404,7 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
     return withStep('review_open', action, null);
   }
 
+  // 12. Agent finished, no PR — the decision point.
   if (i.implAgentState === 'complete') {
     const moved = i.itemStatus === 'in_review' || i.itemStatus === 'done';
     return withStep('implemented', {
@@ -399,5 +417,6 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
     }, null);
   }
 
+  // 13. Nothing running, nothing decided.
   return withStep('idle', null, null);
 }

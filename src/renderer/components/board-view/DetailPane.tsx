@@ -52,6 +52,7 @@ export const DetailPane = memo(function DetailPane({
   const [showLinkPr, setShowLinkPr] = useState(false);
   const [isOpeningEditor, setIsOpeningEditor] = useState(false);
   const [changesRefreshToken, setChangesRefreshToken] = useState(0);
+  const [pendingPanelAction, setPendingPanelAction] = useState<PanelActionId | null>(null);
   // When true, committing also transitions the card to in_review (Ready for Review path).
   // When false, committing is standalone — no status change (Changes tab path).
   const [commitTransitionsToReview, setCommitTransitionsToReview] = useState(false);
@@ -133,6 +134,29 @@ export const DetailPane = memo(function DetailPane({
       toast.success('Review started');
     })();
   }, [session.id]);
+
+  const handleResume = useCallback(() => {
+    if (pendingPanelAction === 'resume') return;
+
+    setPendingPanelAction('resume');
+    setActiveTab('activity');
+    void (async () => {
+      try {
+        const result = await startAgentSession(session.id);
+        if (!result.success) {
+          toast.error(result.error ?? 'Failed to resume agent');
+          return;
+        }
+        toast.success('Agent resumed');
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to resume agent');
+      } finally {
+        if (isMountedRef.current) {
+          setPendingPanelAction(null);
+        }
+      }
+    })();
+  }, [pendingPanelAction, session.id]);
 
   const moveToReview = useCallback(() => {
     if (session.plan_item_id) {
@@ -222,6 +246,9 @@ export const DetailPane = memo(function DetailPane({
     switch (id) {
       case 'stop':
         handleStop();
+        break;
+      case 'resume':
+        handleResume();
         break;
       case 'ready_for_review':
         handleReadyForReview();
@@ -389,6 +416,7 @@ export const DetailPane = memo(function DetailPane({
 
       {showStrip && status.nextAction && (
         <div className="px-3 py-2">
+          <SessionNextActionBar action={status.nextAction} onAction={handlePanelAction} pendingAction={pendingPanelAction} />
         </div>
       )}
 

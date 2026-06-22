@@ -122,6 +122,25 @@ describe('derivePanelStatus — running phases', () => {
     expect(status.phase).toBe('committing');
     expect(status.nextAction?.busy).toBe(true);
   });
+
+  it('surfaces needs_attention instead of falling through to the completed decision point', () => {
+    const status = derivePanelStatus(makeInputs({
+      implAgentState: 'complete',
+      automationPhase: 'needs_attention',
+      itemStatus: 'in_review',
+      diffStats: { files: 4, additions: 162, deletions: 46 },
+    }));
+
+    expect(status.phase).toBe('needs_attention');
+    expect(status.step).toBe('build');
+    expect(status.nextAction).toEqual({
+      tone: 'warning',
+      text: 'Automation interrupted',
+      primary: { label: 'Resume', action: 'resume' },
+      secondary: { label: 'New instructions', action: 'follow_up' },
+    });
+    expect(status.progress).toBeNull();
+  });
 });
 
 describe('derivePanelStatus — awaiting input (Gemini-only path)', () => {
