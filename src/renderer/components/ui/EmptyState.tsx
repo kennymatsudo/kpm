@@ -57,11 +57,18 @@ export function EmptyState({
   const config = sizeConfig[size];
 
   return (
+    <div className={`flex w-full flex-col items-center justify-center text-center ${config.container}`}>
       {icon !== undefined ? (
         icon && <div className={`${config.icon} text-text-muted mb-3`}>{icon}</div>
       ) : (
         <div className={`${config.icon} text-text-muted mb-3`}>{defaultIcons.empty}</div>
       )}
+      <div className="min-w-0 self-stretch">
+        <h3 className={`${config.title} font-medium text-text-secondary mb-1`}>{title}</h3>
+        {description && (
+          <p className={`${config.description} mx-auto w-full max-w-[20rem] text-text-muted`}>{description}</p>
+        )}
+      </div>
       {action && <div className="mt-4">{action}</div>}
     </div>
   );
