@@ -511,6 +511,7 @@ ${input.branchName} -> ${input.baseBranch}
 
       try {
         const baseBranch = await resolveBaseBranch(repoPath, session.base_branch);
+        const [currentBranch, commits, prTemplate] = await Promise.all([
           getCurrentBranch(repoPath),
           hasCommitsAhead(repoPath, baseBranch),
         ]);

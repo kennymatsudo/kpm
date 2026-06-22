@@ -107,12 +107,18 @@ describe('GitHubService PR generation', () => {
     });
   });
 
+  it('builds raw PR context from the plan item without commit or change-count noise', async () => {
     const { service } = buildService();
 
     const result = await service.buildPrContext('session-1');
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
+    expect(result.data.body).toContain('## Description');
+    expect(result.data.body).toContain('Media service needs durable attachment records');
+    // GitHub renders the commit list and diffstat natively; keep them out of the seed/fallback body.
+    expect(result.data.body).not.toContain('## Commits');
+    expect(result.data.body).not.toContain('**Changes:**');
     expect(result.data.suggestedTitle).toBe('PROJ-184: Build media service attachment records');
   });
 
