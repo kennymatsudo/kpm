@@ -20,6 +20,8 @@ export const ReviewSchemas = {
 
   assessThreads: z.object({
     sessionId: uuid,
+    taskIds: z.array(uuid).optional(),
+    reassessAll: z.boolean().optional(),
   }),
 
   draftPostImplReplies: z.object({

@@ -1,3 +1,5 @@
+import type { ReviewAssessmentOptions } from '../stores/devSessions/helpers';
+
 export function getReviewInbox(sessionId: string) {
   return window.api.review.getInbox(sessionId);
 }
@@ -10,6 +12,8 @@ export function assignSessionReviewOwnership(sessionId: string) {
   return window.api.review.assignOwnership(sessionId);
 }
 
+export function assessSessionReviewThreads(sessionId: string, options?: ReviewAssessmentOptions) {
+  return window.api.review.assessThreads(sessionId, options);
 }
 
 export function draftSessionPostImplReplies(sessionId: string) {

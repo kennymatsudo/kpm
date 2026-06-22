@@ -337,6 +337,12 @@ export function createReviewService(deps: ReviewServiceDeps) {
     return success(deps.reviewOwnership.set(session.repo_id, session.pr_number!, session.id));
   }
 
+  function isQueueableReviewTask(task: ReviewTask): boolean {
+    if (task.status === 'needs_review') return true;
+    if (task.internal_state === 'stale' || task.internal_state === 'failed') return true;
+    return task.status === 'assessed' && task.disposition === 'implement';
+  }
+
   function queueReviewTasks(sessionId: string, taskIds?: string[]): ServiceResult<ReviewTask[]> {
     const sessionResult = getSessionContext(sessionId);
     if (!sessionResult.ok) return sessionResult;
@@ -347,6 +353,7 @@ export function createReviewService(deps: ReviewServiceDeps) {
       .getByRepoPr(session.repo_id, session.pr_number!)
       .filter((task) => task.session_id === sessionId)
       .filter((task) => !selectedIds || selectedIds.has(task.id))
+      .filter(isQueueableReviewTask);
 
     const queued = tasks
       .map((task) => deps.reviewTasks.updateStatus(task.id, 'in_progress', {

@@ -202,6 +202,7 @@ export function createReviewAssessmentTools(deps: ReviewAssessmentToolsDeps) {
         projectId: z.string().uuid().describe('The project UUID'),
         search: z.string().optional().describe('Case-insensitive substring match on title'),
         statusCategory: z
+          .enum(['not_started', 'in_progress', 'in_review', 'done', 'blocked', 'canceled'])
           .optional()
           .describe('Filter by status category'),
         label: z.enum(['project', 'feature', 'task']).optional().describe('Filter by label'),

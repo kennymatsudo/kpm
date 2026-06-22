@@ -7,6 +7,13 @@ import type {
   AgentSessionState,
 } from '../../../shared/types';
 import type { AgentActivity, AgentQuestion, AgentCompletionSummary, ReviewFinding } from '../../../shared/agent-types';
+import {
+  buildSessionIndexes,
+  type PrCreationContext,
+  type ReviewAssessmentOptions,
+  type ReviewAssessmentPending,
+  type ReviewFilters,
+} from './helpers';
 import { createDevSessionsLifecycleSlice } from './lifecycleSlice';
 import { createDevSessionsPrSlice } from './prSlice';
 import { invalidateLoadSessionsRequests } from './requestState';
@@ -42,6 +49,7 @@ export interface DevSessionsState {
   reviewErrorBySessionId: Map<string, string | null>;
   reviewFiltersBySessionId: Map<string, ReviewFilters>;
   reviewActionableBySessionId: Map<string, ReviewActionableSummary>;
+  reviewAssessmentPendingBySessionId: Map<string, ReviewAssessmentPending>;
   prContextBySessionId: Map<string, PrCreationContext>;
   prContextLoadingIds: Set<string>;
 
@@ -84,6 +92,7 @@ export interface DevSessionsState {
   loadReviewInbox: (sessionId: string, options?: { force?: boolean }) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
   refreshReviewInbox: (sessionId: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
   assignReviewOwnership: (sessionId: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
+  assessReviewThreads: (sessionId: string, options?: ReviewAssessmentOptions) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
   draftPostImplReplies: (sessionId: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
   triggerReviewAutomation: (sessionId: string, taskIds?: string[]) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; taskIds?: string[]; context?: string; error?: string }>;
   replyToReviewThread: (sessionId: string, threadId: string, body: string, resolve?: boolean) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; replyId?: string; resolved?: boolean; error?: string }>;
@@ -148,6 +157,7 @@ const initialState = {
   reviewErrorBySessionId: new Map<string, string | null>(),
   reviewFiltersBySessionId: new Map<string, ReviewFilters>(),
   reviewActionableBySessionId: new Map<string, ReviewActionableSummary>(),
+  reviewAssessmentPendingBySessionId: new Map<string, ReviewAssessmentPending>(),
   prContextBySessionId: new Map<string, PrCreationContext>(),
   prContextLoadingIds: new Set<string>(),
   prStatusCache: new Map<string, PrStatus>(),
@@ -355,6 +365,7 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
       sessionById: new Map<string, DevSessionWithPlanItem>(),
       sessionsByPlanItemId: new Map<string, DevSessionWithPlanItem[]>(),
       deletingSessionIds: new Set<string>(),
+      reviewAssessmentPendingBySessionId: new Map<string, ReviewAssessmentPending>(),
     });
   },
 
@@ -365,6 +376,7 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
       sessionById: new Map<string, DevSessionWithPlanItem>(),
       sessionsByPlanItemId: new Map<string, DevSessionWithPlanItem[]>(),
       deletingSessionIds: new Set<string>(),
+      reviewAssessmentPendingBySessionId: new Map<string, ReviewAssessmentPending>(),
     });
   },
   ...createDevSessionsReviewSlice(set, get),

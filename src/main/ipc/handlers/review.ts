@@ -59,6 +59,8 @@ export function registerReviewHandlers(
     IPC_CHANNELS.review.assessThreads,
     createIpcHandler(
       ReviewSchemas.assessThreads,
+      async ({ sessionId, taskIds, reassessAll }) => {
+        const result = unwrapOrThrow(await reviewAssessmentService.assessThreads(sessionId, { taskIds, reassessAll }));
         const inbox = unwrapOrThrow(await reviewService.getReviewInbox(sessionId));
         return { ...result, inbox };
       },

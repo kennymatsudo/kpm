@@ -518,6 +518,7 @@ function buildReviewSummary(
     unresolvedThreads: threads.filter((thread) => !thread.isResolved).length,
     resolvedThreads: threads.filter((thread) => thread.isResolved).length,
     outdatedThreads: threads.filter((thread) => thread.isOutdated).length,
+    actionableThreads: threads.filter((thread) => !thread.isResolved && !thread.isOutdated).length,
     humanThreads: threads.filter((thread) => thread.hasHumanReviewerComment).length,
     botOnlyThreads: threads.filter((thread) => thread.hasBotOnlyComments).length,
     topLevelReviewCount: topLevelReviews.length,

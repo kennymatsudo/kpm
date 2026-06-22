@@ -1060,6 +1060,8 @@ const review = {
     ipcRenderer.invoke(IPC_CHANNELS.review.refreshSession, { sessionId }),
   assignOwnership: (sessionId: string): Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.review.assignOwnership, { sessionId }),
+  assessThreads: (sessionId: string, options?: { taskIds?: string[]; reassessAll?: boolean }): Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; results?: { threadId: string; disposition: string; rationale: string; draftReply: string | null }[]; errors?: string[]; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.review.assessThreads, { sessionId, taskIds: options?.taskIds, reassessAll: options?.reassessAll }),
   draftPostImplReplies: (sessionId: string): Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.review.draftPostImplReplies, { sessionId }),
   triggerAutomation: (

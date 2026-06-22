@@ -288,6 +288,7 @@ function createDefaultConfig(): AppConfig {
 
     reviewAssessment: {
       timeoutMs: 8 * 60 * 1000, // 8 minutes
+      maxTurns: 40,
     },
 
     watcher: {

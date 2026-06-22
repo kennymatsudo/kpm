@@ -23,6 +23,17 @@ export interface ReviewFilters {
   showConversation: boolean;
 }
 
+export interface ReviewAssessmentOptions {
+  taskIds?: string[];
+  reassessAll?: boolean;
+}
+
+export interface ReviewAssessmentPending {
+  taskIds: string[];
+  scope: 'queue' | 'selected' | 'all';
+  startedAt: number;
+}
+
 export const DEFAULT_REVIEW_FILTERS: ReviewFilters = {
   showResolved: false,
   showTopLevelReviews: false,
@@ -94,6 +105,7 @@ interface SessionCacheState {
   reviewErrorBySessionId: Map<string, string | null>;
   reviewFiltersBySessionId: Map<string, ReviewFilters>;
   reviewActionableBySessionId: Map<string, ReviewActionableSummary>;
+  reviewAssessmentPendingBySessionId: Map<string, ReviewAssessmentPending>;
   prContextBySessionId: Map<string, PrCreationContext>;
   prContextLoadingIds: Set<string>;
   prStatusCache: Map<string, PrStatus>;
@@ -121,6 +133,9 @@ export function dropSessionCacheEntries<State extends SessionCacheState>(
   const reviewActionableBySessionId = new Map(state.reviewActionableBySessionId);
   reviewActionableBySessionId.delete(sessionId);
 
+  const reviewAssessmentPendingBySessionId = new Map(state.reviewAssessmentPendingBySessionId);
+  reviewAssessmentPendingBySessionId.delete(sessionId);
+
   const prContextBySessionId = new Map(state.prContextBySessionId);
   prContextBySessionId.delete(sessionId);
 
@@ -136,6 +151,7 @@ export function dropSessionCacheEntries<State extends SessionCacheState>(
     reviewErrorBySessionId,
     reviewFiltersBySessionId,
     reviewActionableBySessionId,
+    reviewAssessmentPendingBySessionId,
     prContextBySessionId,
     prContextLoadingIds: removeFromSet(state.prContextLoadingIds, sessionId),
     prStatusCache,

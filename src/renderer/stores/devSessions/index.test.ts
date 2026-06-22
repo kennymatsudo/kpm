@@ -78,6 +78,8 @@ function createReviewInbox(sessionId = 'dev-session-1') {
       last_successful_fetched_at: '2024-01-02T00:00:00.000Z',
       last_head_oid: 'abcdef1234567890',
       last_review_decision: 'CHANGES_REQUESTED' as const,
+      last_pr_updated_at: '2024-01-02T00:00:00.000Z',
+      probe_digest: 'probe-1',
       last_error: null,
     },
     snapshot: {
@@ -90,6 +92,7 @@ function createReviewInbox(sessionId = 'dev-session-1') {
       baseRefName: 'main',
       headRefName: 'kpm/test-branch',
       fetchedAt: '2024-01-02T00:00:00.000Z',
+      updatedAt: '2024-01-02T00:00:00.000Z',
       summary: {
         totalThreads: 1,
         unresolvedThreads: 1,
@@ -185,6 +188,30 @@ describe('devSessionsStore', () => {
     expect(second).toEqual({ success: true, inbox });
     expect(api.review.getInbox).toHaveBeenCalledTimes(1);
     expect(useDevSessionsStore.getState().reviewInboxBySessionId.get('dev-session-1')).toEqual(inbox);
+  });
+
+  it('tracks pending review reassessment task ids while the request is running', async () => {
+    const inbox = createReviewInbox();
+    useDevSessionsStore.setState({
+      reviewInboxBySessionId: new Map([['dev-session-1', inbox]]),
+    });
+
+    let resolveAssessment: (value: { success: true; inbox: typeof inbox; results: []; errors: [] }) => void;
+    api.review.assessThreads.mockReturnValue(new Promise((resolve) => {
+      resolveAssessment = resolve;
+    }));
+
+    const resultPromise = useDevSessionsStore.getState().assessReviewThreads('dev-session-1', { reassessAll: true });
+
+    expect(api.review.assessThreads).toHaveBeenCalledWith('dev-session-1', { reassessAll: true });
+    expect(useDevSessionsStore.getState().reviewAssessmentPendingBySessionId.get('dev-session-1')).toMatchObject({
+      scope: 'all',
+      taskIds: ['task-1'],
+    });
+
+    resolveAssessment!({ success: true, inbox, results: [], errors: [] });
+    await expect(resultPromise).resolves.toEqual({ success: true, inbox });
+    expect(useDevSessionsStore.getState().reviewAssessmentPendingBySessionId.has('dev-session-1')).toBe(false);
   });
 
   it('triggers review automation through the review service and refreshes sessions', async () => {

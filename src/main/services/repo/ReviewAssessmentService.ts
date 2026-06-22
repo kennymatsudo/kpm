@@ -4,15 +4,23 @@
  * SDK-backed assessment agent that evaluates review threads and produces
  * per-thread dispositions, rationale, and draft replies for push_back threads.
  *
+ * Uses the Claude Agent SDK query() function for a structured assessment pass.
+ * The prompt includes the PR diff, thread text, and nearby file context; scoped
+ * read-only MCP tools are available only for targeted scope/design checks.
  */
 
 import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
 import { runClaudeQuery, type ClaudeQueryUsage } from '../../claude/runClaudeQuery';
+import { existsSync } from 'fs';
+import { readFile } from 'fs/promises';
+import path from 'path';
 import { z } from 'zod';
 import type {
   IDevSessionRepository,
   IPlanItemRepository,
   IPlanRelationRepository,
+  IReviewTaskRepository,
+  IRepoRepository,
 } from '../../db/interfaces';
 import type {
   DevSession,
@@ -49,10 +57,23 @@ export interface BatchAssessmentResult {
   errors: string[];
 }
 
+export interface AssessThreadsOptions {
+  taskIds?: string[];
+  reassessAll?: boolean;
+}
+
 interface ToolContext {
   projectId: string;
   prRepoId: string;
   otherRepos: { id: string; path: string }[];
+}
+
+interface ThreadFileContext {
+  path: string;
+  targetLine: number;
+  startLine: number;
+  endLine: number;
+  content: string;
 }
 
 export interface ReviewAssessmentServiceDeps {
@@ -106,6 +127,92 @@ const postImplOutputSchema = z.object({
 const assessmentJsonSchema = z.toJSONSchema(assessmentOutputSchema, { target: 'draft-07' });
 const postImplJsonSchema = z.toJSONSchema(postImplOutputSchema, { target: 'draft-07' });
 
+const FILE_CONTEXT_RADIUS = 60;
+const MAX_COMMENT_BODY_CHARS = 12_000;
+const MAX_THREAD_FILE_CONTEXT_CHARS = 24_000;
+
+function truncateForPrompt(value: string, maxChars: number, label: string): string {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}\n\n... (${label} truncated)`;
+}
+
+function sanitizeReviewCommentBody(body: string): string {
+  const withoutComments = body.replace(/<!--[\s\S]*?-->/g, '');
+  const withoutCursorAnchors = withoutComments
+    .replace(/<div>\s*<a\s+href=["']https:\/\/cursor\.com\/open\?[\s\S]*?<\/div>/gi, '')
+    .replace(/<a\s+href=["']https:\/\/cursor\.com\/open\?[\s\S]*?<\/a>/gi, '')
+    .replace(/https:\/\/cursor\.com\/open\?\S+/gi, '[cursor link omitted]');
+  const withoutLayoutTags = withoutCursorAnchors
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?(?:div|p|span)[^>]*>/gi, '');
+  const normalized = withoutLayoutTags
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return truncateForPrompt(normalized, MAX_COMMENT_BODY_CHARS, 'comment body');
+}
+
+function isPathInside(rootPath: string, candidatePath: string): boolean {
+  const relative = path.relative(rootPath, candidatePath);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function resolveThreadFilePath(repoPath: string, threadPath: string): string | null {
+  if (path.isAbsolute(threadPath)) return null;
+  const root = path.resolve(repoPath);
+  const resolved = path.resolve(root, threadPath);
+  return isPathInside(root, resolved) ? resolved : null;
+}
+
+async function buildThreadFileContexts(
+  repoPath: string | null,
+  threads: PrReviewThread[]
+): Promise<Map<string, ThreadFileContext>> {
+  const contexts = new Map<string, ThreadFileContext>();
+  if (!repoPath) return contexts;
+
+  const fileCache = new Map<string, string[] | null>();
+  const root = path.resolve(repoPath);
+
+  for (const thread of threads) {
+    const targetLine = thread.line ?? thread.startLine;
+    if (!thread.path || targetLine == null || targetLine <= 0) continue;
+
+    const resolvedPath = resolveThreadFilePath(root, thread.path);
+    if (!resolvedPath) continue;
+
+    let lines = fileCache.get(resolvedPath);
+    if (lines === undefined) {
+      try {
+        const content = await readFile(resolvedPath, 'utf8');
+        lines = content.split(/\r?\n/);
+      } catch {
+        lines = null;
+      }
+      fileCache.set(resolvedPath, lines);
+    }
+    if (!lines || lines.length === 0) continue;
+
+    const startLine = Math.max(1, targetLine - FILE_CONTEXT_RADIUS);
+    const endLine = Math.min(lines.length, targetLine + FILE_CONTEXT_RADIUS);
+    const numbered = lines
+      .slice(startLine - 1, endLine)
+      .map((line, index) => `${startLine + index}: ${line}`)
+      .join('\n');
+
+    contexts.set(thread.id, {
+      path: thread.path,
+      targetLine,
+      startLine,
+      endLine,
+      content: truncateForPrompt(numbered, MAX_THREAD_FILE_CONTEXT_CHARS, 'file context'),
+    });
+  }
+
+  return contexts;
+}
+
 // =============================================================================
 // Structured Query Runner
 // =============================================================================
@@ -150,6 +257,10 @@ async function runStructuredQuery<T>(
 // Assessment Prompt
 // =============================================================================
 
+function buildAssessmentSystemPrompt(options: { allowTools?: boolean } = {}): string {
+  const allowTools = options.allowTools ?? true;
+  const explorationGuidance = allowTools
+    ? `## Exploration Before Disposition
 
 You have read-only tools to explore beyond the PR diff before landing a disposition. A reviewer concern is often already resolved by work the diff alone can't show. Before you assign a disposition, check whichever of these apply:
 
@@ -157,7 +268,20 @@ You have read-only tools to explore beyond the PR diff before landing a disposit
 2. **In-flight work on this repo or a sibling repo** — call \`list_project_branches\` once to see every repo on the project. If a branch name or recent commit subject suggests the concern is being addressed elsewhere (commonly true for cross-repo changes like API/client pairs), use \`get_branch_activity\` to verify the commits touch the relevant files.
 3. **KPM project docs** — if the reviewer is questioning a design choice that was deliberately made, \`read_project_document\` against iteration docs / CLAUDE.md / AGENTS.md can surface the rationale.
 
+For line-level bot comments, first validate the claim against the PR diff and the nearby file context included with that thread. Do not call plan, branch, or document tools for routine code-specific bot comments unless the diff/file context creates a real scope or design uncertainty.
 
+Do not over-explore. Use the PR diff, nearby file context, and thread text by default, and call tools only when a specific thread has a specific uncertainty that the tool can resolve. Use at most three tool calls total across the whole batch. If you are still uncertain after that, choose \`needs_user_input\` instead of continuing to explore.
+
+When you *don't* find supporting evidence in these sources, don't fabricate it — fall back on the diff alone and the criteria below.`
+    : `## Context Boundary
+
+No additional tools are available for this retry. Assess from the PR diff, nearby file context, session context, and review thread text already provided. Do not claim that a follow-up task, sibling branch, or project document exists unless it is explicitly present in the provided context. If the evidence is insufficient and both implementation and pushback are plausible, choose \`needs_user_input\`.`;
+
+  return `You are a code review assessment agent for KPM, a developer project management tool.
+
+Your job is to evaluate GitHub PR review threads and decide whether each thread's feedback should be implemented, pushed back on, or escalated to the developer for a decision.
+
+${explorationGuidance}
 
 ## Assessment Criteria
 
@@ -209,11 +333,68 @@ Avoid:
 - "This is a valid concern. However, ..."`;
 }
 
+function isMaxTurnsError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /max(?:imum)?(?: number of)? turns|maximum number of turns|error_max_turns/i.test(message);
+}
+
+function withoutSdkTools(sdkOptions: SDKOptions): SDKOptions {
+  const next: SDKOptions = { ...sdkOptions };
+  delete next.mcpServers;
+  delete next.allowedTools;
+  return next;
+}
+
+async function runStructuredQueryWithNoToolFallback<T>(
+  params: {
+    userPrompt: string;
+    sdkOptions: SDKOptions;
+    noToolSystemPrompt: string;
+    schema: z.ZodType<T>;
+    timeoutMs: number;
+    fallbackLogLabel: string;
+    onUsage?: (event: { usage: ClaudeQueryUsage; totalCostUsd?: number | null }) => void;
+  }
+): Promise<T> {
+  try {
+    return await runStructuredQuery(
+      params.userPrompt,
+      params.sdkOptions,
+      params.schema,
+      params.timeoutMs,
+      params.onUsage,
+    );
+  } catch (error) {
+    if (!isMaxTurnsError(error)) {
+      throw error;
+    }
+
+    console.warn(`[ReviewAssessment] ${params.fallbackLogLabel} hit the turn limit; retrying without exploratory tools`);
+
+    return runStructuredQuery(
+      params.userPrompt,
+      {
+        ...withoutSdkTools(params.sdkOptions),
+        systemPrompt: params.noToolSystemPrompt,
+        maxTurns: Math.max(
+          12,
+          typeof params.sdkOptions.maxTurns === 'number' ? params.sdkOptions.maxTurns : 12
+        ),
+      },
+      params.schema,
+      params.timeoutMs,
+      params.onUsage,
+    );
+  }
+}
+
 function buildAssessmentUserPrompt(
   snapshot: PrReviewSnapshot,
   threads: PrReviewThread[],
   diff: string | null,
   sessionContext: string | null,
+  toolContext: ToolContext,
+  fileContexts: Map<string, ThreadFileContext>
 ): string {
   const lines: string[] = [];
 
@@ -264,10 +445,21 @@ function buildAssessmentUserPrompt(
       lines.push('Location: General review');
     }
     lines.push(`Bot-only: ${thread.hasBotOnlyComments ? 'yes' : 'no'}`);
+
+    const fileContext = fileContexts.get(thread.id);
+    if (fileContext) {
+      lines.push('');
+      lines.push(`Nearby file context (${fileContext.path}:${fileContext.startLine}-${fileContext.endLine}, target line ${fileContext.targetLine}):`);
+      lines.push('~~~text');
+      lines.push(fileContext.content);
+      lines.push('~~~');
+    }
+
     lines.push('');
 
     for (const comment of thread.comments) {
       lines.push(`**@${comment.author}** (${comment.authorType}) at ${comment.createdAt}:`);
+      lines.push(sanitizeReviewCommentBody(comment.body) || '[empty comment body after sanitization]');
       lines.push('');
     }
   }
@@ -301,6 +493,7 @@ function applyAssessmentBusinessRules(
 
     if (item.disposition === 'push_back' && !draftReply) {
       errors.push(`Thread ${item.thread_id}: push_back disposition but no draft_reply provided`);
+      continue;
     }
 
     results.push({
@@ -360,6 +553,8 @@ function buildPostImplUserPrompt(
   threads: PrReviewThread[],
   tasks: { thread_id: string; rationale: string | null }[],
   diff: string | null,
+  toolContext: ToolContext,
+  fileContexts: Map<string, ThreadFileContext>
 ): string {
   const taskByThreadId = new Map(tasks.map((t) => [t.thread_id, t]));
   const lines: string[] = [];
@@ -397,8 +592,20 @@ function buildPostImplUserPrompt(
     if (task?.rationale) {
       lines.push(`Assessment rationale: ${task.rationale}`);
     }
+
+    const fileContext = fileContexts.get(thread.id);
+    if (fileContext) {
+      lines.push('');
+      lines.push(`Nearby file context (${fileContext.path}:${fileContext.startLine}-${fileContext.endLine}, target line ${fileContext.targetLine}):`);
+      lines.push('~~~text');
+      lines.push(fileContext.content);
+      lines.push('~~~');
+    }
+
     lines.push('');
     for (const comment of thread.comments) {
+      lines.push(`**@${comment.author}** (${comment.authorType}):`);
+      lines.push(sanitizeReviewCommentBody(comment.body) || '[empty comment body after sanitization]');
       lines.push('');
     }
   }
@@ -465,12 +672,29 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
     return success(session);
   }
 
-    try {
+  function resolveSessionRepoPath(session: DevSession): string | null {
+    const repo = deps.repos.getById(session.repo_id);
+    if (!repo?.path) return null;
+    if (session.worktree_path && existsSync(session.worktree_path)) {
+      return session.worktree_path;
+    }
+    return repo.path;
+  }
 
+  async function fetchDiff(session: DevSession, repoPath: string | null): Promise<string | null> {
+    try {
+      if (!repoPath) return null;
+
+      const baseBranch = session.base_branch || await detectBaseBranch(repoPath);
+      return await getDiff(repoPath, baseBranch);
     } catch (e) {
       logError(`Failed to fetch diff: ${e instanceof Error ? e.message : 'unknown'}`);
       return null;
     }
+  }
+
+  function isAssessableTaskStatus(status: string): boolean {
+    return status === 'needs_review' || status === 'assessed' || status === 'ready_to_post';
   }
 
   function buildSessionContextString(session: DevSession): string | null {
@@ -504,18 +728,33 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
    * 4. Calls Claude SDK for structured assessment
    * 5. Parses results and updates task records
    */
+  async function assessThreads(
+    sessionId: string,
+    options: AssessThreadsOptions = {}
+  ): AsyncResult<BatchAssessmentResult> {
     const reviewAssessmentConfig = getConfig().reviewAssessment;
     const sessionResult = getSessionContext(sessionId);
     if (!sessionResult.ok) return sessionResult;
     const session = sessionResult.data;
+    const selectedTaskIds = options.taskIds ? new Set(options.taskIds) : null;
+    const reassessAll = options.reassessAll === true;
 
     // 1. Fetch live snapshot
     const snapshotResult = await deps.gitHubService.getPrReviewSnapshot(sessionId);
     if (!snapshotResult.ok) return snapshotResult;
     const snapshot = snapshotResult.data;
 
+    // 2. Find tasks that need assessment. Without an explicit reassessment
+    // scope, assess only new tasks. With task IDs or reassessAll, allow
+    // reassessing prior assessments/drafts.
     const tasks = deps.reviewTasks
       .getByRepoPr(session.repo_id, session.pr_number!)
+      .filter((task) => task.session_id === sessionId)
+      .filter((task) => !selectedTaskIds || selectedTaskIds.has(task.id))
+      .filter((task) => task.internal_state !== 'ignored')
+      .filter((task) => selectedTaskIds || reassessAll
+        ? isAssessableTaskStatus(task.status)
+        : task.status === 'needs_review');
 
     if (tasks.length === 0) {
       return success({ results: [], errors: [] });
@@ -539,6 +778,9 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
     }
 
     // 4. Assemble context
+    const repoPath = resolveSessionRepoPath(session);
+    const diff = await fetchDiff(session, repoPath);
+    const fileContexts = await buildThreadFileContexts(repoPath, threadsToAssess);
     const sessionContext = buildSessionContextString(session);
     const toolContext = buildToolContext(session);
     const userPrompt = buildAssessmentUserPrompt(
@@ -546,6 +788,8 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
       threadsToAssess,
       diff,
       sessionContext,
+      toolContext,
+      fileContexts
     );
 
     log(`Assessing ${threadsToAssess.length} threads for PR #${session.pr_number}`);
@@ -560,6 +804,7 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
       mcpServers: { review: reviewMcpServer },
       allowedTools: [...REVIEW_ASSESSMENT_TOOL_NAMES],
       persistSession: false,
+      systemPrompt: buildAssessmentSystemPrompt({ allowTools: true }),
       maxTurns: reviewAssessmentConfig.maxTurns,
       outputFormat: { type: 'json_schema', schema: assessmentJsonSchema },
       ...getClaudeSdkSpawnOptions(),
@@ -567,8 +812,14 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
 
     let parsed: z.infer<typeof assessmentOutputSchema>;
     try {
+      parsed = await runStructuredQueryWithNoToolFallback({
         userPrompt,
         sdkOptions,
+        noToolSystemPrompt: buildAssessmentSystemPrompt({ allowTools: false }),
+        schema: assessmentOutputSchema,
+        timeoutMs: reviewAssessmentConfig.timeoutMs,
+        fallbackLogLabel: 'Thread assessment',
+        onUsage: ({ usage, totalCostUsd }) => {
           deps.recordUsage?.({
             projectId: session.project_id,
             source: 'review_assessment',
@@ -577,6 +828,7 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
             totalCostUsd,
           });
         },
+      });
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : 'Unknown error';
       logError(`SDK query failed: ${errorMsg}`);
@@ -671,6 +923,8 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
     if (!snapshotResult.ok) return snapshotResult;
     const snapshot = snapshotResult.data;
 
+    const repoPath = resolveSessionRepoPath(session);
+    const diff = await fetchDiff(session, repoPath);
     const taskThreadIds = new Set(tasks.map((t) => t.thread_id));
     const threads = snapshot.threads.filter((t) => taskThreadIds.has(t.id));
 
@@ -684,6 +938,8 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
     log(`Drafting post-implementation replies for ${threads.length} threads on PR #${session.pr_number}`);
 
     const toolContext = buildToolContext(session);
+    const fileContexts = await buildThreadFileContexts(repoPath, threads);
+    const userPrompt = buildPostImplUserPrompt(snapshot, threads, tasks, diff, toolContext, fileContexts);
 
     // Post-impl drafting is primarily diff-driven, but we keep the same tool
     // surface available for edge cases (e.g., verifying a companion change
@@ -701,8 +957,14 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
 
     let parsed: z.infer<typeof postImplOutputSchema>;
     try {
+      parsed = await runStructuredQueryWithNoToolFallback({
         userPrompt,
         sdkOptions,
+        noToolSystemPrompt: buildPostImplSystemPrompt(),
+        schema: postImplOutputSchema,
+        timeoutMs: reviewAssessmentConfig.timeoutMs,
+        fallbackLogLabel: 'Post-implementation reply drafting',
+        onUsage: ({ usage, totalCostUsd }) => {
           deps.recordUsage?.({
             projectId: session.project_id,
             source: 'review_assessment_post_impl',
@@ -711,6 +973,7 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
             totalCostUsd,
           });
         },
+      });
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : 'Unknown error';
       logError(`Post-implementation drafting failed: ${errorMsg}`);

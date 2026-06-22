@@ -4,8 +4,11 @@ import {
   setReviewError,
   setReviewInbox,
   setReviewLoading,
+  type ReviewAssessmentOptions,
+  type ReviewAssessmentPending,
 } from './helpers';
 import type { DevSessionsGet, DevSessionsSet, DevSessionsState } from './index';
+import type { ReviewInboxSnapshot, ReviewTask } from '../../../shared/types';
 import {
   assessSessionReviewThreads,
   assignSessionReviewOwnership,
@@ -19,6 +22,49 @@ import {
   triggerSessionReviewAutomation,
   unresolveSessionReviewThread,
 } from '../../services/reviewService';
+
+function isAssessableReviewTask(task: ReviewTask): boolean {
+  return task.internal_state !== 'ignored'
+    && (task.status === 'needs_review' || task.status === 'assessed' || task.status === 'ready_to_post');
+}
+
+function buildAssessmentPending(
+  sessionId: string,
+  inbox: ReviewInboxSnapshot | undefined,
+  options: ReviewAssessmentOptions | undefined
+): ReviewAssessmentPending {
+  if (options?.taskIds) {
+    return {
+      taskIds: Array.from(new Set(options.taskIds)),
+      scope: 'selected',
+      startedAt: Date.now(),
+    };
+  }
+
+  const scope = options?.reassessAll ? 'all' : 'queue';
+  const taskIds = (inbox?.tasks ?? [])
+    .filter((task) => task.session_id === sessionId)
+    .filter((task) => options?.reassessAll
+      ? isAssessableReviewTask(task)
+      : task.internal_state !== 'ignored' && task.status === 'needs_review')
+    .map((task) => task.id);
+
+  return { taskIds, scope, startedAt: Date.now() };
+}
+
+function setAssessmentPending<State extends Pick<DevSessionsState, 'reviewAssessmentPendingBySessionId'>>(
+  state: State,
+  sessionId: string,
+  pending: ReviewAssessmentPending | null
+) {
+  const next = new Map(state.reviewAssessmentPendingBySessionId);
+  if (pending) {
+    next.set(sessionId, pending);
+  } else {
+    next.delete(sessionId);
+  }
+  return { reviewAssessmentPendingBySessionId: next };
+}
 
 export function createDevSessionsReviewSlice(
   set: DevSessionsSet,
@@ -113,7 +159,12 @@ export function createDevSessionsReviewSlice(
       }
     },
 
+    assessReviewThreads: async (sessionId, options) => {
+      const pending = buildAssessmentPending(sessionId, get().reviewInboxBySessionId.get(sessionId), options);
+      set((state) => setAssessmentPending(state, sessionId, pending));
+
       try {
+        const result = await assessSessionReviewThreads(sessionId, options);
         if (!result.success || !result.inbox) {
           const error = result.error || 'Failed to assess review threads';
           set((state) => setReviewError(state, sessionId, error));
@@ -127,6 +178,8 @@ export function createDevSessionsReviewSlice(
         const message = error instanceof Error ? error.message : 'Failed to assess review threads';
         set((state) => setReviewError(state, sessionId, message));
         return { success: false, error: message };
+      } finally {
+        set((state) => setAssessmentPending(state, sessionId, null));
       }
     },
 
