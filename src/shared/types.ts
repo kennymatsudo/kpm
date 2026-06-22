@@ -922,6 +922,24 @@ export function isCommitHookRepairPhase(
 }
 
 /**
+ * Automation phases during which an agent is working (or the task needs the
+ * user) even though the implementation session itself may be `inactive`. The
+ * impl session is marked inactive the moment its agent exits, and auto-review
+ * runs on a separate synthetic session — so the board uses this to keep a card
+ * "live" (e.g. showing "Reviewing") across those phases instead of going blank.
+ */
+export function isLiveAutomationPhase(
+  phase: DevSessionAutomationPhase | null | undefined,
+): boolean {
+  return (
+    phase === 'reviewing'
+    || phase === 'addressing_review'
+    || phase === 'needs_attention'
+    || isCommitHookRepairPhase(phase)
+  );
+}
+
+/**
  * A development session represents an implementation attempt.
  * Each session runs Claude Code in an isolated git worktree.
  * Sessions are normally linked to plan items; null plan_item_id is retained

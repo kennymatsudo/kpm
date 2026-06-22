@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { HighlightedText } from '../planning/HighlightedText';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { CardActivityLine } from './CardActivityLine';
+import { ACTIVE_SESSION_STATUSES, isCommitHookRepairPhase, isLiveAutomationPhase, OPENABLE_SESSION_STATUSES } from '../../../shared/types';
 import type { PlanItem, AgentSessionState } from '../../../shared/types';
 import { toReviewSessionId } from '../../../shared/agent-types';
 import { openExternalUrl } from '../../services/shellService';
@@ -135,6 +136,14 @@ export const BoardCard = memo(function BoardCard({
   } = useDevSessionsStore(
     useShallow((state) => {
       const itemSessions = state.sessionsByPlanItemId.get(item.id) ?? [];
+      // Prefer a running session, but fall back to one mid-automation: when
+      // auto-review (or commit-hook repair / addressing review) is underway the
+      // impl session is already `inactive`, yet the card must still surface the
+      // phase. Without this fallback `active` is undefined during review and the
+      // card goes blank even though the detail pane shows live progress.
+      const active =
+        itemSessions.find((s) => ACTIVE_SESSION_STATUSES.includes(s.status))
+        ?? itemSessions.find((s) => isLiveAutomationPhase(s.automation_phase));
       const activeCount = itemSessions.filter((s) => ACTIVE_SESSION_STATUSES.includes(s.status)).length;
       const openable = itemSessions.some((s) => OPENABLE_SESSION_STATUSES.includes(s.status));
       const pr = itemSessions

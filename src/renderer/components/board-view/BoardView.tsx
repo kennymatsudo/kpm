@@ -303,8 +303,14 @@ export const BoardView = memo(function BoardView({
     [allItems, updateStatusCategory, handleStartAgent]
   );
 
+  // Open detail pane from merge queue click. Opening a detail also selects its
+  // card (mirroring a plain click), so the board never shows a selected card
+  // and a different open card highlighted at the same time.
   const handleSelectQueueSession = useCallback((sessionId: string) => {
     onDetailSessionChange(sessionId);
+    const planItemId = useDevSessionsStore.getState().sessionById.get(sessionId)?.plan_item_id;
+    if (planItemId) onSelectItem(planItemId, false);
+  }, [onDetailSessionChange, onSelectItem]);
 
   const handleDragStart = useCallback((itemId: string) => {
     setDraggedItemId(itemId);
@@ -319,6 +325,28 @@ export const BoardView = memo(function BoardView({
       (s) => s.plan_item_id === itemId && OPENABLE_SESSION_STATUSES.includes(s.status)
     );
     onDetailSessionChange(session?.id ?? null);
+    // Opening a detail selects its card, exactly like clicking it — keeps a
+    // single highlight on the board.
+    if (session) onSelectItem(itemId, false);
+  }, [onDetailSessionChange, onSelectItem]);
+
+  // Board selection moves the single highlight. The detail pane is anchored to
+  // that highlight, so selecting any other card (or clearing the selection)
+  // closes the pane — the pane and the highlighted card never drift apart.
+  // Opening a detail bypasses this by calling onSelectItem directly with the
+  // matching card.
+  const handleSelectItem = useCallback(
+    (id: string | null, addToSelection?: boolean) => {
+      onSelectItem(id, addToSelection);
+      if (!detailSessionId) return;
+      const detailItemId =
+        useDevSessionsStore.getState().sessionById.get(detailSessionId)?.plan_item_id ?? null;
+      if (id !== detailItemId) {
+        onDetailSessionChange(null);
+      }
+    },
+    [onSelectItem, onDetailSessionChange, detailSessionId],
+  );
 
   // Close the detail pane when the underlying session disappears (e.g. archived).
   useEffect(() => {
@@ -409,6 +437,7 @@ export const BoardView = memo(function BoardView({
             focusedItemId={focusedItemId}
             searchQuery={searchQuery}
             draggedItemId={draggedItemId}
+            onSelectItem={handleSelectItem}
             onSelectRange={onSelectRange}
             onEditItem={onEditItem}
             onPrepareEditItem={onPrepareEditItem}
