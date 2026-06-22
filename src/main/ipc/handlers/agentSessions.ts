@@ -292,6 +292,9 @@ export function registerAgentSessionHandlers(
       async ({ devSessionId, message, repairOnFailure }) => {
         const result = await devSessionService.commitSessionChanges(devSessionId, message);
         if (!result.ok) {
+          if (/nothing to commit/i.test(result.error)) {
+            devSessionService.clearManualCommitInterruption(devSessionId);
+          }
           if (repairOnFailure && !/nothing to commit/i.test(result.error)) {
             const repairResult = await devSessionService.requestCommitHookRepair(devSessionId, result.error);
             if (repairResult.ok && repairResult.data.started) {
@@ -314,6 +317,7 @@ export function registerAgentSessionHandlers(
           }
           return { success: false as const, error: result.error };
         }
+        devSessionService.clearManualCommitInterruption(devSessionId);
         return result.data;
       },
       'Failed to commit changes'

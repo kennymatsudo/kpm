@@ -365,6 +365,24 @@ function commitHookRepairPhaseFor(
     : 'fixing_commit_hooks';
 }
 
+export function automationPhaseAfterManualCommitResolution(
+  phase: DevSessionAutomationPhase | null,
+): DevSessionAutomationPhase | null {
+  switch (phase) {
+    case 'fixing_commit_hooks_after_review':
+    case 'addressing_review':
+      return 'ready_for_review';
+    case 'fixing_commit_hooks':
+    case 'needs_attention':
+      return 'idle';
+    case 'idle':
+    case 'reviewing':
+    case 'ready_for_review':
+    case null:
+      return phase;
+  }
+}
+
 function buildCommitHookRepairPrompt(hookOutput: string): string {
   return [
     'The git commit failed while running commit hooks.',
@@ -747,6 +765,18 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       const updatedSession = deps.devSessions.get(sessionId);
       if (updatedSession) {
         broadcastSessionStatusChange(updatedSession);
+      }
+    },
+
+    clearManualCommitInterruption(sessionId: string): void {
+      const session = deps.devSessions.get(sessionId);
+      if (!session) {
+        return;
+      }
+
+      const nextPhase = automationPhaseAfterManualCommitResolution(session.automation_phase);
+      if (nextPhase !== session.automation_phase) {
+        service.updateAutomationPhase(sessionId, nextPhase);
       }
     },
 
