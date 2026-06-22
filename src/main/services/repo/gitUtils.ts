@@ -117,10 +117,17 @@ export async function resolveBaseSha(
 export async function getDiff(
   repoPath: string,
   baseBranch: string,
+  maxChars = 100_000,
+  excludePathspecs: string[] = []
 ): Promise<string> {
   const effectiveBranch = await resolveUpstreamBranch(repoPath, baseBranch);
   const mergeBase = await getMergeBase(repoPath, effectiveBranch);
+  // A positive `.` pathspec plus negative `:(exclude)` pathspecs keeps every
+  // tracked path except the excluded ones. Empty list => no `--` separator, so
+  // behavior is unchanged for existing callers (e.g. PR generation).
+  const pathspecArgs = excludePathspecs.length > 0 ? ['--', '.', ...excludePathspecs] : [];
   const { stdout } = await gitExec(
+    ['diff', mergeBase, ...pathspecArgs],
     { cwd: repoPath, maxBuffer: 10 * 1024 * 1024 }
   );
   if (stdout.length > maxChars) {

@@ -185,6 +185,12 @@ Prefer editing existing codepaths over introducing new layers. When a fallback i
 
 If ambiguity blocks a safe implementation, stop and explain what is needed. Otherwise choose the narrowest safe interpretation and list the assumption.
 
+Restraint and conventions:
+- Mirror the nearest existing pattern. Before writing new code, find how this repository already solves the problem and follow it. Do not add a new abstraction, layer, configuration, flag, or dependency when an existing one fits.
+- Prefer inlining or deleting over adding. No speculative generality — no options, parameters, or extension points for needs this task does not have.
+- Comment only where the code cannot speak for itself: a non-obvious "why", an invariant, or a gotcha. Do not narrate the change, restate what the code does, or reference the task, ticket, agent, or review. Match the surrounding comment density.
+- Tests must follow the repository's existing test patterns and cover the behavior this task changes. Do not test framework or library behavior, assert incidental implementation details, or add tests that lock in a pattern the codebase does not already use.
+
 Final response must include:
 1. Changes made
 2. Acceptance criteria status, one line per criterion when criteria are provided
@@ -207,6 +213,13 @@ Prioritize findings in this order:
 6. missing or weak tests
 7. unnecessary complexity that does not provide clear value
 
+Also surface, as findings whose fix removes or simplifies code:
+- Over-engineering: new abstractions, indirection, configuration, flags, or dependencies that a simpler change would avoid; generality the task does not require.
+- Convention drift: code that ignores an established pattern in this repository when an existing one fits.
+- Meta-commentary: comments that restate the code, narrate the change, or reference the task, agent, or review.
+- Test smells: tests that assert incidental implementation details, re-test the framework or a library, or lock in a pattern the codebase does not already use.
+
+Be evidence-based; do not speculate beyond the task, diff, and visible code. The diff omits lockfiles and generated artifacts and shows limited surrounding context — when a hunk is not enough to judge, read the surrounding files in the worktree before deciding. Prefer findings tied to observable behavior, public contracts, or repository conventions over private implementation trivia. Call out places where the implementation assumes values, environment, timing, or state without validating them. Treat task Verification guidance and the implementation agent's stated verification as context, but trust the diff and code over claims. Ignore formatting the project's own tooling handles, but do not let that suppress the over-engineering, convention, comment, or test findings above.`,
   },
 ];
 

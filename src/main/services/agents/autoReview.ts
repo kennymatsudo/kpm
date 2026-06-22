@@ -94,18 +94,60 @@ ${REVIEW_OUTPUT_FORMAT}`;
 }
 
 /**
+ * Pathspecs excluded from the review diff. These are machine-generated, locked,
+ * or vendored artifacts a reviewer should not read line-by-line: including them
+ * burns the context budget and invites findings on code no human wrote.
+ *
+ * Deliberately conservative — only files that are unambiguously generated. Two
+ * things keep this from blinding the reviewer: per-hunk context lines stay at
+ * git's default (we never pass -U0), and the review agent runs in the worktree
+ * (read-only), so it can open any excluded file directly when it needs more than
+ * the diff shows. Extend this list rather than trimming the diff another way.
+ */
+const REVIEW_DIFF_EXCLUDES: readonly string[] = [
+  // Dependency lockfiles
+  ':(exclude,glob)**/package-lock.json',
+  ':(exclude,glob)**/yarn.lock',
+  ':(exclude,glob)**/pnpm-lock.yaml',
+  ':(exclude,glob)**/Cargo.lock',
+  ':(exclude,glob)**/poetry.lock',
+  ':(exclude,glob)**/Gemfile.lock',
+  ':(exclude,glob)**/composer.lock',
+  ':(exclude,glob)**/go.sum',
+  // Built / minified output and source maps
+  ':(exclude,glob)**/*.min.js',
+  ':(exclude,glob)**/*.min.css',
+  ':(exclude,glob)**/*.map',
+  // Test snapshots (generated blobs, not hand-written tests)
+  ':(exclude,glob)**/*.snap',
+  // Generated / vendored directories
+  ':(exclude,glob)**/node_modules/**',
+  ':(exclude,glob)**/dist/**',
+  ':(exclude,glob)**/.next/**',
+  ':(exclude,glob)**/coverage/**',
+];
+
+/**
  * Get the diff for a worktree against the base branch.
  * Uses the base branch merge-base so committed and uncommitted task changes
  * are included without dragging in base commits from a rebased worktree.
  * Falls back to `git diff HEAD` (uncommitted only) when no base branch is provided.
+ * Excludes generated/locked artifacts (see REVIEW_DIFF_EXCLUDES) but keeps full
+ * per-hunk context.
  */
 async function getWorktreeDiff(worktreePath: string, baseBranch?: string | null): Promise<string> {
   const maxBuffer = 5 * 1024 * 1024; // 5MB
+  const excludes = [...REVIEW_DIFF_EXCLUDES];
   try {
     if (baseBranch) {
+      const diff = await getDiff(worktreePath, baseBranch, maxBuffer, excludes);
       if (diff.trim()) return diff;
     }
     // Fall back to uncommitted-only diff when no base branch or branch diff is empty
+    const { stdout } = await gitExec(
+      ['diff', 'HEAD', '--', '.', ...excludes],
+      { cwd: worktreePath, maxBuffer },
+    );
     return stdout;
   } catch {
     return '';
