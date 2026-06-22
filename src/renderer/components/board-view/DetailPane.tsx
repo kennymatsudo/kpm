@@ -1,12 +1,23 @@
 /**
  * DetailPane - Slide-in panel showing agent session details.
  *
+ * Lifecycle-driven: a phase stepper + a single phase-aware "Next" strip
+ * (SessionNextActionBar) sit above tabbed detail (Activity / Changes / Review).
+ * The bottom region follows state — live progress while the agent works, a
+ * free-text input once it's terminal.
  */
 
 import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { DetailPaneHeader } from './DetailPaneHeader';
+import { PhaseStepper } from './PhaseStepper';
+import { SessionNextActionBar } from './SessionNextActionBar';
+import { LiveProgressFooter } from './LiveProgressFooter';
 import { ActivityTab } from './ActivityTab';
 import { ChangesTab } from './ChangesTab';
+import { DetailChatInput, type DetailChatInputHandle } from './DetailChatInput';
+import { usePanelStatus } from './usePanelStatus';
+import type { PanelActionId } from './panelStatus';
 import { CreatePrModal } from '../development/CreatePrModal';
 import { GeneratePrContentModal } from '../development/GeneratePrContentModal';
 import { LinkPrDialog } from '../development/LinkPrDialog';
@@ -39,6 +50,9 @@ export const DetailPane = memo(function DetailPane({
   // When true, committing also transitions the card to in_review (Ready for Review path).
   // When false, committing is standalone — no status change (Changes tab path).
   const [commitTransitionsToReview, setCommitTransitionsToReview] = useState(false);
+  const chatInputRef = useRef<DetailChatInputHandle>(null);
+
+  const { commitState, diff } = useDevSessionsStore(
     useShallow((s) => ({
       commitState: s.commitStateBySessionId.get(session.id),
       diff: s.diffBySessionId.get(session.id),
@@ -46,6 +60,9 @@ export const DetailPane = memo(function DetailPane({
   );
   const setCommitState = useDevSessionsStore((s) => s.setCommitState);
   const loadDiff = useDevSessionsStore((s) => s.loadDiff);
+
+  const status = usePanelStatus(session);
+
   const implementationSession = useAgentSession(session.id);
   const reviewSessionId = toReviewSessionId(session.id);
   const reviewSession = useAgentSession(reviewSessionId);
@@ -92,7 +109,9 @@ export const DetailPane = memo(function DetailPane({
     }
   }, [activeTab, session.pr_number]);
 
+  const handleStop = useCallback(() => {
     void stopAgentSession(session.id);
+  }, [session.id]);
 
   const handleRunReview = useCallback(() => {
     void (async () => {
@@ -185,6 +204,41 @@ export const DetailPane = memo(function DetailPane({
     };
   }, [planItem, addFocusedResource]);
 
+  // Map the strip's semantic action ids to handlers. Review-queue ids route to
+  // the Review tab (where ReviewTab's own next-action bar performs them with
+  // full context); everything else acts directly.
+    switch (id) {
+      case 'stop':
+        handleStop();
+        break;
+      case 'ready_for_review':
+        break;
+      case 'run_review':
+        handleRunReview();
+        break;
+      case 'create_pr':
+        setShowCreatePr(true);
+        break;
+      case 'open_pr':
+        handleOpenPr();
+        break;
+      case 'view_changes':
+        setActiveTab('changes');
+        break;
+      case 'focus_input':
+      case 'follow_up':
+      case 'retry':
+        chatInputRef.current?.focus();
+        break;
+      case 'assess':
+      case 'reassess_attention':
+      case 'address_all':
+      case 'draft_replies':
+      case 'post_all_replies':
+        setActiveTab('review');
+        break;
+    }
+
   const detailSession = {
     ...session,
     sessionType: 'dev' as const,
@@ -240,6 +294,8 @@ export const DetailPane = memo(function DetailPane({
     })();
   }, [commitTransitionsToReview, loadDiff, moveToReview, session.id, setCommitState]);
 
+  const showStrip = !!status.nextAction && activeTab !== 'review' && !status.progress;
+
   return (
     <>
     <CreatePrModal
@@ -276,10 +332,63 @@ export const DetailPane = memo(function DetailPane({
         onAddToContext={handleAddToContext}
       />
 
-            )}
+      <PhaseStepper stepIndex={status.stepIndex} />
 
+      <div className="flex border-b border-border-subtle bg-surface-1">
+        {(['activity', 'changes', ...(session.pr_number != null ? (['review'] as const) : [])] as const).map((tabId) => (
+          <button
+            key={tabId}
+            onClick={() => setActiveTab(tabId)}
+            className={`
+              px-4 py-2 text-xs font-medium transition-colors relative
+              ${activeTab === tabId
+                ? 'text-text-primary'
+                : 'text-text-muted hover:text-text-secondary'
+              }
+            `}
+          >
+            {tabId === 'activity' ? 'Activity' : tabId === 'changes' ? 'Changes' : 'Review'}
+            {activeTab === tabId && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content — flex-1 so it fills remaining space */}
+      <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+        {activeTab === 'activity' && (
+          <ActivityTab
+            activities={effectiveActivities}
             agentState={effectiveAgentState}
+            sessionLabel={showReviewSession ? 'Auto-review' : undefined}
           />
+        )}
+        {activeTab === 'changes' && (
+          <ChangesTab
+            sessionId={session.id}
+            commitState={commitState}
+            refreshToken={changesRefreshToken}
+          />
+        )}
+        {activeTab === 'review' && session.pr_number != null && (
+          <ReviewTab key={detailSession.id} session={detailSession} />
+        )}
+      </div>
+
+      {/* Bottom region follows state: live progress while working, input once terminal. */}
+      {status.progress ? (
+        <LiveProgressFooter
+          progress={status.progress}
+          onStop={status.phase === 'implementing' ? handleStop : undefined}
+        />
+      ) : (
+        <DetailChatInput
+          ref={chatInputRef}
+          devSessionId={session.id}
+          agentState={effectiveAgentState}
+        />
+      )}
     </div>
     </>
   );

@@ -140,6 +140,11 @@ Review results are persisted in `agent_review_runs` / `agent_review_findings`, k
 
 ## Completion Detection
 
+Each board turn is a discrete single-shot `query()`. Completion is the SDK async iterator ending (after the final `result`): `ClaudeSdkSession.runTurn` calls `handleCompletion()` when its `for await` loop exits. There is no debounce, no `idle`-vs-`result` arbitration, and no subagent task-counting gate — so an unbalanced subagent `task_started` can no longer pin a session in `working` (the prior failure mode). The `result` message only records usage + `terminal_reason`; `task_*` and `session_state_changed` messages only emit activities / capture the resume id. `CodexSdkAgentSession` uses the same turn-end model (`turn.completed`).
+
+Follow-up turns (`followUp`) start a new `query()` with `options.resume = sdkSessionId` and the full stored `sdkOptions`. **The SDK applies these options' `systemPrompt` on resume, not the persisted one** — always pass the complete options. If there is no resumable `sdkSessionId`, `followUp` rejects and `DevSessionService.sendAgentFollowUp` falls back to a full restart-with-context.
+
+The chat path (`src/main/claude/streaming/StreamingSession.ts`) intentionally keeps streaming-input mode for mid-turn steering — do not converge it onto this model.
 
 ## Stop / Resume Semantics
 

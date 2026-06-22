@@ -85,6 +85,7 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
 
   private _stopping = false;
   private queryInstance: Query | null = null;
+  private runPromise: Promise<void> | null = null;
   private sdkSessionId: string | null = null;
   private sdkOptions: SDKOptions;
   private abortController: AbortController | null = null;
@@ -108,6 +109,8 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
       throw new Error(`Cannot start session in state: ${this._state}`);
     }
 
+    // Pin the worktree as the working directory for every turn on this session.
+    this.sdkOptions = { ...this.sdkOptions, cwd: worktreePath };
 
     this.emitActivity({
       type: 'system',
@@ -116,21 +119,49 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
       status: 'running',
     });
 
+    // Kick off the first turn. It runs to completion on its own; we only wait
+    // here for the session to become ready (init / first message) so the caller
+    // can surface launch failures.
+    this.runPromise = this.runTurn(prompt);
     await this.waitForReady();
 
+    // `waitForReady` resolves on working/complete/failed — `markReady` already
+    // performed the starting→working transition. Only nudge here if a turn
+    // somehow resolved readiness without leaving `starting`; never clobber a
+    // terminal state reached by an ultra-fast turn.
+    if (this._state === 'starting') {
+      this.setState('working');
     }
+  }
 
+  respond(): Promise<void> {
+    // Board Claude sessions run with bypassPermissions and AskUserQuestion
+    // disallowed — they never pause for interactive input mid-turn.
+    return Promise.reject(new Error('Board Claude sessions do not ask follow-up questions'));
   }
 
   followUp(text: string): Promise<void> {
     if (this._state !== 'complete' && this._state !== 'failed' && this._state !== 'stopped') {
+      return Promise.reject(new Error(`Cannot follow up in state: ${this._state}`));
     }
 
+    if (!this.sdkSessionId) {
+      // Without a resumable session id we can't continue in-place; let the
+      // caller (DevSessionService.sendAgentFollowUp) fall back to a restart.
+      return Promise.reject(new Error('No SDK session to resume — session may have been cleaned up'));
     }
 
+    this._stopping = false;
+    this.completing = false;
+    this.emitActivity({
+      type: 'system',
+      timestamp: Date.now(),
+      summary: 'Continuing Claude session...',
+      status: 'running',
     });
 
     this.setState('working');
+    this.runPromise = this.runTurn(text);
     return Promise.resolve();
   }
 
@@ -140,12 +171,19 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
     }
 
     // `complete` / `failed` are terminal from the SDK's perspective but the
+    // subprocess can still be alive (the SDK keeps the worker warm for
+    // follow-ups). User-initiated stop must release those resources regardless.
     this._stopping = true;
 
+    // Abort the in-flight SDK turn immediately. The SDK honors this signal and
+    // ends the current turn without waiting for it to finish.
     this.abortController?.abort();
 
+    // Wait for the turn loop to unwind.
     try {
+      await this.runPromise;
     } catch {
+      // Expected — the loop may throw when interrupted.
     }
 
     this.setState('stopped');
@@ -192,16 +230,47 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
     });
   }
 
+  /**
+   * Run a single turn to completion. Each board turn is a discrete single-shot
+   * `query()`: the SDK ends the async iterator when the turn is fully done
+   * (after the final `result`), which is the authoritative completion signal —
+   * no debounce, no task-counting. Follow-up turns resume the prior session.
+   */
+  private async runTurn(prompt: string): Promise<void> {
+    this.abortController = new AbortController();
+    this.beginTurn();
+
+    this.queryInstance = query({
+      prompt,
+      options: {
+        ...this.sdkOptions,
+        abortController: this.abortController,
+        // Resume preserves the prior conversation on follow-up turns. NOTE: the
+        // SDK applies THESE options' systemPrompt on resume (not the persisted
+        // one), so we must pass the full stored sdkOptions here.
+        ...(this.sdkSessionId ? { resume: this.sdkSessionId } : {}),
+      },
+    });
 
     try {
       for await (const msg of this.queryInstance) {
         this.processMessage(msg);
       }
 
+      // Iterator ended = turn complete (unless stop() aborted it).
       if (!this._stopping && (this._state === 'working' || this._state === 'starting')) {
         await this.handleCompletion();
       }
     } catch (error) {
+      // An abort from stop() surfaces here; don't report it as a failure.
+      if (!this._stopping) {
+        console.error('[ClaudeSdkSession] Turn loop error:', error);
+        this.setState('failed');
+        this.emit('onError', error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      this.abortController = null;
+      this.queryInstance = null;
     }
   }
 
@@ -219,7 +288,11 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
     }
 
     if (isSessionStateChanged(msg)) {
+      // Capture the session id (needed to resume on follow-up turns) and mark
+      // ready. Turn completion is driven by the iterator ending, not by `idle`.
       this.sdkSessionId = msg.session_id;
+      this.markReady();
+      return;
     }
 
     if (msg.type === 'system' && msg.subtype === 'task_started') {
@@ -231,6 +304,7 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
     if (msg.type === 'system' && msg.subtype === 'task_updated') {
       this.markReady();
       const status = msg.patch?.status;
+      if (status === 'completed' || status === 'failed' || status === 'killed') {
         this.trackWorkflowTaskEnd(msg.task_id, status);
       }
       return;
@@ -347,12 +421,18 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
         });
       }
 
+      // Record the terminal reason for the completion summary. Completion
+      // itself fires when the iterator ends (see runTurn), so the `result`
+      // message only needs to capture metadata, not schedule anything. This
+      // also handles structured-output retries gracefully: intermediate
+      // results are just messages; the iterator still ends exactly once.
       const terminalReason = msg.terminal_reason;
       // Only stash non-normal reasons; 'completed' is the expected case and
       // surfacing it as "ended because completed" would be noise.
       if (typeof terminalReason === 'string' && terminalReason && terminalReason !== 'completed') {
         this.terminalReason = terminalReason;
       }
+      if (terminalReason === 'max_turns') {
         this.emitActivity({
           type: 'system',
           timestamp: Date.now(),

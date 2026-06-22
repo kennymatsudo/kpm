@@ -1,4 +1,10 @@
 /**
+ * DetailPaneHeader - Identity + secondary actions for the detail pane.
+ *
+ * Title, close, the Codex-reviewed badge, an Open PR shortcut, and an overflow
+ * menu of power actions. Session *state*, *progress*, and the primary *decision*
+ * (Ready for Review, etc.) live in the PhaseStepper, the SessionNextActionBar,
+ * and the LiveProgressFooter — not here.
  */
 
 import { memo, useState, useEffect, useRef } from 'react';
@@ -10,6 +16,7 @@ interface DetailPaneHeaderProps {
   session: DevSessionWithPlanItem;
   agentState: AgentSessionState | undefined;
   commitState?: BackgroundCommitState;
+  /** Show the "Run Review" overflow action when a manual opposing-agent review can be launched. */
   canRunReview?: boolean;
   onClose: () => void;
   onRunReview: () => void;
@@ -107,11 +114,14 @@ export const DetailPaneHeader = memo(function DetailPaneHeader({
     ...(onAddToContext ? [{ label: 'Add to chat context', onClick: onAddToContext }] : []),
     ...(onOpenEditor ? [{ label: isOpeningEditor ? 'Opening...' : 'Open in Editor', onClick: onOpenEditor }] : []),
     { label: 'Copy worktree path', onClick: onCopyWorktree },
+    ...(canManagePostRun && !hasPr ? [{ label: 'Create PR', onClick: onCreatePr }] : []),
+    ...(canRunReview ? [{ label: 'Run Review', onClick: onRunReview }] : []),
     ...(canManagePostRun ? [{ label: 'PR content', onClick: onGeneratePrContent }] : []),
     ...(canManagePostRun && !hasPr ? [{ label: 'Link existing PR', onClick: onLinkPr }] : []),
   ];
 
   return (
+    <div className="px-4 py-3 border-b border-border-subtle bg-surface-1">
       <div className="flex items-start gap-2">
         <Tooltip content="Close" side="bottom">
           <button
@@ -130,7 +140,26 @@ export const DetailPaneHeader = memo(function DetailPaneHeader({
             <span className="text-tiny text-text-muted">{session.plan_item.external_key}</span>
           )}
         </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {session.reviewer_agents_seen?.includes('codex') && (
+            <Tooltip content="Reviewed by Codex" side="top">
+              <span
+                className="text-tiny px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 flex items-center gap-1"
+                aria-label="Reviewed by Codex"
               >
+                <svg
+                  className="w-2.5 h-2.5 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+                Codex
+              </span>
+            </Tooltip>
+          )}
           {hasPr && (
             <button
               onClick={onOpenPr}

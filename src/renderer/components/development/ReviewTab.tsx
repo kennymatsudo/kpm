@@ -31,6 +31,13 @@ import {
   ChevronRightIcon,
   MessageCircleIcon,
 } from '../icons';
+import {
+  getStats,
+  isTaskActionable,
+  isThreadClosed,
+  isReviewTaskQueuedForCode,
+  isReviewTaskUpdatingCode,
+} from './reviewStats';
 
 const STATUS_LABEL: Record<ReviewTaskStatus, string> = {
   needs_review: 'To assess',
