@@ -625,8 +625,13 @@ ${input.branchName} -> ${input.baseBranch}
             : sessionDiff;
         }
 
+          ? `Your description MUST use the repository's PR template below as its skeleton. Use the template's section headings, in the template's order, and no others — with one exception: a brief lead overview paragraph (see below) may precede the first template heading.
+- Begin the body with a 2-4 sentence overview paragraph that explains, in plain language, what changed and why it matters. Place it at the very top, BEFORE the first template heading, with no heading of its own. This lead paragraph is REQUIRED and is not an "invented section". If feature context is provided, name the larger user-facing feature or workflow and this PR's role in it here.
+- Do NOT repeat this overview inside Risk Impact, Test Plan, or any other section. Those sections answer their own specific prompts; the lead paragraph is the only place for the general "what changed and why" summary.
+- Do NOT invent any other sections the template does not contain (e.g. no "Description", "Acceptance Criteria", "Out of Scope", "Dependencies", "Code References", "Commits", or "Changes" headings unless the template itself defines them).
 - Do NOT omit sections the template contains.
 - Within each section, keep the answer concise. Aim for a description that fits on one screen.
+- If the template DOES define a Description (or Summary/Overview) section, put the overview there instead of as a lead paragraph, and use this shape unless the template explicitly demands another one:
   1. A short context paragraph (2-4 sentences) explaining the larger user-facing feature or workflow being built, this PR's role in that feature, and the ownership boundary.
   2. A short reviewer-focus sentence or 3-5 bullets naming what reviewers should inspect.
   3. At most 3-5 "what changed" bullets, grouped by behavior or risk area rather than by files/classes/endpoints.

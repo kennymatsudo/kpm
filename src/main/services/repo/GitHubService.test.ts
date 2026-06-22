@@ -190,6 +190,8 @@ describe('GitHubService PR generation', () => {
     expect(systemPrompt).toContain('MUST use the repository');
     expect(systemPrompt).toContain('## PR Template');
     expect(systemPrompt).toContain('## Manual Test Plan');
+    // The overview must lead the body even when the template has no Description section.
+    expect(systemPrompt).toContain('BEFORE the first template heading');
   });
 
   it('falls back to raw context when the generated response is malformed', async () => {
