@@ -290,6 +290,10 @@ export const DetailPane = memo(function DetailPane({
             error: commitError,
             moveToReviewOnSuccess: shouldMoveToReview,
           });
+          toast.error('Commit checks failed', {
+            label: 'View',
+            onClick: () => setActiveTab('changes'),
+          });
           return;
         }
 
@@ -311,6 +315,10 @@ export const DetailPane = memo(function DetailPane({
           startedAt: Date.now(),
           error: commitError,
           moveToReviewOnSuccess: shouldMoveToReview,
+        });
+        toast.error('Commit failed', {
+          label: 'View',
+          onClick: () => setActiveTab('changes'),
         });
       }
     })();
@@ -391,6 +399,7 @@ export const DetailPane = memo(function DetailPane({
             activities={effectiveActivities}
             agentState={effectiveAgentState}
             sessionLabel={showReviewSession ? 'Auto-review' : undefined}
+            emptyActiveLabel={status.progress?.label ?? status.nextAction?.text}
           />
         )}
         {activeTab === 'changes' && (
@@ -422,6 +431,7 @@ export const DetailPane = memo(function DetailPane({
       {status.progress ? (
         <LiveProgressFooter
           progress={status.progress}
+          startedAt={commitState?.status === 'running' ? commitState.startedAt : session.updated_at}
           onStop={status.phase === 'implementing' ? handleStop : undefined}
         />
       ) : (

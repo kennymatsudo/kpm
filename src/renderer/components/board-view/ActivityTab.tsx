@@ -20,6 +20,7 @@ interface ActivityTabProps {
   activities: AgentActivity[];
   agentState?: AgentSessionState;
   sessionLabel?: string;
+  emptyActiveLabel?: string;
 }
 
 function formatTime(timestamp: number): string {
@@ -248,6 +249,7 @@ export const ActivityTab = memo(function ActivityTab({
   activities,
   agentState,
   sessionLabel,
+  emptyActiveLabel,
 }: ActivityTabProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -267,6 +269,7 @@ export const ActivityTab = memo(function ActivityTab({
   if (groups.length === 0) {
     const isActive =
       agentState === 'starting' || agentState === 'working' || agentState === 'waiting_for_input';
+    const latestActivity = activities.at(-1);
     return (
       <div className="flex flex-col items-center justify-center h-32 gap-2 text-text-muted">
         {isActive ? (
@@ -275,6 +278,12 @@ export const ActivityTab = memo(function ActivityTab({
               <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.3" />
               <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
+            <span className="text-xs">{emptyActiveLabel ?? 'Working'}</span>
+            {latestActivity && (
+              <span className="max-w-[80%] truncate text-tiny text-text-tertiary">
+                {latestActivity.summary}
+              </span>
+            )}
           </>
         ) : (
           <span className="text-xs">No activity recorded</span>

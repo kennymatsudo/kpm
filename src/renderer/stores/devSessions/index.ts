@@ -227,6 +227,11 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
         nextQuestion.set(devSessionId, null);
         updates.questionBySessionId = nextQuestion;
       }
+      if (state === 'starting' || state === 'working') {
+        const nextCommitState = new Map(s.commitStateBySessionId);
+        nextCommitState.delete(devSessionId);
+        updates.commitStateBySessionId = nextCommitState;
+      }
       return updates;
     });
   },

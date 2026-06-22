@@ -11,6 +11,9 @@ interface CardActivityLineProps {
   activity: AgentActivity | undefined;
   agentState: AgentSessionState | undefined;
   isSessionStale?: boolean;
+  phaseLabel?: string;
+  phaseTone?: 'neutral' | 'accent' | 'info' | 'warning' | 'danger' | 'success';
+  phaseBusy?: boolean;
 }
 
 function ActivityIcon({ type, status }: { type: AgentActivity['type']; status?: AgentActivity['status'] }) {
@@ -50,10 +53,24 @@ function ActivityIcon({ type, status }: { type: AgentActivity['type']; status?: 
   );
 }
 
+function phaseToneClass(tone: NonNullable<CardActivityLineProps['phaseTone']>): string {
+  switch (tone) {
+    case 'accent': return 'text-accent';
+    case 'info': return 'text-info';
+    case 'warning': return 'text-amber-500';
+    case 'danger': return 'text-red-400';
+    case 'success': return 'text-emerald-400';
+    case 'neutral': return 'text-text-muted';
+  }
+}
+
 export const CardActivityLine = memo(function CardActivityLine({
   activity,
   agentState,
   isSessionStale = false,
+  phaseLabel,
+  phaseTone = 'neutral',
+  phaseBusy = false,
 }: CardActivityLineProps) {
   const isSessionLive =
     !isSessionStale &&
@@ -94,6 +111,18 @@ export const CardActivityLine = memo(function CardActivityLine({
     );
   }
 
+    return (
+        {phaseBusy ? (
+            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.3" />
+            <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        ) : (
+          <span className={`h-2 w-2 shrink-0 rounded-full bg-current ${phaseToneClass(phaseTone)}`} />
+        )}
+      </div>
+    );
+  }
+
   // Starting state (no activity yet)
   if (agentState === 'starting' && !activity) {
     return (
@@ -111,6 +140,7 @@ export const CardActivityLine = memo(function CardActivityLine({
 
   return (
       <span className="shrink-0">
+        {phaseBusy || (activity.status === 'running' && isSessionLive) ? (
           <svg className="w-3 h-3 animate-spin text-accent" viewBox="0 0 16 16" fill="none">
             <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.3" />
             <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />

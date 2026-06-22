@@ -20,6 +20,17 @@ function formatElapsed(ms: number): string {
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
 
+function parseStartedAt(value: string | number): number {
+  if (typeof value === 'number') return value;
+
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(trimmed)) {
+    return Date.parse(`${trimmed.replace(' ', 'T')}Z`);
+  }
+
+  return new Date(trimmed).getTime();
+}
+
 export const LiveProgressFooter = memo(function LiveProgressFooter({
   progress,
   startedAt,
@@ -36,6 +47,7 @@ export const LiveProgressFooter = memo(function LiveProgressFooter({
     return () => clearInterval(interval);
   }, []);
 
+  const startedAtMs = parseStartedAt(startedAt);
   const elapsedMs = Number.isFinite(startedAtMs) ? now - startedAtMs : 0;
   const { diffStats } = progress;
   const hasMagnitude = diffStats && (diffStats.files > 0 || diffStats.additions > 0 || diffStats.deletions > 0);

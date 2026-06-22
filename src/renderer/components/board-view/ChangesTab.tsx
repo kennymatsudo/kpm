@@ -9,6 +9,7 @@ import { memo, useState, useCallback, useEffect, useMemo } from 'react';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import type { BackgroundCommitState } from '../../stores/devSessions';
 import { getAgentCommitLog, getAgentCommitFiles } from '../../services/agentSessionService';
+import { copyToClipboard } from '../../utils/clipboard';
 import { CommitComposer } from './CommitComposer';
 import type { DevSessionWithPlanItem } from '../../../shared/types';
 
@@ -136,6 +137,35 @@ const FileEntry = memo(function FileEntry({ file }: { file: FileStat }) {
           </pre>
         </div>
       )}
+    </div>
+  );
+});
+
+const CommitErrorPanel = memo(function CommitErrorPanel({ error }: { error: string }) {
+  const handleCopy = useCallback(() => {
+    void copyToClipboard(error, 'Commit output');
+  }, [error]);
+
+  return (
+    <div className="w-full border-b border-red-400/20 bg-red-400/[0.04] px-3 py-2 text-left">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-red-400">Commit checks failed</p>
+          <p className="mt-0.5 text-tiny text-text-tertiary">
+            Review the hook output before retrying.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="shrink-0 rounded px-2 py-1 text-tiny text-text-secondary transition-colors hover:bg-surface-3 hover:text-text-primary"
+        >
+          Copy
+        </button>
+      </div>
+      <pre className="max-h-40 overflow-auto rounded border border-border-subtle bg-surface-0 px-2.5 py-2 font-mono text-tiny leading-relaxed text-text-secondary whitespace-pre-wrap break-words">
+        {error}
+      </pre>
     </div>
   );
 });
@@ -294,6 +324,7 @@ export const ChangesTab = memo(function ChangesTab({
   const diffError = useDevSessionsStore((s) => s.diffErrorBySessionId.get(sessionId));
   const isLoading = useDevSessionsStore((s) => s.diffLoadingIds.has(sessionId));
   const loadDiff = useDevSessionsStore((s) => s.loadDiff);
+  const setCommitState = useDevSessionsStore((s) => s.setCommitState);
   const agentState = useDevSessionsStore((s) => s.agentStateBySessionId.get(sessionId));
 
   const [commits, setCommits] = useState<CommitEntry[]>([]);
@@ -376,6 +407,12 @@ export const ChangesTab = memo(function ChangesTab({
   const hasFiles = files.length > 0;
   const hasCommits = commits.length > 0;
 
+  useEffect(() => {
+    if (commitError && !hasFiles && hasCommits && !isLoadingCommits) {
+      setCommitState(sessionId, null);
+    }
+  }, [commitError, hasFiles, hasCommits, isLoadingCommits, sessionId, setCommitState]);
+
   const refreshButton = (
     <button
       onClick={handleRefresh}
@@ -407,6 +444,7 @@ export const ChangesTab = memo(function ChangesTab({
               <span className="text-tiny text-text-tertiary font-mono break-all">{diffError}</span>
             </>
           ) : commitError ? (
+            <CommitErrorPanel error={commitError} />
           ) : (
             <span className="text-text-muted text-xs">
               {isCommitting ? 'Commit in progress' : 'No uncommitted changes'}
@@ -459,6 +497,7 @@ export const ChangesTab = memo(function ChangesTab({
               <span className="text-tiny text-red-400 tabular-nums">-{totalDeletions}</span>
             </span>
             {commitError && (
+              <span className="min-w-0 truncate text-tiny text-red-400" title={commitError}>Commit checks failed</span>
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -486,6 +525,8 @@ export const ChangesTab = memo(function ChangesTab({
             {refreshButton}
           </div>
         </div>
+
+        {commitError && <CommitErrorPanel error={commitError} />}
 
         {/* File list */}
         {files.map((file) => (

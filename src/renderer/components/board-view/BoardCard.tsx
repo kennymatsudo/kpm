@@ -79,6 +79,18 @@ function getAgentVisualState(
   }
 }
 
+function isLiveAgentState(state: AgentSessionState | undefined): boolean {
+  return state === 'starting' || state === 'working' || state === 'waiting_for_input';
+}
+
+type CardPhaseTone = 'neutral' | 'accent' | 'info' | 'warning' | 'danger' | 'success';
+
+interface CardPhaseIndicator {
+  label: string;
+  tone: CardPhaseTone;
+  busy?: boolean;
+}
+
 /**
  * BoardCard - Individual card within a Kanban column
  *
@@ -175,11 +187,52 @@ export const BoardCard = memo(function BoardCard({
     || reviewState === 'failed'
     || reviewState === 'stopped';
   const effectiveAgentState = isReviewVisible ? reviewState : agentState;
+  const effectiveLatestActivity = isReviewVisible ? latestReviewActivity : latestActivity;
   const isSessionStale =
     !!effectiveLatestActivity &&
     effectiveLatestActivity.status !== 'running' &&
+    isLiveAgentState(effectiveAgentState) &&
     Date.now() - effectiveLatestActivity.timestamp > STALE_ACTIVITY_MS;
   const visualState = getAgentVisualState(effectiveAgentState, isSessionStale);
+  const phaseIndicator: CardPhaseIndicator | null = (() => {
+    if (automationPhase === 'needs_attention' || reviewActionable?.hasActionable) {
+      return { label: 'Needs attention', tone: 'warning' };
+    }
+    if (isSessionStale) {
+      return { label: 'Stale', tone: 'warning' };
+    }
+    if (effectiveAgentState === 'waiting_for_input') {
+      return { label: 'Needs input', tone: 'warning' };
+    }
+    if (isReviewVisible || automationPhase === 'reviewing') {
+      if (reviewState === 'failed') {
+        return { label: 'Review failed', tone: 'danger' };
+      }
+      if (reviewState === 'stopped') {
+        return { label: 'Review stopped', tone: 'neutral' };
+      }
+      return { label: 'Reviewing', tone: 'info', busy: true };
+    }
+    if (isCommitHookRepairPhase(automationPhase)) {
+      return { label: 'Fixing checks', tone: 'warning', busy: isLiveAgentState(agentState) };
+    }
+    if (automationPhase === 'addressing_review') {
+      return { label: 'Addressing review', tone: 'accent', busy: isLiveAgentState(agentState) };
+    }
+    if (activeSession?.status === 'pending') {
+      return { label: 'Pending', tone: 'neutral' };
+    }
+    if (agentState === 'starting') {
+      return { label: 'Starting', tone: 'accent', busy: true };
+    }
+    if (agentState === 'working') {
+      return { label: 'Building', tone: 'accent', busy: true };
+    }
+    if (activeSession?.status === 'active' && !agentState) {
+      return { label: 'Starting', tone: 'accent', busy: true };
+    }
+    return null;
+  })();
 
   const handlePlayClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -348,6 +401,7 @@ export const BoardCard = memo(function BoardCard({
         )}
 
         {/* Active session indicator (legacy green dot) */}
+        {visualState === 'idle' && activeSessionCount > 0 && !phaseIndicator && (
           <Tooltip content={activeSessionCount === 1 ? 'Agent running' : `${activeSessionCount} agents running`} side="top">
             <span
               className="flex-shrink-0 mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500"
@@ -368,10 +422,14 @@ export const BoardCard = memo(function BoardCard({
       </div>
 
       {/* Agent activity line */}
+      {(effectiveAgentState || activeSessionCount > 0 || phaseIndicator) && (
         <CardActivityLine
           activity={effectiveLatestActivity}
           agentState={effectiveAgentState}
           isSessionStale={isSessionStale}
+          phaseLabel={phaseIndicator?.label}
+          phaseTone={phaseIndicator?.tone}
+          phaseBusy={phaseIndicator?.busy}
         />
       )}
 

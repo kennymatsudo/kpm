@@ -177,6 +177,19 @@ describe('devSessionsStore', () => {
     vi.clearAllMocks();
   });
 
+  it('clears stale failed commit state when an agent run starts again', () => {
+    useDevSessionsStore.getState().setCommitState('dev-session-1', {
+      status: 'failed',
+      message: 'Commit message',
+      startedAt: Date.now(),
+      error: 'Commit checks failed',
+    });
+
+    useDevSessionsStore.getState().handleAgentStateChanged('dev-session-1', 'working');
+
+    expect(useDevSessionsStore.getState().commitStateBySessionId.has('dev-session-1')).toBe(false);
+  });
+
   it('caches review inbox by session id', async () => {
     const inbox = createReviewInbox();
     api.review.getInbox.mockResolvedValue({ success: true, inbox });
