@@ -334,6 +334,8 @@ export const DetailPane = memo(function DetailPane({
 
       <PhaseStepper stepIndex={status.stepIndex} />
 
+      {/* Tab bar — kept directly under the stepper so its position never shifts;
+          the Next strip lives below it so toggling the strip can't move tabs. */}
       <div className="flex border-b border-border-subtle bg-surface-1">
         {(['activity', 'changes', ...(session.pr_number != null ? (['review'] as const) : [])] as const).map((tabId) => (
           <button
@@ -354,6 +356,11 @@ export const DetailPane = memo(function DetailPane({
           </button>
         ))}
       </div>
+
+      {showStrip && status.nextAction && (
+        <div className="px-3 py-2">
+        </div>
+      )}
 
       {/* Tab content — flex-1 so it fills remaining space */}
       <div className="flex-1 overflow-hidden flex flex-col min-h-0">
