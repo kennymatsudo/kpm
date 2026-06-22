@@ -239,6 +239,163 @@ describe('DevSessionService', () => {
     );
   });
 
+  it('returns hook output without retrying when hooks fail without changing files', async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kpm-dev-session-'));
+    const repoPath = path.join(tempDir, 'repo');
+    const worktreePath = path.join(tempDir, '.kpm-worktrees', 'repo', 'feature-branch');
+
+    fs.mkdirSync(repoPath, { recursive: true });
+    fs.mkdirSync(worktreePath, { recursive: true });
+
+    const session = {
+      id: 'session-1',
+      project_id: 'project-1',
+      plan_item_id: 'plan-1',
+      repo_id: 'repo-1',
+      worktree_path: worktreePath,
+      branch_name: 'feature-branch',
+      base_branch: 'main',
+      status: 'inactive',
+      agent_type: 'claude',
+      automation_phase: null,
+      initial_instructions: '',
+      requested_mode: 'solo',
+      effective_mode: null,
+      pr_number: null,
+      pr_url: null,
+      pr_state: null,
+      review_state: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      completed_at: null,
+    };
+
+    let commitCalls = 0;
+    let addCalls = 0;
+    const hookError = Object.assign(
+      new Error('Command failed: git commit -m Test commit'),
+      {
+        stderr: [
+          'services/example_service/tests/test_example_service.py:3119: error: Returning Any from function declared to return "dict[Any, Any]"  [no-any-return]',
+          'Found 1 error in 1 file (checked 4 source files)',
+          '',
+          'mypy failed.',
+        ].join('\n'),
+        stdout: '',
+      },
+    );
+
+    mockExecFile.mockImplementation(createExecFileMock({
+      onCall: (args) => {
+        if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
+          return { stdout: `${worktreePath}\n`, stderr: '' };
+        }
+        if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') {
+          return { stdout: 'feature-branch\n', stderr: '' };
+        }
+        if (args[0] === 'add') {
+          addCalls++;
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'commit') {
+          commitCalls++;
+          return hookError;
+        }
+        if (args[0] === 'status' && args[1] === '--porcelain') {
+          return { stdout: 'M  python/example.py\n', stderr: '' };
+        }
+        return new Error(`Unexpected git call: ${args.join(' ')}`);
+      },
+    }) as never);
+
+    const service = createDevSessionService(createDeps(session, repoPath));
+    const result = await service.commitSessionChanges('session-1', 'Test commit');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('Returning Any from function declared to return');
+      expect(result.error).toContain('mypy failed');
+      expect(result.error).not.toContain('Command failed: git commit');
+    }
+    expect(addCalls).toBe(1);
+    expect(commitCalls).toBe(1);
+  });
+
+  it('retries once when a hook modifies the worktree before failing', async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kpm-dev-session-'));
+    const repoPath = path.join(tempDir, 'repo');
+    const worktreePath = path.join(tempDir, '.kpm-worktrees', 'repo', 'feature-branch');
+
+    fs.mkdirSync(repoPath, { recursive: true });
+    fs.mkdirSync(worktreePath, { recursive: true });
+
+    const session = {
+      id: 'session-1',
+      project_id: 'project-1',
+      plan_item_id: 'plan-1',
+      repo_id: 'repo-1',
+      worktree_path: worktreePath,
+      branch_name: 'feature-branch',
+      base_branch: 'main',
+      status: 'inactive',
+      agent_type: 'claude',
+      automation_phase: null,
+      initial_instructions: '',
+      requested_mode: 'solo',
+      effective_mode: null,
+      pr_number: null,
+      pr_url: null,
+      pr_state: null,
+      review_state: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      completed_at: null,
+    };
+
+    let commitCalls = 0;
+    let addCalls = 0;
+    const hookError = Object.assign(new Error('Hook formatted files'), {
+      stderr: 'pre-commit formatted files',
+      stdout: '',
+    });
+
+    mockExecFile.mockImplementation(createExecFileMock({
+      onCall: (args) => {
+        if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
+          return { stdout: `${worktreePath}\n`, stderr: '' };
+        }
+        if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') {
+          return { stdout: 'feature-branch\n', stderr: '' };
+        }
+        if (args[0] === 'add') {
+          addCalls++;
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'status' && args[1] === '--porcelain') {
+          return { stdout: 'MM src/example.ts\n', stderr: '' };
+        }
+        if (args[0] === 'commit') {
+          commitCalls++;
+          if (commitCalls === 1) {
+            return hookError;
+          }
+          return { stdout: '[feature-branch def5678] Test commit\n', stderr: '' };
+        }
+        return new Error(`Unexpected git call: ${args.join(' ')}`);
+      },
+    }) as never);
+
+    const service = createDevSessionService(createDeps(session, repoPath));
+    const result = await service.commitSessionChanges('session-1', 'Test commit');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.sha).toBe('def5678');
+    }
+    expect(addCalls).toBe(2);
+    expect(commitCalls).toBe(2);
+  });
+
   it('refuses to commit when the session worktree resolves to the primary checkout', async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kpm-dev-session-'));
     const repoPath = path.join(tempDir, 'repo');

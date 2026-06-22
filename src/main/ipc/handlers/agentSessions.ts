@@ -289,8 +289,29 @@ export function registerAgentSessionHandlers(
     IPC_CHANNELS.agentSession.commit,
     createIpcHandler(
       AgentSessionSchemas.commit,
+      async ({ devSessionId, message, repairOnFailure }) => {
         const result = await devSessionService.commitSessionChanges(devSessionId, message);
         if (!result.ok) {
+          if (repairOnFailure && !/nothing to commit/i.test(result.error)) {
+            const repairResult = await devSessionService.requestCommitHookRepair(devSessionId, result.error);
+            if (repairResult.ok && repairResult.data.started) {
+              return {
+                success: false as const,
+                error: result.error,
+                repairStarted: true,
+              };
+            }
+            if (repairResult.ok && repairResult.data.alreadyAttempted) {
+              return {
+                success: false as const,
+                error: result.error,
+              };
+            }
+            return {
+              success: false as const,
+              error: repairResult.ok ? result.error : repairResult.error,
+            };
+          }
           return { success: false as const, error: result.error };
         }
         return result.data;

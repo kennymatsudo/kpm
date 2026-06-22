@@ -97,6 +97,9 @@ export function generateCommitMessage(
 export function commitAgentSession(
   devSessionId: string,
   message: string,
+  options?: { repairOnFailure?: boolean },
+): Promise<{ success: boolean; sha?: string; error?: string; repairStarted?: boolean }> {
+  return window.api.agentSessions.commit(devSessionId, message, options?.repairOnFailure);
 }
 
 /**

@@ -910,8 +910,16 @@ export type DevSessionAutomationPhase =
   | 'idle'
   | 'reviewing'
   | 'addressing_review'
+  | 'fixing_commit_hooks'
+  | 'fixing_commit_hooks_after_review'
   | 'ready_for_review'
   | 'needs_attention';
+
+export function isCommitHookRepairPhase(
+  phase: DevSessionAutomationPhase | null | undefined,
+): boolean {
+  return phase === 'fixing_commit_hooks' || phase === 'fixing_commit_hooks_after_review';
+}
 
 /**
  * A development session represents an implementation attempt.

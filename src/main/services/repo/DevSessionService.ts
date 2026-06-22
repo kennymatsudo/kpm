@@ -12,6 +12,19 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { failure, success, type AsyncResult, type ServiceResult } from '../result';
+import {
+  isCommitHookRepairPhase,
+  type DevSession,
+  type DevSessionAutomationPhase,
+  type DevSessionStatus,
+  type DevSessionWithPlanItem,
+  type PlanItem,
+  type Project,
+  type AgentType,
+  type AgentEffortLevel,
+  type AgentExecutionMode,
+  type AgentReviewPolicy,
+  type RepoEnvironmentMode,
 } from '../../../shared/types';
 import { captureRepoEnvironment } from './EnvironmentService';
 import type {
@@ -133,6 +146,23 @@ function splitMarkdownListItems(section: string | undefined): string[] {
     .filter(Boolean)
     .map((line) => line.replace(/^[-*]\s+(?:\[[ xX]\]\s*)?/, '').trim())
     .filter(Boolean);
+}
+
+function commandOutputToString(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (Buffer.isBuffer(value)) return value.toString('utf8').trim();
+  return '';
+}
+
+function formatGitExecError(error: unknown): string {
+  const commandError = error as { stdout?: unknown; stderr?: unknown };
+  const output = [
+    commandOutputToString(commandError.stderr),
+    commandOutputToString(commandError.stdout),
+  ].filter(Boolean).join('\n').trim();
+
+  if (output) return output;
+  return error instanceof Error ? error.message : String(error);
 }
 
 type BoardClaudeModel = 'opus' | 'sonnet' | 'haiku';
@@ -325,6 +355,33 @@ export function buildBoardStartInstructions(
     '## Additional User Instructions',
     normalizedUserPrompt,
   ].join('\n\n');
+}
+
+function commitHookRepairPhaseFor(
+  phase: DevSessionAutomationPhase | null,
+): DevSessionAutomationPhase {
+  return phase === 'addressing_review' || phase === 'fixing_commit_hooks_after_review'
+    ? 'fixing_commit_hooks_after_review'
+    : 'fixing_commit_hooks';
+}
+
+function buildCommitHookRepairPrompt(hookOutput: string): string {
+  return [
+    'The git commit failed while running commit hooks.',
+    '',
+    'Fix only the issues shown in the hook output below. Do not commit.',
+    'Do not broaden the task or refactor unrelated code.',
+    'After making the fix, rerun the narrowest relevant check if one is clear from the output.',
+    '',
+    'In your final response, include:',
+    '1. What changed',
+    '2. The exact verification command you ran, or "not run" with the reason',
+    '',
+    'Commit hook output:',
+    '```text',
+    hookOutput.trim() || 'No hook output was captured.',
+    '```',
+  ].join('\n');
 }
 
 export interface DevSessionServiceDeps {
@@ -1134,6 +1191,43 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       }
     },
 
+    async requestCommitHookRepair(
+      sessionId: string,
+      hookOutput: string,
+    ): AsyncResult<{ started: boolean; alreadyAttempted: boolean }> {
+      try {
+        const session = deps.devSessions.get(sessionId);
+        if (!session) {
+          return failure(`Session not found: ${sessionId}`);
+        }
+
+        if (isCommitHookRepairPhase(session.automation_phase)) {
+          service.updateAutomationPhase(sessionId, 'needs_attention');
+          return success({ started: false, alreadyAttempted: true });
+        }
+
+        service.updateAutomationPhase(
+          sessionId,
+          commitHookRepairPhaseFor(session.automation_phase),
+        );
+
+        const followUpResult = await service.sendAgentFollowUp(
+          sessionId,
+          buildCommitHookRepairPrompt(hookOutput),
+        );
+
+        if (!followUpResult.ok) {
+          service.updateAutomationPhase(sessionId, 'needs_attention');
+          return failure(followUpResult.error);
+        }
+
+        return success({ started: true, alreadyAttempted: false });
+      } catch (error) {
+        service.updateAutomationPhase(sessionId, 'needs_attention');
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
     /**
      * Update session status
      */
@@ -1369,6 +1463,19 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         return stderr.includes('nothing to commit') || stdout.includes('nothing to commit');
       };
 
+      const hookChangedWorktree = async (): Promise<boolean> => {
+        try {
+          const { stdout } = await gitExec(['status', '--porcelain'], { cwd });
+          return stdout.split(/\r?\n/).some((line) => {
+            if (!line) return false;
+            if (line.startsWith('??')) return true;
+            return line.length > 1 && line[1] !== ' ';
+          });
+        } catch {
+          return false;
+        }
+      };
+
       try {
         await gitExec(['add', '-A'], { cwd });
         try {
@@ -1378,11 +1485,20 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           if (isNothingToCommit(firstErr)) {
             return failure('Nothing to commit — working tree is clean');
           }
+          if (await hookChangedWorktree()) {
+            // Pre-commit hooks can auto-fix files and exit non-zero to force
+            // re-staging. Retry only when the hook actually changed files.
+            await gitExec(['add', '-A'], { cwd });
+            const { stdout } = await gitExec(['commit', '-m', message], { cwd });
+            return success({ sha: extractSha(stdout) });
+          }
+          return failure(formatGitExecError(firstErr));
         }
       } catch (err) {
         if (isNothingToCommit(err)) {
           return failure('Nothing to commit — working tree is clean');
         }
+        return failure(formatGitExecError(err));
       }
     },
 

@@ -20,10 +20,17 @@
  * `awaiting_input` is retained only for agent types that still pause (Gemini).
  */
 
+import {
+  isCommitHookRepairPhase,
+  type AgentSessionState,
+  type DevSessionAutomationPhase,
+  type StatusCategory,
+} from '../../../shared/types';
 
 /** The canonical, agent-agnostic phase a session sits in. */
 export type PanelPhase =
   | 'committing'      // a git commit (hooks) is running
+  | 'fixing_hooks'    // implementation agent is repairing commit-hook failures
   | 'implementing'    // implementation agent is producing the first cut
   | 'awaiting_input'  // agent paused with a question (Gemini-only path)
   | 'reviewing'       // opposing-agent review is running
@@ -148,6 +155,7 @@ const STEP_ORDER: PanelStep[] = ['build', 'review', 'address', 'merge'];
 
 const PHASE_TO_STEP: Record<PanelPhase, PanelStep> = {
   committing: 'build',
+  fixing_hooks: 'build',
   implementing: 'build',
   awaiting_input: 'build',
   implemented: 'build',
@@ -301,6 +309,14 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
   }
 
   // 2-5. Something is actively running right now.
+  if (isCommitHookRepairPhase(i.automationPhase)) {
+    return withStep('fixing_hooks', {
+      tone: 'accent',
+      busy: true,
+      text: 'Fixing commit checks',
+      primary: isActive(i.implAgentState) ? { label: 'Stop', action: 'stop' } : undefined,
+    }, progressFor('Fixing commit checks', i));
+  }
   if (isAddressing(i)) {
     const count = Math.max(i.reviewStats?.queuedCodeCount ?? 0, i.reviewStats?.updatingCodeCount ?? 0);
     const text = count > 0

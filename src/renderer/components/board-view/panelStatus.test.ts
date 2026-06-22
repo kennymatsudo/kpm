@@ -100,6 +100,20 @@ describe('derivePanelStatus — running phases', () => {
     })).phase).toBe('addressing');
   });
 
+  it('shows commit-hook repair as a build-phase busy state', () => {
+    const status = derivePanelStatus(makeInputs({
+      implAgentState: 'working',
+      automationPhase: 'fixing_commit_hooks',
+      latestActivitySummary: 'Editing attachment_service.py',
+    }));
+
+    expect(status.phase).toBe('fixing_hooks');
+    expect(status.step).toBe('build');
+    expect(status.nextAction?.text).toBe('Fixing commit checks');
+    expect(status.nextAction?.primary).toEqual({ label: 'Stop', action: 'stop' });
+    expect(status.progress?.label).toBe('Fixing commit checks');
+  });
+
   it('committing outranks every other phase', () => {
     const status = derivePanelStatus(makeInputs({
       implAgentState: 'working',

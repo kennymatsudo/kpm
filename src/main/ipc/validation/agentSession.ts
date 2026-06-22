@@ -77,6 +77,7 @@ export const AgentSessionSchemas = {
   commit: z.object({
     devSessionId: uuid,
     message: z.string().min(1).max(10000),
+    repairOnFailure: z.boolean().optional().default(false),
   }),
 
   /** Get structured commit log for the session (commits ahead of base branch) */

@@ -3478,6 +3478,114 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1095,
+    name: '095_add_commit_hook_repair_automation_phases',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+
+        CREATE TABLE dev_sessions_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          plan_item_id TEXT REFERENCES plan_items(id) ON DELETE CASCADE,
+          repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+          worktree_path TEXT NOT NULL,
+          branch_name TEXT NOT NULL,
+          base_branch TEXT NOT NULL DEFAULT 'main',
+          base_sha TEXT,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'active', 'inactive')),
+          initial_instructions TEXT NOT NULL DEFAULT '',
+          pr_number INTEGER,
+          pr_url TEXT,
+          pr_state TEXT,
+          review_state TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME,
+          name TEXT,
+          agent_type TEXT NOT NULL DEFAULT 'claude',
+          agent_state TEXT NOT NULL DEFAULT 'inactive',
+          automation_phase TEXT CHECK(automation_phase IN (
+            'idle',
+            'reviewing',
+            'addressing_review',
+            'fixing_commit_hooks',
+            'fixing_commit_hooks_after_review',
+            'ready_for_review',
+            'needs_attention'
+          )),
+          merge_order INTEGER,
+          execution_mode TEXT NOT NULL DEFAULT 'standard'
+            CHECK(execution_mode IN ('standard', 'workflow')),
+          review_policy TEXT NOT NULL DEFAULT 'auto'
+            CHECK(review_policy IN ('auto', 'skip'))
+        );
+
+        INSERT INTO dev_sessions_new (
+          id,
+          project_id,
+          plan_item_id,
+          repo_id,
+          worktree_path,
+          branch_name,
+          base_branch,
+          base_sha,
+          status,
+          initial_instructions,
+          pr_number,
+          pr_url,
+          pr_state,
+          review_state,
+          created_at,
+          updated_at,
+          completed_at,
+          name,
+          agent_type,
+          agent_state,
+          automation_phase,
+          merge_order,
+          execution_mode,
+          review_policy
+        )
+        SELECT
+          id,
+          project_id,
+          plan_item_id,
+          repo_id,
+          worktree_path,
+          branch_name,
+          base_branch,
+          base_sha,
+          status,
+          initial_instructions,
+          pr_number,
+          pr_url,
+          pr_state,
+          review_state,
+          created_at,
+          updated_at,
+          completed_at,
+          name,
+          agent_type,
+          agent_state,
+          automation_phase,
+          merge_order,
+          execution_mode,
+          review_policy
+        FROM dev_sessions;
+
+        DROP TABLE dev_sessions;
+        ALTER TABLE dev_sessions_new RENAME TO dev_sessions;
+
+        CREATE INDEX idx_dev_sessions_project ON dev_sessions(project_id);
+        CREATE INDEX idx_dev_sessions_plan_item ON dev_sessions(plan_item_id);
+        CREATE INDEX idx_dev_sessions_status ON dev_sessions(status);
+
+        PRAGMA foreign_keys = ON;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

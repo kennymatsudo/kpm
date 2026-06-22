@@ -409,6 +409,7 @@ export const ChangesTab = memo(function ChangesTab({
           ) : commitError ? (
           ) : (
             <span className="text-text-muted text-xs">
+              {isCommitting ? 'Commit in progress' : 'No uncommitted changes'}
             </span>
           )}
           <button
@@ -445,11 +446,41 @@ export const ChangesTab = memo(function ChangesTab({
 
       <div className="flex-1 min-h-0 overflow-y-auto">
         {/* Uncommitted changes header */}
+        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border-subtle bg-surface-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 text-xs font-medium text-amber-400">
+              Uncommitted
+            </span>
+            <span className="shrink-0 whitespace-nowrap text-xs text-text-tertiary">
+              {files.length} file{files.length !== 1 ? 's' : ''}
+            </span>
+            <span className="flex shrink-0 items-center gap-1.5">
+              <span className="text-tiny text-emerald-400 tabular-nums">+{totalAdditions}</span>
+              <span className="text-tiny text-red-400 tabular-nums">-{totalDeletions}</span>
+            </span>
+            {commitError && (
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
             {onCommitOpen && !isAgentActive && !commitComposerOpen && (
               <button
                 onClick={onCommitOpen}
                 disabled={isCommitting}
+                className={`
+                  inline-flex h-7 items-center gap-1.5 rounded px-2 text-tiny font-medium transition-colors
+                  ${isCommitting
+                    ? 'cursor-not-allowed text-text-muted opacity-80'
+                    : 'text-accent hover:bg-accent/10'
+                  }
+                `}
               >
+                {isCommitting && (
+                  <span
+                    className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-accent/30 border-t-accent"
+                    aria-hidden="true"
+                  />
+                )}
+                {isCommitting ? 'Committing' : 'Commit'}
               </button>
             )}
             {refreshButton}

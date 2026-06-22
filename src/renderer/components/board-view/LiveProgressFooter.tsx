@@ -26,6 +26,7 @@ export const LiveProgressFooter = memo(function LiveProgressFooter({
   onStop,
 }: {
   progress: ProgressInfo;
+  startedAt: string | number;
   onStop?: () => void;
 }) {
   const [now, setNow] = useState(() => Date.now());
@@ -35,6 +36,7 @@ export const LiveProgressFooter = memo(function LiveProgressFooter({
     return () => clearInterval(interval);
   }, []);
 
+  const elapsedMs = Number.isFinite(startedAtMs) ? now - startedAtMs : 0;
   const { diffStats } = progress;
   const hasMagnitude = diffStats && (diffStats.files > 0 || diffStats.additions > 0 || diffStats.deletions > 0);
 

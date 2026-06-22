@@ -1267,6 +1267,9 @@ const agentSessions = {
   commit: (
     devSessionId: string,
     message: string,
+    repairOnFailure?: boolean,
+  ): Promise<{ success: boolean; sha?: string; error?: string; repairStarted?: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.agentSession.commit, { devSessionId, message, repairOnFailure }),
 
   // Get structured commit log (commits ahead of base branch)
   getCommitLog: (

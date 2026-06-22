@@ -28,6 +28,7 @@ import { openDevSessionInEditor } from '../../services/devSessionService';
 import { openExternalUrl } from '../../services/shellService';
 import { usePlanDomainStore, useProjectUiDomainStore, toast } from '../../stores';
 import { copyToClipboard } from '../../utils/clipboard';
+import { isCommitHookRepairPhase, type DevSessionWithPlanItem } from '../../../shared/types';
 import { toReviewSessionId } from '../../../shared/agent-types';
 
 interface DetailPaneProps {
@@ -97,6 +98,7 @@ export const DetailPane = memo(function DetailPane({
   const canRunReview = (implIsTerminal || session.status === 'inactive')
     && !reviewIsActive
     && session.automation_phase !== 'addressing_review'
+    && !isCommitHookRepairPhase(session.automation_phase)
     && commitState?.status !== 'running';
   const isMountedRef = useRef(true);
 
@@ -268,8 +270,16 @@ export const DetailPane = memo(function DetailPane({
 
     void (async () => {
       try {
+        const result = await commitAgentSession(session.id, message, { repairOnFailure: true });
         if (!result.success) {
           const errMsg = result.error ?? 'Commit failed';
+          if (result.repairStarted) {
+            setCommitState(session.id, null);
+            setActiveTab('activity');
+            toast.info('Agent is fixing commit checks');
+            return;
+          }
+
           const commitError = errMsg.includes('Nothing to commit') || errMsg.includes('nothing to commit')
             ? 'Worktree is clean — nothing to commit.'
             : errMsg;

@@ -1,5 +1,6 @@
 import type { AgentSessionState, ReviewFinding } from '../../../shared/agent-types';
 import { toImplSessionId } from '../../../shared/agent-types';
+import { isCommitHookRepairPhase, type DevSession, type DevSessionAutomationPhase } from '../../../shared/types';
 import type { IAgentReviewRepository } from '../../db/interfaces/review';
 import type { PlanService } from '../core/PlanService';
 import type { ClaudeUsageService } from '../core/ClaudeUsageService';
@@ -12,6 +13,12 @@ const LOG_PREFIX = '[BoardAgentOrchestrator]';
 
 type DevSessionAutomationService = Pick<
   DevSessionService,
+  | 'get'
+  | 'sendAgentFollowUp'
+  | 'updateAutomationPhase'
+  | 'updateStatus'
+  | 'commitSessionChanges'
+  | 'requestCommitHookRepair'
 >;
 type ReviewQueueService = Pick<ReviewService, 'flushQueuedReviewTasks'>;
 
@@ -72,6 +79,20 @@ function buildReviewAssessmentPrompt(findings: ReviewFinding[]): string {
   return sections.join('\n');
 }
 
+function phaseAfterCommitHookRepair(
+  phase: DevSessionAutomationPhase | null,
+): DevSessionAutomationPhase | null {
+  if (phase === 'fixing_commit_hooks_after_review') {
+    return 'addressing_review';
+  }
+  if (phase === 'fixing_commit_hooks') {
+    return 'idle';
+  }
+  return phase;
+}
+
+type CaptureWorkOutcome = 'captured' | 'repair_started' | 'failed';
+
 /**
  * Commit the implementation agent's worktree changes onto the task's own branch.
  *
@@ -85,11 +106,27 @@ function buildReviewAssessmentPrompt(findings: ReviewFinding[]): string {
 async function captureWorkOnBranch(
   devSessionService: DevSessionAutomationService,
   session: DevSession,
+): Promise<CaptureWorkOutcome> {
+  const effectivePhase = phaseAfterCommitHookRepair(session.automation_phase);
+  const subject = effectivePhase === 'addressing_review'
     ? 'Address review findings'
     : session.name?.trim() || 'KPM task changes';
 
   const result = await devSessionService.commitSessionChanges(session.id, subject);
+  if (result.ok || /nothing to commit/i.test(result.error)) {
+    return 'captured';
   }
+
+  if (!isCommitHookRepairPhase(session.automation_phase)) {
+    const repairResult = await devSessionService.requestCommitHookRepair(session.id, result.error);
+    if (repairResult.ok && repairResult.data.started) {
+      return 'repair_started';
+    }
+  }
+
+  console.warn(`${LOG_PREFIX} Could not capture work onto branch for ${session.id}: ${result.error}`);
+  devSessionService.updateAutomationPhase(session.id, 'needs_attention');
+  return 'failed';
 }
 
 export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): AgentManagerCallbacks {
@@ -159,6 +196,15 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       if (role === 'implement') {
         // Capture the agent's work onto the task's own branch before anything
         // else, so the isolated branch actually holds the task's commits.
+        const captureOutcome = await captureWorkOnBranch(devSessionService, session);
+        if (captureOutcome === 'repair_started') {
+          return;
+        }
+        if (captureOutcome === 'failed') {
+          return;
+        }
+
+        const effectiveAutomationPhase = phaseAfterCommitHookRepair(session.automation_phase);
 
         const reviewService = deps.getReviewService();
         if (reviewService) {
@@ -174,6 +220,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           }
         }
 
+        if (effectiveAutomationPhase === 'addressing_review') {
           moveSessionPlanItemToReview(implSessionId);
           return;
         }
@@ -264,6 +311,11 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         return;
       }
 
+      if (
+        session.automation_phase === 'reviewing'
+        || session.automation_phase === 'addressing_review'
+        || isCommitHookRepairPhase(session.automation_phase)
+      ) {
         devSessionService.updateAutomationPhase(implSessionId, 'needs_attention');
       }
     },

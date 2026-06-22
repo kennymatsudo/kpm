@@ -91,6 +91,8 @@ Current phases:
 - `idle`
 - `reviewing`
 - `addressing_review`
+- `fixing_commit_hooks`
+- `fixing_commit_hooks_after_review`
 - `ready_for_review`
 - `needs_attention`
 
@@ -101,6 +103,7 @@ When the implementation session completes:
 
 - if the session was already in `addressing_review`, KPM marks it `ready_for_review` and moves the plan item to `In Review`
 - otherwise KPM marks it `reviewing` and launches one opposing review
+- if the branch-capture commit fails because hooks report issues, KPM sends one follow-up to the implementation agent with the raw hook output, using `fixing_commit_hooks` or `fixing_commit_hooks_after_review` to remember where the lifecycle should resume
 
 ### Review completion
 
@@ -110,6 +113,9 @@ When the review session completes:
 - if findings exist, KPM marks the implementation session `addressing_review` and sends one aggregated follow-up back to the implementation agent
 
 There is no infinite review/fix loop in the board workflow. The review runs once.
+
+Commit-hook repair is also bounded to one automated pass. If the commit still
+fails after the repair turn, the session moves to `needs_attention`.
 
 ### Race condition guard
 
