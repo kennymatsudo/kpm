@@ -444,6 +444,7 @@ export const BoardCard = memo(function BoardCard({
 
       {/* Footer: metadata tags + play/stop/edit */}
       <div className="flex flex-wrap items-center gap-2 mt-2">
+        <div className="flex flex-1 min-w-0 items-center gap-2">
           {childCount > 0 && onToggleExpand && (
             <button
               onClick={(e) => {
@@ -468,6 +469,61 @@ export const BoardCard = memo(function BoardCard({
             </button>
           )}
 
+            <div className="flex min-w-0 items-center gap-1.5 text-tiny text-text-muted">
+              {item.external_key && (
+                <Tooltip content={`Open ${item.external_key} in ${trackerLabelFor(item.external_type)}`} side="top">
+                  <a
+                    href={item.external_url ?? '#'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (item.external_url) {
+                        e.preventDefault();
+                        window.open(item.external_url, '_blank');
+                      }
+                    }}
+                    className="flex min-w-0 max-w-[150px] items-center gap-1 hover:text-info transition-colors"
+                  >
+                    <TrackerIcon trackerType={item.external_type} className="w-3 h-3 flex-shrink-0" />
+                    <span className="truncate">
+                      {isSearchActive && keyMatches ? (
+                        <HighlightedText text={item.external_key} query={searchQuery} />
+                      ) : (
+                        item.external_key
+                      )}
+                    </span>
+                  </a>
+                </Tooltip>
+              )}
+
+              {prSession?.pr_url && prSession.pr_number != null && (
+                <>
+                  <Tooltip content={`Open PR #${prSession.pr_number}`} side="top">
+                    <button
+                      onClick={handleOpenPrClick}
+                      className="flex flex-shrink-0 items-center gap-1 font-mono hover:text-accent transition-colors"
+                      aria-label={`Open PR #${prSession.pr_number}`}
+                    >
+                      <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z" />
+                      </svg>
+                      #{prSession.pr_number}
+                    </button>
+                  </Tooltip>
+                </>
+              )}
+
+              {item.external_assignee_name && (
+                <>
+                    <span className="flex-shrink-0 text-text-tertiary">·</span>
+                  )}
+                  <Tooltip content={`Assigned to ${item.external_assignee_name}`} side="top">
+                    <span className="max-w-[140px] truncate text-text-tertiary">
+                      {item.external_assignee_name}
+                    </span>
+                  </Tooltip>
+                </>
+              )}
+            </div>
           )}
         </div>
 
