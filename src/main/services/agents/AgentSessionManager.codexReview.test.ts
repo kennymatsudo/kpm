@@ -10,6 +10,7 @@ const codexMocks = vi.hoisted(() => ({
 vi.mock('@openai/codex-sdk', () => ({
   Codex: vi.fn(function Codex() {
     return {
+      startThread: codexMocks.startThread,
     };
   }),
 }));
@@ -45,6 +46,7 @@ function createManager(overrides: Partial<AgentSessionManagerDeps> = {}) {
   });
 }
 
+describe('AgentSessionManager Codex SDK sessions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     codexMocks.startThread.mockReturnValue({
@@ -100,6 +102,13 @@ function createManager(overrides: Partial<AgentSessionManagerDeps> = {}) {
       webSearchMode: 'disabled',
       model: 'gpt-test',
     }));
+    expect(codexMocks.runStreamed).toHaveBeenCalledWith(
+      'review prompt',
+      expect.objectContaining({
+        outputSchema: expect.objectContaining({ type: 'object' }),
+        signal: expect.any(AbortSignal),
+      })
+    );
     expect(persistReviewStarted).toHaveBeenCalledWith({
       implementationSessionId: 'session-1',
       reviewSessionId: 'session-1-review',
@@ -211,5 +220,79 @@ function createManager(overrides: Partial<AgentSessionManagerDeps> = {}) {
       rawOutput: null,
       error: 'Rate limited. Please try again in a moment.',
     });
+  });
+
+  it('runs Codex implementation sessions through the SDK without a CLI hook port', async () => {
+    codexMocks.runStreamed
+      .mockResolvedValueOnce({
+        events: streamEvents([
+          {
+            type: 'item.completed',
+            item: {
+              id: 'msg-1',
+              type: 'agent_message',
+              text: 'Implemented the task.',
+            },
+          },
+          { type: 'turn.completed', usage: null },
+        ]),
+      })
+      .mockResolvedValueOnce({
+        events: streamEvents([
+          {
+            type: 'item.completed',
+            item: {
+              id: 'msg-2',
+              type: 'agent_message',
+              text: 'Addressed review findings.',
+            },
+          },
+          { type: 'turn.completed', usage: null },
+        ]),
+      });
+
+    const onSessionComplete = vi.fn();
+    const manager = createManager({ onSessionComplete });
+
+    const session = manager.create({
+      devSessionId: 'session-4',
+      projectId: 'project-1',
+      agentType: 'codex',
+      role: 'implement',
+      model: 'gpt-test',
+    });
+
+    await session.start('/tmp', 'implement prompt');
+
+    await waitFor(() => {
+      expect(onSessionComplete).toHaveBeenCalledTimes(1);
+    });
+
+    expect(codexMocks.startThread).toHaveBeenCalledWith(expect.objectContaining({
+      workingDirectory: '/tmp',
+      sandboxMode: 'workspace-write',
+      approvalPolicy: 'never',
+      networkAccessEnabled: false,
+      webSearchMode: 'disabled',
+      model: 'gpt-test',
+    }));
+    expect(codexMocks.runStreamed).toHaveBeenNthCalledWith(
+      1,
+      'implement prompt',
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+    expect(codexMocks.runStreamed.mock.calls[0][1]).not.toHaveProperty('outputSchema');
+
+    await session.followUp('fix review findings');
+
+    await waitFor(() => {
+      expect(onSessionComplete).toHaveBeenCalledTimes(2);
+    });
+
+    expect(codexMocks.runStreamed).toHaveBeenNthCalledWith(
+      2,
+      'fix review findings',
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
   });
 });

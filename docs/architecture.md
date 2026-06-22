@@ -371,6 +371,7 @@ Tracks git branch changes for connected repositories in real-time.
 
 ## Claude Integration Architecture
 
+KPM uses the Claude Agent SDK for Claude chat/dev sessions, the Codex SDK for Codex chat/dev sessions, and in-process MCP tools for KPM-aware Claude tool calls:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐

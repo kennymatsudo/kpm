@@ -664,6 +664,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       'assistant',
       'Hello',
       'chat-1',
+      undefined,
       'claude',
     );
   });

@@ -171,6 +171,11 @@ export const claudeModel = z.enum(['opus', 'sonnet'], {
   message: 'Model must be "opus" or "sonnet"',
 });
 
+/** Main chat backend provider selection */
+export const chatProvider = z.enum(['claude', 'codex'], {
+  message: 'Provider must be "claude" or "codex"',
+});
+
 /** Dev session status enum - must match DevSessionStatus in shared/types.ts */
 export const devSessionStatus = z.enum(
   ['pending', 'active', 'inactive'],

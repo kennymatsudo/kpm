@@ -1,6 +1,8 @@
 /**
  * Codex authentication detection.
  *
+ * KPM uses @openai/codex-sdk directly. The SDK reads credentials from
+ * ~/.codex/auth.json, so availability is auth-file based rather than PATH based.
  */
 
 import { readFile } from 'fs/promises';

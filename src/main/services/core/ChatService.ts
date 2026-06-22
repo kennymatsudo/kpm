@@ -7,6 +7,7 @@ import type { IChatMessageRepository, IChatSessionRepository, IProjectRepository
 import type {
   ChatAttachment,
   ChatMessage,
+  ChatProvider,
   ChatSessionSummary,
   ChatViewMode,
   ClaudeModel,
@@ -16,12 +17,14 @@ import type {
 } from '../../../shared/types';
 import { failure, success, type AsyncResult, type ServiceResult } from '../result';
 import type { StreamingSessionService } from '../streaming/StreamingSessionService';
+import { DEFAULT_CHAT_PROVIDER } from '../../../shared/appSettings';
 
 export interface ChatServiceDeps {
   projects: IProjectRepository;
   chatMessages: IChatMessageRepository;
   chatSessions: IChatSessionRepository;
   loadPersistedPermissions: (projectId: string) => void;
+  getDefaultChatProvider?: () => ChatProvider;
   clearSessionCache?: (projectId: string) => void;
   streamingSessionService: Pick<
     StreamingSessionService,
@@ -38,6 +41,7 @@ export interface ChatServiceDeps {
 export interface SendChatMessageInput {
   projectId: string;
   message: string;
+  provider?: ChatProvider;
   model?: ClaudeModel;
   effort?: 'low' | 'medium' | 'high' | 'max';
   /**
@@ -131,6 +135,7 @@ export function createChatService(deps: ChatServiceDeps) {
     message: string,
     chatSessionId: string | undefined,
     clientMessageId: string | undefined,
+    provider: ChatProvider,
   ): void {
     try {
       // Persist the plain user text — no attachment prefix. Attachment
@@ -141,6 +146,7 @@ export function createChatService(deps: ChatServiceDeps) {
         message,
         chatSessionId,
         clientMessageId,
+        provider,
       );
     } catch (error) {
       console.error('[ChatService] Failed to persist accepted user message:', error);
@@ -156,12 +162,14 @@ export function createChatService(deps: ChatServiceDeps) {
         projectId,
         message,
         model,
+        provider: inputProvider,
         effort,
         tempImages,
         attachments: providedAttachments,
         chatSessionId,
         clientMessageId,
       } = input;
+      const provider = inputProvider ?? deps.getDefaultChatProvider?.() ?? DEFAULT_CHAT_PROVIDER;
 
       try {
         const project = deps.projects.get(projectId);
@@ -185,6 +193,7 @@ export function createChatService(deps: ChatServiceDeps) {
           message,
           {
             model: model ?? 'sonnet',
+            provider,
             effort,
             focusedResources: (promptContext?.focusedResources ?? []) as { type: string; path: string }[],
             chatSessionId,
@@ -201,6 +210,7 @@ export function createChatService(deps: ChatServiceDeps) {
           return failure(result.error);
         }
 
+        persistAcceptedUserMessage(projectId, message, chatSessionId, clientMessageId, provider);
         return success(undefined);
       } catch (error) {
         const messageText = error instanceof Error ? error.message : 'Unknown error';

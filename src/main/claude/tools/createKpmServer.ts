@@ -37,6 +37,17 @@ import { createPlanRefTools } from './plan-refs';
 import { createSpillReadTools } from './spill-read';
 import type { PlanAction } from '../../../shared/types';
 
+export interface KpmToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  annotations?: unknown;
+  _meta?: Record<string, unknown>;
+  handler: (args: unknown, extra: unknown) => Promise<unknown>;
+}
+
+export const KPM_MCP_INSTRUCTIONS = `KPM tools are local project-planning tools. Chat is read-only against repos: do not write repo files from chat. Plan-mutating tools propose PlanAction[] for KPM review or auto-apply; they must not bypass KPM's approval flow or write plan rows directly. Document, context-file, move, and delete tools emit proposals for KPM to surface to the user. Use @plan/<uuid> only for plan item UUIDs returned by KPM tools. Keep responses concise and utilitarian.`;
+
 // Cached tools array - collected once at warmup, reused per session
 let cachedTools: Parameters<typeof createSdkMcpServer>[0]['tools'] | null = null;
 let cachedFocusTools: Parameters<typeof createSdkMcpServer>[0]['tools'] | null = null;
@@ -445,6 +456,7 @@ function collectTools() {
   });
   const spillReadTools = createSpillReadTools();
 
+  const tools = [
     ...planItemTools,
     ...relationTools,
     ...groupTools,
@@ -464,7 +476,11 @@ function collectTools() {
     ...planRefTools,
     ...spillReadTools,
   ];
+  cachedTools = tools;
 
+  console.log('[KPM Server] Registered tools:', tools.map(t => t.name).join(', '));
+  logToolDefinitionFootprint(tools);
+  return tools;
 }
 
 /**
@@ -489,6 +505,7 @@ function collectFocusTools() {
     projects: projectRepo,
   });
 
+  const tools = [
     ...claudeMdEditTools,
     ...documentReadTools,
     ...documentCreateTools,
@@ -496,7 +513,19 @@ function collectFocusTools() {
     ...listProjectFilesTools,
     ...planRefTools,
   ];
+  cachedFocusTools = tools;
 
+  console.log('[KPM Server] Registered focus tools:', tools.map(t => t.name).join(', '));
+  logToolDefinitionFootprint(tools);
+  return tools;
+}
+
+export function getKpmToolDefinitions(): KpmToolDefinition[] {
+  return collectTools() as unknown as KpmToolDefinition[];
+}
+
+export function getFocusKpmToolDefinitions(): KpmToolDefinition[] {
+  return collectFocusTools() as unknown as KpmToolDefinition[];
 }
 
 /**

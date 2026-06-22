@@ -47,6 +47,7 @@ import type {
   SessionState,
   DevSession,
   DevSessionWithPlanItem,
+  ChatProvider,
   ClaudeModel,
   ChatSessionScope,
   ChatViewMode,
@@ -196,6 +197,8 @@ const tempImages = {
 };
 
 const chat = {
+  sendMessage: (projectId: string, message: string, focusedResources: FocusedResource[], model?: ClaudeModel, tempImages?: string[], chatSessionId?: string, currentView?: ChatViewMode, clientMessageId?: string, effort?: AgentEffortLevel, focusDocument?: FocusChatDocument, provider?: ChatProvider): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.chat.send, { projectId, message, focusedResources, model, tempImages, chatSessionId, currentView, clientMessageId, effort, focusDocument, provider }),
   newSession: (projectId: string): Promise<{ success: boolean }> =>
     invokeFlat<void>(IPC_CHANNELS.chat.newSession, { projectId }),
   cancel: (projectId: string, chatSessionId: string): Promise<{ success: boolean; error?: string }> =>

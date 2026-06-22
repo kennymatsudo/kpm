@@ -1,5 +1,8 @@
 /**
+ * CodexSdkAgentSession - @openai/codex-sdk-backed board agent session.
  *
+ * Implementation sessions run in the task worktree with workspace-write
+ * sandboxing. Review sessions run read-only with structured findings output.
  */
 
 import { execFile } from 'child_process';
@@ -12,6 +15,8 @@ import {
   type Thread,
   type ThreadEvent,
   type ThreadItem,
+  type ThreadOptions,
+  type TurnOptions,
 } from '@openai/codex-sdk';
 import { BaseAgentSession } from './BaseAgentSession';
 import { findCodexBinaryPath } from '../../codex/binary';
@@ -49,11 +54,13 @@ function itemErrorMessage(item: ThreadItem): string | null {
   return null;
 }
 
+export interface CodexSdkAgentSessionConfig {
   id: string;
   role: AgentSessionRole;
   model?: string;
 }
 
+export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSession {
   readonly agentType: AgentType = 'codex';
 
   private readonly model: string | undefined;
@@ -63,8 +70,10 @@ function itemErrorMessage(item: ThreadItem): string | null {
   private runPromise: Promise<void> | null = null;
   private worktreePath: string | null = null;
   private lastAssistantMessage = '';
+  private completing = false;
   private stopping = false;
 
+  constructor(config: CodexSdkAgentSessionConfig) {
     super(config.id, config.role);
     this.model = config.model;
     this.codex = new Codex({ codexPathOverride: findCodexBinaryPath() });
@@ -77,14 +86,17 @@ function itemErrorMessage(item: ThreadItem): string | null {
       }
 
       this.worktreePath = worktreePath;
+      this.thread = this.codex.startThread(this.buildThreadOptions(worktreePath));
 
       this.emitActivity({
         type: 'system',
         timestamp: Date.now(),
+        summary: this.role === 'review' ? 'Starting Codex review...' : 'Starting Codex session...',
         status: 'running',
       });
 
       this.setState('working');
+      this.runPromise = this.runTurn(prompt);
       return Promise.resolve();
     } catch (error) {
       return Promise.reject(error instanceof Error ? error : new Error(String(error)));
@@ -92,8 +104,33 @@ function itemErrorMessage(item: ThreadItem): string | null {
   }
 
   respond(): Promise<void> {
+    return Promise.reject(new Error('Codex board sessions do not ask follow-up questions'));
   }
 
+  followUp(text: string): Promise<void> {
+    if (this.role === 'review') {
+      return Promise.reject(new Error('Codex review sessions are one-shot'));
+    }
+
+    if (this._state !== 'complete' && this._state !== 'failed' && this._state !== 'stopped') {
+      return Promise.reject(new Error(`Cannot follow up in state: ${this._state}`));
+    }
+
+    if (!this.thread) {
+      return Promise.reject(new Error('No active Codex thread'));
+    }
+
+    this.stopping = false;
+    this.completing = false;
+    this.emitActivity({
+      type: 'system',
+      timestamp: Date.now(),
+      summary: 'Continuing Codex session...',
+      status: 'running',
+    });
+    this.setState('working');
+    this.runPromise = this.runTurn(text);
+    return Promise.resolve();
   }
 
   async stop(): Promise<void> {
@@ -117,9 +154,32 @@ function itemErrorMessage(item: ThreadItem): string | null {
     return this.lastAssistantMessage;
   }
 
+  private buildThreadOptions(worktreePath: string): ThreadOptions {
+    return {
+      workingDirectory: worktreePath,
+      sandboxMode: this.role === 'review' ? 'read-only' : 'workspace-write',
+      approvalPolicy: 'never',
+      networkAccessEnabled: false,
+      webSearchMode: 'disabled',
+      ...(this.model && { model: this.model }),
+    };
+  }
+
+  private async runTurn(prompt: string): Promise<void> {
+    if (!this.thread) {
+      throw new Error('Codex thread was not initialized');
     }
 
+    this.abortController = new AbortController();
+    this.completing = false;
+
+    const turnOptions: TurnOptions = {
+      signal: this.abortController.signal,
+      ...(this.role === 'review' && { outputSchema: REVIEW_FINDINGS_SCHEMA }),
+    };
+
     try {
+      const { events } = await this.thread.runStreamed(prompt, turnOptions);
 
       for await (const event of events) {
         await this.handleEvent(event);
@@ -214,6 +274,7 @@ function itemErrorMessage(item: ThreadItem): string | null {
     this.emitActivity({
       type: 'system',
       timestamp: Date.now(),
+      summary: `${this.role === 'review' ? 'Review' : 'Implementation'} checklist ${completed}/${total}`,
     });
   }
 
@@ -294,12 +355,15 @@ function itemErrorMessage(item: ThreadItem): string | null {
   }
 
   private async handleCompletion(): Promise<void> {
+    if (this.completing || this._state !== 'working') {
       return;
     }
 
+    this.completing = true;
     const summary = await this.getCompletionSummary();
     this.setState('complete');
     this.emit('onComplete', summary);
+    this.completing = false;
   }
 
   private fail(error: unknown): void {
@@ -340,6 +404,7 @@ function itemErrorMessage(item: ThreadItem): string | null {
         };
       }
     } catch {
+      // Git diff may fail if the worktree path is not a git repository.
     }
 
     return { filesChanged: 0, additions: 0, deletions: 0 };

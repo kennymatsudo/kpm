@@ -9,6 +9,7 @@ import {
   uuid,
   absolutePath,
   claudeModel,
+  chatProvider,
 } from './shared';
 
 // =============================================================================
@@ -59,6 +60,7 @@ export const ChatSchemas = {
       projectId: uuid,
       message: z.string().min(1, 'Message cannot be empty').max(100000, 'Message too long'),
       focusedResources: z.array(focusedResourceSchema).default([]),
+      provider: chatProvider.optional(),
       model: claudeModel.optional(),
       effort: z.enum(['low', 'medium', 'high', 'max']).optional(),
       tempImages: z.array(tempImagePath).optional(),

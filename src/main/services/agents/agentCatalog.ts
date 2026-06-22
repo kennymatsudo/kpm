@@ -1,11 +1,13 @@
 /**
  * Agent Catalog - Detection and configuration for available agent backends.
  *
+ * Detects CLI agents where needed and SDK-backed agents by their auth state.
  */
 
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { AgentType } from '../../../shared/agent-types';
+import { hasCodexAuth } from '../../codex/auth';
 
 const execFileAsync = promisify(execFile);
 
@@ -26,6 +28,7 @@ const AGENT_CONFIGS: Record<AgentType, AgentConfig> = {
     reviewOpponent: 'codex',
   },
   codex: {
+    binaries: [],
     reviewOpponent: 'claude',
   },
   gemini: {
@@ -60,6 +63,12 @@ async function whichBinary(name: string): Promise<string | null> {
 export async function isAgentAvailable(agentType: AgentType): Promise<boolean> {
   const cached = availabilityCache.get(agentType);
   if (cached) return cached.available;
+
+  if (agentType === 'codex') {
+    const available = await hasCodexAuth();
+    availabilityCache.set(agentType, { available, binaryPath: null });
+    return available;
+  }
 
   const config = AGENT_CONFIGS[agentType];
   for (const binary of config.binaries) {

@@ -1,4 +1,5 @@
 /**
+ * BaseAgentSession - Shared base for SDK and CLI board agent sessions.
  *
  * Owns the event handler map, state field, activity list, and the helpers that
  * manipulate them. Concrete subclasses implement `start`, `respond`, `followUp`,

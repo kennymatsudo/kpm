@@ -36,6 +36,7 @@ You'll need:
 - **Node.js 20+**
 - **Claude Code** — installed and logged in (powers all AI features)
 - **Git** — worktrees, diffs, and agent execution
+- **Codex authentication** *(optional)* — enables Codex-backed agent sessions
 - **Xcode Command Line Tools** *(macOS)* — native module compilation (`xcode-select --install`)
 
 ```bash

@@ -6,6 +6,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
+import type { ChatProvider, ChatSession } from '../../../../shared/types';
 import type { IChatSessionRepository } from '../../interfaces';
 
 /**
@@ -19,8 +20,10 @@ interface PreparedStatements {
   updateFocusDocument: Statement;
   updateFocusDocumentAndClearClaudeSession: Statement;
   updateClaudeSessionId: Statement;
+  updateProviderSessionId: Statement;
   updateTitle: Statement;
   clearClaudeSessionIdsByProject: Statement;
+  clearProviderSessionIdsByProject: Statement;
   delete: Statement;
 }
 
@@ -36,6 +39,8 @@ export class ChatSessionRepository implements IChatSessionRepository {
         LIMIT 1
       `),
       insert: db.prepare(`
+        INSERT INTO chat_sessions (id, project_id, scope, provider)
+        VALUES (?, ?, 'main', ?)
         RETURNING *
       `),
       insertFocusDocument: db.prepare(`
@@ -46,8 +51,10 @@ export class ChatSessionRepository implements IChatSessionRepository {
           focus_document_path,
           focus_document_title,
           focus_document_hash,
+          provider,
           last_opened_at
         )
+        VALUES (?, ?, 'focus_document', ?, ?, ?, ?, CURRENT_TIMESTAMP)
         RETURNING *
       `),
       updateFocusDocument: db.prepare(`
@@ -63,12 +70,20 @@ export class ChatSessionRepository implements IChatSessionRepository {
         SET focus_document_title = ?,
             focus_document_hash = ?,
             last_opened_at = CURRENT_TIMESTAMP,
+            claude_session_id = NULL,
+            provider_session_id = NULL
         WHERE id = ?
         RETURNING *
       `),
       updateClaudeSessionId: db.prepare(`
         UPDATE chat_sessions
         SET claude_session_id = ?
+        WHERE id = ?
+      `),
+      updateProviderSessionId: db.prepare(`
+        UPDATE chat_sessions
+        SET provider = ?,
+            provider_session_id = ?
         WHERE id = ?
       `),
       updateTitle: db.prepare(`
@@ -81,10 +96,17 @@ export class ChatSessionRepository implements IChatSessionRepository {
         SET claude_session_id = NULL
         WHERE project_id = ? AND claude_session_id IS NOT NULL
       `),
+      clearProviderSessionIdsByProject: db.prepare(`
+        UPDATE chat_sessions
+        SET provider_session_id = NULL
+        WHERE project_id = ? AND provider_session_id IS NOT NULL
+      `),
       delete: db.prepare('DELETE FROM chat_sessions WHERE id = ?'),
     };
   }
 
+  create(id: string, projectId: string, provider: ChatProvider = 'claude'): ChatSession {
+    return this.stmts.insert.get(id, projectId, provider) as ChatSession;
   }
 
   createFocusDocument(
@@ -93,6 +115,7 @@ export class ChatSessionRepository implements IChatSessionRepository {
     path: string,
     title: string,
     contentHash: string,
+    provider: ChatProvider = 'claude',
   ): ChatSession {
     return this.stmts.insertFocusDocument.get(
       id,
@@ -100,6 +123,7 @@ export class ChatSessionRepository implements IChatSessionRepository {
       path,
       title,
       contentHash,
+      provider,
     ) as ChatSession;
   }
 
@@ -127,12 +151,20 @@ export class ChatSessionRepository implements IChatSessionRepository {
     this.stmts.updateClaudeSessionId.run(claudeSessionId, id);
   }
 
+  updateProviderSessionId(id: string, provider: ChatProvider, providerSessionId: string): void {
+    this.stmts.updateProviderSessionId.run(provider, providerSessionId, id);
+  }
+
   updateTitle(id: string, title: string): void {
     this.stmts.updateTitle.run(title, id);
   }
 
   clearClaudeSessionIdsByProject(projectId: string): void {
     this.stmts.clearClaudeSessionIdsByProject.run(projectId);
+  }
+
+  clearProviderSessionIdsByProject(projectId: string): void {
+    this.stmts.clearProviderSessionIdsByProject.run(projectId);
   }
 
   delete(id: string): void {

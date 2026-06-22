@@ -40,6 +40,8 @@ Main process
   │   └── otherwise create pending session + worktree metadata
   ├── AgentSessionManager
   │   ├── ClaudeSdkSession   — Claude via Agent SDK
+  │   ├── CodexSdkAgentSession — Codex via Codex SDK
+  │   └── CliAgentSession    — Gemini / legacy Claude via CLI + hooks
       ├── implement complete -> launch one auto-review
       ├── review complete with findings -> send one follow-up to implementation
       └── terminal state -> move task to In Review or Needs Attention
@@ -168,6 +170,7 @@ The review session ID is always `toReviewSessionId(implSessionId)` from `shared/
 
 ## Completion Stats
 
+`ClaudeSdkSession`, `CodexSdkAgentSession`, and `CliAgentSession` compute `AgentCompletionSummary` from `git diff --stat HEAD` at completion time. The stats reflect uncommitted changes only; committed-only sessions will report zeros.
 
 ## Agent Prompt Shape
 

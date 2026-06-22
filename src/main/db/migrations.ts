@@ -3463,6 +3463,21 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1094,
+    name: '094_chat_session_provider_ids',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE chat_sessions ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude'
+          CHECK(provider IN ('claude', 'codex'));
+        ALTER TABLE chat_sessions ADD COLUMN provider_session_id TEXT;
+
+        UPDATE chat_sessions
+        SET provider_session_id = claude_session_id
+        WHERE claude_session_id IS NOT NULL;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

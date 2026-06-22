@@ -32,7 +32,13 @@ export type {
 } from './customThemes';
 
 // =============================================================================
+// Chat Agent Types
 // =============================================================================
+
+/** Main chat backend provider. */
+export type ChatProvider = 'claude' | 'codex';
+
+export const CHAT_PROVIDERS = ['claude', 'codex'] as const satisfies readonly ChatProvider[];
 
 /** Available Claude models for chat sessions */
 export type ClaudeModel = 'opus' | 'sonnet';
@@ -40,6 +46,7 @@ export type ClaudeModel = 'opus' | 'sonnet';
 /** Chat session scope controls where a persisted conversation is surfaced. */
 export type ChatSessionScope = 'main' | 'focus_document';
 
+/** Codex SDK availability/auth status */
 export interface CodexStatus {
   installed: boolean;
   authenticated: boolean;
@@ -756,6 +763,7 @@ export interface ChatMessage {
   session_id: string;  // project_id for main chat
   chat_session_id: string | null;  // Groups messages into distinct sessions within a project
   client_message_id?: string | null; // Stable client-generated id for idempotent user retries
+  provider: ChatProvider;
   role: 'user' | 'assistant';
   content: string;
   created_at: string;
@@ -776,6 +784,8 @@ export interface ChatSession {
   id: string;  // Same as chat_session_id in chat_messages
   project_id: string;
   claude_session_id: string | null;  // Claude SDK session ID for resume
+  provider: ChatProvider;
+  provider_session_id: string | null; // Native provider thread/session ID for resume
   scope: ChatSessionScope;
   focus_document_path: string | null;
   focus_document_title: string | null;

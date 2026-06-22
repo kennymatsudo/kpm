@@ -18,6 +18,7 @@ import type { BrowserWindow } from 'electron';
 import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { StreamingSession, type McpServerStatus } from '../../claude/streaming';
+import { CodexChatSession } from '../../codex/CodexChatSession';
 import { getToolActivity, extractDiffFromToolResult } from '../../claude/activity';
 import type { ClaudeMdUpdatePayload } from '../../claude/tools/claudemd-update';
 import type { DocumentUpdatePayload } from '../../claude/tools/document-update';
@@ -33,6 +34,7 @@ import { buildUserContentBlocks } from '../../claude/attachmentBlocks';
 import { buildFocusedSection } from '../../claude/prompts/focusedResources';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../claude/prompts';
+import type { ChatProvider, FocusChatDocument, FocusedResource, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope } from '../../../shared/types';
 import { getConfig } from '../../config';
 import { clientManager } from '../../claude/clientManager';
 import { DEFAULT_CONTEXT_FILENAME } from '../../../shared/contextFile';
@@ -142,7 +144,9 @@ interface ManagedSession {
   key: string;
   type: SessionType;
   projectId: string;
+  session: StreamingSession | CodexChatSession;
   state: SessionState;
+  provider: ChatProvider;
   model: ModelType;
   lastActivity: number;
   sessionId?: string; // SDK session ID for resume
@@ -251,6 +255,8 @@ export interface StreamingSessionServiceDeps {
       role: 'user' | 'assistant',
       content: string,
       chatSessionId?: string,
+      clientMessageId?: string,
+      provider?: ChatProvider
     ): void;
     getMessagesByChatSession(
       sessionId: string,
@@ -260,9 +266,19 @@ export interface StreamingSessionServiceDeps {
 
   /** Chat session repository for Claude SDK session ID storage */
   chatSessionRepository: {
+    get(id: string): {
+      claude_session_id: string | null;
+      provider?: ChatProvider | null;
+      provider_session_id?: string | null;
+      title: string | null;
+      scope?: ChatSessionScope | null;
+    } | undefined;
+    create(id: string, projectId: string, provider?: ChatProvider): { id: string };
     updateClaudeSessionId(id: string, claudeSessionId: string): void;
+    updateProviderSessionId?(id: string, provider: ChatProvider, providerSessionId: string): void;
     updateTitle(id: string, title: string): void;
     clearClaudeSessionIdsByProject(projectId: string): void;
+    clearProviderSessionIdsByProject?(projectId: string): void;
   };
 
   /** Function to get the main window for IPC */
@@ -545,6 +561,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     key: string;
     projectId: string;
     chatSessionId?: string;
+    provider: ChatProvider;
     initialMessage: MessageEnvelope;
     model: ModelType;
     effort?: 'low' | 'medium' | 'high' | 'max';
@@ -553,6 +570,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     currentView?: ViewMode;
     persistHistory: boolean;
     forceApprovalReview: boolean;
+    onMessage: (session: StreamingSession | CodexChatSession, msg: unknown) => void;
   }
 
   /**
@@ -563,6 +581,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       key,
       projectId,
       chatSessionId,
+      provider,
       initialMessage,
       model,
       effort,
@@ -593,6 +612,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     let unsubscribeFileDelete: (() => void) | null = null;
 
     try {
+      const createClaudeSdkOptions = () => deps.buildSdkOptions(context, {
         model,
         effort,
         currentView,
@@ -744,8 +764,76 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       });
 
       // Create streaming session — let required: const can't be referenced in its own initializer closures
+      let session!: StreamingSession | CodexChatSession;
       // eslint-disable-next-line prefer-const
+      session = provider === 'codex'
+        ? new CodexChatSession({
+            context,
             chatSessionId,
+            resumeThreadId: resumeSessionId,
+            onMessage: (msg) => onMessage(session, msg),
+            onSessionEnd: (reason, error) => handleSessionEnd(key, session, reason, error),
+            onReady: (sessionId) => {
+              const managed = sessions.get(key);
+              if (managed?.session !== session) {
+                console.log(`[StreamingSessionService] Ignoring stale onReady for ${key}`);
+                return;
+              }
+              managed.state = 'processing';
+              managed.processingStartTime = Date.now();
+              managed.lastSdkActivity = Date.now();
+              managed.sessionId = sessionId;
+              managed.lastTurnFinalized = false;
+              if (chatSessionId && persistHistory) {
+                deps.chatSessionRepository.updateProviderSessionId?.(chatSessionId, provider, sessionId);
+              }
+              mainWindow?.webContents.send('chat:session-ready', { projectId, chatSessionId, sessionId, mcpStatus: [] });
+            },
+          })
+        : new StreamingSession({
+            sdkOptions: createClaudeSdkOptions(),
+            onMessage: (msg) => onMessage(session, msg),
+            onSessionEnd: (reason, error) => handleSessionEnd(key, session, reason, error),
+            onReady: (sessionId, mcpStatus) => {
+              const managed = sessions.get(key);
+              if (managed?.session !== session) {
+                console.log(`[StreamingSessionService] Ignoring stale onReady for ${key}`);
+                return;
+              }
+              // The initial user message is already in-flight during start(),
+              // so this session should be considered processing until we receive
+              // the result message for that first turn.
+              managed.state = 'processing';
+              managed.processingStartTime = Date.now();
+              managed.lastSdkActivity = Date.now();
+              managed.sessionId = sessionId;
+              managed.lastTurnFinalized = false;
+              // Persist Claude SDK session ID for resume functionality
+              if (chatSessionId && persistHistory) {
+                deps.chatSessionRepository.updateClaudeSessionId(chatSessionId, sessionId);
+                deps.chatSessionRepository.updateProviderSessionId?.(chatSessionId, provider, sessionId);
+              }
+              mainWindow?.webContents.send('chat:session-ready', { projectId, chatSessionId, sessionId, mcpStatus });
+              deps.onMcpStatusReady?.(mcpStatus);
+            },
+            onMcpError: (failedServers) => {
+              const managed = sessions.get(key);
+              if (managed?.session === session) {
+                managed.state = 'error';
+              } else {
+                console.log(`[StreamingSessionService] Ignoring stale onMcpError for ${key}`);
+                return;
+              }
+              mainWindow?.webContents.send('chat:session-error', {
+                projectId,
+                chatSessionId,
+                error: `MCP connection failed: ${failedServers.map(s => s.name).join(', ')}`,
+              });
+            },
+            onSlashCommands: (commands, context) => {
+              const visible = selectVisibleSlashCommands(commands, context);
+              mainWindow?.webContents.send('chat:slash-commands', { projectId, chatSessionId, commands: visible });
+            },
           });
 
       // Store managed session BEFORE calling start() to ensure cleanup on timeout/error
@@ -757,6 +845,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         chatSessionId,
         session,
         state: 'connecting',
+        provider,
         model,
         lastActivity: Date.now(),
         currentView,
@@ -874,12 +963,14 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         source: 'disconnectChatSession',
       })));
       deps.chatSessionRepository.clearClaudeSessionIdsByProject(projectId);
+      deps.chatSessionRepository.clearProviderSessionIdsByProject?.(projectId);
     }
     return success(undefined);
   }
 
   /** Options for sending a chat message */
   interface SendChatMessageOptions {
+    provider?: ChatProvider;
     model?: ModelType;
     effort?: 'low' | 'medium' | 'high' | 'max';
     focusedResources?: { type: string; path: string }[];
@@ -912,10 +1003,22 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       return failure('chatSessionId is required');
     }
 
+    const provider = options.provider ?? 'claude';
     const key = buildSessionKey(projectId, chatSessionId);
     const managed = sessions.get(key);
 
+    // Provider changes require a fresh native session/thread. KPM-side chat
+    // history remains intact and is replayed into the new provider when needed.
+    if (managed && managed.provider !== provider) {
+      await disconnectSession(key, {
+        reason: 'provider_changed',
+        source: 'sendChatMessage',
+      });
+    }
+
     // If view changed, disconnect and create new session
+    const latestManaged = sessions.get(key);
+    if (latestManaged && options.currentView && latestManaged.currentView !== options.currentView) {
       await disconnectSession(key, {
         reason: 'view_changed',
         source: 'sendChatMessage',
@@ -998,15 +1101,24 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Get or create chat session for Claude SDK session tracking
     let resumeSessionId: string | undefined;
+    const provider = options.provider ?? 'claude';
 
     if (persistHistory) {
       // Look up existing chat session for resume
       const chatSession = deps.chatSessionRepository.get(chatSessionId);
+      if (provider === 'claude' && chatSession?.claude_session_id) {
         resumeSessionId = chatSession.claude_session_id;
+      } else if (
+        provider === 'codex' &&
+        chatSession?.provider === 'codex' &&
+        chatSession.provider_session_id
+      ) {
+        resumeSessionId = chatSession.provider_session_id;
       }
 
       // Create chat session entry if it doesn't exist yet
       if (!deps.chatSessionRepository.get(chatSessionId)) {
+        deps.chatSessionRepository.create(chatSessionId, projectId, provider);
       }
     }
 
@@ -1027,6 +1139,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       key: sessionKey,
       projectId,
       chatSessionId,
+      provider,
       initialMessage,
       model: options.model ?? 'sonnet',
       effort: options.effort,
@@ -1492,6 +1605,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
    * Uses 'chat:*' IPC channels and persists to unified chat history.
    * All events include chatSessionId for routing to the correct session in the UI.
    */
+  function handleChatSessionMessage(
+    projectId: string,
+    chatSessionId: string,
+    sourceSession: StreamingSession | CodexChatSession,
+    msg: unknown,
+  ): void {
     const mainWindow = deps.getMainWindow();
     const key = buildSessionKey(projectId, chatSessionId);
     const managed = sessions.get(key);
@@ -1962,6 +2081,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             projectId,
             'assistant',
             finalResponse,
+            managed.chatSessionId,
+            undefined,
+            managed.provider,
           );
         }
       } catch (dbError) {
@@ -2044,6 +2166,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // Auto-summary generation runs alongside the first turn, so this is the
       // earliest moment we can read it. Re-fetched after every turn so a
       // user-renamed session updates the UI on next reply too.
+      if (managed.provider === 'claude' && managed.sessionId && managed.persistHistory) {
         const sdkSessionId = managed.sessionId;
         void getSessionInfo(sdkSessionId)
           .then((info) => {
@@ -2148,6 +2271,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             } else {
               deps.recordUsage({
                 projectId,
+                model: managed.provider === 'codex' ? 'codex' : managed.model,
                 usage: sdkMsg.usage,
                 totalCostUsd: totalCostUsd ?? null,
                 sdkSessionId: resultMsg.session_id ?? null,
@@ -2184,6 +2308,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
   }
 
+  function handleSessionEnd(
+    key: string,
+    sourceSession: StreamingSession | CodexChatSession,
+    reason: string,
+    error?: Error,
+  ): void {
     const managed = sessions.get(key);
     if (!managed) return;
     const stateBefore = managed.state;

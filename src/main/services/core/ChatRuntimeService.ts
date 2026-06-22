@@ -15,6 +15,7 @@ import { createToolCallLogger } from '../toollog';
 import type { PlanContext } from '../../claude/prompts';
 import { unwrapOrThrow } from '../result';
 import { createChatService } from './ChatService';
+import { CHAT_APPROVAL_MODE_KEY, CHAT_PROVIDER_KEY, parseChatApprovalMode, parseChatProvider } from '../../../shared/appSettings';
 
 export interface ChatRuntimeServiceDeps {
   getMainWindow: () => BrowserWindow | null;
@@ -70,8 +71,10 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
       get: container.chatSessions.get.bind(container.chatSessions),
       create: container.chatSessions.create.bind(container.chatSessions),
       updateClaudeSessionId: container.chatSessions.updateClaudeSessionId.bind(container.chatSessions),
+      updateProviderSessionId: container.chatSessions.updateProviderSessionId.bind(container.chatSessions),
       updateTitle: container.chatSessions.updateTitle.bind(container.chatSessions),
       clearClaudeSessionIdsByProject: container.chatSessions.clearClaudeSessionIdsByProject.bind(container.chatSessions),
+      clearProviderSessionIdsByProject: container.chatSessions.clearProviderSessionIdsByProject.bind(container.chatSessions),
     },
     getMainWindow,
     buildContext: buildContextWithPrompts,
@@ -163,6 +166,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         throw new Error(result.error);
       }
     },
+    getDefaultChatProvider: () => parseChatProvider(container.appSettings.get(CHAT_PROVIDER_KEY)),
     streamingSessionService,
     emitChatError: ({ projectId, chatSessionId, error }) => {
       getMainWindow()?.webContents.send('chat:error', { projectId, chatSessionId, error });

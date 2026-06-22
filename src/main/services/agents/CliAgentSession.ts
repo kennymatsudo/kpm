@@ -1,4 +1,5 @@
 /**
+ * CliAgentSession - PTY + hooks implementation for CLI agents (Claude Code, Gemini).
  *
  * Spawns the CLI agent binary in a worktree via node-pty (hidden, no xterm.js).
  * Hooks are configured to POST events to the KPM hook server, which are then
@@ -21,20 +22,24 @@ import type {
   AgentCompletionSummary,
 } from '../../../shared/agent-types';
 
+const execFileAsync = promisify(execFile);
 const LOG_PREFIX = '[CliAgentSession]';
 
 /** Max output buffer per session (1MB) */
 const MAX_OUTPUT_BUFFER = 1024 * 1024;
 
+type CliAgentType = Exclude<AgentType, 'codex'>;
 
 export interface CliAgentSessionConfig {
   id: string;
+  agentType: CliAgentType;
   role: AgentSessionRole;
   /** Hook server port for configuring agent hooks */
   hookPort: number;
 }
 
 export class CliAgentSession extends BaseAgentSession implements IAgentSession {
+  readonly agentType: CliAgentType;
 
   private ptyProcess: pty.IPty | null = null;
   private worktreePath: string | null = null;

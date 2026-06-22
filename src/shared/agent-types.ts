@@ -82,6 +82,7 @@ export interface AgentCompletionSummary {
    * Why the SDK query loop terminated. Surfaces cases like `max_turns`,
    * `aborted_tools`, `prompt_too_long`, `hook_stopped`, etc. so the UI can
    * distinguish a clean finish from a budget/abort/rate-limit exit.
+   * Undefined for non-Claude sessions and for sessions that
    * ended before the SDK emitted a terminal reason.
    */
   terminalReason?: string;

@@ -36,6 +36,7 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
     id: 'msg-1',
     session_id: project.id,
     chat_session_id: null,
+    provider: 'claude' as const,
     role: 'user' as const,
     content: '',
     created_at: '2026-01-01T00:00:00.000Z',
@@ -48,6 +49,8 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
     id,
     project_id: projectId,
     claude_session_id: null,
+    provider: 'claude' as const,
+    provider_session_id: null,
     scope: 'focus_document' as const,
     focus_document_path: documentPath,
     focus_document_title: title,
@@ -60,6 +63,8 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
     id,
     project_id: project.id,
     claude_session_id: null,
+    provider: 'claude' as const,
+    provider_session_id: null,
     scope: 'focus_document' as const,
     focus_document_path: 'docs/a.md',
     focus_document_title: title,
@@ -85,8 +90,10 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
       getFocusDocument: vi.fn(),
       updateFocusDocument,
       updateClaudeSessionId: vi.fn(),
+      updateProviderSessionId: vi.fn(),
       updateTitle: vi.fn(),
       clearClaudeSessionIdsByProject: vi.fn(),
+      clearProviderSessionIdsByProject: vi.fn(),
       delete: vi.fn(),
     },
     loadPersistedPermissions: vi.fn(),
@@ -228,6 +235,48 @@ describe('ChatService.sendMessage', () => {
     expect(options.attachments).toBeUndefined();
   });
 
+  it('forwards and persists an explicit chat provider', async () => {
+    const { deps, spies } = makeDeps();
+    const service = createChatService(deps);
+
+    const result = await service.sendMessage({
+      projectId: 'project-1',
+      message: 'use codex',
+      chatSessionId: 'session-1',
+      provider: 'codex',
+    });
+
+    expect(result.ok).toBe(true);
+    const [, , options] = spies.sendChatMessage.mock.calls[0];
+    expect(options.provider).toBe('codex');
+    expect(spies.addMessage).toHaveBeenCalledWith(
+      'project-1',
+      'user',
+      'use codex',
+      'session-1',
+      undefined,
+      'codex',
+    );
+  });
+
+  it('uses the configured default chat provider when none is supplied', async () => {
+    const { deps, spies } = makeDeps({
+      getDefaultChatProvider: () => 'codex',
+    });
+    const service = createChatService(deps);
+
+    const result = await service.sendMessage({
+      projectId: 'project-1',
+      message: 'default provider',
+      chatSessionId: 'session-1',
+    });
+
+    expect(result.ok).toBe(true);
+    const [, , options] = spies.sendChatMessage.mock.calls[0];
+    expect(options.provider).toBe('codex');
+    expect(spies.addMessage.mock.calls[0][5]).toBe('codex');
+  });
+
   it('persists focus document chat turns', async () => {
     const { deps, spies } = makeDeps();
     const service = createChatService(deps);
@@ -289,6 +338,8 @@ describe('ChatService.getOrCreateFocusDocumentSession', () => {
       id: 'session-1',
       project_id: 'project-1',
       claude_session_id: 'claude-1',
+      provider: 'claude' as const,
+      provider_session_id: 'claude-1',
       scope: 'focus_document' as const,
       focus_document_path: 'docs/a.md',
       focus_document_title: 'A',
@@ -309,10 +360,13 @@ describe('ChatService.getOrCreateFocusDocumentSession', () => {
           focus_document_title: title,
           focus_document_hash: contentHash,
           claude_session_id: clearClaudeSessionId ? null : existing.claude_session_id,
+          provider_session_id: clearClaudeSessionId ? null : existing.provider_session_id,
         })),
         updateClaudeSessionId: vi.fn(),
+        updateProviderSessionId: vi.fn(),
         updateTitle: vi.fn(),
         clearClaudeSessionIdsByProject: vi.fn(),
+        clearProviderSessionIdsByProject: vi.fn(),
         delete: vi.fn(),
       },
     });

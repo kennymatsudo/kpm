@@ -1,6 +1,7 @@
 /**
  * AgentSessionManager - Factory + registry for agent sessions.
  *
+ * Creates agent sessions (Claude SDK, Codex SDK, or CLI), tracks active sessions per project,
  * enforces concurrency limits, and broadcasts state changes to the renderer via IPC.
  */
 
@@ -20,6 +21,7 @@ import type {
 import { toImplSessionId } from '../../../shared/agent-types';
 import { ClaudeSdkSession } from './ClaudeSdkSession';
 import { CliAgentSession } from './CliAgentSession';
+import { CodexSdkAgentSession } from './CodexSdkAgentSession';
 import type { HookEvent } from './hookServer';
 import { parseReviewFindings } from './autoReview';
 import { getConfig } from '../../config';
@@ -99,6 +101,7 @@ export interface CreateSessionParams {
   role: AgentSessionRole;
   /** SDK options (for Claude sessions) */
   sdkOptions?: SDKOptions;
+  /** Model override for agent sessions (e.g. 'gpt-5.5' for Codex) */
   model?: string;
 }
 
@@ -146,11 +149,14 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         role,
         sdkOptions,
       });
+    } else if (agentType === 'codex') {
+      agentSession = new CodexSdkAgentSession({
         id: devSessionId,
         role,
         model,
       });
     } else {
+      // Gemini/legacy Claude CLI — use PTY + hooks session
       if (!hookPort) {
         throw new Error('Hook server is not running — cannot start CLI agent session');
       }
@@ -291,6 +297,14 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         devSessionId,
         state,
       });
+
+      if (state === 'starting' || state === 'working' || state === 'waiting_for_input') {
+        const existingTimer = terminalEvictionTimers.get(agentSession.id);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          terminalEvictionTimers.delete(agentSession.id);
+        }
+      }
 
       if (state === 'complete' || state === 'failed' || state === 'stopped') {
         const existingTimer = terminalEvictionTimers.get(agentSession.id);
@@ -493,6 +507,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
       return agentSession.getOutput() || null;
     }
 
+    if (agentSession instanceof CodexSdkAgentSession) {
       return agentSession.getOutput() || null;
     }
 

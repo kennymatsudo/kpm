@@ -9,6 +9,7 @@
 
 import type { Database, Statement } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
+import type { ChatMessage, ChatProvider, ChatSessionSummary } from '../../../../shared/types';
 import type { IChatMessageRepository } from '../../interfaces';
 
 /**
@@ -108,6 +109,8 @@ export class ChatMessageRepository implements IChatMessageRepository {
     role: 'user' | 'assistant',
     content: string,
     chatSessionId?: string,
+    clientMessageId?: string,
+    provider: ChatProvider = 'claude',
   ): ChatMessage {
     if (clientMessageId && chatSessionId) {
       const existing = this.stmts.getByClientMessageId.get(
@@ -126,6 +129,7 @@ export class ChatMessageRepository implements IChatMessageRepository {
         role,
         content,
         chatSessionId,
+        provider,
         clientMessageId
       ) as ChatMessage | undefined;
       if (inserted) {
@@ -141,6 +145,7 @@ export class ChatMessageRepository implements IChatMessageRepository {
       role,
       content,
       chatSessionId ?? null,
+      provider,
       clientMessageId ?? null
     ) as ChatMessage;
   }
