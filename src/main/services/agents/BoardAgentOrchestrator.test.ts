@@ -63,6 +63,9 @@ describe('BoardAgentOrchestrator', () => {
         updateStatus: vi.fn(),
         commitSessionChanges,
       }),
+      getReviewService: () => ({
+        flushQueuedReviewTasks: vi.fn().mockResolvedValue({ ok: true, data: { taskIds: [], context: '' } }),
+      }),
       getAgentSessionManager: () => ({
         getByDevSession: vi.fn(),
       } as never),
@@ -108,6 +111,9 @@ describe('BoardAgentOrchestrator', () => {
         updateStatus: vi.fn(),
         commitSessionChanges,
       }),
+      getReviewService: () => ({
+        flushQueuedReviewTasks: vi.fn().mockResolvedValue({ ok: true, data: { taskIds: [], context: '' } }),
+      }),
       getAgentSessionManager: () => ({
         getByDevSession: vi.fn(),
       } as never),
@@ -127,5 +133,50 @@ describe('BoardAgentOrchestrator', () => {
     expect(updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
     expect(updateAutomationPhase).toHaveBeenCalledWith(session.id, 'ready_for_review');
     expect(requestPlanRefresh).toHaveBeenCalledWith(session.project_id);
+  });
+
+  it('flushes queued PR review tasks before moving the session forward', async () => {
+    const session = createSession({ automation_phase: 'addressing_review' });
+    const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
+    const updateAutomationPhase = vi.fn();
+    const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
+    const requestPlanRefresh = vi.fn();
+    const flushQueuedReviewTasks = vi.fn().mockResolvedValue({
+      ok: true,
+      data: { taskIds: ['review-task-1', 'review-task-2'], context: 'THREADS' },
+    });
+
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(),
+        persistCompletedReview: vi.fn(),
+        persistFailedReview: vi.fn(),
+      },
+      planService: { updateItem },
+      getDevSessionService: () => ({
+        get: vi.fn(() => session),
+        sendAgentFollowUp: vi.fn(),
+        updateAutomationPhase,
+        updateStatus: vi.fn(),
+        commitSessionChanges,
+      }),
+      getReviewService: () => ({ flushQueuedReviewTasks }),
+      getAgentSessionManager: () => ({
+        getByDevSession: vi.fn(),
+      } as never),
+      getPromptContent: vi.fn(),
+      claudeUsageService: { recordUsage: vi.fn() },
+      requestPlanRefresh,
+    });
+
+    await callbacks.onSessionComplete?.({
+      devSessionId: session.id,
+      role: 'implement',
+      summary: { filesChanged: 1, additions: 2, deletions: 0 },
+    });
+
+    expect(flushQueuedReviewTasks).toHaveBeenCalledWith(session.id);
+    expect(updateItem).not.toHaveBeenCalled();
+    expect(updateAutomationPhase).not.toHaveBeenCalledWith(session.id, 'ready_for_review');
   });
 });

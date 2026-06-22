@@ -4,6 +4,7 @@ import type { IAgentReviewRepository } from '../../db/interfaces/review';
 import type { PlanService } from '../core/PlanService';
 import type { ClaudeUsageService } from '../core/ClaudeUsageService';
 import type { DevSessionService } from '../repo/DevSessionService';
+import type { ReviewService } from '../repo/ReviewService';
 import type { AgentSessionManager, AgentSessionManagerDeps } from './AgentSessionManager';
 import { launchAutoReview } from './autoReview';
 
@@ -12,6 +13,7 @@ const LOG_PREFIX = '[BoardAgentOrchestrator]';
 type DevSessionAutomationService = Pick<
   DevSessionService,
 >;
+type ReviewQueueService = Pick<ReviewService, 'flushQueuedReviewTasks'>;
 
 interface BoardAgentOrchestratorDeps {
   agentReviews: Pick<
@@ -20,6 +22,7 @@ interface BoardAgentOrchestratorDeps {
   >;
   planService: Pick<PlanService, 'updateItem'>;
   getDevSessionService: () => DevSessionAutomationService | null;
+  getReviewService: () => ReviewQueueService | null;
   getAgentSessionManager: () => AgentSessionManager;
   getPromptContent: (key: string) => string;
   claudeUsageService: Pick<ClaudeUsageService, 'recordUsage'>;
@@ -156,6 +159,20 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       if (role === 'implement') {
         // Capture the agent's work onto the task's own branch before anything
         // else, so the isolated branch actually holds the task's commits.
+
+        const reviewService = deps.getReviewService();
+        if (reviewService) {
+          const queuedResult = await reviewService.flushQueuedReviewTasks(implSessionId);
+          if (!queuedResult.ok) {
+            console.error(`${LOG_PREFIX} Failed to flush queued PR review tasks for ${implSessionId}:`, queuedResult.error);
+            devSessionService.updateAutomationPhase(implSessionId, 'needs_attention');
+            return;
+          }
+          if (queuedResult.data.taskIds.length > 0) {
+            console.log(`${LOG_PREFIX} Sent ${queuedResult.data.taskIds.length} queued PR review task(s) to ${implSessionId}`);
+            return;
+          }
+        }
 
           moveSessionPlanItemToReview(implSessionId);
           return;

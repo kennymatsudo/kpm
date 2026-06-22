@@ -91,6 +91,135 @@ function createService(tasks: ReviewTask[]) {
   } as never);
 }
 
+function createReviewSnapshot() {
+  return {
+    prNumber: 42,
+    prUrl: 'https://github.com/acme/repo/pull/42',
+    title: 'Review PR',
+    state: 'OPEN',
+    reviewDecision: 'CHANGES_REQUESTED',
+    headOid: 'head-sha',
+    baseRefName: 'main',
+    headRefName: 'feature/test',
+    fetchedAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    summary: {
+      totalThreads: 1,
+      unresolvedThreads: 1,
+      resolvedThreads: 0,
+      outdatedThreads: 0,
+      actionableThreads: 1,
+      humanThreads: 1,
+      botOnlyThreads: 0,
+      topLevelReviewCount: 0,
+      conversationCommentCount: 0,
+    },
+    threads: [{
+      id: 'thread-1',
+      url: 'https://github.com/acme/repo/pull/42#discussion_r1',
+      path: 'src/file.ts',
+      line: 10,
+      startLine: null,
+      subjectType: 'LINE',
+      diffSide: 'RIGHT',
+      isResolved: false,
+      isOutdated: false,
+      resolvedBy: null,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      participants: ['reviewer'],
+      comments: [{
+        id: 'comment-1',
+        databaseId: 1,
+        url: 'https://github.com/acme/repo/pull/42#discussion_r1',
+        author: 'reviewer',
+        authorType: 'User',
+        authorAssociation: 'MEMBER',
+        body: 'Please fix this',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        replyToId: null,
+        viewerCanUpdate: false,
+        viewerCanDelete: false,
+      }],
+      hasBotOnlyComments: false,
+      hasHumanReviewerComment: true,
+      latestCommentPreview: 'Please fix this',
+    }],
+    topLevelReviews: [],
+    conversationComments: [],
+  };
+}
+
+function createServiceHarness(tasks: ReviewTask[], sessionOverrides: Partial<DevSession> = {}) {
+  const session = createSession();
+  Object.assign(session, sessionOverrides);
+  const syncState = {
+    repo_id: session.repo_id,
+    pr_number: session.pr_number!,
+    session_id: session.id,
+    last_fetched_at: '2026-01-01T00:00:00.000Z',
+    last_successful_fetched_at: '2026-01-01T00:00:00.000Z',
+    last_head_oid: 'head-sha',
+    last_review_decision: 'CHANGES_REQUESTED',
+    last_pr_updated_at: '2026-01-01T00:00:00.000Z',
+    probe_digest: 'digest',
+    last_error: null,
+  };
+  const ownership = {
+    repo_id: session.repo_id,
+    pr_number: session.pr_number!,
+    session_id: session.id,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+  };
+  const gitHubService = {
+    getPrReviewSnapshot: vi.fn().mockResolvedValue({ ok: true, data: createReviewSnapshot() }),
+    buildAddressReviewContext: vi.fn().mockResolvedValue({ ok: true, data: 'THREAD thread-1' }),
+  };
+  const devSessionService = {
+    sendAgentFollowUp: vi.fn().mockResolvedValue({ ok: true, data: { restarted: false } }),
+    updateAutomationPhase: vi.fn(),
+  };
+  const reviewTasks = {
+    getByRepoPr: vi.fn(() => tasks),
+    updateStatus: vi.fn((id: string, status: ReviewTask['status'], meta?: Partial<ReviewTask>) => {
+      const task = tasks.find((candidate) => candidate.id === id);
+      if (!task) return undefined;
+      Object.assign(task, { status, ...meta });
+      return task;
+    }),
+    upsertTask: vi.fn((next: ReviewTask) => {
+      const existing = tasks.find((candidate) => candidate.id === next.id || candidate.thread_id === next.thread_id);
+      if (existing) {
+        Object.assign(existing, next);
+        return existing;
+      }
+      tasks.push(next);
+      return next;
+    }),
+    markResolvedByThread: vi.fn(),
+  };
+  const service = createReviewService({
+    devSessions: {
+      get: vi.fn(() => session),
+      getByProject: vi.fn(() => [session]),
+    },
+    reviewTasks,
+    reviewOwnership: {
+      get: vi.fn(() => ownership),
+      set: vi.fn(() => ownership),
+    },
+    reviewSyncState: {
+      get: vi.fn(() => syncState),
+      upsert: vi.fn(() => syncState),
+      updateError: vi.fn(),
+    },
+    gitHubService,
+    devSessionService,
+  } as never);
+
+  return { service, gitHubService, devSessionService, reviewTasks };
+}
+
 describe('ReviewService', () => {
   it('queues assessed implement tasks for review automation', () => {
     const task = createTask();
@@ -121,5 +250,50 @@ describe('ReviewService', () => {
     if (!result.ok) return;
     expect(result.data).toHaveLength(0);
     expect(task.status).toBe('assessed');
+  });
+
+  it('queues address requests without sending a follow-up while the dev session is active', async () => {
+    const task = createTask();
+    const { service, gitHubService, devSessionService } = createServiceHarness([task], { status: 'active' });
+
+    const result = await service.triggerReviewAutomation('session-1', [task.id]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toMatchObject({ taskIds: [task.id], context: '' });
+    expect(task).toMatchObject({
+      status: 'in_progress',
+      internal_state: 'implementation_queued',
+    });
+    expect(devSessionService.updateAutomationPhase).toHaveBeenCalledWith('session-1', 'addressing_review');
+    expect(gitHubService.buildAddressReviewContext).not.toHaveBeenCalled();
+    expect(devSessionService.sendAgentFollowUp).not.toHaveBeenCalled();
+  });
+
+  it('flushes queued address requests as one merged follow-up', async () => {
+    const first = createTask({
+      id: 'task-1',
+      status: 'in_progress',
+      internal_state: 'implementation_queued',
+    });
+    const second = createTask({
+      id: 'task-2',
+      thread_id: 'thread-2',
+      status: 'in_progress',
+      internal_state: 'implementation_queued',
+    });
+    const { service, gitHubService, devSessionService } = createServiceHarness([first, second]);
+
+    const result = await service.flushQueuedReviewTasks('session-1');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.taskIds).toEqual(['task-1', 'task-2']);
+    expect(gitHubService.buildAddressReviewContext).toHaveBeenCalledWith('session-1', {
+      threadIds: ['thread-1', 'thread-2'],
+    });
+    expect(devSessionService.sendAgentFollowUp).toHaveBeenCalledTimes(1);
+    expect(first.internal_state).toBeNull();
+    expect(second.internal_state).toBeNull();
   });
 });

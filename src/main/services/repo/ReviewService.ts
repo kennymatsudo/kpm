@@ -38,6 +38,11 @@ export interface TriggerReviewAutomationResult {
   context: string;
 }
 
+export interface FlushQueuedReviewTasksResult {
+  taskIds: string[];
+  context: string;
+}
+
 export interface ReplyToThreadResult {
   inbox: ReviewInboxSnapshot;
   replyId: string;
@@ -365,23 +370,55 @@ export function createReviewService(deps: ReviewServiceDeps) {
     return success(queued);
   }
 
+  function getQueuedReviewTasks(sessionId: string): ServiceResult<ReviewTask[]> {
     const sessionResult = getSessionContext(sessionId);
     if (!sessionResult.ok) return sessionResult;
     const session = sessionResult.data;
 
+    return success(deps.reviewTasks
+      .getByRepoPr(session.repo_id, session.pr_number!)
+      .filter((task) =>
+        task.session_id === sessionId
+        && task.status === 'in_progress'
+        && task.internal_state === 'implementation_queued'
+      ));
+  }
 
+  async function sendQueuedReviewTasks(
+    sessionId: string,
+    queuedTasks: ReviewTask[]
+  ): AsyncResult<TriggerReviewAutomationResult> {
+    const sessionResult = getSessionContext(sessionId);
+    if (!sessionResult.ok) return sessionResult;
     if (queuedTasks.length === 0) {
+      const inboxResult = await syncSessionReviewState(sessionId);
+      if (!inboxResult.ok) return inboxResult;
+      return success({ inbox: inboxResult.data, taskIds: [], context: '' });
     }
 
     const threadIds = queuedTasks.map((task) => task.thread_id);
     const contextResult = await deps.gitHubService.buildAddressReviewContext(sessionId, { threadIds });
     if (!contextResult.ok) return contextResult;
 
+    deps.devSessionService.updateAutomationPhase(sessionId, 'addressing_review');
+
     const followUpResult = await deps.devSessionService.sendAgentFollowUp(
       sessionId,
+      buildAutomationPrompt(contextResult.data),
+      { restartIfBusy: false }
     );
     if (!followUpResult.ok) {
       return failure(followUpResult.error);
+    }
+
+    if (followUpResult.data.deferred) {
+      const queuedInbox = await syncSessionReviewState(sessionId);
+      if (!queuedInbox.ok) return queuedInbox;
+      return success({
+        inbox: queuedInbox.data,
+        taskIds: queuedTasks.map((task) => task.id),
+        context: '',
+      });
     }
 
     const now = new Date().toISOString();
@@ -402,6 +439,67 @@ export function createReviewService(deps: ReviewServiceDeps) {
       taskIds: queuedTasks.map((task) => task.id),
       context: contextResult.data,
     });
+  }
+
+  async function flushQueuedReviewTasks(sessionId: string): AsyncResult<FlushQueuedReviewTasksResult> {
+    const queuedResult = getQueuedReviewTasks(sessionId);
+    if (!queuedResult.ok) return queuedResult;
+    const queuedTasks = queuedResult.data;
+    if (queuedTasks.length === 0) {
+      return success({ taskIds: [], context: '' });
+    }
+
+    const sendResult = await sendQueuedReviewTasks(sessionId, queuedTasks);
+    if (!sendResult.ok) return sendResult;
+
+    return success({
+      taskIds: sendResult.data.taskIds,
+      context: sendResult.data.context,
+    });
+  }
+
+  async function triggerReviewAutomation(
+    sessionId: string,
+    taskIds?: string[]
+  ): AsyncResult<TriggerReviewAutomationResult> {
+    const sessionResult = getSessionContext(sessionId);
+    if (!sessionResult.ok) return sessionResult;
+    const session = sessionResult.data;
+
+    const ownership = deps.reviewOwnership.get(session.repo_id, session.pr_number!);
+    if (ownership && ownership.session_id !== sessionId) {
+      return failure(`Review handling for this PR is owned by session ${ownership.session_id}`);
+    }
+
+    const inboxResult = await syncSessionReviewState(sessionId);
+    if (!inboxResult.ok) return inboxResult;
+    const inbox = inboxResult.data;
+
+    const queueResult = queueReviewTasks(sessionId, taskIds);
+    if (!queueResult.ok) return queueResult;
+    const queuedTasks = queueResult.data;
+    if (queuedTasks.length === 0) {
+      return success({ inbox, taskIds: [], context: '' });
+    }
+
+    deps.devSessionService.updateAutomationPhase(sessionId, 'addressing_review');
+
+    if (session.status === 'active') {
+      const queuedInbox = await syncSessionReviewState(sessionId);
+      if (!queuedInbox.ok) return queuedInbox;
+      return success({
+        inbox: queuedInbox.data,
+        taskIds: queuedTasks.map((task) => task.id),
+        context: '',
+      });
+    }
+
+    const sendResult = await sendQueuedReviewTasks(sessionId, queuedTasks);
+    if (!sendResult.ok) {
+      deps.devSessionService.updateAutomationPhase(sessionId, 'needs_attention');
+      return sendResult;
+    }
+    return sendResult;
   }
 
   async function replyToThread(
@@ -542,6 +640,7 @@ export function createReviewService(deps: ReviewServiceDeps) {
     getReviewInbox,
     assignOwnership,
     queueReviewTasks,
+    flushQueuedReviewTasks,
     triggerReviewAutomation,
     replyToThread,
     resolveThread,

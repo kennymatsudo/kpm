@@ -1080,6 +1080,8 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     async sendAgentFollowUp(
       sessionId: string,
       text: string,
+      options?: { restartIfBusy?: boolean },
+    ): AsyncResult<{ restarted: boolean; deferred?: boolean }> {
       try {
         if (!deps.agentSessionManager) {
           return failure('Agent session manager is not available');
@@ -1094,6 +1096,10 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           } catch (followUpError) {
             // followUp() rejects when the session is in a non-terminal state (e.g. 'working').
             // This can happen if the session was resumed externally. Fall through to restart.
+            const followUpMessage = followUpError instanceof Error ? followUpError.message : String(followUpError);
+            if (options?.restartIfBusy === false && followUpMessage.startsWith('Cannot follow up in state:')) {
+              return success({ restarted: false, deferred: true });
+            }
             console.warn(`[DevSessionService] followUp() failed for ${sessionId}, will restart:`, followUpError);
           }
         }

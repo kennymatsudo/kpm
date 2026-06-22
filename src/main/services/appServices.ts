@@ -103,6 +103,7 @@ export function createAppServices(container: IRepositoryContainer) {
     queueTrackerUpdateIfNeeded(item, updates, queuedBy, planItemServiceDeps);
   };
   let devSessionServiceRef: ReturnType<typeof createRepoServices>['devSessionService'] | null = null;
+  let reviewServiceRef: ReturnType<typeof createRepoServices>['reviewService'] | null = null;
 
   const requestPlanRefresh = (projectId: string) => {
     broadcastToWindows('plan:refresh-requested', { projectId });
@@ -272,6 +273,7 @@ export function createAppServices(container: IRepositoryContainer) {
     agentReviews: container.agentReviews,
     planService,
     getDevSessionService: () => devSessionServiceRef,
+    getReviewService: () => reviewServiceRef,
     getAgentSessionManager: () => {
       if (!agentSessionManagerRef) {
         throw new Error('Agent session manager is not initialized');
@@ -339,6 +341,7 @@ export function createAppServices(container: IRepositoryContainer) {
     fileSummaryService,
   });
   devSessionServiceRef = devSessionService;
+  reviewServiceRef = reviewService;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Review Poll Service (background polling for PR comments)
