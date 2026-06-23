@@ -367,7 +367,9 @@ export const BoardView = memo(function BoardView({
   return (
     <div
       ref={boardRef}
+      className="relative flex h-full overflow-hidden bg-surface-0"
     >
+      {/* Board area */}
       <div className="flex-1 flex flex-col min-w-0">
       {/* Header with column toggles */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-surface-0">
@@ -455,7 +457,14 @@ export const BoardView = memo(function BoardView({
 
       </div>
 
+      {/* Detail pane overlays the board instead of resizing columns. */}
       {detailSession && (
+        <div className="absolute inset-y-0 right-0 z-30 w-[min(480px,calc(100%-2rem))] shadow-xl">
+          <DetailPane
+            session={detailSession}
+            onClose={() => onDetailSessionChange(null)}
+          />
+        </div>
       )}
 
     </div>

@@ -26,6 +26,11 @@ import type {
   RepoEnvironmentMode,
 } from '../../../shared/types';
 
+const SELECT_TRIGGER_CLASS =
+  'flex h-10 min-w-0 w-full items-center justify-between gap-2 rounded-lg border border-border-subtle bg-surface-1 px-2.5 py-2 text-left text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50';
+
+const SELECT_VALUE_CLASS = 'block min-w-0 flex-1 truncate text-left';
+
 const EFFORT_OPTIONS: { value: AgentEffortLevel; label: string; title: string }[] = [
   { value: 'high', label: 'High', title: 'Deep thinking for complex tasks' },
   { value: 'xhigh', label: 'XHigh', title: 'Extended thinking for workflow runs' },
@@ -225,6 +230,7 @@ export const AgentStartModal = memo(function AgentStartModal({
       isOpen
       onClose={onClose}
       size="3xl"
+      className="flex h-[calc(100vh-2rem)] max-h-[860px] flex-col overflow-hidden sm:h-[min(88vh,860px)]"
     >
       <ModalHeader
         onClose={onClose}
@@ -235,6 +241,11 @@ export const AgentStartModal = memo(function AgentStartModal({
       </ModalHeader>
 
       <ModalBody className="flex-1 min-h-0 overflow-hidden p-0">
+        <div
+          className="grid h-full min-h-0 grid-rows-[minmax(0,0.48fr)_minmax(0,0.52fr)] lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.1fr)] lg:grid-rows-none"
+          onKeyDown={handleKeyDown}
+        >
+          <div className="min-h-0 min-w-0 overflow-y-auto border-b border-border-subtle p-5 lg:border-r lg:border-b-0">
             <div className="space-y-4">
               <div className="rounded-xl border border-border-subtle bg-surface-1 p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
@@ -291,12 +302,18 @@ export const AgentStartModal = memo(function AgentStartModal({
             </div>
           </div>
 
+          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden p-5">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 {repos.length > 1 && (
+                  <div className="min-w-0">
                     <label className="mb-1 block text-tiny text-text-muted">Repository</label>
                     <Select value={selectedRepoId} onValueChange={setSelectedRepoId}>
                       <SelectTrigger
                         aria-label="Repository"
+                        className={SELECT_TRIGGER_CLASS}
                       >
+                        <SelectValue className={SELECT_VALUE_CLASS} />
                         <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
@@ -312,6 +329,7 @@ export const AgentStartModal = memo(function AgentStartModal({
                   </div>
                 )}
 
+                <div className={`min-w-0 ${repos.length > 1 ? '' : 'sm:col-span-2'}`}>
                   <label className="mb-1 block text-tiny text-text-muted">Base branch</label>
                   {loadingBranches ? (
                     <div className="w-full rounded-lg border border-border-subtle bg-surface-1 px-2.5 py-2 text-sm text-text-muted">
@@ -336,7 +354,12 @@ export const AgentStartModal = memo(function AgentStartModal({
                     >
                       <SelectTrigger
                         aria-label="Base branch"
+                        className={SELECT_TRIGGER_CLASS}
                       >
+                        <SelectValue
+                          className={SELECT_VALUE_CLASS}
+                          placeholder={branches.length === 0 ? 'No branches found' : 'Select a branch'}
+                        />
                         <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
@@ -507,16 +530,23 @@ export const AgentStartModal = memo(function AgentStartModal({
         </div>
       </ModalBody>
 
+      <ModalFooter className="sticky bottom-0 z-20 min-w-0 shrink-0 flex-wrap bg-surface-2/95 backdrop-blur-sm">
+        <span
+          className="min-w-0 flex-1 truncate pr-2 text-tiny text-text-muted"
+          title={selectedRepo ? `${selectedRepo.path.split('/').pop()}${selectedBranch ? ` · ${selectedBranch}` : ''}` : ''}
+        >
           {selectedRepo ? `${selectedRepo.path.split('/').pop()}${selectedBranch ? ` · ${selectedBranch}` : ''}` : ''}
         </span>
         <button
           onClick={onClose}
+          className="shrink-0 px-3 py-1.5 rounded-lg text-sm text-text-secondary hover:bg-surface-3 transition-colors"
         >
           Cancel
         </button>
         {onMoveOnly && (
           <button
             onClick={onMoveOnly}
+            className="shrink-0 px-3 py-1.5 rounded-lg text-sm text-text-secondary border border-border-subtle hover:bg-surface-3 transition-colors"
           >
             Just move
           </button>
@@ -528,6 +558,7 @@ export const AgentStartModal = memo(function AgentStartModal({
             px-4 py-1.5 rounded-lg text-sm font-medium
             bg-accent text-white hover:bg-accent/90
             disabled:opacity-50 disabled:cursor-not-allowed
+            transition-colors flex shrink-0 items-center gap-2
           "
         >
           {isStarting ? (

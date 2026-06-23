@@ -176,6 +176,7 @@ export const BoardColumn = memo(function BoardColumn({
   return (
     <div
       className={`
+        flex flex-col flex-1 min-w-64 overflow-hidden bg-surface-1 border border-border-subtle rounded-[10px]
         transition-[background-color,box-shadow] duration-150
         ${isDragOver && draggedItemId ? 'ring-2 ring-accent ring-inset bg-accent/5' : ''}
       `}
@@ -192,6 +193,7 @@ export const BoardColumn = memo(function BoardColumn({
 
       {/* Scrollable cards container */}
       <div
+        className="min-h-[100px] min-w-0 flex-1 space-y-2 overflow-y-auto p-2"
         onClick={handleColumnClick}
       >
         {treeNodes.map((node) => (

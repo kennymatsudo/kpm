@@ -111,14 +111,18 @@ export const CardActivityLine = memo(function CardActivityLine({
     );
   }
 
+  if (phaseLabel) {
     return (
+      <div className="mt-1.5 flex min-w-0 items-center gap-1.5 truncate text-tiny text-text-muted">
         {phaseBusy ? (
+          <svg className="h-3 w-3 shrink-0 animate-spin text-accent" viewBox="0 0 16 16" fill="none">
             <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.3" />
             <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
         ) : (
           <span className={`h-2 w-2 shrink-0 rounded-full bg-current ${phaseToneClass(phaseTone)}`} />
         )}
+        <span className={`min-w-0 truncate font-medium ${phaseToneClass(phaseTone)}`}>{phaseLabel}</span>
       </div>
     );
   }
@@ -126,6 +130,7 @@ export const CardActivityLine = memo(function CardActivityLine({
   // Starting state (no activity yet)
   if (agentState === 'starting' && !activity) {
     return (
+      <div className="mt-1.5 flex min-w-0 items-center gap-1.5 truncate text-tiny text-text-muted">
         <svg className="w-3 h-3 animate-spin text-accent shrink-0" viewBox="0 0 16 16" fill="none">
           <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.3" />
           <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -139,6 +144,7 @@ export const CardActivityLine = memo(function CardActivityLine({
   if (!activity) return null;
 
   return (
+    <div className="mt-1.5 flex min-w-0 items-center gap-1.5 truncate text-tiny text-text-muted">
       <span className="shrink-0">
         {phaseBusy || (activity.status === 'running' && isSessionLive) ? (
           <svg className="w-3 h-3 animate-spin text-accent" viewBox="0 0 16 16" fill="none">
@@ -149,6 +155,7 @@ export const CardActivityLine = memo(function CardActivityLine({
           <ActivityIcon type={activity.type} status={activity.status} />
         )}
       </span>
+      <span className="min-w-0 truncate">{activity.summary}</span>
     </div>
   );
 });
