@@ -1021,6 +1021,7 @@ export interface PrStatus {
   url: string;
   state: 'OPEN' | 'CLOSED' | 'MERGED';
   reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null;
+  baseRefName?: string | null;
   checksStatus: 'SUCCESS' | 'FAILURE' | 'PENDING' | null;
   additions: number;
   deletions: number;

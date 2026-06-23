@@ -357,8 +357,10 @@ export function createAppServices(container: IRepositoryContainer) {
     reviewAssessmentService,
     devSessionService,
     gitHubService,
+    planService,
     agentSessionManager,
     broadcastToWindows,
+    requestPlanRefresh,
     scheduler: pollScheduler,
     eventBus: updateEventBus,
   });

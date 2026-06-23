@@ -40,6 +40,7 @@ export interface GhPrStatus {
   url: string;
   state: 'OPEN' | 'CLOSED' | 'MERGED';
   reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null;
+  baseRefName: string | null;
   checksStatus: 'SUCCESS' | 'FAILURE' | 'PENDING' | null;
   additions: number;
   deletions: number;
@@ -213,6 +214,7 @@ export async function getPrForBranch(
     const { stdout } = await ghExec(
       [
         'pr', 'view', branch,
+        '--json', 'number,url,state,reviewDecision,baseRefName,statusCheckRollup,additions,deletions,mergeable',
       ],
       { cwd }
     );
@@ -235,6 +237,7 @@ export async function getPrByNumber(
     const { stdout } = await ghExec(
       [
         'pr', 'view', String(prNumber),
+        '--json', 'number,url,state,reviewDecision,baseRefName,statusCheckRollup,additions,deletions,mergeable',
       ],
       { cwd }
     );
@@ -1007,6 +1010,7 @@ function parsePrViewOutput(stdout: string): GhPrStatus {
     url: string;
     state: string;
     reviewDecision: string;
+    baseRefName?: string | null;
     statusCheckRollup: { state: string }[] | null;
     additions: number;
     deletions: number;
@@ -1030,6 +1034,7 @@ function parsePrViewOutput(stdout: string): GhPrStatus {
     url: raw.url,
     state: raw.state as GhPrStatus['state'],
     reviewDecision: (raw.reviewDecision || null) as GhPrStatus['reviewDecision'],
+    baseRefName: raw.baseRefName ?? null,
     checksStatus,
     additions: raw.additions,
     deletions: raw.deletions,

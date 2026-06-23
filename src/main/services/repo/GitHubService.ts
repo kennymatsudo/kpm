@@ -377,6 +377,9 @@ ${input.commitLog || 'No commit log provided.'}`;
       const { repoPath, session } = resolved;
 
       try {
+        const status = session.pr_number
+          ? await getPrByNumber(repoPath, session.pr_number)
+          : await getPrForBranch(repoPath, session.branch_name);
         if (!status) return success(null);
 
         // Update cached state on the session

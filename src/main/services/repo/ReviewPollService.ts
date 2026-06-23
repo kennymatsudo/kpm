@@ -24,12 +24,14 @@ import type {
   IReviewSyncStateRepository,
   IReviewTaskRepository,
 } from '../../db/interfaces';
+import type { DevSession, PrReviewSnapshot, ReviewActionableSummary } from '../../../shared/types';
 import { getConfig } from '../../config';
 import { buildAutomationPrompt } from './ReviewService';
 import type { ReviewService } from './ReviewService';
 import type { ReviewAssessmentService } from './ReviewAssessmentService';
 import type { DevSessionService } from './DevSessionService';
 import type { GitHubService } from './GitHubService';
+import type { PlanService } from '../core/PlanService';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
 import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import type { UpdateEventBus } from '../core/UpdateEventBus';
@@ -48,8 +50,10 @@ export interface ReviewPollServiceDeps {
   reviewAssessmentService: ReviewAssessmentService;
   devSessionService: DevSessionService;
   gitHubService: GitHubService;
+  planService: Pick<PlanService, 'updateItem'>;
   agentSessionManager: AgentSessionManager;
   broadcastToWindows: (channel: string, payload: unknown) => void;
+  requestPlanRefresh: (projectId: string) => void;
   scheduler: PollScheduler;
   eventBus: UpdateEventBus;
 }
@@ -59,12 +63,14 @@ export interface PollTickSummary {
   fixesStarted: number;
   assessmentsRun: number;
   needsAttention: number;
+  completed: number;
   errors: number;
   timestamp: string;
 }
 
 export interface PollSessionResult {
   sessionId: string;
+  action: 'synced' | 'assessed' | 'fix_started' | 'needs_attention' | 'completed' | 'skipped' | 'error';
   newThreadCount: number;
   implementCount: number;
   error?: string;
@@ -75,6 +81,7 @@ export interface PollSessionResult {
 // =============================================================================
 
 const TASK_ID = 'review-poll';
+const COMPLETION_BASE_BRANCHES = new Set(['main', 'master']);
 
 // =============================================================================
 // Service Factory
@@ -163,6 +170,20 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
     return state === 'complete' || state === 'failed' || state === 'stopped';
   }
 
+  function normalizeBaseRefName(refName: string | null | undefined): string | null {
+    const normalized = refName
+      ?.trim()
+      .replace(/^refs\/heads\//, '')
+      .replace(/^origin\//, '')
+      .toLowerCase();
+    return normalized || null;
+  }
+
+  function isCompletionBaseBranch(refName: string | null | undefined): boolean {
+    const normalized = normalizeBaseRefName(refName);
+    return normalized != null && COMPLETION_BASE_BRANCHES.has(normalized);
+  }
+
   function shouldSkipForBackoff(sessionId: string): boolean {
     const remaining = errorBackoff.get(sessionId);
     if (remaining == null || remaining <= 0) {
@@ -203,6 +224,130 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
     deps.broadcastToWindows('review-poll:actionable', summary);
   }
 
+  function closeReviewTasksForMergedPr(session: DevSession): void {
+    if (session.pr_number == null) return;
+    const tasks = deps.reviewTasks.getByRepoPr(session.repo_id, session.pr_number);
+    const completedAt = new Date().toISOString();
+    for (const task of tasks) {
+      if (task.session_id !== session.id) continue;
+      if (task.status === 'done' && task.internal_state == null && task.error == null) continue;
+      deps.reviewTasks.updateStatus(task.id, 'done', {
+        internal_state: null,
+        error: null,
+        completed_at: completedAt,
+      });
+    }
+  }
+
+  async function getMergedBaseRefName(
+    session: DevSession,
+    snapshot: PrReviewSnapshot | null
+  ): Promise<{ ok: true; merged: boolean; baseRefName: string | null } | { ok: false; error: string }> {
+    if (snapshot) {
+      return {
+        ok: true,
+        merged: snapshot.state === 'MERGED',
+        baseRefName: snapshot.baseRefName,
+      };
+    }
+
+    if (session.pr_state !== 'MERGED') {
+      return { ok: true, merged: false, baseRefName: null };
+    }
+
+    const statusResult = await deps.gitHubService.getPrStatus(session.id);
+    if (!statusResult.ok) {
+      return { ok: false, error: statusResult.error };
+    }
+
+    const status = statusResult.data;
+    return {
+      ok: true,
+      merged: status?.state === 'MERGED',
+      baseRefName: status?.baseRefName ?? session.base_branch,
+    };
+  }
+
+  async function completeMergedPrIfNeeded(
+    session: DevSession,
+    snapshot: PrReviewSnapshot | null
+  ): Promise<PollSessionResult | null> {
+    if (!session.plan_item_id || session.pr_number == null) return null;
+
+    const mergedTarget = await getMergedBaseRefName(session, snapshot);
+    if (!mergedTarget.ok) {
+      applyBackoff(session.id);
+      return {
+        sessionId: session.id,
+        action: 'error',
+        newThreadCount: 0,
+        implementCount: 0,
+        error: mergedTarget.error,
+      };
+    }
+
+    if (!mergedTarget.merged || !isCompletionBaseBranch(mergedTarget.baseRefName)) {
+      return null;
+    }
+
+    const planItem = deps.planItems.get(session.plan_item_id);
+    if (!planItem) {
+      return {
+        sessionId: session.id,
+        action: 'error',
+        newThreadCount: 0,
+        implementCount: 0,
+        error: `Plan item not found: ${session.plan_item_id}`,
+      };
+    }
+
+    if (planItem.status_category === 'done') {
+      closeReviewTasksForMergedPr(session);
+      return { sessionId: session.id, action: 'completed', newThreadCount: 0, implementCount: 0 };
+    }
+
+      return null;
+    }
+
+    const updateResult = deps.planService.updateItem(session.plan_item_id, { status_category: 'done' });
+    if (!updateResult.ok) {
+      applyBackoff(session.id);
+      return {
+        sessionId: session.id,
+        action: 'error',
+        newThreadCount: 0,
+        implementCount: 0,
+        error: updateResult.error,
+      };
+    }
+
+    closeReviewTasksForMergedPr(session);
+    resetQuiet(session.id);
+    errorBackoff.delete(session.id);
+
+    const baseRefName = normalizeBaseRefName(mergedTarget.baseRefName) ?? mergedTarget.baseRefName ?? 'main';
+    deps.eventBus.emit({
+      kind: 'pr_changed',
+      source: 'github',
+      detectedAt: new Date().toISOString(),
+      sessionId: session.id,
+      prNumber: session.pr_number,
+      repoId: session.repo_id,
+      change: 'merged',
+      summary: `PR #${session.pr_number} merged into ${baseRefName}; moved plan item to Done`,
+    });
+
+    deps.broadcastToWindows('review-poll:completed', {
+      sessionId: session.id,
+      planItemId: session.plan_item_id,
+      prNumber: session.pr_number,
+      baseRefName,
+    });
+    deps.requestPlanRefresh(session.project_id);
+
+    return { sessionId: session.id, action: 'completed', newThreadCount: 0, implementCount: 0 };
+  }
+
   // ---------------------------------------------------------------------------
   // Per-Session Processing
   // ---------------------------------------------------------------------------
@@ -222,6 +367,11 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       if (!syncResult.ok) {
         applyBackoff(sessionId);
         return { sessionId, action: 'error', newThreadCount: 0, implementCount: 0, error: syncResult.error };
+      }
+
+      const completionResult = await completeMergedPrIfNeeded(session, syncResult.data.snapshot);
+      if (completionResult) {
+        return completionResult;
       }
 
       const tasks = deps.reviewTasks.getByRepoPr(session.repo_id, session.pr_number!);
@@ -361,6 +511,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       fixesStarted: 0,
       assessmentsRun: 0,
       needsAttention: 0,
+      completed: 0,
       errors: 0,
       timestamp: new Date().toISOString(),
     };
@@ -385,6 +536,9 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         case 'needs_attention':
           summary.needsAttention++;
           summary.assessmentsRun++;
+          break;
+        case 'completed':
+          summary.completed++;
           break;
         case 'error':
           summary.errors++;
@@ -417,9 +571,11 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         }
         const message =
           `${summary.processed} processed, ${summary.fixesStarted} fix(es), ` +
+          `${summary.assessmentsRun} assessed, ${summary.completed} completed, ${summary.errors} error(s)`;
         ctx.logger.info(message, {
           processed: summary.processed,
           fixesStarted: summary.fixesStarted,
+          completed: summary.completed,
           errors: summary.errors,
         });
         return {
