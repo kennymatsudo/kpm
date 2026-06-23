@@ -2,6 +2,7 @@
  * GitHub Integration Tools
  *
  * Phase 1: PR description generation using project context.
+ * Generates high-quality PR descriptions by combining net git diff, commit log,
  * plan item context, and cross-repo awareness.
  */
 
@@ -93,8 +94,13 @@ Requires at least a plan_item_id (to find the repo and context) or a repo_id.`,
           }
 
           if (diff.trim()) {
+            sections.push(`Net Diff (authoritative current PR contents):\nDescribe the final branch state, not the sequence of intermediate commits.\n\n\`\`\`diff\n${diff}\n\`\`\``);
           } else {
             sections.push('No changes detected in diff.');
+          }
+
+          if (commitLog) {
+            sections.push(`Commit History (secondary chronology only):\nUse this for intent and grouping. Do not report reverted or abandoned approaches unless they remain in the net diff.\n\n\`\`\`\n${commitLog}\n\`\`\``);
           }
 
           // Plan item context
@@ -143,6 +149,7 @@ Requires at least a plan_item_id (to find the repo and context) or a repo_id.`,
             branch: currentBranch,
             baseBranch,
             context: sections.join('\n\n---\n\n'),
+            instruction: 'Use the net diff above as the source of truth for the PR description. Be concise, focus on the final behavior and why it matters. Use commit history only for intent/grouping, and reference the plan item/ticket if available.',
           });
         } catch (error) {
           return toolError(error instanceof Error ? error.message : String(error));

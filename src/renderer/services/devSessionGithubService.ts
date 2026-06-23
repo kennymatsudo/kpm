@@ -19,6 +19,8 @@ export function generateSessionPrContent(
   title: string,
   body: string,
   prTemplate: string | null,
+  diff: string,
+  commitLog: string,
   featureContextPath?: string | null
 ) {
   return window.api.github.generatePrContent(
@@ -26,6 +28,8 @@ export function generateSessionPrContent(
     title,
     body,
     prTemplate,
+    diff,
+    commitLog,
     featureContextPath
   );
 }

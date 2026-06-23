@@ -214,6 +214,7 @@ export function createGitHubService(deps: GitHubServiceDeps) {
 
     const prompt = `Extract high-level feature context for a PR description.
 
+Use the attached project document to infer the larger user-facing feature or workflow being built. Use the task and net diff to identify the role of this specific PR inside that feature. The commit history is secondary chronology only; do not describe abandoned or reverted approaches unless they are still visible in the net diff or explain a reviewer-relevant risk. Do not require or assume a manually written summary from the user.
 
 Return 3-6 concise bullets. Cover only what is supported by the inputs:
 - Larger user-facing feature or workflow goal
@@ -234,7 +235,15 @@ ${taskParts.join('\n') || 'No task context provided.'}
 [REFERENCE - Branch]
 ${input.branchName} -> ${input.baseBranch}
 
+[REFERENCE - Net Diff]
+Authoritative current PR contents compared with ${input.baseBranch}. Describe the final branch state, not the sequence of intermediate commits.
 
+${truncatedDiff || 'No diff provided.'}
+
+[REFERENCE - Commit History]
+Secondary chronology for intent and grouping only. Do not report reverted or abandoned approaches unless they remain in the net diff.
+
+${input.commitLog || 'No commit log provided.'}`;
 
     const sdkModel = getConfig().generation.fastModel;
     const result = await runClaudeQuery({
@@ -624,6 +633,11 @@ ${input.branchName} -> ${input.baseBranch}
           const truncatedDiff = sessionDiff.length > 40_000
             ? sessionDiff.slice(0, 40_000) + '\n\n... (diff truncated)'
             : sessionDiff;
+          contextParts.push(`[REFERENCE — Net Diff]\nAuthoritative current PR contents compared with ${baseBranch}. Describe the final branch state, not the sequence of intermediate commits.\n\n${truncatedDiff}`);
+        }
+
+        if (sessionCommitLog) {
+          contextParts.push(`[REFERENCE — Commit History]\nSecondary chronology for intent and grouping only. Do not report reverted or abandoned approaches unless they remain in the net diff.\n\n${sessionCommitLog}`);
         }
 
           ? `Your description MUST use the repository's PR template below as its skeleton. Use the template's section headings, in the template's order, and no others — with one exception: a brief lead overview paragraph (see below) may precede the first template heading.

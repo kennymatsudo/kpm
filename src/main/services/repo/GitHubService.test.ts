@@ -134,6 +134,12 @@ describe('GitHubService PR generation', () => {
     expect(prompt).toContain('Intent: Persist attachment authorization state for the upload lifecycle.');
     expect(prompt).toContain('- Finalize validates supported image MIME types before making an attachment available.');
     expect(prompt).toContain('+new committed behavior');
+    const netDiffIndex = prompt.indexOf('[REFERENCE — Net Diff]');
+    const commitHistoryIndex = prompt.indexOf('[REFERENCE — Commit History]');
+    expect(netDiffIndex).toBeGreaterThan(-1);
+    expect(commitHistoryIndex).toBeGreaterThan(netDiffIndex);
+    expect(prompt).toContain('Authoritative current PR contents compared with main');
+    expect(prompt).toContain('Secondary chronology for intent and grouping only');
   });
 
   it('uses an optional feature context document as reviewer context', async () => {
@@ -172,6 +178,9 @@ describe('GitHubService PR generation', () => {
     const extractionPrompt = runClaudeQueryMock.mock.calls[0][0].prompt as string;
     expect(extractionPrompt).toContain('[REFERENCE - Feature Document]');
     expect(extractionPrompt).toContain('docs/support-attachments.md');
+    expect(extractionPrompt.indexOf('[REFERENCE - Net Diff]')).toBeLessThan(
+      extractionPrompt.indexOf('[REFERENCE - Commit History]')
+    );
     const finalPrompt = runClaudeQueryMock.mock.calls[1][0].prompt as string;
     expect(finalPrompt).toContain('[REFERENCE — Feature Context]');
     expect(finalPrompt).toContain('decouple attachment byte storage');
