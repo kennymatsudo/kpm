@@ -47,6 +47,15 @@ files:
   - "!node_modules/node-pty/prebuilds/win32-arm64/**"
   - "!node_modules/node-pty/prebuilds/win32-x64/**"
 
+# Runtime Dock-icon variants. The bundled app icon comes from assets/icon.icns
+# (light/default); these PNGs are read at runtime to swap the Dock tile to match
+# the macOS light/dark appearance. Copied to Contents/Resources (process.resourcesPath).
+extraResources:
+  - from: assets/icon.png
+    to: icon.png
+  - from: assets/icon-dark.png
+    to: icon-dark.png
+
 # Native modules need to be unpacked from ASAR for proper loading
 asar: true
 asarUnpack:

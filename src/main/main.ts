@@ -1,3 +1,4 @@
+import { app, BrowserWindow, dialog, screen } from 'electron';
 import path from 'path';
 import { execSync } from 'child_process';
 import { initDatabase } from './db';
@@ -13,6 +14,7 @@ import type { AppServices } from './services/appServices';
 import { default as installExtension, REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
 import { createMainWindowManager } from './bootstrap/windowManager';
 import { buildApplicationMenu } from './bootstrap/menu';
+import { applyDockIcon, watchSystemAppearance } from './bootstrap/dockIcon';
 
 // Fix PATH for production builds launched from Finder
 // macOS GUI apps get minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin), which
@@ -48,6 +50,11 @@ app.setName('KPM');
 // Fix PATH immediately at startup
 fixPath();
 
+// Set the Dock icon to match the current macOS appearance, synchronously at
+// module load so the tile is already correct by the time it appears (in dev the
+// running binary is the system Electron, which would otherwise flash its own
+// logo). Tracks the system light/dark setting, not KPM's in-app theme.
+applyDockIcon();
 
 // Probe Claude reachability once after PATH fixup. Cached so any IPC handler
 // or service can inspect it without re-walking the filesystem.
@@ -152,6 +159,8 @@ void app.whenReady().then(async () => {
 
   registerAllIpcHandlers(getMainWindow, services);
   createWindow();
+  // Keep the Dock icon following the macOS light/dark setting while running.
+  watchSystemAppearance();
   buildApplicationMenu({
     getMainWindow,
     getRecentProjects: () => getRuntimeRepositories().projects.list(),
