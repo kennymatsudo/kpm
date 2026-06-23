@@ -226,6 +226,10 @@ describe('permissions', () => {
 
         const result = await handler('Bash', { command: 'git log --oneline' }, createTestOptions());
       });
+
+      });
+
+      });
     });
 
     describe('unknown tools', () => {
