@@ -755,6 +755,7 @@ function DetailPanel({
 }: DetailPanelProps) {
   const isCreate = item.queueEntry.operation === 'create';
   const hasErrors = item.validationErrors.length > 0;
+  const descriptionForReview = item.resolvedDescription ?? item.planItem.description;
   const [customFieldsExpanded, setCustomFieldsExpanded] = useState(true);
 
   // Get the default value for a field (project-wide defaults)
@@ -864,11 +865,13 @@ function DetailPanel({
             <div className="p-3 rounded-lg bg-surface-1 border border-border-subtle max-h-48 overflow-y-auto">
               {isCreate ? (
                 <span className="font-mono text-xs text-text-secondary whitespace-pre-wrap break-words leading-relaxed">
+                  {descriptionForReview || <span className="text-text-tertiary italic">No description</span>}
                 </span>
               ) : item.diffs?.description?.hasChanges ? (
                 <DiffRenderer diff={item.diffs.description} className="text-xs" />
               ) : (
                 <span className="font-mono text-xs text-text-muted whitespace-pre-wrap break-words leading-relaxed">
+                  {descriptionForReview || <span className="text-text-tertiary italic">No description</span>}
                 </span>
               )}
             </div>

@@ -56,6 +56,7 @@ function createReviewItem(planItemId: string, queueEntryId: string): SyncReviewI
     },
     resolvedType: { id: 'epic', name: 'Epic' },
     resolvedParent: null,
+    resolvedDescription: null,
     validationErrors: [],
     jiraCurrent: null,
     diffs: null,

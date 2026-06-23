@@ -636,6 +636,8 @@ export interface ExportPreviewItem {
     name: string;
   } | null;
   resolvedParent: string | null;
+  /** Description after export-boundary @plan resolution, matching the tracker payload. */
+  resolvedDescription: string | null;
   validationErrors: string[];
 }
 

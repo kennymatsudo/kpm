@@ -80,6 +80,19 @@ function trackerLabelFor(type: TrackerType): string {
   return type === 'linear' ? 'Linear' : 'Jira';
 }
 
+function refDestinationForTracker(type: TrackerType): RefDestination {
+  return type === 'jira' ? 'jira' : 'linear';
+}
+
+function resolveExportDescription(
+  description: string | null | undefined,
+  planItems: readonly PlanItem[],
+  trackerType: TrackerType
+): string | null {
+  if (!description) return null;
+  return resolvePlanRefs(description, planItems, refDestinationForTracker(trackerType));
+}
+
 /**
  * Service for exporting KPM plan items to Jira.
  * Manages the sync queue and executes the export.
@@ -331,6 +344,7 @@ export function createExportService(deps: ExportServiceDeps) {
           planItem: { id: entry.plan_item_id } as PlanItem, // Minimal placeholder
           resolvedType: null,
           resolvedParent: null,
+          resolvedDescription: null,
           validationErrors: ['Plan item not found'],
         });
         canProceed = false;
@@ -403,6 +417,7 @@ export function createExportService(deps: ExportServiceDeps) {
         planItem,
         resolvedType,
         resolvedParent,
+        resolvedDescription: resolveExportDescription(planItem.description, allItems, association.tracker_type),
         validationErrors,
       });
     }
@@ -779,11 +794,17 @@ export function createExportService(deps: ExportServiceDeps) {
         // tracker so the description never lands as literal `@plan/<uuid>` text
         // in Jira/Linear. Linked items become tracker-key links; unlinked
         // items degrade to the title.
+        const resolvedDescription = resolveExportDescription(
+          planItem.description,
+          allItems,
+          association.tracker_type
+        );
 
         const created = await client.createIssue({
           projectKey: association.project_key,
           issueTypeId: entry.target_issue_type_id!,
           summary: planItem.title,
+          description: resolvedDescription ?? undefined,
           parentKey,
           customFields,
           linearProjectId,
@@ -890,8 +911,14 @@ export function createExportService(deps: ExportServiceDeps) {
         // Sync boundary: same rule as createIssue above — spec fields are local-only.
         // Do not add `intent`, `acceptance_criteria`, or `source_document_id` to this payload.
         // Plan refs in the description are resolved to native syntax for the tracker.
+        const updateResolvedDescription = resolveExportDescription(
+          planItem.description,
+          allItems,
+          association.tracker_type
+        );
         await client.updateIssue(planItem.external_key!, {
           summary: planItem.title,
+          description: updateResolvedDescription ?? '',
           customFields: overrideFields,
         });
 
