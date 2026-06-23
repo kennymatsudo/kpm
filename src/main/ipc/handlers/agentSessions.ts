@@ -355,4 +355,16 @@ export function registerAgentSessionHandlers(
       'Failed to get commit files'
     )
   );
+
+  // Dismiss an "Automation interrupted" banner without re-running or committing
+  ipcMain.handle(
+    IPC_CHANNELS.agentSession.dismissInterruption,
+    createIpcHandler(
+      AgentSessionSchemas.dismissInterruption,
+      ({ devSessionId }) => {
+        devSessionService.dismissAutomationInterruption(devSessionId);
+      },
+      'Failed to dismiss automation interruption'
+    )
+  );
 }

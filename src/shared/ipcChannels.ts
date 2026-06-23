@@ -555,6 +555,7 @@ export const IPC_CHANNELS = {
     commit: 'agent-session:commit',
     getCommitLog: 'agent-session:get-commit-log',
     getCommitFiles: 'agent-session:get-commit-files',
+    dismissInterruption: 'agent-session:dismiss-interruption',
   },
 
   // ===========================================================================

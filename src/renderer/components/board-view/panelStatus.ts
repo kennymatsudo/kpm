@@ -55,6 +55,7 @@ export type PanelActionId =
   | 'stop'
   | 'retry'
   | 'resume'
+  | 'dismiss'
   | 'follow_up'
   | 'ready_for_review'
   | 'run_review'
@@ -80,6 +81,12 @@ export interface NextAction {
   busy?: boolean;
   primary?: NextActionButton;
   secondary?: NextActionButton;
+  /**
+   * When true, render an icon-only dismiss control that emits the `dismiss`
+   * action — lets the user acknowledge a non-blocking state (e.g. "Automation
+   * interrupted") and clear it without re-running or committing.
+   */
+  dismissible?: boolean;
 }
 
 /** Live-progress detail, present only while a process is running. */
@@ -353,6 +360,7 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
       text: 'Automation interrupted',
       primary: { label: 'Resume', action: 'resume' },
       secondary: { label: 'New instructions', action: 'follow_up' },
+      dismissible: true,
     }, null);
   }
 

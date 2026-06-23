@@ -24,6 +24,7 @@ import { LinkPrDialog } from '../development/LinkPrDialog';
 import { ReviewTab } from '../development/ReviewTab';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useDevSessionsStore } from '../../stores/devSessions';
+import { commitAgentSession, dismissAgentInterruption, launchAutoReview, startAgentSession, stopAgentSession } from '../../services/agentSessionService';
 import { openDevSessionInEditor } from '../../services/devSessionService';
 import { openExternalUrl } from '../../services/shellService';
 import { usePlanDomainStore, useProjectUiDomainStore, toast } from '../../stores';
@@ -158,6 +159,26 @@ export const DetailPane = memo(function DetailPane({
     })();
   }, [pendingPanelAction, session.id]);
 
+  const handleDismissInterruption = useCallback(() => {
+    if (pendingPanelAction === 'dismiss') return;
+
+    setPendingPanelAction('dismiss');
+    void (async () => {
+      try {
+        const result = await dismissAgentInterruption(session.id);
+        if (!result.success) {
+          toast.error(result.error ?? 'Failed to dismiss');
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to dismiss');
+      } finally {
+        if (isMountedRef.current) {
+          setPendingPanelAction(null);
+        }
+      }
+    })();
+  }, [pendingPanelAction, session.id]);
+
   const moveToReview = useCallback(() => {
     if (session.plan_item_id) {
       void updateStatusCategory(session.plan_item_id, 'in_review');
@@ -250,6 +271,9 @@ export const DetailPane = memo(function DetailPane({
       case 'resume':
         handleResume();
         break;
+      case 'dismiss':
+        handleDismissInterruption();
+        break;
       case 'ready_for_review':
         handleReadyForReview();
         break;
@@ -278,6 +302,7 @@ export const DetailPane = memo(function DetailPane({
         setActiveTab('review');
         break;
     }
+  }, [handleStop, handleResume, handleDismissInterruption, handleReadyForReview, handleRunReview, handleOpenPr]);
 
   const detailSession = {
     ...session,

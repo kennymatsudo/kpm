@@ -138,6 +138,7 @@ describe('derivePanelStatus — running phases', () => {
       text: 'Automation interrupted',
       primary: { label: 'Resume', action: 'resume' },
       secondary: { label: 'New instructions', action: 'follow_up' },
+      dismissible: true,
     });
     expect(status.progress).toBeNull();
   });

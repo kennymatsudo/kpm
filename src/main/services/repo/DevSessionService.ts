@@ -780,6 +780,21 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       }
     },
 
+    /**
+     * Acknowledge an "Automation interrupted" banner the user considers fine.
+     * Only acts on `needs_attention` (the interrupted state) and returns the
+     * session to `idle` — it does not re-run the agent or commit. The worktree
+     * is left untouched, so any uncommitted manual work is preserved.
+     */
+    dismissAutomationInterruption(sessionId: string): void {
+      const session = deps.devSessions.get(sessionId);
+      if (session?.automation_phase !== 'needs_attention') {
+        return;
+      }
+
+      service.updateAutomationPhase(sessionId, 'idle');
+    },
+
     markLatestAgentReviewStale(sessionId: string): void {
       deps.agentReviews.markLatestCompletedStale(sessionId);
     },

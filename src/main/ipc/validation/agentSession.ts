@@ -90,4 +90,9 @@ export const AgentSessionSchemas = {
     devSessionId: uuid,
     sha: z.string().min(1).max(64),
   }),
+
+  /** Acknowledge an "Automation interrupted" banner without re-running or committing */
+  dismissInterruption: z.object({
+    devSessionId: uuid,
+  }),
 };

@@ -12,6 +12,7 @@
  */
 
 import { memo } from 'react';
+import { CloseIcon } from '../icons/CloseIcon';
 import type { NextAction, NextActionButton, PanelActionId } from './panelStatus';
 
 interface SessionNextActionBarProps {
@@ -85,12 +86,25 @@ export const SessionNextActionBar = memo(function SessionNextActionBar({
           <span className={`font-medium ${textClass}`}>{action.text}</span>
         </span>
       </div>
+      {(action.primary || action.secondary || action.dismissible) && (
         <div className="flex shrink-0 items-center gap-1.5">
           {action.secondary && (
             <ActionButton button={action.secondary} variant="secondary" pendingAction={pendingAction} onAction={onAction} />
           )}
           {action.primary && (
             <ActionButton button={action.primary} variant="primary" pendingAction={pendingAction} onAction={onAction} />
+          )}
+          {action.dismissible && (
+            <button
+              type="button"
+              disabled={pendingAction === 'dismiss'}
+              aria-label="Dismiss"
+              title="Dismiss — clears this state without re-running or committing"
+              className="inline-flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={(e) => onAction('dismiss', e.currentTarget)}
+            >
+              <CloseIcon className="h-3.5 w-3.5" />
+            </button>
           )}
         </div>
       )}

@@ -1284,6 +1284,10 @@ const agentSessions = {
   ): Promise<{ success: boolean; files?: { path: string; additions: number; deletions: number }[]; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.agentSession.getCommitFiles, { devSessionId, sha }),
 
+  // Dismiss an "Automation interrupted" banner (clears needs_attention -> idle)
+  dismissInterruption: (devSessionId: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.agentSession.dismissInterruption, { devSessionId }),
+
   // Event listeners
   onStateChanged: (callback: (event: AgentSessionStatePayload) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, event: AgentSessionStatePayload) => callback(event);

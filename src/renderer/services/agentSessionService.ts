@@ -81,6 +81,16 @@ export function stopAgentSession(
 }
 
 /**
+ * Dismiss an "Automation interrupted" banner the user considers fine. Clears
+ * the interrupted state back to idle without re-running the agent or committing.
+ */
+export function dismissAgentInterruption(
+  devSessionId: string,
+): Promise<{ success: boolean; error?: string }> {
+  return window.api.agentSessions.dismissInterruption(devSessionId);
+}
+
+/**
  * Generate a commit message for the session's changes using the configured instructions.
  */
 export function generateCommitMessage(
