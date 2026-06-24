@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import type { IDevSessionRepository, IPlanItemRepository, IRepoRepository } from '../../db/interfaces';
 
 const runClaudeQueryMock = vi.hoisted(() => vi.fn());
@@ -207,6 +210,107 @@ describe('GitHubService PR generation', () => {
     expect(systemPrompt).toContain('## Manual Test Plan');
     // The overview must lead the body even when the template has no Description section.
     expect(systemPrompt).toContain('BEFORE the first template heading');
+  });
+
+  it('falls back to the primary checkout PR template when a worktree lacks one', async () => {
+    const worktreePath = mkdtempSync(join(tmpdir(), 'kpm-pr-template-'));
+    try {
+      gitMocks.readPrTemplate
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('## Description\n\n## Manual Test Plan');
+
+      const session = {
+        id: 'session-1',
+        project_id: 'project-1',
+        plan_item_id: 'plan-1',
+        repo_id: 'repo-1',
+        worktree_path: worktreePath,
+        branch_name: 'feature/support-attachments',
+        base_branch: 'main',
+      };
+      const { service } = buildService({
+        devSessions: {
+          get: vi.fn(() => session),
+          updatePrInfo: vi.fn(),
+        } as unknown as IDevSessionRepository,
+      });
+
+      const result = await service.buildPrContext('session-1');
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(gitMocks.readPrTemplate).toHaveBeenNthCalledWith(1, worktreePath);
+      expect(gitMocks.readPrTemplate).toHaveBeenNthCalledWith(2, '/repo');
+      expect(result.data.prTemplate).toBe('## Description\n\n## Manual Test Plan');
+    } finally {
+      rmSync(worktreePath, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps repository template guidance when a custom system prompt omits the variable', async () => {
+    const { service } = buildService({
+      getPromptContent: (key: string) => {
+        if (key === 'generation.pr_system_prompt') {
+          return 'Custom PR system prompt.\n\nRespond with TITLE and BODY.';
+        }
+        if (key === 'generation.pr_description_instructions') {
+          return 'Write a concise reviewer-oriented description.';
+        }
+        return '';
+      },
+    });
+
+    await service.generatePrContent(
+      'session-1',
+      'Raw title',
+      'Raw body',
+      '## Description\n\n## Manual Test Plan',
+      '',
+      ''
+    );
+
+    const systemPrompt = runClaudeQueryMock.mock.calls[0][0].sdkOptions.systemPrompt as string;
+    expect(systemPrompt).toContain('Custom PR system prompt.');
+    expect(systemPrompt).toContain('Description guidance:');
+    expect(systemPrompt).toContain('## PR Template');
+    expect(systemPrompt).toContain('## Manual Test Plan');
+  });
+
+  it('resolves plan refs in generated PR content before returning it to the UI', async () => {
+    const linkedId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    runClaudeQueryMock.mockResolvedValueOnce({
+      text: `TITLE: PROJ-184: Add attachment records\nBODY:\nPart of @plan/${linkedId}.`,
+      errors: [],
+    });
+    const planItem = {
+      id: 'plan-1',
+      project_id: 'project-1',
+      parent_id: null,
+      title: 'Build media service attachment records',
+      description: null,
+      intent: null,
+      acceptance_criteria: null,
+      external_key: 'PROJ-184',
+    };
+    const linkedItem = {
+      ...planItem,
+      id: linkedId,
+      title: 'Linked feature',
+      external_key: 'ENG-451',
+      external_url: 'https://linear.app/example/issue/ENG-451/linked-feature',
+    };
+    const { service } = buildService({
+      planItems: {
+        get: vi.fn((id: string) => id === planItem.id ? planItem : null),
+        getByProject: vi.fn(() => [planItem, linkedItem]),
+      } as unknown as IPlanItemRepository,
+    });
+
+    const result = await service.generatePrContent('session-1', 'Raw title', 'Raw body', null, '', '');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.body).toBe('Part of ENG-451.');
   });
 
   it('falls back to raw context when the generated response is malformed', async () => {

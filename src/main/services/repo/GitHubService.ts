@@ -167,6 +167,7 @@ export function createGitHubService(deps: GitHubServiceDeps) {
   /**
    * Resolve a session ID to repo path.
    */
+  function resolveSessionRepo(sessionId: string): { repoPath: string; primaryRepoPath: string; session: ReturnType<IDevSessionRepository['get']> & {} } | { error: string } {
     const session = deps.devSessions.get(sessionId);
     if (!session) return { error: `Session not found: ${sessionId}` };
     const repo = deps.repos.getById(session.repo_id);
@@ -175,6 +176,29 @@ export function createGitHubService(deps: GitHubServiceDeps) {
     // PR operations need the session branch's HEAD, which lives in the worktree.
     // Fall back to the main repo path only if the worktree no longer exists.
     const repoPath = existsSync(session.worktree_path) ? session.worktree_path : repo.path;
+    return { repoPath, primaryRepoPath: repo.path, session };
+  }
+
+  async function readSessionPrTemplate(repoPath: string, primaryRepoPath: string): Promise<string | null> {
+    const worktreeTemplate = await readPrTemplate(repoPath);
+    if (worktreeTemplate || repoPath === primaryRepoPath) {
+      return worktreeTemplate;
+    }
+    return readPrTemplate(primaryRepoPath);
+  }
+
+  function buildPrSystemPrompt(systemPromptTemplate: string, descriptionGuidance: string): string {
+    if (systemPromptTemplate.includes('{{description_guidance}}')) {
+      return systemPromptTemplate.replace('{{description_guidance}}', descriptionGuidance);
+    }
+
+    if (!descriptionGuidance.trim()) {
+      return systemPromptTemplate;
+    }
+
+    const trimmedTemplate = systemPromptTemplate.trimEnd();
+    const guidanceSection = `Description guidance:\n\n${descriptionGuidance}`;
+    return trimmedTemplate ? `${trimmedTemplate}\n\n${guidanceSection}` : guidanceSection;
   }
 
   async function buildFeatureContextBrief(input: {
@@ -520,12 +544,14 @@ ${input.commitLog || 'No commit log provided.'}`;
     async buildPrContext(sessionId: string): AsyncResult<PrContextResult> {
       const resolved = resolveSessionRepo(sessionId);
       if ('error' in resolved) return failure(resolved.error);
+      const { repoPath, primaryRepoPath, session } = resolved;
 
       try {
         const baseBranch = await resolveBaseBranch(repoPath, session.base_branch);
         const [currentBranch, commits, prTemplate] = await Promise.all([
           getCurrentBranch(repoPath),
           hasCommitsAhead(repoPath, baseBranch),
+          readSessionPrTemplate(repoPath, primaryRepoPath),
         ]);
 
         // Build body sections
@@ -584,7 +610,9 @@ ${input.commitLog || 'No commit log provided.'}`;
       try {
         const resolved = resolveSessionRepo(sessionId);
         if ('error' in resolved) return failure(resolved.error);
+        const { repoPath, primaryRepoPath, session } = resolved;
         const baseBranch = await resolveBaseBranch(repoPath, session.base_branch);
+        const effectivePrTemplate = prTemplate ?? await readSessionPrTemplate(repoPath, primaryRepoPath);
 
         // Gather context for the prompt
         const [sessionDiff, sessionCommitLog] = diff && commitLog
@@ -643,6 +671,7 @@ ${input.commitLog || 'No commit log provided.'}`;
           contextParts.push(`[REFERENCE — Commit History]\nSecondary chronology for intent and grouping only. Do not report reverted or abandoned approaches unless they remain in the net diff.\n\n${sessionCommitLog}`);
         }
 
+        const descriptionGuidance = effectivePrTemplate
           ? `Your description MUST use the repository's PR template below as its skeleton. Use the template's section headings, in the template's order, and no others — with one exception: a brief lead overview paragraph (see below) may precede the first template heading.
 - Begin the body with a 2-4 sentence overview paragraph that explains, in plain language, what changed and why it matters. Place it at the very top, BEFORE the first template heading, with no heading of its own. This lead paragraph is REQUIRED and is not an "invented section". If feature context is provided, name the larger user-facing feature or workflow and this PR's role in it here.
 - Do NOT repeat this overview inside Risk Impact, Test Plan, or any other section. Those sections answer their own specific prompts; the lead paragraph is the only place for the general "what changed and why" summary.
@@ -665,6 +694,7 @@ ${input.commitLog || 'No commit log provided.'}`;
 HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and examples — read them to understand what each section expects, then write plain markdown in their place. Your output must not contain any \`<!-- ... -->\`, stray \`-->\`, or stray \`--->\`.
 
 ## PR Template
+${effectivePrTemplate}`
           : (deps.getPromptContent
               ? deps.getPromptContent('generation.pr_description_instructions')
               : '');
@@ -672,6 +702,7 @@ HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and 
         const systemPromptTemplate = deps.getPromptContent
           ? deps.getPromptContent('generation.pr_system_prompt')
           : '';
+        const systemPrompt = buildPrSystemPrompt(systemPromptTemplate, descriptionGuidance);
 
         const prompt = `Generate a PR title and description for the following changes:\n\n${contextParts.join('\n\n')}`;
 
@@ -719,6 +750,10 @@ HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and 
         const bodyMatch = /^BODY:\s*\n([\s\S]*)$/m.exec(generatedContent);
 
         const title = titleMatch?.[1]?.trim() || rawTitle;
+        let body = bodyMatch?.[1]?.trim() || rawBody;
+        if (session.project_id) {
+          body = resolvePlanRefs(body, deps.planItems.getByProject(session.project_id), 'github');
+        }
 
         log(`Generated title: ${title.substring(0, 60)}...`);
         return success({ title, body });
