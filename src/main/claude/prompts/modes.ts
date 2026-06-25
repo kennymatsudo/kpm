@@ -20,6 +20,7 @@ function buildRepoAccessSection(hasRepos: boolean): string {
 
 Connected repos are read-only. Explore when the request depends on implementation details; skip only for generic questions with no project-specific component. When the user has focused repos or files (see per-message context), explore them freely.
 
+Read/Grep/Glob reach any folder on disk — the project, connected repos, or any other path the user points you to. If a path doesn't exist or you can't access it, say so. Writes stay scoped: connected repos are read-only, and changes outside the project folder need the user's approval.`;
 }
 
 /**

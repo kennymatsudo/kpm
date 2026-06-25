@@ -90,22 +90,33 @@ describe('permissions', () => {
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
+      it('allows Read outside project and connected repos', async () => {
         const result = await handler('Read', { file_path: '/outside/project/file.ts' }, createTestOptions());
+        expect(result.behavior).toBe('allow');
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
+      it('allows Read with a relative path that escapes the project', async () => {
         const result = await handler('Read', { file_path: '../outside/file.ts' }, createTestOptions());
+        expect(result.behavior).toBe('allow');
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
+      it('allows shell-home Read paths outside connected scope', async () => {
+        const result = await handler('Read', { file_path: '~/notes.txt' }, createTestOptions());
+        expect(result.behavior).toBe('allow');
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
+      it('allows Grep outside project and connected repos', async () => {
         const result = await handler('Grep', { path: '/outside/project', pattern: 'foo' }, createTestOptions());
+        expect(result.behavior).toBe('allow');
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
+      it('allows Glob outside project and connected repos', async () => {
         const result = await handler('Glob', { path: '/outside/project', pattern: '*.ts' }, createTestOptions());
+        expect(result.behavior).toBe('allow');
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 

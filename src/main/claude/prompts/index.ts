@@ -109,6 +109,8 @@ ${buildContinuationSection(continuationHistory)}# Project: ${project.name}
 ID: \`${project.id}\` (use for all tool calls)
 Phase: ${project.phase}
 Project folder: \`${project.folder_path}\`
+${hasRepos ? `Connected repos (read-only; ground truth for code):\n${repos.map(r => `- \`${r.active_worktree_path ?? r.path}\``).join('\n')}` : 'No repos connected.'}
+Read/Grep/Glob can also reach any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.
 
 ${getPrompt('system.grounding')}
 
@@ -176,7 +178,9 @@ Name: ${project.name}
 ID: \`${project.id}\`
 Project folder: \`${project.folder_path}\`
 
+Connected repos (read-only):
 ${connectedRepos}
+Read/Grep/Glob can also reach any other folder on disk when the user points you at one.
 
 ${focusedDocumentSection}
 

@@ -358,6 +358,12 @@ export function createPermissionHandler(
       }
     }
 
+    // Rule 2: Read tools (Read/Grep/Glob) are allowed anywhere on disk.
+    // Reads can't mutate state, so chat isn't confined to the project folder or
+    // connected repos for reading — the user can point it at any folder. Writes
+    // stay scoped: connected-repo writes and project-file writes are handled
+    // above, and writes elsewhere still prompt (Rule 5). OS-level file
+    // permissions remain the backstop for genuinely off-limits paths.
     if (READ_TOOLS.includes(toolName)) {
       return { behavior: 'allow', updatedInput: input };
     }
