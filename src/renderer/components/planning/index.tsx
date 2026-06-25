@@ -491,6 +491,11 @@ export function PlanView({
 
   return (
     <div className="h-full bg-surface-0 flex">
+      {/* Main Plan Area — min-w-0 lets this flex column shrink to its container
+          instead of being sized by content; without it the board can be computed
+          wider than <main>, whose overflow-hidden then clips the right-anchored
+          detail pane (timestamps cut off). */}
+      <div className="flex-1 flex flex-col relative min-w-0">
         {/* View area - Canvas, Tree, or Board */}
         <div className="flex-1 overflow-hidden" onContextMenu={handleContextMenu}>
           {viewMode === 'card' ? (
