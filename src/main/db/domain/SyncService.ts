@@ -8,6 +8,7 @@ import type {
 import type { TrackerClient, ExternalIssue } from '../../trackers';
 import { fetchIssuesWithSubtasks } from '../../trackers';
 import { inferCategoryWithMapping } from '../../trackers/statusTransitions';
+import { normalizeMarkdown } from '../../documents';
 import type {
   PlanItem,
   SyncPreview,
@@ -161,19 +162,37 @@ export function createSyncService(deps: SyncServiceDeps) {
     const updates: SyncUpdatedItem['changes'] = [];
     const conflicts: SyncConflict['fields'] = [];
 
+    // Note: label is not synced anymore - we use external_issue_type directly.
+    // `normalize` canonicalizes cosmetic markdown so a `*` bullet KPM stored does
+    // not read as drift against the `-` bullet Linear stores. Descriptions are
+    // markdown on both sides; titles are plain text and compared verbatim.
+    const identity = (v: string | null) => v;
     const fields: {
       field: 'title' | 'description' | 'release_tag';
       kpm: string | null;
       external: string | null;
       snapshot: string | null;
+      normalize: (v: string | null) => string | null;
     }[] = [
+      { field: 'title', kpm: kpmItem.title, external: external.title, snapshot: snapshot?.snapshot_title ?? null, normalize: identity },
+      { field: 'description', kpm: kpmItem.description, external: external.description, snapshot: snapshot?.snapshot_description ?? null, normalize: normalizeMarkdown },
     ];
 
+    for (const { field, kpm, external: ext, snapshot: snap, normalize } of fields) {
+      // Compare on the normalized form; carry the raw values into the resulting
+      // update/conflict so KPM imports exactly what the tracker holds.
+      const nKpm = normalize(kpm);
+      const nExt = normalize(ext);
+      const nSnap = normalize(snap);
+      const kpmChanged = snap !== null && nKpm !== nSnap;
+      const extChanged = snap !== null && nExt !== nSnap;
 
       if (snap === null) {
         // No snapshot - first sync after import, external wins if different
+        if (nKpm !== nExt) {
           updates.push({ field, old_value: kpm, new_value: ext });
         }
+      } else if (kpmChanged && extChanged && nKpm !== nExt) {
         // Both changed differently - conflict
         conflicts.push({ field, your_value: kpm, tracker_value: ext });
       } else if (extChanged && !kpmChanged) {

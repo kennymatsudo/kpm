@@ -34,6 +34,7 @@ import {
   inferCategoryWithMapping,
 } from '../../trackers/statusTransitions';
 import { resolvePlanRefs, type RefDestination } from '../../documents/planRefResolver';
+import { normalizeMarkdown } from '../../documents';
 import { suggestStatusMapping } from '../../../shared/statusMappingSuggest';
 
 interface TrackerClientServiceLike {
@@ -510,6 +511,14 @@ export function createExportService(deps: ExportServiceDeps) {
         )
       : [];
 
+    // Snapshots record what the tracker held at the last sync. We use them to
+    // tell a real external edit apart from the tracker re-rendering markdown:
+    // a bumped `updated` timestamp alone is not a conflict if the stored content
+    // still matches the snapshot.
+    const snapshotMap = SyncRepository.getSnapshotsByItemIds(
+      itemsNeedingFetch.map(item => item.planItem.id)
+    );
+
     // Parallel fetch all tracker issues
     const jiraFetchResults = await Promise.allSettled(
       itemsNeedingFetch.map(item => client!.fetchIssue(item.planItem.external_key!))
@@ -576,8 +585,13 @@ export function createExportService(deps: ExportServiceDeps) {
       let hasConflict = false;
 
       if (jiraCurrent) {
+        // Compute diffs. Descriptions compare on the normalized form so the
+        // tracker's bullet/whitespace canonicalization (e.g. Linear rewriting
+        // `*` to `-`) does not render as a change the user never made.
         const summaryDiff = computeFieldDiff(jiraCurrent.summary, item.planItem.title);
         const descriptionDiff = computeFieldDiff(
+          normalizeMarkdown(jiraCurrent.description) ?? '',
+          normalizeMarkdown(item.resolvedDescription) ?? ''
         );
 
         diffs = {
@@ -585,9 +599,26 @@ export function createExportService(deps: ExportServiceDeps) {
           description: descriptionDiff.hasChanges ? descriptionDiff : null,
         };
 
+        // Flag a conflict only when the tracker was edited after our last sync
+        // AND its current content actually drifted from the snapshot we stored
+        // at that sync. The timestamp alone trips on cosmetic re-rendering; the
+        // content check is what keeps a `*`→`-` rewrite from looking like an
+        // external edit. With no snapshot (e.g. first export of an imported
+        // item) we fall back to the timestamp signal.
         if (item.planItem.last_synced_at && jiraCurrent.updated) {
           const lastSynced = new Date(item.planItem.last_synced_at).getTime();
           const jiraUpdated = new Date(jiraCurrent.updated).getTime();
+          const updatedAfterSync = jiraUpdated > lastSynced;
+
+          const snapshot = snapshotMap.get(item.planItem.id);
+          if (snapshot) {
+            const descriptionDrifted =
+              normalizeMarkdown(jiraCurrent.description) !== normalizeMarkdown(snapshot.snapshot_description);
+            const titleDrifted = jiraCurrent.summary !== snapshot.snapshot_title;
+            hasConflict = updatedAfterSync && (descriptionDrifted || titleDrifted);
+          } else {
+            hasConflict = updatedAfterSync;
+          }
         }
       }
 
