@@ -79,12 +79,22 @@ export interface ChatFileUpdatedEvent {
   };
 }
 
+export interface TrackerExportCompletedEvent {
+  type: 'tracker-export-completed';
+  payload: {
+    projectId: string;
+    associationId: string;
+  };
+}
+
 export type StoreEvent =
   | StatusChangedEvent
   | PlanItemCreatedEvent
   | NavigateToViewEvent
   | RevealBoardColumnEvent
   | FileExplorerChangedEvent
+  | ChatFileUpdatedEvent
+  | TrackerExportCompletedEvent;
 
 // =============================================================================
 // Event Emitter

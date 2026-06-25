@@ -290,6 +290,7 @@ export class LinearClient implements TrackerClient {
       if (description !== null) input.description = description;
       if (params.labels?.length) input.labelIds = params.labels; // Labels must be IDs, not names
       if (params.linearProjectId) input.projectId = params.linearProjectId;
+      if (params.targetStatusId) input.stateId = params.targetStatusId;
       if (params.parentKey) {
         const parent = await this.client.request<{ issue: { id: string } }>(
           gql`query ParentId($id: String!) { issue(id: $id) { id } }`,

@@ -275,7 +275,18 @@ function executeQueueForTracker(
       continue; // Already queued, skip silently
     }
 
+    ctx.deps.syncQueue.add({
+      kpm_project_id: ctx.projectId,
+      plan_item_id: itemId,
+      association_id: association.id,
       operation,
+      queued_by: 'claude',
+      target_issue_type_id: null,
+      target_issue_type_name: null,
+      target_parent_key: null,
+      target_status_category: item.status_category ?? null,
+      custom_field_overrides: null,
+    });
     queuedCount++;
   }
 

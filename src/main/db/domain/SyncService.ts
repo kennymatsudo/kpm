@@ -97,6 +97,11 @@ export function createSyncService(deps: SyncServiceDeps) {
           label: null,
           external_issue_type: issue.issueType,
           external_status: issue.status,
+          status_category: inferCategoryWithMapping(
+            issue.status,
+            association.status_mapping,
+            { trackerType: client.type, stateType: issue.statusType ?? null }
+          ),
           external_url: issue.url,
           external_parent_key: issue.parentKey,
           external_epic_key: issue.epicKey,
@@ -256,6 +261,7 @@ export function createSyncService(deps: SyncServiceDeps) {
           external_type: preview.tracker_type,
           external_issue_type: item.external_issue_type,
           external_status: item.external_status,
+          status_category: item.status_category,
           external_url: item.external_url,
           external_parent_key: item.external_parent_key,
           external_epic_key: item.external_epic_key,
@@ -289,11 +295,13 @@ export function createSyncService(deps: SyncServiceDeps) {
    * Apply auto-resolved updates (tracker changed, KPM didn't).
    * Returns snapshots to be upserted.
    * @param itemCache - Pre-fetched items map to avoid N+1 queries
+   * @param _statusMapping - Explicit status mapping for this association
    */
   applyUpdates(
     preview: SyncPreview,
     result: SyncResult,
     itemCache: Map<string, PlanItem>,
+    _statusMapping: StatusMapping | null
   ): Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] {
     const snapshotsToUpsert: Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] = [];
     const now = new Date().toISOString();

@@ -4,6 +4,7 @@ import {
   executeApprovedTrackerExport,
   getTrackerExportReview,
 } from '../../services/trackerService';
+import { emit } from '../storeEvents';
 import { useExportStore } from './useExportStore';
 
 type ReviewPhase = 'idle' | 'loading' | 'reviewing' | 'summary' | 'exporting' | 'complete';
@@ -89,6 +90,10 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
     try {
       const result = await executeApprovedTrackerExport(projectId, associationId, approvedItemIds);
       if (result.success && result.result) {
+        emit({
+          type: 'tracker-export-completed',
+          payload: { projectId, associationId },
+        });
         set({ exportResult: result.result, phase: 'complete' });
         return result.result;
       } else {

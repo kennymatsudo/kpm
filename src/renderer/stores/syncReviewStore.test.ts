@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { installMockApi, type MockApi } from '../../../tests/mocks/electron-api';
+import { subscribe } from './storeEvents';
 import { useExportStore } from './tracker/useExportStore';
 import { useSyncReviewStore } from './tracker/useSyncReviewStore';
+import type { TrackerExportCompletedEvent } from './storeEvents';
 import type { SyncReviewItem } from '../../shared/types';
 
 function createReviewItem(planItemId: string, queueEntryId: string): SyncReviewItem {
@@ -124,5 +126,30 @@ describe('useSyncReviewStore', () => {
 
     expect(api.tracker.exportQueue.remove).not.toHaveBeenCalled();
     expect(useSyncReviewStore.getState().items).toHaveLength(1);
+  });
+
+  it('emits an event after approved tracker export completes', async () => {
+    const events: TrackerExportCompletedEvent['payload'][] = [];
+    const unsubscribe = subscribe('tracker-export-completed', (event) => {
+      events.push(event.payload);
+    });
+    api.tracker.export.executeApproved.mockResolvedValue({
+      success: true,
+      result: { success: true, created: [], updated: [], errors: [] },
+    });
+    useSyncReviewStore.setState({
+      items: [{ ...createReviewItem('plan-1', 'queue-1'), decision: 'approved' }],
+      phase: 'reviewing',
+    });
+
+    await useSyncReviewStore.getState().executeApproved('project-1', 'assoc-1');
+    unsubscribe();
+
+    expect(api.tracker.export.executeApproved).toHaveBeenCalledWith(
+      'project-1',
+      'assoc-1',
+      ['plan-1']
+    );
+    expect(events).toEqual([{ projectId: 'project-1', associationId: 'assoc-1' }]);
   });
 });

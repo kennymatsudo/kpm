@@ -12,6 +12,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createPlanActionExecutor } from '../../src/main/db/domain/PlanActionService';
+import { createPlanItem, createTestRepositoryContext, type TestRepositoryContext } from '../';
 
 describe('PlanActionExecutor — create_item with spec fields', () => {
   let ctx: TestRepositoryContext;
@@ -146,5 +147,32 @@ describe('PlanActionExecutor — create_item with spec fields', () => {
 
     expect(ctx.repos.planItems.get(firstId)?.acceptance_criteria).toEqual(['A1', 'A2']);
     expect(ctx.repos.planItems.get(secondId)?.acceptance_criteria).toEqual(['B1']);
+  });
+
+  it('preserves current board status when queue_for_tracker adds an item', () => {
+    const connection = ctx.repos.tracker.createConnection('linear', 'linear.app', 'Linear');
+    const scope = ctx.repos.tracker.createScope(connection.id, 'ENG', 'Engineering');
+    const association = ctx.repos.tracker.createAssociation(
+      projectId,
+      scope.id,
+      JSON.stringify({ teamKey: 'ENG' }),
+      'Engineering'
+    );
+    ctx.repos.planItems.add(createPlanItem({
+      id: 'plan-queue',
+      project_id: projectId,
+      title: 'Queue from action',
+      status_category: 'done',
+    }));
+    const executor = makeExecutor();
+
+    const result = executor.execute(projectId, [
+      { type: 'queue_for_tracker', item_ids: ['plan-queue'] },
+    ]);
+
+    expect(result.success).toBe(true);
+    const entry = ctx.repos.syncQueue.getByPlanItem('plan-queue');
+    expect(entry?.association_id).toBe(association.id);
+    expect(entry?.target_status_category).toBe('done');
   });
 });

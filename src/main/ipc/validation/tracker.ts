@@ -145,6 +145,7 @@ export const TrackerSchemas = {
           label: z.string().nullable(),
           external_issue_type: z.string(),
           external_status: z.string(),
+          status_category: statusCategory,
           external_url: z.string(),
           external_parent_key: z.string().nullable(),
           external_epic_key: z.string().nullable(),

@@ -56,7 +56,15 @@ export function queueTrackerUpdateIfNeeded(
     updates.description !== undefined ||
     updates.status_category !== undefined;
 
+  // Already queued? Preserve the latest queued status target. Title/description
+  // changes do not need extra queue metadata, but status changes do.
   const existing = deps.syncQueue.getByItemId(item.id);
+  if (existing) {
+    if (updates.status_category !== undefined) {
+      deps.syncQueue.updateStatusCategory(existing.id, updates.status_category ?? null);
+    }
+    return;
+  }
 
   // Case 1: Linked item (has external_key) - queue for update
   if (hasExportableChange && item.external_key && item.association_id) {

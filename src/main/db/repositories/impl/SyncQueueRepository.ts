@@ -99,6 +99,12 @@ export class SyncQueueRepository implements ISyncQueueRepository {
 
       // Write operations - use RETURNING to avoid re-query
       insert: db.prepare(`
+        INSERT INTO sync_queue (
+          id, kpm_project_id, plan_item_id, association_id, operation,
+          target_issue_type_id, target_issue_type_name, target_parent_key,
+          target_status_category, custom_field_overrides, queued_by
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING ${cols}
       `),
       remove: db.prepare('DELETE FROM sync_queue WHERE id = ?'),
@@ -204,6 +210,10 @@ export class SyncQueueRepository implements ISyncQueueRepository {
       plan_item_id: string;
       association_id: string;
       operation: 'create' | 'update';
+      target_issue_type_id?: string | null;
+      target_issue_type_name?: string | null;
+      target_parent_key?: string | null;
+      target_status_category?: string | null;
       queued_by: 'user' | 'claude';
       custom_field_overrides?: CustomFieldValues | null;
     };
@@ -214,6 +224,10 @@ export class SyncQueueRepository implements ISyncQueueRepository {
         plan_item_id: planItemId!,
         association_id: associationId!,
         operation: operation!,
+        target_issue_type_id: null,
+        target_issue_type_name: null,
+        target_parent_key: null,
+        target_status_category: null,
         queued_by: queuedBy!,
         custom_field_overrides: null,
       };
@@ -229,12 +243,20 @@ export class SyncQueueRepository implements ISyncQueueRepository {
 
     // Use RETURNING to get inserted row in one query
     const id = randomUUID();
+    const overrides = entry.custom_field_overrides && Object.keys(entry.custom_field_overrides).length > 0
+      ? entry.custom_field_overrides
+      : null;
     const inserted = this.stmts.insert.get(
       id,
       entry.kpm_project_id,
       entry.plan_item_id,
       entry.association_id,
       entry.operation,
+      entry.target_issue_type_id ?? null,
+      entry.target_issue_type_name ?? null,
+      entry.target_parent_key ?? null,
+      entry.target_status_category ?? null,
+      overrides ? JSON.stringify(overrides) : null,
       entry.queued_by
     ) as SyncQueueRow;
 

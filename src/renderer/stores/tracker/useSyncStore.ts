@@ -10,6 +10,7 @@ import {
   getTrackerSyncPreview,
   subscribeToTrackerSyncProgress,
 } from '../../services/trackerService';
+import { subscribe } from '../storeEvents';
 export interface SyncAvailability {
   isChecking: boolean;
   hasIncomingChanges: boolean;
@@ -70,6 +71,7 @@ async function getPreviewWithCache(projectId: string, associationId: string): Pr
   return promise;
 }
 
+function invalidateCachedPreview(projectId: string, associationId: string): void {
   previewCacheByKey.delete(previewCacheKey(projectId, associationId));
 }
 
@@ -122,6 +124,7 @@ interface SyncState {
   setDeletedDecision: (planItemId: string, decision: 'keep' | 'delete') => void;
   applySync: (projectId: string, onComplete?: () => Promise<void>) => Promise<SyncResult | null>;
   discardSync: () => void;
+  invalidatePreview: (projectId: string, associationId: string) => void;
   setShowPanel: (show: boolean, associationId?: string) => void;
   clearError: () => void;
 
@@ -267,6 +270,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
       if (result.success && result.result) {
         const associationId = syncPreview.link_id;
+        invalidateCachedPreview(projectId, associationId);
         set({
           syncPreview: null,
           showPanel: false,
@@ -320,6 +324,26 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     });
   },
 
+  invalidatePreview: (projectId, associationId) => {
+    invalidateCachedPreview(projectId, associationId);
+    set((state) => {
+      const nextAvailability = { ...state.syncAvailability };
+      delete nextAvailability[associationId];
+      const isActivePreview = state.syncPreview?.link_id === associationId;
+      return {
+        syncAvailability: nextAvailability,
+        syncPreview: isActivePreview ? null : state.syncPreview,
+        showPanel: isActivePreview ? false : state.showPanel,
+        activeAssociationId: state.activeAssociationId === associationId
+          ? null
+          : state.activeAssociationId,
+        resolutions: isActivePreview ? {} : state.resolutions,
+        deletedDecisions: isActivePreview ? {} : state.deletedDecisions,
+        deletedAction: isActivePreview ? 'decide_each' : state.deletedAction,
+      };
+    });
+  },
+
   setShowPanel: (show, associationId) => {
     set({
       showPanel: show,
@@ -346,3 +370,10 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     set(initialState);
   },
 }));
+
+subscribe('tracker-export-completed', (event) => {
+  useSyncStore.getState().invalidatePreview(
+    event.payload.projectId,
+    event.payload.associationId
+  );
+});

@@ -76,6 +76,7 @@ export interface IExternalPlanItemRepository {
     external_type: string;
     external_issue_type: string;
     external_status: string;
+    status_category: string;
     external_url?: string;
     external_parent_key: string | null;
     external_epic_key: string | null;

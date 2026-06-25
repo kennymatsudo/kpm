@@ -53,11 +53,13 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
       createFromExternal: db.prepare(`
         INSERT INTO plan_items (
           id, project_id, parent_id, title, description, label, item_order,
+          status, status_category, external_key, external_id, external_type, external_issue_type, external_status,
           external_url, external_parent_key, external_epic_key,
           external_assignee_id, external_assignee_name, external_assignee_avatar_url,
           external_creator_id, external_creator_name, external_creator_avatar_url,
           sync_source, last_synced_at, association_id
         )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
         RETURNING *
       `),
       unlinkFromExternal: db.prepare(`
@@ -104,6 +106,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
     external_type: string;
     external_issue_type: string;
     external_status: string;
+    status_category: string;
     external_url?: string;
     external_parent_key: string | null;
     external_epic_key: string | null;
@@ -127,6 +130,7 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
       input.label,
       itemOrder,
       'planned', // Synced items go directly to canvas (backlog UI removed)
+      input.status_category,
       input.external_key,
       input.external_id ?? null,
       input.external_type,

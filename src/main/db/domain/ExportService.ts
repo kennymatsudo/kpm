@@ -10,6 +10,7 @@ import { createTypeMappingService } from './TypeMappingService';
 import { diffWords } from 'diff';
 import type {
   SyncQueueEntryWithPlanItem,
+  SyncQueueEntry,
   PlanItem,
   PlanItemSyncUpdates,
   ExportPreview,
@@ -24,6 +25,8 @@ import type {
   StatusTransitionInfo,
   CustomFieldValues,
   TrackerType,
+  StatusCategory,
+  TrackerAssociationWithScope,
 } from '../../../shared/types';
 import type { JiraClient, TrackerClient } from '../../tracker-clients';
 import { parseLinearFilter } from '../../tracker-clients/linear/filter-types';
@@ -92,6 +95,77 @@ function resolveExportDescription(
 ): string | null {
   if (!description) return null;
   return resolvePlanRefs(description, planItems, refDestinationForTracker(trackerType));
+}
+
+const STATUS_CATEGORY_LABELS: Record<StatusCategory, string> = {
+  not_started: 'Not Started',
+  in_progress: 'In Progress',
+  in_review: 'In Review',
+  done: 'Done',
+  blocked: 'Blocked',
+  canceled: 'Canceled',
+};
+
+function normalizeStatusName(statusName: string): string {
+  return statusName.trim().toLowerCase();
+}
+
+async function bootstrapStatusMappingForQueuedTargets(
+  association: TrackerAssociationWithScope,
+  queueEntries: readonly Pick<SyncQueueEntry, 'target_status_category'>[],
+  client: TrackerClient,
+  updateStatusMapping: ITrackerRepository['updateStatusMapping']
+): Promise<TrackerAssociationWithScope> {
+  if (
+    association.status_mapping ||
+    !queueEntries.some((entry) => entry.target_status_category)
+  ) {
+    return association;
+  }
+
+  try {
+    const statuses = await client.getProjectStatuses(association.project_key);
+    const { mapping: suggested } = suggestStatusMapping(statuses);
+    if (Object.keys(suggested).length > 0) {
+      updateStatusMapping(association.id, suggested);
+      return { ...association, status_mapping: suggested };
+    }
+  } catch (e) {
+    console.warn(`[ExportService] Failed to bootstrap status mapping for ${association.id}:`, e);
+  }
+
+  return association;
+}
+
+async function resolveLinearCreateStatusId(
+  client: TrackerClient,
+  association: TrackerAssociationWithScope,
+  targetCategory: StatusCategory | null
+): Promise<string | undefined> {
+  if (client.type !== 'linear' || !targetCategory) {
+    return undefined;
+  }
+
+  const mappedName = association.status_mapping?.[targetCategory];
+  if (!mappedName) {
+    if (targetCategory === 'not_started') {
+      return undefined;
+    }
+    throw new Error(`No status mapping configured for "${STATUS_CATEGORY_LABELS[targetCategory]}"`);
+  }
+
+  const statuses = await client.getProjectStatuses(association.project_key);
+  const status = statuses.find((candidate) =>
+    normalizeStatusName(candidate.name) === normalizeStatusName(mappedName)
+  );
+  if (!status) {
+    const available = statuses.map((candidate) => candidate.name).join(', ');
+    throw new Error(
+      `Status mapping for "${STATUS_CATEGORY_LABELS[targetCategory]}" is set to "${mappedName}", but "${mappedName}" isn't an available Linear state. Available: ${available}`
+    );
+  }
+
+  return status.id;
 }
 
 /**
@@ -193,8 +267,28 @@ export function createExportService(deps: ExportServiceDeps) {
       // Determine operation: create if no external_key, update otherwise
       const operation = item.external_key ? 'update' : 'create';
 
+      const existing = SyncQueueRepository.getByPlanItem(itemId);
+      if (existing) {
+        // Only report as skipped if it was in the original itemIds (not auto-added parent)
+        if (itemIds.includes(itemId)) {
+          skipped.push({ id: itemId, reason: 'Already queued' });
+        }
+        continue;
+      }
+
       // Try to add to queue
+      const entry = SyncQueueRepository.add({
+        kpm_project_id: kpmProjectId,
+        plan_item_id: itemId,
+        association_id: association.id,
         operation,
+        queued_by: queuedBy,
+        target_issue_type_id: null,
+        target_issue_type_name: null,
+        target_parent_key: null,
+        target_status_category: item.status_category ?? null,
+        custom_field_overrides: null,
+      });
 
       if (entry) {
         queued.push(itemId);
@@ -245,6 +339,11 @@ export function createExportService(deps: ExportServiceDeps) {
     if (queueEntry && statusCategory) {
       const planItem = PlanItemRepository.get(queueEntry.plan_item_id);
       if (planItem?.external_status) {
+        const association = TrackerRepository.getAssociationById(queueEntry.association_id);
+        const syncedCategory = inferCategoryWithMapping(
+          planItem.external_status,
+          association?.status_mapping ?? null
+        );
         if (syncedCategory === statusCategory) {
           // Status matches what's in Jira - remove from queue
           console.log(`[ExportService] Removing ${planItem.external_key} from queue - status reverted to synced value (${statusCategory})`);
@@ -704,6 +803,7 @@ export function createExportService(deps: ExportServiceDeps) {
     }
 
     // Get association
+    let association = TrackerRepository.getAssociationById(associationId);
     if (!association) {
       return { success: false, created: [], updated: [], errors: [{ plan_item_id: '', error: 'Association not found' }] };
     }
@@ -719,6 +819,12 @@ export function createExportService(deps: ExportServiceDeps) {
     // Get queued items - filter to approved ones, but force-include unsynced
     // parents so subtasks don't get orphaned under the epic fallback.
     const allQueueEntries = SyncQueueRepository.getByAssociation(associationId);
+    association = await bootstrapStatusMappingForQueuedTargets(
+      association,
+      allQueueEntries,
+      client,
+      TrackerRepository.updateStatusMapping.bind(TrackerRepository)
+    );
     const allItems = PlanItemRepository.getByProject(kpmProjectId);
     const itemMap = new Map<string, PlanItem>();
     for (const item of allItems) {
@@ -830,6 +936,11 @@ export function createExportService(deps: ExportServiceDeps) {
           allItems,
           association.tracker_type
         );
+        const targetStatusId = await resolveLinearCreateStatusId(
+          client,
+          association,
+          entry.target_status_category
+        );
 
         const created = await client.createIssue({
           projectKey: association.project_key,
@@ -839,16 +950,60 @@ export function createExportService(deps: ExportServiceDeps) {
           parentKey,
           customFields,
           linearProjectId,
+          targetStatusId,
         });
 
         // Fetch the created issue so we record the tracker-assigned status.
         // Prevents sync from showing spurious status updates on the next pass.
+        let createdIssue = await client.fetchIssue(created.key);
+        if (entry.target_status_category) {
+          const transitionNeeded = isTransitionNeededWithMapping(
+            createdIssue.status,
+            entry.target_status_category,
+            association.status_mapping,
+            { trackerType: association.tracker_type, stateType: createdIssue.statusType ?? null }
+          );
+
+          if (transitionNeeded) {
+            const transitions = await client.getTransitions(created.key);
+            const transitionToApply = findTransitionWithMapping(
+              entry.target_status_category,
+              transitions,
+              association.status_mapping
+            );
+            if (!transitionToApply) {
+              throw new Error(
+                generateTransitionWarning(
+                  createdIssue.status,
+                  entry.target_status_category,
+                  transitions,
+                  association.status_mapping
+                )
+              );
+            }
+            await client.transitionIssue(
+              created.key,
+              transitionToApply.id,
+              entry.target_status_category === 'done'
+            );
+            createdIssue = await client.fetchIssue(created.key);
+          }
+        }
+
         const trackerStatus = createdIssue.status;
         const inferredCategory = inferCategoryWithMapping(
           trackerStatus,
           association.status_mapping,
           { stateType: createdIssue.statusType ?? null }
         );
+        if (
+          entry.target_status_category &&
+          inferredCategory !== entry.target_status_category
+        ) {
+          throw new Error(
+            `Tracker status for ${created.key} is "${trackerStatus}" after export, expected ${STATUS_CATEGORY_LABELS[entry.target_status_category]}`
+          );
+        }
 
         // Jira's CreatedIssue.self is a REST API URL, not the browse URL, so
         // we build the browse URL from siteUrl. Linear's `self` is already the
@@ -912,9 +1067,12 @@ export function createExportService(deps: ExportServiceDeps) {
         // Preflight status transitions before mutating title/description. If the
         // queued status can't resolve to a tracker transition, fail the entry
         // without creating a partial external update.
+        const targetStatusCategory = entry.target_status_category;
+        if (targetStatusCategory) {
           const currentIssue = await client.fetchIssue(planItem.external_key!);
           const transitionNeeded = isTransitionNeededWithMapping(
             currentIssue.status,
+            targetStatusCategory,
             association.status_mapping,
             { trackerType: association.tracker_type, stateType: currentIssue.statusType ?? null }
           );
@@ -922,6 +1080,7 @@ export function createExportService(deps: ExportServiceDeps) {
           if (transitionNeeded) {
             const transitions = await client.getTransitions(planItem.external_key!);
             transitionToApply = findTransitionWithMapping(
+              targetStatusCategory,
               transitions,
               association.status_mapping
             );
@@ -929,6 +1088,7 @@ export function createExportService(deps: ExportServiceDeps) {
               throw new Error(
                 generateTransitionWarning(
                   currentIssue.status,
+                  targetStatusCategory,
                   transitions,
                   association.status_mapping
                 )
@@ -954,13 +1114,29 @@ export function createExportService(deps: ExportServiceDeps) {
         });
 
         // Fetch the updated issue to get actual Jira data (after ADF roundtrip)
+        let updatedIssue = await client.fetchIssue(planItem.external_key!);
 
         // Execute status transition if queued
         if (transitionToApply) {
           try {
+            if (!targetStatusCategory) {
+              throw new Error(`Missing queued target status for ${planItem.external_key}`);
+            }
             const toDoneCategory = transitionToApply.to.statusCategory.key === 'done';
             console.log(`[ExportService] Transitioning ${planItem.external_key} via transition "${transitionToApply.name}" (id: ${transitionToApply.id}) to "${transitionToApply.to.name}" (done=${toDoneCategory})`);
             await client.transitionIssue(planItem.external_key!, transitionToApply.id, toDoneCategory);
+            updatedIssue = await client.fetchIssue(planItem.external_key!);
+            const actualCategory = inferCategoryWithMapping(
+              updatedIssue.status,
+              association.status_mapping,
+              { trackerType: association.tracker_type, stateType: updatedIssue.statusType ?? null }
+            );
+            if (actualCategory !== targetStatusCategory) {
+              throw new Error(
+                `Tracker status for ${planItem.external_key} is "${updatedIssue.status}" after export, expected ${STATUS_CATEGORY_LABELS[targetStatusCategory]}`
+              );
+            }
+            newExternalStatus = updatedIssue.status;
           } catch (transitionError) {
             console.error(`Failed to transition ${planItem.external_key}:`, transitionError);
             throw transitionError;

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { installMockApi, type MockApi } from '../../../../tests/mocks/electron-api';
+import { emit } from '../storeEvents';
 import { useSyncStore } from './useSyncStore';
 describe('useSyncStore', () => {
   let api: MockApi;
@@ -124,5 +125,75 @@ describe('useSyncStore', () => {
     expect(api.tracker.sync.getPreview).toHaveBeenCalledTimes(1);
     expect(useSyncStore.getState().showPanel).toBe(true);
     expect(useSyncStore.getState().syncPreview?.stats.new).toBe(1);
+  });
+
+  it('fetches a fresh preview after tracker export invalidates the cached preview', async () => {
+    api.tracker.sync.getPreview
+      .mockResolvedValueOnce({
+        success: true,
+        preview: {
+          tracker_type: 'linear',
+          link_id: 'assoc-1',
+          external_project_key: 'ENG',
+          new_items: [],
+          updated_items: [
+            {
+              plan_item_id: 'plan-1',
+              external_key: 'ENG-1',
+              title: 'Stale status',
+              changes: [{
+                field: 'status_category',
+                old_value: 'done',
+                new_value: 'in_review',
+              }],
+            },
+          ],
+          conflicts: [],
+          deleted_in_tracker: [],
+          stats: {
+            total: 1,
+            new: 0,
+            updated: 1,
+            conflicts: 0,
+            deleted: 0,
+            unchanged: 0,
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        preview: {
+          tracker_type: 'linear',
+          link_id: 'assoc-1',
+          external_project_key: 'ENG',
+          new_items: [],
+          updated_items: [],
+          conflicts: [],
+          deleted_in_tracker: [],
+          stats: {
+            total: 1,
+            new: 0,
+            updated: 0,
+            conflicts: 0,
+            deleted: 0,
+            unchanged: 1,
+          },
+        },
+      });
+
+    await useSyncStore.getState().checkForUpdates('project-1', 'assoc-1');
+    emit({
+      type: 'tracker-export-completed',
+      payload: { projectId: 'project-1', associationId: 'assoc-1' },
+    });
+    await useSyncStore.getState().startSync('project-1', 'assoc-1');
+
+    expect(api.tracker.sync.getPreview).toHaveBeenCalledTimes(2);
+    expect(useSyncStore.getState().showPanel).toBe(false);
+    expect(useSyncStore.getState().syncPreview).toBeNull();
+    expect(useSyncStore.getState().syncAvailability['assoc-1']).toMatchObject({
+      hasIncomingChanges: false,
+      changeCount: 0,
+    });
   });
 });

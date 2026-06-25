@@ -52,6 +52,8 @@ export interface CreateIssueParams {
   customFields?: Record<string, unknown>;  // Custom field values
   /** Linear-only: scope new issues to a Linear Project (UUID). Ignored by other clients. */
   linearProjectId?: string;
+  /** Linear-only: initial workflow state UUID. Ignored by other clients. */
+  targetStatusId?: string;
 }
 
 export interface CreatedIssue {
