@@ -28,6 +28,8 @@ createKpmServer() (singleton MCP server)
     ├─ file-delete.ts (file delete tools)
     ├─ plan-refs.ts (extract plan items from a doc; resolve @plan/<uuid> tokens)
     ├─ list-project-files.ts (project file listing)
+    ├─ spill-read.ts (read_spill_file: recover SDK tool-result overflow files)
+    └─ git-read.ts (git_read: read-only git against connected repos)
     ↓
 System prompts (prompts/ directory)
 ```
@@ -138,6 +140,7 @@ The `currentView` parameter ('plan' | 'workspace') adds context-aware suggestion
 |------|---------|
 | `clientManager.ts` | Singleton Claude client |
 | `contextBuilders.ts` | Context fetching for sessions |
+| `permissions.ts` | File access control (repos, files). Denies all raw `git` in Bash (Rule -1) — git goes through the `git_read` tool. |
 | `sdkOptionsBuilder.ts` | SDK config construction (applies `thinking: { type: 'adaptive', display: 'summarized' }` for opus and sonnet so thinking content streams in the response) |
 | `auth.ts` | API key management |
 | `activity.ts` | Activity tracking |
@@ -149,6 +152,7 @@ The `currentView` parameter ('plan' | 'workspace') adds context-aware suggestion
 | `tools/review-assessment.ts` | Separate read-only MCP server used by `ReviewAssessmentService` (not part of the main-chat `createKpmServer`) |
 | `tools/plan-refs.ts` | `extract_plan_items_from_doc` — lift `@plan/<uuid>` tokens out of a project file by path |
 | `tools/spill-read.ts` | `read_spill_file` — read-only recovery of SDK tool-result spill files in `~/.claude/projects/` |
+| `tools/git-read.ts` | `git_read` — runs read-only git in a connected repo via `execFile` (no shell). Raw `git` in chat Bash is blocked (`permissions.ts` Rule -1); this is the only git path. Validation lives in `services/repo/gitReadOnly.ts`. |
 | `contextRefs.ts` | `formatPlanRefSection` — expand plan refs into agent context |
 | `prompts/` | System prompt builders |
 

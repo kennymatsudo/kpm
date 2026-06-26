@@ -16,7 +16,13 @@ const READ_TOOLS = ['Read', 'Grep', 'Glob'];
 const WRITE_TOOLS = ['Edit', 'Write', 'Bash'];
 
 /**
+ * Detect whether a Bash command invokes git. Chat has no raw git access —
+ * git runs through the read-only `git_read` MCP tool, which validates the
+ * subcommand and arguments with no shell to parse. Any git in Bash is denied
+ * and the agent is pointed at git_read (see Rule -1 below).
  */
+function commandInvokesGit(command: string): boolean {
+  return /(^|[\s;&|()])(?:\S+\/)?git(?:\s|$)/.test(command.trim());
 }
 
 /** Function to prompt user for permission */
@@ -220,6 +226,17 @@ export function createPermissionHandler(
       console.log(`[Permissions] Input: ${JSON.stringify(input).slice(0, 500)}`);
     }
 
+    // Rule -1: Chat has no raw git access. Git runs only through the read-only
+    // `git_read` MCP tool, which validates the subcommand + args with no shell
+    // to parse (so pipes, redirects, and substitution can't smuggle a write).
+    // Deny any git in Bash and point the agent at git_read.
+    if (toolName === 'Bash' && typeof input.command === 'string' && commandInvokesGit(input.command)) {
+      console.log(`[Permissions] DENIED: git in Bash (use git_read): ${input.command}`);
+      return {
+        behavior: 'deny',
+        message:
+          'Raw git is blocked in KPM chat. Use the git_read tool for read-only git (log, diff, status, show, blame, branches, merge-base, ...). Writes (commit, push, branch/tag creation, merge, rebase, reset, checkout, stash) happen in board agent worktrees, not chat.',
+      };
     }
 
     const targetPath = extractPath(toolName, input);
@@ -449,3 +466,4 @@ export function clearSessionCache(projectId: string): void {
 /**
  * Export for testing/debugging.
  */
+export { extractPath, isWithinDirectory, commandInvokesGit, getToolPreview };

@@ -35,6 +35,7 @@ import { createFileDeleteTools, type FileDeleteCallback, type FileDeletePayload 
 import { createListProjectFilesTools } from './list-project-files';
 import { createPlanRefTools } from './plan-refs';
 import { createSpillReadTools } from './spill-read';
+import { createGitReadTools } from './git-read';
 import type { PlanAction } from '../../../shared/types';
 
 export interface KpmToolDefinition {
@@ -455,6 +456,7 @@ function collectTools() {
     projects: projectRepo,
   });
   const spillReadTools = createSpillReadTools();
+  const gitReadTools = createGitReadTools({ repos: repoRepo });
 
   const tools = [
     ...planItemTools,
@@ -475,6 +477,7 @@ function collectTools() {
     ...listProjectFilesTools,
     ...planRefTools,
     ...spillReadTools,
+    ...gitReadTools,
   ];
   cachedTools = tools;
 

@@ -22,6 +22,7 @@ export function buildToolDecisionTree(projectId: string, approvalMode: ChatAppro
 Use \`projectId: "${projectId}"\` for all KPM tool calls.
 
 - **Code facts:** use Grep/Glob/Read on connected repos. Do not use plan query tools for code exploration.
+- **Git state:** use \`git_read\` for git history, diffs, status, blame, branches, and \`merge-base\`. Raw \`git\` in Bash is blocked in chat — \`git_read\` is the only git path, and it is read-only.
 - **Plan facts:** use plan query tools only when the user asks about items, structure, status, blockers, or tracker links. Prefer \`batch_get_items\` for multiple IDs.
 - **Project files:** use \`read_project_file\`, \`list_project_files\`, \`propose_document_create\`, and \`propose_document_edit\` for KPM project documents. When no specific file is given, list with \`recursive: true\` and use each file's \`summary\` to pick which documents to open before reading them in full; a missing \`summary\` means not-yet-indexed, not irrelevant, so read it when in doubt.
 - **KPM changes:** ${actionHeading}. Use \`modify_plan\` for plan mutations, \`propose_context_edit\` for the project context file, and document proposal tools for project files.

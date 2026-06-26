@@ -9,6 +9,7 @@ import {
   createPermissionHandler,
   extractPath,
   isWithinDirectory,
+  commandInvokesGit,
   type PermissionContext,
   type PromptUserFn,
 } from './permissions';
@@ -47,6 +48,9 @@ describe('permissions', () => {
     });
   });
 
+  describe('commandInvokesGit', () => {
+    // Raw git is blocked wholesale in chat Bash (use the git_read tool instead);
+    // the read-only classification now lives in gitReadOnly.ts.
     });
 
     });
@@ -229,17 +233,29 @@ describe('permissions', () => {
       });
     });
 
+    describe('git in Bash (blocked — use git_read)', () => {
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
+      it('denies git even with cached / allow-all permissions', async () => {
         vi.mocked(clientManager.hasPermissionCached).mockReturnValue(true);
         vi.mocked(clientManager.hasAllowAllRemaining).mockReturnValue(true);
 
         const result = await handler('Bash', { command: 'git log --oneline' }, createTestOptions());
+        expect(result.behavior).toBe('deny');
       });
 
+      it('points the agent at the git_read tool', async () => {
+        const result = await handler('Bash', { command: 'git status' }, createTestOptions());
+        expect(result.behavior).toBe('deny');
+        if (result.behavior === 'deny') {
+          expect(result.message).toContain('git_read');
+        }
       });
 
+      it('still allows non-git Bash to follow normal rules (prompts)', async () => {
+        await handler('Bash', { command: 'ls -la' }, createTestOptions());
+        expect(mockPromptUser).toHaveBeenCalled();
       });
     });
 
