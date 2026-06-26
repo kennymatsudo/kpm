@@ -133,6 +133,7 @@ export const BoardCard = memo(function BoardCard({
     latestReviewActivity,
     isMergeBlocked,
     reviewActionable,
+    repoSession,
   } = useDevSessionsStore(
     useShallow((state) => {
       const itemSessions = state.sessionsByPlanItemId.get(item.id) ?? [];
@@ -144,6 +145,10 @@ export const BoardCard = memo(function BoardCard({
       const active =
         itemSessions.find((s) => ACTIVE_SESSION_STATUSES.includes(s.status))
         ?? itemSessions.find((s) => isLiveAutomationPhase(s.automation_phase));
+      const sessionWithWorktree =
+        active?.worktree_path
+          ? active
+          : itemSessions.find((s) => OPENABLE_SESSION_STATUSES.includes(s.status) && s.worktree_path);
       const activeCount = itemSessions.filter((s) => ACTIVE_SESSION_STATUSES.includes(s.status)).length;
       const openable = itemSessions.some((s) => OPENABLE_SESSION_STATUSES.includes(s.status));
       const pr = itemSessions
@@ -183,10 +188,12 @@ export const BoardCard = memo(function BoardCard({
         latestReviewActivity: reviewId ? state.latestActivityBySessionId.get(reviewId) : undefined,
         isMergeBlocked: mergeBlocked,
         reviewActionable: actionableSummary,
+        repoSession: sessionWithWorktree,
       };
     })
   );
 
+  const repoName = repoSession?.repo_name ?? null;
   const automationPhase = activeSession?.automation_phase;
   const reviewSessionId = activeSession ? toReviewSessionId(activeSession.id) : undefined;
   const isReviewVisible =
@@ -470,7 +477,45 @@ export const BoardCard = memo(function BoardCard({
             </button>
           )}
 
+          {(repoName || item.external_key || (prSession?.pr_url && prSession.pr_number != null) || item.external_assignee_name) && (
             <div className="flex min-w-0 items-center gap-1.5 text-tiny text-text-muted">
+              {repoName && repoSession && (
+                <Tooltip
+                  content={
+                    <div className="max-w-[280px]">
+                      <div>Repository: {repoName}</div>
+                      <div className="truncate text-text-tertiary">{repoSession.worktree_path}</div>
+                    </div>
+                  }
+                  side="top"
+                >
+                  <span
+                    className="
+                      inline-flex min-w-0 max-w-[120px] shrink items-center gap-1 rounded
+                      border border-border-subtle bg-surface-1 px-1.5 py-0.5
+                      text-text-tertiary
+                    "
+                    aria-label={`Repository ${repoName}`}
+                  >
+                    <svg
+                      className="h-3 w-3 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M6 3v12m0 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm12-6a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm0 0v2a4 4 0 0 1-4 4H9"
+                      />
+                    </svg>
+                    <span className="min-w-0 truncate">{repoName}</span>
+                  </span>
+                </Tooltip>
+              )}
+
               {item.external_key && (
                 <Tooltip content={`Open ${item.external_key} in ${trackerLabelFor(item.external_type)}`} side="top">
                   <a
@@ -498,6 +543,7 @@ export const BoardCard = memo(function BoardCard({
 
               {prSession?.pr_url && prSession.pr_number != null && (
                 <>
+                  {(repoName || item.external_key) && <span className="flex-shrink-0 text-text-tertiary">·</span>}
                   <Tooltip content={`Open PR #${prSession.pr_number}`} side="top">
                     <button
                       onClick={handleOpenPrClick}
@@ -515,6 +561,7 @@ export const BoardCard = memo(function BoardCard({
 
               {item.external_assignee_name && (
                 <>
+                  {(repoName || item.external_key || (prSession?.pr_url && prSession.pr_number != null)) && (
                     <span className="flex-shrink-0 text-text-tertiary">·</span>
                   )}
                   <Tooltip content={`Assigned to ${item.external_assignee_name}`} side="top">
