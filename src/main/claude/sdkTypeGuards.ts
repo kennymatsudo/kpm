@@ -19,6 +19,8 @@ import type {
   SDKAssistantMessageError,
   SDKPartialAssistantMessage,
   SDKCompactBoundaryMessage,
+  SDKModelRefusalFallbackMessage,
+  SDKModelRefusalNoFallbackMessage,
   TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
 
@@ -144,6 +146,35 @@ export function isPartialAssistantMessage(msg: SDKMessage): msg is SDKPartialAss
  */
 export function isCompactBoundaryMessage(msg: SDKMessage): msg is SDKCompactBoundaryMessage {
   return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'compact_boundary';
+}
+
+/**
+ * Check if a message reports a model refusal the SDK recovered from by switching
+ * to a fallback model. The turn CONTINUES on `fallback_model`, so this is not an
+ * error — surface it so the model-badge swap (e.g. opus → sonnet) has a visible
+ * explanation instead of silently changing the model under the user.
+ */
+export function isModelRefusalFallbackMessage(msg: SDKMessage): msg is SDKModelRefusalFallbackMessage {
+  return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'model_refusal_fallback';
+}
+
+/**
+ * Check if a message reports a model refusal with NO fallback (SDK v0.3.195+).
+ * The model declined and there is no model to retry on, so the turn ENDS with no
+ * assistant output. Without surfacing this the turn dies silently — the
+ * "Working…" indicator just stops. Carries a human-readable `content`.
+ */
+export function isModelRefusalNoFallbackMessage(msg: SDKMessage): msg is SDKModelRefusalNoFallbackMessage {
+  return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'model_refusal_no_fallback';
+}
+
+/**
+ * Build a user-facing explanation for a no-fallback model refusal. Prefers the
+ * SDK's human-readable `content`; falls back to a generic line when absent.
+ */
+export function describeModelRefusalNoFallback(msg: SDKModelRefusalNoFallbackMessage): string {
+  const content = msg.content?.trim();
+  return content || 'Claude declined to continue with this request. Try rephrasing it.';
 }
 
 /**

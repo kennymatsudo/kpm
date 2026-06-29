@@ -37,6 +37,7 @@ import type { PlanContext } from '../../claude/prompts';
 import type { ChatProvider, FocusChatDocument, FocusedResource, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope } from '../../../shared/types';
 import { getConfig } from '../../config';
 import { clientManager } from '../../claude/clientManager';
+import { isMaxTokensReached, isMaxTurnsReached, isApiRetryMessage, isRateLimitEvent, isToolProgressMessage, isInformationalMessage, isPartialAssistantMessage, isCompactBoundaryMessage, isModelRefusalFallbackMessage, isModelRefusalNoFallbackMessage, getTerminalReason, describeAssistantError, describeModelRefusalNoFallback } from '../../claude/sdkTypeGuards';
 import { DEFAULT_CONTEXT_FILENAME } from '../../../shared/contextFile';
 import { promptUser } from '../core/PermissionPromptService';
 import { selectVisibleSlashCommands } from '../core/SlashCommandService';
@@ -1937,6 +1938,37 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           });
         }
       }
+    }
+
+    // Handle model-refusal messages: the model declined the request on safety
+    // grounds. Two variants from the SDK:
+    //  - fallback: the SDK switched to a fallback model and the turn CONTINUES,
+    //    so surface a lightweight notice (don't mark the turn errored). This
+    //    also explains the model-badge swap (e.g. opus → sonnet) to the user.
+    //  - no-fallback: the turn ENDS with no assistant text. Without surfacing
+    //    it the turn dies silently. Show the explanation and mark the turn
+    //    already-explained so the generic terminal-reason banner is suppressed.
+    // Suppressed during interrupt-and-send so a late old-turn refusal can't leak
+    // into the next turn.
+    if (isModelRefusalFallbackMessage(sdkMsg) && !managed.interruptInProgress) {
+      mainWindow?.webContents.send('chat:activity', {
+        projectId,
+        chatSessionId,
+        activity: {
+          type: 'other' as const,
+          label: 'Switched models',
+          detail: `${sdkMsg.original_model} declined this request — continuing on ${sdkMsg.fallback_model}`,
+        },
+      });
+    }
+
+    if (isModelRefusalNoFallbackMessage(sdkMsg) && !managed.interruptInProgress) {
+      managed.turnErrorSurfaced = true;
+      mainWindow?.webContents.send('chat:error', {
+        projectId,
+        chatSessionId,
+        error: describeModelRefusalNoFallback(sdkMsg),
+      });
     }
 
     // Handle API retry messages — surface to UI as activity

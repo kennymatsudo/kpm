@@ -167,8 +167,11 @@ vi.mock('../../claude/sdkTypeGuards', async () => {
     isInformationalMessage: actual.isInformationalMessage,
     isPartialAssistantMessage: actual.isPartialAssistantMessage,
     isCompactBoundaryMessage: actual.isCompactBoundaryMessage,
+    isModelRefusalFallbackMessage: actual.isModelRefusalFallbackMessage,
+    isModelRefusalNoFallbackMessage: actual.isModelRefusalNoFallbackMessage,
     getTerminalReason: () => sdkTypeGuardState.terminalReason,
     describeAssistantError: actual.describeAssistantError,
+    describeModelRefusalNoFallback: actual.describeModelRefusalNoFallback,
   };
 });
 
@@ -896,6 +899,96 @@ it('surfaces max-token truncation after finalizing the partial response', async 
     });
     // prevent_continuation routes to chat:error only — not also chat:activity.
     expect(sentEvents.some((e) => e.channel === 'chat:activity')).toBe(false);
+  });
+
+  it('surfaces a no-fallback model refusal as an error instead of dying silently', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(sendResult.ok).toBe(true);
+
+    const session = mockSessionInstances[0];
+    expect(session).toBeDefined();
+
+    sentEvents.length = 0;
+    session.emitMessage({
+      type: 'system',
+      subtype: 'model_refusal_no_fallback',
+      original_model: 'claude-sonnet-4-6',
+      request_id: 'req_1',
+      content: 'I can\'t help with that request.',
+    });
+
+    const errorEvent = sentEvents.find((e) => e.channel === 'chat:error');
+    expect(errorEvent?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      error: 'I can\'t help with that request.',
+    });
+  });
+
+  it('does not double-surface the generic terminal-reason banner after a no-fallback refusal', async () => {
+    sdkTypeGuardState.terminalReason = 'model_error';
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(sendResult.ok).toBe(true);
+
+    const session = mockSessionInstances[0];
+    expect(session).toBeDefined();
+
+    sentEvents.length = 0;
+    // Refusal arrives first, then the result reports terminal_reason.
+    session.emitMessage({
+      type: 'system',
+      subtype: 'model_refusal_no_fallback',
+      original_model: 'claude-sonnet-4-6',
+      request_id: null,
+      content: 'Declined.',
+    });
+    session.emitMessage({ type: 'result' });
+
+    const errorEvents = sentEvents.filter((e) => e.channel === 'chat:error');
+    expect(errorEvents).toHaveLength(1);
+    expect(errorEvents[0]?.payload).toMatchObject({ error: 'Declined.' });
+  });
+
+  it('surfaces a model-refusal fallback as a lightweight activity (turn continues)', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'opus',
+    });
+    expect(sendResult.ok).toBe(true);
+
+    const session = mockSessionInstances[0];
+    expect(session).toBeDefined();
+
+    sentEvents.length = 0;
+    session.emitMessage({
+      type: 'system',
+      subtype: 'model_refusal_fallback',
+      trigger: 'refusal',
+      direction: 'retry',
+      original_model: 'claude-opus-4-8',
+      fallback_model: 'claude-sonnet-4-6',
+      request_id: 'req_2',
+      content: 'Switched.',
+    });
+
+    const activityEvent = sentEvents.find((e) => e.channel === 'chat:activity');
+    expect(activityEvent?.payload).toMatchObject({
+      activity: { type: 'other', label: 'Switched models' },
+    });
+    // Fallback continues the turn — must NOT raise an error banner.
+    expect(sentEvents.some((e) => e.channel === 'chat:error')).toBe(false);
   });
 });
 
