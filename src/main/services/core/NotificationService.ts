@@ -46,6 +46,8 @@ function buildDedupeKey(event: UpdateEvent): string {
       return `branch:${event.repoId}:${event.branch ?? 'null'}`;
     case 'generic_update':
       return `generic:${event.source}:${event.summary}`;
+    case 'loop_finding':
+      return `loop:${event.loopId}:${event.title}`;
   }
 }
 
@@ -105,6 +107,13 @@ function shouldNotify(event: UpdateEvent): boolean {
         ...base,
         severity: 'info',
         title: event.summary,
+      };
+    case 'loop_finding':
+      return {
+        ...base,
+        severity: 'info',
+        title: event.title,
+        body: event.body,
       };
     case 'branch_changed':
       // Filtered above by shouldNotify, but fall through cleanly anyway.

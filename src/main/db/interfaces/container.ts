@@ -16,6 +16,7 @@ import type { IAgentReviewRepository, IReviewOwnershipRepository, IReviewSyncSta
 import type { ISlackChannelLinkRepository, ISlackTriageItemRepository } from './slack';
 import type { IClaudeUsageRepository } from './usage';
 import type { IProjectFileMetadataRepository } from './files';
+import type { IScheduledLoopRepository, ILoopRunRepository } from './scheduling';
 
 /**
  * Container holding all repository instances.
@@ -51,4 +52,6 @@ export interface IRepositoryContainer {
   slackTriageItems: ISlackTriageItemRepository;
   claudeUsage: IClaudeUsageRepository;
   projectFileMetadata: IProjectFileMetadataRepository;
+  scheduledLoops: IScheduledLoopRepository;
+  loopRuns: ILoopRunRepository;
 }

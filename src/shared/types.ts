@@ -140,6 +140,57 @@ export interface CustomPrompt {
   updated_at: string;
 }
 
+// =============================================================================
+// Scheduled Loop Types
+// =============================================================================
+
+/**
+ * What a scheduled loop does with each run's result. Also bounds which tools
+ * the loop's agent turn may use, so it doubles as a safety boundary:
+ * - 'notify':   read-only; summarizes findings into an alert (silent if nothing)
+ * - 'report':   read-only + writes/refreshes the loop's own markdown doc
+ * - 'maintain': may propose plan/document changes through the approval flow
+ */
+export type LoopOutputMode = 'notify' | 'report' | 'maintain';
+
+/** Outcome of a single loop run. 'no_op' means the run completed but found nothing worth surfacing. */
+export type LoopRunOutcome = 'ok' | 'no_op' | 'error';
+
+/**
+ * A scheduled loop: a freeform prompt that runs on an interval against a
+ * project. Created and managed from the Command+K palette. Project-scoped
+ * (unlike global CustomPrompts) because each run needs a project's repos,
+ * documents, and outputs/ folder.
+ */
+export interface ScheduledLoop {
+  id: string;
+  project_id: string;
+  name: string;
+  prompt: string;
+  output_mode: LoopOutputMode;
+  interval_minutes: number;
+  enabled: boolean;
+  last_run_at: string | null;
+  last_outcome: LoopRunOutcome | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A single execution of a scheduled loop, retained for history/triage. */
+export interface LoopRun {
+  id: string;
+  loop_id: string;
+  outcome: LoopRunOutcome;
+  /** Short human-readable summary of what the run found or did. */
+  summary: string | null;
+  error: string | null;
+  /** Relative path of the doc written, for 'report' runs. */
+  artifact_path: string | null;
+  started_at: string;
+  finished_at: string | null;
+}
+
 // StatusCategory is re-exported from @kpm/shared-types above
 
 /**

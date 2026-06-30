@@ -72,6 +72,8 @@ import { createAgentSessionManager } from './agents/AgentSessionManager';
 import { createHookServer } from './agents/hookServer';
 import { createBoardAgentOrchestrator } from './agents/BoardAgentOrchestrator';
 import { createReviewPollService } from './repo/ReviewPollService';
+import { createScheduledLoopService } from './core/ScheduledLoopService';
+import { createScheduledLoopRunnerService } from './repo/ScheduledLoopRunnerService';
 
 // =============================================================================
 // Application Services Factory
@@ -432,6 +434,40 @@ export function createAppServices(container: IRepositoryContainer) {
     appSettings: container.appSettings,
   });
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Scheduled Loops (recurring AI-driven prompts; created/managed from Cmd+K)
+  //
+  // The runner drives enabled loops on the shared PollScheduler; the CRUD
+  // service calls back into it (sync/remove/runNow) so edits take effect live.
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const scheduledLoopRunnerService = createScheduledLoopRunnerService({
+    scheduledLoops: container.scheduledLoops,
+    loopRuns: container.loopRuns,
+    projects: container.projects,
+    repos: container.repos,
+    attachments: container.attachments,
+    planItems: container.planItems,
+    taskPromptTemplates: container.taskPromptTemplates,
+    scheduler: pollScheduler,
+    eventBus: updateEventBus,
+    mcpDiscoveryService,
+    getMainWindow: getPrimaryWindow,
+    broadcastToWindows,
+  });
+
+  const scheduledLoopService = createScheduledLoopService({
+    scheduledLoops: container.scheduledLoops,
+    loopRuns: container.loopRuns,
+    scheduler: {
+      sync: scheduledLoopRunnerService.syncLoop,
+      remove: scheduledLoopRunnerService.removeLoop,
+      runNow: scheduledLoopRunnerService.runNow,
+    },
+  });
+
+  scheduledLoopRunnerService.start();
+
   // ─────────────────────────────────────────────────────────────────────────
   // Slack Triage Service
   // ─────────────────────────────────────────────────────────────────────────
@@ -473,6 +509,8 @@ export function createAppServices(container: IRepositoryContainer) {
     customThemeService,
     contextFileService,
     customPromptService,
+    scheduledLoopService,
+    scheduledLoopRunnerService,
     permissionService,
     taskPromptTemplateService,
     planService,

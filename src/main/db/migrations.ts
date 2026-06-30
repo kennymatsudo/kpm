@@ -3586,6 +3586,43 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1096,
+    name: '096_add_scheduled_loops',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS scheduled_loops (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          output_mode TEXT NOT NULL DEFAULT 'notify'
+            CHECK(output_mode IN ('notify', 'report', 'maintain')),
+          interval_minutes INTEGER NOT NULL DEFAULT 30,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          last_run_at DATETIME,
+          last_outcome TEXT CHECK(last_outcome IN ('ok', 'no_op', 'error')),
+          last_error TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_scheduled_loops_project ON scheduled_loops(project_id);
+        CREATE INDEX IF NOT EXISTS idx_scheduled_loops_enabled ON scheduled_loops(enabled) WHERE enabled = 1;
+
+        CREATE TABLE IF NOT EXISTS loop_runs (
+          id TEXT PRIMARY KEY,
+          loop_id TEXT NOT NULL REFERENCES scheduled_loops(id) ON DELETE CASCADE,
+          outcome TEXT NOT NULL CHECK(outcome IN ('ok', 'no_op', 'error')),
+          summary TEXT,
+          error TEXT,
+          artifact_path TEXT,
+          started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          finished_at DATETIME
+        );
+        CREATE INDEX IF NOT EXISTS idx_loop_runs_loop ON loop_runs(loop_id, started_at DESC);
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

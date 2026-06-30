@@ -34,3 +34,5 @@ export * from './SlackChannelLinkRepository';
 export * from './SlackTriageItemRepository';
 export * from './ClaudeUsageRepository';
 export * from './ProjectFileMetadataRepository';
+export * from './ScheduledLoopRepository';
+export * from './LoopRunRepository';

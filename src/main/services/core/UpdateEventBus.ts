@@ -20,6 +20,9 @@
 // Event Variants
 // =============================================================================
 
+import type { LoopOutputMode } from '../../../shared/types';
+
+export type UpdateSource = 'github' | 'linear' | 'jira' | 'file' | 'git' | 'loop';
 
 export interface BaseUpdateEvent {
   /** Event kind — discriminator for the union. */
@@ -81,10 +84,26 @@ export interface GenericUpdateEvent extends BaseUpdateEvent {
   payload?: Record<string, unknown>;
 }
 
+/** A finding produced by a scheduled loop run. */
+export interface LoopFindingEvent extends BaseUpdateEvent {
+  kind: 'loop_finding';
+  source: 'loop';
+  loopId: string;
+  projectId: string;
+  loopName: string;
+  outputMode: LoopOutputMode;
+  title: string;
+  body?: string;
+  /** Relative artifact path, for report-mode runs. */
+  artifactPath?: string;
+}
+
 export type UpdateEvent =
   | PrChangedEvent
   | TicketChangedEvent
   | BranchChangedEvent
+  | GenericUpdateEvent
+  | LoopFindingEvent;
 
 export type UpdateEventKind = UpdateEvent['kind'];
 

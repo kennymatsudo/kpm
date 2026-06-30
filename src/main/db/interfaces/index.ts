@@ -72,5 +72,14 @@ export type {
 // File metadata
 export type { IProjectFileMetadataRepository, FileMetadataRow } from './files';
 
+// Scheduled loops domain
+export type {
+  IScheduledLoopRepository,
+  ILoopRunRepository,
+  ScheduledLoopCreate,
+  ScheduledLoopUpdate,
+  LoopRunCreate,
+} from './scheduling';
+
 // Container
 export type { IRepositoryContainer } from './container';

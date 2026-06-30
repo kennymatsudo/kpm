@@ -13,6 +13,7 @@ import { registerPermissionHandlers } from '../handlers/permission';
 import { registerArtifactHandlers } from '../handlers/artifacts';
 import { registerTaskPromptTemplateHandlers } from '../handlers/taskPromptTemplates';
 import { registerCustomPromptHandlers } from '../handlers/customPrompts';
+import { registerScheduledLoopHandlers } from '../handlers/scheduledLoops';
 import { registerOnboardingHandlers } from '../handlers/onboarding';
 import { registerSlackHandlers } from '../handlers/slack';
 import type { IpcRegistrationContext } from './types';
@@ -37,6 +38,7 @@ export function registerWorkspaceHandlers({
   registerArtifactHandlers(getMainWindow, services.artifactService);
   registerTaskPromptTemplateHandlers(services.taskPromptTemplateService);
   registerCustomPromptHandlers(getMainWindow, services.customPromptService);
+  registerScheduledLoopHandlers(services.scheduledLoopService);
   registerOnboardingHandlers(getMainWindow, services.onboardingFacadeService);
   registerSlackHandlers(services.slackTriageService);
 }

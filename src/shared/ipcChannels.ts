@@ -325,6 +325,16 @@ export const IPC_CHANNELS = {
     execute: 'custom-prompts:execute',
     ensureBuiltins: 'custom-prompts:ensure-builtins',
   },
+  scheduledLoop: {
+    list: 'scheduled-loop:list',
+    get: 'scheduled-loop:get',
+    create: 'scheduled-loop:create',
+    update: 'scheduled-loop:update',
+    setEnabled: 'scheduled-loop:set-enabled',
+    delete: 'scheduled-loop:delete',
+    runNow: 'scheduled-loop:run-now',
+    history: 'scheduled-loop:history',
+  },
 
   // ===========================================================================
   // Worktrees

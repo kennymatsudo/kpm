@@ -90,6 +90,10 @@ export { useMcpServersStore } from './mcpServersStore';
 
 // Custom Prompts
 export { useCustomPromptStore } from './customPromptStore';
+
+// Scheduled Loops
+export { useScheduledLoopStore } from './scheduledLoopStore';
+export type { LoopFormInput } from './scheduledLoopStore';
 export {
   useCustomPromptTaskStore,
   initCustomPromptTaskListeners,

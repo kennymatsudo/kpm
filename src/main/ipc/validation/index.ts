@@ -101,6 +101,19 @@ export type {
   CustomPromptExecuteInput,
 } from './customPrompts';
 
+// Scheduled Loops
+export { ScheduledLoopSchemas } from './scheduledLoop';
+export type {
+  ScheduledLoopListInput,
+  ScheduledLoopGetInput,
+  ScheduledLoopCreateInput,
+  ScheduledLoopUpdateInput,
+  ScheduledLoopSetEnabledInput,
+  ScheduledLoopDeleteInput,
+  ScheduledLoopRunNowInput,
+  ScheduledLoopHistoryInput,
+} from './scheduledLoop';
+
 // Shell
 export { ShellSchemas } from './shell';
 

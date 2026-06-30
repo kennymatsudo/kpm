@@ -9,6 +9,7 @@ import {
   useResourceDomainStore,
   useProjectUiDomainStore,
   useChatStore,
+  useScheduledLoopStore,
 } from '../../stores';
 import { emit } from '../../stores/storeEvents';
 import { executeCustomPrompt } from '../../services/promptService';
@@ -16,13 +17,16 @@ import { listProjectDirectory } from '../../services/projectFileService';
 import { useChat } from '../../hooks/useChat';
 import { getBaseName } from '../../utils/path';
 import { LoadingSpinner } from '../ui/LoadingButton';
+import type { CustomPrompt, CustomPromptIcon, FileNode, FocusedResource, ScheduledLoop } from '../../../shared/types';
 import { useShallow } from 'zustand/react/shallow';
+import { LoopModal } from './LoopModal';
 
 interface CommandItem {
   id: string;
   label: string;
   description: string;
   icon: CustomPromptIcon;
+  category: 'prompts' | 'project' | 'navigation' | 'loops';
   action: () => void;
   keywords: string[];
   promptId?: string;
@@ -43,6 +47,12 @@ function flattenMarkdownFiles(nodes: FileNode[], acc: DocumentTarget[] = []): Do
     }
   }
   return acc;
+}
+
+function describeLoop(loop: ScheduledLoop): string {
+  const mode = loop.output_mode.charAt(0).toUpperCase() + loop.output_mode.slice(1);
+  const cadence = loop.enabled ? `every ${loop.interval_minutes}m` : 'paused';
+  return `${cadence} · ${mode}${ran}`;
 }
 
 function CommandIcon({ icon, className }: { icon: CustomPromptIcon; className?: string }) {
@@ -95,6 +105,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       prompts: state.prompts,
       loadPrompts: state.loadPrompts,
       isLoading: state.isLoading,
+    }))
+  );
+  const { loops, loadLoops, openCreateLoop, openEditLoop } = useScheduledLoopStore(
+    useShallow((state) => ({
+      loops: state.loops,
+      loadLoops: state.loadLoops,
+      openCreateLoop: state.openCreate,
+      openEditLoop: state.openEdit,
     }))
   );
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -161,7 +179,9 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   useEffect(() => {
     if (isOpen) {
       void loadPrompts();
+      if (currentProjectId) void loadLoops(currentProjectId);
     }
+  }, [isOpen, loadPrompts, loadLoops, currentProjectId]);
 
   const commands = useMemo<CommandItem[]>(() => {
     if (!currentProjectId) return [];
@@ -193,9 +213,37 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       },
     }));
 
+    const loopCommands: CommandItem[] = [
+      {
+        id: 'new-loop',
+        label: 'New loop…',
+        description: 'Schedule a recurring prompt — watch Slack/PRs/tickets or keep docs current',
+        icon: 'sparkles',
+        category: 'loops',
+        keywords: ['loop', 'schedule', 'recurring', 'watch', 'cron', 'new', 'automation'],
+        action: () => {
+          openCreateLoop();
+        },
+      },
+      ...loops.map((loop): CommandItem => ({
+        id: `loop-${loop.id}`,
+        label: loop.name,
+        description: describeLoop(loop),
+        icon: 'check',
+        category: 'loops',
+        keywords: ['loop', 'schedule', loop.output_mode],
+        action: () => {
+          openEditLoop(loop);
+        },
+      })),
+    ];
+
+    return [...builtIn, ...loopCommands, ...promptCommands];
+  }, [currentProjectId, prompts, loops, openCreateLoop, openEditLoop]);
 
   const groupedCommands = useMemo(() => ({
     project: commands.filter((command) => command.category === 'project'),
+    loops: commands.filter((command) => command.category === 'loops'),
     prompts: commands.filter((command) => command.category === 'prompts'),
   }), [commands]);
 
@@ -285,6 +333,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   }, [isOpen]);
 
   return (
+    <>
     <Command.Dialog
       open={isOpen}
       onOpenChange={handleOpenChange}
@@ -441,6 +490,16 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                   </Command.Group>
                 )}
 
+                {groupedCommands.loops.length > 0 && (
+                  <Command.Group
+                    heading="Loops"
+                    className="px-2 [&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-text-muted"
+                  >
+                    {groupedCommands.loops.map((command) => renderCommandItem(command, executingCommand, executeCommand))}
+                  </Command.Group>
+                )}
+
+                {(groupedCommands.project.length > 0 || groupedCommands.loops.length > 0) && groupedCommands.prompts.length > 0 && (
                   <Command.Separator className="mx-4 my-2 h-px bg-border-default" />
                 )}
 
@@ -478,6 +537,8 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         </div>
       </div>
     </Command.Dialog>
+    <LoopModal />
+    </>
   );
 }
 

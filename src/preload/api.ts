@@ -59,6 +59,9 @@ import type {
   CustomPromptIcon,
   CustomPromptTargetType,
   CustomPromptRunMode,
+  ScheduledLoop,
+  LoopRun,
+  LoopOutputMode,
   SearchResult,
   PromptDefinitionInfo,
   PromptCategory,
@@ -1030,6 +1033,67 @@ const customPrompts = {
   },
 };
 
+// Scheduled Loops API (recurring AI-driven prompts, managed from Command+K)
+const scheduledLoops = {
+  list: (projectId: string): Promise<{ success: boolean; data?: ScheduledLoop[]; error?: string }> =>
+    invokeFlat<{ loops: ScheduledLoop[] }>(IPC_CHANNELS.scheduledLoop.list, { projectId }).then((result) =>
+      result.success ? { success: true, data: result.loops } : result
+    ),
+
+  get: (id: string): Promise<{ success: boolean; data?: ScheduledLoop; error?: string }> =>
+    invokeFlat<{ loop: ScheduledLoop }>(IPC_CHANNELS.scheduledLoop.get, { id }).then((result) =>
+      result.success ? { success: true, data: result.loop } : result
+    ),
+
+  create: (input: {
+    projectId: string;
+    name: string;
+    prompt: string;
+    outputMode: LoopOutputMode;
+    intervalMinutes: number;
+    enabled?: boolean;
+  }): Promise<{ success: boolean; data?: ScheduledLoop; error?: string }> =>
+    invokeFlat<{ loop: ScheduledLoop }>(IPC_CHANNELS.scheduledLoop.create, input).then((result) =>
+      result.success ? { success: true, data: result.loop } : result
+    ),
+
+  update: (
+    id: string,
+    updates: {
+      name?: string;
+      prompt?: string;
+      outputMode?: LoopOutputMode;
+      intervalMinutes?: number;
+      enabled?: boolean;
+    }
+  ): Promise<{ success: boolean; data?: ScheduledLoop; error?: string }> =>
+    invokeFlat<{ loop: ScheduledLoop }>(IPC_CHANNELS.scheduledLoop.update, { id, ...updates }).then((result) =>
+      result.success ? { success: true, data: result.loop } : result
+    ),
+
+  setEnabled: (id: string, enabled: boolean): Promise<{ success: boolean; data?: ScheduledLoop; error?: string }> =>
+    invokeFlat<{ loop: ScheduledLoop }>(IPC_CHANNELS.scheduledLoop.setEnabled, { id, enabled }).then((result) =>
+      result.success ? { success: true, data: result.loop } : result
+    ),
+
+  delete: (id: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.scheduledLoop.delete, { id }),
+
+  runNow: (id: string): Promise<{ success: boolean; error?: string }> =>
+    invokeFlat<void>(IPC_CHANNELS.scheduledLoop.runNow, { id }),
+
+  history: (loopId: string, limit?: number): Promise<{ success: boolean; data?: LoopRun[]; error?: string }> =>
+    invokeFlat<{ runs: LoopRun[] }>(IPC_CHANNELS.scheduledLoop.history, { loopId, limit }).then((result) =>
+      result.success ? { success: true, data: result.runs } : result
+    ),
+
+  onRun: (callback: (data: { projectId: string; loopId: string; outcome: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; loopId: string; outcome: string }) => callback(data);
+    ipcRenderer.on('scheduled-loop:run', handler);
+    return () => ipcRenderer.removeListener('scheduled-loop:run', handler);
+  },
+};
+
 const github = {
   checkAuth: (sessionId: string): Promise<{ success: boolean; authenticated?: boolean; account?: string; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.github.checkAuth, { sessionId }),
@@ -1769,6 +1833,7 @@ export const api = {
   artifacts,
   taskPromptTemplates,
   customPrompts,
+  scheduledLoops,
   github,
   review,
   worktrees,
