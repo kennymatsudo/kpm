@@ -19,6 +19,8 @@ test.describe.serial('Status workflow', () => {
     await createPlanItem(page, 'Not Started Task');
     await createPlanItem(page, 'In Progress Task');
     await createPlanItem(page, 'Done Task');
+    await setItemStatus(page, 'In Progress Task', 'In Progress');
+    await setItemStatus(page, 'Done Task', 'Done');
   });
 
   test.afterAll(async ({ electronApp }) => {

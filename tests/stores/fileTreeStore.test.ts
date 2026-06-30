@@ -109,6 +109,15 @@ describe('fileTreeStore', () => {
       useFileTreeStore.getState().setNodes(nodes);
     });
 
+    it('finds root, nested, and deeply nested nodes', () => {
+      for (const [filePath, expectedName] of [
+        ['file.txt', 'file.txt'],
+        ['folder/nested.txt', 'nested.txt'],
+        ['folder/deep/deep-file.txt', 'deep-file.txt'],
+      ]) {
+        const node = useFileTreeStore.getState().getNodeByPath(filePath);
+        expect(node?.name).toBe(expectedName);
+      }
     });
 
     it('returns null for non-existent path', () => {
@@ -134,6 +143,11 @@ describe('fileTreeStore', () => {
       useFileTreeStore.getState().setNodes(nodes);
     });
 
+    it('returns root nodes for empty and "." paths', () => {
+      for (const filePath of ['', '.']) {
+        const children = useFileTreeStore.getState().getChildrenOfPath(filePath);
+        expect(children).toHaveLength(2);
+      }
     });
 
     it('returns children of folder', () => {
@@ -287,9 +301,11 @@ describe('fileTreeStore', () => {
       useFileTreeStore.getState().setNodes([]);
     });
 
+    it('adds file to tree and passes content to the API', async () => {
       const newFile = createNode({ name: 'file.txt', path: 'file.txt' });
       mockFileExplorer.createFile.mockResolvedValue(newFile);
 
+      const result = await useFileTreeStore.getState().createFile('file.txt', 'content');
 
       expect(result).toEqual(newFile);
       expect(useFileTreeStore.getState().nodes).toContainEqual(newFile);
@@ -316,12 +332,14 @@ describe('fileTreeStore', () => {
       expect(useFileTreeStore.getState().getNodeByPath('other.txt')).not.toBe(null);
     });
 
+    it('clears selected and focused paths when deleting that item', async () => {
       mockFileExplorer.delete.mockResolvedValue({ success: true });
       useFileTreeStore.getState().setSelectedPath('file.txt');
       useFileTreeStore.getState().toggleFocused('file.txt');
 
       await useFileTreeStore.getState().deleteEntry('file.txt');
 
+      expect(useFileTreeStore.getState().selectedPaths.has('file.txt')).toBe(false);
       expect(useFileTreeStore.getState().focusedPaths.has('file.txt')).toBe(false);
     });
 
@@ -360,6 +378,7 @@ describe('fileTreeStore', () => {
       expect(useFileTreeStore.getState().getNodeByPath('new.txt')).not.toBe(null);
     });
 
+    it('updates selected and focused paths when renaming that item', async () => {
       useFileTreeStore.getState().setSelectedPath('old.txt');
       useFileTreeStore.getState().toggleFocused('old.txt');
       const renamedNode = createNode({ name: 'new.txt', path: 'new.txt' });
@@ -367,6 +386,7 @@ describe('fileTreeStore', () => {
 
       await useFileTreeStore.getState().rename('old.txt', 'new.txt');
 
+      expect(useFileTreeStore.getState().selectedPaths.has('new.txt')).toBe(true);
       expect(useFileTreeStore.getState().focusedPaths.has('old.txt')).toBe(false);
       expect(useFileTreeStore.getState().focusedPaths.has('new.txt')).toBe(true);
     });

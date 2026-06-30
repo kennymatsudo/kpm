@@ -198,7 +198,12 @@ describe('review table migrations', () => {
       `);
 
       const recordMigration = db.prepare('INSERT INTO schema_migrations (id, name) VALUES (?, ?)');
+      const pendingUnderTest = new Set([
+        '092_agent_review_running_failed_states',
+        '093_dev_session_workflow_controls',
+      ]);
       for (const migration of migrations) {
+        if (!pendingUnderTest.has(migration.name)) {
           recordMigration.run(migration.id, migration.name);
         }
       }

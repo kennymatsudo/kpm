@@ -33,6 +33,7 @@ test.describe.serial('Global search', () => {
     }
   });
 
+  test('global search opens, shows tabs, and finds plan items', async ({ window }) => {
     await window.keyboard.press('Meta+Shift+f');
 
     const input = window.getByPlaceholder('Search tasks, docs...');
@@ -51,9 +52,12 @@ test.describe.serial('Global search', () => {
 
     // Scope to the search overlay to avoid matching the plan card behind it
     await expect(searchOverlay.getByText('Auth Module')).toBeVisible();
+    await window.keyboard.press('Escape');
+    await expect(input).not.toBeVisible();
   });
 
   test('global search shows no results', async ({ window }) => {
+    await window.keyboard.press('Meta+Shift+f');
     const input = window.getByPlaceholder('Search tasks, docs...');
     await input.clear();
     await input.fill('zzzznonexistent');

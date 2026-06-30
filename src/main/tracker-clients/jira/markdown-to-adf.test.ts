@@ -8,6 +8,10 @@ import { adfToMarkdown } from './adf-to-markdown';
 
 describe('markdownToAdf', () => {
   describe('basic functionality', () => {
+    it('returns null for absent or blank input', () => {
+      for (const input of [null, undefined, '', '   \n\t  ']) {
+        expect(markdownToAdf(input)).toBeNull();
+      }
     });
 
     it('returns valid ADF document structure', () => {
@@ -44,6 +48,18 @@ describe('markdownToAdf', () => {
   });
 
   describe('headings', () => {
+    it('converts supported heading levels', () => {
+      for (const [markdown, level, text] of [
+        ['# Main Title', 1, 'Main Title'],
+        ['## Section', 2, 'Section'],
+        ['### Subsection', 3, 'Subsection'],
+        ['###### Deep', 6, 'Deep'],
+      ] as const) {
+        const result = markdownToAdf(markdown);
+        expect(result?.content[0].type).toBe('heading');
+        expect(result?.content[0].attrs?.level).toBe(level);
+        expect(result?.content[0].content?.[0].text).toBe(text);
+      }
     });
 
     it('caps heading level at 6', () => {
@@ -63,6 +79,12 @@ describe('markdownToAdf', () => {
   });
 
   describe('lists', () => {
+    it('converts supported bullet list markers', () => {
+      for (const marker of ['-', '*', '+']) {
+        const result = markdownToAdf(`${marker} Item 1\n${marker} Item 2`);
+        expect(result?.content[0].type).toBe('bulletList');
+        expect(result?.content[0].content).toHaveLength(2);
+      }
     });
 
     it('converts ordered list', () => {
@@ -82,7 +104,16 @@ describe('markdownToAdf', () => {
   });
 
   describe('code blocks', () => {
+    it('converts code blocks with and without language metadata', () => {
+      const plain = markdownToAdf('```\nconst x = 1;\n```');
+      expect(plain?.content[0].type).toBe('codeBlock');
+      expect(plain?.content[0].attrs?.language).toBeUndefined();
+      expect(plain?.content[0].content?.[0].text).toBe('const x = 1;');
 
+      const typed = markdownToAdf('```typescript\nconst x: number = 1;\n```');
+      expect(typed?.content[0].type).toBe('codeBlock');
+      expect(typed?.content[0].attrs?.language).toBe('typescript');
+      expect(typed?.content[0].content?.[0].text).toBe('const x: number = 1;');
     });
 
     it('preserves multiline code', () => {
@@ -93,20 +124,41 @@ describe('markdownToAdf', () => {
   });
 
   describe('blockquotes', () => {
+    it('converts supported blockquote forms', () => {
+      for (const input of ['> A quote', '> Line 1\n> Line 2', '>No space']) {
+        const result = markdownToAdf(input);
+        expect(result?.content[0].type).toBe('blockquote');
+      }
     });
   });
 
   describe('horizontal rules', () => {
+    it('converts supported rule marker forms', () => {
+      for (const input of ['---', '___', '***', '----------']) {
+        const result = markdownToAdf(input);
+        expect(result?.content[0].type).toBe('rule');
+      }
     });
   });
 
   describe('inline formatting', () => {
+    it('converts supported inline marks with the inner text', () => {
+      const cases = [
       { name: '**bold**',    input: 'This is **bold** text',     mark: 'strong', text: 'bold' },
       { name: '__bold__',    input: 'This is __bold__ text',     mark: 'strong', text: 'bold' },
       { name: '*italic*',    input: 'This is *italic* text',     mark: 'em',     text: 'italic' },
       { name: '_italic_',    input: 'This is _italic_ text',     mark: 'em',     text: 'italic' },
       { name: '`code`',      input: 'Use `const` keyword',       mark: 'code',   text: 'const' },
       { name: '~~strike~~',  input: 'This is ~~deleted~~ text',  mark: 'strike', text: 'deleted' },
+      ];
+
+      for (const { input, mark, text } of cases) {
+        const result = markdownToAdf(input);
+        const content = result?.content[0].content ?? [];
+        const node = content.find((n) => n.marks?.some((m) => m.type === mark));
+        expect(node).toBeDefined();
+        expect(node?.text).toBe(text);
+      }
     });
 
     it('converts [links](url) with the href attribute', () => {

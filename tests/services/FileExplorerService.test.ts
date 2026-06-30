@@ -34,7 +34,28 @@ describe('FileExplorerService', () => {
   });
 
   describe('path traversal protection', () => {
+    it('rejects traversal and absolute paths at file operation boundaries', async () => {
+      fs.writeFileSync(path.join(tempDir, 'file.txt'), 'content');
 
+      const operations = [
+        () => service.listDirectory('test-project', '../'),
+        () => service.listDirectory('test-project', 'foo/../../etc/passwd'),
+        () => service.listDirectory('test-project', '/etc/passwd'),
+        () => service.createFolder('test-project', '../escape'),
+        () => service.createFile('test-project', '../escape.txt'),
+        () => service.deleteEntry('test-project', '../escape'),
+        () => service.rename('test-project', '../escape', 'newname'),
+        () => service.rename('test-project', 'file.txt', '../escape.txt'),
+        () => service.readFileAsync('test-project', '../etc/passwd'),
+        () => service.writeFile('test-project', '../escape.txt', 'malicious'),
+      ];
+
+      for (const operation of operations) {
+        const result = await operation();
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error).toBe('Invalid path');
+        }
       }
     });
 

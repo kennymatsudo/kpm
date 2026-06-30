@@ -7,6 +7,17 @@ import { adfToMarkdown } from './adf-to-markdown';
 
 describe('adfToMarkdown', () => {
   describe('basic functionality', () => {
+    it('returns null for absent, invalid, or empty documents', () => {
+      for (const input of [
+        null,
+        undefined,
+        'string',
+        123,
+        { type: 'doc' },
+        { version: 1, type: 'doc', content: [] },
+      ]) {
+        expect(adfToMarkdown(input)).toBeNull();
+      }
     });
   });
 
@@ -45,11 +56,27 @@ describe('adfToMarkdown', () => {
   });
 
   describe('text formatting', () => {
+    it('converts supported marks to markdown', () => {
+      const cases = [
       { mark: 'strong', leadIn: 'This is ', text: 'bold',    trailing: ' text', expected: 'This is **bold** text' },
       { mark: 'em',     leadIn: 'This is ', text: 'italic',  trailing: ' text', expected: 'This is *italic* text' },
       { mark: 'code',   leadIn: 'Use ',     text: 'const',   trailing: ' keyword', expected: 'Use `const` keyword' },
       { mark: 'strike', leadIn: 'This is ', text: 'deleted', trailing: '',      expected: 'This is ~~deleted~~' },
       ];
+
+      for (const { mark, leadIn, text, trailing, expected } of cases) {
+        const content = [
+          { type: 'text', text: leadIn },
+          { type: 'text', text, marks: [{ type: mark }] },
+        ];
+        if (trailing) content.push({ type: 'text', text: trailing });
+        const adf = {
+          version: 1,
+          type: 'doc',
+          content: [{ type: 'paragraph', content }],
+        };
+        expect(adfToMarkdown(adf)).toBe(expected);
+      }
     });
 
     it('converts links', () => {
@@ -95,6 +122,24 @@ describe('adfToMarkdown', () => {
   });
 
   describe('headings', () => {
+    it('converts explicit heading levels', () => {
+      for (const [level, text, expected] of [
+        [1, 'Main Title', '# Main Title'],
+        [3, 'Subsection', '### Subsection'],
+      ] as const) {
+        const adf = {
+          version: 1,
+          type: 'doc',
+          content: [
+            {
+              type: 'heading',
+              attrs: { level },
+              content: [{ type: 'text', text }],
+            },
+          ],
+        };
+        expect(adfToMarkdown(adf)).toBe(expected);
+      }
     });
 
     it('caps heading level at 6', () => {
@@ -218,6 +263,8 @@ describe('adfToMarkdown', () => {
   });
 
   describe('code blocks', () => {
+    it('converts code blocks with and without language metadata', () => {
+      const plain = {
         version: 1,
         type: 'doc',
         content: [
@@ -227,7 +274,9 @@ describe('adfToMarkdown', () => {
           },
         ],
       };
+      expect(adfToMarkdown(plain)).toBe('```\nconst x = 1;\n```');
 
+      const typed = {
         version: 1,
         type: 'doc',
         content: [
@@ -238,6 +287,7 @@ describe('adfToMarkdown', () => {
           },
         ],
       };
+      expect(adfToMarkdown(typed)).toBe('```typescript\nconst x: number = 1;\n```');
     });
   });
 

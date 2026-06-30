@@ -37,22 +37,80 @@ function createTestOptions(): { signal: AbortSignal; toolUseID: string } {
 
 describe('permissions', () => {
   describe('extractPath', () => {
+    it('extracts paths from file and search tools', () => {
+      for (const [toolName, input, expected] of [
+        ['Read', { file_path: '/path/to/file.ts' }, '/path/to/file.ts'],
+        ['Edit', { file_path: '/path/to/file.ts', old: 'x', new: 'y' }, '/path/to/file.ts'],
+        ['Write', { file_path: '/path/to/file.ts', content: 'hello' }, '/path/to/file.ts'],
+        ['Grep', { path: '/search/path', pattern: 'foo' }, '/search/path'],
+        ['Glob', { path: '/search/path', pattern: '*.ts' }, '/search/path'],
+      ] as const) {
+        expect(extractPath(toolName, input)).toBe(expected);
+      }
     });
 
+    it('returns null when a tool has no usable string path', () => {
+      for (const [toolName, input] of [
+        ['Read', {}],
+        ['Read', { file_path: 123 }],
+        ['UnknownTool', { file_path: '/path' }],
+      ] as const) {
+        expect(extractPath(toolName, input)).toBeNull();
+      }
     });
   });
 
   describe('isWithinDirectory', () => {
+    it('accepts files inside the directory or the directory itself', () => {
+      for (const [targetPath, directory] of [
+        ['/project/src/file.ts', '/project'],
+        ['/project/src/deep/nested/file.ts', '/project'],
+        ['/project', '/project'],
+      ] as const) {
+        expect(isWithinDirectory(targetPath, directory)).toBe(true);
+      }
     });
 
+    it('rejects parent, sibling, and partial-name paths', () => {
+      for (const [targetPath, directory] of [
+        ['/parent', '/parent/child'],
+        ['/other/file.ts', '/project'],
+        ['/project-other/file.ts', '/project'],
+      ] as const) {
+        expect(isWithinDirectory(targetPath, directory)).toBe(false);
+      }
     });
   });
 
   describe('commandInvokesGit', () => {
     // Raw git is blocked wholesale in chat Bash (use the git_read tool instead);
     // the read-only classification now lives in gitReadOnly.ts.
+    it('detects git invocations across common shell forms', () => {
+      for (const command of [
+        'git status',
+        'git log --oneline',
+        'git commit -m "fix"',
+        'git push origin main',
+        'git -C /repos/my-app status --short',
+        '/usr/bin/git diff',
+        'echo hello; git commit -m "fix"',
+        'cat foo | git apply',
+        '(git log)',
+      ]) {
+        expect(commandInvokesGit(command)).toBe(true);
+      }
     });
 
+    it('ignores commands that merely contain git as text', () => {
+      for (const command of [
+        'ls -la',
+        'npm install',
+        'echo "git is great"',
+        'rg gitignore',
+        'cat .gitignore',
+      ]) {
+        expect(commandInvokesGit(command)).toBe(false);
+      }
     });
   });
 
@@ -136,6 +194,7 @@ describe('permissions', () => {
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
+      it('denies disabled external MCP server tools before prompting', async () => {
         context = {
           projectPath: '/test/project',
           projectId: 'test-project-id',
@@ -143,7 +202,14 @@ describe('permissions', () => {
         };
         handler = createPermissionHandler(context, mockPromptUser);
 
+        for (const toolName of ['mcp__slack__search', 'mcp__claude-ai-slack__search']) {
+          const result = await handler(toolName, { query: 'hello' }, createTestOptions());
 
+          expect(result).toMatchObject({
+            behavior: 'deny',
+            message: 'The claude.ai Slack MCP server is disabled in KPM settings.',
+          });
+        }
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
@@ -234,6 +300,19 @@ describe('permissions', () => {
     });
 
     describe('git in Bash (blocked — use git_read)', () => {
+      it('denies any git in Bash without prompting', async () => {
+        for (const command of [
+          'git commit -m "fix"',
+          'git push origin main',
+          'git log --oneline',
+          'git status',
+          'git diff HEAD',
+          'git -C /repos/my-app status --short',
+          'git log | sort -o /tmp/out.txt',
+        ]) {
+          const result = await handler('Bash', { command }, createTestOptions());
+          expect(result.behavior).toBe('deny');
+        }
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
@@ -268,7 +347,16 @@ describe('permissions', () => {
     });
 
     describe('project file write interception', () => {
+      it('intercepts Write to project context files and routes them through context approval', async () => {
+        const mockOnClaudeMdEdit = vi.fn();
+        context = {
+          projectPath: '/test/project',
+          projectId: 'test-project-id',
+          onClaudeMdEdit: mockOnClaudeMdEdit,
+        };
+        handler = createPermissionHandler(context, mockPromptUser);
 
+        for (const filename of ['AGENTS.md', 'CLAUDE.md']) {
           const result = await handler(
             'Write',
             { file_path: `/test/project/${filename}`, content: '# Updated context' },
@@ -278,7 +366,19 @@ describe('permissions', () => {
           expect(result.behavior).toBe('deny');
           expect(mockOnClaudeMdEdit).toHaveBeenCalledWith('test-project-id', '# Updated context');
         }
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
 
+      it('denies Edit to project context files and instructs the agent to use propose_context_edit', async () => {
+        const mockOnClaudeMdEdit = vi.fn();
+        context = {
+          projectPath: '/test/project',
+          projectId: 'test-project-id',
+          onClaudeMdEdit: mockOnClaudeMdEdit,
+        };
+        handler = createPermissionHandler(context, mockPromptUser);
+
+        for (const filename of ['AGENTS.md', 'CLAUDE.md']) {
           const result = await handler(
             'Edit',
             { file_path: `/test/project/${filename}`, old_string: 'a', new_string: 'b' },
@@ -290,6 +390,9 @@ describe('permissions', () => {
             message: 'Project context file edits must use KPM change handling. Use the propose_context_edit tool.',
           });
         }
+        expect(mockOnClaudeMdEdit).not.toHaveBeenCalled();
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
 
       it('intercepts Write to project directory when callback provided', async () => {
         const mockOnProjectFileWrite = vi.fn();

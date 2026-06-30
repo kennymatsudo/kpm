@@ -70,6 +70,7 @@ describe('PromptOverrideService', () => {
   });
 
   describe('hasOverride', () => {
+    it('tracks whether an override exists', () => {
       expect(service.hasOverride('system.constraints')).toBe(false);
       service.setOverride('system.constraints', 'Custom');
       expect(service.hasOverride('system.constraints')).toBe(true);
@@ -133,10 +134,17 @@ describe('PromptOverrideService', () => {
   });
 
   describe('listByCategory', () => {
+    it('filters prompt definitions by category', () => {
+      for (const category of ['system', 'generation'] as const) {
+        const prompts = service.listByCategory(category);
+        expect(prompts.every(p => p.category === category)).toBe(true);
+        expect(prompts.length).toBeGreaterThan(0);
+      }
     });
   });
 
   describe('getDefinition', () => {
+    it('returns full definition and reflects override content', () => {
       const def = service.getDefinition('system.constraints');
       expect(def).toBeDefined();
       expect(def!.key).toBe('system.constraints');
@@ -145,6 +153,10 @@ describe('PromptOverrideService', () => {
       expect(def!.currentContent).toBe(def!.defaultContent);
 
       service.setOverride('system.constraints', 'Custom');
+      const overridden = service.getDefinition('system.constraints');
+      expect(overridden!.hasOverride).toBe(true);
+      expect(overridden!.currentContent).toBe('Custom');
+      expect(overridden!.defaultContent).toContain('Constraints');
     });
 
     it('returns undefined for unknown key', () => {

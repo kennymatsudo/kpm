@@ -29,6 +29,7 @@ test.describe.serial('Keyboard shortcuts', () => {
     }
   });
 
+  test('shortcuts modal opens on button click and closes on escape', async ({ window }) => {
     await window.getByRole('button', { name: 'Show keyboard shortcuts' }).click();
 
     await expect(window.getByText('Keyboard Shortcuts')).toBeVisible();

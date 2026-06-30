@@ -50,8 +50,10 @@ test.describe.serial('Plan CRUD operations', () => {
   });
 
   test('edit item title and description with persistence', async ({ window }) => {
+    await openItemEditPanel(window, 'First Feature');
 
     const titleInput = window.getByPlaceholder('Task title...');
+    await expect(titleInput).toHaveValue('First Feature');
 
     await titleInput.clear();
     await titleInput.fill('Updated Feature');

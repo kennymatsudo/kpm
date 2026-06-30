@@ -26,6 +26,7 @@ test.describe.serial('Command palette', () => {
     }
   });
 
+  test('command palette opens, shows empty state, and closes on escape', async ({ window }) => {
     await window.keyboard.press('Meta+k');
 
     const input = window.getByPlaceholder('Type a command or search...');

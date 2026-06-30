@@ -41,6 +41,54 @@ describe('findBestTransition', () => {
       expect(findBestTransition('done', [])).toBeNull();
     });
 
+    it('finds transitions by mapped Jira status category', () => {
+      const cases = [
+        {
+          target: 'done',
+          expected: 'Done',
+          transitions: [
+            createTransition('In Progress', 'In Progress', 'indeterminate'),
+            createTransition('Done', 'Done', 'done'),
+            createTransition('Reopen', 'To Do', 'new'),
+          ],
+        },
+        {
+          target: 'not_started',
+          expected: 'Reopen',
+          transitions: [
+            createTransition('Done', 'Done', 'done'),
+            createTransition('Reopen', 'To Do', 'new'),
+          ],
+        },
+        {
+          target: 'in_progress',
+          expected: 'Start Progress',
+          transitions: [
+            createTransition('Start Progress', 'In Progress', 'indeterminate'),
+            createTransition('Done', 'Done', 'done'),
+          ],
+        },
+        {
+          target: 'blocked',
+          expected: 'Block',
+          transitions: [
+            createTransition('Block', 'Blocked', 'indeterminate'),
+            createTransition('Done', 'Done', 'done'),
+          ],
+        },
+        {
+          target: 'canceled',
+          expected: 'Cancel',
+          transitions: [
+            createTransition('Cancel', 'Canceled', 'done'),
+            createTransition('Start', 'In Progress', 'indeterminate'),
+          ],
+        },
+      ] as const;
+
+      for (const { target, transitions, expected } of cases) {
+        expect(findBestTransition(target, [...transitions])?.name).toBe(expected);
+      }
     });
 
     it('prefers shorter transition names when multiple match', () => {
@@ -55,7 +103,19 @@ describe('findBestTransition', () => {
   });
 
   describe('keyword-based fallback', () => {
+    it('matches target keywords in transition or destination names', () => {
+      const cases = [
+        { target: 'done', transition: createTransition('Mark Done', 'Completed', 'unknown'), expected: 'Mark Done' },
+        { target: 'in_progress', transition: createTransition('Start Progress', 'Working', 'unknown'), expected: 'Start Progress' },
+        { target: 'blocked', transition: createTransition('Block Issue', 'On Hold', 'unknown'), expected: 'Block Issue' },
+        { target: 'not_started', transition: createTransition('Reopen Issue', 'Open', 'unknown'), expected: 'Reopen Issue' },
+        { target: 'canceled', transition: createTransition('Cancel', 'Cancelled', 'unknown'), expected: 'Cancel' },
+        { target: 'in_progress', transition: createTransition('Move', 'In Progress', 'unknown'), expected: 'Move' },
+      ] as const;
 
+      for (const { target, transition, expected } of cases) {
+        expect(findBestTransition(target, [transition])?.name).toBe(expected);
+      }
     });
 
     it('returns null when no keyword matches', () => {
@@ -102,6 +162,31 @@ describe('findTransitionWithMapping', () => {
 });
 
 describe('inferCategoryFromStatus', () => {
+  it('infers categories from representative status keywords', () => {
+    const cases = [
+      ['To Do', 'not_started'],
+      ['Backlog', 'not_started'],
+      ['Open', 'not_started'],
+      ['Reopened', 'not_started'],
+      ['In Progress', 'in_progress'],
+      ['In Review', 'in_review'],
+      ['Testing', 'in_progress'],
+      ['Development', 'in_progress'],
+      ['Done', 'done'],
+      ['Closed', 'done'],
+      ['Resolved', 'done'],
+      ['Complete', 'done'],
+      ['Blocked', 'blocked'],
+      ['On Hold', 'blocked'],
+      ['Waiting', 'blocked'],
+      ['Cancelled', 'canceled'],
+      ["Won't Do", 'canceled'],
+      ['Duplicate', 'canceled'],
+    ] as const;
+
+    for (const [status, expected] of cases) {
+      expect(inferCategoryFromStatus(status)).toBe(expected);
+    }
   });
 
   describe('edge cases', () => {
