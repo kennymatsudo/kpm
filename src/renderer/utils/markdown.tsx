@@ -5,6 +5,7 @@
  * not navigate within the Electron app.
  */
 
+import { sanitizer as sanitizeMarkdownUrl } from 'markdown-to-jsx';
 import type { MarkdownToJSX } from 'markdown-to-jsx';
 import { Children, Fragment, isValidElement, useState } from 'react';
 import type { JSX } from 'react';
@@ -246,6 +247,75 @@ export const markdownOverrides: MarkdownToJSX.Overrides = {
 export const markdownOptions: MarkdownToJSX.Options = {
   overrides: markdownOverrides,
   disableParsingRawHTML: true,
+};
+
+/**
+ * Markdown options for GitHub-sourced content (PR review bodies, review-thread
+ * replies, conversation comments). Unlike the base options, raw HTML parsing is
+ * left ON because GitHub-Flavored Markdown routinely embeds inline HTML —
+ * `<picture>`/`<img>` badges, `<sup>` footnotes, `<details>` blocks, `<a>`
+ * tags — that should render the way GitHub renders it rather than as literal
+ * angle-bracket text.
+ *
+ * Comment authors are untrusted (anyone can comment on a public PR), so the
+ * HTML is sanitized: inline event handlers are dropped, `href`/`src` URLs run
+ * through markdown-to-jsx's built-in scheme filter, and script/embed-style tags
+ * are neutralized entirely. Code fences are unaffected — markdown-to-jsx never
+ * parses HTML inside them, so `<Component />` examples still render verbatim.
+ */
+const droppedHtmlTags = [
+  'script',
+  'style',
+  'iframe',
+  'object',
+  'embed',
+  'form',
+  'link',
+  'meta',
+  'base',
+] as const;
+
+function dropTag(): null {
+  return null;
+}
+
+/**
+ * GitHub comments embed remote images — bot badges, pasted screenshots. The
+ * renderer's CSP only permits same-origin and `data:` images, so remote ones
+ * would render as a broken-image icon. Show the alt text instead; when the
+ * image sits inside a link (e.g. Cursor's "Fix in Cursor" badge) the
+ * surrounding anchor keeps it clickable.
+ */
+function renderGitHubImage({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>): JSX.Element {
+  const source = typeof src === 'string' ? src : '';
+  const isLoadable = source.startsWith('data:') || source.startsWith('blob:') || source.startsWith('/');
+  if (isLoadable) return <img src={source} alt={alt} {...props} />;
+  const label = (typeof alt === 'string' && alt.trim()) || 'image';
+  return <span className="text-text-muted">{label}</span>;
+}
+
+const githubMarkdownOverrides: MarkdownToJSX.Overrides = {
+  ...markdownOverrides,
+  img: { component: renderGitHubImage },
+  ...Object.fromEntries(droppedHtmlTags.map((tag) => [tag, { component: dropTag }])),
+};
+
+function sanitizeGitHubHtml(value: string, _tag: string, attribute: string): string | null {
+  // Drop inline event handlers (onerror, onclick, …) — the primary HTML XSS vector.
+  if (/^on/i.test(attribute)) return null;
+  if (attribute === 'href' || attribute === 'src') {
+    // Preserve the smuggled plan-ref scheme so PlanRefChips still resolve;
+    // run everything else through the built-in javascript:/data: filter.
+    if (value.startsWith(PLAN_REF_SCHEME)) return value;
+    return sanitizeMarkdownUrl(value);
+  }
+  return value;
+}
+
+export const githubMarkdownOptions: MarkdownToJSX.Options = {
+  overrides: githubMarkdownOverrides,
+  disableParsingRawHTML: false,
+  sanitizer: sanitizeGitHubHtml,
 };
 
 /**

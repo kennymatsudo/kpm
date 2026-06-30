@@ -24,6 +24,7 @@ import { useApprovalQueueStore } from '../../stores/approvalQueueStore';
 import { toast } from '../../stores/toastStore';
 import { openExternalUrl } from '../../services/shellService';
 import type { ReviewAssessmentOptions } from '../../stores/devSessions/helpers';
+import { githubMarkdownOptions, transformPlanRefs } from '../../utils/markdown';
 import { Badge, DropdownMenu, EmptyState, LoadingButton } from '../ui';
 import type { BadgeVariant } from '../ui/Badge';
 import {
@@ -153,6 +154,72 @@ function formatReviewDecision(value: string | null): string {
   if (value === 'CHANGES_REQUESTED') return 'Changes requested';
   if (value === 'REVIEW_REQUIRED') return 'Review required';
   return 'No decision';
+}
+
+function formatReviewerVerdict(state: PrTopLevelReview['state']): string {
+  switch (state) {
+    case 'APPROVED':
+      return 'Approved';
+    case 'CHANGES_REQUESTED':
+      return 'Changes requested';
+    case 'COMMENTED':
+      return 'Commented';
+    case 'DISMISSED':
+      return 'Dismissed';
+    case 'PENDING':
+      return 'Pending';
+    case null:
+      return 'Reviewed';
+  }
+}
+
+function reviewerVerdictTone(state: PrTopLevelReview['state']): string {
+  if (state === 'APPROVED') return 'text-success';
+  if (state === 'CHANGES_REQUESTED') return 'text-danger';
+  return 'text-text-tertiary';
+}
+
+function formatRelativeShort(iso: string | null): string {
+  if (!iso) return 'pending';
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return '';
+  const minutes = Math.round((Date.now() - then) / 60000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d`;
+  const weeks = Math.round(days / 7);
+  if (weeks < 5) return `${weeks}w`;
+  return `${Math.round(days / 30)}mo`;
+}
+
+/**
+ * Latest verdict per reviewer. GitHub records one review event per submission,
+ * so a single reviewer (especially bots like Cursor) appears many times; the
+ * strip collapses those to one row each, showing the most recent stance.
+ */
+interface ReviewerVerdict {
+  author: string;
+  state: PrTopLevelReview['state'];
+  submittedAt: string | null;
+  url: string;
+}
+
+function summarizeReviewers(reviews: PrTopLevelReview[]): ReviewerVerdict[] {
+  const latestByAuthor = new Map<string, PrTopLevelReview>();
+  for (const review of reviews) {
+    const existing = latestByAuthor.get(review.author);
+    const current = review.submittedAt ? Date.parse(review.submittedAt) : 0;
+    const prior = existing?.submittedAt ? Date.parse(existing.submittedAt) : 0;
+    if (!existing || current >= prior) {
+      latestByAuthor.set(review.author, review);
+    }
+  }
+  return [...latestByAuthor.values()]
+    .sort((a, b) => (b.submittedAt ? Date.parse(b.submittedAt) : 0) - (a.submittedAt ? Date.parse(a.submittedAt) : 0))
+    .map((review) => ({ author: review.author, state: review.state, submittedAt: review.submittedAt, url: review.url }));
 }
 
 function sanitizeGitHubMarkdown(value: string): string {
@@ -383,6 +450,7 @@ function CommentExcerpt({
           'review-markdown prose-themed break-words',
           shouldClamp && !expanded && 'max-h-72 overflow-hidden',
         )}>
+          <Markdown options={githubMarkdownOptions}>
             {transformPlanRefs(sanitizedBody)}
           </Markdown>
         </div>
@@ -559,6 +627,7 @@ function ThreadRow({
                           @{comment.author} ({comment.authorType.toLowerCase()}) · {formatDateTime(comment.createdAt)}
                         </div>
                         <div className="review-markdown prose-themed mt-1 break-words">
+                          <Markdown options={githubMarkdownOptions}>
                             {transformPlanRefs(sanitizeGitHubMarkdown(comment.body))}
                           </Markdown>
                         </div>
@@ -683,7 +752,31 @@ function ThreadRow({
   );
 }
 
+function ReviewerVerdictStrip({ reviewers }: { reviewers: ReviewerVerdict[] }) {
   return (
+    <div>
+      <div className="text-xxs font-semibold uppercase tracking-wide text-text-tertiary">Reviewers</div>
+      <ul className="mt-1.5 space-y-0.5">
+        {reviewers.map((reviewer) => (
+          <li key={reviewer.author}>
+            <button
+              type="button"
+              onClick={() => openExternalUrl(reviewer.url)}
+              title="Open review on GitHub"
+              className="group/rv flex w-full items-center gap-2 text-left text-xxs"
+            >
+              <span className="min-w-0 flex-1 truncate font-medium text-text-secondary group-hover/rv:text-text-primary">
+                @{reviewer.author}
+              </span>
+              <span className={cx('shrink-0', reviewerVerdictTone(reviewer.state))}>
+                {formatReviewerVerdict(reviewer.state)}
+              </span>
+              <span className="shrink-0 tabular-nums text-text-muted">{formatRelativeShort(reviewer.submittedAt)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -700,6 +793,7 @@ function ConversationCommentCard({ comment }: { comment: PrConversationComment }
         </button>
       </div>
       <div className="review-markdown prose-themed mt-2 break-words">
+        <Markdown options={githubMarkdownOptions}>
           {transformPlanRefs(sanitizeGitHubMarkdown(comment.body))}
         </Markdown>
       </div>
@@ -809,6 +903,14 @@ export function ReviewTab({ session }: ReviewTabProps) {
 
     return selected.sort((a, b) => sortThreads(a, b, taskMap));
   }, [snapshot?.threads, taskMap, threadView]);
+
+  // Reviews surface only as a deduped per-reviewer verdict strip; each row links
+  // to the full review on GitHub. The line comments a review wraps already live
+  // in the thread queue, so review bodies aren't re-shown in the cockpit.
+  const reviewers = useMemo(
+    () => summarizeReviewers(snapshot?.topLevelReviews ?? []),
+    [snapshot?.topLevelReviews],
+  );
 
   // Auto-expand the first thread in the active view; keep the user's choice
   // while it stays visible, otherwise fall back to the top of the list.
@@ -1129,6 +1231,7 @@ export function ReviewTab({ session }: ReviewTabProps) {
   const menuTask = menuState ? taskMap.get(menuState.threadId) : undefined;
 
   return (
+    <div className="flex-1 min-h-0 overflow-auto bg-surface-0 [scrollbar-gutter:stable]">
       <div className="sticky top-0 z-10 border-b border-border-subtle bg-surface-0/95 backdrop-blur">
         <div className="space-y-3 px-3 py-3">
           <div className="flex items-start justify-between gap-3">
@@ -1178,6 +1281,8 @@ export function ReviewTab({ session }: ReviewTabProps) {
             </div>
           </div>
 
+          {snapshot && reviewers.length > 0 && <ReviewerVerdictStrip reviewers={reviewers} />}
+
           {snapshot && nextAction && <NextActionBar action={nextAction} actionKey={actionKey} />}
 
           {snapshot && (
@@ -1218,6 +1323,10 @@ export function ReviewTab({ session }: ReviewTabProps) {
             )}
 
             {visibleThreads.length === 0 ? (
+              <div className="rounded-md border border-border-subtle bg-surface-1 px-3 py-2.5">
+                <div className="text-xxs font-medium text-text-secondary">{emptyCopy.title}</div>
+                <div className="mt-0.5 text-xxs text-text-muted">{emptyCopy.description}</div>
+              </div>
             ) : (
               <div className="space-y-2">
                 {visibleThreads.map((thread) => {
