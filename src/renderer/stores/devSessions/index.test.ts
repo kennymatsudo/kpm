@@ -203,6 +203,43 @@ describe('devSessionsStore', () => {
     expect(useDevSessionsStore.getState().reviewInboxBySessionId.get('dev-session-1')).toEqual(inbox);
   });
 
+  it('does not mark closed review threads as actionable card attention', async () => {
+    const base = createReviewInbox();
+    const inbox = {
+      ...base,
+      snapshot: {
+        ...base.snapshot,
+        summary: {
+          ...base.snapshot.summary,
+          unresolvedThreads: 0,
+          resolvedThreads: 1,
+          actionableThreads: 0,
+        },
+        threads: base.snapshot.threads.map((thread) => ({
+          ...thread,
+          isResolved: true,
+          resolvedBy: 'reviewer',
+        })),
+      },
+      tasks: base.tasks.map((task) => ({
+        ...task,
+        status: 'assessed' as const,
+        internal_state: 'stale' as const,
+        disposition: 'needs_user_input' as const,
+        error: 'Previous assessment failed',
+      })),
+    };
+    api.review.getInbox.mockResolvedValue({ success: true, inbox });
+
+    await useDevSessionsStore.getState().loadReviewInbox('dev-session-1');
+
+    expect(useDevSessionsStore.getState().reviewActionableBySessionId.get('dev-session-1')).toEqual({
+      sessionId: 'dev-session-1',
+      hasActionable: false,
+      counts: { needsInput: 0, failed: 0, stale: 0, errored: 0 },
+    });
+  });
+
   it('tracks pending review reassessment task ids while the request is running', async () => {
     const inbox = createReviewInbox();
     useDevSessionsStore.setState({

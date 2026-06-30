@@ -3,6 +3,7 @@ import type {
   DevSession,
   PlanItem,
   PrReviewSnapshot,
+  PrReviewThread,
   ReviewInboxSnapshot,
   ReviewTask,
 } from '../../../shared/types';
@@ -149,6 +150,28 @@ function createSnapshot(overrides: Partial<PrReviewSnapshot> = {}): PrReviewSnap
     threads: [],
     topLevelReviews: [],
     conversationComments: [],
+    ...overrides,
+  };
+}
+
+function createThread(overrides: Partial<PrReviewThread> = {}): PrReviewThread {
+  return {
+    id: 'thread-1',
+    url: 'https://github.com/acme/repo/pull/42#discussion_r1',
+    path: 'src/file.ts',
+    line: 10,
+    startLine: null,
+    subjectType: 'LINE',
+    diffSide: 'RIGHT',
+    isResolved: false,
+    isOutdated: false,
+    resolvedBy: null,
+    updatedAt: NOW,
+    participants: ['reviewer'],
+    comments: [],
+    hasBotOnlyComments: false,
+    hasHumanReviewerComment: true,
+    latestCommentPreview: 'Please fix this',
     ...overrides,
   };
 }
@@ -318,6 +341,42 @@ describe('ReviewPollService', () => {
     expect(harness.planService.updateItem).not.toHaveBeenCalled();
     expect(harness.eventBus.emit).not.toHaveBeenCalledWith(expect.objectContaining({ change: 'merged' }));
     expect(harness.requestPlanRefresh).not.toHaveBeenCalled();
+  });
+
+  it('does not broadcast actionable attention for closed live review threads', async () => {
+    const harness = buildHarness({
+      snapshot: createSnapshot({
+        state: 'OPEN',
+        reviewDecision: 'CHANGES_REQUESTED',
+        summary: {
+          totalThreads: 1,
+          unresolvedThreads: 0,
+          resolvedThreads: 1,
+          outdatedThreads: 0,
+          actionableThreads: 0,
+          humanThreads: 1,
+          botOnlyThreads: 0,
+          topLevelReviewCount: 0,
+          conversationCommentCount: 0,
+        },
+        threads: [createThread({ isResolved: true, resolvedBy: 'reviewer' })],
+      }),
+      tasks: [createTask({
+        status: 'assessed',
+        internal_state: 'stale',
+        disposition: 'needs_user_input',
+        error: 'Previous assessment failed',
+      })],
+    });
+
+    const result = await harness.service.pollSession('session-1');
+
+    expect(result.action).toBe('synced');
+    expect(harness.broadcastToWindows).toHaveBeenCalledWith('review-poll:actionable', {
+      sessionId: 'session-1',
+      hasActionable: false,
+      counts: { needsInput: 0, failed: 0, stale: 0, errored: 0 },
+    });
   });
 
   it('uses linked PR status as a fallback when the review snapshot was unchanged', async () => {

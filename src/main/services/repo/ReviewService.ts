@@ -260,6 +260,11 @@ export function createReviewService(deps: ReviewServiceDeps) {
 
       if (!isThreadActionable(thread)) {
         if (existing && thread.isOutdated && existing.internal_state !== 'ignored' && existing.status !== 'done') {
+          deps.reviewTasks.updateStatus(existing.id, 'done', {
+            internal_state: null,
+            error: null,
+            completed_at: snapshot.fetchedAt,
+          });
         }
         continue;
       }

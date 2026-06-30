@@ -296,4 +296,34 @@ describe('ReviewService', () => {
     expect(first.internal_state).toBeNull();
     expect(second.internal_state).toBeNull();
   });
+
+  it('marks outdated review tasks done during sync instead of leaving stale attention', async () => {
+    const task = createTask({
+      status: 'assessed',
+      internal_state: 'stale',
+      error: 'Previous assessment failed',
+    });
+    const snapshot = createReviewSnapshot();
+    snapshot.summary = {
+      ...snapshot.summary,
+      unresolvedThreads: 0,
+      outdatedThreads: 1,
+      actionableThreads: 0,
+    };
+    snapshot.threads = snapshot.threads.map((thread) => ({
+      ...thread,
+      isOutdated: true,
+    }));
+    const { service, gitHubService, reviewTasks } = createServiceHarness([task]);
+    gitHubService.getPrReviewSnapshot.mockResolvedValue({ ok: true, data: snapshot });
+
+    const result = await service.syncSessionReviewState('session-1');
+
+    expect(result.ok).toBe(true);
+    expect(reviewTasks.updateStatus).toHaveBeenCalledWith(task.id, 'done', {
+      internal_state: null,
+      error: null,
+      completed_at: snapshot.fetchedAt,
+    });
+  });
 });

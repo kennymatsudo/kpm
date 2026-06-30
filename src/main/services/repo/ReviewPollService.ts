@@ -203,13 +203,25 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
   // Actionable-Review Summary
   // ---------------------------------------------------------------------------
 
+  function computeActionableSummary(
+    session: DevSession,
+    snapshot: PrReviewSnapshot | null | undefined
+  ): ReviewActionableSummary | null {
     if (session.pr_number == null) return null;
     const tasks = deps.reviewTasks.getByRepoPr(session.repo_id, session.pr_number);
     const counts = { needsInput: 0, failed: 0, stale: 0, errored: 0 };
+    const openThreadIds = snapshot
+      ? new Set(
+        snapshot.threads
+          .filter((thread) => !thread.isResolved && !thread.isOutdated)
+          .map((thread) => thread.id)
+      )
+      : null;
     for (const t of tasks) {
       if (t.session_id !== session.id) continue;
       if (t.status === 'done') continue;
       if (t.internal_state === 'ignored') continue;
+      if (openThreadIds != null && !openThreadIds.has(t.thread_id)) continue;
       if (t.disposition === 'needs_user_input') counts.needsInput++;
       else if (t.internal_state === 'failed') counts.failed++;
       else if (t.internal_state === 'stale') counts.stale++;
@@ -220,6 +232,8 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
     return { sessionId: session.id, hasActionable, counts };
   }
 
+  function broadcastActionable(session: DevSession, snapshot?: PrReviewSnapshot | null): void {
+    const summary = computeActionableSummary(session, snapshot);
     if (!summary) return;
     deps.broadcastToWindows('review-poll:actionable', summary);
   }
@@ -354,6 +368,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
 
   async function processSession(session: DevSession): Promise<PollSessionResult> {
     const sessionId = session.id;
+    let latestSnapshot: PrReviewSnapshot | null | undefined;
 
     if (shouldSkipForBackoff(sessionId)) {
       return { sessionId, action: 'skipped', newThreadCount: 0, implementCount: 0 };
@@ -368,6 +383,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         applyBackoff(sessionId);
         return { sessionId, action: 'error', newThreadCount: 0, implementCount: 0, error: syncResult.error };
       }
+      latestSnapshot = syncResult.data.snapshot;
 
       const completionResult = await completeMergedPrIfNeeded(session, syncResult.data.snapshot);
       if (completionResult) {
@@ -497,6 +513,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
 
       return { sessionId, action: 'error', newThreadCount: 0, implementCount: 0, error: msg };
     } finally {
+      broadcastActionable(session, latestSnapshot);
     }
   }
 

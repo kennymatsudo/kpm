@@ -165,6 +165,7 @@ function isLongMarkdown(value: string): boolean {
 }
 
 function canReassessTask(task: ReviewTask | undefined, thread: PrReviewThread | undefined): boolean {
+  if (!task || !thread || isThreadClosed(thread)) return false;
   if (task.internal_state === 'ignored') return false;
   const reassessableStatus = task.status === 'needs_review'
     || task.status === 'assessed'

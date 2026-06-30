@@ -65,6 +65,12 @@ export function isRetryableAttentionTask(task: ReviewTask): boolean {
 export function getStats(inbox: ReviewInboxSnapshot | null, sessionId: string): ReviewStats {
   const snapshot = inbox?.snapshot ?? null;
   const sessionTasks = inbox?.tasks.filter((task) => task.session_id === sessionId) ?? [];
+  const openThreadIds = snapshot
+    ? new Set(snapshot.threads.filter((thread) => !isThreadClosed(thread)).map((thread) => thread.id))
+    : null;
+  const openTasks = sessionTasks
+    .filter(isTaskOpen)
+    .filter((task) => openThreadIds == null || openThreadIds.has(task.thread_id));
   const actionableThreadIds = new Set(openTasks.filter(isTaskActionable).map((task) => task.thread_id));
   const retryableAttentionTaskIds = openTasks.filter(isRetryableAttentionTask).map((task) => task.id);
 
