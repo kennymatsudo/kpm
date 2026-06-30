@@ -426,6 +426,7 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
         const sdkOptions: SDKOptions = {
           model: getConfig().generation.deepModel,
           // Adaptive thinking with summarized display: OnboardingService streams thinking to UI.
+          // Opus 4.8 / Sonnet 5 default to 'omitted', which would surface as empty strings.
           thinking: { type: 'adaptive' as const, display: 'summarized' as const },
           systemPrompt: SYSTEM_PROMPT,
           cwd: options.projectPath,

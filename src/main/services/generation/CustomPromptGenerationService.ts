@@ -104,6 +104,7 @@ Be thorough but concise. Focus on what was requested.`;
         const sdkOptions: SDKOptions = {
           model: getConfig().generation.deepModel,
           // Adaptive thinking for high-quality generation.
+          // display: 'summarized' ensures Opus 4.8 / Sonnet 5 stream thinking content (default is 'omitted').
           thinking: { type: 'adaptive' as const, display: 'summarized' as const },
           persistSession: false, // Ephemeral one-shot query, no need to persist
           // Use KPM MCP server for tools

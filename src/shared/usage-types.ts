@@ -54,6 +54,9 @@ export interface ProjectUsageStats {
  * Used as a pre-first-turn fallback; the SDK reports the actual contextWindow
  * in ModelUsage on every result message and takes precedence after turn 1.
  *
+ * The opus alias resolves to a 1M context window. The sonnet alias defaults
+ * to the 200k tier (the 1M Sonnet variant requires usage credits and is a
+ * separate model selection). Update when model families change.
  */
 const CONTEXT_WINDOW_BY_TIER: Record<string, number> = {
   opus: 1_000_000,

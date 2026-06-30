@@ -180,6 +180,8 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
         maxTurns: 50,
       },
     } }),
+    // Adaptive thinking for Opus and Sonnet: Claude decides when and how much to think.
+    // display: 'summarized' ensures Opus 4.8 / Sonnet 5 stream thinking content (default is 'omitted').
     ...(!isFocusSession && (model === 'opus' || model === 'sonnet') && { thinking: { type: 'adaptive' as const, display: 'summarized' as const } }),
     // Effort level: guides how much thinking Claude applies (works with adaptive thinking)
     ...(effort && { effort }),
