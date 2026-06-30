@@ -542,12 +542,16 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       hasQueuedFollowUp?: boolean;
       queuedClientMessageId?: string;
       consumedQueuedClientMessageId?: string;
+      beforeClientMessageId?: string;
     };
     // No phantom follow-up turn is promised — the turn is finalized normally.
     expect(donePayload.hasQueuedFollowUp).toBe(false);
     expect(donePayload.queuedClientMessageId).toBeUndefined();
     // The absorbed follow-up is surfaced so the renderer drops its queued badge.
     expect(donePayload.consumedQueuedClientMessageId).toBe(followUpClientMessageId);
+    // ...but the bubble is NOT anchored before it: this turn answered the
+    // interjection, so the finalized bubble must land after it, not above it.
+    expect(donePayload.beforeClientMessageId).toBeUndefined();
     // Session returns to ready (the watchdog can now recover it if needed) and
     // the consumed envelope is cleared so later sends aren't rejected.
     expect(sentEvents.some((e) => e.channel === 'chat:session-ready')).toBe(true);

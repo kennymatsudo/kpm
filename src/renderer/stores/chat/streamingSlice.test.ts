@@ -291,6 +291,69 @@ describe('streamingSlice.finalizeMessage', () => {
     expect(session?.isStreaming).toBe(false);
     expect(session?.streamStartedAt).toBeNull();
   });
+
+  it('lands the bubble after consumed follow-ups but before a deferred one (mixed turn)', () => {
+    const sessionId = 'session-mixed-followups';
+    const base = createInitialPerSessionState(1);
+    const consumedClientMessageId = 'consumed-client-message';
+    const deferredClientMessageId = 'deferred-client-message';
+
+    // The SDK steered the first follow-up into this turn (consumed) but left the
+    // second still queued (deferred to the next turn). The finalized bubble must
+    // sit after the consumed interjection and before the deferred one.
+    const store = createTestStore(sessionId, {
+      ...base,
+      isStreaming: true,
+      streamingSegments: [{ type: 'text', content: 'answer incorporating the interjection' }],
+      streamingContent: 'answer incorporating the interjection',
+      messages: [
+        {
+          id: 'user-1',
+          role: 'user',
+          segments: [{ type: 'text', content: 'first prompt' }],
+          timestamp: new Date('2026-01-01T00:00:00.000Z'),
+        },
+        {
+          id: 'user-2',
+          role: 'user',
+          segments: [{ type: 'text', content: 'consumed follow-up' }],
+          timestamp: new Date('2026-01-01T00:00:01.000Z'),
+          queued: true,
+          liveFollowUp: true,
+          clientMessageId: consumedClientMessageId,
+        },
+        {
+          id: 'user-3',
+          role: 'user',
+          segments: [{ type: 'text', content: 'deferred follow-up' }],
+          timestamp: new Date('2026-01-01T00:00:02.000Z'),
+          queued: true,
+          liveFollowUp: true,
+          clientMessageId: deferredClientMessageId,
+        },
+      ],
+    });
+
+    // Mirrors the chat:done payload the backend now emits for a mixed turn:
+    // anchor before the deferred follow-up, clear the consumed one's badge,
+    // and re-enter streaming for the promoted next turn.
+    store.getState().finalizeMessage(sessionId, {
+      beforeClientMessageId: deferredClientMessageId,
+      promoteQueuedClientMessageId: deferredClientMessageId,
+      clearQueuedClientMessageId: consumedClientMessageId,
+    });
+
+    const session = store.getState().sessions.get(sessionId);
+    const messages = session?.messages ?? [];
+    expect(messages.map((message) => message.role)).toEqual(['user', 'user', 'assistant', 'user']);
+    // Consumed interjection keeps its place above the answer; badge cleared.
+    expect(messages[1].clientMessageId).toBe(consumedClientMessageId);
+    expect(messages[1].queued).toBeUndefined();
+    // Deferred follow-up stays below the answer and re-enters streaming.
+    expect(messages[3].clientMessageId).toBe(deferredClientMessageId);
+    expect(messages[3].queued).toBeUndefined();
+    expect(session?.isStreaming).toBe(true);
+  });
 });
 
 describe('streamingSlice streaming state recovery', () => {

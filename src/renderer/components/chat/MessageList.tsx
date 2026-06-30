@@ -592,6 +592,12 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
   const streamingContent = viewedSession?.streamingContent ?? '';
   const streamingThinking = viewedSession?.streamingThinking ?? '';
   const isStreaming = viewedSession?.isStreaming ?? false;
+  // Every message renders in chronological order, including follow-ups
+  // interjected mid-turn: they appear above the in-flight response (which the
+  // backend finalizes after them), so the response never sits above the
+  // messages it answered. The per-message "queued"/"Added while…" caption
+  // (see MessageRow) carries the interjection status instead of a separate group.
+  const staticMessages = messages;
   const error = viewedSession?.error ?? null;
   const sessionState = viewedSession?.sessionState ?? 'idle';
   const activities = viewedSession?.activities ?? [];

@@ -2023,6 +2023,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // unconsumed in the SDK input queue.
       const hasQueuedFollowUp = managed.session.pendingQueuedCount() > 0;
       const nextQueuedClientMessageId = hasQueuedFollowUp ? managed.pendingFollowUpClientMessageIds[0] : undefined;
+      // The first follow-up the SDK consumed as steering input for THIS turn.
+      // Surfaced as `consumedQueuedClientMessageId` so the renderer drops the
+      // message's optimistic "queued" badge. It is deliberately NOT used to
+      // anchor the assistant bubble: this turn answered these interjections, so
+      // the finalized bubble must land AFTER them in the transcript, never above
+      // the very messages it responded to (see `beforeClientMessageId` below).
       const firstLiveFollowUpClientMessageId =
         managed.acceptedFollowUpClientMessageIds[0]
         ?? (!hasQueuedFollowUp ? managed.pendingFollowUpClientMessageIds[0] : undefined);
@@ -2163,6 +2169,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         hasQueuedFollowUp,
         queuedClientMessageId: nextQueuedClientMessageId,
         consumedQueuedClientMessageId: firstLiveFollowUpClientMessageId,
+        // Anchor the finalized bubble before the still-queued follow-up that
+        // becomes the NEXT turn (if any) — never before an interjection this
+        // turn already consumed. Undefined when nothing is deferred, so the
+        // bubble simply appends after the consumed follow-ups (chronological).
+        beforeClientMessageId: nextQueuedClientMessageId,
         inputTokens: ctxSource?.input_tokens ?? undefined,
         outputTokens: ctxSource?.output_tokens ?? undefined,
         cacheReadTokens: ctxSource?.cache_read_input_tokens ?? undefined,
