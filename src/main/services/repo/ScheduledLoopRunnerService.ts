@@ -251,6 +251,7 @@ Make only the changes that are warranted. When done, briefly summarize what you 
 
   }
 
+  function syncLoop(loop: ScheduledLoop, opts?: { immediate?: boolean }): void {
     const id = taskIdFor(loop.id);
     // Unregister first so an interval/enabled change re-registers cleanly.
     deps.scheduler.unregister(id);
@@ -259,6 +260,7 @@ Make only the changes that are warranted. When done, briefly summarize what you 
       id,
       intervalMs: loop.interval_minutes * 60 * 1000,
       handler: () => runTick(loop.id),
+      runImmediately: opts?.immediate ?? false,
     });
     deps.scheduler.start(id);
   }

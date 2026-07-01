@@ -16,6 +16,7 @@ import { executeCustomPrompt } from '../../services/promptService';
 import { listProjectDirectory } from '../../services/projectFileService';
 import { useChat } from '../../hooks/useChat';
 import { getBaseName } from '../../utils/path';
+import { formatRelativeTime } from '../../utils/relativeTime';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import type { CustomPrompt, CustomPromptIcon, FileNode, FocusedResource, ScheduledLoop } from '../../../shared/types';
 import { useShallow } from 'zustand/react/shallow';
@@ -52,6 +53,7 @@ function flattenMarkdownFiles(nodes: FileNode[], acc: DocumentTarget[] = []): Do
 function describeLoop(loop: ScheduledLoop): string {
   const mode = loop.output_mode.charAt(0).toUpperCase() + loop.output_mode.slice(1);
   const cadence = loop.enabled ? `every ${loop.interval_minutes}m` : 'paused';
+  const ran = loop.last_run_at ? ` · ran ${formatRelativeTime(loop.last_run_at)}` : '';
   return `${cadence} · ${mode}${ran}`;
 }
 

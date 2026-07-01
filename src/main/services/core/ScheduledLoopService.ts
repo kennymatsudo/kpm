@@ -25,6 +25,7 @@ import { success, failure, type ServiceResult, type AsyncResult } from '../resul
  */
 export interface LoopSchedulerHooks {
   /** (Re)register + start the loop if enabled, or stop it if disabled. */
+  sync(loop: ScheduledLoop, opts?: { immediate?: boolean }): void;
   /** Remove a loop's scheduler task entirely. */
   remove(loopId: string): void;
   /** Run the loop once, immediately, off-schedule. */
@@ -55,6 +56,8 @@ export function createScheduledLoopService(deps: ScheduledLoopServiceDeps) {
   function create(input: ScheduledLoopCreate): ServiceResult<ScheduledLoop> {
     try {
       const loop = deps.scheduledLoops.create(input);
+      // Run once right away so the user sees a result without waiting out the interval.
+      deps.scheduler?.sync(loop, { immediate: true });
       return success(loop);
     } catch (e) {
       return failure(e instanceof Error ? e.message : String(e));

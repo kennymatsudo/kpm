@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ScheduledLoop, LoopOutputMode, LoopRun } from '../../shared/types';
 import {
   listScheduledLoops,
   createScheduledLoop,
@@ -6,6 +7,7 @@ import {
   setScheduledLoopEnabled,
   deleteScheduledLoop,
   runScheduledLoopNow,
+  getScheduledLoopHistory,
 } from '../services/scheduledLoopService';
 
 export interface LoopFormInput {
@@ -24,6 +26,10 @@ interface ScheduledLoopState {
   modalOpen: boolean;
   editingLoop: ScheduledLoop | null;
 
+  // Run history for whichever loop is open in the modal.
+  history: LoopRun[];
+  historyLoading: boolean;
+
   loadLoops: (projectId: string) => Promise<void>;
   openCreate: () => void;
   openEdit: (loop: ScheduledLoop) => void;
@@ -33,6 +39,7 @@ interface ScheduledLoopState {
   setEnabled: (id: string, enabled: boolean) => Promise<void>;
   deleteLoop: (id: string) => Promise<void>;
   runNow: (id: string) => Promise<void>;
+  loadHistory: (loopId: string) => Promise<void>;
 }
 
 export const useScheduledLoopStore = create<ScheduledLoopState>((set, get) => ({
@@ -41,6 +48,8 @@ export const useScheduledLoopStore = create<ScheduledLoopState>((set, get) => ({
   error: null,
   modalOpen: false,
   editingLoop: null,
+  history: [],
+  historyLoading: false,
 
   loadLoops: async (projectId) => {
     set({ isLoading: true, error: null });
@@ -52,6 +61,9 @@ export const useScheduledLoopStore = create<ScheduledLoopState>((set, get) => ({
     }
   },
 
+  openCreate: () => set({ modalOpen: true, editingLoop: null, history: [] }),
+  openEdit: (loop) => set({ modalOpen: true, editingLoop: loop, history: [] }),
+  closeModal: () => set({ modalOpen: false, editingLoop: null, history: [] }),
 
   createLoop: async (projectId, input) => {
     const res = await createScheduledLoop({ projectId, ...input });
@@ -87,5 +99,12 @@ export const useScheduledLoopStore = create<ScheduledLoopState>((set, get) => ({
 
   runNow: async (id) => {
     await runScheduledLoopNow(id);
+    await get().loadHistory(id);
+  },
+
+  loadHistory: async (loopId) => {
+    set({ historyLoading: true });
+    const res = await getScheduledLoopHistory(loopId);
+    set({ history: res.success ? res.data ?? [] : [], historyLoading: false });
   },
 }));

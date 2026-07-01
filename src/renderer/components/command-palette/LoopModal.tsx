@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Modal, ModalHeader, ModalBody } from '../ui/Modal';
 import { useScheduledLoopStore, useProjectDomainStore, toast } from '../../stores';
+import { formatRelativeTime } from '../../utils/relativeTime';
+import type { LoopOutputMode, LoopRun, LoopRunOutcome } from '../../../shared/types';
 
 const OUTPUT_MODES: { value: LoopOutputMode; label: string; hint: string }[] = [
   { value: 'notify', label: 'Notify', hint: 'Alert me; stays silent when there is nothing to report' },
@@ -21,6 +23,25 @@ const INTERVAL_OPTIONS = [
 const inputClass =
   'w-full px-3 py-2 rounded-lg bg-surface-2 border border-border-default text-text-primary text-sm focus:outline-none focus:border-border-strong';
 
+const OUTCOME_STYLES: Record<LoopRunOutcome, { label: string; className: string }> = {
+  ok: { label: 'Ok', className: 'text-success' },
+  no_op: { label: 'Nothing to report', className: 'text-text-tertiary' },
+  error: { label: 'Error', className: 'text-danger' },
+};
+
+function LoopHistoryRow({ run }: { run: LoopRun }) {
+  const outcome = OUTCOME_STYLES[run.outcome];
+  return (
+    <div className="px-3 py-2 rounded-lg bg-surface-2 border border-border-default">
+      <div className="flex items-center justify-between gap-2">
+        <span className={`text-xs font-medium ${outcome.className}`}>{outcome.label}</span>
+        <span className="text-xs text-text-tertiary">{formatRelativeTime(run.started_at)}</span>
+      </div>
+      {run.artifact_path && <p className="text-xs text-text-tertiary mt-1">{run.artifact_path}</p>}
+    </div>
+  );
+}
+
 /**
  * Create/edit sheet for a scheduled loop. Driven by useScheduledLoopStore and
  * rendered next to the command palette so it persists after the palette closes.
@@ -35,6 +56,9 @@ export function LoopModal() {
     setEnabled,
     deleteLoop,
     runNow,
+    history,
+    historyLoading,
+    loadHistory,
   } = useScheduledLoopStore(
     useShallow((s) => ({
       modalOpen: s.modalOpen,
@@ -45,6 +69,9 @@ export function LoopModal() {
       setEnabled: s.setEnabled,
       deleteLoop: s.deleteLoop,
       runNow: s.runNow,
+      history: s.history,
+      historyLoading: s.historyLoading,
+      loadHistory: s.loadHistory,
     }))
   );
   const currentProjectId = useProjectDomainStore((s) => s.currentProjectId);
@@ -62,12 +89,14 @@ export function LoopModal() {
       setPrompt(editingLoop.prompt);
       setOutputMode(editingLoop.output_mode);
       setIntervalMinutes(editingLoop.interval_minutes);
+      void loadHistory(editingLoop.id);
     } else {
       setName('');
       setPrompt('');
       setOutputMode('notify');
       setIntervalMinutes(30);
     }
+  }, [modalOpen, editingLoop, loadHistory]);
 
   const canSave = name.trim().length > 0 && prompt.trim().length > 0 && !busy;
 
@@ -104,6 +133,7 @@ export function LoopModal() {
     setBusy(true);
     await runNow(editingLoop.id);
     setBusy(false);
+    toast.success('Loop run complete');
   };
 
   const handleToggle = async () => {
@@ -124,14 +154,25 @@ export function LoopModal() {
   };
 
   return (
+    <Modal
+      isOpen={modalOpen}
+      onClose={closeModal}
+      preventClose={busy}
+      className="!flex !flex-col !max-h-[85vh] !overflow-hidden"
+    >
+      <ModalHeader onClose={closeModal} subtitle="Runs on a schedule while KPM is open" className="shrink-0">
         {editingLoop ? 'Edit loop' : 'New loop'}
       </ModalHeader>
 
 
           </div>
         </div>
+
+          </div>
+        )}
       </ModalBody>
 
+      <div className="dialog-footer shrink-0 px-5 py-4 flex items-center justify-between gap-2 border-t">
         <div className="flex items-center gap-2">
           {editingLoop && (
             <>

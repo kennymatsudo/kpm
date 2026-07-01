@@ -63,6 +63,7 @@ describe('ScheduledLoopService', () => {
 
     expect(res.ok).toBe(true);
     expect(scheduledLoops.create).toHaveBeenCalledOnce();
+    expect(scheduler.sync).toHaveBeenCalledWith(loop, { immediate: true });
   });
 
   it('update fails (and does not sync) when the loop is missing', () => {
