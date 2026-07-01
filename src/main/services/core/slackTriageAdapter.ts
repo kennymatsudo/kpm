@@ -207,6 +207,7 @@ export function createSlackTriageAdapter(deps: SlackTriageAdapterDeps) {
       maxTurns: 15,
       tools: [],
       persistSession: false,
+      settingSources: ['user'],
       abortController,
       // Always pass mcpServers (even if empty) so the SDK initializes the MCP
       // subsystem — this ensures managed servers (like claude.ai Slack) are loaded.

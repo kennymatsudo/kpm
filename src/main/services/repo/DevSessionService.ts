@@ -1132,6 +1132,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           // Board agents are one-shot — never pause for the built-in
           // option-picker; the agent proceeds on assumptions instead.
           disallowedTools,
+          settingSources: ['user'],
           settings: sdkSettings,
           skills: [],
           env: { ...process.env, ...capturedEnv, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },

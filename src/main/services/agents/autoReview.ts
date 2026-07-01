@@ -188,6 +188,7 @@ async function startReviewSession(params: {
       permissionMode: getConfig().claude.defaultPermissionMode,
       // One-shot review agent — disable the built-in option-picker tool.
       disallowedTools: ['AskUserQuestion'],
+      settingSources: ['user'],
       skills: [],
       env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
       ...getClaudeSdkSpawnOptions(),
