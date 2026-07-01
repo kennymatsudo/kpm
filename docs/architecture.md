@@ -17,8 +17,10 @@ src/
 │   │   ├── interfaces/      # Repository interfaces
 │   │   ├── repositories/    # CRUD operations
 │   │   └── domain/          # Domain services (Sync, Export, Import)
+│   ├── bootstrap/            # App menu, dock icon, window manager
 │   ├── ipc/                 # IPC handlers
 │   │   ├── handlers/        # Handler implementations by domain
+│   │   ├── register/        # Handler registration by domain (workspace, development, platform)
 │   │   └── validation/      # Zod schemas by domain
 │   ├── claude/              # Claude SDK integration
 │   │   ├── tools/           # In-process MCP tools
@@ -27,9 +29,12 @@ src/
 │   ├── codex/               # Codex auth, binary, and error helpers
 │   ├── config/              # Runtime configuration and defaults
 │   ├── documents/           # Plan-ref resolver + markdown codecs (used at every export boundary)
+│   │   └── codecs/          # Per-format markdown codecs
 │   ├── project-context/     # Project context file compatibility helpers
 │   ├── security/            # URL and app-navigation safety helpers
 │   ├── services/            # Application services (DI pattern)
+│   │   ├── core/            # Plan, Project, Chat, Briefing, Tracker, Onboarding, settings
+│   │   ├── repo/            # Repo, Worktree, DevSession, GitHub, Environment, Review, ScheduledLoopRunner
 │   │   ├── files/           # FileExplorer, FileSummary, TempImage, RepoFile, watchers, scoped FS
 │   │   ├── streaming/       # Terminal and Claude StreamingSession
 │   │   ├── generation/      # CustomPrompt, Onboarding
@@ -65,6 +70,8 @@ src/
 │   │   ├── slack/           # Slack triage UI
 │   │   ├── icons/           # SVG icon components
 │   │   ├── file-ref/        # File reference link rendering
+│   │   ├── plan-ref/        # `@plan/<uuid>` chip + preview rendering
+│   │   ├── focus-mode/      # Single-doc focus reader + lean doc-scoped chat
 │   │   ├── markdown-document-modal/ # Markdown document modal
 │   │   ├── global-search/   # Global search UI
 │   │   ├── image-viewer-modal/ # Image viewer modal

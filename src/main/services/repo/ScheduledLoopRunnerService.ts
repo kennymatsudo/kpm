@@ -43,6 +43,7 @@ import type { DocumentUpdatePayload } from '../../claude/tools/document-update';
 import type { ClaudeMdUpdatePayload } from '../../claude/tools/claudemd-update';
 import { resolveScopedPath, ensureParentDirectory } from '../files/scopedFs';
 
+const LOOP_TIMEOUT_MS = 10 * 60 * 1000;
 const RUN_HISTORY_LIMIT = 50;
 const NO_FINDINGS = 'NO_FINDINGS';
 /** Broadcast to renderer windows after each run so loop status/history refresh. */
@@ -90,6 +91,12 @@ export function createScheduledLoopRunnerService(deps: ScheduledLoopRunnerDeps) 
 
   const log = (msg: string) => console.log(`[ScheduledLoops] ${msg}`);
 
+  // Shared between scheduled ticks and manual "Run now" so the two paths
+  // never overlap for the same loop — maintain mode's document-update
+  // subscriptions are keyed by loop id, and a concurrent run would cross-wire
+  // them.
+  const runningLoops = new Set<string>();
+
   /** Assemble the user's enabled MCP plugins/servers, mirroring the chat path. */
   function mcpConfigs() {
     const plugins = deps.mcpDiscoveryService.getEnabledPluginPaths();
@@ -126,10 +133,12 @@ export function createScheduledLoopRunnerService(deps: ScheduledLoopRunnerDeps) 
 
 ${loop.prompt}
 
+If there is nothing new or noteworthy to report, reply with exactly \`${NO_FINDINGS}: <one-line reason why not>\`. Otherwise reply with a short alert: a one-line title, then 1–3 sentences of detail.`;
 
     const result = await runClaudeQuery({ prompt, sdkOptions, timeoutMs: LOOP_TIMEOUT_MS });
     const text = result.text.trim();
     if (!text || text.toUpperCase().startsWith(NO_FINDINGS)) {
+      const reason = text.slice(NO_FINDINGS.length).replace(/^[:\s]+/, '').trim();
     }
 
     const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
@@ -246,9 +255,47 @@ Make only the changes that are warranted. When done, briefly summarize what you 
     const loop = deps.scheduledLoops.get(loopId);
     if (!loop) return { outcome: 'noop', message: 'loop no longer exists' };
     if (!loop.enabled) return { outcome: 'noop', message: 'loop disabled' };
+    if (runningLoops.has(loopId)) return { outcome: 'noop', message: 'already running' };
 
+    runningLoops.add(loopId);
     try {
+      const startedAt = new Date().toISOString();
+      log(`Running loop "${loop.name}" (${loop.output_mode})`);
 
+      let result: LoopExecutionResult;
+      try {
+        result = await execute(loop);
+      } catch (e) {
+        result = {
+          outcome: 'error',
+          summary: null,
+          error: e instanceof Error ? e.message : String(e),
+          artifactPath: null,
+        };
+      }
+
+      deps.loopRuns.create({
+        loop_id: loopId,
+        outcome: result.outcome,
+        summary: result.summary,
+        error: result.error,
+        artifact_path: result.artifactPath,
+        started_at: startedAt,
+        finished_at: new Date().toISOString(),
+      });
+      deps.loopRuns.pruneOld(loopId, RUN_HISTORY_LIMIT);
+      deps.scheduledLoops.recordRunOutcome(loopId, result.outcome, result.error, startedAt);
+      deps.broadcastToWindows(SCHEDULED_LOOP_RUN_CHANNEL, {
+        projectId: loop.project_id,
+        loopId,
+        outcome: result.outcome,
+      });
+
+      const pollOutcome = result.outcome === 'error' ? 'error' : result.outcome === 'no_op' ? 'noop' : 'ok';
+      return { outcome: pollOutcome, message: result.summary ?? result.error ?? undefined };
+    } finally {
+      runningLoops.delete(loopId);
+    }
   }
 
   function syncLoop(loop: ScheduledLoop, opts?: { immediate?: boolean }): void {
@@ -269,7 +316,15 @@ Make only the changes that are warranted. When done, briefly summarize what you 
     deps.scheduler.unregister(taskIdFor(loopId));
   }
 
+  function runNow(loopId: string): Promise<void> {
     // Runs directly so it works even when the loop is disabled (not registered).
+    // Fire-and-forget: the underlying query can run for minutes (LOOP_TIMEOUT_MS),
+    // so callers don't wait on it. The result reaches the renderer via the
+    // SCHEDULED_LOOP_RUN_CHANNEL broadcast at the end of runTick.
+    void runTick(loopId).catch((e) => {
+      log(`Manual run of ${loopId} failed to start: ${e instanceof Error ? e.message : String(e)}`);
+    });
+    return Promise.resolve();
   }
 
   function start(): void {

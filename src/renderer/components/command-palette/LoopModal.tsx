@@ -42,6 +42,32 @@ function LoopHistoryRow({ run }: { run: LoopRun }) {
   );
 }
 
+function OutputPicker({ outputMode, onChange }: { outputMode: LoopOutputMode; onChange: (mode: LoopOutputMode) => void }) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-text-secondary mb-2">Output</label>
+      <div className="space-y-2">
+        {OUTPUT_MODES.map((m) => {
+          const selected = outputMode === m.value;
+          return (
+            <button
+              key={m.value}
+              type="button"
+              onClick={() => onChange(m.value)}
+              className={`w-full text-left px-3 py-2 rounded-lg border border-border-default transition-colors ${
+                selected ? 'bg-accent-muted' : 'hover:bg-surface-2'
+              }`}
+            >
+              <div className={`text-sm font-medium ${selected ? 'text-accent' : 'text-text-primary'}`}>{m.label}</div>
+              <div className="text-xs text-text-secondary">{m.hint}</div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Create/edit sheet for a scheduled loop. Driven by useScheduledLoopStore and
  * rendered next to the command palette so it persists after the palette closes.
@@ -157,17 +183,77 @@ export function LoopModal() {
     <Modal
       isOpen={modalOpen}
       onClose={closeModal}
+      size={editingLoop ? 'xl' : 'lg'}
       preventClose={busy}
       className="!flex !flex-col !max-h-[85vh] !overflow-hidden"
     >
       <ModalHeader onClose={closeModal} subtitle="Runs on a schedule while KPM is open" className="shrink-0">
         {editingLoop ? 'Edit loop' : 'New loop'}
       </ModalHeader>
+      <ModalBody className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        <div className="space-y-4 shrink-0">
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Name</label>
+            <input
+              className={inputClass}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="PR digest"
+            />
+          </div>
 
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Prompt</label>
+            <textarea
+              className={`${inputClass} min-h-[120px] resize-y`}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Check #eng-alerts for mentions of my services and flag anything urgent"
+            />
+            <p className="text-xs text-text-tertiary mt-1">
+              Freeform. Claude uses your connected repos, plan, and MCP tools (Slack, Linear, GitHub) to carry it out.
+            </p>
+          </div>
 
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Run</label>
+            <select
+              className={inputClass}
+              value={intervalMinutes}
+              onChange={(e) => setIntervalMinutes(Number(e.target.value))}
+            >
+              {INTERVAL_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
+        {editingLoop ? (
+          <div className="mt-4 flex-1 min-h-0 grid grid-cols-2 gap-5">
+            <div className="min-h-0 overflow-y-auto pr-1">
+              <OutputPicker outputMode={outputMode} onChange={setOutputMode} />
+            </div>
+            <div className="min-h-0 flex flex-col border-l border-border-default pl-5">
+              <label className="block text-xs font-medium text-text-secondary mb-2 shrink-0">History</label>
+              {historyLoading ? (
+                <p className="text-xs text-text-tertiary">Loading…</p>
+              ) : history.length === 0 ? (
+                <p className="text-xs text-text-tertiary">No runs yet.</p>
+              ) : (
+                <div className="flex-1 min-h-0 space-y-2 overflow-y-auto">
+                  {history.map((run) => (
+                    <LoopHistoryRow key={run.id} run={run} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 shrink-0">
+            <OutputPicker outputMode={outputMode} onChange={setOutputMode} />
           </div>
         )}
       </ModalBody>
