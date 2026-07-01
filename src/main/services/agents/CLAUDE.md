@@ -24,6 +24,7 @@ The board detail pane exposes:
 - no explicit board control to manually run opposing-agent review as part of the normal path — that still runs automatically once after implementation
 
 The `BoardCard` orange dot fires on a **union** of two signals:
+1. `session.automation_phase === 'needs_attention'` — set by `BoardAgentOrchestrator` or the poller's follow-up-failure branch (legacy semantic: "automation interrupted, click Play").
 2. `reviewActionableBySessionId[sessionId].hasActionable` — derived from review tasks that need user action: `disposition === 'needs_user_input'`, `internal_state === 'failed'`, `internal_state === 'stale'`, or a task `error` set on an otherwise-open task. Populated by (a) the `review-poll:actionable` broadcast emitted at the end of every `processSession` call in `ReviewPollService`, and (b) local recomputation in the renderer's `setReviewInbox` helper so user actions (ignore/override/post) clear the dot immediately without waiting for the next poll tick. The reconciler deliberately does NOT touch `automation_phase` to avoid stomping on non-review callers that set `needs_attention`.
 
 The older opposing-agent review findings (`agent_review_runs` / `agent_review_findings`) still exist for audit/debugging but are not the primary UI surface in the board flow.
@@ -42,6 +43,7 @@ Main process
   │   ├── ClaudeSdkSession   — Claude via Agent SDK
   │   ├── CodexSdkAgentSession — Codex via Codex SDK
   │   └── CliAgentSession    — Gemini / legacy Claude via CLI + hooks
+  └── BoardAgentOrchestrator (wired in by appServices.ts)
       ├── implement complete -> launch one auto-review
       ├── review complete with findings -> send one follow-up to implementation
       └── terminal state -> move task to In Review or Needs Attention
@@ -96,6 +98,7 @@ Current phases:
 - `ready_for_review`
 - `needs_attention`
 
+The orchestration lives in `src/main/services/agents/BoardAgentOrchestrator.ts` (`createBoardAgentOrchestrator`), wired into `AgentSessionManager` from `appServices.ts`.
 
 ### Implementation completion
 
@@ -119,6 +122,7 @@ fails after the repair turn, the session moves to `needs_attention`.
 
 ### Race condition guard
 
+If the user sends a follow-up to the implementation agent while the review is still running, the impl session will be in `working` state when the review completes. `BoardAgentOrchestrator`'s `onSessionComplete` detects this and skips the automated follow-up — the impl session is already making progress. Since the phase is `addressing_review`, when the impl agent completes again it will move the task to `In Review` as normal.
 
 ### Failure / stop behavior
 
@@ -144,6 +148,7 @@ Review results are persisted in `agent_review_runs` / `agent_review_findings`, k
 
 ### Review diff
 
+`launchAutoReview` now accepts an optional `baseBranch` parameter. When provided, it diffs `${baseBranch}..HEAD` to capture both committed and uncommitted changes. Without a base branch it falls back to `git diff HEAD` (uncommitted only). `BoardAgentOrchestrator` passes `session.base_branch` automatically for all automated review launches.
 
 ## Completion Detection
 
@@ -170,6 +175,8 @@ If a session was destroyed rather than stopped, the old worktree is gone and KPM
 | `src/shared/agent-types.ts` | shared types + `toReviewSessionId` / `toImplSessionId` helpers |
 | `src/main/services/agents/AgentSessionManager.ts` | session registry, event wiring, review persistence, 30 min TTL eviction |
 | `src/main/services/agents/autoReview.ts` | one-shot opposing review launch + findings parsing; accepts `baseBranch` |
+| `src/main/services/agents/BoardAgentOrchestrator.ts` | automation state machine: implement → review → address → ready |
+| `src/main/services/repo/DevSessionService.ts` | session lifecycle + `buildAgentContext` (renders Intent / Acceptance Criteria / Context prompt), board launch prompt assembly (`buildBoardStartInstructions`, `buildPlanRefSection`) |
 | `src/renderer/stores/devSessions/` | sliced renderer store: lifecycleSlice, prSlice, reviewSlice, background commit state, persisted review rehydration |
 
 ## Review Session ID
@@ -186,18 +193,22 @@ The review session ID is always `toReviewSessionId(implSessionId)` from `shared/
 
 ## Agent Prompt Shape
 
+`buildAgentContext` (`src/main/services/repo/DevSessionService.ts`, takes an `AgentContextInput` with `item`/`project`/`children`/`parent`) chooses prompt sections based on what the plan item carries:
 
 - `## Intent` — rendered when `item.intent` is set.
 - `## Acceptance Criteria` — rendered when `item.acceptance_criteria` has entries; each becomes a `- [ ]` checkbox line.
 - `## Context` / `## Description` — the description block. Rendered as `## Context` when acceptance criteria are present (description is supplementary rationale), `## Description` otherwise. `No description provided.` is used as a final fallback only when neither intent, criteria, nor description exist.
 - `## Instructions` — instructs the agent not to commit. When acceptance criteria are present, the instruction explicitly tells the agent to satisfy every criterion.
 
+When adding new plan-item fields that should flow to the agent, update `buildAgentContext` accordingly.
 
+`DevSessionService.buildPlanRefSection` additionally prepends a `<plan-refs>` block via `formatPlanRefSection` (`src/main/claude/contextRefs.ts`) so any `@plan/<uuid>` tokens referenced by the item resolve to full plan-item context without the agent needing to call a tool.
 
 ## Common Pitfalls
 
 - Do not assume board `Play` always means "new worktree". It should usually mean "continue existing work" when prior work exists.
 - Do not rely on renderer-only state for orchestration. Use persisted `automation_phase`.
+- Do not treat `task_*` or `session_state_changed` messages as session completion. Only the SDK iterator ending (the final `result`) is authoritative — see Completion Detection.
 - Do not design the board UX around explicit review-tab interactions unless you intentionally want to reintroduce them.
 - Do not reintroduce a blocking commit modal. Commit confirmation is modal; commit execution is backgrounded.
 - Do not inline `` `${id}-review` `` — use `toReviewSessionId` / `toImplSessionId` from `shared/agent-types.ts`.

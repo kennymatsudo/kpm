@@ -4,6 +4,10 @@
 > and the CLAUDE.md files under `src/main/claude/`, `src/main/db/`, and
 > `src/renderer/`.
 >
+> **Last reviewed:** 2026-07-01. Evidence question #1 below is now answered
+> from real DB data (see that section) — proceed with 4a if you also have a
+> "yes" on question #2 from your own usage. Questions #4 and #5 remain
+> unanswered; they're a feel judgment, not something derivable from the DB.
 
 ## Why this work exists
 
@@ -113,11 +117,20 @@ to phase 4, run the app for a few days with real work and answer:
 
 1. **Does Claude reliably populate `intent` + `acceptance_criteria`?**
 
+   **Answered, 2026-07-01: yes.** Queried the dev DB directly:
 
    ```
    sqlite3 "$HOME/Library/Application Support/KPM - Planning Workbench/planner.db" \
+     "SELECT label, COUNT(*) total, SUM(CASE WHEN intent IS NOT NULL THEN 1 ELSE 0 END) with_intent \
+      FROM plan_items WHERE label IN ('task','feature') GROUP BY label"
    ```
 
+   Result: 13/13 `task`-labeled items and 2/2 `feature`-labeled items have
+   `intent` populated (100%, well above the >80% tuning bar in "Cross-cutting
+   — Prompt tuning" below). `acceptance_criteria` tracks `intent` 1:1 across
+   the full table (31/31 items with one field have the other). Spec fields
+   are load-bearing for implementation-labeled items — proceed with 4a
+   contingent on question #2.
 
 2. **Does the editable modal feel right, or do you bypass it?**
 
@@ -185,6 +198,7 @@ index-sync risk. Existing rows with string[] criteria backfill as
 | Layer | Work |
 |-------|------|
 | `src/shared/base-types.ts` | Change `acceptance_criteria` type to `{text: string; status: 'open'|'passed'|'failed'}[] \| null` |
+| `src/main/db/migrations.ts` | New migration (next available id — see `src/main/db/CLAUDE.md` "Adding a Column" for the numbering convention): backfill existing rows from string[] → new shape |
 | `PlanItemRepository` | Parser updates; writer serialization |
 | `PlanItemUpdates` + Zod | Widen `acceptance_criteria` schema |
 | `PlanAction.update_item.updates` | Widen type + Zod |
@@ -269,6 +283,7 @@ the user knows the status is model-reported, not ground-truth-checked.
 
 - Reviewer prompt contract: output structured JSON, each criterion →
   `{index: number, status: 'pass'|'fail'|'partial', evidence: string, kind: 'file'|'test'|'none'}`.
+- `agent_review_runs` / `agent_review_findings` tables (already exist) store the structured verdict.
 - Verification step (if Option i/ii): walk the JSON, check each citation.
 - UI: per-criterion verdict in TaskEditModal Spec section (small badge next
   to each checkbox); detail pane shows full evidence.

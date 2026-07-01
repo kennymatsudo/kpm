@@ -18,6 +18,7 @@ createKpmServer() (singleton MCP server)
     ├─ jira.ts (Jira integration)
     ├─ relations.ts (dependency tools)
     ├─ storybook.ts (component discovery)
+    ├─ document-read.ts (document read tools)
     ├─ document-update.ts (document update tools)
     ├─ document-edit.ts (document edit tools)
     ├─ claudemd-update.ts (project context updates)
@@ -38,8 +39,13 @@ System prompts (prompts/ directory)
 
 ### 1. Streaming Sessions
 
+Session key is `chat:{projectId}:{chatSessionId}` — multiple concurrent chat sessions per project are supported (up to `MAX_CONCURRENT_SESSIONS`), each connecting on open and staying alive for 30 minutes of idle time.
 
+**Session Types (`ChatSessionScope`):**
+- **`main`**: full-featured session shared between Plan and Workspace views for a given chat thread
+- **`focus_document`**: slim session scoped to a single document (doc focus mode) — reduced tool set via `getFocusKpmServer()`, built with `buildFocusSystemPrompt()`
 
+**Unified Chat Architecture (main scope):**
 - Single session carries over when switching between Plan and Workspace views
 - `currentView` parameter ('plan' | 'workspace') passed for context-aware prompts
 - History persists across view switches - no session reset
@@ -59,6 +65,7 @@ Tools are direct function calls registered with the SDK at startup—no subproce
 1. `createKpmServer()` called at app startup (`warmupMcpSdk()`)
 2. All tool implementations collected from `tools/` directory
 3. Singleton MCP server created with all tools
+4. Per-message callbacks via EventEmitter (`planActionsEmitter`, `claudeMdUpdateEmitter`, `documentUpdateEmitter`, `fileDeleteEmitter`)
 
 ### 3. Plan Modification Workflow
 
@@ -108,12 +115,14 @@ Claude calls modification tool (modify_plan, bulk_reparent, etc.)
 
 Files in `prompts/` directory. Entry point is `index.ts` with `buildSystemPrompt()`.
 
+Key files: `toolDocs.ts` (tool decision tree), `modes.ts` (repo-access + plan-modification guidance), `workspace.ts` (constraints, workspace boundaries, plan rules, response style), `planFormatting.ts` (plan display), `focusedResources.ts` (focused resource handling), `slackTriage.ts` (Slack triage prompt fragments), `promptRegistry.ts` (system prompt registry), `types.ts` (`PlanContext` / `ContinuationTurn`).
 
 The `currentView` parameter ('plan' | 'workspace') adds context-aware suggestions without changing response modes — it hints at UI context, not behavior constraints.
 
 ## Common Pitfalls
 
 ### Streaming Sessions
+- Session key is `chat:{projectId}:{chatSessionId}` - main-scope sessions share history across Plan and Workspace for that chat thread
 - MCP connects once per session (tool availability fixed for session)
 - 30-minute idle timeout auto-disconnects; next message auto-resumes
 
@@ -160,6 +169,7 @@ The `currentView` parameter ('plan' | 'workspace') adds context-aware suggestion
 
 Descriptions, intents, and acceptance criteria may contain `@plan/<uuid>` tokens. Iteration-doc filenames and other ad-hoc references must not appear in fields that sync to external trackers, but `@plan/<uuid>` is the **sanctioned exception**: it gets rewritten to native syntax (Jira ADF, Linear ref, Confluence link, GitHub markdown) at every export boundary by `src/main/documents/planRefResolver.ts`.
 
+`PlanActionService` rejects `create_item` / `update_item` actions whose text contains unresolved refs. `DevSessionService` prepends a `<plan-refs>` block via `formatPlanRefSection` so agents see resolved ref state without a tool call. The pure parser/expander lives in `src/shared/planRefs.ts`.
 
 ## Plan Item Spec Fields
 

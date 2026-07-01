@@ -50,6 +50,9 @@ Don't create abstractions until you have 3+ actual uses of a pattern. Wait until
 
 ## Key Conventions
 
+- **Layout hooks** in `components/layout/hooks/` — `usePanelResize`, `useLayoutShortcuts`, `usePersistedViewState`, `useTrackerTopBarIntegration`
+- **Planning hooks** in `components/planning/hooks/` — the logic behind `Canvas.tsx` lives in hooks exported from `components/planning/hooks/index.ts`. Key ones: `useCanvasViewport` (pan/zoom), `useCanvasWheel` (scroll handling), `useCanvasHierarchy` (tree + height + group layout derivation), `useCanvasAutoLayoutTrigger` (runs auto-layout once when new items lack positions), `useCanvasDragHandlers` (drag-start/over/end logic), `useVisibleCanvasItems` (viewport culling). Extract new canvas concerns into hooks here rather than growing `Canvas.tsx`.
+- **Chat** — `Chat` component receives `currentView?: 'plan' | 'workspace'` prop. Chat history shared across views via `useChatStore` (`stores/chat/`).
 - **Canvas constants** in `constants/layout.ts` — card widths, grid spacing, zoom limits
 - **Stores** — See `stores/CLAUDE.md` for patterns. Use `useShallow` for multi-value selectors. Stores communicate via typed events.
 - **Default views** — Main view defaults to `'workspace'`; planning view mode defaults to `'board'` (Board view). Both are persisted via `usePersistedViewState`.
@@ -71,6 +74,7 @@ Spec fields (`intent`, `acceptance_criteria`) surface in one place today:
 
 **Board `components/board-view/BoardCard.tsx` and canvas `components/planning/PlanCard.tsx` are intentionally NOT wired.** Card faces stay clean; users open the modal to view or edit specs. Surfacing spec fields on canvas cards would also require the three-file height-calc sync (`PlanCard.tsx` → `utils/planHierarchy.ts` → `constants/planCardStyles.ts`) — see the next section.
 
+**`source_document_id` is unwired in the renderer** — the field is on `PlanItem` and is populated by the `modify_plan` Claude tool (`src/main/claude/tools/plan-changes.ts`) as an iteration-doc breadcrumb, but no UI here reads or displays it. Do not surface it without a clear use case; see `src/main/claude/CLAUDE.md` for the write side.
 
 **Conventions:**
 - **Editable section is always rendered in the modal.** The Spec block is how users discover and author specs — hiding it would bury the affordance.
@@ -107,6 +111,7 @@ For spacing utilities: `mt-1` = 4px, `mt-1.5` = 6px, `mt-2` = 8px, `gap-1.5` = 6
 
 For padding utilities: `p-2` = 8px each side (16px total), `p-1.5` = 6px (12px total).
 
+**Current card height formula (depth 0, no children):**
 
 ```
 padding (16) + title row (21) + metadata row (26) + description (24) = 87px
@@ -116,3 +121,4 @@ padding (16) + title row (21) + metadata row (26) + description (24) = 87px
 
 ## Z-Index Layers
 
+Use the `Z_INDEX` scale in `constants/zIndex.ts`, not raw Tailwind arbitrary values — most components already do. Low to high: `canvas` → `panel` → `dropdown` → `taskIndicator` → `palette` → `modal` → `toast`. Within a layer, offset in small increments (e.g. `Z_INDEX.dropdown + 10` for submenus).

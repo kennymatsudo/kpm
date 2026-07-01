@@ -7,6 +7,7 @@ Bridges Electron's main process and renderer. Pattern: validate with Zod → del
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Renderer Process (React)                     │
+│         window.api.<domain>.<method>(params) (src/preload)      │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ IPC Channel Bridge
 ┌──────────────────────────▼──────────────────────────────────────┐
@@ -30,7 +31,9 @@ src/main/ipc/
 │   └── [domain].ts       # Domain-specific schemas
 ├── handlers/             # IPC handler implementations (one per domain)
 └── register/             # Handler registration groups (three files, called from index.ts)
+    ├── workspace.ts      # Project/repo/attachment, plan/group, chat, files/export, tracker, settings, themes, permissions, artifacts, task prompt templates, custom prompts, scheduled loops, onboarding, slack
     ├── development.ts    # Worktree, GitHub, review, dev sessions, file explorer, repo files, agent sessions
+    └── platform.ts       # Shell, terminal, temp images, perf, confluence, debug, testing, tool log, prompt overrides, search, briefing, MCP servers, usage handlers
 ```
 
 ## Channel Registry
@@ -49,14 +52,26 @@ export const IPC_CHANNELS = {
 ### Pattern 1: Service with Result Type
 
 ```typescript
+import { unwrapOrThrow } from '../../services/result';
+import { toIpcResponse } from '../response';
+import { WorktreeSchemas } from '../validation';
 
+export function registerWorktreeHandlers(worktreeService: WorktreeService): void {
   // Data-returning handlers: use unwrapOrThrow (throws on error, returns data directly)
+  ipcMain.handle(IPC_CHANNELS.worktree.getStatus, async (_event, params: unknown) => {
+    const { worktreeId } = WorktreeSchemas.getStatus.parse(params);
+    return unwrapOrThrow(await worktreeService.getStatus(worktreeId));
   });
 
   // Void/action handlers: use toIpcResponse (returns { success, data?, error? })
+  ipcMain.handle(IPC_CHANNELS.worktree.delete, async (_event, params: unknown) => {
+    const { worktreeId, force } = WorktreeSchemas.delete.parse(params);
+    return toIpcResponse(await worktreeService.deleteWorktree(worktreeId, force));
   });
 }
 ```
+
+See `handlers/worktree.ts` for the full file.
 
 ### Pattern 2: createIpcHandler Wrapper
 
@@ -75,6 +90,8 @@ ipcMain.handle(
 );
 ```
 
+Most handlers use this wrapper (see `handlers/artifacts.ts`, `handlers/plan.ts`). For parameter-less handlers, `createSimpleIpcHandler` skips the Zod step.
+
 ## Validation Schemas
 
 Schemas in `validation/` organized by domain (one file per domain). See `validation/plan.ts` for an example.
@@ -90,6 +107,7 @@ Schemas in `validation/` organized by domain (one file per domain). See `validat
 
 1. Define channel in `src/shared/ipcChannels.ts`
 2. Create Zod schema in `validation/{domain}.ts`
+3. Create handler in `handlers/{domain}.ts` — prefer `createIpcHandler` (Pattern 2; see `handlers/plan.ts`, `handlers/artifacts.ts`) for new handlers; the raw `ipcMain.handle` + `unwrapOrThrow`/`toIpcResponse` form (Pattern 1; see `handlers/worktree.ts`) also appears in the codebase but adds no benefit over Pattern 2
 4. Import and call the handler in the appropriate `register/` file (`workspace.ts`, `development.ts`, or `platform.ts`); `index.ts` calls each register file's function, so adding to the right group is enough
 
 ## Best Practices

@@ -134,10 +134,14 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 | `sync_snapshots` | Last-synced state for three-way conflict detection |
 | `chat_messages` | Persistent message history |
 | `documents` | Dormant — created by migration 018 but no repository/service writes to it. `BriefingService` is the only reader and tolerates emptiness. Filesystem path is the canonical doc identity. See `src/main/db/CLAUDE.md`. |
+| `dev_sessions` | Plan-item-tied dev sessions for board agentic execution (pending/active/inactive status); `base_sha` records the immutable fork-point SHA used for commit-range attribution; `execution_mode` (standard/workflow) and `review_policy` (auto/skip) columns added in migration 093 |
+| `worktrees` | Git worktrees for dev sessions |
 | `app_settings` | Global key-value application preferences |
 | `custom_themes` | Imported VS Code/KPM theme definitions |
 | `confluence_page_links` | Document ↔ Confluence page links |
+| `chat_sessions` | Chat session metadata; `scope` (main/focus_document) and `focus_document_*` columns added in migration 091 for focus-mode threads |
 | `groups` | Visual group containers |
+| `custom_prompts` | Custom prompts; `target_type` (none/document/repo) and `run_mode` (artifact/chat) columns added in migration 090 |
 | `task_prompt_templates` | Task prompt templates |
 | `agent_prompts` | Dormant — agent-team mode was removed; table remains from a prior migration but no code reads or writes it. Board prompts are configured via settings. |
 | `tool_permissions` | Persisted per-project tool permission grants |
@@ -153,12 +157,15 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 | `global_search_fts` | Virtual FTS5 table for full-text search |
 | `claude_usage_events` | Claude usage/cost accounting events |
 | `project_file_metadata` | Cached summaries and indexing metadata for project files |
+| `scheduled_loops` | Cmd+K-managed recurring agent prompts (notify/report/maintain output mode, interval, enabled, last outcome) |
+| `loop_runs` | Run history for scheduled loops (outcome, summary, error, artifact path) |
 
 **Key fields for features:**
 - `plan_items.completed_at` - When item marked done (for weekly updates)
 - `chat_sessions.claude_session_id` - Claude SDK session ID for resuming conversations
 - `dev_sessions.worktree_path` - Path to isolated git worktree
 - `dev_sessions.status` - Session lifecycle state (pending, active, inactive)
+- `dev_sessions.automation_phase` - Board automation state (`idle`, `reviewing`, `addressing_review`, `fixing_commit_hooks`, `fixing_commit_hooks_after_review`, `ready_for_review`, `needs_attention`)
 - `dev_sessions.base_sha` - Immutable fork-point SHA captured when worktree is created; used to compute commit range for Changes tab (falls back to merge-base for legacy rows)
 - `dev_sessions.merge_order` - Optional user override for merge queue ordering
 - `repos.active_worktree_path` - Active checkout used for repo context and branch watching
@@ -209,6 +216,8 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 | `SlackTriageItemRepository` | Slack triage items and action suggestions |
 | `ClaudeUsageRepository` | Claude usage and cost accounting |
 | `ProjectFileMetadataRepository` | Project file summary metadata |
+| `ScheduledLoopRepository` | Scheduled loop definitions |
+| `LoopRunRepository` | Scheduled loop run history |
 
 ## Service Architecture
 
@@ -223,9 +232,12 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
    - Testable with dependency injection
    - Return `ServiceResult<T>` for explicit error handling
    - Organized by domain:
+     - `core/` - PlanService, ProjectService, ChatRuntimeService, ChatService, ContextFileService, AttachmentService, ArtifactService, SearchService, PromptOverrideService, BriefingService, TrackerService, ExportFacadeService, GroupService, SettingsService, CustomThemeService, CustomPromptService, TaskPromptTemplateService, PermissionService, PermissionPromptService (`promptUser`/`resolvePromptResponse`), SlackTriageService, ClaudeUsageService, McpDiscoveryService, ScheduledLoopService, SlashCommandService, OnboardingFacadeService, PollScheduler, AppLifecycleService, NotificationService, UpdateEventBus
+     - `repo/` - RepoService, WorktreeService, DevSessionService, RepoWatcherService, EnvironmentService, ReviewService, ReviewAssessmentService, ReviewPollService, ScheduledLoopRunnerService, GitHubService
      - `files/` - FileExplorerService, FileSummaryService, TempImageService, RepoFileService, FileWatchService, ProjectWatcherService, scoped file-system/path-security helpers
      - `streaming/` - TerminalService, StreamingSessionService
      - `generation/` - CustomPromptGenerationService, OnboardingService
+     - `agents/` - AgentSessionManager, BoardAgentOrchestrator, BaseAgentSession, ClaudeSdkSession, CodexSdkAgentSession, CliAgentSession, hookServer, autoReview, agentCatalog
      - `confluence/` - ConfluenceSyncService
      - `toollog/` - ToolCallLogger, extractFilePaths
      - `PerfLogger.ts` - PerfLogger
@@ -284,6 +296,8 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 - `useSlackTriageStore.ts` - Slack triage panel and execution state
 - `backgroundTaskStore.ts` - Background task tracking
 - `claudeAvailabilityStore.ts` - Claude availability detection state
+- `focusModeStore.ts` - Focus reader's open document, reading theme, per-document scroll position
+- `scheduledLoopStore.ts` - Scheduled loop CRUD, enable/disable, run-now, run history
 
 Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and are accessed through `useProjectUiDomainStore`.
 
@@ -294,6 +308,9 @@ Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and
 - `reveal-board-column` - Scroll board view to a specific status column
 - `file-explorer-changed` - Project file watcher reported create/update/delete/rename
 - `chat-file-updated` - Chat/document flow updated a project file
+- `tracker-export-completed` - Export queue finished pushing an association's items
+
+See `storeEvents.ts` for the authoritative, current list — avoid letting this bullet list drift from it.
 
 **Project-Scoped Store Management** (`projectScopedStores.ts`):
 - Manages store lifecycle tied to project switching
@@ -319,6 +336,8 @@ Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and
 | `permission/` | Permission request UI |
 | `ui/` | Shared UI primitives (Modal, Button, StatusBadge) |
 | `file-ref/` | File reference links in markdown surfaces |
+| `plan-ref/` | `@plan/<uuid>` chip and preview rendering in markdown surfaces |
+| `focus-mode/` | Single-doc focus reader with lean doc-scoped chat panel |
 | `global-search/` | Global search UI |
 | `image-viewer-modal/` | Image viewer modal |
 | `keyboard-shortcuts/` | Keyboard shortcut reference UI |
@@ -396,10 +415,24 @@ KPM uses the Claude Agent SDK for Claude chat/dev sessions, the Codex SDK for Co
 │  │       ├─ Confluence tools (URL lookup)                       │
 │  │       ├─ GitHub tools (PR description generation)            │
 │  │       ├─ Briefing tools (project briefing generation)        │
+│  │       ├─ File tools (move/delete project files)              │
+│  │       ├─ Git tools (read-only git against connected repos)   │
 │  │       └─ Storybook tools (list/search components)            │
 │  └─ Database (single connection)                                │
 └─────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
 │  Plan-item Dev Sessions (board-driven, isolated worktrees)       │
+│  ↑ Triggered from the Board UI via IPC                           │
+│    (agent-session:create-and-start) — not a chat tool call       │
+│  ├─ DevSessionService (session + worktree management)            │
+│  ├─ AgentSessionManager (Claude/Codex/Gemini backends)           │
+│  ├─ BoardAgentOrchestrator (implement → review → address → ready)│
+│  └─ Multiple concurrent sessions:                                │
+│      ├─ Session 1: Git worktree + implementation agent           │
+│      ├─ Session 2: Git worktree + review agent                   │
+│      └─ Session N: Git worktree + agent subprocess               │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 **Key files:**
@@ -409,6 +442,7 @@ KPM uses the Claude Agent SDK for Claude chat/dev sessions, the Codex SDK for Co
 - `src/main/claude/tools/relations.ts` - Dependency/relation tools
 - `src/main/claude/tools/jira.ts` - Jira integration
 - `src/main/claude/tools/storybook.ts` - Component discovery
+- `src/main/claude/tools/document-read.ts` - Document read tools
 - `src/main/claude/tools/document-update.ts` - Document update tools
 - `src/main/claude/tools/document-edit.ts` - Document edit tools
 - `src/main/claude/tools/claudemd-update.ts` - Project context updates
@@ -417,10 +451,12 @@ KPM uses the Claude Agent SDK for Claude chat/dev sessions, the Codex SDK for Co
 - `src/main/claude/tools/confluence.ts` - Confluence integration tools
 - `src/main/claude/tools/briefing.ts` - Project briefing generation
 - `src/main/claude/tools/file-move.ts` - File move tools
+- `src/main/claude/tools/file-delete.ts` - File delete tools
 - `src/main/claude/tools/plan-refs.ts` - Extract plan items from a doc; resolve `@plan/<uuid>` tokens
 - `src/main/claude/tools/list-project-files.ts` - Project file discovery
 - `src/main/claude/tools/review-assessment.ts` - Opposing-agent review structured output
 - `src/main/claude/tools/spill-read.ts` - `read_spill_file` tool: read-only access to SDK tool-result spill files under `~/.claude/projects/` (recovery when MCP results exceed SDK token budget)
+- `src/main/claude/tools/git-read.ts` - `git_read` tool: read-only git against a connected repo via `execFile` (no shell) — the only git path from chat
 - `src/main/claude/contextRefs.ts` - Expand plan refs into agent context
 - `src/main/documents/planRefResolver.ts` - Pure resolver (renderer + main)
 - `src/main/claude/streaming/` - Streaming session classes
@@ -432,16 +468,21 @@ KPM uses the Claude Agent SDK for Claude chat/dev sessions, the Codex SDK for Co
 - `src/main/services/streaming/TerminalService.ts` - Terminal emulation
 
 **System Prompt Organization** (`src/main/claude/prompts/`):
+- `index.ts` - Entry point (`buildSystemPrompt()`, `buildFocusSystemPrompt()`)
 - `toolDocs.ts` - Tool usage guidance
+- `modes.ts` - Repo-access + plan-modification guidance (no mode taxonomy — modern Claude reads intent from the prompt)
+- `workspace.ts` - Constraints, workspace boundaries, plan rules, response style
 - `planFormatting.ts` - Plan display formatting
 - `focusedResources.ts` - Focused resource handling
 - `slackTriage.ts` - Slack triage prompt fragments
 - `promptRegistry.ts` - System prompt registry
+- `types.ts` - Prompt type definitions (`PlanContext`, `ContinuationTurn`)
 
 **Shared Prompt Defaults** (`src/shared/taskPromptDefaults.ts`):
 - Default task prompt template used by both prompt construction and persistence fallbacks
 
 **Streaming Sessions:**
+- Session key is `chat:{projectId}:{chatSessionId}` — multiple concurrent chat sessions per project, up to `MAX_CONCURRENT_SESSIONS`. See `src/main/claude/CLAUDE.md` for session-type/scope details.
 - Connects on project open (zero-latency first message)
 - Auto-reconnects after 30min idle timeout
 - Full conversation history via SDK resume
@@ -461,6 +502,8 @@ Markdown surfaces (descriptions, intents, acceptance criteria, chat, documents) 
 **Token shape:** `@plan/<uuid>` — pure structural primitive parsed in `src/shared/planRefs.ts`.
 
 **Layers:**
+- **Authoring:** Monaco editor (`planRefMonaco.tsx`) folds UUIDs to readable titles and surfaces unresolved-ref diagnostics. Markdown render path (`src/renderer/utils/markdown.tsx`) swaps refs for `PlanRefChip` (`src/renderer/components/plan-ref/PlanRefChip.tsx`).
+- **Agent context:** `formatPlanRefSection` (`src/main/claude/contextRefs.ts`) expands refs into agent prompts so agents see resolved title/status/etc. without a tool call. `DevSessionService.buildPlanRefSection` prepends a `<plan-refs>` block to board agent launch prompts.
 - **Tools:** `plan-refs.ts` exposes `extract_plan_items_from_doc` so Claude can lift refs out of a project file by path.
 - **Validation:** `PlanActionService` rejects `create_item` / `update_item` actions whose text contains unresolved refs.
 - **Export boundary:** `src/main/documents/planRefResolver.ts` rewrites refs to native syntax at every export — Jira ADF (`markdown-to-adf.ts`), Linear (`ExportService`), Confluence (`ConfluenceSyncService`), GitHub (`GitHubService`). Refs never leak to external trackers.

@@ -51,6 +51,7 @@ Each is tied to a principle. Breaking one breaks the cockpit's safety guarantees
 
 - **Services own business logic.** IPC handlers validate with Zod and delegate only.
 - **Return `ServiceResult<T>`** from services; do not throw. See `src/main/services/result.ts`.
+- **Stores communicate via typed events** in `src/renderer/stores/storeEvents.ts` for cross-store side effects. Direct cross-store imports exist for simple reads (e.g. `approvalQueueStore` reads `generalSettingsStore`/`fileTreeStore`/`toastStore`) — prefer events for side effects, direct imports are fine for reads.
 - **Extract hooks, not wrapper components.** Use Zustand selectors (`useShallow`) over React Context.
 - **Use `getConfig()`** from `src/main/config/index.ts` — no hardcoded configuration values.
 - **Register IPC handlers** under `src/main/ipc/register/` (`workspace.ts`, `development.ts`, or `platform.ts`) — not directly in `index.ts`.

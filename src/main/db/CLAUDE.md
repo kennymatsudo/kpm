@@ -28,9 +28,12 @@ Schema lives in `connection.ts` (initial tables) and `migrations.ts`.
 
 ### Adding a Column
 
+1. Create migration in `migrations.ts`. `id` is `1000 + N` where `N` matches the zero-padded number in `name`; use the next `N` after the current highest entry:
 
 ```typescript
 {
+  id: 1097,
+  name: '097_add_example_column',
   up: (db: BetterSqliteDatabase) => {
     db.exec(`ALTER TABLE plan_items ADD COLUMN example_data TEXT;`);
   },
