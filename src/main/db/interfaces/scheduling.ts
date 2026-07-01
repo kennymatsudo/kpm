@@ -25,6 +25,7 @@ export interface LoopRunCreate {
   loop_id: string;
   outcome: LoopRunOutcome;
   summary?: string | null;
+  detail?: string | null;
   error?: string | null;
   artifact_path?: string | null;
   started_at?: string;

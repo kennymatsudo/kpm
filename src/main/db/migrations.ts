@@ -3623,6 +3623,13 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1097,
+    name: '097_add_loop_run_detail',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`ALTER TABLE loop_runs ADD COLUMN detail TEXT;`);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

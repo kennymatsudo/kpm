@@ -22,6 +22,8 @@ export class LoopRunRepository implements ILoopRunRepository {
   constructor(private db: Database) {
     this.stmts = {
       insert: db.prepare(`
+        INSERT INTO loop_runs (id, loop_id, outcome, summary, detail, error, artifact_path, started_at, finished_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *
       `),
       listByLoop: db.prepare(
@@ -43,6 +45,7 @@ export class LoopRunRepository implements ILoopRunRepository {
       loop_id: row.loop_id as string,
       outcome: row.outcome as LoopRunOutcome,
       summary: (row.summary as string | null) ?? null,
+      detail: (row.detail as string | null) ?? null,
       error: (row.error as string | null) ?? null,
       artifact_path: (row.artifact_path as string | null) ?? null,
       started_at: row.started_at as string,
@@ -58,6 +61,7 @@ export class LoopRunRepository implements ILoopRunRepository {
       run.loop_id,
       run.outcome,
       run.summary ?? null,
+      run.detail ?? null,
       run.error ?? null,
       run.artifact_path ?? null,
       startedAt,

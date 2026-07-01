@@ -186,6 +186,8 @@ export interface LoopRun {
   outcome: LoopRunOutcome;
   /** Short human-readable summary of what the run found or did. */
   summary: string | null;
+  /** Fuller detail behind the summary (e.g. the notify body), when available. */
+  detail: string | null;
   error: string | null;
   /** Relative path of the doc written, for 'report' runs. */
   artifact_path: string | null;

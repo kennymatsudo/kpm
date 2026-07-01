@@ -68,6 +68,8 @@ export interface ScheduledLoopRunnerDeps {
 interface LoopExecutionResult {
   outcome: LoopRunOutcome;
   summary: string | null;
+  /** Fuller detail behind the summary (e.g. the notify body), for run history. */
+  detail: string | null;
   error: string | null;
   artifactPath: string | null;
 }
@@ -128,6 +130,7 @@ export function createScheduledLoopRunnerService(deps: ScheduledLoopRunnerDeps) 
 
   async function executeNotify(loop: ScheduledLoop): Promise<LoopExecutionResult> {
     const sdkOptions = buildLoopSdkOptions(loop.project_id);
+    if (!sdkOptions) return { outcome: 'error', summary: null, detail: null, error: 'Project not found', artifactPath: null };
 
     const prompt = `You are running as a scheduled background check (read-only — do not modify anything). Investigate the following and report only what is noteworthy.
 
@@ -139,18 +142,22 @@ If there is nothing new or noteworthy to report, reply with exactly \`${NO_FINDI
     const text = result.text.trim();
     if (!text || text.toUpperCase().startsWith(NO_FINDINGS)) {
       const reason = text.slice(NO_FINDINGS.length).replace(/^[:\s]+/, '').trim();
+      return { outcome: 'no_op', summary: reason || 'Nothing to report', detail: null, error: null, artifactPath: null };
     }
 
     const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
     const title = lines[0] ?? loop.name;
     const body = lines.slice(1).join('\n') || undefined;
     emitFinding(loop, title, body);
+    return { outcome: 'ok', summary: title, detail: body ?? null, error: null, artifactPath: null };
   }
 
   async function executeReport(loop: ScheduledLoop): Promise<LoopExecutionResult> {
     const project = deps.projects.get(loop.project_id);
+    if (!project) return { outcome: 'error', summary: null, detail: null, error: 'Project not found', artifactPath: null };
 
     const sdkOptions = buildLoopSdkOptions(loop.project_id);
+    if (!sdkOptions) return { outcome: 'error', summary: null, detail: null, error: 'Project not found', artifactPath: null };
 
     const prompt = `You are running as a scheduled background report (read-only — do not modify anything). Produce a clear, well-structured Markdown report for the following.
 
@@ -161,6 +168,7 @@ Output only the report as Markdown.`;
     const result = await runClaudeQuery({ prompt, sdkOptions, timeoutMs: LOOP_TIMEOUT_MS });
     const content = result.text.trim();
     if (!content) {
+      return { outcome: 'no_op', summary: 'No report content generated', detail: null, error: null, artifactPath: null };
     }
 
     const outputsDir = path.join(project.folder_path, 'outputs', 'loops');
@@ -171,12 +179,15 @@ Output only the report as Markdown.`;
     const relativePath = path.relative(project.folder_path, fullPath);
 
     emitFinding(loop, `Report updated: ${loop.name}`, undefined, relativePath);
+    return { outcome: 'ok', summary: `Wrote ${relativePath}`, detail: null, error: null, artifactPath: relativePath };
   }
 
   async function executeMaintain(loop: ScheduledLoop): Promise<LoopExecutionResult> {
     const project = deps.projects.get(loop.project_id);
+    if (!project) return { outcome: 'error', summary: null, detail: null, error: 'Project not found', artifactPath: null };
 
     const sdkOptions = buildLoopSdkOptions(loop.project_id);
+    if (!sdkOptions) return { outcome: 'error', summary: null, detail: null, error: 'Project not found', artifactPath: null };
 
     // Synthetic session key so the singleton tool emitters scope this run's
     // proposals to us (and not to any open chat session).
@@ -221,8 +232,12 @@ Make only the changes that are warranted. When done, briefly summarize what you 
     }
 
     if (applied === 0) {
+      return { outcome: 'no_op', summary: 'No updates were needed', detail: null, error: null, artifactPath: null };
     }
     const summary = `Updated ${applied} file${applied === 1 ? '' : 's'}`;
+    const fileList = Array.from(fileWrites.keys()).join(', ');
+    emitFinding(loop, `${loop.name}: ${summary}`, fileList);
+    return { outcome: 'ok', summary, detail: fileList, error: null, artifactPath: null };
   }
 
   function emitFinding(loop: ScheduledLoop, title: string, body?: string, artifactPath?: string): void {
@@ -269,6 +284,7 @@ Make only the changes that are warranted. When done, briefly summarize what you 
         result = {
           outcome: 'error',
           summary: null,
+          detail: null,
           error: e instanceof Error ? e.message : String(e),
           artifactPath: null,
         };
@@ -278,6 +294,7 @@ Make only the changes that are warranted. When done, briefly summarize what you 
         loop_id: loopId,
         outcome: result.outcome,
         summary: result.summary,
+        detail: result.detail,
         error: result.error,
         artifact_path: result.artifactPath,
         started_at: startedAt,

@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Modal, ModalHeader, ModalBody } from '../ui/Modal';
 import { useScheduledLoopStore, useProjectDomainStore, toast } from '../../stores';
 import { formatRelativeTime } from '../../utils/relativeTime';
+import { ChevronRightIcon } from '../icons';
 import type { LoopOutputMode, LoopRun, LoopRunOutcome } from '../../../shared/types';
 
 const OUTPUT_MODES: { value: LoopOutputMode; label: string; hint: string }[] = [
@@ -31,12 +32,23 @@ const OUTCOME_STYLES: Record<LoopRunOutcome, { label: string; className: string 
 
 function LoopHistoryRow({ run }: { run: LoopRun }) {
   const outcome = OUTCOME_STYLES[run.outcome];
+  const primary = run.outcome === 'error' ? run.error : run.summary;
   return (
     <div className="px-3 py-2 rounded-lg bg-surface-2 border border-border-default">
       <div className="flex items-center justify-between gap-2">
         <span className={`text-xs font-medium ${outcome.className}`}>{outcome.label}</span>
         <span className="text-xs text-text-tertiary">{formatRelativeTime(run.started_at)}</span>
       </div>
+      {primary && <p className="text-xs text-text-secondary mt-1">{primary}</p>}
+      {run.detail && (
+        <details className="group/detail mt-1">
+          <summary className="flex cursor-pointer select-none items-center gap-1 text-xs text-text-tertiary transition-colors hover:text-text-secondary">
+            <ChevronRightIcon className="h-3 w-3 transition-transform group-open/detail:rotate-90" />
+            <span>View full report</span>
+          </summary>
+          <p className="text-xs text-text-secondary mt-1 whitespace-pre-wrap">{run.detail}</p>
+        </details>
+      )}
       {run.artifact_path && <p className="text-xs text-text-tertiary mt-1">{run.artifact_path}</p>}
     </div>
   );
