@@ -24,6 +24,7 @@ import type {
   IReviewSyncStateRepository,
   IReviewTaskRepository,
 } from '../../db/interfaces';
+import { isLiveAutomationPhase } from '../../../shared/types';
 import type { DevSession, PrReviewSnapshot, ReviewActionableSummary } from '../../../shared/types';
 import { getConfig } from '../../config';
 import { buildAutomationPrompt } from './ReviewService';
@@ -118,8 +119,22 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       for (const session of sessions) {
         if (!session.pr_number) continue;
         if (session.status !== 'inactive') continue;
+        // Skip sessions actively mid-automation (reviewing, addressing review,
+        // needing attention, commit-hook repair). Treat null the same as
+        // 'idle' — every session starts life with a null phase and only
+        // flips to 'idle' once its agent actually starts; a session whose PR
+        // was created and merged without that transition should still be
+        // eligible, or it never gets polled and its cached pr_state/review_state
+        // go stale forever.
+        if (isLiveAutomationPhase(session.automation_phase)) continue;
         if (!session.plan_item_id) continue;
         const planItem = deps.planItems.get(session.plan_item_id);
+        if (!planItem || planItem.status_category === 'done') continue;
+
+        // Only the plan item's current session can drive completion — a
+        // superseded session's merged PR shouldn't resurrect Done after reopening.
+        const latestSession = deps.devSessions.getByPlanItem(session.plan_item_id);
+        if (latestSession?.id !== session.id) continue;
 
         const agentSession = deps.agentSessionManager.getByDevSession(session.id);
         if (agentSession && !isTerminalState(agentSession.state)) continue;
@@ -320,6 +335,10 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       return { sessionId: session.id, action: 'completed', newThreadCount: 0, implementCount: 0 };
     }
 
+    // Only the plan item's current session can drive completion — a superseded
+    // session's merged PR shouldn't resurrect Done after the item was reopened.
+    const latestSession = deps.devSessions.getByPlanItem(session.plan_item_id);
+    if (latestSession?.id !== session.id) {
       return null;
     }
 

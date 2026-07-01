@@ -192,11 +192,13 @@ function buildHarness(options: {
   planItem?: PlanItem;
   snapshot?: PrReviewSnapshot | null;
   tasks?: ReviewTask[];
+  latestSession?: DevSession;
 } = {}) {
   const session = options.session ?? createSession();
   const planItem = options.planItem ?? createPlanItem();
   const tasks = options.tasks ?? [createTask()];
   const snapshot = options.snapshot === undefined ? createSnapshot() : options.snapshot;
+  const latestSession = options.latestSession ?? session;
 
   const reviewTasks = {
     getByRepoPr: vi.fn(() => tasks),
@@ -246,6 +248,7 @@ function buildHarness(options: {
     devSessions: {
       get: vi.fn(() => session),
       getByProject: vi.fn(() => [session]),
+      getByPlanItem: vi.fn(() => latestSession),
     },
     planItems: {
       get: vi.fn((id: string) => id === planItem.id ? planItem : undefined),
@@ -329,6 +332,30 @@ describe('ReviewPollService', () => {
     });
   });
 
+  it('moves a plan item to done on merge even if it never reached in_review', async () => {
+    const harness = buildHarness({
+      planItem: createPlanItem({ status_category: 'in_progress' }),
+    });
+
+    const result = await harness.service.pollSession('session-1');
+
+    expect(result.action).toBe('completed');
+    expect(harness.planService.updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'done' });
+  });
+
+  it('does not resurrect done for a session superseded by newer work on the same plan item', async () => {
+    const harness = buildHarness({
+      planItem: createPlanItem({ status_category: 'in_progress' }),
+      latestSession: createSession({ id: 'session-2', pr_number: null, pr_state: null }),
+    });
+
+    const result = await harness.service.pollSession('session-1');
+
+    expect(result.action).not.toBe('completed');
+    expect(harness.planService.updateItem).not.toHaveBeenCalled();
+    expect(harness.eventBus.emit).not.toHaveBeenCalledWith(expect.objectContaining({ change: 'merged' }));
+  });
+
   it('does not complete a merged PR targeting a non-main branch', async () => {
     const harness = buildHarness({
       snapshot: createSnapshot({ baseRefName: 'develop' }),
@@ -377,6 +404,33 @@ describe('ReviewPollService', () => {
       hasActionable: false,
       counts: { needsInput: 0, failed: 0, stale: 0, errored: 0 },
     });
+  });
+
+  it('discovers and completes a session with a null automation_phase whose PR has already merged', async () => {
+    // Every session is created with automation_phase: null and only flips to
+    // 'idle' once its agent actually starts. A session whose PR was created
+    // and merged without ever making that transition must still be eligible
+    // for polling, or its cached pr_state/review_state go stale forever.
+    const harness = buildHarness({
+      session: createSession({ automation_phase: null }),
+    });
+
+    const summary = await harness.service.pollNow();
+
+    expect(summary.processed).toBe(1);
+    expect(summary.completed).toBe(1);
+    expect(harness.planService.updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'done' });
+  });
+
+  it('does not discover a session that is actively mid-automation', async () => {
+    const harness = buildHarness({
+      session: createSession({ automation_phase: 'addressing_review' }),
+    });
+
+    const summary = await harness.service.pollNow();
+
+    expect(summary.processed).toBe(0);
+    expect(harness.reviewService.syncSessionReviewState).not.toHaveBeenCalled();
   });
 
   it('uses linked PR status as a fallback when the review snapshot was unchanged', async () => {
