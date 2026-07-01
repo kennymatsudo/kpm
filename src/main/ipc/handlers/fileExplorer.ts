@@ -5,6 +5,7 @@ import type { ProjectWatcherService } from '../../services/files/ProjectWatcherS
 import { unwrapOrThrow } from '../../services/result';
 import { toIpcResponse } from '../response';
 import { IPC_CHANNELS } from '../channels';
+import { openDirectoryInCodeEditor } from '../../services/repo/editorLauncher';
 
 /**
  * File change event types for real-time UI updates
@@ -176,6 +177,18 @@ export function registerFileExplorerHandlers(
     const fullPath = unwrapOrThrow(await fileExplorerService.getFullPath(projectId, path));
     shell.showItemInFolder(fullPath);
     return { success: true };
+  });
+
+  // Open a project file/folder in the user's code editor
+  ipcMain.handle(IPC_CHANNELS.fileExplorer.openInEditor, async (_event, params: unknown) => {
+    const { projectId, path } = FileExplorerSchemas.openInEditor.parse(params);
+    const fullPath = unwrapOrThrow(await fileExplorerService.getFullPath(projectId, path));
+    try {
+      await openDirectoryInCodeEditor(fullPath);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
   });
 
   // Show folder selection dialog for linking external folders

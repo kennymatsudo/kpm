@@ -147,6 +147,7 @@ export const IPC_CHANNELS = {
     writeFile: 'file-explorer:write-file',
     getSymlinkInfo: 'file-explorer:get-symlink-info',
     showItemInFolder: 'file-explorer:show-item-in-folder',
+    openInEditor: 'file-explorer:open-in-editor',
     selectFolderDialog: 'file-explorer:select-folder-dialog',
     watchProject: 'file-explorer:watch-project',
     unwatchProject: 'file-explorer:unwatch-project',

@@ -616,6 +616,11 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
             handleStartRename(fileContextMenus.contextMenu.path);
           }
         }}
+        onOpenContextFileInEditor={() => {
+          if (fileContextMenus.contextMenu) {
+            void fileContextMenus.handleOpenInEditor(fileContextMenus.contextMenu.path);
+          }
+        }}
         onRevealContextFileInFinder={() => {
           if (fileContextMenus.contextMenu) {
             void fileContextMenus.handleRevealInFinder(fileContextMenus.contextMenu.path);

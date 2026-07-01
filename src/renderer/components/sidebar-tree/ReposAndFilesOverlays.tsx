@@ -68,6 +68,7 @@ interface ReposAndFilesOverlaysProps {
   onNewFolderInContext: () => void;
   onToggleContextFileFocus: () => void;
   onRenameContextFile: () => void;
+  onOpenContextFileInEditor: () => void;
   onRevealContextFileInFinder: () => void;
   onCopyContextFullPath: () => void;
   onCopyContextRelativePath: () => void;
@@ -135,6 +136,7 @@ export function ReposAndFilesOverlays({
   onNewFolderInContext,
   onToggleContextFileFocus,
   onRenameContextFile,
+  onOpenContextFileInEditor,
   onRevealContextFileInFinder,
   onCopyContextFullPath,
   onCopyContextRelativePath,
@@ -216,6 +218,7 @@ export function ReposAndFilesOverlays({
           onNewFolder={onNewFolderInContext}
           onToggleFocus={onToggleContextFileFocus}
           onRename={onRenameContextFile}
+          onOpenInEditor={onOpenContextFileInEditor}
           onRevealInFinder={onRevealContextFileInFinder}
           onCopyFullPath={onCopyContextFullPath}
           onCopyRelativePath={onCopyContextRelativePath}

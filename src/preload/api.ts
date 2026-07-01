@@ -1455,6 +1455,10 @@ const fileExplorer = {
   showItemInFolder: (projectId: string, path: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.fileExplorer.showItemInFolder, { projectId, path }),
 
+  // Open a project file/folder in the user's code editor
+  openInEditor: (projectId: string, path: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.fileExplorer.openInEditor, { projectId, path }),
+
   // Show folder selection dialog for linking external folders
   selectFolderDialog: (title?: string): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.fileExplorer.selectFolderDialog, { title }),

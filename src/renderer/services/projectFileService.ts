@@ -82,6 +82,13 @@ export function showProjectItemInFolder(
   return window.api.fileExplorer.showItemInFolder(projectId, path);
 }
 
+export function openProjectItemInEditor(
+  projectId: string,
+  path: string
+): Promise<{ success: boolean; error?: string }> {
+  return window.api.fileExplorer.openInEditor(projectId, path);
+}
+
 export function subscribeToProjectFileChanges(
   callback: (event: ProjectFileChangeEvent) => void
 ): () => void {

@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { FocusedResource } from '../../../../shared/types';
+import { openProjectItemInEditor, showProjectItemInFolder } from '../../../services/projectFileService';
 import { getProjectAbsolutePath } from '../../../services/projectService';
 import { copyToClipboard } from '../../../utils/clipboard';
 
@@ -109,6 +110,19 @@ export function useFileContextMenus({
     [projectId]
   );
 
+  const handleOpenInEditor = useCallback(
+    async (path: string) => {
+      if (projectId && path) {
+        const result = await openProjectItemInEditor(projectId, path);
+        if (!result.success) {
+          console.error('Failed to open file in editor:', result.error);
+        }
+      }
+      setContextMenu(null);
+    },
+    [projectId]
+  );
+
   const handleCopyFullPath = useCallback(
     async (path: string) => {
       if (projectId && path) {
@@ -146,6 +160,7 @@ export function useFileContextMenus({
     handleCancelDelete,
     handleConfirmDelete,
     handleRevealInFinder,
+    handleOpenInEditor,
     handleCopyFullPath,
     handleCopyRelativePath,
   };

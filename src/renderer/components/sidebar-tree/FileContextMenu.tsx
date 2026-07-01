@@ -13,6 +13,7 @@ interface FileContextMenuProps {
   onNewFolder?: () => void;
   onToggleFocus: () => void;
   onRename: () => void;
+  onOpenInEditor: () => void;
   onRevealInFinder: () => void;
   onCopyFullPath: () => void;
   onCopyRelativePath: () => void;
@@ -35,6 +36,7 @@ export function FileContextMenu({
   onNewFolder,
   onToggleFocus,
   onRename,
+  onOpenInEditor,
   onRevealInFinder,
   onCopyFullPath,
   onCopyRelativePath,
@@ -246,6 +248,28 @@ export function FileContextMenu({
         }
       >
         Rename
+      </DropdownMenu.Item>
+
+      {/* Open in Editor */}
+      <DropdownMenu.Item
+        onClick={onOpenInEditor}
+        icon={
+          <svg
+            className="w-4 h-4 text-text-tertiary"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M17.25 6.75L21 12l-3.75 5.25M6.75 6.75L3 12l3.75 5.25M14 4l-4 16"
+            />
+          </svg>
+        }
+      >
+        Open in Editor
       </DropdownMenu.Item>
 
       {/* Reveal in Finder */}
