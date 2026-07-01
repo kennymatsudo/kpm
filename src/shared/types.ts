@@ -565,6 +565,21 @@ export interface ThinkingSegment {
   content: string;
 }
 
+/**
+ * Marks a turn boundary inside a message whose consecutive assistant turns
+ * were merged into one card (no intervening user message). Renders as an
+ * inline divider carrying the timing/progress signal instead of a repeated
+ * header. `durationMs`/`model` describe the turn that just finished.
+ */
+export interface CheckpointSegment {
+  type: 'checkpoint';
+  timestamp: number;
+  durationMs?: number;
+  model?: string;
+}
+
+/** A segment within a message - text, activity indicator, thinking block, or turn-boundary checkpoint */
+export type MessageSegment = TextSegment | ActivitySegment | ThinkingSegment | CheckpointSegment;
 
 // =============================================================================
 // Plan Actions - structured commands for AI-driven plan manipulation

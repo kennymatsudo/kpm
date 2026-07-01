@@ -354,6 +354,92 @@ describe('streamingSlice.finalizeMessage', () => {
     expect(messages[3].queued).toBeUndefined();
     expect(session?.isStreaming).toBe(true);
   });
+
+  it('merges a second turn into the previous message when no user message intervened', () => {
+    // Simulates checking in on a forked background agent: the assistant ends
+    // its turn, gets woken later, and reports back with no new user message
+    // in between — this should read as one continuous card, not two.
+    const sessionId = 'session-merge-turns';
+    const base = createInitialPerSessionState(1);
+
+    const store = createTestStore(sessionId, {
+      ...base,
+      isStreaming: true,
+      streamStartedAt: Date.now() - 5000,
+      streamingSegments: [{ type: 'text', content: 'checking in on the background agent' }],
+      streamingContent: 'checking in on the background agent',
+    });
+
+    store.getState().finalizeMessage(sessionId, { model: 'claude-sonnet-4-6' });
+
+    let session = store.getState().sessions.get(sessionId);
+    expect(session?.messages).toHaveLength(1);
+    const firstMessage = session!.messages[0];
+    expect(firstMessage.segments).toEqual([
+      { type: 'text', content: 'checking in on the background agent' },
+    ]);
+
+    // A second turn starts and finishes with no user message in between.
+    store.setState((state) => {
+      const sessions = new Map(state.sessions);
+      const s = sessions.get(sessionId)!;
+      sessions.set(sessionId, {
+        ...s,
+        isStreaming: true,
+        streamStartedAt: Date.now(),
+        streamingSegments: [{ type: 'text', content: 'the research agent finished' }],
+        streamingContent: 'the research agent finished',
+      });
+      return { sessions };
+    });
+
+    store.getState().finalizeMessage(sessionId, { model: 'claude-sonnet-4-6' });
+
+    session = store.getState().sessions.get(sessionId);
+    expect(session?.messages).toHaveLength(1);
+    const merged = session!.messages[0];
+    expect(merged.id).toBe(firstMessage.id);
+    expect(merged.segments).toEqual([
+      { type: 'text', content: 'checking in on the background agent' },
+      expect.objectContaining({ type: 'checkpoint' }),
+      { type: 'text', content: 'the research agent finished' },
+    ]);
+  });
+
+  it('does not merge into a message that was interrupted — interruption always forces a new bubble', () => {
+    const sessionId = 'session-interrupted-boundary';
+    const base = createInitialPerSessionState(1);
+
+    const store = createTestStore(sessionId, {
+      ...base,
+      isStreaming: true,
+      streamStartedAt: Date.now(),
+      streamingSegments: [{ type: 'text', content: 'cut off mid-thought' }],
+      streamingContent: 'cut off mid-thought',
+    });
+
+    store.getState().finalizeMessage(sessionId, { interrupted: true });
+
+    store.setState((state) => {
+      const sessions = new Map(state.sessions);
+      const s = sessions.get(sessionId)!;
+      sessions.set(sessionId, {
+        ...s,
+        isStreaming: true,
+        streamStartedAt: Date.now(),
+        streamingSegments: [{ type: 'text', content: 'fresh answer' }],
+        streamingContent: 'fresh answer',
+      });
+      return { sessions };
+    });
+
+    store.getState().finalizeMessage(sessionId);
+
+    const messages = store.getState().sessions.get(sessionId)?.messages ?? [];
+    expect(messages).toHaveLength(2);
+    expect(messages[0].interrupted).toBe(true);
+    expect(messages[1].segments).toEqual([{ type: 'text', content: 'fresh answer' }]);
+  });
 });
 
 describe('streamingSlice streaming state recovery', () => {

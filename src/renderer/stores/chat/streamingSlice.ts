@@ -1,3 +1,4 @@
+import type { ChatState, ChatSet, ChatGet, Message, MessageSegment } from './types';
 import { streamingBuffer } from './utils';
 
 export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
@@ -327,7 +328,97 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
         // answered it.
         const baseMessages = clearCompletedLiveFollowUps(applyPromotion(session.messages));
 
+        // Merge this turn into the previous message when it's an uninterrupted
+        // assistant turn with nothing in between — this is what keeps a
+        // multi-turn exchange (e.g. periodic check-ins on a forked background
+        // agent) rendering as one continuous card instead of a new bubble per
+        // turn. Checked against the raw last array entry and skipped entirely
+        // whenever a queued follow-up needs positional insertion below: a
+        // `beforeClientMessageId` anchor means a user message genuinely landed
+        // in between, so this is not a silent continuation.
+        const mergeTarget = baseMessages[baseMessages.length - 1];
+        const canMergeIntoPrevious =
+          !beforeClientMessageId &&
+          mergeTarget?.role === 'assistant' &&
+          !mergeTarget.interrupted;
+
+        let nextMessages: Message[];
+
+        if (canMergeIntoPrevious) {
+          console.log(`[finalizeMessage] Merged turn into existing message for ${chatSessionId} (${finalSegments.length} segments, ${textLength} chars, total messages: ${baseMessages.length})`);
+
+          // Carries the outgoing turn's own stats forward as a divider inside
+          // the merged message, so per-step timing survives even though the
+          // top-level fields below move on to describe the latest turn.
+          const checkpoint: MessageSegment = {
+            type: 'checkpoint',
+            timestamp: Date.now(),
+            ...(mergeTarget.durationMs != null ? { durationMs: mergeTarget.durationMs } : {}),
+            ...(mergeTarget.model ? { model: mergeTarget.model } : {}),
+          };
+
+          const mergedMessage: Message = {
+            ...mergeTarget,
+            segments: [...mergeTarget.segments, checkpoint, ...finalSegments],
+            model: options?.model ?? state.model,
+            // Cumulative since the exchange's first turn — a growing total
+            // that signals ongoing progress across the merged turns, rather
+            // than resetting to just this latest turn's own duration.
+            durationMs: Math.max(0, Date.now() - mergeTarget.timestamp.getTime()),
+            ...(interrupted ? { interrupted: true } : {}),
+          };
+          nextMessages = [...baseMessages.slice(0, -1), mergedMessage];
         } else {
+          console.log(`[finalizeMessage] Created message for ${chatSessionId} (${finalSegments.length} segments, ${textLength} chars, total messages: ${baseMessages.length + 1})`);
+
+          const newMessage: Message = {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            segments: finalSegments,
+            timestamp: new Date(),
+            model: options?.model ?? state.model,
+            ...(durationMs != null ? { durationMs } : {}),
+            ...(interrupted ? { interrupted: true } : {}),
+          };
+
+          // Position the finalized assistant bubble before the queued follow-up so
+          // chronology reads correctly (this turn answered the *earlier* message).
+          // Anchor by clientMessageId rather than the transient `queued` flag: a
+          // racing `chat:queue-cleared` can strip `queued` before this runs, and
+          // relying on the flag would then append the bubble after the follow-up
+          // and invert the order. The id is stable; the flag is not.
+          nextMessages = [...baseMessages, newMessage];
+          if (beforeClientMessageId) {
+            const insertAt = baseMessages.findIndex(
+              (message) =>
+                message.role === 'user' &&
+                message.clientMessageId === beforeClientMessageId,
+            );
+            if (insertAt !== -1) {
+              nextMessages = [
+                ...baseMessages.slice(0, insertAt),
+                newMessage,
+                ...baseMessages.slice(insertAt),
+              ];
+            }
+          } else {
+            // No explicit anchor — fall back to walking past any trailing queued
+            // user messages so the bubble still lands before a pending follow-up.
+            let insertAt = baseMessages.length;
+            while (
+              insertAt > 0 &&
+              baseMessages[insertAt - 1]?.role === 'user' &&
+              baseMessages[insertAt - 1]?.queued
+            ) {
+              insertAt -= 1;
+            }
+            if (insertAt !== baseMessages.length) {
+              nextMessages = [
+                ...baseMessages.slice(0, insertAt),
+                newMessage,
+                ...baseMessages.slice(insertAt),
+              ];
+            }
           }
         }
 

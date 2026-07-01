@@ -22,15 +22,24 @@ function getTextContent(segments: MessageSegment[]): string {
 
 type SegmentGroup =
   | { kind: 'process'; segments: MessageSegment[] }
+  | { kind: 'text'; content: string }
+  | { kind: 'checkpoint'; gapMs: number | null };
 
 /**
  * Split segments into ordered runs separated by text. Each text segment becomes
  * its own group; activity/thinking segments coalesce into a single process
  * group until the next text breaks the run. This is what lets a single
  * assistant turn render as alternating tool blocks and prose.
+ *
+ * `checkpoint` segments mark a merged turn boundary (see `finalizeMessage` in
+ * streamingSlice.ts) and become a lightweight divider group carrying the gap
+ * since the previous boundary — `startTimestamp` (the message's own start
+ * time) anchors the gap for the first checkpoint in the list.
  */
+function groupSegmentsForRender(segments: MessageSegment[], startTimestamp?: number): SegmentGroup[] {
   const groups: SegmentGroup[] = [];
   let buffer: MessageSegment[] = [];
+  let previousTimestamp = startTimestamp ?? null;
 
   const flushProcess = () => {
     if (buffer.length === 0) return;
@@ -51,6 +60,11 @@ type SegmentGroup =
       if (seg.content.trim().length > 0) {
         groups.push({ kind: 'text', content: seg.content });
       }
+    } else if (seg.type === 'checkpoint') {
+      flushProcess();
+      const gapMs = previousTimestamp != null ? Math.max(0, seg.timestamp - previousTimestamp) : null;
+      groups.push({ kind: 'checkpoint', gapMs });
+      previousTimestamp = seg.timestamp;
     } else {
       buffer.push(seg);
     }
@@ -58,6 +72,26 @@ type SegmentGroup =
   flushProcess();
   return groups;
 }
+
+/** Gap above which a checkpoint divider reads as "resumed after…" instead of "…later". */
+const CHECKPOINT_GAP_DIVIDER_MS = 60_000;
+/** Gaps shorter than this render no divider at all — not worth interrupting the flow for. */
+const CHECKPOINT_GAP_MIN_MS = 1_500;
+
+/** Muted inline divider marking a merged turn boundary — carries the "time is passing" signal that a repeated header used to provide. */
+const CheckpointDivider = memo(function CheckpointDivider({ gapMs }: { gapMs: number | null }) {
+  if (gapMs == null || gapMs < CHECKPOINT_GAP_MIN_MS) return null;
+  const label = formatTurnDuration(gapMs);
+  if (!label) return null;
+  const text = gapMs >= CHECKPOINT_GAP_DIVIDER_MS ? `resumed after ${label}` : `${label} later`;
+  return (
+    <div className="flex items-center gap-2 my-2 text-xxs text-text-muted/60" aria-hidden="true">
+      <span className="flex-1 h-px bg-border-subtle" />
+      <span>{text}</span>
+      <span className="flex-1 h-px bg-border-subtle" />
+    </div>
+  );
+});
 
 
 /** Parse user message to extract image attachments and clean content */
@@ -164,13 +198,18 @@ const ThinkingIndicator = memo(function ThinkingIndicator({
   activities,
   elapsedSeconds,
   model,
+  showHeader = true,
 }: {
   thinkingContent?: string;
   activities: Activity[];
   elapsedSeconds: number | null;
   model?: string;
+  /** False when attaching to the previous message as a continuation rather than starting a new card. */
+  showHeader?: boolean;
 }) {
   return (
+    <div className={`chat-message-assistant ${showHeader ? 'py-3' : 'pt-0 pb-3'}`} aria-label="Assistant response">
+      {showHeader && <StreamingHeader model={model} elapsedSeconds={elapsedSeconds} />}
       <div className="pr-2">
         <ProcessTimeline
           streamingThinking={thinkingContent}
@@ -231,18 +270,28 @@ const InterruptedIndicator = memo(function InterruptedIndicator() {
 const AssistantMessageContent = memo(function AssistantMessageContent({
   segments,
   interrupted,
+  startTimestamp,
 }: {
   segments: MessageSegment[];
   interrupted?: boolean;
+  /** The message's own start time — anchors the gap shown by the first checkpoint divider. */
+  startTimestamp?: number;
 }) {
   const fullText = useMemo(() => getTextContent(segments), [segments]);
   const processed = useMemo(() => processMessageContent(fullText), [fullText]);
+  const groups = useMemo(
+    () => groupSegmentsForRender(segments, startTimestamp),
+    [segments, startTimestamp]
+  );
 
   return (
     <>
       {groups.map((group, idx) => {
         if (group.kind === 'process') {
           return <ProcessTimeline key={`p-${idx}`} segments={group.segments} />;
+        }
+        if (group.kind === 'checkpoint') {
+          return <CheckpointDivider key={`c-${idx}`} gapMs={group.gapMs} />;
         }
         const segmentProcessed = processMessageContent(group.content);
         return (
@@ -272,6 +321,17 @@ const StreamingContent = memo(function StreamingContent({
   activities: Activity[];
   elapsedSeconds: number | null;
 }) {
+  // `checkpoint` segments only ever appear in committed messages (added by
+  // `finalizeMessage` when merging turns) — never in the in-flight streaming
+  // buffer — but filter defensively so the RenderItem union below stays exhaustive.
+  const groups = useMemo(
+    () =>
+      groupSegmentsForRender(segments).filter(
+        (g): g is Extract<SegmentGroup, { kind: 'process' } | { kind: 'text' }> =>
+          g.kind !== 'checkpoint'
+      ),
+    [segments]
+  );
 
   // The "active" group — the one still receiving live activities/thinking — is
   // either the trailing process group (if no text has landed after the latest
@@ -517,6 +577,7 @@ const MessageRow = memo(function MessageRow({
           <AssistantMessageContent
             segments={message.segments}
             interrupted={message.interrupted}
+            startTimestamp={message.timestamp.getTime()}
           />
         )}
       </div>
@@ -598,6 +659,12 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
   // messages it answered. The per-message "queued"/"Added while…" caption
   // (see MessageRow) carries the interjection status instead of a separate group.
   const staticMessages = messages;
+  // Mirrors the merge condition in `finalizeMessage` (streamingSlice.ts): when
+  // the last committed message is an uninterrupted assistant turn, a new live
+  // turn starting now has nothing in between and will merge into it once
+  // finalized — so render it attached (no header) rather than as a new card.
+  const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+  const isMergeableContinuation = lastMessage?.role === 'assistant' && !lastMessage.interrupted;
   const error = viewedSession?.error ?? null;
   const sessionState = viewedSession?.sessionState ?? 'idle';
   const activities = viewedSession?.activities ?? [];
@@ -864,7 +931,17 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
           </div>
         )}
 
+        {/* Streaming response — attached without its own header when it will
+            merge into the last static message on finalize (see
+            `isMergeableContinuation`), so it reads as a continuation. */}
         {isStreaming && (streamingSegments.length > 0 || streamingContent) && (
+          <div
+            className={`chat-message-assistant ${isMergeableContinuation ? 'pt-0 pb-3' : 'py-3'}`}
+            aria-label="Assistant response"
+          >
+            {!isMergeableContinuation && (
+              <StreamingHeader model={model} elapsedSeconds={elapsedSeconds} />
+            )}
             <div className="pr-2 chat-message-content text-text-primary">
               <StreamingContent
                 segments={streamingSegments}
@@ -886,6 +963,7 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
             activities={activities}
             elapsedSeconds={elapsedSeconds}
             model={model}
+            showHeader={!isMergeableContinuation}
           />
         )}
 

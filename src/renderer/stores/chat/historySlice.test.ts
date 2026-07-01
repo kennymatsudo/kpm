@@ -286,3 +286,67 @@ describe('historySlice.restoreLastSession', () => {
     expect(session?.lastStreamUpdateAt).toBe(200);
   });
 });
+
+describe('historySlice.loadFromHistory turn merging', () => {
+  beforeEach(() => {
+    vi.mocked(getChatSessionHistory).mockReset();
+    vi.mocked(loadChatSession).mockReset();
+  });
+
+  // Mirrors the live-session merge in `finalizeMessage` (streamingSlice.ts):
+  // consecutive assistant rows with no user row between them are turns from
+  // the same merged exchange (e.g. periodic check-ins on a forked background
+  // agent) and must render as one card on reload too, not the old chunky
+  // per-turn cards.
+  it('folds consecutive assistant rows into one merged message with a checkpoint divider', async () => {
+    const store = createTestStore();
+
+    vi.mocked(loadChatSession).mockResolvedValue({
+      success: true,
+      messages: [
+        {
+          id: 'message-1',
+          session_id: 'project-a',
+          chat_session_id: 'chat-a',
+          provider: 'claude',
+          role: 'user',
+          content: 'Explain the history mechanism',
+          created_at: '2026-01-01T00:00:00.000Z',
+        },
+        {
+          id: 'message-2',
+          session_id: 'project-a',
+          chat_session_id: 'chat-a',
+          provider: 'claude',
+          role: 'assistant',
+          content: "I'll wait for the background research agent to finish.",
+          created_at: '2026-01-01T00:00:05.000Z',
+        },
+        {
+          id: 'message-3',
+          session_id: 'project-a',
+          chat_session_id: 'chat-a',
+          provider: 'claude',
+          role: 'assistant',
+          content: 'The research agent finished — here is what it found.',
+          created_at: '2026-01-01T00:01:20.000Z',
+        },
+      ],
+      chatSessionId: 'chat-a',
+    });
+
+    await store.getState().loadFromHistory('project-a', 'chat-a', () => true);
+
+    const messages = store.getState().sessions.get('chat-a')?.messages ?? [];
+    expect(messages).toHaveLength(2);
+    expect(messages[0].role).toBe('user');
+    expect(messages[1].role).toBe('assistant');
+    // The merged message keeps the id of the first turn in the run.
+    expect(messages[1].id).toBe('message-2');
+    expect(messages[1].segments).toEqual([
+      { type: 'text', content: "I'll wait for the background research agent to finish." },
+      { type: 'checkpoint', timestamp: new Date('2026-01-01T00:01:20.000Z').getTime() },
+      { type: 'text', content: 'The research agent finished — here is what it found.' },
+    ]);
+  });
+});

@@ -177,8 +177,33 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         if (!isCurrent(shouldContinue)) return;
 
         if (result.success && result.messages) {
+          // Fold consecutive assistant rows (no user row between them) into one
+          // Message, mirroring the live-session merge in `finalizeMessage`
+          // (streamingSlice.ts) — otherwise reloaded history would show the old
+          // chunky per-turn cards while a live session renders them merged.
+          // Persisted rows carry no duration/model, so the checkpoint here is
+          // timestamp-only; the divider still shows the gap between turns.
+          const messages: Message[] = result.messages.reduce<Message[]>((acc, m: ChatMessage) => {
+            const timestamp = new Date(m.created_at);
+            const previous = acc[acc.length - 1];
+
+            if (m.role === 'assistant' && previous?.role === 'assistant') {
+              const checkpoint: MessageSegment = { type: 'checkpoint', timestamp: timestamp.getTime() };
+              acc[acc.length - 1] = {
+                ...previous,
+                segments: [...previous.segments, checkpoint, { type: 'text', content: m.content }],
+              };
+              return acc;
+            }
+
+            acc.push({
               id: m.id,
               role: m.role,
+              segments: [{ type: 'text', content: m.content }],
+              timestamp,
+            });
+            return acc;
+          }, []);
 
           const state = get();
           const sessions = new Map(state.sessions);
