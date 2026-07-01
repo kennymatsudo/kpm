@@ -8,6 +8,7 @@ import { TooltipProvider } from './components/ui';
 import {
   useStoreSubscriptions,
   initCustomPromptTaskListeners,
+  initNotificationListener,
   useProjectDomainStore,
   usePlanDomainStore,
   selectProjectSummary,
@@ -34,6 +35,11 @@ export default function App() {
   // Relay onboarding generation events into the generic background task store
   useEffect(() => {
     return initOnboardingTaskBridge();
+  }, []);
+
+  // Relay main-process notification events into the notification store
+  useEffect(() => {
+    return initNotificationListener();
   }, []);
 
   useEffect(() => {

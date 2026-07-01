@@ -127,5 +127,13 @@ export type { BackgroundTask, BackgroundTaskStatus } from './backgroundTaskStore
 // Global Search
 export { useSearchStore } from './searchStore';
 
+// Notifications (generic registry surfaced via topbar bell)
+export {
+  useNotificationStore,
+  selectUnreadCount,
+  initNotificationListener,
+} from './notificationStore';
+export type { NotificationRecord } from './notificationStore';
+
 // Slack Triage
 export { useSlackTriageStore } from './useSlackTriageStore';

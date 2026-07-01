@@ -193,6 +193,31 @@ export interface LoopRun {
   finished_at: string | null;
 }
 
+export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error';
+
+/**
+ * A single user-facing notification, produced by `NotificationService` from an
+ * `UpdateEvent` and broadcast to renderer windows over `notification:new`.
+ * Kind-agnostic — new event sources (loops today; trackers, reviews, etc. in
+ * the future) all funnel through this same shape rather than each inventing
+ * their own notification payload.
+ */
+export interface AppNotification {
+  /** Stable id for this notification instance. */
+  id: string;
+  /** When the underlying event was detected. */
+  at: string;
+  severity: NotificationSeverity;
+  title: string;
+  body?: string;
+  /** Source system, propagated from the originating event (e.g. 'loop'). */
+  source: string;
+  /** Original event kind, for consumers that want to filter. */
+  eventKind: string;
+  /** Optional deep-link target — opaque to the service, interpreted by UI. */
+  link?: { kind: 'session' | 'plan_item' | 'pr' | 'external'; id: string };
+}
+
 // StatusCategory is re-exported from @kpm/shared-types above
 
 /**

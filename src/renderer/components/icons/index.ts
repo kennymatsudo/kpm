@@ -1,3 +1,4 @@
+export { BellIcon } from './BellIcon';
 export { BookOpenIcon } from './BookOpenIcon';
 export { CheckIcon } from './CheckIcon';
 export { ChevronRightIcon } from './ChevronRightIcon';

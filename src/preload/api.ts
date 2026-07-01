@@ -86,6 +86,7 @@ import type {
   CustomTheme,
   ImportedCustomThemeResult,
   ClaudeAvailability,
+  AppNotification,
 } from '../shared/types';
 import type {
   AgentActivity,
@@ -1094,6 +1095,15 @@ const scheduledLoops = {
   },
 };
 
+// Notifications (kind-agnostic; fed by NotificationService's `notification:new` broadcast)
+const notifications = {
+  onNew: (callback: (notification: AppNotification) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, notification: AppNotification) => callback(notification);
+    ipcRenderer.on('notification:new', handler);
+    return () => ipcRenderer.removeListener('notification:new', handler);
+  },
+};
+
 const github = {
   checkAuth: (sessionId: string): Promise<{ success: boolean; authenticated?: boolean; account?: string; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.github.checkAuth, { sessionId }),
@@ -1834,6 +1844,7 @@ export const api = {
   taskPromptTemplates,
   customPrompts,
   scheduledLoops,
+  notifications,
   github,
   review,
   worktrees,

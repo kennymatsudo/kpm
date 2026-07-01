@@ -17,6 +17,7 @@
  *     user request makes the rules concrete.
  */
 
+import type { AppNotification } from '../../../shared/types';
 import type { UpdateEvent, UpdateEventBus } from './UpdateEventBus';
 
 export interface NotificationServiceDeps {
@@ -31,6 +32,7 @@ export interface NotificationServiceDeps {
 }
 
 const DEFAULT_DEDUPE_WINDOW_MS = 30 * 1000;
+export const NOTIFICATION_CHANNEL = 'notification:new';
 
 // =============================================================================
 // Mapping: UpdateEvent → Notification
@@ -57,6 +59,7 @@ function shouldNotify(event: UpdateEvent): boolean {
   return true;
 }
 
+function eventToNotification(event: UpdateEvent): AppNotification {
   const base = {
     id: `${event.kind}-${event.detectedAt}-${Math.random().toString(36).slice(2, 8)}`,
     at: event.detectedAt,

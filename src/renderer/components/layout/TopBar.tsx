@@ -20,6 +20,7 @@ import { TopBarProjectSection } from './TopBarProjectSection';
 import { SlackTriageBadge, SlackTriagePanel } from '../slack';
 import { CustomPromptTaskBadge } from './CustomPromptTaskBadge';
 import { BackgroundTaskBadge } from '../background-tasks';
+import { NotificationBadge } from '../notifications';
 import { ONBOARDING_TASK_KIND } from '../../services/onboardingTaskBridge';
 import { useProjectEdit } from './hooks/useProjectEdit';
 import { useProjectMenu } from './hooks/useProjectMenu';
@@ -277,6 +278,9 @@ export function TopBar({
               },
             }}
           />
+
+          {/* Generic notification bell (loop findings today, future event kinds later) */}
+          <NotificationBadge />
 
           {/* Chat toggle - panel chrome, sits at the far right edge to mirror the sidebar toggle on the left */}
           {(mainView === 'planning' || mainView === 'workspace') && (
