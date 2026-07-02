@@ -132,6 +132,36 @@ describe('SlashCommandService.listCommands', () => {
     expect(result.data).toEqual([{ name: 'commit', description: 'From commands dir' }]);
   });
 
+  it('follows symlinked skill and command directories', () => {
+    const realSkillsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kpm-real-skills-'));
+    const realSkillDir = path.join(realSkillsRoot, 'improve-codebase-architecture');
+    fs.mkdirSync(realSkillDir, { recursive: true });
+    fs.writeFileSync(path.join(realSkillDir, 'SKILL.md'), '---\ndescription: Improve architecture\n---\nBody');
+
+    fs.mkdirSync(skillsDir, { recursive: true });
+    fs.symlinkSync(realSkillDir, path.join(skillsDir, 'improve-codebase-architecture'));
+
+    const realCommandsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kpm-real-commands-'));
+    const realCommandFile = path.join(realCommandsRoot, 'review.md');
+    fs.writeFileSync(realCommandFile, '---\ndescription: Review code\n---\nBody');
+
+    fs.mkdirSync(commandsDir, { recursive: true });
+    fs.symlinkSync(realCommandFile, path.join(commandsDir, 'review.md'));
+
+    try {
+      const result = createService().listCommands();
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data).toEqual([
+        { name: 'improve-codebase-architecture', description: 'Improve architecture' },
+        { name: 'review', description: 'Review code' },
+      ]);
+    } finally {
+      fs.rmSync(realSkillsRoot, { recursive: true, force: true });
+      fs.rmSync(realCommandsRoot, { recursive: true, force: true });
+    }
+  });
+
   it('ignores skill directories without a SKILL.md', () => {
     fs.mkdirSync(path.join(skillsDir, 'not-a-skill'), { recursive: true });
     writeSkill('real', 'A real skill');

@@ -131,16 +131,33 @@ export function parseSlashCommandFile(name: string, content: string): SlashComma
   return argumentHint ? { name, description, argumentHint } : { name, description };
 }
 
+/**
+ * `Dirent.isDirectory()` / `isFile()` report the symlink's own type, not its
+ * target's — so command/skill directories symlinked in from elsewhere (e.g. a
+ * shared skills repo) would otherwise be silently skipped. Resolve through the
+ * symlink with `statSync`; a broken link just falls through to `false`.
+ */
+function resolvedType(entry: fs.Dirent, fullPath: string): { isDirectory: boolean; isFile: boolean } {
+  if (!entry.isSymbolicLink()) return { isDirectory: entry.isDirectory(), isFile: entry.isFile() };
+  try {
+    const stat = fs.statSync(fullPath);
+    return { isDirectory: stat.isDirectory(), isFile: stat.isFile() };
+  } catch {
+    return { isDirectory: false, isFile: false };
+  }
+}
+
 function collectCommandFiles(dir: string, segments: string[], results: SlashCommandInfo[]): void {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
     const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
+    const { isDirectory, isFile } = resolvedType(entry, fullPath);
+    if (isDirectory) {
       collectCommandFiles(fullPath, [...segments, entry.name], results);
       continue;
     }
-    if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+    if (!isFile || !entry.name.endsWith('.md')) continue;
     const name = [...segments, entry.name.slice(0, -3)].join(':');
     if (/\s/.test(name)) continue; // not invocable as a slash command
     let content: string;
@@ -158,8 +175,8 @@ function collectSkillFiles(skillsDir: string, results: SlashCommandInfo[]): void
   const seen = new Set(results.map((command) => command.name));
   const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
     const name = entry.name;
+    if (name.startsWith('.') || !resolvedType(entry, path.join(skillsDir, name)).isDirectory) continue;
     if (/\s/.test(name) || seen.has(name)) continue;
     let content: string;
     try {
