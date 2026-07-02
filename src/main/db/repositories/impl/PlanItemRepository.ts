@@ -5,6 +5,7 @@
 import type { Database, Statement } from 'better-sqlite3';
 import type { PlanItem, PlanItemUpdates, PlanItemSyncUpdates } from '../../../../shared/types';
 import type { IPlanItemRepository } from '../../interfaces';
+import { PLAN_ITEM_FIELDS, isJsonEncodedKind, type PlanItemFieldName } from '../../../../shared/planItemFields';
 
 /**
  * Safely parse a JSON-encoded string[] column. Returns null on parse failure.
@@ -286,51 +287,19 @@ export class PlanItemRepository implements IPlanItemRepository {
     const fields: string[] = [];
     const values: unknown[] = [];
 
-    // Base PlanItemUpdates fields
-    if (updates.parent_id !== undefined) {
-      fields.push('parent_id = ?');
-      values.push(updates.parent_id);
-    }
-    if (updates.title !== undefined) {
-      fields.push('title = ?');
-      values.push(updates.title);
-    }
-    if (updates.description !== undefined) {
-      fields.push('description = ?');
-      values.push(updates.description);
-    }
-    if (updates.label !== undefined) {
-      fields.push('label = ?');
-      values.push(updates.label);
-    }
-    if (updates.item_order !== undefined) {
-      fields.push('item_order = ?');
-      values.push(updates.item_order);
-    }
-    if (updates.code_refs !== undefined) {
-      fields.push('code_refs = ?');
-      values.push(updates.code_refs ? JSON.stringify(updates.code_refs) : null);
-    }
-    if (updates.intent !== undefined) {
-      fields.push('intent = ?');
-      values.push(updates.intent);
-    }
-    if (updates.acceptance_criteria !== undefined) {
-      fields.push('acceptance_criteria = ?');
-      values.push(updates.acceptance_criteria ? JSON.stringify(updates.acceptance_criteria) : null);
-    }
-    if (updates.source_document_id !== undefined) {
-      fields.push('source_document_id = ?');
-      values.push(updates.source_document_id);
-    }
-    if (updates.status !== undefined) {
-      fields.push('status = ?');
-      values.push(updates.status);
-    }
-    if (updates.status_category !== undefined) {
-      fields.push('status_category = ?');
-      values.push(updates.status_category);
+    // Base PlanItemUpdates fields, generated from the registry so a new
+    // field only needs an entry in src/shared/planItemFields.ts.
+    const updatesRecord = updates as Record<string, unknown>;
+    for (const name of Object.keys(PLAN_ITEM_FIELDS) as PlanItemFieldName[]) {
+      const value = updatesRecord[name];
+      if (value === undefined) continue;
 
+      const descriptor = PLAN_ITEM_FIELDS[name];
+      fields.push(`${descriptor.sqlColumn} = ?`);
+      values.push(isJsonEncodedKind(descriptor.fieldKind) ? (value ? JSON.stringify(value) : null) : value);
+    }
+
+    if (updates.status_category !== undefined) {
       // Track completion timestamp when item is marked as done. Use a SQL CASE
       // against the OLD status_category instead of a pre-read SELECT: SQLite
       // evaluates every SET expression against the pre-update row values, so
@@ -342,22 +311,6 @@ export class PlanItemRepository implements IPlanItemRepository {
         // Clear completed_at if moving away from done state
         fields.push('completed_at = NULL');
       }
-    }
-    if (updates.release_tag !== undefined) {
-      fields.push('release_tag = ?');
-      values.push(updates.release_tag);
-    }
-    if (updates.position_x !== undefined) {
-      fields.push('position_x = ?');
-      values.push(updates.position_x);
-    }
-    if (updates.position_y !== undefined) {
-      fields.push('position_y = ?');
-      values.push(updates.position_y);
-    }
-    if (updates.group_id !== undefined) {
-      fields.push('group_id = ?');
-      values.push(updates.group_id);
     }
 
     // Extended PlanItemSyncUpdates fields (for sync operations)

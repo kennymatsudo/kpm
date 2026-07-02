@@ -421,6 +421,13 @@ function collectItemIdsForPrefetch(actions: PlanAction[]): Set<string> {
       case 'add_dependency':
       case 'remove_dependency':
         break;
+      default: {
+        const _exhaustive: never = action;
+        void _exhaustive;
+        throw new Error(
+          `[PlanActionService] Unhandled action type in collectItemIdsForPrefetch: ${(action as { type: string }).type}`
+        );
+      }
     }
   }
 

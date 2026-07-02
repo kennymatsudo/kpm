@@ -6,39 +6,19 @@ import { z } from 'zod';
 import {
   uuid,
   nonEmptyString,
-  planItemStatus,
-  statusCategory,
   planItemLabel,
   relationType,
   canvasPosition,
 } from './shared';
+import { buildPlanItemUpdateShape } from './planItemFieldSchemas';
 
 // =============================================================================
 // Plan Item Updates Schema
 // =============================================================================
 
-/** Schema for plan item updates */
+/** Schema for plan item updates — generated from src/shared/planItemFields.ts */
 const planItemUpdates = z
-  .object({
-    title: z.string().min(1, 'Title cannot be empty').max(500, 'Title too long').trim().optional(),
-    description: z.string().max(50000, 'Description too long').nullable().optional(),
-    intent: z.string().max(500, 'Intent should be one sentence').nullable().optional(),
-    acceptance_criteria: z
-      .array(z.string().min(1, 'Criterion cannot be empty').max(1000, 'Criterion too long'))
-      .max(50, 'Too many acceptance criteria')
-      .nullable()
-      .optional(),
-    source_document_id: z.string().nullable().optional(),
-    label: planItemLabel.nullable().optional(),
-    status: planItemStatus.optional(),
-    status_category: statusCategory.nullable().optional(),
-    release_tag: z.string().max(50, 'Release tag too long').nullable().optional(),
-    parent_id: uuid.nullable().optional(),
-    item_order: z.number().int().min(0).optional(),
-    code_refs: z.array(z.string()).nullable().optional(),
-    position_x: canvasPosition.nullable().optional(),
-    position_y: canvasPosition.nullable().optional(),
-  })
+  .object(buildPlanItemUpdateShape('ipc'))
   .refine((u) => Object.keys(u).length > 0, 'At least one update field is required');
 
 // =============================================================================
@@ -90,16 +70,7 @@ export const planActionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('update_item'),
     item_id: z.string(),
-    updates: z.object({
-      title: z.string().optional(),
-      description: z.string().nullable().optional(),
-      intent: z.string().max(500).nullable().optional(),
-      acceptance_criteria: z.array(z.string().min(1).max(1000)).max(50).nullable().optional(),
-      source_document_id: z.string().nullable().optional(),
-      label: z.string().nullable().optional(),
-      release_tag: z.string().nullable().optional(),
-      status_category: statusCategory.nullable().optional(),
-    }),
+    updates: z.object(buildPlanItemUpdateShape('planAction')),
   }),
   z.object({
     type: z.literal('delete_item'),
