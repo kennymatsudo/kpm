@@ -6,8 +6,6 @@
  * mapped to AgentActivity events.
  */
 
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import * as pty from 'node-pty';
 import { getAgentBinary } from './agentCatalog';
 import { generateClaudeCodeHookSettings, cleanupClaudeCodeHookSettings } from './hooks/claudeCodeHooks';
@@ -22,7 +20,6 @@ import type {
   AgentCompletionSummary,
 } from '../../../shared/agent-types';
 
-const execFileAsync = promisify(execFile);
 const LOG_PREFIX = '[CliAgentSession]';
 
 /** Max output buffer per session (1MB) */
@@ -54,9 +51,7 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
   }
 
   async start(worktreePath: string, prompt: string): Promise<void> {
-    if (this._state !== 'starting') {
-      throw new Error(`Cannot start session in state: ${this._state}`);
-    }
+    this.assertStarting();
 
     this.worktreePath = worktreePath;
 
@@ -67,12 +62,7 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
       throw new Error(`${this.agentType} CLI is not installed`);
     }
 
-    this.emitActivity({
-      type: 'system',
-      timestamp: Date.now(),
-      summary: `Starting ${this.agentType}...`,
-      status: 'running',
-    });
+    this.emitStartingActivity(`Starting ${this.agentType}...`);
 
     // Build args based on agent type
     const { args, env } = this.buildLaunchConfig(prompt);
@@ -183,7 +173,7 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
   }
 
   followUp(text: string): Promise<void> {
-    if (this._state !== 'complete' && this._state !== 'failed' && this._state !== 'stopped') {
+    if (!this.isFollowUpAllowed()) {
       return Promise.reject(new Error(`Cannot follow up in state: ${this._state}`));
     }
     if (!this.ptyProcess) {
@@ -217,6 +207,10 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
   /** Get the raw PTY output buffer (for debugging) */
   getOutput(): string {
     return this.lastAssistantMessage || this.outputBuffer;
+  }
+
+  getFinalOutput(): string | null {
+    return this.getOutput() || null;
   }
 
   // ===========================================================================
@@ -256,31 +250,11 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
   }
 
   private async handleCompletion(): Promise<void> {
-    const summary = await this.getCompletionSummary();
-    this.setState('complete');
-    this.emit('onComplete', summary);
+    await this.completeOnce(() => this.getCompletionSummary());
   }
 
   private async getCompletionSummary(): Promise<AgentCompletionSummary> {
-    if (!this.worktreePath) {
-      return { filesChanged: 0, additions: 0, deletions: 0 };
-    }
-    try {
-      const { stdout } = await execFileAsync('git', ['diff', '--stat', 'HEAD'], {
-        cwd: this.worktreePath,
-      });
-      const match = /(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/.exec(stdout);
-      if (match) {
-        return {
-          filesChanged: parseInt(match[1], 10) || 0,
-          additions: parseInt(match[2], 10) || 0,
-          deletions: parseInt(match[3], 10) || 0,
-        };
-      }
-    } catch {
-      // Git diff may fail if not in a git repo or no changes
-    }
-    return { filesChanged: 0, additions: 0, deletions: 0 };
+    return this.computeGitDiffSummary(this.worktreePath ?? undefined);
   }
 
 }

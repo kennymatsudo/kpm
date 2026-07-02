@@ -172,6 +172,8 @@ export interface IAgentSession {
   followUp(text: string): Promise<void>;
   /** Stop the agent */
   stop(): Promise<void>;
+  /** The agent's most recent output text, if any — used to extract review findings. */
+  getFinalOutput(): string | null;
 
   on<K extends keyof AgentSessionEvents>(event: K, handler: AgentSessionEvents[K]): void;
   off<K extends keyof AgentSessionEvents>(event: K, handler: AgentSessionEvents[K]): void;

@@ -9,8 +9,6 @@
  * - Structured activity events mapped from SDK messages
  */
 
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import {
   query,
   type Query,
@@ -26,8 +24,6 @@ import type {
   AgentSessionRole,
   AgentCompletionSummary,
 } from '../../../shared/agent-types';
-
-const execFileAsync = promisify(execFile);
 
 // =============================================================================
 // SDK Message Helpers
@@ -89,7 +85,6 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
   private sdkSessionId: string | null = null;
   private sdkOptions: SDKOptions;
   private abortController: AbortController | null = null;
-  private completing = false;
   private workflowTaskIds = new Set<string>();
   private workflowTaskLabels = new Map<string, string>();
   private lastProgressSummary: string | null = null;
@@ -105,19 +100,12 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
   // ===========================================================================
 
   async start(worktreePath: string, prompt: string): Promise<void> {
-    if (this._state !== 'starting') {
-      throw new Error(`Cannot start session in state: ${this._state}`);
-    }
+    this.assertStarting();
 
     // Pin the worktree as the working directory for every turn on this session.
     this.sdkOptions = { ...this.sdkOptions, cwd: worktreePath };
 
-    this.emitActivity({
-      type: 'system',
-      timestamp: Date.now(),
-      summary: 'Starting Claude session...',
-      status: 'running',
-    });
+    this.emitStartingActivity('Starting Claude session...');
 
     // Kick off the first turn. It runs to completion on its own; we only wait
     // here for the session to become ready (init / first message) so the caller
@@ -141,7 +129,7 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
   }
 
   followUp(text: string): Promise<void> {
-    if (this._state !== 'complete' && this._state !== 'failed' && this._state !== 'stopped') {
+    if (!this.isFollowUpAllowed()) {
       return Promise.reject(new Error(`Cannot follow up in state: ${this._state}`));
     }
 
@@ -153,12 +141,7 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
 
     this._stopping = false;
     this.completing = false;
-    this.emitActivity({
-      type: 'system',
-      timestamp: Date.now(),
-      summary: 'Continuing Claude session...',
-      status: 'running',
-    });
+    this.emitStartingActivity('Continuing Claude session...');
 
     this.setState('working');
     this.runPromise = this.runTurn(text);
@@ -187,6 +170,14 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
     }
 
     this.setState('stopped');
+  }
+
+  /** The most recent non-empty assistant text, used to extract review findings. */
+  getFinalOutput(): string | null {
+    const latestMessage = [...this._activities]
+      .reverse()
+      .find((activity) => activity.type === 'message' && typeof activity.content === 'string' && activity.content.trim().length > 0);
+    return latestMessage?.content ?? null;
   }
 
   // ===========================================================================
@@ -520,41 +511,15 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
   }
 
   private async handleCompletion(): Promise<void> {
-    if (this.completing || this._state === 'complete') {
-      return;
-    }
-    this.completing = true;
-    const summary = await this.getCompletionSummary();
-    this.setState('complete');
-    this.emit('onComplete', summary);
-    this.completing = false;
+    if (this._state === 'complete') return;
+    await this.completeOnce(() => this.getCompletionSummary());
   }
 
   /** Parse git diff stats from the worktree to build completion summary */
   private async getCompletionSummary(): Promise<AgentCompletionSummary> {
     const terminalReason = this.terminalReason ?? undefined;
-    const cwd = this.sdkOptions.cwd;
-    if (!cwd) {
-      return { filesChanged: 0, additions: 0, deletions: 0, terminalReason };
-    }
-
-    try {
-      const { stdout } = await execFileAsync('git', ['diff', '--stat', 'HEAD'], { cwd });
-      // Parse last line: " 4 files changed, 142 insertions(+), 38 deletions(-)"
-      const match = /(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/.exec(stdout);
-      if (match) {
-        return {
-          filesChanged: parseInt(match[1], 10) || 0,
-          additions: parseInt(match[2], 10) || 0,
-          deletions: parseInt(match[3], 10) || 0,
-          terminalReason,
-        };
-      }
-    } catch {
-      // Git diff may fail if not a git repo or no changes
-    }
-
-    return { filesChanged: 0, additions: 0, deletions: 0, terminalReason };
+    const summary = await this.computeGitDiffSummary(this.sdkOptions.cwd);
+    return { ...summary, terminalReason };
   }
 
 }

@@ -5,8 +5,6 @@
  * sandboxing. Review sessions run read-only with structured findings output.
  */
 
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import {
   Codex,
   type CommandExecutionItem,
@@ -28,8 +26,6 @@ import type {
   AgentType,
   IAgentSession,
 } from '../../../shared/agent-types';
-
-const execFileAsync = promisify(execFile);
 
 function truncate(text: string, max = 120): string {
   const normalized = text.replace(/\s+/g, ' ').trim();
@@ -70,7 +66,6 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
   private runPromise: Promise<void> | null = null;
   private worktreePath: string | null = null;
   private lastAssistantMessage = '';
-  private completing = false;
   private stopping = false;
 
   constructor(config: CodexSdkAgentSessionConfig) {
@@ -81,19 +76,12 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
 
   start(worktreePath: string, prompt: string): Promise<void> {
     try {
-      if (this._state !== 'starting') {
-        throw new Error(`Cannot start session in state: ${this._state}`);
-      }
+      this.assertStarting();
 
       this.worktreePath = worktreePath;
       this.thread = this.codex.startThread(this.buildThreadOptions(worktreePath));
 
-      this.emitActivity({
-        type: 'system',
-        timestamp: Date.now(),
-        summary: this.role === 'review' ? 'Starting Codex review...' : 'Starting Codex session...',
-        status: 'running',
-      });
+      this.emitStartingActivity(this.role === 'review' ? 'Starting Codex review...' : 'Starting Codex session...');
 
       this.setState('working');
       this.runPromise = this.runTurn(prompt);
@@ -112,7 +100,7 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
       return Promise.reject(new Error('Codex review sessions are one-shot'));
     }
 
-    if (this._state !== 'complete' && this._state !== 'failed' && this._state !== 'stopped') {
+    if (!this.isFollowUpAllowed()) {
       return Promise.reject(new Error(`Cannot follow up in state: ${this._state}`));
     }
 
@@ -122,12 +110,7 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
 
     this.stopping = false;
     this.completing = false;
-    this.emitActivity({
-      type: 'system',
-      timestamp: Date.now(),
-      summary: 'Continuing Codex session...',
-      status: 'running',
-    });
+    this.emitStartingActivity('Continuing Codex session...');
     this.setState('working');
     this.runPromise = this.runTurn(text);
     return Promise.resolve();
@@ -152,6 +135,10 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
 
   getOutput(): string {
     return this.lastAssistantMessage;
+  }
+
+  getFinalOutput(): string | null {
+    return this.getOutput() || null;
   }
 
   private buildThreadOptions(worktreePath: string): ThreadOptions {
@@ -355,15 +342,8 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
   }
 
   private async handleCompletion(): Promise<void> {
-    if (this.completing || this._state !== 'working') {
-      return;
-    }
-
-    this.completing = true;
-    const summary = await this.getCompletionSummary();
-    this.setState('complete');
-    this.emit('onComplete', summary);
-    this.completing = false;
+    if (this._state !== 'working') return;
+    await this.completeOnce(() => this.getCompletionSummary());
   }
 
   private fail(error: unknown): void {
@@ -387,26 +367,6 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
   }
 
   private async getCompletionSummary(): Promise<AgentCompletionSummary> {
-    if (!this.worktreePath) {
-      return { filesChanged: 0, additions: 0, deletions: 0 };
-    }
-
-    try {
-      const { stdout } = await execFileAsync('git', ['diff', '--stat', 'HEAD'], {
-        cwd: this.worktreePath,
-      });
-      const match = /(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/.exec(stdout);
-      if (match) {
-        return {
-          filesChanged: parseInt(match[1], 10) || 0,
-          additions: parseInt(match[2], 10) || 0,
-          deletions: parseInt(match[3], 10) || 0,
-        };
-      }
-    } catch {
-      // Git diff may fail if the worktree path is not a git repository.
-    }
-
-    return { filesChanged: 0, additions: 0, deletions: 0 };
+    return this.computeGitDiffSummary(this.worktreePath ?? undefined);
   }
 }

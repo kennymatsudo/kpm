@@ -2,16 +2,30 @@
  * BaseAgentSession - Shared base for SDK and CLI board agent sessions.
  *
  * Owns the event handler map, state field, activity list, and the helpers that
- * manipulate them. Concrete subclasses implement `start`, `respond`, `followUp`,
- * and `stop`; they also declare their own `agentType`.
+ * manipulate them, plus the turn/completion lifecycle mechanics shared by all
+ * three backends (start-state assertion, follow-up eligibility, git-diff-stat
+ * completion summaries, and the completion re-entrancy guard). Concrete
+ * subclasses implement `start`, `respond`, `followUp`, and `stop` — each backend
+ * still decides *when* it's legal to complete or start a turn, since that varies
+ * per backend; the base class guarantees that once a subclass decides to
+ * complete, it happens exactly once.
  */
 
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import type {
   AgentActivity,
+  AgentCompletionSummary,
   AgentSessionEvents,
   AgentSessionRole,
   AgentSessionState,
 } from '../../../shared/agent-types';
+
+const execFileAsync = promisify(execFile);
+
+/** Matches the summary line of `git diff --stat HEAD`, e.g. " 4 files changed, 142 insertions(+), 38 deletions(-)" */
+const GIT_DIFF_STAT_PATTERN =
+  /(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/;
 
 /**
  * Cap on the in-memory activity buffer per session. Long-running sessions (8h+)
@@ -27,6 +41,15 @@ export abstract class BaseAgentSession {
 
   protected _state: AgentSessionState = 'starting';
   protected _activities: AgentActivity[] = [];
+
+  /**
+   * Guards `completeOnce` against concurrent double-entry (e.g. a PTY exit and
+   * a hook "stop" event racing before either has moved `_state` off 'working').
+   * `completeOnce` itself resets this once a completion fires; some subclasses
+   * additionally reset it at the start of a new turn as a defensive measure
+   * against a prior, still in-flight completion attempt.
+   */
+  protected completing = false;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   protected handlers = new Map<string, Set<(...args: any[]) => void>>();
@@ -100,5 +123,60 @@ export abstract class BaseAgentSession {
         console.error(`[${this.constructor.name}] Event handler error (${event}):`, err);
       }
     }
+  }
+
+  /** Throws unless the session is in its pre-turn `starting` state. */
+  protected assertStarting(): void {
+    if (this._state !== 'starting') {
+      throw new Error(`Cannot start session in state: ${this._state}`);
+    }
+  }
+
+  /** Whether the session has reached a state a follow-up turn can resume from. */
+  protected isFollowUpAllowed(): boolean {
+    return this._state === 'complete' || this._state === 'failed' || this._state === 'stopped';
+  }
+
+  /** Emit the standard "beginning a turn" system activity. */
+  protected emitStartingActivity(summary: string): void {
+    this.emitActivity({ type: 'system', timestamp: Date.now(), summary, status: 'running' });
+  }
+
+  /**
+   * Run `computeSummary`, transition to `complete`, and emit `onComplete` —
+   * exactly once per turn. Callers still decide *whether* it's currently legal
+   * to complete (that check varies by backend); this only guarantees the
+   * completion ritual itself can't fire twice for the same turn.
+   */
+  protected async completeOnce(computeSummary: () => Promise<AgentCompletionSummary>): Promise<void> {
+    if (this.completing) return;
+    this.completing = true;
+    const summary = await computeSummary();
+    this.setState('complete');
+    this.emit('onComplete', summary);
+    this.completing = false;
+  }
+
+  /** Parse `git diff --stat HEAD` in `cwd` into an `AgentCompletionSummary`. */
+  protected async computeGitDiffSummary(cwd: string | undefined): Promise<AgentCompletionSummary> {
+    if (!cwd) {
+      return { filesChanged: 0, additions: 0, deletions: 0 };
+    }
+
+    try {
+      const { stdout } = await execFileAsync('git', ['diff', '--stat', 'HEAD'], { cwd });
+      const match = GIT_DIFF_STAT_PATTERN.exec(stdout);
+      if (match) {
+        return {
+          filesChanged: parseInt(match[1], 10) || 0,
+          additions: parseInt(match[2], 10) || 0,
+          deletions: parseInt(match[3], 10) || 0,
+        };
+      }
+    } catch {
+      // Git diff may fail if not a git repo or no changes.
+    }
+
+    return { filesChanged: 0, additions: 0, deletions: 0 };
   }
 }

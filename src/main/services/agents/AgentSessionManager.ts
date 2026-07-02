@@ -496,22 +496,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
   }
 
   function extractReviewOutput(agentSession: IAgentSession): string | null {
-    if (agentSession instanceof ClaudeSdkSession) {
-      const latestMessage = [...agentSession.activities]
-        .reverse()
-        .find((activity) => activity.type === 'message' && typeof activity.content === 'string' && activity.content.trim().length > 0);
-      return latestMessage?.content ?? null;
-    }
-
-    if (agentSession instanceof CliAgentSession) {
-      return agentSession.getOutput() || null;
-    }
-
-    if (agentSession instanceof CodexSdkAgentSession) {
-      return agentSession.getOutput() || null;
-    }
-
-    return null;
+    return agentSession.getFinalOutput();
   }
 
   // ===========================================================================
