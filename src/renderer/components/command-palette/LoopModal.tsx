@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { Markdown } from 'markdown-to-jsx';
 import { useShallow } from 'zustand/react/shallow';
 import { Modal, ModalHeader, ModalBody } from '../ui/Modal';
 import { useScheduledLoopStore, useProjectDomainStore, toast } from '../../stores';
 import { formatRelativeTime } from '../../utils/relativeTime';
+import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
 import { ChevronRightIcon } from '../icons';
 import type { LoopOutputMode, LoopRun, LoopRunOutcome } from '../../../shared/types';
 
@@ -30,7 +32,7 @@ const OUTCOME_STYLES: Record<LoopRunOutcome, { label: string; className: string 
   error: { label: 'Error', className: 'text-danger' },
 };
 
-function LoopHistoryRow({ run }: { run: LoopRun }) {
+function LoopHistoryRow({ run, onViewReport }: { run: LoopRun; onViewReport: (run: LoopRun) => void }) {
   const outcome = OUTCOME_STYLES[run.outcome];
   const primary = run.outcome === 'error' ? run.error : run.summary;
   return (
@@ -41,16 +43,30 @@ function LoopHistoryRow({ run }: { run: LoopRun }) {
       </div>
       {primary && <p className="text-xs text-text-secondary mt-1">{primary}</p>}
       {run.detail && (
-        <details className="group/detail mt-1">
-          <summary className="flex cursor-pointer select-none items-center gap-1 text-xs text-text-tertiary transition-colors hover:text-text-secondary">
-            <ChevronRightIcon className="h-3 w-3 transition-transform group-open/detail:rotate-90" />
-            <span>View full report</span>
-          </summary>
-          <p className="text-xs text-text-secondary mt-1 whitespace-pre-wrap">{run.detail}</p>
-        </details>
+        <button
+          type="button"
+          onClick={() => onViewReport(run)}
+          className="flex items-center gap-1 mt-1 text-xs text-text-tertiary transition-colors hover:text-text-secondary"
+        >
+          <ChevronRightIcon className="h-3 w-3" />
+          <span>View full report</span>
+        </button>
       )}
       {run.artifact_path && <p className="text-xs text-text-tertiary mt-1">{run.artifact_path}</p>}
     </div>
+  );
+}
+
+function LoopReportView({ run }: { run: LoopRun }) {
+  return (
+    <>
+      {run.detail && (
+        <div className="prose-themed">
+          <Markdown options={markdownOptions}>{transformPlanRefs(run.detail)}</Markdown>
+        </div>
+      )}
+      {run.artifact_path && <p className="text-xs text-text-tertiary mt-4">{run.artifact_path}</p>}
+    </>
   );
 }
 
@@ -119,8 +135,10 @@ export function LoopModal() {
   const [outputMode, setOutputMode] = useState<LoopOutputMode>('notify');
   const [intervalMinutes, setIntervalMinutes] = useState(30);
   const [busy, setBusy] = useState(false);
+  const [viewingReportRun, setViewingReportRun] = useState<LoopRun | null>(null);
 
   useEffect(() => {
+    setViewingReportRun(null);
     if (!modalOpen) return;
     if (editingLoop) {
       setName(editingLoop.name);
@@ -191,110 +209,152 @@ export function LoopModal() {
     closeModal();
   };
 
+  const handleViewReport = (run: LoopRun) => setViewingReportRun(run);
+  const handleBack = () => setViewingReportRun(null);
+
   return (
     <Modal
       isOpen={modalOpen}
       onClose={closeModal}
       size={editingLoop ? 'xl' : 'lg'}
       preventClose={busy}
-      className="!flex !flex-col !max-h-[85vh] !overflow-hidden"
+      className={
+        editingLoop
+          ? '!flex !flex-col !h-[min(720px,85vh)] !max-h-[85vh] !overflow-hidden'
+          : '!flex !flex-col !max-h-[85vh] !overflow-hidden'
+      }
     >
-      <ModalHeader onClose={closeModal} subtitle="Runs on a schedule while KPM is open" className="shrink-0">
-        {editingLoop ? 'Edit loop' : 'New loop'}
-      </ModalHeader>
-      <ModalBody className="flex-1 min-h-0 overflow-hidden flex flex-col">
-        <div className="space-y-4 shrink-0">
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Name</label>
-            <input
-              className={inputClass}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="PR digest"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Prompt</label>
-            <textarea
-              className={`${inputClass} min-h-[120px] resize-y`}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Check #eng-alerts for mentions of my services and flag anything urgent"
-            />
-            <p className="text-xs text-text-tertiary mt-1">
-              Freeform. Claude uses your connected repos, plan, and MCP tools (Slack, Linear, GitHub) to carry it out.
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Run</label>
-            <select
-              className={inputClass}
-              value={intervalMinutes}
-              onChange={(e) => setIntervalMinutes(Number(e.target.value))}
+      {viewingReportRun ? (
+        <ModalHeader
+          onClose={closeModal}
+          icon={
+            <button
+              type="button"
+              onClick={handleBack}
+              aria-label="Back to loop"
+              className="flex h-full w-full items-center justify-center text-accent transition-colors hover:text-accent/80"
             >
-              {INTERVAL_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+              <ChevronRightIcon className="h-4 w-4 rotate-180" />
+            </button>
+          }
+          subtitle={`${OUTCOME_STYLES[viewingReportRun.outcome].label} · ${formatRelativeTime(viewingReportRun.started_at)}`}
+          className="shrink-0"
+        >
+          Loop report
+        </ModalHeader>
+      ) : (
+        <ModalHeader onClose={closeModal} subtitle="Runs on a schedule while KPM is open" className="shrink-0">
+          {editingLoop ? 'Edit loop' : 'New loop'}
+        </ModalHeader>
+      )}
 
-        {editingLoop ? (
-          <div className="mt-4 flex-1 min-h-0 grid grid-cols-2 gap-5">
-            <div className="min-h-0 overflow-y-auto pr-1">
+      {viewingReportRun ? (
+        <ModalBody className="flex-1 min-h-0 overflow-y-auto">
+          <LoopReportView run={viewingReportRun} />
+        </ModalBody>
+      ) : (
+        <ModalBody className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          <div className="space-y-4 shrink-0">
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Name</label>
+              <input
+                className={inputClass}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="PR digest"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Prompt</label>
+              <textarea
+                className={`${inputClass} min-h-[120px] resize-y`}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Check #eng-alerts for mentions of my services and flag anything urgent"
+              />
+              <p className="text-xs text-text-tertiary mt-1">
+                Freeform. Claude uses your connected repos, plan, and MCP tools (Slack, Linear, GitHub) to carry it out.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Run</label>
+              <select
+                className={inputClass}
+                value={intervalMinutes}
+                onChange={(e) => setIntervalMinutes(Number(e.target.value))}
+              >
+                {INTERVAL_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {editingLoop ? (
+            <div className="mt-4 flex-1 min-h-0 grid grid-cols-2 gap-5">
+              <div className="min-h-0 overflow-y-auto pr-1">
+                <OutputPicker outputMode={outputMode} onChange={setOutputMode} />
+              </div>
+              <div className="min-h-0 flex flex-col border-l border-border-default pl-5">
+                <label className="block text-xs font-medium text-text-secondary mb-2 shrink-0">History</label>
+                {historyLoading ? (
+                  <p className="text-xs text-text-tertiary">Loading…</p>
+                ) : history.length === 0 ? (
+                  <p className="text-xs text-text-tertiary">No runs yet.</p>
+                ) : (
+                  <div className="flex-1 min-h-0 space-y-2 overflow-y-auto">
+                    {history.map((run) => (
+                      <LoopHistoryRow key={run.id} run={run} onViewReport={handleViewReport} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 shrink-0">
               <OutputPicker outputMode={outputMode} onChange={setOutputMode} />
             </div>
-            <div className="min-h-0 flex flex-col border-l border-border-default pl-5">
-              <label className="block text-xs font-medium text-text-secondary mb-2 shrink-0">History</label>
-              {historyLoading ? (
-                <p className="text-xs text-text-tertiary">Loading…</p>
-              ) : history.length === 0 ? (
-                <p className="text-xs text-text-tertiary">No runs yet.</p>
-              ) : (
-                <div className="flex-1 min-h-0 space-y-2 overflow-y-auto">
-                  {history.map((run) => (
-                    <LoopHistoryRow key={run.id} run={run} />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="mt-4 shrink-0">
-            <OutputPicker outputMode={outputMode} onChange={setOutputMode} />
-          </div>
-        )}
-      </ModalBody>
-
-      <div className="dialog-footer shrink-0 px-5 py-4 flex items-center justify-between gap-2 border-t">
-        <div className="flex items-center gap-2">
-          {editingLoop && (
-            <>
-              <button type="button" className="btn btn-secondary" onClick={handleRunNow} disabled={busy}>
-                Run now
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={handleToggle} disabled={busy}>
-                {editingLoop.enabled ? 'Pause' : 'Resume'}
-              </button>
-              <button type="button" className="btn btn-secondary text-danger" onClick={handleDelete} disabled={busy}>
-                Delete
-              </button>
-            </>
           )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="button" className="btn btn-secondary" onClick={closeModal} disabled={busy}>
-            Cancel
+        </ModalBody>
+      )}
+
+      {viewingReportRun ? (
+        <div className="dialog-footer shrink-0 px-5 py-4 flex items-center justify-end gap-2 border-t">
+          <button type="button" className="btn btn-secondary" onClick={handleBack}>
+            Back
           </button>
-          <button type="button" className="btn btn-primary" onClick={handleSave} disabled={!canSave}>
-            {editingLoop ? 'Save' : 'Create loop'}
-          </button>
         </div>
-      </div>
+      ) : (
+        <div className="dialog-footer shrink-0 px-5 py-4 flex items-center justify-between gap-2 border-t">
+          <div className="flex items-center gap-2">
+            {editingLoop && (
+              <>
+                <button type="button" className="btn btn-secondary" onClick={handleRunNow} disabled={busy}>
+                  Run now
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={handleToggle} disabled={busy}>
+                  {editingLoop.enabled ? 'Pause' : 'Resume'}
+                </button>
+                <button type="button" className="btn btn-secondary text-danger" onClick={handleDelete} disabled={busy}>
+                  Delete
+                </button>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" className="btn btn-secondary" onClick={closeModal} disabled={busy}>
+              Cancel
+            </button>
+            <button type="button" className="btn btn-primary" onClick={handleSave} disabled={!canSave}>
+              {editingLoop ? 'Save' : 'Create loop'}
+            </button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }
