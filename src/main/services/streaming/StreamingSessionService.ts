@@ -390,6 +390,95 @@ export interface StreamingSessionServiceDeps {
 }
 
 // =============================================================================
+// Provider Adapter
+// =============================================================================
+
+/**
+ * Provider-specific behavior for a chat session — which repository columns
+ * back resume/session-id persistence, how usage is attributed by model, and
+ * whether a session-summary lookup exists at all. Callers key into this
+ * table instead of branching on `provider === 'claude' | 'codex'`.
+ */
+interface ChatProviderConfig {
+  usageModel: (managed: Pick<ManagedSession, 'model'>) => string;
+  resolveResumeSessionId: (
+    chatSession: ReturnType<StreamingSessionServiceDeps['chatSessionRepository']['get']>
+  ) => string | undefined;
+  persistSessionId: (
+    repo: StreamingSessionServiceDeps['chatSessionRepository'],
+    chatSessionId: string,
+    sessionId: string
+  ) => void;
+  /** Absent for providers with no session-summary concept (e.g. Codex). */
+  fetchSessionSummary?: (sdkSessionId: string) => Promise<{ summary?: string } | undefined>;
+}
+
+export const CHAT_PROVIDER_CONFIG: Record<ChatProvider, ChatProviderConfig> = {
+  claude: {
+    usageModel: (managed) => managed.model,
+    resolveResumeSessionId: (chatSession) => chatSession?.claude_session_id ?? undefined,
+    persistSessionId: (repo, chatSessionId, sessionId) => {
+      repo.updateClaudeSessionId(chatSessionId, sessionId);
+      repo.updateProviderSessionId?.(chatSessionId, 'claude', sessionId);
+    },
+    fetchSessionSummary: getSessionInfo,
+  },
+  codex: {
+    usageModel: () => 'codex',
+    resolveResumeSessionId: (chatSession) =>
+      chatSession?.provider === 'codex' ? chatSession.provider_session_id ?? undefined : undefined,
+    persistSessionId: (repo, chatSessionId, sessionId) => {
+      repo.updateProviderSessionId?.(chatSessionId, 'codex', sessionId);
+    },
+  },
+};
+
+/**
+ * Apply the shared session-ready transition once a provider's native session
+ * reports it can accept turns: mark the managed session as processing,
+ * persist its resume id via the provider's config, and notify the renderer.
+ * `mcpStatus` is omitted entirely for providers that don't report it (e.g.
+ * Codex) so `onMcpStatusReady` — which overwrites the saved managed-server
+ * list — only fires when there's a real status to save.
+ */
+export function markSessionReady(
+  managed: ManagedSession,
+  params: {
+    sessionId: string;
+    provider: ChatProvider;
+    chatSessionId?: string;
+    persistHistory: boolean;
+    mcpStatus?: McpServerStatus[];
+    projectId: string;
+    mainWindow: BrowserWindow | null;
+    chatSessionRepository: StreamingSessionServiceDeps['chatSessionRepository'];
+    onMcpStatusReady?: (mcpStatus: McpServerStatus[]) => void;
+  },
+): void {
+  managed.state = 'processing';
+  managed.processingStartTime = Date.now();
+  managed.lastSdkActivity = Date.now();
+  managed.sessionId = params.sessionId;
+  managed.lastTurnFinalized = false;
+  if (params.chatSessionId && params.persistHistory) {
+    CHAT_PROVIDER_CONFIG[params.provider].persistSessionId(
+      params.chatSessionRepository,
+      params.chatSessionId,
+      params.sessionId
+    );
+  }
+  params.mainWindow?.webContents.send('chat:session-ready', {
+    projectId: params.projectId,
+    chatSessionId: params.chatSessionId,
+    sessionId: params.sessionId,
+    mcpStatus: params.mcpStatus ?? [],
+  });
+  if (params.mcpStatus) {
+    params.onMcpStatusReady?.(params.mcpStatus);
+  }
+}
+
+// =============================================================================
 // Turn-Result Finalization
 // =============================================================================
 
@@ -600,9 +689,10 @@ export function finalizeTurnResult(
   // Auto-summary generation runs alongside the first turn, so this is the
   // earliest moment we can read it. Re-fetched after every turn so a
   // user-renamed session updates the UI on next reply too.
-  if (managed.provider === 'claude' && managed.sessionId && managed.persistHistory) {
+  const fetchSessionSummary = CHAT_PROVIDER_CONFIG[managed.provider].fetchSessionSummary;
+  if (fetchSessionSummary && managed.sessionId && managed.persistHistory) {
     const sdkSessionId = managed.sessionId;
-    void getSessionInfo(sdkSessionId)
+    void fetchSessionSummary(sdkSessionId)
       .then((info) => {
         if (!info?.summary) return;
         const title = sanitizeSessionTitle(info.summary, managed.titleSeed);
@@ -697,7 +787,7 @@ export function finalizeTurnResult(
         } else {
           deps.recordUsage({
             projectId,
-            model: managed.provider === 'codex' ? 'codex' : managed.model,
+            model: CHAT_PROVIDER_CONFIG[managed.provider].usageModel(managed),
             usage: sdkMsg.usage,
             totalCostUsd: totalCostUsd ?? null,
             sdkSessionId: resultMsg.session_id ?? null,
@@ -1155,15 +1245,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
                 console.log(`[StreamingSessionService] Ignoring stale onReady for ${key}`);
                 return;
               }
-              managed.state = 'processing';
-              managed.processingStartTime = Date.now();
-              managed.lastSdkActivity = Date.now();
-              managed.sessionId = sessionId;
-              managed.lastTurnFinalized = false;
-              if (chatSessionId && persistHistory) {
-                deps.chatSessionRepository.updateProviderSessionId?.(chatSessionId, provider, sessionId);
-              }
-              mainWindow?.webContents.send('chat:session-ready', { projectId, chatSessionId, sessionId, mcpStatus: [] });
+              markSessionReady(managed, {
+                sessionId,
+                provider,
+                chatSessionId,
+                persistHistory,
+                projectId,
+                mainWindow,
+                chatSessionRepository: deps.chatSessionRepository,
+              });
             },
           })
         : new StreamingSession({
@@ -1179,18 +1269,17 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
               // The initial user message is already in-flight during start(),
               // so this session should be considered processing until we receive
               // the result message for that first turn.
-              managed.state = 'processing';
-              managed.processingStartTime = Date.now();
-              managed.lastSdkActivity = Date.now();
-              managed.sessionId = sessionId;
-              managed.lastTurnFinalized = false;
-              // Persist Claude SDK session ID for resume functionality
-              if (chatSessionId && persistHistory) {
-                deps.chatSessionRepository.updateClaudeSessionId(chatSessionId, sessionId);
-                deps.chatSessionRepository.updateProviderSessionId?.(chatSessionId, provider, sessionId);
-              }
-              mainWindow?.webContents.send('chat:session-ready', { projectId, chatSessionId, sessionId, mcpStatus });
-              deps.onMcpStatusReady?.(mcpStatus);
+              markSessionReady(managed, {
+                sessionId,
+                provider,
+                chatSessionId,
+                persistHistory,
+                mcpStatus,
+                projectId,
+                mainWindow,
+                chatSessionRepository: deps.chatSessionRepository,
+                onMcpStatusReady: deps.onMcpStatusReady,
+              });
             },
             onMcpError: (failedServers) => {
               const managed = sessions.get(key);
@@ -1482,15 +1571,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     if (persistHistory) {
       // Look up existing chat session for resume
       const chatSession = deps.chatSessionRepository.get(chatSessionId);
-      if (provider === 'claude' && chatSession?.claude_session_id) {
-        resumeSessionId = chatSession.claude_session_id;
-      } else if (
-        provider === 'codex' &&
-        chatSession?.provider === 'codex' &&
-        chatSession.provider_session_id
-      ) {
-        resumeSessionId = chatSession.provider_session_id;
-      }
+      resumeSessionId = CHAT_PROVIDER_CONFIG[provider].resolveResumeSessionId(chatSession);
 
       // Create chat session entry if it doesn't exist yet
       if (!deps.chatSessionRepository.get(chatSessionId)) {
