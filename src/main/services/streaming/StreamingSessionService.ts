@@ -153,6 +153,44 @@ function sendQueueCleared(
   mainWindow?.webContents.send('chat:queue-cleared', { projectId, chatSessionId, clientMessageId, reason });
 }
 
+/** Guarded sendChatActivity: no-ops while an interrupted turn is being torn down. */
+export function sendChatActivityIfActive(
+  managed: Pick<ManagedSession, 'interruptInProgress'>,
+  mainWindow: BrowserWindow | null,
+  projectId: string,
+  chatSessionId: string | undefined,
+  activity: Activity,
+): void {
+  if (managed.interruptInProgress) return;
+  sendChatActivity(mainWindow, projectId, chatSessionId, activity);
+}
+
+/** Guarded chat:thinking send: no-ops while an interrupted turn is being torn down. */
+export function sendChatThinkingIfActive(
+  managed: Pick<ManagedSession, 'interruptInProgress'>,
+  mainWindow: BrowserWindow | null,
+  projectId: string,
+  chatSessionId: string | undefined,
+  text: string,
+): void {
+  if (managed.interruptInProgress) return;
+  mainWindow?.webContents.send('chat:thinking', { projectId, chatSessionId, text });
+}
+
+/** Guarded chat:chunk send: no-ops while an interrupted turn is being torn down. */
+export function sendChatChunkIfActive(
+  managed: Pick<ManagedSession, 'interruptInProgress'>,
+  mainWindow: BrowserWindow | null,
+  projectId: string,
+  chatSessionId: string | undefined,
+  text: string,
+  segmentId: number,
+  precedingActivities: Activity[] | undefined,
+): void {
+  if (managed.interruptInProgress) return;
+  mainWindow?.webContents.send('chat:chunk', { projectId, chatSessionId, text, segmentId, precedingActivities });
+}
+
 /**
  * Internal envelope wrapping a user-facing message for transport through the
  * service. Carries the typed text alongside any file attachments that should
@@ -2036,9 +2074,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             // Also send activity for real-time display during streaming —
             // suppress during interrupt-and-send so late old-turn activities
             // can't repopulate the next turn's activity indicator.
-            if (!managed.interruptInProgress) {
-              sendChatActivity(mainWindow, projectId, chatSessionId, activity);
-            }
+            sendChatActivityIfActive(managed, mainWindow, projectId, chatSessionId, activity);
           }
 
           // Tool call logging (additive - does not affect activity flow)
@@ -2069,13 +2105,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           // Thinking blocks stream Claude's reasoning - send to renderer for display.
           // Suppressed during interrupt-and-send: late old-turn thinking would
           // leak into the next turn's reasoning display.
-          if (!managed.interruptInProgress) {
-            mainWindow?.webContents.send('chat:thinking', {
-              projectId,
-              chatSessionId,
-              text: block.thinking,
-            });
-          }
+          sendChatThinkingIfActive(managed, mainWindow, projectId, chatSessionId, block.thinking);
         }
 
         if (block.type === 'text') {
@@ -2099,17 +2129,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           // already committed the partial bubble as an interrupted message;
           // forwarding late tokens would repopulate the next turn's empty
           // streaming state and produce a phantom assistant bubble.
-          if (!managed.interruptInProgress) {
-            mainWindow?.webContents.send('chat:chunk', {
-              projectId,
-              chatSessionId,
-              text: block.text,
-              segmentId: segState.currentSegmentId,
-              precedingActivities: segState.pendingActivities.length > 0
-                ? [...segState.pendingActivities]
-                : undefined,
-            });
-          }
+          sendChatChunkIfActive(
+            managed,
+            mainWindow,
+            projectId,
+            chatSessionId,
+            block.text,
+            segState.currentSegmentId,
+            segState.pendingActivities.length > 0 ? [...segState.pendingActivities] : undefined,
+          );
 
           // Clear pending activities after attaching to text
           segState.pendingActivities = [];
@@ -2216,8 +2244,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     //    already-explained so the generic terminal-reason banner is suppressed.
     // Suppressed during interrupt-and-send so a late old-turn refusal can't leak
     // into the next turn.
-    if (isModelRefusalFallbackMessage(sdkMsg) && !managed.interruptInProgress) {
-      sendChatActivity(mainWindow, projectId, chatSessionId, {
+    if (isModelRefusalFallbackMessage(sdkMsg)) {
+      sendChatActivityIfActive(managed, mainWindow, projectId, chatSessionId, {
         id: randomUUID(),
         type: 'other' as const,
         label: 'Switched models',
