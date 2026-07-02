@@ -12,6 +12,7 @@
  */
 
 import { z } from 'zod';
+import type { Database } from 'better-sqlite3';
 import { tool, jsonResult, toolError, toolLog } from './index';
 import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
 import type { PlanItem, PlanAction } from '../../../shared/types';
@@ -51,6 +52,53 @@ interface ItemDependencies {
 interface PlanItemWithExtras extends PlanItem {
   parentTitle?: string;
   dependencies?: ItemDependencies;
+}
+
+/** Shared filter shape for the bulk_* tools (field names vary per tool schema; callers map onto this). */
+export interface BulkTargetFilter {
+  parentId?: string;
+  statusCategory?: PlanItem['status_category'];
+  label?: PlanItem['label'];
+}
+
+/**
+ * Resolve which item ids a bulk_* tool should act on: explicit itemIds take
+ * precedence over filter criteria. Returns null when neither is provided —
+ * callers surface that as a validation error.
+ */
+export function resolveBulkTargetIds(
+  db: Database,
+  projectId: string,
+  itemIds: string[] | undefined,
+  filter: BulkTargetFilter | undefined
+): string[] | null {
+  if (itemIds && itemIds.length > 0) {
+    return itemIds;
+  }
+  if (!filter) {
+    return null;
+  }
+
+  const where: string[] = ['project_id = ?'];
+  const params: unknown[] = [projectId];
+
+  if (filter.parentId) {
+    where.push('parent_id = ?');
+    params.push(filter.parentId);
+  }
+  if (filter.statusCategory) {
+    where.push('status_category = ?');
+    params.push(filter.statusCategory);
+  }
+  if (filter.label) {
+    where.push('label = ?');
+    params.push(filter.label);
+  }
+
+  const rows = db
+    .prepare(`SELECT id FROM plan_items WHERE ${where.join(' AND ')}`)
+    .all(...params) as { id: string }[];
+  return rows.map((r) => r.id);
 }
 
 export function createPlanItemTools(
@@ -617,33 +665,13 @@ export function createPlanItemTools(
       async ({ projectId, itemIds, filter, newStatusCategory }) => {
         toolLog('[KPM Tools] bulk_update_status called:', { projectId, itemIds, filter, newStatusCategory });
         try {
-          let idsToUpdate: string[];
+          const idsToUpdate = resolveBulkTargetIds(db, projectId, itemIds, filter && {
+            parentId: filter.parentId,
+            statusCategory: filter.currentStatusCategory,
+            label: filter.label,
+          });
 
-          if (itemIds && itemIds.length > 0) {
-            idsToUpdate = itemIds;
-          } else if (filter) {
-            // Build query based on filter
-            const where: string[] = ['project_id = ?'];
-            const params: unknown[] = [projectId];
-
-            if (filter.parentId) {
-              where.push('parent_id = ?');
-              params.push(filter.parentId);
-            }
-            if (filter.currentStatusCategory) {
-              where.push('status_category = ?');
-              params.push(filter.currentStatusCategory);
-            }
-            if (filter.label) {
-              where.push('label = ?');
-              params.push(filter.label);
-            }
-
-            const rows = db
-              .prepare(`SELECT id FROM plan_items WHERE ${where.join(' AND ')}`)
-              .all(...params) as { id: string }[];
-            idsToUpdate = rows.map((r) => r.id);
-          } else {
+          if (idsToUpdate === null) {
             return toolError('Must provide either itemIds or filter criteria');
           }
 
@@ -691,32 +719,9 @@ export function createPlanItemTools(
       async ({ projectId, itemIds, filter }) => {
         toolLog('[KPM Tools] bulk_delete called:', { projectId, itemIds, filter });
         try {
-          let idsToDelete: string[];
+          const idsToDelete = resolveBulkTargetIds(db, projectId, itemIds, filter);
 
-          if (itemIds && itemIds.length > 0) {
-            idsToDelete = itemIds;
-          } else if (filter) {
-            const where: string[] = ['project_id = ?'];
-            const params: unknown[] = [projectId];
-
-            if (filter.statusCategory) {
-              where.push('status_category = ?');
-              params.push(filter.statusCategory);
-            }
-            if (filter.label) {
-              where.push('label = ?');
-              params.push(filter.label);
-            }
-            if (filter.parentId) {
-              where.push('parent_id = ?');
-              params.push(filter.parentId);
-            }
-
-            const rows = db
-              .prepare(`SELECT id FROM plan_items WHERE ${where.join(' AND ')}`)
-              .all(...params) as { id: string }[];
-            idsToDelete = rows.map((r) => r.id);
-          } else {
+          if (idsToDelete === null) {
             return toolError('Must provide either itemIds or filter criteria');
           }
 
@@ -878,28 +883,12 @@ export function createPlanItemTools(
       async ({ projectId, itemIds, filter, newLabel }) => {
         toolLog('[KPM Tools] bulk_set_label called:', { projectId, itemIds, filter, newLabel });
         try {
-          let idsToUpdate: string[];
+          const idsToUpdate = resolveBulkTargetIds(db, projectId, itemIds, filter && {
+            parentId: filter.parentId,
+            label: filter.currentLabel,
+          });
 
-          if (itemIds && itemIds.length > 0) {
-            idsToUpdate = itemIds;
-          } else if (filter) {
-            const where: string[] = ['project_id = ?'];
-            const params: unknown[] = [projectId];
-
-            if (filter.parentId) {
-              where.push('parent_id = ?');
-              params.push(filter.parentId);
-            }
-            if (filter.currentLabel) {
-              where.push('label = ?');
-              params.push(filter.currentLabel);
-            }
-
-            const rows = db
-              .prepare(`SELECT id FROM plan_items WHERE ${where.join(' AND ')}`)
-              .all(...params) as { id: string }[];
-            idsToUpdate = rows.map((r) => r.id);
-          } else {
+          if (idsToUpdate === null) {
             return toolError('Must provide either itemIds or filter criteria');
           }
 
@@ -948,32 +937,9 @@ export function createPlanItemTools(
       async ({ projectId, itemIds, filter, releaseTag }) => {
         toolLog('[KPM Tools] bulk_set_release called:', { projectId, itemIds, filter, releaseTag });
         try {
-          let idsToUpdate: string[];
+          const idsToUpdate = resolveBulkTargetIds(db, projectId, itemIds, filter);
 
-          if (itemIds && itemIds.length > 0) {
-            idsToUpdate = itemIds;
-          } else if (filter) {
-            const where: string[] = ['project_id = ?'];
-            const params: unknown[] = [projectId];
-
-            if (filter.parentId) {
-              where.push('parent_id = ?');
-              params.push(filter.parentId);
-            }
-            if (filter.statusCategory) {
-              where.push('status_category = ?');
-              params.push(filter.statusCategory);
-            }
-            if (filter.label) {
-              where.push('label = ?');
-              params.push(filter.label);
-            }
-
-            const rows = db
-              .prepare(`SELECT id FROM plan_items WHERE ${where.join(' AND ')}`)
-              .all(...params) as { id: string }[];
-            idsToUpdate = rows.map((r) => r.id);
-          } else {
+          if (idsToUpdate === null) {
             return toolError('Must provide either itemIds or filter criteria');
           }
 
