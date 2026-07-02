@@ -1,13 +1,18 @@
-import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useChatStore } from '../../stores';
 import type { SlashCommandInfo } from '../../../shared/types';
 
-/** The whole draft is a slash token ('/', '/par', '/git:com') — no arguments yet. */
+/** The current line (up to the cursor) is a slash token ('/', '/par', '/git:com') — no arguments yet. */
 const TRIGGER_PATTERN = /^\/([A-Za-z0-9_:-]*)$/;
 
 /** A complete known-command token followed by whitespace only — arguments not typed yet. */
 const PENDING_ARGS_PATTERN = /^\/([A-Za-z0-9_:-]+)\s+$/;
+
+/** Start of the line containing `cursorPosition` (0 if it's the first line). */
+function lineStartFor(message: string, cursorPosition: number): number {
+  return message.lastIndexOf('\n', cursorPosition - 1) + 1;
+}
 
 function filterCommands(commands: SlashCommandInfo[], query: string): SlashCommandInfo[] {
   if (!query) return commands;
@@ -40,16 +45,21 @@ export interface SlashCommandTypeahead {
 /**
  * Typeahead state for user slash commands in the chat composer.
  *
- * The menu opens when the draft is a leading slash token, filters as the user
- * types, and closes the moment arguments begin (first space) or the trigger
- * breaks. Escape dismisses for the current token only; deleting back past the
+ * The menu opens when the current line (up to the cursor) is a leading slash
+ * token, filters as the user types, and closes the moment arguments begin
+ * (first space) or the trigger breaks. This works on any line of the draft,
+ * not just the first — a command can follow other text or sit on its own
+ * line. Escape dismisses for the current token only; deleting back past the
  * slash re-arms it. The menu never blocks typing: with zero matches it hides
  * and Enter falls through to the normal send path.
  */
 export function useSlashCommandTypeahead(
   message: string,
+  cursorPosition: number,
   setMessage: (text: string) => void,
+  setCursorPosition: (position: number) => void,
   enabled: boolean,
+  textareaRef: RefObject<HTMLTextAreaElement | null>,
 ): SlashCommandTypeahead {
   const { slashCommands, loadSlashCommands } = useChatStore(useShallow((state) => ({
     slashCommands: state.slashCommands,
@@ -58,8 +68,15 @@ export function useSlashCommandTypeahead(
 
   const [dismissed, setDismissed] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
+  const pendingCaretRef = useRef<number | null>(null);
 
-  const triggerMatch = enabled ? TRIGGER_PATTERN.exec(message) : null;
+  // Only the typed line, up to the caret, counts — trailing text on the same
+  // line (from clicking mid-line) blocks the trigger, same as before.
+  const lineStart = lineStartFor(message, cursorPosition);
+  const linePrefix = message.slice(lineStart, cursorPosition);
+  const atLineEnd = cursorPosition === message.length || message[cursorPosition] === '\n';
+
+  const triggerMatch = enabled && atLineEnd ? TRIGGER_PATTERN.exec(linePrefix) : null;
   const query = triggerMatch ? triggerMatch[1] : null;
   const inTrigger = query !== null;
 
@@ -82,9 +99,24 @@ export function useSlashCommandTypeahead(
     setHighlightIndex(0);
   }, [query]);
 
+  // Restore the caret after a programmatic insert — setMessage re-renders the
+  // controlled textarea, which resets selection to the end by default.
+  useEffect(() => {
+    const caret = pendingCaretRef.current;
+    if (caret !== null) {
+      pendingCaretRef.current = null;
+      textareaRef.current?.setSelectionRange(caret, caret);
+    }
+  }, [message, textareaRef]);
+
   const accept = useCallback((command: SlashCommandInfo) => {
-    setMessage(`/${command.name} `);
-  }, [setMessage]);
+    const insertion = `/${command.name} `;
+    const nextMessage = message.slice(0, lineStart) + insertion + message.slice(cursorPosition);
+    const caret = lineStart + insertion.length;
+    pendingCaretRef.current = caret;
+    setMessage(nextMessage);
+    setCursorPosition(caret);
+  }, [message, lineStart, cursorPosition, setMessage, setCursorPosition]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if (!isOpen && !showEmptyState) return false;
@@ -116,7 +148,7 @@ export function useSlashCommandTypeahead(
     return false;
   }, [isOpen, showEmptyState, matches, highlightIndex, accept]);
 
-  const pendingMatch = enabled ? PENDING_ARGS_PATTERN.exec(message) : null;
+  const pendingMatch = enabled && atLineEnd ? PENDING_ARGS_PATTERN.exec(linePrefix) : null;
   const pendingHint = pendingMatch
     ? slashCommands.find((command) => command.name === pendingMatch[1]) ?? null
     : null;

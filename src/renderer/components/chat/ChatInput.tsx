@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent, type ClipboardEvent, type DragEvent, useRef, useEffect, useCallback } from 'react';
+import { useState, type KeyboardEvent, type ClipboardEvent, type DragEvent, type SyntheticEvent, useRef, useEffect, useCallback } from 'react';
 import { useChatStore } from '../../stores';
 import { deleteTempImage, saveTempImage } from '../../services/tempImageService';
 import { ContextWindowBar } from './ContextWindowBar';
@@ -110,20 +110,30 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     setDraftMessage(sessionId, value);
   }, [viewedSessionId, getChatSessionId, getOrCreateSession, setDraftMessage]);
 
+  const message = draft;
+  const [cursorPosition, setCursorPosition] = useState(message.length);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
   // Re-sync the local draft only when the viewed session changes — flush the
   // previous session's pending edit first so nothing is lost on the swap.
   useEffect(() => {
     if (syncedSessionRef.current !== viewedSessionId) {
       flushDraft();
       syncedSessionRef.current = viewedSessionId;
-      setDraft(viewedSession?.draftMessage ?? '');
+      const nextDraft = viewedSession?.draftMessage ?? '';
+      setDraft(nextDraft);
+      setCursorPosition(nextDraft.length);
     }
   }, [viewedSessionId, viewedSession?.draftMessage, flushDraft]);
 
   // Persist any pending edit if the composer unmounts (e.g., view switch).
   useEffect(() => () => flushDraft(), [flushDraft]);
 
-  const message = draft;
+  // Tracks the caret so the slash-command typeahead can trigger on whichever
+  // line the user is editing, not just the start of the draft.
+  const handleSelectionChange = useCallback((e: SyntheticEvent<HTMLTextAreaElement>) => {
+    setCursorPosition(e.currentTarget.selectionStart);
+  }, []);
 
   const setAttachments = useCallback((updater: ChatAttachment[] | ((prev: ChatAttachment[]) => ChatAttachment[])) => {
     const sessionId = viewedSessionId ?? getChatSessionId();
@@ -138,12 +148,14 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   // Slash command typeahead comes from the Claude SDK.
   const slashTypeahead = useSlashCommandTypeahead(
     message,
+    cursorPosition,
     setMessage,
+    setCursorPosition,
     !disabled,
+    textareaRef,
   );
   const [isPickingFiles, setIsPickingFiles] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Placeholder: use SDK suggestions when available, fall back to static rotation
   const fallbackPlaceholders = currentView === 'plan' ? PLAN_PLACEHOLDERS : WORKSPACE_PLACEHOLDERS;
@@ -328,6 +340,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
         chatSessionId,
       );
       setMessage('');
+      setCursorPosition(0);
       setAttachments([]);
       setAttachmentError(null);
     }
@@ -350,6 +363,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
       e.preventDefault();
       const suggestion = suggestions[suggestionIndex % suggestions.length];
       setMessage(suggestion);
+      setCursorPosition(suggestion.length);
     }
   };
 
@@ -507,7 +521,11 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
         <textarea
           ref={textareaRef}
           value={message}
-          onChange={(e) => handleDraftChange(e.target.value)}
+          onChange={(e) => {
+            handleDraftChange(e.target.value);
+            setCursorPosition(e.target.selectionStart);
+          }}
+          onSelect={handleSelectionChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           onFocus={handleFocus}
