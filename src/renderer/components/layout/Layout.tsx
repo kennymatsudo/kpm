@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Sidebar } from '../sidebar';
 import { PlanView } from '../planning';
 import { WorkspaceView } from '../workspace';
+import { WelcomePane } from '../welcome/WelcomePane';
 import { Chat, ChatHeader } from '../chat';
 import { TopBar } from './TopBar';
 import { ErrorBoundary } from '../app/ErrorBoundary';
@@ -54,6 +55,7 @@ interface LayoutProps {
   onNewProject?: () => void;
   onOpenProject?: (projectId: string) => void;
   onResumeOnboardingTask?: (taskId: string) => void;
+  onCreateProjectFromRepos?: (paths: string[]) => Promise<void>;
   /** When true, sidebar floats over content instead of pushing it */
   sidebarOverlay?: boolean;
   /** When true, chat panel floats over content instead of pushing it */
@@ -65,6 +67,7 @@ export const Layout = memo(function Layout({
   onNewProject,
   onOpenProject,
   onResumeOnboardingTask,
+  onCreateProjectFromRepos,
   sidebarOverlay = false,
   chatOverlay = false,
 }: LayoutProps) {
@@ -368,6 +371,17 @@ export const Layout = memo(function Layout({
                   projectId={currentProjectId}
                   chatCollapsed={workspaceChatCollapsed}
                   onShowChat={showWorkspaceChat}
+                />
+              </ErrorBoundary>
+            )}
+
+            {mainView === 'workspace' && !currentProjectId && onCreateProjectFromRepos && (
+              <ErrorBoundary name="WelcomePane">
+                <WelcomePane
+                  projects={projects}
+                  onNewProject={onNewProject}
+                  onOpenProject={onOpenProject}
+                  onCreateProjectFromRepos={onCreateProjectFromRepos}
                 />
               </ErrorBoundary>
             )}

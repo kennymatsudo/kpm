@@ -31,3 +31,20 @@ export function getContextFilePriority(filename: string): number {
   const priority = (CONTEXT_FILE_NAMES as readonly string[]).indexOf(filename);
   return priority === -1 ? Number.POSITIVE_INFINITY : priority;
 }
+
+/** Distinctive substring of the placeholder content, stable across project names. */
+const PLACEHOLDER_CONTEXT_MARKER =
+  'This is your project workspace. Use this file to track context, conventions, and learnings.';
+
+/** Content written to a project's context file at creation, before real generation runs. */
+export function buildPlaceholderContext(projectName: string): string {
+  return `# ${projectName}
+
+${PLACEHOLDER_CONTEXT_MARKER}
+`;
+}
+
+/** Whether `content` is still the untouched placeholder written at project creation. */
+export function isPlaceholderContext(content: string): boolean {
+  return content.includes(PLACEHOLDER_CONTEXT_MARKER);
+}

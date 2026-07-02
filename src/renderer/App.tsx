@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Layout } from './components/layout';
 import { ErrorBoundary } from './components/app/ErrorBoundary';
-import { ProjectOnboardingWizard } from './components/onboarding';
+import { CreateProjectModal } from './components/onboarding';
 import { MotionProvider } from './components/app/MotionProvider';
 import { TooltipProvider } from './components/ui';
 import {
@@ -18,10 +18,8 @@ import {
 import { ThemeProvider } from './contexts';
 import { useProjectLoader } from './hooks/useProjectLoader';
 import { subscribeToRefreshRequested } from './services/planService';
-import {
-  initOnboardingTaskBridge,
-  type OnboardingTaskMeta,
-} from './services/onboardingTaskBridge';
+import { initOnboardingTaskBridge } from './services/onboardingTaskBridge';
+import { getBaseName } from './utils/path';
 
 export default function App() {
   // Initialize cross-store event subscriptions
@@ -65,32 +63,21 @@ export default function App() {
   }, [currentProjectId, refreshPlanItems]);
 
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
-  const [resumeTaskId, setResumeTaskId] = useState<string | null>(null);
   const handleOpenNewProjectDialog = useCallback(() => {
-    setResumeTaskId(null);
     setShowNewProjectDialog(true);
   }, []);
   const handleCloseNewProjectDialog = useCallback(() => {
     setShowNewProjectDialog(false);
-    setResumeTaskId(null);
   }, []);
   const handleResumeOnboardingTask = useCallback((taskId: string) => {
-    const task = useBackgroundTaskStore.getState().tasks[taskId];
-    const flow = (task?.meta as OnboardingTaskMeta | undefined)?.flow;
-    if (flow === 'regen') {
-      useContextRegenerationStore.getState().open(taskId);
-      return;
-    }
-    // Default to wizard for 'create' or unknown
-    setResumeTaskId(taskId);
-    setShowNewProjectDialog(true);
+    useContextRegenerationStore.getState().open(taskId);
   }, []);
 
   const { createProject, deleteCurrentProject, loadProjectData } = useProjectLoader({
     onRequestNewProject: handleOpenNewProjectDialog,
   });
 
-  // Create a new project (optionally cloning from a URL) — returns project for wizard
+  // Create a new project (optionally cloning from a URL)
   const handleCreateProject = useCallback(
     async (input: { name: string; repoPaths?: string[]; folderPath?: string; cloneUrl?: string }) => {
       return createProject(input);
@@ -102,6 +89,14 @@ export default function App() {
   const handleDeleteProject = useCallback(async () => {
     await deleteCurrentProject();
   }, [deleteCurrentProject]);
+
+  const handleCreateProjectFromRepos = useCallback(
+    async (paths: string[]) => {
+      const name = getBaseName(paths[0], 'New Project');
+      await createProject({ name, repoPaths: paths });
+    },
+    [createProject],
+  );
 
   return (
     <MotionProvider>
@@ -115,13 +110,13 @@ export default function App() {
             onNewProject={handleOpenNewProjectDialog}
             onOpenProject={loadProjectData}
             onResumeOnboardingTask={handleResumeOnboardingTask}
+            onCreateProjectFromRepos={handleCreateProjectFromRepos}
           />
 
-          <ProjectOnboardingWizard
+          <CreateProjectModal
             isOpen={showNewProjectDialog}
             onClose={handleCloseNewProjectDialog}
             onCreate={handleCreateProject}
-            resumeTaskId={resumeTaskId}
           />
         </ErrorBoundary>
         </TooltipProvider>

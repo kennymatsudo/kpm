@@ -26,6 +26,7 @@ import {
   type AgentReviewPolicy,
   type RepoEnvironmentMode,
 } from '../../../shared/types';
+import { DEFAULT_CONTEXT_FILENAME, isPlaceholderContext } from '../../../shared/contextFile';
 import { captureRepoEnvironment } from './EnvironmentService';
 import type {
   IAppSettingsRepository,
@@ -221,8 +222,11 @@ function buildExecutionPrompt(basePrompt: string, executionMode: AgentExecutionM
 }
 
 /**
- * Build agent context from plan item data
- * Note: Claude Code automatically reads CLAUDE.md/AGENTS.md from the worktree, so we don't include it here
+ * Build agent context from plan item data.
+ * The worktree's own CLAUDE.md/AGENTS.md (the repo's, not KPM's project-level
+ * one) is auto-read by the SDK, so it is not included here. KPM's project-level
+ * context file is injected separately in `createAndStartFromBoard`, since the
+ * worktree never contains it.
  *
  * Exported for unit testing.
  */
@@ -322,6 +326,23 @@ export function buildAgentContext(input: AgentContextInput): string {
   return sections.join('\n\n');
 }
 
+/**
+ * Wraps the project-level context file in the same <context-file> block
+ * format `ContextFileService.buildContextPrefix` uses for explicitly attached
+ * files. Excludes the still-untouched placeholder written at project creation.
+ *
+ * Exported for unit testing.
+ */
+export function buildProjectContextPrefix(
+  contextFile: { content: string | null; filename?: string } | null,
+): string {
+  if (!contextFile?.content || isPlaceholderContext(contextFile.content)) {
+    return '';
+  }
+  const filename = contextFile.filename ?? DEFAULT_CONTEXT_FILENAME;
+  return `<context-file path="${filename}">\n${contextFile.content}\n</context-file>\n\n`;
+}
+
 function buildLegacyBoardPrompt(item: Pick<PlanItem, 'title' | 'description'>): string {
   const parts: string[] = [item.title];
   if (item.description) {
@@ -415,6 +436,8 @@ export interface DevSessionServiceDeps {
   getPromptContent: (key: string) => string;
   /** Wraps attached context files for prepending to agent prompts. */
   buildContextPrefix: (projectId: string, contextPaths: string[]) => AsyncResult<string>;
+  /** Reads the project-level context file (AGENTS.md/CLAUDE.md) for prepending to agent prompts. */
+  readProjectContextFile: (projectId: string) => AsyncResult<{ content: string | null; filename?: string }>;
   /** Optional — when provided, dev sessions use the Agent SDK instead of PTY */
   agentSessionManager?: AgentSessionManager;
 }
@@ -928,11 +951,16 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         projectId = createResult.data.project_id;
       }
 
+      const projectContextResult = await deps.readProjectContextFile(projectId);
+      const projectContextPrefix = buildProjectContextPrefix(
+        projectContextResult.ok ? projectContextResult.data : null,
+      );
+
       const prefixResult = input.contextPaths?.length
         ? await deps.buildContextPrefix(projectId, input.contextPaths)
         : null;
       const contextPrefix = prefixResult?.ok ? prefixResult.data : '';
-      const baseAugmented = contextPrefix + instructions;
+      const baseAugmented = projectContextPrefix + contextPrefix + instructions;
       const augmentedPrompt = service.buildPlanRefSection(projectId, baseAugmented) + baseAugmented;
 
       return service.startAgentSession(sessionId, {

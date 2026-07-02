@@ -66,7 +66,8 @@ src/
 │   │   ├── confluence/      # Confluence sync modals
 │   │   ├── briefing/        # Project briefing modal
 │   │   ├── permission/      # Permission request UI
-│   │   ├── onboarding/      # Project onboarding wizard
+│   │   ├── onboarding/      # Project creation + context regeneration
+│   │   ├── welcome/         # No-project landing pane
 │   │   ├── slack/           # Slack triage UI
 │   │   ├── icons/           # SVG icon components
 │   │   ├── file-ref/        # File reference link rendering
@@ -346,6 +347,7 @@ See `storeEvents.ts` for the authoritative, current list — avoid letting this 
 | `icons/` | SVG icon components |
 | `slack/` | Slack triage panel, badge, channel settings |
 | `onboarding/` | Project onboarding and context regeneration |
+| `welcome/` | No-project landing pane (open repository, project list, Claude status) |
 
 ## IPC Pattern
 

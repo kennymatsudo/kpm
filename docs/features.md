@@ -298,7 +298,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ## Agentic Task Execution (Board)
 
 ### 19. Plan-item Dev Sessions (Implementation Workflow, Worktrees, Agent Context)
-- **What it does:** Users start agentic execution for a plan item from the board view. Each session creates an isolated git worktree, builds an agent prompt from the plan item's title/intent/acceptance-criteria/context (with `@plan/<uuid>` refs resolved and attached AGENTS.md/CLAUDE.md context files wrapped in via `<context-file>` blocks), and spawns an implementation agent — Claude via the Agent SDK, Codex via the Codex SDK (Codex remains an alternate dev-session/opposing-review backend even though chat itself is Claude-only), or Gemini/legacy Claude via CLI, all dispatched through `AgentSessionManager`. Each board turn is a discrete single-shot `query()`; completion is the SDK async iterator ending, not a terminal process exiting. Sessions track status (pending → active → inactive) and persist across app restarts. Board cards show a compact phase badge (e.g. "Reviewing", "Needs attention", "Fixing checks", "Addressing review") derived from automation phase, agent liveness, and staleness — kept live even after the underlying session goes `inactive` between turns, so the board doesn't read as idle mid-automation. The detail pane's Activity tab renders tool calls as a narrative feed, grouped under the narration Claude wrote immediately before them.
+- **What it does:** Users start agentic execution for a plan item from the board view. Each session creates an isolated git worktree, builds an agent prompt from the plan item's title/intent/acceptance-criteria/context (with `@plan/<uuid>` refs resolved, the project-level AGENTS.md prepended when it has real content, and attached context files wrapped in via `<context-file>` blocks), and spawns an implementation agent — Claude via the Agent SDK, Codex via the Codex SDK (Codex remains an alternate dev-session/opposing-review backend even though chat itself is Claude-only), or Gemini/legacy Claude via CLI, all dispatched through `AgentSessionManager`. Each board turn is a discrete single-shot `query()`; completion is the SDK async iterator ending, not a terminal process exiting. Sessions track status (pending → active → inactive) and persist across app restarts. Board cards show a compact phase badge (e.g. "Reviewing", "Needs attention", "Fixing checks", "Addressing review") derived from automation phase, agent liveness, and staleness — kept live even after the underlying session goes `inactive` between turns, so the board doesn't read as idle mid-automation. The detail pane's Activity tab renders tool calls as a narrative feed, grouped under the narration Claude wrote immediately before them.
 - **Key code locations:**
   - Service: `src/main/services/repo/DevSessionService.ts` (`startAgentSession` entrypoint, `buildAgentContext(input: AgentContextInput)` — renders `## Intent`/`## Acceptance Criteria`/`## Context`-or-`## Description`/`## Instructions` based on which spec fields the item carries, `buildPlanRefSection` prepends a `<plan-refs>` block, `_scaffoldWorktree` creates the worktree via `git worktree add`)
   - Orchestration: `src/main/services/agents/BoardAgentOrchestrator.ts` (automation state machine, wired in via `AgentSessionManager`)
@@ -469,7 +469,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Workspace sidebar project file tree: browse and open any markdown file; "Context" button opens the CLAUDE.md/AGENTS.md editor specifically
   - Markdown editor modal with preview
 - **Dependencies / integrations:**
-  - Dev sessions: context file is read by the agent's worktree checkout at session start
+  - Dev sessions: the project-level context file is injected into the agent prompt at session start (placeholder content excluded); the worktree's own CLAUDE.md/AGENTS.md is auto-read by the SDK
   - Global search: documents indexed for FTS queries
   - Confluence sync: documents can be synced to Confluence pages
   - File watching: detects external changes to open documents
@@ -866,26 +866,33 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 
 ## Onboarding & Initial Setup
 
-### 76. Project Onboarding Wizard (AGENTS.md Generation)
-- **What it does:** When user creates new project, wizard walks through: select repo folders to analyze, confirm context directories, generate initial AGENTS.md. Claude scans codebase to understand structure and creates context file. Reads an existing AGENTS.md or CLAUDE.md if either is present in the repo.
+### 76. Project Onboarding & Context Generation (AGENTS.md Generation)
+- **What it does:** First launch (or any time no project is open) shows a welcome pane in the main content area: open a repository (creates a project instantly, named after the folder), start a blank project, open an existing one, and a Claude Code availability line. Creating a project via the modal is a single instant form (name, optional project folder, connect repositories) — no generation step blocks it. Once created, the workspace home screen offers a dismissible nudge to generate the project's AGENTS.md context file if one is missing or still the placeholder written at creation. Accepting the nudge (or invoking "Regenerate Context" once a real file exists) opens a modal that configures scope, runs Claude against the connected repos as a background task, and shows a diff-reviewed preview before saving. The generated file targets non-discoverable content (cross-repo relationships, verified commands, boundaries, doc pointers, ≤80 lines) rather than restating searchable architecture. If generation completes while the modal is closed, the result routes into the standard approval queue (or auto-applies, per the global setting) instead of requiring a badge-click back into the modal. Reads an existing AGENTS.md or CLAUDE.md if either is present in the repo.
 - **Key code locations:**
   - Service: `src/main/services/core/OnboardingFacadeService.ts` (orchestrates)
-  - Service: `src/main/services/generation/OnboardingService.ts` (generation)
-  - Component: `src/renderer/components/onboarding/` (wizard UI)
+  - Service: `src/main/services/generation/OnboardingService.ts` (scan + generation)
+  - Component: `src/renderer/components/welcome/WelcomePane.tsx` (no-project landing surface)
+  - Component: `src/renderer/components/onboarding/CreateProjectModal.tsx` (instant create form)
+  - Component: `src/renderer/components/onboarding/RegenerateContextModal.tsx` (configure → generate → review)
+  - Component: `src/renderer/components/workspace/WorkspaceHome.tsx` (post-create nudge)
+  - Bridge: `src/renderer/services/onboardingTaskBridge.ts` (background-completion routing into the approval queue)
   - IPC handlers: `src/main/ipc/handlers/onboarding.ts`
+  - Shared: `src/shared/contextFile.ts` (placeholder content + `isPlaceholderContext`)
   - DB: stores selected directories in `projects.context_directories`
 - **Entry points / surfaces:**
-  - Create new project modal → triggers wizard
-  - Step 1: select repo directories to analyze
-  - Step 2: confirm selection
-  - Step 3: generation progress
-  - Step 4: preview generated AGENTS.md
-  - Finish to complete project setup
+  - Welcome pane (no project open) → "Open a repository" instant create, "New project" modal, project list, Claude availability status
+  - Create Project modal → name, optional folder, connect repositories → creates project immediately
+  - Workspace home nudge → "Generate context" → opens `RegenerateContextModal`
+  - Configure phase: description + per-repo feature directories
+  - Generate phase: progress log, runs as a background task (can continue in background)
+  - Review phase (modal open): diff against existing content, editable, Accept & Save; modal closed: pending item in the approval queue
 - **Dependencies / integrations:**
   - Claude SDK: Sonnet for codebase analysis and synthesis
   - File system: scans directories
-  - Context file: saves generated AGENTS.md to project folder
-- **Maturity signal:** Mature. Onboarding flow comprehensive.
+  - Context file: saves generated AGENTS.md to project folder; also injected into board dev-session prompts (see feature 19)
+  - Background task store: generation survives modal close; topbar badge resumes into `RegenerateContextModal` when the result can't be queue-routed (different project open)
+  - Approval queue: `processClaudeMdUpdate` handles review-or-auto-apply for background completions
+- **Maturity signal:** Mature. Create/generate flows decoupled; generation is opt-in and non-blocking.
 
 ---
 
@@ -1300,8 +1307,8 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 69 (Workspace View & File Editor), 11 (Main Chat Interface)
 - `FileEditor.tsx`: workspace file editor router (Markdown editor + Monaco); also the focus-mode entry point
   - Features: 69 (Workspace View & File Editor), 106 (Markdown Focus Reader)
-- `WorkspaceHome.tsx`: Default workspace landing page
-  - Features: 69 (Workspace View & File Editor)
+- `WorkspaceHome.tsx`: Default workspace landing page; also surfaces the post-create context-generation nudge
+  - Features: 69 (Workspace View & File Editor), 76 (Project Onboarding & Context Generation)
 
 ### focus-mode/ Components
 - `FocusMode.tsx`: Full-screen reading shell (TOC, search, reading theme)
@@ -1390,8 +1397,12 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 77 (Debug & Performance Logging)
 
 ### onboarding/ Components
-- Wizard for initial project setup
-  - Features: 76 (Project Onboarding Wizard)
+- `CreateProjectModal.tsx`: instant project-creation form; `RegenerateContextModal.tsx`: configure → generate → review flow for AGENTS.md context generation
+  - Features: 76 (Project Onboarding & Context Generation)
+
+### welcome/ Components
+- `WelcomePane.tsx`: no-project landing surface — open a repository (instant create), project list, Claude availability status
+  - Features: 76 (Project Onboarding & Context Generation)
 
 ### ui/ Components (Shared primitives)
 - `Modal.tsx`, `StatusSelector.tsx`, `DiffViewer.tsx`, `DropdownMenu.tsx`: Reusable UI elements

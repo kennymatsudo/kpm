@@ -1,2 +1,2 @@
-export { ProjectOnboardingWizard } from './ProjectOnboardingWizard';
+export { CreateProjectModal } from './CreateProjectModal';
 export { RegenerateContextModal } from './RegenerateContextModal';

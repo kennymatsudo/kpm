@@ -8,7 +8,6 @@ interface StartGenerationOpts {
   projectName: string;
   description: string;
   repoDirectories: Record<string, string[]>;
-  flow: 'create' | 'regen';
 }
 
 interface UseOnboardingEventsResult {
@@ -24,8 +23,9 @@ interface UseOnboardingEventsResult {
 
 /**
  * Reads onboarding task state from the generic background task store. Exposes
- * the in-flight taskId so callers (the wizard) can pass it back as a resume
- * handle. State survives unmount because it lives in the store, not the hook.
+ * the in-flight taskId so callers (`RegenerateContextModal`) can pass it back
+ * as a resume handle. State survives unmount because it lives in the store,
+ * not the hook.
  */
 export function useOnboardingEvents(initialTaskId: string | null = null): UseOnboardingEventsResult {
   const [taskId, setTaskId] = useState<string | null>(initialTaskId);

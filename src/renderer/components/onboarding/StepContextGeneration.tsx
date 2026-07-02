@@ -5,8 +5,6 @@ import { LoadingSpinner } from '../ui/LoadingButton';
 interface StepContextGenerationProps {
   messages: string[];
   generatedContent: string | null;
-  editableContent: string;
-  onContentChange: (content: string) => void;
   error: string | null;
   isGenerating: boolean;
 }
@@ -14,8 +12,6 @@ interface StepContextGenerationProps {
 export function StepContextGeneration({
   messages,
   generatedContent,
-  editableContent,
-  onContentChange,
   error,
   isGenerating,
 }: StepContextGenerationProps) {
@@ -58,29 +54,9 @@ export function StepContextGeneration({
         )}
       </AnimatePresence>
 
-      {generatedContent !== null && generatedContent.length > 0 && (
-        <div className="flex-1 flex flex-col min-h-0 space-y-2">
-          <div className="flex items-baseline justify-between">
-            <label className="block text-xs font-medium text-text-secondary uppercase tracking-wide">
-              Project context
-            </label>
-            {!isGenerating && (
-              <span className="text-xs text-text-muted">Saved as CLAUDE.md · Editable</span>
-            )}
-          </div>
-          <textarea
-            value={editableContent}
-            onChange={e => onContentChange(e.target.value)}
-            readOnly={isGenerating}
-            className={`flex-1 min-h-[200px] w-full px-3 py-2.5 text-xs font-mono bg-surface-2 border border-border-default rounded-lg text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none resize-none ${isGenerating ? 'opacity-60 cursor-not-allowed' : ''}`}
-            placeholder="Generated content will appear here..."
-          />
-        </div>
-      )}
-
       {!isGenerating && !error && (generatedContent === null || generatedContent.length === 0) && (
         <div className="flex-1 flex items-center justify-center text-sm text-text-muted">
-          No content was generated. You can skip this step or retry.
+          No content was generated.
         </div>
       )}
     </div>

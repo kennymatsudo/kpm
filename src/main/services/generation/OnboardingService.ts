@@ -287,7 +287,7 @@ function sanitizeGeneratedContext(content: string): string {
 
 const SYSTEM_PROMPT = `You generate or update a project context file (AGENTS.md) for KPM.
 
-This file is for a future coding agent or developer who is joining an ongoing project. Its job is to orient them quickly and remain useful as the codebase evolves. Write for durable understanding, not for a point-in-time code inventory.
+This file orients a future coding agent or developer joining an ongoing project. Its only useful content is what a single-repo agentic search cannot cheaply discover on its own -- cross-repo relationships, verified commands, and non-obvious constraints. Everything else the agent will re-derive by reading the code, so writing it down here just adds context that goes stale. This file may be read by tools outside KPM too, so keep it tool-agnostic: exclude KPM-only operational rules unless they are also a real constraint for external tools.
 
 You will receive pre-scanned repository data (git metadata, a directory-structure map of each repo, manifests, READMEs, and any user-scoped directories) in the user message. The connected repositories are available to your Read, Grep, and Glob tools. Do NOT write any files -- the application handles saving; just return the content as your text response.
 
@@ -297,26 +297,20 @@ Treat the user's description as your investigation brief. Do not synthesize only
 
 - Use the description to decide which areas are relevant, then read the directory-structure map to choose concrete starting directories. The description states intent in plain language; you map that intent to real paths in the repos. The literal words of the description need not appear in a path.
 - Run targeted Grep/Glob inside those directories to confirm relevance and find the specific files and sections involved (for example, for a dependency upgrade, grep the manifests and the deprecated APIs). Prefer narrow, targeted searches over broad repo-wide ones.
+- Verify build/test/lint/run commands against actual manifests, lockfiles, Makefiles, or CI config -- never guess from convention or repo type.
 - Read the files you find to verify before relying on them; drop candidates that turn out to be unrelated.
 - The directory map is truncated and shallow. When a relevant area is not shown (a wide or deeply nested monorepo folder), Glob for it rather than assuming it does not exist.
 - If no scoped directories were provided, this investigation is how you determine the relevant areas -- the directory map, manifests, and recent commits are your starting points.
 - Keep the investigation focused and bounded: read enough to write an accurate, specific document, not everything.
 
-## Audience And Goal
+## Anti-Goal: Do Not Restate What Search Can Find
 
-The reader needs to:
-- Understand what the project or feature is and why it exists
-- See which repos are connected and how they relate to each other
-- Find the stable entry points and ownership areas for further investigation
-- Know the build, test, and verification workflows
-- Understand important boundaries and constraints
+Every line must earn its place by being non-discoverable, or expensive to rediscover, for an agent starting fresh in these repos. Do NOT include:
+- Architecture narration, directory layouts, file inventories, or lists of components/hooks/helpers -- an agent finds these in seconds with Glob.
+- A description of what the code "does" when that is visible from reading it.
+- Anything you are not confident is still true -- omit rather than guess.
 
-The reader does NOT need:
-- A narration of how you gathered the information
-- A dump of repository scan results
-- An exhaustive snapshot of current components, hooks, helpers, or other volatile implementation details
-
-This file may be read by tools both inside and outside KPM. Keep it tool-agnostic. Do NOT include KPM-specific behavioral rules unless they describe a real project constraint that also applies outside KPM.
+The cross-repo relationship map is the one exception and the highest-value content in this file: a search scoped to a single repo cannot see how it relates to its siblings.
 
 ## Regeneration Context
 
@@ -328,44 +322,24 @@ If an existing context document is provided, it is for REFERENCE ONLY:
 
 ## Writing Quality
 
-- Keep the document concise and focused -- under 150 lines. Shorter is better.
+- Keep the document concise and focused -- under 80 lines. Shorter is better.
 - Write a durable orientation document, not a changelog or repository walkthrough.
 - Be specific: "React 18 with TypeScript and Vite" not "modern web framework."
-- Prefer repo-relative file paths or directory paths over inline code snippets.
-- Add line numbers only when precision materially helps and the anchor is likely to remain stable (for example: a canonical entry point, exported interface, schema, or config declaration).
-- Avoid line numbers for general architecture notes, because they drift as the code changes.
+- Prefer repo-relative file paths over inline code snippets.
 - Put executable commands early with full flags.
-- Focus on what an agent cannot infer from the code alone.
-- Prefer stable entry points, subsystem boundaries, and ownership areas over inventories of current component or hook filenames.
-- Mention individual files only when they are canonical entry points, contracts, or other high-signal anchors that are likely to remain useful as the code evolves.
-- If a detail is likely to churn during normal development, summarize it at the directory, subsystem, or contract level instead.
-- Do NOT include style guidelines or linting rules.
+- Do NOT include style guidelines, linting rules, or general architecture explanations available by reading the code.
 
 ## Required Sections
 
-1. **Project/Feature Overview** -- title, one-line description, and the purpose or goal of this project. If the user provided a description, incorporate it. If this spans multiple repos, explain why.
+1. **Overview** -- one or two sentences: what this project is and why it exists. If the user provided a description, incorporate it.
 
-2. **Connected Repos** -- table with each repo's basename, inferred purpose, and tech stack with versions where detectable. This is how the assistant knows what it's working with.
+2. **Connected Repos & How They Relate** -- name each connected repo with a one-line purpose, then the cross-repo map: which repo depends on, calls, or publishes to which, and any deploy or build-order constraints between them. This is the content a single-repo agentic search cannot discover, so it carries the most weight in this file. For a single-repo project, collapse this to the repo's purpose in a couple of lines.
 
-3. **Feature Entry Points** -- the user-specified scoped directories are the strongest signal when present. List them prominently as the paths where this feature's code lives. If no directories were specified, use your investigation (above) to identify the areas where this work lives, citing the concrete directories and files you confirmed.
-   Keep this at the directory or subsystem level unless a specific file is the durable entry point.
+3. **Commands** -- build/test/lint/run commands per repo, with full flags, verified against manifests, lockfiles, or Makefiles.
 
-4. **Architecture** -- how the repos relate to each other (frontend -> backend -> service, monorepo packages, shared libraries). Include data flow if detectable. This helps the assistant reason about cross-repo impact during planning.
+4. **Boundaries & Conventions** -- what must not be touched, non-obvious gotchas that would cost an agent real turns to discover the hard way (multi-repo deploy ordering, environment setup quirks, shared state between services), and naming/structure rules actually enforced in the code -- not aspirational ones.
 
-5. **Build and Test Commands** -- exact commands with flags to build, test, lint, and type-check each repo. These should be useful to an agent or developer who needs to understand, validate, or change the code.
-
-6. **Boundaries** -- project constraints that matter to any agent or developer working in these repos:
-  - Never commit secrets
-  - Protected or generated areas that should not be edited casually
-  - Repo-specific constraints (e.g. deploy freezes, required review flows, protected branches)
-  - Exclude KPM-only operational constraints unless they are explicitly relevant to external tools too
-
-7. **Documentation Pointers** -- point to docs/ directories, READMEs, wikis, or ADRs found in the repos. Use file paths so the assistant can read them when needed.
-
-## Optional Sections (include only when relevant)
-
-- **Gotchas** -- non-obvious constraints: multi-repo deploy ordering, environment setup quirks, shared state between services
-- **Key Dependencies** -- critical external services, APIs, or infrastructure the project depends on (only if detectable from config/manifests)
+5. **Documentation Pointers** -- file paths to authoritative docs (README, docs/, wikis, ADRs) in each repo, so the assistant can read them when needed.
 
 ## Output Rules
 

@@ -29,6 +29,8 @@ export interface RepoServicesCompositionDeps {
   getPromptContent: (key: string) => string;
   /** Wraps attached context files for prepending to agent prompts. */
   buildContextPrefix: (projectId: string, contextPaths: string[]) => ReturnType<ContextFileService['buildContextPrefix']>;
+  /** Reads the project-level context file (AGENTS.md/CLAUDE.md) for prepending to agent prompts. */
+  readProjectContextFile: (projectId: string) => ReturnType<ContextFileService['readClaudeMd']>;
   /** Centralized Claude token + cost tracker. */
   claudeUsageService: ClaudeUsageService;
   fileSummaryService?: FileSummaryService;
@@ -42,6 +44,7 @@ export function createRepoServices({
   agentSessionManager,
   getPromptContent,
   buildContextPrefix,
+  readProjectContextFile,
   claudeUsageService,
   fileSummaryService,
 }: RepoServicesCompositionDeps) {
@@ -87,6 +90,7 @@ export function createRepoServices({
     agentSessionManager,
     getPromptContent,
     buildContextPrefix,
+    readProjectContextFile,
   });
 
   const gitHubService = createGitHubService({

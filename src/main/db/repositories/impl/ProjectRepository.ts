@@ -10,6 +10,7 @@ import type { Stats } from 'fs';
 import type { Project } from '../../../../shared/types';
 import type { IProjectRepository, ProjectCreateInput } from '../../interfaces/project';
 import { writeInitialProjectContextFilesSync } from '../../../project-context/contextFileCompat';
+import { buildPlaceholderContext } from '../../../../shared/contextFile';
 
 /**
  * File system operations interface for testing
@@ -102,11 +103,7 @@ export class ProjectRepository implements IProjectRepository {
 
     this.fs.mkdirSync(folderPath, { recursive: true });
 
-    const initialContent = `# ${name}
-
-This is your project workspace. Use this file to track context, conventions, and learnings.
-`;
-    writeInitialProjectContextFilesSync(this.fs, folderPath, initialContent);
+    writeInitialProjectContextFilesSync(this.fs, folderPath, buildPlaceholderContext(name));
 
     return this.stmts.insert.get(id, name, folderPath) as Project;
   }

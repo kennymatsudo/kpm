@@ -88,7 +88,7 @@ Terminal/PTY and Claude session management.
 ### Generation Services (`services/generation/`)
 
 - `CustomPromptGenerationService` — Custom prompt generation
-- `OnboardingService` — Project onboarding wizard synthesis
+- `OnboardingService` — AGENTS.md context generation (repo scan + Claude synthesis)
 
 ### Confluence Services (`services/confluence/`)
 

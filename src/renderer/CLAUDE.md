@@ -4,7 +4,7 @@ React 19 + TypeScript + Tailwind v4 + Zustand. Extract hooks not components. Use
 
 ## Component Organization
 
-Components organized by feature in `components/`. Key directories: `app/` (app-shell providers/boundaries), `layout/`, `planning/`, `board-view/`, `chat/`, `workspace/`, `development/` (shared PR/review components used by the board), `tracker/`, `plan-ref/`, `keyboard-shortcuts/`, `sidebar/`, `command-palette/`, `ui/` (shared primitives). Browse the directory for the full list.
+Components organized by feature in `components/`. Key directories: `app/` (app-shell providers/boundaries), `layout/`, `planning/`, `board-view/`, `chat/`, `workspace/`, `welcome/` (no-project landing pane), `development/` (shared PR/review components used by the board), `tracker/`, `plan-ref/`, `keyboard-shortcuts/`, `sidebar/`, `command-palette/`, `ui/` (shared primitives). Browse the directory for the full list.
 
 ## Design Principles
 
@@ -56,7 +56,7 @@ Don't create abstractions until you have 3+ actual uses of a pattern. Wait until
 - **Canvas constants** in `constants/layout.ts` — card widths, grid spacing, zoom limits
 - **Stores** — See `stores/CLAUDE.md` for patterns. Use `useShallow` for multi-value selectors. Stores communicate via typed events.
 - **Default views** — Main view defaults to `'workspace'`; planning view mode defaults to `'board'` (Board view). Both are persisted via `usePersistedViewState`.
-- **WorkspaceHome** — `components/workspace/WorkspaceHome.tsx` is the landing screen shown inside the workspace view when no chat is active. Displays project context and quick-start prompts.
+- **WorkspaceHome** — `components/workspace/WorkspaceHome.tsx` is the landing screen shown inside the workspace view when no chat is active. Displays project context and quick-start prompts, plus a dismissible nudge (persisted per-project in localStorage) offering to generate the project's AGENTS.md context file via `RegenerateContextModal` when one is missing or still the placeholder.
 
 ## CSS Conventions
 

@@ -12,6 +12,7 @@ import {
   saveOnboardingContextDirectories,
 } from '../../services/onboardingService';
 import { readClaudeMdFile } from '../../services/contextFileService';
+import { isPlaceholderContext } from '../../../shared/contextFile';
 import type { OnboardingTaskMeta } from '../../services/onboardingTaskBridge';
 import {
   useContextRegenerationStore,
@@ -149,7 +150,6 @@ export function RegenerateContextModal() {
         projectName: currentProjectName || 'project',
         description,
         repoDirectories,
-        flow: 'regen',
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to start generation');
@@ -184,6 +184,9 @@ export function RegenerateContextModal() {
     ? getDiffStats(existingContent, editableContent)
     : null;
 
+  const isFirstGeneration = existingContent === null || isPlaceholderContext(existingContent);
+  const modalTitle = isFirstGeneration ? 'Generate Context' : 'Regenerate Context';
+
   return (
     <Modal
       isOpen={isOpen}
@@ -201,7 +204,7 @@ export function RegenerateContextModal() {
             </svg>
           </div>
           <h2 id="regen-context-title" className="text-lg font-semibold text-text-primary">
-            Regenerate Context
+            {modalTitle}
           </h2>
         </div>
         <button
@@ -232,8 +235,6 @@ export function RegenerateContextModal() {
           <StepContextGeneration
             messages={messages}
             generatedContent={generatedContent}
-            editableContent=""
-            onContentChange={() => {}}
             error={error ?? genError}
             isGenerating={isGenerating}
           />

@@ -1,12 +1,19 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
+  useApprovalQueueStore,
   useBriefingStore,
   useChatStore,
+  useContextRegenerationStore,
+  useProjectDomainStore,
   useProjectUiDomainStore,
+  useResourceDomainStore,
 } from '../../stores';
 import type { FocusedResource } from '../../../shared/types';
 import { getBaseName } from '../../utils/path';
+import { readClaudeMdFile } from '../../services/contextFileService';
+import { isPlaceholderContext } from '../../../shared/contextFile';
+import { CloseIcon } from '../icons';
 
 interface WorkspaceHomeProps {
   onShowChat: () => void;
@@ -49,6 +56,50 @@ function getResourceTypeLabel(resource: FocusedResource): string {
   }
 }
 
+function dismissedNudgeKey(projectId: string): string {
+  return `kpm-context-nudge-dismissed-${projectId}`;
+}
+
+function useContextGenerationNudge() {
+  const projectId = useProjectDomainStore((state) => state.currentProjectId);
+  const hasRepos = useResourceDomainStore((state) => state.repos.length > 0);
+  const isRegenModalOpen = useContextRegenerationStore((state) => state.isOpen);
+  // Re-check once a queue-routed context edit (see onboardingTaskBridge) drains,
+  // since accepting it updates the file on disk without remounting this hook.
+  const pendingClaudeMdEdits = useApprovalQueueStore(
+    (state) => state.queue.filter((item) => item.type === 'claude-md').length,
+  );
+
+  const [needsContext, setNeedsContext] = useState(false);
+
+  useEffect(() => {
+    if (!projectId || !hasRepos || isRegenModalOpen) {
+      setNeedsContext(false);
+      return;
+    }
+    let cancelled = false;
+    void readClaudeMdFile(projectId).then((result) => {
+      if (cancelled) return;
+      setNeedsContext(
+        !result.success || result.content === null || isPlaceholderContext(result.content),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, hasRepos, isRegenModalOpen, pendingClaudeMdEdits]);
+
+  const dismissed = projectId ? localStorage.getItem(dismissedNudgeKey(projectId)) === '1' : true;
+
+  const dismiss = useCallback(() => {
+    if (!projectId) return;
+    localStorage.setItem(dismissedNudgeKey(projectId), '1');
+    setNeedsContext(false);
+  }, [projectId]);
+
+  return { visible: needsContext && !dismissed, dismiss };
+}
+
 function BullseyeIcon({ className = 'w-7 h-7' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
@@ -62,6 +113,7 @@ function BullseyeIcon({ className = 'w-7 h-7' }: { className?: string }) {
 export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
   const openBriefing = useBriefingStore((state) => state.openModal);
   const focusedResources = useProjectUiDomainStore((state) => state.focusedResources);
+  const contextNudge = useContextGenerationNudge();
 
   const {
     viewedSessionId,
@@ -136,6 +188,32 @@ export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
               </button>
             ))}
           </div>
+
+          {contextNudge.visible && (
+            <div className="w-full flex items-start gap-3 bg-surface-1 border border-border-subtle rounded-lg px-3.5 py-3">
+              <div className="flex-1">
+                <div className="text-[13px] font-medium text-text-primary">
+                  Project context
+                </div>
+                <p className="mt-0.5 text-[12px] leading-snug text-text-tertiary">
+                  Scan connected repos to draft an AGENTS.md orientation file. Review it before it saves.
+                </p>
+                <button
+                  onClick={() => useContextRegenerationStore.getState().open()}
+                  className="mt-2 rounded-md bg-accent text-surface-0 hover:bg-accent/90 px-3 py-1.5 text-[12px] font-medium transition-colors"
+                >
+                  Generate context
+                </button>
+              </div>
+              <button
+                onClick={contextNudge.dismiss}
+                className="text-text-tertiary hover:text-text-primary p-0.5 rounded transition-colors"
+                aria-label="Dismiss"
+              >
+                <CloseIcon className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
             <button

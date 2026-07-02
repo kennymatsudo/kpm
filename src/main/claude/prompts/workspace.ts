@@ -58,7 +58,7 @@ export const WORKSPACE_SECTION = `## Your Workspace
 
 **You don't control:** attachments, connected repo git state.
 
-**Context file principles:** Keep lean, extract verbose content to project files, focus on reusable patterns.`;
+**Context file principles:** Keep lean, extract verbose content to project files, focus on reusable patterns. When investigation surfaces a durable, non-obvious fact — a command that only worked after trial and error, a gotcha that cost turns, a cross-repo constraint, a convention that contradicts appearances — propose adding it via \`propose_context_edit\`. Skip anything trivially rediscoverable by search, session-specific, or already in the file, and batch proposals at a natural stopping point rather than interrupting the task.`;
 
 /**
  * Build attachments section if any exist.

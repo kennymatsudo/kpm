@@ -2,12 +2,16 @@
  * Onboarding background-task bridge.
  *
  * Translates onboarding IPC events into mutations on the generic
- * `backgroundTaskStore`. Lets the wizard close while generation continues —
- * a topbar badge can resume the user back into the wizard when the task
- * completes (or errors).
+ * `backgroundTaskStore`. Lets the modal close while generation continues —
+ * a topbar badge can resume the user back into `RegenerateContextModal` when
+ * the task completes (or errors).
  */
 
 import { useBackgroundTaskStore } from '../stores/backgroundTaskStore';
+import { useApprovalQueueStore } from '../stores/approvalQueueStore';
+import { useContextRegenerationStore } from '../stores/contextRegenerationStore';
+import { useProjectDomainStore } from '../stores/projectDomains';
+import { readClaudeMdFile } from './contextFileService';
 import {
   generateOnboardingContext,
   hasOnboardingApi,
@@ -16,16 +20,9 @@ import {
 
 export const ONBOARDING_TASK_KIND = 'onboarding';
 
-/**
- * `flow` distinguishes which surface originated the task so the topbar badge
- * can resume the user back into the right modal:
- * - 'create' → ProjectOnboardingWizard (new project creation)
- * - 'regen'  → RegenerateContextModal (re-running against an existing project)
- */
 export interface OnboardingTaskMeta {
   projectId: string;
   projectName: string;
-  flow: 'create' | 'regen';
 }
 
 interface StartOnboardingTaskOpts {
@@ -33,7 +30,6 @@ interface StartOnboardingTaskOpts {
   projectName: string;
   description: string;
   repoDirectories: Record<string, string[]>;
-  flow: 'create' | 'regen';
 }
 
 function newTaskId(): string {
@@ -51,14 +47,12 @@ export async function startOnboardingTask(
   const meta: OnboardingTaskMeta = {
     projectId: opts.projectId,
     projectName: opts.projectName,
-    flow: opts.flow,
   };
 
-  const labelPrefix = opts.flow === 'regen' ? 'Regenerating' : 'Generating';
   useBackgroundTaskStore.getState().start({
     id: taskId,
     kind: ONBOARDING_TASK_KIND,
-    label: `${labelPrefix} context for ${opts.projectName}`,
+    label: `Generating context for ${opts.projectName}`,
     meta,
   });
 
@@ -92,6 +86,31 @@ export function initOnboardingTaskBridge(): () => void {
     },
     // Thinking output is intentionally ignored — debug surface, not user-facing.
     onComplete: ({ taskId, content }) => {
+      const task = useBackgroundTaskStore.getState().tasks[taskId];
+      const meta = task?.meta as OnboardingTaskMeta | undefined;
+      const currentProjectId = useProjectDomainStore.getState().currentProjectId;
+      const isRegenModalOpen = useContextRegenerationStore.getState().isOpen;
+
+      // If the modal is open, its own generate → review flow owns the result.
+      // If it belongs to a different (or no longer open) project, fall back to
+      // the badge-resume path. Otherwise route it into the approval queue so
+      // the user reviews it there instead of having to reopen the modal.
+      if (!isRegenModalOpen && meta?.projectId === currentProjectId) {
+        void (async () => {
+          try {
+            const existing = await readClaudeMdFile(meta.projectId);
+            useApprovalQueueStore
+              .getState()
+              .processClaudeMdUpdate(meta.projectId, existing.content, content);
+            useBackgroundTaskStore.getState().complete(taskId, { result: content });
+            useBackgroundTaskStore.getState().dismiss(taskId);
+          } catch {
+            useBackgroundTaskStore.getState().complete(taskId, { result: content });
+          }
+        })();
+        return;
+      }
+
       useBackgroundTaskStore.getState().complete(taskId, { result: content });
     },
     onError: ({ taskId, error }) => {
