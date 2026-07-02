@@ -10,7 +10,7 @@
  * - Subscription hook listens → calls Store B action
  */
 
-import type { StatusCategory } from '../../shared/types';
+import type { CustomFieldValues, StatusCategory } from '../../shared/types';
 
 // =============================================================================
 // Event Types
@@ -87,6 +87,21 @@ export interface TrackerExportCompletedEvent {
   };
 }
 
+export interface SyncReviewItemRemovedEvent {
+  type: 'sync-review-item-removed';
+  payload: {
+    queueEntryId: string;
+  };
+}
+
+export interface SyncReviewCustomFieldOverridesUpdatedEvent {
+  type: 'sync-review-custom-field-overrides-updated';
+  payload: {
+    queueEntryId: string;
+    overrides: CustomFieldValues | null;
+  };
+}
+
 export type StoreEvent =
   | StatusChangedEvent
   | PlanItemCreatedEvent
@@ -94,7 +109,9 @@ export type StoreEvent =
   | RevealBoardColumnEvent
   | FileExplorerChangedEvent
   | ChatFileUpdatedEvent
-  | TrackerExportCompletedEvent;
+  | TrackerExportCompletedEvent
+  | SyncReviewItemRemovedEvent
+  | SyncReviewCustomFieldOverridesUpdatedEvent;
 
 // =============================================================================
 // Event Emitter

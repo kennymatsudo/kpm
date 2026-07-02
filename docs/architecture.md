@@ -310,6 +310,8 @@ Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and
 - `file-explorer-changed` - Project file watcher reported create/update/delete/rename
 - `chat-file-updated` - Chat/document flow updated a project file
 - `tracker-export-completed` - Export queue finished pushing an association's items
+- `sync-review-item-removed` - Sync review dropped an item; export queue should remove the matching entry
+- `sync-review-custom-field-overrides-updated` - Sync review edited custom field overrides; export queue should mirror them
 
 See `storeEvents.ts` for the authoritative, current list — avoid letting this bullet list drift from it.
 

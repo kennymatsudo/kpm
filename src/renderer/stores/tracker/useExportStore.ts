@@ -7,6 +7,7 @@ import type {
   ExportResult,
   StatusCategory,
 } from '../../../shared/types';
+import { subscribe } from '../storeEvents';
 import {
   addTrackerExportQueue,
   clearTrackerExportQueue,
@@ -400,3 +401,18 @@ export const useExportStore = create<ExportState>((set, get) => ({
     recentlyImportedIds: new Set<string>(),
   }),
 }));
+
+subscribe('sync-review-item-removed', (event) => {
+  useExportStore.getState().removeFromQueue(event.payload.queueEntryId).catch(() => {
+    // Silent fail - export store handles its own errors
+  });
+});
+
+subscribe('sync-review-custom-field-overrides-updated', (event) => {
+  useExportStore
+    .getState()
+    .updateQueueCustomFieldOverrides(event.payload.queueEntryId, event.payload.overrides)
+    .catch(() => {
+      // Silent fail - export store handles its own errors
+    });
+});

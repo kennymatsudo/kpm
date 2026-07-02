@@ -63,7 +63,7 @@ Multiple concurrent sessions per project, each shared between Plan and Workspace
 Stores use **typed events** for side effects, to avoid circular dependencies:
 1. Define event types in `storeEvents.ts`
 2. Emit from store actions: `deps.emit({ type: 'status-changed', payload })`
-3. Listen in `useStoreSubscriptions.ts`
+3. Listen in `useStoreSubscriptions.ts` for cross-domain reactions (e.g. status change → auto-queue export), or via a module-level `subscribe(...)` call at the bottom of the consuming store's own file when the reaction belongs entirely to that store's domain (see `useSyncStore.ts`, `useExportStore.ts`)
 
 Direct cross-store imports are fine for simple reads (e.g. `approvalQueueStore` reads `generalSettingsStore`/`fileTreeStore`/`toastStore`) — reserve events for side effects that should stay decoupled.
 
@@ -118,7 +118,7 @@ export const useMyStore = create<MyState>((set) => ({ /* ... */ }));
 
 1. Define event in `storeEvents.ts`
 2. Emit from Store A: `deps.emit({ type: 'my-event', payload })`
-3. Listen in `useStoreSubscriptions.ts`
+3. Listen in `useStoreSubscriptions.ts`, or via a module-level `subscribe(...)` in Store B's own file — see "Cross-Store Communication" above
 
 ## Best Practices
 

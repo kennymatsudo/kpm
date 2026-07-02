@@ -68,6 +68,7 @@ import { clientManager } from '../claude/clientManager';
 import { createRepoServices } from './composition/repoServices';
 import { createGenerationServices } from './composition/generationServices';
 import { createFileSummaryService } from './files/FileSummaryService';
+import { classifyAttachment, saveTempAttachment } from './files/TempImageService';
 import { createAgentSessionManager } from './agents/AgentSessionManager';
 import { createHookServer } from './agents/hookServer';
 import { createBoardAgentOrchestrator } from './agents/BoardAgentOrchestrator';
@@ -219,6 +220,8 @@ export function createAppServices(container: IRepositoryContainer) {
     projects: container.projects,
     fs,
     path,
+    classifyAttachment,
+    saveTempAttachment,
   });
 
   const searchService = createSearchService({

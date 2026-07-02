@@ -1,23 +1,11 @@
 import { ipcMain, dialog, shell, type BrowserWindow } from 'electron';
 import * as fs from 'fs/promises';
-import * as path from 'path';
-import type { AttachmentService } from '../../services/core/AttachmentService';
+import type { AttachmentService, PickedAttachment } from '../../services/core/AttachmentService';
 import { unwrapOrThrow } from '../../services/result';
 import { toIpcResponse } from '../response';
 import { AttachmentSchemas, ChatAttachmentSchemas } from '../validation';
 import { IPC_CHANNELS } from '../channels';
-import {
-  classifyAttachment,
-  saveTempAttachment,
-  readAttachmentAsDataUrl,
-} from '../../services/files/TempImageService';
-
-interface PickedAttachment {
-  path: string;
-  filename: string;
-  kind: 'image' | 'pdf' | 'text';
-  mediaType: string;
-}
+import { saveTempAttachment, readAttachmentAsDataUrl } from '../../services/files/TempImageService';
 
 /**
  * Register attachment handlers.
@@ -87,39 +75,7 @@ export function registerAttachmentHandlers(
       return { picked: [] as PickedAttachment[], errors: [] as { filename: string; error: string }[] };
     }
 
-    const picked: PickedAttachment[] = [];
-    const errors: { filename: string; error: string }[] = [];
-
-    for (const sourcePath of result.filePaths) {
-      const filename = path.basename(sourcePath);
-      const classification = classifyAttachment(filename);
-      if (!classification) {
-        errors.push({
-          filename,
-          error: 'Unsupported file type. Allowed: images (PNG/JPEG/GIF/WebP), PDF, text/markdown/JSON/YAML.',
-        });
-        continue;
-      }
-      try {
-        const data = await fs.readFile(sourcePath);
-        const saved = await saveTempAttachment(data, filename, classification.mediaType);
-        if (!saved.success) {
-          errors.push({ filename, error: saved.error });
-          continue;
-        }
-        picked.push({
-          path: saved.path,
-          filename: saved.filename,
-          kind: saved.kind,
-          mediaType: saved.mediaType,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to read file';
-        errors.push({ filename, error: message });
-      }
-    }
-
-    return { picked, errors };
+    return unwrapOrThrow(await attachmentService.pickForChat(result.filePaths));
   });
 
   /**

@@ -2,6 +2,7 @@ import type * as fs from 'fs/promises';
 import type * as path from 'path';
 import type { Attachment } from '../../../shared/types';
 import type { IAttachmentRepository, IProjectRepository } from '../../db/interfaces';
+import type { SaveTempAttachmentResult } from '../files/TempImageService';
 import { failure, success, type ServiceResult, type AsyncResult } from '../result';
 
 export interface AttachmentFs {
@@ -9,6 +10,7 @@ export interface AttachmentFs {
   mkdir: typeof fs.mkdir;
   copyFile: typeof fs.copyFile;
   unlink: typeof fs.unlink;
+  readFile: typeof fs.readFile;
 }
 
 export interface AttachmentPath {
@@ -17,11 +19,25 @@ export interface AttachmentPath {
   extname: typeof path.extname;
 }
 
+export interface PickedAttachment {
+  path: string;
+  filename: string;
+  kind: 'image' | 'pdf' | 'text';
+  mediaType: string;
+}
+
+export interface PickForChatResult {
+  picked: PickedAttachment[];
+  errors: { filename: string; error: string }[];
+}
+
 export interface AttachmentServiceDeps {
   attachments: IAttachmentRepository;
   projects: IProjectRepository;
   fs: AttachmentFs;
   path: AttachmentPath;
+  classifyAttachment: (filename: string, declaredMime?: string) => { kind: 'image' | 'pdf' | 'text'; mediaType: string } | null;
+  saveTempAttachment: (data: Buffer, originalFilename: string, declaredMime?: string) => Promise<SaveTempAttachmentResult>;
 }
 
 async function fileExists(fsImpl: AttachmentFs, filePath: string): Promise<boolean> {
@@ -100,6 +116,42 @@ export function createAttachmentService(deps: AttachmentServiceDeps) {
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }
+    },
+
+    async pickForChat(filePaths: string[]): AsyncResult<PickForChatResult> {
+      const picked: PickedAttachment[] = [];
+      const errors: { filename: string; error: string }[] = [];
+
+      for (const sourcePath of filePaths) {
+        const filename = deps.path.basename(sourcePath);
+        const classification = deps.classifyAttachment(filename);
+        if (!classification) {
+          errors.push({
+            filename,
+            error: 'Unsupported file type. Allowed: images (PNG/JPEG/GIF/WebP), PDF, text/markdown/JSON/YAML.',
+          });
+          continue;
+        }
+        try {
+          const data = await deps.fs.readFile(sourcePath);
+          const saved = await deps.saveTempAttachment(data, filename, classification.mediaType);
+          if (!saved.success) {
+            errors.push({ filename, error: saved.error });
+            continue;
+          }
+          picked.push({
+            path: saved.path,
+            filename: saved.filename,
+            kind: saved.kind,
+            mediaType: saved.mediaType,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Failed to read file';
+          errors.push({ filename, error: message });
+        }
+      }
+
+      return success({ picked, errors });
     },
   };
 }

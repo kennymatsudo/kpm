@@ -5,7 +5,6 @@ import {
   getTrackerExportReview,
 } from '../../services/trackerService';
 import { emit } from '../storeEvents';
-import { useExportStore } from './useExportStore';
 
 type ReviewPhase = 'idle' | 'loading' | 'reviewing' | 'summary' | 'exporting' | 'complete';
 
@@ -106,12 +105,15 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
     }
   },
 
-  removeFromReview: async (itemId) => {
+  removeFromReview: (itemId) => {
     const { items } = get();
     const item = items.find((i) => i.planItem.id === itemId);
-    if (!item) return;
+    if (!item) return Promise.resolve();
 
-    await useExportStore.getState().removeFromQueue(item.queueEntry.id);
+    emit({
+      type: 'sync-review-item-removed',
+      payload: { queueEntryId: item.queueEntry.id },
+    });
 
     // Remove from the review list entirely (not just mark as removed)
     set((state) => ({
@@ -119,10 +121,15 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
       // Adjust currentIndex if needed
       currentIndex: Math.min(state.currentIndex, state.items.length - 2),
     }));
+
+    return Promise.resolve();
   },
 
-  updateCustomFieldOverrides: async (queueEntryId, overrides) => {
-    await useExportStore.getState().updateQueueCustomFieldOverrides(queueEntryId, overrides);
+  updateCustomFieldOverrides: (queueEntryId, overrides) => {
+    emit({
+      type: 'sync-review-custom-field-overrides-updated',
+      payload: { queueEntryId, overrides },
+    });
 
     set((state) => ({
       items: state.items.map((item) =>
@@ -131,6 +138,8 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
           : item
       ),
     }));
+
+    return Promise.resolve();
   },
 
   reset: () => {

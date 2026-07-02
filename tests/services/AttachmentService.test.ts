@@ -78,6 +78,7 @@ function createMocks(overrides?: Partial<AttachmentServiceDeps>): AttachmentServ
     mkdir: vi.fn(() => Promise.resolve(undefined)),
     copyFile: vi.fn(() => Promise.resolve(undefined)),
     unlink: vi.fn(() => Promise.resolve(undefined)),
+    readFile: vi.fn(() => Promise.resolve(Buffer.from('file contents'))),
   } as unknown as AttachmentServiceDeps['fs'];
 
   const path = {
@@ -89,7 +90,24 @@ function createMocks(overrides?: Partial<AttachmentServiceDeps>): AttachmentServ
     }),
   } as unknown as AttachmentServiceDeps['path'];
 
-  return { attachments, projects, fs, path, ...overrides };
+  const classifyAttachment = vi.fn((filename: string) => {
+    if (filename.endsWith('.png')) {
+      return { kind: 'image' as const, mediaType: 'image/png' };
+    }
+    return null;
+  });
+
+  const saveTempAttachment = vi.fn((_data: Buffer, filename: string, mediaType?: string) =>
+    Promise.resolve({
+      success: true as const,
+      path: `/tmp/kpm-attachments/${filename}`,
+      filename,
+      kind: 'image' as const,
+      mediaType: mediaType ?? 'image/png',
+    })
+  );
+
+  return { attachments, projects, fs, path, classifyAttachment, saveTempAttachment, ...overrides };
 }
 
 describe('AttachmentService', () => {
@@ -147,7 +165,8 @@ describe('AttachmentService', () => {
           mkdir: vi.fn(async () => undefined),
           copyFile: vi.fn(async () => { throw new Error('Permission denied'); }),
           unlink: vi.fn(async () => undefined),
-        },
+          readFile: vi.fn(async () => Buffer.from('')),
+        } as unknown as AttachmentServiceDeps['fs'],
       };
       const service = createAttachmentService(deps);
 
@@ -191,6 +210,91 @@ describe('AttachmentService', () => {
       expect(result.ok).toBe(true);
       expect(deps.fs.unlink).not.toHaveBeenCalled();
       expect(deps.attachments.remove).toHaveBeenCalledWith('a1');
+    });
+  });
+
+  describe('pickForChat', () => {
+    it('reads and saves each classified file, returning picked metadata', async () => {
+      const deps = createMocks();
+      const service = createAttachmentService(deps);
+
+      const result = await service.pickForChat(['/source/image.png']);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.picked).toEqual([
+          { path: '/tmp/kpm-attachments/image.png', filename: 'image.png', kind: 'image', mediaType: 'image/png' },
+        ]);
+        expect(result.data.errors).toEqual([]);
+      }
+      expect(deps.fs.readFile).toHaveBeenCalledWith('/source/image.png');
+      expect(deps.saveTempAttachment).toHaveBeenCalledWith(expect.any(Buffer), 'image.png', 'image/png');
+    });
+
+    it('collects an error for unsupported file types without reading the file', async () => {
+      const deps = createMocks();
+      const service = createAttachmentService(deps);
+
+      const result = await service.pickForChat(['/source/file.exe']);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.picked).toEqual([]);
+        expect(result.data.errors).toEqual([
+          {
+            filename: 'file.exe',
+            error: 'Unsupported file type. Allowed: images (PNG/JPEG/GIF/WebP), PDF, text/markdown/JSON/YAML.',
+          },
+        ]);
+      }
+      expect(deps.fs.readFile).not.toHaveBeenCalled();
+    });
+
+    it('collects an error when reading the file fails', async () => {
+      const deps = createMocks({
+        fs: {
+          ...createMocks().fs,
+          readFile: vi.fn(() => Promise.reject(new Error('EACCES'))),
+        },
+      });
+      const service = createAttachmentService(deps);
+
+      const result = await service.pickForChat(['/source/image.png']);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.picked).toEqual([]);
+        expect(result.data.errors).toEqual([{ filename: 'image.png', error: 'EACCES' }]);
+      }
+    });
+
+    it('collects an error when saving the temp attachment fails', async () => {
+      const deps = createMocks({
+        saveTempAttachment: vi.fn(() => Promise.resolve({ success: false as const, error: 'Disk full' })),
+      });
+      const service = createAttachmentService(deps);
+
+      const result = await service.pickForChat(['/source/image.png']);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.picked).toEqual([]);
+        expect(result.data.errors).toEqual([{ filename: 'image.png', error: 'Disk full' }]);
+      }
+    });
+
+    it('processes multiple files independently, mixing successes and errors', async () => {
+      const deps = createMocks();
+      const service = createAttachmentService(deps);
+
+      const result = await service.pickForChat(['/source/image.png', '/source/file.exe']);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.picked).toHaveLength(1);
+        expect(result.data.errors).toHaveLength(1);
+        expect(result.data.errors[0]?.filename).toBe('file.exe');
+      }
     });
   });
 
