@@ -21,6 +21,7 @@ interface PreparedStatements {
   insert: Statement;
   delete: Statement;
   recordRunOutcome: Statement;
+  updateMemory: Statement;
 }
 
 const UPDATABLE_FIELDS = ['name', 'prompt', 'output_mode', 'interval_minutes', 'enabled'] as const;
@@ -47,6 +48,11 @@ export class ScheduledLoopRepository implements IScheduledLoopRepository {
         SET last_run_at = ?, last_outcome = ?, last_error = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `),
+      updateMemory: db.prepare(`
+        UPDATE scheduled_loops
+        SET memory = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `),
     };
   }
 
@@ -62,6 +68,7 @@ export class ScheduledLoopRepository implements IScheduledLoopRepository {
       last_run_at: (row.last_run_at as string | null) ?? null,
       last_outcome: (row.last_outcome as LoopRunOutcome | null) ?? null,
       last_error: (row.last_error as string | null) ?? null,
+      memory: (row.memory as string | null) ?? null,
       created_at: row.created_at as string,
       updated_at: row.updated_at as string,
     };
@@ -127,5 +134,9 @@ export class ScheduledLoopRepository implements IScheduledLoopRepository {
 
   recordRunOutcome(id: string, outcome: LoopRunOutcome, error: string | null, ranAt: string): void {
     this.stmts.recordRunOutcome.run(ranAt, outcome, error, id);
+  }
+
+  updateMemory(id: string, memory: string): void {
+    this.stmts.updateMemory.run(memory, id);
   }
 }

@@ -44,6 +44,8 @@ export interface IScheduledLoopRepository {
   delete(id: string): boolean;
   /** Stamp the last-run summary fields after a tick. */
   recordRunOutcome(id: string, outcome: LoopRunOutcome, error: string | null, ranAt: string): void;
+  /** Replace the loop's carried-forward memory after a non-error run. */
+  updateMemory(id: string, memory: string): void;
 }
 
 export interface ILoopRunRepository {

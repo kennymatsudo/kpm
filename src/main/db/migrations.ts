@@ -3630,6 +3630,13 @@ export const migrations: Migration[] = [
       db.exec(`ALTER TABLE loop_runs ADD COLUMN detail TEXT;`);
     },
   },
+  {
+    id: 1098,
+    name: '098_add_loop_memory',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`ALTER TABLE scheduled_loops ADD COLUMN memory TEXT;`);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

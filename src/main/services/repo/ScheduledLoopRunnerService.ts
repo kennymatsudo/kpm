@@ -32,7 +32,7 @@ import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import type { UpdateEventBus } from '../core/UpdateEventBus';
 import type { McpDiscoveryService } from '../core/McpDiscoveryService';
 import { buildSdkOptions } from '../../claude/sdkOptionsBuilder';
-import { runClaudeQuery } from '../../claude/runClaudeQuery';
+import { runClaudeQuery, type RunClaudeQueryResult } from '../../claude/runClaudeQuery';
 import { createContextBuilder } from '../../claude/contextBuilders';
 import {
   runWithToolExecutionContext,
@@ -46,6 +46,14 @@ import { resolveScopedPath, ensureParentDirectory } from '../files/scopedFs';
 const LOOP_TIMEOUT_MS = 10 * 60 * 1000;
 const RUN_HISTORY_LIMIT = 50;
 const NO_FINDINGS = 'NO_FINDINGS';
+const LOOP_MEMORY_DELIMITER = '===LOOP MEMORY===';
+const MAX_MEMORY_LENGTH = 4000;
+const RECENT_RUNS_WITH_MEMORY = 5;
+const RECENT_RUNS_WITHOUT_MEMORY = 10;
+const MEMORY_WRITEBACK_INSTRUCTION = `At the very end of your reply, after everything else, append:
+
+${LOOP_MEMORY_DELIMITER}
+<compact plain-text state of everything this loop currently knows: items already reported, the current status of each watched item, and relevant timestamps. Max ~30 lines. This fully replaces the previous memory, so carry forward anything still relevant.>`;
 /** Broadcast to renderer windows after each run so loop status/history refresh. */
 export const SCHEDULED_LOOP_RUN_CHANNEL = 'scheduled-loop:run';
 
@@ -72,6 +80,13 @@ interface LoopExecutionResult {
   detail: string | null;
   error: string | null;
   artifactPath: string | null;
+  /** Replacement loop memory extracted from the reply, or null if none was sent. */
+  memory: string | null;
+}
+
+interface ParsedLoopReply {
+  reply: string;
+  memory: string | null;
 }
 
 function taskIdFor(loopId: string): string {
@@ -80,6 +95,21 @@ function taskIdFor(loopId: string): string {
 
 function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'loop';
+}
+
+function joinPromptSections(sections: (string | null)[]): string {
+  return sections.filter((section): section is string => Boolean(section)).join('\n\n');
+}
+
+/** Splits an agent reply on the last memory delimiter, trimming and capping the carried-forward memory. */
+function parseLoopReply(rawText: string): ParsedLoopReply {
+  const delimiterIndex = rawText.lastIndexOf(LOOP_MEMORY_DELIMITER);
+  if (delimiterIndex === -1) return { reply: rawText.trim(), memory: null };
+
+  return {
+    reply: rawText.slice(0, delimiterIndex).trim(),
+    memory: rawText.slice(delimiterIndex + LOOP_MEMORY_DELIMITER.length).trim().slice(0, MAX_MEMORY_LENGTH),
+  };
 }
 
 export function createScheduledLoopRunnerService(deps: ScheduledLoopRunnerDeps) {
@@ -114,6 +144,23 @@ export function createScheduledLoopRunnerService(deps: ScheduledLoopRunnerDeps) 
     };
   }
 
+  function buildKnownStateBlock(loop: ScheduledLoop): string {
+    const memory = loop.memory?.trim() || null;
+    const runLimit = memory ? RECENT_RUNS_WITH_MEMORY : RECENT_RUNS_WITHOUT_MEMORY;
+    const runLines = deps.loopRuns
+      .listByLoop(loop.id, runLimit)
+      .filter((run) => run.outcome !== 'error' && run.summary != null)
+      .map((run) => `- ${run.started_at} [${run.outcome}] ${run.summary!.slice(0, 200)}`);
+
+    if (!memory && runLines.length === 0) return '';
+
+    return joinPromptSections([
+      '## Already known from previous runs',
+      memory,
+      runLines.length > 0 ? `Recent runs:\n${runLines.join('\n')}` : null,
+    ]);
+  }
+
   function buildLoopSdkOptions(projectId: string) {
     const context = buildContext(projectId);
     if (!context) return null;
@@ -130,45 +177,55 @@ export function createScheduledLoopRunnerService(deps: ScheduledLoopRunnerDeps) 
 
   async function executeNotify(loop: ScheduledLoop): Promise<LoopExecutionResult> {
     const sdkOptions = buildLoopSdkOptions(loop.project_id);
-    if (!sdkOptions) return { outcome: 'error', summary: null, detail: null, error: 'Project not found', artifactPath: null };
+    if (!sdkOptions) return { outcome: 'error', summary: null, detail: null, error: 'Project not found', artifactPath: null, memory: null };
 
-    const prompt = `You are running as a scheduled background check (read-only — do not modify anything). Investigate the following and report only what is noteworthy.
-
-${loop.prompt}
-
-If there is nothing new or noteworthy to report, reply with exactly \`${NO_FINDINGS}: <one-line reason why not>\`. Otherwise reply with a short alert: a one-line title, then 1–3 sentences of detail.`;
+    const knownState = buildKnownStateBlock(loop);
+    const prompt = joinPromptSections([
+      `You are running as a scheduled background check (read-only — do not modify anything). Investigate the following and report only what is noteworthy.`,
+      loop.prompt,
+      knownState || null,
+      knownState
+        ? 'Only report findings that are genuinely NEW relative to what is already known above. Do not re-report items listed there, even to note they are unchanged.'
+        : null,
+      `If there is nothing new or noteworthy to report, reply with exactly \`${NO_FINDINGS}: <one-line reason why not>\`. Otherwise reply with a short alert: a one-line title, then 1–3 sentences of detail.`,
+      MEMORY_WRITEBACK_INSTRUCTION,
+    ]);
 
     const result = await runClaudeQuery({ prompt, sdkOptions, timeoutMs: LOOP_TIMEOUT_MS });
-    const text = result.text.trim();
+    const { reply: text, memory } = parseLoopReply(result.text);
     if (!text || text.toUpperCase().startsWith(NO_FINDINGS)) {
       const reason = text.slice(NO_FINDINGS.length).replace(/^[:\s]+/, '').trim();
-      return { outcome: 'no_op', summary: reason || 'Nothing to report', detail: null, error: null, artifactPath: null };
+      return { outcome: 'no_op', summary: reason || 'Nothing to report', detail: null, error: null, artifactPath: null, memory };
     }
 
     const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
     const title = lines[0] ?? loop.name;
     const body = lines.slice(1).join('\n') || undefined;
     emitFinding(loop, title, body);
-    return { outcome: 'ok', summary: title, detail: body ?? null, error: null, artifactPath: null };
+    return { outcome: 'ok', summary: title, detail: body ?? null, error: null, artifactPath: null, memory };
   }
 
   async function executeReport(loop: ScheduledLoop): Promise<LoopExecutionResult> {
     const project = deps.projects.get(loop.project_id);
-    if (!project) return { outcome: 'error', summary: null, detail: null, error: 'Project not found', artifactPath: null };
+    if (!project) return { outcome: 'error', summary: null, detail: null, error: 'Project not found', artifactPath: null, memory: null };
 
     const sdkOptions = buildLoopSdkOptions(loop.project_id);
-    if (!sdkOptions) return { outcome: 'error', summary: null, detail: null, error: 'Project not found', artifactPath: null };
+    if (!sdkOptions) return { outcome: 'error', summary: null, detail: null, error: 'Project not found', artifactPath: null, memory: null };
 
-    const prompt = `You are running as a scheduled background report (read-only — do not modify anything). Produce a clear, well-structured Markdown report for the following.
-
-${loop.prompt}
-
-Output only the report as Markdown.`;
+    const knownState = buildKnownStateBlock(loop);
+    const prompt = joinPromptSections([
+      `You are running as a scheduled background report (read-only — do not modify anything). Produce a clear, well-structured Markdown report for the following.`,
+      loop.prompt,
+      knownState || null,
+      knownState ? 'Where relevant, highlight what has changed since previous runs.' : null,
+      `Output only the report as Markdown.`,
+      MEMORY_WRITEBACK_INSTRUCTION,
+    ]);
 
     const result = await runClaudeQuery({ prompt, sdkOptions, timeoutMs: LOOP_TIMEOUT_MS });
-    const content = result.text.trim();
+    const { reply: content, memory } = parseLoopReply(result.text);
     if (!content) {
-      return { outcome: 'no_op', summary: 'No report content generated', detail: null, error: null, artifactPath: null };
+      return { outcome: 'no_op', summary: 'No report content generated', detail: null, error: null, artifactPath: null, memory };
     }
 
     const outputsDir = path.join(project.folder_path, 'outputs', 'loops');
@@ -179,15 +236,15 @@ Output only the report as Markdown.`;
     const relativePath = path.relative(project.folder_path, fullPath);
 
     emitFinding(loop, `Report updated: ${loop.name}`, undefined, relativePath);
-    return { outcome: 'ok', summary: `Wrote ${relativePath}`, detail: null, error: null, artifactPath: relativePath };
+    return { outcome: 'ok', summary: `Wrote ${relativePath}`, detail: null, error: null, artifactPath: relativePath, memory };
   }
 
   async function executeMaintain(loop: ScheduledLoop): Promise<LoopExecutionResult> {
     const project = deps.projects.get(loop.project_id);
-    if (!project) return { outcome: 'error', summary: null, detail: null, error: 'Project not found', artifactPath: null };
+    if (!project) return { outcome: 'error', summary: null, detail: null, error: 'Project not found', artifactPath: null, memory: null };
 
     const sdkOptions = buildLoopSdkOptions(loop.project_id);
-    if (!sdkOptions) return { outcome: 'error', summary: null, detail: null, error: 'Project not found', artifactPath: null };
+    if (!sdkOptions) return { outcome: 'error', summary: null, detail: null, error: 'Project not found', artifactPath: null, memory: null };
 
     // Synthetic session key so the singleton tool emitters scope this run's
     // proposals to us (and not to any open chat session).
@@ -203,14 +260,18 @@ Output only the report as Markdown.`;
       if (u.chatSessionId === sessionKey) fileWrites.set(u.filename, u.newContent);
     });
 
-    const prompt = `You are running as a scheduled maintenance loop for this project. Investigate the following and make the necessary updates to the project's documents and context file using the document tools (propose_document_create / propose_document_edit / the context-file tool).
+    const knownState = buildKnownStateBlock(loop);
+    const prompt = joinPromptSections([
+      `You are running as a scheduled maintenance loop for this project. Investigate the following and make the necessary updates to the project's documents and context file using the document tools (propose_document_create / propose_document_edit / the context-file tool).`,
+      loop.prompt,
+      knownState || null,
+      `Make only the changes that are warranted. When done, briefly summarize what you changed.`,
+      MEMORY_WRITEBACK_INSTRUCTION,
+    ]);
 
-${loop.prompt}
-
-Make only the changes that are warranted. When done, briefly summarize what you changed.`;
-
+    let result: RunClaudeQueryResult;
     try {
-      await runWithToolExecutionContext(
+      result = await runWithToolExecutionContext(
         { projectId: loop.project_id, chatSessionId: sessionKey },
         () => runClaudeQuery({ prompt, sdkOptions, timeoutMs: LOOP_TIMEOUT_MS })
       );
@@ -218,6 +279,8 @@ Make only the changes that are warranted. When done, briefly summarize what you 
       unsubDoc();
       unsubCtx();
     }
+
+    const { memory } = parseLoopReply(result.text);
 
     let applied = 0;
     for (const [relPath, content] of fileWrites) {
@@ -232,12 +295,12 @@ Make only the changes that are warranted. When done, briefly summarize what you 
     }
 
     if (applied === 0) {
-      return { outcome: 'no_op', summary: 'No updates were needed', detail: null, error: null, artifactPath: null };
+      return { outcome: 'no_op', summary: 'No updates were needed', detail: null, error: null, artifactPath: null, memory };
     }
     const summary = `Updated ${applied} file${applied === 1 ? '' : 's'}`;
     const fileList = Array.from(fileWrites.keys()).join(', ');
     emitFinding(loop, `${loop.name}: ${summary}`, fileList);
-    return { outcome: 'ok', summary, detail: fileList, error: null, artifactPath: null };
+    return { outcome: 'ok', summary, detail: fileList, error: null, artifactPath: null, memory };
   }
 
   function emitFinding(loop: ScheduledLoop, title: string, body?: string, artifactPath?: string): void {
@@ -287,6 +350,7 @@ Make only the changes that are warranted. When done, briefly summarize what you 
           detail: null,
           error: e instanceof Error ? e.message : String(e),
           artifactPath: null,
+          memory: null,
         };
       }
 
@@ -302,6 +366,9 @@ Make only the changes that are warranted. When done, briefly summarize what you 
       });
       deps.loopRuns.pruneOld(loopId, RUN_HISTORY_LIMIT);
       deps.scheduledLoops.recordRunOutcome(loopId, result.outcome, result.error, startedAt);
+      if (result.outcome !== 'error' && result.memory !== null) {
+        deps.scheduledLoops.updateMemory(loopId, result.memory);
+      }
       deps.broadcastToWindows(SCHEDULED_LOOP_RUN_CHANNEL, {
         projectId: loop.project_id,
         loopId,

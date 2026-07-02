@@ -15,6 +15,7 @@ function makeLoop(over: Partial<ScheduledLoop> = {}): ScheduledLoop {
     last_run_at: null,
     last_outcome: null,
     last_error: null,
+    memory: null,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
     ...over,
@@ -35,6 +36,7 @@ describe('ScheduledLoopService', () => {
       update: vi.fn(),
       delete: vi.fn().mockReturnValue(true),
       recordRunOutcome: vi.fn(),
+      updateMemory: vi.fn(),
     };
     loopRuns = {
       create: vi.fn(),

@@ -175,6 +175,8 @@ export interface ScheduledLoop {
   last_run_at: string | null;
   last_outcome: LoopRunOutcome | null;
   last_error: string | null;
+  /** Compact carried-forward state from previous runs, written back by the agent after each run. */
+  memory: string | null;
   created_at: string;
   updated_at: string;
 }
