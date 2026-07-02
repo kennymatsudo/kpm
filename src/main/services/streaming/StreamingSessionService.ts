@@ -111,6 +111,48 @@ export function buildContinuationHistory(
   return selected.reverse();
 }
 
+// =============================================================================
+// Renderer Event Helpers
+// =============================================================================
+// The result-forwarding code below emits the same few renderer channels from
+// many call sites; these give each channel one place that builds its payload
+// shape instead of every call site repeating {projectId, chatSessionId, ...}.
+
+function sendChatActivity(
+  mainWindow: BrowserWindow | null,
+  projectId: string,
+  chatSessionId: string | undefined,
+  activity: Activity,
+): void {
+  mainWindow?.webContents.send('chat:activity', { projectId, chatSessionId, activity });
+}
+
+function sendChatError(
+  mainWindow: BrowserWindow | null,
+  projectId: string,
+  chatSessionId: string | undefined,
+  error: string,
+): void {
+  mainWindow?.webContents.send('chat:error', { projectId, chatSessionId, error });
+}
+
+/** Roll back a session's optimistic 'processing' transition back to 'ready'. */
+function resetToReady(managed: Pick<ManagedSession, 'state' | 'processingStartTime' | 'lastSdkActivity'>): void {
+  managed.state = 'ready';
+  managed.processingStartTime = undefined;
+  managed.lastSdkActivity = undefined;
+}
+
+function sendQueueCleared(
+  mainWindow: BrowserWindow | null,
+  projectId: string,
+  chatSessionId: string | undefined,
+  clientMessageId: string | undefined,
+  reason: 'cancelled' | 'already_sent' | 'session_disconnected',
+): void {
+  mainWindow?.webContents.send('chat:queue-cleared', { projectId, chatSessionId, clientMessageId, reason });
+}
+
 /**
  * Internal envelope wrapping a user-facing message for transport through the
  * service. Carries the typed text alongside any file attachments that should
@@ -348,6 +390,341 @@ export interface StreamingSessionServiceDeps {
 }
 
 // =============================================================================
+// Turn-Result Finalization
+// =============================================================================
+
+/**
+ * Finalize a completed turn on receipt of the SDK's 'result' message:
+ * queued-follow-up promotion, error/truncation banners, message persistence,
+ * tool-call-log finalization, segment/tool-activity reset, session-title
+ * fetch, auth-error teardown, and usage/cost recording. Statement order
+ * within this function is load-bearing (see inline comments on chat:done
+ * ordering) — callers should not reorder these steps.
+ */
+export function finalizeTurnResult(
+  key: string,
+  projectId: string,
+  chatSessionId: string,
+  managed: ManagedSession,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sdkMsg: any,
+  mainWindow: BrowserWindow | null,
+  deps: {
+    chatMessageRepository: StreamingSessionServiceDeps['chatMessageRepository'];
+    chatSessionRepository: StreamingSessionServiceDeps['chatSessionRepository'];
+    toolCallLogger?: StreamingSessionServiceDeps['toolCallLogger'];
+    recordUsage?: StreamingSessionServiceDeps['recordUsage'];
+    projectRepository: StreamingSessionServiceDeps['projectRepository'];
+    disconnectSession: (key: string, options?: { silent?: boolean; reason?: string; source?: string }) => Promise<void>;
+  },
+): void {
+  // In streaming-input mode the SDK input generator may already be waiting
+  // on pull(), so a mid-turn send can be handed straight to the model as
+  // steering input for THIS turn and answered in place; no second `result`
+  // ever arrives. Treat a follow-up as pending only when it is still sitting
+  // unconsumed in the SDK input queue.
+  const hasQueuedFollowUp = managed.session.pendingQueuedCount() > 0;
+  const nextQueuedClientMessageId = hasQueuedFollowUp ? managed.pendingFollowUpClientMessageIds[0] : undefined;
+  // The first follow-up the SDK consumed as steering input for THIS turn.
+  // Surfaced as `consumedQueuedClientMessageId` so the renderer drops the
+  // message's optimistic "queued" badge. It is deliberately NOT used to
+  // anchor the assistant bubble: this turn answered these interjections, so
+  // the finalized bubble must land AFTER them in the transcript, never above
+  // the very messages it responded to (see `beforeClientMessageId` below).
+  const firstLiveFollowUpClientMessageId =
+    managed.acceptedFollowUpClientMessageIds[0]
+    ?? (!hasQueuedFollowUp ? managed.pendingFollowUpClientMessageIds[0] : undefined);
+
+  if (!hasQueuedFollowUp && managed.pendingFollowUpClientMessageIds.length > 0) {
+    for (const clientMessageId of managed.pendingFollowUpClientMessageIds) {
+      sendQueueCleared(mainWindow, projectId, chatSessionId, clientMessageId, 'already_sent');
+      managed.acceptedFollowUpClientMessageIds.push(clientMessageId);
+    }
+    managed.pendingFollowUpClientMessageIds = [];
+  }
+  // A queued follow-up means the SDK is about to pull the next message
+  // and start another turn. Stay in 'processing' so concurrent sends
+  // still route to the queue path (rather than racing into the brief
+  // 'ready' window). Reset turn-timing fields for the new turn.
+  if (hasQueuedFollowUp) {
+    if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
+    managed.processingStartTime = Date.now();
+    managed.lastSdkActivity = Date.now();
+  } else {
+    resetToReady(managed);
+    // The SDK consumed any follow-up into this turn (or there was none).
+  }
+  const maxTokensReached = isMaxTokensReached(sdkMsg);
+
+  // Check if response was truncated
+  if (maxTokensReached) {
+    console.log(`[StreamingSessionService] Response truncated (max_tokens) for ${key}`);
+    mainWindow?.webContents.send('chat:truncated', {
+      projectId,
+      chatSessionId,
+      reason: 'max_tokens',
+    });
+  }
+
+  // Check if response hit max turns limit
+  if (isMaxTurnsReached(sdkMsg)) {
+    const numTurns = 'num_turns' in sdkMsg ? sdkMsg.num_turns : undefined;
+    console.log(`[StreamingSessionService] Response truncated (max_turns: ${numTurns}) for ${key}`);
+    sendChatError(mainWindow, projectId, chatSessionId, `Response reached the turn limit (${numTurns ?? 'unknown'} turns). Send another message to continue.`);
+  }
+
+  // Surface other terminal reasons that stopped the session. Skip when a
+  // specific assistant-message error was already surfaced this turn (e.g.
+  // an `overloaded` failure that also reports terminal_reason 'model_error')
+  // so the user sees one actionable banner, not two.
+  const terminalReason = getTerminalReason(sdkMsg);
+  if (terminalReason && terminalReason !== 'completed' && terminalReason !== 'max_turns' && !managed.turnErrorSurfaced) {
+    const terminalMessages: Partial<Record<typeof terminalReason, string>> = {
+      aborted_tools: 'Response stopped: tool execution was aborted.',
+      blocking_limit: 'Response stopped: rate limit reached. Send another message to continue.',
+      hook_stopped: 'Response stopped by a hook.',
+      stop_hook_prevented: 'Response stopped: a stop hook prevented continuation.',
+      tool_deferred: 'Response paused: a tool is waiting for approval.',
+      prompt_too_long: 'Response stopped: the prompt exceeded the context limit.',
+      model_error: 'Response stopped due to a model error.',
+      rapid_refill_breaker: 'Response stopped: too many rapid requests. Please wait a moment.',
+    };
+    const message = terminalMessages[terminalReason];
+    if (message) {
+      console.log(`[StreamingSessionService] Terminal reason: ${terminalReason} for ${key}`);
+      sendChatError(mainWindow, projectId, chatSessionId, message);
+    }
+  }
+
+  // Clear "Allow All Remaining" flag when response completes
+  clientManager.clearAllowAllRemaining(projectId);
+
+  // Detect auth error responses before resetting accumulatedResponse
+  const finalResponse = managed.accumulatedResponse.trim();
+  const isAuthError = /not logged in/i.test(finalResponse) && /\/login/i.test(finalResponse);
+
+  // Persist and finalize — errors here must not prevent chat:done from being sent
+  try {
+    if (finalResponse && managed.persistHistory) {
+      deps.chatMessageRepository.addMessage(
+        projectId,
+        'assistant',
+        finalResponse,
+        managed.chatSessionId,
+        undefined,
+        managed.provider,
+      );
+    }
+  } catch (dbError) {
+    console.error('[StreamingSessionService] Failed to persist assistant message:', dbError);
+  }
+
+  // Reset accumulated response for next turn
+  managed.accumulatedResponse = '';
+
+  try {
+    deps.toolCallLogger?.finalizeTurn(projectId, chatSessionId);
+  } catch (logError) {
+    console.error('[StreamingSessionService] Failed to finalize tool call turn:', logError);
+  }
+
+  // Reset segment state for next turn
+  managed.segmentState = {
+    currentSegmentId: 0,
+    hasTextInCurrentSegment: false,
+    pendingActivities: [],
+  };
+  managed.toolUseActivities.clear();
+
+  managed.lastTurnFinalized = true;
+  if (!hasQueuedFollowUp) {
+    mainWindow?.webContents.send('chat:session-ready', { projectId, chatSessionId });
+  }
+  // The aggregate sdkMsg.usage token counts are CUMULATIVE SUMS across all API
+  // calls in the agent turn (one call per tool-use loop iteration). For the
+  // context-window bar we want the occupancy of the FINAL API call, not the
+  // billing total. BetaUsage.iterations is an array of per-call usage objects;
+  // the last entry is the true context window snapshot. Fall back to the
+  // aggregate only when iterations is empty (single-call, no-tool turns).
+  const rawIterations = sdkMsg.usage?.iterations;
+  const lastIter =
+    Array.isArray(rawIterations) && rawIterations.length > 0
+      ? rawIterations[rawIterations.length - 1]
+      : null;
+  const ctxSource = lastIter ?? sdkMsg.usage;
+
+  mainWindow?.webContents.send('chat:done', {
+    projectId,
+    chatSessionId,
+    model: managed.resolvedModel,
+    hasQueuedFollowUp,
+    queuedClientMessageId: nextQueuedClientMessageId,
+    consumedQueuedClientMessageId: firstLiveFollowUpClientMessageId,
+    // Anchor the finalized bubble before the still-queued follow-up that
+    // becomes the NEXT turn (if any) — never before an interjection this
+    // turn already consumed. Undefined when nothing is deferred, so the
+    // bubble simply appends after the consumed follow-ups (chronological).
+    beforeClientMessageId: nextQueuedClientMessageId,
+    inputTokens: ctxSource?.input_tokens ?? undefined,
+    outputTokens: ctxSource?.output_tokens ?? undefined,
+    cacheReadTokens: ctxSource?.cache_read_input_tokens ?? undefined,
+    cacheCreationTokens: ctxSource?.cache_creation_input_tokens ?? undefined,
+    // BetaUsage has no context_window field; ModelUsage (sdkMsg.modelUsage)
+    // has it but as the model's max capacity, not current usage. Leave it
+    // undefined so ContextWindowBar falls back to resolveModelContextWindow.
+    contextWindow: undefined,
+  });
+
+  // Clear the queued envelope now — the SDK has the message and is about
+  // to feed it to Claude as the next turn. Any further sends on this
+  // session start fresh.
+  if (hasQueuedFollowUp && nextQueuedClientMessageId) {
+    managed.promotedFollowUpClientMessageIds.add(nextQueuedClientMessageId);
+  }
+
+  if (hasQueuedFollowUp) {
+    // Reset so that if the session ends before the second turn produces
+    // its own result message, handleSessionEnd will NOT suppress lifecycle
+    // events. Without this reset, lastTurnFinalized=true + state='processing'
+    // triggers the suppression guard and the renderer never receives
+    // chat:session-deactivated / chat:done — leaving isStreaming stuck.
+    managed.lastTurnFinalized = false;
+    managed.acceptedFollowUpClientMessageIds = [];
+  } else {
+    managed.acceptedFollowUpClientMessageIds = [];
+    managed.promotedFollowUpClientMessageIds.clear();
+  }
+
+  // Fire-and-forget: fetch the SDK's session summary so the renderer can
+  // show a meaningful tab title instead of the numeric "Claude N" label.
+  // Auto-summary generation runs alongside the first turn, so this is the
+  // earliest moment we can read it. Re-fetched after every turn so a
+  // user-renamed session updates the UI on next reply too.
+  if (managed.provider === 'claude' && managed.sessionId && managed.persistHistory) {
+    const sdkSessionId = managed.sessionId;
+    void getSessionInfo(sdkSessionId)
+      .then((info) => {
+        if (!info?.summary) return;
+        const title = sanitizeSessionTitle(info.summary, managed.titleSeed);
+        if (!title) return;
+        // Persist for the history dropdown so old sessions keep their
+        // meaningful label after a reload, then notify the live UI.
+        try {
+          deps.chatSessionRepository.updateTitle(chatSessionId, title);
+        } catch (err) {
+          console.warn('[StreamingSessionService] updateTitle failed:', err);
+        }
+        mainWindow?.webContents.send('chat:session-title', {
+          projectId,
+          chatSessionId,
+          title,
+        });
+      })
+      .catch((err: unknown) => {
+        console.warn('[StreamingSessionService] getSessionInfo failed:', err);
+      });
+  }
+
+  // Unblock interrupt-and-send orchestration waiting on this result.
+  // Runs after chat:done so the renderer can finalize its partial bubble
+  // before the follow-up user turn starts streaming.
+  if (managed.pendingInterruptResolver) {
+    const resolve = managed.pendingInterruptResolver;
+    managed.pendingInterruptResolver = undefined;
+    resolve();
+  }
+  if (maxTokensReached) {
+    sendChatError(mainWindow, projectId, chatSessionId, 'Response reached the output limit. Send another message to continue.');
+  }
+
+  // Auth error: tear down the session so the next message spawns a fresh subprocess
+  // that picks up updated credentials after /login, then surface an actionable banner.
+  if (isAuthError) {
+    console.log(`[StreamingSessionService] Auth error detected for ${key} — tearing down session`);
+    sendChatError(mainWindow, projectId, chatSessionId, 'Not logged in to Claude Code. Run /login in a terminal, then click Retry.');
+    void deps.disconnectSession(key, { silent: true });
+  }
+
+  // Update usage stats (non-critical). Prefer the centralized usage
+  // recorder when wired in — it persists per-event cost + the project
+  // token rollup. Fall back to the raw token rollup for tests/older
+  // callers that don't pass `recordUsage`.
+  //
+  // Per-model split: when a turn spawned subagents on a different model
+  // (e.g. main Opus delegates to the `explorer` Sonnet subagent), the SDK
+  // reports a per-model breakdown via `modelUsage`. Recording each model
+  // separately is the correct attribution; collapsing into the parent
+  // model would mislabel the subagent's tokens.
+  try {
+    const resultMsg = sdkMsg as {
+      usage?: typeof sdkMsg.usage;
+      total_cost_usd?: number | null;
+      session_id?: string | null;
+      uuid?: string | null;
+      modelUsage?: Record<string, {
+        inputTokens?: number;
+        outputTokens?: number;
+        cacheCreationInputTokens?: number;
+        cacheReadInputTokens?: number;
+        costUSD?: number;
+      }>;
+    };
+    if (sdkMsg.usage) {
+      if (deps.recordUsage) {
+        const totalCostUsd = resultMsg.total_cost_usd;
+        const perModel = resultMsg.modelUsage && Object.keys(resultMsg.modelUsage).length > 0
+          ? Object.entries(resultMsg.modelUsage)
+          : null;
+
+        if (perModel) {
+          for (const [modelId, mu] of perModel) {
+            deps.recordUsage({
+              projectId,
+              model: modelId,
+              usage: {
+                input_tokens: mu.inputTokens ?? 0,
+                output_tokens: mu.outputTokens ?? 0,
+                cache_creation_input_tokens: mu.cacheCreationInputTokens ?? 0,
+                cache_read_input_tokens: mu.cacheReadInputTokens ?? 0,
+              },
+              totalCostUsd: typeof mu.costUSD === 'number' ? mu.costUSD : null,
+              sdkSessionId: resultMsg.session_id ?? null,
+              sdkResultUuid: resultMsg.uuid ?? null,
+              sdkCostScope: modelId,
+              isCumulativeCostSnapshot: true,
+            });
+          }
+        } else {
+          deps.recordUsage({
+            projectId,
+            model: managed.provider === 'codex' ? 'codex' : managed.model,
+            usage: sdkMsg.usage,
+            totalCostUsd: totalCostUsd ?? null,
+            sdkSessionId: resultMsg.session_id ?? null,
+            sdkResultUuid: resultMsg.uuid ?? null,
+            sdkCostScope: '__total__',
+            isCumulativeCostSnapshot: true,
+          });
+        }
+      } else {
+        deps.projectRepository.updateTokens(projectId, {
+          input: sdkMsg.usage.input_tokens ?? 0,
+          output: sdkMsg.usage.output_tokens ?? 0,
+          total: (sdkMsg.usage.input_tokens ?? 0) + (sdkMsg.usage.output_tokens ?? 0),
+        });
+      }
+    }
+  } catch (statsError) {
+    console.error('[StreamingSessionService] Failed to update token stats:', statsError);
+  }
+
+  // Turn boundary: clear the per-turn error flag so the next turn starts
+  // clean. Done after every error-banner check above (including the late
+  // max-tokens one) so suppression only applies within this turn.
+  managed.turnErrorSurfaced = false;
+}
+
+// =============================================================================
 // Factory Function
 // =============================================================================
 
@@ -549,9 +926,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // error).
       const current = sessions.get(key);
       if (current?.state === 'processing') {
-        current.state = 'ready';
-        current.processingStartTime = undefined;
-        current.lastSdkActivity = undefined;
+        resetToReady(current);
       }
       return failure(`Failed to send message: ${(error as Error).message}`);
     }
@@ -1183,12 +1558,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     while (managed.pendingFollowUpClientMessageIds.length > 0 && managed.session.cancelLastQueued()) {
       const cancelledClientMessageId = managed.pendingFollowUpClientMessageIds.pop();
       const mainWindow = deps.getMainWindow();
-      mainWindow?.webContents.send('chat:queue-cleared', {
-        projectId: managed.projectId,
-        chatSessionId: managed.chatSessionId,
-        clientMessageId: cancelledClientMessageId,
-        reason: 'cancelled',
-      });
+      sendQueueCleared(mainWindow, managed.projectId, managed.chatSessionId, cancelledClientMessageId, 'cancelled');
     }
 
     const INTERRUPT_TIMEOUT_MS = 5000; // 5 seconds max for interrupt
@@ -1213,9 +1583,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       }
 
       // Reset state to ready so new messages can be sent
-      managed.state = 'ready';
-      managed.processingStartTime = undefined;
-      managed.lastSdkActivity = undefined;
+      resetToReady(managed);
       return success(undefined);
     } catch (error) {
       // If interrupt fails, try to disconnect the session
@@ -1225,147 +1593,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         source: 'interrupt',
       });
       return success(undefined); // Return success since we cleaned up
-    }
-  }
-
-  /**
-   * Interrupt the in-flight turn on `key`, wait for its result to finalize
-   * (partial response persisted, chat:done emitted), then send `message` as
-   * the next turn on the same session. Preserves session continuity so the
-   * conversation context is not lost — no reconnect.
-   *
-   * Invariants maintained across the orchestration:
-   * - `state` stays 'processing' throughout (never transiently 'ready'), so a
-   *   concurrent send cannot slip past the state guard and push a second
-   *   message onto the SDK ahead of the intended follow-up.
-   * - `interruptInProgress` is held for the duration; concurrent calls fail
-   *   fast instead of stacking interrupts.
-   * - `chat:chunk` emissions for the aborted turn are suppressed so late
-   *   tokens can't bleed into the next turn's bubble.
-   * - If the aborted turn's result never acknowledges, the orchestration
-   *   fails rather than optimistically sending. Leaving a queued send pending
-   *   while the SDK might still emit a late result would let `chat:done` for
-   *   the old turn clear the new turn's streaming state mid-response.
-   */
-  async function _interruptAndSendInSession(
-    key: string,
-    envelope: MessageEnvelope,
-  ): AsyncResult<void> {
-    const managed = sessions.get(key);
-    if (!managed) {
-      return failure('No active session');
-    }
-
-    if (managed.interruptInProgress) {
-      return failure('An interrupt is already in progress for this session. Please wait a moment.');
-    }
-
-    managed.interruptInProgress = true;
-    try {
-      // Wait for the aborted turn's result message. The result handler resolves
-      // this after persisting the partial response and emitting chat:done.
-      const resultFinalized = new Promise<void>((resolve) => {
-        managed.pendingInterruptResolver = resolve;
-      });
-
-      // Inline interrupt + timeout (do NOT reuse the public `interrupt()`,
-      // which would transition state to 'ready' — opening a window where a
-      // concurrent send could bypass this orchestration).
-      const INTERRUPT_ACK_TIMEOUT_MS = 5_000;
-      let interruptAckResult: 'ok' | 'timeout' | 'error' = 'error';
-      let interruptError: unknown;
-      try {
-        interruptAckResult = await Promise.race([
-          managed.session.interrupt().then(() => 'ok' as const),
-          new Promise<'timeout'>((resolve) =>
-            setTimeout(() => resolve('timeout'), INTERRUPT_ACK_TIMEOUT_MS),
-          ),
-        ]);
-      } catch (error) {
-        interruptError = error;
-      }
-
-      if (interruptAckResult !== 'ok') {
-        managed.pendingInterruptResolver = undefined;
-        if (interruptAckResult === 'timeout') {
-          console.warn(`[StreamingSessionService] Interrupt timed out for ${key}, force disconnecting`);
-        } else {
-          console.error(`[StreamingSessionService] Interrupt failed for ${key}:`, interruptError);
-        }
-        await disconnectSession(key, {
-          reason: interruptAckResult === 'timeout' ? 'interrupt_timeout' : 'interrupt_error',
-          source: 'interruptAndSendInSession',
-        });
-        return failure('Interrupt did not complete. Please resend your message.');
-      }
-
-      // Wait for the aborted turn's result (bounded). If it never arrives,
-      // fail rather than risk a late result landing during the next turn.
-      const RESULT_WAIT_TIMEOUT_MS = 5_000;
-      const resultStatus = await Promise.race([
-        resultFinalized.then(() => 'ok' as const),
-        new Promise<'timeout'>((resolve) =>
-          setTimeout(() => resolve('timeout'), RESULT_WAIT_TIMEOUT_MS),
-        ),
-      ]);
-      managed.pendingInterruptResolver = undefined;
-
-      if (resultStatus === 'timeout') {
-        console.warn(`[StreamingSessionService] Aborted-turn result never arrived for ${key}; tearing down`);
-        await disconnectSession(key, {
-          reason: 'interrupt_result_timeout',
-          source: 'interruptAndSendInSession',
-        });
-        return failure('Interrupted response did not acknowledge in time. Please resend your message.');
-      }
-
-      // At this point the aborted turn's result has been processed: the
-      // result handler set state='ready' and emitted chat:done. Verify the
-      // session is still usable before claiming it for the next turn.
-      const stillManaged = sessions.get(key);
-      if (!stillManaged?.session.isReady()) {
-        return failure('Session disconnected during interrupt. Please resend your message.');
-      }
-
-      // Send the new user message as the next turn. Mirrors the happy-path
-      // bookkeeping from sendMessageToSession for a fresh turn.
-      if (stillManaged.chatSessionId) clearPendingDocumentContent(stillManaged.chatSessionId);
-      stillManaged.lastTurnFinalized = false;
-      stillManaged.state = 'processing';
-      stillManaged.processingStartTime = Date.now();
-      stillManaged.lastSdkActivity = Date.now();
-      stillManaged.lastActivity = Date.now();
-
-      try {
-        await runWithToolExecutionContext(
-          { projectId: stillManaged.projectId, chatSessionId: stillManaged.chatSessionId },
-          async () => {
-            if (envelope.attachments && envelope.attachments.length > 0) {
-              const blocks = await buildUserContentBlocks(envelope.text, envelope.attachments);
-              stillManaged.session.sendUserContent(blocks);
-            } else {
-              stillManaged.session.send(envelope.text);
-            }
-          },
-        );
-        return success(undefined);
-      } catch (error) {
-        // Roll back the optimistic 'processing' transition so the session
-        // can accept retries.
-        const current = sessions.get(key);
-        if (current?.state === 'processing') {
-          current.state = 'ready';
-          current.processingStartTime = undefined;
-          current.lastSdkActivity = undefined;
-        }
-        return failure(`Failed to send message after interrupt: ${(error as Error).message}`);
-      }
-    } finally {
-      const current = sessions.get(key);
-      if (current) {
-        current.interruptInProgress = false;
-        current.pendingInterruptResolver = undefined;
-      }
     }
   }
 
@@ -1431,23 +1658,13 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const managed = sessions.get(key);
     if (!managed) {
       const mainWindow = deps.getMainWindow();
-      mainWindow?.webContents.send('chat:queue-cleared', {
-        projectId,
-        chatSessionId,
-        clientMessageId: requestedClientMessageId,
-        reason: 'session_disconnected',
-      });
+      sendQueueCleared(mainWindow, projectId, chatSessionId, requestedClientMessageId, 'session_disconnected');
       return failure('No active session');
     }
 
     if (managed.pendingFollowUpClientMessageIds.length === 0) {
       const mainWindow = deps.getMainWindow();
-      mainWindow?.webContents.send('chat:queue-cleared', {
-        projectId,
-        chatSessionId,
-        clientMessageId: requestedClientMessageId,
-        reason: 'already_sent',
-      });
+      sendQueueCleared(mainWindow, projectId, chatSessionId, requestedClientMessageId, 'already_sent');
       return failure('No queued message to cancel');
     }
 
@@ -1455,12 +1672,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const clientMessageId = requestedClientMessageId ?? lastPendingId;
     if (requestedClientMessageId && requestedClientMessageId !== lastPendingId) {
       const mainWindow = deps.getMainWindow();
-      mainWindow?.webContents.send('chat:queue-cleared', {
-        projectId,
-        chatSessionId,
-        clientMessageId,
-        reason: 'already_sent',
-      });
+      sendQueueCleared(mainWindow, projectId, chatSessionId, clientMessageId, 'already_sent');
       return failure('Only the most recent unsent follow-up can be cancelled.');
     }
 
@@ -1470,24 +1682,14 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // SDK already pulled it — too late to cancel. Surface so the renderer
       // can clear the "queued" badge but keep the bubble (it's now in flight).
       const mainWindow = deps.getMainWindow();
-      mainWindow?.webContents.send('chat:queue-cleared', {
-        projectId,
-        chatSessionId,
-        clientMessageId,
-        reason: 'already_sent',
-      });
+      sendQueueCleared(mainWindow, projectId, chatSessionId, clientMessageId, 'already_sent');
       return failure('Message was already sent to the model.');
     }
 
     managed.pendingFollowUpClientMessageIds.pop();
 
     const mainWindow = deps.getMainWindow();
-    mainWindow?.webContents.send('chat:queue-cleared', {
-      projectId,
-      chatSessionId,
-      clientMessageId,
-      reason: 'cancelled',
-    });
+    sendQueueCleared(mainWindow, projectId, chatSessionId, clientMessageId, 'cancelled');
     return success(undefined);
   }
 
@@ -1555,12 +1757,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     if (managed.pendingFollowUpClientMessageIds.length > 0 && !options.silent) {
       const mainWindow = deps.getMainWindow();
       for (const clientMessageId of managed.pendingFollowUpClientMessageIds) {
-        mainWindow?.webContents.send('chat:queue-cleared', {
-          projectId: managed.projectId,
-          chatSessionId: managed.chatSessionId,
-          clientMessageId,
-          reason: 'session_disconnected',
-        });
+        sendQueueCleared(mainWindow, managed.projectId, managed.chatSessionId, clientMessageId, 'session_disconnected');
       }
     }
     managed.pendingFollowUpClientMessageIds = [];
@@ -1672,16 +1869,13 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // understands why earlier turns may now appear condensed.
     if (isCompactBoundaryMessage(sdkMsg)) {
       const trigger = sdkMsg.compact_metadata?.trigger;
-      mainWindow?.webContents.send('chat:activity', {
-        projectId,
-        chatSessionId,
-        activity: {
-          type: 'other' as const,
-          label: 'Context compacted',
-          detail: trigger === 'manual'
-            ? 'Earlier conversation summarized'
-            : 'Earlier conversation summarized to free up context',
-        },
+      sendChatActivity(mainWindow, projectId, chatSessionId, {
+        id: randomUUID(),
+        type: 'other' as const,
+        label: 'Context compacted',
+        detail: trigger === 'manual'
+          ? 'Earlier conversation summarized'
+          : 'Earlier conversation summarized to free up context',
       });
       return;
     }
@@ -1712,7 +1906,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         const errorText = describeAssistantError(sdkMsg.error);
         if (errorText) {
           managed.turnErrorSurfaced = true;
-          mainWindow?.webContents.send('chat:error', { projectId, chatSessionId, error: errorText });
+          sendChatError(mainWindow, projectId, chatSessionId, errorText);
         }
       }
 
@@ -1732,7 +1926,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
               const detail = line.length > 100 ? `${line.slice(0, 100)}…` : line;
               const updated: Activity = { ...parent, detail };
               managed.toolUseActivities.set(parentId, updated);
-              mainWindow?.webContents.send('chat:activity', { projectId, chatSessionId, activity: updated });
+              sendChatActivity(mainWindow, projectId, chatSessionId, updated);
             }
           }
           // Subagent thinking/tool_use carry no main-transcript meaning beyond
@@ -1762,7 +1956,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             // suppress during interrupt-and-send so late old-turn activities
             // can't repopulate the next turn's activity indicator.
             if (!managed.interruptInProgress) {
-              mainWindow?.webContents.send('chat:activity', { projectId, chatSessionId, activity });
+              sendChatActivity(mainWindow, projectId, chatSessionId, activity);
             }
           }
 
@@ -1854,12 +2048,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         if (!wasPromoted) {
           managed.acceptedFollowUpClientMessageIds.push(acceptedClientMessageId);
         }
-        mainWindow?.webContents.send('chat:queue-cleared', {
-          projectId,
-          chatSessionId,
-          clientMessageId: acceptedClientMessageId,
-          reason: 'already_sent',
-        });
+        sendQueueCleared(mainWindow, projectId, chatSessionId, acceptedClientMessageId, 'already_sent');
       }
     }
 
@@ -1887,7 +2076,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           diffHunks: diff.hunks.length > 0 ? diff.hunks : undefined,
         };
         managed.toolUseActivities.set(toolUseId, updated);
-        mainWindow?.webContents.send('chat:activity', { projectId, chatSessionId, activity: updated });
+        sendChatActivity(mainWindow, projectId, chatSessionId, updated);
       }
     }
 
@@ -1907,7 +2096,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           elapsedSeconds: Math.round(sdkMsg.elapsed_time_seconds),
         };
         managed.toolUseActivities.set(sdkMsg.tool_use_id, updated);
-        mainWindow?.webContents.send('chat:activity', { projectId, chatSessionId, activity: updated });
+        sendChatActivity(mainWindow, projectId, chatSessionId, updated);
       }
     }
 
@@ -1924,18 +2113,14 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           // Surface the reason prominently and mark the turn as already
           // explained so the generic terminal-reason banner is suppressed.
           managed.turnErrorSurfaced = true;
-          mainWindow?.webContents.send('chat:error', { projectId, chatSessionId, error: content });
+          sendChatError(mainWindow, projectId, chatSessionId, content);
         } else if (sdkMsg.level !== 'info') {
           // 'info' is transcript-only per the SDK; surface notice/suggestion/
           // warning as a lightweight activity (same channel as api_retry below).
           const label = sdkMsg.level === 'warning' ? 'Warning'
             : sdkMsg.level === 'suggestion' ? 'Suggestion'
             : 'Notice';
-          mainWindow?.webContents.send('chat:activity', {
-            projectId,
-            chatSessionId,
-            activity: { type: 'other' as const, label, detail: content },
-          });
+          sendChatActivity(mainWindow, projectId, chatSessionId, { id: randomUUID(), type: 'other' as const, label, detail: content });
         }
       }
     }
@@ -1951,24 +2136,17 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // Suppressed during interrupt-and-send so a late old-turn refusal can't leak
     // into the next turn.
     if (isModelRefusalFallbackMessage(sdkMsg) && !managed.interruptInProgress) {
-      mainWindow?.webContents.send('chat:activity', {
-        projectId,
-        chatSessionId,
-        activity: {
-          type: 'other' as const,
-          label: 'Switched models',
-          detail: `${sdkMsg.original_model} declined this request — continuing on ${sdkMsg.fallback_model}`,
-        },
+      sendChatActivity(mainWindow, projectId, chatSessionId, {
+        id: randomUUID(),
+        type: 'other' as const,
+        label: 'Switched models',
+        detail: `${sdkMsg.original_model} declined this request — continuing on ${sdkMsg.fallback_model}`,
       });
     }
 
     if (isModelRefusalNoFallbackMessage(sdkMsg) && !managed.interruptInProgress) {
       managed.turnErrorSurfaced = true;
-      mainWindow?.webContents.send('chat:error', {
-        projectId,
-        chatSessionId,
-        error: describeModelRefusalNoFallback(sdkMsg),
-      });
+      sendChatError(mainWindow, projectId, chatSessionId, describeModelRefusalNoFallback(sdkMsg));
     }
 
     // Handle API retry messages — surface to UI as activity
@@ -1976,14 +2154,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       const delaySec = Math.round(sdkMsg.retry_delay_ms / 1000);
       const statusText = sdkMsg.error_status ? `HTTP ${sdkMsg.error_status}` : 'connection error';
       console.log(`[StreamingSessionService] API retry ${sdkMsg.attempt}/${sdkMsg.max_retries} (${statusText}, retry in ${delaySec}s) for ${key}`);
-      mainWindow?.webContents.send('chat:activity', {
-        projectId,
-        chatSessionId,
-        activity: {
-          type: 'other' as const,
-          label: 'Retrying',
-          detail: `API ${statusText} — retrying in ${delaySec}s (attempt ${sdkMsg.attempt}/${sdkMsg.max_retries})`,
-        },
+      sendChatActivity(mainWindow, projectId, chatSessionId, {
+        id: randomUUID(),
+        type: 'other' as const,
+        label: 'Retrying',
+        detail: `API ${statusText} — retrying in ${delaySec}s (attempt ${sdkMsg.attempt}/${sdkMsg.max_retries})`,
       });
     }
 
@@ -2002,343 +2177,25 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             ? `Rate limited${resetsIn ? ` — resets in ${resetsIn}m` : ''}`
             : `Approaching rate limit${info.utilization ? ` (${Math.round(info.utilization * 100)}% used)` : ''}`;
         console.log(`[StreamingSessionService] Rate limit ${info.status}${outOfCredits ? ' (credits_required)' : ''}: ${detail} for ${key}`);
-        mainWindow?.webContents.send('chat:activity', {
-          projectId,
-          chatSessionId,
-          activity: {
-            type: 'other' as const,
-            label: outOfCredits ? 'Out of Credits' : info.status === 'rejected' ? 'Rate Limited' : 'Rate Limit Warning',
-            detail,
-          },
+        sendChatActivity(mainWindow, projectId, chatSessionId, {
+          id: randomUUID(),
+          type: 'other' as const,
+          label: outOfCredits ? 'Out of Credits' : info.status === 'rejected' ? 'Rate Limited' : 'Rate Limit Warning',
+          detail,
         });
       }
     }
 
     // Handle result message (final stats)
     if (sdkMsg.type === 'result') {
-      // In streaming-input mode the SDK input generator may already be waiting
-      // on pull(), so a mid-turn send can be handed straight to the model as
-      // steering input for THIS turn and answered in place; no second `result`
-      // ever arrives. Treat a follow-up as pending only when it is still sitting
-      // unconsumed in the SDK input queue.
-      const hasQueuedFollowUp = managed.session.pendingQueuedCount() > 0;
-      const nextQueuedClientMessageId = hasQueuedFollowUp ? managed.pendingFollowUpClientMessageIds[0] : undefined;
-      // The first follow-up the SDK consumed as steering input for THIS turn.
-      // Surfaced as `consumedQueuedClientMessageId` so the renderer drops the
-      // message's optimistic "queued" badge. It is deliberately NOT used to
-      // anchor the assistant bubble: this turn answered these interjections, so
-      // the finalized bubble must land AFTER them in the transcript, never above
-      // the very messages it responded to (see `beforeClientMessageId` below).
-      const firstLiveFollowUpClientMessageId =
-        managed.acceptedFollowUpClientMessageIds[0]
-        ?? (!hasQueuedFollowUp ? managed.pendingFollowUpClientMessageIds[0] : undefined);
-
-      if (!hasQueuedFollowUp && managed.pendingFollowUpClientMessageIds.length > 0) {
-        for (const clientMessageId of managed.pendingFollowUpClientMessageIds) {
-          mainWindow?.webContents.send('chat:queue-cleared', {
-            projectId,
-            chatSessionId,
-            clientMessageId,
-            reason: 'already_sent',
-          });
-          managed.acceptedFollowUpClientMessageIds.push(clientMessageId);
-        }
-        managed.pendingFollowUpClientMessageIds = [];
-      }
-      // A queued follow-up means the SDK is about to pull the next message
-      // and start another turn. Stay in 'processing' so concurrent sends
-      // still route to the queue path (rather than racing into the brief
-      // 'ready' window). Reset turn-timing fields for the new turn.
-      if (hasQueuedFollowUp) {
-        if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
-        managed.processingStartTime = Date.now();
-        managed.lastSdkActivity = Date.now();
-      } else {
-        managed.state = 'ready';
-        managed.processingStartTime = undefined;
-        managed.lastSdkActivity = undefined;
-        // The SDK consumed any follow-up into this turn (or there was none).
-      }
-      const maxTokensReached = isMaxTokensReached(sdkMsg);
-
-      // Check if response was truncated
-      if (maxTokensReached) {
-        console.log(`[StreamingSessionService] Response truncated (max_tokens) for ${key}`);
-        mainWindow?.webContents.send('chat:truncated', {
-          projectId,
-          chatSessionId,
-          reason: 'max_tokens',
-        });
-      }
-
-      // Check if response hit max turns limit
-      if (isMaxTurnsReached(sdkMsg)) {
-        const numTurns = 'num_turns' in sdkMsg ? sdkMsg.num_turns : undefined;
-        console.log(`[StreamingSessionService] Response truncated (max_turns: ${numTurns}) for ${key}`);
-        mainWindow?.webContents.send('chat:error', {
-          projectId,
-          chatSessionId,
-          error: `Response reached the turn limit (${numTurns ?? 'unknown'} turns). Send another message to continue.`,
-        });
-      }
-
-      // Surface other terminal reasons that stopped the session. Skip when a
-      // specific assistant-message error was already surfaced this turn (e.g.
-      // an `overloaded` failure that also reports terminal_reason 'model_error')
-      // so the user sees one actionable banner, not two.
-      const terminalReason = getTerminalReason(sdkMsg);
-      if (terminalReason && terminalReason !== 'completed' && terminalReason !== 'max_turns' && !managed.turnErrorSurfaced) {
-        const terminalMessages: Partial<Record<typeof terminalReason, string>> = {
-          aborted_tools: 'Response stopped: tool execution was aborted.',
-          blocking_limit: 'Response stopped: rate limit reached. Send another message to continue.',
-          hook_stopped: 'Response stopped by a hook.',
-          stop_hook_prevented: 'Response stopped: a stop hook prevented continuation.',
-          tool_deferred: 'Response paused: a tool is waiting for approval.',
-          prompt_too_long: 'Response stopped: the prompt exceeded the context limit.',
-          model_error: 'Response stopped due to a model error.',
-          rapid_refill_breaker: 'Response stopped: too many rapid requests. Please wait a moment.',
-        };
-        const message = terminalMessages[terminalReason];
-        if (message) {
-          console.log(`[StreamingSessionService] Terminal reason: ${terminalReason} for ${key}`);
-          mainWindow?.webContents.send('chat:error', { projectId, chatSessionId, error: message });
-        }
-      }
-
-      // Clear "Allow All Remaining" flag when response completes
-      clientManager.clearAllowAllRemaining(projectId);
-
-      // Detect auth error responses before resetting accumulatedResponse
-      const finalResponse = managed.accumulatedResponse.trim();
-      const isAuthError = /not logged in/i.test(finalResponse) && /\/login/i.test(finalResponse);
-
-      // Persist and finalize — errors here must not prevent chat:done from being sent
-      try {
-        if (finalResponse && managed.persistHistory) {
-          deps.chatMessageRepository.addMessage(
-            projectId,
-            'assistant',
-            finalResponse,
-            managed.chatSessionId,
-            undefined,
-            managed.provider,
-          );
-        }
-      } catch (dbError) {
-        console.error('[StreamingSessionService] Failed to persist assistant message:', dbError);
-      }
-
-      // Reset accumulated response for next turn
-      managed.accumulatedResponse = '';
-
-      try {
-        deps.toolCallLogger?.finalizeTurn(projectId, chatSessionId);
-      } catch (logError) {
-        console.error('[StreamingSessionService] Failed to finalize tool call turn:', logError);
-      }
-
-      // Reset segment state for next turn
-      managed.segmentState = {
-        currentSegmentId: 0,
-        hasTextInCurrentSegment: false,
-        pendingActivities: [],
-      };
-      managed.toolUseActivities.clear();
-
-      managed.lastTurnFinalized = true;
-      if (!hasQueuedFollowUp) {
-        mainWindow?.webContents.send('chat:session-ready', { projectId, chatSessionId });
-      }
-      // The aggregate sdkMsg.usage token counts are CUMULATIVE SUMS across all API
-      // calls in the agent turn (one call per tool-use loop iteration). For the
-      // context-window bar we want the occupancy of the FINAL API call, not the
-      // billing total. BetaUsage.iterations is an array of per-call usage objects;
-      // the last entry is the true context window snapshot. Fall back to the
-      // aggregate only when iterations is empty (single-call, no-tool turns).
-      const rawIterations = sdkMsg.usage?.iterations;
-      const lastIter =
-        Array.isArray(rawIterations) && rawIterations.length > 0
-          ? rawIterations[rawIterations.length - 1]
-          : null;
-      const ctxSource = lastIter ?? sdkMsg.usage;
-
-      mainWindow?.webContents.send('chat:done', {
-        projectId,
-        chatSessionId,
-        model: managed.resolvedModel,
-        hasQueuedFollowUp,
-        queuedClientMessageId: nextQueuedClientMessageId,
-        consumedQueuedClientMessageId: firstLiveFollowUpClientMessageId,
-        // Anchor the finalized bubble before the still-queued follow-up that
-        // becomes the NEXT turn (if any) — never before an interjection this
-        // turn already consumed. Undefined when nothing is deferred, so the
-        // bubble simply appends after the consumed follow-ups (chronological).
-        beforeClientMessageId: nextQueuedClientMessageId,
-        inputTokens: ctxSource?.input_tokens ?? undefined,
-        outputTokens: ctxSource?.output_tokens ?? undefined,
-        cacheReadTokens: ctxSource?.cache_read_input_tokens ?? undefined,
-        cacheCreationTokens: ctxSource?.cache_creation_input_tokens ?? undefined,
-        // BetaUsage has no context_window field; ModelUsage (sdkMsg.modelUsage)
-        // has it but as the model's max capacity, not current usage. Leave it
-        // undefined so ContextWindowBar falls back to resolveModelContextWindow.
-        contextWindow: undefined,
+      finalizeTurnResult(key, projectId, chatSessionId, managed, sdkMsg, mainWindow, {
+        chatMessageRepository: deps.chatMessageRepository,
+        chatSessionRepository: deps.chatSessionRepository,
+        toolCallLogger: deps.toolCallLogger,
+        recordUsage: deps.recordUsage,
+        projectRepository: deps.projectRepository,
+        disconnectSession,
       });
-
-      // Clear the queued envelope now — the SDK has the message and is about
-      // to feed it to Claude as the next turn. Any further sends on this
-      // session start fresh.
-      if (hasQueuedFollowUp && nextQueuedClientMessageId) {
-        managed.promotedFollowUpClientMessageIds.add(nextQueuedClientMessageId);
-      }
-
-      if (hasQueuedFollowUp) {
-        // Reset so that if the session ends before the second turn produces
-        // its own result message, handleSessionEnd will NOT suppress lifecycle
-        // events. Without this reset, lastTurnFinalized=true + state='processing'
-        // triggers the suppression guard and the renderer never receives
-        // chat:session-deactivated / chat:done — leaving isStreaming stuck.
-        managed.lastTurnFinalized = false;
-        managed.acceptedFollowUpClientMessageIds = [];
-      } else {
-        managed.acceptedFollowUpClientMessageIds = [];
-        managed.promotedFollowUpClientMessageIds.clear();
-      }
-
-      // Fire-and-forget: fetch the SDK's session summary so the renderer can
-      // show a meaningful tab title instead of the numeric "Claude N" label.
-      // Auto-summary generation runs alongside the first turn, so this is the
-      // earliest moment we can read it. Re-fetched after every turn so a
-      // user-renamed session updates the UI on next reply too.
-      if (managed.provider === 'claude' && managed.sessionId && managed.persistHistory) {
-        const sdkSessionId = managed.sessionId;
-        void getSessionInfo(sdkSessionId)
-          .then((info) => {
-            if (!info?.summary) return;
-            const title = sanitizeSessionTitle(info.summary, managed.titleSeed);
-            if (!title) return;
-            // Persist for the history dropdown so old sessions keep their
-            // meaningful label after a reload, then notify the live UI.
-            try {
-              deps.chatSessionRepository.updateTitle(chatSessionId, title);
-            } catch (err) {
-              console.warn('[StreamingSessionService] updateTitle failed:', err);
-            }
-            mainWindow?.webContents.send('chat:session-title', {
-              projectId,
-              chatSessionId,
-              title,
-            });
-          })
-          .catch((err: unknown) => {
-            console.warn('[StreamingSessionService] getSessionInfo failed:', err);
-          });
-      }
-
-      // Unblock interrupt-and-send orchestration waiting on this result.
-      // Runs after chat:done so the renderer can finalize its partial bubble
-      // before the follow-up user turn starts streaming.
-      if (managed.pendingInterruptResolver) {
-        const resolve = managed.pendingInterruptResolver;
-        managed.pendingInterruptResolver = undefined;
-        resolve();
-      }
-      if (maxTokensReached) {
-        mainWindow?.webContents.send('chat:error', {
-          projectId,
-          chatSessionId,
-          error: 'Response reached the output limit. Send another message to continue.',
-        });
-      }
-
-      // Auth error: tear down the session so the next message spawns a fresh subprocess
-      // that picks up updated credentials after /login, then surface an actionable banner.
-      if (isAuthError) {
-        console.log(`[StreamingSessionService] Auth error detected for ${key} — tearing down session`);
-        mainWindow?.webContents.send('chat:error', {
-          projectId,
-          chatSessionId,
-          error: 'Not logged in to Claude Code. Run /login in a terminal, then click Retry.',
-        });
-        void disconnectSession(key, { silent: true });
-      }
-
-      // Update usage stats (non-critical). Prefer the centralized usage
-      // recorder when wired in — it persists per-event cost + the project
-      // token rollup. Fall back to the raw token rollup for tests/older
-      // callers that don't pass `recordUsage`.
-      //
-      // Per-model split: when a turn spawned subagents on a different model
-      // (e.g. main Opus delegates to the `explorer` Sonnet subagent), the SDK
-      // reports a per-model breakdown via `modelUsage`. Recording each model
-      // separately is the correct attribution; collapsing into the parent
-      // model would mislabel the subagent's tokens.
-      try {
-        const resultMsg = sdkMsg as {
-          usage?: typeof sdkMsg.usage;
-          total_cost_usd?: number | null;
-          session_id?: string | null;
-          uuid?: string | null;
-          modelUsage?: Record<string, {
-            inputTokens?: number;
-            outputTokens?: number;
-            cacheCreationInputTokens?: number;
-            cacheReadInputTokens?: number;
-            costUSD?: number;
-          }>;
-        };
-        if (sdkMsg.usage) {
-          if (deps.recordUsage) {
-            const totalCostUsd = resultMsg.total_cost_usd;
-            const perModel = resultMsg.modelUsage && Object.keys(resultMsg.modelUsage).length > 0
-              ? Object.entries(resultMsg.modelUsage)
-              : null;
-
-            if (perModel) {
-              for (const [modelId, mu] of perModel) {
-                deps.recordUsage({
-                  projectId,
-                  model: modelId,
-                  usage: {
-                    input_tokens: mu.inputTokens ?? 0,
-                    output_tokens: mu.outputTokens ?? 0,
-                    cache_creation_input_tokens: mu.cacheCreationInputTokens ?? 0,
-                    cache_read_input_tokens: mu.cacheReadInputTokens ?? 0,
-                  },
-                  totalCostUsd: typeof mu.costUSD === 'number' ? mu.costUSD : null,
-                  sdkSessionId: resultMsg.session_id ?? null,
-                  sdkResultUuid: resultMsg.uuid ?? null,
-                  sdkCostScope: modelId,
-                  isCumulativeCostSnapshot: true,
-                });
-              }
-            } else {
-              deps.recordUsage({
-                projectId,
-                model: managed.provider === 'codex' ? 'codex' : managed.model,
-                usage: sdkMsg.usage,
-                totalCostUsd: totalCostUsd ?? null,
-                sdkSessionId: resultMsg.session_id ?? null,
-                sdkResultUuid: resultMsg.uuid ?? null,
-                sdkCostScope: '__total__',
-                isCumulativeCostSnapshot: true,
-              });
-            }
-          } else {
-            deps.projectRepository.updateTokens(projectId, {
-              input: sdkMsg.usage.input_tokens ?? 0,
-              output: sdkMsg.usage.output_tokens ?? 0,
-              total: (sdkMsg.usage.input_tokens ?? 0) + (sdkMsg.usage.output_tokens ?? 0),
-            });
-          }
-        }
-      } catch (statsError) {
-        console.error('[StreamingSessionService] Failed to update token stats:', statsError);
-      }
-
-      // Turn boundary: clear the per-turn error flag so the next turn starts
-      // clean. Done after every error-banner check above (including the late
-      // max-tokens one) so suppression only applies within this turn.
-      managed.turnErrorSurfaced = false;
     }
 
     // Handle prompt suggestion (arrives after result message)
@@ -2521,9 +2378,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             ? `no SDK activity for ${Math.round(idleSinceLastSdk / 1000)}s`
             : `total processing exceeded ${Math.round(sessionConfig.processingTimeoutMs / 60000)} minutes`;
           console.log(`[StreamingSessionService] Processing timeout for ${key}: ${reason}`);
-          managed.state = 'ready';
-          managed.processingStartTime = undefined;
-          managed.lastSdkActivity = undefined;
+          resetToReady(managed);
 
           void interrupt(key).catch((error) => {
             console.error(`[StreamingSessionService] Failed to interrupt timed-out session ${key}:`, error);
@@ -2532,11 +2387,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           const errorMessage = isIdleHung
             ? 'Response appears stuck. Please try again.'
             : `Response timed out after ${Math.round(sessionConfig.processingTimeoutMs / 60000)} minutes. Please try again.`;
-          mainWindow?.webContents.send('chat:error', {
-            projectId: managed.projectId,
-            chatSessionId: managed.chatSessionId,
-            error: errorMessage,
-          });
+          sendChatError(mainWindow, managed.projectId, managed.chatSessionId, errorMessage);
           // Also send chat:done to ensure isStreaming clears in the renderer
           mainWindow?.webContents.send('chat:done', {
             projectId: managed.projectId,
