@@ -28,6 +28,7 @@ import type {
 import { failure, success, type AsyncResult, type ServiceResult } from '../result';
 import type { createDevSessionService } from './DevSessionService';
 import type { createGitHubService } from './GitHubService';
+import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
 
 type GitHubService = ReturnType<typeof createGitHubService>;
 type DevSessionService = ReturnType<typeof createDevSessionService>;
@@ -56,6 +57,7 @@ export interface ReviewServiceDeps {
   reviewSyncState: IReviewSyncStateRepository;
   gitHubService: GitHubService;
   devSessionService: DevSessionService;
+  phaseMachine: Pick<AutomationPhaseMachine, 'transition'>;
 }
 
 function deriveTaskSource(thread: PrReviewThread): ReviewTaskSource {
@@ -405,7 +407,7 @@ export function createReviewService(deps: ReviewServiceDeps) {
     const contextResult = await deps.gitHubService.buildAddressReviewContext(sessionId, { threadIds });
     if (!contextResult.ok) return contextResult;
 
-    deps.devSessionService.updateAutomationPhase(sessionId, 'addressing_review');
+    deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued' });
 
     const followUpResult = await deps.devSessionService.sendAgentFollowUp(
       sessionId,
@@ -487,7 +489,7 @@ export function createReviewService(deps: ReviewServiceDeps) {
       return success({ inbox, taskIds: [], context: '' });
     }
 
-    deps.devSessionService.updateAutomationPhase(sessionId, 'addressing_review');
+    deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued' });
 
     if (session.status === 'active') {
       const queuedInbox = await syncSessionReviewState(sessionId);
@@ -501,7 +503,7 @@ export function createReviewService(deps: ReviewServiceDeps) {
 
     const sendResult = await sendQueuedReviewTasks(sessionId, queuedTasks);
     if (!sendResult.ok) {
-      deps.devSessionService.updateAutomationPhase(sessionId, 'needs_attention');
+      deps.phaseMachine.transition(sessionId, { type: 'automationFailed', reason: 'follow-up-send-failed' });
       return sendResult;
     }
     return sendResult;

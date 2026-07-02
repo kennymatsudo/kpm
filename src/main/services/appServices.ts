@@ -72,6 +72,7 @@ import { classifyAttachment, saveTempAttachment } from './files/TempImageService
 import { createAgentSessionManager } from './agents/AgentSessionManager';
 import { createHookServer } from './agents/hookServer';
 import { createBoardAgentOrchestrator } from './agents/BoardAgentOrchestrator';
+import { createAutomationPhaseMachine } from './agents/automationPhaseMachine';
 import { createReviewPollService } from './repo/ReviewPollService';
 import { createScheduledLoopService } from './core/ScheduledLoopService';
 import { createScheduledLoopRunnerService } from './repo/ScheduledLoopRunnerService';
@@ -274,9 +275,11 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const hookServer = createHookServer();
   let agentSessionManagerRef: ReturnType<typeof createAgentSessionManager> | null = null;
+  const phaseMachine = createAutomationPhaseMachine({ devSessions: container.devSessions });
   const boardAgentOrchestrator = createBoardAgentOrchestrator({
     agentReviews: container.agentReviews,
     planService,
+    phaseMachine,
     getDevSessionService: () => devSessionServiceRef,
     getReviewService: () => reviewServiceRef,
     getAgentSessionManager: () => {
@@ -339,6 +342,7 @@ export function createAppServices(container: IRepositoryContainer) {
     getMainWindow: getPrimaryWindow,
     userDataPath: getUserDataPath(),
     agentSessionManager,
+    phaseMachine,
     getPromptContent,
     buildContextPrefix: (projectId, contextPaths) =>
       contextFileService.buildContextPrefix(projectId, contextPaths),
@@ -365,6 +369,7 @@ export function createAppServices(container: IRepositoryContainer) {
     gitHubService,
     planService,
     agentSessionManager,
+    phaseMachine,
     broadcastToWindows,
     requestPlanRefresh,
     scheduler: pollScheduler,
@@ -535,6 +540,7 @@ export function createAppServices(container: IRepositoryContainer) {
     repoWatcherService,
     worktreeService,
     devSessionService,
+    phaseMachine,
     gitHubService,
     reviewService,
     reviewAssessmentService,

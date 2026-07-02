@@ -9,6 +9,7 @@ import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
 import { runClaudeQuery } from '../../claude/runClaudeQuery';
 import type { AgentSessionManager } from '../../services/agents/AgentSessionManager';
 import type { DevSessionService } from '../../services/repo/DevSessionService';
+import type { AutomationPhaseMachine } from '../../services/agents/automationPhaseMachine';
 import type { PromptOverrideService } from '../../services/core/PromptOverrideService';
 import type { ClaudeUsageService } from '../../services/core/ClaudeUsageService';
 import { getAvailableAgents } from '../../services/agents/agentCatalog';
@@ -28,6 +29,7 @@ export function registerAgentSessionHandlers(
   devSessionService: DevSessionService,
   promptOverrideService: PromptOverrideService,
   claudeUsageService: ClaudeUsageService,
+  phaseMachine: Pick<AutomationPhaseMachine, 'transition'>,
 ): void {
   // Create pending session + start agent in one atomic call
   // This is the primary entry point from the board UI (play button / drag-to-start)
@@ -186,7 +188,7 @@ export function registerAgentSessionHandlers(
           throw new Error('A review is already running for this session');
         }
 
-        devSessionService.updateAutomationPhase(devSessionId, 'reviewing');
+        phaseMachine.transition(devSessionId, { type: 'opposingReviewLaunched' });
 
         try {
           const reviewSessionId = await launchAutoReview({
@@ -201,12 +203,12 @@ export function registerAgentSessionHandlers(
           });
 
           if (!reviewSessionId) {
-            devSessionService.updateAutomationPhase(devSessionId, 'idle');
+            phaseMachine.transition(devSessionId, { type: 'opposingReviewLaunchAborted' });
           }
 
           return { reviewSessionId };
         } catch (error) {
-          devSessionService.updateAutomationPhase(devSessionId, 'idle');
+          phaseMachine.transition(devSessionId, { type: 'opposingReviewLaunchAborted' });
           throw error;
         }
       },

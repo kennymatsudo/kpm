@@ -177,8 +177,8 @@ function createServiceHarness(tasks: ReviewTask[], sessionOverrides: Partial<Dev
   };
   const devSessionService = {
     sendAgentFollowUp: vi.fn().mockResolvedValue({ ok: true, data: { restarted: false } }),
-    updateAutomationPhase: vi.fn(),
   };
+  const phaseMachine = { transition: vi.fn() };
   const reviewTasks = {
     getByRepoPr: vi.fn(() => tasks),
     updateStatus: vi.fn((id: string, status: ReviewTask['status'], meta?: Partial<ReviewTask>) => {
@@ -215,9 +215,10 @@ function createServiceHarness(tasks: ReviewTask[], sessionOverrides: Partial<Dev
     },
     gitHubService,
     devSessionService,
+    phaseMachine,
   } as never);
 
-  return { service, gitHubService, devSessionService, reviewTasks };
+  return { service, gitHubService, devSessionService, phaseMachine, reviewTasks };
 }
 
 describe('ReviewService', () => {
@@ -254,7 +255,7 @@ describe('ReviewService', () => {
 
   it('queues address requests without sending a follow-up while the dev session is active', async () => {
     const task = createTask();
-    const { service, gitHubService, devSessionService } = createServiceHarness([task], { status: 'active' });
+    const { service, gitHubService, devSessionService, phaseMachine } = createServiceHarness([task], { status: 'active' });
 
     const result = await service.triggerReviewAutomation('session-1', [task.id]);
 
@@ -265,7 +266,7 @@ describe('ReviewService', () => {
       status: 'in_progress',
       internal_state: 'implementation_queued',
     });
-    expect(devSessionService.updateAutomationPhase).toHaveBeenCalledWith('session-1', 'addressing_review');
+    expect(phaseMachine.transition).toHaveBeenCalledWith('session-1', { type: 'prReviewThreadsQueued' });
     expect(gitHubService.buildAddressReviewContext).not.toHaveBeenCalled();
     expect(devSessionService.sendAgentFollowUp).not.toHaveBeenCalled();
   });

@@ -1,11 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createBoardAgentOrchestrator } from './BoardAgentOrchestrator';
+import { createAutomationPhaseMachine, type AutomationPhaseRepository } from './automationPhaseMachine';
 import { launchAutoReview } from './autoReview';
 import type { DevSession } from '../../../shared/types';
+
+vi.mock('electron', () => ({
+  BrowserWindow: { getAllWindows: () => [] },
+}));
 
 vi.mock('./autoReview', () => ({
   launchAutoReview: vi.fn(),
 }));
+
+/**
+ * Real phase machine backed by the test's own session object, so assertions
+ * check the resulting phase (what callers actually observe) rather than the
+ * exact event shape.
+ */
+function createTestPhaseMachine(session: DevSession) {
+  const devSessions: AutomationPhaseRepository = {
+    get: () => session,
+    updateAutomationPhase: (_id, phase) => {
+      session.automation_phase = phase;
+    },
+  };
+  return createAutomationPhaseMachine({ devSessions });
+}
 
 function createSession(overrides: Partial<DevSession> = {}): DevSession {
   return {
@@ -44,7 +64,6 @@ describe('BoardAgentOrchestrator', () => {
   it('launches opposing review against the session base branch, not the captured base sha', async () => {
     const session = createSession({ base_branch: 'main', base_sha: 'base-sha' });
     const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
-    const updateAutomationPhase = vi.fn();
     const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
     const requestPlanRefresh = vi.fn();
     vi.mocked(launchAutoReview).mockResolvedValue('session-1-review');
@@ -56,10 +75,10 @@ describe('BoardAgentOrchestrator', () => {
         persistFailedReview: vi.fn(),
       },
       planService: { updateItem },
+      phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => ({
         get: vi.fn(() => session),
         sendAgentFollowUp: vi.fn(),
-        updateAutomationPhase,
         updateStatus: vi.fn(),
         commitSessionChanges,
         requestCommitHookRepair: vi.fn(),
@@ -87,7 +106,7 @@ describe('BoardAgentOrchestrator', () => {
     expect(launchAutoReview).not.toHaveBeenCalledWith(expect.objectContaining({
       baseBranch: 'base-sha',
     }));
-    expect(updateAutomationPhase).toHaveBeenCalledWith(session.id, 'reviewing');
+    expect(session.automation_phase).toBe('reviewing');
     expect(updateItem).not.toHaveBeenCalled();
   });
 
@@ -104,7 +123,6 @@ describe('BoardAgentOrchestrator', () => {
       ok: true,
       data: { started: true, alreadyAttempted: false },
     });
-    const updateAutomationPhase = vi.fn();
     const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
     const flushQueuedReviewTasks = vi.fn();
     const requestPlanRefresh = vi.fn();
@@ -116,10 +134,10 @@ describe('BoardAgentOrchestrator', () => {
         persistFailedReview: vi.fn(),
       },
       planService: { updateItem },
+      phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => ({
         get: vi.fn(() => session),
         sendAgentFollowUp: vi.fn(),
-        updateAutomationPhase,
         updateStatus: vi.fn(),
         commitSessionChanges,
         requestCommitHookRepair,
@@ -141,7 +159,7 @@ describe('BoardAgentOrchestrator', () => {
 
     expect(commitSessionChanges).toHaveBeenCalledWith(session.id, session.name);
     expect(requestCommitHookRepair).toHaveBeenCalledWith(session.id, hookError);
-    expect(updateAutomationPhase).not.toHaveBeenCalledWith(session.id, 'needs_attention');
+    expect(session.automation_phase).not.toBe('needs_attention');
     expect(flushQueuedReviewTasks).not.toHaveBeenCalled();
     expect(launchAutoReview).not.toHaveBeenCalled();
     expect(updateItem).not.toHaveBeenCalled();
@@ -151,7 +169,6 @@ describe('BoardAgentOrchestrator', () => {
   it('skips opposing review when the session review policy is skip', async () => {
     const session = createSession({ review_policy: 'skip' });
     const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
-    const updateAutomationPhase = vi.fn();
     const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
     const requestPlanRefresh = vi.fn();
 
@@ -162,10 +179,10 @@ describe('BoardAgentOrchestrator', () => {
         persistFailedReview: vi.fn(),
       },
       planService: { updateItem },
+      phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => ({
         get: vi.fn(() => session),
         sendAgentFollowUp: vi.fn(),
-        updateAutomationPhase,
         updateStatus: vi.fn(),
         commitSessionChanges,
         requestCommitHookRepair: vi.fn(),
@@ -190,14 +207,13 @@ describe('BoardAgentOrchestrator', () => {
     expect(commitSessionChanges).toHaveBeenCalledWith(session.id, session.name);
     expect(launchAutoReview).not.toHaveBeenCalled();
     expect(updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
-    expect(updateAutomationPhase).toHaveBeenCalledWith(session.id, 'ready_for_review');
+    expect(session.automation_phase).toBe('ready_for_review');
     expect(requestPlanRefresh).toHaveBeenCalledWith(session.project_id);
   });
 
   it('flushes queued PR review tasks before moving the session forward', async () => {
     const session = createSession({ automation_phase: 'addressing_review' });
     const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
-    const updateAutomationPhase = vi.fn();
     const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
     const requestPlanRefresh = vi.fn();
     const flushQueuedReviewTasks = vi.fn().mockResolvedValue({
@@ -212,10 +228,10 @@ describe('BoardAgentOrchestrator', () => {
         persistFailedReview: vi.fn(),
       },
       planService: { updateItem },
+      phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => ({
         get: vi.fn(() => session),
         sendAgentFollowUp: vi.fn(),
-        updateAutomationPhase,
         updateStatus: vi.fn(),
         commitSessionChanges,
         requestCommitHookRepair: vi.fn(),
@@ -237,13 +253,12 @@ describe('BoardAgentOrchestrator', () => {
 
     expect(flushQueuedReviewTasks).toHaveBeenCalledWith(session.id);
     expect(updateItem).not.toHaveBeenCalled();
-    expect(updateAutomationPhase).not.toHaveBeenCalledWith(session.id, 'ready_for_review');
+    expect(session.automation_phase).not.toBe('ready_for_review');
   });
 
   it('resumes opposing review after the implementation commit-hook repair completes', async () => {
     const session = createSession({ automation_phase: 'fixing_commit_hooks' });
     const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
-    const updateAutomationPhase = vi.fn();
     const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
     const requestPlanRefresh = vi.fn();
     vi.mocked(launchAutoReview).mockResolvedValue('session-1-review');
@@ -255,10 +270,10 @@ describe('BoardAgentOrchestrator', () => {
         persistFailedReview: vi.fn(),
       },
       planService: { updateItem },
+      phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => ({
         get: vi.fn(() => session),
         sendAgentFollowUp: vi.fn(),
-        updateAutomationPhase,
         updateStatus: vi.fn(),
         commitSessionChanges,
         requestCommitHookRepair: vi.fn(),
@@ -281,7 +296,7 @@ describe('BoardAgentOrchestrator', () => {
     });
 
     expect(commitSessionChanges).toHaveBeenCalledWith(session.id, session.name);
-    expect(updateAutomationPhase).toHaveBeenCalledWith(session.id, 'reviewing');
+    expect(session.automation_phase).toBe('reviewing');
     expect(launchAutoReview).toHaveBeenCalledWith(expect.objectContaining({
       implementationSessionId: session.id,
     }));
@@ -291,7 +306,6 @@ describe('BoardAgentOrchestrator', () => {
   it('moves to review after the review-addressing commit-hook repair completes', async () => {
     const session = createSession({ automation_phase: 'fixing_commit_hooks_after_review' });
     const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
-    const updateAutomationPhase = vi.fn();
     const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
     const requestPlanRefresh = vi.fn();
 
@@ -302,10 +316,10 @@ describe('BoardAgentOrchestrator', () => {
         persistFailedReview: vi.fn(),
       },
       planService: { updateItem },
+      phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => ({
         get: vi.fn(() => session),
         sendAgentFollowUp: vi.fn(),
-        updateAutomationPhase,
         updateStatus: vi.fn(),
         commitSessionChanges,
         requestCommitHookRepair: vi.fn(),
@@ -330,7 +344,7 @@ describe('BoardAgentOrchestrator', () => {
     expect(commitSessionChanges).toHaveBeenCalledWith(session.id, 'Address review findings');
     expect(launchAutoReview).not.toHaveBeenCalled();
     expect(updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
-    expect(updateAutomationPhase).toHaveBeenCalledWith(session.id, 'ready_for_review');
+    expect(session.automation_phase).toBe('ready_for_review');
     expect(requestPlanRefresh).toHaveBeenCalledWith(session.project_id);
   });
 
@@ -339,7 +353,6 @@ describe('BoardAgentOrchestrator', () => {
     const hookError = 'blocklint failed';
     const commitSessionChanges = vi.fn().mockResolvedValue({ ok: false, error: hookError });
     const requestCommitHookRepair = vi.fn();
-    const updateAutomationPhase = vi.fn();
     const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
     const flushQueuedReviewTasks = vi.fn();
     const requestPlanRefresh = vi.fn();
@@ -351,10 +364,10 @@ describe('BoardAgentOrchestrator', () => {
         persistFailedReview: vi.fn(),
       },
       planService: { updateItem },
+      phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => ({
         get: vi.fn(() => session),
         sendAgentFollowUp: vi.fn(),
-        updateAutomationPhase,
         updateStatus: vi.fn(),
         commitSessionChanges,
         requestCommitHookRepair,
@@ -375,7 +388,7 @@ describe('BoardAgentOrchestrator', () => {
     });
 
     expect(requestCommitHookRepair).not.toHaveBeenCalled();
-    expect(updateAutomationPhase).toHaveBeenCalledWith(session.id, 'needs_attention');
+    expect(session.automation_phase).toBe('needs_attention');
     expect(flushQueuedReviewTasks).not.toHaveBeenCalled();
     expect(launchAutoReview).not.toHaveBeenCalled();
     expect(updateItem).not.toHaveBeenCalled();

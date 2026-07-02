@@ -17,6 +17,7 @@ import { getConfig } from '../../config';
 import { resolveScopedPath } from '../files/scopedFs';
 import type { FileSummaryService } from '../files/FileSummaryService';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
+import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
 import type { ClaudeUsageService } from '../core/ClaudeUsageService';
 import type { ContextFileService } from '../core/ContextFileService';
 
@@ -26,6 +27,7 @@ export interface RepoServicesCompositionDeps {
   getMainWindow: () => BrowserWindow | null;
   userDataPath: string;
   agentSessionManager?: AgentSessionManager;
+  phaseMachine: Pick<AutomationPhaseMachine, 'transition'>;
   getPromptContent: (key: string) => string;
   /** Wraps attached context files for prepending to agent prompts. */
   buildContextPrefix: (projectId: string, contextPaths: string[]) => ReturnType<ContextFileService['buildContextPrefix']>;
@@ -42,6 +44,7 @@ export function createRepoServices({
   getMainWindow,
   userDataPath,
   agentSessionManager,
+  phaseMachine,
   getPromptContent,
   buildContextPrefix,
   readProjectContextFile,
@@ -88,6 +91,7 @@ export function createRepoServices({
     agentReviews: container.agentReviews,
     userDataPath,
     agentSessionManager,
+    phaseMachine,
     getPromptContent,
     buildContextPrefix,
     readProjectContextFile,
@@ -112,6 +116,7 @@ export function createRepoServices({
     reviewSyncState: container.reviewSyncState,
     gitHubService,
     devSessionService,
+    phaseMachine,
   });
 
   const reviewAssessmentService = createReviewAssessmentService({

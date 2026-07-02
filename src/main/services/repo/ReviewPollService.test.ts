@@ -240,6 +240,7 @@ function buildHarness(options: {
   const eventBus = {
     emit: vi.fn(),
   };
+  const phaseMachine = { transition: vi.fn() };
 
   const service = createReviewPollService({
     projects: {
@@ -259,9 +260,8 @@ function buildHarness(options: {
     },
     reviewService,
     reviewAssessmentService,
-    devSessionService: {
-      updateAutomationPhase: vi.fn(),
-    },
+    devSessionService: {},
+    phaseMachine,
     gitHubService,
     planService,
     agentSessionManager: {
@@ -288,6 +288,7 @@ function buildHarness(options: {
     reviewAssessmentService,
     gitHubService,
     planService,
+    phaseMachine,
     broadcastToWindows,
     requestPlanRefresh,
     eventBus,

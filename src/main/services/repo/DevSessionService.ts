@@ -15,7 +15,6 @@ import { failure, success, type AsyncResult, type ServiceResult } from '../resul
 import {
   isCommitHookRepairPhase,
   type DevSession,
-  type DevSessionAutomationPhase,
   type DevSessionStatus,
   type DevSessionWithPlanItem,
   type PlanItem,
@@ -48,6 +47,7 @@ import {
 import { gitExec, getCurrentBranch, resolveUpstreamBranch, getMergeBase, resolveBaseSha } from './gitUtils';
 import { openDirectoryInCodeEditor } from './editorLauncher';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
+import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
 
 interface AgentContextInput {
   item: PlanItem;
@@ -378,32 +378,6 @@ export function buildBoardStartInstructions(
   ].join('\n\n');
 }
 
-function commitHookRepairPhaseFor(
-  phase: DevSessionAutomationPhase | null,
-): DevSessionAutomationPhase {
-  return phase === 'addressing_review' || phase === 'fixing_commit_hooks_after_review'
-    ? 'fixing_commit_hooks_after_review'
-    : 'fixing_commit_hooks';
-}
-
-export function automationPhaseAfterManualCommitResolution(
-  phase: DevSessionAutomationPhase | null,
-): DevSessionAutomationPhase | null {
-  switch (phase) {
-    case 'fixing_commit_hooks_after_review':
-    case 'addressing_review':
-      return 'ready_for_review';
-    case 'fixing_commit_hooks':
-    case 'needs_attention':
-      return 'idle';
-    case 'idle':
-    case 'reviewing':
-    case 'ready_for_review':
-    case null:
-      return phase;
-  }
-}
-
 function buildCommitHookRepairPrompt(hookOutput: string): string {
   return [
     'The git commit failed while running commit hooks.',
@@ -440,6 +414,8 @@ export interface DevSessionServiceDeps {
   readProjectContextFile: (projectId: string) => AsyncResult<{ content: string | null; filename?: string }>;
   /** Optional — when provided, dev sessions use the Agent SDK instead of PTY */
   agentSessionManager?: AgentSessionManager;
+  /** Sole writer of `automation_phase` — see automationPhaseMachine.ts */
+  phaseMachine: Pick<AutomationPhaseMachine, 'transition'>;
 }
 const broadcastSessionStatusChange = createStatusBroadcaster<DevSession>('dev-session:status-changed');
 
@@ -783,24 +759,8 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       return deps.devSessions.get(id);
     },
 
-    updateAutomationPhase(sessionId: string, phase: DevSession['automation_phase']): void {
-      deps.devSessions.updateAutomationPhase(sessionId, phase);
-      const updatedSession = deps.devSessions.get(sessionId);
-      if (updatedSession) {
-        broadcastSessionStatusChange(updatedSession);
-      }
-    },
-
     clearManualCommitInterruption(sessionId: string): void {
-      const session = deps.devSessions.get(sessionId);
-      if (!session) {
-        return;
-      }
-
-      const nextPhase = automationPhaseAfterManualCommitResolution(session.automation_phase);
-      if (nextPhase !== session.automation_phase) {
-        service.updateAutomationPhase(sessionId, nextPhase);
-      }
+      deps.phaseMachine.transition(sessionId, { type: 'manualCommitResolved' });
     },
 
     /**
@@ -810,12 +770,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
      * is left untouched, so any uncommitted manual work is preserved.
      */
     dismissAutomationInterruption(sessionId: string): void {
-      const session = deps.devSessions.get(sessionId);
-      if (session?.automation_phase !== 'needs_attention') {
-        return;
-      }
-
-      service.updateAutomationPhase(sessionId, 'idle');
+      deps.phaseMachine.transition(sessionId, { type: 'automationDismissed' });
     },
 
     markLatestAgentReviewStale(sessionId: string): void {
@@ -1140,7 +1095,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         const prompt = buildExecutionPrompt(options?.prompt || session.initial_instructions, executionMode);
 
         deps.agentReviews.markLatestCompletedStale(sessionId);
-        deps.devSessions.updateAutomationPhase(sessionId, 'idle');
+        deps.phaseMachine.transition(sessionId, { type: 'sessionStarted' });
 
         const developerModel = resolveBoardModel(executionMode, session.agent_type);
         const effectiveEffort = resolveBoardEffort(developerModel, options?.effort, executionMode);
@@ -1276,14 +1231,14 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         }
 
         if (isCommitHookRepairPhase(session.automation_phase)) {
-          service.updateAutomationPhase(sessionId, 'needs_attention');
+          deps.phaseMachine.transition(sessionId, {
+            type: 'automationFailed',
+            reason: 'commit-hook-repair-already-attempted',
+          });
           return success({ started: false, alreadyAttempted: true });
         }
 
-        service.updateAutomationPhase(
-          sessionId,
-          commitHookRepairPhaseFor(session.automation_phase),
-        );
+        deps.phaseMachine.transition(sessionId, { type: 'commitHookRepairStarted' });
 
         const followUpResult = await service.sendAgentFollowUp(
           sessionId,
@@ -1291,13 +1246,13 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         );
 
         if (!followUpResult.ok) {
-          service.updateAutomationPhase(sessionId, 'needs_attention');
+          deps.phaseMachine.transition(sessionId, { type: 'automationFailed', reason: 'follow-up-send-failed' });
           return failure(followUpResult.error);
         }
 
         return success({ started: true, alreadyAttempted: false });
       } catch (error) {
-        service.updateAutomationPhase(sessionId, 'needs_attention');
+        deps.phaseMachine.transition(sessionId, { type: 'automationFailed', reason: 'commit-hook-repair-errored' });
         return failure(error instanceof Error ? error.message : String(error));
       }
     },

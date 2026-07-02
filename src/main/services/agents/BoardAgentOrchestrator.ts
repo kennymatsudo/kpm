@@ -1,6 +1,6 @@
 import type { AgentSessionState, ReviewFinding } from '../../../shared/agent-types';
 import { toImplSessionId } from '../../../shared/agent-types';
-import { isCommitHookRepairPhase, type DevSession, type DevSessionAutomationPhase } from '../../../shared/types';
+import { isCommitHookRepairPhase, type DevSession } from '../../../shared/types';
 import type { IAgentReviewRepository } from '../../db/interfaces/review';
 import type { PlanService } from '../core/PlanService';
 import type { ClaudeUsageService } from '../core/ClaudeUsageService';
@@ -8,6 +8,7 @@ import type { DevSessionService } from '../repo/DevSessionService';
 import type { ReviewService } from '../repo/ReviewService';
 import type { AgentSessionManager, AgentSessionManagerDeps } from './AgentSessionManager';
 import { launchAutoReview } from './autoReview';
+import { effectivePhase, type AutomationPhaseMachine } from './automationPhaseMachine';
 
 const LOG_PREFIX = '[BoardAgentOrchestrator]';
 
@@ -15,7 +16,6 @@ type DevSessionAutomationService = Pick<
   DevSessionService,
   | 'get'
   | 'sendAgentFollowUp'
-  | 'updateAutomationPhase'
   | 'updateStatus'
   | 'commitSessionChanges'
   | 'requestCommitHookRepair'
@@ -28,6 +28,7 @@ interface BoardAgentOrchestratorDeps {
     'persistStartedReview' | 'persistCompletedReview' | 'persistFailedReview'
   >;
   planService: Pick<PlanService, 'updateItem'>;
+  phaseMachine: Pick<AutomationPhaseMachine, 'transition'>;
   getDevSessionService: () => DevSessionAutomationService | null;
   getReviewService: () => ReviewQueueService | null;
   getAgentSessionManager: () => AgentSessionManager;
@@ -79,18 +80,6 @@ function buildReviewAssessmentPrompt(findings: ReviewFinding[]): string {
   return sections.join('\n');
 }
 
-function phaseAfterCommitHookRepair(
-  phase: DevSessionAutomationPhase | null,
-): DevSessionAutomationPhase | null {
-  if (phase === 'fixing_commit_hooks_after_review') {
-    return 'addressing_review';
-  }
-  if (phase === 'fixing_commit_hooks') {
-    return 'idle';
-  }
-  return phase;
-}
-
 type CaptureWorkOutcome = 'captured' | 'repair_started' | 'failed';
 
 /**
@@ -105,10 +94,10 @@ type CaptureWorkOutcome = 'captured' | 'repair_started' | 'failed';
  */
 async function captureWorkOnBranch(
   devSessionService: DevSessionAutomationService,
+  phaseMachine: Pick<AutomationPhaseMachine, 'transition'>,
   session: DevSession,
 ): Promise<CaptureWorkOutcome> {
-  const effectivePhase = phaseAfterCommitHookRepair(session.automation_phase);
-  const subject = effectivePhase === 'addressing_review'
+  const subject = effectivePhase(session.automation_phase) === 'addressing_review'
     ? 'Address review findings'
     : session.name?.trim() || 'KPM task changes';
 
@@ -125,7 +114,7 @@ async function captureWorkOnBranch(
   }
 
   console.warn(`${LOG_PREFIX} Could not capture work onto branch for ${session.id}: ${result.error}`);
-  devSessionService.updateAutomationPhase(session.id, 'needs_attention');
+  phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'commit-capture-failed' });
   return 'failed';
 }
 
@@ -144,11 +133,11 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     const result = deps.planService.updateItem(session.plan_item_id, { status_category: 'in_review' });
     if (!result.ok) {
       console.error(`${LOG_PREFIX} Failed to move ${sessionId} to in_review:`, result.error);
-      devSessionService.updateAutomationPhase(sessionId, 'needs_attention');
+      deps.phaseMachine.transition(sessionId, { type: 'automationFailed', reason: 'move-to-review-failed' });
       return;
     }
 
-    devSessionService.updateAutomationPhase(sessionId, 'ready_for_review');
+    deps.phaseMachine.transition(sessionId, { type: 'movedToReview' });
     deps.requestPlanRefresh(session.project_id);
   }
 
@@ -196,7 +185,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       if (role === 'implement') {
         // Capture the agent's work onto the task's own branch before anything
         // else, so the isolated branch actually holds the task's commits.
-        const captureOutcome = await captureWorkOnBranch(devSessionService, session);
+        const captureOutcome = await captureWorkOnBranch(devSessionService, deps.phaseMachine, session);
         if (captureOutcome === 'repair_started') {
           return;
         }
@@ -204,14 +193,14 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           return;
         }
 
-        const effectiveAutomationPhase = phaseAfterCommitHookRepair(session.automation_phase);
+        const effectiveAutomationPhase = effectivePhase(session.automation_phase);
 
         const reviewService = deps.getReviewService();
         if (reviewService) {
           const queuedResult = await reviewService.flushQueuedReviewTasks(implSessionId);
           if (!queuedResult.ok) {
             console.error(`${LOG_PREFIX} Failed to flush queued PR review tasks for ${implSessionId}:`, queuedResult.error);
-            devSessionService.updateAutomationPhase(implSessionId, 'needs_attention');
+            deps.phaseMachine.transition(implSessionId, { type: 'automationFailed', reason: 'queued-review-flush-failed' });
             return;
           }
           if (queuedResult.data.taskIds.length > 0) {
@@ -230,7 +219,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           return;
         }
 
-        devSessionService.updateAutomationPhase(implSessionId, 'reviewing');
+        deps.phaseMachine.transition(implSessionId, { type: 'opposingReviewLaunched' });
 
         const reviewSessionId = await launchAutoReview({
           implementationSessionId: implSessionId,
@@ -253,7 +242,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         console.warn(
           `${LOG_PREFIX} Review session ${devSessionId} completed without valid findings: ${reviewError ?? 'unknown error'}`
         );
-        devSessionService.updateAutomationPhase(implSessionId, 'needs_attention');
+        deps.phaseMachine.transition(implSessionId, { type: 'automationFailed', reason: 'opposing-review-errored' });
         return;
       }
 
@@ -263,12 +252,11 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         return;
       }
 
-      if (session.automation_phase === 'needs_attention') {
+      const nextPhase = deps.phaseMachine.transition(implSessionId, { type: 'opposingReviewFindingsReady' });
+      if (nextPhase !== 'addressing_review') {
         console.log(`${LOG_PREFIX} Skipping auto review follow-up for ${implSessionId} - session is needs_attention`);
         return;
       }
-
-      devSessionService.updateAutomationPhase(implSessionId, 'addressing_review');
 
       const implAgentSession = deps.getAgentSessionManager().getByDevSession(implSessionId);
       if (implAgentSession && isActiveAgentState(implAgentSession.state)) {
@@ -283,7 +271,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
 
       if (!followUpResult.ok) {
         console.error(`${LOG_PREFIX} Failed to send auto-review follow-up for ${implSessionId}:`, followUpResult.error);
-        devSessionService.updateAutomationPhase(implSessionId, 'needs_attention');
+        deps.phaseMachine.transition(implSessionId, { type: 'automationFailed', reason: 'follow-up-send-failed' });
       }
     },
 
@@ -311,13 +299,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         return;
       }
 
-      if (
-        session.automation_phase === 'reviewing'
-        || session.automation_phase === 'addressing_review'
-        || isCommitHookRepairPhase(session.automation_phase)
-      ) {
-        devSessionService.updateAutomationPhase(implSessionId, 'needs_attention');
-      }
+      deps.phaseMachine.transition(implSessionId, { type: 'agentTerminatedUnexpectedly' });
     },
 
     onSessionUsage: ({ projectId, role, usage }) => {

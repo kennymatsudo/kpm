@@ -34,6 +34,7 @@ import type { DevSessionService } from './DevSessionService';
 import type { GitHubService } from './GitHubService';
 import type { PlanService } from '../core/PlanService';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
+import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
 import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import type { UpdateEventBus } from '../core/UpdateEventBus';
 
@@ -53,6 +54,7 @@ export interface ReviewPollServiceDeps {
   gitHubService: GitHubService;
   planService: Pick<PlanService, 'updateItem'>;
   agentSessionManager: AgentSessionManager;
+  phaseMachine: Pick<AutomationPhaseMachine, 'transition'>;
   broadcastToWindows: (channel: string, payload: unknown) => void;
   requestPlanRefresh: (projectId: string) => void;
   scheduler: PollScheduler;
@@ -498,7 +500,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       const prompt = buildAutomationPrompt(contextResult.data);
       const followUpResult = await deps.devSessionService.sendAgentFollowUp(sessionId, prompt);
       if (!followUpResult.ok) {
-        deps.devSessionService.updateAutomationPhase(sessionId, 'needs_attention');
+        deps.phaseMachine.transition(sessionId, { type: 'automationFailed', reason: 'follow-up-send-failed' });
         return {
           sessionId,
           action: 'error',
@@ -508,7 +510,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         };
       }
 
-      deps.devSessionService.updateAutomationPhase(sessionId, 'addressing_review');
+      deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued' });
 
       deps.broadcastToWindows('review-poll:fix-started', {
         sessionId,
