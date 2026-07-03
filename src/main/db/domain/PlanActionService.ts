@@ -9,6 +9,7 @@ import type {
   IGroupRepository,
 } from '../interfaces';
 import type { QueueTrackerUpdateIfNeeded } from './PlanItemService';
+import { queueForTracker } from './SyncQueuePolicy';
 import { assignItemToGroup } from './GroupAssignmentService';
 import { findRefs } from '../../../shared/planRefs';
 
@@ -244,54 +245,32 @@ function executeQueueForTracker(
   // Resolve any placeholder IDs
   const resolvedIds = action.item_ids.map(id => resolveId(ctx, id) ?? id);
 
-  // Find the association for this project
   const associations = ctx.deps.tracker.getAssociationsByProject(ctx.projectId);
-  if (associations.length === 0) {
+
+  // Prefetch all queued items for this project once, then look up membership in
+  // memory — avoids an N+1 getByItemId query per item.
+  const alreadyQueuedItemIds = new Map(
+    ctx.deps.syncQueue.getByProject(ctx.projectId).map((entry) => [entry.plan_item_id, entry.id])
+  );
+
+  const result = queueForTracker({
+    projectId: ctx.projectId,
+    itemIds: resolvedIds,
+    queuedBy: 'claude',
+    associations,
+    alreadyQueuedItemIds,
+    getItem: (itemId) => getItem(ctx, itemId),
+    syncQueue: ctx.deps.syncQueue,
+    onItemNotFound: (itemId) => ctx.logger.warn(`[PlanActionService] queue_for_tracker: Item not found: ${itemId}`),
+  });
+
+  if (result.skippedReason === 'no_association') {
     skip(ctx, 'queue_for_tracker', 'No tracker association configured for project');
     return;
   }
 
-  const association = associations[0]; // Use first association
-
-  // Prefetch all queued items for this project once, then check membership in
-  // memory — avoids an N+1 getByItemId query per item in the loop below.
-  const alreadyQueued = new Set(
-    ctx.deps.syncQueue.getByProject(ctx.projectId).map((entry) => entry.plan_item_id)
-  );
-
-  let queuedCount = 0;
-  for (const itemId of resolvedIds) {
-    const item = getItem(ctx, itemId);
-    if (!item) {
-      ctx.logger.warn(`[PlanActionService] queue_for_tracker: Item not found: ${itemId}`);
-      continue;
-    }
-
-    // Determine operation: create if no external_key, update otherwise
-    const operation = item.external_key ? 'update' : 'create';
-
-    // Check if already queued
-    if (alreadyQueued.has(itemId)) {
-      continue; // Already queued, skip silently
-    }
-
-    ctx.deps.syncQueue.add({
-      kpm_project_id: ctx.projectId,
-      plan_item_id: itemId,
-      association_id: association.id,
-      operation,
-      queued_by: 'claude',
-      target_issue_type_id: null,
-      target_issue_type_name: null,
-      target_parent_key: null,
-      target_status_category: item.status_category ?? null,
-      custom_field_overrides: null,
-    });
-    queuedCount++;
-  }
-
-  if (queuedCount > 0) {
-    ctx.logger.log(`[PlanActionService] Queued ${queuedCount} item(s) for tracker`);
+  if (result.queuedCount > 0) {
+    ctx.logger.log(`[PlanActionService] Queued ${result.queuedCount} item(s) for tracker`);
   }
 }
 

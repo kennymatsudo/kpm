@@ -7,6 +7,7 @@ import type {
   ITypeMappingRepository,
 } from '../interfaces';
 import { createTypeMappingService } from './TypeMappingService';
+import { resolveOperation } from './SyncQueuePolicy';
 import { diffWords } from 'diff';
 import type {
   SyncQueueEntryWithPlanItem,
@@ -264,8 +265,7 @@ export function createExportService(deps: ExportServiceDeps) {
         continue;
       }
 
-      // Determine operation: create if no external_key, update otherwise
-      const operation = item.external_key ? 'update' : 'create';
+      const operation = resolveOperation(item);
 
       const existing = SyncQueueRepository.getByPlanItem(itemId);
       if (existing) {

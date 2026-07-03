@@ -227,7 +227,7 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 1. **Domain Services** (`src/main/db/domain/`):
    - Tightly coupled to database
    - Handle multi-table transactions
-   - Services: `SyncService`, `ExportService`, `ImportService`, `PlanActionService`, `PlanItemService`, `TypeMappingService`, `GroupAssignmentService`
+   - Services: `SyncService`, `ExportService`, `ImportService`, `PlanActionService`, `PlanItemService`, `SyncQueuePolicy`, `TypeMappingService`, `GroupAssignmentService`
 
 2. **Application Services** (`src/main/services/`):
    - Testable with dependency injection
