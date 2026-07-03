@@ -25,7 +25,7 @@ import {
   type ReviewPhaseStats,
 } from './panelStatus';
 
-function toReviewPhaseStats(stats: ReviewStats, assessmentRunning: boolean): ReviewPhaseStats {
+export function toReviewPhaseStats(stats: ReviewStats, assessmentRunning: boolean): ReviewPhaseStats {
   return {
     queueCount: stats.queueCount,
     needsReviewCount: stats.needsReviewCount,

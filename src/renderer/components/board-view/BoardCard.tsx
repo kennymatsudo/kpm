@@ -3,14 +3,23 @@ import { useShallow } from 'zustand/react/shallow';
 import { HighlightedText } from '../planning/HighlightedText';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { CardActivityLine } from './CardActivityLine';
-import { ACTIVE_SESSION_STATUSES, isCommitHookRepairPhase, isLiveAutomationPhase, OPENABLE_SESSION_STATUSES } from '../../../shared/types';
-import type { PlanItem, AgentSessionState } from '../../../shared/types';
+import { derivePanelStatus, type PanelPhase, type NextAction } from './panelStatus';
+import { toReviewPhaseStats } from './usePanelStatus';
+import { getStats } from '../development/reviewStats';
+import { getStatusCategory } from '../../constants/statusConfig';
+import { ACTIVE_SESSION_STATUSES, isLiveAutomationPhase, OPENABLE_SESSION_STATUSES } from '../../../shared/types';
+import type { PlanItem } from '../../../shared/types';
 import { toReviewSessionId } from '../../../shared/agent-types';
 import { openExternalUrl } from '../../services/shellService';
 import { TrackerIcon, trackerLabelFor } from '../tracker/shared/trackerDisplay';
 import { Tooltip } from '../ui';
 
 const STALE_ACTIVITY_MS = 5 * 60 * 1000;
+
+/** Phases that read as "an agent process is actively running" for card border/pulse styling. */
+const LIVE_PANEL_PHASES: ReadonlySet<PanelPhase> = new Set([
+  'committing', 'fixing_hooks', 'implementing', 'reviewing', 'addressing',
+]);
 
 export interface Breadcrumb {
   title: string;
@@ -55,40 +64,45 @@ function buildReviewActionableTooltip(
     : `${head} — open Review tab`;
 }
 
-/** Map agent states to visual categories for border/indicator styling */
-function getAgentVisualState(
-  agentState: AgentSessionState | undefined,
+/**
+ * Map a canonical PanelPhase (derivePanelStatus's output — see panelStatus.ts)
+ * to the card's border/indicator visual category. `stale` has no PanelPhase
+ * counterpart by design (panelStatus models the deterministic agent lifecycle
+ * with no stuck/stale state) — the card layers its own 5-minute heuristic on top.
+ */
+type CardVisualState = 'idle' | 'active' | 'attention' | 'complete' | 'error';
+
+// needs_attention gets its own dedicated orange dot elsewhere on the card
+// (not the amber attention state) — kept as 'idle' here so it doesn't also
+// pick up the attention-only styling (shadow, stop-button eligibility).
+const PHASE_TO_VISUAL_STATE: Record<PanelPhase, CardVisualState> = {
+  committing: 'active',
+  fixing_hooks: 'active',
+  implementing: 'active',
+  reviewing: 'active',
+  addressing: 'active',
+  awaiting_input: 'attention',
+  implemented: 'complete',
+  failed: 'error',
+  stopped: 'error',
+  needs_attention: 'idle',
+  review_open: 'idle',
+  ready: 'idle',
+  merged: 'idle',
+  idle: 'idle',
+};
+
+function getCardVisualState(
+  phase: PanelPhase,
   isSessionStale: boolean,
-): 'idle' | 'active' | 'attention' | 'complete' | 'error' | 'stale' {
-  if (!agentState) return 'idle';
-  if (isSessionStale && (agentState === 'starting' || agentState === 'working' || agentState === 'waiting_for_input')) {
-    return 'stale';
-  }
-  switch (agentState) {
-    case 'starting':
-    case 'working':
-      return 'active';
-    case 'waiting_for_input':
-      return 'attention';
-    case 'complete':
-      return 'complete';
-    case 'failed':
-    case 'stopped':
-      return 'error';
-    default:
-      return 'idle';
-  }
+): CardVisualState | 'stale' {
+  if (isSessionStale && LIVE_PANEL_PHASES.has(phase)) return 'stale';
+  return PHASE_TO_VISUAL_STATE[phase];
 }
-
-function isLiveAgentState(state: AgentSessionState | undefined): boolean {
-  return state === 'starting' || state === 'working' || state === 'waiting_for_input';
-}
-
-type CardPhaseTone = 'neutral' | 'accent' | 'info' | 'warning' | 'danger' | 'success';
 
 interface CardPhaseIndicator {
   label: string;
-  tone: CardPhaseTone;
+  tone: NextAction['tone'];
   busy?: boolean;
 }
 
@@ -134,6 +148,10 @@ export const BoardCard = memo(function BoardCard({
     isMergeBlocked,
     reviewActionable,
     repoSession,
+    commitStatus,
+    reviewStats,
+    completionStats,
+    mergeBlockedByNames,
   } = useDevSessionsStore(
     useShallow((state) => {
       const itemSessions = state.sessionsByPlanItemId.get(item.id) ?? [];
@@ -158,13 +176,15 @@ export const BoardCard = memo(function BoardCard({
       const reviewId = active ? toReviewSessionId(active.id) : undefined;
 
       let mergeBlocked = false;
+      let blockedByNames: string[] = [];
       if (pr?.pr_url && pr.pr_state !== 'MERGED') {
         const entry = state.mergeOrderBySessionId.get(pr.id);
         if (entry && entry.blockedBy.length > 0) {
-          mergeBlocked = entry.blockedBy.some((blockerId) => {
-            const blocker = state.sessionById.get(blockerId);
-            return blocker?.pr_state !== 'MERGED';
-          });
+          blockedByNames = entry.blockedBy
+            .map((blockerId) => state.sessionById.get(blockerId))
+            .filter((blocker) => blocker && blocker.pr_state !== 'MERGED')
+            .map((blocker) => blocker?.plan_item?.title ?? blocker?.name ?? 'Session');
+          mergeBlocked = blockedByNames.length > 0;
         }
       }
 
@@ -177,6 +197,11 @@ export const BoardCard = memo(function BoardCard({
         }
       }
 
+      const inbox = active ? state.reviewInboxBySessionId.get(active.id) ?? null : null;
+      const assessmentRunning = active
+        ? state.reviewAssessmentPendingBySessionId.get(active.id) != null
+        : false;
+
       return {
         activeSession: active,
         activeSessionCount: activeCount,
@@ -187,11 +212,19 @@ export const BoardCard = memo(function BoardCard({
         reviewState: reviewId ? state.agentStateBySessionId.get(reviewId) : undefined,
         latestReviewActivity: reviewId ? state.latestActivityBySessionId.get(reviewId) : undefined,
         isMergeBlocked: mergeBlocked,
+        mergeBlockedByNames: blockedByNames,
         reviewActionable: actionableSummary,
         repoSession: sessionWithWorktree,
+        commitStatus: active ? state.commitStateBySessionId.get(active.id)?.status ?? null : null,
+        reviewStats: inbox && active ? toReviewPhaseStats(getStats(inbox, active.id), assessmentRunning) : null,
+        completionStats: active ? state.completionBySessionId.get(active.id) : undefined,
       };
     })
   );
+
+  const itemStatus = item.status_category
+    ?? getStatusCategory(item.external_status, item.external_type)
+    ?? 'not_started';
 
   const repoName = repoSession?.repo_name ?? null;
   const automationPhase = activeSession?.automation_phase;
@@ -202,50 +235,68 @@ export const BoardCard = memo(function BoardCard({
     || reviewState === 'waiting_for_input'
     || reviewState === 'failed'
     || reviewState === 'stopped';
+
+  const panelStatus = derivePanelStatus({
+    implAgentState: agentState,
+    reviewAgentState: reviewState,
+    automationPhase: automationPhase ?? null,
+    hasPr: prSession?.pr_number != null,
+    prState: prSession?.pr_state ?? null,
+    reviewState: prSession?.review_state ?? null,
+    itemStatus,
+    commitStatus,
+    reviewStats,
+    // Mirrors usePanelStatus.ts's reviewActive check exactly (starting/working
+    // only, narrower than isReviewVisible below) so the "current step" text
+    // agrees with the detail panel while the review agent is running.
+    latestActivitySummary: (
+      reviewState === 'starting' || reviewState === 'working' ? latestReviewActivity : latestActivity
+    )?.summary ?? null,
+    terminalReason: completionStats?.terminalReason ?? null,
+    elapsedMs: null,
+    diffStats: completionStats
+      ? { files: completionStats.filesChanged, additions: completionStats.additions, deletions: completionStats.deletions }
+      : null,
+    mergeBlockedBy: mergeBlockedByNames,
+  });
+
+  // Card-specific staleness: derivePanelStatus models the deterministic agent
+  // lifecycle with no "stuck" state by design (see panelStatus.ts) — the card
+  // layers its own 5-minute no-activity heuristic on top for a slow poller tick.
   const effectiveAgentState = isReviewVisible ? reviewState : agentState;
   const effectiveLatestActivity = isReviewVisible ? latestReviewActivity : latestActivity;
   const isSessionStale =
     !!effectiveLatestActivity &&
     effectiveLatestActivity.status !== 'running' &&
-    isLiveAgentState(effectiveAgentState) &&
+    (effectiveAgentState === 'starting' || effectiveAgentState === 'working' || effectiveAgentState === 'waiting_for_input') &&
     Date.now() - effectiveLatestActivity.timestamp > STALE_ACTIVITY_MS;
-  const visualState = getAgentVisualState(effectiveAgentState, isSessionStale);
+  const visualState = getCardVisualState(panelStatus.phase, isSessionStale);
+
+  // Two BoardCard-specific overrides ahead of derivePanelStatus's own ladder:
+  // 1. needs_attention/reviewActionable must win even if a fresh Play click
+  //    left a new run 'starting' while automation_phase hasn't cleared yet —
+  //    derivePanelStatus checks live-running states first, which would
+  //    otherwise flash "Starting" over an unacknowledged interruption.
+  // 2. session.status ('pending' / 'active' with no agentState yet) has no
+  //    derivePanelStatus equivalent — it isn't one of panelStatus's inputs —
+  //    so a session created moments ago, before any agent-state broadcast
+  //    arrives, needs its own label rather than falling through to idle.
   const phaseIndicator: CardPhaseIndicator | null = (() => {
     if (automationPhase === 'needs_attention' || reviewActionable?.hasActionable) {
       return { label: 'Needs attention', tone: 'warning' };
     }
-    if (isSessionStale) {
-      return { label: 'Stale', tone: 'warning' };
-    }
-    if (effectiveAgentState === 'waiting_for_input') {
-      return { label: 'Needs input', tone: 'warning' };
-    }
-    if (isReviewVisible || automationPhase === 'reviewing') {
-      if (reviewState === 'failed') {
-        return { label: 'Review failed', tone: 'danger' };
-      }
-      if (reviewState === 'stopped') {
-        return { label: 'Review stopped', tone: 'neutral' };
-      }
-      return { label: 'Reviewing', tone: 'info', busy: true };
-    }
-    if (isCommitHookRepairPhase(automationPhase)) {
-      return { label: 'Fixing checks', tone: 'warning', busy: isLiveAgentState(agentState) };
-    }
-    if (automationPhase === 'addressing_review') {
-      return { label: 'Addressing review', tone: 'accent', busy: isLiveAgentState(agentState) };
-    }
     if (activeSession?.status === 'pending') {
       return { label: 'Pending', tone: 'neutral' };
     }
-    if (agentState === 'starting') {
+    if (activeSession?.status === 'active' && !agentState && panelStatus.phase === 'idle') {
       return { label: 'Starting', tone: 'accent', busy: true };
     }
-    if (agentState === 'working') {
-      return { label: 'Building', tone: 'accent', busy: true };
-    }
-    if (activeSession?.status === 'active' && !agentState) {
-      return { label: 'Starting', tone: 'accent', busy: true };
+    if (panelStatus.nextAction) {
+      return {
+        label: panelStatus.nextAction.text,
+        tone: panelStatus.nextAction.tone,
+        busy: panelStatus.nextAction.busy,
+      };
     }
     return null;
   })();

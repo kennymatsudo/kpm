@@ -12,12 +12,18 @@
  * `derivePanelStatus` re-unifies those sources into one `PanelStatus`. It is a
  * pure function of explicit inputs so it can be unit-tested exhaustively and
  * reused by every surface. The `usePanelStatus` hook is a thin wrapper that
- * gathers store state and calls it.
+ * gathers store state for a single session and calls it; `BoardCard.tsx`
+ * calls `derivePanelStatus` directly instead, since it first has to pick
+ * *which* session among an item's several sessions counts as "active" —
+ * logic upstream of what the hook (built for one already-known session)
+ * covers — then feeds the same canonical inputs through the same function.
  *
  * This models the *deterministic* agent lifecycle (turn ends when the SDK
  * stream ends): a Claude board session moves working -> complete|failed|stopped
  * with no debounce limbo, so there is intentionally no "stuck/stale" phase here.
  * `awaiting_input` is retained only for agent types that still pause (Gemini).
+ * BoardCard layers its own 5-minute no-activity heuristic on top for exactly
+ * that reason — see `isSessionStale` there.
  */
 
 import {
