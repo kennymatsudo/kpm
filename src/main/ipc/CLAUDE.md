@@ -118,21 +118,14 @@ Schemas in `validation/` organized by domain (one file per domain). See `validat
 4. **Organize by domain** — One handler file per feature
 5. **Return objects** — IPC serializes easily; return `{ data: T }`
 
-## Critical: PlanAction Schema Sync
+## PlanAction Schema Registry
 
-**IMPORTANT:** The `planActionSchema` in `validation/plan.ts` MUST stay in sync with the `PlanAction` type in `shared/types.ts`.
+`planActionSchema` (`shared/planActionSchema.ts`) is the single source of truth for `PlanAction`: each action type is declared once as a Zod object in `PLAN_ACTION_REGISTRY`, keyed by its `type` literal. `PlanAction` (`shared/types.ts`) is `z.infer<typeof planActionSchema>`, and `validation/plan.ts` re-exports the same schema for IPC validation — neither hand-declares the union.
 
 When adding a new action type:
-1. Add to `PlanAction` union type in `shared/types.ts`
-2. Add matching Zod schema in `validation/plan.ts` → `planActionSchema`
-3. Add handler case in `db/domain/PlanActionService.ts`
+1. Add an entry to `PLAN_ACTION_REGISTRY` in `shared/planActionSchema.ts`
+2. Add a matching executor to `ACTION_EXECUTORS` in `db/domain/PlanActionService.ts` (and to `collectItemIdsForPrefetch`'s switch, if the action touches existing items)
 
-Current action types that MUST be in both places:
-- Plan items: `create_item`, `reparent`, `set_label`, `set_release`, `update_item`, `delete_item`, `set_position`, `reorder`
-- Dependencies: `add_dependency`, `remove_dependency`
-- Groups: `create_group`, `update_group`, `delete_group`, `assign_to_group`
-- Tracker: `queue_for_tracker`
+`PlanAction` and `planActionSchema` update automatically — no separate type to hand-keep in sync. `ACTION_EXECUTORS` is typed `{ [T in PlanAction['type']]: ActionExecutor<T> }`, so a missing entry is a compile error, not a runtime "No matching discriminator" failure.
 
-Spec sub-fields inside `create_item` / `update_item.updates` (`intent`, `acceptance_criteria`, `source_document_id`) must also match between `shared/types.ts`, `planActionSchema`, and `PlanActionService`. The DB column is added via migration (see `src/main/db/CLAUDE.md`) — schema updates without a migration will silently drop the values.
-
-**Failure to sync causes:** `ZodError: Invalid input` with "No matching discriminator" when Claude tools emit actions.
+Spec sub-fields inside `create_item` / `update_item.updates` (`intent`, `acceptance_criteria`, `source_document_id`) come from `PLAN_ITEM_FIELDS` (`shared/planItemFields.ts`) via `editableVia: ['ipc', 'planAction']` — see `src/main/services/CLAUDE.md` or the root `CLAUDE.md`'s "Add a plan item field" recipe. The DB column is added via migration (see `src/main/db/CLAUDE.md`) — schema updates without a migration will silently drop the values.

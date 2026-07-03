@@ -371,6 +371,42 @@ function executeAssignToGroup(
 }
 
 // =============================================================================
+// Dispatch Table
+// =============================================================================
+
+type ActionExecutor<T extends PlanAction['type']> = (
+  ctx: ExecutorContext,
+  action: Extract<PlanAction, { type: T }>
+) => void;
+
+/**
+ * One entry per PlanAction type, keyed the same way as PLAN_ACTION_REGISTRY
+ * (shared/planActionSchema.ts). `reparent` is a no-op here — it's executed
+ * in the batched-reparent section above before this table is consulted.
+ * The `Record<PlanAction['type'], ...>` key type means a new PlanAction
+ * variant without an entry here is a compile error, not a runtime throw.
+ */
+const ACTION_EXECUTORS: { [T in PlanAction['type']]: ActionExecutor<T> } = {
+  create_item: executeCreateItem,
+  set_label: executeSetLabel,
+  set_release: executeSetRelease,
+  add_dependency: executeAddDependency,
+  remove_dependency: executeRemoveDependency,
+  reorder: executeReorder,
+  update_item: executeUpdateItem,
+  delete_item: executeDeleteItem,
+  set_position: executeSetPosition,
+  queue_for_tracker: executeQueueForTracker,
+  create_group: executeCreateGroup,
+  update_group: executeUpdateGroup,
+  delete_group: executeDeleteGroup,
+  assign_to_group: executeAssignToGroup,
+  reparent: () => {
+    // Already processed in the batched-reparent section before this table runs.
+  },
+};
+
+// =============================================================================
 // Batch Execution Helpers
 // =============================================================================
 
@@ -634,63 +670,8 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
       // Execute other actions individually (maintaining original order)
       for (const { action, index } of otherActions) {
         ctx.actionIndex = index;
-
-        switch (action.type) {
-          case 'create_item':
-            executeCreateItem(ctx, action);
-            break;
-          case 'set_label':
-            executeSetLabel(ctx, action);
-            break;
-          case 'set_release':
-            executeSetRelease(ctx, action);
-            break;
-          case 'add_dependency':
-            executeAddDependency(ctx, action);
-            break;
-          case 'remove_dependency':
-            executeRemoveDependency(ctx, action);
-            break;
-          case 'reorder':
-            executeReorder(ctx, action);
-            break;
-          case 'update_item':
-            executeUpdateItem(ctx, action);
-            break;
-          case 'delete_item':
-            executeDeleteItem(ctx, action);
-            break;
-          case 'set_position':
-            executeSetPosition(ctx, action);
-            break;
-          case 'queue_for_tracker':
-            executeQueueForTracker(ctx, action);
-            break;
-          // Group actions
-          case 'create_group':
-            executeCreateGroup(ctx, action);
-            break;
-          case 'update_group':
-            executeUpdateGroup(ctx, action);
-            break;
-          case 'delete_group':
-            executeDeleteGroup(ctx, action);
-            break;
-          case 'assign_to_group':
-            executeAssignToGroup(ctx, action);
-            break;
-          // reparent is handled in the batched reparents section above
-          case 'reparent':
-            // Already processed in batchExecuteReparents
-            break;
-          default: {
-            const _exhaustive: never = action;
-            void _exhaustive;
-            throw new Error(
-              `[PlanActionService] Unhandled action type: ${(action as { type: string }).type}`
-            );
-          }
-        }
+        const executor = ACTION_EXECUTORS[action.type] as ActionExecutor<typeof action.type>;
+        executor(ctx, action);
       }
     });
 

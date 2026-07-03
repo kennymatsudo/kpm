@@ -77,11 +77,10 @@ When you touch one of these, every file listed must stay in sync.
 Then conditionally: the **`PlanAction` recipe** below if writable via tool; `DevSessionService.buildAgentContext` + the `modify_plan` tool prompt if the field should reach the implementation agent; `components/planning/TaskEditModal.tsx` if user-visible.
 
 **Add a `PlanAction` type**
-1. `PlanAction` union in `src/shared/types.ts`
-2. `planActionSchema` in `src/main/ipc/validation/plan.ts`
-3. Handler case in `src/main/db/domain/PlanActionService.ts`
+1. `PLAN_ACTION_REGISTRY` entry in `src/shared/planActionSchema.ts` — this alone derives both `PlanAction` (`shared/types.ts`) and `planActionSchema` (IPC validation)
+2. Executor in `ACTION_EXECUTORS` (and `collectItemIdsForPrefetch`, if it touches existing items) in `src/main/db/domain/PlanActionService.ts`
 
-Out-of-sync surfaces as `ZodError: Invalid input` / "No matching discriminator".
+A missing executor is a compile error (`ACTION_EXECUTORS` is typed against every `PlanAction['type']`), not a runtime failure.
 
 **Add a Claude tool**
 1. Implement in `src/main/claude/tools/`

@@ -5,6 +5,10 @@
  * `updates` schema are both built from PLAN_ITEM_FIELDS, filtered by editableVia,
  * instead of being hand-kept in sync. Adding a field to the registry adds it to
  * both schemas (or one, per its editableVia tag) automatically.
+ *
+ * Lives in shared/ (not main/ipc/validation/) so shared/planActionSchema.ts can
+ * reuse it for create_item/update_item without main importing from shared and
+ * shared importing back from main.
  */
 
 import { z } from 'zod';
@@ -13,8 +17,11 @@ import {
   fieldsEditableVia,
   type PlanItemFieldKind,
   type PlanItemFieldChannel,
-} from '../../../shared/planItemFields';
-import { uuid } from './shared';
+  type FieldsEditableVia,
+} from './planItemFields';
+import type { PlanItem } from './base-types';
+
+const uuid = z.string().uuid('Invalid ID format (expected UUID)');
 
 function zodForKind(kind: PlanItemFieldKind): z.ZodTypeAny {
   switch (kind.kind) {
@@ -56,7 +63,10 @@ function zodForKind(kind: PlanItemFieldKind): z.ZodTypeAny {
 
 /**
  * Build a Zod object shape for the fields editable via `channel`, all optional
- * (PlanItemUpdates-style: every field is an optional partial update).
+ * (PlanItemUpdates-style: every field is an optional partial update). Field
+ * schemas are built dynamically from PLAN_ITEM_FIELDS, so TS can only see
+ * this shape as `Record<string, z.ZodTypeAny>` — callers that need the
+ * precise per-field type (e.g. planItemUpdatesType below) get it separately.
  */
 export function buildPlanItemUpdateShape(channel: PlanItemFieldChannel): Record<string, z.ZodTypeAny> {
   const shape: Record<string, z.ZodTypeAny> = {};
@@ -64,4 +74,24 @@ export function buildPlanItemUpdateShape(channel: PlanItemFieldChannel): Record<
     shape[name] = zodForKind(PLAN_ITEM_FIELDS[name].fieldKind).optional();
   }
   return shape;
+}
+
+/**
+ * A validated Zod schema for `Partial<Pick<PlanItem, FieldsEditableVia<Channel>>>`
+ * whose z.infer output is precise — unlike `z.object(buildPlanItemUpdateShape(channel))`,
+ * whose dynamically-built shape collapses under z.infer to `{}` (Zod 4 can't
+ * infer Output through a `Record<string, ZodTypeAny>`-typed shape object).
+ * Validates through the same dynamic shape at runtime via z.custom's
+ * predicate, so validation and the TS-visible type can never diverge. The
+ * field set comes from FieldsEditableVia<Channel>, the type-level twin of
+ * fieldsEditableVia — adding a field to PLAN_ITEM_FIELDS updates this type too.
+ */
+export function planItemUpdatesType<Channel extends PlanItemFieldChannel>(
+  channel: Channel
+): z.ZodType<Partial<Pick<PlanItem, FieldsEditableVia<Channel>>>> {
+  const shape = buildPlanItemUpdateShape(channel);
+  return z.custom<Partial<Pick<PlanItem, FieldsEditableVia<Channel>>>>(
+    (value) => z.object(shape).safeParse(value).success,
+    'Invalid update_item updates'
+  );
 }

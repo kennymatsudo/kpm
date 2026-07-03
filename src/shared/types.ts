@@ -7,7 +7,6 @@ import type {
   TrackerType as TrackerTypeBase,
   Project as ProjectBase,
   PlanItem as PlanItemBase,
-  Group,
   AgentType,
 } from './base-types';
 import type { PersistedAgentReview } from './agent-types';
@@ -612,49 +611,11 @@ export type MessageSegment = TextSegment | ActivitySegment | ThinkingSegment | C
 
 // =============================================================================
 // Plan Actions - structured commands for AI-driven plan manipulation
-export type PlanAction =
-  // Plan item actions
-  | {
-      type: 'create_item';
-      title: string;
-      description?: string;
-      /** One-sentence commitment — what "done" means at a glance. */
-      intent?: string;
-      /** Testable checklist the agent will satisfy. Each entry is one criterion. */
-      acceptance_criteria?: string[];
-      /** ID of the iteration document this item was extracted from, if any. */
-      source_document_id?: string;
-      label?: string;
-      parent_id: string | null;
-    }
-  | { type: 'reparent'; item_id: string; new_parent_id: string | null }
-  | { type: 'set_label'; item_id: string; label: string }
-  | { type: 'set_release'; item_id: string; release_tag: string | null }
-  | { type: 'add_dependency'; from_id: string; to_id: string; relation_type: 'depends_on' | 'blocks' | 'relates_to' }
-  | { type: 'remove_dependency'; relation_id: string }
-  | { type: 'reorder'; item_id: string; after_item_id: string | null }
-  | {
-      type: 'update_item';
-      item_id: string;
-      updates: Partial<Pick<PlanItem,
-        | 'title'
-        | 'description'
-        | 'intent'
-        | 'acceptance_criteria'
-        | 'source_document_id'
-        | 'label'
-        | 'release_tag'
-        | 'status_category'
-      >>;
-    }
-  | { type: 'delete_item'; item_id: string }
-  | { type: 'set_position'; item_id: string; x: number; y: number }
-  | { type: 'queue_for_tracker'; item_ids: string[] }
-  // Group actions (visual containers)
-  | { type: 'create_group'; project_id: string; name: string; position_x: number; position_y: number; width: number; height: number }
-  | { type: 'update_group'; group_id: string; updates: Partial<Pick<Group, 'name' | 'width' | 'height'>> }
-  | { type: 'delete_group'; group_id: string }
-  | { type: 'assign_to_group'; item_id: string; group_id: string | null };
+//
+// Derived from PLAN_ACTION_REGISTRY in shared/planActionSchema.ts — the Zod
+// schema there is the source of truth for both this type and IPC validation.
+import type { PlanAction } from './planActionSchema';
+export type { PlanAction } from './planActionSchema';
 
 export interface PlanActionResponse {
   message: string;

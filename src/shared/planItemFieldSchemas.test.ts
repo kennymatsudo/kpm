@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildPlanItemUpdateShape } from './planItemFieldSchemas';
 import { z } from 'zod';
-import { fieldsEditableVia } from '../../../shared/planItemFields';
+import { fieldsEditableVia } from './planItemFields';
 
 describe('buildPlanItemUpdateShape', () => {
   it('ipc shape accepts every registry field', () => {

@@ -152,6 +152,11 @@ export const PLAN_ITEM_FIELDS = {
 
 export type PlanItemFieldName = keyof typeof PLAN_ITEM_FIELDS;
 
+/** Type-level counterpart to fieldsEditableVia — the field names editable via `Channel`. */
+export type FieldsEditableVia<Channel extends PlanItemFieldChannel> = {
+  [K in PlanItemFieldName]: Channel extends (typeof PLAN_ITEM_FIELDS)[K]['editableVia'][number] ? K : never;
+}[PlanItemFieldName];
+
 export function fieldsEditableVia(channel: PlanItemFieldChannel): PlanItemFieldName[] {
   return (Object.keys(PLAN_ITEM_FIELDS) as PlanItemFieldName[]).filter((name) =>
     (PLAN_ITEM_FIELDS[name].editableVia as readonly PlanItemFieldChannel[]).includes(channel)
