@@ -46,8 +46,8 @@ describe('trackerStore', () => {
 
     const result = await useTrackerStore.getState().updateAssociationEpicKey('assoc-1', 'PROJ-123');
 
-    expect(api.tracker.associations.updateEpicKey).toHaveBeenCalledWith('assoc-1', 'PROJ-123');
-    expect(api.tracker.associations.list).toHaveBeenCalledWith('project-1');
+    expect(api.tracker.associations.updateEpicKey).toHaveBeenCalledWith({ associationId: 'assoc-1', epicKey: 'PROJ-123' });
+    expect(api.tracker.associations.list).toHaveBeenCalledWith({ projectId: 'project-1' });
     expect(result).toEqual({ success: true });
     expect(useTrackerStore.getState().associations[0]?.epic_key).toBe('PROJ-123');
   });

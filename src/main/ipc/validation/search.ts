@@ -2,15 +2,11 @@
  * Search Validation Schemas
  */
 
-import { z } from 'zod';
-import { uuid } from './shared';
+import type { z } from 'zod';
+import { searchEndpoints } from '../../../shared/ipc/searchEndpoints';
 
 export const SearchSchemas = {
-  global: z.object({
-    projectId: uuid,
-    query: z.string().min(1).max(200),
-    limit: z.number().int().min(1).max(200).optional(),
-  }),
+  global: searchEndpoints.global.params,
 };
 
 export type SearchGlobalInput = z.infer<typeof SearchSchemas.global>;

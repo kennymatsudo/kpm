@@ -2,10 +2,9 @@
  * Briefing Validation Schemas
  */
 
-import { z } from 'zod';
-import { uuid } from './shared';
+import { briefingEndpoints } from '../../../shared/ipc/briefingEndpoints';
 
 export const BriefingSchemas = {
-  generate: z.object({ projectId: uuid }),
-  get: z.object({ projectId: uuid }),
+  generate: briefingEndpoints.generate.params,
+  get: briefingEndpoints.get.params,
 };

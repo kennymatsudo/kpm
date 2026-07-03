@@ -12,14 +12,12 @@ import { generateClaudeCodeHookSettings, cleanupClaudeCodeHookSettings } from '.
 import { hookEventToActivity, type HookEvent } from './hookServer';
 import { getCleanEnv } from '../streaming/envUtils';
 import { BaseAgentSession } from './BaseAgentSession';
-import { deriveReviewOutcome } from './reviewOutputContract';
 import type {
   IAgentSession,
   AgentType,
   AgentSessionRole,
   AgentQuestion,
   AgentCompletionSummary,
-  AgentTurnResult,
 } from '../../../shared/agent-types';
 
 const LOG_PREFIX = '[CliAgentSession]';
@@ -222,22 +220,8 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
     return this.lastAssistantMessage || this.outputBuffer;
   }
 
-  private getFinalOutput(): string | null {
+  protected finalOutput(): string | null {
     return this.getOutput() || null;
-  }
-
-  getResult(): AgentTurnResult {
-    const finalText = this.getFinalOutput();
-    if (this.role !== 'review') {
-      return { finalText };
-    }
-
-    const outcome = deriveReviewOutcome(finalText, this.agentType);
-    return {
-      finalText,
-      review: 'findings' in outcome ? { findings: outcome.findings! } : { error: outcome.error! },
-      reviewRawOutput: outcome.rawOutput,
-    };
   }
 
   // ===========================================================================

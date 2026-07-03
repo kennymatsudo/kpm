@@ -19,12 +19,11 @@ import {
 import { BaseAgentSession } from './BaseAgentSession';
 import { findCodexBinaryPath } from '../../codex/binary';
 import { classifyCodexError } from '../../codex/errors';
-import { REVIEW_FINDINGS_SCHEMA, deriveReviewOutcome } from './reviewOutputContract';
+import { REVIEW_FINDINGS_SCHEMA } from './reviewOutputContract';
 import type {
   AgentCompletionSummary,
   AgentSessionRole,
   AgentType,
-  AgentTurnResult,
   IAgentSession,
 } from '../../../shared/agent-types';
 
@@ -138,22 +137,8 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
     return this.lastAssistantMessage;
   }
 
-  private getFinalOutput(): string | null {
+  protected finalOutput(): string | null {
     return this.getOutput() || null;
-  }
-
-  getResult(): AgentTurnResult {
-    const finalText = this.getFinalOutput();
-    if (this.role !== 'review') {
-      return { finalText };
-    }
-
-    const outcome = deriveReviewOutcome(finalText, this.agentType);
-    return {
-      finalText,
-      review: 'findings' in outcome ? { findings: outcome.findings! } : { error: outcome.error! },
-      reviewRawOutput: outcome.rawOutput,
-    };
   }
 
   private buildThreadOptions(worktreePath: string): ThreadOptions {

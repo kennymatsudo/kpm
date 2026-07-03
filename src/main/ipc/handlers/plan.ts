@@ -1,138 +1,82 @@
-import { ipcMain } from 'electron';
+import { planEndpoints, type PlanEndpointName } from '../../../shared/ipc/planEndpoints';
+import type { EndpointPayload } from '../../../shared/ipc/endpoints';
 import type { PlanService } from '../../services/core/PlanService';
 import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
-import { createIpcHandler, PlanSchemas } from '../validation';
-import { IPC_CHANNELS } from '../channels';
+import { createRegistryIpcHandlers } from '../validation/utils';
+
+type PlanHandler<K extends PlanEndpointName> = (
+  params: EndpointPayload<(typeof planEndpoints)[K]>
+) => unknown;
+
+/**
+ * One handler per `planEndpoints` entry. A registry entry without a matching
+ * key here is a compile error, not a runtime "no handler" failure.
+ */
+type PlanHandlers = { [K in PlanEndpointName]: PlanHandler<K> };
+
+function buildPlanHandlers(
+  planService: PlanService,
+  planItems: IPlanItemRepository,
+  planRelations: IPlanRelationRepository,
+): PlanHandlers {
+  return {
+    listItems: ({ projectId }) => ({ items: planItems.getByProject(projectId) }),
+
+    executeActions: ({ projectId, actions }) => ({ result: planService.executeActions(projectId, actions) }),
+
+    addRelation: (relation) => ({ relation: planRelations.add(relation) }),
+
+    removeRelation: ({ relationId }) => {
+      planRelations.remove(relationId);
+    },
+
+    getRelations: ({ projectId }) => ({ relations: planRelations.getByProject(projectId) }),
+
+    updatePosition: ({ itemId, x, y }) => {
+      if (!planItems.get(itemId)) {
+        throw new Error(`Item not found: ${itemId}`);
+      }
+      planItems.updatePosition(itemId, x, y);
+    },
+
+    updatePositions: ({ updates }) => {
+      const result = planService.updatePositions(updates);
+      if (!result.ok) throw new Error(result.error);
+    },
+
+    updateItem: ({ itemId, updates }) => {
+      const result = planService.updateItem(itemId, updates);
+      if (!result.ok) throw new Error(result.error);
+    },
+
+    deleteItem: ({ itemId }) => {
+      if (!planItems.get(itemId)) {
+        throw new Error(`Item not found: ${itemId}`);
+      }
+      planItems.delete(itemId);
+    },
+
+    deleteItemWithDescendants: ({ itemId }) => {
+      if (!planItems.get(itemId)) {
+        throw new Error(`Item not found: ${itemId}`);
+      }
+      planItems.deleteWithDescendants(itemId);
+    },
+
+    getChildCount: ({ itemId }) => {
+      if (!planItems.get(itemId)) {
+        throw new Error(`Item not found: ${itemId}`);
+      }
+      return { count: planItems.getChildCount(itemId) };
+    },
+  };
+}
 
 export function registerPlanHandlers(
   planService: PlanService,
   planItems: IPlanItemRepository,
   planRelations: IPlanRelationRepository,
 ): void {
-  ipcMain.handle(
-    IPC_CHANNELS.plan.listItems,
-    createIpcHandler(
-      PlanSchemas.listItems,
-      ({ projectId }) => ({ items: planItems.getByProject(projectId) }),
-      'Failed to list plan items',
-    ),
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.plan.executeActions,
-    createIpcHandler(
-      PlanSchemas.executeActions,
-      ({ projectId, actions }) => ({ result: planService.executeActions(projectId, actions) }),
-      'Failed to execute plan actions',
-    ),
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.plan.addRelation,
-    createIpcHandler(
-      PlanSchemas.addRelation,
-      (relation) => ({ relation: planRelations.add(relation) }),
-      'Failed to add plan relation',
-    ),
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.plan.removeRelation,
-    createIpcHandler(
-      PlanSchemas.removeRelation,
-      ({ relationId }) => {
-        planRelations.remove(relationId);
-      },
-      'Failed to remove plan relation',
-    ),
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.plan.getRelations,
-    createIpcHandler(
-      PlanSchemas.getRelations,
-      ({ projectId }) => ({ relations: planRelations.getByProject(projectId) }),
-      'Failed to get plan relations',
-    ),
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.plan.updatePosition,
-    createIpcHandler(
-      PlanSchemas.updatePosition,
-      ({ itemId, x, y }) => {
-        if (!planItems.get(itemId)) {
-          throw new Error(`Item not found: ${itemId}`);
-        }
-        planItems.updatePosition(itemId, x, y);
-      },
-      'Failed to update plan position',
-    ),
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.plan.updatePositions,
-    createIpcHandler(
-      PlanSchemas.updatePositions,
-      ({ updates }) => {
-        const result = planService.updatePositions(updates);
-        if (!result.ok) throw new Error(result.error);
-      },
-      'Failed to update plan positions',
-    ),
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.plan.updateItem,
-    createIpcHandler(
-      PlanSchemas.updateItem,
-      ({ itemId, updates }) => {
-        const result = planService.updateItem(itemId, updates);
-        if (!result.ok) throw new Error(result.error);
-      },
-      'Failed to update plan item',
-    ),
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.plan.deleteItem,
-    createIpcHandler(
-      PlanSchemas.deleteItem,
-      ({ itemId }) => {
-        if (!planItems.get(itemId)) {
-          throw new Error(`Item not found: ${itemId}`);
-        }
-        planItems.delete(itemId);
-      },
-      'Failed to delete plan item',
-    ),
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.plan.deleteItemWithDescendants,
-    createIpcHandler(
-      PlanSchemas.deleteItemWithDescendants,
-      ({ itemId }) => {
-        if (!planItems.get(itemId)) {
-          throw new Error(`Item not found: ${itemId}`);
-        }
-        planItems.deleteWithDescendants(itemId);
-      },
-      'Failed to delete plan item with descendants',
-    ),
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.plan.getChildCount,
-    createIpcHandler(
-      PlanSchemas.getChildCount,
-      ({ itemId }) => {
-        if (!planItems.get(itemId)) {
-          throw new Error(`Item not found: ${itemId}`);
-        }
-        return { count: planItems.getChildCount(itemId) };
-      },
-      'Failed to get plan child count',
-    ),
-  );
+  const handlers = buildPlanHandlers(planService, planItems, planRelations);
+  createRegistryIpcHandlers(planEndpoints, handlers, 'Plan operation failed');
 }

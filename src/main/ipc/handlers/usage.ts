@@ -6,29 +6,50 @@
  */
 
 import { ipcMain } from 'electron';
-import { IPC_CHANNELS } from '../channels';
-import { UsageSchemas } from '../validation/usage';
+import { usageEndpoints, type UsageEndpointName } from '../../../shared/ipc/usageEndpoints';
+import type { EndpointPayload } from '../../../shared/ipc/endpoints';
 import type { ClaudeUsageService } from '../../services/core/ClaudeUsageService';
 
+type UsageHandler<K extends UsageEndpointName> = (
+  params: EndpointPayload<(typeof usageEndpoints)[K]>,
+  event: Electron.IpcMainInvokeEvent
+) => unknown;
+
+/**
+ * One handler per `usageEndpoints` entry. A registry entry without a
+ * matching key here is a compile error, not a runtime "no handler" failure.
+ */
+type UsageHandlers = { [K in UsageEndpointName]: UsageHandler<K> };
+
+function buildUsageHandlers(claudeUsageService: ClaudeUsageService): UsageHandlers {
+  return {
+    getProjectStats: ({ projectId }) => claudeUsageService.getProjectStats(projectId),
+
+    getGlobalStats: () => claudeUsageService.getGlobalStats(),
+
+    listEvents: ({ projectId, limit }) => claudeUsageService.listRecentEvents(projectId, limit ?? 100),
+
+    resetProject: ({ projectId }) => {
+      claudeUsageService.resetProject(projectId);
+      return { success: true };
+    },
+  };
+}
+
 export function registerUsageHandlers(claudeUsageService: ClaudeUsageService): void {
-  ipcMain.handle(IPC_CHANNELS.usage.getProjectStats, (_event, params: unknown) => {
-    const { projectId } = UsageSchemas.getProjectStats.parse(params);
-    return claudeUsageService.getProjectStats(projectId);
-  });
+  const handlers = buildUsageHandlers(claudeUsageService);
 
-  ipcMain.handle(IPC_CHANNELS.usage.getGlobalStats, (_event, params: unknown) => {
-    UsageSchemas.getGlobalStats.parse(params);
-    return claudeUsageService.getGlobalStats();
-  });
-
-  ipcMain.handle(IPC_CHANNELS.usage.listEvents, (_event, params: unknown) => {
-    const { projectId, limit } = UsageSchemas.listEvents.parse(params);
-    return claudeUsageService.listRecentEvents(projectId, limit ?? 100);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.usage.resetProject, (_event, params: unknown) => {
-    const { projectId } = UsageSchemas.resetProject.parse(params);
-    claudeUsageService.resetProject(projectId);
-    return { success: true };
-  });
+  for (const [name, { channel, params }] of Object.entries(usageEndpoints) as [
+    UsageEndpointName,
+    (typeof usageEndpoints)[UsageEndpointName],
+  ][]) {
+    // Each handler's parameter type was checked once against its own
+    // registry entry in `buildUsageHandlers`; iterating erases that
+    // per-key correlation into a union, hence the cast here.
+    const handler = handlers[name] as (params: unknown, event: Electron.IpcMainInvokeEvent) => unknown;
+    ipcMain.handle(channel, async (event, rawParams: unknown) => {
+      const parsedParams = params ? params.parse(rawParams) : undefined;
+      return handler(parsedParams, event);
+    });
+  }
 }

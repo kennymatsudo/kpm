@@ -118,12 +118,12 @@ export const DetailPane = memo(function DetailPane({
   }, [activeTab, session.pr_number]);
 
   const handleStop = useCallback(() => {
-    void stopAgentSession(session.id);
+    void stopAgentSession({ devSessionId: session.id });
   }, [session.id]);
 
   const handleRunReview = useCallback(() => {
     void (async () => {
-      const result = await launchAutoReview(session.id);
+      const result = await launchAutoReview({ devSessionId: session.id });
       if (!result.success) {
         toast.error(result.error ?? 'Failed to start review');
         return;
@@ -143,7 +143,7 @@ export const DetailPane = memo(function DetailPane({
     setActiveTab('activity');
     void (async () => {
       try {
-        const result = await startAgentSession(session.id);
+        const result = await startAgentSession({ devSessionId: session.id });
         if (!result.success) {
           toast.error(result.error ?? 'Failed to resume agent');
           return;
@@ -165,7 +165,7 @@ export const DetailPane = memo(function DetailPane({
     setPendingPanelAction('dismiss');
     void (async () => {
       try {
-        const result = await dismissAgentInterruption(session.id);
+        const result = await dismissAgentInterruption({ devSessionId: session.id });
         if (!result.success) {
           toast.error(result.error ?? 'Failed to dismiss');
         }
@@ -232,7 +232,7 @@ export const DetailPane = memo(function DetailPane({
     setIsOpeningEditor(true);
     void (async () => {
       try {
-        const result = await openDevSessionInEditor(session.id);
+        const result = await openDevSessionInEditor({ sessionId: session.id });
         if (!result.success) {
           toast.error(result.error || 'Failed to open editor');
         }
@@ -322,7 +322,7 @@ export const DetailPane = memo(function DetailPane({
 
     void (async () => {
       try {
-        const result = await commitAgentSession(session.id, message, { repairOnFailure: true });
+        const result = await commitAgentSession({ devSessionId: session.id, message, repairOnFailure: true });
         if (!result.success) {
           const errMsg = result.error ?? 'Commit failed';
           if (result.repairStarted) {

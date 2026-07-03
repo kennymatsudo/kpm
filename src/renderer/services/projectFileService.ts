@@ -1,4 +1,8 @@
 import type { FileNode } from '../../shared/types';
+import type { EndpointPayload } from '../../shared/ipc/endpoints';
+import type { FileExplorerEndpointName, fileExplorerEndpoints } from '../../shared/ipc/fileExplorerEndpoints';
+
+type FileExplorerEndpointPayload<K extends FileExplorerEndpointName> = EndpointPayload<(typeof fileExplorerEndpoints)[K]>;
 
 export interface ProjectFileChangeEvent {
   projectId: string;
@@ -8,85 +12,52 @@ export interface ProjectFileChangeEvent {
   isDirectory: boolean;
 }
 
-export function watchProjectFiles(projectId: string): Promise<{ success: boolean; error?: string }> {
-  return window.api.fileExplorer.watchProject(projectId);
+export function watchProjectFiles(payload: FileExplorerEndpointPayload<'watchProject'>): Promise<{ success: boolean; error?: string }> {
+  return window.api.fileExplorer.watchProject(payload);
 }
 
 export function unwatchProjectFiles(): Promise<{ success: boolean }> {
-  return window.api.fileExplorer.unwatchProject();
+  return window.api.fileExplorer.unwatchProject({});
 }
 
-export function copyExternalProjectFile(
-  projectId: string,
-  sourcePath: string,
-  destinationPath: string
-): Promise<FileNode> {
-  return window.api.fileExplorer.copyExternalFile(projectId, sourcePath, destinationPath);
+export function copyExternalProjectFile(payload: FileExplorerEndpointPayload<'copyExternalFile'>): Promise<FileNode> {
+  return window.api.fileExplorer.copyExternalFile(payload);
 }
 
-export function createProjectTextFile(
-  projectId: string,
-  path: string,
-  content: string
-): Promise<FileNode> {
-  return window.api.fileExplorer.createFile(projectId, path, content);
+export function createProjectTextFile(payload: FileExplorerEndpointPayload<'createFile'>): Promise<FileNode> {
+  return window.api.fileExplorer.createFile(payload);
 }
 
-export function createProjectBinaryFile(
-  projectId: string,
-  path: string,
-  data: Uint8Array
-): Promise<FileNode> {
-  return window.api.fileExplorer.createBinaryFile(projectId, path, data);
+export function createProjectBinaryFile(payload: FileExplorerEndpointPayload<'createBinaryFile'>): Promise<FileNode> {
+  return window.api.fileExplorer.createBinaryFile(payload);
 }
 
-export function listProjectDirectory(
-  projectId: string,
-  path?: string,
-  options?: { recursive?: boolean; depth?: number }
-): Promise<FileNode[]> {
-  return window.api.fileExplorer.listDirectory(projectId, path, options);
+export function listProjectDirectory(payload: FileExplorerEndpointPayload<'listDirectory'>): Promise<FileNode[]> {
+  return window.api.fileExplorer.listDirectory(payload);
 }
 
-export function createProjectFolder(projectId: string, path: string): Promise<FileNode> {
-  return window.api.fileExplorer.createFolder(projectId, path);
+export function createProjectFolder(payload: FileExplorerEndpointPayload<'createFolder'>): Promise<FileNode> {
+  return window.api.fileExplorer.createFolder(payload);
 }
 
-export function createProjectSymlink(
-  projectId: string,
-  targetPath: string,
-  linkPath: string
-): Promise<FileNode> {
-  return window.api.fileExplorer.createSymlink(projectId, targetPath, linkPath);
+export function createProjectSymlink(payload: FileExplorerEndpointPayload<'createSymlink'>): Promise<FileNode> {
+  return window.api.fileExplorer.createSymlink(payload);
 }
 
-export function deleteProjectEntry(
-  projectId: string,
-  path: string
-): Promise<{ success: boolean; error?: string }> {
-  return window.api.fileExplorer.delete(projectId, path);
+export function deleteProjectEntry(payload: FileExplorerEndpointPayload<'delete'>): Promise<{ success: boolean; error?: string }> {
+  return window.api.fileExplorer.delete(payload);
 }
 
-export function renameProjectEntry(
-  projectId: string,
-  oldPath: string,
-  newPath: string
-): Promise<FileNode> {
-  return window.api.fileExplorer.rename(projectId, oldPath, newPath);
+export function renameProjectEntry(payload: FileExplorerEndpointPayload<'rename'>): Promise<FileNode> {
+  return window.api.fileExplorer.rename(payload);
 }
 
-export function showProjectItemInFolder(
-  projectId: string,
-  path: string
-): Promise<{ success: boolean; error?: string }> {
-  return window.api.fileExplorer.showItemInFolder(projectId, path);
+export function showProjectItemInFolder(payload: FileExplorerEndpointPayload<'showItemInFolder'>): Promise<{ success: boolean; error?: string }> {
+  return window.api.fileExplorer.showItemInFolder(payload);
 }
 
-export function openProjectItemInEditor(
-  projectId: string,
-  path: string
-): Promise<{ success: boolean; error?: string }> {
-  return window.api.fileExplorer.openInEditor(projectId, path);
+export function openProjectItemInEditor(payload: FileExplorerEndpointPayload<'openInEditor'>): Promise<{ success: boolean; error?: string }> {
+  return window.api.fileExplorer.openInEditor(payload);
 }
 
 export function subscribeToProjectFileChanges(

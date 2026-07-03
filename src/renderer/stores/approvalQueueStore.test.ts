@@ -66,12 +66,12 @@ describe('approvalQueueStore — review reply flow', () => {
     });
 
     expect(result).toEqual({ success: true });
-    expect(api.review.replyToThread).toHaveBeenCalledWith(
-      'dev-session-1',
-      'thread-1',
-      'Fixed in the latest commit.',
-      true
-    );
+    expect(api.review.replyToThread).toHaveBeenCalledWith({
+      sessionId: 'dev-session-1',
+      threadId: 'thread-1',
+      body: 'Fixed in the latest commit.',
+      resolve: true,
+    });
     expect(useDevSessionsStore.getState().reviewInboxBySessionId.get('dev-session-1')).toEqual({
       session_id: 'dev-session-1',
       fetched_at: '2024-01-03T00:00:00.000Z',
@@ -80,7 +80,7 @@ describe('approvalQueueStore — review reply flow', () => {
       snapshot: null,
       tasks: [],
     });
-    expect(api.devSessions.getByProjectWithPlanItems).toHaveBeenCalledWith('project-1');
+    expect(api.devSessions.getByProjectWithPlanItems).toHaveBeenCalledWith({ projectId: 'project-1' });
   });
 });
 
@@ -114,7 +114,7 @@ describe('approvalQueueStore — file delete flow', () => {
     const result = await useApprovalQueueStore.getState().executeFileDelete('project-1', 'drafts/old.md');
 
     expect(result).toEqual({ success: true });
-    expect(api.fileExplorer.delete).toHaveBeenCalledWith('project-1', 'drafts/old.md');
+    expect(api.fileExplorer.delete).toHaveBeenCalledWith({ projectId: 'project-1', path: 'drafts/old.md' });
   });
 });
 

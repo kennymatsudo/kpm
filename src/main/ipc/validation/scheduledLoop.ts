@@ -1,55 +1,24 @@
 /**
  * Scheduled Loop Validation Schemas
  *
- * Zod schemas for scheduled-loop IPC operations. The IPC boundary uses
- * camelCase; handlers map to the snake_case repository shapes.
+ * Payload schemas are owned by `shared/ipc/scheduledLoopEndpoints.ts` (one
+ * entry per IPC endpoint, shared with the preload bridge and the handler
+ * binding). The IPC boundary uses camelCase; handlers map to the snake_case
+ * repository shapes.
  */
 
-import { z } from 'zod';
-import { uuid, nonEmptyString } from './shared';
-
-const loopOutputMode = z.enum(['notify', 'report', 'maintain']);
-
-// 5 minutes minimum (loops run agent turns — keep cost sane); 1 week maximum.
-const intervalMinutes = z
-  .number()
-  .int()
-  .min(5, 'Interval must be at least 5 minutes')
-  .max(10080, 'Interval must be at most 1 week');
+import type { z } from 'zod';
+import { scheduledLoopEndpoints } from '../../../shared/ipc/scheduledLoopEndpoints';
 
 export const ScheduledLoopSchemas = {
-  list: z.object({ projectId: uuid }),
-
-  get: z.object({ id: uuid }),
-
-  create: z.object({
-    projectId: uuid,
-    name: nonEmptyString('Loop name').max(100, 'Loop name must be under 100 characters'),
-    prompt: nonEmptyString('Loop prompt').max(50000, 'Prompt too long'),
-    outputMode: loopOutputMode,
-    intervalMinutes,
-    enabled: z.boolean().optional(),
-  }),
-
-  update: z.object({
-    id: uuid,
-    name: nonEmptyString('Loop name').max(100, 'Loop name must be under 100 characters').optional(),
-    prompt: nonEmptyString('Loop prompt').max(50000, 'Prompt too long').optional(),
-    outputMode: loopOutputMode.optional(),
-    intervalMinutes: intervalMinutes.optional(),
-    enabled: z.boolean().optional(),
-  }),
-
-  setEnabled: z.object({ id: uuid, enabled: z.boolean() }),
-
-  delete: z.object({ id: uuid }),
-
-  runNow: z.object({ id: uuid }),
-
-  history: z.object({
-    loopId: uuid,
-    limit: z.number().int().min(1).max(200).optional(),
-  }),
+  list: scheduledLoopEndpoints.list.params,
+  get: scheduledLoopEndpoints.get.params,
+  create: scheduledLoopEndpoints.create.params,
+  update: scheduledLoopEndpoints.update.params,
+  setEnabled: scheduledLoopEndpoints.setEnabled.params,
+  delete: scheduledLoopEndpoints.delete.params,
+  runNow: scheduledLoopEndpoints.runNow.params,
+  history: scheduledLoopEndpoints.history.params,
 };
 
 export type ScheduledLoopListInput = z.infer<typeof ScheduledLoopSchemas.list>;

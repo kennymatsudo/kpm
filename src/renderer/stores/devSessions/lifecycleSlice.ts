@@ -125,7 +125,7 @@ export function createDevSessionsLifecycleSlice(
       }
 
       try {
-        const { devSessions } = await loadDevSessions(projectId);
+        const { devSessions } = await loadDevSessions({ projectId });
 
         if (!isCurrentLoadSessionsRequest(requestId) || get().projectId !== projectId) {
           return;
@@ -139,7 +139,7 @@ export function createDevSessionsLifecycleSlice(
         // Fetch merge order alongside sessions (fire-and-forget: don't block on failure)
         const mergeOrderBySessionId = new Map<string, { layer: number | null; blockedBy: string[] }>();
         try {
-          const mergeOrderResult = await getDevSessionMergeOrder(projectId);
+          const mergeOrderResult = await getDevSessionMergeOrder({ projectId });
           if (mergeOrderResult.success && mergeOrderResult.mergeOrder) {
             for (const [id, entry] of Object.entries(mergeOrderResult.mergeOrder)) {
               mergeOrderBySessionId.set(id, entry);
@@ -214,7 +214,7 @@ export function createDevSessionsLifecycleSlice(
 
     checkSessionDirty: async (sessionId) => {
       try {
-        const result = await checkDevSessionDirty(sessionId);
+        const result = await checkDevSessionDirty({ sessionId });
         if (!result.success) {
           return {
             success: false,
@@ -340,7 +340,7 @@ export function createDevSessionsLifecycleSlice(
       }));
 
       try {
-        const result = await loadDevSessionDiff(sessionId);
+        const result = await loadDevSessionDiff({ sessionId });
         if (!result.success) {
           const error = result.error || 'Failed to load diff';
           set((state) => {

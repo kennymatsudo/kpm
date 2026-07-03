@@ -27,13 +27,18 @@ src/main/ipc/
 ├── validation/           # Zod schemas by domain
 │   ├── index.ts
 │   ├── shared.ts
-│   ├── utils.ts          # createIpcHandler helper
+│   ├── utils.ts          # createIpcHandler, createRegistryIpcHandlers, bindRegistryHandlers helpers
 │   └── [domain].ts       # Domain-specific schemas
 ├── handlers/             # IPC handler implementations (one per domain)
 └── register/             # Handler registration groups (three files, called from index.ts)
     ├── workspace.ts      # Project/repo/attachment, plan/group, chat, files/export, tracker, settings, themes, permissions, artifacts, task prompt templates, custom prompts, scheduled loops, onboarding, slack
     ├── development.ts    # Worktree, GitHub, review, dev sessions, file explorer, repo files, agent sessions
     └── platform.ts       # Shell, terminal, temp images, perf, confluence, debug, testing, tool log, prompt overrides, search, briefing, MCP servers, usage handlers
+
+src/shared/ipc/
+├── endpoints.ts           # Generic registry helpers (EndpointDefinition, EndpointPayload, toNestedChannels, deriveDomainApi)
+├── relativePath.ts        # Shared pure-string relative-path safety check (normalizePosixPath + relativePath schema) reused by fileExplorer, repoFiles, github, confluence
+└── {domain}Endpoints.ts   # One per domain (tracker, fileExplorer, repoFiles, attachment, tempImage, artifact, context, search, chat, terminal, settings, permission, promptOverrides, toolLog, storybook, mcpServers, briefing, usage, worktree, devSession, agentSession, review, github, plan, group, export, confluence, scheduledLoop, slack, project, repo, customPrompt, taskPromptTemplate, customTheme, onboarding, perf, debug, testing, shell) — every invoke domain is on the registry; see "Endpoint Registries" below
 ```
 
 ## Channel Registry
@@ -105,10 +110,59 @@ Schemas in `validation/` organized by domain (one file per domain). See `validat
 
 ## Adding a New IPC Handler
 
-1. Define channel in `src/shared/ipcChannels.ts`
-2. Create Zod schema in `validation/{domain}.ts`
-3. Create handler in `handlers/{domain}.ts` — prefer `createIpcHandler` (Pattern 2; see `handlers/plan.ts`, `handlers/artifacts.ts`) for new handlers; the raw `ipcMain.handle` + `unwrapOrThrow`/`toIpcResponse` form (Pattern 1; see `handlers/worktree.ts`) also appears in the codebase but adds no benefit over Pattern 2
-4. Import and call the handler in the appropriate `register/` file (`workspace.ts`, `development.ts`, or `platform.ts`); `index.ts` calls each register file's function, so adding to the right group is enough
+Every invoke domain is on the endpoint registry (tracker, fileExplorer, repoFiles, attachment, tempImage, artifact, context/claudeMd, search, chat, terminal, settings, permission, promptOverrides, toolLog, storybook, mcpServers, briefing, usage, worktree, devSession, agentSession, review, github, plan, group, export, confluence, scheduledLoop, slack, project, repo, customPrompts, taskPromptTemplates, customThemes, onboarding, perf, debug, testing, shell). Follow the registry recipe below. The old 4-file recipe (hand-declared channel + `validation/{domain}.ts` schema + `handlers/{domain}.ts` + register call) no longer applies to any domain — new endpoints are added to an existing `{domain}Endpoints.ts` registry, or a new one following "Migrating a Domain to the Endpoint Registry" below.
+
+Every domain's registration loop binds off the same criterion: a uniform `{success, ...}` envelope across every entry goes through `createRegistryIpcHandlers`; a heterogeneous mix of response shapes (raw values, `toIpcResponse`, `unwrapOrThrow`, `ipcSuccess`/`ipcError`) goes through `bindRegistryHandlers` instead, which wires the same per-key params schema and dispatch without imposing an envelope. Both live next to each other in `validation/utils.ts`. `groups`, `slack`, `worktree`, `confluence`, `tracker`, and `attachments` use `bindRegistryHandlers` for this reason; `handlers/debug.ts` also uses it since its response shape is a bare `{ enabled }`. `handlers/testing.ts` (test-only, env-gated, mixed response shapes; channels still come from `testingEndpoints`) hand-declares each `ipcMain.handle` call individually rather than looping — it doesn't fit either helper since some of its handlers need per-call setup beyond a channel + params + handler triple. `handlers/customPrompts.ts` execution progress (`custom-prompt:progress`/`complete`/`error`) and `handlers/onboarding.ts` generation progress (`onboarding:progress`/`thinking`/`complete`/`error`) are hand-written main-to-renderer events, same as every other domain's streaming callbacks.
+
+## Endpoint Registries (Migrated Domains)
+
+Adding one IPC endpoint by hand touches up to six files: the channel string (`shared/ipcChannels.ts`), the Zod schema (`validation/{domain}.ts`), the handler (`handlers/{domain}.ts`), the register call, a preload invoke wrapper (`src/preload/api.ts`), and a renderer service wrapper (`src/renderer/services/{domain}Service.ts`). An **endpoint registry** collapses the first five into one declaration per endpoint; only the renderer service wrapper (required by the `no-restricted-properties` lint rule — `window.api` may only be touched inside `src/renderer/services/`) and the handler body stay separate.
+
+`src/shared/ipc/trackerEndpoints.ts` is the reference implementation. Shape:
+
+```typescript
+// src/shared/ipc/trackerEndpoints.ts
+export const trackerEndpoints = {
+  'credentials.get': { channel: 'tracker:credentials:get', params: null },
+  'credentials.saveJira': {
+    channel: 'tracker:credentials:save:jira',
+    params: z.object({ siteUrl: jiraSiteUrl, email, apiToken }),
+  },
+  // ...one entry per endpoint, keyed by the dotted method path used on window.api.<domain>
+} satisfies Record<string, EndpointDefinition>;
+```
+
+Write registry entries as **plain object literals**, not via a generic factory function (e.g. `endpoint(channel, params)`) — routing construction through a generic helper widens each entry's `params` to the shared `EndpointDefinition` bound and breaks per-endpoint payload inference (`EndpointPayload<...>` silently resolves to `undefined` for every entry). This is a real TypeScript pitfall, not a style preference — verify with `tsc --noEmit` if you touch this pattern.
+
+`shared/ipc/endpoints.ts` provides the generic helpers:
+- `EndpointDefinition<TParams>` / `EndpointRegistry` — the entry and registry shapes
+- `EndpointPayload<E>` — extracts an entry's payload type from its Zod schema (or `undefined` for `params: null`)
+- `toNestedChannels(registry)` — rebuilds a nested `{ a: { b: 'x:a:b' } }` object from the flat registry, for call sites that still read `IPC_CHANNELS.<domain>.*` (e.g. `shared/ipcChannels.ts` derives `IPC_CHANNELS.tracker` this way, and `registration.test.ts`'s channel-drift guard walks the result the same as any hand-declared block)
+- `deriveDomainApi(registry, invoke)` — builds `{ method: (payload) => invoke(channel, payload) }` for the preload bridge; a closed set, nothing beyond the registry's own channels
+
+**Main side** (`handlers/{domain}.ts`): bind one handler function per registry key via a typed map — `{ [K in keyof typeof {domain}Endpoints]: HandlerFor<K> }` (mirrors `ACTION_EXECUTORS` in `shared/planActionSchema.ts` — a registry entry without a matching handler key is a compile error). Handler bodies keep the same validate-nothing-else-than-that shape as before (they already come in validated); the loop that registers them with `ipcMain.handle` parses each payload with the entry's own `params` schema before calling the handler. See `handlers/tracker.ts`.
+
+**Preload side** (`src/preload/api.ts`): call `deriveDomainApi({domain}Endpoints, (channel, payload) => ipcRenderer.invoke(channel, payload))`, then wrap the result in the domain's existing nested object shape (e.g. `tracker.credentials.get`) with explicit response types, since the registry only carries request payload types, not response types. Event-subscription methods (`onProgress`, etc., using `ipcRenderer.on`) are not invoke endpoints — leave them hand-written alongside the derived block.
+
+**Renderer side** (`src/renderer/services/{domain}Service.ts`): each exported function stays a thin forward to `window.api.{domain}.*`, but takes the endpoint's payload object directly instead of reshaping positional arguments into one — the payload type IS the Zod schema's inferred type (`EndpointPayload<(typeof {domain}Endpoints)[K]>`). The file is not deleted even though every function is a 1:1 forward: renderer code outside `services/` may not import `window.api` directly.
+
+## Migrating a Domain to the Endpoint Registry
+
+Checklist for sweeping an un-migrated domain onto this pattern (see the tracker migration for a worked example):
+
+1. Create `src/shared/ipc/{domain}Endpoints.ts`: one entry per endpoint (`{ channel, params }`), written as plain object literals (see the factory-function pitfall above). Move the domain's Zod schemas here from `validation/{domain}.ts` — the registry becomes their single owner.
+2. Derive `IPC_CHANNELS.{domain}` in `shared/ipcChannels.ts` from the registry via `toNestedChannels`, instead of hand-declaring the block. Grep for other readers of `IPC_CHANNELS.{domain}.*` first — keep the nested shape identical so they don't need changes. **Event channels are not invoke endpoints** — channels only ever used with `ipcRenderer.on`/`webContents.send` (progress events, etc.) stay hand-declared and out of the registry.
+3. Rewrite `validation/{domain}.ts`'s exported schema object to pull each schema off the registry (`{domain}Endpoints['x.y'].params`) instead of redeclaring it, so existing imports of e.g. `{Domain}Schemas` keep working unchanged.
+4. Rewrite `handlers/{domain}.ts`: bind one handler per registry key via the typed-map pattern; keep each handler body's actual logic untouched, just change how it receives its channel + validated params.
+5. In `src/preload/api.ts`, replace the domain's hand-written `ipcRenderer.invoke(...)` block with `deriveDomainApi({domain}Endpoints, ...)`, re-wrapped in the domain's existing nested shape with explicit response types. **This is the step that changes the wire-facing client signature**: today's hand-written preload wrappers reshape positional arguments into a payload object (`(a, b) => invoke(ch, { a, b })`); the derived methods take the payload object directly. Leave `ipcRenderer.on(...)` event-subscription functions hand-written.
+6. In `src/renderer/services/{domain}Service.ts`, update each function whose preload method's signature changed (step 5) to accept and forward the payload object instead of positional args — do **not** delete the file or bypass it with direct `window.api` access from stores/components, even for pure 1:1 forwards (`no-restricted-properties` in `eslint.config.ts` restricts `window.api` to `services/`).
+7. Update every call site of the changed service functions (stores, components) to pass a payload object instead of positional arguments — `tsc --noEmit` will point at every one. Update any test asserting `toHaveBeenCalledWith(...)` on the old positional shape.
+8. If the domain has functions that are not 1:1 forwards (real logic beyond reshaping), leave them as-is; only the reshaping wrappers change shape.
+9. Verify: `tsc --noEmit` (zero new errors), the domain's `validation`/`registration` tests, and any test importing the renderer service file.
+
+**`src/shared/ipc/{domain}Endpoints.ts` files get bundled into the renderer** (the preload bridge and renderer services both import them for their payload types), so their `params` schemas cannot import Node builtins (`fs`, `path`, `os`) even though `.parse()` only ever actually runs in the main process — the static `import` alone breaks the Vite renderer build. Two escape hatches, both used by the `fileExplorer`/`repoFiles`/`context` and `attachment`/`tempImage` registries respectively:
+- Pure-string reimplementations of the Node logic (e.g. a hand-rolled `path.posix.normalize` for relative-path safety checks) when the check has no environment dependency.
+- When the check is genuinely environment-dependent (e.g. scoping a path to `os.tmpdir()`), narrow the registry's `params` to a format-only check (e.g. "is absolute") and layer the stronger `.refine()` back on in `validation/{domain}.ts` via `registryEndpoint.params.extend({...})`; then in `handlers/{domain}.ts` parse the affected keys through that stronger schema instead of the registry's own `params` (see `handlers/attachments.ts` and `handlers/tempImages.ts`'s `validationOverrides` map for the pattern).
 
 ## Best Practices
 

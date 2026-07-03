@@ -103,7 +103,7 @@ export function useFileContextMenus({
   const handleRevealInFinder = useCallback(
     async (path: string) => {
       if (projectId && path) {
-        await showProjectItemInFolder(projectId, path);
+        await showProjectItemInFolder({ projectId, path });
       }
       setContextMenu(null);
     },
@@ -113,7 +113,7 @@ export function useFileContextMenus({
   const handleOpenInEditor = useCallback(
     async (path: string) => {
       if (projectId && path) {
-        const result = await openProjectItemInEditor(projectId, path);
+        const result = await openProjectItemInEditor({ projectId, path });
         if (!result.success) {
           console.error('Failed to open file in editor:', result.error);
         }

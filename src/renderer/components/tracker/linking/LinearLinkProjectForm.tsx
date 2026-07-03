@@ -98,7 +98,7 @@ export function LinearLinkProjectForm({ projectId, onLinked, onCancel }: Props) 
     setIsLoadingProjects(true);
     setProjectsError(null);
     setSelectedProjectId('');
-    listLinearTrackerProjects(selectedTeamKey)
+    listLinearTrackerProjects({ teamKey: selectedTeamKey })
       .then((result: { success: boolean; projects?: LinearProject[]; error?: string }) => {
         if (cancelled) return;
         if (!result.success || !result.projects) {
@@ -134,7 +134,7 @@ export function LinearLinkProjectForm({ projectId, onLinked, onCancel }: Props) 
     setSelectedStateIds(new Set());
     setIsLoadingStates(true);
     setStatesError(null);
-    listTrackerProjectStatuses(selectedTeamKey, 'linear')
+    listTrackerProjectStatuses({ projectKey: selectedTeamKey, trackerType: 'linear' })
       .then((result: { success: boolean; statuses?: LinearState[]; error?: string }) => {
         if (cancelled) return;
         if (!result.success || !result.statuses) {

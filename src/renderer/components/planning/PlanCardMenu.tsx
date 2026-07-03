@@ -141,7 +141,7 @@ export function PlanCardMenu({
 
     setIsOpeningSessionEditor(true);
     try {
-      const result = await openDevSessionInEditor(targetWorktree.id);
+      const result = await openDevSessionInEditor({ sessionId: targetWorktree.id });
       if (!result.success) {
         throw new Error(result.error || 'Failed to open editor');
       }

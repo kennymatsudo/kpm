@@ -1,15 +1,10 @@
-import { z } from 'zod';
+import type { z } from 'zod';
+import { toolLogEndpoints } from '../../../shared/ipc/toolLogEndpoints';
 
 export const ToolLogSchemas = {
-  getEntries: z.object({
-    chatSessionId: z.string().min(1, 'chatSessionId is required'),
-  }),
-  getSessionStats: z.object({
-    chatSessionId: z.string().min(1, 'chatSessionId is required'),
-  }),
-  setEnabled: z.object({
-    enabled: z.boolean(),
-  }),
+  getEntries: toolLogEndpoints.getEntries.params,
+  getSessionStats: toolLogEndpoints.getSessionStats.params,
+  setEnabled: toolLogEndpoints.setEnabled.params,
 };
 
 export type ToolLogGetEntriesInput = z.infer<typeof ToolLogSchemas.getEntries>;

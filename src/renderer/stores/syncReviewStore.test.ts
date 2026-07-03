@@ -88,7 +88,7 @@ describe('useSyncReviewStore', () => {
 
     await useSyncReviewStore.getState().removeFromReview('plan-2');
 
-    expect(api.tracker.exportQueue.remove).toHaveBeenCalledWith('queue-2');
+    expect(api.tracker.exportQueue.remove).toHaveBeenCalledWith({ queueEntryId: 'queue-2' });
     expect(useSyncReviewStore.getState().items.map((item) => item.planItem.id)).toEqual(['plan-1']);
     expect(useSyncReviewStore.getState().currentIndex).toBe(0);
   });
@@ -106,10 +106,10 @@ describe('useSyncReviewStore', () => {
       .getState()
       .updateCustomFieldOverrides('queue-1', { 'custom-field': 'value-2' });
 
-    expect(api.tracker.exportQueue.updateCustomFieldOverrides).toHaveBeenCalledWith(
-      'queue-1',
-      { 'custom-field': 'value-2' }
-    );
+    expect(api.tracker.exportQueue.updateCustomFieldOverrides).toHaveBeenCalledWith({
+      queueEntryId: 'queue-1',
+      customFieldOverrides: { 'custom-field': 'value-2' },
+    });
     expect(useSyncReviewStore.getState().items[0]?.queueEntry.custom_field_overrides).toEqual({
       'custom-field': 'value-2',
     });
@@ -145,11 +145,11 @@ describe('useSyncReviewStore', () => {
     await useSyncReviewStore.getState().executeApproved('project-1', 'assoc-1');
     unsubscribe();
 
-    expect(api.tracker.export.executeApproved).toHaveBeenCalledWith(
-      'project-1',
-      'assoc-1',
-      ['plan-1']
-    );
+    expect(api.tracker.export.executeApproved).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      associationId: 'assoc-1',
+      approvedItemIds: ['plan-1'],
+    });
     expect(events).toEqual([{ projectId: 'project-1', associationId: 'assoc-1' }]);
   });
 });

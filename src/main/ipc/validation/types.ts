@@ -192,8 +192,6 @@ export type DevSessionGetCommitsAheadInput = z.infer<typeof DevSessionSchemas.ge
 
 export type WorktreeGetByProjectInput = z.infer<typeof WorktreeSchemas.getByProject>;
 export type WorktreeGetByPlanItemInput = z.infer<typeof WorktreeSchemas.getByPlanItem>;
-export type WorktreeLaunchInput = z.infer<typeof WorktreeSchemas.launch>;
-export type WorktreeResumeInput = z.infer<typeof WorktreeSchemas.resume>;
 export type WorktreeOpenEditorInput = z.infer<typeof WorktreeSchemas.openEditor>;
 export type WorktreeGetStatusInput = z.infer<typeof WorktreeSchemas.getStatus>;
 export type WorktreeDeleteInput = z.infer<typeof WorktreeSchemas.delete>;

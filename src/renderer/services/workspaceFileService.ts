@@ -9,17 +9,17 @@ export function readWorkspaceFile(
     if (!projectId) {
       throw new Error('No project selected');
     }
-    return window.api.fileExplorer.readFile(projectId, path);
+    return window.api.fileExplorer.readFile({ projectId, path });
   }
 
-  return window.api.repoFiles.readFile(source, path);
+  return window.api.repoFiles.readFile({ repoId: source, path });
 }
 
 export function readProjectBinaryFile(
   projectId: string,
   path: string
 ): Promise<Uint8Array> {
-  return window.api.fileExplorer.readBinaryFile(projectId, path);
+  return window.api.fileExplorer.readBinaryFile({ projectId, path });
 }
 
 export function showWorkspaceFileInFolder(
@@ -31,10 +31,10 @@ export function showWorkspaceFileInFolder(
     if (!projectId) {
       throw new Error('No project selected');
     }
-    return window.api.fileExplorer.showItemInFolder(projectId, path);
+    return window.api.fileExplorer.showItemInFolder({ projectId, path });
   }
 
-  return window.api.repoFiles.showItemInFolder(source, path);
+  return window.api.repoFiles.showItemInFolder({ repoId: source, path });
 }
 
 export async function writeWorkspaceFile(
@@ -45,7 +45,7 @@ export async function writeWorkspaceFile(
 ): Promise<void> {
   const result = source === 'project'
     ? await writeProjectFile(projectId, path, content)
-    : await window.api.repoFiles.writeFile(source, path, content);
+    : await window.api.repoFiles.writeFile({ repoId: source, path, content });
 
   if (!result.success) {
     throw new Error(result.error || `Failed to write file: ${path}`);
@@ -61,7 +61,7 @@ export function writeProjectFile(
     throw new Error('No project selected');
   }
 
-  return window.api.fileExplorer.writeFile(projectId, path, content);
+  return window.api.fileExplorer.writeFile({ projectId, path, content });
 }
 
 export function deleteProjectFile(
@@ -72,5 +72,5 @@ export function deleteProjectFile(
     throw new Error('No project selected');
   }
 
-  return window.api.fileExplorer.delete(projectId, path);
+  return window.api.fileExplorer.delete({ projectId, path });
 }

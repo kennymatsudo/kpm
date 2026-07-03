@@ -4,8 +4,14 @@
  * Provides validation wrappers, error classes, and response types for IPC handlers.
  */
 
+import { ipcMain } from 'electron';
 import type { z, ZodError } from 'zod';
 import { assertTrustedIpcSender } from '../senderValidation';
+import type { EndpointDefinition, EndpointPayload, EndpointRegistry } from '../../../shared/ipc/endpoints';
+
+interface ParsableSchema {
+  parse: (input: unknown) => unknown;
+}
 
 /**
  * Custom error class for validation failures.
@@ -147,4 +153,90 @@ export function createSimpleIpcHandler<TOutput extends object | void>(
       return { success: false, error: errorMessage };
     }
   };
+}
+
+/**
+ * Registers one `ipcMain.handle` per registry entry with `createIpcHandler`'s
+ * response contract (sender trust check, Zod validation, `{success: true,
+ * ...result}` / `{success: false, error}` wrapping) — for domains whose
+ * pre-migration handlers relied on that wrapper rather than constructing
+ * their own `{success, ...}` shape by hand (as `tracker`/`attachment` do).
+ *
+ * `handlers` only needs to return the bare result; validation, trust
+ * checking, and response-shape wrapping happen once here instead of once per
+ * handler body.
+ */
+export function createRegistryIpcHandlers<R extends EndpointRegistry>(
+  registry: R,
+  handlers: { [K in keyof R]: (params: EndpointPayload<R[K]>, event: Electron.IpcMainInvokeEvent) => unknown },
+  fallbackError = 'Operation failed',
+  /**
+   * Per-key schema overrides for endpoints whose registry `params` had to be
+   * narrowed to a format-only check (the registry is bundled into the
+   * renderer and can't statically import Node builtins) — the stronger
+   * refine layered on top in `validation/{domain}.ts` parses here instead.
+   */
+  validationOverrides?: Partial<{ [K in keyof R]: { safeParse: (input: unknown) => z.ZodSafeParseResult<unknown> } }>
+): void {
+  for (const [name, definition] of Object.entries(registry) as [keyof R, EndpointDefinition][]) {
+    const { channel, params: registryParams } = definition;
+    const params = validationOverrides?.[name] ?? registryParams;
+    const handler = handlers[name] as (params: unknown, event: Electron.IpcMainInvokeEvent) => unknown;
+    ipcMain.handle(channel, async (event, rawParams: unknown) => {
+      try {
+        assertTrustedIpcSender(event);
+
+        const parseResult = params ? params.safeParse(rawParams) : { success: true as const, data: undefined };
+        if (!parseResult.success) {
+          const error = new ValidationError(parseResult.error);
+          return { success: false, error: error.message };
+        }
+
+        const result = await handler(parseResult.data, event);
+
+        if (result === undefined || result === null) {
+          return { success: true };
+        }
+        return { success: true, ...result };
+      } catch (e) {
+        console.error(`[IPC] ${fallbackError}:`, e);
+        const errorMessage = e instanceof Error ? e.message : fallbackError;
+        return { success: false, error: errorMessage };
+      }
+    });
+  }
+}
+
+/**
+ * Registers one `ipcMain.handle` per registry entry without imposing a
+ * response envelope — for domains whose handlers return heterogeneous shapes
+ * (raw values, `toIpcResponse`, `unwrapOrThrow`, `ipcSuccess`/`ipcError`) that
+ * `createRegistryIpcHandlers`' uniform `{success, ...}` wrapping can't carry.
+ *
+ * `handlers` only needs to return its own result; this only wires the
+ * per-key params schema and dispatches to the matching handler.
+ */
+export function bindRegistryHandlers<R extends EndpointRegistry>(
+  registry: R,
+  handlers: { [K in keyof R]: (params: EndpointPayload<R[K]>, event: Electron.IpcMainInvokeEvent) => unknown },
+  /**
+   * Per-key schema overrides for endpoints whose registry `params` had to be
+   * narrowed to a format-only check (the registry is bundled into the
+   * renderer and can't statically import Node builtins) — the stronger
+   * refine layered on top in `validation/{domain}.ts` parses here instead.
+   */
+  validationOverrides?: Partial<{ [K in keyof R]: ParsableSchema }>
+): void {
+  for (const [name, definition] of Object.entries(registry) as [keyof R, EndpointDefinition][]) {
+    const { channel, params: registryParams } = definition;
+    const params = validationOverrides?.[name] ?? registryParams;
+    // Each handler's parameter type was checked once against its own
+    // registry entry when `handlers` was built; iterating erases that
+    // per-key correlation into a union, hence the cast here.
+    const handler = handlers[name] as (params: unknown, event: Electron.IpcMainInvokeEvent) => unknown;
+    ipcMain.handle(channel, async (event, rawParams: unknown) => {
+      const parsedParams = params ? params.parse(rawParams) : undefined;
+      return handler(parsedParams, event);
+    });
+  }
 }

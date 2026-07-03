@@ -2,7 +2,7 @@ import { app, ipcMain } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getDatabase } from '../../db/connection';
-import { IPC_CHANNELS } from '../channels';
+import { testingEndpoints } from '../../../shared/ipc/testingEndpoints';
 import type { Database as BetterSqliteDatabase } from 'better-sqlite3';
 
 /**
@@ -37,7 +37,7 @@ export function registerTestingHandlers(): void {
    * SAFETY: This handler is only registered when NODE_ENV=test,
    * and has an additional runtime check to prevent accidental data loss.
    */
-  ipcMain.handle(IPC_CHANNELS.testing.resetDatabase, () => {
+  ipcMain.handle(testingEndpoints.resetDatabase.channel, () => {
     // Double-check we're in test mode - defense in depth
     if (process.env.NODE_ENV !== 'test') {
       console.error('[Testing] BLOCKED: Attempted to reset database outside test mode');
@@ -138,7 +138,7 @@ export function registerTestingHandlers(): void {
    * Report which database file the app actually opened. The e2e harness
    * asserts this is its isolated temp directory before running any test.
    */
-  ipcMain.handle(IPC_CHANNELS.testing.getDbPath, () => {
+  ipcMain.handle(testingEndpoints.getDbPath.channel, () => {
     return { dbPath: getOpenDbPath(getDatabase()) };
   });
 }

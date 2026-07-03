@@ -90,10 +90,7 @@ A missing executor is a compile error (`ACTION_EXECUTORS` is typed against every
 5. If it mutates the plan: emit `PlanAction[]` via `onPlanActions` — do **not** write to the DB.
 
 **Add an IPC handler**
-1. Channel in `src/shared/ipcChannels.ts`
-2. Zod schema in `src/main/ipc/validation/{domain}.ts`
-3. Handler in `src/main/ipc/handlers/{domain}.ts`
-4. Register in the right `src/main/ipc/register/` file
+Every invoke domain is on the endpoint registry (tracker, fileExplorer, repoFiles, attachment, tempImage, artifact, context/claudeMd, search, chat, terminal, settings, permission, promptOverrides, toolLog, storybook, mcpServers, briefing, usage, worktree, devSession, agentSession, review, github, plan, group, export, confluence, scheduledLoop, slack, project, repo, customPrompts, taskPromptTemplates, customThemes, onboarding, perf, debug, testing, shell): add one entry to `src/shared/ipc/{domain}Endpoints.ts` (channel + Zod params schema) and one handler to the typed binding in `src/main/ipc/handlers/{domain}.ts`. See "Migrating a domain to the endpoint registry" in [`src/main/ipc/CLAUDE.md`](src/main/ipc/CLAUDE.md).
 
 **Touch `@plan/<uuid>` flow**
 - Parser: `src/shared/planRefs.ts`
@@ -104,9 +101,8 @@ A missing executor is a compile error (`ACTION_EXECUTORS` is typed against every
 Never bypass the export-boundary rewrite.
 
 **Change `PlanCard` layout**
-- `components/planning/PlanCard.tsx` — DOM
-- `utils/planHierarchy.ts` — `calculateCardHeight`, `buildHeightMapFromTree`
-- `constants/planCardStyles.ts` — padding
+- `constants/planCardStyles.ts` (`CARD_BOX_MODEL`) is the single owner of the box model — change a value here.
+- `components/planning/PlanCard.tsx` (DOM) and `utils/planHierarchy.ts` (`calculateCardHeight`, `buildHeightMapFromTree`) both read `CARD_BOX_MODEL` directly, so there is nothing left to hand-sync between them.
 
 Heights are calculated, not measured. Drift causes uneven gaps. See [`src/renderer/CLAUDE.md`](src/renderer/CLAUDE.md).
 

@@ -7,5 +7,5 @@ export function getMcpServerPreferences() {
 }
 
 export function setMcpServerEnabled(serverKey: string, enabled: boolean) {
-  return window.api.mcpServers.setEnabled(serverKey, enabled);
+  return window.api.mcpServers.setEnabled({ serverName: serverKey, enabled });
 }

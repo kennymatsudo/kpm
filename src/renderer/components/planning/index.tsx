@@ -270,18 +270,17 @@ export function PlanView({
 
     setAgentStartItemId(null);
 
-    const result = await createAndStartAgentSession(
-      params.planItemId,
-      params.repoId,
-      params.prompt,
-      undefined,
-      params.baseBranch,
-      params.contextPaths,
-      params.effort,
-      params.environmentMode,
-      params.executionMode,
-      params.reviewPolicy,
-    );
+    const result = await createAndStartAgentSession({
+      planItemId: params.planItemId,
+      repoId: params.repoId,
+      prompt: params.prompt,
+      baseBranch: params.baseBranch,
+      contextPaths: params.contextPaths,
+      effort: params.effort,
+      environmentMode: params.environmentMode,
+      executionMode: params.executionMode,
+      reviewPolicy: params.reviewPolicy,
+    });
 
     if (!result.success) {
       toast.error(result.error || 'Failed to start agent session');

@@ -4,125 +4,75 @@
 
 import { z } from 'zod';
 import * as fs from 'fs';
-import {
-  uuid,
-  projectName,
-  projectPhase,
-  existingDirectoryPath,
-  absolutePath,
-} from './shared';
+import { absolutePath } from './shared';
+import { attachmentEndpoints } from '../../../shared/ipc/attachmentEndpoints';
+import { storybookEndpoints } from '../../../shared/ipc/storybookEndpoints';
+import { projectEndpoints } from '../../../shared/ipc/projectEndpoints';
+import { repoEndpoints } from '../../../shared/ipc/repoEndpoints';
 
 // =============================================================================
 // Project Schemas
 // =============================================================================
 
 export const ProjectSchemas = {
-  create: z.object({
-    name: projectName,
-    folderPath: absolutePath.optional(),
-  }),
-
-  get: z.object({
-    projectId: uuid,
-  }),
-
-  update: z.object({
-    projectId: uuid,
-    updates: z
-      .object({
-        name: projectName.optional(),
-        phase: projectPhase.optional(),
-      })
-      .refine((u) => u.name !== undefined || u.phase !== undefined, 'At least one update field is required'),
-  }),
-
-  delete: z.object({
-    projectId: uuid,
-  }),
-
-  openFolder: z.object({
-    projectId: uuid,
-  }),
+  create: projectEndpoints.create.params,
+  get: projectEndpoints.get.params,
+  update: projectEndpoints.update.params,
+  delete: projectEndpoints.delete.params,
+  openFolder: projectEndpoints.openFolder.params,
 };
 
 // =============================================================================
 // Repository Schemas
+//
+// `repoEndpoints`' `params` only checks each path is absolute (a shared/
+// renderer-safe check); the directory-existence refine below can't be
+// expressed there since `fs.statSync` is main-process-only. `handlers/repos.ts`
+// parses path-carrying endpoints through these stronger schemas instead of
+// the registry's own `params`.
 // =============================================================================
 
-/** Environment mode for repo direnv/nix support */
-const repoEnvironmentMode = z.enum(['auto', 'direnv', 'nix', 'none']);
+const existingDirectoryPath = absolutePath.refine(
+  (p) => {
+    try {
+      return fs.statSync(p).isDirectory();
+    } catch {
+      return false;
+    }
+  },
+  'Directory does not exist'
+);
 
 export const RepoSchemas = {
-  add: z.object({
-    projectId: uuid,
-    path: existingDirectoryPath,
-  }),
-
-  remove: z.object({
-    repoId: uuid,
-  }),
-
-  list: z.object({
-    projectId: uuid,
-  }),
-
-  getBranch: z.object({
-    path: existingDirectoryPath,
-  }),
-
-  getBranches: z.object({
-    paths: z.array(existingDirectoryPath),
-  }),
-
-  watch: z.object({
-    repoId: uuid,
-    path: existingDirectoryPath,
-  }),
-
-  unwatch: z.object({
-    path: existingDirectoryPath,
-  }),
-
-  updateEnvironmentMode: z.object({
-    repoId: uuid,
-    mode: repoEnvironmentMode,
-  }),
-
-  listDirectories: z.object({
-    repoPath: existingDirectoryPath,
-    prefix: z.string().max(500).default(''),
-    depth: z.number().int().min(1).max(20).default(20),
-  }),
-
-  listAllBranches: z.object({
-    repoPath: existingDirectoryPath,
-  }),
-
-  listWorktrees: z.object({
-    repoPath: existingDirectoryPath,
-  }),
-
-  setActiveWorktreePath: z.object({
-    repoId: uuid,
-    worktreePath: z.string().nullable(),
-  }),
-
-  showInFolder: z.object({
-    repoId: uuid,
-  }),
-
-  openEditor: z.object({
-    repoId: uuid,
-  }),
+  add: repoEndpoints.add.params.extend({ path: existingDirectoryPath }),
+  remove: repoEndpoints.remove.params,
+  list: repoEndpoints.list.params,
+  getBranch: repoEndpoints.getBranch.params.extend({ path: existingDirectoryPath }),
+  getBranches: repoEndpoints.getBranches.params.extend({ paths: z.array(existingDirectoryPath) }),
+  watch: repoEndpoints.watch.params.extend({ path: existingDirectoryPath }),
+  unwatch: repoEndpoints.unwatch.params.extend({ path: existingDirectoryPath }),
+  updateEnvironmentMode: repoEndpoints.updateEnvironmentMode.params,
+  listDirectories: repoEndpoints.listDirectories.params.extend({ repoPath: existingDirectoryPath }),
+  listAllBranches: repoEndpoints.listAllBranches.params.extend({ repoPath: existingDirectoryPath }),
+  listWorktrees: repoEndpoints.listWorktrees.params.extend({ repoPath: existingDirectoryPath }),
+  setActiveWorktreePath: repoEndpoints.setActiveWorktreePath.params,
+  showInFolder: repoEndpoints.showInFolder.params,
+  openEditor: repoEndpoints.openEditor.params,
 };
 
 // =============================================================================
 // Attachment Schemas
+//
+// Payload schemas are owned by `shared/ipc/attachmentEndpoints.ts` (one entry
+// per IPC endpoint, shared with the preload bridge and the handler binding).
+// `add`'s registry schema validates `path` is absolute but can't also check
+// the file exists on disk (`fs.statSync` is main-process-only, not
+// derivable in shared/renderer code) — that existence check is layered back
+// on here, same as it was pre-migration.
 // =============================================================================
 
 export const AttachmentSchemas = {
-  add: z.object({
-    projectId: uuid,
+  add: attachmentEndpoints.add.params.extend({
     path: absolutePath.refine(
       (p) => {
         try {
@@ -133,20 +83,11 @@ export const AttachmentSchemas = {
       },
       'Source file does not exist'
     ),
-    filename: z
-      .string()
-      .min(1, 'Filename is required')
-      .refine((f) => !f.includes('/') && !f.includes('\\'), 'Filename cannot contain path separators')
-      .refine((f) => f !== '.' && f !== '..', 'Invalid filename'),
   }),
 
-  remove: z.object({
-    attachmentId: uuid,
-  }),
+  remove: attachmentEndpoints.remove.params,
 
-  list: z.object({
-    projectId: uuid,
-  }),
+  list: attachmentEndpoints.list.params,
 };
 
 // =============================================================================
@@ -154,12 +95,6 @@ export const AttachmentSchemas = {
 // =============================================================================
 
 export const StorybookSchemas = {
-  updateUrl: z.object({
-    projectId: uuid,
-    storybookUrl: z.string().url('Must be a valid URL').nullable(),
-  }),
-
-  testConnection: z.object({
-    url: z.string().url('Must be a valid URL'),
-  }),
+  updateUrl: storybookEndpoints.updateUrl.params,
+  testConnection: storybookEndpoints.testConnection.params,
 };

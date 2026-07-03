@@ -1,8 +1,28 @@
 import { ipcMain, type BrowserWindow } from 'electron';
-import { TerminalSchemas } from '../validation';
+import { terminalEndpoints, type TerminalEndpointName } from '../../../shared/ipc/terminalEndpoints';
+import type { EndpointPayload } from '../../../shared/ipc/endpoints';
 import { IPC_CHANNELS } from '../channels';
 import { toIpcResponse } from '../response';
 import type { TerminalService } from '../../services/streaming/TerminalService';
+
+type TerminalHandler<K extends TerminalEndpointName> = (
+  params: EndpointPayload<(typeof terminalEndpoints)[K]>
+) => unknown;
+
+/**
+ * One handler per `terminalEndpoints` entry. A registry entry without a
+ * matching key here is a compile error, not a runtime "no handler" failure.
+ */
+type TerminalHandlers = { [K in TerminalEndpointName]: TerminalHandler<K> };
+
+function buildTerminalHandlers(terminalService: TerminalService): TerminalHandlers {
+  return {
+    create: (input) => toIpcResponse(terminalService.create(input)),
+    write: ({ id, data }) => toIpcResponse(terminalService.write(id, data)),
+    resize: ({ id, cols, rows }) => toIpcResponse(terminalService.resize(id, cols, rows)),
+    kill: ({ id }) => toIpcResponse(terminalService.kill(id)),
+  };
+}
 
 export function registerTerminalHandlers(
   terminalService: TerminalService,
@@ -26,23 +46,19 @@ export function registerTerminalHandlers(
     win.webContents.send(IPC_CHANNELS.terminal.exit, { id, exitCode, signal });
   });
 
-  ipcMain.handle(IPC_CHANNELS.terminal.create, (_event, params: unknown) => {
-    const input = TerminalSchemas.create.parse(params);
-    return toIpcResponse(terminalService.create(input));
-  });
+  const handlers = buildTerminalHandlers(terminalService);
 
-  ipcMain.handle(IPC_CHANNELS.terminal.write, (_event, params: unknown) => {
-    const { id, data } = TerminalSchemas.write.parse(params);
-    return toIpcResponse(terminalService.write(id, data));
-  });
-
-  ipcMain.handle(IPC_CHANNELS.terminal.resize, (_event, params: unknown) => {
-    const { id, cols, rows } = TerminalSchemas.resize.parse(params);
-    return toIpcResponse(terminalService.resize(id, cols, rows));
-  });
-
-  ipcMain.handle(IPC_CHANNELS.terminal.kill, (_event, params: unknown) => {
-    const { id } = TerminalSchemas.kill.parse(params);
-    return toIpcResponse(terminalService.kill(id));
-  });
+  for (const [name, { channel, params }] of Object.entries(terminalEndpoints) as [
+    TerminalEndpointName,
+    (typeof terminalEndpoints)[TerminalEndpointName],
+  ][]) {
+    // Each handler's parameter type was checked once against its own
+    // registry entry in `buildTerminalHandlers`; iterating erases that
+    // per-key correlation into a union, hence the cast here.
+    const handler = handlers[name] as (params: unknown) => unknown;
+    ipcMain.handle(channel, (_event, rawParams: unknown) => {
+      const parsedParams = params ? params.parse(rawParams) : undefined;
+      return handler(parsedParams);
+    });
+  }
 }

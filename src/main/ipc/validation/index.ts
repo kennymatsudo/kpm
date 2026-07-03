@@ -13,6 +13,7 @@ export {
   ValidationError,
   createIpcHandler,
   createSimpleIpcHandler,
+  createRegistryIpcHandlers,
   type IpcSuccessResponse,
   type IpcErrorResponse,
   type IpcResponse,
@@ -37,9 +38,6 @@ export {
   existingFilePath,
   relativePath,
   // Tracker types
-  jiraSiteUrl,
-  email,
-  apiToken,
   jiraProjectKey,
   // Claude types
   claudeModel,
@@ -316,8 +314,6 @@ export type {
   // Worktree
   WorktreeGetByProjectInput,
   WorktreeGetByPlanItemInput,
-  WorktreeLaunchInput,
-  WorktreeResumeInput,
   WorktreeOpenEditorInput,
   WorktreeGetStatusInput,
   WorktreeDeleteInput,

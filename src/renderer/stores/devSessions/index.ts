@@ -335,7 +335,7 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
   reconcileAgentStates: async (devSessionIds) => {
     if (devSessionIds.length === 0) return;
     const results = await Promise.allSettled(
-      devSessionIds.map(async (id) => ({ id, res: await getAgentState(id) }))
+      devSessionIds.map(async (id) => ({ id, res: await getAgentState({ devSessionId: id }) }))
     );
     set((s) => {
       const next = new Map(s.agentStateBySessionId);

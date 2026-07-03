@@ -1,112 +1,80 @@
-import { ipcMain } from 'electron';
 import type { ProjectService } from '../../services/core/ProjectService';
-import { createIpcHandler, createSimpleIpcHandler, ProjectSchemas, StorybookSchemas } from '../validation';
-import { IPC_CHANNELS } from '../channels';
+import { createRegistryIpcHandlers } from '../validation/utils';
+import { projectEndpoints, type ProjectEndpointName } from '../../../shared/ipc/projectEndpoints';
+import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import { storybookEndpoints } from '../../../shared/ipc/storybookEndpoints';
 
-export function registerProjectHandlers(projectService: ProjectService): void {
-  ipcMain.handle(
-    IPC_CHANNELS.project.create,
-    createIpcHandler(
-      ProjectSchemas.create,
-      async ({ name, folderPath }) => {
-        const result = await projectService.create({ name, folderPath });
-        if (!result.ok) throw new Error(result.error);
-        return { project: result.data };
-      },
-      'Failed to create project',
-    ),
-  );
+type ProjectHandler<K extends ProjectEndpointName> = (
+  params: EndpointPayload<(typeof projectEndpoints)[K]>
+) => unknown;
 
-  ipcMain.handle(
-    IPC_CHANNELS.project.get,
-    createIpcHandler(
-      ProjectSchemas.get,
-      ({ projectId }) => {
-        const result = projectService.get(projectId);
-        if (!result.ok) throw new Error(result.error);
-        return { project: result.data };
-      },
-      'Failed to get project',
-    ),
-  );
+/**
+ * One handler per `projectEndpoints` entry. A registry entry without a
+ * matching key here is a compile error, not a runtime "no handler" failure.
+ */
+type ProjectHandlers = { [K in ProjectEndpointName]: ProjectHandler<K> };
 
-  ipcMain.handle(
-    IPC_CHANNELS.project.list,
-    createSimpleIpcHandler(() => {
+function buildProjectHandlers(projectService: ProjectService): ProjectHandlers {
+  return {
+    create: async ({ name, folderPath }) => {
+      const result = await projectService.create({ name, folderPath });
+      if (!result.ok) throw new Error(result.error);
+      return { project: result.data };
+    },
+
+    get: ({ projectId }) => {
+      const result = projectService.get(projectId);
+      if (!result.ok) throw new Error(result.error);
+      return { project: result.data };
+    },
+
+    list: () => {
       const result = projectService.list();
       if (!result.ok) throw new Error(result.error);
       return { projects: result.data };
-    }, 'Failed to list projects'),
-  );
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.project.getDefaultLocation,
-    createSimpleIpcHandler(() => {
+    getDefaultLocation: () => {
       const result = projectService.getDefaultLocation();
       if (!result.ok) throw new Error(result.error);
       return result.data;
-    }, 'Failed to resolve default project location'),
-  );
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.project.update,
-    createIpcHandler(
-      ProjectSchemas.update,
-      ({ projectId, updates }) => {
-        const result = projectService.update(projectId, updates);
-        if (!result.ok) throw new Error(result.error);
-        return { project: result.data };
-      },
-      'Failed to update project',
-    ),
-  );
+    update: ({ projectId, updates }) => {
+      const result = projectService.update(projectId, updates);
+      if (!result.ok) throw new Error(result.error);
+      return { project: result.data };
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.project.delete,
-    createIpcHandler(
-      ProjectSchemas.delete,
-      ({ projectId }) => {
-        const result = projectService.delete(projectId);
-        if (!result.ok) throw new Error(result.error);
-      },
-      'Failed to delete project',
-    ),
-  );
+    delete: ({ projectId }) => {
+      const result = projectService.delete(projectId);
+      if (!result.ok) throw new Error(result.error);
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.project.openFolder,
-    createIpcHandler(
-      ProjectSchemas.openFolder,
-      async ({ projectId }) => {
-        const result = await projectService.openFolder(projectId);
-        if (!result.ok) throw new Error(result.error);
-      },
-      'Failed to open project folder',
-    ),
-  );
+    openFolder: async ({ projectId }) => {
+      const result = await projectService.openFolder(projectId);
+      if (!result.ok) throw new Error(result.error);
+    },
+  };
+}
 
-  ipcMain.handle(
-    IPC_CHANNELS.storybook.updateUrl,
-    createIpcHandler(
-      StorybookSchemas.updateUrl,
-      ({ projectId, storybookUrl }) => {
+export function registerProjectHandlers(projectService: ProjectService): void {
+  createRegistryIpcHandlers(projectEndpoints, buildProjectHandlers(projectService), 'Project operation failed');
+
+  createRegistryIpcHandlers(
+    storybookEndpoints,
+    {
+      updateUrl: ({ projectId, storybookUrl }) => {
         const result = projectService.updateStorybookUrl(projectId, storybookUrl);
         if (!result.ok) throw new Error(result.error);
       },
-      'Failed to update Storybook URL',
-    ),
-  );
 
-  ipcMain.handle(
-    IPC_CHANNELS.storybook.testConnection,
-    createIpcHandler(
-      StorybookSchemas.testConnection,
-      async ({ url }) => {
+      testConnection: async ({ url }) => {
         const result = await projectService.testStorybookConnection(url);
         if (!result.ok) throw new Error(result.error);
         return result.data;
       },
-      'Failed to test Storybook connection',
-    ),
+    },
+    'Storybook operation failed'
   );
 }

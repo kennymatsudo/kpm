@@ -1,72 +1,31 @@
 /**
  * Slack Triage Validation Schemas
  *
- * Zod schemas for IPC communication with the Slack triage feature.
+ * Payload schemas are owned by `shared/ipc/slackEndpoints.ts` (one entry per
+ * IPC endpoint, shared with the preload bridge and the handler binding).
  */
 
-import { z } from 'zod';
-import { uuid, nonEmptyString } from './shared';
-
-// ============================================================================
-// Channel Link Schemas
-// ============================================================================
+import type { z } from 'zod';
+import { slackEndpoints } from '../../../shared/ipc/slackEndpoints';
 
 export const SlackSchemas = {
-  availability: z.object({}),
+  availability: slackEndpoints['availability.get'].params,
 
   // Link management
-  listLinks: z.object({
-    projectId: uuid,
-  }),
-
-  createLink: z.object({
-    projectId: uuid,
-    channelId: nonEmptyString('Channel ID'),
-    channelName: nonEmptyString('Channel name'),
-  }),
-
-  deleteLink: z.object({
-    linkId: uuid,
-  }),
+  listLinks: slackEndpoints['links.list'].params,
+  createLink: slackEndpoints['links.create'].params,
+  deleteLink: slackEndpoints['links.delete'].params,
 
   // Triage operations
-  triggerTriage: z.object({
-    projectId: uuid,
-    channelLinkId: uuid,
-  }),
-
-  getPending: z.object({
-    projectId: uuid,
-  }),
-
-  getAll: z.object({
-    projectId: uuid,
-  }),
-
-  countPending: z.object({
-    projectId: uuid,
-  }),
-
-  approveItem: z.object({
-    itemId: uuid,
-  }),
-
-  editItem: z.object({
-    itemId: uuid,
-    suggestedAction: z.unknown(),
-  }),
-
-  dismissItem: z.object({
-    itemId: uuid,
-  }),
-
-  restoreItem: z.object({
-    itemId: uuid,
-  }),
-
-  executeItem: z.object({
-    itemId: uuid,
-  }),
+  triggerTriage: slackEndpoints['triage.trigger'].params,
+  getPending: slackEndpoints['triage.getPending'].params,
+  getAll: slackEndpoints['triage.getAll'].params,
+  countPending: slackEndpoints['triage.countPending'].params,
+  approveItem: slackEndpoints['triage.approve'].params,
+  editItem: slackEndpoints['triage.edit'].params,
+  dismissItem: slackEndpoints['triage.dismiss'].params,
+  restoreItem: slackEndpoints['triage.restore'].params,
+  executeItem: slackEndpoints['triage.execute'].params,
 };
 
 // ============================================================================

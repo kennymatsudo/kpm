@@ -1,52 +1,52 @@
 import type { ReviewAssessmentOptions } from '../stores/devSessions/helpers';
 
-export function getReviewInbox(sessionId: string) {
-  return window.api.review.getInbox(sessionId);
+export function getReviewInbox(payload: { sessionId: string }) {
+  return window.api.review.getInbox(payload);
 }
 
-export function refreshSessionReviewInbox(sessionId: string) {
-  return window.api.review.refreshSession(sessionId);
+export function refreshSessionReviewInbox(payload: { sessionId: string }) {
+  return window.api.review.refreshSession(payload);
 }
 
-export function assignSessionReviewOwnership(sessionId: string) {
-  return window.api.review.assignOwnership(sessionId);
+export function assignSessionReviewOwnership(payload: { sessionId: string }) {
+  return window.api.review.assignOwnership(payload);
 }
 
-export function assessSessionReviewThreads(sessionId: string, options?: ReviewAssessmentOptions) {
-  return window.api.review.assessThreads(sessionId, options);
+export function assessSessionReviewThreads(payload: { sessionId: string } & ReviewAssessmentOptions) {
+  return window.api.review.assessThreads(payload);
 }
 
-export function draftSessionPostImplReplies(sessionId: string) {
-  return window.api.review.draftPostImplReplies(sessionId);
+export function draftSessionPostImplReplies(payload: { sessionId: string }) {
+  return window.api.review.draftPostImplReplies(payload);
 }
 
-export function triggerSessionReviewAutomation(sessionId: string, taskIds?: string[]) {
-  return window.api.review.triggerAutomation(sessionId, taskIds);
+export function triggerSessionReviewAutomation(payload: { sessionId: string; taskIds?: string[] }) {
+  return window.api.review.triggerAutomation(payload);
 }
 
-export function replyToSessionReviewThread(
-  sessionId: string,
-  threadId: string,
-  body: string,
-  resolve?: boolean
-) {
-  return window.api.review.replyToThread(sessionId, threadId, body, resolve);
+export function replyToSessionReviewThread(payload: {
+  sessionId: string;
+  threadId: string;
+  body: string;
+  resolve?: boolean;
+}) {
+  return window.api.review.replyToThread(payload);
 }
 
-export function resolveSessionReviewThread(sessionId: string, threadId: string) {
-  return window.api.review.resolveThread(sessionId, threadId);
+export function resolveSessionReviewThread(payload: { sessionId: string; threadId: string }) {
+  return window.api.review.resolveThread(payload);
 }
 
-export function unresolveSessionReviewThread(sessionId: string, threadId: string) {
-  return window.api.review.unresolveThread(sessionId, threadId);
+export function unresolveSessionReviewThread(payload: { sessionId: string; threadId: string }) {
+  return window.api.review.unresolveThread(payload);
 }
 
-export function ignoreSessionReviewTask(taskId: string) {
-  return window.api.review.ignoreTask(taskId);
+export function ignoreSessionReviewTask(payload: { taskId: string }) {
+  return window.api.review.ignoreTask(payload);
 }
 
-export function overrideSessionReviewDisposition(taskId: string, disposition: string) {
-  return window.api.review.overrideDisposition(taskId, disposition);
+export function overrideSessionReviewDisposition(payload: { taskId: string; disposition: string }) {
+  return window.api.review.overrideDisposition(payload);
 }
 
 import type { ReviewActionableSummary } from '../../shared/types';

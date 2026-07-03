@@ -309,7 +309,7 @@ describe('fileTreeStore', () => {
 
       expect(result).toEqual(newFile);
       expect(useFileTreeStore.getState().nodes).toContainEqual(newFile);
-      expect(mockFileExplorer.createFile).toHaveBeenCalledWith('project-1', 'file.txt', 'content');
+      expect(mockFileExplorer.createFile).toHaveBeenCalledWith({ projectId: 'project-1', path: 'file.txt', content: 'content' });
     });
   });
 

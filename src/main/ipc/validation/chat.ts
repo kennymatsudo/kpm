@@ -5,12 +5,10 @@
 import { z } from 'zod';
 import * as path from 'path';
 import { getTempImagesDir } from '../../services/files/TempImageService';
-import {
-  uuid,
-  absolutePath,
-  claudeModel,
-  chatProvider,
-} from './shared';
+import { chatEndpoints, chatViewModeSchema } from '../../../shared/ipc/chatEndpoints';
+import { absolutePath } from './shared';
+
+export { chatViewModeSchema };
 
 // =============================================================================
 // Temp Image Path Validation (used by chat)
@@ -27,108 +25,28 @@ export const tempImagePath = absolutePath.refine(
 );
 
 // =============================================================================
-// Focused Resource Schema
-// =============================================================================
-
-/** Schema for FocusedResource type */
-const focusedResourceSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('plan_item'), id: z.string(), title: z.string() }),
-  z.object({ type: z.literal('project_file'), path: z.string(), isDirectory: z.boolean() }),
-  z.object({ type: z.literal('repo'), id: z.string(), path: z.string().optional() }),
-  z.object({ type: z.literal('document'), id: z.string(), title: z.string(), path: z.string() }),
-]);
-
-// =============================================================================
-// Chat View Mode Schema
-// =============================================================================
-
-/** Current UI view mode - used for prompt customization, not session separation */
-export const chatViewModeSchema = z.enum(['plan', 'workspace', 'focus']).optional();
-
-const focusChatDocumentSchema = z.object({
-  path: z.string().min(1).max(1000),
-  title: z.string().min(1).max(300),
-  content: z.string().max(300000),
-});
-
-// =============================================================================
 // Chat Schemas
 // =============================================================================
+//
+// Payload schemas are owned by `shared/ipc/chatEndpoints.ts`. `send`'s
+// registry schema validates `tempImages` entries are absolute paths but
+// can't also scope them to KPM's OS-temp images directory (main-process-only
+// — see `chatEndpoints.ts`), so that scoping refine is layered back on here.
 
 export const ChatSchemas = {
-  send: z.object({
-      projectId: uuid,
-      message: z.string().min(1, 'Message cannot be empty').max(100000, 'Message too long'),
-      focusedResources: z.array(focusedResourceSchema).default([]),
-      provider: chatProvider.optional(),
-      model: claudeModel.optional(),
-      effort: z.enum(['low', 'medium', 'high', 'max']).optional(),
-      tempImages: z.array(tempImagePath).optional(),
-      chatSessionId: uuid.optional(),
-      clientMessageId: uuid.optional(),
-      /** Current UI view - used for prompt customization */
-      currentView: chatViewModeSchema,
-      /** Focus-reader document context for slim focused chat sessions */
-      focusDocument: focusChatDocumentSchema.optional(),
-    }),
-
-  cancel: z.object({
-    projectId: uuid,
-    chatSessionId: uuid, // Required for multi-session support
-  }),
-
-  cancelQueued: z.object({
-    projectId: uuid,
-    chatSessionId: uuid,
-    clientMessageId: uuid.optional(),
-  }),
-
-  newSession: z.object({
-    projectId: uuid,
-  }),
-
-  disconnectSession: z.object({
-    projectId: uuid,
-  }),
-
-  getUsage: z.object({
-    projectId: uuid,
-  }),
-
-  getMessages: z.object({
-    projectId: uuid,
-  }),
-
-  getSessionHistory: z.object({
-    projectId: uuid,
-    limit: z.number().int().min(1).max(20).optional().default(5),
-  }),
-
-  loadSession: z.object({
-    projectId: uuid,
-    chatSessionId: uuid,
-  }),
-
-  getFocusDocumentSession: z.object({
-    projectId: uuid,
-    path: z.string().min(1).max(1000),
-    title: z.string().max(300).default(''),
-    contentHash: z.string().min(1).max(128),
-  }),
-
-  getActiveSessions: z.object({
-    projectId: uuid,
-  }),
-
-  disconnectSpecificSession: z.object({
-    projectId: uuid,
-    chatSessionId: uuid,
-  }),
-
-  getSessionState: z.object({
-    projectId: uuid,
-    chatSessionId: uuid,
-  }),
+  send: chatEndpoints.send.params.extend({ tempImages: z.array(tempImagePath).optional() }),
+  cancel: chatEndpoints.cancel.params,
+  cancelQueued: chatEndpoints.cancelQueued.params,
+  newSession: chatEndpoints.newSession.params,
+  disconnectSession: chatEndpoints.disconnectSession.params,
+  getUsage: chatEndpoints.getUsage.params,
+  getMessages: chatEndpoints.getMessages.params,
+  getSessionHistory: chatEndpoints.getSessionHistory.params,
+  loadSession: chatEndpoints.loadSession.params,
+  getFocusDocumentSession: chatEndpoints.getFocusDocumentSession.params,
+  getActiveSessions: chatEndpoints.getActiveSessions.params,
+  disconnectSpecificSession: chatEndpoints.disconnectSpecificSession.params,
+  getSessionState: chatEndpoints.getSessionState.params,
 };
 
 // =============================================================================
@@ -137,19 +55,11 @@ export const ChatSchemas = {
 
 export const StreamingSessionSchemas = {
   /** Connect main chat session */
-  connectSession: z.object({
-    projectId: uuid,
-  }),
+  connectSession: chatEndpoints.connectSession.params,
 
   /** Disconnect main chat session */
-  disconnectSession: z.object({
-    projectId: uuid,
-  }),
+  disconnectSession: chatEndpoints.disconnectSession.params,
 
   /** Get main chat session state */
-  getSessionState: z.object({
-    projectId: uuid,
-    chatSessionId: uuid,
-  }),
-
+  getSessionState: chatEndpoints.getSessionState.params,
 };

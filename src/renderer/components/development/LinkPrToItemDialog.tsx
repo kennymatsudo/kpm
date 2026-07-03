@@ -53,7 +53,7 @@ export function LinkPrToItemDialog({
     setIsLinking(true);
     setError(null);
     try {
-      const result = await linkPullRequestToPlanItem(planItemId, repoId, prIdentifier.trim());
+      const result = await linkPullRequestToPlanItem({ planItemId, repoId, prIdentifier: prIdentifier.trim() });
       if (result.success) {
         toast.success(`Linked PR #${result.number}`);
         onLinked?.();

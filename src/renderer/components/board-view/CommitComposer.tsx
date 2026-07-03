@@ -61,7 +61,7 @@ export const CommitComposer = memo(function CommitComposer({
     setMessage('');
     void (async () => {
       try {
-        const result = await generateCommitMessage(session.id, taskTitle, externalKey);
+        const result = await generateCommitMessage({ devSessionId: session.id, taskTitle, externalKey });
         if (cancelled) return;
         setMessage(result.success && result.message ? result.message : fallbackMessage);
       } catch {

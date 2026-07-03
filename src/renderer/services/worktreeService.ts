@@ -1,13 +1,13 @@
 import type { Worktree } from '../../shared/types';
 
-export function getWorktreesByProject(projectId: string): Promise<Worktree[]> {
-  return window.api.worktrees.getByProject(projectId);
+export function getWorktreesByProject(payload: { projectId: string }): Promise<Worktree[]> {
+  return window.api.worktrees.getByProject(payload);
 }
 
-export function deleteWorktree(worktreeId: string): Promise<{ success: boolean; error?: string }> {
-  return window.api.worktrees.delete(worktreeId);
+export function deleteWorktree(payload: { worktreeId: string; force?: boolean }): Promise<{ success: boolean; error?: string }> {
+  return window.api.worktrees.delete(payload);
 }
 
-export function destroyWorktree(worktreeId: string): Promise<{ success: boolean; error?: string }> {
-  return window.api.worktrees.destroy(worktreeId);
+export function destroyWorktree(payload: { worktreeId: string }): Promise<{ success: boolean; error?: string }> {
+  return window.api.worktrees.destroy(payload);
 }

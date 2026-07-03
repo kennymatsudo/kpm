@@ -1,7 +1,7 @@
 import type { ToolCallLogEntry, ToolCallTurnSummary } from '../../shared/types';
 
 export function setToolLogEnabled(enabled: boolean) {
-  return window.api.toolLog.setEnabled(enabled);
+  return window.api.toolLog.setEnabled({ enabled });
 }
 
 export function subscribeToToolLogEvents(handlers: {

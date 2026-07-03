@@ -25,59 +25,46 @@ import type { AgentActivity, AgentQuestion, AgentCompletionSummary, ReviewFindin
  * Create a pending session and start an agent in one call.
  * This is the primary entry point from the board UI (play button / drag-to-start).
  */
-export function createAndStartAgentSession(
-  planItemId: string,
-  repoId: string,
-  prompt: string,
-  agentType?: AgentType,
-  baseBranch?: string,
-  contextPaths?: string[],
-  effort?: AgentEffortLevel,
-  environmentMode?: RepoEnvironmentMode,
-  executionMode?: AgentExecutionMode,
-  reviewPolicy?: AgentReviewPolicy,
-): Promise<{ success: boolean; session?: DevSession; error?: string }> {
-  return window.api.agentSessions.createAndStart(
-    planItemId,
-    repoId,
-    prompt,
-    agentType,
-    baseBranch,
-    contextPaths,
-    effort,
-    environmentMode,
-    executionMode,
-    reviewPolicy,
-  );
+export function createAndStartAgentSession(payload: {
+  planItemId: string;
+  repoId: string;
+  prompt: string;
+  agentType?: AgentType;
+  baseBranch?: string;
+  contextPaths?: string[];
+  effort?: AgentEffortLevel;
+  environmentMode?: RepoEnvironmentMode;
+  executionMode?: AgentExecutionMode;
+  reviewPolicy?: AgentReviewPolicy;
+}): Promise<{ success: boolean; session?: DevSession; error?: string }> {
+  return window.api.agentSessions.createAndStart(payload);
 }
 
 /**
  * Start an agent session for an existing pending/inactive dev session.
  */
 export function startAgentSession(
-  devSessionId: string,
+  payload: { devSessionId: string; agentType?: AgentType; role?: AgentSessionRole },
 ): Promise<{ success: boolean; session?: DevSession; error?: string }> {
-  return window.api.agentSessions.startAgent(devSessionId);
+  return window.api.agentSessions.startAgent(payload);
 }
 
 export function respondToAgent(
-  devSessionId: string,
-  text: string,
+  payload: { devSessionId: string; text: string },
 ): Promise<{ success: boolean; error?: string }> {
-  return window.api.agentSessions.respond(devSessionId, text);
+  return window.api.agentSessions.respond(payload);
 }
 
 export function followUpAgent(
-  devSessionId: string,
-  text: string,
+  payload: { devSessionId: string; text: string },
 ): Promise<{ success: boolean; error?: string }> {
-  return window.api.agentSessions.followUp(devSessionId, text);
+  return window.api.agentSessions.followUp(payload);
 }
 
 export function stopAgentSession(
-  devSessionId: string,
+  payload: { devSessionId: string },
 ): Promise<{ success: boolean; error?: string }> {
-  return window.api.agentSessions.stop(devSessionId);
+  return window.api.agentSessions.stop(payload);
 }
 
 /**
@@ -85,71 +72,66 @@ export function stopAgentSession(
  * the interrupted state back to idle without re-running the agent or committing.
  */
 export function dismissAgentInterruption(
-  devSessionId: string,
+  payload: { devSessionId: string },
 ): Promise<{ success: boolean; error?: string }> {
-  return window.api.agentSessions.dismissInterruption(devSessionId);
+  return window.api.agentSessions.dismissInterruption(payload);
 }
 
 /**
  * Generate a commit message for the session's changes using the configured instructions.
  */
 export function generateCommitMessage(
-  devSessionId: string,
-  taskTitle: string,
-  externalKey?: string,
+  payload: { devSessionId: string; taskTitle: string; externalKey?: string },
 ): Promise<{ success: boolean; message?: string; error?: string }> {
-  return window.api.agentSessions.generateCommitMessage(devSessionId, taskTitle, externalKey);
+  return window.api.agentSessions.generateCommitMessage(payload);
 }
 
 /**
  * Commit uncommitted changes in the session's worktree.
  */
 export function commitAgentSession(
-  devSessionId: string,
-  message: string,
-  options?: { repairOnFailure?: boolean },
+  payload: { devSessionId: string; message: string; repairOnFailure?: boolean },
 ): Promise<{ success: boolean; sha?: string; error?: string; repairStarted?: boolean }> {
-  return window.api.agentSessions.commit(devSessionId, message, options?.repairOnFailure);
+  return window.api.agentSessions.commit(payload);
 }
 
 /**
  * Get structured commit log for the session (commits ahead of base branch).
  */
 export function getAgentCommitLog(
-  devSessionId: string,
+  payload: { devSessionId: string },
 ): Promise<{ success: boolean; commits?: { sha: string; subject: string; authorName: string; date: string }[]; error?: string }> {
-  return window.api.agentSessions.getCommitLog(devSessionId);
+  return window.api.agentSessions.getCommitLog(payload);
 }
 
 /**
  * Get file stats (additions/deletions per file) for a single commit.
  */
 export function getAgentCommitFiles(
-  devSessionId: string,
-  sha: string,
+  payload: { devSessionId: string; sha: string },
 ): Promise<{ success: boolean; files?: { path: string; additions: number; deletions: number }[]; error?: string }> {
-  return window.api.agentSessions.getCommitFiles(devSessionId, sha);
+  return window.api.agentSessions.getCommitFiles(payload);
 }
 
 /**
  * Launch opposing-agent auto-review for a completed implementation session.
  */
 export function launchAutoReview(
-  devSessionId: string,
+  payload: { devSessionId: string },
 ): Promise<{ success: boolean; reviewSessionId?: string | null; error?: string }> {
-  return window.api.agentSessions.launchReview(devSessionId);
+  return window.api.agentSessions.launchReview(payload);
 }
 
 export function getAgentActivities(
-  devSessionId: string,
+  payload: { devSessionId: string },
 ): Promise<{ success: boolean; activities?: AgentActivity[]; error?: string }> {
-  return window.api.agentSessions.getActivities(devSessionId);
+  return window.api.agentSessions.getActivities(payload);
 }
 
 export function getAgentState(
-  devSessionId: string,
+  payload: { devSessionId: string },
 ): Promise<{ success: boolean; state?: AgentSessionState | null; error?: string }> {
-  return window.api.agentSessions.getState(devSessionId);
+  return window.api.agentSessions.getState(payload);
 }
 
 // =============================================================================

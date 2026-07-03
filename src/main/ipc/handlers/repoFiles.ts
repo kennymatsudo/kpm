@@ -1,44 +1,58 @@
 import { ipcMain, shell } from 'electron';
-import { RepoFileSchemas } from '../validation';
+import { repoFilesEndpoints, type RepoFilesEndpointName } from '../../../shared/ipc/repoFilesEndpoints';
+import type { EndpointPayload } from '../../../shared/ipc/endpoints';
 import type { RepoFileService } from '../../services/files/RepoFileService';
 import { unwrapOrThrow } from '../../services/result';
 import { toIpcResponse } from '../response';
-import { IPC_CHANNELS } from '../channels';
+
+type RepoFilesHandler<K extends RepoFilesEndpointName> = (
+  params: EndpointPayload<(typeof repoFilesEndpoints)[K]>,
+  event: Electron.IpcMainInvokeEvent
+) => Promise<unknown>;
+
+/**
+ * One handler per `repoFilesEndpoints` entry. A registry entry without a
+ * matching key here is a compile error, not a runtime "no handler" failure.
+ */
+type RepoFilesHandlers = { [K in RepoFilesEndpointName]: RepoFilesHandler<K> };
+
+function buildRepoFilesHandlers(repoFileService: RepoFileService): RepoFilesHandlers {
+  return {
+    listDirectory: async ({ repoId, path, recursive, depth }) =>
+      unwrapOrThrow(await repoFileService.listDirectory(repoId, path ?? '', { recursive, depth })),
+
+    readFile: async ({ repoId, path }) => unwrapOrThrow(await repoFileService.readFileAsync(repoId, path)),
+
+    writeFile: async ({ repoId, path, content }) => toIpcResponse(await repoFileService.writeFile(repoId, path, content)),
+
+    getInfo: async ({ repoId, path }) => unwrapOrThrow(await repoFileService.getInfo(repoId, path)),
+
+    showItemInFolder: async ({ repoId, path }) => {
+      const fullPath = unwrapOrThrow(await repoFileService.getFullPath(repoId, path));
+      shell.showItemInFolder(fullPath);
+      return { success: true };
+    },
+  };
+}
 
 /**
  * Register IPC handlers for repo file operations.
  * These handle file operations within connected repositories for the workspace view.
  */
 export function registerRepoFileHandlers(repoFileService: RepoFileService): void {
-  // List directory contents within a repo
-  ipcMain.handle(IPC_CHANNELS.repoFiles.listDirectory, async (_event, params: unknown) => {
-    const { repoId, path, recursive, depth } = RepoFileSchemas.listDirectory.parse(params);
-    return unwrapOrThrow(await repoFileService.listDirectory(repoId, path ?? '', { recursive, depth }));
-  });
+  const handlers = buildRepoFilesHandlers(repoFileService);
 
-  // Read file content from a repo
-  ipcMain.handle(IPC_CHANNELS.repoFiles.readFile, async (_event, params: unknown) => {
-    const { repoId, path } = RepoFileSchemas.readFile.parse(params);
-    return unwrapOrThrow(await repoFileService.readFileAsync(repoId, path));
-  });
-
-  // Write file content to a repo (markdown/text files only)
-  ipcMain.handle(IPC_CHANNELS.repoFiles.writeFile, async (_event, params: unknown) => {
-    const { repoId, path, content } = RepoFileSchemas.writeFile.parse(params);
-    return toIpcResponse(await repoFileService.writeFile(repoId, path, content));
-  });
-
-  // Get info about a single file/folder
-  ipcMain.handle(IPC_CHANNELS.repoFiles.getInfo, async (_event, params: unknown) => {
-    const { repoId, path } = RepoFileSchemas.getInfo.parse(params);
-    return unwrapOrThrow(await repoFileService.getInfo(repoId, path));
-  });
-
-  // Show a repo file/folder in Finder/Explorer
-  ipcMain.handle(IPC_CHANNELS.repoFiles.showItemInFolder, async (_event, params: unknown) => {
-    const { repoId, path } = RepoFileSchemas.showItemInFolder.parse(params);
-    const fullPath = unwrapOrThrow(await repoFileService.getFullPath(repoId, path));
-    shell.showItemInFolder(fullPath);
-    return { success: true };
-  });
+  for (const [name, { channel, params }] of Object.entries(repoFilesEndpoints) as [
+    RepoFilesEndpointName,
+    (typeof repoFilesEndpoints)[RepoFilesEndpointName],
+  ][]) {
+    // Each handler's parameter type was checked once against its own
+    // registry entry in `buildRepoFilesHandlers`; iterating erases that
+    // per-key correlation into a union, hence the cast here.
+    const handler = handlers[name] as (params: unknown, event: Electron.IpcMainInvokeEvent) => unknown;
+    ipcMain.handle(channel, async (event, rawParams: unknown) => {
+      const parsedParams = params ? params.parse(rawParams) : undefined;
+      return handler(parsedParams, event);
+    });
+  }
 }

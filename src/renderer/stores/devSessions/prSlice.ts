@@ -39,7 +39,7 @@ export function createDevSessionsPrSlice(
       let anyStatusChanged = false;
       for (const session of sessionsWithOpenPr) {
         try {
-          const result = await getSessionPrStatus(session.id);
+          const result = await getSessionPrStatus({ sessionId: session.id });
           if (result.success && result.status) {
             get().updatePrStatus(session.id, result.status);
             if (
@@ -58,7 +58,7 @@ export function createDevSessionsPrSlice(
       let anyLinked = false;
       for (const session of sessionsWithoutPr) {
         try {
-          const result = await detectAndLinkSessionPr(session.id);
+          const result = await detectAndLinkSessionPr({ sessionId: session.id });
           if (result.success && result.status) {
             get().updatePrStatus(session.id, result.status);
             anyLinked = true;
@@ -86,7 +86,7 @@ export function createDevSessionsPrSlice(
       }));
 
       try {
-        const authResult = await checkSessionGithubAuth(sessionId);
+        const authResult = await checkSessionGithubAuth({ sessionId });
         if (!authResult.success || !authResult.authenticated) {
           return {
             success: false,
@@ -94,7 +94,7 @@ export function createDevSessionsPrSlice(
           };
         }
 
-        const contextResult = await buildSessionPrContext(sessionId);
+        const contextResult = await buildSessionPrContext({ sessionId });
         if (!contextResult.success) {
           return {
             success: false,
@@ -126,7 +126,7 @@ export function createDevSessionsPrSlice(
 
         if (hasCommits) {
           try {
-            const aiResult = await generateSessionPrContent(sessionId, rawTitle, rawBody, prTemplate, '', '', featureContextPath);
+            const aiResult = await generateSessionPrContent({ sessionId, rawTitle, rawBody, prTemplate, diff: '', commitLog: '', featureContextPath });
             if (aiResult.success && aiResult.title && aiResult.body) {
               context = {
                 ...context,
@@ -160,7 +160,7 @@ export function createDevSessionsPrSlice(
 
     createPullRequest: async (sessionId, title, body, draft) => {
       try {
-        const result = await createSessionPullRequest(sessionId, title, body, draft);
+        const result = await createSessionPullRequest({ sessionId, title, body, draft });
         if (!result.success) {
           return {
             success: false,
@@ -188,7 +188,7 @@ export function createDevSessionsPrSlice(
 
     linkPullRequest: async (sessionId, prIdentifier) => {
       try {
-        const result = await linkSessionPullRequest(sessionId, prIdentifier);
+        const result = await linkSessionPullRequest({ sessionId, prIdentifier });
         if (!result.success) {
           return {
             success: false,

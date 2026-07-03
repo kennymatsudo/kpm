@@ -13,12 +13,15 @@
 
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { deriveReviewOutcome } from './reviewOutputContract';
 import type {
   AgentActivity,
   AgentCompletionSummary,
   AgentSessionEvents,
   AgentSessionRole,
   AgentSessionState,
+  AgentType,
+  AgentTurnResult,
 } from '../../../shared/agent-types';
 
 const execFileAsync = promisify(execFile);
@@ -38,6 +41,7 @@ const MAX_ACTIVITIES_BUFFER = 500;
 export abstract class BaseAgentSession {
   readonly id: string;
   readonly role: AgentSessionRole;
+  abstract readonly agentType: AgentType;
 
   protected _state: AgentSessionState = 'starting';
   protected _activities: AgentActivity[] = [];
@@ -91,6 +95,28 @@ export abstract class BaseAgentSession {
   clearHandlers(): void {
     this.handlers.clear();
   }
+
+  /**
+   * The agent's turn result — final output text, plus parsed review findings
+   * when `role === 'review'`. Backends only need to supply `finalOutput()`;
+   * the parse against the shared review-output contract is identical for all.
+   */
+  getResult(): AgentTurnResult {
+    const finalText = this.finalOutput();
+    if (this.role !== 'review') {
+      return { finalText };
+    }
+
+    const outcome = deriveReviewOutcome(finalText, this.agentType);
+    return {
+      finalText,
+      review: 'findings' in outcome ? { findings: outcome.findings! } : { error: outcome.error! },
+      reviewRawOutput: outcome.rawOutput,
+    };
+  }
+
+  /** The agent's most recent non-empty output text, if any. */
+  protected abstract finalOutput(): string | null;
 
   // ===========================================================================
   // Protected Helpers

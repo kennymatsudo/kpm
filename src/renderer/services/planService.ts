@@ -7,7 +7,7 @@ export function subscribeToRefreshRequested(
 }
 
 export function listProjectPlanItems(projectId: string): Promise<PlanItem[]> {
-  return window.api.plan.listItems(projectId);
+  return window.api.plan.listItems({ projectId });
 }
 
 export async function createInlinePlanItem(
@@ -15,12 +15,15 @@ export async function createInlinePlanItem(
   title: string,
   description?: string
 ): Promise<{ success: boolean; createdId?: string; error?: string }> {
-  const result = await window.api.plan.executeActions(projectId, [{
-    type: 'create_item',
-    title,
-    description,
-    parent_id: null,
-  }]);
+  const result = await window.api.plan.executeActions({
+    projectId,
+    actions: [{
+      type: 'create_item',
+      title,
+      description,
+      parent_id: null,
+    }],
+  });
 
   return {
     success: result.success && Boolean(result.createdIds?.$1),

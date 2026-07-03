@@ -1,20 +1,24 @@
-import { ipcMain, shell } from 'electron';
-import { ShellSchemas } from '../validation';
-import { IPC_CHANNELS } from '../channels';
-import { isAllowedExternalUrl } from '../../security/externalUrl';
+import { shell } from 'electron';
+import { createRegistryIpcHandlers } from '../validation/utils';
+import { shellEndpoints, type ShellEndpointName } from '../../../shared/ipc/shellEndpoints';
+import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+
+type ShellHandler<K extends ShellEndpointName> = (
+  params: EndpointPayload<(typeof shellEndpoints)[K]>
+) => unknown;
+
+/**
+ * One handler per `shellEndpoints` entry. A registry entry without a
+ * matching key here is a compile error, not a runtime "no handler" failure.
+ */
+type ShellHandlers = { [K in ShellEndpointName]: ShellHandler<K> };
+
+const handlers: ShellHandlers = {
+  openExternal: async ({ url }) => {
+    await shell.openExternal(url);
+  },
+};
 
 export function registerShellHandlers(): void {
-  // Open URL in default browser
-  ipcMain.handle(IPC_CHANNELS.shell.openExternal, async (_event, params: unknown) => {
-    const { url } = ShellSchemas.openExternal.parse(params);
-    if (!isAllowedExternalUrl(url)) {
-      return { success: false, error: 'Blocked unsafe URL protocol' };
-    }
-    try {
-      await shell.openExternal(url);
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Failed to open URL' };
-    }
-  });
+  createRegistryIpcHandlers(shellEndpoints, handlers, 'Failed to open URL');
 }

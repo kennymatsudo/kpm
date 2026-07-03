@@ -26,12 +26,12 @@ export async function getProjectAbsolutePath(
 }
 
 export async function openProjectFolder(projectId: string): Promise<void> {
-  await window.api.projects.openFolder(projectId);
+  await window.api.projects.openFolder({ projectId });
 }
 
 export async function updateProject(
   projectId: string,
   updates: Partial<Pick<Project, 'name' | 'phase'>>
 ): Promise<void> {
-  await window.api.projects.update(projectId, updates);
+  await window.api.projects.update({ projectId, updates });
 }

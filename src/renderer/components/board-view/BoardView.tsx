@@ -256,7 +256,7 @@ export const BoardView = memo(function BoardView({
 
   // Agent stop handler
   const handleStopAgent = useCallback(async (devSessionId: string) => {
-    await stopAgentSession(devSessionId);
+    await stopAgentSession({ devSessionId });
   }, []);
 
   // Handle drop - update status category with agent lifecycle awareness
@@ -287,7 +287,7 @@ export const BoardView = memo(function BoardView({
       }
 
       if (decision.stopActiveSession && activeSession) {
-        void stopAgentSession(activeSession.id);
+        void stopAgentSession({ devSessionId: activeSession.id });
       }
 
       void updateStatusCategory(itemId, newStatus);

@@ -164,35 +164,35 @@ export function sendChatMessage(params: {
   clientMessageId: string;
   focusDocument?: FocusChatDocument;
 }) {
-  return window.api.chat.sendMessage(
-    params.projectId,
-    params.message,
-    params.focusedResources,
-    params.model as ClaudeModel,
-    params.tempImages,
-    params.chatSessionId,
-    params.currentView,
-    params.clientMessageId,
-    params.effort as AgentEffortLevel | undefined,
-    params.focusDocument,
-    params.provider,
-  );
+  return window.api.chat.sendMessage({
+    projectId: params.projectId,
+    message: params.message,
+    focusedResources: params.focusedResources,
+    model: params.model as ClaudeModel,
+    tempImages: params.tempImages,
+    chatSessionId: params.chatSessionId,
+    currentView: params.currentView,
+    clientMessageId: params.clientMessageId,
+    effort: params.effort as AgentEffortLevel | undefined,
+    focusDocument: params.focusDocument,
+    provider: params.provider,
+  });
 }
 
 export function disconnectChatSession(projectId: string, chatSessionId: string) {
-  return window.api.chat.disconnectSpecificSession(projectId, chatSessionId);
+  return window.api.chat.disconnectSpecificSession({ projectId, chatSessionId });
 }
 
 export function startNewBackendChatSession(projectId: string) {
-  return window.api.chat.newSession(projectId);
+  return window.api.chat.newSession({ projectId });
 }
 
 export function cancelChatSession(projectId: string, chatSessionId: string) {
-  return window.api.chat.cancel(projectId, chatSessionId);
+  return window.api.chat.cancel({ projectId, chatSessionId });
 }
 
 export function cancelQueuedChatMessage(projectId: string, chatSessionId: string, clientMessageId?: string) {
-  return window.api.chat.cancelQueued(projectId, chatSessionId, clientMessageId);
+  return window.api.chat.cancelQueued({ projectId, chatSessionId, clientMessageId });
 }
 
 export function getChatSessionHistory(projectId: string, limit: number) {

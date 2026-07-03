@@ -132,30 +132,6 @@ export const relativePath = z
 // Tracker Types
 // =============================================================================
 
-/** Jira site URL - hostname format like 'company.atlassian.net' */
-export const jiraSiteUrl = z
-  .string()
-  .min(1, 'Site URL is required')
-  .transform((val) => {
-    // Strip protocol if provided - we store just the hostname
-    if (val.startsWith('https://')) return val.slice(8);
-    if (val.startsWith('http://')) return val.slice(7);
-    return val;
-  })
-  .refine(
-    (hostname) => {
-      // Validate it looks like a valid hostname
-      return /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(hostname);
-    },
-    'Site URL must be a valid hostname (e.g., company.atlassian.net)'
-  );
-
-/** Email validation */
-export const email = z.string().email('Invalid email format');
-
-/** Non-empty API token */
-export const apiToken = nonEmptyString('API token');
-
 /** Jira project key (uppercase letters and numbers) */
 export const jiraProjectKey = z
   .string()

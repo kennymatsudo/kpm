@@ -2,38 +2,34 @@
  * Artifact, Scratchpad, and Temp Image Validation Schemas
  */
 
-import { z } from 'zod';
 import * as path from 'path';
 import { getTempImagesDir } from '../../services/files/TempImageService';
-import { uuid, absolutePath, supportedImageFormat } from './shared';
+import { absolutePath } from './shared';
+import { artifactEndpoints } from '../../../shared/ipc/artifactEndpoints';
+import { tempImageEndpoints } from '../../../shared/ipc/tempImageEndpoints';
+import { attachmentEndpoints } from '../../../shared/ipc/attachmentEndpoints';
 
 // =============================================================================
 // Artifact Schemas
+//
+// Payload schemas are owned by `shared/ipc/artifactEndpoints.ts`.
 // =============================================================================
 
 export const ArtifactSchemas = {
-  list: z.object({
-    projectId: uuid,
-  }),
-
-  read: z.object({
-    projectId: uuid,
-    filename: z.string().min(1, 'Filename is required'),
-  }),
-
-  delete: z.object({
-    projectId: uuid,
-    filename: z.string().min(1, 'Filename is required'),
-  }),
-
-  import: z.object({
-    projectId: uuid,
-    sourcePath: z.string().min(1, 'Source path is required'),
-  }),
+  list: artifactEndpoints.list.params,
+  read: artifactEndpoints.read.params,
+  delete: artifactEndpoints.delete.params,
+  import: artifactEndpoints.import.params,
 };
 
 // =============================================================================
 // Temp Image Schemas
+//
+// Payload schemas are owned by `shared/ipc/tempImageEndpoints.ts`. `delete`'s
+// registry schema validates `filePath` is absolute but can't also scope it to
+// KPM's temp images directory (`os.tmpdir()` is main-process-only, not
+// derivable in shared/renderer code) — that scoping check is layered back on
+// here, same as it was pre-migration.
 // =============================================================================
 
 /** Validates path is within KPM temp images directory (prevents path traversal) */
@@ -47,38 +43,20 @@ const tempImagePath = absolutePath.refine(
 );
 
 export const TempImageSchemas = {
-  save: z.object({
-    imageData: z.instanceof(Uint8Array, { message: 'Image data must be a Uint8Array' }),
-    format: supportedImageFormat,
-  }),
-
-  delete: z.object({
-    filePath: tempImagePath,
-  }),
+  save: tempImageEndpoints.save.params,
+  delete: tempImageEndpoints.delete.params.extend({ filePath: tempImagePath }),
 };
 
 // =============================================================================
 // Chat Attachment Schemas
+//
+// Payload schemas are owned by `shared/ipc/attachmentEndpoints.ts`.
+// `readAsDataUrl`/`openTemp` layer the same temp-dir scoping refine as
+// `TempImageSchemas.delete` above, for the same reason.
 // =============================================================================
 
 export const ChatAttachmentSchemas = {
-  saveDropped: z.object({
-    data: z.instanceof(Uint8Array, { message: 'Attachment data must be a Uint8Array' }),
-    filename: z
-      .string()
-      .min(1, 'Filename is required')
-      .max(255, 'Filename too long')
-      .refine((f) => !f.includes('/') && !f.includes('\\'), 'Filename cannot contain path separators')
-      .refine((f) => f !== '.' && f !== '..', 'Invalid filename'),
-    mimeType: z.string().max(255).optional(),
-  }),
-
-  readAsDataUrl: z.object({
-    filePath: tempImagePath,
-    mediaType: z.string().min(1).max(255),
-  }),
-
-  openTemp: z.object({
-    filePath: tempImagePath,
-  }),
+  saveDropped: attachmentEndpoints.saveDropped.params,
+  readAsDataUrl: attachmentEndpoints.readAsDataUrl.params.extend({ filePath: tempImagePath }),
+  openTemp: attachmentEndpoints.openTemp.params.extend({ filePath: tempImagePath }),
 };

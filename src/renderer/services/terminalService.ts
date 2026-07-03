@@ -26,15 +26,15 @@ export function createTerminal(params: TerminalCreateParams): Promise<IpcRespons
 }
 
 export function writeToTerminal(id: string, data: string): Promise<IpcResponse> {
-  return window.api.terminal.write(id, data);
+  return window.api.terminal.write({ id, data });
 }
 
 export function resizeTerminal(id: string, cols: number, rows: number): Promise<IpcResponse> {
-  return window.api.terminal.resize(id, cols, rows);
+  return window.api.terminal.resize({ id, cols, rows });
 }
 
 export function killTerminal(id: string): Promise<IpcResponse> {
-  return window.api.terminal.kill(id);
+  return window.api.terminal.kill({ id });
 }
 
 export function onTerminalData(callback: (event: TerminalDataEvent) => void): () => void {

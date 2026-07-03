@@ -2,96 +2,70 @@
  * Settings IPC handlers.
  */
 
-import { ipcMain } from 'electron';
+import { settingsEndpoints, type SettingsEndpointName } from '../../../shared/ipc/settingsEndpoints';
+import type { EndpointPayload } from '../../../shared/ipc/endpoints';
 import type { SettingsService } from '../../services/core/SettingsService';
-import { createIpcHandler, createSimpleIpcHandler, SettingsSchemas } from '../validation';
 import { getClaudeAvailability, refreshClaudeAvailability } from '../../claude/availabilityState';
-import { IPC_CHANNELS } from '../channels';
+import { createRegistryIpcHandlers } from '../validation/utils';
 
-export function registerSettingsHandlers(settingsService: SettingsService): void {
-  ipcMain.handle(
-    'settings:anthropic:has-key',
-    createSimpleIpcHandler(async () => {
+type SettingsHandler<K extends SettingsEndpointName> = (
+  params: EndpointPayload<(typeof settingsEndpoints)[K]>,
+  event: Electron.IpcMainInvokeEvent
+) => unknown;
+
+/**
+ * One handler per `settingsEndpoints` entry. A registry entry without a
+ * matching key here is a compile error, not a runtime "no handler" failure.
+ */
+type SettingsHandlers = { [K in SettingsEndpointName]: SettingsHandler<K> };
+
+function buildSettingsHandlers(settingsService: SettingsService): SettingsHandlers {
+  return {
+    'anthropic.hasKey': async () => {
       const result = await settingsService.hasAnthropicKey();
       if (!result.ok) throw new Error(result.error);
       return result.data;
-    }, 'Failed to check API key status'),
-  );
+    },
 
-  ipcMain.handle(
-    'settings:anthropic:save-key',
-    createIpcHandler(
-      SettingsSchemas.saveApiKey,
-      async ({ apiKey }) => {
-        const result = await settingsService.saveAnthropicKey(apiKey);
-        if (!result.ok) throw new Error(result.error);
-      },
-      'Failed to save API key',
-    ),
-  );
+    'anthropic.saveKey': async ({ apiKey }) => {
+      const result = await settingsService.saveAnthropicKey(apiKey);
+      if (!result.ok) throw new Error(result.error);
+    },
 
-  ipcMain.handle(
-    'settings:anthropic:delete-key',
-    createSimpleIpcHandler(async () => {
+    'anthropic.deleteKey': async () => {
       const result = await settingsService.deleteAnthropicKey();
       if (!result.ok) throw new Error(result.error);
-    }, 'Failed to delete API key'),
-  );
+    },
 
-  ipcMain.handle(
-    'settings:anthropic:test-key',
-    createIpcHandler(
-      SettingsSchemas.testApiKey,
-      async ({ apiKey }) => {
-        const result = await settingsService.testAnthropicKey(apiKey);
-        if (!result.ok) throw new Error(result.error);
-        return result.data;
-      },
-      'Failed to test API key',
-    ),
-  );
+    'anthropic.testKey': async ({ apiKey }) => {
+      const result = await settingsService.testAnthropicKey(apiKey);
+      if (!result.ok) throw new Error(result.error);
+      return result.data;
+    },
 
-  ipcMain.handle(
-    'settings:app:get',
-    createIpcHandler(
-      SettingsSchemas.getAppSetting,
-      ({ key }) => {
-        const result = settingsService.getAppSetting(key);
-        if (!result.ok) throw new Error(result.error);
-        return result.data;
-      },
-      'Failed to get setting',
-    ),
-  );
+    'app.get': ({ key }) => {
+      const result = settingsService.getAppSetting(key);
+      if (!result.ok) throw new Error(result.error);
+      return result.data;
+    },
 
-  ipcMain.handle(
-    'settings:app:set',
-    createIpcHandler(
-      SettingsSchemas.setAppSetting,
-      ({ key, value }) => {
-        const result = settingsService.setAppSetting(key, value);
-        if (!result.ok) throw new Error(result.error);
-      },
-      'Failed to save setting',
-    ),
-  );
+    'app.set': ({ key, value }) => {
+      const result = settingsService.setAppSetting(key, value);
+      if (!result.ok) throw new Error(result.error);
+    },
 
-  ipcMain.handle(
-    'settings:app:get-all',
-    createSimpleIpcHandler(() => {
+    'app.getAll': () => {
       const result = settingsService.getAllAppSettings();
       if (!result.ok) throw new Error(result.error);
       return result.data;
-    }, 'Failed to get settings'),
-  );
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.settings.claude.getAvailability,
-    createSimpleIpcHandler(() => getClaudeAvailability(), 'Failed to get Claude availability'),
-  );
+    'claude.getAvailability': () => getClaudeAvailability(),
 
-  ipcMain.handle(
-    IPC_CHANNELS.settings.claude.refreshAvailability,
-    createSimpleIpcHandler(() => refreshClaudeAvailability(), 'Failed to refresh Claude availability'),
-  );
+    'claude.refreshAvailability': () => refreshClaudeAvailability(),
+  };
+}
+
+export function registerSettingsHandlers(settingsService: SettingsService): void {
+  createRegistryIpcHandlers(settingsEndpoints, buildSettingsHandlers(settingsService), 'Settings operation failed');
 }

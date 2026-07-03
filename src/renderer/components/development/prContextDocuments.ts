@@ -18,6 +18,6 @@ function flattenMarkdownFiles(nodes: FileNode[], acc: PrContextDocumentTarget[] 
 }
 
 export async function listPrContextDocuments(projectId: string): Promise<PrContextDocumentTarget[]> {
-  const nodes = await listProjectDirectory(projectId, undefined, { recursive: true });
+  const nodes = await listProjectDirectory({ projectId, recursive: true });
   return flattenMarkdownFiles(nodes);
 }

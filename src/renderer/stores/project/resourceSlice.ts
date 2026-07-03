@@ -52,11 +52,11 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
   addReposToProject: async (projectId, repoPaths) => {
     if (repoPaths.length === 0) return [];
 
-    const repos = await Promise.all(repoPaths.map((path) => deps.api.repos.add(projectId, path)));
+    const repos = await Promise.all(repoPaths.map((path) => deps.api.repos.add({ projectId, path })));
     const effectivePaths = repos.map((repo) => repo.active_worktree_path ?? repo.path);
-    const branchesByPath = await deps.api.repos.getBranches(effectivePaths);
+    const branchesByPath = await deps.api.repos.getBranches({ paths: effectivePaths });
 
-    await Promise.all(repos.map((repo) => deps.api.repos.watch(repo.id, repo.active_worktree_path ?? repo.path)));
+    await Promise.all(repos.map((repo) => deps.api.repos.watch({ repoId: repo.id, path: repo.active_worktree_path ?? repo.path })));
 
     set((state) => ({
       repos: [...state.repos, ...repos],
@@ -84,10 +84,10 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
   removeRepoFromProject: async (_projectId, repoId) => {
     const repo = get().repos.find((entry) => entry.id === repoId);
 
-    await deps.api.repos.remove(repoId);
+    await deps.api.repos.remove({ repoId });
 
     if (repo) {
-      await deps.api.repos.unwatch(repo.active_worktree_path ?? repo.path).catch(() => undefined);
+      await deps.api.repos.unwatch({ path: repo.active_worktree_path ?? repo.path }).catch(() => undefined);
     }
 
     get().removeRepo(repoId);
@@ -99,10 +99,10 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
     attachments: state.attachments.filter((a) => a.id !== attachmentId),
   })),
   refreshRepos: async (projectId) => {
-    const repos = await deps.api.repos.list(projectId);
+    const repos = await deps.api.repos.list({ projectId });
     const effectivePaths = repos.map((r) => r.active_worktree_path ?? r.path);
     const branchesByPath = repos.length > 0
-      ? await deps.api.repos.getBranches(effectivePaths)
+      ? await deps.api.repos.getBranches({ paths: effectivePaths })
       : {};
 
     set({
@@ -119,7 +119,7 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
     repoBranches: { ...state.repoBranches, [repoId]: branch },
   })),
   updateRepoEnvironmentMode: async (projectId, repoId, mode) => {
-    const result = await deps.api.repos.updateEnvironmentMode(repoId, mode);
+    const result = await deps.api.repos.updateEnvironmentMode({ repoId, mode });
     if (!result.success) {
       return false;
     }
@@ -131,7 +131,7 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
     const repo = get().repos.find((r) => r.id === repoId);
     if (!repo) return false;
 
-    const result = await deps.api.repos.setActiveWorktreePath(repoId, worktreePath);
+    const result = await deps.api.repos.setActiveWorktreePath({ repoId, worktreePath });
     if (!result.success) return false;
 
     // Update local state immediately
@@ -145,15 +145,15 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
     const oldPath = repo.active_worktree_path ?? repo.path;
     const newPath = worktreePath ?? repo.path;
     if (oldPath !== newPath) {
-      await deps.api.repos.unwatch(oldPath).catch(() => undefined);
-      await deps.api.repos.watch(repoId, newPath);
-      const branch = await deps.api.repos.getBranch(newPath).catch(() => null);
+      await deps.api.repos.unwatch({ path: oldPath }).catch(() => undefined);
+      await deps.api.repos.watch({ repoId, path: newPath });
+      const branch = await deps.api.repos.getBranch({ path: newPath }).catch(() => null);
       get().setRepoBranch(repoId, branch);
 
       // Disconnect active chat sessions so the next message picks up the new cwd.
       // The SDK bakes cwd into the session at spawn time; stale sessions would
       // still run git commands from the old repo path.
-      await deps.api.chat.disconnectSession(projectId).catch((err: unknown) => {
+      await deps.api.chat.disconnectSession({ projectId }).catch((err: unknown) => {
         console.warn('[resourceSlice] Failed to disconnect chat session after worktree change', err);
       });
     }
@@ -174,7 +174,7 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
   openWorktreeInEditor: async (worktreeId) => {
     setWorktreeLoading(set, worktreeId, 'openEditor');
     try {
-      const result = await deps.api.worktrees.openEditor(worktreeId);
+      const result = await deps.api.worktrees.openEditor({ worktreeId });
       if (!result.success) {
         throw new Error(result.error || 'Failed to open editor');
       }
@@ -189,7 +189,7 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
       worktreeLoading: { ...state.worktreeLoading, [worktreeId]: 'delete' },
     }));
     try {
-      const result = await deps.api.worktrees.delete(worktreeId, force);
+      const result = await deps.api.worktrees.delete({ worktreeId, force });
       if (!result.success) {
         throw new Error(result.error || 'Failed to delete worktree');
       }
@@ -218,7 +218,7 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
       worktreeLoading: { ...state.worktreeLoading, [worktreeId]: 'delete' },
     }));
     try {
-      const result = await deps.api.worktrees.destroy(worktreeId);
+      const result = await deps.api.worktrees.destroy({ worktreeId });
       if (!result.success) {
         throw new Error(result.error || 'Failed to destroy worktree');
       }

@@ -1,78 +1,22 @@
 /**
  * Group IPC Validation Schemas
  *
- * Zod schemas for group CRUD operations and actions.
+ * Payload schemas are owned by `shared/ipc/groupEndpoints.ts` (one entry per
+ * IPC endpoint, shared with the preload bridge and the handler binding).
  */
 
-import { z } from 'zod';
-import { uuid } from './shared';
-
-// =============================================================================
-// Group Schemas
-// =============================================================================
-
-const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Must be a valid hex color');
+import type { z } from 'zod';
+import { groupEndpoints } from '../../../shared/ipc/groupEndpoints';
 
 export const GroupSchemas = {
-  // List groups for a project
-  list: z.object({
-    projectId: uuid,
-  }),
-
-  // Get a single group
-  get: z.object({
-    id: uuid,
-  }),
-
-  // Create a new group
-  create: z.object({
-    projectId: uuid,
-    name: z.string().min(1).max(100),
-    color: hexColor.optional().default('#6366f1'),
-    position_x: z.number().optional().default(100),
-    position_y: z.number().optional().default(100),
-    width: z.number().optional().default(552),
-    height: z.number().optional().default(300),
-  }),
-
-  // Update a group
-  update: z.object({
-    id: uuid,
-    updates: z.object({
-      name: z.string().min(1).max(100).optional(),
-      color: hexColor.optional(),
-      position_x: z.number().optional(),
-      position_y: z.number().optional(),
-      width: z.number().optional(),
-      height: z.number().optional(),
-      is_collapsed: z.boolean().optional(),
-    }).refine((u) => Object.keys(u).length > 0, 'At least one field required'),
-  }),
-
-  // Delete a group
-  delete: z.object({
-    id: uuid,
-  }),
-
-  // Update group position
-  updatePosition: z.object({
-    id: uuid,
-    x: z.number(),
-    y: z.number(),
-  }),
-
-  // Update group size
-  updateSize: z.object({
-    id: uuid,
-    width: z.number().min(100),
-    height: z.number().min(100),
-  }),
-
-  // Assign item to group
-  assignItem: z.object({
-    itemId: uuid,
-    groupId: uuid.nullable(),
-  }),
+  list: groupEndpoints.list.params,
+  get: groupEndpoints.get.params,
+  create: groupEndpoints.create.params,
+  update: groupEndpoints.update.params,
+  delete: groupEndpoints.delete.params,
+  updatePosition: groupEndpoints.updatePosition.params,
+  updateSize: groupEndpoints.updateSize.params,
+  assignItem: groupEndpoints.assignItem.params,
 };
 
 // =============================================================================

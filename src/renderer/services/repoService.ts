@@ -1,7 +1,7 @@
 import type { Repo } from '../../shared/types';
 
 export function listProjectRepos(projectId: string): Promise<Repo[]> {
-  return window.api.repos.list(projectId);
+  return window.api.repos.list({ projectId });
 }
 
 export function selectRepoPaths(): Promise<string[]> {
@@ -13,8 +13,8 @@ export async function loadRepoBranchOptions(repoPath: string): Promise<{
   currentBranch: string | null;
 }> {
   const [branches, currentBranch] = await Promise.all([
-    window.api.repos.listAllBranches(repoPath),
-    window.api.repos.getBranch(repoPath),
+    window.api.repos.listAllBranches({ repoPath }),
+    window.api.repos.getBranch({ path: repoPath }),
   ]);
 
   return {
@@ -24,21 +24,21 @@ export async function loadRepoBranchOptions(repoPath: string): Promise<{
 }
 
 export function listRepoDirectories(repoPath: string, prefix: string): Promise<string[]> {
-  return window.api.repos.listDirectories(repoPath, prefix);
+  return window.api.repos.listDirectories({ repoPath, prefix });
 }
 
 export function listAllRepoBranches(repoPath: string): Promise<string[]> {
-  return window.api.repos.listAllBranches(repoPath);
+  return window.api.repos.listAllBranches({ repoPath });
 }
 
 export function listRepoWorktrees(repoPath: string): Promise<{ path: string; branch: string | null; isMain: boolean }[]> {
-  return window.api.repos.listWorktrees(repoPath);
+  return window.api.repos.listWorktrees({ repoPath });
 }
 
 export function showRepoInFolder(repoId: string): Promise<{ success: boolean; error?: string }> {
-  return window.api.repos.showInFolder(repoId);
+  return window.api.repos.showInFolder({ repoId });
 }
 
 export function openRepoInEditor(repoId: string): Promise<{ success: boolean; error?: string }> {
-  return window.api.repos.openEditor(repoId);
+  return window.api.repos.openEditor({ repoId });
 }

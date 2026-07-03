@@ -21,23 +21,23 @@ export interface SessionDiffResult {
   error?: string;
 }
 
-export async function loadDevSessions(projectId: string): Promise<{
+export async function loadDevSessions(payload: { projectId: string }): Promise<{
   devSessions: DevSessionWithPlanItem[];
 }> {
-  const devResult = await window.api.devSessions.getByProjectWithPlanItems(projectId);
+  const devResult = await window.api.devSessions.getByProjectWithPlanItems(payload);
   return {
     devSessions: devResult.success && devResult.sessions ? devResult.sessions : [],
   };
 }
 
-export function checkDevSessionDirty(sessionId: string): Promise<SessionDirtyResult> {
-  return window.api.devSessions.checkDirty(sessionId);
+export function checkDevSessionDirty(payload: { sessionId: string }): Promise<SessionDirtyResult> {
+  return window.api.devSessions.checkDirty(payload);
 }
 
 export function openDevSessionInEditor(
-  sessionId: string
+  payload: { sessionId: string }
 ): Promise<{ success: boolean; error?: string }> {
-  return window.api.devSessions.openEditor(sessionId);
+  return window.api.devSessions.openEditor(payload);
 }
 
 export function deleteDevSessionRecord(
@@ -45,25 +45,25 @@ export function deleteDevSessionRecord(
   mode: 'cleanup' | 'destroy'
 ): Promise<{ success: boolean; error?: string }> {
   return mode === 'destroy'
-    ? window.api.devSessions.destroy(sessionId)
-    : window.api.devSessions.delete(sessionId, true);
+    ? window.api.devSessions.destroy({ sessionId })
+    : window.api.devSessions.delete({ sessionId, cleanupWorktree: true });
 }
 
 export function dismissExistingSession(
   session: DevSessionWithPlanItem
 ): Promise<{ success: boolean; error?: string }> {
-  return window.api.devSessions.delete(session.id, false);
+  return window.api.devSessions.delete({ sessionId: session.id, cleanupWorktree: false });
 }
 
 export function updateExistingSessionName(
   session: DevSessionWithPlanItem,
   name: string
 ): Promise<{ success: boolean; error?: string }> {
-  return window.api.devSessions.updateName(session.id, name);
+  return window.api.devSessions.updateName({ sessionId: session.id, name });
 }
 
-export function loadDevSessionDiff(sessionId: string): Promise<SessionDiffResult> {
-  return window.api.devSessions.getDiff(sessionId);
+export function loadDevSessionDiff(payload: { sessionId: string }): Promise<SessionDiffResult> {
+  return window.api.devSessions.getDiff(payload);
 }
 
 export interface MergeOrderEntry {
@@ -72,16 +72,15 @@ export interface MergeOrderEntry {
 }
 
 export function getDevSessionMergeOrder(
-  projectId: string,
+  payload: { projectId: string },
 ): Promise<{ success: boolean; mergeOrder?: Record<string, MergeOrderEntry>; error?: string }> {
-  return window.api.devSessions.getMergeOrder(projectId);
+  return window.api.devSessions.getMergeOrder(payload);
 }
 
 export function updateDevSessionMergeOrder(
-  sessionId: string,
-  order: number | null,
+  payload: { sessionId: string; order: number | null },
 ): Promise<{ success: boolean; error?: string }> {
-  return window.api.devSessions.updateMergeOrder(sessionId, order);
+  return window.api.devSessions.updateMergeOrder(payload);
 }
 
 export function subscribeToSessionStatusChanges(

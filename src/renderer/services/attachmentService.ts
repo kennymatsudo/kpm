@@ -28,17 +28,17 @@ export async function saveDroppedFile(file: File): Promise<
   | { success: false; error: string }
 > {
   const arrayBuffer = await file.arrayBuffer();
-  return window.api.attachments.saveDropped(
-    new Uint8Array(arrayBuffer),
-    file.name,
-    file.type || undefined,
-  );
+  return window.api.attachments.saveDropped({
+    data: new Uint8Array(arrayBuffer),
+    filename: file.name,
+    mimeType: file.type || undefined,
+  });
 }
 
 export function readAttachmentAsDataUrl(filePath: string, mediaType: string) {
-  return window.api.attachments.readAsDataUrl(filePath, mediaType);
+  return window.api.attachments.readAsDataUrl({ filePath, mediaType });
 }
 
 export function openTempAttachment(filePath: string): Promise<{ success: boolean; error?: string }> {
-  return window.api.attachments.openTemp(filePath);
+  return window.api.attachments.openTemp({ filePath });
 }

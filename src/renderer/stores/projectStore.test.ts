@@ -48,7 +48,7 @@ describe('projectStore slices', () => {
 
     const result = await store.getState().updateProjectStorybookUrl('project-1', 'http://localhost:6006');
 
-    expect(api.storybook.updateUrl).toHaveBeenCalledWith('project-1', 'http://localhost:6006');
+    expect(api.storybook.updateUrl).toHaveBeenCalledWith({ projectId: 'project-1', storybookUrl: 'http://localhost:6006' });
     expect(api.projects.list).toHaveBeenCalled();
     expect(result).toEqual(refreshedProjects);
     expect(store.getState().projects).toEqual(refreshedProjects);
@@ -70,11 +70,11 @@ describe('projectStore slices', () => {
 
     const result = await store.getState().addReposToProject('project-1', repos.map((repo) => repo.path));
 
-    expect(api.repos.add).toHaveBeenNthCalledWith(1, 'project-1', '/tmp/repo-1');
-    expect(api.repos.add).toHaveBeenNthCalledWith(2, 'project-1', '/tmp/repo-2');
-    expect(api.repos.getBranches).toHaveBeenCalledWith(['/tmp/repo-1', '/tmp/repo-2']);
-    expect(api.repos.watch).toHaveBeenNthCalledWith(1, 'repo-1', '/tmp/repo-1');
-    expect(api.repos.watch).toHaveBeenNthCalledWith(2, 'repo-2', '/tmp/repo-2');
+    expect(api.repos.add).toHaveBeenNthCalledWith(1, { projectId: 'project-1', path: '/tmp/repo-1' });
+    expect(api.repos.add).toHaveBeenNthCalledWith(2, { projectId: 'project-1', path: '/tmp/repo-2' });
+    expect(api.repos.getBranches).toHaveBeenCalledWith({ paths: ['/tmp/repo-1', '/tmp/repo-2'] });
+    expect(api.repos.watch).toHaveBeenNthCalledWith(1, { repoId: 'repo-1', path: '/tmp/repo-1' });
+    expect(api.repos.watch).toHaveBeenNthCalledWith(2, { repoId: 'repo-2', path: '/tmp/repo-2' });
     expect(result).toEqual(repos);
     expect(store.getState().repos).toEqual(repos);
     expect(store.getState().repoBranches).toEqual({
@@ -91,8 +91,8 @@ describe('projectStore slices', () => {
 
     await store.getState().removeRepoFromProject('project-1', 'repo-1');
 
-    expect(api.repos.remove).toHaveBeenCalledWith('repo-1');
-    expect(api.repos.unwatch).toHaveBeenCalledWith('/tmp/repo-1');
+    expect(api.repos.remove).toHaveBeenCalledWith({ repoId: 'repo-1' });
+    expect(api.repos.unwatch).toHaveBeenCalledWith({ path: '/tmp/repo-1' });
     expect(store.getState().repos).toEqual([]);
     expect(store.getState().repoBranches).toEqual({});
   });
@@ -137,7 +137,7 @@ describe('projectStore slices', () => {
 
     await store.getState().updateStatusCategory('item-1', 'done');
 
-    expect(api.plan.updateItem).toHaveBeenCalledWith('item-1', { status_category: 'done' });
+    expect(api.plan.updateItem).toHaveBeenCalledWith({ itemId: 'item-1', updates: { status_category: 'done' } });
     expect(emit).toHaveBeenCalledWith({
       type: 'status-changed',
       payload: {

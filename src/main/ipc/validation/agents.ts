@@ -1,46 +1,20 @@
 /**
  * Task Prompt Template Validation Schemas
+ *
+ * Payload schemas are owned by `shared/ipc/taskPromptTemplateEndpoints.ts`
+ * (one entry per IPC endpoint, shared with the preload bridge and the
+ * handler binding).
  */
 
-import { z } from 'zod';
-import { uuid, nonEmptyString } from './shared';
-
-// =============================================================================
-// Task Prompt Template Schemas
-// =============================================================================
+import { taskPromptTemplateEndpoints } from '../../../shared/ipc/taskPromptTemplateEndpoints';
 
 export const TaskPromptTemplateSchemas = {
-  list: z.object({
-    projectId: uuid.nullable().optional(),
-  }),
-
-  get: z.object({
-    templateId: uuid,
-  }),
-
-  getEffective: z.object({
-    projectId: uuid,
-  }),
-
-  getBuiltinDefault: z.object({}),
-
-  create: z.object({
-    projectId: uuid.nullable(),
-    name: nonEmptyString('Template name').max(100, 'Template name must be under 100 characters'),
-    promptContent: z.string().max(50000, 'Prompt content too long'),
-  }),
-
-  update: z.object({
-    templateId: uuid,
-    name: nonEmptyString('Template name').max(100, 'Template name must be under 100 characters').optional(),
-    promptContent: z.string().max(50000, 'Prompt content too long').optional(),
-  }),
-
-  delete: z.object({
-    templateId: uuid,
-  }),
-
-  setDefault: z.object({
-    templateId: uuid,
-  }),
+  list: taskPromptTemplateEndpoints.list.params,
+  get: taskPromptTemplateEndpoints.get.params,
+  getEffective: taskPromptTemplateEndpoints.getEffective.params,
+  getBuiltinDefault: taskPromptTemplateEndpoints.getBuiltinDefault.params,
+  create: taskPromptTemplateEndpoints.create.params,
+  update: taskPromptTemplateEndpoints.update.params,
+  delete: taskPromptTemplateEndpoints.delete.params,
+  setDefault: taskPromptTemplateEndpoints.setDefault.params,
 };

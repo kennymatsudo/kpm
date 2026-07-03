@@ -208,7 +208,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
   useEffect(() => {
     if (!projectId) return;
 
-    void watchProjectFiles(projectId);
+    void watchProjectFiles({ projectId });
 
     return () => {
       void unwatchProjectFiles();
@@ -394,7 +394,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
       } else if (node.name.endsWith('.md')) {
         await fileViewers.openMarkdownViewer(path);
       } else {
-        await showProjectItemInFolder(projectId, path);
+        await showProjectItemInFolder({ projectId, path });
       }
     },
     [projectId, loadProjectDirectory, toggleProjectExpanded, onFileOpen, fileViewers.openImageViewer, fileViewers.openMarkdownViewer]
@@ -461,7 +461,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
 
           if (isText) {
             if (filePath && file.size > MAX_TEXT_FILE_BYTES) {
-              await copyExternalProjectFile(projectId, filePath, newPath);
+              await copyExternalProjectFile({ projectId, sourcePath: filePath, path: newPath });
               continue;
             }
 
@@ -473,18 +473,18 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
             }
 
             const content = await file.text();
-            await createProjectTextFile(projectId, newPath, content);
+            await createProjectTextFile({ projectId, path: newPath, content });
             continue;
           }
 
           if (filePath) {
-            await copyExternalProjectFile(projectId, filePath, newPath);
+            await copyExternalProjectFile({ projectId, sourcePath: filePath, path: newPath });
             continue;
           }
 
           const arrayBuffer = await file.arrayBuffer();
           const data = new Uint8Array(arrayBuffer);
-          await createProjectBinaryFile(projectId, newPath, data);
+          await createProjectBinaryFile({ projectId, path: newPath, data });
         } catch (err) {
           console.error(`Failed to copy file ${file.name}:`, err);
         }

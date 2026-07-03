@@ -69,8 +69,8 @@ export const DetailChatInput = memo(forwardRef<DetailChatInputHandle, DetailChat
       setIsSending(true);
       try {
         const result = agentState === 'waiting_for_input'
-          ? await respondToAgent(devSessionId, trimmed)
-          : await followUpAgent(devSessionId, trimmed);
+          ? await respondToAgent({ devSessionId, text: trimmed })
+          : await followUpAgent({ devSessionId, text: trimmed });
 
         if (!result.success) {
           toast.error(result.error || 'Failed to send message to agent');

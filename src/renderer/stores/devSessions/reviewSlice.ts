@@ -95,7 +95,7 @@ export function createDevSessionsReviewSlice(
       set((state) => setReviewLoading(state, sessionId, true));
 
       try {
-        const result = await getReviewInbox(sessionId);
+        const result = await getReviewInbox({ sessionId });
         if (!result.success || !result.inbox) {
           const error = result.error || 'Failed to load review inbox';
           set((state) => setReviewError(state, sessionId, error));
@@ -121,7 +121,7 @@ export function createDevSessionsReviewSlice(
       set((state) => setReviewLoading(state, sessionId, true));
 
       try {
-        const result = await refreshSessionReviewInbox(sessionId);
+        const result = await refreshSessionReviewInbox({ sessionId });
         if (!result.success || !result.inbox) {
           const error = result.error || 'Failed to refresh review inbox';
           set((state) => setReviewError(state, sessionId, error));
@@ -142,7 +142,7 @@ export function createDevSessionsReviewSlice(
 
     assignReviewOwnership: async (sessionId) => {
       try {
-        const result = await assignSessionReviewOwnership(sessionId);
+        const result = await assignSessionReviewOwnership({ sessionId });
         if (!result.success || !result.inbox) {
           const error = result.error || 'Failed to assign review ownership';
           set((state) => setReviewError(state, sessionId, error));
@@ -164,7 +164,7 @@ export function createDevSessionsReviewSlice(
       set((state) => setAssessmentPending(state, sessionId, pending));
 
       try {
-        const result = await assessSessionReviewThreads(sessionId, options);
+        const result = await assessSessionReviewThreads({ sessionId, ...options });
         if (!result.success || !result.inbox) {
           const error = result.error || 'Failed to assess review threads';
           set((state) => setReviewError(state, sessionId, error));
@@ -185,7 +185,7 @@ export function createDevSessionsReviewSlice(
 
     draftPostImplReplies: async (sessionId) => {
       try {
-        const result = await draftSessionPostImplReplies(sessionId);
+        const result = await draftSessionPostImplReplies({ sessionId });
         if (!result.success || !result.inbox) {
           const error = result.error || 'Failed to draft post-implementation replies';
           set((state) => setReviewError(state, sessionId, error));
@@ -204,7 +204,7 @@ export function createDevSessionsReviewSlice(
 
     triggerReviewAutomation: async (sessionId, taskIds) => {
       try {
-        const result = await triggerSessionReviewAutomation(sessionId, taskIds);
+        const result = await triggerSessionReviewAutomation({ sessionId, taskIds });
         if (!result.success) {
           const error = result.error || 'Failed to trigger review automation';
           set((state) => setReviewError(state, sessionId, error));
@@ -236,7 +236,7 @@ export function createDevSessionsReviewSlice(
 
     replyToReviewThread: async (sessionId, threadId, body, resolve) => {
       try {
-        const result = await replyToSessionReviewThread(sessionId, threadId, body, resolve);
+        const result = await replyToSessionReviewThread({ sessionId, threadId, body, resolve });
         if (!result.success) {
           const error = result.error || 'Failed to reply to review thread';
           set((state) => setReviewError(state, sessionId, error));
@@ -263,7 +263,7 @@ export function createDevSessionsReviewSlice(
 
     resolveReviewThread: async (sessionId, threadId) => {
       try {
-        const result = await resolveSessionReviewThread(sessionId, threadId);
+        const result = await resolveSessionReviewThread({ sessionId, threadId });
         if (!result.success || !result.inbox) {
           const error = result.error || 'Failed to resolve review thread';
           set((state) => setReviewError(state, sessionId, error));
@@ -282,7 +282,7 @@ export function createDevSessionsReviewSlice(
 
     unresolveReviewThread: async (sessionId, threadId) => {
       try {
-        const result = await unresolveSessionReviewThread(sessionId, threadId);
+        const result = await unresolveSessionReviewThread({ sessionId, threadId });
         if (!result.success || !result.inbox) {
           const error = result.error || 'Failed to reopen review thread';
           set((state) => setReviewError(state, sessionId, error));
@@ -301,7 +301,7 @@ export function createDevSessionsReviewSlice(
 
     ignoreReviewTask: async (sessionId, taskId) => {
       try {
-        const result = await ignoreSessionReviewTask(taskId);
+        const result = await ignoreSessionReviewTask({ taskId });
         if (!result.success || !result.inbox) {
           const error = result.error || 'Failed to ignore review task';
           set((state) => setReviewError(state, sessionId, error));
@@ -320,7 +320,7 @@ export function createDevSessionsReviewSlice(
 
     overrideReviewDisposition: async (sessionId, taskId, disposition) => {
       try {
-        const result = await overrideSessionReviewDisposition(taskId, disposition);
+        const result = await overrideSessionReviewDisposition({ taskId, disposition });
         if (!result.success || !result.inbox) {
           const error = result.error || 'Failed to override disposition';
           set((state) => setReviewError(state, sessionId, error));

@@ -26,7 +26,7 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
 
     set({ error: null });
     try {
-      const result = await deps.api.plan.executeActions(currentProjectId, actions);
+      const result = await deps.api.plan.executeActions({ projectId: currentProjectId, actions });
       if (result.success) {
         const skipped = result.skippedActions ?? [];
 
@@ -94,7 +94,7 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
   removeRelation: async (relationId) => {
     set({ error: null });
     try {
-      await deps.api.plan.removeRelation(relationId);
+      await deps.api.plan.removeRelation({ relationId });
       set((state) => ({
         relations: state.relations.filter((r) => r.id !== relationId),
       }));
@@ -118,7 +118,7 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
       error: null,
     }));
     try {
-      const result = await deps.api.plan.updatePosition(itemId, roundedX, roundedY);
+      const result = await deps.api.plan.updatePosition({ itemId, x: roundedX, y: roundedY });
       if (!result.success) {
         // Revert optimistic update on failure
         const { refreshPlanItems } = get();
@@ -158,13 +158,13 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
 
     const { refreshPlanItems } = get();
     try {
-      const result = await deps.api.plan.updatePositions(
-        Array.from(updateMap.entries()).map(([id, position]) => ({
+      const result = await deps.api.plan.updatePositions({
+        updates: Array.from(updateMap.entries()).map(([id, position]) => ({
           id,
           x: position.x,
           y: position.y,
-        }))
-      );
+        })),
+      });
 
       if (!result.success) {
         await refreshPlanItems();
@@ -182,7 +182,7 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
     const { refreshPlanItems } = get();
     set({ error: null });
     try {
-      const result = await deps.api.plan.updateItem(itemId, updates);
+      const result = await deps.api.plan.updateItem({ itemId, updates });
       if (!result.success) {
         set({ error: result.error || 'Failed to update plan item' });
         return;
@@ -209,7 +209,7 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
     }));
 
     try {
-      const result = await deps.api.plan.updateItem(itemId, { status_category: statusCategory });
+      const result = await deps.api.plan.updateItem({ itemId, updates: { status_category: statusCategory } });
       if (!result.success) {
         // Revert optimistic update
         await refreshPlanItems();
@@ -264,7 +264,7 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
     });
 
     try {
-      const result = await deps.api.plan.deleteItem(itemId);
+      const result = await deps.api.plan.deleteItem({ itemId });
       if (!result.success) {
         // Restore item on failure
         if (deletedItem) {
@@ -309,7 +309,7 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
     });
 
     try {
-      const result = await deps.api.plan.deleteItemWithDescendants(itemId);
+      const result = await deps.api.plan.deleteItemWithDescendants({ itemId });
       if (!result.success) {
         // Restore items on failure
         set((state) => ({ planItems: [...state.planItems, ...deletedItems] }));
@@ -334,8 +334,8 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
     const endRefresh = startPerfSpan('plan.refresh', { projectId: currentProjectId });
     try {
       const [items, relations] = await Promise.all([
-        deps.api.plan.listItems(currentProjectId),
-        deps.api.plan.getRelations(currentProjectId),
+        deps.api.plan.listItems({ projectId: currentProjectId }),
+        deps.api.plan.getRelations({ projectId: currentProjectId }),
       ]);
 
       set({

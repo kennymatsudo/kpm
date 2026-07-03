@@ -2,7 +2,8 @@
  * Prompt Override Validation Schemas
  */
 
-import { z } from 'zod';
+import type { z } from 'zod';
+import { promptOverridesEndpoints } from '../../../shared/ipc/promptOverridesEndpoints';
 
 // =============================================================================
 // Prompt Override Schemas
@@ -10,25 +11,16 @@ import { z } from 'zod';
 
 export const PromptOverrideSchemas = {
   /** List prompts, optionally filtered by category */
-  list: z.object({
-    category: z.enum(['system', 'generation', 'agents']).optional(),
-  }),
+  list: promptOverridesEndpoints.list.params,
 
   /** Get a prompt's current content and metadata */
-  get: z.object({
-    key: z.string().min(1),
-  }),
+  get: promptOverridesEndpoints.get.params,
 
   /** Set a prompt override */
-  set: z.object({
-    key: z.string().min(1),
-    content: z.string().min(1),
-  }),
+  set: promptOverridesEndpoints.set.params,
 
   /** Reset a prompt to its default */
-  reset: z.object({
-    key: z.string().min(1),
-  }),
+  reset: promptOverridesEndpoints.reset.params,
 };
 
 // =============================================================================

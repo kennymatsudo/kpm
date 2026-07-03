@@ -1,60 +1,21 @@
 /**
  * Custom Prompt Validation Schemas
  *
- * Zod schemas for custom prompt IPC operations.
+ * Payload schemas are owned by `shared/ipc/customPromptEndpoints.ts` (one
+ * entry per IPC endpoint, shared with the preload bridge and the handler
+ * binding).
  */
 
-import { z } from 'zod';
-import { uuid, nonEmptyString } from './shared';
-
-// =============================================================================
-// Custom Prompt Icon Schema
-// =============================================================================
-
-const customPromptIcon = z.enum(['chart', 'check', 'document', 'sparkles', 'clipboard']);
-const customPromptTargetType = z.enum(['none', 'document', 'repo']);
-const customPromptRunMode = z.enum(['artifact', 'chat']);
-
-// =============================================================================
-// Custom Prompt Schemas
-// =============================================================================
+import type { z } from 'zod';
+import { customPromptEndpoints } from '../../../shared/ipc/customPromptEndpoints';
 
 export const CustomPromptSchemas = {
-  list: z.object({}),
-
-  get: z.object({
-    promptId: uuid,
-  }),
-
-  create: z.object({
-    name: nonEmptyString('Prompt name').max(100, 'Prompt name must be under 100 characters'),
-    description: z.string().max(500, 'Description must be under 500 characters').nullable().optional(),
-    promptContent: z.string().max(50000, 'Prompt content too long'),
-    icon: customPromptIcon.optional(),
-    keywords: z.string().max(500, 'Keywords must be under 500 characters').nullable().optional(),
-    targetType: customPromptTargetType.optional(),
-    runMode: customPromptRunMode.optional(),
-  }),
-
-  update: z.object({
-    promptId: uuid,
-    name: nonEmptyString('Prompt name').max(100, 'Prompt name must be under 100 characters').optional(),
-    description: z.string().max(500, 'Description must be under 500 characters').nullable().optional(),
-    promptContent: z.string().max(50000, 'Prompt content too long').optional(),
-    icon: customPromptIcon.optional(),
-    keywords: z.string().max(500, 'Keywords must be under 500 characters').nullable().optional(),
-    targetType: customPromptTargetType.optional(),
-    runMode: customPromptRunMode.optional(),
-  }),
-
-  delete: z.object({
-    promptId: uuid,
-  }),
-
-  execute: z.object({
-    promptId: uuid,
-    projectId: uuid,
-  }),
+  list: customPromptEndpoints.list.params,
+  get: customPromptEndpoints.get.params,
+  create: customPromptEndpoints.create.params,
+  update: customPromptEndpoints.update.params,
+  delete: customPromptEndpoints.delete.params,
+  execute: customPromptEndpoints.execute.params,
 };
 
 // =============================================================================

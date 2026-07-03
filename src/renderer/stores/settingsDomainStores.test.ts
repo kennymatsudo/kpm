@@ -61,14 +61,14 @@ describe('settings domain stores', () => {
       apiToken: 'token',
     });
 
-    expect(api.tracker.credentials.testJira).toHaveBeenCalledWith('acme.atlassian.net', 'dev@acme.com', 'token');
+    expect(api.tracker.credentials.testJira).toHaveBeenCalledWith({ siteUrl: 'acme.atlassian.net', email: 'dev@acme.com', apiToken: 'token' });
     expect(result).toEqual({ success: true });
     expect(useCredentialStore.getState().error).toBeNull();
   });
 
   it('loads general settings through the settings domain store', async () => {
     api.settings.anthropic.hasKey.mockResolvedValue({ success: true, hasKey: true });
-    api.settings.app.get.mockImplementation(async (key: string) => {
+    api.settings.app.get.mockImplementation(async ({ key }: { key: string }) => {
       if (key === 'branch_name_template') {
         return { success: true, value: '{ticket}-{name}' };
       }
@@ -78,7 +78,7 @@ describe('settings domain stores', () => {
     await useGeneralSettingsStore.getState().loadGeneralSettings();
 
     expect(api.settings.anthropic.hasKey).toHaveBeenCalled();
-    expect(api.settings.app.get).toHaveBeenCalledWith('branch_name_template');
+    expect(api.settings.app.get).toHaveBeenCalledWith({ key: 'branch_name_template' });
     expect(useGeneralSettingsStore.getState()).toMatchObject({
       hasAnthropicKey: true,
       branchTemplate: '{ticket}-{name}',
@@ -93,8 +93,8 @@ describe('settings domain stores', () => {
 
     const result = await useGeneralSettingsStore.getState().saveAnthropicKey('sk-ant-test');
 
-    expect(api.settings.anthropic.testKey).toHaveBeenCalledWith('sk-ant-test');
-    expect(api.settings.anthropic.saveKey).toHaveBeenCalledWith('sk-ant-test');
+    expect(api.settings.anthropic.testKey).toHaveBeenCalledWith({ apiKey: 'sk-ant-test' });
+    expect(api.settings.anthropic.saveKey).toHaveBeenCalledWith({ apiKey: 'sk-ant-test' });
     expect(result).toEqual({ success: true });
     expect(useGeneralSettingsStore.getState().hasAnthropicKey).toBe(true);
   });
@@ -151,7 +151,7 @@ describe('settings domain stores', () => {
 
     const result = await useMcpServersStore.getState().setServerEnabled('slack', true);
 
-    expect(api.mcpServers.setEnabled).toHaveBeenCalledWith('slack', true);
+    expect(api.mcpServers.setEnabled).toHaveBeenCalledWith({ serverName: 'slack', enabled: true });
     expect(result).toEqual({ success: true });
     expect(useMcpServersStore.getState().preferences).toEqual({ slack: true });
   });

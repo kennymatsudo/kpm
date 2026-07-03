@@ -1,28 +1,33 @@
-import { ipcMain } from 'electron';
-import { createIpcHandler, createSimpleIpcHandler, PerfSchemas } from '../validation';
+import { createRegistryIpcHandlers } from '../validation/utils';
+import { perfEndpoints, type PerfEndpointName } from '../../../shared/ipc/perfEndpoints';
+import type { EndpointPayload } from '../../../shared/ipc/endpoints';
 import { getPerfLogger, getPerfLogInfo } from '../../services/PerfLogger';
 
-export function registerPerfHandlers(): void {
-  ipcMain.handle(
-    'perf:log',
-    createIpcHandler(
-      PerfSchemas.log,
-      async ({ name, durationMs, meta }) => {
-        const logger = getPerfLogger();
-        if (!logger) return;
-        logger.log({
-          name,
-          durationMs,
-          meta,
-          source: 'renderer',
-        });
-      },
-      'Failed to log perf event'
-    )
-  );
+type PerfHandler<K extends PerfEndpointName> = (
+  params: EndpointPayload<(typeof perfEndpoints)[K]>
+) => unknown;
 
-  ipcMain.handle(
-    'perf:get-log-info',
-    createSimpleIpcHandler(async () => getPerfLogInfo(), 'Failed to get perf log info')
-  );
+/**
+ * One handler per `perfEndpoints` entry. A registry entry without a matching
+ * key here is a compile error, not a runtime "no handler" failure.
+ */
+type PerfHandlers = { [K in PerfEndpointName]: PerfHandler<K> };
+
+const handlers: PerfHandlers = {
+  log: async ({ name, durationMs, meta }) => {
+    const logger = getPerfLogger();
+    if (!logger) return;
+    logger.log({
+      name,
+      durationMs,
+      meta,
+      source: 'renderer',
+    });
+  },
+
+  getLogInfo: async () => getPerfLogInfo(),
+};
+
+export function registerPerfHandlers(): void {
+  createRegistryIpcHandlers(perfEndpoints, handlers, 'Failed to log perf event');
 }

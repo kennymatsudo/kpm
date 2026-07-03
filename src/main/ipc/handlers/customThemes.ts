@@ -1,41 +1,43 @@
-import { ipcMain } from 'electron';
 import type { CustomThemeService } from '../../services/core/CustomThemeService';
-import { IPC_CHANNELS } from '../channels';
-import { createIpcHandler, createSimpleIpcHandler, CustomThemeSchemas } from '../validation';
+import { createRegistryIpcHandlers } from '../validation/utils';
+import { customThemeEndpoints, type CustomThemeEndpointName } from '../../../shared/ipc/customThemeEndpoints';
+import type { EndpointPayload } from '../../../shared/ipc/endpoints';
 
-export function registerCustomThemeHandlers(customThemeService: CustomThemeService): void {
-  ipcMain.handle(
-    IPC_CHANNELS.customThemes.list,
-    createSimpleIpcHandler(() => {
+type CustomThemeHandler<K extends CustomThemeEndpointName> = (
+  params: EndpointPayload<(typeof customThemeEndpoints)[K]>
+) => unknown;
+
+/**
+ * One handler per `customThemeEndpoints` entry. A registry entry without a
+ * matching key here is a compile error, not a runtime "no handler" failure.
+ */
+type CustomThemeHandlers = { [K in CustomThemeEndpointName]: CustomThemeHandler<K> };
+
+function buildCustomThemeHandlers(customThemeService: CustomThemeService): CustomThemeHandlers {
+  return {
+    list: () => {
       const result = customThemeService.list();
       if (!result.ok) throw new Error(result.error);
       return { themes: result.data };
-    }, 'Failed to list custom themes'),
-  );
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.customThemes.importFromUrl,
-    createIpcHandler(
-      CustomThemeSchemas.importFromUrl,
-      async ({ url }) => {
-        const result = await customThemeService.importFromVsCodeThemesUrl(url);
-        if (!result.ok) throw new Error(result.error);
-        return result.data;
-      },
-      'Failed to import custom theme',
-    ),
-  );
+    importFromUrl: async ({ url }) => {
+      const result = await customThemeService.importFromVsCodeThemesUrl(url);
+      if (!result.ok) throw new Error(result.error);
+      return result.data;
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.customThemes.delete,
-    createIpcHandler(
-      CustomThemeSchemas.delete,
-      ({ themeId }) => {
-        const result = customThemeService.delete(themeId);
-        if (!result.ok) throw new Error(result.error);
-      },
-      'Failed to delete custom theme',
-    ),
-  );
+    delete: ({ themeId }) => {
+      const result = customThemeService.delete(themeId);
+      if (!result.ok) throw new Error(result.error);
+    },
+  };
 }
 
+export function registerCustomThemeHandlers(customThemeService: CustomThemeService): void {
+  createRegistryIpcHandlers(
+    customThemeEndpoints,
+    buildCustomThemeHandlers(customThemeService),
+    'Custom theme operation failed'
+  );
+}

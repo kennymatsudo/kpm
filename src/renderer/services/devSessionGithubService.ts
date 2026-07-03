@@ -1,48 +1,40 @@
-export function getSessionPrStatus(sessionId: string) {
-  return window.api.github.getPrStatus(sessionId);
+export function getSessionPrStatus(payload: { sessionId: string }) {
+  return window.api.github.getPrStatus(payload);
 }
 
-export function detectAndLinkSessionPr(sessionId: string) {
-  return window.api.github.detectAndLinkPr(sessionId);
+export function detectAndLinkSessionPr(payload: { sessionId: string }) {
+  return window.api.github.detectAndLinkPr(payload);
 }
 
-export function checkSessionGithubAuth(sessionId: string) {
-  return window.api.github.checkAuth(sessionId);
+export function checkSessionGithubAuth(payload: { sessionId: string }) {
+  return window.api.github.checkAuth(payload);
 }
 
-export function buildSessionPrContext(sessionId: string) {
-  return window.api.github.buildPrContext(sessionId);
+export function buildSessionPrContext(payload: { sessionId: string }) {
+  return window.api.github.buildPrContext(payload);
 }
 
-export function generateSessionPrContent(
-  sessionId: string,
-  title: string,
-  body: string,
-  prTemplate: string | null,
-  diff: string,
-  commitLog: string,
-  featureContextPath?: string | null
-) {
-  return window.api.github.generatePrContent(
-    sessionId,
-    title,
-    body,
-    prTemplate,
-    diff,
-    commitLog,
-    featureContextPath
-  );
+export function generateSessionPrContent(payload: {
+  sessionId: string;
+  rawTitle: string;
+  rawBody: string;
+  prTemplate: string | null;
+  diff: string;
+  commitLog: string;
+  featureContextPath?: string | null;
+}) {
+  return window.api.github.generatePrContent(payload);
 }
 
-export function createSessionPullRequest(
-  sessionId: string,
-  title: string,
-  body: string,
-  draft: boolean
-) {
-  return window.api.github.createPr(sessionId, title, body, draft);
+export function createSessionPullRequest(payload: {
+  sessionId: string;
+  title: string;
+  body: string;
+  draft: boolean;
+}) {
+  return window.api.github.createPr(payload);
 }
 
-export function linkSessionPullRequest(sessionId: string, prIdentifier: string) {
-  return window.api.github.linkPr(sessionId, prIdentifier);
+export function linkSessionPullRequest(payload: { sessionId: string; prIdentifier: string }) {
+  return window.api.github.linkPr(payload);
 }

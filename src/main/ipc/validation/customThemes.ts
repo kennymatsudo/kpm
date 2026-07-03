@@ -1,15 +1,10 @@
-import { z } from 'zod';
+import type { z } from 'zod';
+import { customThemeEndpoints } from '../../../shared/ipc/customThemeEndpoints';
 
 export const CustomThemeSchemas = {
-  importFromUrl: z.object({
-    url: z.string().trim().min(1).max(500),
-  }),
-
-  delete: z.object({
-    themeId: z.string().trim().min(1).max(200),
-  }),
+  importFromUrl: customThemeEndpoints.importFromUrl.params,
+  delete: customThemeEndpoints.delete.params,
 };
 
 export type CustomThemeImportFromUrlInput = z.infer<typeof CustomThemeSchemas.importFromUrl>;
 export type CustomThemeDeleteInput = z.infer<typeof CustomThemeSchemas.delete>;
-

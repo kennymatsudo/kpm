@@ -139,7 +139,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     if (pickerPrompt?.target_type !== 'document' || !currentProjectId) return;
     let cancelled = false;
     setDocsLoading(true);
-    listProjectDirectory(currentProjectId, undefined, { recursive: true })
+    listProjectDirectory({ projectId: currentProjectId, recursive: true })
       .then((nodes) => {
         if (!cancelled) setDocTargets(flattenMarkdownFiles(nodes));
       })

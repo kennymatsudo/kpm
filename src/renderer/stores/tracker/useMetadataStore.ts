@@ -146,7 +146,7 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
     }));
 
     try {
-      const result = await listTrackerProjectStatuses(projectKey, trackerType);
+      const result = await listTrackerProjectStatuses({ projectKey, trackerType });
       if (result.success && result.statuses) {
         const statuses = result.statuses;
         set((s) => {

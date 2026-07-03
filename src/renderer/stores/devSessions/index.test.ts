@@ -253,7 +253,7 @@ describe('devSessionsStore', () => {
 
     const resultPromise = useDevSessionsStore.getState().assessReviewThreads('dev-session-1', { reassessAll: true });
 
-    expect(api.review.assessThreads).toHaveBeenCalledWith('dev-session-1', { reassessAll: true });
+    expect(api.review.assessThreads).toHaveBeenCalledWith({ sessionId: 'dev-session-1', reassessAll: true });
     expect(useDevSessionsStore.getState().reviewAssessmentPendingBySessionId.get('dev-session-1')).toMatchObject({
       scope: 'all',
       taskIds: ['task-1'],
@@ -278,7 +278,7 @@ describe('devSessionsStore', () => {
 
     const result = await useDevSessionsStore.getState().triggerReviewAutomation('dev-session-1', ['task-1']);
 
-    expect(api.review.triggerAutomation).toHaveBeenCalledWith('dev-session-1', ['task-1']);
+    expect(api.review.triggerAutomation).toHaveBeenCalledWith({ sessionId: 'dev-session-1', taskIds: ['task-1'] });
     expect(result).toEqual({
       success: true,
       inbox,
@@ -311,17 +311,17 @@ describe('devSessionsStore', () => {
 
     const result = await useDevSessionsStore.getState().loadPrContext('dev-session-1');
 
-    expect(api.github.checkAuth).toHaveBeenCalledWith('dev-session-1');
-    expect(api.github.buildPrContext).toHaveBeenCalledWith('dev-session-1');
-    expect(api.github.generatePrContent).toHaveBeenCalledWith(
-      'dev-session-1',
-      'Implement feature',
-      '## Summary',
-      null,
-      '',
-      '',
-      null
-    );
+    expect(api.github.checkAuth).toHaveBeenCalledWith({ sessionId: 'dev-session-1' });
+    expect(api.github.buildPrContext).toHaveBeenCalledWith({ sessionId: 'dev-session-1' });
+    expect(api.github.generatePrContent).toHaveBeenCalledWith({
+      sessionId: 'dev-session-1',
+      rawTitle: 'Implement feature',
+      rawBody: '## Summary',
+      prTemplate: null,
+      diff: '',
+      commitLog: '',
+      featureContextPath: null,
+    });
     expect(result).toEqual({
       success: true,
       context: {
@@ -362,15 +362,15 @@ describe('devSessionsStore', () => {
 
     const result = await useDevSessionsStore.getState().loadPrContext('dev-session-1', { force: true });
 
-    expect(api.github.generatePrContent).toHaveBeenCalledWith(
-      'dev-session-1',
-      'Implement feature',
-      '## Summary',
-      null,
-      '',
-      '',
-      null
-    );
+    expect(api.github.generatePrContent).toHaveBeenCalledWith({
+      sessionId: 'dev-session-1',
+      rawTitle: 'Implement feature',
+      rawBody: '## Summary',
+      prTemplate: null,
+      diff: '',
+      commitLog: '',
+      featureContextPath: null,
+    });
     expect(result).toEqual({
       success: true,
       context: {
@@ -412,15 +412,15 @@ describe('devSessionsStore', () => {
       featureContextPath: 'docs/support-attachments.md',
     });
 
-    expect(api.github.generatePrContent).toHaveBeenCalledWith(
-      'dev-session-1',
-      'Implement feature',
-      '## Summary',
-      null,
-      '',
-      '',
-      'docs/support-attachments.md'
-    );
+    expect(api.github.generatePrContent).toHaveBeenCalledWith({
+      sessionId: 'dev-session-1',
+      rawTitle: 'Implement feature',
+      rawBody: '## Summary',
+      prTemplate: null,
+      diff: '',
+      commitLog: '',
+      featureContextPath: 'docs/support-attachments.md',
+    });
     expect(result.context?.featureContextPath).toBe('docs/support-attachments.md');
     expect(useDevSessionsStore.getState().prContextBySessionId.get('dev-session-1')?.featureContextPath)
       .toBe('docs/support-attachments.md');
@@ -465,12 +465,12 @@ describe('devSessionsStore', () => {
       false
     );
 
-    expect(api.github.createPr).toHaveBeenCalledWith(
-      'dev-session-1',
-      'Implement feature',
-      '## Summary',
-      false
-    );
+    expect(api.github.createPr).toHaveBeenCalledWith({
+      sessionId: 'dev-session-1',
+      title: 'Implement feature',
+      body: '## Summary',
+      draft: false,
+    });
     expect(result).toEqual({
       success: true,
       number: 17,

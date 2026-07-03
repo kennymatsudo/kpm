@@ -56,7 +56,7 @@ async function getPreviewWithCache(projectId: string, associationId: string): Pr
   const inFlight = inFlightPreviewByKey.get(key);
   if (inFlight) return inFlight;
 
-  const promise = getTrackerSyncPreview(projectId, associationId)
+  const promise = getTrackerSyncPreview({ projectId, associationId })
     .then((result: { success: boolean; preview?: SyncPreview; error?: string }) => {
       if (!result.success || !result.preview) {
         throw new Error(result.error || 'Failed to load sync preview');
@@ -260,13 +260,13 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     set({ isSyncing: true, error: null });
 
     try {
-      const result = await applyTrackerSyncChanges(
+      const result = await applyTrackerSyncChanges({
         projectId,
-        syncPreview,
+        preview: syncPreview,
         resolutions,
         deletedAction,
-        deletedDecisions
-      );
+        deletedDecisions,
+      });
 
       if (result.success && result.result) {
         const associationId = syncPreview.link_id;

@@ -560,7 +560,7 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
 
   executeReviewReply: async (draft) => {
     try {
-      const result = await replyToSessionReviewThread(draft.sessionId, draft.threadId, draft.body, draft.resolve);
+      const result = await replyToSessionReviewThread({ sessionId: draft.sessionId, threadId: draft.threadId, body: draft.body, resolve: draft.resolve });
       if (!result.success) {
         return { success: false, error: result.error || 'Failed to post review reply' };
       }

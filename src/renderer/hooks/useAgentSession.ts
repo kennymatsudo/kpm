@@ -54,8 +54,8 @@ export function useAgentSession(devSessionId: string | null): AgentSessionInfo {
     let cancelled = false;
 
     void Promise.all([
-      getAgentState(devSessionId),
-      getAgentActivities(devSessionId),
+      getAgentState({ devSessionId }),
+      getAgentActivities({ devSessionId }),
     ]).then(([stateResult, activitiesResult]) => {
       if (cancelled) return;
       if (!stateResult.success && !activitiesResult.success) return;

@@ -18,9 +18,9 @@ export interface LoadedProjectResources {
 export async function loadProjectResources(projectId: string): Promise<LoadedProjectResources> {
   const [repos, attachments, planItems, worktrees] = await Promise.all([
     listProjectRepos(projectId),
-    window.api.attachments.list(projectId),
+    window.api.attachments.list({ projectId }),
     listProjectPlanItems(projectId),
-    window.api.worktrees.getByProject(projectId),
+    window.api.worktrees.getByProject({ projectId }),
   ]);
 
   return {
@@ -32,7 +32,7 @@ export async function loadProjectResources(projectId: string): Promise<LoadedPro
 }
 
 export function loadProjectRepoBranches(repoPaths: string[]): Promise<Record<string, string | null>> {
-  return window.api.repos.getBranches(repoPaths);
+  return window.api.repos.getBranches({ paths: repoPaths });
 }
 
 /** Returns the path that should be watched/queried for branch info (worktree if set, else main). */
@@ -42,7 +42,7 @@ export function getEffectiveRepoPath(repo: Repo): string {
 
 export function watchProjectRepos(repos: Repo[]): string[] {
   for (const repo of repos) {
-    void window.api.repos.watch(repo.id, getEffectiveRepoPath(repo));
+    void window.api.repos.watch({ repoId: repo.id, path: getEffectiveRepoPath(repo) });
   }
 
   return repos.map(getEffectiveRepoPath);
@@ -53,7 +53,7 @@ export async function unwatchProjectRepos(repoPaths: string[]): Promise<void> {
     return;
   }
 
-  await Promise.all(repoPaths.map((path) => window.api.repos.unwatch(path)));
+  await Promise.all(repoPaths.map((path) => window.api.repos.unwatch({ path })));
 }
 
 export async function disconnectActiveChatSessions(projectId: string): Promise<void> {
@@ -64,17 +64,17 @@ export async function disconnectActiveChatSessions(projectId: string): Promise<v
 
   await Promise.all(
     result.sessions.map((session: { chatSessionId: string }) =>
-      window.api.chat.disconnectSpecificSession(projectId, session.chatSessionId)
+      window.api.chat.disconnectSpecificSession({ projectId, chatSessionId: session.chatSessionId })
     )
   );
 }
 
 export async function persistLastOpenedProjectId(projectId: string): Promise<void> {
-  await window.api.settings.app.set('lastOpenedProjectId', projectId);
+  await window.api.settings.app.set({ key: 'lastOpenedProjectId', value: projectId });
 }
 
 export async function getLastOpenedProjectId(): Promise<string | undefined> {
-  const result = await window.api.settings.app.get('lastOpenedProjectId');
+  const result = await window.api.settings.app.get({ key: 'lastOpenedProjectId' });
   return result.success ? result.value : undefined;
 }
 
@@ -90,11 +90,11 @@ export function getDefaultProjectLocation(): Promise<string> {
 }
 
 export function selectProjectParentFolder(title?: string): Promise<string | null> {
-  return window.api.fileExplorer.selectFolderDialog(title);
+  return window.api.fileExplorer.selectFolderDialog({ title });
 }
 
 export async function deleteProjectRecord(projectId: string): Promise<void> {
-  await window.api.projects.delete(projectId);
+  await window.api.projects.delete({ projectId });
 }
 
 export function listProjects(): Promise<Project[]> {

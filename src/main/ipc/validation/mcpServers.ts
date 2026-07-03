@@ -2,17 +2,13 @@
  * MCP Servers IPC Validation Schemas
  */
 
-import { z } from 'zod';
+import type { z } from 'zod';
+import { mcpServersEndpoints } from '../../../shared/ipc/mcpServersEndpoints';
 
 export const McpServerSchemas = {
-  listAvailable: z.object({}),
-
-  getPreferences: z.object({}),
-
-  setEnabled: z.object({
-    serverName: z.string().min(1),
-    enabled: z.boolean(),
-  }),
+  listAvailable: mcpServersEndpoints.listAvailable.params,
+  getPreferences: mcpServersEndpoints.getPreferences.params,
+  setEnabled: mcpServersEndpoints.setEnabled.params,
 };
 
 // Inferred types

@@ -17,14 +17,14 @@ export const createProjectSlice: SliceCreator<ProjectSlice> = (_deps) => (set, g
     return projects;
   },
   updateProjectStorybookUrl: async (projectId, storybookUrl) => {
-    const result = await _deps.api.storybook.updateUrl(projectId, storybookUrl);
+    const result = await _deps.api.storybook.updateUrl({ projectId, storybookUrl });
     if (!result.success) {
       throw new Error(result.error || 'Failed to update Storybook URL');
     }
 
     return get().refreshProjects();
   },
-  testStorybookConnection: (url) => _deps.api.storybook.testConnection(url),
+  testStorybookConnection: (url) => _deps.api.storybook.testConnection({ url }),
   reset: () => set(createBaseState()),
   resetProjectState: () => {
     // Clear project-specific state while preserving the project list.

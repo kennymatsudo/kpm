@@ -4,70 +4,56 @@
  * Handles bidirectional sync between KPM documents and Confluence pages.
  */
 
-import { ipcMain } from 'electron';
-import { IPC_CHANNELS } from '../channels';
-import { ConfluenceSchemas } from '../validation/confluence';
+import { confluenceEndpoints, type ConfluenceEndpointName } from '../../../shared/ipc/confluenceEndpoints';
+import type { EndpointPayload } from '../../../shared/ipc/endpoints';
 import { toIpcResponse, ipcSuccess, ipcError } from '../response';
 import type { ConfluenceSyncService } from '../../services/confluence';
+import { bindRegistryHandlers } from '../validation/utils';
 
-export function registerConfluenceHandlers(
-  confluenceSyncService: ConfluenceSyncService
-): void {
-  // Link document to Confluence page
-  ipcMain.handle(IPC_CHANNELS.confluence.link, async (_event, params: unknown) => {
-    const { projectId, documentPath, confluenceUrl } = ConfluenceSchemas.link.parse(params);
-    const result = await confluenceSyncService.linkDocument(projectId, documentPath, confluenceUrl);
-    return toIpcResponse(result);
-  });
+type ConfluenceHandler<K extends ConfluenceEndpointName> = (
+  params: EndpointPayload<(typeof confluenceEndpoints)[K]>
+) => unknown;
 
-  // Unlink document
-  ipcMain.handle(IPC_CHANNELS.confluence.unlink, (_event, params: unknown) => {
-    const { projectId, documentPath } = ConfluenceSchemas.unlink.parse(params);
-    return toIpcResponse(confluenceSyncService.unlinkDocument(projectId, documentPath));
-  });
+/**
+ * One handler per `confluenceEndpoints` entry. A registry entry without a
+ * matching key here is a compile error, not a runtime "no handler" failure.
+ * Response shapes vary per endpoint (toIpcResponse vs. ipcSuccess/ipcError)
+ * so this binds directly to `ipcMain.handle` rather than going through
+ * `createRegistryIpcHandlers`, which would force a uniform `{success, ...}`
+ * envelope onto every entry.
+ */
+type ConfluenceHandlers = { [K in ConfluenceEndpointName]: ConfluenceHandler<K> };
 
-  // Get all links for project
-  ipcMain.handle(IPC_CHANNELS.confluence.getLinks, (_event, params: unknown) => {
-    const { projectId } = ConfluenceSchemas.getLinks.parse(params);
-    return ipcSuccess(confluenceSyncService.getLinksForProject(projectId));
-  });
+function buildConfluenceHandlers(confluenceSyncService: ConfluenceSyncService): ConfluenceHandlers {
+  return {
+    link: async ({ projectId, documentPath, confluenceUrl }) =>
+      toIpcResponse(await confluenceSyncService.linkDocument(projectId, documentPath, confluenceUrl)),
 
-  // Get link for a specific document
-  ipcMain.handle(IPC_CHANNELS.confluence.getLinkForDocument, (_event, params: unknown) => {
-    const { projectId, documentPath } = ConfluenceSchemas.getLinkForDocument.parse(params);
-    const link = confluenceSyncService.getLinkForDocument(projectId, documentPath);
-    return ipcSuccess(link);
-  });
+    unlink: ({ projectId, documentPath }) =>
+      toIpcResponse(confluenceSyncService.unlinkDocument(projectId, documentPath)),
 
-  // Generate sync preview
-  ipcMain.handle(IPC_CHANNELS.confluence.syncPreview, async (_event, params: unknown) => {
-    const { projectId, documentPath } = ConfluenceSchemas.syncPreview.parse(params);
-    const result = await confluenceSyncService.generateSyncPreview(projectId, documentPath);
-    return toIpcResponse(result);
-  });
+    getLinks: ({ projectId }) => ipcSuccess(confluenceSyncService.getLinksForProject(projectId)),
 
-  // Execute push
-  ipcMain.handle(IPC_CHANNELS.confluence.pushExecute, async (_event, params: unknown) => {
-    const { projectId, documentPath } = ConfluenceSchemas.pushExecute.parse(params);
-    const result = await confluenceSyncService.executePush(projectId, documentPath);
-    return toIpcResponse(result);
-  });
+    getLinkForDocument: ({ projectId, documentPath }) =>
+      ipcSuccess(confluenceSyncService.getLinkForDocument(projectId, documentPath)),
 
-  // Execute pull
-  ipcMain.handle(IPC_CHANNELS.confluence.pullExecute, async (_event, params: unknown) => {
-    const { projectId, documentPath } = ConfluenceSchemas.pullExecute.parse(params);
-    const result = await confluenceSyncService.executePull(projectId, documentPath);
-    return toIpcResponse(result);
-  });
+    syncPreview: async ({ projectId, documentPath }) =>
+      toIpcResponse(await confluenceSyncService.generateSyncPreview(projectId, documentPath)),
 
-  // Parse URL (for validation before linking)
-  ipcMain.handle(IPC_CHANNELS.confluence.parseUrl, (_event, params: unknown) => {
-    const { url } = ConfluenceSchemas.parseUrl.parse(params);
-    const parsed = confluenceSyncService.parseUrl(url);
-    if (parsed) {
-      return ipcSuccess(parsed);
-    } else {
-      return ipcError('Invalid Confluence URL');
-    }
-  });
+    pushExecute: async ({ projectId, documentPath }) =>
+      toIpcResponse(await confluenceSyncService.executePush(projectId, documentPath)),
+
+    pullExecute: async ({ projectId, documentPath }) =>
+      toIpcResponse(await confluenceSyncService.executePull(projectId, documentPath)),
+
+    parseUrl: ({ url }) => {
+      const parsed = confluenceSyncService.parseUrl(url);
+      return parsed ? ipcSuccess(parsed) : ipcError('Invalid Confluence URL');
+    },
+  };
+}
+
+export function registerConfluenceHandlers(confluenceSyncService: ConfluenceSyncService): void {
+  const handlers = buildConfluenceHandlers(confluenceSyncService);
+  bindRegistryHandlers(confluenceEndpoints, handlers);
 }

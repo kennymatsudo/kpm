@@ -2,30 +2,19 @@
  * Settings Validation Schemas
  */
 
-import { z } from 'zod';
-import { anthropicApiKey } from './shared';
+import { settingsEndpoints } from '../../../shared/ipc/settingsEndpoints';
 
 // =============================================================================
 // Settings Schemas
 // =============================================================================
 
 export const SettingsSchemas = {
-  saveApiKey: z.object({
-    apiKey: anthropicApiKey,
-  }),
-
-  testApiKey: z.object({
-    apiKey: anthropicApiKey,
-  }),
+  saveApiKey: settingsEndpoints['anthropic.saveKey'].params,
+  testApiKey: settingsEndpoints['anthropic.testKey'].params,
 
   /** Get app setting */
-  getAppSetting: z.object({
-    key: z.string().min(1),
-  }),
+  getAppSetting: settingsEndpoints['app.get'].params,
 
   /** Set app setting */
-  setAppSetting: z.object({
-    key: z.string().min(1),
-    value: z.string(),
-  }),
+  setAppSetting: settingsEndpoints['app.set'].params,
 };

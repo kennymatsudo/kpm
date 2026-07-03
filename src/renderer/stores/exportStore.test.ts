@@ -48,7 +48,7 @@ describe('export store', () => {
 
     emit({ type: 'sync-review-item-removed', payload: { queueEntryId: 'queue-1' } });
     await vi.waitFor(() => {
-      expect(api.tracker.exportQueue.remove).toHaveBeenCalledWith('queue-1');
+      expect(api.tracker.exportQueue.remove).toHaveBeenCalledWith({ queueEntryId: 'queue-1' });
     });
 
     expect(useExportStore.getState().queueEntries).toHaveLength(0);
@@ -93,8 +93,9 @@ describe('export store', () => {
       payload: { queueEntryId: 'queue-1', overrides: { 'custom-field': 'value-1' } },
     });
     await vi.waitFor(() => {
-      expect(api.tracker.exportQueue.updateCustomFieldOverrides).toHaveBeenCalledWith('queue-1', {
-        'custom-field': 'value-1',
+      expect(api.tracker.exportQueue.updateCustomFieldOverrides).toHaveBeenCalledWith({
+        queueEntryId: 'queue-1',
+        customFieldOverrides: { 'custom-field': 'value-1' },
       });
     });
 
@@ -141,8 +142,9 @@ describe('export store', () => {
       .getState()
       .updateQueueCustomFieldOverrides('queue-1', { 'custom-field': 'value-1' });
 
-    expect(api.tracker.exportQueue.updateCustomFieldOverrides).toHaveBeenCalledWith('queue-1', {
-      'custom-field': 'value-1',
+    expect(api.tracker.exportQueue.updateCustomFieldOverrides).toHaveBeenCalledWith({
+      queueEntryId: 'queue-1',
+      customFieldOverrides: { 'custom-field': 'value-1' },
     });
     expect(useExportStore.getState().queueEntries[0]?.custom_field_overrides).toEqual({
       'custom-field': 'value-1',

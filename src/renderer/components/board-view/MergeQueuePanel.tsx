@@ -110,7 +110,7 @@ export const MergeQueuePanel = memo(function MergeQueuePanel({
       // Assign explicit merge_order to every item based on new positions
       await Promise.all(
         reordered.map((item, idx) =>
-          updateDevSessionMergeOrder(item.session.id, idx),
+          updateDevSessionMergeOrder({ sessionId: item.session.id, order: idx }),
         ),
       );
     },

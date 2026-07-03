@@ -5,12 +5,18 @@ import { tmpdir } from 'os';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 import { BaseAgentSession } from './BaseAgentSession';
-import type { AgentCompletionSummary, AgentSessionRole } from '../../../shared/agent-types';
+import type { AgentCompletionSummary, AgentSessionRole, AgentType } from '../../../shared/agent-types';
 
 const execFileAsync = promisify(execFile);
 
 /** Minimal concrete session used to exercise BaseAgentSession's shared behavior directly. */
 class TestAgentSession extends BaseAgentSession {
+  readonly agentType: AgentType = 'claude';
+
+  protected finalOutput(): string | null {
+    return null;
+  }
+
   async start(): Promise<void> {
     this.assertStarting();
     this.setState('working');

@@ -1,26 +1,8 @@
-import { z } from 'zod';
-import { uuid } from './shared';
-
-const permissionAction = z.enum(['allow', 'deny', 'allow-always', 'allow-all-remaining']);
+import { permissionEndpoints } from '../../../shared/ipc/permissionEndpoints';
 
 export const PermissionSchemas = {
-  respond: z.object({
-    requestId: uuid,
-    projectId: uuid,
-    action: permissionAction,
-  }),
-
-  list: z.object({
-    projectId: uuid,
-  }),
-
-  revoke: z.object({
-    id: uuid,
-    projectId: uuid,
-    cacheKey: z.string().min(1),
-  }),
-
-  revokeAll: z.object({
-    projectId: uuid,
-  }),
+  respond: permissionEndpoints.respond.params,
+  list: permissionEndpoints.list.params,
+  revoke: permissionEndpoints.revoke.params,
+  revokeAll: permissionEndpoints.revokeAll.params,
 };

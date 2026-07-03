@@ -130,11 +130,11 @@ export const useTrackerConfigStore = create<TrackerConfigState>((set, get) => ({
 
     try {
       const result = issueType
-        ? await searchTrackerIssuesByJql(
+        ? await searchTrackerIssuesByJql({
             projectKey,
-            `project = ${projectKey} AND type = ${issueType} ORDER BY updated DESC`
-          )
-        : await getRecentTrackerIssues(projectKey);
+            jql: `project = ${projectKey} AND type = ${issueType} ORDER BY updated DESC`,
+          })
+        : await getRecentTrackerIssues({ projectKey });
 
       if (result.success && result.issues) {
         return { success: true, issues: result.issues };
@@ -155,11 +155,11 @@ export const useTrackerConfigStore = create<TrackerConfigState>((set, get) => ({
 
     try {
       const result = issueType
-        ? await searchTrackerIssuesByJql(
+        ? await searchTrackerIssuesByJql({
             projectKey,
-            `project = ${projectKey} AND type = ${issueType} AND (key ~ "${query}" OR summary ~ "${query}*") ORDER BY updated DESC`
-          )
-        : await searchTrackerIssues(projectKey, query);
+            jql: `project = ${projectKey} AND type = ${issueType} AND (key ~ "${query}" OR summary ~ "${query}*") ORDER BY updated DESC`,
+          })
+        : await searchTrackerIssues({ projectKey, searchText: query });
 
       if (result.success && result.issues) {
         return { success: true, issues: result.issues };
@@ -179,10 +179,10 @@ export const useTrackerConfigStore = create<TrackerConfigState>((set, get) => ({
     set({ error: null });
 
     try {
-      const result = await searchTrackerIssuesByJql(
+      const result = await searchTrackerIssuesByJql({
         projectKey,
-        `parent = ${parentIssueKey}`
-      );
+        jql: `parent = ${parentIssueKey}`,
+      });
       if (result.success && result.issues) {
         return { success: true, issues: result.issues };
       }
@@ -222,7 +222,7 @@ export const useTrackerConfigStore = create<TrackerConfigState>((set, get) => ({
     set({ error: null });
 
     try {
-      const result = await listTrackerCustomFields(projectKey, issueTypeId);
+      const result = await listTrackerCustomFields({ projectKey, issueTypeId });
       if (result.success && result.fields) {
         const supportedFields = getSupportedCustomFields(result.fields);
         set((state) => ({
@@ -257,10 +257,10 @@ export const useTrackerConfigStore = create<TrackerConfigState>((set, get) => ({
 
     try {
       const savedMapping = cleanStatusMapping(statusMapping);
-      const result = await updateTrackerAssociationStatusMapping(
+      const result = await updateTrackerAssociationStatusMapping({
         associationId,
-        savedMapping
-      );
+        statusMapping: savedMapping,
+      });
       if (!result.success) {
         const error = result.error || 'Failed to save mapping';
         set({ error });
@@ -280,10 +280,10 @@ export const useTrackerConfigStore = create<TrackerConfigState>((set, get) => ({
 
     try {
       const savedValues = cleanCustomFieldValues(customFieldValues);
-      const result = await updateTrackerAssociationCustomFieldValues(
+      const result = await updateTrackerAssociationCustomFieldValues({
         associationId,
-        savedValues
-      );
+        customFieldValues: savedValues,
+      });
       if (!result.success) {
         const error = result.error || 'Failed to save custom fields';
         set({ error });

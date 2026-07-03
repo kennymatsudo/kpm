@@ -5,149 +5,84 @@
  * Templates define how Claude creates plan items (title format, description structure, etc.).
  */
 
-import { ipcMain } from 'electron';
 import type { TaskPromptTemplateService } from '../../services/core/TaskPromptTemplateService';
-import { createIpcHandler, createSimpleIpcHandler, TaskPromptTemplateSchemas } from '../validation';
-import { IPC_CHANNELS } from '../channels';
+import { createRegistryIpcHandlers } from '../validation/utils';
+import { taskPromptTemplateEndpoints, type TaskPromptTemplateEndpointName } from '../../../shared/ipc/taskPromptTemplateEndpoints';
+import type { EndpointPayload } from '../../../shared/ipc/endpoints';
 
-export function registerTaskPromptTemplateHandlers(taskPromptTemplateService: TaskPromptTemplateService): void {
-  /**
-   * List all templates (optionally filtered by project).
-   */
-  ipcMain.handle(
-    IPC_CHANNELS.taskPromptTemplates.list,
-    createIpcHandler(
-      TaskPromptTemplateSchemas.list,
-      ({ projectId }) => {
-        const result = taskPromptTemplateService.list(projectId);
-        if (!result.ok) throw new Error(result.error);
-        return { templates: result.data };
-      },
-      'Failed to list templates'
-    )
-  );
+type TaskPromptTemplateHandler<K extends TaskPromptTemplateEndpointName> = (
+  params: EndpointPayload<(typeof taskPromptTemplateEndpoints)[K]>
+) => unknown;
 
-  /**
-   * Get a specific template by ID.
-   */
-  ipcMain.handle(
-    IPC_CHANNELS.taskPromptTemplates.get,
-    createIpcHandler(
-      TaskPromptTemplateSchemas.get,
-      ({ templateId }) => {
-        const result = taskPromptTemplateService.get(templateId);
-        if (!result.ok) throw new Error(result.error);
-        return { template: result.data };
-      },
-      'Failed to get template'
-    )
-  );
+/**
+ * One handler per `taskPromptTemplateEndpoints` entry. A registry entry
+ * without a matching key here is a compile error, not a runtime "no
+ * handler" failure.
+ */
+type TaskPromptTemplateHandlers = { [K in TaskPromptTemplateEndpointName]: TaskPromptTemplateHandler<K> };
 
-  /**
-   * Get the effective template for a project.
-   * Resolution order: project default -> project "default" -> global default -> global "default" -> fallback
-   */
-  ipcMain.handle(
-    IPC_CHANNELS.taskPromptTemplates.getEffective,
-    createIpcHandler(
-      TaskPromptTemplateSchemas.getEffective,
-      ({ projectId }) => {
-        const result = taskPromptTemplateService.getEffective(projectId);
-        if (!result.ok) throw new Error(result.error);
-        return { template: result.data };
-      },
-      'Failed to get effective template'
-    )
-  );
+function buildTaskPromptTemplateHandlers(
+  taskPromptTemplateService: TaskPromptTemplateService,
+): TaskPromptTemplateHandlers {
+  return {
+    list: ({ projectId }) => {
+      const result = taskPromptTemplateService.list(projectId);
+      if (!result.ok) throw new Error(result.error);
+      return { templates: result.data };
+    },
 
-  /**
-   * Get the built-in default prompt content.
-   * Used for "Reset to Default" functionality.
-   */
-  ipcMain.handle(
-    IPC_CHANNELS.taskPromptTemplates.getBuiltinDefault,
-    createIpcHandler(
-      TaskPromptTemplateSchemas.getBuiltinDefault,
-      () => {
-        const result = taskPromptTemplateService.getBuiltinDefault();
-        if (!result.ok) throw new Error(result.error);
-        return result.data;
-      },
-      'Failed to get builtin default'
-    )
-  );
+    get: ({ templateId }) => {
+      const result = taskPromptTemplateService.get(templateId);
+      if (!result.ok) throw new Error(result.error);
+      return { template: result.data };
+    },
 
-  /**
-   * Create a new template.
-   */
-  ipcMain.handle(
-    IPC_CHANNELS.taskPromptTemplates.create,
-    createIpcHandler(
-      TaskPromptTemplateSchemas.create,
-      ({ projectId, name, promptContent }) => {
-        const result = taskPromptTemplateService.create(projectId, name, promptContent);
-        if (!result.ok) throw new Error(result.error);
-        return { template: result.data };
-      },
-      'Failed to create template'
-    )
-  );
+    getEffective: ({ projectId }) => {
+      const result = taskPromptTemplateService.getEffective(projectId);
+      if (!result.ok) throw new Error(result.error);
+      return { template: result.data };
+    },
 
-  /**
-   * Update an existing template.
-   */
-  ipcMain.handle(
-    IPC_CHANNELS.taskPromptTemplates.update,
-    createIpcHandler(
-      TaskPromptTemplateSchemas.update,
-      ({ templateId, name, promptContent }) => {
-        const result = taskPromptTemplateService.update(templateId, { name, promptContent });
-        if (!result.ok) throw new Error(result.error);
-        return { template: result.data };
-      },
-      'Failed to update template'
-    )
-  );
+    getBuiltinDefault: () => {
+      const result = taskPromptTemplateService.getBuiltinDefault();
+      if (!result.ok) throw new Error(result.error);
+      return result.data;
+    },
 
-  /**
-   * Delete a template.
-   */
-  ipcMain.handle(
-    IPC_CHANNELS.taskPromptTemplates.delete,
-    createIpcHandler(
-      TaskPromptTemplateSchemas.delete,
-      ({ templateId }) => {
-        const result = taskPromptTemplateService.delete(templateId);
-        if (!result.ok) throw new Error(result.error);
-      },
-      'Failed to delete template'
-    )
-  );
+    create: ({ projectId, name, promptContent }) => {
+      const result = taskPromptTemplateService.create(projectId, name, promptContent);
+      if (!result.ok) throw new Error(result.error);
+      return { template: result.data };
+    },
 
-  /**
-   * Set a template as the default for its scope.
-   */
-  ipcMain.handle(
-    IPC_CHANNELS.taskPromptTemplates.setDefault,
-    createIpcHandler(
-      TaskPromptTemplateSchemas.setDefault,
-      ({ templateId }) => {
-        const result = taskPromptTemplateService.setDefault(templateId);
-        if (!result.ok) throw new Error(result.error);
-        return { template: result.data };
-      },
-      'Failed to set default template'
-    )
-  );
+    update: ({ templateId, name, promptContent }) => {
+      const result = taskPromptTemplateService.update(templateId, { name, promptContent });
+      if (!result.ok) throw new Error(result.error);
+      return { template: result.data };
+    },
 
-  /**
-   * Ensure a default global template exists (called on app start).
-   */
-  ipcMain.handle(
-    IPC_CHANNELS.taskPromptTemplates.ensureDefault,
-    createSimpleIpcHandler(() => {
+    delete: ({ templateId }) => {
+      const result = taskPromptTemplateService.delete(templateId);
+      if (!result.ok) throw new Error(result.error);
+    },
+
+    setDefault: ({ templateId }) => {
+      const result = taskPromptTemplateService.setDefault(templateId);
+      if (!result.ok) throw new Error(result.error);
+      return { template: result.data };
+    },
+
+    ensureDefault: () => {
       const result = taskPromptTemplateService.ensureDefault();
       if (!result.ok) throw new Error(result.error);
-    }, 'Failed to ensure default template')
+    },
+  };
+}
+
+export function registerTaskPromptTemplateHandlers(taskPromptTemplateService: TaskPromptTemplateService): void {
+  createRegistryIpcHandlers(
+    taskPromptTemplateEndpoints,
+    buildTaskPromptTemplateHandlers(taskPromptTemplateService),
+    'Task prompt template operation failed'
   );
 }

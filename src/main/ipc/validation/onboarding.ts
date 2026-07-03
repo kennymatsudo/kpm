@@ -1,27 +1,18 @@
 /**
  * Onboarding Wizard Validation Schemas
+ *
+ * Payload schemas are owned by `shared/ipc/onboardingEndpoints.ts` (one
+ * entry per IPC endpoint, shared with the preload bridge and the handler
+ * binding).
  */
 
-import { z } from 'zod';
-import { uuid } from './shared';
+import type { z } from 'zod';
+import { onboardingEndpoints } from '../../../shared/ipc/onboardingEndpoints';
 
 export const OnboardingSchemas = {
-  saveContextDirectories: z.object({
-    projectId: uuid,
-    repoDirectories: z.record(z.string(), z.array(z.string())).default({}),
-  }),
-
-  generate: z.object({
-    taskId: z.string().min(1),
-    projectId: uuid,
-    description: z.string().max(10000).default(''),
-    repoDirectories: z.record(z.string(), z.array(z.string())).default({}),
-  }),
-
-  saveContext: z.object({
-    projectId: uuid,
-    content: z.string().min(1, 'Content cannot be empty'),
-  }),
+  generate: onboardingEndpoints.generate.params,
+  saveContext: onboardingEndpoints.saveContext.params,
+  saveContextDirectories: onboardingEndpoints.saveContextDirectories.params,
 };
 
 // Inferred types

@@ -1,9 +1,9 @@
 export function getAppSetting(key: string) {
-  return window.api.settings.app.get(key);
+  return window.api.settings.app.get({ key });
 }
 
 export function setAppSetting(key: string, value: string) {
-  return window.api.settings.app.set(key, value);
+  return window.api.settings.app.set({ key, value });
 }
 
 export function hasAnthropicApiKey() {
@@ -11,11 +11,11 @@ export function hasAnthropicApiKey() {
 }
 
 export function testAnthropicApiKey(apiKey: string) {
-  return window.api.settings.anthropic.testKey(apiKey);
+  return window.api.settings.anthropic.testKey({ apiKey });
 }
 
 export function saveAnthropicApiKey(apiKey: string) {
-  return window.api.settings.anthropic.saveKey(apiKey);
+  return window.api.settings.anthropic.saveKey({ apiKey });
 }
 
 export function deleteAnthropicApiKey() {

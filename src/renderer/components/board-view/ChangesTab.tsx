@@ -207,7 +207,7 @@ const ExpandableCommitEntry = memo(function ExpandableCommitEntry({
     if (next && files === null && !isLoadingFiles) {
       setIsLoadingFiles(true);
       try {
-        const result = await getAgentCommitFiles(sessionId, commit.sha);
+        const result = await getAgentCommitFiles({ devSessionId: sessionId, sha: commit.sha });
         if (result.success && result.files) {
           setFiles(result.files);
         } else {
@@ -339,7 +339,7 @@ export const ChangesTab = memo(function ChangesTab({
     setIsLoadingCommits(true);
     setCommits([]);
     try {
-      const result = await getAgentCommitLog(sessionId);
+      const result = await getAgentCommitLog({ devSessionId: sessionId });
       if (result.success && result.commits) {
         setCommits(result.commits);
       }

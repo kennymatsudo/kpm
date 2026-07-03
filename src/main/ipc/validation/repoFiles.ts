@@ -1,53 +1,21 @@
-import { z } from 'zod';
-import { relativePath, uuid } from './shared';
+import type { z } from 'zod';
+import { repoFilesEndpoints } from '../../../shared/ipc/repoFilesEndpoints';
 
 /**
  * Validation schemas for repo file operations.
  * These handle file operations within connected repositories.
+ *
+ * Payload schemas are owned by `shared/ipc/repoFilesEndpoints.ts` (one entry
+ * per IPC endpoint, shared with the preload bridge and the handler binding).
+ * This map only translates the endpoint registry's dotted keys to the names
+ * `RepoFileService`-adjacent callers already use.
  */
 export const RepoFileSchemas = {
-  /**
-   * List directory contents within a repo
-   */
-  listDirectory: z.object({
-    repoId: uuid,
-    path: relativePath.optional(),
-    recursive: z.boolean().optional(),
-    depth: z.number().int().min(1).max(20).optional(),
-  }),
-
-  /**
-   * Read file content from a repo
-   */
-  readFile: z.object({
-    repoId: uuid,
-    path: relativePath.min(1),
-  }),
-
-  /**
-   * Write file content to a repo (markdown/text files only)
-   */
-  writeFile: z.object({
-    repoId: uuid,
-    path: relativePath.min(1),
-    content: z.string(),
-  }),
-
-  /**
-   * Get info about a single file/folder
-   */
-  getInfo: z.object({
-    repoId: uuid,
-    path: relativePath.min(1),
-  }),
-
-  /**
-   * Show a file/folder in the OS file manager.
-   */
-  showItemInFolder: z.object({
-    repoId: uuid,
-    path: relativePath.min(1),
-  }),
+  listDirectory: repoFilesEndpoints.listDirectory.params,
+  readFile: repoFilesEndpoints.readFile.params,
+  writeFile: repoFilesEndpoints.writeFile.params,
+  getInfo: repoFilesEndpoints.getInfo.params,
+  showItemInFolder: repoFilesEndpoints.showItemInFolder.params,
 };
 
 // Type exports for use in handlers

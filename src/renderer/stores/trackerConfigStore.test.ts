@@ -93,9 +93,12 @@ describe('tracker config store', () => {
       canceled: undefined,
     });
 
-    expect(api.tracker.associations.updateStatusMapping).toHaveBeenCalledWith('assoc-1', {
-      not_started: 'To Do',
-      done: 'Done',
+    expect(api.tracker.associations.updateStatusMapping).toHaveBeenCalledWith({
+      associationId: 'assoc-1',
+      statusMapping: {
+        not_started: 'To Do',
+        done: 'Done',
+      },
     });
     expect(result).toEqual({
       success: true,
@@ -114,10 +117,10 @@ describe('tracker config store', () => {
 
     const result = await useTrackerConfigStore.getState().searchIssues('PROJ', 'roadmap', 'Epic');
 
-    expect(api.tracker.issues.searchByJql).toHaveBeenCalledWith(
-      'PROJ',
-      'project = PROJ AND type = Epic AND (key ~ "roadmap" OR summary ~ "roadmap*") ORDER BY updated DESC'
-    );
+    expect(api.tracker.issues.searchByJql).toHaveBeenCalledWith({
+      projectKey: 'PROJ',
+      jql: 'project = PROJ AND type = Epic AND (key ~ "roadmap" OR summary ~ "roadmap*") ORDER BY updated DESC',
+    });
     expect(result).toEqual({
       success: true,
       issues: [{ key: 'PROJ-1', title: 'Epic 1', issueType: 'Epic', status: 'To Do' }],

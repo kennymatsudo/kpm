@@ -15,586 +15,691 @@
  *   ipcRenderer.invoke(IPC_CHANNELS.project.create, ...)
  */
 
+import { toNestedChannels } from './ipc/endpoints';
+import { planEndpoints } from './ipc/planEndpoints';
+import { groupEndpoints } from './ipc/groupEndpoints';
+import { exportEndpoints } from './ipc/exportEndpoints';
+import { confluenceEndpoints } from './ipc/confluenceEndpoints';
+import { scheduledLoopEndpoints } from './ipc/scheduledLoopEndpoints';
+import { slackEndpoints } from './ipc/slackEndpoints';
+import { trackerEndpoints } from './ipc/trackerEndpoints';
+import { fileExplorerEndpoints } from './ipc/fileExplorerEndpoints';
+import { repoFilesEndpoints } from './ipc/repoFilesEndpoints';
+import { attachmentEndpoints } from './ipc/attachmentEndpoints';
+import { tempImageEndpoints } from './ipc/tempImageEndpoints';
+import { artifactEndpoints } from './ipc/artifactEndpoints';
+import { contextEndpoints } from './ipc/contextEndpoints';
+import { searchEndpoints } from './ipc/searchEndpoints';
+import { mcpServersEndpoints } from './ipc/mcpServersEndpoints';
+import { briefingEndpoints } from './ipc/briefingEndpoints';
+import { usageEndpoints } from './ipc/usageEndpoints';
+import { chatEndpoints } from './ipc/chatEndpoints';
+import { terminalEndpoints } from './ipc/terminalEndpoints';
+import { settingsEndpoints } from './ipc/settingsEndpoints';
+import { permissionEndpoints } from './ipc/permissionEndpoints';
+import { promptOverridesEndpoints } from './ipc/promptOverridesEndpoints';
+import { toolLogEndpoints } from './ipc/toolLogEndpoints';
+import { storybookEndpoints } from './ipc/storybookEndpoints';
+import { worktreeEndpoints } from './ipc/worktreeEndpoints';
+import { devSessionEndpoints } from './ipc/devSessionEndpoints';
+import { agentSessionEndpoints } from './ipc/agentSessionEndpoints';
+import { reviewEndpoints } from './ipc/reviewEndpoints';
+import { githubEndpoints } from './ipc/githubEndpoints';
+import { projectEndpoints } from './ipc/projectEndpoints';
+import { repoEndpoints } from './ipc/repoEndpoints';
+import { customPromptEndpoints } from './ipc/customPromptEndpoints';
+import { taskPromptTemplateEndpoints } from './ipc/taskPromptTemplateEndpoints';
+import { customThemeEndpoints } from './ipc/customThemeEndpoints';
+import { onboardingEndpoints } from './ipc/onboardingEndpoints';
+import { perfEndpoints } from './ipc/perfEndpoints';
+import { debugEndpoints } from './ipc/debugEndpoints';
+import { testingEndpoints } from './ipc/testingEndpoints';
+import { shellEndpoints } from './ipc/shellEndpoints';
+
+/**
+ * Plan, group, export, confluence, scheduled-loop, and slack channels are
+ * similarly derived from their own endpoint registries in `shared/ipc/`.
+ */
+const planChannels = toNestedChannels(planEndpoints) as {
+  listItems: string;
+  executeActions: string;
+  addRelation: string;
+  removeRelation: string;
+  getRelations: string;
+  updatePosition: string;
+  updatePositions: string;
+  updateItem: string;
+  deleteItem: string;
+  deleteItemWithDescendants: string;
+  getChildCount: string;
+};
+
+const groupChannels = toNestedChannels(groupEndpoints) as {
+  list: string;
+  get: string;
+  create: string;
+  update: string;
+  delete: string;
+  updatePosition: string;
+  updateSize: string;
+  assignItem: string;
+};
+
+const exportChannels = toNestedChannels(exportEndpoints) as {
+  queue: {
+    get: string;
+    add: string;
+    remove: string;
+    clear: string;
+    updateStatus: string;
+    updateCustomFields: string;
+    count: string;
+  };
+  preview: string;
+  review: string;
+  executeApproved: string;
+  mappings: {
+    get: string;
+    getByScope: string;
+    save: string;
+    remove: string;
+    createDefaults: string;
+  };
+  issueTypes: { get: string };
+};
+
+const confluenceChannels = toNestedChannels(confluenceEndpoints) as {
+  link: string;
+  unlink: string;
+  getLinks: string;
+  getLinkForDocument: string;
+  syncPreview: string;
+  pushExecute: string;
+  pullExecute: string;
+  parseUrl: string;
+};
+
+const scheduledLoopChannels = toNestedChannels(scheduledLoopEndpoints) as {
+  list: string;
+  get: string;
+  create: string;
+  update: string;
+  setEnabled: string;
+  delete: string;
+  runNow: string;
+  history: string;
+};
+
+const slackChannels = toNestedChannels(slackEndpoints) as {
+  availability: { get: string };
+  links: { list: string; create: string; delete: string };
+  triage: {
+    trigger: string;
+    getPending: string;
+    getAll: string;
+    countPending: string;
+    approve: string;
+    edit: string;
+    dismiss: string;
+    restore: string;
+    execute: string;
+  };
+};
+
+/**
+ * Tracker channels are derived from `trackerEndpoints` (the single owner of
+ * channel string + payload schema per tracker endpoint) rather than
+ * hand-declared here. See `shared/ipc/trackerEndpoints.ts`.
+ */
+const trackerChannels = toNestedChannels(trackerEndpoints) as {
+  credentials: {
+    get: string;
+    saveJira: string;
+    saveLinear: string;
+    delete: string;
+    deleteLinear: string;
+    testJira: string;
+    testLinear: string;
+  };
+  connections: { get: string };
+  scopes: { get: string; add: string };
+  associations: {
+    get: string;
+    add: string;
+    remove: string;
+    hasImported: string;
+    updateStatusMapping: string;
+    updateCustomFieldValues: string;
+    updateEpicKey: string;
+  };
+  customFields: { get: string };
+  projects: { listJira: string; listLinearTeams: string; listLinearProjects: string };
+  project: { statuses: string; labels: string; components: string };
+  issues: { search: string; searchJql: string; recent: string };
+  import: { preview: string; apply: string; all: string };
+  sync: { preview: string; apply: string };
+};
+
+/**
+ * File explorer, repo files, attachment, temp image, artifact, context, and
+ * search channels are similarly derived from their own endpoint registries
+ * in `shared/ipc/`, rather than hand-declared here.
+ */
+const fileExplorerChannels = toNestedChannels(fileExplorerEndpoints) as {
+  listDirectory: string;
+  createFolder: string;
+  createFile: string;
+  createBinaryFile: string;
+  copyExternalFile: string;
+  createSymlink: string;
+  delete: string;
+  rename: string;
+  getInfo: string;
+  readFile: string;
+  readBinaryFile: string;
+  writeFile: string;
+  getSymlinkInfo: string;
+  showItemInFolder: string;
+  openInEditor: string;
+  selectFolderDialog: string;
+  watchProject: string;
+  unwatchProject: string;
+};
+
+const repoFilesChannels = toNestedChannels(repoFilesEndpoints) as {
+  listDirectory: string;
+  readFile: string;
+  writeFile: string;
+  getInfo: string;
+  showItemInFolder: string;
+};
+
+const attachmentChannels = toNestedChannels(attachmentEndpoints) as {
+  add: string;
+  remove: string;
+  list: string;
+  selectDialog: string;
+  pickForChat: string;
+  saveDropped: string;
+  readAsDataUrl: string;
+  openTemp: string;
+};
+
+const tempImageChannels = toNestedChannels(tempImageEndpoints) as {
+  save: string;
+  delete: string;
+};
+
+const artifactChannels = toNestedChannels(artifactEndpoints) as {
+  list: string;
+  read: string;
+  delete: string;
+  import: string;
+  selectDialog: string;
+};
+
+const contextEndpointChannels = toNestedChannels(contextEndpoints) as {
+  claudeMd: { read: string; write: string };
+  context: {
+    list: string;
+    read: string;
+    write: string;
+    delete: string;
+    import: string;
+    selectDialog: string;
+  };
+};
+
+const searchChannels = toNestedChannels(searchEndpoints) as {
+  global: string;
+};
+
+const mcpServersChannels = toNestedChannels(mcpServersEndpoints) as {
+  listAvailable: string;
+  getPreferences: string;
+  setEnabled: string;
+};
+
+const briefingChannels = toNestedChannels(briefingEndpoints) as {
+  generate: string;
+  get: string;
+};
+
+const usageChannels = toNestedChannels(usageEndpoints) as {
+  getProjectStats: string;
+  getGlobalStats: string;
+  listEvents: string;
+  resetProject: string;
+};
+
+const chatChannels = toNestedChannels(chatEndpoints) as {
+  send: string;
+  cancel: string;
+  cancelQueued: string;
+  newSession: string;
+  connectSession: string;
+  disconnectSession: string;
+  getActiveSessions: string;
+  disconnectSpecificSession: string;
+  getSessionState: string;
+  getUsage: string;
+  getMessages: string;
+  getSessionHistory: string;
+  loadSession: string;
+  getFocusDocumentSession: string;
+  getSlashCommands: string;
+};
+
+const terminalChannels = toNestedChannels(terminalEndpoints) as {
+  create: string;
+  write: string;
+  resize: string;
+  kill: string;
+};
+
+const settingsChannels = toNestedChannels(settingsEndpoints) as {
+  anthropic: { hasKey: string; saveKey: string; deleteKey: string; testKey: string };
+  claude: { getAvailability: string; refreshAvailability: string };
+  app: { get: string; set: string; getAll: string };
+};
+
+const permissionChannels = toNestedChannels(permissionEndpoints) as {
+  respond: string;
+  list: string;
+  revoke: string;
+  revokeAll: string;
+};
+
+const promptOverridesChannels = toNestedChannels(promptOverridesEndpoints) as {
+  list: string;
+  get: string;
+  set: string;
+  reset: string;
+};
+
+const toolLogChannels = toNestedChannels(toolLogEndpoints) as {
+  getEntries: string;
+  getSessionStats: string;
+  getInfo: string;
+  setEnabled: string;
+};
+
+const storybookChannels = toNestedChannels(storybookEndpoints) as {
+  updateUrl: string;
+  testConnection: string;
+};
+
+const worktreeChannels = toNestedChannels(worktreeEndpoints) as {
+  getByProject: string;
+  getByPlanItem: string;
+  openEditor: string;
+  getStatus: string;
+  delete: string;
+  push: string;
+  destroy: string;
+};
+
+const devSessionChannels = toNestedChannels(devSessionEndpoints) as {
+  getByProject: string;
+  getByProjectWithPlanItems: string;
+  getActive: string;
+  get: string;
+  hasActive: string;
+  openEditor: string;
+  updateStatus: string;
+  delete: string;
+  destroy: string;
+  checkDirty: string;
+  getDiff: string;
+  getCommitsAhead: string;
+  updateName: string;
+  getMergeOrder: string;
+  updateMergeOrder: string;
+};
+
+const agentSessionChannels = toNestedChannels(agentSessionEndpoints) as {
+  createAndStart: string;
+  startAgent: string;
+  respond: string;
+  followUp: string;
+  stop: string;
+  getActivities: string;
+  getState: string;
+  getAvailableAgents: string;
+  launchReview: string;
+  generateCommitMessage: string;
+  commit: string;
+  getCommitLog: string;
+  getCommitFiles: string;
+  dismissInterruption: string;
+};
+
+const reviewChannels = toNestedChannels(reviewEndpoints) as {
+  getInbox: string;
+  refreshSession: string;
+  assignOwnership: string;
+  assessThreads: string;
+  draftPostImplReplies: string;
+  triggerAutomation: string;
+  replyToThread: string;
+  resolveThread: string;
+  unresolveThread: string;
+  ignoreTask: string;
+  overrideDisposition: string;
+  pollNow: string;
+  pollSession: string;
+};
+
+const githubChannels = toNestedChannels(githubEndpoints) as {
+  checkAuth: string;
+  createPr: string;
+  getPrStatus: string;
+  getPrComments: string;
+  buildPrContext: string;
+  generatePrContent: string;
+  buildAddressCommentsContext: string;
+  detectAndLinkPr: string;
+  linkPr: string;
+  linkPrToItem: string;
+};
+
+const projectChannels = toNestedChannels(projectEndpoints) as {
+  create: string;
+  get: string;
+  list: string;
+  update: string;
+  delete: string;
+  openFolder: string;
+  getDefaultLocation: string;
+};
+
+const repoChannels = toNestedChannels(repoEndpoints) as {
+  add: string;
+  remove: string;
+  list: string;
+  getBranch: string;
+  getBranches: string;
+  watch: string;
+  unwatch: string;
+  updateEnvironmentMode: string;
+  selectDialog: string;
+  listDirectories: string;
+  listAllBranches: string;
+  listWorktrees: string;
+  setActiveWorktreePath: string;
+  showInFolder: string;
+  openEditor: string;
+};
+
+const customPromptChannels = toNestedChannels(customPromptEndpoints) as {
+  list: string;
+  get: string;
+  create: string;
+  update: string;
+  delete: string;
+  execute: string;
+  ensureBuiltins: string;
+};
+
+const taskPromptTemplateChannels = toNestedChannels(taskPromptTemplateEndpoints) as {
+  list: string;
+  get: string;
+  getEffective: string;
+  getBuiltinDefault: string;
+  create: string;
+  update: string;
+  delete: string;
+  setDefault: string;
+  ensureDefault: string;
+};
+
+const customThemeChannels = toNestedChannels(customThemeEndpoints) as {
+  list: string;
+  importFromUrl: string;
+  delete: string;
+};
+
+const onboardingEndpointChannels = toNestedChannels(onboardingEndpoints) as {
+  generate: string;
+  saveContext: string;
+  saveContextDirectories: string;
+  getContextDirectories: string;
+};
+
+const perfChannels = toNestedChannels(perfEndpoints) as {
+  log: string;
+  getLogInfo: string;
+};
+
+const debugChannels = toNestedChannels(debugEndpoints) as {
+  setEnabled: string;
+  isEnabled: string;
+};
+
+const testingChannels = toNestedChannels(testingEndpoints) as {
+  resetDatabase: string;
+  getDbPath: string;
+};
+
+const shellEndpointChannels = toNestedChannels(shellEndpoints) as {
+  openExternal: string;
+};
+
 export const IPC_CHANNELS = {
   // ===========================================================================
   // Project Management
   // ===========================================================================
-  project: {
-    create: 'project:create',
-    get: 'project:get',
-    list: 'project:list',
-    update: 'project:update',
-    delete: 'project:delete',
-    openFolder: 'project:open-folder',
-    getDefaultLocation: 'project:get-default-location',
-  },
+  project: projectChannels,
 
   // ===========================================================================
   // Repository Management
   // ===========================================================================
-  repo: {
-    add: 'repo:add',
-    remove: 'repo:remove',
-    list: 'repo:list',
-    getBranch: 'repo:get-branch',
-    getBranches: 'repo:get-branches',
-    watch: 'repo:watch',
-    unwatch: 'repo:unwatch',
-    updateEnvironmentMode: 'repo:update-environment-mode',
-    selectDialog: 'repo:select-dialog',
-    listDirectories: 'repo:list-directories',
-    listAllBranches: 'repo:list-all-branches',
-    listWorktrees: 'repo:list-worktrees',
-    setActiveWorktreePath: 'repo:set-active-worktree-path',
-    showInFolder: 'repo:show-in-folder',
-    openEditor: 'repo:open-editor',
-  },
+  repo: repoChannels,
 
   // ===========================================================================
   // Attachments
   // ===========================================================================
-  attachment: {
-    add: 'attachment:add',
-    remove: 'attachment:remove',
-    list: 'attachment:list',
-    selectDialog: 'attachment:select-dialog',
-    pickForChat: 'attachment:pick-for-chat',
-    saveDropped: 'attachment:save-dropped',
-    readAsDataUrl: 'attachment:read-as-data-url',
-    openTemp: 'attachment:open-temp',
-  },
+  attachment: attachmentChannels,
 
   // ===========================================================================
   // Plan Items
   // ===========================================================================
-  plan: {
-    listItems: 'plan:list-items',
-    executeActions: 'plan:execute-actions',
-    addRelation: 'plan:add-relation',
-    removeRelation: 'plan:remove-relation',
-    getRelations: 'plan:get-relations',
-    updatePosition: 'plan:update-position',
-    updatePositions: 'plan:update-positions',
-    updateItem: 'plan:update-item',
-    deleteItem: 'plan:delete-item',
-    deleteItemWithDescendants: 'plan:delete-item-with-descendants',
-    getChildCount: 'plan:get-child-count',
-  },
+  plan: planChannels,
 
   // ===========================================================================
   // Groups (Visual Containers)
   // ===========================================================================
-  group: {
-    list: 'group:list',
-    get: 'group:get',
-    create: 'group:create',
-    update: 'group:update',
-    delete: 'group:delete',
-    updatePosition: 'group:update-position',
-    updateSize: 'group:update-size',
-    assignItem: 'group:assign-item',
-  },
+  group: groupChannels,
 
 
   // ===========================================================================
   // Chat (Main Claude Session)
   // ===========================================================================
-  chat: {
-    send: 'chat:send',
-    cancel: 'chat:cancel',
-    cancelQueued: 'chat:cancel-queued',
-    connectSession: 'chat:connect-session',
-    newSession: 'chat:new-session',
-    disconnectSession: 'chat:disconnect-session',
-    disconnectSpecificSession: 'chat:disconnect-specific-session',
-    getActiveSessions: 'chat:get-active-sessions',
-    getSessionState: 'chat:get-session-state',
-    getSessionHistory: 'chat:get-session-history',
-    loadSession: 'chat:load-session',
-    getFocusDocumentSession: 'chat:get-focus-document-session',
-    getUsage: 'chat:get-usage',
-    getMessages: 'chat:get-messages',
-    getSlashCommands: 'chat:get-slash-commands',
-  },
+  chat: chatChannels,
 
   // ===========================================================================
   // Context Files
   // ===========================================================================
-  context: {
-    list: 'context:list',
-    read: 'context:read',
-    write: 'context:write',
-    delete: 'context:delete',
-    import: 'context:import',
-    selectDialog: 'context:select-dialog',
-  },
+  context: contextEndpointChannels.context,
 
   // ===========================================================================
   // File Explorer
   // ===========================================================================
-  fileExplorer: {
-    listDirectory: 'file-explorer:list-directory',
-    createFolder: 'file-explorer:create-folder',
-    createFile: 'file-explorer:create-file',
-    createBinaryFile: 'file-explorer:create-binary-file',
-    copyExternalFile: 'file-explorer:copy-external-file',
-    createSymlink: 'file-explorer:create-symlink',
-    delete: 'file-explorer:delete',
-    rename: 'file-explorer:rename',
-    getInfo: 'file-explorer:get-info',
-    readFile: 'file-explorer:read-file',
-    readBinaryFile: 'file-explorer:read-binary-file',
-    writeFile: 'file-explorer:write-file',
-    getSymlinkInfo: 'file-explorer:get-symlink-info',
-    showItemInFolder: 'file-explorer:show-item-in-folder',
-    openInEditor: 'file-explorer:open-in-editor',
-    selectFolderDialog: 'file-explorer:select-folder-dialog',
-    watchProject: 'file-explorer:watch-project',
-    unwatchProject: 'file-explorer:unwatch-project',
-  },
+  fileExplorer: fileExplorerChannels,
 
   // ===========================================================================
   // Repo Files
   // ===========================================================================
-  repoFiles: {
-    listDirectory: 'repo-files:list-directory',
-    readFile: 'repo-files:read-file',
-    writeFile: 'repo-files:write-file',
-    getInfo: 'repo-files:get-info',
-    showItemInFolder: 'repo-files:show-item-in-folder',
-  },
+  repoFiles: repoFilesChannels,
 
   // ===========================================================================
   // Tracker (Jira/Linear Integration)
   // ===========================================================================
-  tracker: {
-    credentials: {
-      get: 'tracker:credentials:get',
-      saveJira: 'tracker:credentials:save:jira',
-      saveLinear: 'tracker:credentials:save:linear',
-      delete: 'tracker:credentials:delete',
-      deleteLinear: 'tracker:credentials:delete:linear',
-      testJira: 'tracker:credentials:test:jira',
-      testLinear: 'tracker:credentials:test:linear',
-    },
-    connections: {
-      get: 'tracker:connections:get',
-    },
-    scopes: {
-      get: 'tracker:scopes:get',
-      add: 'tracker:scopes:add',
-    },
-    associations: {
-      get: 'tracker:associations:get',
-      add: 'tracker:associations:add',
-      remove: 'tracker:associations:remove',
-      hasImported: 'tracker:associations:has-imported',
-      updateStatusMapping: 'tracker:associations:update-status-mapping',
-      updateCustomFieldValues: 'tracker:associations:update-custom-field-values',
-      updateEpicKey: 'tracker:associations:update-epic-key',
-    },
-    customFields: {
-      get: 'tracker:custom-fields:get',
-    },
-    projects: {
-      listJira: 'tracker:projects:list:jira',
-      listLinearTeams: 'tracker:projects:list:linear-teams',
-      listLinearProjects: 'tracker:projects:list:linear-projects',
-    },
-    project: {
-      statuses: 'tracker:project:statuses',
-      labels: 'tracker:project:labels',
-      components: 'tracker:project:components',
-    },
-    issues: {
-      search: 'tracker:issues:search',
-      searchJql: 'tracker:issues:search-jql',
-      recent: 'tracker:issues:recent',
-    },
-    import: {
-      preview: 'tracker:import:preview',
-      apply: 'tracker:import:apply',
-      all: 'tracker:import:all',
-    },
-    sync: {
-      preview: 'tracker:sync:preview',
-      apply: 'tracker:sync:apply',
-    },
-  },
+  tracker: trackerChannels,
 
   // ===========================================================================
   // Export (Sync to Tracker)
   // ===========================================================================
-  export: {
-    queue: {
-      get: 'export:queue:get',
-      add: 'export:queue:add',
-      remove: 'export:queue:remove',
-      clear: 'export:queue:clear',
-      updateStatus: 'export:queue:update-status',
-      updateCustomFields: 'export:queue:update-custom-fields',
-      count: 'export:queue:count',
-    },
-    preview: 'export:preview',
-    review: 'export:review',
-    executeApproved: 'export:execute-approved',
-    mappings: {
-      get: 'export:mappings:get',
-      getByScope: 'export:mappings:get-by-scope',
-      save: 'export:mappings:save',
-      remove: 'export:mappings:remove',
-      createDefaults: 'export:mappings:create-defaults',
-    },
-    issueTypes: {
-      get: 'export:issue-types:get',
-    },
-  },
+  export: exportChannels,
 
   // ===========================================================================
   // Artifacts
   // ===========================================================================
-  artifact: {
-    list: 'artifact:list',
-    read: 'artifact:read',
-    delete: 'artifact:delete',
-    import: 'artifact:import',
-    selectDialog: 'artifact:select-dialog',
-  },
+  artifact: artifactChannels,
 
   // ===========================================================================
   // Temp Images
   // ===========================================================================
-  tempImage: {
-    save: 'temp-image:save',
-    delete: 'temp-image:delete',
-  },
+  tempImage: tempImageChannels,
 
   // ===========================================================================
   // Settings
   // ===========================================================================
-  settings: {
-    anthropic: {
-      hasKey: 'settings:anthropic:has-key',
-      saveKey: 'settings:anthropic:save-key',
-      deleteKey: 'settings:anthropic:delete-key',
-      testKey: 'settings:anthropic:test-key',
-    },
-    claude: {
-      getAvailability: 'settings:claude:get-availability',
-      refreshAvailability: 'settings:claude:refresh-availability',
-    },
-    app: {
-      get: 'settings:app:get',
-      set: 'settings:app:set',
-      getAll: 'settings:app:get-all',
-    },
-  },
+  settings: settingsChannels,
 
   // ===========================================================================
   // Custom Themes
   // ===========================================================================
-  customThemes: {
-    list: 'custom-themes:list',
-    importFromUrl: 'custom-themes:import-from-url',
-    delete: 'custom-themes:delete',
-  },
+  customThemes: customThemeChannels,
 
   // ===========================================================================
   // Task Prompt Templates
   // ===========================================================================
-  taskPromptTemplates: {
-    list: 'task-prompt-templates:list',
-    get: 'task-prompt-templates:get',
-    getEffective: 'task-prompt-templates:get-effective',
-    getBuiltinDefault: 'task-prompt-templates:get-builtin-default',
-    create: 'task-prompt-templates:create',
-    update: 'task-prompt-templates:update',
-    delete: 'task-prompt-templates:delete',
-    setDefault: 'task-prompt-templates:set-default',
-    ensureDefault: 'task-prompt-templates:ensure-default',
-  },
+  taskPromptTemplates: taskPromptTemplateChannels,
 
   // ===========================================================================
   // Custom Prompts
   // ===========================================================================
-  customPrompts: {
-    list: 'custom-prompts:list',
-    get: 'custom-prompts:get',
-    create: 'custom-prompts:create',
-    update: 'custom-prompts:update',
-    delete: 'custom-prompts:delete',
-    execute: 'custom-prompts:execute',
-    ensureBuiltins: 'custom-prompts:ensure-builtins',
-  },
-  scheduledLoop: {
-    list: 'scheduled-loop:list',
-    get: 'scheduled-loop:get',
-    create: 'scheduled-loop:create',
-    update: 'scheduled-loop:update',
-    setEnabled: 'scheduled-loop:set-enabled',
-    delete: 'scheduled-loop:delete',
-    runNow: 'scheduled-loop:run-now',
-    history: 'scheduled-loop:history',
-  },
+  // `custom-prompt:progress`/`custom-prompt:complete`/`custom-prompt:error`
+  // (main-to-renderer events) predate `IPC_CHANNELS` and stay hand-written
+  // literals in `handlers/customPrompts.ts`/`preload/api.ts`.
+  customPrompts: customPromptChannels,
+  scheduledLoop: scheduledLoopChannels,
 
   // ===========================================================================
   // Worktrees
   // ===========================================================================
-  worktree: {
-    getByProject: 'worktree:get-by-project',
-    getByPlanItem: 'worktree:get-by-plan-item',
-    openEditor: 'worktree:open-editor',
-    getStatus: 'worktree:get-status',
-    delete: 'worktree:delete',
-    push: 'worktree:push',
-    destroy: 'worktree:destroy',
-  },
+  worktree: worktreeChannels,
 
   // ===========================================================================
   // Dev Sessions
   // ===========================================================================
-  devSession: {
-    getByProject: 'dev-session:get-by-project',
-    getByProjectWithPlanItems: 'dev-session:get-by-project-with-plan-items',
-    getActive: 'dev-session:get-active',
-    get: 'dev-session:get',
-    hasActive: 'dev-session:has-active',
-    openEditor: 'dev-session:open-editor',
-    updateStatus: 'dev-session:update-status',
-    delete: 'dev-session:delete',
-    destroy: 'dev-session:destroy',
-    checkDirty: 'dev-session:check-dirty',
-    getDiff: 'dev-session:get-diff',
-    getCommitsAhead: 'dev-session:get-commits-ahead',
-    updateName: 'dev-session:update-name',
-    getMergeOrder: 'dev-session:get-merge-order',
-    updateMergeOrder: 'dev-session:update-merge-order',
-  },
+  devSession: devSessionChannels,
 
   // ===========================================================================
   // GitHub (PR Management)
   // ===========================================================================
-  github: {
-    checkAuth: 'github:check-auth',
-    createPr: 'github:create-pr',
-    getPrStatus: 'github:get-pr-status',
-    getPrComments: 'github:get-pr-comments',
-    buildPrContext: 'github:build-pr-context',
-    generatePrContent: 'github:generate-pr-content',
-    buildAddressCommentsContext: 'github:build-address-comments-context',
-    detectAndLinkPr: 'github:detect-and-link-pr',
-    linkPr: 'github:link-pr',
-    linkPrToItem: 'github:link-pr-to-item',
-  },
+  github: githubChannels,
 
   // ===========================================================================
   // Review Workflow
   // ===========================================================================
-  review: {
-    getInbox: 'review:get-inbox',
-    refreshSession: 'review:refresh-session',
-    assignOwnership: 'review:assign-ownership',
-    assessThreads: 'review:assess-threads',
-    draftPostImplReplies: 'review:draft-post-impl-replies',
-    triggerAutomation: 'review:trigger-automation',
-    replyToThread: 'review:reply-to-thread',
-    resolveThread: 'review:resolve-thread',
-    unresolveThread: 'review:unresolve-thread',
-    ignoreTask: 'review:ignore-task',
-    overrideDisposition: 'review:override-disposition',
-    pollNow: 'review:poll-now',
-    pollSession: 'review:poll-session',
-  },
+  review: reviewChannels,
 
   // ===========================================================================
   // Storybook
   // ===========================================================================
-  storybook: {
-    updateUrl: 'storybook:update-url',
-    testConnection: 'storybook:test-connection',
-  },
+  storybook: storybookChannels,
 
   // ===========================================================================
   // Shell Operations
   // ===========================================================================
-  shell: {
-    openExternal: 'shell:open-external',
-  },
+  shell: shellEndpointChannels,
 
   // ===========================================================================
   // Permission
   // ===========================================================================
-  permission: {
-    respond: 'permission:respond',
-    list: 'permission:list',
-    revoke: 'permission:revoke',
-    revokeAll: 'permission:revoke-all',
-  },
+  // `permission:request` (main-to-renderer event) predates `IPC_CHANNELS` and
+  // stays a hand-written literal in `PermissionPromptService`/`preload/api.ts`,
+  // matching its pre-migration state.
+  permission: permissionChannels,
 
   // ===========================================================================
   // Project Context File (AGENTS.md / CLAUDE.md)
   // ===========================================================================
-  claudeMd: {
-    read: 'claudemd:read',
-    write: 'claudemd:write',
-  },
+  claudeMd: contextEndpointChannels.claudeMd,
 
   // ===========================================================================
   // Prompt Overrides
   // ===========================================================================
-  promptOverrides: {
-    list: 'prompt-overrides:list',
-    get: 'prompt-overrides:get',
-    set: 'prompt-overrides:set',
-    reset: 'prompt-overrides:reset',
-  },
+  promptOverrides: promptOverridesChannels,
 
   // ===========================================================================
   // Performance Logging
   // ===========================================================================
-  perf: {
-    log: 'perf:log',
-    getLogInfo: 'perf:get-log-info',
-  },
+  perf: perfChannels,
 
   // ===========================================================================
   // Tool Log
   // ===========================================================================
-  toolLog: {
-    getEntries: 'toollog:get-entries',
-    getSessionStats: 'toollog:get-session-stats',
-    getInfo: 'toollog:get-info',
-    setEnabled: 'toollog:set-enabled',
-  },
+  // `toollog:call`/`toollog:turn-summary` (broadcast events) predate
+  // `IPC_CHANNELS` and stay hand-written literals in `ToolCallLogger`/
+  // `preload/api.ts`, matching their pre-migration state.
+  toolLog: toolLogChannels,
 
   // ===========================================================================
   // Search
   // ===========================================================================
-  search: {
-    global: 'search:global',
-  },
+  search: searchChannels,
 
   // ===========================================================================
   // Confluence Document Sync
   // ===========================================================================
-  confluence: {
-    link: 'confluence:link',
-    unlink: 'confluence:unlink',
-    getLinks: 'confluence:links:get',
-    getLinkForDocument: 'confluence:link:get-for-document',
-    syncPreview: 'confluence:sync:preview',
-    pushExecute: 'confluence:push:execute',
-    pullExecute: 'confluence:pull:execute',
-    parseUrl: 'confluence:parse-url',
-  },
+  confluence: confluenceChannels,
 
   // ===========================================================================
   // Slack Triage
   // ===========================================================================
-  slack: {
-    availability: {
-      get: 'slack:availability:get',
-    },
-    links: {
-      list: 'slack:links:list',
-      create: 'slack:links:create',
-      delete: 'slack:links:delete',
-    },
-    triage: {
-      trigger: 'slack:triage:trigger',
-      getPending: 'slack:triage:get-pending',
-      getAll: 'slack:triage:get-all',
-      countPending: 'slack:triage:count-pending',
-      approve: 'slack:triage:approve',
-      edit: 'slack:triage:edit',
-      dismiss: 'slack:triage:dismiss',
-      restore: 'slack:triage:restore',
-      execute: 'slack:triage:execute',
-    },
-  },
+  slack: slackChannels,
 
   // ===========================================================================
   // Briefing
   // ===========================================================================
   briefing: {
-    generate: 'briefing:generate',
-    get: 'briefing:get',
+    ...briefingChannels,
+    // Streaming event (`sender.send` / `ipcRenderer.on`), not an invoke endpoint.
     chunk: 'briefing:chunk',
   },
 
   // ===========================================================================
   // MCP Servers
   // ===========================================================================
-  mcpServers: {
-    listAvailable: 'mcp-servers:list-available',
-    getPreferences: 'mcp-servers:get-preferences',
-    setEnabled: 'mcp-servers:set-enabled',
-  },
+  mcpServers: mcpServersChannels,
 
   // ===========================================================================
   // Debug
   // ===========================================================================
-  debug: {
-    setEnabled: 'debug:set-enabled',
-    isEnabled: 'debug:is-enabled',
-  },
+  debug: debugChannels,
 
   // ===========================================================================
   // Onboarding
   // ===========================================================================
-  onboarding: {
-    generate: 'onboarding:generate',
-    saveContext: 'onboarding:save-context',
-    saveContextDirectories: 'onboarding:save-context-directories',
-    getContextDirectories: 'onboarding:get-context-directories',
-  },
+  // `onboarding:progress`/`onboarding:thinking`/`onboarding:complete`/
+  // `onboarding:error` (main-to-renderer events) predate `IPC_CHANNELS` and
+  // stay hand-written literals in `handlers/onboarding.ts`/`preload/api.ts`.
+  onboarding: onboardingEndpointChannels,
 
   // ===========================================================================
   // Agent Sessions (Board-Driven Execution)
   // ===========================================================================
-  agentSession: {
-    createAndStart: 'agent-session:create-and-start',
-    startAgent: 'agent-session:start-agent',
-    respond: 'agent-session:respond',
-    followUp: 'agent-session:follow-up',
-    stop: 'agent-session:stop',
-    getActivities: 'agent-session:get-activities',
-    getState: 'agent-session:get-state',
-    getAvailableAgents: 'agent-session:get-available-agents',
-    launchReview: 'agent-session:launch-review',
-    generateCommitMessage: 'agent-session:generate-commit-message',
-    commit: 'agent-session:commit',
-    getCommitLog: 'agent-session:get-commit-log',
-    getCommitFiles: 'agent-session:get-commit-files',
-    dismissInterruption: 'agent-session:dismiss-interruption',
-  },
+  agentSession: agentSessionChannels,
 
   // ===========================================================================
   // Claude Usage Tracking
   // ===========================================================================
-  usage: {
-    getProjectStats: 'usage:get-project-stats',
-    getGlobalStats: 'usage:get-global-stats',
-    listEvents: 'usage:list-events',
-    resetProject: 'usage:reset-project',
-  },
+  usage: usageChannels,
 
   // ===========================================================================
   // Testing
   // ===========================================================================
-  testing: {
-    resetDatabase: 'testing:reset-database',
-    getDbPath: 'testing:get-db-path',
-  },
+  testing: testingChannels,
 
   // ===========================================================================
   // Embedded Developer Terminal
   // ===========================================================================
   terminal: {
-    create: 'terminal:create',
-    write: 'terminal:write',
-    resize: 'terminal:resize',
-    kill: 'terminal:kill',
+    ...terminalChannels,
+    // PTY output/exit events (`webContents.send` / `ipcRenderer.on`), not invoke endpoints.
     data: 'terminal:data',
     exit: 'terminal:exit',
   },

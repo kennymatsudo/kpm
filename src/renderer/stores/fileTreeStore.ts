@@ -344,7 +344,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     }
 
     try {
-      const nodes = await listProjectDirectory(projectId, path);
+      const nodes = await listProjectDirectory({ projectId, path });
 
       if (get().projectId === projectId) {
         if (isRootLoad) {
@@ -380,7 +380,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     set({ loadingPaths: newLoadingPaths });
 
     try {
-      const children = await listProjectDirectory(projectId, path);
+      const children = await listProjectDirectory({ projectId, path });
 
       if (get().projectId === projectId) {
         if (path === '' || path === '.') {
@@ -405,7 +405,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     if (!projectId) return null;
 
     try {
-      const node = await createProjectFolder(projectId, path);
+      const node = await createProjectFolder({ projectId, path });
 
       // Add to tree
       const updatedNodes = addNodeToTree(get().nodes, node);
@@ -424,7 +424,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     if (!projectId) return null;
 
     try {
-      const node = await createProjectTextFile(projectId, path, content);
+      const node = await createProjectTextFile({ projectId, path, content });
 
       // Add to tree
       const updatedNodes = addNodeToTree(get().nodes, node);
@@ -443,7 +443,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     if (!projectId) return null;
 
     try {
-      const node = await createProjectSymlink(projectId, targetPath, linkPath);
+      const node = await createProjectSymlink({ projectId, targetPath, linkPath });
 
       // Add to tree
       const updatedNodes = addNodeToTree(get().nodes, node);
@@ -462,7 +462,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     if (!projectId) return false;
 
     try {
-      const result = await deleteProjectEntry(projectId, path);
+      const result = await deleteProjectEntry({ projectId, path });
 
       if (result.success) {
         // Remove from tree
@@ -502,7 +502,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     if (!projectId) return null;
 
     try {
-      const node = await renameProjectEntry(projectId, oldPath, newPath);
+      const node = await renameProjectEntry({ projectId, oldPath, newPath });
 
       // Remove old node and add new one
       let updatedNodes = removeNodeByPath(get().nodes, oldPath);
@@ -549,7 +549,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     if (sourcePath === newPath) return null;
 
     try {
-      const node = await renameProjectEntry(projectId, sourcePath, newPath);
+      const node = await renameProjectEntry({ projectId, oldPath: sourcePath, newPath });
 
       // Remove old node and add new one
       let updatedNodes = removeNodeByPath(get().nodes, sourcePath);

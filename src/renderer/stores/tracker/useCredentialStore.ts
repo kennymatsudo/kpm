@@ -45,11 +45,11 @@ export const useCredentialStore = create<CredentialState>((set, get) => ({
     set({ error: null });
     try {
       if (draft.type === 'jira') {
-        const result = await testJiraTrackerCredentials(draft.siteUrl, draft.email, draft.apiToken);
+        const result = await testJiraTrackerCredentials({ siteUrl: draft.siteUrl, email: draft.email, apiToken: draft.apiToken });
         if (!result.success) return { success: false, error: result.error || 'Connection failed' };
         return { success: true };
       }
-      const result = await testLinearTrackerCredentials(draft.apiToken);
+      const result = await testLinearTrackerCredentials({ apiToken: draft.apiToken });
       if (!result.success) return { success: false, error: result.error || 'Connection failed' };
       return { success: true };
     } catch (e) {
@@ -80,10 +80,10 @@ export const useCredentialStore = create<CredentialState>((set, get) => ({
     }
 
     if (draft.type === 'jira') {
-      const saveResult = await saveJiraTrackerCredentials(draft.siteUrl, draft.email, draft.apiToken);
+      const saveResult = await saveJiraTrackerCredentials({ siteUrl: draft.siteUrl, email: draft.email, apiToken: draft.apiToken });
       if (!saveResult.success) return { success: false, error: saveResult.error };
     } else {
-      const saveResult = await saveLinearTrackerCredentials(draft.apiToken);
+      const saveResult = await saveLinearTrackerCredentials({ apiToken: draft.apiToken });
       if (!saveResult.success) return { success: false, error: saveResult.error };
     }
 

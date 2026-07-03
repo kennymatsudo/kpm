@@ -1,199 +1,123 @@
-import { ipcMain } from 'electron';
 import type { ChatService } from '../../services/core/ChatService';
 import type { SlashCommandService } from '../../services/core/SlashCommandService';
-import { ChatSchemas, StreamingSessionSchemas, createIpcHandler } from '../validation';
-import { createSimpleIpcHandler } from '../validation/utils';
-import { IPC_CHANNELS } from '../channels';
+import { chatEndpoints, type ChatEndpointName } from '../../../shared/ipc/chatEndpoints';
+import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import { ChatSchemas, StreamingSessionSchemas } from '../validation';
+import { createRegistryIpcHandlers } from '../validation/utils';
 
-export function registerChatHandlers(
-  chatService: ChatService,
-  slashCommandService: SlashCommandService,
-): void {
-  ipcMain.handle(
-    IPC_CHANNELS.chat.getSlashCommands,
-    createSimpleIpcHandler(
-      () => {
-        const result = slashCommandService.listCommands();
-        if (!result.ok) throw new Error(result.error);
-        return { commands: result.data };
-      },
-      'Failed to list slash commands',
-    ),
-  );
+type ChatHandler<K extends ChatEndpointName> = (
+  params: EndpointPayload<(typeof chatEndpoints)[K]>,
+  event: Electron.IpcMainInvokeEvent
+) => Promise<unknown>;
 
-  ipcMain.handle(
-    IPC_CHANNELS.chat.send,
-    createIpcHandler(
-      ChatSchemas.send,
-      async (params) => {
-        const { focusedResources, currentView, focusDocument, ...input } = params;
-        const result = await chatService.sendMessage(input, { focusedResources, currentView, focusDocument });
-        if (!result.ok) throw new Error(result.error);
-      },
-      'Failed to send chat message',
-    ),
-  );
+/**
+ * One handler per `chatEndpoints` entry. A registry entry without a
+ * matching key here is a compile error, not a runtime "no handler" failure.
+ */
+type ChatHandlers = { [K in ChatEndpointName]: ChatHandler<K> };
 
-  ipcMain.handle(
-    IPC_CHANNELS.chat.cancel,
-    createIpcHandler(
-      ChatSchemas.cancel,
-      async ({ projectId, chatSessionId }) => {
-        const result = await chatService.cancel(projectId, chatSessionId);
-        if (!result.ok) throw new Error(result.error);
-      },
-      'Failed to cancel chat message',
-    ),
-  );
+function buildChatHandlers(chatService: ChatService, slashCommandService: SlashCommandService): ChatHandlers {
+  return {
+    getSlashCommands: async () => {
+      const result = slashCommandService.listCommands();
+      if (!result.ok) throw new Error(result.error);
+      return { commands: result.data };
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.chat.cancelQueued,
-    createIpcHandler(
-      ChatSchemas.cancelQueued,
-      ({ projectId, chatSessionId, clientMessageId }) => {
-        const result = chatService.cancelQueued(projectId, chatSessionId, clientMessageId);
-        if (!result.ok) throw new Error(result.error);
-      },
-      'Failed to cancel queued message',
-    ),
-  );
+    send: async (params) => {
+      const { focusedResources, currentView, focusDocument, ...input } = params;
+      const result = await chatService.sendMessage(input, { focusedResources, currentView, focusDocument });
+      if (!result.ok) throw new Error(result.error);
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.chat.newSession,
-    createIpcHandler(
-      ChatSchemas.newSession,
-      ({ projectId }) => {
-        const result = chatService.newSession(projectId);
-        if (!result.ok) throw new Error(result.error);
-      },
-      'Failed to start new chat session',
-    ),
-  );
+    cancel: async ({ projectId, chatSessionId }) => {
+      const result = await chatService.cancel(projectId, chatSessionId);
+      if (!result.ok) throw new Error(result.error);
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.chat.connectSession,
-    createIpcHandler(
-      StreamingSessionSchemas.connectSession,
-      ({ projectId }) => {
-        const result = chatService.connectSession(projectId);
-        if (!result.ok) throw new Error(result.error);
-      },
-      'Failed to connect chat session',
-    ),
-  );
+    cancelQueued: async ({ projectId, chatSessionId, clientMessageId }) => {
+      const result = chatService.cancelQueued(projectId, chatSessionId, clientMessageId);
+      if (!result.ok) throw new Error(result.error);
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.chat.disconnectSession,
-    createIpcHandler(
-      ChatSchemas.disconnectSession,
-      async ({ projectId }) => {
-        const result = await chatService.disconnectSession(projectId);
-        if (!result.ok) throw new Error(result.error);
-      },
-      'Failed to disconnect chat session',
-    ),
-  );
+    newSession: async ({ projectId }) => {
+      const result = chatService.newSession(projectId);
+      if (!result.ok) throw new Error(result.error);
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.chat.getActiveSessions,
-    createIpcHandler(
-      ChatSchemas.getActiveSessions,
-      ({ projectId }) => {
-        const result = chatService.getActiveSessions(projectId);
-        if (!result.ok) throw new Error(result.error);
-        return { sessions: result.data };
-      },
-      'Failed to get active chat sessions',
-    ),
-  );
+    connectSession: async ({ projectId }) => {
+      const result = chatService.connectSession(projectId);
+      if (!result.ok) throw new Error(result.error);
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.chat.disconnectSpecificSession,
-    createIpcHandler(
-      ChatSchemas.disconnectSpecificSession,
-      async ({ projectId, chatSessionId }) => {
-        const result = await chatService.disconnectSpecificSession(projectId, chatSessionId);
-        if (!result.ok) throw new Error(result.error);
-      },
-      'Failed to disconnect specific chat session',
-    ),
-  );
+    disconnectSession: async ({ projectId }) => {
+      const result = await chatService.disconnectSession(projectId);
+      if (!result.ok) throw new Error(result.error);
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.chat.getSessionState,
-    createIpcHandler(
-      ChatSchemas.getSessionState,
-      ({ projectId, chatSessionId }) => {
-        const result = chatService.getSessionState(projectId, chatSessionId);
-        if (!result.ok) throw new Error(result.error);
-        return { state: result.data };
-      },
-      'Failed to get chat session state',
-    ),
-  );
+    getActiveSessions: async ({ projectId }) => {
+      const result = chatService.getActiveSessions(projectId);
+      if (!result.ok) throw new Error(result.error);
+      return { sessions: result.data };
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.chat.getUsage,
-    createIpcHandler(
-      ChatSchemas.getUsage,
-      ({ projectId }) => {
-        const result = chatService.getUsage(projectId);
-        if (!result.ok) throw new Error(result.error);
-        return { usage: result.data };
-      },
-      'Failed to get chat usage',
-    ),
-  );
+    disconnectSpecificSession: async ({ projectId, chatSessionId }) => {
+      const result = await chatService.disconnectSpecificSession(projectId, chatSessionId);
+      if (!result.ok) throw new Error(result.error);
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.chat.getMessages,
-    createIpcHandler(
-      ChatSchemas.getMessages,
-      ({ projectId }) => {
-        const result = chatService.getMessages(projectId);
-        if (!result.ok) throw new Error(result.error);
-        return { messages: result.data };
-      },
-      'Failed to get chat messages',
-    ),
-  );
+    getSessionState: async ({ projectId, chatSessionId }) => {
+      const result = chatService.getSessionState(projectId, chatSessionId);
+      if (!result.ok) throw new Error(result.error);
+      return { state: result.data };
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.chat.getSessionHistory,
-    createIpcHandler(
-      ChatSchemas.getSessionHistory,
-      ({ projectId, limit }) => {
-        const result = chatService.getSessionHistory(projectId, limit);
-        if (!result.ok) throw new Error(result.error);
-        return { sessions: result.data };
-      },
-      'Failed to get chat session history',
-    ),
-  );
+    getUsage: async ({ projectId }) => {
+      const result = chatService.getUsage(projectId);
+      if (!result.ok) throw new Error(result.error);
+      return { usage: result.data };
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.chat.loadSession,
-    createIpcHandler(
-      ChatSchemas.loadSession,
-      ({ projectId, chatSessionId }) => {
-        const result = chatService.loadSession(projectId, chatSessionId);
-        if (!result.ok) throw new Error(result.error);
-        return result.data;
-      },
-      'Failed to load chat session',
-    ),
-  );
+    getMessages: async ({ projectId }) => {
+      const result = chatService.getMessages(projectId);
+      if (!result.ok) throw new Error(result.error);
+      return { messages: result.data };
+    },
 
-  ipcMain.handle(
-    IPC_CHANNELS.chat.getFocusDocumentSession,
-    createIpcHandler(
-      ChatSchemas.getFocusDocumentSession,
-      async (params) => {
-        const result = await chatService.getOrCreateFocusDocumentSession(params);
-        if (!result.ok) throw new Error(result.error);
-        return result.data;
-      },
-      'Failed to load focus document chat session',
-    ),
+    getSessionHistory: async ({ projectId, limit }) => {
+      const result = chatService.getSessionHistory(projectId, limit);
+      if (!result.ok) throw new Error(result.error);
+      return { sessions: result.data };
+    },
+
+    loadSession: async ({ projectId, chatSessionId }) => {
+      const result = chatService.loadSession(projectId, chatSessionId);
+      if (!result.ok) throw new Error(result.error);
+      return result.data;
+    },
+
+    getFocusDocumentSession: async (params) => {
+      const result = await chatService.getOrCreateFocusDocumentSession(params);
+      if (!result.ok) throw new Error(result.error);
+      return result.data;
+    },
+  };
+}
+
+export function registerChatHandlers(chatService: ChatService, slashCommandService: SlashCommandService): void {
+  // `ChatSchemas.send` layers the temp-image-directory scoping refine that
+  // the shared registry's `params` can't express (see `validation/chat.ts`),
+  // so `send` parses through it instead of `chatEndpoints.send.params`.
+  // `connectSession` parses through `StreamingSessionSchemas` for parity
+  // with the pre-migration handler, though the schema is identical to
+  // `ChatSchemas.disconnectSession`/`newSession`.
+  createRegistryIpcHandlers(
+    chatEndpoints,
+    buildChatHandlers(chatService, slashCommandService),
+    'Chat operation failed',
+    {
+      send: ChatSchemas.send,
+      connectSession: StreamingSessionSchemas.connectSession,
+    }
   );
 }
