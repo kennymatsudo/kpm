@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createPlanService, type PlanServiceDeps } from '../../src/main/services/core/PlanService';
-import type { PlanItem, PlanRelation } from '../../src/shared/types';
+import type { PlanItem } from '../../src/shared/types';
 
 const baseItem: PlanItem = {
   id: '1',
@@ -57,27 +57,17 @@ function createMocks(overrides?: Partial<PlanServiceDeps>) {
     batchUpdateStatus: vi.fn(),
   };
 
-  const planRelations = {
-    add: vi.fn((relation: Omit<PlanRelation, 'id'>) => ({ ...relation, id: 'r1' })),
-    getByProject: vi.fn(() => [] as PlanRelation[]),
-    getByItemIds: vi.fn(() => [] as PlanRelation[]),
-    remove: vi.fn(),
-    delete: vi.fn(),
-    deleteByItem: vi.fn(),
-  };
-
   const queueTrackerUpdateIfNeeded = vi.fn();
   const executePlanActions = vi.fn(() => ({ success: true, createdIds: {} }));
 
   const deps: PlanServiceDeps = {
     planItems,
-    planRelations,
     queueTrackerUpdateIfNeeded,
     executePlanActions,
     ...overrides,
   };
 
-  return { deps, planItems, planRelations, queueTrackerUpdateIfNeeded, executePlanActions };
+  return { deps, planItems, queueTrackerUpdateIfNeeded, executePlanActions };
 }
 
 describe('PlanService', () => {

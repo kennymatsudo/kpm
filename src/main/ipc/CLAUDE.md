@@ -1,6 +1,6 @@
 # IPC Handlers
 
-Bridges Electron's main process and renderer. Pattern: validate with Zod → delegate to services → return response.
+Bridges Electron's main process and renderer. Pattern: validate with Zod → delegate → return response. The delegate is a service when there's real behaviour (business rules, multi-entity coordination); otherwise it's a repository directly (`services.container.<repo>`), reached via `AppServices` — see `src/main/services/CLAUDE.md`. Do not add a service method that only forwards to a repository call.
 
 ## Architecture
 
@@ -12,7 +12,7 @@ Bridges Electron's main process and renderer. Pattern: validate with Zod → del
                            │ IPC Channel Bridge
 ┌──────────────────────────▼──────────────────────────────────────┐
 │                    Main Process (Electron)                       │
-│  Handler (Zod validation) → Service (business logic) → Response │
+│  Handler (Zod validation) → Service or Repository → Response    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -113,7 +113,7 @@ Schemas in `validation/` organized by domain (one file per domain). See `validat
 ## Best Practices
 
 1. **Always validate** — Use Zod schemas; never trust renderer input
-2. **Delegate to services** — Handlers validate + delegate; no business logic
+2. **Delegate, don't implement** — Handlers validate + delegate; no business logic. Delegate to a service when there's real behaviour, or straight to a repository (`services.container`) for a plain read or single-entity write — don't create a pass-through service method just to have something to call
 3. **Use result types** — `ServiceResult<T>` makes errors explicit
 4. **Organize by domain** — One handler file per feature
 5. **Return objects** — IPC serializes easily; return `{ data: T }`

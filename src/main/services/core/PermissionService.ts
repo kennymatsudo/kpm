@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { clientManager } from '../../claude/clientManager';
 import type { IToolPermissionRepository } from '../../db/interfaces';
 import type { ToolPermission } from '../../../shared/types';
-import { failure, success, type ServiceResult } from '../result';
+import { wrap, type ServiceResult } from '../result';
 
 export interface PermissionServiceDeps {
   toolPermissions: IToolPermissionRepository;
@@ -11,25 +11,19 @@ export interface PermissionServiceDeps {
 export function createPermissionService(deps: PermissionServiceDeps) {
   return {
     loadPersistedPermissions(projectId: string): ServiceResult<void> {
-      try {
+      return wrap(() => {
         const permissions = deps.toolPermissions.listByProject(projectId);
         for (const permission of permissions) {
           clientManager.cachePermission(projectId, permission.cache_key);
         }
         console.log(`[Permissions] Loaded ${permissions.length} persisted permissions for ${projectId}`);
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
 
     allowAllRemaining(projectId: string): ServiceResult<void> {
-      try {
+      return wrap(() => {
         clientManager.setAllowAllRemaining(projectId);
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
 
     persistAlwaysAllowed(
@@ -38,7 +32,7 @@ export function createPermissionService(deps: PermissionServiceDeps) {
       targetPath: string | null,
       preview: string,
     ): ServiceResult<void> {
-      try {
+      return wrap(() => {
         const cacheKey = `${toolName}:${targetPath ?? 'no-path'}`;
         deps.toolPermissions.upsert({
           id: randomUUID(),
@@ -47,38 +41,25 @@ export function createPermissionService(deps: PermissionServiceDeps) {
           tool_name: toolName,
           label: preview,
         });
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
 
     list(projectId: string): ServiceResult<ToolPermission[]> {
-      try {
-        return success(deps.toolPermissions.listByProject(projectId));
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() => deps.toolPermissions.listByProject(projectId));
     },
 
     revoke(id: string, projectId: string, cacheKey: string): ServiceResult<void> {
-      try {
+      return wrap(() => {
         deps.toolPermissions.delete(id);
         clientManager.revokePermission(projectId, cacheKey);
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
 
     revokeAll(projectId: string): ServiceResult<void> {
-      try {
+      return wrap(() => {
         deps.toolPermissions.deleteByProject(projectId);
         clientManager.clearPermissionCache(projectId);
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
   };
 }

@@ -44,7 +44,7 @@ import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import { formatPlanRefSection } from '../../claude/contextRefs';
 import { getConfig } from '../../config';
-import { createStatusBroadcaster } from './sessionOrchestration';
+import { createStatusBroadcaster } from './rendererBroadcast';
 import { gitExec, resolveBaseSha } from './gitUtils';
 import { openDirectoryInCodeEditor } from './editorLauncher';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';

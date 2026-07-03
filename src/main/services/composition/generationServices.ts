@@ -3,7 +3,6 @@ import * as nodeFs from 'fs';
 import type { IRepositoryContainer } from '../../db/interfaces';
 import { createArtifactService } from '../core/ArtifactService';
 import { createOnboardingService } from '../generation/OnboardingService';
-import { createOnboardingFacadeService } from '../core/OnboardingFacadeService';
 import type { ClaudeUsageService } from '../core/ClaudeUsageService';
 
 export interface GenerationServicesCompositionDeps {
@@ -21,6 +20,7 @@ export function createGenerationServices({
   const onboardingService = createOnboardingService({
     getReposByProject: (projectId: string) => container.repos.getByProject(projectId),
     getProjectFolder,
+    projects: container.projects,
     recordUsage: claudeUsageService
       ? ({ projectId, source, model, usage, totalCostUsd }) => {
           claudeUsageService.recordUsage({ projectId, source, model, usage, totalCostUsd });
@@ -34,15 +34,9 @@ export function createGenerationServices({
     path,
   });
 
-  const onboardingFacadeService = createOnboardingFacadeService({
-    projects: container.projects,
-    onboardingService,
-  });
-
   return {
     onboardingService,
     artifactService,
-    onboardingFacadeService,
   };
 }
 

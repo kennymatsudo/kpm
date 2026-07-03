@@ -8,7 +8,7 @@ import type {
   CustomPromptExecutionCallbacks,
   CustomPromptExecutionOptions,
 } from '../generation/CustomPromptGenerationService';
-import { failure, success, type ServiceResult } from '../result';
+import { failure, success, wrap, type ServiceResult } from '../result';
 
 export interface CustomPromptServiceDeps {
   customPrompts: ICustomPromptRepository;
@@ -22,11 +22,7 @@ export interface CustomPromptServiceDeps {
 export function createCustomPromptService(deps: CustomPromptServiceDeps) {
   return {
     list(): ServiceResult<CustomPrompt[]> {
-      try {
-        return success(deps.customPrompts.list());
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() => deps.customPrompts.list());
     },
 
     get(promptId: string): ServiceResult<CustomPrompt> {
@@ -161,12 +157,9 @@ export function createCustomPromptService(deps: CustomPromptServiceDeps) {
     },
 
     ensureBuiltins(): ServiceResult<void> {
-      try {
+      return wrap(() => {
         deps.customPrompts.ensureBuiltinsExist();
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
   };
 }

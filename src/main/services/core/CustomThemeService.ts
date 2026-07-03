@@ -7,7 +7,7 @@ import type {
   CustomThemeVsCodeData,
 } from '../../../shared/types';
 import type { ICustomThemeRepository } from '../../db/interfaces';
-import { failure, success, type AsyncResult, type ServiceResult } from '../result';
+import { failure, success, wrap, type AsyncResult, type ServiceResult } from '../result';
 
 const MAX_VSIX_BYTES = 50 * 1024 * 1024;
 const MAX_MANIFEST_BYTES = 1024 * 1024;
@@ -123,11 +123,7 @@ export function createCustomThemeService(deps: CustomThemeServiceDeps) {
 
   return {
     list(): ServiceResult<CustomTheme[]> {
-      try {
-        return success(deps.customThemes.list().map(normalizeThemeForRuntime));
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() => deps.customThemes.list().map(normalizeThemeForRuntime));
     },
 
     get(themeId: string): ServiceResult<CustomTheme> {

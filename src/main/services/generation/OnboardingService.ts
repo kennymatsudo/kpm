@@ -17,6 +17,8 @@ import { getConfig } from '../../config';
 import { writeProjectContextFilesSync } from '../../project-context/contextFileCompat';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import { runClaudeQuery, type ClaudeQueryUsage } from '../../claude/runClaudeQuery';
+import type { IProjectRepository } from '../../db/interfaces';
+import { CONTEXT_FILE_NAMES } from '../../../shared/contextFile';
 
 // =============================================================================
 // Types
@@ -66,6 +68,7 @@ interface ScopedDirectoryScan {
 export interface OnboardingServiceDeps {
   getReposByProject: (projectId: string) => { id: string; path: string }[];
   getProjectFolder: (projectId: string) => string | null;
+  projects: IProjectRepository;
   queryFn?: typeof query;
   getTimeoutMs?: () => number;
   /** Optional centralized usage recorder. */
@@ -357,107 +360,109 @@ If an existing context document is provided, it is for REFERENCE ONLY:
 // =============================================================================
 
 export function createOnboardingService(deps: OnboardingServiceDeps) {
-  return {
-    async scanAndGenerate(
-      options: OnboardingScanOptions,
-      callbacks: OnboardingCallbacks,
-    ): Promise<void> {
-      try {
-        // Phase 1: Scan repos
-        callbacks.onProgress('Starting repository scan...');
-        console.log('[OnboardingService] Starting scan for project:', options.projectId);
+  async function scanAndGenerate(
+    options: OnboardingScanOptions,
+    callbacks: OnboardingCallbacks,
+  ): Promise<void> {
+    try {
+      // Phase 1: Scan repos
+      callbacks.onProgress('Starting repository scan...');
+      console.log('[OnboardingService] Starting scan for project:', options.projectId);
 
-        const repos = deps.getReposByProject(options.projectId);
-        console.log('[OnboardingService] Found repos:', repos.length, repos.map(r => r.path));
+      const repos = deps.getReposByProject(options.projectId);
+      console.log('[OnboardingService] Found repos:', repos.length, repos.map(r => r.path));
 
-        const scanResults: RepoScanResult[] = [];
+      const scanResults: RepoScanResult[] = [];
 
-        for (const repo of repos) {
-          const scopedDirs = options.repoDirectories[repo.path] ?? [];
-          console.log('[OnboardingService] Scanning repo:', repo.path, 'scopedDirs:', scopedDirs);
-          const result = await scanRepo(repo.path, scopedDirs, callbacks);
-          scanResults.push(result);
-        }
-
-        if (scanResults.length === 0) {
-          console.error('[OnboardingService] No repos found for project');
-          callbacks.onError('No repositories found for this project');
-          return;
-        }
-
-        callbacks.onProgress('Scan complete. Generating project context...');
-
-        // Phase 2: Claude Sonnet synthesis
-        const userPrompt = buildPrompt(
-          options.projectName,
-          options.description ?? '',
-          scanResults,
-          options.existingContext,
-        );
-
-        console.log('[OnboardingService] Built prompt, length:', userPrompt.length);
-
-        const sdkOptions: SDKOptions = {
-          model: getConfig().generation.deepModel,
-          // Adaptive thinking with summarized display: OnboardingService streams thinking to UI.
-          // Opus 4.8 / Sonnet 5 default to 'omitted', which would surface as empty strings.
-          thinking: { type: 'adaptive' as const, display: 'summarized' as const },
-          systemPrompt: SYSTEM_PROMPT,
-          cwd: options.projectPath,
-          additionalDirectories: scanResults.map(result => result.repoPath),
-          persistSession: false, // Ephemeral one-shot query, no need to persist
-          // Room to actually investigate (read the map, Grep/Glob/Read across repos)
-          // before writing. The onboardingTimeoutMs is the hard cap.
-          maxTurns: 20,
-          canUseTool: (toolName, input) => Promise.resolve(
-            toolName === 'Write' || toolName === 'Edit' || toolName === 'Bash'
-              ? {
-                  behavior: 'deny' as const,
-                  message: 'Onboarding context generation is read-only. Use Read, Grep, or Glob if more repository context is needed.',
-                }
-              : { behavior: 'allow' as const, updatedInput: input }
-          ),
-          ...getClaudeSdkSpawnOptions(),
-        };
-
-        console.log('[OnboardingService] Calling Claude Agent SDK query()...');
-
-        const timeoutMs = deps.getTimeoutMs?.() ?? getConfig().generation.onboardingTimeoutMs;
-        const sdkModel = getConfig().generation.deepModel;
-
-        const queryResult = await runClaudeQuery({
-          prompt: userPrompt,
-          sdkOptions,
-          timeoutMs,
-          timeoutMessage: 'Context generation timed out',
-          queryFn: deps.queryFn,
-          onThinking: callbacks.onThinking,
-          recordUsage: deps.recordUsage
-            ? ({ usage, totalCostUsd }) => {
-                deps.recordUsage!({
-                  projectId: options.projectId,
-                  source: 'onboarding',
-                  model: sdkModel,
-                  usage,
-                  totalCostUsd,
-                });
-              }
-            : undefined,
-        });
-
-        const generatedContent = queryResult.text;
-
-        callbacks.onProgress('Context generated successfully');
-        callbacks.onComplete(sanitizeGeneratedContext(generatedContent));
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : 'Unknown error';
-        console.error('[OnboardingService] Error:', msg);
-        if (error instanceof Error && error.stack) {
-          console.error('[OnboardingService] Stack:', error.stack);
-        }
-        callbacks.onError(`Context generation failed: ${msg}`);
+      for (const repo of repos) {
+        const scopedDirs = options.repoDirectories[repo.path] ?? [];
+        console.log('[OnboardingService] Scanning repo:', repo.path, 'scopedDirs:', scopedDirs);
+        const result = await scanRepo(repo.path, scopedDirs, callbacks);
+        scanResults.push(result);
       }
-    },
+
+      if (scanResults.length === 0) {
+        console.error('[OnboardingService] No repos found for project');
+        callbacks.onError('No repositories found for this project');
+        return;
+      }
+
+      callbacks.onProgress('Scan complete. Generating project context...');
+
+      // Phase 2: Claude Sonnet synthesis
+      const userPrompt = buildPrompt(
+        options.projectName,
+        options.description ?? '',
+        scanResults,
+        options.existingContext,
+      );
+
+      console.log('[OnboardingService] Built prompt, length:', userPrompt.length);
+
+      const sdkOptions: SDKOptions = {
+        model: getConfig().generation.deepModel,
+        // Adaptive thinking with summarized display: OnboardingService streams thinking to UI.
+        // Opus 4.8 / Sonnet 5 default to 'omitted', which would surface as empty strings.
+        thinking: { type: 'adaptive' as const, display: 'summarized' as const },
+        systemPrompt: SYSTEM_PROMPT,
+        cwd: options.projectPath,
+        additionalDirectories: scanResults.map(result => result.repoPath),
+        persistSession: false, // Ephemeral one-shot query, no need to persist
+        // Room to actually investigate (read the map, Grep/Glob/Read across repos)
+        // before writing. The onboardingTimeoutMs is the hard cap.
+        maxTurns: 20,
+        canUseTool: (toolName, input) => Promise.resolve(
+          toolName === 'Write' || toolName === 'Edit' || toolName === 'Bash'
+            ? {
+                behavior: 'deny' as const,
+                message: 'Onboarding context generation is read-only. Use Read, Grep, or Glob if more repository context is needed.',
+              }
+            : { behavior: 'allow' as const, updatedInput: input }
+        ),
+        ...getClaudeSdkSpawnOptions(),
+      };
+
+      console.log('[OnboardingService] Calling Claude Agent SDK query()...');
+
+      const timeoutMs = deps.getTimeoutMs?.() ?? getConfig().generation.onboardingTimeoutMs;
+      const sdkModel = getConfig().generation.deepModel;
+
+      const queryResult = await runClaudeQuery({
+        prompt: userPrompt,
+        sdkOptions,
+        timeoutMs,
+        timeoutMessage: 'Context generation timed out',
+        queryFn: deps.queryFn,
+        onThinking: callbacks.onThinking,
+        recordUsage: deps.recordUsage
+          ? ({ usage, totalCostUsd }) => {
+              deps.recordUsage!({
+                projectId: options.projectId,
+                source: 'onboarding',
+                model: sdkModel,
+                usage,
+                totalCostUsd,
+              });
+            }
+          : undefined,
+      });
+
+      const generatedContent = queryResult.text;
+
+      callbacks.onProgress('Context generated successfully');
+      callbacks.onComplete(sanitizeGeneratedContext(generatedContent));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[OnboardingService] Error:', msg);
+      if (error instanceof Error && error.stack) {
+        console.error('[OnboardingService] Stack:', error.stack);
+      }
+      callbacks.onError(`Context generation failed: ${msg}`);
+    }
+  }
+
+  return {
+    scanAndGenerate,
 
     saveContext(projectId: string, content: string): { success: boolean; error?: string } {
       try {
@@ -472,6 +477,68 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
         const msg = error instanceof Error ? error.message : 'Unknown error';
         return { success: false, error: msg };
       }
+    },
+
+    getContextDirectories(projectId: string): Record<string, string[]> | null {
+      return deps.projects.getContextDirectories(projectId);
+    },
+
+    saveContextDirectories(projectId: string, repoDirectories: Record<string, string[]>): void {
+      const project = deps.projects.get(projectId);
+      if (!project) {
+        throw new Error('Project not found');
+      }
+
+      deps.projects.updateContextDirectories(projectId, repoDirectories);
+    },
+
+    startGeneration(
+      taskId: string,
+      projectId: string,
+      description: string,
+      repoDirectories: Record<string, string[]>,
+      callbacks: OnboardingCallbacks,
+    ): { taskId: string } {
+      const project = deps.projects.get(projectId);
+      if (!project) {
+        throw new Error('Project not found');
+      }
+
+      // Persist the scoped directories for future regeneration
+      const hasDirectories = Object.values(repoDirectories).some(dirs => dirs.length > 0);
+      if (hasDirectories) {
+        deps.projects.updateContextDirectories(projectId, repoDirectories);
+      }
+
+      // Read existing context file for update-aware generation
+      let existingContext: string | null = null;
+      for (const filename of CONTEXT_FILE_NAMES) {
+        try {
+          const filePath = path.join(project.folder_path, filename);
+          existingContext = fs.readFileSync(filePath, 'utf-8');
+          break;
+        } catch {
+          // File doesn't exist, try next
+        }
+      }
+
+      scanAndGenerate(
+        {
+          projectId: project.id,
+          projectName: project.name,
+          projectPath: project.folder_path,
+          description,
+          repoDirectories,
+          existingContext,
+        },
+        callbacks,
+      ).catch((error) => {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('[OnboardingService] Unhandled generation error:', msg);
+        callbacks.onError(`Generation failed: ${msg}`);
+      });
+
+      return { taskId };
     },
   };
 }

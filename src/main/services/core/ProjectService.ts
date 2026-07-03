@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import type { Project } from '../../../shared/types';
 import type { IAppSettingsRepository, IProjectRepository } from '../../db/interfaces';
-import { failure, success, type AsyncResult, type ServiceResult } from '../result';
+import { failure, success, wrap, type AsyncResult, type ServiceResult } from '../result';
 
 type ProjectUpdates = Partial<Pick<Project, 'name' | 'phase'>>;
 
@@ -40,56 +40,34 @@ export function createProjectService(deps: ProjectServiceDeps) {
         }
       }
 
-      try {
-        const project = deps.projects.create({ name, folderPath });
-        return success(project);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() => deps.projects.create({ name, folderPath }));
     },
 
     getDefaultLocation(): ServiceResult<{ defaultLocation: string }> {
-      try {
-        return success({
-          defaultLocation: path.join(os.homedir(), 'Documents', 'KPM Projects'),
-        });
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() => ({
+        defaultLocation: path.join(os.homedir(), 'Documents', 'KPM Projects'),
+      }));
     },
 
     get(projectId: string): ServiceResult<Project | undefined> {
-      try {
-        return success(deps.projects.get(projectId));
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() => deps.projects.get(projectId));
     },
 
     list(): ServiceResult<Project[]> {
-      try {
-        return success(deps.projects.list());
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() => deps.projects.list());
     },
 
     update(projectId: string, updates: ProjectUpdates): ServiceResult<Project | undefined> {
-      try {
+      return wrap(() => {
         deps.projects.update(projectId, updates);
-        return success(deps.projects.get(projectId));
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+        return deps.projects.get(projectId);
+      });
     },
 
     delete(projectId: string): ServiceResult<void> {
-      try {
+      return wrap(() => {
         deps.projects.delete(projectId);
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
 
     async openFolder(projectId: string): AsyncResult<void> {
@@ -107,12 +85,9 @@ export function createProjectService(deps: ProjectServiceDeps) {
     },
 
     updateStorybookUrl(projectId: string, storybookUrl: string | null): ServiceResult<void> {
-      try {
+      return wrap(() => {
         deps.projects.updateStorybookUrl(projectId, storybookUrl);
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
 
     async testStorybookConnection(url: string): AsyncResult<{ componentCount: number }> {

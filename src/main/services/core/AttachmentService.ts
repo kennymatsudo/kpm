@@ -3,7 +3,7 @@ import type * as path from 'path';
 import type { Attachment } from '../../../shared/types';
 import type { IAttachmentRepository, IProjectRepository } from '../../db/interfaces';
 import type { SaveTempAttachmentResult } from '../files/TempImageService';
-import { failure, success, type ServiceResult, type AsyncResult } from '../result';
+import { failure, success, wrap, type ServiceResult, type AsyncResult } from '../result';
 
 export interface AttachmentFs {
   access: typeof fs.access;
@@ -111,11 +111,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps) {
     },
 
     list(projectId: string): ServiceResult<Attachment[]> {
-      try {
-        return success(deps.attachments.getByProject(projectId));
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() => deps.attachments.getByProject(projectId));
     },
 
     async pickForChat(filePaths: string[]): AsyncResult<PickForChatResult> {

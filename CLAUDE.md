@@ -49,7 +49,7 @@ Each is tied to a principle. Breaking one breaks the cockpit's safety guarantees
 
 ## Code conventions
 
-- **Services own business logic.** IPC handlers validate with Zod and delegate only.
+- **Handlers delegate to a module with behaviour.** IPC handlers validate with Zod and delegate — to a domain/application service for business logic, or directly to a repository for plain reads and simple writes. Do not create a pass-through service whose methods just forward to another service or repository with a try/catch wrapper; call the underlying module directly instead.
 - **Return `ServiceResult<T>`** from services; do not throw. See `src/main/services/result.ts`.
 - **Stores communicate via typed events** in `src/renderer/stores/storeEvents.ts` for cross-store side effects. Direct cross-store imports exist for simple reads (e.g. `approvalQueueStore` reads `generalSettingsStore`/`fileTreeStore`/`toastStore`) — prefer events for side effects, direct imports are fine for reads.
 - **Extract hooks, not wrapper components.** Use Zustand selectors (`useShallow`) over React Context.

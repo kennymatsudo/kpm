@@ -22,7 +22,6 @@ import { createProjectService } from './core/ProjectService';
 import { createChatRuntimeService } from './core/ChatRuntimeService';
 import { createContextFileService } from './core/ContextFileService';
 import { createCustomPromptService } from './core/CustomPromptService';
-import { createExportFacadeService } from './core/ExportFacadeService';
 import { createPermissionService } from './core/PermissionService';
 import { createSettingsService } from './core/SettingsService';
 import { createCustomThemeService } from './core/CustomThemeService';
@@ -173,7 +172,6 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const planService = createPlanService({
     planItems: container.planItems,
-    planRelations: container.planRelations,
     queueTrackerUpdateIfNeeded: queueTrackerUpdate,
     executePlanActions: planActionExecutor.execute,
   });
@@ -260,11 +258,6 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const typeMappingService = createTypeMappingService({
     typeMappings: container.typeMappings,
-  });
-
-  const exportFacadeService = createExportFacadeService({
-    exportService,
-    typeMappingService,
     tracker: container.tracker,
     trackerClientService: TrackerClientService,
   });
@@ -418,7 +411,6 @@ export function createAppServices(container: IRepositoryContainer) {
   const {
     onboardingService,
     artifactService,
-    onboardingFacadeService,
   } = createGenerationServices({
     container,
     getProjectFolder,
@@ -525,7 +517,8 @@ export function createAppServices(container: IRepositoryContainer) {
     planService,
     groupService,
     attachmentService,
-    exportFacadeService,
+    exportService,
+    typeMappingService,
     trackerService,
     searchService,
     slashCommandService,
@@ -553,7 +546,6 @@ export function createAppServices(container: IRepositoryContainer) {
 
     // Generation
     artifactService,
-    onboardingFacadeService,
     onboardingService,
 
     // Prompt overrides

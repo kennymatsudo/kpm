@@ -14,7 +14,7 @@ import type {
   TrackerType,
 } from '../../../shared/types';
 import type { ITrackerRepository } from '../../db/interfaces';
-import { failure, success, type AsyncResult, type ServiceResult, wrapAsync } from '../result';
+import { failure, success, wrap, type AsyncResult, type ServiceResult, wrapAsync } from '../result';
 import type { ImportService, SyncService } from '../../db/domain';
 import type { JiraClient, LinearClient, TrackerClient } from '../../tracker-clients';
 
@@ -180,12 +180,9 @@ export function createTrackerService(deps: TrackerServiceDeps) {
     },
 
     removeAssociation(associationId: string): ServiceResult<void> {
-      try {
+      return wrap(() => {
         deps.tracker.deleteAssociation(associationId);
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
 
     hasAssociationItems(associationId: string): boolean {

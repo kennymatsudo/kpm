@@ -1,15 +1,19 @@
 import { ipcMain } from 'electron';
-import type { PlanAction } from '../../../shared/types';
 import type { PlanService } from '../../services/core/PlanService';
+import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
 import { createIpcHandler, PlanSchemas } from '../validation';
 import { IPC_CHANNELS } from '../channels';
 
-export function registerPlanHandlers(planService: PlanService): void {
+export function registerPlanHandlers(
+  planService: PlanService,
+  planItems: IPlanItemRepository,
+  planRelations: IPlanRelationRepository,
+): void {
   ipcMain.handle(
     IPC_CHANNELS.plan.listItems,
     createIpcHandler(
       PlanSchemas.listItems,
-      ({ projectId }) => ({ items: planService.listItems(projectId) }),
+      ({ projectId }) => ({ items: planItems.getByProject(projectId) }),
       'Failed to list plan items',
     ),
   );
@@ -18,7 +22,7 @@ export function registerPlanHandlers(planService: PlanService): void {
     IPC_CHANNELS.plan.executeActions,
     createIpcHandler(
       PlanSchemas.executeActions,
-      ({ projectId, actions }) => ({ result: planService.executeActions(projectId, actions as PlanAction[]) }),
+      ({ projectId, actions }) => ({ result: planService.executeActions(projectId, actions) }),
       'Failed to execute plan actions',
     ),
   );
@@ -27,11 +31,7 @@ export function registerPlanHandlers(planService: PlanService): void {
     IPC_CHANNELS.plan.addRelation,
     createIpcHandler(
       PlanSchemas.addRelation,
-      (relation) => {
-        const result = planService.addRelation(relation);
-        if (!result.ok) throw new Error(result.error);
-        return { relation: result.data };
-      },
+      (relation) => ({ relation: planRelations.add(relation) }),
       'Failed to add plan relation',
     ),
   );
@@ -41,8 +41,7 @@ export function registerPlanHandlers(planService: PlanService): void {
     createIpcHandler(
       PlanSchemas.removeRelation,
       ({ relationId }) => {
-        const result = planService.removeRelation(relationId);
-        if (!result.ok) throw new Error(result.error);
+        planRelations.remove(relationId);
       },
       'Failed to remove plan relation',
     ),
@@ -52,7 +51,7 @@ export function registerPlanHandlers(planService: PlanService): void {
     IPC_CHANNELS.plan.getRelations,
     createIpcHandler(
       PlanSchemas.getRelations,
-      ({ projectId }) => ({ relations: planService.getRelations(projectId) }),
+      ({ projectId }) => ({ relations: planRelations.getByProject(projectId) }),
       'Failed to get plan relations',
     ),
   );
@@ -62,8 +61,10 @@ export function registerPlanHandlers(planService: PlanService): void {
     createIpcHandler(
       PlanSchemas.updatePosition,
       ({ itemId, x, y }) => {
-        const result = planService.updatePosition(itemId, x, y);
-        if (!result.ok) throw new Error(result.error);
+        if (!planItems.get(itemId)) {
+          throw new Error(`Item not found: ${itemId}`);
+        }
+        planItems.updatePosition(itemId, x, y);
       },
       'Failed to update plan position',
     ),
@@ -98,8 +99,10 @@ export function registerPlanHandlers(planService: PlanService): void {
     createIpcHandler(
       PlanSchemas.deleteItem,
       ({ itemId }) => {
-        const result = planService.deleteItem(itemId);
-        if (!result.ok) throw new Error(result.error);
+        if (!planItems.get(itemId)) {
+          throw new Error(`Item not found: ${itemId}`);
+        }
+        planItems.delete(itemId);
       },
       'Failed to delete plan item',
     ),
@@ -110,8 +113,10 @@ export function registerPlanHandlers(planService: PlanService): void {
     createIpcHandler(
       PlanSchemas.deleteItemWithDescendants,
       ({ itemId }) => {
-        const result = planService.deleteItemWithDescendants(itemId);
-        if (!result.ok) throw new Error(result.error);
+        if (!planItems.get(itemId)) {
+          throw new Error(`Item not found: ${itemId}`);
+        }
+        planItems.deleteWithDescendants(itemId);
       },
       'Failed to delete plan item with descendants',
     ),
@@ -122,9 +127,10 @@ export function registerPlanHandlers(planService: PlanService): void {
     createIpcHandler(
       PlanSchemas.getChildCount,
       ({ itemId }) => {
-        const result = planService.getChildCount(itemId);
-        if (!result.ok) throw new Error(result.error);
-        return { count: result.data };
+        if (!planItems.get(itemId)) {
+          throw new Error(`Item not found: ${itemId}`);
+        }
+        return { count: planItems.getChildCount(itemId) };
       },
       'Failed to get plan child count',
     ),

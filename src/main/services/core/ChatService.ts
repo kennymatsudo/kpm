@@ -15,7 +15,7 @@ import type {
   FocusedResource,
   SessionState,
 } from '../../../shared/types';
-import { failure, success, type AsyncResult, type ServiceResult } from '../result';
+import { failure, success, wrap, type AsyncResult, type ServiceResult } from '../result';
 import type { StreamingSessionService } from '../streaming/StreamingSessionService';
 import { DEFAULT_CHAT_PROVIDER } from '../../../shared/appSettings';
 
@@ -229,23 +229,17 @@ export function createChatService(deps: ChatServiceDeps) {
     },
 
     newSession(projectId: string): ServiceResult<void> {
-      try {
+      return wrap(() => {
         deps.projects.resetTokens(projectId);
         deps.chatMessages.pruneOldSessions(projectId, 10);
         clearSessionCache(projectId);
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
 
     connectSession(projectId: string): ServiceResult<void> {
-      try {
+      return wrap(() => {
         deps.loadPersistedPermissions(projectId);
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
 
     async disconnectSession(projectId: string): AsyncResult<void> {
@@ -259,11 +253,7 @@ export function createChatService(deps: ChatServiceDeps) {
     },
 
     getActiveSessions(projectId: string): ServiceResult<ReturnType<StreamingSessionService['getActiveSessions']>> {
-      try {
-        return success(deps.streamingSessionService.getActiveSessions(projectId));
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() => deps.streamingSessionService.getActiveSessions(projectId));
     },
 
     async disconnectSpecificSession(projectId: string, chatSessionId: string): AsyncResult<void> {
@@ -272,11 +262,7 @@ export function createChatService(deps: ChatServiceDeps) {
     },
 
     getSessionState(projectId: string, chatSessionId: string): ServiceResult<SessionState> {
-      try {
-        return success(deps.streamingSessionService.getChatSessionState(projectId, chatSessionId));
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() => deps.streamingSessionService.getChatSessionState(projectId, chatSessionId));
     },
 
     getUsage(projectId: string): ServiceResult<{
@@ -284,20 +270,18 @@ export function createChatService(deps: ChatServiceDeps) {
       inputTokens: number;
       outputTokens: number;
     }> {
-      try {
+      return wrap(() => {
         const project = deps.projects.get(projectId);
         if (!project) {
-          return success({ totalTokens: 0, inputTokens: 0, outputTokens: 0 });
+          return { totalTokens: 0, inputTokens: 0, outputTokens: 0 };
         }
 
-        return success({
+        return {
           totalTokens: project.session_tokens,
           inputTokens: project.session_input_tokens,
           outputTokens: project.session_output_tokens,
-        });
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+        };
+      });
     },
 
     getMessages(projectId: string): ServiceResult<ChatMessage[]> {

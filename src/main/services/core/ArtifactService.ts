@@ -1,7 +1,7 @@
 import type { IProjectRepository } from '../../db/interfaces';
 import type path from 'path';
 import type fs from 'fs';
-import { failure, success, type ServiceResult } from '../result';
+import { failure, success, wrap, type ServiceResult } from '../result';
 
 type PathModule = typeof path;
 type FsModule = typeof fs;
@@ -49,10 +49,10 @@ export function createArtifactService(deps: ArtifactServiceDeps) {
 
   return {
     list(projectId: string): ServiceResult<{ artifacts: ArtifactRecord[] }> {
-      try {
+      return wrap(() => {
         const { projectPath, outputsDir } = getOutputsDir(projectId);
         if (!deps.fs.existsSync(outputsDir)) {
-          return success({ artifacts: [] });
+          return { artifacts: [] };
         }
 
         const artifacts = deps.fs
@@ -71,10 +71,8 @@ export function createArtifactService(deps: ArtifactServiceDeps) {
           })
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-        return success({ artifacts });
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+        return { artifacts };
+      });
     },
 
     read(projectId: string, filename: string): ServiceResult<{ content: string }> {
@@ -107,7 +105,7 @@ export function createArtifactService(deps: ArtifactServiceDeps) {
     },
 
     import(projectId: string, sourcePath: string): ServiceResult<{ filename: string }> {
-      try {
+      return wrap(() => {
         const { outputsDir } = getOutputsDir(projectId);
         if (!deps.fs.existsSync(outputsDir)) {
           deps.fs.mkdirSync(outputsDir, { recursive: true });
@@ -129,10 +127,8 @@ export function createArtifactService(deps: ArtifactServiceDeps) {
 
         const content = deps.fs.readFileSync(sourcePath, 'utf-8');
         deps.fs.writeFileSync(targetPath, content, 'utf-8');
-        return success({ filename });
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+        return { filename };
+      });
     },
   };
 }

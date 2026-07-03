@@ -3,7 +3,7 @@ import type * as path from 'path';
 import type { Repo, RepoEnvironmentMode } from '../../../shared/types';
 import type { IRepoRepository } from '../../db/interfaces';
 import type { RepoWatcherService } from './RepoWatcherService';
-import { failure, success, type ServiceResult, type AsyncResult, wrapAsync } from '../result';
+import { failure, success, wrap, type ServiceResult, type AsyncResult, wrapAsync } from '../result';
 import type { gitExec } from './gitUtils';
 import { openDirectoryInCodeEditor } from './editorLauncher';
 
@@ -30,34 +30,25 @@ export interface RepoServiceDeps {
 export function createRepoService(deps: RepoServiceDeps) {
   return {
     add(projectId: string, repoPath: string): ServiceResult<Repo> {
-      try {
+      return wrap(() => {
         const repo = deps.repos.add(projectId, repoPath);
         deps.watcher.watchRepo(repo.id, repoPath);
-        return success(repo);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+        return repo;
+      });
     },
 
     remove(repoId: string): ServiceResult<void> {
-      try {
+      return wrap(() => {
         const repo = deps.repos.getById(repoId);
         if (repo) {
           deps.watcher.unwatchRepo(repo.path);
         }
         deps.repos.remove(repoId);
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
 
     list(projectId: string): ServiceResult<Repo[]> {
-      try {
-        return success(deps.repos.getByProject(projectId));
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() => deps.repos.getByProject(projectId));
     },
 
     getPath(repoId: string): ServiceResult<string> {
@@ -86,19 +77,11 @@ export function createRepoService(deps: RepoServiceDeps) {
     },
 
     getBranch(repoPath: string): ServiceResult<string | null> {
-      try {
-        return success(deps.watcher.getBranch(repoPath));
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() => deps.watcher.getBranch(repoPath));
     },
 
     getBranches(paths: string[]): ServiceResult<Record<string, string | null>> {
-      try {
-        return success(deps.watcher.getBranches(paths));
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() => deps.watcher.getBranches(paths));
     },
 
     async getBranchesAsync(paths: string[]): AsyncResult<Record<string, string | null>> {
@@ -106,34 +89,25 @@ export function createRepoService(deps: RepoServiceDeps) {
     },
 
     watch(repoId: string, repoPath: string): ServiceResult<void> {
-      try {
+      return wrap(() => {
         deps.watcher.watchRepo(repoId, repoPath);
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
 
     unwatch(repoPath: string): ServiceResult<void> {
-      try {
+      return wrap(() => {
         deps.watcher.unwatchRepo(repoPath);
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
 
     updateEnvironmentMode(repoId: string, mode: RepoEnvironmentMode): ServiceResult<void> {
-      try {
+      return wrap(() => {
         deps.repos.updateEnvironmentMode(repoId, mode);
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
 
     listDirectories(repoPath: string, prefix: string, depth: number): ServiceResult<string[]> {
-      try {
+      return wrap(() => {
         const skipDirs = new Set([
           'node_modules', '.git', '__pycache__', 'dist', 'build', '.next',
           '.venv', 'venv', '.tox', '.mypy_cache', '.pytest_cache', 'target',
@@ -183,10 +157,8 @@ export function createRepoService(deps: RepoServiceDeps) {
         };
 
         walk(repoPath, 1);
-        return success(results.sort());
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+        return results.sort();
+      });
     },
 
     async listAllBranches(repoPath: string): AsyncResult<string[]> {
@@ -232,12 +204,9 @@ export function createRepoService(deps: RepoServiceDeps) {
     },
 
     setActiveWorktreePath(repoId: string, worktreePath: string | null): ServiceResult<void> {
-      try {
+      return wrap(() => {
         deps.repos.updateActiveWorktreePath(repoId, worktreePath);
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
   };
 }

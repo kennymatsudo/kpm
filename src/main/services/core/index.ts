@@ -14,10 +14,4 @@ export { createChatRuntimeService, type ChatRuntimeServiceDeps, type ChatRuntime
 export { createPermissionService, type PermissionServiceDeps, type PermissionService } from './PermissionService';
 export { promptUser, resolvePromptResponse } from './PermissionPromptService';
 export { createTaskPromptTemplateService, type TaskPromptTemplateServiceDeps, type TaskPromptTemplateService } from './TaskPromptTemplateService';
-export { createExportFacadeService, type ExportFacadeServiceDeps, type ExportFacadeService } from './ExportFacadeService';
 export { createSettingsService, type SettingsServiceDeps, type SettingsService } from './SettingsService';
-export {
-  createOnboardingFacadeService,
-  type OnboardingFacadeServiceDeps,
-  type OnboardingFacadeService,
-} from './OnboardingFacadeService';

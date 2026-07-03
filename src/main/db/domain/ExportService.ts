@@ -179,7 +179,11 @@ export function createExportService(deps: ExportServiceDeps) {
   const PlanItemRepository = deps.planItems;
   const TrackerRepository = deps.tracker;
   const SyncRepository = deps.sync;
-  const TypeMappingService = createTypeMappingService({ typeMappings: deps.typeMappings });
+  const TypeMappingService = createTypeMappingService({
+    typeMappings: deps.typeMappings,
+    tracker: deps.tracker,
+    trackerClientService: deps.trackerClientService,
+  });
   const TrackerClientService = deps.trackerClientService;
 
   const service = {

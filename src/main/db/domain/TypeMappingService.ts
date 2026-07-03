@@ -1,5 +1,5 @@
-import type { ITypeMappingRepository } from '../interfaces';
-import type { TrackerTypeMapping, JiraIssueType, PlanItem } from '../../../shared/types';
+import type { ITypeMappingRepository, ITrackerRepository } from '../interfaces';
+import type { TrackerTypeMapping, JiraIssueType, PlanItem, TrackerType } from '../../../shared/types';
 
 /**
  * Default mappings from common KPM labels to Jira issue type names.
@@ -40,10 +40,50 @@ const DEPTH_FALLBACK_WITH_EPIC: Record<number, string> = {
 
 export interface TypeMappingServiceDeps {
   typeMappings: ITypeMappingRepository;
+  tracker: ITrackerRepository;
+  trackerClientService: {
+    getClient(type: TrackerType): Promise<{
+      getIssueTypes(projectKey: string): Promise<JiraIssueType[]>;
+    }>;
+  };
 }
 
 export function createTypeMappingService(deps: TypeMappingServiceDeps) {
   const TypeMappingRepository = deps.typeMappings;
+
+  function createDefaultMappings(
+    kpmProjectId: string,
+    scopeId: string,
+    availableTypes: JiraIssueType[]
+  ): TrackerTypeMapping[] {
+    const mappings: { kpmLabel: string; trackerIssueTypeId: string; trackerIssueTypeName: string }[] = [];
+
+    // Build lookup map of Jira types by lowercase name
+    const typesByName = new Map<string, JiraIssueType>();
+    for (const type of availableTypes) {
+      typesByName.set(type.name.toLowerCase(), type);
+    }
+
+    // Match default labels to Jira types
+    for (const [jiraTypeName, kpmLabels] of Object.entries(DEFAULT_LABEL_MAPPINGS)) {
+      const jiraType = typesByName.get(jiraTypeName.toLowerCase());
+      if (!jiraType) continue;
+
+      for (const label of kpmLabels) {
+        mappings.push({
+          kpmLabel: label,
+          trackerIssueTypeId: jiraType.id,
+          trackerIssueTypeName: jiraType.name,
+        });
+      }
+    }
+
+    // Bulk upsert all mappings
+    TypeMappingRepository.bulkUpsert(kpmProjectId, scopeId, mappings);
+
+    // Return the created mappings
+    return TypeMappingRepository.getByProjectAndScope(kpmProjectId, scopeId);
+  }
 
   return {
     /**
@@ -97,38 +137,28 @@ export function createTypeMappingService(deps: TypeMappingServiceDeps) {
      * Create default mappings based on available Jira issue types.
      * Matches common KPM labels to Jira types by name.
      */
-    createDefaultMappings(
+    createDefaultMappings,
+
+    /**
+     * Look up the scope's tracker connection, fetch its issue types, and
+     * create default mappings from them.
+     */
+    async createDefaultMappingsForScope(
       kpmProjectId: string,
-      scopeId: string,
-      availableTypes: JiraIssueType[]
-    ): TrackerTypeMapping[] {
-      const mappings: { kpmLabel: string; trackerIssueTypeId: string; trackerIssueTypeName: string }[] = [];
-
-      // Build lookup map of Jira types by lowercase name
-      const typesByName = new Map<string, JiraIssueType>();
-      for (const type of availableTypes) {
-        typesByName.set(type.name.toLowerCase(), type);
+      scopeId: string
+    ): Promise<TrackerTypeMapping[]> {
+      const scope = deps.tracker.getScopeById(scopeId);
+      if (!scope) {
+        throw new Error('Scope not found');
+      }
+      const connection = deps.tracker.getConnectionById(scope.connection_id);
+      if (!connection) {
+        throw new Error('Connection not found');
       }
 
-      // Match default labels to Jira types
-      for (const [jiraTypeName, kpmLabels] of Object.entries(DEFAULT_LABEL_MAPPINGS)) {
-        const jiraType = typesByName.get(jiraTypeName.toLowerCase());
-        if (!jiraType) continue;
-
-        for (const label of kpmLabels) {
-          mappings.push({
-            kpmLabel: label,
-            trackerIssueTypeId: jiraType.id,
-            trackerIssueTypeName: jiraType.name,
-          });
-        }
-      }
-
-      // Bulk upsert all mappings
-      TypeMappingRepository.bulkUpsert(kpmProjectId, scopeId, mappings);
-
-      // Return the created mappings
-      return TypeMappingRepository.getByProjectAndScope(kpmProjectId, scopeId);
+      const client = await deps.trackerClientService.getClient(connection.tracker_type);
+      const issueTypes = await client.getIssueTypes(scope.project_key);
+      return createDefaultMappings(kpmProjectId, scopeId, issueTypes);
     },
 
     /**

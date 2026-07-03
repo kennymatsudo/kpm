@@ -16,7 +16,7 @@ Business logic layer with dependency injection. Services accept dependencies via
 
 Plan items, projects, attachments, tracker connections, and groups—the domain model.
 
-- `PlanService` — Modify plan items, manage relations
+- `PlanService` — The behaviour that doesn't belong on a repository: `updateItem` (fires `queueTrackerUpdateIfNeeded` after the repo update), `updatePositions` (batch existence validation), `executeActions`. Plain reads and single-field CRUD (`listItems`, relations, `deleteItem`, `getChildCount`, ...) go straight from the IPC handler to `IPlanItemRepository`/`IPlanRelationRepository` — see `container` on `AppServices`
 - `AttachmentService` — Upload files, track metadata
 - `SearchService` — Global search across plan items and documents
 - `PromptOverrideService` — Manage prompt overrides for board implementation/review prompts (the previous "agent-team" subsystem was removed; this is the surviving customization path)
@@ -34,14 +34,12 @@ Plan items, projects, attachments, tracker connections, and groups—the domain 
 - `SlashCommandService` — Discovers user slash commands (`~/.claude/commands/**/*.md`) and skills (`~/.claude/skills/*/SKILL.md`) for the chat typeahead before a session exists; once a session is live the SDK's own command list takes over
 - `McpDiscoveryService` — Discovers installed Claude Code plugins with MCP server configs and reads `app_settings` for which servers are enabled for KPM. Does not manage MCP server processes — the SDK does
 - `CustomThemeService` — Import/manage custom editor themes (VS Code `.vsix` or marketplace theme JSON)
-- `ExportFacadeService` — Export queue access over `ExportService`/`TypeMappingService` for pushing plan items to trackers
-- `OnboardingFacadeService` — Thin wrapper starting `OnboardingService` generation and persisting results onto the project
 - `AppLifecycleService` — App startup/shutdown coordination
 - `NotificationService` — System notifications via Electron
 - `UpdateEventBus` — Cross-service update broadcast helper
 - `BriefingService` — Two-stage project briefing pipeline: Stage 1 gathers SQL context and synthesizes chat history with `fastModel`; Stage 2 produces the final briefing with `deepModel` (both default to sonnet; configured via `getConfig().generation`)
 - `TrackerService` — Tracker credential management, connection/scope/association CRUD, Jira API queries (issue search, labels, components, statuses, custom fields), import preview generation, and sync coordination. Wraps `TrackerClientService` + domain `ImportService`/`SyncService`.
-- `GroupService` — Group CRUD (create, update, delete, position, size) and item assignment. Delegates to `GroupAssignmentService` for assignment rule enforcement.
+- `GroupService` — `assignItem`, which delegates to `GroupAssignmentService` for the shared assignment rule (project match, clears manual position). Plain CRUD (`list`, `get`, `create`, `update`, `delete`, `updatePosition`, `updateSize`) goes straight from the IPC handler to `IGroupRepository`.
 - `ContextFileService` — Read/write project context files (AGENTS.md/CLAUDE.md) and `buildContextPrefix(projectId, contextPaths)` — wraps attached context files in `<context-file>` blocks for prepending to agent prompts (injected into `DevSessionService.buildAgentContext` via `appServices.ts` wiring).
 - `slackTriageAdapter.ts` — Pure composition helper (no state). Owns Slack MCP block/JSON parsing, the Claude SDK adapter session, and plan-item mutation callbacks. `appServices.ts` calls `createSlackTriageAdapter()` and passes the returned deps straight into `createSlackTriageService()` — keeps `appServices.ts` focused on wiring.
 
@@ -88,7 +86,7 @@ Terminal/PTY and Claude session management.
 ### Generation Services (`services/generation/`)
 
 - `CustomPromptGenerationService` — Custom prompt generation
-- `OnboardingService` — AGENTS.md context generation (repo scan + Claude synthesis)
+- `OnboardingService` — AGENTS.md context generation (repo scan + Claude synthesis) and its IPC entrypoints: `startGeneration` (persists scoped directories, reads any existing context file, kicks off `scanAndGenerate`), `saveContext`, `getContextDirectories`/`saveContextDirectories`
 
 ### Confluence Services (`services/confluence/`)
 
@@ -118,19 +116,19 @@ Tool call logging and analysis.
 ### Use a Service when:
 - Logic involves multiple entities
 - Business rules must be enforced
-- Result needs explicit error handling
-- Code is called from multiple IPC handlers
+- A result needs explicit error handling that isn't just "did the repo call throw"
 
-### Use a Repository directly when:
+### Call a Repository directly when:
 - Inside a service (services delegate to repos)
 - In domain services for multi-table transactions
+- From an IPC handler, for a plain read or single-entity write that has no behaviour beyond the repo call itself — repositories are exposed to handlers via `services.container` (`AppServices`). Do not add a pass-through service method whose body is just `try { return success(repo.method(...)) } catch { return failure(...) }`; that's a wrapper with no behaviour, not a service.
 
-**Rule:** If IPC handlers call it, make it a service.
+**Rule:** If a handler needs behaviour beyond the repository call (validation, side effects, coordinating more than one repository), give it a service method. If not, call the repository.
 
 ## Anti-Patterns to Avoid
 
 **Don't:**
-- Import repositories directly in IPC handlers
+- Add a service method that only forwards to one repository call or one other service call — wire the IPC handler to that repository/service directly instead
 - Throw exceptions from services (use `ServiceResult`)
 - Use global service instances (use factory + DI)
 - Duplicate business logic across services

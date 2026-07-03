@@ -4,12 +4,12 @@
 
 import { ipcMain, type BrowserWindow } from 'electron';
 import { createIpcHandler, OnboardingSchemas } from '../validation';
-import type { OnboardingFacadeService } from '../../services/core/OnboardingFacadeService';
+import type { OnboardingService } from '../../services/generation/OnboardingService';
 import { IPC_CHANNELS } from '../channels';
 
 export function registerOnboardingHandlers(
   getMainWindow: () => BrowserWindow | null,
-  onboardingFacadeService: OnboardingFacadeService,
+  onboardingService: OnboardingService,
 ): void {
   ipcMain.handle(
     IPC_CHANNELS.onboarding.generate,
@@ -21,7 +21,7 @@ export function registerOnboardingHandlers(
           throw new Error('Main window not available');
         }
 
-        const result = onboardingFacadeService.startGeneration(
+        return onboardingService.startGeneration(
           taskId,
           projectId,
           description,
@@ -41,12 +41,6 @@ export function registerOnboardingHandlers(
             },
           },
         );
-
-        if (!result.ok) {
-          throw new Error(result.error);
-        }
-
-        return result.data;
       },
       'Failed to start onboarding generation',
     ),
@@ -57,9 +51,9 @@ export function registerOnboardingHandlers(
     createIpcHandler(
       OnboardingSchemas.saveContext,
       async ({ projectId, content }) => {
-        const result = onboardingFacadeService.saveContext(projectId, content);
-        if (!result.ok) {
-          throw new Error(result.error);
+        const result = onboardingService.saveContext(projectId, content);
+        if (!result.success) {
+          throw new Error(result.error ?? 'Failed to save context');
         }
       },
       'Failed to save context',
@@ -71,10 +65,7 @@ export function registerOnboardingHandlers(
     createIpcHandler(
       OnboardingSchemas.saveContextDirectories,
       async ({ projectId, repoDirectories }) => {
-        const result = onboardingFacadeService.saveContextDirectories(projectId, repoDirectories);
-        if (!result.ok) {
-          throw new Error(result.error);
-        }
+        onboardingService.saveContextDirectories(projectId, repoDirectories);
       },
       'Failed to save context directories',
     ),
@@ -85,9 +76,8 @@ export function registerOnboardingHandlers(
     createIpcHandler(
       OnboardingSchemas.saveContext.pick({ projectId: true }),
       ({ projectId }) => {
-        const result = onboardingFacadeService.getContextDirectories(projectId);
-        if (!result.ok) throw new Error(result.error);
-        return { directories: result.data };
+        const directories = onboardingService.getContextDirectories(projectId);
+        return { directories };
       },
       'Failed to get context directories',
     ),

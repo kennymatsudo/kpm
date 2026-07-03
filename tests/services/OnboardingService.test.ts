@@ -3,6 +3,9 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createOnboardingService } from '../../src/main/services/generation/OnboardingService';
+import type { IProjectRepository } from '../../src/main/db/interfaces';
+
+const unusedProjectsRepo = {} as IProjectRepository;
 
 describe('OnboardingService', () => {
   let tempDir: string | null = null;
@@ -20,6 +23,7 @@ describe('OnboardingService', () => {
     const service = createOnboardingService({
       getReposByProject: () => [],
       getProjectFolder: () => tempDir,
+      projects: unusedProjectsRepo,
     });
 
     const result = service.saveContext('project-1', '# Project Context');
@@ -33,6 +37,7 @@ describe('OnboardingService', () => {
     const service = createOnboardingService({
       getReposByProject: () => [],
       getProjectFolder: () => null,
+      projects: unusedProjectsRepo,
     });
 
     const result = service.saveContext('project-1', '# Project Context');
@@ -68,6 +73,7 @@ describe('OnboardingService', () => {
       getProjectFolder: () => projectDir,
       queryFn: queryFn as never,
       getTimeoutMs: () => 1000,
+      projects: unusedProjectsRepo,
     });
 
     const completion = new Promise<string>((resolve, reject) => {

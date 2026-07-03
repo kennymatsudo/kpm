@@ -1,6 +1,6 @@
 import type { TaskPromptTemplate } from '../../../shared/types';
 import type { ITaskPromptTemplateRepository } from '../../db/interfaces';
-import { failure, success, type ServiceResult } from '../result';
+import { failure, success, wrap, type ServiceResult } from '../result';
 
 export interface TaskPromptTemplateServiceDeps {
   taskPromptTemplates: ITaskPromptTemplateRepository;
@@ -9,15 +9,11 @@ export interface TaskPromptTemplateServiceDeps {
 export function createTaskPromptTemplateService(deps: TaskPromptTemplateServiceDeps) {
   return {
     list(projectId?: string | null): ServiceResult<TaskPromptTemplate[]> {
-      try {
-        return success(
-          projectId
-            ? deps.taskPromptTemplates.listForProject(projectId)
-            : deps.taskPromptTemplates.list(null),
-        );
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() =>
+        projectId
+          ? deps.taskPromptTemplates.listForProject(projectId)
+          : deps.taskPromptTemplates.list(null),
+      );
     },
 
     get(templateId: string): ServiceResult<TaskPromptTemplate> {
@@ -30,19 +26,11 @@ export function createTaskPromptTemplateService(deps: TaskPromptTemplateServiceD
     },
 
     getEffective(projectId: string): ServiceResult<TaskPromptTemplate> {
-      try {
-        return success(deps.taskPromptTemplates.getEffective(projectId));
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() => deps.taskPromptTemplates.getEffective(projectId));
     },
 
     getBuiltinDefault(): ServiceResult<{ promptContent: string }> {
-      try {
-        return success({ promptContent: deps.taskPromptTemplates.getBuiltinDefault() });
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      return wrap(() => ({ promptContent: deps.taskPromptTemplates.getBuiltinDefault() }));
     },
 
     create(projectId: string | null, name: string, promptContent: string): ServiceResult<TaskPromptTemplate> {
@@ -104,12 +92,9 @@ export function createTaskPromptTemplateService(deps: TaskPromptTemplateServiceD
     },
 
     ensureDefault(): ServiceResult<void> {
-      try {
+      return wrap(() => {
         deps.taskPromptTemplates.ensureDefaultExists();
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
+      });
     },
   };
 }

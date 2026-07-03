@@ -14,7 +14,7 @@
 
 import type { DevSession, DevSessionAutomationPhase } from '../../../shared/types';
 import { isCommitHookRepairPhase } from '../../../shared/types';
-import { createStatusBroadcaster } from '../repo/sessionOrchestration';
+import { createStatusBroadcaster } from '../repo/rendererBroadcast';
 
 export type AutomationPhaseEvent =
   | { type: 'opposingReviewLaunched' }

@@ -26,11 +26,11 @@ export function registerWorkspaceHandlers({
   registerProjectHandlers(services.projectService);
   registerRepoHandlers(getMainWindow, services.repoService);
   registerAttachmentHandlers(getMainWindow, services.attachmentService);
-  registerPlanHandlers(services.planService);
-  registerGroupHandlers(services.groupService);
+  registerPlanHandlers(services.planService, services.container.planItems, services.container.planRelations);
+  registerGroupHandlers(services.groupService, services.container.groups);
   registerChatHandlers(chatRuntime.chatService, services.slashCommandService);
   registerFileHandlers(getMainWindow, services.contextFileService);
-  registerExportHandlers(services.exportFacadeService);
+  registerExportHandlers(services.exportService, services.typeMappingService);
   registerTrackerHandlers(getMainWindow, services.trackerService);
   registerSettingsHandlers(services.settingsService);
   registerCustomThemeHandlers(services.customThemeService);
@@ -39,6 +39,6 @@ export function registerWorkspaceHandlers({
   registerTaskPromptTemplateHandlers(services.taskPromptTemplateService);
   registerCustomPromptHandlers(getMainWindow, services.customPromptService);
   registerScheduledLoopHandlers(services.scheduledLoopService);
-  registerOnboardingHandlers(getMainWindow, services.onboardingFacadeService);
+  registerOnboardingHandlers(getMainWindow, services.onboardingService);
   registerSlackHandlers(services.slackTriageService);
 }
