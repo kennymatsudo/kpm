@@ -10,7 +10,7 @@ import {
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { useExportActions } from '../../hooks/useStoreActions';
 import type { TreeNode } from '../../utils/planHierarchy';
-import { getStyleForDepth, MAX_DEPTH } from '../../constants/planCardStyles';
+import { CARD_BOX_MODEL, getStyleForDepth, MAX_DEPTH } from '../../constants/planCardStyles';
 import { DragSource } from '../../constants/dragSource';
 import { DeleteConfirmDialog } from '../ui/DeleteConfirmDialog';
 import { getStatusCategory } from '../../constants/statusConfig';
@@ -547,15 +547,15 @@ export const PlanCard = memo(function PlanCard({
       />
 
       {/* Description (collapsed for deeper levels, space always reserved at depth 0-1) */}
-      {depth <= 1 && (
-        <p className={`text-xs mt-1.5 line-clamp-1 ${item.description ? 'text-text-secondary' : 'invisible'}`}>
+      {CARD_BOX_MODEL.description.reservedAtDepth(depth) && (
+        <p className={`text-xs ${CARD_BOX_MODEL.description.marginTop.className} line-clamp-1 ${item.description ? 'text-text-secondary' : 'invisible'}`}>
           {item.description || '\u00A0'}
         </p>
       )}
 
       {/* Children with inline toggle */}
       {item.children.length > 0 && (
-        <div className="mt-1.5">
+        <div className={CARD_BOX_MODEL.childrenContainer.marginTop.className}>
           {/* Expand/collapse toggle */}
           {!isPreview ? (
             <button
@@ -583,7 +583,7 @@ export const PlanCard = memo(function PlanCard({
             </div>
           )}
           {(isPreview || isExpanded) && (
-            <div className="space-y-2">
+            <div className={CARD_BOX_MODEL.childrenContainer.siblingGap.className}>
               {item.children.map(child => (
                 <PlanCard
                   key={child.id}

@@ -72,7 +72,7 @@ Spec fields (`intent`, `acceptance_criteria`) surface in one place today:
 |------|------|---------------|
 | `components/planning/TaskEditModal.tsx` | **Editable** | "Spec" section between Description and Type/Status: `intent` textarea + `acceptance_criteria` editable checklist with Add/Remove affordances. Always rendered so legacy items can adopt specs. |
 
-**Board `components/board-view/BoardCard.tsx` and canvas `components/planning/PlanCard.tsx` are intentionally NOT wired.** Card faces stay clean; users open the modal to view or edit specs. Surfacing spec fields on canvas cards would also require the three-file height-calc sync (`PlanCard.tsx` → `utils/planHierarchy.ts` → `constants/planCardStyles.ts`) — see the next section.
+**Board `components/board-view/BoardCard.tsx` and canvas `components/planning/PlanCard.tsx` are intentionally NOT wired.** Card faces stay clean; users open the modal to view or edit specs. Surfacing spec fields on canvas cards would also require extending the card box model in `constants/planCardStyles.ts` — see the next section.
 
 **`source_document_id` is unwired in the renderer** — the field is on `PlanItem` and is populated by the `modify_plan` Claude tool (`src/main/claude/tools/plan-changes.ts`) as an iteration-doc breadcrumb, but no UI here reads or displays it. Do not surface it without a clear use case; see `src/main/claude/CLAUDE.md` for the write side.
 
@@ -85,39 +85,14 @@ Spec fields (`intent`, `acceptance_criteria`) surface in one place today:
 
 ## Plan Card Layout & Height Sync
 
-**When changing PlanCard layout, you MUST update height calculations in `utils/planHierarchy.ts`.**
+Card heights are **calculated, not measured**: the canvas positions cards with masonry layout, where each card's Y = previous card bottom + `VERTICAL_GAP`. `constants/planCardStyles.ts` owns the box model (`CARD_BOX_MODEL`, `depthStyles`, `paddingPxForDepth`, `titleLineHeightPxForDepth`) as the single source of truth for both the rendered DOM and the height math.
 
-The canvas uses masonry layout to position cards absolutely. Each card's Y position = previous card bottom + `VERTICAL_GAP`. Card heights are **calculated, not measured** — if the calculation doesn't match the rendered CSS, gaps will be uneven (overestimate = extra gap, underestimate = overlap).
+- `components/planning/PlanCard.tsx` and `PlanCardSections.tsx` read spacing classes off `CARD_BOX_MODEL` (e.g. `CARD_BOX_MODEL.description.marginTop.className`) rather than hardcoding Tailwind classes.
+- `utils/planHierarchy.ts` (`calculateCardHeight`, `buildHeightMapFromTree`) reads the same spec's `px` values through one shared per-card formula.
 
-Three files must stay in sync:
+Because both sides read the same object, there's nothing left to hand-sync — change a value in `planCardStyles.ts` and both the DOM and the height estimate move together. `constants/planCardStyles.test.ts` asserts the spec's `px` fields match the Tailwind scale for the classes in use.
 
-| File | What it controls |
-|------|-----------------|
-| `components/planning/PlanCard.tsx` | Card DOM structure, Tailwind classes, spacing between rows |
-| `utils/planHierarchy.ts` | `calculateCardHeight` + `buildHeightMapFromTree` — pixel height estimates used by masonry layout |
-| `constants/planCardStyles.ts` | Depth-based padding (`p-2`, `p-2`, `p-1.5`), title size, bg |
-
-**How to calculate heights from Tailwind classes:**
-
-Tailwind v4 text utilities set `font-size` only (not `line-height`). Line-height is inherited from `body { line-height: 1.5 }`.
-
-```
-text-sm  = 14px font × 1.5 = 21px line-height
-text-xs  = 12px font × 1.5 = 18px line-height
-text-[10px] = 10px × 1.5 = 15px line-height
-```
-
-For spacing utilities: `mt-1` = 4px, `mt-1.5` = 6px, `mt-2` = 8px, `gap-1.5` = 6px, `space-y-2` = 8px.
-
-For padding utilities: `p-2` = 8px each side (16px total), `p-1.5` = 6px (12px total).
-
-**Current card height formula (depth 0, no children):**
-
-```
-padding (16) + title row (21) + metadata row (26) + description (24) = 87px
-```
-
-**Gap between cards in groups:** `GROUP_LAYOUT.VERTICAL_GAP` in `constants/layout.ts` (currently 16px). This is added on top of the calculated height. If the calculated height is wrong, the visual gap = `VERTICAL_GAP + (calculated - actual)`.
+**Gap between cards in groups:** `GROUP_LAYOUT.VERTICAL_GAP` in `constants/layout.ts` (currently 16px), added on top of the calculated height.
 
 ## Z-Index Layers
 

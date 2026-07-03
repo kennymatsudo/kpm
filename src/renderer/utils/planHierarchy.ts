@@ -1,5 +1,6 @@
 import type { PlanItem } from '../../shared/types';
 import { CARD_WIDTHS, GROUP_LAYOUT } from '../constants/layout';
+import { CARD_BOX_MODEL, paddingPxForDepth, titleLineHeightPxForDepth } from '../constants/planCardStyles';
 
 /**
  * TreeNode extends PlanItem with children for hierarchical display
@@ -73,6 +74,33 @@ export function buildHierarchy(items: PlanItem[]): HierarchyResult {
 }
 
 /**
+ * Height of a card's own content (padding, title, metadata, description),
+ * excluding its children container. Shared by both height-calculation entry
+ * points so the box model lives in exactly one formula.
+ */
+function ownCardHeight(depth: number): number {
+  let height = paddingPxForDepth(depth);
+  height += titleLineHeightPxForDepth(depth);
+  height += CARD_BOX_MODEL.metadataRow.marginTop.px + CARD_BOX_MODEL.metadataRow.contentPx;
+  if (CARD_BOX_MODEL.description.reservedAtDepth(depth)) {
+    height += CARD_BOX_MODEL.description.marginTop.px + CARD_BOX_MODEL.description.lineHeightPx;
+  }
+  return height;
+}
+
+/**
+ * Height contributed by the children container (toggle row + child heights
+ * + inter-sibling gaps), given the already-computed height of each child.
+ */
+function childrenContainerHeight(childHeights: number[]): number {
+  if (childHeights.length === 0) return 0;
+  const { marginTop, toggleRowPx, siblingGap } = CARD_BOX_MODEL.childrenContainer;
+  const gaps = (childHeights.length - 1) * siblingGap.px;
+  const childrenSum = childHeights.reduce((sum, h) => sum + h, 0);
+  return marginTop.px + toggleRowPx + childrenSum + gaps;
+}
+
+/**
  * Calculate the height of a single card including all nested children.
  * Used for accurate layout calculations in groups and auto-layout.
  *
@@ -88,37 +116,8 @@ export function calculateCardHeight(
   depth = 0
 ): number {
   const children = childrenMap.get(itemId) || [];
-  const hasChildren = children.length > 0;
-
-  // Height components based on actual CSS:
-  // - Padding: depth 0 = p-2 (16px), depth 1 = p-2 (16px), depth 2+ = p-1.5 (12px)
-  // - Title row: text-sm 14px * 1.5 line-height = 21px
-  // - Metadata row: mt-1.5 (6px) + ~20px badges = 26px
-  // - Description (line-clamp-1, depth <= 1): mt-1.5 (6px) + text-xs 12px * 1.5 * 1 line = 24px
-  //   Always reserved at depth <= 1 for consistent card heights (even without description)
-  // - Children container: mt-1.5 (6px) + toggle 16px + children heights + space-y-2 (8px gaps)
-  const padding = depth === 0 ? 16 : depth === 1 ? 16 : 12;
-  let height = padding; // total padding (top + bottom)
-  height += depth === 0 ? 21 : 18; // title: text-sm (21px) at depth 0, text-xs (18px) at depth 1+
-  height += 26; // metadata row (mt-1.5 + content)
-  if (depth <= 1) {
-    height += 24; // description space always reserved at depth 0-1 for uniform height
-  }
-
-  if (!hasChildren) {
-    return height;
-  }
-
-  // Add children container
-  height += 6; // mt-1.5 margin before children
-  height += 16; // toggle button row
-  const childHeights = children.map((childId, index) => {
-    const childHeight = calculateCardHeight(childId, childrenMap, itemMap, depth + 1);
-    return childHeight + (index > 0 ? 8 : 0); // space-y-2 = 8px between children
-  });
-  height += childHeights.reduce((sum, h) => sum + h, 0);
-
-  return height;
+  const childHeights = children.map((childId) => calculateCardHeight(childId, childrenMap, itemMap, depth + 1));
+  return ownCardHeight(depth) + childrenContainerHeight(childHeights);
 }
 
 /**
@@ -132,24 +131,8 @@ export function buildHeightMapFromTree(nodes: TreeNode[]): Map<string, number> {
     const cached = heightMap.get(node.id);
     if (cached !== undefined) return cached;
 
-    const hasChildren = node.children.length > 0;
-
-    const padding = depth === 0 ? 16 : depth === 1 ? 16 : 12;
-    let height = padding;
-    height += depth === 0 ? 21 : 18; // title: text-sm (21px) at depth 0, text-xs (18px) at depth 1+
-    height += 26; // metadata row (mt-1.5 + content)
-    if (depth <= 1) {
-      height += 24; // description space always reserved at depth 0-1 for uniform height
-    }
-
-    if (hasChildren) {
-      height += 6; // mt-1.5
-      height += 16; // toggle button
-      node.children.forEach((child, index) => {
-        const childHeight = computeHeight(child, depth + 1);
-        height += childHeight + (index > 0 ? 8 : 0); // space-y-2
-      });
-    }
+    const childHeights = node.children.map((child) => computeHeight(child, depth + 1));
+    const height = ownCardHeight(depth) + childrenContainerHeight(childHeights);
 
     heightMap.set(node.id, height);
     return height;

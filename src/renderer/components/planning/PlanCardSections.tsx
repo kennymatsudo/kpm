@@ -1,6 +1,7 @@
 import type { MouseEvent } from 'react';
 import type { StatusCategory, TrackerType } from '../../../shared/types';
 import type { TreeNode } from '../../utils/planHierarchy';
+import { CARD_BOX_MODEL } from '../../constants/planCardStyles';
 import { TrackerIcon, trackerLabelFor } from '../tracker/shared/trackerDisplay';
 import { StatusSelector } from '../ui/StatusSelector';
 import { Tooltip } from '../ui/Tooltip';
@@ -179,7 +180,7 @@ export function PlanCardMetadataRow({
   const trackerLabel = trackerLabelFor(itemTrackerType);
 
   return (
-    <div className="flex items-center gap-1.5 mt-1.5 overflow-hidden">
+    <div className={`flex items-center gap-1.5 ${CARD_BOX_MODEL.metadataRow.marginTop.className} overflow-hidden`}>
       {isPreview ? (
         effectiveStatus && (
           <div className="flex-shrink-0">
