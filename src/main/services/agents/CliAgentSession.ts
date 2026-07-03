@@ -12,12 +12,14 @@ import { generateClaudeCodeHookSettings, cleanupClaudeCodeHookSettings } from '.
 import { hookEventToActivity, type HookEvent } from './hookServer';
 import { getCleanEnv } from '../streaming/envUtils';
 import { BaseAgentSession } from './BaseAgentSession';
+import { deriveReviewOutcome } from './reviewOutputContract';
 import type {
   IAgentSession,
   AgentType,
   AgentSessionRole,
   AgentQuestion,
   AgentCompletionSummary,
+  AgentTurnResult,
 } from '../../../shared/agent-types';
 
 const LOG_PREFIX = '[CliAgentSession]';
@@ -107,9 +109,20 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
   }
 
   /**
-   * Called by the hook server when this session receives a hook event.
+   * Capability hook consumed by `AgentSessionManager.handleHookEvent` — hooks
+   * are a CLI-only concept, so this is the seam the manager dispatches
+   * through instead of checking `instanceof CliAgentSession`.
    */
-  handleHookEvent(hookEvent: HookEvent): void {
+  acceptHookEvent(event: unknown): boolean {
+    this.handleHookEvent(event as HookEvent);
+    return true;
+  }
+
+  /**
+   * Called by the hook server (via `acceptHookEvent`) when this session
+   * receives a hook event.
+   */
+  private handleHookEvent(hookEvent: HookEvent): void {
     // Map stop event to completion
     if (hookEvent.event === 'stop') {
       if (this._state === 'working') {
@@ -209,8 +222,22 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
     return this.lastAssistantMessage || this.outputBuffer;
   }
 
-  getFinalOutput(): string | null {
+  private getFinalOutput(): string | null {
     return this.getOutput() || null;
+  }
+
+  getResult(): AgentTurnResult {
+    const finalText = this.getFinalOutput();
+    if (this.role !== 'review') {
+      return { finalText };
+    }
+
+    const outcome = deriveReviewOutcome(finalText, this.agentType);
+    return {
+      finalText,
+      review: 'findings' in outcome ? { findings: outcome.findings! } : { error: outcome.error! },
+      reviewRawOutput: outcome.rawOutput,
+    };
   }
 
   // ===========================================================================

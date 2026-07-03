@@ -17,12 +17,14 @@ import {
 import { isInitMessage, isSessionStateChanged } from '../../claude/sdkTypeGuards';
 import { BaseAgentSession } from './BaseAgentSession';
 import { getConfig } from '../../config';
+import { deriveReviewOutcome } from './reviewOutputContract';
 import type {
   IAgentSession,
   AgentType,
   AgentSessionState,
   AgentSessionRole,
   AgentCompletionSummary,
+  AgentTurnResult,
 } from '../../../shared/agent-types';
 
 // =============================================================================
@@ -173,11 +175,25 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
   }
 
   /** The most recent non-empty assistant text, used to extract review findings. */
-  getFinalOutput(): string | null {
+  private getFinalOutput(): string | null {
     const latestMessage = [...this._activities]
       .reverse()
       .find((activity) => activity.type === 'message' && typeof activity.content === 'string' && activity.content.trim().length > 0);
     return latestMessage?.content ?? null;
+  }
+
+  getResult(): AgentTurnResult {
+    const finalText = this.getFinalOutput();
+    if (this.role !== 'review') {
+      return { finalText };
+    }
+
+    const outcome = deriveReviewOutcome(finalText, this.agentType);
+    return {
+      finalText,
+      review: 'findings' in outcome ? { findings: outcome.findings! } : { error: outcome.error! },
+      reviewRawOutput: outcome.rawOutput,
+    };
   }
 
   // ===========================================================================

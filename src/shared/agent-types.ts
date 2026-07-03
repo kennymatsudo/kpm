@@ -100,6 +100,30 @@ export interface ReviewFinding {
   source: 'agent' | 'pr';
 }
 
+/**
+ * Outcome of a review-role turn, already classified against the shared
+ * review-output contract (see `main/services/agents/reviewOutputContract.ts`).
+ * Absent entirely for implement-role turns.
+ */
+export type AgentReviewOutcome =
+  | { findings: ReviewFinding[] }
+  | { error: string };
+
+/**
+ * What an agent session produced at the end of a turn. Every adapter
+ * (`ClaudeSdkSession`, `CodexSdkAgentSession`, `CliAgentSession`) parses its
+ * own final output into this shape — the session manager consumes it without
+ * knowing how any backend represents review findings internally.
+ */
+export interface AgentTurnResult {
+  /** The agent's most recent non-empty output text, if any. */
+  finalText: string | null;
+  /** Present only when `role === 'review'`. */
+  review?: AgentReviewOutcome;
+  /** Raw text the review outcome was derived from — kept for audit/persistence even on failure. */
+  reviewRawOutput?: string | null;
+}
+
 /** Latest persisted opposing-agent review for an implementation session. */
 export interface PersistedAgentReview {
   id: string;
@@ -172,13 +196,24 @@ export interface IAgentSession {
   followUp(text: string): Promise<void>;
   /** Stop the agent */
   stop(): Promise<void>;
-  /** The agent's most recent output text, if any — used to extract review findings. */
-  getFinalOutput(): string | null;
+  /**
+   * The agent's turn result — final output text, plus parsed review findings
+   * when `role === 'review'`. Each adapter owns parsing its own output shape
+   * into this contract; the session manager only reads it.
+   */
+  getResult(): AgentTurnResult;
 
   on<K extends keyof AgentSessionEvents>(event: K, handler: AgentSessionEvents[K]): void;
   off<K extends keyof AgentSessionEvents>(event: K, handler: AgentSessionEvents[K]): void;
   /** Remove every registered handler in one go — used when the session is being evicted. */
   clearHandlers(): void;
+
+  /**
+   * Capability hook for backends that receive out-of-band hook events (CLI
+   * agents via the hook server). Returns true if this session accepted the
+   * event. Absent on backends that have no concept of hooks.
+   */
+  acceptHookEvent?(event: unknown): boolean;
 }
 
 // =============================================================================

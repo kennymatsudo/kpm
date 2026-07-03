@@ -15,6 +15,7 @@ import type {
   AgentQuestion,
   AgentCompletionSummary,
   AgentSessionUsage,
+  AgentTurnResult,
   ReviewFinding,
   IAgentSession,
 } from '../../../shared/agent-types';
@@ -23,7 +24,6 @@ import { ClaudeSdkSession } from './ClaudeSdkSession';
 import { CliAgentSession } from './CliAgentSession';
 import { CodexSdkAgentSession } from './CodexSdkAgentSession';
 import type { HookEvent } from './hookServer';
-import { parseReviewFindings } from './autoReview';
 import { getConfig } from '../../config';
 
 // =============================================================================
@@ -357,11 +357,9 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     });
 
     agentSession.on('onComplete', (summary: AgentCompletionSummary) => {
-      const reviewOutput = agentSession.role === 'review'
-        ? parseReviewOutput(agentSession)
-        : null;
-      const findings = reviewOutput?.findings;
-      const reviewError = reviewOutput?.error;
+      const result = agentSession.getResult();
+      const findings = result.review && 'findings' in result.review ? result.review.findings : undefined;
+      const reviewError = result.review && 'error' in result.review ? result.review.error : undefined;
 
       if (agentSession.role === 'review' && findings) {
         const implementationSessionId = toImplSessionId(devSessionId);
@@ -371,13 +369,13 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
             reviewSessionId: devSessionId,
             reviewerAgent: agentSession.agentType,
             findings,
-            rawOutput: reviewOutput.rawOutput,
+            rawOutput: result.reviewRawOutput ?? null,
           })
         ).catch((error) => {
           console.error(`${LOG_PREFIX} Failed to persist review result for ${devSessionId}:`, error);
         });
       } else if (agentSession.role === 'review' && reviewError) {
-        persistReviewFailureOnce(agentSession, reviewError, reviewOutput?.rawOutput ?? null);
+        persistReviewFailureOnce(agentSession, reviewError, result.reviewRawOutput ?? null);
         broadcast('agent-session:error', {
           sessionId: agentSession.id,
           devSessionId,
@@ -408,7 +406,8 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
 
     agentSession.on('onError', (error: string) => {
       if (agentSession.role === 'review') {
-        persistReviewFailureOnce(agentSession, error, extractReviewOutput(agentSession));
+        const result: AgentTurnResult = agentSession.getResult();
+        persistReviewFailureOnce(agentSession, error, result.reviewRawOutput ?? result.finalText ?? null);
       }
 
       broadcast('agent-session:error', {
@@ -470,42 +469,15 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     });
   }
 
-  function parseReviewOutput(agentSession: IAgentSession): {
-    findings?: ReviewFinding[];
-    rawOutput: string | null;
-    error?: string;
-  } {
-    const output = extractReviewOutput(agentSession);
-
-    if (!output?.trim()) {
-      return {
-        rawOutput: output,
-        error: 'Review agent completed without findings output',
-      };
-    }
-
-    const findings = parseReviewFindings(output, agentSession.agentType);
-    if (!findings) {
-      return {
-        rawOutput: output,
-        error: 'Review agent returned output that did not match the required findings JSON schema',
-      };
-    }
-
-    return { findings, rawOutput: output };
-  }
-
-  function extractReviewOutput(agentSession: IAgentSession): string | null {
-    return agentSession.getFinalOutput();
-  }
-
   // ===========================================================================
   // Public API
   // ===========================================================================
 
   /**
-   * Dispatch a hook event to the appropriate CLI agent session.
-   * Called by the hook server when it receives a POST.
+   * Dispatch a hook event to the tracked session, if it accepts hook events.
+   * Called by the hook server when it receives a POST. Hooks are a CLI-only
+   * concept — sessions that don't implement `acceptHookEvent` silently ignore
+   * this rather than the manager needing to know which backend that is.
    */
   function handleHookEvent(sessionId: string, hookEvent: HookEvent): void {
     const tracked = sessions.get(sessionId);
@@ -513,9 +485,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
       console.warn(`${LOG_PREFIX} Hook event for unknown session: ${sessionId}`);
       return;
     }
-    if (tracked.agentSession instanceof CliAgentSession) {
-      tracked.agentSession.handleHookEvent(hookEvent);
-    }
+    tracked.agentSession.acceptHookEvent?.(hookEvent);
   }
 
   /** Update the hook port (called after hook server starts) */

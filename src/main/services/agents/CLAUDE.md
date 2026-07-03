@@ -174,7 +174,8 @@ If a session was destroyed rather than stopped, the old worktree is gone and KPM
 |------|---------|
 | `src/shared/agent-types.ts` | shared types + `toReviewSessionId` / `toImplSessionId` helpers |
 | `src/main/services/agents/AgentSessionManager.ts` | session registry, event wiring, review persistence, 30 min TTL eviction |
-| `src/main/services/agents/autoReview.ts` | one-shot opposing review launch + findings parsing; accepts `baseBranch` |
+| `src/main/services/agents/autoReview.ts` | one-shot opposing review launch; accepts `baseBranch` |
+| `src/main/services/agents/reviewOutputContract.ts` | `REVIEW_FINDINGS_SCHEMA`, `parseReviewFindings`, `deriveReviewOutcome` — the shared review-output contract every adapter's `getResult()` parses through |
 | `src/main/services/agents/BoardAgentOrchestrator.ts` | automation state machine: implement → review → address → ready |
 | `src/main/services/repo/DevSessionService.ts` | session lifecycle; composes `devSessionPrompt.ts` (`buildAgentContext`, `buildBoardStartInstructions`), `worktreeScaffold.ts`, `devSessionGitInspection.ts` |
 | `src/main/services/repo/devSessionPrompt.ts` | `buildAgentContext` (renders Intent / Acceptance Criteria / Context prompt), `buildBoardStartInstructions`, board model/effort/SDK-settings resolution — re-exported from `DevSessionService.ts` |

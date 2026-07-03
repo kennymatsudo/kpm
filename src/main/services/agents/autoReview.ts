@@ -15,7 +15,7 @@ import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import { getConfig } from '../../config';
 import { getDiff, gitExec } from '../repo/gitUtils';
-import type { AgentType, ReviewFinding } from '../../../shared/agent-types';
+import type { AgentType } from '../../../shared/agent-types';
 import { toReviewSessionId } from '../../../shared/agent-types';
 import { getReviewOpponent, isAgentAvailable } from './agentCatalog';
 import { hasCodexAuth } from '../../codex/auth';
@@ -23,35 +23,9 @@ import type { AgentSessionManager } from './AgentSessionManager';
 
 const LOG_PREFIX = '[AutoReview]';
 
-export const REVIEW_FINDINGS_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['findings'],
-  properties: {
-    findings: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['severity', 'file', 'line', 'description'],
-        properties: {
-          severity: {
-            type: 'string',
-            enum: ['critical', 'warning', 'suggestion'],
-          },
-          file: { type: 'string' },
-          line: {
-            type: ['integer', 'null'],
-          },
-          description: { type: 'string' },
-        },
-      },
-    },
-  },
-} as const;
-
 // Static output format appended to every review prompt regardless of user customizations.
-// parseReviewFindings() depends on this exact shape — do not make it user-editable.
+// parseReviewFindings() (see reviewOutputContract.ts) depends on this exact shape —
+// do not make it user-editable.
 const REVIEW_OUTPUT_FORMAT = `Return ONLY a JSON object with this shape:
 - findings: an array of finding objects
 
@@ -222,79 +196,6 @@ async function isReviewAgentAvailable(agentType: AgentType): Promise<boolean> {
     return hasCodexAuth();
   }
   return isAgentAvailable(agentType);
-}
-
-function extractJsonCandidate(output: string): string | null {
-  const trimmed = output.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  if (trimmed.startsWith('```')) {
-    const unfenced = trimmed.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-    if (unfenced) {
-      return unfenced;
-    }
-  }
-
-  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-    return trimmed;
-  }
-
-  const objectStart = trimmed.indexOf('{');
-  const objectEnd = trimmed.lastIndexOf('}');
-  if (objectStart >= 0 && objectEnd > objectStart) {
-    return trimmed.slice(objectStart, objectEnd + 1);
-  }
-
-  const arrayStart = trimmed.indexOf('[');
-  const arrayEnd = trimmed.lastIndexOf(']');
-  if (arrayStart >= 0 && arrayEnd > arrayStart) {
-    return trimmed.slice(arrayStart, arrayEnd + 1);
-  }
-
-  return trimmed.startsWith('{') || trimmed.startsWith('[') ? trimmed : null;
-}
-
-/**
- * Parse review findings from agent output text.
- * Returns null when the output does not contain valid findings JSON.
- */
-export function parseReviewFindings(output: string, reviewerAgent: AgentType): ReviewFinding[] | null {
-  const cleaned = extractJsonCandidate(output);
-  if (!cleaned) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(cleaned);
-    const findings = Array.isArray(parsed)
-      ? parsed
-      : (
-        parsed
-        && typeof parsed === 'object'
-        && Array.isArray((parsed as { findings?: unknown }).findings)
-          ? (parsed as { findings: unknown[] }).findings
-          : null
-      );
-    if (!findings) return null;
-
-    return findings
-      .filter((f: Record<string, unknown>) => f && typeof f.description === 'string')
-      .map((f: Record<string, unknown>) => ({
-        severity: (['critical', 'warning', 'suggestion'].includes(f.severity as string)
-          ? f.severity
-          : 'suggestion') as ReviewFinding['severity'],
-        file: typeof f.file === 'string' ? f.file : '',
-        line: typeof f.line === 'number' ? f.line : undefined,
-        description: String(f.description),
-        agent: reviewerAgent,
-        source: 'agent' as const,
-      }));
-  } catch {
-    console.warn(`${LOG_PREFIX} Failed to parse review findings:`, cleaned.slice(0, 200));
-    return null;
-  }
 }
 
 /**
