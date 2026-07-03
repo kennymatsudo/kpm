@@ -176,7 +176,8 @@ If a session was destroyed rather than stopped, the old worktree is gone and KPM
 | `src/main/services/agents/AgentSessionManager.ts` | session registry, event wiring, review persistence, 30 min TTL eviction |
 | `src/main/services/agents/autoReview.ts` | one-shot opposing review launch + findings parsing; accepts `baseBranch` |
 | `src/main/services/agents/BoardAgentOrchestrator.ts` | automation state machine: implement → review → address → ready |
-| `src/main/services/repo/DevSessionService.ts` | session lifecycle + `buildAgentContext` (renders Intent / Acceptance Criteria / Context prompt), board launch prompt assembly (`buildBoardStartInstructions`, `buildPlanRefSection`) |
+| `src/main/services/repo/DevSessionService.ts` | session lifecycle; composes `devSessionPrompt.ts` (`buildAgentContext`, `buildBoardStartInstructions`), `worktreeScaffold.ts`, `devSessionGitInspection.ts` |
+| `src/main/services/repo/devSessionPrompt.ts` | `buildAgentContext` (renders Intent / Acceptance Criteria / Context prompt), `buildBoardStartInstructions`, board model/effort/SDK-settings resolution — re-exported from `DevSessionService.ts` |
 | `src/renderer/stores/devSessions/` | sliced renderer store: lifecycleSlice, prSlice, reviewSlice, background commit state, persisted review rehydration |
 
 ## Review Session ID
@@ -193,7 +194,7 @@ The review session ID is always `toReviewSessionId(implSessionId)` from `shared/
 
 ## Agent Prompt Shape
 
-`buildAgentContext` (`src/main/services/repo/DevSessionService.ts`, takes an `AgentContextInput` with `item`/`project`/`children`/`parent`) chooses prompt sections based on what the plan item carries:
+`buildAgentContext` (`src/main/services/repo/devSessionPrompt.ts`, re-exported from `DevSessionService.ts`; takes an `AgentContextInput` with `item`/`project`/`children`/`parent`) chooses prompt sections based on what the plan item carries:
 
 - `## Intent` — rendered when `item.intent` is set.
 - `## Acceptance Criteria` — rendered when `item.acceptance_criteria` has entries; each becomes a `- [ ]` checkbox line.
