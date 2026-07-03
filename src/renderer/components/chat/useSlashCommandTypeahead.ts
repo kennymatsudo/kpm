@@ -3,15 +3,22 @@ import { useShallow } from 'zustand/react/shallow';
 import { useChatStore } from '../../stores';
 import type { SlashCommandInfo } from '../../../shared/types';
 
-/** The current line (up to the cursor) is a slash token ('/', '/par', '/git:com') — no arguments yet. */
+/** The token before the cursor is a slash token ('/', '/par', '/git:com') — no arguments yet. */
 const TRIGGER_PATTERN = /^\/([A-Za-z0-9_:-]*)$/;
 
 /** A complete known-command token followed by whitespace only — arguments not typed yet. */
 const PENDING_ARGS_PATTERN = /^\/([A-Za-z0-9_:-]+)\s+$/;
 
-/** Start of the line containing `cursorPosition` (0 if it's the first line). */
-function lineStartFor(message: string, cursorPosition: number): number {
-  return message.lastIndexOf('\n', cursorPosition - 1) + 1;
+/**
+ * Start of the slash token ending at `cursorPosition`: the nearest `/` that
+ * begins the message or follows whitespace. Null when there is no such token —
+ * a `/` glued to preceding text (`src/main`, `10/2`) never starts one.
+ */
+function tokenStartFor(message: string, cursorPosition: number): number | null {
+  const slashIndex = message.lastIndexOf('/', cursorPosition - 1);
+  if (slashIndex === -1) return null;
+  if (slashIndex > 0 && !/\s/.test(message[slashIndex - 1])) return null;
+  return slashIndex;
 }
 
 function filterCommands(commands: SlashCommandInfo[], query: string): SlashCommandInfo[] {
@@ -45,13 +52,14 @@ export interface SlashCommandTypeahead {
 /**
  * Typeahead state for user slash commands in the chat composer.
  *
- * The menu opens when the current line (up to the cursor) is a leading slash
- * token, filters as the user types, and closes the moment arguments begin
- * (first space) or the trigger breaks. This works on any line of the draft,
- * not just the first — a command can follow other text or sit on its own
- * line. Escape dismisses for the current token only; deleting back past the
- * slash re-arms it. The menu never blocks typing: with zero matches it hides
- * and Enter falls through to the normal send path.
+ * The menu opens when the token before the cursor is a slash token — one
+ * whose `/` starts the message or follows whitespace — filters as the user
+ * types, and closes the moment arguments begin (first space) or the trigger
+ * breaks. This works anywhere in the draft, including mid-sentence; slashes
+ * glued to other text (file paths, fractions) never trigger. Escape dismisses
+ * for the current token only; deleting back past the slash re-arms it. The
+ * menu never blocks typing: with zero matches it hides and Enter falls
+ * through to the normal send path.
  */
 export function useSlashCommandTypeahead(
   message: string,
@@ -70,13 +78,14 @@ export function useSlashCommandTypeahead(
   const [highlightIndex, setHighlightIndex] = useState(0);
   const pendingCaretRef = useRef<number | null>(null);
 
-  // Only the typed line, up to the caret, counts — trailing text on the same
-  // line (from clicking mid-line) blocks the trigger, same as before.
-  const lineStart = lineStartFor(message, cursorPosition);
-  const linePrefix = message.slice(lineStart, cursorPosition);
-  const atLineEnd = cursorPosition === message.length || message[cursorPosition] === '\n';
+  // Only the token being typed, up to the caret, counts. The caret must also
+  // sit at a word boundary — clicking into the middle of a word ('/re|v')
+  // stays quiet.
+  const tokenStart = tokenStartFor(message, cursorPosition);
+  const tokenPrefix = tokenStart === null ? '' : message.slice(tokenStart, cursorPosition);
+  const atTokenBoundary = cursorPosition === message.length || /\s/.test(message[cursorPosition]);
 
-  const triggerMatch = enabled && atLineEnd ? TRIGGER_PATTERN.exec(linePrefix) : null;
+  const triggerMatch = enabled && atTokenBoundary ? TRIGGER_PATTERN.exec(tokenPrefix) : null;
   const query = triggerMatch ? triggerMatch[1] : null;
   const inTrigger = query !== null;
 
@@ -110,13 +119,18 @@ export function useSlashCommandTypeahead(
   }, [message, textareaRef]);
 
   const accept = useCallback((command: SlashCommandInfo) => {
+    if (tokenStart === null) return;
     const insertion = `/${command.name} `;
-    const nextMessage = message.slice(0, lineStart) + insertion + message.slice(cursorPosition);
-    const caret = lineStart + insertion.length;
+    // Consume one existing space after the caret so accepting mid-sentence
+    // doesn't leave a double space before the rest of the text.
+    const rest = message.slice(cursorPosition);
+    const tail = rest.startsWith(' ') ? rest.slice(1) : rest;
+    const nextMessage = message.slice(0, tokenStart) + insertion + tail;
+    const caret = tokenStart + insertion.length;
     pendingCaretRef.current = caret;
     setMessage(nextMessage);
     setCursorPosition(caret);
-  }, [message, lineStart, cursorPosition, setMessage, setCursorPosition]);
+  }, [message, tokenStart, cursorPosition, setMessage, setCursorPosition]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if (!isOpen && !showEmptyState) return false;
@@ -148,7 +162,7 @@ export function useSlashCommandTypeahead(
     return false;
   }, [isOpen, showEmptyState, matches, highlightIndex, accept]);
 
-  const pendingMatch = enabled && atLineEnd ? PENDING_ARGS_PATTERN.exec(linePrefix) : null;
+  const pendingMatch = enabled && atTokenBoundary ? PENDING_ARGS_PATTERN.exec(tokenPrefix) : null;
   const pendingHint = pendingMatch
     ? slashCommands.find((command) => command.name === pendingMatch[1]) ?? null
     : null;

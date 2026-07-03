@@ -130,8 +130,8 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   // Persist any pending edit if the composer unmounts (e.g., view switch).
   useEffect(() => () => flushDraft(), [flushDraft]);
 
-  // Tracks the caret so the slash-command typeahead can trigger on whichever
-  // line the user is editing, not just the start of the draft.
+  // Tracks the caret so the slash-command typeahead can trigger wherever the
+  // user is typing, not just the start of the draft.
   const handleSelectionChange = useCallback((e: SyntheticEvent<HTMLTextAreaElement>) => {
     setCursorPosition(e.currentTarget.selectionStart);
   }, []);
