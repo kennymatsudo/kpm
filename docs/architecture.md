@@ -462,6 +462,7 @@ KPM uses the Claude Agent SDK for Claude chat/dev sessions, the Codex SDK for Co
 - `src/main/claude/tools/git-read.ts` - `git_read` tool: read-only git against a connected repo via `execFile` (no shell) — the only git path from chat
 - `src/main/claude/contextRefs.ts` - Expand plan refs into agent context
 - `src/main/documents/planRefResolver.ts` - Pure resolver (renderer + main)
+- `src/main/documents/exportBoundary.ts` - `toExternalMarkdown` choke point for external destinations (branded `ExternalMarkdown`)
 - `src/main/claude/streaming/` - Streaming session classes
 - `src/main/claude/prompts/` - System prompt modules
 - `src/main/services/streaming/StreamingSessionService.ts` - Main chat session management
@@ -509,6 +510,6 @@ Markdown surfaces (descriptions, intents, acceptance criteria, chat, documents) 
 - **Agent context:** `formatPlanRefSection` (`src/main/claude/contextRefs.ts`) expands refs into agent prompts so agents see resolved title/status/etc. without a tool call. `DevSessionService.buildPlanRefSection` prepends a `<plan-refs>` block to board agent launch prompts.
 - **Tools:** `plan-refs.ts` exposes `extract_plan_items_from_doc` so Claude can lift refs out of a project file by path.
 - **Validation:** `PlanActionService` rejects `create_item` / `update_item` actions whose text contains unresolved refs.
-- **Export boundary:** `src/main/documents/planRefResolver.ts` rewrites refs to native syntax at every export — Jira ADF (`markdown-to-adf.ts`), Linear (`ExportService`), Confluence (`ConfluenceSyncService`), GitHub (`GitHubService`). Refs never leak to external trackers.
+- **Export boundary:** `toExternalMarkdown` (`src/main/documents/exportBoundary.ts`) rewrites refs to native syntax at every external export — Jira/Linear (`ExportService`, before the codec converts markdown), Confluence (`ConfluenceSyncService`), GitHub (`GitHubService`). Its branded `ExternalMarkdown` return type is what tracker write payloads require, so an unresolved description is a compile error. Refs never leak to external trackers.
 
 See `src/renderer/CLAUDE.md` for z-index hierarchy and renderer conventions.

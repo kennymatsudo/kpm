@@ -39,7 +39,7 @@ Each is tied to a principle. Breaking one breaks the cockpit's safety guarantees
 
 - **Claude proposes, user configures disposal (P8).** Plan-mutating tools emit `PlanAction[]` via the `onPlanActions` callback. KPM either queues them for review or auto-applies them based on the user's global setting. No tool writes to the DB directly.
 - **Plans live in SQLite, not in repos (P4).** Plan data does not live as files inside connected repos. No `.kpm/` folders, no committed plan exports.
-- **Translate at every export boundary (P6).** Jira, Linear, Confluence, and GitHub payloads must pass through `src/main/documents/planRefResolver.ts`. `@plan/<uuid>`, `intent`, `acceptance_criteria`, and `source_document_id` are local-only.
+- **Translate at every export boundary (P6).** Jira, Linear, Confluence, and GitHub payloads must pass through `toExternalMarkdown` in `src/main/documents/exportBoundary.ts` — its branded `ExternalMarkdown` return type is what tracker write payloads require, so skipping it is a compile error. `@plan/<uuid>`, `intent`, `acceptance_criteria`, and `source_document_id` are local-only.
 - **Chat reads, agents write (P7).** Repos are read-only in chat. Writes are scoped to isolated worktrees during board agent execution.
 - **Single user (P1).** No seats, no permissions, no shared state, no conflict-resolution UI.
 - **Sync is on-demand (P10).** No live feeds. Inbound queues for triage; outbound drafts for review.
@@ -94,7 +94,7 @@ Every invoke domain is on the endpoint registry (tracker, fileExplorer, repoFile
 
 **Touch `@plan/<uuid>` flow**
 - Parser: `src/shared/planRefs.ts`
-- Export-boundary resolver: `src/main/documents/planRefResolver.ts` (called by every export site)
+- Export boundary: `src/main/documents/exportBoundary.ts` (`toExternalMarkdown`, called by every external export site; wraps the pure resolver in `planRefResolver.ts`, which only the on-disk `shared-doc` form calls directly)
 - Agent-context expansion: `src/main/claude/contextRefs.ts`
 - `PlanActionService` rejects unresolved refs
 

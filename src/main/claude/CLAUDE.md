@@ -167,7 +167,7 @@ The `currentView` parameter ('plan' | 'workspace') adds context-aware suggestion
 
 ## Plan References (`@plan/<uuid>`)
 
-Descriptions, intents, and acceptance criteria may contain `@plan/<uuid>` tokens. Iteration-doc filenames and other ad-hoc references must not appear in fields that sync to external trackers, but `@plan/<uuid>` is the **sanctioned exception**: it gets rewritten to native syntax (Jira ADF, Linear ref, Confluence link, GitHub markdown) at every export boundary by `src/main/documents/planRefResolver.ts`.
+Descriptions, intents, and acceptance criteria may contain `@plan/<uuid>` tokens. Iteration-doc filenames and other ad-hoc references must not appear in fields that sync to external trackers, but `@plan/<uuid>` is the **sanctioned exception**: it gets rewritten to native syntax (Jira ADF, Linear ref, Confluence link, GitHub markdown) at every export boundary by `toExternalMarkdown` in `src/main/documents/exportBoundary.ts`.
 
 `PlanActionService` rejects `create_item` / `update_item` actions whose text contains unresolved refs. `DevSessionService` prepends a `<plan-refs>` block via `formatPlanRefSection` so agents see resolved ref state without a tool call. The pure parser/expander lives in `src/shared/planRefs.ts`.
 
