@@ -1,20 +1,15 @@
 import type { ChatService } from '../../services/core/ChatService';
 import type { SlashCommandService } from '../../services/core/SlashCommandService';
 import { chatEndpoints, type ChatEndpointName } from '../../../shared/ipc/chatEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import { ChatSchemas, StreamingSessionSchemas } from '../validation';
 import { createRegistryIpcHandlers } from '../validation/utils';
-
-type ChatHandler<K extends ChatEndpointName> = (
-  params: EndpointPayload<(typeof chatEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => Promise<unknown>;
 
 /**
  * One handler per `chatEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type ChatHandlers = { [K in ChatEndpointName]: ChatHandler<K> };
+type ChatHandlers = { [K in ChatEndpointName]: UnwrappedHandlerFor<typeof chatEndpoints, K> };
 
 function buildChatHandlers(chatService: ChatService, slashCommandService: SlashCommandService): ChatHandlers {
   return {

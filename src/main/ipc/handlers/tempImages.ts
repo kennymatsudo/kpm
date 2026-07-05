@@ -8,19 +8,14 @@
 import { ipcMain } from 'electron';
 import * as TempImageService from '../../services/files/TempImageService';
 import { tempImageEndpoints, type TempImageEndpointName } from '../../../shared/ipc/tempImageEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import { TempImageSchemas } from '../validation';
-
-type TempImageHandler<K extends TempImageEndpointName> = (
-  params: EndpointPayload<(typeof tempImageEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => Promise<unknown>;
 
 /**
  * One handler per `tempImageEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type TempImageHandlers = { [K in TempImageEndpointName]: TempImageHandler<K> };
+type TempImageHandlers = { [K in TempImageEndpointName]: HandlerFor<typeof tempImageEndpoints, K> };
 
 function buildTempImageHandlers(): TempImageHandlers {
   return {

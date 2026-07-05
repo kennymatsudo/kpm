@@ -8,18 +8,16 @@
 import type { TaskPromptTemplateService } from '../../services/core/TaskPromptTemplateService';
 import { createRegistryIpcHandlers } from '../validation/utils';
 import { taskPromptTemplateEndpoints, type TaskPromptTemplateEndpointName } from '../../../shared/ipc/taskPromptTemplateEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
-
-type TaskPromptTemplateHandler<K extends TaskPromptTemplateEndpointName> = (
-  params: EndpointPayload<(typeof taskPromptTemplateEndpoints)[K]>
-) => unknown;
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 
 /**
  * One handler per `taskPromptTemplateEndpoints` entry. A registry entry
  * without a matching key here is a compile error, not a runtime "no
  * handler" failure.
  */
-type TaskPromptTemplateHandlers = { [K in TaskPromptTemplateEndpointName]: TaskPromptTemplateHandler<K> };
+type TaskPromptTemplateHandlers = {
+  [K in TaskPromptTemplateEndpointName]: UnwrappedHandlerFor<typeof taskPromptTemplateEndpoints, K>;
+};
 
 function buildTaskPromptTemplateHandlers(
   taskPromptTemplateService: TaskPromptTemplateService,

@@ -7,14 +7,18 @@
  */
 
 import { z } from 'zod';
-import type { EndpointDefinition } from './endpoints';
+import { resultOf, type EndpointDefinition } from './endpoints';
 import { uuid } from './sharedSchemas';
+import type { Group } from '../base-types';
+
+/** Standard `{success, error?}` envelope used by hand-rolled group handlers (see `main/ipc/response.ts`'s `toIpcResponse`). */
+type GroupIpcResponse = { success: true } | { success: false; error: string };
 
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Must be a valid hex color');
 
 export const groupEndpoints = {
-  list: { channel: 'group:list', params: z.object({ projectId: uuid }) },
-  get: { channel: 'group:get', params: z.object({ id: uuid }) },
+  list: { channel: 'group:list', params: z.object({ projectId: uuid }), result: resultOf<Group[]>() },
+  get: { channel: 'group:get', params: z.object({ id: uuid }), result: resultOf<Group | undefined>() },
   create: {
     channel: 'group:create',
     params: z.object({
@@ -26,6 +30,7 @@ export const groupEndpoints = {
       width: z.number().optional().default(552),
       height: z.number().optional().default(300),
     }),
+    result: resultOf<Group>(),
   },
   update: {
     channel: 'group:update',
@@ -43,19 +48,23 @@ export const groupEndpoints = {
         })
         .refine((u) => Object.keys(u).length > 0, 'At least one field required'),
     }),
+    result: resultOf<GroupIpcResponse>(),
   },
-  delete: { channel: 'group:delete', params: z.object({ id: uuid }) },
+  delete: { channel: 'group:delete', params: z.object({ id: uuid }), result: resultOf<GroupIpcResponse>() },
   updatePosition: {
     channel: 'group:update-position',
     params: z.object({ id: uuid, x: z.number(), y: z.number() }),
+    result: resultOf<GroupIpcResponse>(),
   },
   updateSize: {
     channel: 'group:update-size',
     params: z.object({ id: uuid, width: z.number().min(100), height: z.number().min(100) }),
+    result: resultOf<GroupIpcResponse>(),
   },
   assignItem: {
     channel: 'group:assign-item',
     params: z.object({ itemId: uuid, groupId: uuid.nullable() }),
+    result: resultOf<GroupIpcResponse>(),
   },
 } satisfies Record<string, EndpointDefinition>;
 

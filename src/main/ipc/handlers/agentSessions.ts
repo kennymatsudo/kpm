@@ -18,19 +18,35 @@ import { getConfig } from '../../config';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import { toReviewSessionId } from '../../../shared/agent-types';
 import { agentSessionEndpoints, type AgentSessionEndpointName } from '../../../shared/ipc/agentSessionEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import { createRegistryIpcHandlers } from '../validation/utils';
-
-type AgentSessionHandler<K extends AgentSessionEndpointName> = (
-  params: EndpointPayload<(typeof agentSessionEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => unknown;
 
 /**
  * One handler per `agentSessionEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
+ *
+ * `commit` is excluded from the `UnwrappedHandlerFor` mapping: unlike every
+ * other entry, its handler returns the bare unwrapped data (`{sha}`) on
+ * success but its OWN full `{success: false, ...}` envelope on failure
+ * instead of throwing (see body below). `createRegistryIpcHandlers` spreads
+ * whatever the handler returns over `{success: true}`, so on the failure
+ * path the spread's `success: false` wins over the wrapper's `success: true`
+ * — the wire result matches either way, but the handler's own return type
+ * mixes unwrapped data and full-envelope shapes per branch, which no single
+ * `HandlerFor`/`UnwrappedHandlerFor` mapping expresses; it's typed directly
+ * against that mixed union instead.
  */
-type AgentSessionHandlers = { [K in AgentSessionEndpointName]: AgentSessionHandler<K> };
+type AgentSessionHandlers = {
+  [K in AgentSessionEndpointName]: K extends 'commit'
+    ? (
+        params: Parameters<UnwrappedHandlerFor<typeof agentSessionEndpoints, K>>[0],
+        event: Electron.IpcMainInvokeEvent
+      ) =>
+        | { sha: string }
+        | { success: false; error: string; repairStarted?: true }
+        | Promise<{ sha: string } | { success: false; error: string; repairStarted?: true }>
+    : UnwrappedHandlerFor<typeof agentSessionEndpoints, K>;
+};
 
 function buildAgentSessionHandlers(
   agentSessionManager: AgentSessionManager,

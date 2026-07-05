@@ -66,7 +66,7 @@ interface ExportState {
 
   // Queue actions
   loadQueue: (projectId: string) => Promise<void>;
-  addToQueue: (projectId: string, itemIds: string[]) => Promise<{ success: boolean; added?: number; skipped?: number; error?: string }>;
+  addToQueue: (projectId: string, itemIds: string[]) => Promise<{ success: boolean; queued?: string[]; skipped?: { id: string; reason: string }[]; error?: string }>;
   addToQueueWithStatus: (projectId: string, itemIds: string[], statusCategory: StatusCategory) => Promise<{ success: boolean; error?: string }>;
   removeFromQueue: (queueEntryId: string) => Promise<void>;
   updateQueueCustomFieldOverrides: (queueEntryId: string, overrides: CustomFieldValues | null) => Promise<void>;
@@ -125,7 +125,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
     set({ isLoadingQueue: true, error: null });
     try {
       const result = await getTrackerExportQueue(projectId);
-      if (result.success && result.entries) {
+      if (result.success) {
         const itemIds = new Set<string>(result.entries.map((entry: SyncQueueEntryWithPlanItem) => entry.plan_item_id));
         set({
           queueEntries: result.entries,
@@ -149,7 +149,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
       const result = await addTrackerExportQueue(projectId, itemIds);
       if (result.success) {
         await get().loadQueue(projectId);
-        return { success: true, added: result.added, skipped: result.skipped };
+        return { success: true, queued: result.queued, skipped: result.skipped };
       }
       return { success: false, error: result.error };
     } catch (e) {
@@ -265,7 +265,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
     set({ isLoadingMappings: true, error: null });
     try {
       const result = await getTrackerTypeMappings(projectId);
-      if (result.success && result.mappings) {
+      if (result.success) {
         set({ typeMappings: result.mappings });
       } else {
         set({ error: result.error || 'Failed to load mappings' });
@@ -281,7 +281,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
     set({ isLoadingMappings: true, error: null });
     try {
       const result = await getTrackerTypeMappingsByScope(projectId, scopeId);
-      if (result.success && result.mappings) {
+      if (result.success) {
         set({ typeMappings: result.mappings });
       } else {
         set({ error: result.error || 'Failed to load mappings' });
@@ -344,7 +344,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
     set({ isExporting: true, exportPreview: null, exportResult: null, error: null });
     try {
       const result = await getTrackerExportPreview(projectId, associationId);
-      if (result.success && result.preview) {
+      if (result.success) {
         set({ exportPreview: result.preview });
       } else {
         set({ error: result.error || 'Failed to load export preview' });

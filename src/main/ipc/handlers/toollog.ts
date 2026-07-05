@@ -1,18 +1,13 @@
 import { toolLogEndpoints, type ToolLogEndpointName } from '../../../shared/ipc/toolLogEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { ToolCallLogger } from '../../services/toollog';
 import { createRegistryIpcHandlers } from '../validation/utils';
-
-type ToolLogHandler<K extends ToolLogEndpointName> = (
-  params: EndpointPayload<(typeof toolLogEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => unknown;
 
 /**
  * One handler per `toolLogEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type ToolLogHandlers = { [K in ToolLogEndpointName]: ToolLogHandler<K> };
+type ToolLogHandlers = { [K in ToolLogEndpointName]: UnwrappedHandlerFor<typeof toolLogEndpoints, K> };
 
 function buildToolLogHandlers(toolCallLogger: ToolCallLogger): ToolLogHandlers {
   return {

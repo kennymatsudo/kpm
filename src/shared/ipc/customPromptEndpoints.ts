@@ -10,8 +10,9 @@
  */
 
 import { z } from 'zod';
-import type { EndpointDefinition } from './endpoints';
+import { resultOf, type EndpointDefinition } from './endpoints';
 import { uuid } from './sharedSchemas';
+import type { CustomPrompt } from '../types';
 
 const nonEmptyString = (fieldName: string) => z.string().min(1, `${fieldName} cannot be empty`).trim();
 
@@ -19,9 +20,27 @@ const customPromptIcon = z.enum(['chart', 'check', 'document', 'sparkles', 'clip
 const customPromptTargetType = z.enum(['none', 'document', 'repo']);
 const customPromptRunMode = z.enum(['artifact', 'chat']);
 
+/**
+ * Response shape for endpoints registered through `createRegistryIpcHandlers`
+ * (see `main/ipc/handlers/customPrompts.ts`): the handler returns bare data
+ * (or `void`), and the registry loop wraps it as `{success: true, ...data}` /
+ * `{success: false, error}`.
+ */
+type RegistryResponse<T = void> =
+  | (T extends void ? { success: true } : { success: true } & T)
+  | { success: false; error: string };
+
 export const customPromptEndpoints = {
-  list: { channel: 'custom-prompts:list', params: z.object({}) },
-  get: { channel: 'custom-prompts:get', params: z.object({ promptId: uuid }) },
+  list: {
+    channel: 'custom-prompts:list',
+    params: z.object({}),
+    result: resultOf<RegistryResponse<{ prompts: CustomPrompt[] }>>(),
+  },
+  get: {
+    channel: 'custom-prompts:get',
+    params: z.object({ promptId: uuid }),
+    result: resultOf<RegistryResponse<{ prompt: CustomPrompt }>>(),
+  },
   create: {
     channel: 'custom-prompts:create',
     params: z.object({
@@ -33,6 +52,7 @@ export const customPromptEndpoints = {
       targetType: customPromptTargetType.optional(),
       runMode: customPromptRunMode.optional(),
     }),
+    result: resultOf<RegistryResponse<{ prompt: CustomPrompt }>>(),
   },
   update: {
     channel: 'custom-prompts:update',
@@ -46,13 +66,23 @@ export const customPromptEndpoints = {
       targetType: customPromptTargetType.optional(),
       runMode: customPromptRunMode.optional(),
     }),
+    result: resultOf<RegistryResponse>(),
   },
-  delete: { channel: 'custom-prompts:delete', params: z.object({ promptId: uuid }) },
+  delete: {
+    channel: 'custom-prompts:delete',
+    params: z.object({ promptId: uuid }),
+    result: resultOf<RegistryResponse>(),
+  },
   execute: {
     channel: 'custom-prompts:execute',
     params: z.object({ promptId: uuid, projectId: uuid }),
+    result: resultOf<RegistryResponse<{ taskId: string }>>(),
   },
-  ensureBuiltins: { channel: 'custom-prompts:ensure-builtins', params: null },
+  ensureBuiltins: {
+    channel: 'custom-prompts:ensure-builtins',
+    params: null,
+    result: resultOf<RegistryResponse>(),
+  },
 } satisfies Record<string, EndpointDefinition>;
 
 export type CustomPromptEndpoints = typeof customPromptEndpoints;

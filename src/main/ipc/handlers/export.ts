@@ -1,18 +1,14 @@
 import { exportEndpoints, type ExportEndpointName } from '../../../shared/ipc/exportEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { ExportService, TypeMappingService } from '../../db/domain';
 import { TrackerClientService } from '../../trackers/TrackerClientService';
 import { createRegistryIpcHandlers } from '../validation/utils';
-
-type ExportHandler<K extends ExportEndpointName> = (
-  params: EndpointPayload<(typeof exportEndpoints)[K]>
-) => unknown;
 
 /**
  * One handler per `exportEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type ExportHandlers = { [K in ExportEndpointName]: ExportHandler<K> };
+type ExportHandlers = { [K in ExportEndpointName]: UnwrappedHandlerFor<typeof exportEndpoints, K> };
 
 function buildExportHandlers(
   exportService: ExportService,

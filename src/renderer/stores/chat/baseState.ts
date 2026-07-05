@@ -1,10 +1,10 @@
-import type { ClaudeModel, AgentEffortLevel, PerSessionState, ChatState } from './types';
+import type { ClaudeModel, ChatEffortLevel, PerSessionState, ChatState } from './types';
 
 /** Create initial state for a new session */
 export const createInitialPerSessionState = (
   sessionNumber: number,
   model: ClaudeModel = 'sonnet',
-  effort: AgentEffortLevel = 'medium',
+  effort: ChatEffortLevel = 'medium',
 ): PerSessionState => ({
   messages: [],
   streamingSegments: [],

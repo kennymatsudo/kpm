@@ -61,7 +61,7 @@ export const usePromptOverrideStore = create<PromptOverrideState>((set, get) => 
     set({ isLoading: true, error: null });
     try {
       const result = await listPromptOverrides();
-      if (result.success && result.prompts) {
+      if (result.success) {
         set({ prompts: result.prompts, isLoading: false });
       } else {
         set({ error: result.error || 'Failed to load prompts', isLoading: false });

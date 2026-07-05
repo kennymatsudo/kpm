@@ -3,21 +3,16 @@
  */
 
 import { settingsEndpoints, type SettingsEndpointName } from '../../../shared/ipc/settingsEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { SettingsService } from '../../services/core/SettingsService';
 import { getClaudeAvailability, refreshClaudeAvailability } from '../../claude/availabilityState';
 import { createRegistryIpcHandlers } from '../validation/utils';
-
-type SettingsHandler<K extends SettingsEndpointName> = (
-  params: EndpointPayload<(typeof settingsEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => unknown;
 
 /**
  * One handler per `settingsEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type SettingsHandlers = { [K in SettingsEndpointName]: SettingsHandler<K> };
+type SettingsHandlers = { [K in SettingsEndpointName]: UnwrappedHandlerFor<typeof settingsEndpoints, K> };
 
 function buildSettingsHandlers(settingsService: SettingsService): SettingsHandlers {
   return {
@@ -60,9 +55,9 @@ function buildSettingsHandlers(settingsService: SettingsService): SettingsHandle
       return result.data;
     },
 
-    'claude.getAvailability': () => getClaudeAvailability(),
+    'claude.getAvailability': () => ({ success: true, ...getClaudeAvailability() }),
 
-    'claude.refreshAvailability': () => refreshClaudeAvailability(),
+    'claude.refreshAvailability': () => ({ success: true, ...refreshClaudeAvailability() }),
   };
 }
 

@@ -3,6 +3,7 @@ import type {
   DevSessionWithPlanItem,
   PrStatus,
   ReviewActionableSummary,
+  ReviewDisposition,
   ReviewInboxSnapshot,
   AgentSessionState,
 } from '../../../shared/types';
@@ -99,7 +100,7 @@ export interface DevSessionsState {
   resolveReviewThread: (sessionId: string, threadId: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
   unresolveReviewThread: (sessionId: string, threadId: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
   ignoreReviewTask: (sessionId: string, taskId: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
-  overrideReviewDisposition: (sessionId: string, taskId: string, disposition: string) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
+  overrideReviewDisposition: (sessionId: string, taskId: string, disposition: ReviewDisposition) => Promise<{ success: boolean; inbox?: ReviewInboxSnapshot; error?: string }>;
   setReviewFilters: (sessionId: string, filters: Partial<ReviewFilters>) => void;
   setReviewActionable: (summary: ReviewActionableSummary) => void;
   loadPrContext: (

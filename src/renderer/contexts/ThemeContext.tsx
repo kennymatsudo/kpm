@@ -211,8 +211,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     const result = await importCustomThemeFromUrl(url);
     if (result.success && result.theme) {
       setCustomThemes((current) => [
-        result.theme!,
-        ...current.filter((theme) => theme.id !== result.theme!.id),
+        result.theme,
+        ...current.filter((theme) => theme.id !== result.theme.id),
       ]);
       const nextPreference = customThemePreferenceId(result.theme.id);
       setPreferenceState(nextPreference);

@@ -7,19 +7,17 @@
  */
 
 import { scheduledLoopEndpoints, type ScheduledLoopEndpointName } from '../../../shared/ipc/scheduledLoopEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { ScheduledLoopService } from '../../services/core/ScheduledLoopService';
 import { createRegistryIpcHandlers } from '../validation/utils';
-
-type ScheduledLoopHandler<K extends ScheduledLoopEndpointName> = (
-  params: EndpointPayload<(typeof scheduledLoopEndpoints)[K]>
-) => unknown;
 
 /**
  * One handler per `scheduledLoopEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type ScheduledLoopHandlers = { [K in ScheduledLoopEndpointName]: ScheduledLoopHandler<K> };
+type ScheduledLoopHandlers = {
+  [K in ScheduledLoopEndpointName]: UnwrappedHandlerFor<typeof scheduledLoopEndpoints, K>;
+};
 
 function buildScheduledLoopHandlers(scheduledLoopService: ScheduledLoopService): ScheduledLoopHandlers {
   return {

@@ -10,21 +10,16 @@
  */
 
 import { permissionEndpoints, type PermissionEndpointName } from '../../../shared/ipc/permissionEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { PermissionService } from '../../services/core/PermissionService';
 import { resolvePromptResponse } from '../../services/core/PermissionPromptService';
 import { createRegistryIpcHandlers } from '../validation/utils';
-
-type PermissionHandler<K extends PermissionEndpointName> = (
-  params: EndpointPayload<(typeof permissionEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => unknown;
 
 /**
  * One handler per `permissionEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type PermissionHandlers = { [K in PermissionEndpointName]: PermissionHandler<K> };
+type PermissionHandlers = { [K in PermissionEndpointName]: UnwrappedHandlerFor<typeof permissionEndpoints, K> };
 
 function buildPermissionHandlers(permissionService: PermissionService): PermissionHandlers {
   return {

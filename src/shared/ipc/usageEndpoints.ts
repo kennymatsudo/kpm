@@ -7,18 +7,32 @@
  */
 
 import { z } from 'zod';
-import type { EndpointDefinition } from './endpoints';
+import { resultOf, type EndpointDefinition } from './endpoints';
 import { uuid } from './sharedSchemas';
+import type { ClaudeUsageEvent, ProjectUsageStats } from '../usage-types';
 
 
 export const usageEndpoints = {
-  getProjectStats: { channel: 'usage:get-project-stats', params: z.object({ projectId: uuid }) },
-  getGlobalStats: { channel: 'usage:get-global-stats', params: z.object({}).optional() },
+  getProjectStats: {
+    channel: 'usage:get-project-stats',
+    params: z.object({ projectId: uuid }),
+    result: resultOf<ProjectUsageStats>(),
+  },
+  getGlobalStats: {
+    channel: 'usage:get-global-stats',
+    params: z.object({}).optional(),
+    result: resultOf<ProjectUsageStats>(),
+  },
   listEvents: {
     channel: 'usage:list-events',
     params: z.object({ projectId: uuid.nullable(), limit: z.number().int().min(1).max(500).optional() }),
+    result: resultOf<ClaudeUsageEvent[]>(),
   },
-  resetProject: { channel: 'usage:reset-project', params: z.object({ projectId: uuid }) },
+  resetProject: {
+    channel: 'usage:reset-project',
+    params: z.object({ projectId: uuid }),
+    result: resultOf<{ success: boolean }>(),
+  },
 } satisfies Record<string, EndpointDefinition>;
 
 export type UsageEndpoints = typeof usageEndpoints;

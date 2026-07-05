@@ -67,12 +67,12 @@ export const useBriefingStore = create<BriefingState>((set, get) => {
       }));
       try {
         const result = await generateProjectBriefing(projectId);
-        if (result.success && result.data) {
+        if (result.success) {
           set((state) => {
             const next = { ...state.streamingByProject };
             delete next[projectId];
             return {
-              briefings: { ...state.briefings, [projectId]: result.data! },
+              briefings: { ...state.briefings, [projectId]: result.data },
               streamingByProject: next,
               isLoading: false,
             };

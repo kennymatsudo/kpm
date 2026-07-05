@@ -1,17 +1,13 @@
 import { createRegistryIpcHandlers } from '../validation/utils';
 import { perfEndpoints, type PerfEndpointName } from '../../../shared/ipc/perfEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import { getPerfLogger, getPerfLogInfo } from '../../services/PerfLogger';
-
-type PerfHandler<K extends PerfEndpointName> = (
-  params: EndpointPayload<(typeof perfEndpoints)[K]>
-) => unknown;
 
 /**
  * One handler per `perfEndpoints` entry. A registry entry without a matching
  * key here is a compile error, not a runtime "no handler" failure.
  */
-type PerfHandlers = { [K in PerfEndpointName]: PerfHandler<K> };
+type PerfHandlers = { [K in PerfEndpointName]: UnwrappedHandlerFor<typeof perfEndpoints, K> };
 
 const handlers: PerfHandlers = {
   log: async ({ name, durationMs, meta }) => {

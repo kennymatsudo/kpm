@@ -1,16 +1,11 @@
 import { worktreeEndpoints, type WorktreeEndpointName } from '../../../shared/ipc/worktreeEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import type { createWorktreeService } from '../../services/repo/WorktreeService';
 import { unwrapOrThrow } from '../../services/result';
 import { toIpcResponse, toIpcResponseAsync } from '../response';
 import { bindRegistryHandlers } from '../validation/utils';
 
 type WorktreeService = ReturnType<typeof createWorktreeService>;
-
-type WorktreeHandler<K extends WorktreeEndpointName> = (
-  params: EndpointPayload<(typeof worktreeEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => unknown;
 
 /**
  * One handler per `worktreeEndpoints` entry. A registry entry without a
@@ -20,7 +15,7 @@ type WorktreeHandler<K extends WorktreeEndpointName> = (
  * `createRegistryIpcHandlers`, which would force a uniform `{success, ...}`
  * envelope onto every entry.
  */
-type WorktreeHandlers = { [K in WorktreeEndpointName]: WorktreeHandler<K> };
+type WorktreeHandlers = { [K in WorktreeEndpointName]: HandlerFor<typeof worktreeEndpoints, K> };
 
 function buildWorktreeHandlers(worktreeService: WorktreeService): WorktreeHandlers {
   return {

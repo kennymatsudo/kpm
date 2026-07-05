@@ -7,19 +7,14 @@
 
 import { ipcMain } from 'electron';
 import { usageEndpoints, type UsageEndpointName } from '../../../shared/ipc/usageEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import type { ClaudeUsageService } from '../../services/core/ClaudeUsageService';
-
-type UsageHandler<K extends UsageEndpointName> = (
-  params: EndpointPayload<(typeof usageEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => unknown;
 
 /**
  * One handler per `usageEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type UsageHandlers = { [K in UsageEndpointName]: UsageHandler<K> };
+type UsageHandlers = { [K in UsageEndpointName]: HandlerFor<typeof usageEndpoints, K> };
 
 function buildUsageHandlers(claudeUsageService: ClaudeUsageService): UsageHandlers {
   return {

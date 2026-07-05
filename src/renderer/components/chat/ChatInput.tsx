@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent, type ClipboardEvent, type DragEvent, type SyntheticEvent, useRef, useEffect, useCallback } from 'react';
 import { useChatStore } from '../../stores';
 import { deleteTempImage, saveTempImage } from '../../services/tempImageService';
+import { isSupportedImageFormat } from '../../../shared/ipc/tempImageEndpoints';
 import { ContextWindowBar } from './ContextWindowBar';
 import {
   pickChatAttachments,
@@ -241,6 +242,11 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
 
         const blob = item.getAsFile();
         if (!blob) continue;
+
+        if (!isSupportedImageFormat(blob.type)) {
+          setAttachmentError('Unsupported image format. Supported: PNG, JPEG, GIF, WebP, BMP');
+          break;
+        }
 
         try {
           // Convert blob to Uint8Array

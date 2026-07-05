@@ -7,19 +7,16 @@
 import type { BrowserWindow } from 'electron';
 import type { DevSessionService } from '../../services/repo/DevSessionService';
 import { devSessionEndpoints, type DevSessionEndpointName } from '../../../shared/ipc/devSessionEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import { createRegistryIpcHandlers } from '../validation/utils';
-
-type DevSessionHandler<K extends DevSessionEndpointName> = (
-  params: EndpointPayload<(typeof devSessionEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => unknown;
 
 /**
  * One handler per `devSessionEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type DevSessionHandlers = { [K in DevSessionEndpointName]: DevSessionHandler<K> };
+type DevSessionHandlers = {
+  [K in DevSessionEndpointName]: UnwrappedHandlerFor<typeof devSessionEndpoints, K>;
+};
 
 function buildDevSessionHandlers(devSessionService: DevSessionService): DevSessionHandlers {
   return {

@@ -8,8 +8,9 @@
  */
 
 import { z } from 'zod';
-import type { EndpointDefinition } from './endpoints';
+import { resultOf, type EndpointDefinition } from './endpoints';
 import { uuid } from './sharedSchemas';
+import type { ScheduledLoop, LoopRun } from '../types';
 
 const nonEmptyString = (fieldName: string) => z.string().min(1, `${fieldName} cannot be empty`).trim();
 const loopOutputMode = z.enum(['notify', 'report', 'maintain']);
@@ -21,9 +22,27 @@ const intervalMinutes = z
   .min(5, 'Interval must be at least 5 minutes')
   .max(10080, 'Interval must be at most 1 week');
 
+/**
+ * Response shape for endpoints registered through `createRegistryIpcHandlers`
+ * (see `main/ipc/handlers/scheduledLoops.ts`): the handler returns bare data
+ * (or `void`), and the registry loop wraps it as `{success: true, ...data}` /
+ * `{success: false, error}`.
+ */
+type RegistryResponse<T = void> =
+  | (T extends void ? { success: true } : { success: true } & T)
+  | { success: false; error: string };
+
 export const scheduledLoopEndpoints = {
-  list: { channel: 'scheduled-loop:list', params: z.object({ projectId: uuid }) },
-  get: { channel: 'scheduled-loop:get', params: z.object({ id: uuid }) },
+  list: {
+    channel: 'scheduled-loop:list',
+    params: z.object({ projectId: uuid }),
+    result: resultOf<RegistryResponse<{ loops: ScheduledLoop[] }>>(),
+  },
+  get: {
+    channel: 'scheduled-loop:get',
+    params: z.object({ id: uuid }),
+    result: resultOf<RegistryResponse<{ loop: ScheduledLoop }>>(),
+  },
   create: {
     channel: 'scheduled-loop:create',
     params: z.object({
@@ -34,6 +53,7 @@ export const scheduledLoopEndpoints = {
       intervalMinutes,
       enabled: z.boolean().optional(),
     }),
+    result: resultOf<RegistryResponse<{ loop: ScheduledLoop }>>(),
   },
   update: {
     channel: 'scheduled-loop:update',
@@ -45,13 +65,19 @@ export const scheduledLoopEndpoints = {
       intervalMinutes: intervalMinutes.optional(),
       enabled: z.boolean().optional(),
     }),
+    result: resultOf<RegistryResponse<{ loop: ScheduledLoop }>>(),
   },
-  setEnabled: { channel: 'scheduled-loop:set-enabled', params: z.object({ id: uuid, enabled: z.boolean() }) },
-  delete: { channel: 'scheduled-loop:delete', params: z.object({ id: uuid }) },
-  runNow: { channel: 'scheduled-loop:run-now', params: z.object({ id: uuid }) },
+  setEnabled: {
+    channel: 'scheduled-loop:set-enabled',
+    params: z.object({ id: uuid, enabled: z.boolean() }),
+    result: resultOf<RegistryResponse<{ loop: ScheduledLoop }>>(),
+  },
+  delete: { channel: 'scheduled-loop:delete', params: z.object({ id: uuid }), result: resultOf<RegistryResponse>() },
+  runNow: { channel: 'scheduled-loop:run-now', params: z.object({ id: uuid }), result: resultOf<RegistryResponse>() },
   history: {
     channel: 'scheduled-loop:history',
     params: z.object({ loopId: uuid, limit: z.number().int().min(1).max(200).optional() }),
+    result: resultOf<RegistryResponse<{ runs: LoopRun[] }>>(),
   },
 } satisfies Record<string, EndpointDefinition>;
 

@@ -9,19 +9,14 @@ import type { ReviewAssessmentService } from '../../services/repo/ReviewAssessme
 import type { ReviewPollService } from '../../services/repo/ReviewPollService';
 import { unwrapOrThrow } from '../../services/result';
 import { reviewEndpoints, type ReviewEndpointName } from '../../../shared/ipc/reviewEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import { createRegistryIpcHandlers } from '../validation/utils';
-
-type ReviewHandler<K extends ReviewEndpointName> = (
-  params: EndpointPayload<(typeof reviewEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => unknown;
 
 /**
  * One handler per `reviewEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type ReviewHandlers = { [K in ReviewEndpointName]: ReviewHandler<K> };
+type ReviewHandlers = { [K in ReviewEndpointName]: UnwrappedHandlerFor<typeof reviewEndpoints, K> };
 
 function buildReviewHandlers(
   reviewService: ReviewService,

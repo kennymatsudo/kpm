@@ -1,6 +1,6 @@
 import { ipcMain, dialog, shell, type BrowserWindow } from 'electron';
 import { fileExplorerEndpoints, type FileExplorerEndpointName } from '../../../shared/ipc/fileExplorerEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import type { FileExplorerService } from '../../services/files/FileExplorerService';
 import type { ProjectWatcherService } from '../../services/files/ProjectWatcherService';
 import { unwrapOrThrow } from '../../services/result';
@@ -32,16 +32,13 @@ function emitFileChange(
   }
 }
 
-type FileExplorerHandler<K extends FileExplorerEndpointName> = (
-  params: EndpointPayload<(typeof fileExplorerEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => Promise<unknown>;
-
 /**
  * One handler per `fileExplorerEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type FileExplorerHandlers = { [K in FileExplorerEndpointName]: FileExplorerHandler<K> };
+type FileExplorerHandlers = {
+  [K in FileExplorerEndpointName]: HandlerFor<typeof fileExplorerEndpoints, K>;
+};
 
 function buildFileExplorerHandlers(
   fileExplorerService: FileExplorerService,

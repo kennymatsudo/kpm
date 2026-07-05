@@ -1,3 +1,4 @@
+import type { ReviewActionableSummary, ReviewDisposition } from '../../shared/types';
 import type { ReviewAssessmentOptions } from '../stores/devSessions/helpers';
 
 export function getReviewInbox(payload: { sessionId: string }) {
@@ -45,11 +46,9 @@ export function ignoreSessionReviewTask(payload: { taskId: string }) {
   return window.api.review.ignoreTask(payload);
 }
 
-export function overrideSessionReviewDisposition(payload: { taskId: string; disposition: string }) {
+export function overrideSessionReviewDisposition(payload: { taskId: string; disposition: ReviewDisposition }) {
   return window.api.review.overrideDisposition(payload);
 }
-
-import type { ReviewActionableSummary } from '../../shared/types';
 
 export function subscribeToReviewActionable(
   callback: (summary: ReviewActionableSummary) => void,

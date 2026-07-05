@@ -98,6 +98,9 @@ export interface TaskPromptTemplate {
  */
 export type AgentEffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
+/** Effort levels the main chat accepts; 'xhigh' is board-agent-only. */
+export type ChatEffortLevel = Exclude<AgentEffortLevel, 'xhigh'>;
+
 /** Board implementation strategy. Standard preserves the existing one-agent flow. */
 export type AgentExecutionMode = 'standard' | 'workflow';
 

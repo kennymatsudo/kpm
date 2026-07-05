@@ -214,7 +214,7 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
 
     try {
       const result = await listTrackerIssueTypes(projectKey);
-      if (result.success && result.issueTypes) {
+      if (result.success) {
         const issueTypes = result.issueTypes;
         set((s) => {
           const nextLoading = new Set(s.loadingIssueTypesFor);

@@ -15,8 +15,9 @@
  */
 
 import { z } from 'zod';
-import type { EndpointDefinition } from './endpoints';
+import { resultOf, type EndpointDefinition } from './endpoints';
 import { absolutePath, uuid } from './sharedSchemas';
+import type { Attachment } from '../types';
 
 const filenameNoPathSeparators = z
   .string()
@@ -24,26 +25,47 @@ const filenameNoPathSeparators = z
   .refine((f) => !f.includes('/') && !f.includes('\\'), 'Filename cannot contain path separators')
   .refine((f) => f !== '.' && f !== '..', 'Invalid filename');
 
+interface PickedChatAttachment {
+  path: string;
+  filename: string;
+  kind: 'image' | 'pdf' | 'text';
+  mediaType: string;
+}
+
+/**
+ * Response shape for `remove`, which binds through `bindRegistryHandlers`
+ * but builds its own envelope via `toIpcResponse` (main/ipc/response.ts):
+ * `{success: true, data: T} | {success: false, error: string}` — distinct
+ * from `createRegistryIpcHandlers`'s `{success: true, ...data}` spread used
+ * elsewhere in this registry (see `RegistryResponse` in `exportEndpoints.ts`).
+ */
+type ToIpcResponse<T = void> = { success: true; data: T } | { success: false; error: string };
+
 export const attachmentEndpoints = {
   add: {
     channel: 'attachment:add',
     params: z.object({ projectId: uuid, path: absolutePath, filename: filenameNoPathSeparators }),
+    result: resultOf<Attachment>(),
   },
   remove: {
     channel: 'attachment:remove',
     params: z.object({ attachmentId: uuid }),
+    result: resultOf<ToIpcResponse>(),
   },
   list: {
     channel: 'attachment:list',
     params: z.object({ projectId: uuid }),
+    result: resultOf<Attachment[]>(),
   },
   selectDialog: {
     channel: 'attachment:select-dialog',
     params: null,
+    result: resultOf<string[]>(),
   },
   pickForChat: {
     channel: 'attachment:pick-for-chat',
     params: null,
+    result: resultOf<{ picked: PickedChatAttachment[]; errors: { filename: string; error: string }[] }>(),
   },
   saveDropped: {
     channel: 'attachment:save-dropped',
@@ -57,14 +79,20 @@ export const attachmentEndpoints = {
         .refine((f) => f !== '.' && f !== '..', 'Invalid filename'),
       mimeType: z.string().max(255).optional(),
     }),
+    result: resultOf<
+      | { success: true; path: string; filename: string; kind: 'image' | 'pdf' | 'text'; mediaType: string }
+      | { success: false; error: string }
+    >(),
   },
   readAsDataUrl: {
     channel: 'attachment:read-as-data-url',
     params: z.object({ filePath: absolutePath, mediaType: z.string().min(1).max(255) }),
+    result: resultOf<{ success: true; dataUrl: string } | { success: false; error: string }>(),
   },
   openTemp: {
     channel: 'attachment:open-temp',
     params: z.object({ filePath: absolutePath }),
+    result: resultOf<{ success: boolean; error?: string }>(),
   },
 } satisfies Record<string, EndpointDefinition>;
 

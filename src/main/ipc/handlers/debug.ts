@@ -1,4 +1,5 @@
 import { debugEndpoints, type DebugEndpointName } from '../../../shared/ipc/debugEndpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import { bindRegistryHandlers } from '../validation/utils';
 
 // Debug mode flag - set via IPC from renderer
@@ -16,9 +17,9 @@ let debugEnabled = false;
  * state.
  */
 export function registerDebugHandlers(): void {
-  const handlers: Record<DebugEndpointName, (params: unknown) => unknown> = {
+  const handlers: { [K in DebugEndpointName]: HandlerFor<typeof debugEndpoints, K> } = {
     setEnabled: (enabled) => {
-      debugEnabled = enabled as boolean;
+      debugEnabled = enabled;
       console.log(`[Debug] Debug mode ${debugEnabled ? 'enabled' : 'disabled'}`);
       return { enabled: debugEnabled };
     },

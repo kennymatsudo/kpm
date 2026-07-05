@@ -12,13 +12,19 @@
  */
 
 import { z } from 'zod';
-import type { EndpointDefinition } from './endpoints';
+import { resultOf, type EndpointDefinition } from './endpoints';
 import { absolutePath } from './sharedSchemas';
 
 const supportedImageFormat = z.enum(
   ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp'],
   { message: 'Unsupported image format. Supported: PNG, JPEG, GIF, WebP, BMP' }
 );
+
+export type SupportedImageFormat = z.infer<typeof supportedImageFormat>;
+
+export function isSupportedImageFormat(value: string): value is SupportedImageFormat {
+  return supportedImageFormat.safeParse(value).success;
+}
 
 export const tempImageEndpoints = {
   save: {
@@ -27,10 +33,12 @@ export const tempImageEndpoints = {
       imageData: z.instanceof(Uint8Array, { message: 'Image data must be a Uint8Array' }),
       format: supportedImageFormat,
     }),
+    result: resultOf<{ success: true; path: string; filename: string } | { success: false; error: string }>(),
   },
   delete: {
     channel: 'temp-image:delete',
     params: z.object({ filePath: absolutePath }),
+    result: resultOf<{ success: boolean; error?: string }>(),
   },
 } satisfies Record<string, EndpointDefinition>;
 

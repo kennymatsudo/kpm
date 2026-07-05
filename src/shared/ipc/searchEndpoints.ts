@@ -6,8 +6,9 @@
  */
 
 import { z } from 'zod';
-import type { EndpointDefinition } from './endpoints';
+import { resultOf, type EndpointDefinition } from './endpoints';
 import { uuid } from './sharedSchemas';
+import type { SearchResult } from '../types';
 
 
 export const searchEndpoints = {
@@ -18,6 +19,7 @@ export const searchEndpoints = {
       query: z.string().min(1).max(200),
       limit: z.number().int().min(1).max(200).optional(),
     }),
+    result: resultOf<SearchResult[]>(),
   },
 } satisfies Record<string, EndpointDefinition>;
 

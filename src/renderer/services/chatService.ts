@@ -1,6 +1,6 @@
 import type {
   Activity,
-  AgentEffortLevel,
+  ChatEffortLevel,
   ChatProvider,
   ChatViewMode,
   ClaudeModel,
@@ -157,7 +157,7 @@ export function sendChatMessage(params: {
   focusedResources: FocusedResource[];
   model: string;
   provider?: ChatProvider;
-  effort?: string;
+  effort?: ChatEffortLevel;
   tempImages?: string[];
   chatSessionId: string;
   currentView?: ChatViewMode;
@@ -173,7 +173,7 @@ export function sendChatMessage(params: {
     chatSessionId: params.chatSessionId,
     currentView: params.currentView,
     clientMessageId: params.clientMessageId,
-    effort: params.effort as AgentEffortLevel | undefined,
+    effort: params.effort,
     focusDocument: params.focusDocument,
     provider: params.provider,
   });

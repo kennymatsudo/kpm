@@ -10,8 +10,16 @@
  */
 
 import { z } from 'zod';
-import type { EndpointDefinition } from './endpoints';
+import { resultOf, type EndpointDefinition } from './endpoints';
 import { uuid } from './sharedSchemas';
+
+/** Mirrors `ContextFile` from `main/services/files/FileWatchService.ts`. */
+interface ContextFile {
+  path: string;
+  name: string;
+  isClaudeMd: boolean;
+  modifiedAt: string;
+}
 
 
 const WINDOWS_DRIVE_PREFIX = /^[a-zA-Z]:/;
@@ -78,18 +86,22 @@ export const contextEndpoints = {
   'claudeMd.read': {
     channel: 'claudemd:read',
     params: z.object({ projectId: uuid }),
+    result: resultOf<{ content: string | null; filename?: string }>(),
   },
   'claudeMd.write': {
     channel: 'claudemd:write',
     params: z.object({ projectId: uuid, content: z.string().max(1000000, 'Content too large (max 1MB)') }),
+    result: resultOf<void>(),
   },
   'context.list': {
     channel: 'context:list',
     params: z.object({ projectId: uuid }),
+    result: resultOf<{ files: ContextFile[] }>(),
   },
   'context.read': {
     channel: 'context:read',
     params: z.object({ projectId: uuid, path: relativePath.min(1).max(255) }),
+    result: resultOf<{ content: string | null }>(),
   },
   'context.write': {
     channel: 'context:write',
@@ -98,18 +110,22 @@ export const contextEndpoints = {
       path: relativePath.min(1).max(255),
       content: z.string().max(1000000, 'Content too large (max 1MB)'),
     }),
+    result: resultOf<void>(),
   },
   'context.delete': {
     channel: 'context:delete',
     params: z.object({ projectId: uuid, path: relativePath.min(1).max(255) }),
+    result: resultOf<void>(),
   },
   'context.import': {
     channel: 'context:import',
     params: z.object({ projectId: uuid, sourcePath: z.string().min(1) }),
+    result: resultOf<{ filename: string }>(),
   },
   'context.selectDialog': {
     channel: 'context:select-dialog',
     params: null,
+    result: resultOf<{ paths: string[] }>(),
   },
 } satisfies Record<string, EndpointDefinition>;
 

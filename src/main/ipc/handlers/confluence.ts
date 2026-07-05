@@ -5,14 +5,11 @@
  */
 
 import { confluenceEndpoints, type ConfluenceEndpointName } from '../../../shared/ipc/confluenceEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
+import type { ConfluenceSyncPreview } from '../../../shared/types';
 import { toIpcResponse, ipcSuccess, ipcError } from '../response';
 import type { ConfluenceSyncService } from '../../services/confluence';
 import { bindRegistryHandlers } from '../validation/utils';
-
-type ConfluenceHandler<K extends ConfluenceEndpointName> = (
-  params: EndpointPayload<(typeof confluenceEndpoints)[K]>
-) => unknown;
 
 /**
  * One handler per `confluenceEndpoints` entry. A registry entry without a
@@ -22,7 +19,11 @@ type ConfluenceHandler<K extends ConfluenceEndpointName> = (
  * `createRegistryIpcHandlers`, which would force a uniform `{success, ...}`
  * envelope onto every entry.
  */
-type ConfluenceHandlers = { [K in ConfluenceEndpointName]: ConfluenceHandler<K> };
+type ConfluenceHandlers = {
+  [K in ConfluenceEndpointName]: (
+    params: Parameters<HandlerFor<typeof confluenceEndpoints, K>>[0]
+  ) => ReturnType<HandlerFor<typeof confluenceEndpoints, K>>;
+};
 
 function buildConfluenceHandlers(confluenceSyncService: ConfluenceSyncService): ConfluenceHandlers {
   return {
@@ -37,8 +38,17 @@ function buildConfluenceHandlers(confluenceSyncService: ConfluenceSyncService): 
     getLinkForDocument: ({ projectId, documentPath }) =>
       ipcSuccess(confluenceSyncService.getLinkForDocument(projectId, documentPath)),
 
+    // `generateSyncPreview`'s declared `AsyncResult<SyncPreview>` return type
+    // is narrower than the object it actually constructs (also includes
+    // `isInitialSync`/`hasContentDifference`, which the renderer's
+    // `ConfluenceSyncPreviewModal` reads) — cast to the real, wider shape
+    // rather than the stale declared one.
     syncPreview: async ({ projectId, documentPath }) =>
-      toIpcResponse(await confluenceSyncService.generateSyncPreview(projectId, documentPath)),
+      toIpcResponse(
+        (await confluenceSyncService.generateSyncPreview(projectId, documentPath)) as
+          | { ok: true; data: ConfluenceSyncPreview }
+          | { ok: false; error: string }
+      ),
 
     pushExecute: async ({ projectId, documentPath }) =>
       toIpcResponse(await confluenceSyncService.executePush(projectId, documentPath)),

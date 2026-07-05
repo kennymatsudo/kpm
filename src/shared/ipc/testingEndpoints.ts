@@ -9,16 +9,21 @@
  * exercised from this migration.
  */
 
-import type { EndpointDefinition } from './endpoints';
+import { resultOf, type EndpointDefinition } from './endpoints';
+
+/** `handlers/testing.ts`'s `resetDatabase` response: bare success/failure with an optional table count. */
+type ResetDatabaseResponse = { success: true; tablesReset: number } | { success: false; error: string };
 
 export const testingEndpoints = {
   resetDatabase: {
     channel: 'testing:reset-database',
     params: null,
+    result: resultOf<ResetDatabaseResponse>(),
   },
   getDbPath: {
     channel: 'testing:get-db-path',
     params: null,
+    result: resultOf<{ dbPath: string | null }>(),
   },
 } satisfies Record<string, EndpointDefinition>;
 

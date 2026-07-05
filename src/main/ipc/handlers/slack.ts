@@ -5,15 +5,11 @@
  */
 
 import { slackEndpoints, type SlackEndpointName } from '../../../shared/ipc/slackEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import type { SlackTriageService } from '../../services/core/SlackTriageService';
 import { toIpcResponse, toIpcResponseAsync } from '../response';
 import { unwrapOrThrow } from '../../services/result';
 import { bindRegistryHandlers } from '../validation/utils';
-
-type SlackHandler<K extends SlackEndpointName> = (
-  params: EndpointPayload<(typeof slackEndpoints)[K]>
-) => unknown;
 
 /**
  * One handler per `slackEndpoints` entry. A registry entry without a
@@ -23,7 +19,7 @@ type SlackHandler<K extends SlackEndpointName> = (
  * `createRegistryIpcHandlers`, which would force a uniform `{success, ...}`
  * envelope onto every entry.
  */
-type SlackHandlers = { [K in SlackEndpointName]: SlackHandler<K> };
+type SlackHandlers = { [K in SlackEndpointName]: HandlerFor<typeof slackEndpoints, K> };
 
 function buildSlackHandlers(slackTriageService: SlackTriageService): SlackHandlers {
   return {

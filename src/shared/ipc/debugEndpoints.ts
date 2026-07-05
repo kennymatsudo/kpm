@@ -6,16 +6,18 @@
  */
 
 import { z } from 'zod';
-import type { EndpointDefinition } from './endpoints';
+import { resultOf, type EndpointDefinition } from './endpoints';
 
 export const debugEndpoints = {
   setEnabled: {
     channel: 'debug:set-enabled',
     params: z.boolean(),
+    result: resultOf<{ enabled: boolean }>(),
   },
   isEnabled: {
     channel: 'debug:is-enabled',
     params: null,
+    result: resultOf<{ enabled: boolean }>(),
   },
 } satisfies Record<string, EndpointDefinition>;
 

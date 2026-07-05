@@ -5,18 +5,16 @@
 import type { BrowserWindow } from 'electron';
 import { createRegistryIpcHandlers } from '../validation/utils';
 import { onboardingEndpoints, type OnboardingEndpointName } from '../../../shared/ipc/onboardingEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { OnboardingService } from '../../services/generation/OnboardingService';
-
-type OnboardingHandler<K extends OnboardingEndpointName> = (
-  params: EndpointPayload<(typeof onboardingEndpoints)[K]>
-) => unknown;
 
 /**
  * One handler per `onboardingEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type OnboardingHandlers = { [K in OnboardingEndpointName]: OnboardingHandler<K> };
+type OnboardingHandlers = {
+  [K in OnboardingEndpointName]: UnwrappedHandlerFor<typeof onboardingEndpoints, K>;
+};
 
 function buildOnboardingHandlers(
   getMainWindow: () => BrowserWindow | null,

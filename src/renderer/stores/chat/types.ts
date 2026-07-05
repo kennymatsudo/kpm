@@ -1,4 +1,4 @@
-import type { Activity, ChatAttachment, SessionState, ClaudeModel, ChatSessionSummary, MessageSegment, AgentEffortLevel, SlashCommandInfo } from '../../../shared/types';
+import type { Activity, ChatAttachment, SessionState, ClaudeModel, ChatSessionSummary, MessageSegment, ChatEffortLevel, SlashCommandInfo } from '../../../shared/types';
 import type { StoreApi } from 'zustand';
 
 export interface Message {
@@ -35,7 +35,7 @@ export interface Message {
 }
 
 // Re-export types for consumers
-export type { Activity, ClaudeModel, MessageSegment, AgentEffortLevel } from '../../../shared/types';
+export type { Activity, ClaudeModel, MessageSegment, AgentEffortLevel, ChatEffortLevel } from '../../../shared/types';
 
 /** Per-session state (each concurrent session has its own state) */
 export interface PerSessionState {
@@ -82,7 +82,7 @@ export interface PerSessionState {
   /** Model selected for this session. Independent per tab. */
   model: ClaudeModel;
   /** Effort level selected for this session. Independent per tab. */
-  effort: AgentEffortLevel;
+  effort: ChatEffortLevel;
   /** Token counts from the most recently completed turn, for context window display. */
   lastTurnUsage: {
     inputTokens: number;
@@ -106,7 +106,7 @@ export interface ChatState {
 
   // Shared state
   model: ClaudeModel;
-  effort: AgentEffortLevel;
+  effort: ChatEffortLevel;
   totalTokens: number;
   sessionHistory: ChatSessionSummary[];
   /** User slash commands and skills shown in the composer typeahead */
@@ -200,7 +200,7 @@ export interface ChatState {
   setSlashCommands: (commands: SlashCommandInfo[]) => void;
   setDefaultModel: (model: ClaudeModel) => void;
   setModel: (chatSessionId: string, model: ClaudeModel) => void;
-  setEffort: (chatSessionId: string, effort: AgentEffortLevel) => void;
+  setEffort: (chatSessionId: string, effort: ChatEffortLevel) => void;
   reset: () => void;
   resetProjectState: () => void;
 

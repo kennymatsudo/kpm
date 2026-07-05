@@ -4,17 +4,13 @@ import type { RepoService } from '../../services/repo/RepoService';
 import { RepoSchemas } from '../validation';
 import { createRegistryIpcHandlers } from '../validation/utils';
 import { repoEndpoints, type RepoEndpointName } from '../../../shared/ipc/repoEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
-
-type RepoHandler<K extends RepoEndpointName> = (
-  params: EndpointPayload<(typeof repoEndpoints)[K]>
-) => unknown;
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 
 /**
  * One handler per `repoEndpoints` entry. A registry entry without a matching
  * key here is a compile error, not a runtime "no handler" failure.
  */
-type RepoHandlers = { [K in RepoEndpointName]: RepoHandler<K> };
+type RepoHandlers = { [K in RepoEndpointName]: UnwrappedHandlerFor<typeof repoEndpoints, K> };
 
 function buildRepoHandlers(getMainWindow: () => BrowserWindow | null, repoService: RepoService): RepoHandlers {
   return {

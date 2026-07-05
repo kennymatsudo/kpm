@@ -7,21 +7,16 @@
 import type { createGitHubService } from '../../services/repo/GitHubService';
 import { unwrapOrThrow } from '../../services/result';
 import { githubEndpoints, type GitHubEndpointName } from '../../../shared/ipc/githubEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import { createRegistryIpcHandlers } from '../validation/utils';
 
 type GitHubService = ReturnType<typeof createGitHubService>;
-
-type GitHubHandler<K extends GitHubEndpointName> = (
-  params: EndpointPayload<(typeof githubEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => unknown;
 
 /**
  * One handler per `githubEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type GitHubHandlers = { [K in GitHubEndpointName]: GitHubHandler<K> };
+type GitHubHandlers = { [K in GitHubEndpointName]: UnwrappedHandlerFor<typeof githubEndpoints, K> };
 
 function buildGitHubHandlers(gitHubService: GitHubService): GitHubHandlers {
   return {

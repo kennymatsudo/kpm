@@ -96,7 +96,7 @@ export function createDevSessionsReviewSlice(
 
       try {
         const result = await getReviewInbox({ sessionId });
-        if (!result.success || !result.inbox) {
+        if (!result.success) {
           const error = result.error || 'Failed to load review inbox';
           set((state) => setReviewError(state, sessionId, error));
           return { success: false, error };
@@ -122,7 +122,7 @@ export function createDevSessionsReviewSlice(
 
       try {
         const result = await refreshSessionReviewInbox({ sessionId });
-        if (!result.success || !result.inbox) {
+        if (!result.success) {
           const error = result.error || 'Failed to refresh review inbox';
           set((state) => setReviewError(state, sessionId, error));
           return { success: false, error };
@@ -143,7 +143,7 @@ export function createDevSessionsReviewSlice(
     assignReviewOwnership: async (sessionId) => {
       try {
         const result = await assignSessionReviewOwnership({ sessionId });
-        if (!result.success || !result.inbox) {
+        if (!result.success) {
           const error = result.error || 'Failed to assign review ownership';
           set((state) => setReviewError(state, sessionId, error));
           return { success: false, error };
@@ -165,7 +165,7 @@ export function createDevSessionsReviewSlice(
 
       try {
         const result = await assessSessionReviewThreads({ sessionId, ...options });
-        if (!result.success || !result.inbox) {
+        if (!result.success) {
           const error = result.error || 'Failed to assess review threads';
           set((state) => setReviewError(state, sessionId, error));
           return { success: false, error };
@@ -186,7 +186,7 @@ export function createDevSessionsReviewSlice(
     draftPostImplReplies: async (sessionId) => {
       try {
         const result = await draftSessionPostImplReplies({ sessionId });
-        if (!result.success || !result.inbox) {
+        if (!result.success) {
           const error = result.error || 'Failed to draft post-implementation replies';
           set((state) => setReviewError(state, sessionId, error));
           return { success: false, error };
@@ -264,7 +264,7 @@ export function createDevSessionsReviewSlice(
     resolveReviewThread: async (sessionId, threadId) => {
       try {
         const result = await resolveSessionReviewThread({ sessionId, threadId });
-        if (!result.success || !result.inbox) {
+        if (!result.success) {
           const error = result.error || 'Failed to resolve review thread';
           set((state) => setReviewError(state, sessionId, error));
           return { success: false, error };
@@ -283,7 +283,7 @@ export function createDevSessionsReviewSlice(
     unresolveReviewThread: async (sessionId, threadId) => {
       try {
         const result = await unresolveSessionReviewThread({ sessionId, threadId });
-        if (!result.success || !result.inbox) {
+        if (!result.success) {
           const error = result.error || 'Failed to reopen review thread';
           set((state) => setReviewError(state, sessionId, error));
           return { success: false, error };
@@ -302,7 +302,7 @@ export function createDevSessionsReviewSlice(
     ignoreReviewTask: async (sessionId, taskId) => {
       try {
         const result = await ignoreSessionReviewTask({ taskId });
-        if (!result.success || !result.inbox) {
+        if (!result.success) {
           const error = result.error || 'Failed to ignore review task';
           set((state) => setReviewError(state, sessionId, error));
           return { success: false, error };
@@ -321,7 +321,7 @@ export function createDevSessionsReviewSlice(
     overrideReviewDisposition: async (sessionId, taskId, disposition) => {
       try {
         const result = await overrideSessionReviewDisposition({ taskId, disposition });
-        if (!result.success || !result.inbox) {
+        if (!result.success) {
           const error = result.error || 'Failed to override disposition';
           set((state) => setReviewError(state, sessionId, error));
           return { success: false, error };

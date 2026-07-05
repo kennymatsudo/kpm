@@ -1,4 +1,6 @@
-export function saveTempImage(data: Uint8Array, mimeType: string) {
+import type { SupportedImageFormat } from '../../shared/ipc/tempImageEndpoints';
+
+export function saveTempImage(data: Uint8Array<ArrayBuffer>, mimeType: SupportedImageFormat) {
   return window.api.tempImages.save({ imageData: data, format: mimeType });
 }
 

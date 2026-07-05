@@ -49,18 +49,6 @@ export const useMcpServersStore = create<McpServersState>((set, get) => ({
         getMcpServerPreferences(),
       ]);
 
-      if (!listResult.success) {
-        const error = listResult.error || 'Failed to load MCP servers';
-        set({ isLoading: false, error });
-        return { success: false, error };
-      }
-
-      if (!prefsResult.success) {
-        const error = prefsResult.error || 'Failed to load MCP server preferences';
-        set({ isLoading: false, error });
-        return { success: false, error };
-      }
-
       set({
         plugins: listResult.plugins || [],
         userServers: listResult.userServers || [],

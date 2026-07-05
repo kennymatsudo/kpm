@@ -4,20 +4,15 @@
 
 import { ipcMain } from 'electron';
 import { searchEndpoints, type SearchEndpointName } from '../../../shared/ipc/searchEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import { unwrapOrThrow } from '../../services/result';
 import type { SearchService } from '../../services/core/SearchService';
-
-type SearchHandler<K extends SearchEndpointName> = (
-  params: EndpointPayload<(typeof searchEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => Promise<unknown>;
 
 /**
  * One handler per `searchEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type SearchHandlers = { [K in SearchEndpointName]: SearchHandler<K> };
+type SearchHandlers = { [K in SearchEndpointName]: HandlerFor<typeof searchEndpoints, K> };
 
 function buildSearchHandlers(searchService: SearchService): SearchHandlers {
   return {

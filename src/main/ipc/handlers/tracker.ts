@@ -1,22 +1,17 @@
 import type { BrowserWindow } from 'electron';
 import { trackerEndpoints, type TrackerEndpointName } from '../../../shared/ipc/trackerEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import type {
   SyncPreview,
 } from '../../../shared/types';
 import type { TrackerService } from '../../services/core/TrackerService';
 import { bindRegistryHandlers } from '../validation/utils';
 
-type TrackerHandler<K extends TrackerEndpointName> = (
-  params: EndpointPayload<(typeof trackerEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => Promise<unknown>;
-
 /**
  * One handler per `trackerEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type TrackerHandlers = { [K in TrackerEndpointName]: TrackerHandler<K> };
+type TrackerHandlers = { [K in TrackerEndpointName]: HandlerFor<typeof trackerEndpoints, K> };
 
 function buildTrackerHandlers(
   getMainWindow: () => BrowserWindow | null,

@@ -7,9 +7,12 @@
  */
 
 import { z } from 'zod';
-import type { EndpointDefinition } from './endpoints';
+import { resultOf, type EndpointDefinition } from './endpoints';
 
 const terminalId = z.string().min(1, 'terminalId cannot be empty').trim().max(128);
+
+/** `IpcResponse<void>` shape returned by `toIpcResponse` for a `ServiceResult<void>` — mirrors `main/ipc/response.ts`. */
+type SuccessOrError = { success: true; data: void } | { success: false; error: string };
 
 export const terminalEndpoints = {
   create: {
@@ -20,18 +23,22 @@ export const terminalEndpoints = {
       cols: z.number().int().min(1).max(1000),
       rows: z.number().int().min(1).max(1000),
     }),
+    result: resultOf<SuccessOrError>(),
   },
   write: {
     channel: 'terminal:write',
     params: z.object({ id: terminalId, data: z.string() }),
+    result: resultOf<SuccessOrError>(),
   },
   resize: {
     channel: 'terminal:resize',
     params: z.object({ id: terminalId, cols: z.number().int().min(1).max(1000), rows: z.number().int().min(1).max(1000) }),
+    result: resultOf<SuccessOrError>(),
   },
   kill: {
     channel: 'terminal:kill',
     params: z.object({ id: terminalId }),
+    result: resultOf<SuccessOrError>(),
   },
 } satisfies Record<string, EndpointDefinition>;
 

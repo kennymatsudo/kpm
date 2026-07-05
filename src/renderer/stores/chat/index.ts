@@ -27,12 +27,14 @@ export const useChatStore: UseBoundStore<StoreApi<ChatState>> = create<ChatState
 // Load persisted model and effort preferences (guarded for Node.js test environments)
 if (typeof window !== 'undefined') {
   void useChatStore.getState().loadSlashCommands();
-  void getAppSetting('chat_model').then((result: { success: boolean; value?: string }) => {
+  void getAppSetting('chat_model').then((result) => {
+    if (!result.success) return;
     if (result.value === 'sonnet' || result.value === 'opus') {
       useChatStore.setState({ model: result.value });
     }
   });
-  void getAppSetting('chat_effort').then((result: { success: boolean; value?: string }) => {
+  void getAppSetting('chat_effort').then((result) => {
+    if (!result.success) return;
     if (result.value === 'high' || result.value === 'max') {
       useChatStore.setState({ effort: result.value });
     }

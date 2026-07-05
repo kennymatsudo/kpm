@@ -1,19 +1,15 @@
 import { ipcMain, type BrowserWindow } from 'electron';
 import { terminalEndpoints, type TerminalEndpointName } from '../../../shared/ipc/terminalEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import { IPC_CHANNELS } from '../channels';
 import { toIpcResponse } from '../response';
 import type { TerminalService } from '../../services/streaming/TerminalService';
-
-type TerminalHandler<K extends TerminalEndpointName> = (
-  params: EndpointPayload<(typeof terminalEndpoints)[K]>
-) => unknown;
 
 /**
  * One handler per `terminalEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type TerminalHandlers = { [K in TerminalEndpointName]: TerminalHandler<K> };
+type TerminalHandlers = { [K in TerminalEndpointName]: HandlerFor<typeof terminalEndpoints, K> };
 
 function buildTerminalHandlers(terminalService: TerminalService): TerminalHandlers {
   return {

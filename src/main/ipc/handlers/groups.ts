@@ -6,16 +6,12 @@
  */
 
 import { groupEndpoints, type GroupEndpointName } from '../../../shared/ipc/groupEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import type { GroupService } from '../../services/core/GroupService';
 import type { IGroupRepository } from '../../db/interfaces';
 import { toIpcResponse, type IpcResponse } from '../response';
 import { success, failure } from '../../services/result';
 import { bindRegistryHandlers } from '../validation/utils';
-
-type GroupHandler<K extends GroupEndpointName> = (
-  params: EndpointPayload<(typeof groupEndpoints)[K]>
-) => unknown;
 
 /** Returns a `Group not found` response if `id` doesn't resolve, else `undefined`. */
 function groupNotFoundResponse(groups: IGroupRepository, id: string): IpcResponse<void> | undefined {
@@ -33,7 +29,7 @@ function groupNotFoundResponse(groups: IGroupRepository, id: string): IpcRespons
  * `createRegistryIpcHandlers`, which would force a uniform `{success, ...}`
  * envelope onto every entry.
  */
-type GroupHandlers = { [K in GroupEndpointName]: GroupHandler<K> };
+type GroupHandlers = { [K in GroupEndpointName]: HandlerFor<typeof groupEndpoints, K> };
 
 function buildGroupHandlers(groupService: GroupService, groups: IGroupRepository): GroupHandlers {
   return {

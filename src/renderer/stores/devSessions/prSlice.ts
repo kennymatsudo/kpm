@@ -87,11 +87,12 @@ export function createDevSessionsPrSlice(
 
       try {
         const authResult = await checkSessionGithubAuth({ sessionId });
-        if (!authResult.success || !authResult.authenticated) {
-          return {
-            success: false,
-            error: authResult.error || 'GitHub CLI not authenticated. Run `gh auth login` in your terminal.',
-          };
+        const notAuthenticatedError = 'GitHub CLI not authenticated. Run `gh auth login` in your terminal.';
+        if (!authResult.success) {
+          return { success: false, error: authResult.error || notAuthenticatedError };
+        }
+        if (!authResult.authenticated) {
+          return { success: false, error: notAuthenticatedError };
         }
 
         const contextResult = await buildSessionPrContext({ sessionId });

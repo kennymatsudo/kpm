@@ -1,17 +1,15 @@
 import type { CustomThemeService } from '../../services/core/CustomThemeService';
 import { createRegistryIpcHandlers } from '../validation/utils';
 import { customThemeEndpoints, type CustomThemeEndpointName } from '../../../shared/ipc/customThemeEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
-
-type CustomThemeHandler<K extends CustomThemeEndpointName> = (
-  params: EndpointPayload<(typeof customThemeEndpoints)[K]>
-) => unknown;
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 
 /**
  * One handler per `customThemeEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type CustomThemeHandlers = { [K in CustomThemeEndpointName]: CustomThemeHandler<K> };
+type CustomThemeHandlers = {
+  [K in CustomThemeEndpointName]: UnwrappedHandlerFor<typeof customThemeEndpoints, K>;
+};
 
 function buildCustomThemeHandlers(customThemeService: CustomThemeService): CustomThemeHandlers {
   return {

@@ -43,7 +43,7 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
     set({ phase: 'loading', error: null, exportResult: null });
     try {
       const result = await getTrackerExportReview(projectId, associationId);
-      if (result.success && result.reviewData) {
+      if (result.success) {
         set({
           reviewData: result.reviewData,
           items: result.reviewData.items,
@@ -88,7 +88,7 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
     set({ phase: 'exporting', error: null });
     try {
       const result = await executeApprovedTrackerExport(projectId, associationId, approvedItemIds);
-      if (result.success && result.result) {
+      if (result.success) {
         emit({
           type: 'tracker-export-completed',
           payload: { projectId, associationId },

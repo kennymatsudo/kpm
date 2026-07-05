@@ -6,21 +6,16 @@
 
 import { ipcMain } from 'electron';
 import { mcpServersEndpoints, type McpServersEndpointName } from '../../../shared/ipc/mcpServersEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import type { McpDiscoveryService } from '../../services/core/McpDiscoveryService';
 import { unwrapOrThrow } from '../../services/result';
 import { toIpcResponse } from '../response';
-
-type McpServersHandler<K extends McpServersEndpointName> = (
-  params: EndpointPayload<(typeof mcpServersEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => Promise<unknown>;
 
 /**
  * One handler per `mcpServersEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type McpServersHandlers = { [K in McpServersEndpointName]: McpServersHandler<K> };
+type McpServersHandlers = { [K in McpServersEndpointName]: HandlerFor<typeof mcpServersEndpoints, K> };
 
 function buildMcpServersHandlers(mcpDiscoveryService: McpDiscoveryService): McpServersHandlers {
   return {

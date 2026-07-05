@@ -142,7 +142,7 @@ export const useTaskPromptTemplateStore = create<TaskPromptTemplateState>((set, 
       ? await updateTaskPromptTemplate(state.selectedTemplateId, { name: trimmedName, promptContent })
       : await createTaskPromptTemplate(projectId ?? null, trimmedName, promptContent);
 
-    if (!result.success || !result.template) {
+    if (!result.success) {
       return { success: false, error: result.error || 'Failed to save template' };
     }
 
@@ -174,7 +174,7 @@ export const useTaskPromptTemplateStore = create<TaskPromptTemplateState>((set, 
     }
 
     const result = await setDefaultTaskPromptTemplate(state.selectedTemplateId);
-    if (!result.success || !result.template) {
+    if (!result.success) {
       return { success: false, error: result.error || 'Failed to set default' };
     }
 

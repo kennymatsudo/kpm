@@ -1,18 +1,13 @@
 import { ipcMain, dialog, type BrowserWindow } from 'electron';
 import { contextEndpoints, type ContextEndpointName } from '../../../shared/ipc/contextEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import type { ContextFileService } from '../../services/core/ContextFileService';
-
-type ContextHandler<K extends ContextEndpointName> = (
-  params: EndpointPayload<(typeof contextEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => Promise<unknown>;
 
 /**
  * One handler per `contextEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type ContextHandlers = { [K in ContextEndpointName]: ContextHandler<K> };
+type ContextHandlers = { [K in ContextEndpointName]: HandlerFor<typeof contextEndpoints, K> };
 
 function buildContextHandlers(
   getMainWindow: () => BrowserWindow | null,

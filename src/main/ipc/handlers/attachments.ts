@@ -1,7 +1,7 @@
 import { dialog, shell, type BrowserWindow } from 'electron';
 import * as fs from 'fs/promises';
 import { attachmentEndpoints, type AttachmentEndpointName } from '../../../shared/ipc/attachmentEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import type { AttachmentService, PickedAttachment } from '../../services/core/AttachmentService';
 import { unwrapOrThrow } from '../../services/result';
 import { toIpcResponse } from '../response';
@@ -9,16 +9,11 @@ import { AttachmentSchemas, ChatAttachmentSchemas } from '../validation';
 import { saveTempAttachment, readAttachmentAsDataUrl } from '../../services/files/TempImageService';
 import { bindRegistryHandlers } from '../validation/utils';
 
-type AttachmentHandler<K extends AttachmentEndpointName> = (
-  params: EndpointPayload<(typeof attachmentEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => Promise<unknown>;
-
 /**
  * One handler per `attachmentEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type AttachmentHandlers = { [K in AttachmentEndpointName]: AttachmentHandler<K> };
+type AttachmentHandlers = { [K in AttachmentEndpointName]: HandlerFor<typeof attachmentEndpoints, K> };
 
 function buildAttachmentHandlers(
   getMainWindow: () => BrowserWindow | null,

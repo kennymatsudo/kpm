@@ -7,18 +7,18 @@
 import type { BrowserWindow } from 'electron';
 import { createRegistryIpcHandlers } from '../validation/utils';
 import { customPromptEndpoints, type CustomPromptEndpointName } from '../../../shared/ipc/customPromptEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { CustomPromptService } from '../../services/core/CustomPromptService';
-
-type CustomPromptHandler<K extends CustomPromptEndpointName> = (
-  params: EndpointPayload<(typeof customPromptEndpoints)[K]>
-) => unknown;
 
 /**
  * One handler per `customPromptEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type CustomPromptHandlers = { [K in CustomPromptEndpointName]: CustomPromptHandler<K> };
+type CustomPromptHandlers = {
+  [K in CustomPromptEndpointName]: (
+    params: Parameters<UnwrappedHandlerFor<typeof customPromptEndpoints, K>>[0]
+  ) => ReturnType<UnwrappedHandlerFor<typeof customPromptEndpoints, K>>;
+};
 
 function buildCustomPromptHandlers(
   getMainWindow: () => BrowserWindow | null,

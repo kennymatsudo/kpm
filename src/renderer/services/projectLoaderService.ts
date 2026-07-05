@@ -75,7 +75,7 @@ export async function persistLastOpenedProjectId(projectId: string): Promise<voi
 
 export async function getLastOpenedProjectId(): Promise<string | undefined> {
   const result = await window.api.settings.app.get({ key: 'lastOpenedProjectId' });
-  return result.success ? result.value : undefined;
+  return result.success ? result.value ?? undefined : undefined;
 }
 
 export function createProjectRecord(input: {

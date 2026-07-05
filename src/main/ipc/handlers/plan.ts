@@ -1,18 +1,14 @@
 import { planEndpoints, type PlanEndpointName } from '../../../shared/ipc/planEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { PlanService } from '../../services/core/PlanService';
 import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
 import { createRegistryIpcHandlers } from '../validation/utils';
-
-type PlanHandler<K extends PlanEndpointName> = (
-  params: EndpointPayload<(typeof planEndpoints)[K]>
-) => unknown;
 
 /**
  * One handler per `planEndpoints` entry. A registry entry without a matching
  * key here is a compile error, not a runtime "no handler" failure.
  */
-type PlanHandlers = { [K in PlanEndpointName]: PlanHandler<K> };
+type PlanHandlers = { [K in PlanEndpointName]: UnwrappedHandlerFor<typeof planEndpoints, K> };
 
 function buildPlanHandlers(
   planService: PlanService,

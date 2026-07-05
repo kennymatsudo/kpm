@@ -7,19 +7,14 @@
 
 import { ipcMain, dialog, type BrowserWindow } from 'electron';
 import { artifactEndpoints, type ArtifactEndpointName } from '../../../shared/ipc/artifactEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import type { ArtifactService } from '../../services/core/ArtifactService';
-
-type ArtifactHandler<K extends ArtifactEndpointName> = (
-  params: EndpointPayload<(typeof artifactEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => Promise<unknown>;
 
 /**
  * One handler per `artifactEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type ArtifactHandlers = { [K in ArtifactEndpointName]: ArtifactHandler<K> };
+type ArtifactHandlers = { [K in ArtifactEndpointName]: HandlerFor<typeof artifactEndpoints, K> };
 
 function buildArtifactHandlers(
   getMainWindow: () => BrowserWindow | null,

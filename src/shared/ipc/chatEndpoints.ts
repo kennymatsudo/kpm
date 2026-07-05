@@ -15,8 +15,34 @@
  */
 
 import { z } from 'zod';
-import type { EndpointDefinition } from './endpoints';
+import { resultOf, type EndpointDefinition } from './endpoints';
 import { absolutePath, uuid } from './sharedSchemas';
+import type { ChatMessage, ChatSessionScope, ChatSessionSummary, SessionState, SlashCommandInfo } from '../types';
+
+/**
+ * Response shape for endpoints registered through `createRegistryIpcHandlers`
+ * (see `main/ipc/handlers/chat.ts`): the handler returns bare data (or
+ * `void`), and the registry loop wraps it as `{success: true, ...data}` /
+ * `{success: false, error}`.
+ */
+type RegistryResponse<T = void> =
+  | (T extends void ? { success: true } : { success: true } & T)
+  | { success: false; error: string };
+
+/** Mirrors `ActiveSessionInfo` from `main/services/streaming/StreamingSessionService.ts`. */
+interface ActiveSessionInfo {
+  chatSessionId: string;
+  scope: ChatSessionScope;
+  state: SessionState;
+  isProcessing: boolean;
+  title?: string | null;
+}
+
+/** Mirrors `FocusDocumentSessionResult` from `main/services/core/ChatService.ts`. */
+interface FocusDocumentSessionResult {
+  chatSessionId: string;
+  messages: ChatMessage[];
+}
 
 const claudeModel = z.enum(['opus', 'sonnet'], { message: 'Model must be "opus" or "sonnet"' });
 const chatProvider = z.enum(['claude', 'codex'], { message: 'Provider must be "claude" or "codex"' });
@@ -53,54 +79,67 @@ export const chatEndpoints = {
       currentView: chatViewModeSchema,
       focusDocument: focusChatDocumentSchema.optional(),
     }),
+    result: resultOf<RegistryResponse>(),
   },
   cancel: {
     channel: 'chat:cancel',
     params: z.object({ projectId: uuid, chatSessionId: uuid }),
+    result: resultOf<RegistryResponse>(),
   },
   cancelQueued: {
     channel: 'chat:cancel-queued',
     params: z.object({ projectId: uuid, chatSessionId: uuid, clientMessageId: uuid.optional() }),
+    result: resultOf<RegistryResponse>(),
   },
   newSession: {
     channel: 'chat:new-session',
     params: z.object({ projectId: uuid }),
+    result: resultOf<RegistryResponse>(),
   },
   connectSession: {
     channel: 'chat:connect-session',
     params: z.object({ projectId: uuid }),
+    result: resultOf<RegistryResponse>(),
   },
   disconnectSession: {
     channel: 'chat:disconnect-session',
     params: z.object({ projectId: uuid }),
+    result: resultOf<RegistryResponse>(),
   },
   getActiveSessions: {
     channel: 'chat:get-active-sessions',
     params: z.object({ projectId: uuid }),
+    result: resultOf<RegistryResponse<{ sessions: ActiveSessionInfo[] }>>(),
   },
   disconnectSpecificSession: {
     channel: 'chat:disconnect-specific-session',
     params: z.object({ projectId: uuid, chatSessionId: uuid }),
+    result: resultOf<RegistryResponse>(),
   },
   getSessionState: {
     channel: 'chat:get-session-state',
     params: z.object({ projectId: uuid, chatSessionId: uuid }),
+    result: resultOf<RegistryResponse<{ state: SessionState }>>(),
   },
   getUsage: {
     channel: 'chat:get-usage',
     params: z.object({ projectId: uuid }),
+    result: resultOf<RegistryResponse<{ usage: { totalTokens: number; inputTokens: number; outputTokens: number } }>>(),
   },
   getMessages: {
     channel: 'chat:get-messages',
     params: z.object({ projectId: uuid }),
+    result: resultOf<RegistryResponse<{ messages: ChatMessage[] }>>(),
   },
   getSessionHistory: {
     channel: 'chat:get-session-history',
     params: z.object({ projectId: uuid, limit: z.number().int().min(1).max(20).optional().default(5) }),
+    result: resultOf<RegistryResponse<{ sessions: ChatSessionSummary[] }>>(),
   },
   loadSession: {
     channel: 'chat:load-session',
     params: z.object({ projectId: uuid, chatSessionId: uuid }),
+    result: resultOf<RegistryResponse<{ messages: ChatMessage[]; chatSessionId: string }>>(),
   },
   getFocusDocumentSession: {
     channel: 'chat:get-focus-document-session',
@@ -110,10 +149,12 @@ export const chatEndpoints = {
       title: z.string().max(300).default(''),
       contentHash: z.string().min(1).max(128),
     }),
+    result: resultOf<RegistryResponse<FocusDocumentSessionResult>>(),
   },
   getSlashCommands: {
     channel: 'chat:get-slash-commands',
     params: null,
+    result: resultOf<RegistryResponse<{ commands: SlashCommandInfo[] }>>(),
   },
 } satisfies Record<string, EndpointDefinition>;
 

@@ -1,20 +1,15 @@
 import { ipcMain, shell } from 'electron';
 import { repoFilesEndpoints, type RepoFilesEndpointName } from '../../../shared/ipc/repoFilesEndpoints';
-import type { EndpointPayload } from '../../../shared/ipc/endpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import type { RepoFileService } from '../../services/files/RepoFileService';
 import { unwrapOrThrow } from '../../services/result';
 import { toIpcResponse } from '../response';
-
-type RepoFilesHandler<K extends RepoFilesEndpointName> = (
-  params: EndpointPayload<(typeof repoFilesEndpoints)[K]>,
-  event: Electron.IpcMainInvokeEvent
-) => Promise<unknown>;
 
 /**
  * One handler per `repoFilesEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
  */
-type RepoFilesHandlers = { [K in RepoFilesEndpointName]: RepoFilesHandler<K> };
+type RepoFilesHandlers = { [K in RepoFilesEndpointName]: HandlerFor<typeof repoFilesEndpoints, K> };
 
 function buildRepoFilesHandlers(repoFileService: RepoFileService): RepoFilesHandlers {
   return {

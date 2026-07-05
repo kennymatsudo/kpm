@@ -123,10 +123,15 @@ Adding one IPC endpoint by hand touches up to six files: the channel string (`sh
 ```typescript
 // src/shared/ipc/trackerEndpoints.ts
 export const trackerEndpoints = {
-  'credentials.get': { channel: 'tracker:credentials:get', params: null },
+  'credentials.get': {
+    channel: 'tracker:credentials:get',
+    params: null,
+    result: resultOf<{ success: boolean; jira?: JiraCredentialInfo; linear?: LinearCredentialInfo }>(),
+  },
   'credentials.saveJira': {
     channel: 'tracker:credentials:save:jira',
     params: z.object({ siteUrl: jiraSiteUrl, email, apiToken }),
+    result: resultOf<{ success: boolean; error?: string }>(),
   },
   // ...one entry per endpoint, keyed by the dotted method path used on window.api.<domain>
 } satisfies Record<string, EndpointDefinition>;
@@ -135,14 +140,18 @@ export const trackerEndpoints = {
 Write registry entries as **plain object literals**, not via a generic factory function (e.g. `endpoint(channel, params)`) — routing construction through a generic helper widens each entry's `params` to the shared `EndpointDefinition` bound and breaks per-endpoint payload inference (`EndpointPayload<...>` silently resolves to `undefined` for every entry). This is a real TypeScript pitfall, not a style preference — verify with `tsc --noEmit` if you touch this pattern.
 
 `shared/ipc/endpoints.ts` provides the generic helpers:
-- `EndpointDefinition<TParams>` / `EndpointRegistry` — the entry and registry shapes
+- `EndpointDefinition<TParams, TResult>` / `EndpointRegistry` — the entry and registry shapes; `result: resultOf<T>()` declares the response type as a compile-time-only phantom (no response Zod schema — responses aren't runtime-validated like requests are)
 - `EndpointPayload<E>` — extracts an entry's payload type from its Zod schema (or `undefined` for `params: null`)
+- `EndpointResult<E>` — extracts an entry's declared response type from its `result` marker
+- `HandlerFor<R, K>` / `UnwrappedHandlerFor<R, K>` — handler signatures enforcing the declared result type; a handler returning the wrong shape is a compile error. Use `UnwrappedHandlerFor` for domains bound via `createRegistryIpcHandlers`, which adds the `{success, ...}` envelope itself (declare those results as `RegistryResponse<T>`)
 - `toNestedChannels(registry)` — rebuilds a nested `{ a: { b: 'x:a:b' } }` object from the flat registry, for call sites that still read `IPC_CHANNELS.<domain>.*` (e.g. `shared/ipcChannels.ts` derives `IPC_CHANNELS.tracker` this way, and `registration.test.ts`'s channel-drift guard walks the result the same as any hand-declared block)
-- `deriveDomainApi(registry, invoke)` — builds `{ method: (payload) => invoke(channel, payload) }` for the preload bridge; a closed set, nothing beyond the registry's own channels
+- `deriveDomainApi(registry, invoke)` — builds `{ method: (payload) => invoke(channel, payload) }` for the preload bridge, each method typed `(payload: EndpointClientPayload<E>) => Promise<EndpointResult<E>>`; a closed set, nothing beyond the registry's own channels
+
+The declared `result` must match what the handler actually returns — the handler is the source of truth, and `HandlerFor` makes a mismatch a compile error. For domains bound via `bindRegistryHandlers` (no envelope imposed), a handler that throws surfaces as a rejected promise in the renderer, so don't declare an error branch the handler never returns.
 
 **Main side** (`handlers/{domain}.ts`): bind one handler function per registry key via a typed map — `{ [K in keyof typeof {domain}Endpoints]: HandlerFor<K> }` (mirrors `ACTION_EXECUTORS` in `shared/planActionSchema.ts` — a registry entry without a matching handler key is a compile error). Handler bodies keep the same validate-nothing-else-than-that shape as before (they already come in validated); the loop that registers them with `ipcMain.handle` parses each payload with the entry's own `params` schema before calling the handler. See `handlers/tracker.ts`.
 
-**Preload side** (`src/preload/api.ts`): call `deriveDomainApi({domain}Endpoints, (channel, payload) => ipcRenderer.invoke(channel, payload))`, then wrap the result in the domain's existing nested object shape (e.g. `tracker.credentials.get`) with explicit response types, since the registry only carries request payload types, not response types. Event-subscription methods (`onProgress`, etc., using `ipcRenderer.on`) are not invoke endpoints — leave them hand-written alongside the derived block.
+**Preload side** (`src/preload/api.ts`): call `deriveDomainApi({domain}Endpoints, (channel, payload) => ipcRenderer.invoke(channel, payload))`, then wrap the result in the domain's existing nested object shape (e.g. `tracker.credentials.get`). No response casts — each derived method's response type flows from the registry's `result` marker. Event-subscription methods (`onProgress`, etc., using `ipcRenderer.on`) are not invoke endpoints — leave them hand-written alongside the derived block.
 
 **Renderer side** (`src/renderer/services/{domain}Service.ts`): each exported function stays a thin forward to `window.api.{domain}.*`, but takes the endpoint's payload object directly instead of reshaping positional arguments into one — the payload type IS the Zod schema's inferred type (`EndpointPayload<(typeof {domain}Endpoints)[K]>`). The file is not deleted even though every function is a 1:1 forward: renderer code outside `services/` may not import `window.api` directly.
 
@@ -150,11 +159,11 @@ Write registry entries as **plain object literals**, not via a generic factory f
 
 Checklist for sweeping an un-migrated domain onto this pattern (see the tracker migration for a worked example):
 
-1. Create `src/shared/ipc/{domain}Endpoints.ts`: one entry per endpoint (`{ channel, params }`), written as plain object literals (see the factory-function pitfall above). Move the domain's Zod schemas here from `validation/{domain}.ts` — the registry becomes their single owner.
+1. Create `src/shared/ipc/{domain}Endpoints.ts`: one entry per endpoint (`{ channel, params, result }`), written as plain object literals (see the factory-function pitfall above). Move the domain's Zod schemas here from `validation/{domain}.ts` — the registry becomes their single owner. Declare each `result` from the handler's actual return shape.
 2. Derive `IPC_CHANNELS.{domain}` in `shared/ipcChannels.ts` from the registry via `toNestedChannels`, instead of hand-declaring the block. Grep for other readers of `IPC_CHANNELS.{domain}.*` first — keep the nested shape identical so they don't need changes. **Event channels are not invoke endpoints** — channels only ever used with `ipcRenderer.on`/`webContents.send` (progress events, etc.) stay hand-declared and out of the registry.
 3. Rewrite `validation/{domain}.ts`'s exported schema object to pull each schema off the registry (`{domain}Endpoints['x.y'].params`) instead of redeclaring it, so existing imports of e.g. `{Domain}Schemas` keep working unchanged.
 4. Rewrite `handlers/{domain}.ts`: bind one handler per registry key via the typed-map pattern; keep each handler body's actual logic untouched, just change how it receives its channel + validated params.
-5. In `src/preload/api.ts`, replace the domain's hand-written `ipcRenderer.invoke(...)` block with `deriveDomainApi({domain}Endpoints, ...)`, re-wrapped in the domain's existing nested shape with explicit response types. **This is the step that changes the wire-facing client signature**: today's hand-written preload wrappers reshape positional arguments into a payload object (`(a, b) => invoke(ch, { a, b })`); the derived methods take the payload object directly. Leave `ipcRenderer.on(...)` event-subscription functions hand-written.
+5. In `src/preload/api.ts`, replace the domain's hand-written `ipcRenderer.invoke(...)` block with `deriveDomainApi({domain}Endpoints, ...)`, re-wrapped in the domain's existing nested shape — no response casts; the types flow from the registry. **This is the step that changes the wire-facing client signature**: today's hand-written preload wrappers reshape positional arguments into a payload object (`(a, b) => invoke(ch, { a, b })`); the derived methods take the payload object directly. Leave `ipcRenderer.on(...)` event-subscription functions hand-written.
 6. In `src/renderer/services/{domain}Service.ts`, update each function whose preload method's signature changed (step 5) to accept and forward the payload object instead of positional args — do **not** delete the file or bypass it with direct `window.api` access from stores/components, even for pure 1:1 forwards (`no-restricted-properties` in `eslint.config.ts` restricts `window.api` to `services/`).
 7. Update every call site of the changed service functions (stores, components) to pass a payload object instead of positional arguments — `tsc --noEmit` will point at every one. Update any test asserting `toHaveBeenCalledWith(...)` on the old positional shape.
 8. If the domain has functions that are not 1:1 forwards (real logic beyond reshaping), leave them as-is; only the reshaping wrappers change shape.
