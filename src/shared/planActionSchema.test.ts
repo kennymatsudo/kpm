@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { infer as ZodInfer } from 'zod';
-import type { PlanAction } from '../../../shared/types';
-import { planActionSchema } from './plan';
+import type { PlanAction } from './types';
+import { planActionSchema } from './planActionSchema';
 
 /**
  * Canonical list of PlanAction discriminators.
  *
  * This is the single source of truth the three layers must agree on:
  *   - `PlanAction` union in `src/shared/types.ts`
- *   - `planActionSchema` in `src/main/ipc/validation/plan.ts`
+ *   - `planActionSchema` in `src/shared/planActionSchema.ts`
  *   - switch cases in `src/main/db/domain/PlanActionService.ts`
  *
  * Adding a new action type? Update this list, then follow the compile errors.

@@ -15,13 +15,13 @@
  * ```ts
  * // Converting ServiceResult to IpcResponse
  * ipcMain.handle('plan:update-item', (_event, params) => {
- *   const { itemId, updates } = PlanSchemas.updateItem.parse(params);
+ *   const { itemId, updates } = planEndpoints.updateItem.params.parse(params);
  *   return toIpcResponse(planService.updateItem(itemId, updates));
  * });
  *
  * // Async ServiceResult
  * ipcMain.handle('artifact:generate', async (_event, params) => {
- *   const validated = ArtifactSchemas.generate.parse(params);
+ *   const validated = artifactEndpoints.generate.params.parse(params);
  *   return toIpcResponseAsync(artifactService.generate(validated));
  * });
  *

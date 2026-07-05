@@ -7,13 +7,13 @@
 
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../channels';
-import { BriefingSchemas } from '../validation/briefing';
+import { briefingEndpoints } from '../../../shared/ipc/briefingEndpoints';
 import { ipcSuccess, toIpcResponseAsync } from '../response';
 import type { BriefingService } from '../../services/core/BriefingService';
 
 export function registerBriefingHandlers(briefingService: BriefingService): void {
   ipcMain.handle(IPC_CHANNELS.briefing.generate, async (event, params: unknown) => {
-    const { projectId } = BriefingSchemas.generate.parse(params);
+    const { projectId } = briefingEndpoints.generate.params.parse(params);
     const sender = event.sender;
 
     return toIpcResponseAsync(
@@ -29,7 +29,7 @@ export function registerBriefingHandlers(briefingService: BriefingService): void
   });
 
   ipcMain.handle(IPC_CHANNELS.briefing.get, (_event, params: unknown) => {
-    const { projectId } = BriefingSchemas.get.parse(params);
+    const { projectId } = briefingEndpoints.get.params.parse(params);
     return ipcSuccess(briefingService.getBriefing(projectId));
   });
 }

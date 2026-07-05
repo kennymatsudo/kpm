@@ -1,7 +1,7 @@
 import { dialog, shell, type BrowserWindow } from 'electron';
 import type { z } from 'zod';
 import type { RepoService } from '../../services/repo/RepoService';
-import { RepoSchemas } from '../validation';
+import { RepoSchemas } from '../validation/project';
 import { createRegistryIpcHandlers } from '../validation/utils';
 import { repoEndpoints, type RepoEndpointName } from '../../../shared/ipc/repoEndpoints';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';

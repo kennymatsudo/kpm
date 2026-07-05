@@ -84,7 +84,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - DB: `src/main/db/repositories/impl/PlanItemRepository.ts` (rowToPlanItem mapping)
   - Types: `src/shared/base-types.ts` (PlanItem interface)
   - Claude tool: `src/main/claude/tools/plan-changes.ts` (CreateItemAction schema)
-  - IPC validation: `src/main/ipc/validation/plan.ts`
+  - IPC validation: `src/shared/ipc/planEndpoints.ts`
   - Components: `src/renderer/components/planning/TaskEditModal.tsx`, `src/renderer/components/planning/action-details/UpdateItemDetail.tsx`
 - **Entry points / surfaces:**
   - Plan card modal (full details tab)
@@ -373,7 +373,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Service: `src/main/services/repo/DevSessionService.ts` (persists run mode and review policy at session creation)
   - Service: `src/main/services/agents/BoardAgentOrchestrator.ts` (gates completion until workflow tasks finish)
   - Repository: `src/main/db/repositories/impl/DevSessionRepository.ts`
-  - IPC validation: `src/main/ipc/validation/agentSession.ts`
+  - IPC validation: `src/shared/ipc/agentSessionEndpoints.ts`
   - DB: `dev_sessions` columns for run mode / review policy (see `src/main/db/interfaces/dev.ts`)
 - **Entry points / surfaces:**
   - "Start Implementation" modal: execution mode selector (Standard / Workflow)
@@ -691,7 +691,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Service: `src/main/services/core/ScheduledLoopService.ts` (CRUD + run-history access)
   - Repository: `src/main/db/repositories/impl/ScheduledLoopRepository.ts` (loop CRUD, `recordRunOutcome`), `ILoopRunRepository` (run history, `pruneOld`)
   - Context: `src/main/claude/contextBuilders.ts` (`createContextBuilder`) builds the same grounded project context used by chat
-  - IPC handlers: `src/main/ipc/handlers/scheduledLoops.ts`; validation: `src/main/ipc/validation/scheduledLoop.ts`
+  - IPC handlers: `src/main/ipc/handlers/scheduledLoops.ts`; validation: `src/shared/ipc/scheduledLoopEndpoints.ts`
   - Component: `src/renderer/components/command-palette/LoopModal.tsx` (create/edit loop, run history list)
   - Store: `src/renderer/stores/scheduledLoopStore.ts`
   - Service (renderer): `src/renderer/services/scheduledLoopService.ts` (`subscribeToScheduledLoopRun` — refreshes history when a run this window kicked off finishes)
@@ -981,9 +981,9 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ### 86. IPC Handler Pattern (Validation + Service Delegation)
 - **Architecture:** Each IPC handler validates input with Zod schema, then delegates to service layer. Services return `ServiceResult<T>` (success/failure). IPC handlers forward result to renderer.
 - **Key code locations:**
-  - Validation schemas: `src/main/ipc/validation/` (organized by domain)
+  - Validation schemas: `src/shared/ipc/{domain}Endpoints.ts` (one registry per domain, the single owner of each endpoint's Zod schema)
   - Handler pattern: `src/main/ipc/handlers/*.ts` (each handler follows same pattern)
-  - Utility: `createIpcHandler()` helper for consistent wrapping
+  - Utility: `createRegistryIpcHandlers()`/`bindRegistryHandlers()` (`src/main/ipc/validation/utils.ts`) for consistent wrapping
 - **Why it matters:** Clear separation of concerns. Type-safe IPC. Easy to test services independently of IPC.
 
 ### 87. Streaming Session Architecture (Push-to-Pull Adapter)

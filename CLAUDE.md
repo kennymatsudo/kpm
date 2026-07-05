@@ -71,7 +71,7 @@ When you touch one of these, every file listed must stay in sync.
 2. `src/shared/types.ts` — add to `PlanItemUpdates` Pick union
 3. `src/main/db/migrations.ts` — new migration
 4. `src/main/db/repositories/impl/PlanItemRepository.ts` — INSERT/UPDATE + `rowToPlanItem`
-5. `src/main/ipc/validation/plan.ts` — `planItemUpdates` Zod schema
+5. `src/shared/ipc/planEndpoints.ts` — `planItemUpdates` Zod schema
 6. `src/main/db/domain/PlanActionService.ts` — `executeCreateItem` / `executeUpdateItem`
 
 Then conditionally: the **`PlanAction` recipe** below if writable via tool; `DevSessionService.buildAgentContext` + the `modify_plan` tool prompt if the field should reach the implementation agent; `components/planning/TaskEditModal.tsx` if user-visible.

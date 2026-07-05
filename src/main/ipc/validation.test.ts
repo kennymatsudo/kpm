@@ -8,17 +8,46 @@
 
 import { describe, it, expect } from 'vitest';
 import { randomUUID } from 'crypto';
-import {
-  ValidationError,
-  ProjectSchemas,
-  PlanSchemas,
-  ChatSchemas,
-  TrackerSchemas,
-  ExportSchemas,
-  StreamingSessionSchemas,
-  ShellSchemas,
-  relativePath,
-} from './validation';
+import { ValidationError, relativePath } from './validation';
+import { projectEndpoints } from '../../shared/ipc/projectEndpoints';
+import { planEndpoints } from '../../shared/ipc/planEndpoints';
+import { chatEndpoints } from '../../shared/ipc/chatEndpoints';
+import { trackerEndpoints } from '../../shared/ipc/trackerEndpoints';
+import { exportEndpoints } from '../../shared/ipc/exportEndpoints';
+import { shellEndpoints } from '../../shared/ipc/shellEndpoints';
+
+const ProjectSchemas = {
+  create: projectEndpoints.create.params,
+  get: projectEndpoints.get.params,
+  update: projectEndpoints.update.params,
+};
+const PlanSchemas = {
+  updatePosition: planEndpoints.updatePosition.params,
+  updateItem: planEndpoints.updateItem.params,
+  executeActions: planEndpoints.executeActions.params,
+  addRelation: planEndpoints.addRelation.params,
+};
+const ChatSchemas = {
+  send: chatEndpoints.send.params,
+};
+const TrackerSchemas = {
+  saveJiraCredentials: trackerEndpoints['credentials.saveJira'].params,
+  addScope: trackerEndpoints['scopes.add'].params,
+};
+const ExportSchemas = {
+  addToQueue: exportEndpoints['queue.add'].params,
+  updateQueueStatus: exportEndpoints['queue.updateStatus'].params,
+  updateQueueCustomFields: exportEndpoints['queue.updateCustomFields'].params,
+  saveMapping: exportEndpoints['mappings.save'].params,
+};
+const StreamingSessionSchemas = {
+  connectSession: chatEndpoints.connectSession.params,
+  disconnectSession: chatEndpoints.disconnectSession.params,
+  getSessionState: chatEndpoints.getSessionState.params,
+};
+const ShellSchemas = {
+  openExternal: shellEndpoints.openExternal.params,
+};
 
 interface SafeParseSchema {
   safeParse(input: unknown): { success: boolean };

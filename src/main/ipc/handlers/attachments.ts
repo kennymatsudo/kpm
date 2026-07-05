@@ -5,7 +5,8 @@ import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import type { AttachmentService, PickedAttachment } from '../../services/core/AttachmentService';
 import { unwrapOrThrow } from '../../services/result';
 import { toIpcResponse } from '../response';
-import { AttachmentSchemas, ChatAttachmentSchemas } from '../validation';
+import { AttachmentAddSchema } from '../validation/project';
+import { ChatAttachmentReadAsDataUrlSchema, ChatAttachmentOpenTempSchema } from '../validation/artifacts';
 import { saveTempAttachment, readAttachmentAsDataUrl } from '../../services/files/TempImageService';
 import { bindRegistryHandlers } from '../validation/utils';
 
@@ -118,15 +119,15 @@ export function registerAttachmentHandlers(
 ): void {
   const handlers = buildAttachmentHandlers(getMainWindow, attachmentService);
 
-  // `AttachmentSchemas.add` and `ChatAttachmentSchemas.readAsDataUrl`/
-  // `openTemp` layer refines the shared registry's `params` can't express
-  // (file-exists / temp-dir scoping — see `validation/project.ts` and
-  // `validation/artifacts.ts`), so those three parse through them instead of
-  // `attachmentEndpoints[name].params`.
+  // `AttachmentAddSchema` and `ChatAttachmentReadAsDataUrlSchema`/
+  // `ChatAttachmentOpenTempSchema` layer refines the shared registry's
+  // `params` can't express (file-exists / temp-dir scoping — see
+  // `validation/project.ts` and `validation/artifacts.ts`), so those three
+  // parse through them instead of `attachmentEndpoints[name].params`.
   const validationOverrides: Partial<Record<AttachmentEndpointName, { parse: (input: unknown) => unknown }>> = {
-    add: AttachmentSchemas.add,
-    readAsDataUrl: ChatAttachmentSchemas.readAsDataUrl,
-    openTemp: ChatAttachmentSchemas.openTemp,
+    add: AttachmentAddSchema,
+    readAsDataUrl: ChatAttachmentReadAsDataUrlSchema,
+    openTemp: ChatAttachmentOpenTempSchema,
   };
 
   bindRegistryHandlers(attachmentEndpoints, handlers, validationOverrides);

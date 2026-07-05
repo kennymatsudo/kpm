@@ -2,7 +2,7 @@ import type { ChatService } from '../../services/core/ChatService';
 import type { SlashCommandService } from '../../services/core/SlashCommandService';
 import { chatEndpoints, type ChatEndpointName } from '../../../shared/ipc/chatEndpoints';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
-import { ChatSchemas, StreamingSessionSchemas } from '../validation';
+import { ChatSendSchema } from '../validation/chat';
 import { createRegistryIpcHandlers } from '../validation/utils';
 
 /**
@@ -100,19 +100,15 @@ function buildChatHandlers(chatService: ChatService, slashCommandService: SlashC
 }
 
 export function registerChatHandlers(chatService: ChatService, slashCommandService: SlashCommandService): void {
-  // `ChatSchemas.send` layers the temp-image-directory scoping refine that
+  // `ChatSendSchema` layers the temp-image-directory scoping refine that
   // the shared registry's `params` can't express (see `validation/chat.ts`),
   // so `send` parses through it instead of `chatEndpoints.send.params`.
-  // `connectSession` parses through `StreamingSessionSchemas` for parity
-  // with the pre-migration handler, though the schema is identical to
-  // `ChatSchemas.disconnectSession`/`newSession`.
   createRegistryIpcHandlers(
     chatEndpoints,
     buildChatHandlers(chatService, slashCommandService),
     'Chat operation failed',
     {
-      send: ChatSchemas.send,
-      connectSession: StreamingSessionSchemas.connectSession,
+      send: ChatSendSchema,
     }
   );
 }

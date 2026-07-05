@@ -9,7 +9,7 @@ import { ipcMain } from 'electron';
 import * as TempImageService from '../../services/files/TempImageService';
 import { tempImageEndpoints, type TempImageEndpointName } from '../../../shared/ipc/tempImageEndpoints';
 import type { HandlerFor } from '../../../shared/ipc/endpoints';
-import { TempImageSchemas } from '../validation';
+import { TempImageDeleteSchema } from '../validation/artifacts';
 
 /**
  * One handler per `tempImageEndpoints` entry. A registry entry without a
@@ -48,11 +48,11 @@ function buildTempImageHandlers(): TempImageHandlers {
 export function registerTempImageHandlers(): void {
   const handlers = buildTempImageHandlers();
 
-  // `TempImageSchemas` layers the temp-dir scoping refine that the shared
-  // registry's `params` can't express (see `validation/artifacts.ts`), so
-  // `delete` parses through it instead of `tempImageEndpoints.delete.params`.
-  const validationOverrides: Partial<Record<TempImageEndpointName, (typeof TempImageSchemas)[keyof typeof TempImageSchemas]>> = {
-    delete: TempImageSchemas.delete,
+  // `TempImageDeleteSchema` layers the temp-dir scoping refine that the
+  // shared registry's `params` can't express (see `validation/artifacts.ts`),
+  // so `delete` parses through it instead of `tempImageEndpoints.delete.params`.
+  const validationOverrides: Partial<Record<TempImageEndpointName, typeof TempImageDeleteSchema>> = {
+    delete: TempImageDeleteSchema,
   };
 
   for (const [name, { channel, params }] of Object.entries(tempImageEndpoints) as [

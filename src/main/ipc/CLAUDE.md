@@ -24,11 +24,13 @@ src/main/ipc/
 ├── channels.ts           # Re-export of shared channel constants
 ├── response.ts           # IpcResponse type and helpers
 ├── validation.ts         # Re-export from validation/
-├── validation/           # Zod schemas by domain
+├── validation/           # Shared validators, handler wiring utils, registry-schema refines
 │   ├── index.ts
-│   ├── shared.ts
+│   ├── shared.ts         # Reusable Zod pieces (uuid, paths, etc.)
 │   ├── utils.ts          # createIpcHandler, createRegistryIpcHandlers, bindRegistryHandlers helpers
-│   └── [domain].ts       # Domain-specific schemas
+│   └── [domain].ts       # Only for domains needing a stronger refine on top of a registry schema
+│                         #   (validationOverrides pattern) — most domains have no file here at all;
+│                         #   the registry (`src/shared/ipc/{domain}Endpoints.ts`) is their only schema owner
 ├── handlers/             # IPC handler implementations (one per domain)
 └── register/             # Handler registration groups (three files, called from index.ts)
     ├── workspace.ts      # Project/repo/attachment, plan/group, chat, files/export, tracker, settings, themes, permissions, artifacts, task prompt templates, custom prompts, scheduled loops, onboarding, slack
@@ -54,52 +56,56 @@ export const IPC_CHANNELS = {
 
 ## Handler Pattern: Validate → Delegate → Return
 
-### Pattern 1: Service with Result Type
+### Pattern 1: Registry-Bound Handlers (most domains)
 
 ```typescript
 import { unwrapOrThrow } from '../../services/result';
-import { toIpcResponse } from '../response';
-import { WorktreeSchemas } from '../validation';
+import { toIpcResponse, toIpcResponseAsync } from '../response';
+import { bindRegistryHandlers } from '../validation/utils';
+import { worktreeEndpoints, type WorktreeEndpointName } from '../../../shared/ipc/worktreeEndpoints';
+import type { HandlerFor } from '../../../shared/ipc/endpoints';
+
+type WorktreeHandlers = { [K in WorktreeEndpointName]: HandlerFor<typeof worktreeEndpoints, K> };
+
+function buildWorktreeHandlers(worktreeService: WorktreeService): WorktreeHandlers {
+  return {
+    getStatus: async ({ worktreeId }) => unwrapOrThrow(await worktreeService.getStatus(worktreeId)),
+    delete: async ({ worktreeId, force }) => toIpcResponse(await worktreeService.deleteWorktree(worktreeId, force)),
+    // ...one entry per registry key; a missing one is a compile error
+  };
+}
 
 export function registerWorktreeHandlers(worktreeService: WorktreeService): void {
-  // Data-returning handlers: use unwrapOrThrow (throws on error, returns data directly)
-  ipcMain.handle(IPC_CHANNELS.worktree.getStatus, async (_event, params: unknown) => {
-    const { worktreeId } = WorktreeSchemas.getStatus.parse(params);
-    return unwrapOrThrow(await worktreeService.getStatus(worktreeId));
-  });
-
-  // Void/action handlers: use toIpcResponse (returns { success, data?, error? })
-  ipcMain.handle(IPC_CHANNELS.worktree.delete, async (_event, params: unknown) => {
-    const { worktreeId, force } = WorktreeSchemas.delete.parse(params);
-    return toIpcResponse(await worktreeService.deleteWorktree(worktreeId, force));
-  });
+  bindRegistryHandlers(worktreeEndpoints, buildWorktreeHandlers(worktreeService));
 }
 ```
 
-See `handlers/worktree.ts` for the full file.
+Each registry key's `params` schema is parsed once by `bindRegistryHandlers` before the matching handler runs — no `.parse()` calls inside handler bodies. See `handlers/worktree.ts` for the full file, and "Endpoint Registries" below for the `createRegistryIpcHandlers` vs `bindRegistryHandlers` choice.
 
-### Pattern 2: createIpcHandler Wrapper
+### Pattern 2: createRegistryIpcHandlers Wrapper (uniform `{success, ...}` envelope)
 
 ```typescript
-ipcMain.handle(
-  IPC_CHANNELS.artifact.list,
-  createIpcHandler(
-    ArtifactSchemas.list,  // Zod schema
-    async ({ projectId }) => {
+createRegistryIpcHandlers(
+  artifactEndpoints,
+  {
+    list: ({ projectId }) => {
       const result = artifactService.list(projectId);
       if (!result.ok) throw new Error(result.error);
       return result.data;
     },
-    'Failed to list artifacts'
-  )
+    // ...one entry per registry key
+  },
+  'Failed to list artifacts'
 );
 ```
 
-Most handlers use this wrapper (see `handlers/artifacts.ts`, `handlers/plan.ts`). For parameter-less handlers, `createSimpleIpcHandler` skips the Zod step.
+See `handlers/settings.ts` or `handlers/customPrompts.ts` for full files using this pattern.
+
+`createIpcHandler`/`createSimpleIpcHandler` (`validation/utils.ts`) are the pre-registry hand-rolled wrapper this pattern superseded — no handler calls them anymore, but they're kept for the same `{success, ...}` envelope shape if a future non-registry endpoint needs it standalone.
 
 ## Validation Schemas
 
-Schemas in `validation/` organized by domain (one file per domain). See `validation/plan.ts` for an example.
+Every domain's Zod payload schema lives in `src/shared/ipc/{domain}Endpoints.ts` — the registry is the single owner. `src/main/ipc/validation/` holds only shared validator pieces (`shared.ts`), the handler-wiring utilities (`utils.ts`), and per-domain refines layered on top of a registry schema where the registry itself can't express the check (see `validation/project.ts`, `validation/chat.ts`, `validation/artifacts.ts` for examples of the `validationOverrides` pattern, and "Migrating a Domain to the Endpoint Registry" below for when this applies).
 
 ## Response Patterns
 
@@ -161,7 +167,7 @@ Checklist for sweeping an un-migrated domain onto this pattern (see the tracker 
 
 1. Create `src/shared/ipc/{domain}Endpoints.ts`: one entry per endpoint (`{ channel, params, result }`), written as plain object literals (see the factory-function pitfall above). Move the domain's Zod schemas here from `validation/{domain}.ts` — the registry becomes their single owner. Declare each `result` from the handler's actual return shape.
 2. Derive `IPC_CHANNELS.{domain}` in `shared/ipcChannels.ts` from the registry via `toNestedChannels`, instead of hand-declaring the block. Grep for other readers of `IPC_CHANNELS.{domain}.*` first — keep the nested shape identical so they don't need changes. **Event channels are not invoke endpoints** — channels only ever used with `ipcRenderer.on`/`webContents.send` (progress events, etc.) stay hand-declared and out of the registry.
-3. Rewrite `validation/{domain}.ts`'s exported schema object to pull each schema off the registry (`{domain}Endpoints['x.y'].params`) instead of redeclaring it, so existing imports of e.g. `{Domain}Schemas` keep working unchanged.
+3. Delete `validation/{domain}.ts` if it only re-declared schemas the registry now owns — repoint every importer at `{domain}Endpoints['x.y'].params` (schemas) and `EndpointPayload<(typeof {domain}Endpoints)['x.y']>` (payload types) directly. Only keep a `validation/{domain}.ts` file if the domain needs a stronger refine layered on top of a registry schema (see the escape-hatch bullets below) — in that case the file holds just the refine, not a full alias table.
 4. Rewrite `handlers/{domain}.ts`: bind one handler per registry key via the typed-map pattern; keep each handler body's actual logic untouched, just change how it receives its channel + validated params.
 5. In `src/preload/api.ts`, replace the domain's hand-written `ipcRenderer.invoke(...)` block with `deriveDomainApi({domain}Endpoints, ...)`, re-wrapped in the domain's existing nested shape — no response casts; the types flow from the registry. **This is the step that changes the wire-facing client signature**: today's hand-written preload wrappers reshape positional arguments into a payload object (`(a, b) => invoke(ch, { a, b })`); the derived methods take the payload object directly. Leave `ipcRenderer.on(...)` event-subscription functions hand-written.
 6. In `src/renderer/services/{domain}Service.ts`, update each function whose preload method's signature changed (step 5) to accept and forward the payload object instead of positional args — do **not** delete the file or bypass it with direct `window.api` access from stores/components, even for pure 1:1 forwards (`no-restricted-properties` in `eslint.config.ts` restricts `window.api` to `services/`).
@@ -171,7 +177,7 @@ Checklist for sweeping an un-migrated domain onto this pattern (see the tracker 
 
 **`src/shared/ipc/{domain}Endpoints.ts` files get bundled into the renderer** (the preload bridge and renderer services both import them for their payload types), so their `params` schemas cannot import Node builtins (`fs`, `path`, `os`) even though `.parse()` only ever actually runs in the main process — the static `import` alone breaks the Vite renderer build. Two escape hatches, both used by the `fileExplorer`/`repoFiles`/`context` and `attachment`/`tempImage` registries respectively:
 - Pure-string reimplementations of the Node logic (e.g. a hand-rolled `path.posix.normalize` for relative-path safety checks) when the check has no environment dependency.
-- When the check is genuinely environment-dependent (e.g. scoping a path to `os.tmpdir()`), narrow the registry's `params` to a format-only check (e.g. "is absolute") and layer the stronger `.refine()` back on in `validation/{domain}.ts` via `registryEndpoint.params.extend({...})`; then in `handlers/{domain}.ts` parse the affected keys through that stronger schema instead of the registry's own `params` (see `handlers/attachments.ts` and `handlers/tempImages.ts`'s `validationOverrides` map for the pattern).
+- When the check is genuinely environment-dependent (e.g. scoping a path to `os.tmpdir()`), narrow the registry's `params` to a format-only check (e.g. "is absolute") and layer the stronger `.refine()` back on in `validation/{domain}.ts` via `registryEndpoint.params.extend({...})`; then in `handlers/{domain}.ts` parse the affected keys through that stronger schema instead of the registry's own `params` (see `validation/project.ts` + `handlers/repos.ts`/`handlers/attachments.ts`, and `validation/artifacts.ts` + `handlers/tempImages.ts`'s `validationOverrides` map for the pattern).
 
 ## Best Practices
 
@@ -183,7 +189,7 @@ Checklist for sweeping an un-migrated domain onto this pattern (see the tracker 
 
 ## PlanAction Schema Registry
 
-`planActionSchema` (`shared/planActionSchema.ts`) is the single source of truth for `PlanAction`: each action type is declared once as a Zod object in `PLAN_ACTION_REGISTRY`, keyed by its `type` literal. `PlanAction` (`shared/types.ts`) is `z.infer<typeof planActionSchema>`, and `validation/plan.ts` re-exports the same schema for IPC validation — neither hand-declares the union.
+`planActionSchema` (`shared/planActionSchema.ts`) is the single source of truth for `PlanAction`: each action type is declared once as a Zod object in `PLAN_ACTION_REGISTRY`, keyed by its `type` literal. `PlanAction` (`shared/types.ts`) is `z.infer<typeof planActionSchema>`, and `shared/ipc/planEndpoints.ts`'s `executeActions` entry imports the same schema for IPC validation — neither hand-declares the union.
 
 When adding a new action type:
 1. Add an entry to `PLAN_ACTION_REGISTRY` in `shared/planActionSchema.ts`

@@ -21,7 +21,7 @@ src/
 │   ├── ipc/                 # IPC handlers
 │   │   ├── handlers/        # Handler implementations by domain
 │   │   ├── register/        # Handler registration by domain (workspace, development, platform)
-│   │   └── validation/      # Zod schemas by domain
+│   │   └── validation/      # Shared validators, handler wiring utils, registry-schema refines
 │   ├── claude/              # Claude SDK integration
 │   │   ├── tools/           # In-process MCP tools
 │   │   ├── prompts/         # System prompt modules
@@ -357,10 +357,9 @@ See `storeEvents.ts` for the authoritative, current list — avoid letting this 
 Renderer → ipcRenderer.invoke (Zod validated) → Handler → Service → Repository → SQLite
 ```
 
-**Validation Organization** (`src/main/ipc/validation/`):
-- Schemas organized by domain (plan, project, chat, tracker, etc.)
-- Shared validators in `shared.ts` (uuid, paths, etc.)
-- `createIpcHandler()` utility for consistent patterns
+**Validation Organization**:
+- Each domain's Zod payload schemas live in `src/shared/ipc/{domain}Endpoints.ts` — the endpoint registry is their single owner
+- `src/main/ipc/validation/` holds only what the registry can't express itself: shared validators (`shared.ts`: uuid, paths, etc.), handler wiring utilities (`createIpcHandler()`, `createRegistryIpcHandlers()`, `bindRegistryHandlers()` in `utils.ts`), and stronger refines layered on top of specific registry schemas (path-existence / temp-dir scoping checks needing Node builtins unavailable in registry files bundled into the renderer)
 
 ## Cross-Store Communication
 
