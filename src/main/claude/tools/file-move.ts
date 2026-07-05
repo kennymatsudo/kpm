@@ -15,6 +15,8 @@ import type { BrowserWindow } from 'electron';
 import { isContextFile } from '../../../shared/contextFile';
 import { tool, jsonResult, toolError } from './index';
 import type { FileExplorerService } from '../../services/files/FileExplorerService';
+import { emitAppEvent } from '../../../shared/ipc/appEvents';
+import { fileExplorerEvents } from '../../../shared/ipc/fileExplorerEvents';
 
 interface FileMoveToolDeps {
   fileExplorerService: FileExplorerService;
@@ -77,7 +79,7 @@ export function createFileMoveTools(deps: FileMoveToolDeps) {
           // Emit file change event for real-time UI update
           const mainWindow = deps.getMainWindow();
           if (mainWindow) {
-            mainWindow.webContents.send('file-explorer:file-changed', {
+            emitAppEvent(mainWindow.webContents, fileExplorerEvents.fileChanged, {
               projectId,
               type: 'renamed',
               path: sourcePath,

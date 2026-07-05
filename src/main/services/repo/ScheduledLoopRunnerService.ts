@@ -28,6 +28,8 @@ import type {
   IPlanItemRepository,
   ITaskPromptTemplateRepository,
 } from '../../db/interfaces';
+import type { EventDefinition, EventPayload } from '../../../shared/ipc/appEvents';
+import { scheduledLoopEvents } from '../../../shared/ipc/scheduledLoopEvents';
 import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import type { UpdateEventBus } from '../core/UpdateEventBus';
 import type { McpDiscoveryService } from '../core/McpDiscoveryService';
@@ -55,7 +57,7 @@ const MEMORY_WRITEBACK_INSTRUCTION = `At the very end of your reply, after every
 ${LOOP_MEMORY_DELIMITER}
 <compact plain-text state of everything this loop currently knows: items already reported, the current status of each watched item, and relevant timestamps. Max ~30 lines. This fully replaces the previous memory, so carry forward anything still relevant.>`;
 /** Broadcast to renderer windows after each run so loop status/history refresh. */
-export const SCHEDULED_LOOP_RUN_CHANNEL = 'scheduled-loop:run';
+export const SCHEDULED_LOOP_RUN_CHANNEL = scheduledLoopEvents.run.channel;
 
 export interface ScheduledLoopRunnerDeps {
   scheduledLoops: IScheduledLoopRepository;
@@ -122,6 +124,11 @@ export function createScheduledLoopRunnerService(deps: ScheduledLoopRunnerDeps) 
   });
 
   const log = (msg: string) => console.log(`[ScheduledLoops] ${msg}`);
+
+  /** Type-checks a broadcast against the app event registry before forwarding to the generic `broadcastToWindows`. */
+  function broadcast<E extends EventDefinition>(event: E, payload: EventPayload<E>): void {
+    deps.broadcastToWindows(event.channel, payload);
+  }
 
   // Shared between scheduled ticks and manual "Run now" so the two paths
   // never overlap for the same loop — maintain mode's document-update
@@ -369,7 +376,7 @@ export function createScheduledLoopRunnerService(deps: ScheduledLoopRunnerDeps) 
       if (result.outcome !== 'error' && result.memory !== null) {
         deps.scheduledLoops.updateMemory(loopId, result.memory);
       }
-      deps.broadcastToWindows(SCHEDULED_LOOP_RUN_CHANNEL, {
+      broadcast(scheduledLoopEvents.run, {
         projectId: loop.project_id,
         loopId,
         outcome: result.outcome,

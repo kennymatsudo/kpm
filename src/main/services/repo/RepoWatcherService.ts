@@ -10,6 +10,8 @@ import * as path from 'path';
 import type { BrowserWindow } from 'electron';
 import { getConfig } from '../../config';
 import type { UpdateEventBus } from '../core/UpdateEventBus';
+import { emitAppEvent } from '../../../shared/ipc/appEvents';
+import { repoEvents } from '../../../shared/ipc/repoEvents';
 
 // =============================================================================
 // Dependencies
@@ -138,7 +140,7 @@ export function createRepoWatcherService(deps: RepoWatcherServiceDeps) {
       // Notify renderer
       const mainWindow = deps.getMainWindow();
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('repo:branch-changed', {
+        emitAppEvent(mainWindow.webContents, repoEvents.branchChanged, {
           repoId,
           repoPath,
           branch: newBranch,

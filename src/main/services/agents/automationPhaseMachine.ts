@@ -15,6 +15,7 @@
 import type { DevSession, DevSessionAutomationPhase } from '../../../shared/types';
 import { isCommitHookRepairPhase } from '../../../shared/types';
 import { createStatusBroadcaster } from '../repo/rendererBroadcast';
+import { devSessionEvents } from '../../../shared/ipc/devSessionEvents';
 
 export type AutomationPhaseEvent =
   | { type: 'opposingReviewLaunched' }
@@ -122,7 +123,7 @@ function nextPhase(
 }
 
 export function createAutomationPhaseMachine(deps: AutomationPhaseMachineDeps) {
-  const broadcastSessionStatusChange = createStatusBroadcaster<DevSession>('dev-session:status-changed');
+  const broadcastSessionStatusChange = createStatusBroadcaster<DevSession, typeof devSessionEvents.statusChanged>(devSessionEvents.statusChanged);
 
   return {
     /**

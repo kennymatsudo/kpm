@@ -16,6 +16,8 @@ import type { PlanContext } from '../../claude/prompts';
 import { unwrapOrThrow } from '../result';
 import { createChatService } from './ChatService';
 import { CHAT_APPROVAL_MODE_KEY, CHAT_PROVIDER_KEY, parseChatApprovalMode, parseChatProvider } from '../../../shared/appSettings';
+import { emitAppEvent } from '../../../shared/ipc/appEvents';
+import { chatEvents } from '../../../shared/ipc/chatEvents';
 
 export interface ChatRuntimeServiceDeps {
   getMainWindow: () => BrowserWindow | null;
@@ -169,7 +171,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     getDefaultChatProvider: () => parseChatProvider(container.appSettings.get(CHAT_PROVIDER_KEY)),
     streamingSessionService,
     emitChatError: ({ projectId, chatSessionId, error }) => {
-      getMainWindow()?.webContents.send('chat:error', { projectId, chatSessionId, error });
+      emitAppEvent(getMainWindow()?.webContents, chatEvents.error, { projectId, chatSessionId, error });
     },
   });
 

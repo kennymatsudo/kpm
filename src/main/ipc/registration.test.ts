@@ -5,15 +5,15 @@
  * bridge, and a handler registration); forgetting the handler fails only at
  * runtime with a renderer timeout. This test boots the real registrars against
  * the mocked ipcMain and asserts every declared channel is either handled in
- * the main process or listened to as a main→renderer event in the preload.
+ * the main process or a known main→renderer event in the event registry
+ * (`shared/ipc/allAppEvents.ts`, an aggregate of every domain's `*Events.ts`).
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
-import path from 'path';
 import { ipcMain } from 'electron';
 import type { Mock } from 'vitest';
 import type { BrowserWindow } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipcChannels';
+import { allAppEventChannels } from '../../shared/ipc/allAppEvents';
 import { registerAllIpcHandlers } from './index';
 import type { AppServices } from '../services/appServices';
 
@@ -30,34 +30,14 @@ function flattenChannels(node: unknown, prefix = ''): { path: string; channel: s
   return [];
 }
 
-/** Resolve "terminal.data" against IPC_CHANNELS to its channel string. */
-function resolveChannelPath(dotPath: string): string | undefined {
-  let node: unknown = IPC_CHANNELS;
-  for (const segment of dotPath.split('.')) {
-    if (!node || typeof node !== 'object') return undefined;
-    node = (node as Record<string, unknown>)[segment];
-  }
-  return typeof node === 'string' ? node : undefined;
-}
-
 /**
  * Channels the preload bridge subscribes to (main→renderer events). These are
  * pushed via webContents.send and legitimately have no ipcMain handler.
- * Parsed from source so the list maintains itself.
+ * Sourced from the event registry (the invoke side's channel string, not a
+ * source-scrape) so the list maintains itself as domains are added.
  */
 function collectPreloadEventChannels(): Set<string> {
-  const channels = new Set<string>();
-  for (const file of ['api.ts', 'preload.ts']) {
-    const source = readFileSync(path.resolve(__dirname, '../../preload', file), 'utf8');
-    for (const match of source.matchAll(/ipcRenderer\.on\(\s*['"`]([^'"`]+)['"`]/g)) {
-      channels.add(match[1]);
-    }
-    for (const match of source.matchAll(/ipcRenderer\.on\(\s*IPC_CHANNELS\.([A-Za-z0-9_$.]+)/g)) {
-      const channel = resolveChannelPath(match[1]);
-      if (channel) channels.add(channel);
-    }
-  }
-  return channels;
+  return new Set(Object.values(allAppEventChannels));
 }
 
 /**

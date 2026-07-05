@@ -16,6 +16,9 @@
  */
 
 import { toNestedChannels } from './ipc/endpoints';
+import { toNestedEventChannels } from './ipc/appEvents';
+import { briefingEvents } from './ipc/briefingEvents';
+import { terminalEvents } from './ipc/terminalEvents';
 import { planEndpoints } from './ipc/planEndpoints';
 import { groupEndpoints } from './ipc/groupEndpoints';
 import { exportEndpoints } from './ipc/exportEndpoints';
@@ -571,8 +574,8 @@ export const IPC_CHANNELS = {
   // Custom Prompts
   // ===========================================================================
   // `custom-prompt:progress`/`custom-prompt:complete`/`custom-prompt:error`
-  // (main-to-renderer events) predate `IPC_CHANNELS` and stay hand-written
-  // literals in `handlers/customPrompts.ts`/`preload/api.ts`.
+  // (main-to-renderer events) are not invoke endpoints — they live in
+  // `shared/ipc/customPromptEvents.ts`, not here.
   customPrompts: customPromptChannels,
   scheduledLoop: scheduledLoopChannels,
 
@@ -609,9 +612,8 @@ export const IPC_CHANNELS = {
   // ===========================================================================
   // Permission
   // ===========================================================================
-  // `permission:request` (main-to-renderer event) predates `IPC_CHANNELS` and
-  // stays a hand-written literal in `PermissionPromptService`/`preload/api.ts`,
-  // matching its pre-migration state.
+  // `permission:request` (main-to-renderer event) is not an invoke
+  // endpoint — it lives in `shared/ipc/permissionEvents.ts`, not here.
   permission: permissionChannels,
 
   // ===========================================================================
@@ -632,9 +634,8 @@ export const IPC_CHANNELS = {
   // ===========================================================================
   // Tool Log
   // ===========================================================================
-  // `toollog:call`/`toollog:turn-summary` (broadcast events) predate
-  // `IPC_CHANNELS` and stay hand-written literals in `ToolCallLogger`/
-  // `preload/api.ts`, matching their pre-migration state.
+  // `toollog:call`/`toollog:turn-summary` (broadcast events) are not
+  // invoke endpoints — they live in `shared/ipc/toolLogEvents.ts`, not here.
   toolLog: toolLogChannels,
 
   // ===========================================================================
@@ -657,8 +658,9 @@ export const IPC_CHANNELS = {
   // ===========================================================================
   briefing: {
     ...briefingChannels,
-    // Streaming event (`sender.send` / `ipcRenderer.on`), not an invoke endpoint.
-    chunk: 'briefing:chunk',
+    // Streaming event (`sender.send` / `ipcRenderer.on`), not an invoke
+    // endpoint — derived from `briefingEvents` (`shared/ipc/briefingEvents.ts`).
+    ...(toNestedEventChannels(briefingEvents) as { chunk: string }),
   },
 
   // ===========================================================================
@@ -675,8 +677,8 @@ export const IPC_CHANNELS = {
   // Onboarding
   // ===========================================================================
   // `onboarding:progress`/`onboarding:thinking`/`onboarding:complete`/
-  // `onboarding:error` (main-to-renderer events) predate `IPC_CHANNELS` and
-  // stay hand-written literals in `handlers/onboarding.ts`/`preload/api.ts`.
+  // `onboarding:error` (main-to-renderer events) are not invoke endpoints —
+  // they live in `shared/ipc/onboardingEvents.ts`, not here.
   onboarding: onboardingEndpointChannels,
 
   // ===========================================================================
@@ -699,9 +701,9 @@ export const IPC_CHANNELS = {
   // ===========================================================================
   terminal: {
     ...terminalChannels,
-    // PTY output/exit events (`webContents.send` / `ipcRenderer.on`), not invoke endpoints.
-    data: 'terminal:data',
-    exit: 'terminal:exit',
+    // PTY output/exit events (`webContents.send` / `ipcRenderer.on`), not
+    // invoke endpoints — derived from `terminalEvents` (`shared/ipc/terminalEvents.ts`).
+    ...(toNestedEventChannels(terminalEvents) as { data: string; exit: string }),
   },
 } as const;
 

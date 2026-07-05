@@ -1,4 +1,6 @@
 import { BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron';
+import { emitAppEvent, type EventDefinition, type EventPayload } from '../../shared/ipc/appEvents';
+import { menuEvents } from '../../shared/ipc/menuEvents';
 
 interface RecentProject {
   id: string;
@@ -17,7 +19,7 @@ export function buildApplicationMenu(deps: ApplicationMenuDeps): void {
     label: project.name,
     click: () => {
       const win = BrowserWindow.getFocusedWindow() || deps.getMainWindow();
-      win?.webContents.send('menu:open-project', { projectId: project.id });
+      emitAppEvent(win?.webContents, menuEvents.openProject, { projectId: project.id });
     },
   }));
 
@@ -25,10 +27,10 @@ export function buildApplicationMenu(deps: ApplicationMenuDeps): void {
     recentProjectsSubmenu.push({ label: 'No recent projects', enabled: false });
   }
 
-  const sendToFocusedOrMainWindow = (channel: string, payload?: unknown) => {
+  function sendToFocusedOrMainWindow<E extends EventDefinition>(event: E, payload?: EventPayload<E>): void {
     const win = BrowserWindow.getFocusedWindow() || deps.getMainWindow();
-    win?.webContents.send(channel, payload);
-  };
+    emitAppEvent(win?.webContents, event, payload!);
+  }
 
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{
@@ -50,7 +52,7 @@ export function buildApplicationMenu(deps: ApplicationMenuDeps): void {
       submenu: [
         {
           label: 'New Project',
-          click: () => sendToFocusedOrMainWindow('menu:new-project'),
+          click: () => sendToFocusedOrMainWindow(menuEvents.newProject),
         },
         { type: 'separator' as const },
         {
@@ -61,7 +63,7 @@ export function buildApplicationMenu(deps: ApplicationMenuDeps): void {
         {
           label: 'Close',
           accelerator: 'CmdOrCtrl+W',
-          click: () => sendToFocusedOrMainWindow('menu:close-context'),
+          click: () => sendToFocusedOrMainWindow(menuEvents.closeContext),
         },
       ] as MenuItemConstructorOptions[],
     },

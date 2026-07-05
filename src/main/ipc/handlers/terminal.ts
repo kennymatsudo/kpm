@@ -1,9 +1,10 @@
 import { ipcMain, type BrowserWindow } from 'electron';
 import { terminalEndpoints, type TerminalEndpointName } from '../../../shared/ipc/terminalEndpoints';
 import type { HandlerFor } from '../../../shared/ipc/endpoints';
-import { IPC_CHANNELS } from '../channels';
 import { toIpcResponse } from '../response';
 import type { TerminalService } from '../../services/streaming/TerminalService';
+import { emitAppEvent } from '../../../shared/ipc/appEvents';
+import { terminalEvents } from '../../../shared/ipc/terminalEvents';
 
 /**
  * One handler per `terminalEndpoints` entry. A registry entry without a
@@ -33,13 +34,13 @@ export function registerTerminalHandlers(
   terminalService.on('data', (id: string, chunk: string) => {
     const win = getMainWindow();
     if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
-    win.webContents.send(IPC_CHANNELS.terminal.data, { id, data: chunk });
+    emitAppEvent(win.webContents, terminalEvents.data, { id, data: chunk });
   });
 
   terminalService.on('exit', (id: string, exitCode: number, signal?: number) => {
     const win = getMainWindow();
     if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
-    win.webContents.send(IPC_CHANNELS.terminal.exit, { id, exitCode, signal });
+    emitAppEvent(win.webContents, terminalEvents.exit, { id, exitCode, signal });
   });
 
   const handlers = buildTerminalHandlers(terminalService);

@@ -1,6 +1,25 @@
 import { ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipcChannels';
 import { deriveDomainApi } from '../shared/ipc/endpoints';
+import { deriveEventSubscriptions } from '../shared/ipc/appEvents';
+import { chatEvents } from '../shared/ipc/chatEvents';
+import { reviewEvents } from '../shared/ipc/reviewEvents';
+import { devSessionEvents } from '../shared/ipc/devSessionEvents';
+import { agentSessionEvents } from '../shared/ipc/agentSessionEvents';
+import { usageEvents } from '../shared/ipc/usageEvents';
+import { permissionEvents } from '../shared/ipc/permissionEvents';
+import { terminalEvents } from '../shared/ipc/terminalEvents';
+import { briefingEvents } from '../shared/ipc/briefingEvents';
+import { menuEvents } from '../shared/ipc/menuEvents';
+import { notificationEvents } from '../shared/ipc/notificationEvents';
+import { planEvents } from '../shared/ipc/planEvents';
+import { repoEvents } from '../shared/ipc/repoEvents';
+import { fileExplorerEvents } from '../shared/ipc/fileExplorerEvents';
+import { trackerEvents } from '../shared/ipc/trackerEvents';
+import { customPromptEvents } from '../shared/ipc/customPromptEvents';
+import { onboardingEvents } from '../shared/ipc/onboardingEvents';
+import { scheduledLoopEvents } from '../shared/ipc/scheduledLoopEvents';
+import { toolLogEvents } from '../shared/ipc/toolLogEvents';
 import { planEndpoints } from '../shared/ipc/planEndpoints';
 import { groupEndpoints } from '../shared/ipc/groupEndpoints';
 import { exportEndpoints } from '../shared/ipc/exportEndpoints';
@@ -101,24 +120,13 @@ import type {
   ToolPermission,
   FocusChatDocument,
   ReviewInboxSnapshot,
-  ReviewActionableSummary,
   SlackChannelLink,
   SlackTriageItem,
   AgentExecutionMode,
   AgentReviewPolicy,
   CustomTheme,
   ImportedCustomThemeResult,
-  AppNotification,
 } from '../shared/types';
-import type {
-  AgentSessionStatePayload,
-  AgentSessionActivityPayload,
-  AgentSessionQuestionPayload,
-  AgentSessionCompletePayload,
-} from '../shared/agent-types';
-import type {
-  UsageLiveEvent,
-} from '../shared/usage-types';
 
 type IpcSuccess<T extends object | void> = T extends void ? { success: true } : { success: true } & T;
 interface IpcFailure {
@@ -220,6 +228,7 @@ const tempImages = {
 };
 
 const chatInvoke = deriveDomainApi(chatEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+const chatSubscriptions = deriveEventSubscriptions(chatEvents, ipcRenderer);
 
 const chat = {
   sendMessage: (payload: {
@@ -264,92 +273,16 @@ const chat = {
       IPC_CHANNELS.chat.getFocusDocumentSession,
       { projectId, path, title, contentHash },
     ).then((result) => (result.success ? result : result)),
-  onChunk: (callback: (data: {
-    projectId: string;
-    chatSessionId?: string;
-    text: string;
-    segmentId?: number;
-    precedingActivities?: Activity[];
-  }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: {
-      projectId: string;
-      chatSessionId?: string;
-      text: string;
-      segmentId?: number;
-      precedingActivities?: Activity[];
-    }) => callback(data);
-    ipcRenderer.on('chat:chunk', handler);
-    return () => ipcRenderer.removeListener('chat:chunk', handler);
-  },
-  onPlanActions: (callback: (data: { projectId: string; chatSessionId?: string; actions: PlanAction[] }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; actions: PlanAction[] }) => callback(data);
-    ipcRenderer.on('chat:plan-actions', handler);
-    return () => ipcRenderer.removeListener('chat:plan-actions', handler);
-  },
-  onDone: (callback: (data: {
-    projectId: string;
-    chatSessionId?: string;
-    model?: string;
-    hasQueuedFollowUp?: boolean;
-    queuedClientMessageId?: string;
-    consumedQueuedClientMessageId?: string;
-  }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: {
-      projectId: string;
-      chatSessionId?: string;
-      model?: string;
-      hasQueuedFollowUp?: boolean;
-      queuedClientMessageId?: string;
-      consumedQueuedClientMessageId?: string;
-    }) => callback(data);
-    ipcRenderer.on('chat:done', handler);
-    return () => ipcRenderer.removeListener('chat:done', handler);
-  },
-  onQueued: (callback: (data: { projectId: string; chatSessionId?: string; clientMessageId?: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; clientMessageId?: string }) => callback(data);
-    ipcRenderer.on('chat:queued', handler);
-    return () => ipcRenderer.removeListener('chat:queued', handler);
-  },
-  onQueueCleared: (callback: (data: {
-    projectId: string;
-    chatSessionId?: string;
-    clientMessageId?: string;
-    reason?: 'cancelled' | 'already_sent' | 'session_disconnected';
-  }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: {
-      projectId: string;
-      chatSessionId?: string;
-      clientMessageId?: string;
-      reason?: 'cancelled' | 'already_sent' | 'session_disconnected';
-    }) => callback(data);
-    ipcRenderer.on('chat:queue-cleared', handler);
-    return () => ipcRenderer.removeListener('chat:queue-cleared', handler);
-  },
-  onError: (callback: (data: { projectId: string; chatSessionId?: string; error: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; error: string }) => callback(data);
-    ipcRenderer.on('chat:error', handler);
-    return () => ipcRenderer.removeListener('chat:error', handler);
-  },
-  onActivity: (callback: (data: { projectId: string; chatSessionId?: string; activity: Activity }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; activity: Activity }) => callback(data);
-    ipcRenderer.on('chat:activity', handler);
-    return () => ipcRenderer.removeListener('chat:activity', handler);
-  },
-  onThinking: (callback: (data: { projectId: string; chatSessionId?: string; text: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; text: string }) => callback(data);
-    ipcRenderer.on('chat:thinking', handler);
-    return () => ipcRenderer.removeListener('chat:thinking', handler);
-  },
-  onFileUpdate: (callback: (data: { projectId: string; chatSessionId?: string; filePath: string; content: string; oldContent?: string | null; forceReview?: boolean }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; filePath: string; content: string; oldContent?: string | null }) => callback(data);
-    ipcRenderer.on('chat:file-update', handler);
-    return () => ipcRenderer.removeListener('chat:file-update', handler);
-  },
-  onFileDelete: (callback: (data: { projectId: string; chatSessionId?: string; path: string; isDirectory: boolean }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; path: string; isDirectory: boolean }) => callback(data);
-    ipcRenderer.on('chat:file-delete', handler);
-    return () => ipcRenderer.removeListener('chat:file-delete', handler);
-  },
+  onChunk: chatSubscriptions.chunk,
+  onPlanActions: chatSubscriptions.planActions,
+  onDone: chatSubscriptions.done,
+  onQueued: chatSubscriptions.queued,
+  onQueueCleared: chatSubscriptions.queueCleared,
+  onError: chatSubscriptions.error,
+  onActivity: chatSubscriptions.activity,
+  onThinking: chatSubscriptions.thinking,
+  onFileUpdate: chatSubscriptions.fileUpdate,
+  onFileDelete: chatSubscriptions.fileDelete,
 
   // ─── Streaming Session Methods ───
 
@@ -379,84 +312,28 @@ const chat = {
     ),
 
   /** Session connecting event */
-  onSessionConnecting: (callback: (data: { projectId: string; chatSessionId?: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string }) => callback(data);
-    ipcRenderer.on('chat:session-connecting', handler);
-    return () => ipcRenderer.removeListener('chat:session-connecting', handler);
-  },
+  onSessionConnecting: chatSubscriptions.sessionConnecting,
 
   /** Session ready event */
-  onSessionReady: (callback: (data: { projectId: string; chatSessionId?: string; sessionId?: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; sessionId?: string }) => callback(data);
-    ipcRenderer.on('chat:session-ready', handler);
-    return () => ipcRenderer.removeListener('chat:session-ready', handler);
-  },
+  onSessionReady: chatSubscriptions.sessionReady,
 
   /** Session title event — SDK-derived summary used to label the session tab. */
-  onSessionTitle: (callback: (data: { projectId: string; chatSessionId?: string; title: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; title: string }) => callback(data);
-    ipcRenderer.on('chat:session-title', handler);
-    return () => ipcRenderer.removeListener('chat:session-title', handler);
-  },
+  onSessionTitle: chatSubscriptions.sessionTitle,
 
   /** Session error event */
-  onSessionError: (callback: (data: { projectId: string; chatSessionId?: string; error: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; error: string }) => callback(data);
-    ipcRenderer.on('chat:session-error', handler);
-    return () => ipcRenderer.removeListener('chat:session-error', handler);
-  },
+  onSessionError: chatSubscriptions.sessionError,
 
   /** Prompt suggestions event (after turn completes) */
-  onSuggestions: (callback: (data: { projectId: string; chatSessionId?: string; suggestions: string[] }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; suggestions: string[] }) => callback(data);
-    ipcRenderer.on('chat:suggestions', handler);
-    return () => ipcRenderer.removeListener('chat:suggestions', handler);
-  },
+  onSuggestions: chatSubscriptions.suggestions,
 
   /** Slash command list event — SDK-derived full list; replaces any scanned list */
-  onSlashCommands: (callback: (data: { projectId: string; chatSessionId?: string; commands: SlashCommandInfo[] }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; chatSessionId?: string; commands: SlashCommandInfo[] }) => callback(data);
-    ipcRenderer.on('chat:slash-commands', handler);
-    return () => ipcRenderer.removeListener('chat:slash-commands', handler);
-  },
+  onSlashCommands: chatSubscriptions.slashCommands,
 
   /** Session deactivated event (multi-session support) */
-  onSessionDeactivated: (callback: (data: {
-    projectId: string;
-    chatSessionId?: string;
-    reason?: string;
-    source?: string;
-    previousState?: string;
-  }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: {
-      projectId: string;
-      chatSessionId?: string;
-      reason?: string;
-      source?: string;
-      previousState?: string;
-    }) => callback(data);
-    ipcRenderer.on('chat:session-deactivated', handler);
-    return () => ipcRenderer.removeListener('chat:session-deactivated', handler);
-  },
+  onSessionDeactivated: chatSubscriptions.sessionDeactivated,
 
   /** MCP server status change event (health monitoring) */
-  onMcpStatus: (callback: (data: {
-    projectId: string;
-    chatSessionId?: string;
-    serverName: string;
-    status: string;
-    error?: string;
-  }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: {
-      projectId: string;
-      chatSessionId?: string;
-      serverName: string;
-      status: string;
-      error?: string;
-    }) => callback(data);
-    ipcRenderer.on('chat:mcp-status', handler);
-    return () => ipcRenderer.removeListener('chat:mcp-status', handler);
-  },
+  onMcpStatus: chatSubscriptions.mcpStatus,
 
 };
 
@@ -482,6 +359,7 @@ const projects = {
 };
 
 const repoInvoke = deriveDomainApi(repoEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+const repoSubscriptions = deriveEventSubscriptions(repoEvents, ipcRenderer);
 
 const repos = {
   add: (payload: { projectId: string; path: string }): Promise<Repo> =>
@@ -513,11 +391,7 @@ const repos = {
   setActiveWorktreePath: repoInvoke.setActiveWorktreePath,
   showInFolder: repoInvoke.showInFolder,
   openEditor: repoInvoke.openEditor,
-  onBranchChanged: (callback: (data: { repoId: string; repoPath: string; branch: string | null }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { repoId: string; repoPath: string; branch: string | null }) => callback(data);
-    ipcRenderer.on('repo:branch-changed', handler);
-    return () => ipcRenderer.removeListener('repo:branch-changed', handler);
-  },
+  onBranchChanged: repoSubscriptions.branchChanged,
 };
 
 interface PickedChatAttachment {
@@ -544,6 +418,7 @@ const attachments = {
   openTemp: attachmentInvoke.openTemp,
 };
 
+const planSubscriptions = deriveEventSubscriptions(planEvents, ipcRenderer);
 const plan = {
   listItems: (payload: { projectId: string }): Promise<PlanItem[]> =>
     invokeOrThrow<{ items: PlanItem[] }, PlanItem[]>(planEndpoints.listItems.channel, payload, ({ items }) => items),
@@ -567,11 +442,7 @@ const plan = {
     invokeFlat<void>(planEndpoints.deleteItemWithDescendants.channel, payload),
   getChildCount: (payload: { itemId: string }): Promise<number> =>
     invokeOrThrow<{ count: number }, number>(planEndpoints.getChildCount.channel, payload, ({ count }) => count),
-  onRefreshRequested: (callback: (event: { projectId: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, event: { projectId: string }) => callback(event);
-    ipcRenderer.on('plan:refresh-requested', handler);
-    return () => ipcRenderer.removeListener('plan:refresh-requested', handler);
-  },
+  onRefreshRequested: planSubscriptions.refreshRequested,
 };
 
 const groupInvoke = deriveDomainApi(groupEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
@@ -589,6 +460,7 @@ const groups = {
 };
 
 const trackerInvoke = deriveDomainApi(trackerEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+const trackerSubscriptions = deriveEventSubscriptions(trackerEvents, ipcRenderer);
 const exportInvoke = deriveDomainApi(exportEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
 
 const tracker = {
@@ -637,20 +509,12 @@ const tracker = {
     getPreview: trackerInvoke['import.preview'],
     apply: trackerInvoke['import.apply'],
     importAll: trackerInvoke['import.all'],
-    onProgress: (callback: (data: { projectId: string; associationId: string; phase?: string; fetched?: number; current?: number; total?: number }) => void): (() => void) => {
-      const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; associationId: string; phase?: string; fetched?: number; current?: number; total?: number }) => callback(data);
-      ipcRenderer.on('tracker:import:progress', handler);
-      return () => ipcRenderer.removeListener('tracker:import:progress', handler);
-    },
+    onProgress: trackerSubscriptions.importProgress,
   },
   sync: {
     getPreview: trackerInvoke['sync.preview'],
     applyChanges: trackerInvoke['sync.apply'],
-    onProgress: (callback: (data: { projectId: string; associationId: string; phase: string; current: number; total: number }) => void): (() => void) => {
-      const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; associationId: string; phase: string; current: number; total: number }) => callback(data);
-      ipcRenderer.on('tracker:sync:progress', handler);
-      return () => ipcRenderer.removeListener('tracker:sync:progress', handler);
-    },
+    onProgress: trackerSubscriptions.syncProgress,
   },
   exportQueue: {
     get: exportInvoke['queue.get'],
@@ -721,22 +585,11 @@ const contextFiles = {
     invokeOrThrow<{ paths: string[] }, string[]>(IPC_CHANNELS.context.selectDialog, undefined, ({ paths }) => paths),
 };
 
+const menuSubscriptions = deriveEventSubscriptions(menuEvents, ipcRenderer);
 const menu = {
-  onNewProject: (callback: () => void): (() => void) => {
-    const handler = () => callback();
-    ipcRenderer.on('menu:new-project', handler);
-    return () => ipcRenderer.removeListener('menu:new-project', handler);
-  },
-  onOpenProject: (callback: (data: { projectId: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string }) => callback(data);
-    ipcRenderer.on('menu:open-project', handler);
-    return () => ipcRenderer.removeListener('menu:open-project', handler);
-  },
-  onCloseContext: (callback: () => void): (() => void) => {
-    const handler = () => callback();
-    ipcRenderer.on('menu:close-context', handler);
-    return () => ipcRenderer.removeListener('menu:close-context', handler);
-  },
+  onNewProject: menuSubscriptions.newProject,
+  onOpenProject: menuSubscriptions.openProject,
+  onCloseContext: menuSubscriptions.closeContext,
   closeWindow: (): void => {
     ipcRenderer.send('window:close');
   },
@@ -776,14 +629,11 @@ const customThemes = {
 };
 
 const permissionInvoke = deriveDomainApi(permissionEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+const permissionSubscriptions = deriveEventSubscriptions(permissionEvents, ipcRenderer);
 
 const permission = {
   respond: permissionInvoke.respond,
-  onRequest: (callback: (request: PermissionRequest) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, request: PermissionRequest) => callback(request);
-    ipcRenderer.on('permission:request', handler);
-    return () => ipcRenderer.removeListener('permission:request', handler);
-  },
+  onRequest: permissionSubscriptions.request,
 };
 
 const permissions = {
@@ -824,6 +674,7 @@ const taskPromptTemplates = {
 };
 
 // Custom Prompts API (Command+K palette prompts)
+const customPromptSubscriptions = deriveEventSubscriptions(customPromptEvents, ipcRenderer);
 const customPrompts = {
   // List all custom prompts
   list: (): Promise<{ success: boolean; data?: CustomPrompt[]; error?: string }> =>
@@ -884,28 +735,17 @@ const customPrompts = {
     invokeFlat<void>(IPC_CHANNELS.customPrompts.ensureBuiltins),
 
   // Progress callback
-  onProgress: (callback: (data: { taskId: string; message: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; message: string }) => callback(data);
-    ipcRenderer.on('custom-prompt:progress', handler);
-    return () => ipcRenderer.removeListener('custom-prompt:progress', handler);
-  },
+  onProgress: customPromptSubscriptions.progress,
 
   // Complete callback
-  onComplete: (callback: (data: { taskId: string; filePath: string; promptName: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; filePath: string; promptName: string }) => callback(data);
-    ipcRenderer.on('custom-prompt:complete', handler);
-    return () => ipcRenderer.removeListener('custom-prompt:complete', handler);
-  },
+  onComplete: customPromptSubscriptions.complete,
 
   // Error callback
-  onError: (callback: (data: { taskId: string; error: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; error: string }) => callback(data);
-    ipcRenderer.on('custom-prompt:error', handler);
-    return () => ipcRenderer.removeListener('custom-prompt:error', handler);
-  },
+  onError: customPromptSubscriptions.error,
 };
 
 // Scheduled Loops API (recurring AI-driven prompts, managed from Command+K)
+const scheduledLoopSubscriptions = deriveEventSubscriptions(scheduledLoopEvents, ipcRenderer);
 const scheduledLoops = {
   list: (payload: { projectId: string }): Promise<{ success: boolean; data?: ScheduledLoop[]; error?: string }> =>
     invokeFlat<{ loops: ScheduledLoop[] }>(scheduledLoopEndpoints.list.channel, payload).then((result) =>
@@ -957,20 +797,13 @@ const scheduledLoops = {
       result.success ? { success: true, data: result.runs } : result
     ),
 
-  onRun: (callback: (data: { projectId: string; loopId: string; outcome: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { projectId: string; loopId: string; outcome: string }) => callback(data);
-    ipcRenderer.on('scheduled-loop:run', handler);
-    return () => ipcRenderer.removeListener('scheduled-loop:run', handler);
-  },
+  onRun: scheduledLoopSubscriptions.run,
 };
 
 // Notifications (kind-agnostic; fed by NotificationService's `notification:new` broadcast)
+const notificationSubscriptions = deriveEventSubscriptions(notificationEvents, ipcRenderer);
 const notifications = {
-  onNew: (callback: (notification: AppNotification) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, notification: AppNotification) => callback(notification);
-    ipcRenderer.on('notification:new', handler);
-    return () => ipcRenderer.removeListener('notification:new', handler);
-  },
+  onNew: notificationSubscriptions.new,
 };
 
 const githubInvoke = deriveDomainApi(githubEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
@@ -989,6 +822,7 @@ const github = {
 };
 
 const reviewInvoke = deriveDomainApi(reviewEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+const reviewSubscriptions = deriveEventSubscriptions(reviewEvents, ipcRenderer);
 
 const review = {
   getInbox: reviewInvoke.getInbox,
@@ -1004,16 +838,8 @@ const review = {
   overrideDisposition: reviewInvoke.overrideDisposition,
   pollNow: () => reviewInvoke.pollNow(undefined),
   pollSession: reviewInvoke.pollSession,
-  onSyncUpdated: (callback: (data: { sessionId: string; needsReviewCount: number; totalTasks: number; fetchedAt: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { sessionId: string; needsReviewCount: number; totalTasks: number; fetchedAt: string }) => callback(data);
-    ipcRenderer.on('review:sync-updated', handler);
-    return () => ipcRenderer.removeListener('review:sync-updated', handler);
-  },
-  onActionableChanged: (callback: (summary: ReviewActionableSummary) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, summary: ReviewActionableSummary) => callback(summary);
-    ipcRenderer.on('review-poll:actionable', handler);
-    return () => ipcRenderer.removeListener('review-poll:actionable', handler);
-  },
+  onSyncUpdated: reviewSubscriptions.syncUpdated,
+  onActionableChanged: reviewSubscriptions.pollActionable,
 };
 
 const worktreeInvoke = deriveDomainApi(worktreeEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
@@ -1030,6 +856,7 @@ const worktrees = {
 };
 
 const devSessionInvoke = deriveDomainApi(devSessionEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+const devSessionSubscriptions = deriveEventSubscriptions(devSessionEvents, ipcRenderer);
 
 const devSessions = {
   getByProject: devSessionInvoke.getByProject,
@@ -1057,16 +884,7 @@ const devSessions = {
   getCommitsAhead: devSessionInvoke.getCommitsAhead,
 
   // Session status change event listener (replaces polling)
-  onStatusChanged: (
-    callback: (event: { sessionId: string; projectId: string; status: string }) => void
-  ): (() => void) => {
-    const handler = (
-      _: Electron.IpcRendererEvent,
-      event: { sessionId: string; projectId: string; status: string }
-    ) => callback(event);
-    ipcRenderer.on('dev-session:status-changed', handler);
-    return () => ipcRenderer.removeListener('dev-session:status-changed', handler);
-  },
+  onStatusChanged: devSessionSubscriptions.statusChanged,
 
   updateName: devSessionInvoke.updateName,
 
@@ -1080,6 +898,7 @@ const devSessions = {
 // =============================================================================
 
 const agentSessionInvoke = deriveDomainApi(agentSessionEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+const agentSessionSubscriptions = deriveEventSubscriptions(agentSessionEvents, ipcRenderer);
 
 const agentSessions = {
   // Create pending session + start agent in one call (primary entry point from board UI)
@@ -1119,38 +938,15 @@ const agentSessions = {
   dismissInterruption: agentSessionInvoke.dismissInterruption,
 
   // Event listeners
-  onStateChanged: (callback: (event: AgentSessionStatePayload) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, event: AgentSessionStatePayload) => callback(event);
-    ipcRenderer.on('agent-session:state-changed', handler);
-    return () => ipcRenderer.removeListener('agent-session:state-changed', handler);
-  },
-
-  onActivity: (callback: (event: AgentSessionActivityPayload) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, event: AgentSessionActivityPayload) => callback(event);
-    ipcRenderer.on('agent-session:activity', handler);
-    return () => ipcRenderer.removeListener('agent-session:activity', handler);
-  },
-
-  onQuestion: (callback: (event: AgentSessionQuestionPayload) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, event: AgentSessionQuestionPayload) => callback(event);
-    ipcRenderer.on('agent-session:question', handler);
-    return () => ipcRenderer.removeListener('agent-session:question', handler);
-  },
-
-  onComplete: (callback: (event: AgentSessionCompletePayload) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, event: AgentSessionCompletePayload) => callback(event);
-    ipcRenderer.on('agent-session:complete', handler);
-    return () => ipcRenderer.removeListener('agent-session:complete', handler);
-  },
-
-  onError: (callback: (event: { sessionId: string; devSessionId: string; error: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, event: { sessionId: string; devSessionId: string; error: string }) => callback(event);
-    ipcRenderer.on('agent-session:error', handler);
-    return () => ipcRenderer.removeListener('agent-session:error', handler);
-  },
+  onStateChanged: agentSessionSubscriptions.stateChanged,
+  onActivity: agentSessionSubscriptions.activity,
+  onQuestion: agentSessionSubscriptions.question,
+  onComplete: agentSessionSubscriptions.complete,
+  onError: agentSessionSubscriptions.error,
 };
 
 const fileExplorerInvoke = deriveDomainApi(fileExplorerEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+const fileExplorerSubscriptions = deriveEventSubscriptions(fileExplorerEvents, ipcRenderer);
 
 const fileExplorer = {
   // List directory contents
@@ -1202,53 +998,13 @@ const fileExplorer = {
   selectFolderDialog: fileExplorerInvoke.selectFolderDialog,
 
   // Listen for file change events (real-time updates when files are created/updated/deleted)
-  onFileChange: (
-    callback: (data: {
-      projectId: string;
-      type: 'created' | 'updated' | 'deleted' | 'renamed';
-      path: string;
-      newPath?: string;
-      isDirectory: boolean;
-    }) => void
-  ): (() => void) => {
-    const handler = (
-      _: Electron.IpcRendererEvent,
-      data: {
-        projectId: string;
-        type: 'created' | 'updated' | 'deleted' | 'renamed';
-        path: string;
-        newPath?: string;
-        isDirectory: boolean;
-      }
-    ) => callback(data);
-    ipcRenderer.on('file-explorer:file-changed', handler);
-    return () => ipcRenderer.removeListener('file-explorer:file-changed', handler);
-  },
+  onFileChange: fileExplorerSubscriptions.fileChanged,
 
   // Listen for cross-boundary write/delete/rename/symlink events. Fires when
   // an IPC file op succeeded against a path whose realpath sits outside the
   // project root (i.e. via a symlink). Renderer can surface this in an
   // activity feed for audit / observability.
-  onExternalAccess: (
-    callback: (data: {
-      projectId: string;
-      op: 'write' | 'delete' | 'rename' | 'create-symlink' | 'copy-into';
-      relativePath: string;
-      realpath: string;
-    }) => void
-  ): (() => void) => {
-    const handler = (
-      _: Electron.IpcRendererEvent,
-      data: {
-        projectId: string;
-        op: 'write' | 'delete' | 'rename' | 'create-symlink' | 'copy-into';
-        relativePath: string;
-        realpath: string;
-      }
-    ) => callback(data);
-    ipcRenderer.on('file-explorer:external-access', handler);
-    return () => ipcRenderer.removeListener('file-explorer:external-access', handler);
-  },
+  onExternalAccess: fileExplorerSubscriptions.externalAccess,
 
   // Watch project folder for external file changes (Finder, terminal, etc.)
   watchProject: fileExplorerInvoke.watchProject,
@@ -1286,21 +1042,14 @@ const shell = {
 
 // Terminal API (embedded developer terminal panel)
 const terminalInvoke = deriveDomainApi(terminalEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+const terminalSubscriptions = deriveEventSubscriptions(terminalEvents, ipcRenderer);
 const terminal = {
   create: terminalInvoke.create,
   write: terminalInvoke.write,
   resize: terminalInvoke.resize,
   kill: terminalInvoke.kill,
-  onData: (callback: (data: { id: string; data: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { id: string; data: string }) => callback(data);
-    ipcRenderer.on(IPC_CHANNELS.terminal.data, handler);
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.terminal.data, handler);
-  },
-  onExit: (callback: (data: { id: string; exitCode: number; signal?: number }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { id: string; exitCode: number; signal?: number }) => callback(data);
-    ipcRenderer.on(IPC_CHANNELS.terminal.exit, handler);
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.terminal.exit, handler);
-  },
+  onData: terminalSubscriptions.data,
+  onExit: terminalSubscriptions.exit,
 };
 
 const perfInvoke = deriveDomainApi(perfEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
@@ -1326,21 +1075,14 @@ const confluence = {
 
 // Tool Call Logging API (DevTools panel)
 const toolLogInvoke = deriveDomainApi(toolLogEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+const toolLogSubscriptions = deriveEventSubscriptions(toolLogEvents, ipcRenderer);
 const toolLog = {
   getEntries: toolLogInvoke.getEntries,
   getSessionStats: toolLogInvoke.getSessionStats,
   getInfo: toolLogInvoke.getInfo,
   setEnabled: toolLogInvoke.setEnabled,
-  onCall: (callback: (entry: ToolCallLogEntry) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, entry: ToolCallLogEntry) => callback(entry);
-    ipcRenderer.on('toollog:call', handler);
-    return () => ipcRenderer.removeListener('toollog:call', handler);
-  },
-  onTurnSummary: (callback: (summary: ToolCallTurnSummary) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, summary: ToolCallTurnSummary) => callback(summary);
-    ipcRenderer.on('toollog:turn-summary', handler);
-    return () => ipcRenderer.removeListener('toollog:turn-summary', handler);
-  },
+  onCall: toolLogSubscriptions.call,
+  onTurnSummary: toolLogSubscriptions.turnSummary,
 };
 
 const searchInvoke = deriveDomainApi(searchEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
@@ -1361,6 +1103,7 @@ const promptOverrides = {
 
 // Briefing API (project state synthesis)
 const briefingInvoke = deriveDomainApi(briefingEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+const briefingSubscriptions = deriveEventSubscriptions(briefingEvents, ipcRenderer);
 const briefing = {
   generate: briefingInvoke.generate,
   get: briefingInvoke.get,
@@ -1368,15 +1111,12 @@ const briefing = {
    * Subscribe to streaming briefing chunks. Fires per text delta as Stage 2
    * synthesizes. Returns an unsubscribe function.
    */
-  onChunk: (handler: (event: { projectId: string; delta: string }) => void) => {
-    const listener = (_: unknown, payload: { projectId: string; delta: string }) => handler(payload);
-    ipcRenderer.on(IPC_CHANNELS.briefing.chunk, listener);
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.briefing.chunk, listener);
-  },
+  onChunk: briefingSubscriptions.chunk,
 };
 
 // Claude usage tracking API
 const usageInvoke = deriveDomainApi(usageEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+const usageSubscriptions = deriveEventSubscriptions(usageEvents, ipcRenderer);
 const usage = {
   getProjectStats: usageInvoke.getProjectStats,
   getGlobalStats: usageInvoke.getGlobalStats,
@@ -1386,11 +1126,7 @@ const usage = {
    * Subscribe to live usage events broadcast every time a Claude turn
    * finishes. Returns an unsubscribe function.
    */
-  onUsageEvent: (handler: (event: UsageLiveEvent) => void) => {
-    const listener = (_: unknown, payload: UsageLiveEvent) => handler(payload);
-    ipcRenderer.on('usage:event', listener);
-    return () => ipcRenderer.removeListener('usage:event', listener);
-  },
+  onUsageEvent: usageSubscriptions.event,
 };
 
 // MCP Servers API
@@ -1422,6 +1158,7 @@ const debug = {
 };
 
 // Onboarding API (project setup wizard)
+const onboardingSubscriptions = deriveEventSubscriptions(onboardingEvents, ipcRenderer);
 const onboarding = {
   generate: (taskId: string, projectId: string, description: string, repoDirectories: Record<string, string[]>): Promise<{ taskId: string }> =>
     invokeOrThrow<{ taskId: string }, { taskId: string }>(
@@ -1442,26 +1179,10 @@ const onboarding = {
       { projectId },
       ({ directories }) => directories,
     ),
-  onProgress: (callback: (data: { taskId: string; message: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; message: string }) => callback(data);
-    ipcRenderer.on('onboarding:progress', handler);
-    return () => ipcRenderer.removeListener('onboarding:progress', handler);
-  },
-  onThinking: (callback: (data: { taskId: string; text: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; text: string }) => callback(data);
-    ipcRenderer.on('onboarding:thinking', handler);
-    return () => ipcRenderer.removeListener('onboarding:thinking', handler);
-  },
-  onComplete: (callback: (data: { taskId: string; content: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; content: string }) => callback(data);
-    ipcRenderer.on('onboarding:complete', handler);
-    return () => ipcRenderer.removeListener('onboarding:complete', handler);
-  },
-  onError: (callback: (data: { taskId: string; error: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { taskId: string; error: string }) => callback(data);
-    ipcRenderer.on('onboarding:error', handler);
-    return () => ipcRenderer.removeListener('onboarding:error', handler);
-  },
+  onProgress: onboardingSubscriptions.progress,
+  onThinking: onboardingSubscriptions.thinking,
+  onComplete: onboardingSubscriptions.complete,
+  onError: onboardingSubscriptions.error,
 };
 
 // Slack Triage API

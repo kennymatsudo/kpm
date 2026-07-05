@@ -28,6 +28,8 @@ import type {
 } from '../../db/interfaces/usage';
 import type { IProjectRepository } from '../../db/interfaces/project';
 import { computeCostMicroUsd, resolveModelPricing } from '../../config/claudePricing';
+import { emitAppEvent } from '../../../shared/ipc/appEvents';
+import { usageEvents } from '../../../shared/ipc/usageEvents';
 
 // =============================================================================
 // Types
@@ -212,7 +214,7 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
 
       const window = deps.getMainWindow();
       if (window && !window.isDestroyed()) {
-        window.webContents.send('usage:event', {
+        emitAppEvent(window.webContents, usageEvents.event, {
           projectId: input.projectId,
           source: input.source,
           model: event.model,

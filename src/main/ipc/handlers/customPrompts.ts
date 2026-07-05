@@ -9,6 +9,8 @@ import { createRegistryIpcHandlers } from '../validation/utils';
 import { customPromptEndpoints, type CustomPromptEndpointName } from '../../../shared/ipc/customPromptEndpoints';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { CustomPromptService } from '../../services/core/CustomPromptService';
+import { emitAppEvent } from '../../../shared/ipc/appEvents';
+import { customPromptEvents } from '../../../shared/ipc/customPromptEvents';
 
 /**
  * One handler per `customPromptEndpoints` entry. A registry entry without a
@@ -86,20 +88,20 @@ function buildCustomPromptHandlers(
         projectId,
         {
           onProgress: (message: string) => {
-            mainWindow.webContents.send('custom-prompt:progress', {
+            emitAppEvent(mainWindow.webContents, customPromptEvents.progress, {
               taskId,
               message,
             });
           },
           onComplete: (filePath: string) => {
-            mainWindow.webContents.send('custom-prompt:complete', {
+            emitAppEvent(mainWindow.webContents, customPromptEvents.complete, {
               taskId,
               filePath,
               promptName: promptResult.data.name,
             });
           },
           onError: (error: string) => {
-            mainWindow.webContents.send('custom-prompt:error', {
+            emitAppEvent(mainWindow.webContents, customPromptEvents.error, {
               taskId,
               error,
             });

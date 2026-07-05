@@ -12,6 +12,8 @@ import fs from 'fs';
 import path from 'path';
 import type { BrowserWindow } from 'electron';
 import type { ToolCallLogEntry, ToolCallTurnSummary, ActivityType } from '../../../shared/types';
+import { emitAppEvent, type EventDefinition, type EventPayload } from '../../../shared/ipc/appEvents';
+import { toolLogEvents } from '../../../shared/ipc/toolLogEvents';
 
 /** Maximum entries to keep in memory per session */
 const MAX_ENTRIES_PER_SESSION = 500;
@@ -55,9 +57,9 @@ export function createToolCallLogger(deps: ToolCallLoggerDeps): ToolCallLogger {
       });
   }
 
-  function broadcast(channel: string, data: unknown): void {
+  function broadcast<E extends EventDefinition>(event: E, data: EventPayload<E>): void {
     const mainWindow = deps.getMainWindow();
-    mainWindow?.webContents.send(channel, data);
+    emitAppEvent(mainWindow?.webContents, event, data);
   }
 
   return {
@@ -84,7 +86,7 @@ export function createToolCallLogger(deps: ToolCallLoggerDeps): ToolCallLogger {
       });
 
       // Broadcast to renderer
-      broadcast('toollog:call', entry);
+      broadcast(toolLogEvents.call, entry);
     },
 
     finalizeTurn(projectId: string, chatSessionId: string): ToolCallTurnSummary | null {
@@ -136,7 +138,7 @@ export function createToolCallLogger(deps: ToolCallLoggerDeps): ToolCallLogger {
       });
 
       // Broadcast to renderer
-      broadcast('toollog:turn-summary', summary);
+      broadcast(toolLogEvents.turnSummary, summary);
 
       // Increment turn
       turnIndex.set(chatSessionId, currentTurn + 1);

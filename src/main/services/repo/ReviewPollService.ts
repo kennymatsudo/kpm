@@ -37,6 +37,8 @@ import type { AgentSessionManager } from '../agents/AgentSessionManager';
 import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
 import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import type { UpdateEventBus } from '../core/UpdateEventBus';
+import type { EventDefinition, EventPayload } from '../../../shared/ipc/appEvents';
+import { reviewEvents } from '../../../shared/ipc/reviewEvents';
 
 // =============================================================================
 // Types
@@ -93,6 +95,11 @@ const COMPLETION_BASE_BRANCHES = new Set(['main', 'master']);
 export function createReviewPollService(deps: ReviewPollServiceDeps) {
   let registered = false;
   let started = false;
+
+  /** Type-checks a `review-poll:*`/`review:*` broadcast against `reviewEvents` before forwarding to the generic `broadcastToWindows`. */
+  function broadcast<E extends EventDefinition>(event: E, payload: EventPayload<E>): void {
+    deps.broadcastToWindows(event.channel, payload);
+  }
 
   // Per-session error backoff: sessionId → remaining ticks to skip.
   // Kept here (rather than in the scheduler) because backoff is per-session,
@@ -252,7 +259,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
   function broadcastActionable(session: DevSession, snapshot?: PrReviewSnapshot | null): void {
     const summary = computeActionableSummary(session, snapshot);
     if (!summary) return;
-    deps.broadcastToWindows('review-poll:actionable', summary);
+    broadcast(reviewEvents.pollActionable, summary);
   }
 
   function closeReviewTasksForMergedPr(session: DevSession): void {
@@ -372,7 +379,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       summary: `PR #${session.pr_number} merged into ${baseRefName}; moved plan item to Done`,
     });
 
-    deps.broadcastToWindows('review-poll:completed', {
+    broadcast(reviewEvents.pollCompleted, {
       sessionId: session.id,
       planItemId: session.plan_item_id,
       prNumber: session.pr_number,
@@ -455,7 +462,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       );
 
       if (needsInputTasks.length > 0) {
-        deps.broadcastToWindows('review-poll:needs-attention', {
+        broadcast(reviewEvents.pollNeedsAttention, {
           sessionId,
           reason: `${needsInputTasks.length} thread(s) need your input`,
           taskIds: needsInputTasks.map(t => t.id),
@@ -512,7 +519,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
 
       deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued' });
 
-      deps.broadcastToWindows('review-poll:fix-started', {
+      broadcast(reviewEvents.pollFixStarted, {
         sessionId,
         taskIds: implementTaskIds,
         threadCount: implementTasks.length,
@@ -530,7 +537,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       const msg = error instanceof Error ? error.message : String(error);
       applyBackoff(sessionId);
 
-      deps.broadcastToWindows('review-poll:error', { sessionId, error: msg });
+      broadcast(reviewEvents.pollError, { sessionId, error: msg });
 
       return { sessionId, action: 'error', newThreadCount: 0, implementCount: 0, error: msg };
     } finally {
@@ -587,7 +594,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       }
     }
 
-    deps.broadcastToWindows('review-poll:tick-complete', summary);
+    broadcast(reviewEvents.pollTickComplete, summary);
 
     return summary;
   }

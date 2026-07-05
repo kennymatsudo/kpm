@@ -44,6 +44,8 @@ import { selectVisibleSlashCommands } from '../core/SlashCommandService';
 import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import { extractFilePaths } from '../toollog/extractFilePaths';
 import { randomUUID } from 'crypto';
+import { emitAppEvent } from '../../../shared/ipc/appEvents';
+import { chatEvents } from '../../../shared/ipc/chatEvents';
 
 // =============================================================================
 // Types
@@ -124,7 +126,7 @@ function sendChatActivity(
   chatSessionId: string | undefined,
   activity: Activity,
 ): void {
-  mainWindow?.webContents.send('chat:activity', { projectId, chatSessionId, activity });
+  emitAppEvent(mainWindow?.webContents, chatEvents.activity, { projectId, chatSessionId, activity });
 }
 
 function sendChatError(
@@ -133,7 +135,7 @@ function sendChatError(
   chatSessionId: string | undefined,
   error: string,
 ): void {
-  mainWindow?.webContents.send('chat:error', { projectId, chatSessionId, error });
+  emitAppEvent(mainWindow?.webContents, chatEvents.error, { projectId, chatSessionId, error });
 }
 
 /** Roll back a session's optimistic 'processing' transition back to 'ready'. */
@@ -150,7 +152,7 @@ function sendQueueCleared(
   clientMessageId: string | undefined,
   reason: 'cancelled' | 'already_sent' | 'session_disconnected',
 ): void {
-  mainWindow?.webContents.send('chat:queue-cleared', { projectId, chatSessionId, clientMessageId, reason });
+  emitAppEvent(mainWindow?.webContents, chatEvents.queueCleared, { projectId, chatSessionId, clientMessageId, reason });
 }
 
 /** Guarded sendChatActivity: no-ops while an interrupted turn is being torn down. */
@@ -174,7 +176,7 @@ export function sendChatThinkingIfActive(
   text: string,
 ): void {
   if (managed.interruptInProgress) return;
-  mainWindow?.webContents.send('chat:thinking', { projectId, chatSessionId, text });
+  emitAppEvent(mainWindow?.webContents, chatEvents.thinking, { projectId, chatSessionId, text });
 }
 
 /** Guarded chat:chunk send: no-ops while an interrupted turn is being torn down. */
@@ -188,7 +190,7 @@ export function sendChatChunkIfActive(
   precedingActivities: Activity[] | undefined,
 ): void {
   if (managed.interruptInProgress) return;
-  mainWindow?.webContents.send('chat:chunk', { projectId, chatSessionId, text, segmentId, precedingActivities });
+  emitAppEvent(mainWindow?.webContents, chatEvents.chunk, { projectId, chatSessionId, text, segmentId, precedingActivities });
 }
 
 /**
@@ -505,7 +507,7 @@ export function markSessionReady(
       params.sessionId
     );
   }
-  params.mainWindow?.webContents.send('chat:session-ready', {
+  emitAppEvent(params.mainWindow?.webContents, chatEvents.sessionReady, {
     projectId: params.projectId,
     chatSessionId: params.chatSessionId,
     sessionId: params.sessionId,
@@ -586,7 +588,7 @@ export function finalizeTurnResult(
   // Check if response was truncated
   if (maxTokensReached) {
     console.log(`[StreamingSessionService] Response truncated (max_tokens) for ${key}`);
-    mainWindow?.webContents.send('chat:truncated', {
+    emitAppEvent(mainWindow?.webContents, chatEvents.truncated, {
       projectId,
       chatSessionId,
       reason: 'max_tokens',
@@ -665,7 +667,7 @@ export function finalizeTurnResult(
 
   managed.lastTurnFinalized = true;
   if (!hasQueuedFollowUp) {
-    mainWindow?.webContents.send('chat:session-ready', { projectId, chatSessionId });
+    emitAppEvent(mainWindow?.webContents, chatEvents.sessionReady, { projectId, chatSessionId });
   }
   // The aggregate sdkMsg.usage token counts are CUMULATIVE SUMS across all API
   // calls in the agent turn (one call per tool-use loop iteration). For the
@@ -680,7 +682,7 @@ export function finalizeTurnResult(
       : null;
   const ctxSource = lastIter ?? sdkMsg.usage;
 
-  mainWindow?.webContents.send('chat:done', {
+  emitAppEvent(mainWindow?.webContents, chatEvents.done, {
     projectId,
     chatSessionId,
     model: managed.resolvedModel,
@@ -742,7 +744,7 @@ export function finalizeTurnResult(
         } catch (err) {
           console.warn('[StreamingSessionService] updateTitle failed:', err);
         }
-        mainWindow?.webContents.send('chat:session-title', {
+        emitAppEvent(mainWindow?.webContents, chatEvents.sessionTitle, {
           projectId,
           chatSessionId,
           title,
@@ -1019,7 +1021,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         // Silent reconnect cleanup skips lifecycle IPC; emit deactivation on reconnect failure
         // so renderer doesn't keep stale active-session state.
         const mainWindow = deps.getMainWindow();
-        mainWindow?.webContents.send('chat:session-deactivated', reconnectMeta);
+        emitAppEvent(mainWindow?.webContents, chatEvents.sessionDeactivated, reconnectMeta);
         return failure(createResult.error);
       }
       return success(undefined);
@@ -1106,7 +1108,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const mainWindow = deps.getMainWindow();
 
     // Notify UI that we're connecting
-    mainWindow?.webContents.send('chat:session-connecting', { projectId, chatSessionId });
+    emitAppEvent(mainWindow?.webContents, chatEvents.sessionConnecting, { projectId, chatSessionId });
 
     // Create subscriptions FIRST so we can always clean them up
     // Store references outside try block to ensure cleanup on any error
@@ -1128,7 +1130,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           // Read current context file for diff display
           void (async () => {
             const currentContent = await deps.readClaudeMd(editProjectId);
-            mainWindow?.webContents.send('chat:claudemd-update', {
+            emitAppEvent(mainWindow?.webContents, chatEvents.claudemdUpdate, {
               projectId: editProjectId,
               oldContent: currentContent.success ? currentContent.content : null,
               newContent,
@@ -1152,7 +1154,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           // Read current file for diff display
           void (async () => {
             const currentContent = await deps.readDocumentFile(writeProjectId, filePath);
-            mainWindow?.webContents.send('chat:file-update', {
+            emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
               projectId: writeProjectId,
               chatSessionId,
               filePath,
@@ -1198,7 +1200,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       unsubscribePlanActions = deps.subscribeToPlanActions((event) => {
         if (event.projectId !== projectId) return;
         if (event.chatSessionId !== chatSessionId) return;
-        mainWindow?.webContents.send('chat:plan-actions', {
+        emitAppEvent(mainWindow?.webContents, chatEvents.planActions, {
           projectId: event.projectId,
           chatSessionId: event.chatSessionId,
           actions: event.actions,
@@ -1217,7 +1219,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         ) {
           // The tool already read the file to validate old_string; reuse what
           // it captured rather than reading disk a second time.
-          mainWindow?.webContents.send('chat:file-update', {
+          emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
             projectId,
             chatSessionId,
             filePath: update.filename ?? DEFAULT_CONTEXT_FILENAME,
@@ -1240,7 +1242,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         ) {
           // The tool already has the pre-edit content (or null for create);
           // forward it instead of re-reading disk.
-          mainWindow?.webContents.send('chat:file-update', {
+          emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
             projectId,
             chatSessionId,
             filePath: update.filePath,
@@ -1258,7 +1260,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           : ['connecting', 'processing'].includes(sessions.get(key)?.state ?? '');
 
         if (payload.projectId === projectId && matchesSession) {
-          mainWindow?.webContents.send('chat:file-delete', {
+          emitAppEvent(mainWindow?.webContents, chatEvents.fileDelete, {
             projectId,
             chatSessionId,
             path: payload.path,
@@ -1327,7 +1329,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
                 console.log(`[StreamingSessionService] Ignoring stale onMcpError for ${key}`);
                 return;
               }
-              mainWindow?.webContents.send('chat:session-error', {
+              emitAppEvent(mainWindow?.webContents, chatEvents.sessionError, {
                 projectId,
                 chatSessionId,
                 error: `MCP connection failed: ${failedServers.map(s => s.name).join(', ')}`,
@@ -1335,7 +1337,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             },
             onSlashCommands: (commands, context) => {
               const visible = selectVisibleSlashCommands(commands, context);
-              mainWindow?.webContents.send('chat:slash-commands', { projectId, chatSessionId, commands: visible });
+              emitAppEvent(mainWindow?.webContents, chatEvents.slashCommands, { projectId, chatSessionId, commands: visible });
             },
           });
 
@@ -1428,7 +1430,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         sessions.delete(key);
       }
 
-      mainWindow?.webContents.send('chat:session-error', {
+      emitAppEvent(mainWindow?.webContents, chatEvents.sessionError, {
         projectId,
         chatSessionId,
         error: (error as Error).message,
@@ -1754,7 +1756,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
 
     const mainWindow = deps.getMainWindow();
-    mainWindow?.webContents.send('chat:queued', {
+    emitAppEvent(mainWindow?.webContents, chatEvents.queued, {
       projectId: managed.projectId,
       chatSessionId: managed.chatSessionId,
       clientMessageId,
@@ -1897,14 +1899,14 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
       if (!options.silent) {
         const mainWindow = deps.getMainWindow();
-        mainWindow?.webContents.send('chat:session-deactivated', {
+        emitAppEvent(mainWindow?.webContents, chatEvents.sessionDeactivated, {
           projectId: managed.projectId,
           chatSessionId: managed.chatSessionId,
           reason: options.reason ?? 'disconnect_fallback',
           source: options.source ?? 'disconnectSession',
           previousState: stateBefore,
         });
-        mainWindow?.webContents.send('chat:done', {
+        emitAppEvent(mainWindow?.webContents, chatEvents.done, {
           projectId: managed.projectId,
           chatSessionId: managed.chatSessionId,
         });
@@ -1970,7 +1972,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
               ? [...segState.pendingActivities]
               : undefined;
             if (precedingActivities) segState.pendingActivities = [];
-            mainWindow?.webContents.send('chat:chunk', {
+            emitAppEvent(mainWindow?.webContents, chatEvents.chunk, {
               projectId,
               chatSessionId,
               text: deltaText,
@@ -2309,7 +2311,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Handle prompt suggestion (arrives after result message)
     if (sdkMsg.type === 'prompt_suggestion' && sdkMsg.suggestion) {
-      mainWindow?.webContents.send('chat:suggestions', {
+      emitAppEvent(mainWindow?.webContents, chatEvents.suggestions, {
         projectId,
         chatSessionId,
         suggestions: [sdkMsg.suggestion],
@@ -2353,7 +2355,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
 
     // Notify UI that session is deactivated (for multi-session UI updates)
-    mainWindow?.webContents.send('chat:session-deactivated', {
+    emitAppEvent(mainWindow?.webContents, chatEvents.sessionDeactivated, {
       projectId: managed.projectId,
       chatSessionId: managed.chatSessionId,
       reason: `session_end_${reason}`,
@@ -2362,13 +2364,13 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     });
 
     // Ensure renderer always clears any pending streaming state for this session.
-    mainWindow?.webContents.send('chat:done', {
+    emitAppEvent(mainWindow?.webContents, chatEvents.done, {
       projectId: managed.projectId,
       chatSessionId: managed.chatSessionId,
     });
 
     if (reason === 'error' && error) {
-      mainWindow?.webContents.send('chat:session-error', {
+      emitAppEvent(mainWindow?.webContents, chatEvents.sessionError, {
         projectId: managed.projectId,
         chatSessionId: managed.chatSessionId,
         error: error.message,
@@ -2399,7 +2401,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       if (!kpmServer || kpmServer.status === 'connected') {
         if (managed.mcpRecoveryAttempts > 0) {
           console.log(`[StreamingSessionService] KPM MCP server recovered for ${key}`);
-          mainWindow?.webContents.send('chat:mcp-status', {
+          emitAppEvent(mainWindow?.webContents, chatEvents.mcpStatus, {
             projectId: managed.projectId,
             chatSessionId: managed.chatSessionId,
             serverName: 'kpm',
@@ -2423,7 +2425,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         console.log(`[StreamingSessionService] KPM MCP server reconnected for ${key}`);
         managed.mcpHealthStatus = 'healthy';
         managed.mcpRecoveryAttempts = 0;
-        mainWindow?.webContents.send('chat:mcp-status', {
+        emitAppEvent(mainWindow?.webContents, chatEvents.mcpStatus, {
           projectId: managed.projectId,
           chatSessionId: managed.chatSessionId,
           serverName: 'kpm',
@@ -2438,7 +2440,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       const errorMsg = verifyKpm?.error ?? `status: ${verifyKpm?.status ?? 'unknown'}`;
       console.warn(`[StreamingSessionService] KPM MCP reconnect failed for ${key} (attempt ${managed.mcpRecoveryAttempts}/${maxRecoveryAttempts}): ${errorMsg}`);
 
-      mainWindow?.webContents.send('chat:mcp-status', {
+      emitAppEvent(mainWindow?.webContents, chatEvents.mcpStatus, {
         projectId: managed.projectId,
         chatSessionId: managed.chatSessionId,
         serverName: 'kpm',
@@ -2498,7 +2500,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             : `Response timed out after ${Math.round(sessionConfig.processingTimeoutMs / 60000)} minutes. Please try again.`;
           sendChatError(mainWindow, managed.projectId, managed.chatSessionId, errorMessage);
           // Also send chat:done to ensure isStreaming clears in the renderer
-          mainWindow?.webContents.send('chat:done', {
+          emitAppEvent(mainWindow?.webContents, chatEvents.done, {
             projectId: managed.projectId,
             chatSessionId: managed.chatSessionId,
           });

@@ -16,6 +16,8 @@ import { subscribe, type AsyncSubscription, type Event as WatcherEvent } from '@
 import type { BrowserWindow } from 'electron';
 import { getConfig } from '../../config';
 import { containsHiddenFileTreeSegment, getNativeWatcherIgnoreGlobs } from './fileTreeVisibility';
+import { emitAppEvent } from '../../../shared/ipc/appEvents';
+import { fileExplorerEvents } from '../../../shared/ipc/fileExplorerEvents';
 
 /** Glob patterns the watcher ignores natively (no event delivery for these). */
 const IGNORE_GLOBS = getNativeWatcherIgnoreGlobs();
@@ -59,7 +61,7 @@ export function createProjectWatcherService(deps: ProjectWatcherServiceDeps) {
   ): void {
     const mainWindow = deps.getMainWindow();
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('file-explorer:file-changed', {
+      emitAppEvent(mainWindow.webContents, fileExplorerEvents.fileChanged, {
         projectId,
         type,
         path: relativePath,

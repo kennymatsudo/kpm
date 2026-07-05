@@ -18,6 +18,8 @@ import { resolveScopedPath } from '../files/scopedFs';
 import type { FileSummaryService } from '../files/FileSummaryService';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
 import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
+import { emitAppEvent } from '../../../shared/ipc/appEvents';
+import { fileExplorerEvents } from '../../../shared/ipc/fileExplorerEvents';
 import type { ClaudeUsageService } from '../core/ClaudeUsageService';
 import type { ContextFileService } from '../core/ContextFileService';
 
@@ -77,7 +79,7 @@ export function createRepoServices({
     getPlanItems: (projectId) => container.planItems.getByProject(projectId),
     onExternalAccess: (event) => {
       const window = getMainWindow();
-      window?.webContents.send('file-explorer:external-access', event);
+      emitAppEvent(window?.webContents, fileExplorerEvents.externalAccess, event);
     },
   });
 

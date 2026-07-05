@@ -19,6 +19,7 @@
 
 import type { AppNotification } from '../../../shared/types';
 import type { UpdateEvent, UpdateEventBus } from './UpdateEventBus';
+import { notificationEvents } from '../../../shared/ipc/notificationEvents';
 
 export interface NotificationServiceDeps {
   bus: UpdateEventBus;
@@ -32,7 +33,7 @@ export interface NotificationServiceDeps {
 }
 
 const DEFAULT_DEDUPE_WINDOW_MS = 30 * 1000;
-export const NOTIFICATION_CHANNEL = 'notification:new';
+export const NOTIFICATION_CHANNEL = notificationEvents.new.channel;
 
 // =============================================================================
 // Mapping: UpdateEvent → Notification

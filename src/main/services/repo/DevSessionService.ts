@@ -45,6 +45,7 @@ import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import { formatPlanRefSection } from '../../claude/contextRefs';
 import { getConfig } from '../../config';
 import { createStatusBroadcaster } from './rendererBroadcast';
+import { devSessionEvents } from '../../../shared/ipc/devSessionEvents';
 import { gitExec, resolveBaseSha } from './gitUtils';
 import { openDirectoryInCodeEditor } from './editorLauncher';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
@@ -100,7 +101,7 @@ export interface DevSessionServiceDeps {
   /** Sole writer of `automation_phase` — see automationPhaseMachine.ts */
   phaseMachine: Pick<AutomationPhaseMachine, 'transition'>;
 }
-const broadcastSessionStatusChange = createStatusBroadcaster<DevSession>('dev-session:status-changed');
+const broadcastSessionStatusChange = createStatusBroadcaster<DevSession, typeof devSessionEvents.statusChanged>(devSessionEvents.statusChanged);
 
 export function createDevSessionService(deps: DevSessionServiceDeps) {
   function getAgentContextInput(planItemId: string): ServiceResult<AgentContextInput> {

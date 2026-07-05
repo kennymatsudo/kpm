@@ -1,4 +1,5 @@
 import { BrowserWindow } from 'electron';
+import { broadcastAppEvent, type EventDefinition, type EventPayload } from '../../../shared/ipc/appEvents';
 
 export interface SessionStatusPayload {
   id: string;
@@ -6,19 +7,19 @@ export interface SessionStatusPayload {
   status: string;
 }
 
-export function createStatusBroadcaster<T extends SessionStatusPayload>(
-  channel: string
+export function createStatusBroadcaster<T extends SessionStatusPayload, E extends EventDefinition>(
+  event: E
 ): (session: T) => void {
   return (session: T) => {
     const windows = BrowserWindow.getAllWindows();
-    for (const win of windows) {
-      if (!win.isDestroyed()) {
-        win.webContents.send(channel, {
-          sessionId: session.id,
-          projectId: session.project_id,
-          status: session.status,
-        });
-      }
-    }
+    broadcastAppEvent(
+      windows.map((win) => win.webContents),
+      event,
+      {
+        sessionId: session.id,
+        projectId: session.project_id,
+        status: session.status,
+      } as EventPayload<E>
+    );
   };
 }

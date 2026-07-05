@@ -39,15 +39,19 @@ export interface FinalizeOptions {
  * session's throttle buffer is force-flushed outside the normal chunk path
  * (e.g. switching tabs mid-stream), where those side effects don't apply.
  */
-function appendTextOnly(session: PerSessionState, text: string): PerSessionState {
-  if (!text) return session;
-  const segments = [...session.streamingSegments];
+function appendTextToSegments(segments: MessageSegment[], text: string): void {
   const lastSegment = segments[segments.length - 1];
   if (lastSegment?.type === 'text') {
     lastSegment.content += text;
   } else {
     segments.push({ type: 'text', content: text });
   }
+}
+
+function appendTextOnly(session: PerSessionState, text: string): PerSessionState {
+  if (!text) return session;
+  const segments = [...session.streamingSegments];
+  appendTextToSegments(segments, text);
 
   return {
     ...session,
@@ -80,12 +84,7 @@ function flushTextIntoSession(session: PerSessionState, text: string, now: numbe
   }
 
   if (text) {
-    const lastSegment = segments[segments.length - 1];
-    if (lastSegment?.type === 'text') {
-      lastSegment.content += text;
-    } else {
-      segments.push({ type: 'text', content: text });
-    }
+    appendTextToSegments(segments, text);
   }
 
   return {
@@ -207,12 +206,7 @@ function finalize(session: PerSessionState, options: FinalizeOptions | undefined
   }
 
   if (buffered) {
-    const lastSegment = segments[segments.length - 1];
-    if (lastSegment?.type === 'text') {
-      lastSegment.content += buffered;
-    } else {
-      segments.push({ type: 'text', content: buffered });
-    }
+    appendTextToSegments(segments, buffered);
   }
 
   let finalSegments = segments.filter((segment) => {

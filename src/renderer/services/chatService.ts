@@ -1,139 +1,47 @@
 import type {
-  Activity,
   ChatEffortLevel,
   ChatProvider,
   ChatViewMode,
   ClaudeModel,
   FocusChatDocument,
   FocusedResource,
-  PlanAction,
-  SlashCommandInfo,
 } from '../../shared/types';
 
-export interface ChunkEventData {
-  projectId: string;
-  chatSessionId?: string;
-  text: string;
-  segmentId?: number;
-  precedingActivities?: Activity[];
-}
+import type {
+  ChunkEventData,
+  PlanActionsEventData,
+  FileUpdateEventData,
+  FileDeleteEventData,
+  SessionEventData,
+  QueuedEventData,
+  QueueClearedEventData,
+  ErrorEventData,
+  ActivityEventData,
+  SessionReadyEventData,
+  SessionTitleEventData,
+  ThinkingEventData,
+  SuggestionsEventData,
+  SlashCommandsEventData,
+  McpStatusEventData,
+} from '../../shared/ipc/chatEvents';
 
-export interface PlanActionsEventData {
-  projectId: string;
-  chatSessionId?: string;
-  actions: PlanAction[];
-}
-
-export interface FileUpdateEventData {
-  projectId: string;
-  chatSessionId?: string;
-  filePath: string;
-  content: string;
-  oldContent?: string | null;
-  forceReview?: boolean;
-}
-
-export interface FileDeleteEventData {
-  projectId: string;
-  chatSessionId?: string;
-  path: string;
-  isDirectory: boolean;
-}
-
-export interface SessionEventData {
-  projectId: string;
-  chatSessionId?: string;
-  reason?: string;
-  source?: string;
-  previousState?: string;
-  model?: string;
-  /** True when the SDK is about to pull a queued follow-up as the next turn. */
-  hasQueuedFollowUp?: boolean;
-  /** clientMessageId of the queued user message about to be promoted. */
-  queuedClientMessageId?: string;
-  /** clientMessageId before which the finalized assistant bubble should be inserted. */
-  beforeClientMessageId?: string;
-  /**
-   * clientMessageId of a follow-up the SDK absorbed into THIS turn rather than
-   * deferring to a new one (streaming-input steering). The renderer clears its
-   * optimistic "queued" badge without re-entering streaming — the message was
-   * already answered in this turn.
-   */
-  consumedQueuedClientMessageId?: string;
-  /** Total input tokens sent in this turn (includes conversation history). */
-  inputTokens?: number;
-  /** Output tokens produced in this turn. */
-  outputTokens?: number;
-  /** Tokens read from prompt cache. */
-  cacheReadTokens?: number;
-  /** Tokens written to prompt cache. */
-  cacheCreationTokens?: number;
-  /** Context window size for the model used in this turn (tokens). */
-  contextWindow?: number;
-}
-
-export interface QueuedEventData {
-  projectId: string;
-  chatSessionId?: string;
-  clientMessageId?: string;
-}
-
-export interface QueueClearedEventData {
-  projectId: string;
-  chatSessionId?: string;
-  clientMessageId?: string;
-  reason?: 'cancelled' | 'already_sent' | 'session_disconnected';
-}
-
-export interface ErrorEventData {
-  projectId: string;
-  chatSessionId?: string;
-  error: string;
-}
-
-export interface ActivityEventData {
-  projectId: string;
-  chatSessionId?: string;
-  activity: Activity;
-}
-
-export interface SessionReadyEventData {
-  projectId: string;
-  chatSessionId?: string;
-  sessionId?: string;
-}
-
-export interface SessionTitleEventData {
-  projectId: string;
-  chatSessionId?: string;
-  title: string;
-}
-
-export interface ThinkingEventData {
-  projectId: string;
-  chatSessionId?: string;
-  text: string;
-}
-
-export interface SuggestionsEventData {
-  projectId: string;
-  chatSessionId?: string;
-  suggestions: string[];
-}
-
-export interface SlashCommandsEventData {
-  projectId: string;
-  chatSessionId?: string;
-  commands: SlashCommandInfo[];
-}
-
-export interface McpStatusEventData {
-  projectId: string;
-  chatSessionId?: string;
-  serverName: string;
-  status: string;
-  error?: string;
-}
+export type {
+  ChunkEventData,
+  PlanActionsEventData,
+  FileUpdateEventData,
+  FileDeleteEventData,
+  SessionEventData,
+  QueuedEventData,
+  QueueClearedEventData,
+  ErrorEventData,
+  ActivityEventData,
+  SessionReadyEventData,
+  SessionTitleEventData,
+  ThinkingEventData,
+  SuggestionsEventData,
+  SlashCommandsEventData,
+  McpStatusEventData,
+};
 
 export function getChatUsage(projectId: string) {
   return window.api.chat.getUsage(projectId);

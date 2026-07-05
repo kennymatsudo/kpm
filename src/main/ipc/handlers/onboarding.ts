@@ -7,6 +7,8 @@ import { createRegistryIpcHandlers } from '../validation/utils';
 import { onboardingEndpoints, type OnboardingEndpointName } from '../../../shared/ipc/onboardingEndpoints';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { OnboardingService } from '../../services/generation/OnboardingService';
+import { emitAppEvent } from '../../../shared/ipc/appEvents';
+import { onboardingEvents } from '../../../shared/ipc/onboardingEvents';
 
 /**
  * One handler per `onboardingEndpoints` entry. A registry entry without a
@@ -34,16 +36,16 @@ function buildOnboardingHandlers(
         repoDirectories,
         {
           onProgress: (message: string) => {
-            mainWindow.webContents.send('onboarding:progress', { taskId, message });
+            emitAppEvent(mainWindow.webContents, onboardingEvents.progress, { taskId, message });
           },
           onThinking: (text: string) => {
-            mainWindow.webContents.send('onboarding:thinking', { taskId, text });
+            emitAppEvent(mainWindow.webContents, onboardingEvents.thinking, { taskId, text });
           },
           onComplete: (content: string) => {
-            mainWindow.webContents.send('onboarding:complete', { taskId, content });
+            emitAppEvent(mainWindow.webContents, onboardingEvents.complete, { taskId, content });
           },
           onError: (error: string) => {
-            mainWindow.webContents.send('onboarding:error', { taskId, error });
+            emitAppEvent(mainWindow.webContents, onboardingEvents.error, { taskId, error });
           },
         },
       );

@@ -6,19 +6,13 @@ import type { ProjectWatcherService } from '../../services/files/ProjectWatcherS
 import { unwrapOrThrow } from '../../services/result';
 import { toIpcResponse } from '../response';
 import { openDirectoryInCodeEditor } from '../../services/repo/editorLauncher';
+import { emitAppEvent } from '../../../shared/ipc/appEvents';
+import { fileExplorerEvents, type FileExplorerFileChangedEventData } from '../../../shared/ipc/fileExplorerEvents';
 
-/**
- * File change event types for real-time UI updates
- */
-export type FileChangeType = 'created' | 'updated' | 'deleted' | 'renamed';
+/** File change event types for real-time UI updates */
+export type FileChangeType = FileExplorerFileChangedEventData['type'];
 
-export interface FileChangeEvent {
-  projectId: string;
-  type: FileChangeType;
-  path: string;
-  newPath?: string; // For renames
-  isDirectory: boolean;
-}
+export type FileChangeEvent = FileExplorerFileChangedEventData;
 
 /**
  * Emit file change event to renderer for real-time updates
@@ -27,9 +21,7 @@ function emitFileChange(
   mainWindow: BrowserWindow | null,
   event: FileChangeEvent
 ): void {
-  if (mainWindow) {
-    mainWindow.webContents.send('file-explorer:file-changed', event);
-  }
+  emitAppEvent(mainWindow?.webContents, fileExplorerEvents.fileChanged, event);
 }
 
 /**

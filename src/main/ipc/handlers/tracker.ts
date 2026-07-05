@@ -6,6 +6,8 @@ import type {
 } from '../../../shared/types';
 import type { TrackerService } from '../../services/core/TrackerService';
 import { bindRegistryHandlers } from '../validation/utils';
+import { emitAppEvent } from '../../../shared/ipc/appEvents';
+import { trackerEvents, type TrackerImportProgressEventData } from '../../../shared/ipc/trackerEvents';
 
 /**
  * One handler per `trackerEndpoints` entry. A registry entry without a
@@ -138,7 +140,10 @@ function buildTrackerHandlers(
       const result = await trackerService.generateImportPreview(
         projectId,
         associationId,
-        (data) => mainWindow?.webContents.send('tracker:import:progress', data)
+        // TrackerService's onProgress param is typed `unknown` (see
+        // TrackerService.ts); the underlying ImportService always emits the
+        // shape below (mirrors shared/types.ts's TrackerProgressCallback).
+        (data) => emitAppEvent(mainWindow?.webContents, trackerEvents.importProgress, data as TrackerImportProgressEventData)
       );
       return result.ok ? { success: true, preview: result.data } : { success: false, error: result.error };
     },
@@ -147,7 +152,7 @@ function buildTrackerHandlers(
       const mainWindow = getMainWindow();
       const result = await trackerService.importIssues(projectId, associationId, {
         selectedTypes,
-        onProgress: (data) => mainWindow?.webContents.send('tracker:import:progress', data),
+        onProgress: (data) => emitAppEvent(mainWindow?.webContents, trackerEvents.importProgress, data as TrackerImportProgressEventData),
       });
       return result.ok ? { success: true, result: result.data } : { success: false, error: result.error };
     },
@@ -155,7 +160,7 @@ function buildTrackerHandlers(
     'import.all': async ({ projectId, associationId }) => {
       const mainWindow = getMainWindow();
       const result = await trackerService.importIssues(projectId, associationId, {
-        onProgress: (data) => mainWindow?.webContents.send('tracker:import:progress', data),
+        onProgress: (data) => emitAppEvent(mainWindow?.webContents, trackerEvents.importProgress, data as TrackerImportProgressEventData),
       });
       return result.ok ? { success: true, result: result.data } : { success: false, error: result.error };
     },
@@ -167,7 +172,7 @@ function buildTrackerHandlers(
     'sync.preview': async ({ projectId, associationId }) => {
       const mainWindow = getMainWindow();
       const result = await trackerService.generateSyncPreview(projectId, associationId, (phase, current, total) => {
-        mainWindow?.webContents.send('tracker:sync:progress', { projectId, associationId, phase, current, total });
+        emitAppEvent(mainWindow?.webContents, trackerEvents.syncProgress, { projectId, associationId, phase, current, total });
       });
       return result.ok ? { success: true, preview: result.data } : { success: false, error: result.error };
     },

@@ -6,6 +6,8 @@ import { extractPath, getToolPreview } from '../../claude/permissions';
 import { getConfig } from '../../config';
 import type { PermissionService } from './PermissionService';
 import { failure, success, type ServiceResult } from '../result';
+import { emitAppEvent } from '../../../shared/ipc/appEvents';
+import { permissionEvents } from '../../../shared/ipc/permissionEvents';
 
 interface PendingPermission {
   resolve: (result: PermissionResult) => void;
@@ -68,7 +70,7 @@ export async function promptUser(
       preview,
     });
 
-    mainWindow.webContents.send('permission:request', {
+    emitAppEvent(mainWindow.webContents, permissionEvents.request, {
       requestId,
       projectId,
       toolName,

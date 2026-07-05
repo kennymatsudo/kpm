@@ -75,6 +75,8 @@ import { createAutomationPhaseMachine } from './agents/automationPhaseMachine';
 import { createReviewPollService } from './repo/ReviewPollService';
 import { createScheduledLoopService } from './core/ScheduledLoopService';
 import { createScheduledLoopRunnerService } from './repo/ScheduledLoopRunnerService';
+import type { EventPayload } from '../../shared/ipc/appEvents';
+import { planEvents } from '../../shared/ipc/planEvents';
 
 // =============================================================================
 // Application Services Factory
@@ -109,7 +111,7 @@ export function createAppServices(container: IRepositoryContainer) {
   let reviewServiceRef: ReturnType<typeof createRepoServices>['reviewService'] | null = null;
 
   const requestPlanRefresh = (projectId: string) => {
-    broadcastToWindows('plan:refresh-requested', { projectId });
+    broadcastToWindows(planEvents.refreshRequested.channel, { projectId } satisfies EventPayload<typeof planEvents.refreshRequested>);
   };
 
   // ─────────────────────────────────────────────────────────────────────────────

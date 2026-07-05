@@ -25,6 +25,8 @@ import { CliAgentSession } from './CliAgentSession';
 import { CodexSdkAgentSession } from './CodexSdkAgentSession';
 import type { HookEvent } from './hookServer';
 import { getConfig } from '../../config';
+import { emitAppEvent, type EventDefinition, type EventPayload } from '../../../shared/ipc/appEvents';
+import { agentSessionEvents } from '../../../shared/ipc/agentSessionEvents';
 
 // =============================================================================
 // Constants
@@ -292,7 +294,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         console.error(`${LOG_PREFIX} Session state change hook failed for ${devSessionId}:`, error);
       });
 
-      broadcast('agent-session:state-changed', {
+      broadcast(agentSessionEvents.stateChanged, {
         sessionId: agentSession.id,
         devSessionId,
         state,
@@ -328,7 +330,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     });
 
     agentSession.on('onActivity', (activity: AgentActivity) => {
-      broadcast('agent-session:activity', {
+      broadcast(agentSessionEvents.activity, {
         sessionId: agentSession.id,
         devSessionId,
         activity,
@@ -336,7 +338,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     });
 
     agentSession.on('onQuestion', (question: AgentQuestion) => {
-      broadcast('agent-session:question', {
+      broadcast(agentSessionEvents.question, {
         sessionId: agentSession.id,
         devSessionId,
         question,
@@ -376,14 +378,14 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         });
       } else if (agentSession.role === 'review' && reviewError) {
         persistReviewFailureOnce(agentSession, reviewError, result.reviewRawOutput ?? null);
-        broadcast('agent-session:error', {
+        broadcast(agentSessionEvents.error, {
           sessionId: agentSession.id,
           devSessionId,
           error: reviewError,
         });
       }
 
-      broadcast('agent-session:complete', {
+      broadcast(agentSessionEvents.complete, {
         sessionId: agentSession.id,
         devSessionId,
         role: agentSession.role,
@@ -410,7 +412,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         persistReviewFailureOnce(agentSession, error, result.reviewRawOutput ?? result.finalText ?? null);
       }
 
-      broadcast('agent-session:error', {
+      broadcast(agentSessionEvents.error, {
         sessionId: agentSession.id,
         devSessionId,
         error,
@@ -418,10 +420,10 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     });
   }
 
-  function broadcast(channel: string, payload: unknown): void {
+  function broadcast<E extends EventDefinition>(event: E, payload: EventPayload<E>): void {
     const mainWindow = deps.getMainWindow();
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(channel, payload);
+      emitAppEvent(mainWindow.webContents, event, payload);
     }
   }
 

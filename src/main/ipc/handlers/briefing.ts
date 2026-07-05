@@ -10,6 +10,8 @@ import { IPC_CHANNELS } from '../channels';
 import { briefingEndpoints } from '../../../shared/ipc/briefingEndpoints';
 import { ipcSuccess, toIpcResponseAsync } from '../response';
 import type { BriefingService } from '../../services/core/BriefingService';
+import { emitAppEvent } from '../../../shared/ipc/appEvents';
+import { briefingEvents } from '../../../shared/ipc/briefingEvents';
 
 export function registerBriefingHandlers(briefingService: BriefingService): void {
   ipcMain.handle(IPC_CHANNELS.briefing.generate, async (event, params: unknown) => {
@@ -22,7 +24,7 @@ export function registerBriefingHandlers(briefingService: BriefingService): void
           if (sender.isDestroyed()) return;
           // Send through the originating webContents so the right window
           // receives the stream even with multiple windows open.
-          sender.send(IPC_CHANNELS.briefing.chunk, { projectId, delta });
+          emitAppEvent(sender, briefingEvents.chunk, { projectId, delta });
         },
       }),
     );
