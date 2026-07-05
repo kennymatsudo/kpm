@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useChatStore, useApprovalQueueStore, useGeneralSettingsStore } from '../stores';
 import { useShallow } from 'zustand/react/shallow';
 import { emit } from '../stores/storeEvents';
+import { isStreamStale } from '../stores/chat/chatStreamReducer';
 import {
   getActiveChatSessions,
   getChatSessionState,
@@ -387,7 +388,6 @@ export function useChatIpcBridge(projectId: string | null): void {
     });
 
     const WATCHDOG_POLL_MS = 15_000;
-    const WATCHDOG_STALE_THRESHOLD_MS = 30_000;
     const suspectedStaleSessions = new Map<string, number>();
     let isWatchdogPolling = false;
 
@@ -418,8 +418,7 @@ export function useChatIpcBridge(projectId: string | null): void {
               suspectedStaleSessions.delete(sessionId);
             }
 
-            const elapsedMs = now - lastStreamUpdateAt;
-            if (elapsedMs < WATCHDOG_STALE_THRESHOLD_MS) {
+            if (!isStreamStale(session, now)) {
               suspectedStaleSessions.delete(sessionId);
               continue;
             }
@@ -446,7 +445,7 @@ export function useChatIpcBridge(projectId: string | null): void {
               backendState !== 'connecting'
             ) {
               console.warn(
-                `[Watchdog] Stale streaming confirmed for session ${sessionId}, backend: ${backendState}, idle for ${Math.round(elapsedMs / 1000)}s`
+                `[Watchdog] Stale streaming confirmed for session ${sessionId}, backend: ${backendState}, idle for ${Math.round((now - lastStreamUpdateAt) / 1000)}s`
               );
               finalizeMessage(sessionId);
               suspectedStaleSessions.delete(sessionId);

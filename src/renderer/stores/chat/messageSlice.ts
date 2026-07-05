@@ -1,6 +1,7 @@
 import type { ChatState, ChatSet, ChatGet, Message, PerSessionState } from './types';
 import { createInitialPerSessionState, createInitialChatState } from './baseState';
 import { streamingBuffer } from './utils';
+import { applyStreamEvent } from './chatStreamReducer';
 
 export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
   'addUserMessage' | 'clearQueuedFlag' | 'removeQueuedUserMessage' | 'setRetrying' | 'setError' | 'clearError' | 'setDraftMessage' | 'setPendingAttachments' | 'setSuggestions' | 'setClaudeSessionId' | 'setSessionTitle' | 'setMcpStatus' | 'setLastTurnUsage' | 'setSessionState' | 'reset' | 'resetProjectState'
@@ -52,63 +53,35 @@ export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
     }),
 
     clearQueuedFlag: (chatSessionId, clientMessageId) => set((state) => {
-      const sessions = new Map(state.sessions);
-      const session = sessions.get(chatSessionId);
+      const session = state.sessions.get(chatSessionId);
       if (!session) return state;
 
-      // Find the message to clear. If a clientMessageId was supplied, target
-      // that specific message; otherwise clear the most recent queued user
-      // message (covers callers that don't track ids — e.g. legacy paths).
-      let touched = false;
-      const messages = session.messages.map((m) => {
-        if (touched) return m;
-        if (m.role !== 'user' || !m.queued) return m;
-        if (clientMessageId && m.clientMessageId !== clientMessageId) return m;
-        touched = true;
-        const { queued: _queued, ...rest } = m;
-        return rest;
-      });
+      const nextSession = applyStreamEvent(session, { type: 'queue-cleared-already-sent', clientMessageId });
+      if (nextSession === session) return state;
 
-      if (!touched) return state;
-      sessions.set(chatSessionId, { ...session, messages });
+      const sessions = new Map(state.sessions);
+      sessions.set(chatSessionId, nextSession);
       return { sessions };
     }),
 
     removeQueuedUserMessage: (chatSessionId, clientMessageId) => set((state) => {
-      const sessions = new Map(state.sessions);
-      const session = sessions.get(chatSessionId);
+      const session = state.sessions.get(chatSessionId);
       if (!session) return state;
 
-      const idx = session.messages.findIndex(
-        (m) => m.role === 'user' && m.liveFollowUp && m.clientMessageId === clientMessageId,
-      );
-      if (idx === -1) return state;
+      const nextSession = applyStreamEvent(session, { type: 'queue-cleared-dropped', clientMessageId });
+      if (nextSession === session) return state;
 
-      const messages = [...session.messages.slice(0, idx), ...session.messages.slice(idx + 1)];
-      sessions.set(chatSessionId, { ...session, messages });
+      const sessions = new Map(state.sessions);
+      sessions.set(chatSessionId, nextSession);
       return { sessions };
     }),
 
     setRetrying: (chatSessionId) => set((state) => {
-      const sessions = new Map(state.sessions);
-      const session = sessions.get(chatSessionId);
+      const session = state.sessions.get(chatSessionId);
       if (!session) return state;
-      const now = Date.now();
 
-      sessions.set(chatSessionId, {
-        ...session,
-        isStreaming: true,
-        error: null,
-        activities: [],
-        streamingContent: '',
-        streamingThinking: '',
-        streamingSegments: [],
-        pendingActivities: [],
-        streamStartedAt: now,
-        lastStreamUpdateAt: now,
-        suggestions: [],
-      });
-
+      const sessions = new Map(state.sessions);
+      sessions.set(chatSessionId, applyStreamEvent(session, { type: 'retry' }));
       return { sessions };
     }),
 
@@ -117,23 +90,11 @@ export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
       if (isViewed) streamingBuffer.clear();
 
       set((state) => {
-        const sessions = new Map(state.sessions);
-        const session = sessions.get(chatSessionId);
+        const session = state.sessions.get(chatSessionId);
         if (!session) return state;
 
-        sessions.set(chatSessionId, {
-          ...session,
-          error,
-          isStreaming: false,
-          streamingContent: '',
-          streamingThinking: '',
-          activities: [],
-          streamingSegments: [],
-          pendingActivities: [],
-          streamStartedAt: null,
-          lastStreamUpdateAt: null,
-        });
-
+        const sessions = new Map(state.sessions);
+        sessions.set(chatSessionId, applyStreamEvent(session, { type: 'error', error }));
         return { sessions };
       });
     },
