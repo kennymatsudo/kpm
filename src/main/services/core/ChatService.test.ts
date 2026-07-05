@@ -96,15 +96,10 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
       clearProviderSessionIdsByProject: vi.fn(),
       delete: vi.fn(),
     },
-    loadPersistedPermissions: vi.fn(),
     clearSessionCache: vi.fn(),
     streamingSessionService: {
       sendChatMessage,
-      interruptChatSession: vi.fn(),
-      cancelQueuedChatMessage: vi.fn(),
       disconnectChatSession,
-      getActiveSessions: vi.fn(),
-      getChatSessionState: vi.fn(),
     },
     emitChatError,
     ...overrides,
@@ -176,11 +171,7 @@ describe('ChatService.sendMessage', () => {
     const { deps, spies } = makeDeps({
       streamingSessionService: {
         sendChatMessage: vi.fn(async () => failure('A follow-up is already queued.')),
-        interruptChatSession: vi.fn(),
-        cancelQueuedChatMessage: vi.fn(),
         disconnectChatSession: vi.fn(),
-        getActiveSessions: vi.fn(),
-        getChatSessionState: vi.fn(),
       },
     });
     const service = createChatService(deps);

@@ -1,17 +1,43 @@
 import type { ChatService } from '../../services/core/ChatService';
 import type { SlashCommandService } from '../../services/core/SlashCommandService';
+import type { PermissionService } from '../../services/core/PermissionService';
+import type { StreamingSessionService } from '../../services/streaming/StreamingSessionService';
+import type { IChatMessageRepository, IProjectRepository } from '../../db/interfaces';
 import { chatEndpoints, type ChatEndpointName } from '../../../shared/ipc/chatEndpoints';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import { ChatSendSchema } from '../validation/chat';
 import { createRegistryIpcHandlers } from '../validation/utils';
 
+export interface ChatHandlerDeps {
+  chatService: ChatService;
+  slashCommandService: SlashCommandService;
+  permissionService: Pick<PermissionService, 'loadPersistedPermissions'>;
+  streamingSessionService: Pick<
+    StreamingSessionService,
+    'interruptChatSession' | 'cancelQueuedChatMessage' | 'disconnectChatSession' | 'getActiveSessions' | 'getChatSessionState'
+  >;
+  projects: IProjectRepository;
+  chatMessages: IChatMessageRepository;
+}
+
 /**
  * One handler per `chatEndpoints` entry. A registry entry without a
  * matching key here is a compile error, not a runtime "no handler" failure.
+ *
+ * Behavioural endpoints delegate to ChatService; plain session reads and
+ * session controls go straight to the repositories / StreamingSessionService.
  */
 type ChatHandlers = { [K in ChatEndpointName]: UnwrappedHandlerFor<typeof chatEndpoints, K> };
 
-function buildChatHandlers(chatService: ChatService, slashCommandService: SlashCommandService): ChatHandlers {
+function requireProject(projects: IProjectRepository, projectId: string): void {
+  if (!projects.get(projectId)) {
+    throw new Error('Project not found');
+  }
+}
+
+function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
+  const { chatService, slashCommandService, permissionService, streamingSessionService, projects, chatMessages } = deps;
+
   return {
     getSlashCommands: async () => {
       const result = slashCommandService.listCommands();
@@ -26,12 +52,12 @@ function buildChatHandlers(chatService: ChatService, slashCommandService: SlashC
     },
 
     cancel: async ({ projectId, chatSessionId }) => {
-      const result = await chatService.cancel(projectId, chatSessionId);
+      const result = await streamingSessionService.interruptChatSession(projectId, chatSessionId);
       if (!result.ok) throw new Error(result.error);
     },
 
     cancelQueued: async ({ projectId, chatSessionId, clientMessageId }) => {
-      const result = chatService.cancelQueued(projectId, chatSessionId, clientMessageId);
+      const result = streamingSessionService.cancelQueuedChatMessage(projectId, chatSessionId, clientMessageId);
       if (!result.ok) throw new Error(result.error);
     },
 
@@ -41,7 +67,7 @@ function buildChatHandlers(chatService: ChatService, slashCommandService: SlashC
     },
 
     connectSession: async ({ projectId }) => {
-      const result = chatService.connectSession(projectId);
+      const result = permissionService.loadPersistedPermissions(projectId);
       if (!result.ok) throw new Error(result.error);
     },
 
@@ -51,44 +77,48 @@ function buildChatHandlers(chatService: ChatService, slashCommandService: SlashC
     },
 
     getActiveSessions: async ({ projectId }) => {
-      const result = chatService.getActiveSessions(projectId);
-      if (!result.ok) throw new Error(result.error);
-      return { sessions: result.data };
+      return { sessions: streamingSessionService.getActiveSessions(projectId) };
     },
 
     disconnectSpecificSession: async ({ projectId, chatSessionId }) => {
-      const result = await chatService.disconnectSpecificSession(projectId, chatSessionId);
+      const result = await streamingSessionService.disconnectChatSession(projectId, chatSessionId);
       if (!result.ok) throw new Error(result.error);
     },
 
     getSessionState: async ({ projectId, chatSessionId }) => {
-      const result = chatService.getSessionState(projectId, chatSessionId);
-      if (!result.ok) throw new Error(result.error);
-      return { state: result.data };
+      return { state: streamingSessionService.getChatSessionState(projectId, chatSessionId) };
     },
 
     getUsage: async ({ projectId }) => {
-      const result = chatService.getUsage(projectId);
-      if (!result.ok) throw new Error(result.error);
-      return { usage: result.data };
+      const project = projects.get(projectId);
+      if (!project) {
+        return { usage: { totalTokens: 0, inputTokens: 0, outputTokens: 0 } };
+      }
+      return {
+        usage: {
+          totalTokens: project.session_tokens,
+          inputTokens: project.session_input_tokens,
+          outputTokens: project.session_output_tokens,
+        },
+      };
     },
 
     getMessages: async ({ projectId }) => {
-      const result = chatService.getMessages(projectId);
-      if (!result.ok) throw new Error(result.error);
-      return { messages: result.data };
+      requireProject(projects, projectId);
+      return { messages: chatMessages.getMessages(projectId) };
     },
 
     getSessionHistory: async ({ projectId, limit }) => {
-      const result = chatService.getSessionHistory(projectId, limit);
-      if (!result.ok) throw new Error(result.error);
-      return { sessions: result.data };
+      requireProject(projects, projectId);
+      return { sessions: chatMessages.getRecentSessions(projectId, limit) };
     },
 
     loadSession: async ({ projectId, chatSessionId }) => {
-      const result = chatService.loadSession(projectId, chatSessionId);
-      if (!result.ok) throw new Error(result.error);
-      return result.data;
+      requireProject(projects, projectId);
+      return {
+        messages: chatMessages.getMessagesByChatSession(projectId, chatSessionId),
+        chatSessionId,
+      };
     },
 
     getFocusDocumentSession: async (params) => {
@@ -99,13 +129,13 @@ function buildChatHandlers(chatService: ChatService, slashCommandService: SlashC
   };
 }
 
-export function registerChatHandlers(chatService: ChatService, slashCommandService: SlashCommandService): void {
+export function registerChatHandlers(deps: ChatHandlerDeps): void {
   // `ChatSendSchema` layers the temp-image-directory scoping refine that
   // the shared registry's `params` can't express (see `validation/chat.ts`),
   // so `send` parses through it instead of `chatEndpoints.send.params`.
   createRegistryIpcHandlers(
     chatEndpoints,
-    buildChatHandlers(chatService, slashCommandService),
+    buildChatHandlers(deps),
     'Chat operation failed',
     {
       send: ChatSendSchema,

@@ -8,12 +8,10 @@ import type {
   ChatAttachment,
   ChatMessage,
   ChatProvider,
-  ChatSessionSummary,
   ChatViewMode,
   ClaudeModel,
   FocusChatDocument,
   FocusedResource,
-  SessionState,
 } from '../../../shared/types';
 import { failure, success, wrap, type AsyncResult, type ServiceResult } from '../result';
 import type { StreamingSessionService } from '../streaming/StreamingSessionService';
@@ -23,17 +21,11 @@ export interface ChatServiceDeps {
   projects: IProjectRepository;
   chatMessages: IChatMessageRepository;
   chatSessions: IChatSessionRepository;
-  loadPersistedPermissions: (projectId: string) => void;
   getDefaultChatProvider?: () => ChatProvider;
   clearSessionCache?: (projectId: string) => void;
   streamingSessionService: Pick<
     StreamingSessionService,
-    | 'sendChatMessage'
-    | 'interruptChatSession'
-    | 'cancelQueuedChatMessage'
-    | 'disconnectChatSession'
-    | 'getActiveSessions'
-    | 'getChatSessionState'
+    'sendChatMessage' | 'disconnectChatSession'
   >;
   emitChatError?: (payload: { projectId: string; chatSessionId?: string; error: string }) => void;
 }
@@ -123,6 +115,16 @@ function buildAttachments(
   return tempImages.map(tempImagePathToAttachment);
 }
 
+/**
+ * The chat behaviours that don't belong on the streaming service or a
+ * repository: message-send orchestration (attachment conversion, acceptance
+ * persistence, error events), project chat reset, project-wide disconnect
+ * with permission-cache teardown, and focus-document session reconciliation.
+ *
+ * Plain session reads (messages, history, usage, active sessions, session
+ * state) go straight from the IPC handlers to the repositories /
+ * StreamingSessionService — do not add forwarding methods for them here.
+ */
 export function createChatService(deps: ChatServiceDeps) {
   const clearSessionCache = deps.clearSessionCache ?? clearPermissionSessionCache;
 
@@ -219,26 +221,11 @@ export function createChatService(deps: ChatServiceDeps) {
       }
     },
 
-    async cancel(projectId: string, chatSessionId: string): AsyncResult<void> {
-      const result = await deps.streamingSessionService.interruptChatSession(projectId, chatSessionId);
-      return result.ok ? success(undefined) : failure(result.error);
-    },
-
-    cancelQueued(projectId: string, chatSessionId: string, clientMessageId?: string): ServiceResult<void> {
-      return deps.streamingSessionService.cancelQueuedChatMessage(projectId, chatSessionId, clientMessageId);
-    },
-
     newSession(projectId: string): ServiceResult<void> {
       return wrap(() => {
         deps.projects.resetTokens(projectId);
         deps.chatMessages.pruneOldSessions(projectId, 10);
         clearSessionCache(projectId);
-      });
-    },
-
-    connectSession(projectId: string): ServiceResult<void> {
-      return wrap(() => {
-        deps.loadPersistedPermissions(projectId);
       });
     },
 
@@ -250,82 +237,6 @@ export function createChatService(deps: ChatServiceDeps) {
 
       clearSessionCache(projectId);
       return success(undefined);
-    },
-
-    getActiveSessions(projectId: string): ServiceResult<ReturnType<StreamingSessionService['getActiveSessions']>> {
-      return wrap(() => deps.streamingSessionService.getActiveSessions(projectId));
-    },
-
-    async disconnectSpecificSession(projectId: string, chatSessionId: string): AsyncResult<void> {
-      const result = await deps.streamingSessionService.disconnectChatSession(projectId, chatSessionId);
-      return result.ok ? success(undefined) : failure(result.error);
-    },
-
-    getSessionState(projectId: string, chatSessionId: string): ServiceResult<SessionState> {
-      return wrap(() => deps.streamingSessionService.getChatSessionState(projectId, chatSessionId));
-    },
-
-    getUsage(projectId: string): ServiceResult<{
-      totalTokens: number;
-      inputTokens: number;
-      outputTokens: number;
-    }> {
-      return wrap(() => {
-        const project = deps.projects.get(projectId);
-        if (!project) {
-          return { totalTokens: 0, inputTokens: 0, outputTokens: 0 };
-        }
-
-        return {
-          totalTokens: project.session_tokens,
-          inputTokens: project.session_input_tokens,
-          outputTokens: project.session_output_tokens,
-        };
-      });
-    },
-
-    getMessages(projectId: string): ServiceResult<ChatMessage[]> {
-      try {
-        const project = deps.projects.get(projectId);
-        if (!project) {
-          return failure('Project not found');
-        }
-        return success(deps.chatMessages.getMessages(projectId));
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
-    },
-
-    getSessionHistory(projectId: string, limit?: number): ServiceResult<ChatSessionSummary[]> {
-      try {
-        const project = deps.projects.get(projectId);
-        if (!project) {
-          return failure('Project not found');
-        }
-        return success(deps.chatMessages.getRecentSessions(projectId, limit));
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
-    },
-
-    loadSession(
-      projectId: string,
-      chatSessionId: string,
-    ): ServiceResult<{ messages: ChatMessage[]; chatSessionId: string }> {
-      try {
-        const project = deps.projects.get(projectId);
-        if (!project) {
-          return failure('Project not found');
-        }
-
-        const messages = deps.chatMessages.getMessagesByChatSession(projectId, chatSessionId);
-        return success({
-          messages,
-          chatSessionId,
-        });
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
     },
 
     async getOrCreateFocusDocumentSession(

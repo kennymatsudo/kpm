@@ -162,12 +162,6 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     projects: container.projects,
     chatMessages: container.chatMessages,
     chatSessions: container.chatSessions,
-    loadPersistedPermissions: (projectId: string) => {
-      const result = services.permissionService.loadPersistedPermissions(projectId);
-      if (!result.ok) {
-        throw new Error(result.error);
-      }
-    },
     getDefaultChatProvider: () => parseChatProvider(container.appSettings.get(CHAT_PROVIDER_KEY)),
     streamingSessionService,
     emitChatError: ({ projectId, chatSessionId, error }) => {

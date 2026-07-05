@@ -28,7 +28,14 @@ export function registerWorkspaceHandlers({
   registerAttachmentHandlers(getMainWindow, services.attachmentService);
   registerPlanHandlers(services.planService, services.container.planItems, services.container.planRelations);
   registerGroupHandlers(services.groupService, services.container.groups);
-  registerChatHandlers(chatRuntime.chatService, services.slashCommandService);
+  registerChatHandlers({
+    chatService: chatRuntime.chatService,
+    slashCommandService: services.slashCommandService,
+    permissionService: services.permissionService,
+    streamingSessionService: chatRuntime.streamingSessionService,
+    projects: services.container.projects,
+    chatMessages: services.container.chatMessages,
+  });
   registerFileHandlers(getMainWindow, services.contextFileService);
   registerExportHandlers(services.exportService, services.typeMappingService);
   registerTrackerHandlers(getMainWindow, services.trackerService);
