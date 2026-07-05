@@ -19,7 +19,7 @@ import type { IPlanItemRepository } from '../../db/interfaces/plan';
 import { ConfluenceClient } from '../../wiki-clients/confluence';
 import { TrackerClientService } from '../../trackers/TrackerClientService';
 import { resolveScopedPath } from '../files/scopedFs';
-import { resolvePlanRefs } from '../../documents/planRefResolver';
+import { toExternalMarkdown } from '../../documents/exportBoundary';
 
 export interface SyncPreview {
   hasConflict: boolean; // Both sides changed since last sync
@@ -240,7 +240,7 @@ export function createConfluenceSyncService(deps: ConfluenceSyncServiceDeps) {
         // Resolve @plan/<uuid> refs to native Jira smart-link markdown so the
         // Confluence page renders issue cards instead of literal tokens.
         const projectPlanItems = deps.planItems.getByProject(projectId);
-        const resolvedContent = resolvePlanRefs(localContent, projectPlanItems, 'confluence');
+        const resolvedContent = toExternalMarkdown(localContent, projectPlanItems, 'confluence');
 
         // Get current remote version
         const currentPage = await client.getPage(link.page_id);

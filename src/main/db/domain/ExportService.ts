@@ -37,7 +37,7 @@ import {
   isTransitionNeededWithMapping,
   inferCategoryWithMapping,
 } from '../../trackers/statusTransitions';
-import { resolvePlanRefs, type RefDestination } from '../../documents/planRefResolver';
+import { toExternalMarkdown, EMPTY_EXTERNAL_MARKDOWN, type ExternalDestination, type ExternalMarkdown } from '../../documents/exportBoundary';
 import { normalizeMarkdown } from '../../documents';
 import { suggestStatusMapping } from '../../../shared/statusMappingSuggest';
 
@@ -85,7 +85,7 @@ function trackerLabelFor(type: TrackerType): string {
   return type === 'linear' ? 'Linear' : 'Jira';
 }
 
-function refDestinationForTracker(type: TrackerType): RefDestination {
+function refDestinationForTracker(type: TrackerType): ExternalDestination {
   return type === 'jira' ? 'jira' : 'linear';
 }
 
@@ -93,9 +93,9 @@ function resolveExportDescription(
   description: string | null | undefined,
   planItems: readonly PlanItem[],
   trackerType: TrackerType
-): string | null {
+): ExternalMarkdown | null {
   if (!description) return null;
-  return resolvePlanRefs(description, planItems, refDestinationForTracker(trackerType));
+  return toExternalMarkdown(description, planItems, refDestinationForTracker(trackerType));
 }
 
 const STATUS_CATEGORY_LABELS: Record<StatusCategory, string> = {
@@ -1113,7 +1113,7 @@ export function createExportService(deps: ExportServiceDeps) {
         );
         await client.updateIssue(planItem.external_key!, {
           summary: planItem.title,
-          description: updateResolvedDescription ?? '',
+          description: updateResolvedDescription ?? EMPTY_EXTERNAL_MARKDOWN,
           customFields: overrideFields,
         });
 

@@ -1,8 +1,10 @@
 /**
  * Pre-pass that rewrites `@plan/<uuid>` tokens in markdown to native syntax
- * for an export target. Run inside every push pipeline (Jira / Linear /
- * Confluence / GitHub) so refs never leak as literal `@plan/<uuid>` text into
- * an external system.
+ * for an export target, so refs never leak as literal `@plan/<uuid>` text
+ * into an external system. External destinations (Jira / Linear / Confluence /
+ * GitHub) go through `exportBoundary.ts`, whose branded `ExternalMarkdown`
+ * return type is what tracker write payloads require; only the on-disk
+ * `shared-doc` form calls this resolver directly.
  *
  * Pure: takes markdown + plan items + a destination, returns new markdown.
  * Refs inside fenced code blocks are not rewritten (they would break the

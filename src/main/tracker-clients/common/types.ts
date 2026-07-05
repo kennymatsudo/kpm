@@ -1,4 +1,5 @@
 import type { DocumentCodec } from '../../documents/types';
+import type { ExternalMarkdown } from '../../documents/exportBoundary';
 
 export type TrackerType = 'jira' | 'linear';
 
@@ -46,7 +47,8 @@ export interface CreateIssueParams {
   projectKey: string;
   issueTypeId: string;
   summary: string;
-  description?: string;
+  /** Must cross the export boundary (`toExternalMarkdown`) so plan refs never leak (P6). */
+  description?: ExternalMarkdown;
   parentKey?: string;         // For sub-tasks or stories under epics
   labels?: string[];
   customFields?: Record<string, unknown>;  // Custom field values
@@ -64,7 +66,7 @@ export interface CreatedIssue {
 
 export interface UpdateIssueParams {
   summary?: string;
-  description?: string | null;  // null clears the description
+  description?: ExternalMarkdown | null;  // null clears the description
   labels?: string[];
   customFields?: Record<string, unknown>;  // Custom field values
 }

@@ -46,10 +46,8 @@ import {
   hasCommitsAhead,
   readPrTemplate,
 } from './gitUtils';
-import {
-  resolvePlanRefs,
-  collectLinkedRefKeys,
-} from '../../documents/planRefResolver';
+import { collectLinkedRefKeys } from '../../documents/planRefResolver';
+import { toExternalMarkdown } from '../../documents/exportBoundary';
 
 // =============================================================================
 // Types
@@ -355,7 +353,7 @@ ${input.commitLog || 'No commit log provided.'}`;
         let resolvedBody = body;
         if (session.project_id) {
           const projectPlanItems = deps.planItems.getByProject(session.project_id);
-          resolvedBody = resolvePlanRefs(body, projectPlanItems, 'github');
+          resolvedBody = toExternalMarkdown(body, projectPlanItems, 'github');
           const closeKeys = collectLinkedRefKeys(body, projectPlanItems);
           if (closeKeys.length > 0) {
             // Avoid duplicating `Closes …` if the author already wrote it.
@@ -752,7 +750,7 @@ ${effectivePrTemplate}`
         const title = titleMatch?.[1]?.trim() || rawTitle;
         let body = bodyMatch?.[1]?.trim() || rawBody;
         if (session.project_id) {
-          body = resolvePlanRefs(body, deps.planItems.getByProject(session.project_id), 'github');
+          body = toExternalMarkdown(body, deps.planItems.getByProject(session.project_id), 'github');
         }
 
         log(`Generated title: ${title.substring(0, 60)}...`);
