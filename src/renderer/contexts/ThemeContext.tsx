@@ -1,27 +1,25 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo, type ReactNode } from 'react';
 import type { CustomTheme } from '../../shared/types';
+import { type ThemeColors, withDerivedExtendedTokens } from '../../shared/theme';
 import {
   type ThemeId,
   type CustomThemePreference,
   type ThemeOption,
   THEMES,
-  applyThemeColors,
+  CUSTOM_THEME_CLASS,
+  applyThemeToDocument,
   customThemePreferenceId,
   getCustomThemeId,
   getThemeById,
   isCustomThemeOption,
-  withDerivedExtendedTokens,
 } from '../themes';
 import {
   deleteCustomTheme as deleteCustomThemeById,
   importCustomThemeFromUrl,
   listCustomThemes,
 } from '../services/customThemeService';
-
-const ALL_THEME_CLASSES = [
-  ...THEMES.filter((theme) => theme.id !== 'system').map((theme) => theme.id),
-  'custom-theme',
-];
+import { THEME_PREFERENCE_STORAGE_KEY as STORAGE_KEY, writeCustomThemeColorsCache } from '../themeBoot';
+import { reportResolvedThemeAppearance } from '../services/themeService';
 
 /** User preference, including the system and custom theme options. */
 export type ThemePreference = ThemeId | CustomThemePreference;
@@ -53,8 +51,6 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
-
-const STORAGE_KEY = 'kpm-theme-preference';
 
 function getSystemTheme(): 'light' | 'dark' {
   if (typeof window === 'undefined') return 'dark';
@@ -120,23 +116,17 @@ function getResolvedThemeOption(resolved: ResolvedTheme, customThemes: CustomThe
   return getThemeById(resolved as Exclude<ThemeId, 'system'>) ?? getThemeById('graphite')!;
 }
 
-function applyTheme(theme: ThemeOption) {
-  const root = document.documentElement;
-  root.classList.remove(...ALL_THEME_CLASSES);
-
+function applyTheme(theme: ThemeOption): ThemeColors {
   if (isCustomThemeOption(theme)) {
-    root.classList.add('custom-theme');
     // Custom themes may predate the 22-token expansion; fill in any missing
     // extended tokens so the renderer always sees a complete ThemeColors.
-    applyThemeColors(withDerivedExtendedTokens(theme.colors));
-    return;
+    const colors = withDerivedExtendedTokens(theme.colors);
+    applyThemeToDocument(colors, CUSTOM_THEME_CLASS);
+    return colors;
   }
 
-  if (theme.id !== 'system') {
-    root.classList.add(theme.id);
-  }
-
-  applyThemeColors(theme.colors);
+  applyThemeToDocument(theme.colors, theme.id !== 'system' ? theme.id : null);
+  return theme.colors;
 }
 
 interface ThemeProviderProps {
@@ -189,7 +179,13 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   }, [customThemes, isLoadingCustomThemes, preference]);
 
   useEffect(() => {
-    applyTheme(resolvedTheme);
+    const applied = applyTheme(resolvedTheme);
+    // Cache custom-theme colors for the synchronous boot module, and report the
+    // resolved window background to the main process for the next launch.
+    if (isCustomThemeOption(resolvedTheme)) {
+      writeCustomThemeColorsCache(resolvedTheme.id, applied);
+    }
+    void reportResolvedThemeAppearance({ surface0: applied.surface0, colorScheme: applied.colorScheme });
   }, [resolvedTheme]);
 
   useEffect(() => {

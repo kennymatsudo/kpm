@@ -6,6 +6,7 @@ import type {
   CustomThemeTokenRule,
   CustomThemeVsCodeData,
 } from '../../../shared/types';
+import { DEPTH_COLOR_DEFAULTS, SEMANTIC_COLOR_DEFAULTS } from '../../../shared/theme';
 import type { ICustomThemeRepository } from '../../db/interfaces';
 import { failure, success, wrap, type AsyncResult, type ServiceResult } from '../result';
 
@@ -479,16 +480,16 @@ function buildKpmThemeColors(vscodeColors: Record<string, string>, colorScheme: 
       surface0,
       3,
     ),
-    success: getOpaqueColor(vscodeColors, ['terminal.ansiGreen', 'testing.iconPassed', 'charts.green'], isDark ? '#4ade80' : '#16a34a', surface0),
-    warning: getOpaqueColor(vscodeColors, ['terminal.ansiYellow', 'editorWarning.foreground', 'charts.yellow'], isDark ? '#fbbf24' : '#ca8a04', surface0),
-    danger: getOpaqueColor(vscodeColors, ['terminal.ansiRed', 'errorForeground', 'editorError.foreground'], isDark ? '#f87171' : '#dc2626', surface0),
-    info: getOpaqueColor(vscodeColors, ['terminal.ansiBlue', 'editorInfo.foreground', 'charts.blue'], isDark ? '#60a5fa' : '#2563eb', surface0),
-    purple: getOpaqueColor(vscodeColors, ['terminal.ansiMagenta', 'charts.purple'], isDark ? '#c084fc' : '#9333ea', surface0),
+    success: getOpaqueColor(vscodeColors, ['terminal.ansiGreen', 'testing.iconPassed', 'charts.green'], SEMANTIC_COLOR_DEFAULTS[colorScheme].success, surface0),
+    warning: getOpaqueColor(vscodeColors, ['terminal.ansiYellow', 'editorWarning.foreground', 'charts.yellow'], SEMANTIC_COLOR_DEFAULTS[colorScheme].warning, surface0),
+    danger: getOpaqueColor(vscodeColors, ['terminal.ansiRed', 'errorForeground', 'editorError.foreground'], SEMANTIC_COLOR_DEFAULTS[colorScheme].danger, surface0),
+    info: getOpaqueColor(vscodeColors, ['terminal.ansiBlue', 'editorInfo.foreground', 'charts.blue'], SEMANTIC_COLOR_DEFAULTS[colorScheme].info, surface0),
+    purple: getOpaqueColor(vscodeColors, ['terminal.ansiMagenta', 'charts.purple'], SEMANTIC_COLOR_DEFAULTS[colorScheme].purple, surface0),
     depth0: accent,
-    depth1: getOpaqueColor(vscodeColors, ['terminal.ansiBlue', 'charts.blue'], isDark ? '#60a5fa' : '#2563eb', surface0),
-    depth2: getOpaqueColor(vscodeColors, ['terminal.ansiGreen', 'charts.green'], isDark ? '#4ade80' : '#16a34a', surface0),
-    depth3: getOpaqueColor(vscodeColors, ['terminal.ansiMagenta', 'charts.purple'], isDark ? '#c084fc' : '#9333ea', surface0),
-    depth4: getOpaqueColor(vscodeColors, ['terminal.ansiRed', 'charts.red'], isDark ? '#f87171' : '#dc2626', surface0),
+    depth1: getOpaqueColor(vscodeColors, ['terminal.ansiBlue', 'charts.blue'], DEPTH_COLOR_DEFAULTS[colorScheme].depth1, surface0),
+    depth2: getOpaqueColor(vscodeColors, ['terminal.ansiGreen', 'charts.green'], DEPTH_COLOR_DEFAULTS[colorScheme].depth2, surface0),
+    depth3: getOpaqueColor(vscodeColors, ['terminal.ansiMagenta', 'charts.purple'], DEPTH_COLOR_DEFAULTS[colorScheme].depth3, surface0),
+    depth4: getOpaqueColor(vscodeColors, ['terminal.ansiRed', 'charts.red'], SEMANTIC_COLOR_DEFAULTS[colorScheme].danger, surface0),
   };
 }
 

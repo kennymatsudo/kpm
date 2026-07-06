@@ -11,7 +11,8 @@ import {
   transformPlanRefs,
   type DocHeading,
 } from '../../utils/markdown';
-import { generateThemeVariables, getThemeById } from '../../themes';
+import { generateThemeVariables } from '../../../shared/theme';
+import { getThemeById } from '../../themes';
 import { Z_INDEX } from '../../constants/zIndex';
 import { ChevronRightIcon, CloseIcon, ListIcon, MessageCircleIcon, MoonIcon, SearchIcon, SunIcon } from '../icons';
 import { useReadingProgress } from './useReadingProgress';

@@ -9,6 +9,7 @@ import { registerExportHandlers } from '../handlers/export';
 import { registerTrackerHandlers } from '../handlers/tracker';
 import { registerSettingsHandlers } from '../handlers/settings';
 import { registerCustomThemeHandlers } from '../handlers/customThemes';
+import { registerThemeHandlers } from '../handlers/theme';
 import { registerPermissionHandlers } from '../handlers/permission';
 import { registerArtifactHandlers } from '../handlers/artifacts';
 import { registerTaskPromptTemplateHandlers } from '../handlers/taskPromptTemplates';
@@ -41,6 +42,7 @@ export function registerWorkspaceHandlers({
   registerTrackerHandlers(getMainWindow, services.trackerService);
   registerSettingsHandlers(services.settingsService);
   registerCustomThemeHandlers(services.customThemeService);
+  registerThemeHandlers();
   registerPermissionHandlers(services.permissionService);
   registerArtifactHandlers(getMainWindow, services.artifactService);
   registerTaskPromptTemplateHandlers(services.taskPromptTemplateService);

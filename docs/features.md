@@ -1066,15 +1066,18 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ## Recently Audited Additions
 
 ### 96. Custom Themes and VS Code Theme Import
-- **What it does:** Users choose built-in themes or import a VS Code theme from `vscodethemes.com`. Imported themes are normalized into KPM color tokens, applied to the app shell, and reused by Monaco so the editor matches the selected theme.
+- **What it does:** Users choose built-in themes or import a VS Code theme from `vscodethemes.com`. Imported themes are normalized into KPM color tokens, applied to the app shell, and reused by Monaco so the editor matches the selected theme. Theme colors have a single owner (`src/shared/theme.ts`) shared by the renderer and main process, projected to CSS variables at runtime rather than declared in `index.css`. The theme applies synchronously before React mounts (no post-mount flash), and the main process reads the last-resolved background color to set the window's background before the page paints, so launch never flashes an unstyled default.
 - **Key code locations:**
+  - Shared color manifest: `src/shared/theme.ts` (palettes, semantic/depth defaults, CSS variable generation)
   - Service: `src/main/services/core/CustomThemeService.ts`
   - Repository: `src/main/db/repositories/impl/CustomThemeRepository.ts`
-  - IPC handlers: `src/main/ipc/handlers/customThemes.ts`
+  - IPC handlers: `src/main/ipc/handlers/customThemes.ts`, `src/main/ipc/handlers/theme.ts` (renderer reports resolved background color)
   - Types: `src/shared/customThemes.ts`
   - Context: `src/renderer/contexts/ThemeContext.tsx`
   - Components: `src/renderer/components/settings/ThemesSettings.tsx`, `src/renderer/components/settings/ThemeSelector.tsx`
-  - Theme runtime: `src/renderer/themes/index.ts`
+  - Theme runtime (DOM application, Mermaid/Monaco projections): `src/renderer/themes/index.ts`
+  - Pre-mount boot: `src/renderer/themeBoot.ts`
+  - Window background persistence: `src/main/bootstrap/themeAppearance.ts`, read by `src/main/bootstrap/windowManager.ts`
   - DB: `custom_themes`
 - **Entry points / surfaces:**
   - Settings → Themes tab
@@ -1084,7 +1087,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Dependencies / integrations:**
   - Marketplace VSIX download from Visual Studio Marketplace
   - Monaco theme data generation
-  - Local storage for current theme preference
+  - Local storage for current theme preference and last-resolved custom-theme colors (used by the pre-mount boot before the custom-theme IPC load resolves)
 - **Maturity signal:** Mature. URL validation, package size limits, zip parsing, persistence, delete flow, and unit tests exist.
 
 ### 97. Repository Environment Configuration

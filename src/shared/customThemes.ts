@@ -1,41 +1,16 @@
+import type { ColorScheme, PartialThemeColors } from './theme';
+
 export type CustomThemeSourceType = 'vscodethemes';
 
-export type CustomThemeColorScheme = 'light' | 'dark';
+export type CustomThemeColorScheme = ColorScheme;
 
-export interface CustomThemeColors {
-  colorScheme: CustomThemeColorScheme;
-  surface0: string;
-  surface1: string;
-  surface2: string;
-  surface3: string;
-  surface4: string;
-  surfaceElevated: string;
-  // Extended (22-token) fields — optional on custom themes so legacy persisted
-  // themes still load. Defaults are derived at apply time from accent/surfaces.
-  surfaceCode?: string;
-  surfaceSelected?: string;
-  textPrimary: string;
-  textSecondary: string;
-  textTertiary: string;
-  textMuted: string;
-  textOnAccent?: string;
-  accent: string;
-  accentHover: string;
-  accentActive?: string;
-  focusRing?: string;
-  link?: string;
-  linkVisited?: string;
-  success?: string;
-  warning?: string;
-  danger?: string;
-  info?: string;
-  purple?: string;
-  depth0?: string;
-  depth1?: string;
-  depth2?: string;
-  depth3?: string;
-  depth4?: string;
-}
+/**
+ * A custom (user-imported) theme's colors are structurally the relaxed
+ * `PartialThemeColors`: the 7 extended tokens are optional so legacy persisted
+ * themes still load, and defaults are derived at apply time from
+ * accent/surfaces via `withDerivedExtendedTokens`.
+ */
+export type CustomThemeColors = PartialThemeColors;
 
 export interface CustomThemeSource {
   type: CustomThemeSourceType;

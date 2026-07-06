@@ -52,13 +52,13 @@
   --transition-theme: 200ms ease-out;
   --transition-bounce: 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  /* Depth colors — declared here so Tailwind can resolve depth-* utilities.
-     Actual values are set per-theme via JS in generateThemeVariables(). */
-  --color-depth-0: #818cf8;
-  --color-depth-1: #60a5fa;
-  --color-depth-2: #4abe80;
-  --color-depth-3: #c084fc;
-  --color-depth-4: #f472b6;
+  /* Depth colors — aliases so Tailwind can resolve depth-* utilities.
+     Concrete values are set per-theme via JS in generateThemeVariables(). */
+  --color-depth-0: var(--color-depth-0);
+  --color-depth-1: var(--color-depth-1);
+  --color-depth-2: var(--color-depth-2);
+  --color-depth-3: var(--color-depth-3);
+  --color-depth-4: var(--color-depth-4);
 
   /* Tailwind Utility Mappings - Enable using semantic color names in classes */
   /* Surfaces */
@@ -115,13 +115,18 @@
 }
 
 /* ============================================
-   Default Theme Variables (Dark)
-   Applied to :root as fallback before JS loads.
-   Actual theme values are set via JS in ThemeContext.
+   Layout tokens + crash-safety background
+
+   Theme color values are applied to document.documentElement by the
+   synchronous theme-boot module (src/renderer/themeBoot.ts) before React
+   mounts — they are NOT declared here. `background` is a last-ditch fallback
+   so a totally-unstyled paint (JS failed to boot) shows the dark surface
+   instead of pure white; the window's own backgroundColor covers the normal
+   launch. The custom properties below are theme-independent layout tokens.
    ============================================ */
 
 :root {
-  color-scheme: dark;
+  background: #0e0f12;
   --titlebar-height: 48px;
   /* Reserve space for macOS traffic-light controls + breathing room before
      the first interactive element. Lights are positioned at x=16 (see
@@ -131,105 +136,6 @@
   --traffic-light-inset: 92px;
 
   --chat-measure: min(1400px, 94%);
-
-  /* Surfaces — Graphite (new dark default) */
-  --color-surface-0: #0e0f12;
-  --color-surface-1: #15171b;
-  --color-surface-2: #1c1e23;
-  --color-surface-3: #272a31;
-  --color-surface-4: #363a44;
-  --color-surface-elevated: #1f2229;
-  --color-surface-code: #0a0b0d;
-  --color-surface-selected: rgba(110, 168, 254, 0.14);
-
-  /* Text */
-  --color-text-primary: #e8eaef;
-  --color-text-secondary: #a8adb8;
-  --color-text-tertiary: #7a8090;
-  --color-text-muted: #4f5563;
-  --color-text-on-accent: #0e0f12;
-
-  /* Borders — cool gray tint */
-  --color-border-subtle: rgba(255, 255, 255, 0.04);
-  --color-border-default: rgba(255, 255, 255, 0.08);
-  --color-border-strong: rgba(255, 255, 255, 0.14);
-
-  /* Accent — electric blue */
-  --color-accent: #6ea8fe;
-  --color-accent-hover: #8bbcff;
-  --color-accent-active: #5a92e8;
-  --color-accent-muted: rgba(110, 168, 254, 0.18);
-  --color-accent-subtle: rgba(110, 168, 254, 0.10);
-  --color-focus-ring: rgba(110, 168, 254, 0.45);
-
-  /* Links */
-  --color-link: #8bbcff;
-  --color-link-visited: #c69cff;
-
-  /* Semantic colors */
-  --color-success: #7ec27a;
-  --color-success-muted: rgba(126, 194, 122, 0.18);
-  --color-warning: #e0b870;
-  --color-warning-muted: rgba(224, 184, 112, 0.18);
-  --color-danger: #e78a8a;
-  --color-danger-muted: rgba(231, 138, 138, 0.18);
-  --color-info: #6ea8fe;
-  --color-info-muted: rgba(110, 168, 254, 0.18);
-  --color-purple: #c69cff;
-  --color-purple-subtle: rgba(198, 156, 255, 0.18);
-
-  /* Inline code background */
-  --color-code-bg: rgba(110, 168, 254, 0.15);
-
-  /* Shadows — minimal, structural only */
-  --shadow-xs: none;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.15);
-  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.25);
-  --shadow-xl: 0 4px 8px rgba(0, 0, 0, 0.25);
-  --shadow-glow: none;
-  --shadow-inset: none;
-  --shadow-panel-seam: inset 1px 0 0 rgba(255, 255, 255, 0.05), -2px 0 8px rgba(0, 0, 0, 0.22);
-
-  /* Card shadows — none (borders replace shadows) */
-  --shadow-card: none;
-  --shadow-card-hover: none;
-
-  /* Canvas dots */
-  --canvas-dot-color: rgba(232, 234, 239, 0.02);
-
-  /* Scrollbar */
-  --scrollbar-thumb: rgba(232, 234, 239, 0.08);
-  --scrollbar-thumb-hover: rgba(232, 234, 239, 0.15);
-
-  /* Overlay */
-  --overlay-color: rgba(0, 0, 0, 0.6);
-
-  /* Terminal (forced dark theme) */
-  --terminal-bg: #0e0f12;
-  --terminal-bg-elevated: #1f2229;
-  --terminal-fg: #e8eaef;
-  --terminal-cursor: #6ea8fe;
-  --terminal-cursor-accent: #0e0f12;
-  --terminal-selection-bg: rgba(110, 168, 254, 0.3);
-  --terminal-selection-fg: #e8eaef;
-  --terminal-black: #15171b;
-  --terminal-red: #e78a8a;
-  --terminal-green: #7ec27a;
-  --terminal-yellow: #e0b870;
-  --terminal-blue: #6ea8fe;
-  --terminal-magenta: #c69cff;
-  --terminal-cyan: #22d3ee;
-  --terminal-white: #e8eaef;
-  --terminal-bright-black: #4f5563;
-  --terminal-bright-red: #ee9f9f;
-  --terminal-bright-green: #94d090;
-  --terminal-bright-yellow: #ebc788;
-  --terminal-bright-blue: #95bcfe;
-  --terminal-bright-magenta: #d3b3ff;
-  --terminal-bright-cyan: #67e8f9;
-  --terminal-bright-white: #ffffff;
-  --terminal-grid-color: rgba(232, 234, 239, 0.1);
 }
 
 [data-kpm-diff-viewer] > div {

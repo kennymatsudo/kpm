@@ -61,7 +61,7 @@ Don't create abstractions until you have 3+ actual uses of a pattern. Wait until
 ## CSS Conventions
 
 - Use Tailwind utilities
-- CSS custom properties defined in `index.css` for theme tokens
+- **Theme color tokens are projected in JS, not declared in CSS.** `src/shared/theme.ts` is the single source of palettes + `generateThemeVariables`; `themeBoot.ts` writes the CSS custom properties onto `document.documentElement` synchronously before React mounts, and `ThemeContext` re-applies them on change. `index.css` holds only theme-independent tokens (`--titlebar-height`, `--chat-measure`, etc.), a crash-safety background, and the `@theme` utility aliases — no hardcoded theme hex values. To change a theme color, edit `src/shared/theme.ts` (see the root CLAUDE.md "Change a theme token" recipe).
 - Existing `.btn`, `.btn-primary`, `.dropdown-item` classes for consistent styling
 
 ## Plan Item Spec Fields in UI

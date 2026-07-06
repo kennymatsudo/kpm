@@ -53,6 +53,7 @@ import { repoEndpoints } from './ipc/repoEndpoints';
 import { customPromptEndpoints } from './ipc/customPromptEndpoints';
 import { taskPromptTemplateEndpoints } from './ipc/taskPromptTemplateEndpoints';
 import { customThemeEndpoints } from './ipc/customThemeEndpoints';
+import { themeEndpoints } from './ipc/themeEndpoints';
 import { onboardingEndpoints } from './ipc/onboardingEndpoints';
 import { perfEndpoints } from './ipc/perfEndpoints';
 import { debugEndpoints } from './ipc/debugEndpoints';
@@ -462,6 +463,10 @@ const customThemeChannels = toNestedChannels(customThemeEndpoints) as {
   delete: string;
 };
 
+const themeChannels = toNestedChannels(themeEndpoints) as {
+  reportResolved: string;
+};
+
 const onboardingEndpointChannels = toNestedChannels(onboardingEndpoints) as {
   generate: string;
   saveContext: string;
@@ -564,6 +569,11 @@ export const IPC_CHANNELS = {
   // Custom Themes
   // ===========================================================================
   customThemes: customThemeChannels,
+
+  // ===========================================================================
+  // Theme (window-background appearance reporting)
+  // ===========================================================================
+  theme: themeChannels,
 
   // ===========================================================================
   // Task Prompt Templates

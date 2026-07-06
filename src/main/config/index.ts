@@ -178,6 +178,11 @@ export interface PollSchedulerConfig {
   maxBackoffMs: number;
 }
 
+export interface ThemeConfig {
+  /** Filename (under userData) of the window-background appearance sidecar. */
+  appearanceFilename: string;
+}
+
 export interface FileExplorerConfig {
   /**
    * Extra absolute paths whose contents IPC file operations must not touch
@@ -207,6 +212,7 @@ export interface AppConfig {
   watcher: WatcherConfig;
   pollScheduler: PollSchedulerConfig;
   fileExplorer: FileExplorerConfig;
+  theme: ThemeConfig;
 }
 
 // =============================================================================
@@ -308,6 +314,10 @@ function createDefaultConfig(): AppConfig {
     fileExplorer: {
       deniedRealpathRoots: [],
       maxSymlinkDepth: 1,
+    },
+
+    theme: {
+      appearanceFilename: 'theme-appearance.json',
     },
   };
 }

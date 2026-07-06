@@ -87,7 +87,7 @@ A missing executor is a compile error (`ACTION_EXECUTORS` is typed against every
 5. If it mutates the plan: emit `PlanAction[]` via `onPlanActions` — do **not** write to the DB.
 
 **Add an IPC handler**
-Every invoke domain is on the endpoint registry (tracker, fileExplorer, repoFiles, attachment, tempImage, artifact, context/claudeMd, search, chat, terminal, settings, permission, promptOverrides, toolLog, storybook, mcpServers, briefing, usage, worktree, devSession, agentSession, review, github, plan, group, export, confluence, scheduledLoop, slack, project, repo, customPrompts, taskPromptTemplates, customThemes, onboarding, perf, debug, testing, shell): add one entry to `src/shared/ipc/{domain}Endpoints.ts` (channel + Zod params schema) and one handler to the typed binding in `src/main/ipc/handlers/{domain}.ts`. See "Migrating a domain to the endpoint registry" in [`src/main/ipc/CLAUDE.md`](src/main/ipc/CLAUDE.md).
+Every invoke domain is on the endpoint registry (tracker, fileExplorer, repoFiles, attachment, tempImage, artifact, context/claudeMd, search, chat, terminal, settings, permission, promptOverrides, toolLog, storybook, mcpServers, briefing, usage, worktree, devSession, agentSession, review, github, plan, group, export, confluence, scheduledLoop, slack, project, repo, customPrompts, taskPromptTemplates, customThemes, theme, onboarding, perf, debug, testing, shell): add one entry to `src/shared/ipc/{domain}Endpoints.ts` (channel + Zod params schema) and one handler to the typed binding in `src/main/ipc/handlers/{domain}.ts`. See "Migrating a domain to the endpoint registry" in [`src/main/ipc/CLAUDE.md`](src/main/ipc/CLAUDE.md).
 
 **Touch `@plan/<uuid>` flow**
 - Parser: `src/shared/planRefs.ts`
@@ -102,6 +102,13 @@ Never bypass the export-boundary rewrite.
 - `components/planning/PlanCard.tsx` (DOM) and `utils/planHierarchy.ts` (`calculateCardHeight`, `buildHeightMapFromTree`) both read `CARD_BOX_MODEL` directly, so there is nothing left to hand-sync between them.
 
 Heights are calculated, not measured. Drift causes uneven gaps. See [`src/renderer/CLAUDE.md`](src/renderer/CLAUDE.md).
+
+**Change a theme token**
+- `src/shared/theme.ts` is the single owner of theme colors: the `graphiteColors`/`fogColors` palettes, `SEMANTIC_COLOR_DEFAULTS`/`DEPTH_COLOR_DEFAULTS` + their `resolveSemanticColors`/`resolveDepthColors` resolvers, `withDerivedExtendedTokens`, and `generateThemeVariables`. Edit the value here — do **not** add it to `index.css`.
+- `index.css` holds no theme hex values: theme CSS variables are written to `document.documentElement` at runtime by `renderer/themeBoot.ts` (synchronously, pre-mount) and re-applied by `ThemeContext`. The `@theme` block only aliases the tokens for Tailwind utilities.
+- Changing a built-in `surface0` also changes the launch window background: the renderer reports it via the `theme:report-resolved` IPC, `main/bootstrap/themeAppearance.ts` persists it to a `userData` sidecar, and `windowManager.ts` reads it to set `BrowserWindow.backgroundColor`. No action needed — it flows automatically.
+
+Runtime projection, no per-theme codegen.
 
 ## Anti-patterns
 

@@ -84,6 +84,9 @@ vi.mock('electron', () => ({
     openPath: vi.fn(),
     showItemInFolder: vi.fn(),
   },
+  nativeTheme: {
+    shouldUseDarkColors: true,
+  },
   dialog: {
     showOpenDialog: vi.fn(),
     showSaveDialog: vi.fn(),

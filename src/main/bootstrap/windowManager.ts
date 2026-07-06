@@ -3,6 +3,7 @@ import path from 'path';
 import { getConfig } from '../config';
 import { isAllowedExternalUrl } from '../security/externalUrl';
 import { isTrustedAppUrl } from '../security/appUrl';
+import { resolveStartupBackgroundColor } from './themeAppearance';
 
 export interface MainWindowManagerDeps {
   loadWindowBounds: () => Electron.Rectangle | null;
@@ -27,6 +28,7 @@ export function createMainWindowManager(deps: MainWindowManagerDeps) {
       y: savedBounds?.y,
       minWidth: windowConfig.minWidth,
       minHeight: windowConfig.minHeight,
+      backgroundColor: resolveStartupBackgroundColor(),
       icon: app.isPackaged
         ? undefined
         : path.join(process.cwd(), 'assets', 'icon.png'),

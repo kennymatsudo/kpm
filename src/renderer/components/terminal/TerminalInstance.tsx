@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import { useTerminalStore } from '../../stores/terminalStore';
+import { graphiteColors } from '../../../shared/theme';
 import {
   createTerminal,
   writeToTerminal,
@@ -25,7 +26,7 @@ function resolveTheme() {
   return {
     background: v('--color-surface-0', '#0d0f12'),
     foreground: v('--color-text-primary', '#e6e6e6'),
-    cursor: v('--color-accent', '#7aa2f7'),
+    cursor: v('--color-accent', graphiteColors.accent),
     cursorAccent: v('--color-surface-0', '#0d0f12'),
     selectionBackground: v('--color-accent-muted', '#3b4252'),
   };

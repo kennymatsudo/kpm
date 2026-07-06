@@ -1,6 +1,7 @@
 import type { Database, Statement } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import type { CustomTheme, CustomThemeColors, CustomThemeSource, CustomThemeVsCodeData } from '../../../../shared/types';
+import { graphiteColors } from '../../../../shared/theme';
 import type { CustomThemeSaveInput, ICustomThemeRepository } from '../../interfaces';
 
 interface CustomThemeRow {
@@ -32,21 +33,7 @@ function parseJson<T>(value: string, fallback: T): T {
 }
 
 function rowToTheme(row: CustomThemeRow): CustomTheme {
-  const colors = parseJson<CustomThemeColors>(row.colors_json, {
-    colorScheme: 'dark',
-    surface0: '#141211',
-    surface1: '#1c1a18',
-    surface2: '#242220',
-    surface3: '#2e2b28',
-    surface4: '#3a3632',
-    surfaceElevated: '#302e2b',
-    textPrimary: '#e8e4e0',
-    textSecondary: '#9b9490',
-    textTertiary: '#8a8480',
-    textMuted: '#5c5652',
-    accent: '#a78bfa',
-    accentHover: '#b9a0fb',
-  });
+  const colors = parseJson<CustomThemeColors>(row.colors_json, graphiteColors);
 
   return {
     id: row.id,

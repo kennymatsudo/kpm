@@ -52,6 +52,7 @@ import { projectEndpoints } from '../shared/ipc/projectEndpoints';
 import { repoEndpoints } from '../shared/ipc/repoEndpoints';
 import { taskPromptTemplateEndpoints } from '../shared/ipc/taskPromptTemplateEndpoints';
 import { customThemeEndpoints } from '../shared/ipc/customThemeEndpoints';
+import { themeEndpoints } from '../shared/ipc/themeEndpoints';
 import { perfEndpoints } from '../shared/ipc/perfEndpoints';
 import { shellEndpoints } from '../shared/ipc/shellEndpoints';
 import type {
@@ -626,6 +627,12 @@ const customThemes = {
   list: () => customThemeInvoke.list(),
   importFromUrl: (url: string) => customThemeInvoke.importFromUrl({ url }),
   delete: (themeId: string) => customThemeInvoke.delete({ themeId }),
+};
+
+const themeInvoke = deriveDomainApi(themeEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+
+const theme = {
+  reportResolved: themeInvoke.reportResolved,
 };
 
 const permissionInvoke = deriveDomainApi(permissionEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
@@ -1225,6 +1232,7 @@ export const api = {
   storybook,
   settings,
   customThemes,
+  theme,
   permission,
   permissions,
   artifacts,

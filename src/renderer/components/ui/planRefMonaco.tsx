@@ -11,6 +11,7 @@ import type * as Monaco from 'monaco-editor';
 import { usePlanDomainStore, useProjectUiDomainStore } from '../../stores';
 import { STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import { findRefs, PLAN_REF_REGEX, serializeRef } from '../../../shared/planRefs';
+import { graphiteColors } from '../../../shared/theme';
 import type { PlanItem } from '../../../shared/types';
 
 const PLAN_REF_OWNER = 'kpm-plan-ref';
@@ -274,7 +275,7 @@ export function registerPlanRefMonacoProviders(
         `.${className} { color: transparent; font-size: 0; }`,
         `.${className}::before {`,
         `  content: '${safeLabel}';`,
-        `  color: var(--color-accent, #6366f1);`,
+        `  color: var(--color-accent, ${graphiteColors.accent});`,
         `  font-size: 13px;`,
         `  font-family: var(--font-mono, monospace);`,
         `  font-weight: 500;`,
