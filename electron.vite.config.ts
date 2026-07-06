@@ -61,6 +61,8 @@ export default defineConfig({
       // electron-vite externalizeDeps is enabled by default
       // Note: bytecode for preload requires sandbox: false
       // which we don't want for security, so skip it
+      // zod must be bundled: the sandboxed preload can't require() node_modules packages
+      externalizeDeps: { exclude: ['zod'] },
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/preload/preload.ts')
