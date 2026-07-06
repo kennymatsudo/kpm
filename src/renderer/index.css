@@ -130,6 +130,8 @@
      html[data-platform]. */
   --traffic-light-inset: 92px;
 
+  --chat-measure: min(1400px, 94%);
+
   /* Surfaces — Graphite (new dark default) */
   --color-surface-0: #0e0f12;
   --color-surface-1: #15171b;
@@ -187,6 +189,7 @@
   --shadow-xl: 0 4px 8px rgba(0, 0, 0, 0.25);
   --shadow-glow: none;
   --shadow-inset: none;
+  --shadow-panel-seam: inset 1px 0 0 rgba(255, 255, 255, 0.05), -2px 0 8px rgba(0, 0, 0, 0.22);
 
   /* Card shadows — none (borders replace shadows) */
   --shadow-card: none;
@@ -697,11 +700,9 @@ button:focus-visible {
   margin-bottom: 0.7em;
 }
 
-/* Cap assistant prose to a comfortable reading measure. User bubbles keep
-   their own max-w-[80%]; this only narrows the full-width assistant column
-   so long lines don't run the whole panel. Tune to taste. */
-.chat-message-assistant .chat-message-content {
-  max-width: 46rem;
+.chat-message-content pre {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 /* Allow text selection in prose/markdown content */
@@ -749,19 +750,12 @@ button:focus-visible {
   transition: background var(--transition-theme);
 }
 
-.light .sidebar {
-  border-right: 1px solid var(--color-border-subtle);
-}
-
 /* Panel that sits on the right side (like chat) */
 .panel-right {
   background: var(--color-surface-1);
-  border-left: 1px solid var(--color-border-subtle);
+  border-left: 1px solid var(--color-border-default);
+  box-shadow: var(--shadow-panel-seam);
   transition: background var(--transition-theme);
-}
-
-.light .panel-right {
-  border-left: 1px solid var(--color-border-subtle);
 }
 
 .sidebar-item {
@@ -994,40 +988,6 @@ button:focus-visible {
 
 .spinner-refined {
   animation: spinner-rotate 800ms linear infinite;
-}
-
-/* Sidebar panel animations */
-@keyframes sidebar-slide-left {
-  from {
-    opacity: 0;
-    transform: translateX(-100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes sidebar-slide-right {
-  from {
-    opacity: 0;
-    transform: translateX(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.sidebar-panel {
-}
-
-.sidebar-left {
-  animation: sidebar-slide-left 200ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.sidebar-right {
-  animation: sidebar-slide-right 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dropdown-item {
@@ -2514,16 +2474,6 @@ button:focus-visible {
 .worktree-indicator:hover {
   background: rgba(16, 185, 129, 0.2);
   border-color: rgba(16, 185, 129, 0.3);
-}
-
-.light .worktree-indicator {
-  background: rgba(5, 150, 105, 0.1);
-  color: #059669;
-  border-color: rgba(5, 150, 105, 0.2);
-}
-
-.light .worktree-indicator:hover {
-  background: rgba(5, 150, 105, 0.18);
 }
 
 /* Pulse animation for worktree indicator */

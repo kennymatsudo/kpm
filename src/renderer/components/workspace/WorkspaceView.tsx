@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useWorkspaceStore, useHasUnsavedChanges, useFileTreeStore } from '../../stores';
-import { Chat, ChatHeader } from '../chat';
+import { ChatPanel } from '../chat/ChatPanel';
 import { ErrorBoundary } from '../app/ErrorBoundary';
 import { FileEditor } from './FileEditor';
 import { WorkspaceHome } from './WorkspaceHome';
 import { getParentPath } from '../../utils/path';
 import { subscribe as subscribeToStoreEvent } from '../../stores/storeEvents';
-import { useWorkspaceResize } from './useWorkspaceResize';
+import { useResizablePanel } from '../layout/hooks';
+import { PANEL_SIZES } from '../../constants/layout';
 import { readWorkspaceFile } from '../../services/workspaceFileService';
 
 interface WorkspaceViewProps {
@@ -121,7 +122,10 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
 
   // Workspace chat resize — pass containerRef so the max chat width accounts for sidebar space
   const containerRef = useRef<HTMLDivElement>(null);
-  const { workspaceChatWidth, handleResizeStart } = useWorkspaceResize(containerRef);
+  const { width: workspaceChatWidth, handleResizeStart } = useResizablePanel(
+    PANEL_SIZES.workspaceChat,
+    { containerRef }
+  );
 
   // Track if we're in editing mode for layout transitions
   const isEditing = editingFile !== null;
@@ -183,25 +187,12 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
 
       {/* Chat Panel */}
       {!chatCollapsed && (
-        <div
-          className={`
-            panel-right flex flex-col bg-surface-1
-            ${isEditing ? 'flex-shrink-0' : 'flex-1'}
-          `}
+        <ChatPanel
+          view="workspace"
+          showDivider
+          className={isEditing ? 'flex-shrink-0' : 'flex-1'}
           style={isEditing ? { width: workspaceChatWidth } : undefined}
-        >
-          <ChatHeader />
-
-          {/* Soft divider */}
-          <div className="divider mx-4" />
-
-          {/* Chat content */}
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <ErrorBoundary name="Chat">
-              <Chat currentView="workspace" />
-            </ErrorBoundary>
-          </div>
-        </div>
+        />
       )}
     </div>
   );

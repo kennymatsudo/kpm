@@ -311,7 +311,7 @@ export function FocusChatPanel({
             >
               {streamingContent ? (
                 <>
-                  <div className="prose-document prose-document-compact prose-panel text-sm">
+                  <div className="prose-document prose-panel text-sm">
                     <Markdown options={markdownOptions}>{transformPlanRefs(streamingContent)}</Markdown>
                   </div>
                   {isStreaming && <FocusChatActivity className="mt-3 border-t border-border-subtle/60 pt-2" />}
@@ -406,7 +406,7 @@ function FocusChatBubble({ message }: { message: FocusChatMessage }) {
         {isUser ? (
           <div className="whitespace-pre-wrap break-words">{message.content}</div>
         ) : (
-          <div className="prose-document prose-document-compact prose-panel">
+          <div className="prose-document prose-panel">
             <Markdown options={markdownOptions}>{transformPlanRefs(message.content)}</Markdown>
           </div>
         )}

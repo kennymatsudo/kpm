@@ -4,7 +4,7 @@ import { Sidebar } from '../sidebar';
 import { PlanView } from '../planning';
 import { WorkspaceView } from '../workspace';
 import { WelcomePane } from '../welcome/WelcomePane';
-import { Chat, ChatHeader } from '../chat';
+import { ChatPanel } from '../chat/ChatPanel';
 import { TopBar } from './TopBar';
 import { ErrorBoundary } from '../app/ErrorBoundary';
 import { KeyboardShortcuts } from '../keyboard-shortcuts/KeyboardShortcuts';
@@ -56,10 +56,6 @@ interface LayoutProps {
   onOpenProject?: (projectId: string) => void;
   onResumeOnboardingTask?: (taskId: string) => void;
   onCreateProjectFromRepos?: (paths: string[]) => Promise<void>;
-  /** When true, sidebar floats over content instead of pushing it */
-  sidebarOverlay?: boolean;
-  /** When true, chat panel floats over content instead of pushing it */
-  chatOverlay?: boolean;
 }
 
 export const Layout = memo(function Layout({
@@ -68,8 +64,6 @@ export const Layout = memo(function Layout({
   onOpenProject,
   onResumeOnboardingTask,
   onCreateProjectFromRepos,
-  sidebarOverlay = false,
-  chatOverlay = false,
 }: LayoutProps) {
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
   const projects = useProjectDomainStore((state) => state.projects);
@@ -303,8 +297,8 @@ export const Layout = memo(function Layout({
           searchResultCount={searchResultCount}
         />
 
-        {/* Main content area - flex row with sidebar pushing content (or relative for overlay mode) */}
-        <div className={`flex flex-1 overflow-hidden ${sidebarOverlay || chatOverlay ? 'relative' : ''}`}>
+        {/* Main content area - flex row with sidebar pushing content */}
+        <div className="flex flex-1 overflow-hidden">
           {/* Project switching overlay */}
           {isSwitchingProject && (
             <div className="project-switch-overlay absolute inset-0 bg-surface-0/50 backdrop-blur-sm flex items-center justify-center" style={{ zIndex: 100 }}>
@@ -315,15 +309,11 @@ export const Layout = memo(function Layout({
             </div>
           )}
 
-          {/* Left sidebar - pushes content by default, floats over when overlay mode */}
+          {/* Left sidebar - pushes content */}
           {!sidebarCollapsed && (
             <div
-              className={
-                sidebarOverlay
-                  ? `sidebar-left absolute left-0 top-0 bottom-0 flex flex-col bg-surface-0`
-                  : 'flex flex-col bg-surface-0 flex-shrink-0 relative'
-              }
-              style={{ width: sidebarWidth, ...(sidebarOverlay ? { zIndex: Z_INDEX.panel } : {}) }}
+              className="flex flex-col bg-surface-0 flex-shrink-0 relative"
+              style={{ width: sidebarWidth }}
             >
               <div className="flex-1 flex flex-col min-h-0">
                 <ErrorBoundary name="Sidebar">
@@ -390,12 +380,8 @@ export const Layout = memo(function Layout({
           {/* Right chat panel - only shown for planning view (workspace manages its own chat) */}
           {!chatCollapsed && mainView === 'planning' && (
             <div
-              className={
-                chatOverlay
-                  ? 'sidebar-panel sidebar-right absolute right-0 top-0 bottom-0 flex bg-surface-0'
-                  : 'sidebar-panel flex bg-surface-0 flex-shrink-0'
-              }
-              style={{ width: chatWidth, ...(chatOverlay ? { zIndex: Z_INDEX.panel } : {}) }}
+              className="sidebar-panel flex bg-surface-0 flex-shrink-0"
+              style={{ width: chatWidth }}
             >
               {/* Chat resize handle */}
               <div
@@ -404,14 +390,7 @@ export const Layout = memo(function Layout({
               >
                 <div className="absolute inset-y-0 -left-1 -right-1" />
               </div>
-              <div className="flex-1 panel-right flex flex-col min-w-0">
-                <ChatHeader />
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <ErrorBoundary name="Chat">
-                    <Chat currentView="plan" />
-                  </ErrorBoundary>
-                </div>
-              </div>
+              <ChatPanel view="plan" className="flex-1" />
             </div>
           )}
         </div>

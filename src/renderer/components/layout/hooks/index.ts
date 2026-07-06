@@ -1,5 +1,10 @@
 export { usePanelResize, type UsePanelResizeReturn } from './usePanelResize';
 export {
+  useResizablePanel,
+  type UseResizablePanelOptions,
+  type UseResizablePanelReturn,
+} from './useResizablePanel';
+export {
   useLayoutNavigationEffects,
   type UseLayoutNavigationEffectsReturn,
 } from './useLayoutNavigationEffects';

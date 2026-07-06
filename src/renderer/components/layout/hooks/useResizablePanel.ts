@@ -1,57 +1,69 @@
 import { useState, useEffect, useRef, useCallback, type RefObject } from 'react';
-import { clampWidth } from '../../utils/panelSizing';
+import { clampWidth, resolvePanelMax } from '../../../utils/panelSizing';
+import type { PanelSizeConfig } from '../../../constants/layout';
 
-const CHAT_MIN = 320;
-const CHAT_MAX_ABS = 1600;
-const CHAT_MAX_VIEWPORT_FRACTION = 0.75;
-const CHAT_DEFAULT = 420;
-const EDITOR_MIN = 480;
-const STORAGE_KEY = 'kpm-workspace-chat-width';
-
-function getChatMax(containerRef?: RefObject<HTMLDivElement | null>): number {
-  const availableWidth = containerRef?.current?.offsetWidth ?? window.innerWidth;
-  return Math.max(
-    CHAT_MIN,
-    Math.min(
-      availableWidth * CHAT_MAX_VIEWPORT_FRACTION,
-      availableWidth - EDITOR_MIN,
-      CHAT_MAX_ABS,
-    ),
-  );
+export interface UseResizablePanelOptions {
+  containerRef?: RefObject<HTMLDivElement | null>;
+  reservedWidth?: number;
 }
 
-function readStoredWidth(containerRef?: RefObject<HTMLDivElement | null>): number {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return CHAT_DEFAULT;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return CHAT_DEFAULT;
-  return clampWidth(parsed, CHAT_MIN, getChatMax(containerRef));
-}
-
-export interface UseWorkspaceResizeReturn {
-  workspaceChatWidth: number;
+export interface UseResizablePanelReturn {
+  width: number;
   isResizing: boolean;
   handleResizeStart: (e: React.MouseEvent) => void;
 }
 
-export function useWorkspaceResize(
-  containerRef?: RefObject<HTMLDivElement | null>,
-): UseWorkspaceResizeReturn {
-  const [width, setWidth] = useState(() => readStoredWidth(containerRef));
+function getAvailableWidth(containerRef?: RefObject<HTMLDivElement | null>): number {
+  return containerRef?.current?.offsetWidth ?? window.innerWidth;
+}
+
+function getMax(
+  config: PanelSizeConfig,
+  containerRef: RefObject<HTMLDivElement | null> | undefined,
+  reservedWidth: number
+): number {
+  return resolvePanelMax(config, {
+    viewportWidth: getAvailableWidth(containerRef),
+    reservedWidth,
+  });
+}
+
+function readStoredWidth(config: PanelSizeConfig, max: number): number {
+  const raw = localStorage.getItem(config.storageKey);
+  if (!raw) return config.default;
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return config.default;
+
+  return clampWidth(parsed, config.min, max);
+}
+
+export function useResizablePanel(
+  config: PanelSizeConfig,
+  options: UseResizablePanelOptions = {}
+): UseResizablePanelReturn {
+  const { containerRef, reservedWidth = 0 } = options;
+
+  const [width, setWidth] = useState(() =>
+    readStoredWidth(config, getMax(config, containerRef, reservedWidth))
+  );
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(0);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, width.toString());
-  }, [width]);
+    localStorage.setItem(config.storageKey, width.toString());
+  }, [config.storageKey, width]);
 
-  // Re-clamp when the container resizes so the chat always leaves room for the editor.
   useEffect(() => {
+    if (config.viewportFraction === undefined) return;
+
     const reclamp = () => {
-      const max = getChatMax(containerRef);
+      const max = getMax(config, containerRef, reservedWidth);
       setWidth((current) => (current > max ? max : current));
     };
+
+    reclamp();
 
     if (containerRef?.current) {
       const observer = new ResizeObserver(reclamp);
@@ -61,7 +73,7 @@ export function useWorkspaceResize(
 
     window.addEventListener('resize', reclamp);
     return () => window.removeEventListener('resize', reclamp);
-  }, [containerRef]);
+  }, [config, containerRef, reservedWidth]);
 
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -80,9 +92,10 @@ export function useWorkspaceResize(
     if (!isResizing) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      // Dragging left = chat wider (inverted delta)
-      const delta = resizeStartX.current - e.clientX;
-      const newWidth = clampWidth(resizeStartWidth.current + delta, CHAT_MIN, getChatMax(containerRef));
+      const rawDelta = e.clientX - resizeStartX.current;
+      const delta = config.invertDrag ? -rawDelta : rawDelta;
+      const max = getMax(config, containerRef, reservedWidth);
+      const newWidth = clampWidth(resizeStartWidth.current + delta, config.min, max);
       pendingWidth.current = newWidth;
 
       if (rafRef.current === null) {
@@ -123,11 +136,7 @@ export function useWorkspaceResize(
         rafRef.current = null;
       }
     };
-  }, [isResizing]);
+  }, [isResizing, config, containerRef, reservedWidth]);
 
-  return {
-    workspaceChatWidth: width,
-    isResizing,
-    handleResizeStart,
-  };
+  return { width, isResizing, handleResizeStart };
 }

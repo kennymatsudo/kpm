@@ -15,6 +15,43 @@ export const CARD_WIDTHS = {
   4: 260,
 } as const;
 
+export interface PanelSizeConfig {
+  storageKey: string;
+  min: number;
+  default: number;
+  maxAbs: number;
+  viewportFraction?: number;
+  remainingMinWidth?: number;
+  invertDrag?: boolean;
+}
+
+export const PANEL_SIZES = {
+  sidebar: {
+    storageKey: 'kpm-sidebar-width',
+    min: 240,
+    default: 240,
+    maxAbs: 480,
+  },
+  planningChat: {
+    storageKey: 'kpm-chat-width',
+    min: 280,
+    default: 384,
+    maxAbs: 1600,
+    viewportFraction: 0.75,
+    remainingMinWidth: 480,
+    invertDrag: true,
+  },
+  workspaceChat: {
+    storageKey: 'kpm-workspace-chat-width',
+    min: 320,
+    default: 420,
+    maxAbs: 1600,
+    viewportFraction: 0.75,
+    remainingMinWidth: 480,
+    invertDrag: true,
+  },
+} as const satisfies Record<string, PanelSizeConfig>;
+
 /** Auto-layout grid settings */
 export const AUTO_LAYOUT = {
   /** Starting X position for auto-layout */
@@ -68,16 +105,6 @@ export const ZOOM = {
    * card proportions and readability.
    */
   BASE: 0.75,
-} as const;
-
-/** Default sidebar widths */
-export const SIDEBAR = {
-  /** Default collapsed sidebar width */
-  COLLAPSED: 56,
-  /** Default expanded sidebar width */
-  DEFAULT: 256,
-  /** Maximum sidebar width */
-  MAX: 360,
 } as const;
 
 /** Collision detection settings */

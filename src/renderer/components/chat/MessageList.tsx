@@ -7,6 +7,7 @@ import { parseUserMessage, processMessageContent } from '../../utils/messageForm
 import { Markdown } from 'markdown-to-jsx';
 import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
 import { CopyIcon, CheckIcon } from '../icons';
+import { ChatColumn } from './ChatColumn';
 import { ProcessTimeline } from './ProcessTimeline';
 import { Tooltip } from '../ui/Tooltip';
 import { AttachmentChip } from './AttachmentChip';
@@ -843,6 +844,7 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
         className="h-full overflow-y-auto px-4 py-3"
         style={{ scrollbarGutter: 'stable' }}
       >
+        <ChatColumn>
         <div className="relative" style={{ height: totalStaticHeight }}>
           {virtualizedMessages.map(({ message, top }) => (
             <VirtualizedMessageRow
@@ -899,6 +901,7 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
             showHeader={!isMergeableContinuation}
           />
         )}
+        </ChatColumn>
 
       </div>
 

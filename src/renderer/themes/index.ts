@@ -411,6 +411,9 @@ export function generateThemeVariables(colors: ThemeColors): Record<string, stri
     '--shadow-xl': isDark ? `0 4px 8px rgba(0, 0, 0, 0.25)` : `0 4px 8px rgba(0, 0, 0, 0.1)`,
     '--shadow-glow': 'none',
     '--shadow-inset': 'none',
+    '--shadow-panel-seam': isDark
+      ? 'inset 1px 0 0 rgba(255, 255, 255, 0.05), -2px 0 8px rgba(0, 0, 0, 0.22)'
+      : 'inset 1px 0 0 rgba(255, 255, 255, 0.7), -2px 0 8px rgba(0, 0, 0, 0.05)',
     '--shadow-card': 'none',
     '--shadow-card-hover': 'none',
 
