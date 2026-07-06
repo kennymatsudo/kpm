@@ -4,6 +4,8 @@
  * Tests the permission control logic for Claude SDK tool usage.
  */
 
+import os from 'os';
+import path from 'path';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   createPermissionHandler,
@@ -44,6 +46,7 @@ describe('permissions', () => {
         ['Write', { file_path: '/path/to/file.ts', content: 'hello' }, '/path/to/file.ts'],
         ['Grep', { path: '/search/path', pattern: 'foo' }, '/search/path'],
         ['Glob', { path: '/search/path', pattern: '*.ts' }, '/search/path'],
+        ['NotebookEdit', { notebook_path: '/path/to/nb.ipynb', new_source: 'x' }, '/path/to/nb.ipynb'],
       ] as const) {
         expect(extractPath(toolName, input)).toBe(expected);
       }
@@ -339,10 +342,116 @@ describe('permissions', () => {
     });
 
     describe('unknown tools', () => {
-      it('auto-allows unknown tools by default', async () => {
+      it('prompts for unknown tools instead of silently allowing', async () => {
+        const result = await handler('SomeNewTool', { data: 'whatever' }, createTestOptions());
+        expect(mockPromptUser).toHaveBeenCalled();
+        expect(result.behavior).toBe('allow'); // mockPromptUser resolves to allow
+      });
+
+      it('returns a deny decision for an unknown tool the user rejects', async () => {
+        mockPromptUser = vi.fn().mockResolvedValue({ behavior: 'deny', updatedInput: {} });
+        handler = createPermissionHandler(context, mockPromptUser);
+
+        const result = await handler('SomeNewTool', { data: 'whatever' }, createTestOptions());
+        expect(result.behavior).toBe('deny');
+      });
+
+      it('auto-allows unknown tools when autoApprove is set', async () => {
+        context = { projectPath: '/test/project', projectId: 'test-project-id', autoApprove: true };
+        handler = createPermissionHandler(context, mockPromptUser);
+
         const result = await handler('SomeNewTool', { data: 'whatever' }, createTestOptions());
         expect(result.behavior).toBe('allow');
         expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+      it('allows WebFetch without prompting (network discovery)', async () => {
+        const result = await handler('WebFetch', { url: 'https://example.com' }, createTestOptions());
+        expect(result.behavior).toBe('allow');
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+      it('allows WebSearch without prompting (network discovery)', async () => {
+        const result = await handler('WebSearch', { query: 'how to foo' }, createTestOptions());
+        expect(result.behavior).toBe('allow');
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('credential denylist on reads', () => {
+      it('denies Read of ~/.ssh/id_rsa (home-expanded credential path)', async () => {
+        const result = await handler('Read', { file_path: '~/.ssh/id_rsa' }, createTestOptions());
+        expect(result.behavior).toBe('deny');
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+      it('denies Read of an absolute ~/.aws credentials path', async () => {
+        const awsCreds = path.join(os.homedir(), '.aws', 'credentials');
+        const result = await handler('Read', { file_path: awsCreds }, createTestOptions());
+        expect(result.behavior).toBe('deny');
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+      it('denies Grep into a credential root', async () => {
+        const result = await handler(
+          'Grep',
+          { path: path.join(os.homedir(), '.ssh'), pattern: 'PRIVATE' },
+          createTestOptions()
+        );
+        expect(result.behavior).toBe('deny');
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+      it('allows Read of a normal source file outside the project', async () => {
+        const result = await handler('Read', { file_path: '/outside/project/src/index.ts' }, createTestOptions());
+        expect(result.behavior).toBe('allow');
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+      it('allows Grep with no path even though it searches cwd', async () => {
+        const result = await handler('Grep', { pattern: 'TODO' }, createTestOptions());
+        expect(result.behavior).toBe('allow');
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('NotebookEdit (write tool)', () => {
+      beforeEach(() => {
+        context = {
+          projectPath: '/test/project',
+          projectId: 'test-project-id',
+          repoPaths: ['/repos/my-app'],
+        };
+        handler = createPermissionHandler(context, mockPromptUser);
+      });
+
+      it('denies NotebookEdit into a connected repo', async () => {
+        const result = await handler(
+          'NotebookEdit',
+          { notebook_path: '/repos/my-app/analysis.ipynb', new_source: 'x' },
+          createTestOptions()
+        );
+        expect(result.behavior).toBe('deny');
+        expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+      it('prompts for NotebookEdit into the project directory (never silently allowed)', async () => {
+        const result = await handler(
+          'NotebookEdit',
+          { notebook_path: '/test/project/analysis.ipynb', new_source: 'x' },
+          createTestOptions()
+        );
+        expect(mockPromptUser).toHaveBeenCalled();
+        expect(result.behavior).toBe('allow'); // mockPromptUser resolves to allow
+      });
+
+      it('prompts for NotebookEdit outside project and repos', async () => {
+        await handler(
+          'NotebookEdit',
+          { notebook_path: '/somewhere/else/nb.ipynb', new_source: 'x' },
+          createTestOptions()
+        );
+        expect(mockPromptUser).toHaveBeenCalled();
       });
     });
 

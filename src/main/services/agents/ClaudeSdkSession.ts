@@ -16,6 +16,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 import { isInitMessage, isSessionStateChanged } from '../../claude/sdkTypeGuards';
 import { BaseAgentSession } from './BaseAgentSession';
+import { createCredentialGuardMatcher } from './credentialGuardHook';
 import { getConfig } from '../../config';
 import type {
   IAgentSession,
@@ -218,6 +219,16 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
           options: {
             ...this.sdkOptions,
             abortController: this.abortController!,
+            // Board sessions run under bypassPermissions, which skips canUseTool.
+            // A PreToolUse hook still runs and can deny — the only non-interactive
+            // way to block credential reads / git-hook writes on a board run.
+            hooks: {
+              ...this.sdkOptions.hooks,
+              PreToolUse: [
+                ...(this.sdkOptions.hooks?.PreToolUse ?? []),
+                createCredentialGuardMatcher(),
+              ],
+            },
             // Resume preserves the prior conversation on follow-up turns. NOTE: the
             // SDK applies THESE options' systemPrompt on resume (not the persisted
             // one), so we must pass the full stored sdkOptions here.

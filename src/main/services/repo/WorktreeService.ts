@@ -172,7 +172,7 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
 
         // Delete the branch (if it exists and isn't checked out elsewhere)
         try {
-          await gitExec(['branch', '-d', worktree.branch_name], { cwd: repoPath });
+          await gitExec(['branch', '-d', '--', worktree.branch_name], { cwd: repoPath });
         } catch {
           // Ignore branch deletion errors
         }
@@ -226,14 +226,14 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
 
         // Force-delete local branch (-D ignores merge status)
         try {
-          await gitExec(['branch', '-D', worktree.branch_name], { cwd: repoPath });
+          await gitExec(['branch', '-D', '--', worktree.branch_name], { cwd: repoPath });
         } catch {
           // Ignore branch deletion errors
         }
 
         // Delete remote tracking branch (best-effort, don't fail if remote is gone)
         try {
-          await gitExec(['push', 'origin', '--delete', worktree.branch_name], { cwd: repoPath });
+          await gitExec(['push', 'origin', '--delete', '--', worktree.branch_name], { cwd: repoPath });
         } catch {
           // Ignore remote deletion errors (branch may not be pushed)
         }
@@ -257,7 +257,7 @@ export function createWorktreeService(deps: WorktreeServiceDeps) {
           throw new Error(`Worktree path does not exist: ${worktree.worktree_path}`);
         }
 
-        await gitExec(['push', '-u', 'origin', worktree.branch_name], {
+        await gitExec(['push', '-u', 'origin', '--', worktree.branch_name], {
           cwd: worktree.worktree_path,
         });
       });

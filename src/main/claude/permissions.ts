@@ -2,18 +2,23 @@
  * Permission control for Claude SDK tool usage.
  *
  * Implements fine-grained permission rules:
- * - Auto-allow: All tools in project directory, read tools anywhere, MCP tools
- * - Prompt: Write tools outside project directory (Edit, Write, Bash)
+ * - Auto-allow: All tools in project directory, read tools anywhere (except
+ *   credential/secret roots), network reads (WebFetch/WebSearch), MCP tools
+ * - Deny: Reads that resolve into a credential root; writes to connected repos
+ * - Prompt: Write tools outside the project and any unrecognized tool
  * - Session cache: "Allow Always" decisions persist per session (via clientManager)
  */
 
 import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { promises as fs } from 'fs';
-import { normalize, relative, resolve } from 'path';
+import os from 'os';
+import { join, normalize, relative, resolve } from 'path';
 import { isContextFile } from '../../shared/contextFile';
+import { checkRealpathAccess } from '../services/files/pathSecurity';
 import { clientManager } from './clientManager';
 const READ_TOOLS = ['Read', 'Grep', 'Glob'];
-const WRITE_TOOLS = ['Edit', 'Write', 'Bash'];
+const WRITE_TOOLS = ['Edit', 'Write', 'Bash', 'NotebookEdit'];
+const NETWORK_READ_TOOLS = ['WebFetch', 'WebSearch'];
 
 /**
  * Detect whether a Bash command invokes git. Chat has no raw git access —
@@ -95,6 +100,11 @@ function extractPath(toolName: string, input: Record<string, unknown>): string |
     return typeof input.file_path === 'string' ? input.file_path : null;
   }
 
+  // Notebook edits target notebook_path instead of file_path
+  if (toolName === 'NotebookEdit') {
+    return typeof input.notebook_path === 'string' ? input.notebook_path : null;
+  }
+
   // Search tools
   if (toolName === 'Grep' || toolName === 'Glob') {
     return typeof input.path === 'string' ? input.path : null;
@@ -126,6 +136,17 @@ function resolvePathForScope(targetPath: string, projectPath: string): string {
     return normalize(trimmedPath);
   }
   return isAbsolutePath(trimmedPath) ? normalize(trimmedPath) : resolve(projectPath, trimmedPath);
+}
+
+// realpathSync does not expand a leading ~, so an attacker's `~/.ssh/id_rsa`
+// would otherwise never match a denied home-relative root.
+function expandHomePath(targetPath: string): string {
+  const trimmedPath = targetPath.trim();
+  if (trimmedPath === '~') return os.homedir();
+  if (trimmedPath.startsWith('~/') || trimmedPath.startsWith('~\\')) {
+    return join(os.homedir(), trimmedPath.slice(2));
+  }
+  return trimmedPath;
 }
 
 function isWithinDirectory(targetPath: string, baseDir: string): boolean {
@@ -208,10 +229,11 @@ function mcpServerNamesMatch(disabledServerName: string, toolServerName: string)
  * -1. Deny: Git write operations (commit, push, merge, etc.) — always blocked
  * 0. Intercept: Context file (AGENTS.md/CLAUDE.md) edits are captured and sent for user approval
  * 1. Auto-allow: All other tools in project directory
- * 2. Auto-allow: Read tools anywhere
+ * 1.5. Deny: Reads that resolve into a credential/secret root
+ * 2. Auto-allow: Read tools anywhere; network reads (WebFetch/WebSearch)
  * 3. Auto-allow: MCP tools (read-only)
  * 4. Check session cache for "Allow Always" decisions
- * 5. Prompt: Write tools outside project directory
+ * 5. Prompt: Write tools outside project directory, and any unrecognized tool
  */
 export function createPermissionHandler(
   context: PermissionContext,
@@ -279,7 +301,7 @@ export function createPermissionHandler(
     // Rule 0.5: Intercept project file writes for user approval
     // IMPORTANT: Bash path extraction is heuristic and can miss secondary paths
     // in compound commands. Never auto-allow Bash based on extracted path.
-    if (targetPath && toolName !== 'Bash' && isWithinDirectory(targetPath, context.projectPath)) {
+    if (targetPath && toolName !== 'Bash' && toolName !== 'NotebookEdit' && isWithinDirectory(targetPath, context.projectPath)) {
       if (toolName === 'Write' && context.onProjectFileWrite && typeof input.content === 'string') {
         // Compute relative path from project folder
         const relativePath = relative(normalize(context.projectPath), normalize(targetPath));
@@ -375,6 +397,20 @@ export function createPermissionHandler(
       }
     }
 
+    // Rule 1.5: Deny built-in reads whose target resolves into a credential or
+    // secret root (~/.ssh, ~/.aws, ~/.gnupg, keychains, /etc/sudoers, ...).
+    // Reads are otherwise allowed anywhere (Rule 2), but credential exfiltration
+    // is closed off here. Grep/Glob without a path search cwd and are allowed.
+    if (READ_TOOLS.includes(toolName) && targetPath) {
+      const access = await checkRealpathAccess(expandHomePath(targetPath), context.projectPath);
+      if (!access.allowed) {
+        return {
+          behavior: 'deny',
+          message: access.reason ?? 'Access denied: path resolves inside a protected credential location.',
+        };
+      }
+    }
+
     // Rule 2: Read tools (Read/Grep/Glob) are allowed anywhere on disk.
     // Reads can't mutate state, so chat isn't confined to the project folder or
     // connected repos for reading — the user can point it at any folder. Writes
@@ -382,6 +418,13 @@ export function createPermissionHandler(
     // above, and writes elsewhere still prompt (Rule 5). OS-level file
     // permissions remain the backstop for genuinely off-limits paths.
     if (READ_TOOLS.includes(toolName)) {
+      return { behavior: 'allow', updatedInput: input };
+    }
+
+    // Network read tools (WebFetch/WebSearch) are legitimate discovery
+    // capability and cannot mutate local state. The read denylist above closes
+    // credential exfiltration, so these stay frictionless.
+    if (NETWORK_READ_TOOLS.includes(toolName)) {
       return { behavior: 'allow', updatedInput: input };
     }
 
@@ -449,9 +492,19 @@ export function createPermissionHandler(
       return result;
     }
 
-    // Default: allow (with logging for debugging)
-    console.log(`[Permissions] Auto-allowing ${toolName} (no rule matched)`);
-    return { behavior: 'allow', updatedInput: input };
+    // Default: any tool matching no rule (unrecognized built-ins) prompts the
+    // user rather than being silently allowed — fail closed. autoApprove /
+    // "Allow All Remaining" (Rule 4.5, above) / the session cache still apply.
+    if (context.autoApprove) {
+      console.log(`[Permissions] Auto-allowing ${toolName} (autoApprove active)`);
+      return { behavior: 'allow', updatedInput: input };
+    }
+    console.log(`[Permissions] Unrecognized tool requires approval: ${toolName}`);
+    const result = await promptUser(toolName, input, options);
+    if (result.behavior === 'allow' && 'allowAlways' in result && result.allowAlways) {
+      clientManager.cachePermission(context.projectId, cacheKey);
+    }
+    return result;
   };
 }
 

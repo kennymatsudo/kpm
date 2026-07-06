@@ -45,7 +45,7 @@ export async function resolveBestEffortRealpath(targetPath: string): Promise<str
   }
 }
 
-function defaultDeniedRoots(): string[] {
+export function defaultDeniedRoots(): string[] {
   const home = os.homedir();
   return [
     path.join(home, '.ssh'),
@@ -72,6 +72,51 @@ function isInsideRoot(candidate: string, root: string): boolean {
   if (candidate === root) return true;
   const rel = path.relative(root, candidate);
   return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+/**
+ * Expand a leading `~` / `~/` to the current user's home directory. `realpath`
+ * does not expand `~`, so a candidate like `~/.ssh/id_rsa` must be expanded
+ * before it can be resolved and compared against the denied roots.
+ */
+export function expandTilde(candidatePath: string): string {
+  if (candidatePath === '~') return os.homedir();
+  if (candidatePath.startsWith('~/')) return path.join(os.homedir(), candidatePath.slice(2));
+  return candidatePath;
+}
+
+/**
+ * True when `candidatePath` (after `~` expansion and realpath resolution)
+ * resolves inside one of the denied credential roots. Optionally resolves a
+ * relative candidate against `baseDir` first (defaults to the process cwd).
+ */
+export async function pathResolvesIntoDeniedRoot(
+  candidatePath: string,
+  baseDir?: string
+): Promise<boolean> {
+  const expanded = expandTilde(candidatePath);
+  const absolute = path.isAbsolute(expanded)
+    ? expanded
+    : path.resolve(baseDir ?? process.cwd(), expanded);
+  const realpath = await resolveBestEffortRealpath(absolute);
+  for (const denied of await getDeniedRealpathRootsAsync()) {
+    if (isInsideRoot(realpath, denied)) return true;
+  }
+  return false;
+}
+
+/**
+ * Lexical check for a `.git/hooks` path segment. A file whose path passes
+ * through a `.git/hooks` directory is an executable git hook — writing one
+ * turns "write a file" into "run code on the next commit". Reads are not
+ * affected by this (hooks may legitimately need to be read).
+ */
+export function isGitHooksPath(fullPath: string): boolean {
+  const segments = path.resolve(fullPath).split(path.sep);
+  for (let i = 0; i + 1 < segments.length; i++) {
+    if (segments[i] === '.git' && segments[i + 1] === 'hooks') return true;
+  }
+  return false;
 }
 
 /**
@@ -114,12 +159,22 @@ export interface RealpathAccessResult {
  */
 export async function checkRealpathAccess(
   fullPath: string,
-  projectFolder: string
+  projectFolder: string,
+  opts?: { denyGitHooksWrite?: boolean }
 ): Promise<RealpathAccessResult> {
   const realpath = await resolveBestEffortRealpath(fullPath);
   const realBase = await resolveBestEffortRealpath(projectFolder);
 
   const external = !isInsideRoot(realpath, realBase);
+
+  if (opts?.denyGitHooksWrite && (isGitHooksPath(realpath) || isGitHooksPath(fullPath))) {
+    return {
+      allowed: false,
+      reason: 'Access denied: writing git hooks is not permitted',
+      external,
+      realpath,
+    };
+  }
 
   for (const denied of await getDeniedRealpathRootsAsync()) {
     if (isInsideRoot(realpath, denied)) {

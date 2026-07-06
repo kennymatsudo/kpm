@@ -75,18 +75,43 @@ async function ghExec(
   return execFileAsync('gh', args, options);
 }
 
+async function ghExecWithInput(
+  args: string[],
+  input: string,
+  options: { cwd: string; maxBuffer?: number }
+): Promise<{ stdout: string; stderr: string }> {
+  const execution = execFileAsync('gh', args, options);
+  execution.child.stdin?.end(input);
+  return execution;
+}
+
+export function buildGraphQLPayload(
+  query: string,
+  variables: Record<string, string | number | boolean | null | undefined>
+): string {
+  const definedVariables: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(variables)) {
+    if (value == null) continue;
+    definedVariables[key] = value;
+  }
+  return JSON.stringify({ query, variables: definedVariables });
+}
+
+// Variables are sent as a JSON body over stdin rather than `-F key=value`
+// because gh interprets a field value starting with `@` as a filename to read
+// (and `-` as stdin). Review-thread replies are AI-drafted from untrusted PR
+// text, so `-F` would let a crafted body exfiltrate a local file. Do not revert
+// to `-F`.
 async function ghGraphQL<T>(
   cwd: string,
   query: string,
   variables: Record<string, string | number | boolean | null | undefined>
 ): Promise<T> {
-  const args = ['api', 'graphql', '-f', `query=${query}`];
-  for (const [key, value] of Object.entries(variables)) {
-    if (value == null) continue;
-    args.push('-F', `${key}=${String(value)}`);
-  }
-
-  const { stdout } = await ghExec(args, { cwd, maxBuffer: 10 * 1024 * 1024 });
+  const { stdout } = await ghExecWithInput(
+    ['api', 'graphql', '--input', '-'],
+    buildGraphQLPayload(query, variables),
+    { cwd, maxBuffer: 10 * 1024 * 1024 }
+  );
   const parsed = JSON.parse(stdout);
   return (parsed.data ?? parsed) as T;
 }
@@ -1050,7 +1075,7 @@ function parsePrViewOutput(stdout: string): GhPrStatus {
  * Push a branch to origin with upstream tracking.
  */
 export async function pushBranch(cwd: string, branch: string): Promise<void> {
-  await gitExec(['push', '-u', 'origin', branch], { cwd });
+  await gitExec(['push', '-u', 'origin', '--', branch], { cwd });
 }
 
 /**

@@ -162,7 +162,7 @@ export async function scaffoldWorktree(params: {
   try {
     // Attempt to create a new branch from base
     await gitExec(
-      ['worktree', 'add', '-b', branchName, worktreePath, baseBranch],
+      ['worktree', 'add', '-b', branchName, '--', worktreePath, baseBranch],
       { cwd: repoPath }
     );
     return { ok: true };
@@ -171,7 +171,7 @@ export async function scaffoldWorktree(params: {
     // Branch may already exist — retry without -b
     try {
       await gitExec(
-        ['worktree', 'add', worktreePath, branchName],
+        ['worktree', 'add', '--', worktreePath, branchName],
         { cwd: repoPath }
       );
       return { ok: true };

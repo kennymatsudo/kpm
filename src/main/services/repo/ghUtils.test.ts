@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCreatePrArgs, parseCreatePrOutput } from './ghUtils';
+import { buildCreatePrArgs, buildGraphQLPayload, parseCreatePrOutput } from './ghUtils';
 
 describe('buildCreatePrArgs', () => {
   it('builds gh pr create args without unsupported json output flags', () => {
@@ -39,5 +39,34 @@ describe('parseCreatePrOutput', () => {
     expect(() => parseCreatePrOutput('created pull request successfully')).toThrow(
       /Failed to parse created pull request URL/
     );
+  });
+});
+
+describe('buildGraphQLPayload', () => {
+  it('embeds query and variables as a JSON body', () => {
+    const payload = buildGraphQLPayload('query($id: ID!) { node(id: $id) { id } }', {
+      id: 'THREAD_1',
+      prNumber: 42,
+    });
+    expect(JSON.parse(payload)).toEqual({
+      query: 'query($id: ID!) { node(id: $id) { id } }',
+      variables: { id: 'THREAD_1', prNumber: 42 },
+    });
+  });
+
+  it('preserves a body starting with @ as a literal string value (no gh file semantics)', () => {
+    const malicious = '@/Users/victim/.ssh/id_rsa';
+    const payload = buildGraphQLPayload('mutation($body: String!) { x(body: $body) }', {
+      body: malicious,
+    });
+    expect(JSON.parse(payload).variables.body).toBe(malicious);
+  });
+
+  it('omits null and undefined variables', () => {
+    const payload = buildGraphQLPayload('query($after: String) { x }', {
+      after: null,
+      cursor: undefined,
+    });
+    expect(JSON.parse(payload).variables).toEqual({});
   });
 });

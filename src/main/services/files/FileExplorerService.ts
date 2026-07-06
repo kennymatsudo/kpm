@@ -207,9 +207,10 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
 
   async function checkTargetAccess(
     projectFolder: string,
-    fullPath: string
+    fullPath: string,
+    opts?: { denyGitHooksWrite?: boolean }
   ): Promise<RealpathAccessResult | { error: ServiceResult<never> }> {
-    const access = await checkRealpathAccess(fullPath, projectFolder);
+    const access = await checkRealpathAccess(fullPath, projectFolder, opts);
     if (!access.allowed) {
       return { error: failure(access.reason ?? 'Access denied') };
     }
@@ -219,14 +220,17 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
   /**
    * Resolve lexical project containment, then check the realpath target.
    * Use this for operations that follow symlinks and may touch external data.
+   * Pass `denyGitHooksWrite` for mutating operations so a `.git/hooks` target
+   * is rejected (reads leave it unset — hooks may be read).
    */
   async function gateTargetAccess(
     projectFolder: string,
-    relativePath: string
+    relativePath: string,
+    opts?: { denyGitHooksWrite?: boolean }
   ): Promise<{ fullPath: string; access: RealpathAccessResult } | { error: ServiceResult<never> }> {
     const scoped = resolveFileExplorerPath(projectFolder, relativePath);
     if ('error' in scoped) return scoped;
-    const access = await checkTargetAccess(projectFolder, scoped.fullPath);
+    const access = await checkTargetAccess(projectFolder, scoped.fullPath, opts);
     if ('error' in access) return access;
     return { fullPath: scoped.fullPath, access };
   }
@@ -310,7 +314,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
-      const gated = await gateTargetAccess(projectFolder, relativePath);
+      const gated = await gateTargetAccess(projectFolder, relativePath, { denyGitHooksWrite: true });
       if ('error' in gated) return gated.error;
       const { fullPath, access } = gated;
 
@@ -346,7 +350,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
-      const gated = await gateTargetAccess(projectFolder, relativePath);
+      const gated = await gateTargetAccess(projectFolder, relativePath, { denyGitHooksWrite: true });
       if ('error' in gated) return gated.error;
       const { fullPath, access } = gated;
 
@@ -377,7 +381,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
-      const gated = await gateTargetAccess(projectFolder, linkPath);
+      const gated = await gateTargetAccess(projectFolder, linkPath, { denyGitHooksWrite: true });
       if ('error' in gated) return gated.error;
       const { fullPath: fullLinkPath } = gated;
 
@@ -535,7 +539,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
 
         let newAccess: RealpathAccessResult | null = null;
         if (!isCaseOnlyRename) {
-          const checked = await checkTargetAccess(projectFolder, newFullPath);
+          const checked = await checkTargetAccess(projectFolder, newFullPath, { denyGitHooksWrite: true });
           if ('error' in checked) return checked.error;
           newAccess = checked;
         }
@@ -697,7 +701,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
-      const gated = await gateTargetAccess(projectFolder, relativePath);
+      const gated = await gateTargetAccess(projectFolder, relativePath, { denyGitHooksWrite: true });
       if ('error' in gated) return gated.error;
       const { fullPath, access } = gated;
 
@@ -736,7 +740,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
-      const gated = await gateTargetAccess(projectFolder, relativePath);
+      const gated = await gateTargetAccess(projectFolder, relativePath, { denyGitHooksWrite: true });
       if ('error' in gated) return gated.error;
       const { fullPath, access } = gated;
 
@@ -782,7 +786,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         return failure('Project not found');
       }
 
-      const gated = await gateTargetAccess(projectFolder, relativePath);
+      const gated = await gateTargetAccess(projectFolder, relativePath, { denyGitHooksWrite: true });
       if ('error' in gated) return gated.error;
       const { fullPath, access } = gated;
 

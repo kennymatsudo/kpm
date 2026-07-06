@@ -260,6 +260,29 @@ describe('ClaudeSdkSession stop', () => {
   });
 });
 
+describe('ClaudeSdkSession credential guard wiring', () => {
+  it('registers a PreToolUse guard hook on the turn options', async () => {
+    const session = makeSession();
+    testHarness(session).getCompletionSummary = vi.fn().mockResolvedValue({
+      filesChanged: 0,
+      additions: 0,
+      deletions: 0,
+    });
+
+    sdkMock.impl = () => streamOf(
+      { type: 'system', subtype: 'init', session_id: 'sdk-1' },
+      { type: 'result', session_id: 'sdk-1', terminal_reason: 'completed' },
+    );
+
+    const completion = nextComplete(session);
+    await session.start('/tmp', 'do the thing');
+    await completion;
+
+    const hooks = sdkMock.calls[0].options.hooks as { PreToolUse?: unknown[] } | undefined;
+    expect(hooks?.PreToolUse?.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
 describe('ClaudeSdkSession activity mapping', () => {
   it('emits a system activity when a task_progress message includes a summary', () => {
     const session = makeSession();
