@@ -9,7 +9,15 @@ import {
 } from '../services/agentSessionService';
 import { subscribeToReviewActionable } from '../services/reviewService';
 import { useDevSessionsStore } from '../stores/devSessions';
+import { createAgentEventRouter } from './agentEventRouter';
 
+/**
+ * Truth-fetching (initial load, session-status-driven reload, 30s poll) plus
+ * the thin adapter wiring agent-session IPC events to `createAgentEventRouter`.
+ * All event-routing logic (the stale-event drop filter, dispatch to store
+ * handlers) lives in `agentEventRouter.ts` — this hook only adapts it to the
+ * component lifecycle and supplies the truth data it filters against.
+ */
 export function useDevSessionsSync(projectId: string | null): void {
   const loadSessionsFromStore = useDevSessionsStore((state) => state.loadSessions);
 
@@ -44,31 +52,24 @@ export function useDevSessionsSync(projectId: string | null): void {
   }, [loadSessions]);
 
   useEffect(() => {
-    const cleanupState = subscribeToAgentStateChanges((event) => {
-      useDevSessionsStore.getState().handleAgentStateChanged(event.devSessionId, event.state);
+    const router = createAgentEventRouter({
+      getStore: () => useDevSessionsStore.getState(),
+      getKnownSessionIds: () => {
+        const state = useDevSessionsStore.getState();
+        if (state.projectId !== projectId || state.isLoading) return null;
+        return new Set(state.sessionById.keys());
+      },
     });
 
-    const cleanupActivity = subscribeToAgentActivities((event) => {
-      useDevSessionsStore.getState().handleAgentActivity(event.devSessionId, event.activity);
-    });
-
-    const cleanupQuestion = subscribeToAgentQuestions((event) => {
-      useDevSessionsStore.getState().handleAgentQuestion(event.devSessionId, event.question);
-    });
-
-    const cleanupComplete = subscribeToAgentComplete((event) => {
-      useDevSessionsStore.getState().handleAgentComplete(event.devSessionId, event.summary, event.findings);
-    });
-
-    const cleanupError = subscribeToAgentErrors((event) => {
-      useDevSessionsStore.getState().handleAgentError(event.devSessionId, event.error);
-    });
-
-    const cleanupActionable = subscribeToReviewActionable((summary) => {
-      useDevSessionsStore.getState().setReviewActionable(summary);
-    });
+    const cleanupState = subscribeToAgentStateChanges(router.handlers.onStateChanged);
+    const cleanupActivity = subscribeToAgentActivities(router.handlers.onActivity);
+    const cleanupQuestion = subscribeToAgentQuestions(router.handlers.onQuestion);
+    const cleanupComplete = subscribeToAgentComplete(router.handlers.onComplete);
+    const cleanupError = subscribeToAgentErrors(router.handlers.onError);
+    const cleanupActionable = subscribeToReviewActionable(router.handlers.onReviewActionable);
 
     return () => {
+      router.dispose();
       cleanupState();
       cleanupActivity();
       cleanupQuestion();
@@ -76,5 +77,5 @@ export function useDevSessionsSync(projectId: string | null): void {
       cleanupError();
       cleanupActionable();
     };
-  }, []);
+  }, [projectId]);
 }
