@@ -19,6 +19,7 @@ import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-
 import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { StreamingSession, type McpServerStatus } from '../../claude/streaming';
 import { CodexChatSession } from '../../codex/CodexChatSession';
+import type { IChatSession } from './IChatSession';
 import type { ClaudeMdUpdatePayload } from '../../claude/tools/claudemd-update';
 import type { DocumentUpdatePayload } from '../../claude/tools/document-update';
 import type { FileDeletePayload } from '../../claude/tools/file-delete';
@@ -220,7 +221,7 @@ interface ManagedSession {
   key: string;
   type: SessionType;
   projectId: string;
-  session: StreamingSession | CodexChatSession;
+  session: IChatSession;
   state: SessionState;
   provider: ChatProvider;
   model: ModelType;
@@ -1069,7 +1070,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     currentView?: ViewMode;
     persistHistory: boolean;
     forceApprovalReview: boolean;
-    onMessage: (session: StreamingSession | CodexChatSession, msg: unknown) => void;
+    onMessage: (session: IChatSession, msg: unknown) => void;
   }
 
   /**
@@ -1263,7 +1264,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       });
 
       // Create streaming session — let required: const can't be referenced in its own initializer closures
-      let session!: StreamingSession | CodexChatSession;
+      let session!: IChatSession;
       // eslint-disable-next-line prefer-const
       session = provider === 'codex'
         ? new CodexChatSession({
@@ -1817,7 +1818,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
 
     try {
-      await managed.session.setModel(model);
+      await managed.session.setModel?.(model);
       managed.model = model;
       return success(undefined);
     } catch (error) {
@@ -1920,7 +1921,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   function handleChatSessionMessage(
     projectId: string,
     chatSessionId: string,
-    sourceSession: StreamingSession | CodexChatSession,
+    sourceSession: IChatSession,
     msg: unknown,
   ): void {
     const mainWindow = deps.getMainWindow();
@@ -2021,7 +2022,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
   function handleSessionEnd(
     key: string,
-    sourceSession: StreamingSession | CodexChatSession,
+    sourceSession: IChatSession,
     reason: string,
     error?: Error,
   ): void {
@@ -2094,7 +2095,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     managed.mcpHealthStatus = 'recovering';
 
     try {
-      const statuses = await managed.session.mcpServerStatus();
+      const statuses = await managed.session.mcpServerStatus?.() ?? [];
       const kpmServer = statuses.find(s => s.name === 'kpm');
 
       // If kpm server is connected (or not reported at all), mark healthy
@@ -2115,10 +2116,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
       // Server is not connected — attempt reconnection
       console.log(`[StreamingSessionService] KPM MCP server unhealthy (${kpmServer.status}) for ${key}, attempting reconnect`);
-      await managed.session.reconnectMcpServer('kpm');
+      await managed.session.reconnectMcpServer?.('kpm');
 
       // Verify reconnection
-      const verifyStatuses = await managed.session.mcpServerStatus();
+      const verifyStatuses = await managed.session.mcpServerStatus?.() ?? [];
       const verifyKpm = verifyStatuses.find(s => s.name === 'kpm');
 
       if (verifyKpm?.status === 'connected') {

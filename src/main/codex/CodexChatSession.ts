@@ -249,22 +249,6 @@ export class CodexChatSession {
     return this.queue.pop() ?? null;
   }
 
-  setModel(): Promise<void> {
-    // The TypeScript Codex SDK binds model selection to the Thread. KPM creates
-    // a fresh thread when switching provider/model policy; this method exists to
-    // satisfy the shared chat-session surface.
-    return Promise.resolve();
-  }
-
-  mcpServerStatus(): Promise<[]> {
-    return Promise.resolve([]);
-  }
-
-  reconnectMcpServer(): Promise<void> {
-    // Codex MCP lifecycle is managed by Codex config.toml and the native SDK.
-    return Promise.resolve();
-  }
-
   getSessionId(): string | null {
     return this.threadId;
   }
