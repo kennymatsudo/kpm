@@ -17,7 +17,6 @@ import type {
   PrTopLevelReview,
   ReviewDisposition,
   ReviewTask,
-  ReviewTaskStatus,
 } from '../../../shared/types';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { useApprovalQueueStore } from '../../stores/approvalQueueStore';
@@ -26,7 +25,6 @@ import { openExternalUrl } from '../../services/shellService';
 import type { ReviewAssessmentOptions } from '../../stores/devSessions/helpers';
 import { githubMarkdownOptions, transformPlanRefs } from '../../utils/markdown';
 import { Badge, DropdownMenu, EmptyState, LoadingButton } from '../ui';
-import type { BadgeVariant } from '../ui/Badge';
 import {
   CheckIcon,
   ChevronRightIcon,
@@ -39,36 +37,25 @@ import {
   isReviewTaskQueuedForCode,
   isReviewTaskUpdatingCode,
 } from './reviewStats';
-
-const STATUS_LABEL: Record<ReviewTaskStatus, string> = {
-  needs_review: 'To assess',
-  assessed: 'Assessed',
-  in_progress: 'Updating',
-  ready_to_post: 'Draft ready',
-  done: 'Done',
-};
-
-const DISPOSITION_LABEL: Record<ReviewDisposition, string> = {
-  implement: 'Implement',
-  push_back: 'Push back',
-  needs_user_input: 'Needs you',
-};
+import {
+  canReassessTask,
+  deriveNextAction,
+  DISPOSITION_LABEL,
+  getThreadPill,
+  getThreadRailClass,
+  isAddressingReview,
+  sortThreads,
+  summarizeReviewers,
+  type NextActionDecision,
+  type NextActionKind,
+  type ReviewerVerdict,
+} from './reviewActions';
 
 /** Excerpt accent tone per disposition. */
 const DISPOSITION_TONE: Record<ReviewDisposition, ExcerptTone> = {
   implement: 'accent',
   push_back: 'warning',
   needs_user_input: 'info',
-};
-
-const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
-
-const THREAD_STATUS_ORDER: Record<ReviewTaskStatus, number> = {
-  needs_review: 0,
-  assessed: 1,
-  in_progress: 2,
-  ready_to_post: 3,
-  done: 4,
 };
 
 const ACTION_BUTTON_BASE =
@@ -117,10 +104,6 @@ interface NextAction {
 
 function cx(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(' ');
-}
-
-function plural(count: number, singular: string, pluralForm?: string): string {
-  return count === 1 ? singular : pluralForm ?? `${singular}s`;
 }
 
 function getThreadLocation(thread: PrReviewThread): string {
@@ -195,33 +178,6 @@ function formatRelativeShort(iso: string | null): string {
   return `${Math.round(days / 30)}mo`;
 }
 
-/**
- * Latest verdict per reviewer. GitHub records one review event per submission,
- * so a single reviewer (especially bots like Cursor) appears many times; the
- * strip collapses those to one row each, showing the most recent stance.
- */
-interface ReviewerVerdict {
-  author: string;
-  state: PrTopLevelReview['state'];
-  submittedAt: string | null;
-  url: string;
-}
-
-function summarizeReviewers(reviews: PrTopLevelReview[]): ReviewerVerdict[] {
-  const latestByAuthor = new Map<string, PrTopLevelReview>();
-  for (const review of reviews) {
-    const existing = latestByAuthor.get(review.author);
-    const current = review.submittedAt ? Date.parse(review.submittedAt) : 0;
-    const prior = existing?.submittedAt ? Date.parse(existing.submittedAt) : 0;
-    if (!existing || current >= prior) {
-      latestByAuthor.set(review.author, review);
-    }
-  }
-  return [...latestByAuthor.values()]
-    .sort((a, b) => (b.submittedAt ? Date.parse(b.submittedAt) : 0) - (a.submittedAt ? Date.parse(a.submittedAt) : 0))
-    .map((review) => ({ author: review.author, state: review.state, submittedAt: review.submittedAt, url: review.url }));
-}
-
 function sanitizeGitHubMarkdown(value: string): string {
   return value.replace(/<!--[\s\S]*?-->/g, '').trim();
 }
@@ -229,66 +185,6 @@ function sanitizeGitHubMarkdown(value: string): string {
 function isLongMarkdown(value: string): boolean {
   return value.length > LONG_MARKDOWN_CHAR_THRESHOLD
     || value.split('\n').length > LONG_MARKDOWN_LINE_THRESHOLD;
-}
-
-function canReassessTask(task: ReviewTask | undefined, thread: PrReviewThread | undefined): boolean {
-  if (!task || !thread || isThreadClosed(thread)) return false;
-  if (task.internal_state === 'ignored') return false;
-  const reassessableStatus = task.status === 'needs_review'
-    || task.status === 'assessed'
-    || task.status === 'ready_to_post';
-  if (!reassessableStatus) return false;
-  return task.status === 'assessed'
-    || task.status === 'ready_to_post'
-    || task.internal_state === 'failed'
-    || task.internal_state === 'stale'
-    || task.error != null;
-}
-
-function sortThreads(a: PrReviewThread, b: PrReviewThread, taskMap: Map<string, ReviewTask>): number {
-  const ta = taskMap.get(a.id);
-  const tb = taskMap.get(b.id);
-  if (ta && !tb) return -1;
-  if (!ta && tb) return 1;
-  if (ta && tb) {
-    const statusDelta = THREAD_STATUS_ORDER[ta.status] - THREAD_STATUS_ORDER[tb.status];
-    if (statusDelta !== 0) return statusDelta;
-
-    const priorityDelta = (PRIORITY_ORDER[ta.priority] ?? 2) - (PRIORITY_ORDER[tb.priority] ?? 2);
-    if (priorityDelta !== 0) return priorityDelta;
-  }
-  return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-}
-
-function getThreadRailClass(task: ReviewTask | undefined, thread: PrReviewThread): string {
-  if (thread.isResolved) return 'bg-success/55';
-  if (thread.isOutdated) return 'bg-text-tertiary/50';
-  if (!task) return 'bg-border-default';
-  if (task.error || task.internal_state === 'failed') return 'bg-danger';
-  if (task.internal_state === 'stale') return 'bg-warning';
-  if (task.disposition === 'needs_user_input') return 'bg-info';
-  if (task.status === 'ready_to_post') return 'bg-accent';
-  if (task.disposition === 'implement') return 'bg-accent';
-  if (task.disposition === 'push_back') return 'bg-warning';
-  return 'bg-border-default';
-}
-
-/** Single status pill shown on every thread row — the at-a-glance state. */
-function getThreadPill(
-  task: ReviewTask | undefined,
-  thread: PrReviewThread,
-): { label: string; variant: BadgeVariant } | null {
-  if (thread.isResolved) return { label: 'Resolved', variant: 'success' };
-  if (thread.isOutdated) return { label: 'Outdated', variant: 'default' };
-  if (!task) return null;
-  if (task.error || task.internal_state === 'failed') return { label: 'Needs attention', variant: 'danger' };
-  if (task.internal_state === 'stale') return { label: 'Stale', variant: 'warning' };
-  if (task.disposition === 'needs_user_input') return { label: 'Needs you', variant: 'info' };
-  if (task.status === 'ready_to_post') return { label: 'Draft ready', variant: 'accent' };
-  if (task.disposition === 'implement') return { label: 'Implement', variant: 'accent' };
-  if (task.disposition === 'push_back') return { label: 'Push back', variant: 'warning' };
-  if (task.status === 'needs_review') return { label: 'To assess', variant: 'warning' };
-  return { label: STATUS_LABEL[task.status], variant: 'default' };
 }
 
 function getViewEmptyCopy(view: ThreadView): { title: string; description: string } {
@@ -826,6 +722,61 @@ function ReferenceSection({
   );
 }
 
+interface NextActionHandlers {
+  onAssessAttention: () => void;
+  onPostAll: () => void;
+  onAddressAll: () => void;
+  onDraftReplies: () => void;
+  onAssessNew: () => void;
+}
+
+const NEXT_ACTION_ICON: Partial<Record<NextActionKind, ReactNode>> = {
+  'post-drafted-replies': <CheckIcon className="h-3.5 w-3.5" />,
+  'fixes-ready': <ChevronRightIcon className="h-3.5 w-3.5" />,
+  'draft-replies': <MessageCircleIcon className="h-3.5 w-3.5" />,
+};
+
+function getNextActionHandler(kind: NextActionKind, handlers: NextActionHandlers): (() => void) | undefined {
+  switch (kind) {
+    case 'needs-attention':
+      return handlers.onAssessAttention;
+    case 'post-drafted-replies':
+      return handlers.onPostAll;
+    case 'fixes-ready':
+      return handlers.onAddressAll;
+    case 'draft-replies':
+      return handlers.onDraftReplies;
+    case 'assess-new':
+      return handlers.onAssessNew;
+    case 'assessment-running':
+    case 'updating-code':
+    case 'decisions-need-you':
+      return undefined;
+  }
+}
+
+/** Attaches click handlers and icons to a presentation-free next-action decision. */
+function buildNextAction(decision: NextActionDecision | null, handlers: NextActionHandlers): NextAction | null {
+  if (!decision) return null;
+  const onClick = getNextActionHandler(decision.kind, handlers);
+  return {
+    tone: decision.tone,
+    text: decision.text,
+    busy: decision.busy,
+    button: decision.button && onClick
+      ? {
+          label: decision.button.label,
+          onClick,
+          actionKey: decision.button.actionKey,
+          variant: decision.button.variant,
+          disabled: decision.button.disabled,
+          title: decision.button.title,
+          icon: NEXT_ACTION_ICON[decision.kind],
+        }
+      : undefined,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // ReviewTab
 // ---------------------------------------------------------------------------
@@ -880,12 +831,9 @@ export function ReviewTab({ session }: ReviewTabProps) {
     () => new Set(assessmentPending?.taskIds ?? []),
     [assessmentPending],
   );
-  const pendingAssessmentCount = assessmentPending?.taskIds.length ?? 0;
   const isAssessmentPending = assessmentPending != null;
   const stats = useMemo(() => getStats(inbox, session.id), [inbox, session.id]);
-  const isAddressingReview = session.automation_phase === 'addressing_review'
-    || stats.queuedCodeCount > 0
-    || (session.status === 'active' && stats.updatingCodeCount > 0);
+  const addressingReview = isAddressingReview(stats, session.automation_phase, session.status);
   const isOwner = inbox?.ownership?.session_id === session.id;
   const ownerTitle = isOwner ? undefined : 'Only the agent session that owns this review can act on it';
   const actionKey = actionState?.sessionId === session.id ? actionState.key : null;
@@ -1107,7 +1055,7 @@ export function ReviewTab({ session }: ReviewTabProps) {
     ? ownerTitle
     : isAssessmentPending
       ? 'Assessment already running'
-      : isAddressingReview
+      : addressingReview
         ? 'Code update already running'
         : undefined;
 
@@ -1122,110 +1070,14 @@ export function ReviewTab({ session }: ReviewTabProps) {
   const summaryMuted = stats.closedThreadCount > 0 ? `${stats.closedThreadCount} closed` : null;
 
   // The single most important next step. Mirrors the workflow state machine.
-  const nextAction: NextAction | null = (() => {
-    if (assessmentPending) {
-      const isReassessment = assessmentPending.scope === 'selected' || assessmentPending.scope === 'all';
-      const detail = pendingAssessmentCount > 0
-        ? `${pendingAssessmentCount} review ${plural(pendingAssessmentCount, 'task')} running`
-        : 'Assessment is running';
-      return { tone: 'accent', busy: true, text: `${isReassessment ? 'Reassessing' : 'Assessing'} — ${detail}` };
-    }
-    if (isAddressingReview) {
-      const count = Math.max(stats.queuedCodeCount, stats.updatingCodeCount);
-      const detail = stats.queuedCodeCount > 0
-        ? `${stats.queuedCodeCount} ${plural(stats.queuedCodeCount, 'task')} queued for the current update`
-        : `${count} ${plural(count, 'task')} sent to the dev session`;
-      return { tone: 'accent', busy: true, text: `Updating code for review feedback — ${detail}` };
-    }
-    if (stats.failedCount > 0 || stats.staleCount > 0) {
-      const count = stats.failedCount + stats.staleCount;
-      const retryable = stats.retryableAttentionTaskIds.length;
-      return {
-        tone: 'danger',
-        text: `${count} review ${plural(count, 'task')} need attention`,
-        button: {
-          label: 'Reassess',
-          actionKey: 'assess-attention',
-          variant: 'secondary',
-          disabled: !isOwner || retryable === 0,
-          title: !isOwner ? ownerTitle : retryable === 0 ? 'No assessable tasks to retry' : undefined,
-          onClick: () => void handleAssess({ taskIds: stats.retryableAttentionTaskIds }, 'assess-attention'),
-        },
-      };
-    }
-    if (
-      stats.readyToPostTasks.length > 0
-      && stats.needsInputCount === 0
-      && stats.needsReviewCount === 0
-      && stats.implementCount === 0
-    ) {
-      const count = stats.readyToPostTasks.length;
-      return {
-        tone: 'accent',
-        text: `Post ${count} drafted ${plural(count, 'reply', 'replies')}`,
-        button: {
-          label: 'Post all',
-          actionKey: 'approve',
-          icon: <CheckIcon className="h-3.5 w-3.5" />,
-          disabled: !isOwner,
-          title: ownerTitle,
-          onClick: handleApproveAll,
-        },
-      };
-    }
-    if (stats.needsInputCount > 0) {
-      return {
-        tone: 'info',
-        text: `${stats.needsInputCount} ${plural(stats.needsInputCount, 'decision')} need you — implement, push back, or reply`,
-      };
-    }
-    if (stats.implementCount > 0 && stats.needsReviewCount === 0) {
-      const count = stats.implementCount;
-      return {
-        tone: 'accent',
-        text: `${count} ${plural(count, 'fix', 'fixes')} ready for the agent`,
-        button: {
-          label: 'Address all',
-          actionKey: 'address',
-          icon: <ChevronRightIcon className="h-3.5 w-3.5" />,
-          disabled: !isOwner || isAddressingReview,
-          title: ownerTitle,
-          onClick: () => void handleAddress(),
-        },
-      };
-    }
-    if (stats.inProgressImplCount > 0 && stats.needsReviewCount === 0) {
-      const count = stats.inProgressImplCount;
-      return {
-        tone: 'neutral',
-        text: `${count} addressed ${plural(count, 'thread')} — draft the replies`,
-        button: {
-          label: 'Draft replies',
-          actionKey: 'draft',
-          variant: 'secondary',
-          icon: <MessageCircleIcon className="h-3.5 w-3.5" />,
-          disabled: !isOwner,
-          title: ownerTitle,
-          onClick: () => void handleDraftReplies(),
-        },
-      };
-    }
-    if (stats.needsReviewCount > 0) {
-      const count = stats.needsReviewCount;
-      return {
-        tone: 'warning',
-        text: `${count} new ${plural(count, 'thread')} to assess`,
-        button: {
-          label: 'Assess',
-          actionKey: 'assess',
-          disabled: !isOwner,
-          title: ownerTitle,
-          onClick: () => void handleAssess(),
-        },
-      };
-    }
-    return null;
-  })();
+  const nextActionDecision = deriveNextAction({ stats, assessmentPending, addressingReview, isOwner, ownerTitle });
+  const nextAction = buildNextAction(nextActionDecision, {
+    onAssessAttention: () => void handleAssess({ taskIds: stats.retryableAttentionTaskIds }, 'assess-attention'),
+    onPostAll: handleApproveAll,
+    onAddressAll: () => void handleAddress(),
+    onDraftReplies: () => void handleDraftReplies(),
+    onAssessNew: () => void handleAssess(),
+  });
 
   const menuThread = menuState ? snapshot?.threads.find((thread) => thread.id === menuState.threadId) : undefined;
   const menuTask = menuState ? taskMap.get(menuState.threadId) : undefined;
@@ -1261,7 +1113,7 @@ export function ReviewTab({ session }: ReviewTabProps) {
                 <LoadingButton
                   size="sm"
                   variant="secondary"
-                  disabled={!isOwner || isAssessmentPending || isAddressingReview}
+                  disabled={!isOwner || isAssessmentPending || addressingReview}
                   title={reassessAllTitle}
                   isLoading={actionKey === 'reassess-all' || assessmentPending?.scope === 'all'}
                   loadingText="Reassessing"
@@ -1343,7 +1195,7 @@ export function ReviewTab({ session }: ReviewTabProps) {
                       replyBody={replyThreadId === thread.id ? replyBody : ''}
                       actionKey={actionKey}
                       isAssessing={task ? pendingAssessmentTaskIds.has(task.id) : false}
-                      isAddressingReview={isAddressingReview}
+                      isAddressingReview={addressingReview}
                       onToggleExpand={(id) => setExpandedThreadId((current) => (current === id ? null : id))}
                       onToggleReply={(id) => {
                         setReplyThreadId(replyThreadId === id ? null : id);
