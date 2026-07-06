@@ -136,7 +136,7 @@ function truncateForPrompt(value: string, maxChars: number, label: string): stri
   return `${value.slice(0, maxChars)}\n\n... (${label} truncated)`;
 }
 
-function sanitizeReviewCommentBody(body: string): string {
+export function sanitizeReviewCommentBody(body: string): string {
   const withoutComments = body.replace(/<!--[\s\S]*?-->/g, '');
   const withoutCursorAnchors = withoutComments
     .replace(/<div>\s*<a\s+href=["']https:\/\/cursor\.com\/open\?[\s\S]*?<\/div>/gi, '')
@@ -158,7 +158,7 @@ function isPathInside(rootPath: string, candidatePath: string): boolean {
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
-function resolveThreadFilePath(repoPath: string, threadPath: string): string | null {
+export function resolveThreadFilePath(repoPath: string, threadPath: string): string | null {
   if (path.isAbsolute(threadPath)) return null;
   const root = path.resolve(repoPath);
   const resolved = path.resolve(root, threadPath);
@@ -475,7 +475,7 @@ function buildAssessmentUserPrompt(
 // outputFormat. These helpers apply cross-field business rules that the schema
 // can't express (e.g. push_back threads must have a non-empty draft_reply).
 
-function applyAssessmentBusinessRules(
+export function applyAssessmentBusinessRules(
   parsed: z.infer<typeof assessmentOutputSchema>,
 ): { results: AssessmentResult[]; errors: string[] } {
   const errors: string[] = [];
@@ -620,7 +620,7 @@ interface PostImplResult {
   draftReply: string | null;
 }
 
-function applyPostImplBusinessRules(
+export function applyPostImplBusinessRules(
   parsed: z.infer<typeof postImplOutputSchema>,
 ): { results: PostImplResult[]; errors: string[] } {
   const errors: string[] = [];
