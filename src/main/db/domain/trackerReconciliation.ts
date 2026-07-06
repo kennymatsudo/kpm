@@ -61,7 +61,7 @@ export function classifyFieldChange<T>(input: ClassifyFieldChangeInput<T>): Fiel
   return { status, local, remote };
 }
 
-export interface HasFieldDriftedInput<T> {
+export interface HasRemoteFieldDriftedInput<T> {
   remote: T;
   /** Value recorded at the last sync, or null when there is no prior snapshot (first sync). */
   snapshot: T | null;
@@ -76,7 +76,7 @@ export interface HasFieldDriftedInput<T> {
  * as opposed to the tracker merely bumping its `updated` timestamp on a
  * cosmetic re-render.
  */
-export function hasFieldDrifted<T>(input: HasFieldDriftedInput<T>): boolean {
+export function hasRemoteFieldDrifted<T>(input: HasRemoteFieldDriftedInput<T>): boolean {
   const { remote, snapshot } = input;
   if (snapshot === null) return false;
 

@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildPlaceholderContext } from '../../../shared/contextFile';
-import { buildProjectContextPrefix } from './DevSessionService';
+import { buildProjectContextPrefix, createDevSessionService } from './DevSessionService';
+import { FollowUpNotAllowedError } from '../agents/BaseAgentSession';
 
 describe('buildProjectContextPrefix', () => {
   it('excludes placeholder content', () => {
@@ -21,5 +22,63 @@ describe('buildProjectContextPrefix', () => {
   it('defaults the label when no filename is returned', () => {
     const result = buildProjectContextPrefix({ content: 'Conventions.' });
     expect(result).toBe('<context-file path="AGENTS.md">\nConventions.\n</context-file>\n\n');
+  });
+});
+
+describe('DevSessionService.sendAgentFollowUp', () => {
+  it('defers instead of restarting when the live session rejects with FollowUpNotAllowedError and restartIfBusy is false', async () => {
+    const followUp = vi.fn().mockRejectedValue(new FollowUpNotAllowedError('working'));
+    const markLatestCompletedStale = vi.fn();
+    const startAgentSession = vi.fn();
+
+    const service = createDevSessionService({
+      agentReviews: { markLatestCompletedStale },
+      agentSessionManager: {
+        getByDevSession: vi.fn(() => ({ followUp })),
+      },
+      devSessions: {
+        get: vi.fn(),
+        updateStatus: vi.fn(),
+      },
+    } as never);
+
+    // Patch after construction so the fallback restart path (unreachable here) doesn't need a full mock.
+    (service as unknown as { startAgentSession: typeof startAgentSession }).startAgentSession = startAgentSession;
+
+    const result = await service.sendAgentFollowUp('session-1', 'keep going', { restartIfBusy: false });
+
+    expect(result).toEqual({ ok: true, data: { restarted: false, deferred: true } });
+    expect(markLatestCompletedStale).toHaveBeenCalledWith('session-1');
+    expect(startAgentSession).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a restart when followUp rejects with a plain error', async () => {
+    const followUp = vi.fn().mockRejectedValue(new Error('No SDK session to resume — session may have been cleaned up'));
+    const session = {
+      id: 'session-1',
+      status: 'active',
+      initial_instructions: 'Original task',
+    };
+    const updateStatus = vi.fn();
+    const startAgentSession = vi.fn().mockResolvedValue({ ok: true, data: { session } });
+
+    const service = createDevSessionService({
+      agentReviews: { markLatestCompletedStale: vi.fn() },
+      agentSessionManager: {
+        getByDevSession: vi.fn(() => ({ followUp })),
+      },
+      devSessions: {
+        get: vi.fn(() => session),
+        updateStatus,
+      },
+    } as never);
+
+    (service as unknown as { startAgentSession: typeof startAgentSession }).startAgentSession = startAgentSession;
+
+    const result = await service.sendAgentFollowUp('session-1', 'keep going', { restartIfBusy: false });
+
+    expect(result).toEqual({ ok: true, data: { restarted: true } });
+    expect(updateStatus).toHaveBeenCalledWith('session-1', 'inactive');
+    expect(startAgentSession).toHaveBeenCalled();
   });
 });

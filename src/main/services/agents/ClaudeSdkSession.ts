@@ -79,12 +79,9 @@ export interface ClaudeSdkSessionConfig {
 export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession {
   readonly agentType: AgentType = 'claude';
 
-  private _stopping = false;
   private queryInstance: Query | null = null;
-  private runPromise: Promise<void> | null = null;
   private sdkSessionId: string | null = null;
   private sdkOptions: SDKOptions;
-  private abortController: AbortController | null = null;
   private workflowTaskIds = new Set<string>();
   private workflowTaskLabels = new Map<string, string>();
   private lastProgressSummary: string | null = null;
@@ -129,8 +126,9 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
   }
 
   followUp(text: string): Promise<void> {
-    if (!this.isFollowUpAllowed()) {
-      return Promise.reject(new Error(`Cannot follow up in state: ${this._state}`));
+    const followUpError = this.checkFollowUpAllowed();
+    if (followUpError) {
+      return Promise.reject(followUpError);
     }
 
     if (!this.sdkSessionId) {
@@ -139,37 +137,20 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
       return Promise.reject(new Error('No SDK session to resume — session may have been cleaned up'));
     }
 
-    this._stopping = false;
-    this.completing = false;
-    this.emitStartingActivity('Continuing Claude session...');
-
-    this.setState('working');
+    this.beginTurn('Continuing Claude session...');
     this.runPromise = this.runTurn(text);
     return Promise.resolve();
   }
 
   async stop(): Promise<void> {
-    if (this._state === 'stopped') {
-      return; // Already fully torn down
-    }
-
     // `complete` / `failed` are terminal from the SDK's perspective but the
     // subprocess can still be alive (the SDK keeps the worker warm for
-    // follow-ups). User-initiated stop must release those resources regardless.
-    this._stopping = true;
-
-    // Abort the in-flight SDK turn immediately. The SDK honors this signal and
-    // ends the current turn without waiting for it to finish.
-    this.abortController?.abort();
-
-    // Wait for the turn loop to unwind.
-    try {
-      await this.runPromise;
-    } catch {
-      // Expected — the loop may throw when interrupted.
-    }
-
-    this.setState('stopped');
+    // follow-ups). User-initiated stop must release those resources regardless
+    // of state, so only `stopped` itself counts as already torn down.
+    await this.stopSession(
+      () => this.abortController?.abort(),
+      () => this._state === 'stopped',
+    );
   }
 
   /** The most recent non-empty assistant text, used to extract review findings. */
@@ -228,41 +209,42 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
    * no debounce, no task-counting. Follow-up turns resume the prior session.
    */
   private async runTurn(prompt: string): Promise<void> {
-    this.abortController = new AbortController();
-    this.beginTurn();
+    this.resetTurnTracking();
 
-    this.queryInstance = query({
-      prompt,
-      options: {
-        ...this.sdkOptions,
-        abortController: this.abortController,
-        // Resume preserves the prior conversation on follow-up turns. NOTE: the
-        // SDK applies THESE options' systemPrompt on resume (not the persisted
-        // one), so we must pass the full stored sdkOptions here.
-        ...(this.sdkSessionId ? { resume: this.sdkSessionId } : {}),
+    await this.runGuardedTurn(
+      async () => {
+        this.queryInstance = query({
+          prompt,
+          options: {
+            ...this.sdkOptions,
+            abortController: this.abortController!,
+            // Resume preserves the prior conversation on follow-up turns. NOTE: the
+            // SDK applies THESE options' systemPrompt on resume (not the persisted
+            // one), so we must pass the full stored sdkOptions here.
+            ...(this.sdkSessionId ? { resume: this.sdkSessionId } : {}),
+          },
+        });
+
+        try {
+          for await (const msg of this.queryInstance) {
+            this.processMessage(msg);
+          }
+
+          // Iterator ended = turn complete (unless stop() aborted it). Checked
+          // against both 'working' and 'starting' — an ultra-fast turn can end
+          // before `markReady` ever promotes the session out of 'starting'.
+          if (!this.stopping && (this._state === 'working' || this._state === 'starting')) {
+            await this.completeOnce(() => this.getCompletionSummary());
+          }
+        } finally {
+          this.queryInstance = null;
+        }
       },
-    });
-
-    try {
-      for await (const msg of this.queryInstance) {
-        this.processMessage(msg);
-      }
-
-      // Iterator ended = turn complete (unless stop() aborted it).
-      if (!this._stopping && (this._state === 'working' || this._state === 'starting')) {
-        await this.handleCompletion();
-      }
-    } catch (error) {
-      // An abort from stop() surfaces here; don't report it as a failure.
-      if (!this._stopping) {
+      (error) => {
         console.error('[ClaudeSdkSession] Turn loop error:', error);
-        this.setState('failed');
-        this.emit('onError', error instanceof Error ? error.message : String(error));
-      }
-    } finally {
-      this.abortController = null;
-      this.queryInstance = null;
-    }
+        return { message: error instanceof Error ? error.message : String(error) };
+      },
+    );
   }
 
   // ===========================================================================
@@ -503,16 +485,11 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
     }
   }
 
-  private beginTurn(): void {
+  private resetTurnTracking(): void {
     this.workflowTaskIds.clear();
     this.workflowTaskLabels.clear();
     this.lastProgressSummary = null;
     this.terminalReason = null;
-  }
-
-  private async handleCompletion(): Promise<void> {
-    if (this._state === 'complete') return;
-    await this.completeOnce(() => this.getCompletionSummary());
   }
 
   /** Parse git diff stats from the worktree to build completion summary */

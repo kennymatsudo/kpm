@@ -394,4 +394,95 @@ describe('BoardAgentOrchestrator', () => {
     expect(updateItem).not.toHaveBeenCalled();
     expect(requestPlanRefresh).not.toHaveBeenCalled();
   });
+
+  it('skips the automated review follow-up when the impl session is already busy', async () => {
+    const session = createSession({ automation_phase: 'reviewing' });
+    const sendAgentFollowUp = vi.fn();
+    const isSessionBusy = vi.fn().mockReturnValue(true);
+
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(),
+        persistCompletedReview: vi.fn(),
+        persistFailedReview: vi.fn(),
+      },
+      planService: { updateItem: vi.fn() },
+      phaseMachine: createTestPhaseMachine(session),
+      getDevSessionService: () => ({
+        get: vi.fn(() => session),
+        sendAgentFollowUp,
+        updateStatus: vi.fn(),
+        commitSessionChanges: vi.fn(),
+        requestCommitHookRepair: vi.fn(),
+      }),
+      getReviewService: () => ({
+        flushQueuedReviewTasks: vi.fn().mockResolvedValue({ ok: true, data: { taskIds: [], context: '' } }),
+      }),
+      getAgentSessionManager: () => ({
+        getByDevSession: vi.fn(),
+        isSessionBusy,
+      } as never),
+      getPromptContent: vi.fn(),
+      claudeUsageService: { recordUsage: vi.fn() },
+      requestPlanRefresh: vi.fn(),
+    });
+
+    await callbacks.onSessionComplete?.({
+      devSessionId: session.id,
+      role: 'review',
+      summary: { filesChanged: 0, additions: 0, deletions: 0 },
+      findings: [
+        { severity: 'warning', file: 'src/app.ts', line: 1, description: 'Handle null input.', agent: 'codex', source: 'agent' },
+      ],
+    });
+
+    expect(isSessionBusy).toHaveBeenCalledWith(session.id);
+    expect(session.automation_phase).toBe('addressing_review');
+    expect(sendAgentFollowUp).not.toHaveBeenCalled();
+  });
+
+  it('sends the automated review follow-up when the impl session is idle', async () => {
+    const session = createSession({ automation_phase: 'reviewing' });
+    const sendAgentFollowUp = vi.fn().mockResolvedValue({ ok: true, data: { restarted: false } });
+    const isSessionBusy = vi.fn().mockReturnValue(false);
+
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(),
+        persistCompletedReview: vi.fn(),
+        persistFailedReview: vi.fn(),
+      },
+      planService: { updateItem: vi.fn() },
+      phaseMachine: createTestPhaseMachine(session),
+      getDevSessionService: () => ({
+        get: vi.fn(() => session),
+        sendAgentFollowUp,
+        updateStatus: vi.fn(),
+        commitSessionChanges: vi.fn(),
+        requestCommitHookRepair: vi.fn(),
+      }),
+      getReviewService: () => ({
+        flushQueuedReviewTasks: vi.fn().mockResolvedValue({ ok: true, data: { taskIds: [], context: '' } }),
+      }),
+      getAgentSessionManager: () => ({
+        getByDevSession: vi.fn(),
+        isSessionBusy,
+      } as never),
+      getPromptContent: vi.fn(),
+      claudeUsageService: { recordUsage: vi.fn() },
+      requestPlanRefresh: vi.fn(),
+    });
+
+    await callbacks.onSessionComplete?.({
+      devSessionId: session.id,
+      role: 'review',
+      summary: { filesChanged: 0, additions: 0, deletions: 0 },
+      findings: [
+        { severity: 'warning', file: 'src/app.ts', line: 1, description: 'Handle null input.', agent: 'codex', source: 'agent' },
+      ],
+    });
+
+    expect(isSessionBusy).toHaveBeenCalledWith(session.id);
+    expect(sendAgentFollowUp).toHaveBeenCalledTimes(1);
+  });
 });

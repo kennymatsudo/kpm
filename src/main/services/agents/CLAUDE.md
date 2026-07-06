@@ -214,4 +214,4 @@ When adding new plan-item fields that should flow to the agent, update `buildAge
 - Do not design the board UX around explicit review-tab interactions unless you intentionally want to reintroduce them.
 - Do not reintroduce a blocking commit modal. Commit confirmation is modal; commit execution is backgrounded.
 - Do not inline `` `${id}-review` `` — use `toReviewSessionId` / `toImplSessionId` from `shared/agent-types.ts`.
-- Do not send an automated review follow-up if the impl session is already active. Check `agentSessionManager.getByDevSession(implSessionId).state` first.
+- Do not send an automated review follow-up if the impl session is already active. Check `agentSessionManager.isSessionBusy(implSessionId)` first.

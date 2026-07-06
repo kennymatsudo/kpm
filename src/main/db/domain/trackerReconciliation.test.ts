@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyFieldChange, hasFieldDrifted } from './trackerReconciliation';
+import { classifyFieldChange, hasRemoteFieldDrifted } from './trackerReconciliation';
 import { normalizeMarkdown } from '../../documents';
 
 describe('classifyFieldChange', () => {
@@ -105,22 +105,22 @@ describe('classifyFieldChange', () => {
   });
 });
 
-describe('hasFieldDrifted', () => {
+describe('hasRemoteFieldDrifted', () => {
   it('reports no drift when the remote value still matches the snapshot', () => {
     expect(
-      hasFieldDrifted({ remote: 'Ship the fix', snapshot: 'Ship the fix' })
+      hasRemoteFieldDrifted({ remote: 'Ship the fix', snapshot: 'Ship the fix' })
     ).toBe(false);
   });
 
   it('reports drift when the remote value has moved off the snapshot', () => {
     expect(
-      hasFieldDrifted({ remote: 'Ship the fix (tracker edit)', snapshot: 'Ship the fix' })
+      hasRemoteFieldDrifted({ remote: 'Ship the fix (tracker edit)', snapshot: 'Ship the fix' })
     ).toBe(true);
   });
 
   it('treats superficially different markdown as equal once normalized', () => {
     expect(
-      hasFieldDrifted({
+      hasRemoteFieldDrifted({
         remote: '- item one\n- item two',
         snapshot: '* item one\n* item two',
         normalize: normalizeMarkdown,
@@ -130,7 +130,7 @@ describe('hasFieldDrifted', () => {
 
   it('with no snapshot (first sync), reports no drift regardless of remote value', () => {
     expect(
-      hasFieldDrifted({ remote: 'Anything', snapshot: null })
+      hasRemoteFieldDrifted({ remote: 'Anything', snapshot: null })
     ).toBe(false);
   });
 });

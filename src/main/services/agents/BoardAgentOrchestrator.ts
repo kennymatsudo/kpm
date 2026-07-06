@@ -1,4 +1,4 @@
-import type { AgentSessionState, ReviewFinding } from '../../../shared/agent-types';
+import type { ReviewFinding } from '../../../shared/agent-types';
 import { toImplSessionId } from '../../../shared/agent-types';
 import { isCommitHookRepairPhase, type DevSession } from '../../../shared/types';
 import type { IAgentReviewRepository } from '../../db/interfaces/review';
@@ -46,10 +46,6 @@ type AgentManagerCallbacks = Pick<
   | 'onSessionStateChange'
   | 'onSessionUsage'
 >;
-
-function isActiveAgentState(state: AgentSessionState): boolean {
-  return state === 'starting' || state === 'working' || state === 'waiting_for_input';
-}
 
 function buildReviewAssessmentPrompt(findings: ReviewFinding[]): string {
   const sections: string[] = [
@@ -258,8 +254,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         return;
       }
 
-      const implAgentSession = deps.getAgentSessionManager().getByDevSession(implSessionId);
-      if (implAgentSession && isActiveAgentState(implAgentSession.state)) {
+      if (deps.getAgentSessionManager().isSessionBusy(implSessionId)) {
         console.log(`${LOG_PREFIX} Impl session ${implSessionId} already active, skipping automated review follow-up`);
         return;
       }

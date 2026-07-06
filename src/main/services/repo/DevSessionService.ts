@@ -49,6 +49,7 @@ import { devSessionEvents } from '../../../shared/ipc/devSessionEvents';
 import { gitExec, resolveBaseSha } from './gitUtils';
 import { openDirectoryInCodeEditor } from './editorLauncher';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
+import { FollowUpNotAllowedError } from '../agents/BaseAgentSession';
 import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
 import {
   type AgentContextInput,
@@ -596,8 +597,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           } catch (followUpError) {
             // followUp() rejects when the session is in a non-terminal state (e.g. 'working').
             // This can happen if the session was resumed externally. Fall through to restart.
-            const followUpMessage = followUpError instanceof Error ? followUpError.message : String(followUpError);
-            if (options?.restartIfBusy === false && followUpMessage.startsWith('Cannot follow up in state:')) {
+            if (options?.restartIfBusy === false && followUpError instanceof FollowUpNotAllowedError) {
               return success({ restarted: false, deferred: true });
             }
             console.warn(`[DevSessionService] followUp() failed for ${sessionId}, will restart:`, followUpError);

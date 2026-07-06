@@ -91,12 +91,15 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
       this.ptyProcess = null;
       this.cleanupHooks();
 
+      // Checked against both 'working' and 'starting' — the PTY can exit
+      // before this method's own starting->working transition below runs.
       if (this._state === 'working' || this._state === 'starting') {
         if (exitCode === 0) {
           void this.handleCompletion();
         } else {
-          this.setState('failed');
-          this.emit('onError', `Agent exited with code ${exitCode}`);
+          this.failTurn(new Error(`Agent exited with code ${exitCode}`), (error) => ({
+            message: error instanceof Error ? error.message : String(error),
+          }));
         }
       }
     });
@@ -123,9 +126,7 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
   private handleHookEvent(hookEvent: HookEvent): void {
     // Map stop event to completion
     if (hookEvent.event === 'stop') {
-      if (this._state === 'working') {
-        void this.handleCompletion();
-      }
+      void this.maybeCompleteTurn(() => this.getCompletionSummary());
       return;
     }
 
@@ -184,8 +185,9 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
   }
 
   followUp(text: string): Promise<void> {
-    if (!this.isFollowUpAllowed()) {
-      return Promise.reject(new Error(`Cannot follow up in state: ${this._state}`));
+    const followUpError = this.checkFollowUpAllowed();
+    if (followUpError) {
+      return Promise.reject(followUpError);
     }
     if (!this.ptyProcess) {
       return Promise.reject(new Error('No active PTY process — session has ended'));
@@ -196,23 +198,19 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
     return Promise.resolve();
   }
 
-  stop(): Promise<void> {
-    if (this._state === 'stopped' || this._state === 'complete' || this._state === 'failed') {
-      return Promise.resolve();
-    }
-
-    if (this.ptyProcess) {
-      try {
-        this.ptyProcess.kill();
-      } catch {
-        // Process may already be dead
+  async stop(): Promise<void> {
+    await this.stopSession(() => {
+      if (this.ptyProcess) {
+        try {
+          this.ptyProcess.kill();
+        } catch {
+          // Process may already be dead
+        }
+        this.ptyProcess = null;
       }
-      this.ptyProcess = null;
-    }
 
-    this.cleanupHooks();
-    this.setState('stopped');
-    return Promise.resolve();
+      this.cleanupHooks();
+    });
   }
 
   /** Get the raw PTY output buffer (for debugging) */

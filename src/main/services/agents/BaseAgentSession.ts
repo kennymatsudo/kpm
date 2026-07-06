@@ -2,13 +2,13 @@
  * BaseAgentSession - Shared base for SDK and CLI board agent sessions.
  *
  * Owns the event handler map, state field, activity list, and the helpers that
- * manipulate them, plus the turn/completion lifecycle mechanics shared by all
- * three backends (start-state assertion, follow-up eligibility, git-diff-stat
- * completion summaries, and the completion re-entrancy guard). Concrete
- * subclasses implement `start`, `respond`, `followUp`, and `stop` — each backend
- * still decides *when* it's legal to complete or start a turn, since that varies
- * per backend; the base class guarantees that once a subclass decides to
- * complete, it happens exactly once.
+ * manipulate them, plus the turn lifecycle mechanics shared by all three
+ * backends: starting a turn, running it under an `AbortController` with a
+ * shared failure path, stopping it, failing it, and completing it exactly
+ * once. Concrete subclasses implement `start`, `respond`, `followUp`, and
+ * `stop` — each backend still decides *when* it's legal to start, complete, or
+ * abandon a turn (that varies per transport), but the base class owns the
+ * mechanics once a subclass has made that call.
  */
 
 import { execFile } from 'child_process';
@@ -25,6 +25,19 @@ import type {
 } from '../../../shared/agent-types';
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Thrown by `followUp()` when the session's current state doesn't allow a
+ * follow-up turn to start. Callers branch on the type instead of
+ * string-matching `message` (kept identical to the pre-existing text for
+ * anything still logging it).
+ */
+export class FollowUpNotAllowedError extends Error {
+  constructor(state: AgentSessionState) {
+    super(`Cannot follow up in state: ${state}`);
+    this.name = 'FollowUpNotAllowedError';
+  }
+}
 
 /** Matches the summary line of `git diff --stat HEAD`, e.g. " 4 files changed, 142 insertions(+), 38 deletions(-)" */
 const GIT_DIFF_STAT_PATTERN =
@@ -49,11 +62,28 @@ export abstract class BaseAgentSession {
   /**
    * Guards `completeOnce` against concurrent double-entry (e.g. a PTY exit and
    * a hook "stop" event racing before either has moved `_state` off 'working').
-   * `completeOnce` itself resets this once a completion fires; some subclasses
-   * additionally reset it at the start of a new turn as a defensive measure
+   * `completeOnce` itself resets this once a completion fires; `beginTurn`
+   * additionally resets it at the start of a new turn as a defensive measure
    * against a prior, still in-flight completion attempt.
    */
   protected completing = false;
+
+  /**
+   * Set for the duration of `stopSession`. `runGuardedTurn`'s failure path
+   * checks this to tell a user-initiated abort (expected transport throw,
+   * must not surface as `onError`/`failed`) apart from a genuine backend
+   * failure.
+   */
+  protected stopping = false;
+
+  /** The in-flight turn, so `stopSession` can await it unwinding before declaring the session stopped. */
+  protected runPromise: Promise<void> | null = null;
+
+  /**
+   * The current turn's abort mechanism, owned by `runGuardedTurn` for its
+   * duration. Null between turns and after a turn's `finally` has run.
+   */
+  protected abortController: AbortController | null = null;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   protected handlers = new Map<string, Set<(...args: any[]) => void>>();
@@ -163,9 +193,122 @@ export abstract class BaseAgentSession {
     return this._state === 'complete' || this._state === 'failed' || this._state === 'stopped';
   }
 
+  /**
+   * Returns a `FollowUpNotAllowedError` unless the session has reached a state
+   * a follow-up turn can resume from, so `followUp()` implementations (none of
+   * which are `async`) can reject with it directly instead of throwing across
+   * a try/catch.
+   */
+  protected checkFollowUpAllowed(): FollowUpNotAllowedError | null {
+    return this.isFollowUpAllowed() ? null : new FollowUpNotAllowedError(this._state);
+  }
+
   /** Emit the standard "beginning a turn" system activity. */
   protected emitStartingActivity(summary: string): void {
     this.emitActivity({ type: 'system', timestamp: Date.now(), summary, status: 'running' });
+  }
+
+  /**
+   * Reset the per-turn guards and announce the turn's start. Covers both the
+   * initial `start()` call and every `followUp()` — a follow-up resumes a
+   * session that already ran `completeOnce` (which cleared `completing`) but
+   * must also clear `stopping`, since a prior turn's `stopSession` may have
+   * set it before this turn began.
+   */
+  protected beginTurn(startingSummary: string): void {
+    this.stopping = false;
+    this.completing = false;
+    this.emitStartingActivity(startingSummary);
+    this.setState('working');
+  }
+
+  /**
+   * Run a transport turn under a fresh `AbortController`, routing any throw
+   * through `failTurn` unless the throw was caused by `stopSession` aborting
+   * it. Owns the controller's full lifecycle: created here, exposed via
+   * `this.abortController` for `stopSession` to abort, cleared in `finally`
+   * regardless of outcome.
+   */
+  protected async runGuardedTurn(
+    run: (signal: AbortSignal) => Promise<void>,
+    classify: (error: unknown) => { message: string },
+  ): Promise<void> {
+    this.abortController = new AbortController();
+    try {
+      await run(this.abortController.signal);
+    } catch (error) {
+      this.failTurn(error, classify);
+    } finally {
+      this.abortController = null;
+    }
+  }
+
+  /**
+   * Stop the session: abort the in-flight turn's transport, wait for the turn
+   * promise to unwind (its rejection — expected from the abort — is
+   * swallowed), then transition to `stopped`. A no-op once `alreadyStopped`
+   * says the session is already fully torn down.
+   *
+   * `alreadyStopped` defaults to every terminal state, but a backend whose
+   * transport process stays alive across turns (e.g. the SDK keeps its worker
+   * warm for follow-ups even after `complete`/`failed`) can narrow it to just
+   * `stopped`, since a user-initiated stop must still release those
+   * resources.
+   */
+  protected async stopSession(
+    abortTransport: () => void | Promise<void>,
+    alreadyStopped: () => boolean = () =>
+      this._state === 'stopped' || this._state === 'complete' || this._state === 'failed',
+  ): Promise<void> {
+    if (alreadyStopped()) {
+      return;
+    }
+
+    this.stopping = true;
+    await abortTransport();
+
+    try {
+      await this.runPromise;
+    } catch {
+      // Expected — the aborted turn's promise rejects on its way out.
+    }
+
+    this.setState('stopped');
+  }
+
+  /**
+   * Report a turn failure: emit an error activity, transition to `failed`,
+   * and emit `onError` — exactly once. Suppressed while `stopSession` is
+   * tearing the turn down (that's an expected abort, not a failure) and once
+   * the session has already reached a terminal state (a slow-to-unwind
+   * transport throwing after `stop`/a prior failure/completion already
+   * settled things must not resurface as a new failure).
+   */
+  protected failTurn(error: unknown, classify: (error: unknown) => { message: string }): void {
+    if (this.stopping) return;
+    if (this._state === 'failed' || this._state === 'stopped' || this._state === 'complete') return;
+
+    const classified = classify(error);
+    this.emitActivity({
+      type: 'error',
+      timestamp: Date.now(),
+      summary: classified.message,
+      content: classified.message,
+    });
+    this.setState('failed');
+    this.emit('onError', classified.message);
+  }
+
+  /**
+   * Complete the current turn if — and only if — the session is still
+   * `working`. Backends reach this from different signals (SDK iterator end,
+   * PTY exit, hook "stop" event) that can race or fire after the session has
+   * already moved on; this is the single gate all of them go through before
+   * `completeOnce`'s own re-entrancy guard.
+   */
+  protected async maybeCompleteTurn(computeSummary: () => Promise<AgentCompletionSummary>): Promise<void> {
+    if (this._state !== 'working') return;
+    await this.completeOnce(computeSummary);
   }
 
   /**

@@ -226,6 +226,12 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     return getActiveForProject(projectId).length;
   }
 
+  /** Whether the session tracked for this dev session is still busy (starting/working/waiting_for_input). False if no session is registered. */
+  function isSessionBusy(devSessionId: string): boolean {
+    const session = getByDevSession(devSessionId);
+    return session !== undefined && isActiveState(session.state);
+  }
+
   // ===========================================================================
   // Session Cleanup
   // ===========================================================================
@@ -501,6 +507,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     getByDevSession,
     getActiveForProject,
     getActiveCountForProject,
+    isSessionBusy,
     remove,
     stopAllForProject,
     stopAll,

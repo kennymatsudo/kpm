@@ -46,11 +46,8 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
   private readonly model: string | undefined;
   private readonly codex: Codex;
   private thread: Thread | null = null;
-  private abortController: AbortController | null = null;
-  private runPromise: Promise<void> | null = null;
   private worktreePath: string | null = null;
   private lastAssistantMessage = '';
-  private stopping = false;
 
   constructor(config: CodexSdkAgentSessionConfig) {
     super(config.id, config.role);
@@ -65,9 +62,7 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
       this.worktreePath = worktreePath;
       this.thread = this.codex.startThread(this.buildThreadOptions(worktreePath));
 
-      this.emitStartingActivity(this.role === 'review' ? 'Starting Codex review...' : 'Starting Codex session...');
-
-      this.setState('working');
+      this.beginTurn(this.role === 'review' ? 'Starting Codex review...' : 'Starting Codex session...');
       this.runPromise = this.runTurn(prompt);
       return Promise.resolve();
     } catch (error) {
@@ -84,37 +79,22 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
       return Promise.reject(new Error('Codex review sessions are one-shot'));
     }
 
-    if (!this.isFollowUpAllowed()) {
-      return Promise.reject(new Error(`Cannot follow up in state: ${this._state}`));
+    const followUpError = this.checkFollowUpAllowed();
+    if (followUpError) {
+      return Promise.reject(followUpError);
     }
 
     if (!this.thread) {
       return Promise.reject(new Error('No active Codex thread'));
     }
 
-    this.stopping = false;
-    this.completing = false;
-    this.emitStartingActivity('Continuing Codex session...');
-    this.setState('working');
+    this.beginTurn('Continuing Codex session...');
     this.runPromise = this.runTurn(text);
     return Promise.resolve();
   }
 
   async stop(): Promise<void> {
-    if (this._state === 'stopped' || this._state === 'complete' || this._state === 'failed') {
-      return;
-    }
-
-    this.stopping = true;
-    this.abortController?.abort();
-    try {
-      await this.runPromise;
-    } catch {
-      // Expected when aborting an in-flight SDK turn.
-    } finally {
-      this.stopping = false;
-      this.setState('stopped');
-    }
+    await this.stopSession(() => this.abortController?.abort());
   }
 
   getOutput(): string {
@@ -141,25 +121,18 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
       throw new Error('Codex thread was not initialized');
     }
 
-    this.abortController = new AbortController();
-    this.completing = false;
+    await this.runGuardedTurn(async (signal) => {
+      const turnOptions: TurnOptions = {
+        signal,
+        ...(this.role === 'review' && { outputSchema: REVIEW_FINDINGS_SCHEMA }),
+      };
 
-    const turnOptions: TurnOptions = {
-      signal: this.abortController.signal,
-      ...(this.role === 'review' && { outputSchema: REVIEW_FINDINGS_SCHEMA }),
-    };
-
-    try {
-      const { events } = await this.thread.runStreamed(prompt, turnOptions);
+      const { events } = await this.thread!.runStreamed(prompt, turnOptions);
 
       for await (const event of events) {
         await this.handleEvent(event);
       }
-    } catch (error) {
-      this.fail(error);
-    } finally {
-      this.abortController = null;
-    }
+    }, classifyCodexError);
   }
 
   private async handleEvent(event: ThreadEvent): Promise<void> {
@@ -177,13 +150,13 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
         this.handleItemCompleted(event.item);
         return;
       case 'turn.completed':
-        await this.handleCompletion();
+        await this.maybeCompleteTurn(() => this.getCompletionSummary());
         return;
       case 'turn.failed':
-        this.fail(new Error(event.error.message));
+        this.failTurn(new Error(event.error.message), classifyCodexError);
         return;
       case 'error':
-        this.fail(new Error(event.message));
+        this.failTurn(new Error(event.message), classifyCodexError);
         return;
     }
   }
@@ -318,31 +291,6 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
       content: item.error?.message,
       status: item.status === 'failed' ? 'failed' : 'success',
     });
-  }
-
-  private async handleCompletion(): Promise<void> {
-    if (this._state !== 'working') return;
-    await this.completeOnce(() => this.getCompletionSummary());
-  }
-
-  private fail(error: unknown): void {
-    if (this.stopping) {
-      return;
-    }
-
-    if (this._state === 'failed' || this._state === 'stopped' || this._state === 'complete') {
-      return;
-    }
-
-    const classified = classifyCodexError(error);
-    this.emitActivity({
-      type: 'error',
-      timestamp: Date.now(),
-      summary: classified.message,
-      content: classified.message,
-    });
-    this.setState('failed');
-    this.emit('onError', classified.message);
   }
 
   private async getCompletionSummary(): Promise<AgentCompletionSummary> {

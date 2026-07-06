@@ -129,21 +129,11 @@ function buildAgentSessionHandlers(
         throw new Error(`Session not found: ${devSessionId}`);
       }
 
-      const implAgent = agentSessionManager.getByDevSession(devSessionId);
-      if (implAgent && (
-        implAgent.state === 'starting'
-        || implAgent.state === 'working'
-        || implAgent.state === 'waiting_for_input'
-      )) {
+      if (agentSessionManager.isSessionBusy(devSessionId)) {
         throw new Error('Implementation agent is still running — stop it before running review');
       }
 
-      const existingReview = agentSessionManager.getByDevSession(toReviewSessionId(devSessionId));
-      if (existingReview && (
-        existingReview.state === 'starting'
-        || existingReview.state === 'working'
-        || existingReview.state === 'waiting_for_input'
-      )) {
+      if (agentSessionManager.isSessionBusy(toReviewSessionId(devSessionId))) {
         throw new Error('A review is already running for this session');
       }
 
