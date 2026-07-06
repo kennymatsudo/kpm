@@ -61,7 +61,7 @@ function LoopReportView({ run }: { run: LoopRun }) {
   return (
     <>
       {run.detail && (
-        <div className="prose-themed">
+        <div className="prose">
           <Markdown options={markdownOptions}>{transformPlanRefs(run.detail)}</Markdown>
         </div>
       )}

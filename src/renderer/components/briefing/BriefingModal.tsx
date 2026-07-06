@@ -93,7 +93,7 @@ export function BriefingModal() {
         )}
 
         {isLoading && streamingText && (
-          <div className="prose-themed">
+          <div className="prose">
             <Markdown options={markdownOptions}>{transformPlanRefs(streamingText)}</Markdown>
           </div>
         )}
@@ -127,7 +127,7 @@ export function BriefingModal() {
             )}
 
             {/* Markdown briefing content */}
-            <div className="prose-themed">
+            <div className="prose">
               <Markdown options={markdownOptions}>{transformPlanRefs(briefing.summary)}</Markdown>
             </div>
           </div>

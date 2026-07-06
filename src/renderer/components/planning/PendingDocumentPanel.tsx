@@ -238,7 +238,7 @@ export function PendingDocumentPanel({
               {viewMode === 'diff' ? (
                 <DiffViewer oldContent={oldContent || ''} newContent={editedContent} diffLines={editedDiffLines} autoScrollToFirstChange />
               ) : viewMode === 'preview' ? (
-                <div className="prose-themed prose-panel bg-surface-2 p-4 rounded-lg border border-border-subtle overflow-y-auto overflow-x-hidden">
+                <div className="prose prose-panel bg-surface-2 p-4 rounded-lg border border-border-subtle overflow-y-auto overflow-x-hidden">
                   <Markdown options={markdownOptions}>
                     {addSoftBreaks(transformPlanRefs(editedContent))}
                   </Markdown>
@@ -365,7 +365,7 @@ export function PendingDocumentPanel({
           {viewMode === 'diff' ? (
             <DiffViewer oldContent={oldContent || ''} newContent={editedContent} diffLines={editedDiffLines} autoScrollToFirstChange />
           ) : viewMode === 'preview' ? (
-            <div className="prose-themed prose-panel bg-surface-2 p-4 rounded-lg border border-border-subtle overflow-y-auto overflow-x-hidden">
+            <div className="prose prose-panel bg-surface-2 p-4 rounded-lg border border-border-subtle overflow-y-auto overflow-x-hidden">
               <Markdown options={markdownOptions}>
                 {transformPlanRefs(editedContent)}
               </Markdown>

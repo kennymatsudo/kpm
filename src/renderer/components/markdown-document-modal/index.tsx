@@ -719,7 +719,7 @@ export function MarkdownDocumentModal({
                     {draft ? (
                       <div className="p-8 max-w-3xl mx-auto">
                         {frontmatter !== null && <FrontmatterBlock source={frontmatter} />}
-                        <div className="prose-themed">
+                        <div className="prose">
                           <Markdown options={searchOptions}>{addSoftBreaks(transformPlanRefs(body))}</Markdown>
                         </div>
                       </div>

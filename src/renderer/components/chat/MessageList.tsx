@@ -229,7 +229,7 @@ const AssistantMessageContent = memo(function AssistantMessageContent({
         }
         const segmentProcessed = processMessageContent(group.content);
         return (
-          <div key={`t-${idx}`} className="prose-themed">
+          <div key={`t-${idx}`} className="prose">
             <Markdown options={markdownOptions}>
               {transformPlanRefs(segmentProcessed.displayContent)}
             </Markdown>
@@ -327,7 +327,7 @@ const StreamingContent = memo(function StreamingContent({
         }
         const processed = processMessageContent(item.content);
         return (
-          <div key={`t-${idx}`} className="prose-themed">
+          <div key={`t-${idx}`} className="prose">
             <Markdown options={markdownOptions}>
               {transformPlanRefs(processed.displayContent)}
             </Markdown>

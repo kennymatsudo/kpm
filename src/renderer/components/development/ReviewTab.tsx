@@ -327,7 +327,7 @@ function CommentExcerpt({
       </div>
       <div className="relative mt-1">
         <div className={cx(
-          'review-markdown prose-themed break-words',
+          'prose prose-review break-words',
           shouldClamp && !expanded && 'max-h-72 overflow-hidden',
         )}>
           <Markdown options={githubMarkdownOptions}>
@@ -506,7 +506,7 @@ function ThreadRow({
                         <div className="text-xxs text-text-muted">
                           @{comment.author} ({comment.authorType.toLowerCase()}) · {formatDateTime(comment.createdAt)}
                         </div>
-                        <div className="review-markdown prose-themed mt-1 break-words">
+                        <div className="prose prose-review mt-1 break-words">
                           <Markdown options={githubMarkdownOptions}>
                             {transformPlanRefs(sanitizeGitHubMarkdown(comment.body))}
                           </Markdown>
@@ -672,7 +672,7 @@ function ConversationCommentCard({ comment }: { comment: PrConversationComment }
           GitHub
         </button>
       </div>
-      <div className="review-markdown prose-themed mt-2 break-words">
+      <div className="prose prose-review mt-2 break-words">
         <Markdown options={githubMarkdownOptions}>
           {transformPlanRefs(sanitizeGitHubMarkdown(comment.body))}
         </Markdown>

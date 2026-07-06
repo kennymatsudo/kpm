@@ -73,7 +73,7 @@ export function UpdateItemDetail({ action, planItems }: UpdateItemDetailProps) {
                       <div className="text-xxs font-semibold text-text-muted uppercase tracking-wider mb-1">
                         Resolved preview
                       </div>
-                      <div className="prose-themed text-xs">
+                      <div className="prose text-xs">
                         <Markdown options={markdownOptions}>{transformPlanRefs(newValue)}</Markdown>
                       </div>
                     </div>

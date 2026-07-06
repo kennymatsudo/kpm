@@ -142,7 +142,7 @@ export function PlanItemPreviewBody({
             <div className="text-[10px] font-medium text-text-muted uppercase tracking-wide mb-1">
               Description
             </div>
-            <div className="prose-themed text-xs text-text-secondary leading-relaxed">
+            <div className="prose text-xs text-text-secondary leading-relaxed">
               <Markdown options={markdownOptions}>
                 {transformPlanRefs(descriptionExcerpt)}
               </Markdown>
