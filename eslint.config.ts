@@ -7,7 +7,7 @@ import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescrip
 export default tseslint.config(
   // Global ignores
   {
-    ignores: ['**/dist/**', '.vite/**', 'packages/**', 'scripts/**', 'release/**', 'coverage/**', 'playwright-report/**', 'test-results/**', 'v4-backup/**'],
+    ignores: ['**/dist/**', '.vite/**', '.claude/**', 'packages/**', 'scripts/**', 'release/**', 'coverage/**', 'playwright-report/**', 'test-results/**', 'v4-backup/**'],
   },
 
   // Base JS recommended rules
