@@ -9,6 +9,7 @@ import type { TrackerClient, ExternalIssue } from '../../trackers';
 import { fetchIssuesWithSubtasks } from '../../trackers';
 import { inferCategoryWithMapping } from '../../trackers/statusTransitions';
 import { normalizeMarkdown } from '../../documents';
+import { classifyFieldChange } from './trackerReconciliation';
 import type {
   PlanItem,
   SyncPreview,
@@ -184,27 +185,17 @@ export function createSyncService(deps: SyncServiceDeps) {
     ];
 
     for (const { field, kpm, external: ext, snapshot: snap, normalize } of fields) {
-      // Compare on the normalized form; carry the raw values into the resulting
-      // update/conflict so KPM imports exactly what the tracker holds.
-      const nKpm = normalize(kpm);
-      const nExt = normalize(ext);
-      const nSnap = normalize(snap);
-      const kpmChanged = snap !== null && nKpm !== nSnap;
-      const extChanged = snap !== null && nExt !== nSnap;
+      // Carry the raw values into the resulting update/conflict so KPM
+      // imports exactly what the tracker holds.
+      const classification = classifyFieldChange({ local: kpm, remote: ext, snapshot: snap, normalize });
 
-      if (snap === null) {
-        // No snapshot - first sync after import, external wins if different
-        if (nKpm !== nExt) {
-          updates.push({ field, old_value: kpm, new_value: ext });
-        }
-      } else if (kpmChanged && extChanged && nKpm !== nExt) {
-        // Both changed differently - conflict
-        conflicts.push({ field, your_value: kpm, tracker_value: ext });
-      } else if (extChanged && !kpmChanged) {
-        // Only external changed - auto-update
+      if (classification.status === 'remoteChanged') {
         updates.push({ field, old_value: kpm, new_value: ext });
+      } else if (classification.status === 'conflict') {
+        conflicts.push({ field, your_value: kpm, tracker_value: ext });
       }
-      // If only KPM changed, KPM wins - no action needed
+      // 'localChanged' - KPM wins, no action needed
+      // 'unchanged' - nothing to do
     }
 
     // Always update tracker metadata (no conflict, just display/filtering).

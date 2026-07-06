@@ -39,6 +39,7 @@ import {
 } from '../../trackers/statusTransitions';
 import { toExternalMarkdown, EMPTY_EXTERNAL_MARKDOWN, type ExternalDestination, type ExternalMarkdown } from '../../documents/exportBoundary';
 import { normalizeMarkdown } from '../../documents';
+import { hasFieldDrifted } from './trackerReconciliation';
 import { suggestStatusMapping } from '../../../shared/statusMappingSuggest';
 
 interface TrackerClientServiceLike {
@@ -715,9 +716,15 @@ export function createExportService(deps: ExportServiceDeps) {
 
           const snapshot = snapshotMap.get(item.planItem.id);
           if (snapshot) {
-            const descriptionDrifted =
-              normalizeMarkdown(jiraCurrent.description) !== normalizeMarkdown(snapshot.snapshot_description);
-            const titleDrifted = jiraCurrent.summary !== snapshot.snapshot_title;
+            const descriptionDrifted = hasFieldDrifted({
+              remote: jiraCurrent.description,
+              snapshot: snapshot.snapshot_description,
+              normalize: normalizeMarkdown,
+            });
+            const titleDrifted = hasFieldDrifted({
+              remote: jiraCurrent.summary,
+              snapshot: snapshot.snapshot_title,
+            });
             hasConflict = updatedAfterSync && (descriptionDrifted || titleDrifted);
           } else {
             hasConflict = updatedAfterSync;
