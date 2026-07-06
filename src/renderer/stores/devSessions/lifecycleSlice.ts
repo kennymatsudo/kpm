@@ -45,7 +45,6 @@ function removeSessionFromState(state: DevSessionsState, sessionId: string) {
     selectedSessionId: state.selectedSessionId === sessionId ? null : state.selectedSessionId,
     deletingSessionIds: removeFromSet(state.deletingSessionIds, sessionId),
     ...dropSessionCacheEntries(state, sessionId),
-    lastActivityMap: removeMapEntries(state.lastActivityMap, trackedSessionIds),
     diffErrorBySessionId: removeMapEntries(state.diffErrorBySessionId, trackedSessionIds),
     agentStateBySessionId: removeMapEntries(state.agentStateBySessionId, trackedSessionIds),
     activitiesBySessionId: removeMapEntries(state.activitiesBySessionId, trackedSessionIds),

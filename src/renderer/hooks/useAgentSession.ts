@@ -21,16 +21,29 @@ export interface AgentSessionInfo {
   isTerminal: boolean;
 }
 
+/** Stable identity for sessions with no recorded activities, so selectors don't mint a new array reference every render. */
+const EMPTY_ACTIVITIES: AgentActivity[] = [];
+
 /**
  * Subscribe to agent session data for a specific dev session ID.
  * Returns undefined values when no agent session exists.
  */
 export function useAgentSession(devSessionId: string | null): AgentSessionInfo {
-  const agentStateMap = useDevSessionsStore((s) => s.agentStateBySessionId);
-  const activitiesMap = useDevSessionsStore((s) => s.activitiesBySessionId);
-  const latestActivityMap = useDevSessionsStore((s) => s.latestActivityBySessionId);
-  const questionMap = useDevSessionsStore((s) => s.questionBySessionId);
-  const completionMap = useDevSessionsStore((s) => s.completionBySessionId);
+  const agentState = useDevSessionsStore((s) =>
+    devSessionId ? s.agentStateBySessionId.get(devSessionId) : undefined
+  );
+  const activities = useDevSessionsStore((s) =>
+    devSessionId ? (s.activitiesBySessionId.get(devSessionId) ?? EMPTY_ACTIVITIES) : EMPTY_ACTIVITIES
+  );
+  const latestActivity = useDevSessionsStore((s) =>
+    devSessionId ? s.latestActivityBySessionId.get(devSessionId) : undefined
+  );
+  const question = useDevSessionsStore((s) =>
+    devSessionId ? s.questionBySessionId.get(devSessionId) : undefined
+  );
+  const completionStats = useDevSessionsStore((s) =>
+    devSessionId ? s.completionBySessionId.get(devSessionId) : undefined
+  );
   const hydrateAgentSnapshot = useDevSessionsStore((s) => s.hydrateAgentSnapshot);
 
   // Track which session IDs have been hydrated to avoid re-running the effect
@@ -44,8 +57,8 @@ export function useAgentSession(devSessionId: string | null): AgentSessionInfo {
     // Only fetch from main process when there is no in-store state yet.
     const store = useDevSessionsStore.getState();
     const hasState = store.agentStateBySessionId.has(devSessionId);
-    const activities = store.activitiesBySessionId.get(devSessionId);
-    if (hasState && activities && activities.length > 0) {
+    const existingActivities = store.activitiesBySessionId.get(devSessionId);
+    if (hasState && existingActivities && existingActivities.length > 0) {
       hydratedRef.current.add(devSessionId);
       return;
     }
@@ -72,30 +85,17 @@ export function useAgentSession(devSessionId: string | null): AgentSessionInfo {
   }, [devSessionId, hydrateAgentSnapshot]);
 
   return useMemo(() => {
-    if (!devSessionId) {
-      return {
-        agentState: undefined,
-        activities: [],
-        latestActivity: undefined,
-        question: undefined,
-        completionStats: undefined,
-        isActive: false,
-        isTerminal: false,
-      };
-    }
-
-    const agentState = agentStateMap.get(devSessionId);
     const isActive = agentState === 'starting' || agentState === 'working' || agentState === 'waiting_for_input';
     const isTerminal = agentState === 'complete' || agentState === 'failed' || agentState === 'stopped';
 
     return {
       agentState,
-      activities: activitiesMap.get(devSessionId) ?? [],
-      latestActivity: latestActivityMap.get(devSessionId),
-      question: questionMap.get(devSessionId),
-      completionStats: completionMap.get(devSessionId),
+      activities,
+      latestActivity,
+      question,
+      completionStats,
       isActive,
       isTerminal,
     };
-  }, [devSessionId, agentStateMap, activitiesMap, latestActivityMap, questionMap, completionMap]);
+  }, [agentState, activities, latestActivity, question, completionStats]);
 }

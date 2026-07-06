@@ -40,7 +40,6 @@ export interface DevSessionsState {
   selectedSessionId: string | null;
   isLoading: boolean;
   deletingSessionIds: Set<string>;
-  lastActivityMap: Map<string, number>;
   diffBySessionId: Map<string, string | null>;
   diffErrorBySessionId: Map<string, string>;
   diffLoadingIds: Set<string>;
@@ -72,7 +71,6 @@ export interface DevSessionsState {
   setSessions: (sessions: DevSessionWithPlanItem[]) => void;
   setSelectedSessionId: (sessionId: string | null) => void;
   setIsLoading: (isLoading: boolean) => void;
-  recordActivity: (sessionId: string) => void;
   setCommitState: (sessionId: string, state: BackgroundCommitState | null) => void;
 
   // PR polling
@@ -139,62 +137,53 @@ export interface DevSessionsState {
   resetProjectState: () => void;
 }
 
-const initialState = {
-  projectId: null as string | null,
-  sessions: [] as DevSessionWithPlanItem[],
-  allSessions: [] as DevSessionWithPlanItem[],
-  sessionById: new Map<string, DevSessionWithPlanItem>(),
-  sessionsByPlanItemId: new Map<string, DevSessionWithPlanItem[]>(),
-  selectedSessionId: null as string | null,
-  isLoading: false,
-  deletingSessionIds: new Set<string>(),
-  lastActivityMap: new Map<string, number>(),
-  diffBySessionId: new Map<string, string | null>(),
-  diffErrorBySessionId: new Map<string, string>(),
-  diffLoadingIds: new Set<string>(),
-  commitStateBySessionId: new Map<string, BackgroundCommitState>(),
-  reviewInboxBySessionId: new Map<string, ReviewInboxSnapshot>(),
-  reviewLoadingIds: new Set<string>(),
-  reviewErrorBySessionId: new Map<string, string | null>(),
-  reviewFiltersBySessionId: new Map<string, ReviewFilters>(),
-  reviewActionableBySessionId: new Map<string, ReviewActionableSummary>(),
-  reviewAssessmentPendingBySessionId: new Map<string, ReviewAssessmentPending>(),
-  prContextBySessionId: new Map<string, PrCreationContext>(),
-  prContextLoadingIds: new Set<string>(),
-  prStatusCache: new Map<string, PrStatus>(),
-  mergeOrderBySessionId: new Map<string, { layer: number | null; blockedBy: string[] }>(),
-  agentStateBySessionId: new Map<string, AgentSessionState>(),
-  activitiesBySessionId: new Map<string, AgentActivity[]>(),
-  latestActivityBySessionId: new Map<string, AgentActivity>(),
-  questionBySessionId: new Map<string, AgentQuestion | null>(),
-  completionBySessionId: new Map<string, AgentCompletionSummary>(),
-  reviewFindingsBySessionId: new Map<string, ReviewFinding[]>(),
-};
-
-/** Throttle map for recordActivity — tracks last update time per session */
-const activityThrottleMap = new Map<string, number>();
+/**
+ * Fresh, non-aliased initial state. Every Map/Set is constructed anew on each
+ * call so spreading this into `set()` (at store creation and on reset) never
+ * re-shares a collection instance across store lifetimes.
+ */
+function createInitialState() {
+  return {
+    projectId: null as string | null,
+    sessions: [] as DevSessionWithPlanItem[],
+    allSessions: [] as DevSessionWithPlanItem[],
+    sessionById: new Map<string, DevSessionWithPlanItem>(),
+    sessionsByPlanItemId: new Map<string, DevSessionWithPlanItem[]>(),
+    selectedSessionId: null as string | null,
+    isLoading: false,
+    deletingSessionIds: new Set<string>(),
+    diffBySessionId: new Map<string, string | null>(),
+    diffErrorBySessionId: new Map<string, string>(),
+    diffLoadingIds: new Set<string>(),
+    commitStateBySessionId: new Map<string, BackgroundCommitState>(),
+    reviewInboxBySessionId: new Map<string, ReviewInboxSnapshot>(),
+    reviewLoadingIds: new Set<string>(),
+    reviewErrorBySessionId: new Map<string, string | null>(),
+    reviewFiltersBySessionId: new Map<string, ReviewFilters>(),
+    reviewActionableBySessionId: new Map<string, ReviewActionableSummary>(),
+    reviewAssessmentPendingBySessionId: new Map<string, ReviewAssessmentPending>(),
+    prContextBySessionId: new Map<string, PrCreationContext>(),
+    prContextLoadingIds: new Set<string>(),
+    prStatusCache: new Map<string, PrStatus>(),
+    mergeOrderBySessionId: new Map<string, { layer: number | null; blockedBy: string[] }>(),
+    agentStateBySessionId: new Map<string, AgentSessionState>(),
+    activitiesBySessionId: new Map<string, AgentActivity[]>(),
+    latestActivityBySessionId: new Map<string, AgentActivity>(),
+    questionBySessionId: new Map<string, AgentQuestion | null>(),
+    completionBySessionId: new Map<string, AgentCompletionSummary>(),
+    reviewFindingsBySessionId: new Map<string, ReviewFinding[]>(),
+  };
+}
 
 export type DevSessionsSet = StoreApi<DevSessionsState>['setState'];
 export type DevSessionsGet = StoreApi<DevSessionsState>['getState'];
 
 export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
-  ...initialState,
+  ...createInitialState(),
 
   setSessions: (sessions) => set({ sessions, ...buildSessionIndexes(sessions) }),
   setSelectedSessionId: (sessionId) => set({ selectedSessionId: sessionId }),
   setIsLoading: (isLoading) => set({ isLoading }),
-
-  recordActivity: (sessionId) => {
-    const now = Date.now();
-    const lastUpdate = activityThrottleMap.get(sessionId) || 0;
-    if (now - lastUpdate < 1000) return; // throttle to 1 update per second
-    activityThrottleMap.set(sessionId, now);
-    set((state) => {
-      const next = new Map(state.lastActivityMap);
-      next.set(sessionId, now);
-      return { lastActivityMap: next };
-    });
-  },
 
   setCommitState: (sessionId, commitState) => {
     set((state) => {
@@ -364,26 +353,13 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
   ...createDevSessionsLifecycleSlice(set, get),
   ...createDevSessionsPrSlice(set, get),
 
-  reset: () => {
-    invalidateLoadSessionsRequests();
-    set({
-      ...initialState,
-      sessionById: new Map<string, DevSessionWithPlanItem>(),
-      sessionsByPlanItemId: new Map<string, DevSessionWithPlanItem[]>(),
-      deletingSessionIds: new Set<string>(),
-      reviewAssessmentPendingBySessionId: new Map<string, ReviewAssessmentPending>(),
-    });
-  },
-
-  resetProjectState: () => {
-    invalidateLoadSessionsRequests();
-    set({
-      ...initialState,
-      sessionById: new Map<string, DevSessionWithPlanItem>(),
-      sessionsByPlanItemId: new Map<string, DevSessionWithPlanItem[]>(),
-      deletingSessionIds: new Set<string>(),
-      reviewAssessmentPendingBySessionId: new Map<string, ReviewAssessmentPending>(),
-    });
-  },
+  reset: () => resetState(set),
+  resetProjectState: () => resetState(set),
   ...createDevSessionsReviewSlice(set, get),
 }));
+
+/** Shared by the `reset` and `resetProjectState` action names — both fully reinitialize the store with freshly constructed collections. */
+function resetState(set: DevSessionsSet): void {
+  invalidateLoadSessionsRequests();
+  set(createInitialState());
+}
