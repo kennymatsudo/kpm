@@ -10,6 +10,7 @@ import type {
   AgentType,
 } from './base-types';
 import type { PersistedAgentReview } from './agent-types';
+import type { FieldsEditableVia } from './planItemFields';
 
 // Re-export core types from base types
 export type {
@@ -487,23 +488,13 @@ export interface PlanItem extends PlanItemBase {
 // PlanRelation is re-exported from @kpm/shared-types above
 
 // Type-safe updates for plan items (subset of fields that can be updated)
-export type PlanItemUpdates = Partial<Pick<PlanItem,
-  | 'title'
-  | 'description'
-  | 'intent'
-  | 'acceptance_criteria'
-  | 'source_document_id'
-  | 'label'
-  | 'status'
-  | 'status_category'
-  | 'release_tag'
-  | 'parent_id'
-  | 'item_order'
-  | 'code_refs'
-  | 'position_x'
-  | 'position_y'
-  | 'group_id'
->>;
+export type PlanItemUpdates = Partial<Pick<PlanItem, FieldsEditableVia<'ipc'>>>;
+
+// Shape accepted by IPlanItemRepository.add() — identity + placement fields are
+// required, everything else (including sync/external fields) defaults at the
+// repository's INSERT layer. See planItemFields.ts.
+export type NewPlanItem = Pick<PlanItem, 'id' | 'project_id' | 'title' | 'item_order'> &
+  Partial<Omit<PlanItem, 'id' | 'project_id' | 'title' | 'item_order' | 'created_at' | 'updated_at'>>;
 
 // Extended updates for sync operations (includes external tracker fields)
 export type PlanItemSyncUpdates = PlanItemUpdates & Partial<Pick<PlanItem,

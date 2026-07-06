@@ -9,6 +9,7 @@ import type {
   PlanRelation,
   PlanItemUpdates,
   PlanItemSyncUpdates,
+  NewPlanItem,
 } from '../../../shared/types';
 
 // =============================================================================
@@ -18,7 +19,7 @@ import type {
 export interface IPlanItemRepository {
   getByProject(projectId: string): PlanItem[];
   get(id: string): PlanItem | undefined;
-  add(item: Omit<PlanItem, 'created_at' | 'updated_at'>): PlanItem;
+  add(item: NewPlanItem): PlanItem;
   getMany(ids: string[]): PlanItem[];
   /**
    * Existence-only batch check. Returns the subset of `ids` that exist in

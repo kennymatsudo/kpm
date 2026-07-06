@@ -68,11 +68,8 @@ When you touch one of these, every file listed must stay in sync.
 
 **Add a plan item field**
 1. `src/shared/base-types.ts` — add to `PlanItem`
-2. `src/shared/types.ts` — add to `PlanItemUpdates` Pick union
+2. `src/shared/planItemFields.ts` — new `PLAN_ITEM_FIELDS` entry. Derives the IPC Zod schema, the PlanAction Zod schema, `PlanItemRepository`'s INSERT column, its single-field UPDATE fast path, its dynamic UPDATE slow path, and the `PlanItemUpdates` type — one entry wires the whole update path. A field that must also be settable at create time through the `create_item` PlanAction still needs that action's schema + `executeCreateItem`.
 3. `src/main/db/migrations.ts` — new migration
-4. `src/main/db/repositories/impl/PlanItemRepository.ts` — INSERT/UPDATE + `rowToPlanItem`
-5. `src/shared/ipc/planEndpoints.ts` — `planItemUpdates` Zod schema
-6. `src/main/db/domain/PlanActionService.ts` — `executeCreateItem` / `executeUpdateItem`
 
 Then conditionally: the **`PlanAction` recipe** below if writable via tool; `DevSessionService.buildAgentContext` + the `modify_plan` tool prompt if the field should reach the implementation agent; `components/planning/TaskEditModal.tsx` if user-visible.
 

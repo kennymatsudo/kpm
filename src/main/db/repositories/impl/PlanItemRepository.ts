@@ -3,9 +3,9 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
-import type { PlanItem, PlanItemUpdates, PlanItemSyncUpdates } from '../../../../shared/types';
+import type { PlanItem, PlanItemUpdates, PlanItemSyncUpdates, NewPlanItem } from '../../../../shared/types';
 import type { IPlanItemRepository } from '../../interfaces';
-import { PLAN_ITEM_FIELDS, isJsonEncodedKind, type PlanItemFieldName } from '../../../../shared/planItemFields';
+import { PLAN_ITEM_FIELDS, isJsonEncodedKind, type PlanItemFieldName, type PlanItemFieldDescriptor } from '../../../../shared/planItemFields';
 
 /**
  * Safely parse a JSON-encoded string[] column. Returns null on parse failure.
@@ -24,16 +24,72 @@ function parseStringArray(json: string | null): string[] | null {
  * Transform raw database row to PlanItem with proper typing
  */
 function rowToPlanItem(row: Record<string, unknown>): PlanItem {
+  const jsonDecodedFields: Record<string, string[] | null> = {};
+  for (const name of Object.keys(PLAN_ITEM_FIELDS) as PlanItemFieldName[]) {
+    const descriptor = PLAN_ITEM_FIELDS[name];
+    if (isJsonEncodedKind(descriptor.fieldKind)) {
+      jsonDecodedFields[descriptor.sqlColumn] = parseStringArray(row[descriptor.sqlColumn] as string | null);
+    }
+  }
   return {
     ...row,
-    code_refs: parseStringArray(row.code_refs as string | null),
-    acceptance_criteria: parseStringArray(row.acceptance_criteria as string | null),
+    ...jsonDecodedFields,
     intent: (row.intent as string | null) ?? null,
     source_document_id: (row.source_document_id as string | null) ?? null,
     status: (row.status as 'backlog' | 'planned') || 'planned',
     group_id: row.group_id as string | null ?? null,
   } as PlanItem;
 }
+
+/** Encode a registry-field value for binding: JSON-encoded kinds are stringified, empty to NULL. */
+function encodeFieldValue(descriptor: PlanItemFieldDescriptor, value: unknown): unknown {
+  return isJsonEncodedKind(descriptor.fieldKind) ? (value ? JSON.stringify(value) : null) : value;
+}
+
+interface InsertColumn {
+  column: string;
+  bind: (item: NewPlanItem) => unknown;
+}
+
+/**
+ * Ordered column list for the `plan_items` INSERT. Order within this array is
+ * the single source of truth for both the SQL column list and the bind
+ * values — see the `insert` prepared statement and `add()` below.
+ */
+const INSERT_COLUMNS: readonly InsertColumn[] = [
+  // Identity
+  { column: 'id', bind: (item) => item.id },
+  { column: 'project_id', bind: (item) => item.project_id },
+
+  // Registry-derived (src/shared/planItemFields.ts)
+  ...(Object.keys(PLAN_ITEM_FIELDS) as PlanItemFieldName[]).map((name): InsertColumn => {
+    const descriptor = PLAN_ITEM_FIELDS[name];
+    if (name === 'status') {
+      return { column: descriptor.sqlColumn, bind: (item) => item.status ?? 'planned' };
+    }
+    return { column: descriptor.sqlColumn, bind: (item) => encodeFieldValue(descriptor, item[name]) ?? null };
+  }),
+
+  // Sync/external columns — deliberately outside the registry (separate
+  // ownership domain, see planItemFields.ts), unioned in at the column layer.
+  { column: 'association_id', bind: (item) => item.association_id ?? null },
+  { column: 'external_key', bind: (item) => item.external_key ?? null },
+  { column: 'external_id', bind: (item) => item.external_id ?? null },
+  { column: 'external_type', bind: (item) => item.external_type ?? null },
+  { column: 'external_issue_type', bind: (item) => item.external_issue_type ?? null },
+  { column: 'external_status', bind: (item) => item.external_status ?? null },
+  { column: 'external_url', bind: (item) => item.external_url ?? null },
+  { column: 'external_parent_key', bind: (item) => item.external_parent_key ?? null },
+  { column: 'external_epic_key', bind: (item) => item.external_epic_key ?? null },
+  { column: 'external_assignee_id', bind: (item) => item.external_assignee_id ?? null },
+  { column: 'external_assignee_name', bind: (item) => item.external_assignee_name ?? null },
+  { column: 'external_assignee_avatar_url', bind: (item) => item.external_assignee_avatar_url ?? null },
+  { column: 'external_creator_id', bind: (item) => item.external_creator_id ?? null },
+  { column: 'external_creator_name', bind: (item) => item.external_creator_name ?? null },
+  { column: 'external_creator_avatar_url', bind: (item) => item.external_creator_avatar_url ?? null },
+  { column: 'sync_source', bind: (item) => item.sync_source ?? 'local' },
+  { column: 'last_synced_at', bind: (item) => item.last_synced_at ?? null },
+];
 
 /**
  * Prepared statements cache for hot paths.
@@ -60,21 +116,29 @@ interface PreparedStatements {
   deleteById: Statement;
   updatePosition: Statement;
   reparent: Statement;
-
-  // Common update patterns (optimized for frequent operations)
-  updateTitle: Statement;
-  updateDescription: Statement;
-  updateLabel: Statement;
-  updateStatus: Statement;
-  updateStatusCategory: Statement;
-  updateItemOrder: Statement;
-  updateReleaseTag: Statement;
 }
 
 export class PlanItemRepository implements IPlanItemRepository {
   private stmts: PreparedStatements;
+  /**
+   * One single-field UPDATE per registry field, keyed by field name.
+   * `status_category` is excluded — it needs the completed_at CASE on the
+   * slow path, so single-key updates to it fall through to update()'s
+   * dynamic SQL instead of using this map.
+   */
+  private singleFieldUpdate: Map<PlanItemFieldName, Statement>;
 
   constructor(private db: Database) {
+    this.singleFieldUpdate = new Map();
+    for (const name of Object.keys(PLAN_ITEM_FIELDS) as PlanItemFieldName[]) {
+      if (name === 'status_category') continue;
+      const descriptor = PLAN_ITEM_FIELDS[name];
+      this.singleFieldUpdate.set(
+        name,
+        db.prepare(`UPDATE plan_items SET ${descriptor.sqlColumn} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      );
+    }
+
     // Prepare statements once for hot paths
     this.stmts = {
       // Read operations
@@ -129,17 +193,8 @@ export class PlanItemRepository implements IPlanItemRepository {
 
       // Write operations - use RETURNING to avoid re-query
       insert: db.prepare(`
-        INSERT INTO plan_items (
-          id, project_id, parent_id, title, description, label, item_order,
-          code_refs, status, status_category, release_tag, position_x, position_y,
-          association_id, external_key, external_id, external_type, external_issue_type,
-          external_status, external_url, external_parent_key, external_epic_key,
-          external_assignee_id, external_assignee_name, external_assignee_avatar_url,
-          external_creator_id, external_creator_name, external_creator_avatar_url,
-          sync_source, last_synced_at, group_id,
-          intent, acceptance_criteria, source_document_id
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO plan_items (${INSERT_COLUMNS.map((c) => c.column).join(', ')})
+        VALUES (${INSERT_COLUMNS.map(() => '?').join(', ')})
         RETURNING *
       `),
       deleteById: db.prepare('DELETE FROM plan_items WHERE id = ?'),
@@ -148,29 +203,6 @@ export class PlanItemRepository implements IPlanItemRepository {
       `),
       reparent: db.prepare(`
         UPDATE plan_items SET parent_id = ?, status = 'planned', updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `),
-
-      // Common single-field update patterns
-      updateTitle: db.prepare(`
-        UPDATE plan_items SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `),
-      updateDescription: db.prepare(`
-        UPDATE plan_items SET description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `),
-      updateLabel: db.prepare(`
-        UPDATE plan_items SET label = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `),
-      updateStatus: db.prepare(`
-        UPDATE plan_items SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `),
-      updateStatusCategory: db.prepare(`
-        UPDATE plan_items SET status_category = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `),
-      updateItemOrder: db.prepare(`
-        UPDATE plan_items SET item_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `),
-      updateReleaseTag: db.prepare(`
-        UPDATE plan_items SET release_tag = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
       `),
     };
   }
@@ -211,44 +243,9 @@ export class PlanItemRepository implements IPlanItemRepository {
     return new Set(rows.map((r) => r.id));
   }
 
-  add(item: Omit<PlanItem, 'created_at' | 'updated_at'>): PlanItem {
+  add(item: NewPlanItem): PlanItem {
     // Use RETURNING to get the inserted row in one query (no re-query needed)
-    const row = this.stmts.insert.get(
-      item.id,
-      item.project_id,
-      item.parent_id,
-      item.title,
-      item.description,
-      item.label,
-      item.item_order,
-      item.code_refs ? JSON.stringify(item.code_refs) : null,
-      item.status || 'planned',
-      item.status_category ?? null,
-      item.release_tag,
-      item.position_x,
-      item.position_y,
-      item.association_id ?? null,
-      item.external_key ?? null,
-      item.external_id ?? null,
-      item.external_type ?? null,
-      item.external_issue_type ?? null,
-      item.external_status ?? null,
-      item.external_url ?? null,
-      item.external_parent_key ?? null,
-      item.external_epic_key ?? null,
-      item.external_assignee_id ?? null,
-      item.external_assignee_name ?? null,
-      item.external_assignee_avatar_url ?? null,
-      item.external_creator_id ?? null,
-      item.external_creator_name ?? null,
-      item.external_creator_avatar_url ?? null,
-      item.sync_source ?? 'local',
-      item.last_synced_at ?? null,
-      item.group_id ?? null,
-      item.intent ?? null,
-      item.acceptance_criteria ? JSON.stringify(item.acceptance_criteria) : null,
-      item.source_document_id ?? null
-    ) as Record<string, unknown>;
+    const row = this.stmts.insert.get(...INSERT_COLUMNS.map((c) => c.bind(item))) as Record<string, unknown>;
     return rowToPlanItem(row);
   }
 
@@ -257,30 +254,14 @@ export class PlanItemRepository implements IPlanItemRepository {
     const keys = Object.keys(updates).filter(k => (updates as Record<string, unknown>)[k] !== undefined);
 
     if (keys.length === 1) {
-      const key = keys[0];
-      const value = (updates as Record<string, unknown>)[key];
-
-      switch (key) {
-        case 'title':
-          this.stmts.updateTitle.run(value, id);
-          return;
-        case 'description':
-          this.stmts.updateDescription.run(value, id);
-          return;
-        case 'label':
-          this.stmts.updateLabel.run(value, id);
-          return;
-        case 'status':
-          this.stmts.updateStatus.run(value, id);
-          return;
-        case 'item_order':
-          this.stmts.updateItemOrder.run(value, id);
-          return;
-        case 'release_tag':
-          this.stmts.updateReleaseTag.run(value, id);
-          return;
-        // status_category needs special handling for completed_at, fall through to dynamic
+      const key = keys[0] as PlanItemFieldName;
+      const stmt = this.singleFieldUpdate.get(key);
+      if (stmt) {
+        const value = (updates as Record<string, unknown>)[key];
+        stmt.run(encodeFieldValue(PLAN_ITEM_FIELDS[key], value), id);
+        return;
       }
+      // status_category needs special handling for completed_at, fall through to dynamic
     }
 
     // Slow path: dynamic SQL for multi-field updates or special cases
@@ -296,7 +277,7 @@ export class PlanItemRepository implements IPlanItemRepository {
 
       const descriptor = PLAN_ITEM_FIELDS[name];
       fields.push(`${descriptor.sqlColumn} = ?`);
-      values.push(isJsonEncodedKind(descriptor.fieldKind) ? (value ? JSON.stringify(value) : null) : value);
+      values.push(encodeFieldValue(descriptor, value));
     }
 
     if (updates.status_category !== undefined) {
@@ -488,9 +469,10 @@ export class PlanItemRepository implements IPlanItemRepository {
 
   batchUpdateStatus(ids: string[], status: string): void {
     if (ids.length === 0) return;
+    const stmt = this.singleFieldUpdate.get('status')!;
     const transaction = this.db.transaction(() => {
       for (const id of ids) {
-        this.stmts.updateStatus.run(status, id);
+        stmt.run(status, id);
       }
     });
     transaction();

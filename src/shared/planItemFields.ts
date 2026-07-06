@@ -3,8 +3,13 @@
  *
  * Registry of PlanItem fields writable through `update_item` — both the
  * direct IPC `updateItem` call and the `update_item` PlanAction (Claude
- * tools) derive their Zod validation from this file, and
- * PlanItemRepository's dynamic UPDATE column list derives from it too.
+ * tools) derive their Zod validation from this file. `PlanItemUpdates`
+ * (shared/types.ts) is `Partial<Pick<PlanItem, FieldsEditableVia<'ipc'>>>`,
+ * so a registry entry is also what makes a field assignable through
+ * `update()`. On the DB side, `PlanItemRepository` derives its INSERT column
+ * list, its single-field UPDATE fast path (one prepared statement per
+ * field, keyed by field name), its dynamic UPDATE slow path, and the
+ * JSON-array decoding in `rowToPlanItem` all from this file.
  *
  * Not every field here is reachable from both surfaces: `update_item`'s
  * PlanAction is deliberately narrower than the IPC call — structural fields
@@ -16,7 +21,9 @@
  *
  * Excluded entirely: tracker-sync fields (`external_key`, `sync_source`,
  * ...) are owned by SyncService/ImportService via PlanItemSyncUpdates, a
- * separate ownership domain that fails independently of this one.
+ * separate ownership domain that fails independently of this one. They're
+ * still part of `PlanItemRepository`'s INSERT (unioned in at the column
+ * layer, defaulted to null/'local'), just not registered here.
  *
  * This file has NO dependencies (see base-types.ts) so it can be consumed by
  * both Zod-based validation (main/ipc/validation) and the DB layer
