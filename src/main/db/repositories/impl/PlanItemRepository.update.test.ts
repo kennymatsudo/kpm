@@ -1,6 +1,6 @@
-import BetterSqlite3, { type Database } from 'better-sqlite3';
+import type { Database } from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { runMigrations } from '../../migrations';
+import { createTestDb } from '../../testing/createTestDb';
 import { PlanItemRepository } from './PlanItemRepository';
 import type { PlanItem } from '../../../../shared/types';
 
@@ -55,8 +55,7 @@ describe('PlanItemRepository.update (registry-generated slow path)', () => {
   let repo: PlanItemRepository;
 
   beforeEach(() => {
-    db = new BetterSqlite3(':memory:');
-    runMigrations(db);
+    db = createTestDb();
     seedProjectAndItem(db);
     repo = new PlanItemRepository(db);
   });

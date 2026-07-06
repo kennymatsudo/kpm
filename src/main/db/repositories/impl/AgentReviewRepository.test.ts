@@ -1,58 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import BetterSqlite3, { type Database } from 'better-sqlite3';
+import type { Database } from 'better-sqlite3';
+import { createTestDb } from '../../testing/createTestDb';
 import { AgentReviewRepository } from './AgentReviewRepository';
 
-function setupReviewSchema(db: Database): void {
-  db.exec(`
-    PRAGMA foreign_keys = ON;
-
-    CREATE TABLE dev_sessions (
-      id TEXT PRIMARY KEY
-    );
-
-    CREATE TABLE agent_review_runs (
-      id TEXT PRIMARY KEY,
-      implementation_session_id TEXT NOT NULL REFERENCES dev_sessions(id) ON DELETE CASCADE,
-      review_session_id TEXT NOT NULL,
-      reviewer_agent TEXT NOT NULL CHECK(reviewer_agent IN ('claude', 'codex', 'gemini')),
-      status TEXT NOT NULL CHECK(status IN ('running', 'complete', 'failed', 'stale')),
-      diff_fingerprint TEXT,
-      raw_output TEXT,
-      error TEXT,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      completed_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE agent_review_findings (
-      id TEXT PRIMARY KEY,
-      review_run_id TEXT NOT NULL REFERENCES agent_review_runs(id) ON DELETE CASCADE,
-      finding_order INTEGER NOT NULL,
-      severity TEXT NOT NULL CHECK(severity IN ('critical', 'warning', 'suggestion')),
-      file TEXT NOT NULL,
-      line INTEGER,
-      description TEXT NOT NULL,
-      agent TEXT NOT NULL CHECK(agent IN ('claude', 'codex', 'gemini')),
-      source TEXT NOT NULL CHECK(source IN ('agent', 'pr')),
-      UNIQUE(review_run_id, finding_order)
-    );
-
-    CREATE INDEX idx_agent_review_runs_implementation
-      ON agent_review_runs(implementation_session_id, completed_at DESC, created_at DESC);
-    CREATE INDEX idx_agent_review_runs_status
-      ON agent_review_runs(implementation_session_id, status);
-    CREATE INDEX idx_agent_review_findings_run
-      ON agent_review_findings(review_run_id, finding_order);
-  `);
-
-  db.prepare('INSERT INTO dev_sessions (id) VALUES (?)').run('session-1');
+function seedDevSession(db: Database): void {
+  db.prepare(`INSERT INTO projects (id, name, folder_path) VALUES (?, ?, ?)`).run(
+    'project-1',
+    'Test Project',
+    '/tmp/test-project'
+  );
+  db.prepare(`INSERT INTO repos (id, project_id, path) VALUES (?, ?, ?)`).run(
+    'repo-1',
+    'project-1',
+    '/tmp/test-project/repo'
+  );
+  db.prepare(`
+    INSERT INTO dev_sessions (id, project_id, repo_id, worktree_path, branch_name)
+    VALUES (?, ?, ?, ?, ?)
+  `).run('session-1', 'project-1', 'repo-1', '/tmp/test-project/worktree', 'feature/test');
 }
 
 describe('AgentReviewRepository', () => {
   it('updates a running review row when the review completes', () => {
-    const db = new BetterSqlite3(':memory:');
+    const db = createTestDb();
     try {
-      setupReviewSchema(db);
+      seedDevSession(db);
       const repo = new AgentReviewRepository(db);
 
       const started = repo.persistStartedReview({
@@ -84,9 +56,9 @@ describe('AgentReviewRepository', () => {
   });
 
   it('updates a running review row when the review fails', () => {
-    const db = new BetterSqlite3(':memory:');
+    const db = createTestDb();
     try {
-      setupReviewSchema(db);
+      seedDevSession(db);
       const repo = new AgentReviewRepository(db);
 
       const started = repo.persistStartedReview({

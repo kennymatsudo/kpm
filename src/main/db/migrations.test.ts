@@ -1,22 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import BetterSqlite3 from 'better-sqlite3';
 import { migrations, runMigrations } from './migrations';
+import { sqliteHasFts5 } from './testing/createTestDb';
 
-const FTS5_AVAILABLE = (() => {
-  const db = new BetterSqlite3(':memory:');
-  try {
-    const row = db.prepare(
-      "SELECT sqlite_compileoption_used('ENABLE_FTS5') as enabled"
-    ).get() as { enabled: number };
-    return row.enabled === 1;
-  } catch {
-    return false;
-  } finally {
-    db.close();
-  }
-})();
-
-const describeIfFts = FTS5_AVAILABLE ? describe : describe.skip;
+const describeIfFts = sqliteHasFts5() ? describe : describe.skip;
 
 describeIfFts('runMigrations', () => {
   it('allows duplicate document paths across different projects', () => {

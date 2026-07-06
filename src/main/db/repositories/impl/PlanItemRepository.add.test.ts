@@ -1,6 +1,6 @@
-import BetterSqlite3, { type Database } from 'better-sqlite3';
+import type { Database } from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { runMigrations } from '../../migrations';
+import { createTestDb } from '../../testing/createTestDb';
 import { PlanItemRepository } from './PlanItemRepository';
 
 function seedProject(db: Database): void {
@@ -16,8 +16,7 @@ describe('PlanItemRepository.add (registry-generated INSERT)', () => {
   let repo: PlanItemRepository;
 
   beforeEach(() => {
-    db = new BetterSqlite3(':memory:');
-    runMigrations(db);
+    db = createTestDb();
     seedProject(db);
     repo = new PlanItemRepository(db);
   });

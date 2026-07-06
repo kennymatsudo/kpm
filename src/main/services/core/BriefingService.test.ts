@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import BetterSqlite3 from 'better-sqlite3';
 import type { Database } from 'better-sqlite3';
+import { createTestDb } from '../../db/testing/createTestDb';
 
 // Hoisted mock state — must be declared before the vi.mock calls below.
 const runClaudeQueryMock = vi.hoisted(() => vi.fn());
@@ -29,51 +29,12 @@ import { success } from '../result';
 
 const PROJECT_ID = 'p-1';
 
-function createTestDb(): Database {
-  const db = new BetterSqlite3(':memory:');
-  db.exec(`
-    CREATE TABLE plan_items (
-      id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      status_category TEXT,
-      item_order INTEGER DEFAULT 0,
-      updated_at TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE plan_relations (
-      from_item_id TEXT NOT NULL,
-      to_item_id TEXT NOT NULL,
-      relation_type TEXT NOT NULL
-    );
-
-    CREATE TABLE dev_sessions (
-      id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL,
-      plan_item_id TEXT NOT NULL,
-      branch_name TEXT,
-      status TEXT,
-      updated_at TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE chat_messages (
-      id TEXT PRIMARY KEY,
-      session_id TEXT NOT NULL,
-      role TEXT NOT NULL,
-      content TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE project_briefings (
-      project_id TEXT PRIMARY KEY,
-      summary TEXT NOT NULL,
-      generated_at TEXT NOT NULL,
-      blocked_count INTEGER NOT NULL DEFAULT 0,
-      stale_count INTEGER NOT NULL DEFAULT 0,
-      ready_count INTEGER NOT NULL DEFAULT 0
-    );
-  `);
-  return db;
+function seedProject(db: Database): void {
+  db.prepare(`INSERT INTO projects (id, name, folder_path) VALUES (?, ?, ?)`).run(
+    PROJECT_ID,
+    'Test Project',
+    '/tmp/test-project'
+  );
 }
 
 interface BuildOpts {
@@ -105,6 +66,7 @@ describe('BriefingService', () => {
 
   beforeEach(() => {
     db = createTestDb();
+    seedProject(db);
     runClaudeQueryMock.mockReset();
   });
 
@@ -190,11 +152,11 @@ describe('BriefingService', () => {
 
     it('persists briefing with signal counts derived from plan items', async () => {
       db.prepare(
-        `INSERT INTO plan_items (id, project_id, title, status_category) VALUES (?, ?, ?, ?)`,
-      ).run('pi-1', PROJECT_ID, 'blocked one', 'blocked');
+        `INSERT INTO plan_items (id, project_id, title, status_category, item_order) VALUES (?, ?, ?, ?, ?)`,
+      ).run('pi-1', PROJECT_ID, 'blocked one', 'blocked', 0);
       db.prepare(
-        `INSERT INTO plan_items (id, project_id, title, status_category) VALUES (?, ?, ?, ?)`,
-      ).run('pi-2', PROJECT_ID, 'ready one', 'not_started');
+        `INSERT INTO plan_items (id, project_id, title, status_category, item_order) VALUES (?, ?, ?, ?, ?)`,
+      ).run('pi-2', PROJECT_ID, 'ready one', 'not_started', 1);
 
       runClaudeQueryMock.mockResolvedValueOnce({ text: 'summary', errors: [] });
 
@@ -244,8 +206,8 @@ describe('BriefingService', () => {
 
       // Plan item updated_at is "now" (well after 2020).
       db.prepare(
-        `INSERT INTO plan_items (id, project_id, title, status_category) VALUES (?, ?, ?, ?)`,
-      ).run('pi-new', PROJECT_ID, 'fresh', 'in_progress');
+        `INSERT INTO plan_items (id, project_id, title, status_category, item_order) VALUES (?, ?, ?, ?, ?)`,
+      ).run('pi-new', PROJECT_ID, 'fresh', 'in_progress', 0);
 
       const { service } = buildService(db);
       expect(service.getBriefing(PROJECT_ID)).toBeNull();
