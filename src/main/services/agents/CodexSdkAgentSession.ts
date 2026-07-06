@@ -19,6 +19,13 @@ import {
 import { BaseAgentSession } from './BaseAgentSession';
 import { findCodexBinaryPath } from '../../codex/binary';
 import { classifyCodexError } from '../../codex/errors';
+import {
+  summarizeMcpToolCall,
+  summarizeThreadItem,
+  threadItemErrorMessage,
+  todoListProgress,
+  truncateCodexText,
+} from '../../codex/threadItemPresentation';
 import { REVIEW_FINDINGS_SCHEMA } from './reviewOutputContract';
 import type {
   AgentCompletionSummary,
@@ -26,29 +33,6 @@ import type {
   AgentType,
   IAgentSession,
 } from '../../../shared/agent-types';
-
-function truncate(text: string, max = 120): string {
-  const normalized = text.replace(/\s+/g, ' ').trim();
-  return normalized.length > max ? normalized.slice(0, max - 3) + '...' : normalized;
-}
-
-function summarizeCommand(command: string): string {
-  return `Run ${truncate(command || 'command')}`;
-}
-
-function summarizeMcpToolCall(item: McpToolCallItem): string {
-  return `Tool ${item.server}.${item.tool}`;
-}
-
-function itemErrorMessage(item: ThreadItem): string | null {
-  if (item.type === 'error') {
-    return item.message;
-  }
-  if (item.type === 'mcp_tool_call' && item.error?.message) {
-    return item.error.message;
-  }
-  return null;
-}
 
 export interface CodexSdkAgentSessionConfig {
   id: string;
@@ -211,7 +195,7 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
         timestamp: Date.now(),
         toolName: 'exec_command',
         toolInput: item.command,
-        summary: summarizeCommand(item.command),
+        summary: summarizeThreadItem(item),
         status: 'running',
       });
       return;
@@ -245,7 +229,7 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
         timestamp: Date.now(),
         toolName: 'web_search',
         toolInput: item.query,
-        summary: `Search ${truncate(item.query)}`,
+        summary: summarizeThreadItem(item),
         status: 'running',
       });
     }
@@ -256,8 +240,7 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
       return;
     }
 
-    const total = item.items.length;
-    const completed = item.items.filter((todo) => todo.completed).length;
+    const { completed, total } = todoListProgress(item);
     this.emitActivity({
       type: 'system',
       timestamp: Date.now(),
@@ -271,7 +254,7 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
       this.emitActivity({
         type: 'message',
         timestamp: Date.now(),
-        summary: truncate(item.text),
+        summary: summarizeThreadItem(item),
         content: item.text,
       });
       return;
@@ -292,12 +275,12 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
       return;
     }
 
-    const errorMessage = itemErrorMessage(item);
+    const errorMessage = threadItemErrorMessage(item);
     if (errorMessage) {
       this.emitActivity({
         type: 'error',
         timestamp: Date.now(),
-        summary: truncate(errorMessage),
+        summary: truncateCodexText(errorMessage),
         content: errorMessage,
       });
     }
@@ -308,7 +291,7 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
       type: 'tool_result',
       timestamp: Date.now(),
       toolName: 'exec_command',
-      summary: summarizeCommand(item.command),
+      summary: summarizeThreadItem(item),
       content: item.aggregated_output || undefined,
       status: item.status === 'failed' || (typeof item.exit_code === 'number' && item.exit_code !== 0)
         ? 'failed'
@@ -317,15 +300,11 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
   }
 
   private emitFileChange(item: FileChangeItem): void {
-    const firstChange = item.changes[0];
-    const summary = item.changes.length === 1 && firstChange
-      ? `${firstChange.kind} ${firstChange.path}`
-      : `${item.changes.length} file changes`;
     this.emitActivity({
       type: 'tool_result',
       timestamp: Date.now(),
       toolName: 'apply_patch',
-      summary,
+      summary: summarizeThreadItem(item),
       status: item.status === 'failed' ? 'failed' : 'success',
     });
   }

@@ -12,6 +12,7 @@ import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
 import { findCodexBinaryPath } from './binary';
 import { classifyCodexError } from './errors';
 import { registerCodexMcpSession, type CodexMcpRegistration } from './KpmCodexMcpServer';
+import { summarizeThreadItem } from './threadItemPresentation';
 import type { PlanContext } from '../claude/prompts';
 import { buildItemReferenceTable } from '../claude/prompts/planFormatting';
 
@@ -29,11 +30,6 @@ export interface CodexChatSessionConfig {
 interface QueuedTurn {
   input: Input;
   prependSystemPrompt: boolean;
-}
-
-function truncate(text: string, max = 120): string {
-  const normalized = text.replace(/\s+/g, ' ').trim();
-  return normalized.length > max ? `${normalized.slice(0, max - 3)}...` : normalized;
 }
 
 function buildCodexSystemPrompt(context: PlanContext): string {
@@ -116,32 +112,6 @@ function contentBlocksToCodexInput(content: ContentBlockParam[]): Input {
   return input;
 }
 
-function summarizeItem(item: ThreadItem): string {
-  if (item.type === 'command_execution') {
-    return `Run ${truncate(item.command)}`;
-  }
-  if (item.type === 'mcp_tool_call') {
-    return `Tool ${item.server}.${item.tool}`;
-  }
-  if (item.type === 'web_search') {
-    return `Search ${truncate(item.query)}`;
-  }
-  if (item.type === 'file_change') {
-    const first = item.changes[0];
-    return first && item.changes.length === 1
-      ? `${first.kind} ${first.path}`
-      : `${item.changes.length} file changes`;
-  }
-  if (item.type === 'todo_list') {
-    const completed = item.items.filter((todo) => todo.completed).length;
-    return `Checklist ${completed}/${item.items.length}`;
-  }
-  if (item.type === 'error') {
-    return truncate(item.message);
-  }
-  return item.type;
-}
-
 function toolUseName(item: ThreadItem): string | null {
   if (item.type === 'command_execution') return 'Bash';
   if (item.type === 'mcp_tool_call') return `mcp__${item.server}__${item.tool}`;
@@ -156,7 +126,7 @@ function toolUseInput(item: ThreadItem): Record<string, unknown> {
   if (item.type === 'mcp_tool_call') return { arguments: item.arguments };
   if (item.type === 'web_search') return { query: item.query };
   if (item.type === 'file_change') return { changes: item.changes };
-  if (item.type === 'todo_list') return { summary: summarizeItem(item) };
+  if (item.type === 'todo_list') return { summary: summarizeThreadItem(item) };
   return {};
 }
 
