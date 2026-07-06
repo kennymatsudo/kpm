@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useChatStore, type Activity, type MessageSegment } from '../../stores';
 import type { Message } from '../../stores/chat';
 import type { ChatViewMode } from '../../../shared/types';
-import { processMessageContent } from '../../utils/messageFormatter';
+import { parseUserMessage, processMessageContent } from '../../utils/messageFormatter';
 import { Markdown } from 'markdown-to-jsx';
 import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
 import { CopyIcon, CheckIcon } from '../icons';
@@ -11,6 +11,7 @@ import { ProcessTimeline } from './ProcessTimeline';
 import { Tooltip } from '../ui/Tooltip';
 import { AttachmentChip } from './AttachmentChip';
 import { formatModel } from '../../utils/usageFormatters';
+import { groupSegmentsForRender, type SegmentGroup } from './messageGroups';
 
 /** Extract text content from message segments for copy/display */
 function getTextContent(segments: MessageSegment[]): string {
@@ -18,59 +19,6 @@ function getTextContent(segments: MessageSegment[]): string {
     .filter((s): s is { type: 'text'; content: string } => s.type === 'text')
     .map((s) => s.content)
     .join('');
-}
-
-type SegmentGroup =
-  | { kind: 'process'; segments: MessageSegment[] }
-  | { kind: 'text'; content: string }
-  | { kind: 'checkpoint'; gapMs: number | null };
-
-/**
- * Split segments into ordered runs separated by text. Each text segment becomes
- * its own group; activity/thinking segments coalesce into a single process
- * group until the next text breaks the run. This is what lets a single
- * assistant turn render as alternating tool blocks and prose.
- *
- * `checkpoint` segments mark a merged turn boundary (see `finalizeMessage` in
- * streamingSlice.ts) and become a lightweight divider group carrying the gap
- * since the previous boundary — `startTimestamp` (the message's own start
- * time) anchors the gap for the first checkpoint in the list.
- */
-function groupSegmentsForRender(segments: MessageSegment[], startTimestamp?: number): SegmentGroup[] {
-  const groups: SegmentGroup[] = [];
-  let buffer: MessageSegment[] = [];
-  let previousTimestamp = startTimestamp ?? null;
-
-  const flushProcess = () => {
-    if (buffer.length === 0) return;
-    const hasContent = buffer.some(
-      (s) =>
-        (s.type === 'thinking' && s.content.trim().length > 0) ||
-        (s.type === 'activity' && s.activities.length > 0)
-    );
-    if (hasContent) {
-      groups.push({ kind: 'process', segments: buffer });
-    }
-    buffer = [];
-  };
-
-  for (const seg of segments) {
-    if (seg.type === 'text') {
-      flushProcess();
-      if (seg.content.trim().length > 0) {
-        groups.push({ kind: 'text', content: seg.content });
-      }
-    } else if (seg.type === 'checkpoint') {
-      flushProcess();
-      const gapMs = previousTimestamp != null ? Math.max(0, seg.timestamp - previousTimestamp) : null;
-      groups.push({ kind: 'checkpoint', gapMs });
-      previousTimestamp = seg.timestamp;
-    } else {
-      buffer.push(seg);
-    }
-  }
-  flushProcess();
-  return groups;
 }
 
 /** Gap above which a checkpoint divider reads as "resumed after…" instead of "…later". */
@@ -93,21 +41,6 @@ const CheckpointDivider = memo(function CheckpointDivider({ gapMs }: { gapMs: nu
   );
 });
 
-
-/** Parse user message to extract image attachments and clean content */
-function parseUserMessage(content: string): { cleanContent: string; imageCount: number } {
-  const imagePrefix = /^Images attached \(use Read tool to view\):\n((?:- [^\n]+\n)+)\n/;
-  const match = imagePrefix.exec(content);
-
-  if (match) {
-    const imageLines = match[1].trim().split('\n');
-    const imageCount = imageLines.length;
-    const cleanContent = content.slice(match[0].length);
-    return { cleanContent, imageCount };
-  }
-
-  return { cleanContent: content, imageCount: 0 };
-}
 
 /** Leading /name token (no '/' allowed inside, so paths like /Users/... never match) */
 const COMMAND_TOKEN_PATTERN = /^\/([A-Za-z0-9_:-]+)(?=\s|$)/;

@@ -42,3 +42,18 @@ export function processMessageContent(content: string): ProcessedMessage {
     hasPlanUpdate,
   };
 }
+
+/** Parse user message to extract image attachments and clean content */
+export function parseUserMessage(content: string): { cleanContent: string; imageCount: number } {
+  const imagePrefix = /^Images attached \(use Read tool to view\):\n((?:- [^\n]+\n)+)\n/;
+  const match = imagePrefix.exec(content);
+
+  if (match) {
+    const imageLines = match[1].trim().split('\n');
+    const imageCount = imageLines.length;
+    const cleanContent = content.slice(match[0].length);
+    return { cleanContent, imageCount };
+  }
+
+  return { cleanContent: content, imageCount: 0 };
+}

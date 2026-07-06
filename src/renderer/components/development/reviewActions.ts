@@ -107,6 +107,23 @@ export function getThreadPill(
   return { label: STATUS_LABEL[task.status], variant: 'default' };
 }
 
+export function formatReviewerVerdict(state: PrTopLevelReview['state']): string {
+  switch (state) {
+    case 'APPROVED':
+      return 'Approved';
+    case 'CHANGES_REQUESTED':
+      return 'Changes requested';
+    case 'COMMENTED':
+      return 'Commented';
+    case 'DISMISSED':
+      return 'Dismissed';
+    case 'PENDING':
+      return 'Pending';
+    case null:
+      return 'Reviewed';
+  }
+}
+
 /**
  * Latest verdict per reviewer. GitHub records one review event per submission,
  * so a single reviewer (especially bots like Cursor) appears many times; the

@@ -41,6 +41,7 @@ import {
   canReassessTask,
   deriveNextAction,
   DISPOSITION_LABEL,
+  formatReviewerVerdict,
   getThreadPill,
   getThreadRailClass,
   isAddressingReview,
@@ -137,23 +138,6 @@ function formatReviewDecision(value: string | null): string {
   if (value === 'CHANGES_REQUESTED') return 'Changes requested';
   if (value === 'REVIEW_REQUIRED') return 'Review required';
   return 'No decision';
-}
-
-function formatReviewerVerdict(state: PrTopLevelReview['state']): string {
-  switch (state) {
-    case 'APPROVED':
-      return 'Approved';
-    case 'CHANGES_REQUESTED':
-      return 'Changes requested';
-    case 'COMMENTED':
-      return 'Commented';
-    case 'DISMISSED':
-      return 'Dismissed';
-    case 'PENDING':
-      return 'Pending';
-    case null:
-      return 'Reviewed';
-  }
 }
 
 function reviewerVerdictTone(state: PrTopLevelReview['state']): string {
