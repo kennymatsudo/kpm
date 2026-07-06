@@ -19,6 +19,7 @@ import {
 } from '../../ui/Select';
 import { useAssociationData, useCustomFieldManagement, useSyncItemSelection } from './hooks';
 import { trackerLabelFor } from '../shared/trackerDisplay';
+import { buildItemMap, buildItemTree, selectCheckedItems, selectValidItems } from './syncReviewSelectors';
 
 interface Props {
   projectId: string;
@@ -97,43 +98,17 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
     }
   }, [phase, exportResult]);
 
-  const checkedItems = useMemo(
-    () => items.filter(i => i.decision === 'approved'),
-    [items]
-  );
+  const checkedItems = useMemo(() => selectCheckedItems(items), [items]);
 
-  const validItems = useMemo(
-    () => items.filter(i => i.validationErrors.length === 0),
-    [items]
-  );
+  const validItems = useMemo(() => selectValidItems(items), [items]);
 
   const allValidChecked = validItems.length > 0 && validItems.every(i => i.decision === 'approved');
 
-  // Handlers
   // Build parent lookup for hierarchy display and auto-approval
-  const itemMap = useMemo(() => {
-    const map = new Map<string, SyncReviewItem>();
-    for (const item of items) map.set(item.planItem.id, item);
-    return map;
-  }, [items]);
+  const itemMap = useMemo(() => buildItemMap(items), [items]);
 
   // Build tree structure for sidebar display
-  const itemTree = useMemo(() => {
-    const itemIds = new Set(items.map(i => i.planItem.id));
-    const childrenOf = new Map<string | null, SyncReviewItem[]>();
-
-    for (const item of items) {
-      // Nest under parent only if parent is also in the review list
-      const parentKey = item.planItem.parent_id && itemIds.has(item.planItem.parent_id)
-        ? item.planItem.parent_id
-        : null;
-      const siblings = childrenOf.get(parentKey) ?? [];
-      siblings.push(item);
-      childrenOf.set(parentKey, siblings);
-    }
-
-    return { roots: childrenOf.get(null) ?? [], childrenOf };
-  }, [items]);
+  const itemTree = useMemo(() => buildItemTree(items), [items]);
 
   const handleToggleItem = (itemId: string) => {
     const item = items.find(i => i.planItem.id === itemId);
