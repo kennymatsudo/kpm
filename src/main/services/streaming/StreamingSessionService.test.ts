@@ -233,6 +233,7 @@ function createDeps(sendSpy: (channel: string, payload: unknown) => void): Strea
       },
     } as BrowserWindow),
     buildContext: () => ({ projectId: 'project-1' } as never),
+    getPlanItems: () => [],
     buildSdkOptions: () => ({}),
     subscribeToPlanActions: () => () => {},
     subscribeToClaudeMdUpdate: () => () => {},

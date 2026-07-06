@@ -47,11 +47,14 @@ export function Chat({ currentView }: ChatProps) {
     }))
   );
   // Access per-session chat state
-  const { viewedSessionId, viewedSession, clearError, loadFromHistory } = useChatStore(useShallow((state) => {
+  const { viewedSessionId, viewedHydrated, error, mcpDegraded, mcpError, clearError, loadFromHistory } = useChatStore(useShallow((state) => {
     const session = state.viewedSessionId ? state.sessions.get(state.viewedSessionId) : null;
     return {
       viewedSessionId: state.viewedSessionId,
-      viewedSession: session,
+      viewedHydrated: session?.hydrated ?? true,
+      error: session?.error ?? null,
+      mcpDegraded: session?.mcpDegraded ?? false,
+      mcpError: session?.mcpError ?? null,
       clearError: state.clearError,
       loadFromHistory: state.loadFromHistory,
     };
@@ -60,15 +63,10 @@ export function Chat({ currentView }: ChatProps) {
   // Lazy hydration: when a restored tab is focused for the first time, pull
   // its messages from the DB. Non-restored sessions are created with
   // hydrated:true and skip this round-trip.
-  const viewedHydrated = viewedSession?.hydrated ?? true;
   useEffect(() => {
     if (!currentProjectId || !viewedSessionId || viewedHydrated) return;
     void loadFromHistory(currentProjectId, viewedSessionId);
   }, [currentProjectId, viewedSessionId, viewedHydrated, loadFromHistory]);
-
-  const error = viewedSession?.error ?? null;
-  const mcpDegraded = viewedSession?.mcpDegraded ?? false;
-  const mcpError = viewedSession?.mcpError ?? null;
 
   const { send, retry, cancel, cancelQueued } = useChat(currentProjectId, currentView);
   const [lastMessage, setLastMessage] = useState<string | null>(null);

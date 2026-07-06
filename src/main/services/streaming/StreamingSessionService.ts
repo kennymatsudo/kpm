@@ -34,7 +34,7 @@ import { buildUserContentBlocks } from '../../claude/attachmentBlocks';
 import { buildFocusedSection } from '../../claude/prompts/focusedResources';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../claude/prompts';
-import type { ChatProvider, FocusChatDocument, FocusedResource, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope } from '../../../shared/types';
+import type { ChatProvider, FocusChatDocument, FocusedResource, PlanItem, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope } from '../../../shared/types';
 import { getConfig } from '../../config';
 import { clientManager } from '../../claude/clientManager';
 import { isMaxTokensReached, isMaxTurnsReached, getTerminalReason } from '../../claude/sdkTypeGuards';
@@ -42,6 +42,7 @@ import { interpretSdkMessage, type SegmentState } from './interpretSdkMessage';
 import { extractFilePaths } from '../toollog/extractFilePaths';
 import { DEFAULT_CONTEXT_FILENAME } from '../../../shared/contextFile';
 import { promptUser } from '../core/PermissionPromptService';
+import { isAllowedExternalUrl } from '../../security/externalUrl';
 import { selectVisibleSlashCommands } from '../core/SlashCommandService';
 import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import { randomUUID } from 'crypto';
@@ -363,6 +364,9 @@ export interface StreamingSessionServiceDeps {
 
   /** Build context for main chat sessions */
   buildContext: (projectId: string) => PlanContext | null;
+
+  /** Read plan items for a project without building full session context */
+  getPlanItems: (projectId: string) => PlanItem[];
 
   /** Build SDK options from context */
   buildSdkOptions: (
@@ -1168,8 +1172,14 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           if (!mainWindow) {
             return { action: 'decline' as const };
           }
-          // For URL-mode elicitation (OAuth), open the URL and auto-accept
+          // For URL-mode elicitation (OAuth), open the URL and auto-accept —
+          // but only after validating the scheme, since a compromised MCP
+          // server could hand us a file:// or custom-scheme URL.
           if (request.mode === 'url' && request.url) {
+            if (!isAllowedExternalUrl(request.url)) {
+              console.warn(`[StreamingSessionService] Blocked unsafe MCP elicitation URL: ${request.url}`);
+              return { action: 'decline' as const };
+            }
             const { shell } = await import('electron');
             void shell.openExternal(request.url);
             return { action: 'accept' as const, content: {} };
@@ -1533,7 +1543,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const isCommandTurn = deps.isSlashCommand?.(message) ?? false;
     if (focused && focused.length > 0 && !isCommandTurn) {
       const hasPlanItem = focused.some((r) => r.type === 'plan_item');
-      const planItems = hasPlanItem ? (deps.buildContext(projectId)?.planItems ?? []) : [];
+      const planItems = hasPlanItem ? deps.getPlanItems(projectId) : [];
       const prefix = buildFocusedSection(focused, planItems);
       if (prefix.trim()) {
         messageText = `${prefix}\n\n${message}`;

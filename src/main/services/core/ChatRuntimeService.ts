@@ -80,6 +80,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     },
     getMainWindow,
     buildContext: buildContextWithPrompts,
+    getPlanItems: container.planItems.getByProject.bind(container.planItems),
     buildSdkOptions: (context: PlanContext, options: {
       model: ModelType;
       effort?: 'low' | 'medium' | 'high' | 'max';

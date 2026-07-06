@@ -34,6 +34,9 @@ const PLAN_PLACEHOLDERS = [
 
 const DEFAULT_PLACEHOLDER = 'Reply or ask a follow-up…';
 
+const NO_ATTACHMENTS: ChatAttachment[] = [];
+const NO_SUGGESTIONS: string[] = [];
+
 interface ChatInputProps {
   onSend: (message: string, attachments?: ChatAttachment[], chatSessionId?: string) => void;
   onCancel: () => void;
@@ -46,11 +49,27 @@ interface ChatInputProps {
 
 export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, currentView }: ChatInputProps) {
   // Draft message and streaming state from viewed session
-  const { viewedSessionId, viewedSession, lastTurnUsage, setDraftMessage, setPendingAttachments, getChatSessionId, getOrCreateSession } = useChatStore(useShallow((state) => {
+  const {
+    viewedSessionId,
+    viewedSessionDraftMessage,
+    viewedSessionModel,
+    attachments,
+    isStreaming,
+    suggestions,
+    lastTurnUsage,
+    setDraftMessage,
+    setPendingAttachments,
+    getChatSessionId,
+    getOrCreateSession,
+  } = useChatStore(useShallow((state) => {
     const session = state.viewedSessionId ? state.sessions.get(state.viewedSessionId) : null;
     return {
       viewedSessionId: state.viewedSessionId,
-      viewedSession: session,
+      viewedSessionDraftMessage: session?.draftMessage ?? '',
+      viewedSessionModel: session?.model,
+      attachments: session?.pendingAttachments ?? NO_ATTACHMENTS,
+      isStreaming: session?.isStreaming ?? false,
+      suggestions: session?.suggestions ?? NO_SUGGESTIONS,
       lastTurnUsage: session?.lastTurnUsage ?? null,
       setDraftMessage: state.setDraftMessage,
       setPendingAttachments: state.setPendingAttachments,
@@ -59,9 +78,6 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     };
   }));
 
-  const attachments = viewedSession?.pendingAttachments ?? [];
-  const isStreaming = viewedSession?.isStreaming ?? false;
-  const suggestions = viewedSession?.suggestions ?? [];
   const sendDisabledWhileStreaming = false;
 
   // Local draft state so keystrokes feel instant: the textarea never waits on a
@@ -69,7 +85,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   // subscribers). The store is the durable copy — persists across view switches
   // and first-keystroke session creation — so we mirror local → store on idle,
   // on blur, on send, and on unmount rather than on every character.
-  const [draft, setDraft] = useState(viewedSession?.draftMessage ?? '');
+  const [draft, setDraft] = useState(viewedSessionDraftMessage);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<{ sessionId: string; value: string } | null>(null);
   const syncedSessionRef = useRef(viewedSessionId);
@@ -123,11 +139,11 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     if (syncedSessionRef.current !== viewedSessionId) {
       flushDraft();
       syncedSessionRef.current = viewedSessionId;
-      const nextDraft = viewedSession?.draftMessage ?? '';
+      const nextDraft = viewedSessionDraftMessage;
       setDraft(nextDraft);
       setCursorPosition(nextDraft.length);
     }
-  }, [viewedSessionId, viewedSession?.draftMessage, flushDraft]);
+  }, [viewedSessionId, viewedSessionDraftMessage, flushDraft]);
 
   // Persist any pending edit if the composer unmounts (e.g., view switch).
   useEffect(() => () => flushDraft(), [flushDraft]);
@@ -500,7 +516,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
 
       {/* Context window usage — sits below the composer, inside the input padding zone */}
       {viewedSessionId && (
-        <ContextWindowBar usage={lastTurnUsage} model={viewedSession?.model} />
+        <ContextWindowBar usage={lastTurnUsage} model={viewedSessionModel} />
       )}
 
       {/* Argument hint for the chosen slash command, until arguments are typed */}
