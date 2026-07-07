@@ -97,7 +97,7 @@ describe('WorktreeService command safety', () => {
 
     expect(result.ok).toBe(true);
     expect(gitExecMock).toHaveBeenCalledWith(
-      ['push', '-u', 'origin', maliciousBranch],
+      ['push', '-u', 'origin', '--', maliciousBranch],
       { cwd: worktreePath }
     );
   });
@@ -122,11 +122,11 @@ describe('WorktreeService command safety', () => {
       { cwd: repoPath }
     );
     expect(gitExecMock).toHaveBeenCalledWith(
-      ['branch', '-D', maliciousBranch],
+      ['branch', '-D', '--', maliciousBranch],
       { cwd: repoPath }
     );
     expect(gitExecMock).toHaveBeenCalledWith(
-      ['push', 'origin', '--delete', maliciousBranch],
+      ['push', 'origin', '--delete', '--', maliciousBranch],
       { cwd: repoPath }
     );
     expect(worktrees.delete).toHaveBeenCalledWith(worktree.id);
@@ -152,7 +152,7 @@ describe('WorktreeService command safety', () => {
       { cwd: repoPath }
     );
     expect(gitExecMock).toHaveBeenCalledWith(
-      ['branch', '-d', maliciousBranch],
+      ['branch', '-d', '--', maliciousBranch],
       { cwd: repoPath }
     );
     expect(worktrees.delete).toHaveBeenCalledWith(worktree.id);
