@@ -1,4 +1,4 @@
-import { memo, Fragment, useCallback } from 'react';
+import { memo, Fragment, useCallback, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { HighlightedText } from '../planning/HighlightedText';
 import { useDevSessionsStore } from '../../stores/devSessions';
@@ -149,9 +149,10 @@ export const BoardCard = memo(function BoardCard({
     reviewActionable,
     repoSession,
     commitStatus,
-    reviewStats,
+    reviewInbox,
+    reviewAssessmentRunning,
     completionStats,
-    mergeBlockedByNames,
+    mergeBlockedByNamesKey,
   } = useDevSessionsStore(
     useShallow((state) => {
       const itemSessions = state.sessionsByPlanItemId.get(item.id) ?? [];
@@ -212,14 +213,31 @@ export const BoardCard = memo(function BoardCard({
         reviewState: reviewId ? state.agentStateBySessionId.get(reviewId) : undefined,
         latestReviewActivity: reviewId ? state.latestActivityBySessionId.get(reviewId) : undefined,
         isMergeBlocked: mergeBlocked,
-        mergeBlockedByNames: blockedByNames,
+        // Return stable primitives/refs only: useShallow compares one level
+        // deep, so a freshly-built array/object here would never compare equal
+        // and would re-fire the store subscription every render. The names
+        // array and reviewStats object are rebuilt from these in useMemo below.
+        mergeBlockedByNamesKey: JSON.stringify(blockedByNames),
         reviewActionable: actionableSummary,
         repoSession: sessionWithWorktree,
         commitStatus: active ? state.commitStateBySessionId.get(active.id)?.status ?? null : null,
-        reviewStats: inbox && active ? toReviewPhaseStats(getStats(inbox, active.id), assessmentRunning) : null,
+        reviewInbox: inbox,
+        reviewAssessmentRunning: assessmentRunning,
         completionStats: active ? state.completionBySessionId.get(active.id) : undefined,
       };
     })
+  );
+
+  const reviewStats = useMemo(
+    () =>
+      reviewInbox && activeSession
+        ? toReviewPhaseStats(getStats(reviewInbox, activeSession.id), reviewAssessmentRunning)
+        : null,
+    [reviewInbox, activeSession, reviewAssessmentRunning],
+  );
+  const mergeBlockedByNames = useMemo(
+    () => JSON.parse(mergeBlockedByNamesKey) as string[],
+    [mergeBlockedByNamesKey],
   );
 
   const itemStatus = item.status_category
