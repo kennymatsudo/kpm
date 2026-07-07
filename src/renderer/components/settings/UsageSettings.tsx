@@ -33,6 +33,7 @@ import {
   formatSource,
   formatModel,
   formatEventTimestamp,
+  formatMsAsSeconds,
   resolveModelTier,
   modelTierLabel,
   type ModelTier,
@@ -599,6 +600,13 @@ function ProjectBreakdownTable({ rows }: { rows: ClaudeUsageProjectBreakdownRow[
   );
 }
 
+function formatEventLatency(durationMs: number | null, ttftMs: number | null): string {
+  const parts: string[] = [];
+  if (durationMs !== null) parts.push(formatMsAsSeconds(durationMs));
+  if (ttftMs !== null) parts.push(`first token ${formatMsAsSeconds(ttftMs)}`);
+  return parts.length > 0 ? parts.join(' · ') : '—';
+}
+
 function RecentEventsTable({ events }: { events: ClaudeUsageEvent[] }) {
   if (events.length === 0) {
     return (
@@ -618,6 +626,7 @@ function RecentEventsTable({ events }: { events: ClaudeUsageEvent[] }) {
             <th scope="col" className="text-right font-medium px-3 py-2">In</th>
             <th scope="col" className="text-right font-medium px-3 py-2">Out</th>
             <th scope="col" className="text-right font-medium px-3 py-2">Cost</th>
+            <th scope="col" className="text-right font-medium px-3 py-2">Latency</th>
           </tr>
         </thead>
         <tbody>
@@ -634,6 +643,9 @@ function RecentEventsTable({ events }: { events: ClaudeUsageEvent[] }) {
               </td>
               <td className="px-3 py-1.5 text-right tabular-nums text-text-primary">
                 {formatCurrency(event.cost_micro_usd)}
+              </td>
+              <td className="px-3 py-1.5 text-right tabular-nums text-text-secondary whitespace-nowrap">
+                {formatEventLatency(event.duration_ms, event.ttft_ms)}
               </td>
             </tr>
           ))}

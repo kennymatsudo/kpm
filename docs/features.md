@@ -1049,7 +1049,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Function: `src/main/claude/contextBuilders.ts` (`createContextBuilder`, `buildContext`)
   - Types: `src/main/claude/prompts/types.ts` (`PlanContext`)
   - Formatting: `src/main/claude/prompts/planFormatting.ts` (`buildItemReferenceTable`, `FULL_HIERARCHY_THRESHOLD`)
-  - Size control: full hierarchy below threshold, root items + `filter_plan_items` tool above it
+  - Size control: full hierarchy below threshold, root items + `query_plan_items` tool above it
 - **Why it matters:** Claude understands project structure without exposing all items. Efficient context encoding.
 
 ### 95. Activity Tracking (Tool Calls, Plan Changes)

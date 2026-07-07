@@ -82,6 +82,11 @@ export function modelTierLabel(tier: ModelTier): string {
   return 'Other';
 }
 
+/** Milliseconds → "14.2s". */
+export function formatMsAsSeconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
 /** ISO timestamp → "Mar 5, 2:14 PM". */
 export function formatEventTimestamp(iso: string): string {
   const date = new Date(iso);

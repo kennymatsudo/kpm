@@ -14,7 +14,7 @@ IPC handlers (chat.ts)
 createKpmServer() (singleton MCP server)
     ├─ plan-items.ts (query tools)
     ├─ plan-changes.ts (modification tool + callbacks)
-    ├─ groups.ts (group management tools)
+    ├─ groups.ts (read-only group query tools; group mutations go through modify_plan)
     ├─ jira.ts (Jira integration)
     ├─ relations.ts (dependency tools)
     ├─ storybook.ts (component discovery)
@@ -46,9 +46,9 @@ Session key is `chat:{projectId}:{chatSessionId}` — multiple concurrent chat s
 - **`focus_document`**: slim session scoped to a single document (doc focus mode) — reduced tool set via `getFocusKpmServer()`, built with `buildFocusSystemPrompt()`
 
 **Unified Chat Architecture (main scope):**
-- Single session carries over when switching between Plan and Workspace views
-- `currentView` parameter ('plan' | 'workspace') passed for context-aware prompts
-- History persists across view switches - no session reset
+- Single session survives switching between Plan and Workspace views — no disconnect, no session reset
+- The system prompt is view-independent (byte-stable, so prompt caching survives); the current view is injected as a `[Context: …]` line on each message instead
+- History persists across view switches
 
 **Flow:**
 1. `StreamingSession` wraps the SDK `query()` function
@@ -74,7 +74,7 @@ Tools are direct function calls registered with the SDK at startup—no subproce
 Claude proposes changes via tools; KPM either shows the approval modal or auto-applies the actions based on the user's global setting.
 
 ```
-Claude calls modification tool (modify_plan, bulk_reparent, etc.)
+Claude calls modification tool (modify_plan, bulk_modify_plan, etc.)
   ↓ Tool validates input via Zod
   ↓ Tool emits PlanAction[] via onPlanActions callback
   ↓ UI receives event
@@ -84,17 +84,7 @@ Claude calls modification tool (modify_plan, bulk_reparent, etc.)
 
 **Modification tools that emit actions for approval or auto-apply:**
 - `modify_plan` - General plan modifications
-- `flatten_hierarchy` - Move nested items to root
-- `bulk_update_status` - Update status for multiple items
-- `bulk_delete` - Delete multiple items
-- `bulk_reparent` - Move items under new parent
-- `bulk_set_label` - Set label for multiple items
-- `bulk_set_release` - Set release tag for multiple items
-- `clear_dependencies` - Remove dependencies from items
-- `bulk_create_groups` - Create multiple groups
-- `bulk_delete_groups` - Delete multiple groups
-- `assign_items_to_group` - Assign items to a group
-- `clear_all_group_assignments` - Remove all group assignments
+- `bulk_modify_plan` - Bulk mutations (set_status, set_label, set_release, reparent, delete, clear_dependencies) against items selected by ID or filter
 
 **Exception (immediate execution):**
 - `clear_positions` - Only affects canvas layout, not plan structure
@@ -117,7 +107,7 @@ Files in `prompts/` directory. Entry point is `index.ts` with `buildSystemPrompt
 
 Key files: `toolDocs.ts` (tool decision tree), `modes.ts` (repo-access + plan-modification guidance), `workspace.ts` (constraints, workspace boundaries, plan rules, response style), `planFormatting.ts` (plan display), `focusedResources.ts` (focused resource handling), `slackTriage.ts` (Slack triage prompt fragments), `promptRegistry.ts` (system prompt registry), `types.ts` (`PlanContext` / `ContinuationTurn`).
 
-The `currentView` parameter ('plan' | 'workspace') adds context-aware suggestions without changing response modes — it hints at UI context, not behavior constraints.
+The `currentView` ('plan' | 'workspace') sent with each message is injected as a `[Context: …]` line ahead of the user's text (`StreamingSessionService.sendChatMessage`) rather than built into the system prompt — this keeps the prompt byte-stable across view switches for cache hits without changing response modes.
 
 ## Common Pitfalls
 

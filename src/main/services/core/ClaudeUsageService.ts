@@ -81,6 +81,8 @@ export interface RecordUsageInput {
   sdkCostScope?: string | null;
   /** True when totalCostUsd is cumulative for sdkSessionId/sdkCostScope. */
   isCumulativeCostSnapshot?: boolean;
+  ttftMs?: number | null;
+  durationMs?: number | null;
 }
 
 export interface ProjectUsageStats {
@@ -194,6 +196,8 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
         sdk_cost_scope: input.sdkCostScope ?? (input.isCumulativeCostSnapshot ? '__total__' : null),
         sdk_cumulative_cost_micro_usd: sdkCumulativeCostMicroUsd,
         cost_source: costSource,
+        ttft_ms: input.ttftMs ?? null,
+        duration_ms: input.durationMs ?? null,
       });
 
       // Roll up to the existing project token columns so legacy UI surfaces

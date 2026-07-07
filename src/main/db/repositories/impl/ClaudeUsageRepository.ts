@@ -76,8 +76,8 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
           id, project_id, project_name_snapshot, source, model,
           input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
           cost_micro_usd, sdk_session_id, sdk_result_uuid, sdk_cost_scope,
-          sdk_cumulative_cost_micro_usd, cost_source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          sdk_cumulative_cost_micro_usd, cost_source, ttft_ms, duration_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *
       `),
       totalsByProject: db.prepare(`${totalsSelect} WHERE project_id = ?`),
@@ -165,6 +165,8 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
       event.sdk_cost_scope ?? null,
       event.sdk_cumulative_cost_micro_usd ?? null,
       event.cost_source ?? 'local_pricing_fallback',
+      event.ttft_ms ?? null,
+      event.duration_ms ?? null,
     ) as ClaudeUsageEvent | undefined;
 
     if (inserted) return inserted;

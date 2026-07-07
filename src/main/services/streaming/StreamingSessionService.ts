@@ -40,7 +40,7 @@ import { clientManager } from '../../claude/clientManager';
 import { isMaxTokensReached, isMaxTurnsReached, getTerminalReason } from '../../claude/sdkTypeGuards';
 import { interpretSdkMessage, type SegmentState } from './interpretSdkMessage';
 import { extractFilePaths } from '../toollog/extractFilePaths';
-import { DEFAULT_CONTEXT_FILENAME } from '../../../shared/contextFile';
+import { DEFAULT_CONTEXT_FILENAME, CONTEXT_FILE_PENDING_CACHE_KEY } from '../../../shared/contextFile';
 import { promptUser } from '../core/PermissionPromptService';
 import { isAllowedExternalUrl } from '../../security/externalUrl';
 import { selectVisibleSlashCommands } from '../core/SlashCommandService';
@@ -56,8 +56,14 @@ import { chatEvents } from '../../../shared/ipc/chatEvents';
 export type SessionState = 'idle' | 'connecting' | 'ready' | 'processing' | 'error' | 'closing';
 export type SessionType = 'chat';
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
-/** UI view mode - passed to prompts for context-aware suggestions */
+/** UI view mode - injected as a per-message `[Context: …]` hint; the system prompt itself is view-independent. */
 export type ViewMode = 'plan' | 'workspace' | 'focus';
+
+function buildViewHintLine(currentView?: ViewMode): string | undefined {
+  if (currentView === 'plan') return '[Context: user is viewing the planning canvas]';
+  if (currentView === 'workspace') return '[Context: user is viewing the workspace]';
+  return undefined;
+}
 
 // Budgets for the history replay seeded into a fresh SDK session after a
 // worktree switch. MAX_TURNS caps ping-pong depth; MAX_CHARS (~15k tokens)
@@ -228,7 +234,6 @@ interface ManagedSession {
   model: ModelType;
   lastActivity: number;
   sessionId?: string; // SDK session ID for resume
-  currentView?: ViewMode;
   processingStartTime?: number; // Timestamp when processing started (for timeout detection)
   lastSdkActivity?: number; // Timestamp of most recent SDK message (for idle-while-processing detection)
   mcpHealthStatus: 'healthy' | 'degraded' | 'recovering'; // KPM MCP server health
@@ -281,6 +286,8 @@ interface ManagedSession {
    * `overloaded`) doesn't double-up. Reset at each turn boundary.
    */
   turnErrorSurfaced?: boolean;
+  turnStartedAt?: number;
+  firstContentAt?: number;
   unsubscribePlanActions: () => void;
   unsubscribeClaudeMdUpdate: () => void;
   unsubscribeDocumentUpdate: () => void;
@@ -324,6 +331,8 @@ export interface StreamingSessionServiceDeps {
     sdkResultUuid?: string | null;
     sdkCostScope?: string | null;
     isCumulativeCostSnapshot?: boolean;
+    ttftMs?: number | null;
+    durationMs?: number | null;
   }) => void;
 
   /** Chat message repository for persisting messages */
@@ -374,7 +383,6 @@ export interface StreamingSessionServiceDeps {
     options: {
       model: ModelType;
       effort?: 'low' | 'medium' | 'high' | 'max';
-      currentView?: ViewMode;
       resumeSessionId?: string;
       mainWindow: BrowserWindow | null;
       onClaudeMdEdit?: (projectId: string, newContent: string) => void;
@@ -520,6 +528,21 @@ export function markSessionReady(
 // Turn-Result Finalization
 // =============================================================================
 
+function computeTurnTimings(
+  managed: Pick<ManagedSession, 'turnStartedAt' | 'firstContentAt'>,
+  resultTime: number,
+): { ttftMs: number | null; durationMs: number | null } {
+  const { turnStartedAt, firstContentAt } = managed;
+  const ttftMs = turnStartedAt !== undefined && firstContentAt !== undefined
+    ? firstContentAt - turnStartedAt
+    : null;
+  const durationMs = turnStartedAt !== undefined ? resultTime - turnStartedAt : null;
+  return {
+    ttftMs: ttftMs !== null && ttftMs >= 0 ? ttftMs : null,
+    durationMs: durationMs !== null && durationMs >= 0 ? durationMs : null,
+  };
+}
+
 /**
  * Finalize a completed turn on receipt of the SDK's 'result' message:
  * queued-follow-up promotion, error/truncation banners, message persistence,
@@ -545,6 +568,9 @@ export function finalizeTurnResult(
     disconnectSession: (key: string, options?: { silent?: boolean; reason?: string; source?: string }) => Promise<void>;
   },
 ): void {
+  const resultTime = Date.now();
+  const { ttftMs, durationMs } = computeTurnTimings(managed, resultTime);
+
   // In streaming-input mode the SDK input generator may already be waiting
   // on pull(), so a mid-turn send can be handed straight to the model as
   // steering input for THIS turn and answered in place; no second `result`
@@ -832,6 +858,8 @@ export function finalizeTurnResult(
             sdkResultUuid: resultMsg.uuid ?? null,
             sdkCostScope: '__total__',
             isCumulativeCostSnapshot: true,
+            ttftMs,
+            durationMs,
           });
         }
       } else {
@@ -850,6 +878,11 @@ export function finalizeTurnResult(
   // clean. Done after every error-banner check above (including the late
   // max-tokens one) so suppression only applies within this turn.
   managed.turnErrorSurfaced = false;
+
+  managed.firstContentAt = undefined;
+  if (!hasQueuedFollowUp) {
+    managed.turnStartedAt = undefined;
+  }
 }
 
 // =============================================================================
@@ -1034,6 +1067,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     managed.processingStartTime = Date.now();
     managed.lastSdkActivity = Date.now();
     managed.lastActivity = Date.now();
+    managed.turnStartedAt = Date.now();
 
     try {
       await runWithToolExecutionContext(
@@ -1071,7 +1105,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     effort?: 'low' | 'medium' | 'high' | 'max';
     resumeSessionId?: string;
     context: PlanContext;
-    currentView?: ViewMode;
     persistHistory: boolean;
     forceApprovalReview: boolean;
     onMessage: (session: IChatSession, msg: unknown) => void;
@@ -1091,7 +1124,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       effort,
       resumeSessionId,
       context,
-      currentView,
       persistHistory,
       forceApprovalReview,
       onMessage,
@@ -1119,12 +1151,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       const createClaudeSdkOptions = () => deps.buildSdkOptions(context, {
         model,
         effort,
-        currentView,
         resumeSessionId,
         mainWindow,
         autoApprove: true,
         // Callback for intercepted context file edits from the permission handler
         onClaudeMdEdit: (editProjectId: string, newContent: string) => {
+          // Record so a subsequent Edit (built-in or propose_context_edit)
+          // this turn builds on this content instead of stale disk — the
+          // interception denies the write, so disk never reflects it.
+          recordPendingDocumentContent(chatSessionId, CONTEXT_FILE_PENDING_CACHE_KEY, newContent);
           // Read current context file for diff display
           void (async () => {
             const currentContent = await deps.readClaudeMd(editProjectId);
@@ -1357,7 +1392,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         provider,
         model,
         lastActivity: Date.now(),
-        currentView,
+        turnStartedAt: Date.now(),
         titleSeed: initialMessage.titleSeed,
         mcpHealthStatus: 'healthy',
         mcpRecoveryAttempts: 0,
@@ -1484,7 +1519,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     effort?: 'low' | 'medium' | 'high' | 'max';
     focusedResources?: { type: string; path: string }[];
     chatSessionId?: string;
-    /** Current UI view - used for prompt customization */
+    /** Current UI view - injected as a per-message `[Context: …]` hint */
     currentView?: ViewMode;
     /** Focus-reader document context for slim focused chat sessions */
     focusDocument?: FocusChatDocument;
@@ -1525,30 +1560,26 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       });
     }
 
-    // If view changed, disconnect and create new session
-    const latestManaged = sessions.get(key);
-    if (latestManaged && options.currentView && latestManaged.currentView !== options.currentView) {
-      await disconnectSession(key, {
-        reason: 'view_changed',
-        source: 'sendChatMessage',
-      });
-    }
-
-    // Inject focused-resource context into the message text so it is
-    // accurate for every turn, regardless of when the session was created.
-    // Context is captured at send time; plan-item bodies are inlined when
-    // needed (requires a fresh context read for the current plan state).
-    const focused = options.focusedResources as FocusedResource[] | undefined;
-    let messageText = message;
+    // Inject per-message context into the text so it is accurate for every
+    // turn regardless of when the session was created: a view hint (keeps
+    // the system prompt byte-identical across Plan/Workspace switches, so
+    // prompt caching survives) and focused-resource context. Context is
+    // captured at send time; plan-item bodies are inlined when needed
+    // (requires a fresh context read for the current plan state).
     const isCommandTurn = deps.isSlashCommand?.(message) ?? false;
+    const viewHint = isCommandTurn ? undefined : buildViewHintLine(options.currentView);
+
+    const focused = options.focusedResources as FocusedResource[] | undefined;
+    let focusedPrefix: string | undefined;
     if (focused && focused.length > 0 && !isCommandTurn) {
       const hasPlanItem = focused.some((r) => r.type === 'plan_item');
       const planItems = hasPlanItem ? deps.getPlanItems(projectId) : [];
       const prefix = buildFocusedSection(focused, planItems);
-      if (prefix.trim()) {
-        messageText = `${prefix}\n\n${message}`;
-      }
+      if (prefix.trim()) focusedPrefix = prefix;
     }
+
+    const prefixLines = [viewHint, focusedPrefix].filter((line): line is string => !!line);
+    const messageText = prefixLines.length > 0 ? `${prefixLines.join('\n\n')}\n\n${message}` : message;
 
     const envelope: MessageEnvelope = { text: messageText, titleSeed: message, attachments: options.attachments };
     return sendMessageToSession(
@@ -1600,10 +1631,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       return failure('Failed to build context');
     }
 
-    // Add current view to context for prompt customization
-    if (options.currentView) {
-      (context as PlanContext & { currentView?: ViewMode }).currentView = options.currentView;
-    }
     if (options.focusDocument) {
       context.focusDocument = options.focusDocument;
     }
@@ -1646,7 +1673,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       effort: options.effort,
       resumeSessionId,
       context,
-      currentView: options.currentView,
       persistHistory,
       forceApprovalReview: !!options.focusDocument,
       onMessage: (session, msg) => handleChatSessionMessage(projectId, chatSessionId, session, msg),
@@ -1758,6 +1784,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       }
       return failure(`Failed to add follow-up: ${(error as Error).message}`);
     }
+
+    managed.turnStartedAt = Date.now();
 
     const mainWindow = deps.getMainWindow();
     emitAppEvent(mainWindow?.webContents, chatEvents.queued, {
@@ -1963,6 +1991,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     for (const event of interpretedEvents) {
       switch (event.kind) {
         case 'chunk':
+          if (managed.firstContentAt === undefined) managed.firstContentAt = Date.now();
           emitAppEvent(mainWindow?.webContents, chatEvents.chunk, {
             projectId,
             chatSessionId,
@@ -1975,6 +2004,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           sendChatActivity(mainWindow, projectId, chatSessionId, event.activity);
           break;
         case 'thinking':
+          if (managed.firstContentAt === undefined) managed.firstContentAt = Date.now();
           emitAppEvent(mainWindow?.webContents, chatEvents.thinking, { projectId, chatSessionId, text: event.text });
           break;
         case 'error':

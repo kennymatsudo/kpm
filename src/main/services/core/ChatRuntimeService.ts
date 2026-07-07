@@ -15,7 +15,7 @@ import { createToolCallLogger } from '../toollog';
 import type { PlanContext } from '../../claude/prompts';
 import { unwrapOrThrow } from '../result';
 import { createChatService } from './ChatService';
-import { CHAT_APPROVAL_MODE_KEY, CHAT_PROVIDER_KEY, parseChatApprovalMode, parseChatProvider } from '../../../shared/appSettings';
+import { CHAT_PROVIDER_KEY, parseChatProvider } from '../../../shared/appSettings';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { chatEvents } from '../../../shared/ipc/chatEvents';
 
@@ -40,7 +40,6 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     const context = buildContext(projectId);
     if (context) {
       context.getPromptContent = (key: string) => unwrapOrThrow(services.promptOverrideService.getContent(key));
-      context.approvalMode = parseChatApprovalMode(container.appSettings.get(CHAT_APPROVAL_MODE_KEY));
     }
     return context;
   };
@@ -52,7 +51,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
       get: container.projects.get.bind(container.projects),
       updateTokens: container.projects.updateTokens.bind(container.projects),
     },
-    recordUsage: ({ projectId, model, usage, totalCostUsd, sdkSessionId, sdkResultUuid, sdkCostScope, isCumulativeCostSnapshot }) => {
+    recordUsage: ({ projectId, model, usage, totalCostUsd, sdkSessionId, sdkResultUuid, sdkCostScope, isCumulativeCostSnapshot, ttftMs, durationMs }) => {
       services.claudeUsageService.recordUsage({
         projectId,
         source: 'chat',
@@ -63,6 +62,8 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         sdkResultUuid,
         sdkCostScope,
         isCumulativeCostSnapshot,
+        ttftMs,
+        durationMs,
       });
     },
     chatMessageRepository: {
@@ -84,7 +85,6 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     buildSdkOptions: (context: PlanContext, options: {
       model: ModelType;
       effort?: 'low' | 'medium' | 'high' | 'max';
-      currentView?: 'plan' | 'workspace' | 'focus';
       resumeSessionId?: string;
       mainWindow: BrowserWindow | null;
       onClaudeMdEdit?: (projectId: string, newContent: string) => void;
@@ -113,7 +113,6 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         context,
         model: options.model,
         effort: options.effort,
-        currentView: options.currentView,
         resumeSessionId: options.resumeSessionId,
         mainWindow: options.mainWindow,
         onClaudeMdEdit: options.onClaudeMdEdit,

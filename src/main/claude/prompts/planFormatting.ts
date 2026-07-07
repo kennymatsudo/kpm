@@ -71,7 +71,7 @@ export function buildItemReferenceTable(planItems: PlanItem[]): string {
   } else {
     // Root items only: phases as move targets
     const lines = ['## Root Items (phases - use these IDs for reparent targets)', ''];
-    lines.push('Query `filter_plan_items` for other item IDs.', '');
+    lines.push('Query `query_plan_items` for other item IDs.', '');
 
     rootItems
       .sort((a, b) => a.item_order - b.item_order)

@@ -21,6 +21,15 @@ export const CONTEXT_FILE_NAMES = [PRIMARY_CONTEXT_FILENAME, COMPAT_CONTEXT_FILE
 /** Default filename when creating a new context file. */
 export const DEFAULT_CONTEXT_FILENAME = PRIMARY_CONTEXT_FILENAME;
 
+/**
+ * Cache key for pending (proposed-but-unapproved) context-file content.
+ * Shared by the built-in Write/Edit interception (permissions.ts) and the
+ * propose_context_edit tool so edits from either path accumulate in one
+ * cache within a turn, independent of which resolved filename
+ * (AGENTS.md/CLAUDE.md) is in play.
+ */
+export const CONTEXT_FILE_PENDING_CACHE_KEY = '__context__';
+
 /** Check whether a filename is a recognized context file. */
 export function isContextFile(filename: string): boolean {
   return (CONTEXT_FILE_NAMES as readonly string[]).includes(filename);

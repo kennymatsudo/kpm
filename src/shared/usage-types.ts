@@ -19,6 +19,8 @@ export interface ClaudeUsageEvent {
   sdk_cost_scope?: string | null;
   sdk_cumulative_cost_micro_usd?: number | null;
   cost_source?: string;
+  ttft_ms: number | null;
+  duration_ms: number | null;
   created_at: string;
 }
 

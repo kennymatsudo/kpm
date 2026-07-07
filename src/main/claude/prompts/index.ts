@@ -12,18 +12,13 @@
 export type { PlanContext } from './types';
 
 import type { PlanContext, ContinuationTurn } from './types';
-import type { ChatViewMode, TaskPromptTemplate } from '../../../shared/types';
-import { DEFAULT_CHAT_APPROVAL_MODE, type ChatApprovalMode } from '../../../shared/appSettings';
+import type { TaskPromptTemplate } from '../../../shared/types';
 import { FULL_HIERARCHY_THRESHOLD, buildItemReferenceTable } from './planFormatting';
 import { buildResponseModesSection } from './modes';
 import { buildToolDecisionTree } from './toolDocs';
 import { buildAttachmentsSection } from './workspace';
 import { PROMPT_REGISTRY_MAP } from './promptRegistry';
 
-/**
- * Build view context section for mode-aware suggestions.
- * This is additive to existing response modes, providing UI context.
- */
 function buildContinuationSection(history?: ContinuationTurn[]): string {
   if (!history || history.length === 0) return '';
 
@@ -41,30 +36,14 @@ ${turns}
 `;
 }
 
-function buildApprovalBehaviorSection(approvalMode: ChatApprovalMode): string {
-  if (approvalMode === 'auto_apply') {
-    return `## Change Application
-
-The user has turned off review prompts for Claude changes. When you use KPM change tools for plan edits, document updates, project context updates, or deletions, KPM applies those changes immediately. Do not tell the user they will need to approve a modal.`;
-  }
-
+function buildApprovalBehaviorSection(): string {
   return `## Change Application
 
-Claude-proposed changes require user review before KPM applies them. Use the appropriate change tool and the user will approve, edit, or dismiss the proposal.`;
+Depending on a user setting, KPM either queues your proposed changes for the user to review or applies them immediately. Propose changes with the appropriate change tool; do not state in your reply whether a review step will occur — refer to changes as proposed.`;
 }
 
-function buildViewContextSection(currentView?: ChatViewMode): string {
-  if (!currentView) return '';
-
-  if (currentView === 'plan') {
-    return `## Current View: Plan Mode
-The user is on the planning canvas. Use \`modify_plan\` when they ask you to create, update, or reorganize items.`;
-  }
-
-  return `## Current View: Workspace
-The user is in the workspace for documents and exploration. Plan modification tools are also available if the user asks to create or modify plan items.
-Default action: \`propose_document_create\` for new documents, \`propose_document_edit\` for existing files.`;
-}
+const VIEW_CONTEXT_SECTION = `## View Context
+Each user message may begin with a \`[Context: …]\` line naming the view the user is in. On the planning canvas, plan items are the default subject — use \`modify_plan\` when asked to create, update, or reorganize items. In the workspace, documents are the default subject — use \`propose_document_create\` for new documents and \`propose_document_edit\` for existing files. Plan tools remain available in both views.`;
 
 function buildTaskCreationGuidance(taskPromptTemplate?: TaskPromptTemplate | null): string {
   const templateName = taskPromptTemplate?.name;
@@ -89,8 +68,7 @@ Only create or modify plan items when the user explicitly asks. When creating im
  * 5. Reference (plan items, examples)
  */
 export function buildSystemPrompt(context: PlanContext): string {
-  const { project, repos, attachments, planItems, currentView, taskPromptTemplate, claudeMdContent, getPromptContent, continuationHistory } = context;
-  const approvalMode = context.approvalMode ?? DEFAULT_CHAT_APPROVAL_MODE;
+  const { project, repos, attachments, planItems, taskPromptTemplate, claudeMdContent, getPromptContent, continuationHistory } = context;
 
   const hasAttachments = attachments.length > 0;
   const hasRepos = repos.length > 0;
@@ -114,17 +92,17 @@ Read/Grep/Glob can also reach any other folder on disk when the user points you 
 
 ${getPrompt('system.grounding')}
 
-${buildViewContextSection(currentView)}
+${VIEW_CONTEXT_SECTION}
 ${getPrompt('system.constraints')}
 
-${buildApprovalBehaviorSection(approvalMode)}
+${buildApprovalBehaviorSection()}
 
 ${buildResponseModesSection(hasRepos, planItems, getPromptContent)}
 
 ${getPrompt('system.workspace')}
 
 ${hasAttachments ? buildAttachmentsSection(attachments) : ''}
-${buildToolDecisionTree(project.id, approvalMode)}
+${buildToolDecisionTree(project.id)}
 
 ${getPrompt('system.plan_rules')}
 
@@ -140,7 +118,7 @@ ${claudeMdContent}
 ${hasPlan
     ? planItems.length <= FULL_HIERARCHY_THRESHOLD
       ? `${planItems.length} items. IDs listed below — use directly.`
-      : `${planItems.length} items. Root items below. Query \`filter_plan_items\` for others.`
+      : `${planItems.length} items. Root items below. Query \`query_plan_items\` for others.`
     : 'Empty.'}
 ${buildItemReferenceTable(planItems)}
 

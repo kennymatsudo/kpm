@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { BrowserWindow } from 'electron';
 import { finalizeTurnResult } from './StreamingSessionService';
 
@@ -119,5 +119,79 @@ describe('finalizeTurnResult', () => {
     const doneEvent = sent.find((e) => e.channel === 'chat:done');
     expect((doneEvent!.payload as { hasQueuedFollowUp: boolean }).hasQueuedFollowUp).toBe(true);
     expect(managed.lastTurnFinalized).toBe(false);
+  });
+
+  describe('turn latency', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('records ttft_ms and duration_ms on the primary usage event from known turn timestamps', () => {
+      vi.spyOn(Date, 'now').mockReturnValue(15_200);
+      const managed = makeManaged({ turnStartedAt: 1_000, firstContentAt: 1_800 });
+      const deps = makeDeps();
+      const { window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', managed, { type: 'result', usage: { input_tokens: 10, output_tokens: 20 } }, window, deps);
+
+      expect(deps.recordUsage).toHaveBeenCalledWith(expect.objectContaining({
+        ttftMs: 800,
+        durationMs: 14_200,
+      }));
+    });
+
+    it('records a null ttft_ms when no content event fired for the turn', () => {
+      vi.spyOn(Date, 'now').mockReturnValue(9_000);
+      const managed = makeManaged({ turnStartedAt: 5_000, firstContentAt: undefined });
+      const deps = makeDeps();
+      const { window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', managed, { type: 'result', usage: { input_tokens: 5, output_tokens: 5 } }, window, deps);
+
+      expect(deps.recordUsage).toHaveBeenCalledWith(expect.objectContaining({
+        ttftMs: null,
+        durationMs: 4_000,
+      }));
+    });
+
+    it('records null ttft_ms/duration_ms when the turn never recorded a start time', () => {
+      const managed = makeManaged({ turnStartedAt: undefined, firstContentAt: undefined });
+      const deps = makeDeps();
+      const { window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', managed, { type: 'result', usage: { input_tokens: 5, output_tokens: 5 } }, window, deps);
+
+      expect(deps.recordUsage).toHaveBeenCalledWith(expect.objectContaining({
+        ttftMs: null,
+        durationMs: null,
+      }));
+    });
+
+    it('resets turn timestamps after finalizing so the next turn measures fresh', () => {
+      const managed = makeManaged({ turnStartedAt: 1_000, firstContentAt: 1_500 });
+      const deps = makeDeps();
+      const { window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', managed, { type: 'result', usage: { input_tokens: 1, output_tokens: 1 } }, window, deps);
+
+      expect(managed.turnStartedAt).toBeUndefined();
+      expect(managed.firstContentAt).toBeUndefined();
+    });
+
+    it('preserves turnStartedAt for an already-queued next turn instead of resetting it', () => {
+      const managed = makeManaged({
+        session: { pendingQueuedCount: () => 1 } as unknown as ManagedSessionArg['session'],
+        pendingFollowUpClientMessageIds: ['client-msg-1'],
+        turnStartedAt: 1_000,
+        firstContentAt: 1_500,
+      });
+      const deps = makeDeps();
+      const { window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', managed, { type: 'result', usage: undefined }, window, deps);
+
+      expect(managed.turnStartedAt).toBe(1_000);
+      expect(managed.firstContentAt).toBeUndefined();
+    });
   });
 });

@@ -60,7 +60,7 @@ function formatRefBlock(id: string, item: PlanItem | null): string {
     const extra = item.acceptance_criteria.length - head.length;
     lines.push(`  - criteria (${item.acceptance_criteria.length}):`);
     for (const c of head) lines.push(`    - ${c}`);
-    if (extra > 0) lines.push(`    - …and ${extra} more (use \`get_item_context\` for full list)`);
+    if (extra > 0) lines.push(`    - …and ${extra} more (use \`get_plan_items\` for full list)`);
   }
   return lines.join('\n');
 }

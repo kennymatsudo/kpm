@@ -192,7 +192,7 @@ describe('permissions', () => {
       });
 
       it('auto-allows MCP tools', async () => {
-        const result = await handler('mcp__kpm__get_plan_hierarchy', { projectId: 'test' }, createTestOptions());
+        const result = await handler('mcp__kpm__query_plan_items', { projectId: 'test' }, createTestOptions());
         expect(result.behavior).toBe('allow');
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
@@ -478,29 +478,115 @@ describe('permissions', () => {
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
-      it('denies Edit to project context files and instructs the agent to use propose_context_edit', async () => {
+      it('intercepts Edit to project context files by applying old_string→new_string and routing the full content', async () => {
         const mockOnClaudeMdEdit = vi.fn();
+        const mockReadFile = vi.fn().mockResolvedValue('# Context\n\nalpha beta gamma');
         context = {
           projectPath: '/test/project',
           projectId: 'test-project-id',
           onClaudeMdEdit: mockOnClaudeMdEdit,
+          readProjectFile: mockReadFile,
         };
         handler = createPermissionHandler(context, mockPromptUser);
 
         for (const filename of ['AGENTS.md', 'CLAUDE.md']) {
+          mockOnClaudeMdEdit.mockClear();
           const result = await handler(
             'Edit',
-            { file_path: `/test/project/${filename}`, old_string: 'a', new_string: 'b' },
+            { file_path: `/test/project/${filename}`, old_string: 'beta', new_string: 'BETA' },
             createTestOptions()
           );
 
           expect(result).toMatchObject({
             behavior: 'deny',
-            message: 'Project context file edits must use KPM change handling. Use the propose_context_edit tool.',
+            message: 'Project context file update captured by KPM.',
           });
+          expect(mockOnClaudeMdEdit).toHaveBeenCalledWith('test-project-id', '# Context\n\nalpha BETA gamma');
         }
-        expect(mockOnClaudeMdEdit).not.toHaveBeenCalled();
         expect(mockPromptUser).not.toHaveBeenCalled();
+      });
+
+      it('denies Edit on context file when old_string is not found', async () => {
+        const mockOnClaudeMdEdit = vi.fn();
+        const mockReadFile = vi.fn().mockResolvedValue('nothing matches here');
+        context = {
+          projectPath: '/test/project',
+          projectId: 'test-project-id',
+          onClaudeMdEdit: mockOnClaudeMdEdit,
+          readProjectFile: mockReadFile,
+        };
+        handler = createPermissionHandler(context, mockPromptUser);
+
+        const result = await handler(
+          'Edit',
+          { file_path: '/test/project/AGENTS.md', old_string: 'missing', new_string: 'replacement' },
+          createTestOptions()
+        );
+
+        expect(result).toMatchObject({
+          behavior: 'deny',
+          message: 'old_string not found in the project context file. Read the file first and copy exact text including whitespace.',
+        });
+        expect(mockOnClaudeMdEdit).not.toHaveBeenCalled();
+      });
+
+      it('denies Edit on context file when old_string is not unique', async () => {
+        const mockOnClaudeMdEdit = vi.fn();
+        const mockReadFile = vi.fn().mockResolvedValue('foo bar foo');
+        context = {
+          projectPath: '/test/project',
+          projectId: 'test-project-id',
+          onClaudeMdEdit: mockOnClaudeMdEdit,
+          readProjectFile: mockReadFile,
+        };
+        handler = createPermissionHandler(context, mockPromptUser);
+
+        const result = await handler(
+          'Edit',
+          { file_path: '/test/project/AGENTS.md', old_string: 'foo', new_string: 'baz' },
+          createTestOptions()
+        );
+
+        expect(result).toMatchObject({
+          behavior: 'deny',
+          message: 'old_string appears multiple times in the project context file. Include more surrounding context to make the match unique.',
+        });
+        expect(mockOnClaudeMdEdit).not.toHaveBeenCalled();
+      });
+
+      it('stacks sequential Edit calls to the context file via the pending cache instead of reading stale disk', async () => {
+        const mockOnClaudeMdEdit = vi.fn();
+        const mockReadFile = vi.fn().mockResolvedValue('alpha beta gamma');
+        const pending: { content?: string } = {};
+        context = {
+          projectPath: '/test/project',
+          projectId: 'test-project-id',
+          onClaudeMdEdit: mockOnClaudeMdEdit,
+          readProjectFile: mockReadFile,
+          peekPendingFile: () => pending.content,
+        };
+        handler = createPermissionHandler(context, mockPromptUser);
+
+        const first = await handler(
+          'Edit',
+          { file_path: '/test/project/AGENTS.md', old_string: 'beta', new_string: 'BETA' },
+          createTestOptions()
+        );
+        expect(first.behavior).toBe('deny');
+        expect(mockOnClaudeMdEdit).toHaveBeenCalledWith('test-project-id', 'alpha BETA gamma');
+
+        // Simulate the wiring that records onClaudeMdEdit's output into the
+        // pending cache so the next Edit sees it instead of stale disk.
+        pending.content = 'alpha BETA gamma';
+
+        const second = await handler(
+          'Edit',
+          { file_path: '/test/project/AGENTS.md', old_string: 'gamma', new_string: 'GAMMA' },
+          createTestOptions()
+        );
+        expect(second.behavior).toBe('deny');
+        expect(mockOnClaudeMdEdit).toHaveBeenCalledWith('test-project-id', 'alpha BETA GAMMA');
+        expect(mockReadFile).toHaveBeenCalledTimes(1);
       });
 
       it('intercepts Write to project directory when callback provided', async () => {

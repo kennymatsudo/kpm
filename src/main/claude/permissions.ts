@@ -13,7 +13,7 @@ import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sd
 import { promises as fs } from 'fs';
 import os from 'os';
 import { join, normalize, relative, resolve } from 'path';
-import { isContextFile } from '../../shared/contextFile';
+import { isContextFile, CONTEXT_FILE_PENDING_CACHE_KEY } from '../../shared/contextFile';
 import { checkRealpathAccess } from '../services/files/pathSecurity';
 import { clientManager } from './clientManager';
 const READ_TOOLS = ['Read', 'Grep', 'Glob'];
@@ -61,12 +61,6 @@ export interface PermissionContext {
   projectId: string;
   /** Connected repository paths (read-only, writes are denied) */
   repoPaths?: string[];
-  /**
-   * Current view mode. Not used for tool gating here — view affects prompt
-   * hints only (see buildViewContextSection), not which tools Claude may call.
-   * All KPM tools are available in both plan and workspace views.
-   */
-  currentView?: 'plan' | 'workspace' | 'focus';
   /** Optional callback to intercept CLAUDE.md edits */
   onClaudeMdEdit?: ClaudeMdInterceptFn;
   /** Optional callback to intercept project file writes for approval */
@@ -77,7 +71,8 @@ export interface PermissionContext {
    */
   readProjectFile?: (absolutePath: string) => Promise<string>;
   /**
-   * Returns proposed-but-unapproved content for a project-relative path from the
+   * Returns proposed-but-unapproved content for a project-relative path (or
+   * CONTEXT_FILE_PENDING_CACHE_KEY for the project context file) from the
    * current turn's pending cache, or undefined when nothing is pending. Lets
    * successive Edit/Write calls to the same file accumulate instead of each
    * computing against stale on-disk content (interception denies the write, so
@@ -270,31 +265,80 @@ export function createPermissionHandler(
 
     // Rule 0: Intercept project context file edits (AGENTS.md / CLAUDE.md) for user approval
     if (targetPath && isContextFilePath(targetPath, context.projectPath)) {
-      if ((toolName === 'Write' || toolName === 'Edit') && context.onClaudeMdEdit) {
-        // Extract content from Write/Edit tool input
-        let newContent: string | null = null;
+      if (toolName === 'Write' && context.onClaudeMdEdit && typeof input.content === 'string') {
+        const newContent = input.content;
+        console.log(`[Permissions] Context file Write intercepted - capturing for approval (${newContent.length} chars)`);
+        context.onClaudeMdEdit(context.projectId, newContent);
+        return {
+          behavior: 'deny',
+          message: 'Project context file update captured by KPM.',
+        };
+      }
+      // Edit tool on the context file: read the file, apply old_string ->
+      // new_string ourselves, and route the full new content through
+      // onClaudeMdEdit so it lands in the same approval flow as Write.
+      // Mirrors Rule 0.5's Edit interception for regular project files.
+      if (toolName === 'Edit' && context.onClaudeMdEdit) {
+        const oldString = typeof input.old_string === 'string' ? input.old_string : null;
+        const newString = typeof input.new_string === 'string' ? input.new_string : null;
 
-        if (toolName === 'Write' && typeof input.content === 'string') {
-          newContent = input.content;
-        } else if (toolName === 'Edit') {
-          // For Edit tool, we need the new_string content
-          // However, Edit is a partial replacement - we should encourage Write for full content
-          // For now, log and deny, guiding Claude to use a different approach
-          console.log('[Permissions] Context file Edit intercepted - guiding to use tool');
+        if (!oldString || newString === null) {
           return {
             behavior: 'deny',
-            message: 'Project context file edits must use KPM change handling. Use the propose_context_edit tool.'
+            message: 'Edit requires old_string and new_string. Pass exact text from the file (whitespace-sensitive).',
+          };
+        }
+        if (oldString === newString) {
+          return {
+            behavior: 'deny',
+            message: 'old_string and new_string are identical. No change would be made.',
           };
         }
 
-        if (newContent) {
-          console.log(`[Permissions] Context file Write intercepted - capturing for approval (${newContent.length} chars)`);
-          context.onClaudeMdEdit(context.projectId, newContent);
+        // Prefer pending content from earlier edits this turn so multiple
+        // edits to the context file accumulate. The interception denies the
+        // write, so disk never reflects prior edits — reading it would
+        // silently drop them. Shares the cache with the propose_context_edit
+        // tool via CONTEXT_FILE_PENDING_CACHE_KEY.
+        let currentContent: string;
+        const pending = context.peekPendingFile?.(CONTEXT_FILE_PENDING_CACHE_KEY);
+        if (pending !== undefined) {
+          currentContent = pending;
+        } else {
+          const reader = context.readProjectFile ?? ((p) => fs.readFile(p, 'utf-8'));
+          try {
+            currentContent = await reader(targetPath);
+          } catch (error) {
+            return {
+              behavior: 'deny',
+              message: `Could not read the project context file for editing: ${error instanceof Error ? error.message : String(error)}`,
+            };
+          }
+        }
+
+        const firstIndex = currentContent.indexOf(oldString);
+        if (firstIndex === -1) {
           return {
             behavior: 'deny',
-            message: 'Project context file update captured by KPM.'
+            message: 'old_string not found in the project context file. Read the file first and copy exact text including whitespace.',
           };
         }
+        const secondIndex = currentContent.indexOf(oldString, firstIndex + 1);
+        if (secondIndex !== -1) {
+          return {
+            behavior: 'deny',
+            message: 'old_string appears multiple times in the project context file. Include more surrounding context to make the match unique.',
+          };
+        }
+
+        const newContent =
+          currentContent.slice(0, firstIndex) + newString + currentContent.slice(firstIndex + oldString.length);
+        console.log(`[Permissions] Context file Edit intercepted - capturing for approval (${newContent.length} chars)`);
+        context.onClaudeMdEdit(context.projectId, newContent);
+        return {
+          behavior: 'deny',
+          message: 'Project context file update captured by KPM.',
+        };
       }
     }
 

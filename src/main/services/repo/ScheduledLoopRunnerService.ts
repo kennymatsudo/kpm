@@ -174,7 +174,6 @@ export function createScheduledLoopRunnerService(deps: ScheduledLoopRunnerDeps) 
     return buildSdkOptions({
       context,
       model: 'sonnet',
-      currentView: 'workspace',
       mainWindow: deps.getMainWindow(),
       // No UI is present to answer permission prompts on a background tick.
       autoApprove: true,

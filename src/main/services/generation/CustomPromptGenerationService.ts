@@ -1,7 +1,8 @@
 /**
  * Custom Prompt Generation Service
  *
- * Executes custom prompts from Command+K palette using Claude Opus with extended thinking.
+ * Executes custom prompts from Command+K palette using the configured deep model
+ * (`getConfig().generation.deepModel`, defaults to Sonnet) with extended thinking.
  * Claude has access to all KPM MCP tools (get_plan_items, get_project_info, etc.)
  * and decides what context to query based on the user's prompt.
  *
@@ -92,7 +93,7 @@ Be thorough but concise. Focus on what was requested.`;
         log(`Prompt length: ${fullPrompt.length} chars`);
 
         // Phase 2: Claude with tools
-        callbacks.onProgress('Generating with Claude Opus (with KPM tools)...');
+        callbacks.onProgress('Generating with Claude (with KPM tools)...');
 
         // Get the KPM MCP server for tool access
         const kpmServer = getKpmServer();
@@ -100,7 +101,7 @@ Be thorough but concise. Focus on what was requested.`;
           throw new Error('KPM MCP server not available');
         }
 
-        // Configure SDK for Opus with extended thinking and MCP server
+        // Configure SDK for the deep model with extended thinking and MCP server
         const sdkOptions: SDKOptions = {
           model: getConfig().generation.deepModel,
           // Adaptive thinking for high-quality generation.

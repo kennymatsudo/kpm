@@ -24,6 +24,8 @@ function createUsageRepo(): IClaudeUsageRepository & { events: ClaudeUsageEvent[
         sdk_cost_scope: event.sdk_cost_scope ?? null,
         sdk_cumulative_cost_micro_usd: event.sdk_cumulative_cost_micro_usd ?? null,
         cost_source: event.cost_source,
+        ttft_ms: event.ttft_ms ?? null,
+        duration_ms: event.duration_ms ?? null,
         created_at: new Date(events.length).toISOString(),
       };
       events.push(row);
@@ -115,5 +117,35 @@ describe('ClaudeUsageService', () => {
 
     expect(usageRepo.events[0].cost_micro_usd).toBe(36_750_000);
     expect(usageRepo.events[0].cost_source).toBe('local_pricing_fallback');
+  });
+
+  it('passes ttftMs/durationMs through to the inserted event, defaulting to null when omitted', () => {
+    const usageRepo = createUsageRepo();
+    const service = createClaudeUsageService({
+      claudeUsage: usageRepo,
+      projects: createProjectRepo(),
+      getMainWindow: () => null,
+    });
+
+    service.recordUsage({
+      projectId: 'project-1',
+      source: 'chat',
+      model: 'sonnet',
+      usage: { input_tokens: 5, output_tokens: 5 },
+      ttftMs: 1800,
+      durationMs: 14200,
+    });
+
+    service.recordUsage({
+      projectId: 'project-1',
+      source: 'briefing',
+      model: 'sonnet',
+      usage: { input_tokens: 5, output_tokens: 5 },
+    });
+
+    expect(usageRepo.events[0].ttft_ms).toBe(1800);
+    expect(usageRepo.events[0].duration_ms).toBe(14200);
+    expect(usageRepo.events[1].ttft_ms).toBeNull();
+    expect(usageRepo.events[1].duration_ms).toBeNull();
   });
 });

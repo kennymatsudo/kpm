@@ -238,7 +238,7 @@ Exploratory item example (no criteria yet):
 
 Hierarchy rules:
 - **Default \`parent_id: null\`.** Create items at root unless you have a concrete reason to nest.
-- **Only nest when expanding a specific existing item** the user named or focused, AND you have resolved its ID via a query tool (\`get_plan_hierarchy\` / \`get_item_context\`). Never use a \`parent_id\` you didn't resolve from real data — placeholders ($1, $2) are fine when you create the parent in the same batch, but inventing IDs leaves orphaned references and corrupts the plan.
+- **Only nest when expanding a specific existing item** the user named or focused, AND you have resolved its ID via a query tool (\`query_plan_items\` with \`format: 'tree'\`, or \`get_plan_items\`). Never use a \`parent_id\` you didn't resolve from real data — placeholders ($1, $2) are fine when you create the parent in the same batch, but inventing IDs leaves orphaned references and corrupts the plan.
 - **Do not create a parent item just to group siblings under it.** That's what Groups are for.
 
 Groups vs hierarchy: Groups are visual containers (like Figma frames) — use them for organization without semantic weight ("these belong to the OAuth effort"). Hierarchy (\`parent_id\`) is for genuine parent/child relationships and **becomes a sub-task link on export to Jira/Linear** — so nesting is a semantic commitment, not a layout choice.

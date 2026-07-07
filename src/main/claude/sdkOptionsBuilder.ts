@@ -8,7 +8,6 @@
 import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import type { BrowserWindow } from 'electron';
 import { buildFocusSystemPrompt, buildSystemPrompt, type PlanContext } from './prompts/index';
-import type { ChatViewMode } from '../../shared/types';
 import { createPermissionHandler, type PermissionContext, type ClaudeMdInterceptFn, type ProjectFileInterceptFn } from './permissions';
 import { getFocusKpmServer, getKpmServer } from './tools/createKpmServer';
 import { getConfig } from '../config';
@@ -21,7 +20,6 @@ export interface BuildSdkOptionsParams {
   context: PlanContext;
   model: ModelType;
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-  currentView?: ChatViewMode;
   resumeSessionId?: string;
   mainWindow: BrowserWindow | null;
   /** Callback for intercepted project context file edits */
@@ -48,7 +46,7 @@ export interface BuildSdkOptionsParams {
  * Build SDK options for a Claude session.
  */
 export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
-  const { context, model, effort, currentView, resumeSessionId, mainWindow, onClaudeMdEdit, onProjectFileWrite, peekPendingFile, enabledPluginPaths, enabledUserMcpConfigs, disabledMcpTools, disabledMcpServerNames, onElicitation, autoApprove } = params;
+  const { context, model, effort, resumeSessionId, mainWindow, onClaudeMdEdit, onProjectFileWrite, peekPendingFile, enabledPluginPaths, enabledUserMcpConfigs, disabledMcpTools, disabledMcpServerNames, onElicitation, autoApprove } = params;
   // Resume restores conversation history only — the SDK applies whatever
   // systemPrompt we pass now and discards the one persisted in the transcript.
   // So always send the full prompt; slimming it on resume silently drops
@@ -62,12 +60,11 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   // Create permission handler. canUseTool scopes file access (repos read-only,
   // project-file writes intercepted) and gates external MCP servers. It does
   // NOT gate KPM tools by view — all KPM tools are callable in both plan and
-  // workspace views; view affects prompt hints only.
+  // workspace views.
   const permissionContext: PermissionContext = {
     projectPath: context.project.folder_path,
     projectId: context.project.id,
     repoPaths: effectiveRepoPaths,
-    currentView,
     onClaudeMdEdit,
     onProjectFileWrite,
     peekPendingFile,

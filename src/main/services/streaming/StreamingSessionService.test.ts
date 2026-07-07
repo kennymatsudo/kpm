@@ -382,6 +382,62 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     expect(sentEvents.some((e) => e.channel === 'chat:session-deactivated')).toBe(false);
   });
 
+  it('reuses the session across a Plan/Workspace view change instead of disconnecting', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const firstSend = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+      currentView: 'plan',
+    });
+    expect(firstSend.ok).toBe(true);
+
+    const session = mockSessionInstances[0];
+    session.emitMessage({ type: 'result' });
+
+    sentEvents.length = 0;
+    const secondSend = await service.sendChatMessage('project-1', 'follow up', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+      currentView: 'workspace',
+    });
+    expect(secondSend.ok).toBe(true);
+
+    expect(mockSessionInstances).toHaveLength(1);
+    expect(sentEvents.some((e) => e.channel === 'chat:session-deactivated')).toBe(false);
+    expect(session.sentMessages[1]).toContain('[Context: user is viewing the workspace]');
+  });
+
+  it('prefixes the sent message text with a view hint matching currentView', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+      currentView: 'plan',
+    });
+
+    const session = mockSessionInstances[0];
+    expect(session.sentMessages[0]).toBe('[Context: user is viewing the planning canvas]\n\nhello');
+  });
+
+  it('does not prefix a view hint for slash-command turns', async () => {
+    const deps: StreamingSessionServiceDeps = {
+      ...createDeps(sendSpy),
+      isSlashCommand: (text: string) => text.startsWith('/'),
+    };
+    service = createStreamingSessionService(deps);
+
+    await service.sendChatMessage('project-1', '/compact', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+      currentView: 'plan',
+    });
+
+    const session = mockSessionInstances[0];
+    expect(session.sentMessages[0]).toBe('/compact');
+  });
+
   it('routes tool approval events only to their originating chat session', async () => {
     const toolEvents = createDepsWithToolEvents(sendSpy);
     service = createStreamingSessionService(toolEvents.deps);

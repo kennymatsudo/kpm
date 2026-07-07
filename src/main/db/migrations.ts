@@ -3637,6 +3637,16 @@ export const migrations: Migration[] = [
       db.exec(`ALTER TABLE scheduled_loops ADD COLUMN memory TEXT;`);
     },
   },
+  {
+    id: 1099,
+    name: '099_add_usage_event_latency',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE claude_usage_events ADD COLUMN ttft_ms INTEGER;
+        ALTER TABLE claude_usage_events ADD COLUMN duration_ms INTEGER;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

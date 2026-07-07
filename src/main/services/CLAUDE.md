@@ -29,7 +29,7 @@ Plan items, projects, attachments, tracker connections, and groups—the domain 
 - `PermissionPromptService` — Bridges a pending tool-permission request to the renderer and back (prompt/resolve/timeout)
 - `ClaudeUsageService` — Centralized recording of Claude SDK token/cost usage across every call site (chat, board agents, briefing, PR description, commit message, review assessment, custom prompt generation, onboarding, Slack triage) into `claude_usage_events` and the rolled-up `projects.session_*_tokens` columns
 - `ArtifactService` — List/read files written by Claude to a project's `outputs/` folder
-- `CustomPromptService` / `CustomPromptGenerationService` — Command+K custom prompt CRUD and execution (Claude Opus with extended thinking and access to KPM MCP tools; output saved to `outputs/`)
+- `CustomPromptService` / `CustomPromptGenerationService` — Command+K custom prompt CRUD and execution (the configured deep model, defaults to Sonnet, with extended thinking and access to KPM MCP tools; output saved to `outputs/`)
 - `TaskPromptTemplateService` — CRUD for reusable task prompt templates
 - `SlashCommandService` — Discovers user slash commands (`~/.claude/commands/**/*.md`) and skills (`~/.claude/skills/*/SKILL.md`) for the chat typeahead before a session exists; once a session is live the SDK's own command list takes over
 - `McpDiscoveryService` — Discovers installed Claude Code plugins with MCP server configs and reads `app_settings` for which servers are enabled for KPM. Does not manage MCP server processes — the SDK does

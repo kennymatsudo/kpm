@@ -36,7 +36,7 @@ export function formatFocusedResource(resource: FocusedResource): string {
  * model to see what the chip popover shows them — title alone wasn't enough.
  *
  * Budget: up to PLAN_ITEM_TOTAL_BUDGET chars across all plan items, with a
- * per-item ceiling. When a body is truncated or omitted, a `batch_get_items`
+ * per-item ceiling. When a body is truncated or omitted, a `get_plan_items`
  * hint is emitted so the model knows how to fetch the rest.
  */
 export function buildFocusedSection(
@@ -75,8 +75,8 @@ export function buildFocusedSection(
 
   const planItemHint = hasPlanItem
     ? truncatedPlanItemIds.length > 0
-      ? `\nSome focused plan items were truncated above. Use \`batch_get_items({ projectId, itemIds: [...] })\` to fetch full details (description, code_refs, dependencies) for: ${truncatedPlanItemIds.map((id) => `\`${id}\``).join(', ')}.\n`
-      : `\nThe focused plan item details above are sufficient — do not call \`get_plan_item\` again unless you need code_refs or dependencies.\n`
+      ? `\nSome focused plan items were truncated above. Use \`get_plan_items({ projectId, itemIds: [...] })\` to fetch full details (description, code_refs, dependencies) for: ${truncatedPlanItemIds.map((id) => `\`${id}\``).join(', ')}.\n`
+      : `\nThe focused plan item details above are sufficient — do not call \`get_plan_items\` again unless you need code_refs or dependencies.\n`
     : '';
 
   return `
@@ -129,7 +129,7 @@ export function renderFocusedBlocks(
  *
  * Repos without a local path are explicitly flagged as unresolved rather than
  * presenting a bare UUID that could be mistaken for a plan-item ID and trigger
- * a spurious batch_get_items call.
+ * a spurious get_plan_items call.
  */
 function renderTypedResourceLine(resource: FocusedResource): string {
   switch (resource.type) {
@@ -171,7 +171,7 @@ function describeFocusedResource(resource: FocusedResource): string {
 /**
  * Render a focused plan item with its spec body, respecting a shared budget.
  * Returns the rendered text plus whether anything was truncated/omitted, so
- * the caller can emit a `batch_get_items` hint for the affected items.
+ * the caller can emit a `get_plan_items` hint for the affected items.
  */
 function renderPlanItemBlock(
   item: PlanItem,

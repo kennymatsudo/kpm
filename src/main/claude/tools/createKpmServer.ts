@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { EventEmitter } from 'events';
 import { AsyncLocalStorage } from 'async_hooks';
 import type { BrowserWindow } from 'electron';
-import { CONTEXT_FILE_NAMES } from '../../../shared/contextFile';
+import { CONTEXT_FILE_NAMES, CONTEXT_FILE_PENDING_CACHE_KEY } from '../../../shared/contextFile';
 import type { IRepositoryContainer } from '../../db/interfaces';
 import type { AppServices } from '../../services/appServices';
 
@@ -85,13 +85,11 @@ function getKpmToolRuntime(): KpmToolRuntimeDeps {
 
 // Cache for pending document content (proposed but not yet accepted).
 // Keyed by `${chatSessionId}:${filePath}` for documents and
-// `${chatSessionId}:__context__` for the project context file. Scoping by
-// session prevents two concurrent sessions on the same project from polluting
-// each other's pending state. Cleared at the start of every new turn so prior
-// turns don't bleed in.
+// `${chatSessionId}:${CONTEXT_FILE_PENDING_CACHE_KEY}` for the project
+// context file. Scoping by session prevents two concurrent sessions on the
+// same project from polluting each other's pending state. Cleared at the
+// start of every new turn so prior turns don't bleed in.
 const pendingDocumentContent = new Map<string, string>();
-
-const CONTEXT_FILE_CACHE_KEY = '__context__';
 
 /**
  * Clear all pending document content entries for a chat session (documents +
@@ -197,7 +195,7 @@ async function readProjectContextFileWithPending(
 ): Promise<{ content: string; filename: string } | null> {
   const chatSessionId = toolExecutionContext.getStore()?.chatSessionId;
   if (chatSessionId) {
-    const cached = pendingDocumentContent.get(`${chatSessionId}:${CONTEXT_FILE_CACHE_KEY}`);
+    const cached = pendingDocumentContent.get(`${chatSessionId}:${CONTEXT_FILE_PENDING_CACHE_KEY}`);
     if (cached !== undefined) {
       const filename = resolvedContextFilename.get(chatSessionId);
       if (filename) return { content: cached, filename };
@@ -282,7 +280,7 @@ function emitClaudeMdUpdate(update: ClaudeMdUpdatePayload): void {
   const context = toolExecutionContext.getStore();
   const chatSessionId = update.chatSessionId ?? context?.chatSessionId;
   if (chatSessionId) {
-    pendingDocumentContent.set(`${chatSessionId}:${CONTEXT_FILE_CACHE_KEY}`, update.newContent);
+    pendingDocumentContent.set(`${chatSessionId}:${CONTEXT_FILE_PENDING_CACHE_KEY}`, update.newContent);
     // Memoize filename so subsequent reads can short-circuit the probe.
     resolvedContextFilename.set(chatSessionId, update.filename);
   }
@@ -429,7 +427,7 @@ function collectTools() {
 
   const planItemTools = createPlanItemTools(planItemRepo, planRelationRepo, emitPlanActions);
   const relationTools = createRelationTools(planItemRepo);
-  const groupTools = createGroupTools(groupRepo, planItemRepo, emitPlanActions);
+  const groupTools = createGroupTools(groupRepo);
   const planChangeTools = createPlanChangeTools(emitPlanActions);
   const jiraTools = createJiraTools();
   const storybookTools = createStorybookTools(projectRepo);
