@@ -33,9 +33,9 @@ export function createSessionManagementSlice(set: ChatSet, get: ChatGet): Pick<C
     setViewedSession: (chatSessionId) => {
       const previousViewedSessionId = get().viewedSessionId;
       if (previousViewedSessionId) {
-        // The viewed session uses the shared throttled buffer. Flush pending
-        // text into that session before switching pointers so we don't drop
-        // chunks during mid-stream tab switches.
+        // The previously viewed session's buffer was flushing at the viewed
+        // 50ms interval; flush it now so no chunks are stranded mid-stream
+        // before it switches to the background 250ms interval.
         get().flushStreamingContent(previousViewedSessionId);
       }
 
@@ -49,10 +49,7 @@ export function createSessionManagementSlice(set: ChatSet, get: ChatGet): Pick<C
     },
 
     markSessionInactive: (chatSessionId) => {
-      const isViewed = get().viewedSessionId === chatSessionId;
-      if (isViewed) {
-        streamingBuffer.clear();
-      }
+      streamingBuffer.clear(chatSessionId);
 
       set((state) => {
         const activeSessionIds = new Set(state.activeSessionIds);

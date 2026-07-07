@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import { createInitialPerSessionState } from './baseState';
 import { createStreamingSlice } from './streamingSlice';
+import { BACKGROUND_STREAMING_THROTTLE_MS } from '../../utils/streamingBuffer';
 import type { Activity } from '../../../shared/types';
 
 type SessionState = ReturnType<typeof createInitialPerSessionState>;
@@ -22,6 +23,10 @@ function createTestStore(sessionId: string, session: SessionState) {
 function makeActivity(id: string, label: string): Activity {
   return { id, type: 'command', label };
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('streamingSlice.finalizeMessage', () => {
   it('commits activity-only turns as an assistant message', () => {
@@ -453,7 +458,9 @@ describe('streamingSlice streaming state recovery', () => {
       streamStartedAt: null,
     });
 
+    vi.useFakeTimers();
     store.getState().appendChunk(sessionId, 'hello');
+    vi.advanceTimersByTime(BACKGROUND_STREAMING_THROTTLE_MS);
 
     const session = store.getState().sessions.get(sessionId);
     expect(session).toBeDefined();
@@ -493,15 +500,18 @@ describe('streamingSlice tool interleaving', () => {
     const t1 = makeActivity('t1', 'bash: rg ssrf');
     const t2 = makeActivity('t2', 'read_file: views.py');
 
-    // viewedSessionId stays null -> appendChunk takes the synchronous
-    // (non-viewed) branch, which shares the pruning logic with the viewed one.
+    // viewedSessionId stays null -> appendChunk buffers at the background
+    // interval, which shares the pruning logic with the viewed path once its
+    // timer fires.
     const store = createTestStore(sessionId, { ...base, isStreaming: true });
 
     store.getState().addActivity(sessionId, t1);
     store.getState().addActivity(sessionId, t2);
     expect(store.getState().sessions.get(sessionId)?.activities).toEqual([t1, t2]);
 
+    vi.useFakeTimers();
     store.getState().appendChunk(sessionId, 'So the proxy already exists.', 0, [t1, t2]);
+    vi.advanceTimersByTime(BACKGROUND_STREAMING_THROTTLE_MS);
 
     const session = store.getState().sessions.get(sessionId);
     expect(session?.streamingSegments).toEqual([
@@ -526,11 +536,78 @@ describe('streamingSlice tool interleaving', () => {
     const store = createTestStore(sessionId, { ...base, isStreaming: true });
 
     store.getState().addActivity(sessionId, committed);
+
+    vi.useFakeTimers();
     store.getState().appendChunk(sessionId, 'Reading the file.', 0, [committed]);
+    vi.advanceTimersByTime(BACKGROUND_STREAMING_THROTTLE_MS);
+
     // A fresh tool starts after that text, with no text after it yet.
     store.getState().addActivity(sessionId, inflight);
 
     const session = store.getState().sessions.get(sessionId);
     expect(session?.activities).toEqual([inflight]);
+  });
+});
+
+describe('streamingSlice per-session background buffering', () => {
+  it('batches multiple background chunks into a single store update', () => {
+    const sessionId = 'session-background-batch';
+    const base = createInitialPerSessionState(1);
+    const store = createTestStore(sessionId, { ...base, isStreaming: true });
+
+    let updateCount = 0;
+    store.subscribe(() => { updateCount += 1; });
+
+    vi.useFakeTimers();
+    store.getState().appendChunk(sessionId, 'a');
+    store.getState().appendChunk(sessionId, 'b');
+    store.getState().appendChunk(sessionId, 'c');
+    expect(updateCount).toBe(0);
+
+    vi.advanceTimersByTime(BACKGROUND_STREAMING_THROTTLE_MS);
+
+    expect(updateCount).toBe(1);
+    expect(store.getState().sessions.get(sessionId)?.streamingContent).toBe('abc');
+  });
+
+  it('finalizeMessage flushes a background session buffer instead of dropping it', () => {
+    const sessionId = 'session-background-finalize';
+    const base = createInitialPerSessionState(1);
+    const store = createTestStore(sessionId, { ...base, isStreaming: true });
+
+    vi.useFakeTimers();
+    store.getState().appendChunk(sessionId, 'partial response');
+    // finalizeMessage arrives before the throttle timer fires.
+    store.getState().finalizeMessage(sessionId);
+
+    const session = store.getState().sessions.get(sessionId);
+    expect(session?.messages).toHaveLength(1);
+    expect(session?.messages[0].segments).toEqual([
+      { type: 'text', content: 'partial response' },
+    ]);
+    expect(session?.isStreaming).toBe(false);
+  });
+
+  it('does not cross-contaminate buffered text between two concurrently streaming sessions', () => {
+    const sessionA = 'session-concurrent-a';
+    const sessionB = 'session-concurrent-b';
+    const base = createInitialPerSessionState(1);
+
+    const store = createStore<TestState>()((set, get) => ({
+      sessions: new Map([
+        [sessionA, { ...base, isStreaming: true }],
+        [sessionB, { ...base, isStreaming: true }],
+      ]),
+      viewedSessionId: null,
+      ...createStreamingSlice(set as never, get as never),
+    }));
+
+    vi.useFakeTimers();
+    store.getState().appendChunk(sessionA, 'from A');
+    store.getState().appendChunk(sessionB, 'from B');
+    vi.advanceTimersByTime(BACKGROUND_STREAMING_THROTTLE_MS);
+
+    expect(store.getState().sessions.get(sessionA)?.streamingContent).toBe('from A');
+    expect(store.getState().sessions.get(sessionB)?.streamingContent).toBe('from B');
   });
 });

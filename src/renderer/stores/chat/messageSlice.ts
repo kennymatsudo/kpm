@@ -3,7 +3,7 @@ import { createInitialPerSessionState, createInitialChatState } from './baseStat
 import { streamingBuffer } from './utils';
 import { applyStreamEvent } from './chatStreamReducer';
 
-export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
+export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
   'addUserMessage' | 'clearQueuedFlag' | 'removeQueuedUserMessage' | 'setRetrying' | 'setError' | 'clearError' | 'setDraftMessage' | 'setPendingAttachments' | 'setSuggestions' | 'setClaudeSessionId' | 'setSessionTitle' | 'setMcpStatus' | 'setLastTurnUsage' | 'setSessionState' | 'reset' | 'resetProjectState'
 > {
   return {
@@ -86,8 +86,7 @@ export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
     }),
 
     setError: (chatSessionId, error) => {
-      const isViewed = get().viewedSessionId === chatSessionId;
-      if (isViewed) streamingBuffer.clear();
+      streamingBuffer.clear(chatSessionId);
 
       set((state) => {
         const session = state.sessions.get(chatSessionId);
@@ -206,12 +205,12 @@ export function createMessageSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
     }),
 
     reset: () => {
-      streamingBuffer.clear();
+      streamingBuffer.clearAll();
       set(createInitialChatState());
     },
 
     resetProjectState: () => {
-      streamingBuffer.clear();
+      streamingBuffer.clearAll();
       set((state) => ({
         ...createInitialChatState(),
         model: state.model,

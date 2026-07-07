@@ -1,105 +1,131 @@
 /**
- * StreamingBuffer - Accumulates streaming chunks with throttled flushing.
+ * KeyedStreamingBuffer - Accumulates streaming chunks per session key with
+ * throttled flushing.
  *
  * This utility reduces React re-renders by batching rapid streaming updates.
- * Instead of updating state for every chunk, chunks are accumulated in a buffer
- * and flushed at a throttled interval.
+ * Instead of updating state for every chunk, chunks are accumulated per
+ * session and flushed at a throttled interval. Each session key gets its own
+ * pending buffer and timer, so concurrent sessions never share or clobber
+ * each other's buffered text.
  *
  * Usage with Zustand stores:
  * ```typescript
  * // Create buffer outside store
- * const buffer = createStreamingBuffer(50);
+ * const buffer = createKeyedStreamingBuffer();
  *
  * // In store creation:
  * create((set) => ({
- *   appendChunk: (chunk) => buffer.append(chunk, (content) => {
+ *   appendChunk: (sessionId, chunk, intervalMs) => buffer.append(sessionId, chunk, (content) => {
  *     set((state) => ({ streamingContent: state.streamingContent + content }));
- *   }),
- *   finalizeMessage: () => {
- *     const remaining = buffer.flush();
+ *   }, intervalMs),
+ *   finalizeMessage: (sessionId) => {
+ *     const remaining = buffer.flush(sessionId);
  *     // ... use remaining content
  *   },
  * }));
  * ```
  */
 
-/** Default throttle interval in milliseconds */
-export const DEFAULT_STREAMING_THROTTLE_MS = 50;
+/** Throttle interval for the currently viewed session. */
+export const VIEWED_STREAMING_THROTTLE_MS = 50;
 
-export interface StreamingBuffer {
+/** Throttle interval for sessions streaming in the background (not viewed). */
+export const BACKGROUND_STREAMING_THROTTLE_MS = 250;
+
+export interface KeyedStreamingBuffer {
   /**
-   * Append a chunk to the buffer.
+   * Append a chunk to the buffer for `key`.
    * Schedules a throttled flush if not already scheduled.
+   * @param key - The session id this chunk belongs to
    * @param chunk - The text chunk to append
-   * @param onFlush - Callback invoked when buffer is automatically flushed
+   * @param onFlush - Callback invoked when this key's buffer is automatically flushed
+   * @param intervalMs - Interval before the automatic flush fires
    */
-  append: (chunk: string, onFlush: (content: string) => void) => void;
+  append: (key: string, chunk: string, onFlush: (content: string) => void, intervalMs: number) => void;
 
   /**
-   * Immediately flush and return all buffered content.
-   * Cancels any pending throttled flush.
+   * Immediately flush and return all buffered content for `key`.
+   * Cancels any pending throttled flush for that key.
    */
-  flush: () => string;
+  flush: (key: string) => string;
 
   /**
-   * Clear the buffer without returning content.
+   * Clear the buffer for `key` without returning content.
    * Useful for error recovery or cancellation.
    */
-  clear: () => void;
+  clear: (key: string) => void;
+
+  /** Clear every key's buffer. Used when resetting the whole store. */
+  clearAll: () => void;
+}
+
+interface BufferEntry {
+  pending: string;
+  timer: ReturnType<typeof setTimeout> | null;
+  onFlush: ((content: string) => void) | null;
 }
 
 /**
- * Create a new streaming buffer with throttled flushing.
- * The onFlush callback is provided per-append to allow access to store's set() function.
- *
- * @param throttleMs - Interval between automatic flushes (default: 50ms)
+ * Create a new keyed streaming buffer with per-key throttled flushing.
+ * The onFlush callback is provided per-append to allow access to the store's
+ * set() function; the interval is provided per-append so the same key can be
+ * throttled differently over time (e.g. viewed vs. backgrounded).
  */
-export function createStreamingBuffer(
-  throttleMs: number = DEFAULT_STREAMING_THROTTLE_MS
-): StreamingBuffer {
-  let buffer = '';
-  let flushTimeout: ReturnType<typeof setTimeout> | null = null;
-  let currentOnFlush: ((content: string) => void) | null = null;
-
-  const scheduleFlush = () => {
-    if (!flushTimeout) {
-      flushTimeout = setTimeout(() => {
-        const content = buffer;
-        buffer = '';
-        flushTimeout = null;
-
-        if (content && currentOnFlush) {
-          currentOnFlush(content);
-        }
-      }, throttleMs);
-    }
-  };
-
-  const cancelPendingFlush = () => {
-    if (flushTimeout) {
-      clearTimeout(flushTimeout);
-      flushTimeout = null;
-    }
-  };
+export function createKeyedStreamingBuffer(): KeyedStreamingBuffer {
+  const buffers = new Map<string, BufferEntry>();
 
   return {
-    append: (chunk: string, onFlush: (content: string) => void) => {
-      buffer += chunk;
-      currentOnFlush = onFlush;
-      scheduleFlush();
+    append: (key, chunk, onFlush, intervalMs) => {
+      let entry = buffers.get(key);
+      if (!entry) {
+        entry = { pending: '', timer: null, onFlush: null };
+        buffers.set(key, entry);
+      }
+
+      entry.pending += chunk;
+      entry.onFlush = onFlush;
+
+      if (!entry.timer) {
+        entry.timer = setTimeout(() => {
+          const content = entry.pending;
+          const flushCallback = entry.onFlush;
+          buffers.delete(key);
+          if (content && flushCallback) {
+            flushCallback(content);
+          }
+        }, intervalMs);
+      }
     },
 
-    flush: () => {
-      cancelPendingFlush();
-      const content = buffer;
-      buffer = '';
+    flush: (key) => {
+      const entry = buffers.get(key);
+      if (!entry) return '';
+
+      if (entry.timer) {
+        clearTimeout(entry.timer);
+      }
+
+      const content = entry.pending;
+      buffers.delete(key);
       return content;
     },
 
-    clear: () => {
-      cancelPendingFlush();
-      buffer = '';
-      currentOnFlush = null;
+    clear: (key) => {
+      const entry = buffers.get(key);
+      if (!entry) return;
+      if (entry.timer) {
+        clearTimeout(entry.timer);
+      }
+      buffers.delete(key);
+    },
+
+    clearAll: () => {
+      for (const entry of buffers.values()) {
+        if (entry.timer) {
+          clearTimeout(entry.timer);
+        }
+      }
+      buffers.clear();
     },
   };
 }

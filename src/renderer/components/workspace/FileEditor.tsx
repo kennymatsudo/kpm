@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useState, useMemo } from 'react';
 import { useWorkspaceStore, useHasUnsavedChanges, useProjectUiDomainStore, useFocusModeStore } from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
-import { CodeEditor, MarkdownEditor } from '../ui';
+import { CodeEditorLazy, MarkdownEditorLazy } from '../ui';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { BookOpenIcon } from '../icons';
 import type { FocusedResource } from '../../../shared/types';
@@ -238,7 +238,7 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
 
         {/* MarkdownEditor takes the rest */}
         <div className="flex-1 overflow-hidden">
-          <MarkdownEditor
+          <MarkdownEditorLazy
             content={editingFile.content}
             onChange={handleContentChange}
           />
@@ -302,13 +302,13 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
       {/* Content area */}
       <div className="flex-1 overflow-hidden">
         {editingFile.isReadOnly ? (
-          <CodeEditor
+          <CodeEditorLazy
             path={editingFile.path}
             content={editingFile.content}
             isReadOnly
           />
         ) : (
-          <CodeEditor
+          <CodeEditorLazy
             path={editingFile.path}
             content={editingFile.content}
             onChange={handleContentChange}

@@ -12,7 +12,7 @@ import type { JSX } from 'react';
 import { openExternalUrl } from '../services/shellService';
 import { PlanRefChip } from '../components/plan-ref/PlanRefChip';
 import { FileRefLink } from '../components/file-ref/FileRefLink';
-import { MermaidDiagram } from '../components/ui/MermaidDiagram';
+import { MermaidDiagramLazy } from '../components/ui/MermaidDiagramLazy';
 import { CheckIcon, CopyIcon } from '../components/icons';
 import { copyToClipboard } from './clipboard';
 import { findRefs, PLAN_REF_REGEX } from '../../shared/planRefs';
@@ -147,7 +147,7 @@ function renderPre({ children, ...props }: React.HTMLAttributes<HTMLPreElement>)
     if (cls.includes('lang-mermaid')) {
       const source = codeBlockText(child.props.children);
       if (source !== null) {
-        return <MermaidDiagram source={source.trim()} />;
+        return <MermaidDiagramLazy source={source.trim()} />;
       }
     }
   }
@@ -210,7 +210,7 @@ function renderFocusPre({ children, ...props }: React.HTMLAttributes<HTMLPreElem
     const cls = child.props.className ?? '';
     const source = codeBlockText(child.props.children);
     if (cls.includes('lang-mermaid') && source !== null) {
-      return <MermaidDiagram source={source.trim()} />;
+      return <MermaidDiagramLazy source={source.trim()} />;
     }
     if (source !== null) {
       return (

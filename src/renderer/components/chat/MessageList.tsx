@@ -6,6 +6,7 @@ import type { ChatViewMode } from '../../../shared/types';
 import { parseUserMessage, processMessageContent } from '../../utils/messageFormatter';
 import { Markdown } from 'markdown-to-jsx';
 import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
+import { splitMarkdownBlocks } from '../../utils/markdownBlocks';
 import { CopyIcon, CheckIcon } from '../icons';
 import { ChatColumn } from './ChatColumn';
 import { ProcessTimeline } from './ProcessTimeline';
@@ -243,6 +244,32 @@ const AssistantMessageContent = memo(function AssistantMessageContent({
   );
 });
 
+/** One blank-line-delimited markdown block. Memoized so a block whose text
+ * hasn't changed since the last flush skips re-parsing — only the growing
+ * tail block re-parses as streamed text appends. */
+const MarkdownBlock = memo(function MarkdownBlock({ block }: { block: string }) {
+  return <Markdown options={markdownOptions}>{transformPlanRefs(block)}</Markdown>;
+});
+
+/** Streaming markdown for a still-growing text segment. Splits the
+ * accumulated content into blocks and renders each through its own memoized
+ * `<Markdown>` call, so a buffer flush re-parses only the tail block instead
+ * of the full string from scratch. */
+const StreamingMarkdown = memo(function StreamingMarkdown({ content }: { content: string }) {
+  const blocks = useMemo(() => {
+    const processed = processMessageContent(content);
+    return splitMarkdownBlocks(processed.displayContent);
+  }, [content]);
+
+  return (
+    <div className="prose">
+      {blocks.map((block, idx) => (
+        <MarkdownBlock key={idx} block={block} />
+      ))}
+    </div>
+  );
+});
+
 /** Render streaming segments within a single bubble */
 const StreamingContent = memo(function StreamingContent({
   segments,
@@ -325,14 +352,7 @@ const StreamingContent = memo(function StreamingContent({
             />
           );
         }
-        const processed = processMessageContent(item.content);
-        return (
-          <div key={`t-${idx}`} className="prose">
-            <Markdown options={markdownOptions}>
-              {transformPlanRefs(processed.displayContent)}
-            </Markdown>
-          </div>
-        );
+        return <StreamingMarkdown key={`t-${idx}`} content={item.content} />;
       })}
     </>
   );

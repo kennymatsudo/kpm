@@ -35,11 +35,11 @@ function createTestStore(): StoreApi<TestState> {
 
 describe('sessionManagementSlice.setViewedSession', () => {
   beforeEach(() => {
-    streamingBuffer.clear();
+    streamingBuffer.clearAll();
   });
 
   afterEach(() => {
-    streamingBuffer.clear();
+    streamingBuffer.clearAll();
   });
 
   it('flushes buffered text into the previously viewed session before switching', () => {

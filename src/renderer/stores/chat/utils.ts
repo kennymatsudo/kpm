@@ -1,4 +1,4 @@
-import { createStreamingBuffer, DEFAULT_STREAMING_THROTTLE_MS } from '../../utils/streamingBuffer';
+import { createKeyedStreamingBuffer } from '../../utils/streamingBuffer';
 
-/** Streaming buffer singleton shared across slices */
-export const streamingBuffer = createStreamingBuffer(DEFAULT_STREAMING_THROTTLE_MS);
+/** Per-session streaming buffer shared across slices, keyed by chatSessionId */
+export const streamingBuffer = createKeyedStreamingBuffer();

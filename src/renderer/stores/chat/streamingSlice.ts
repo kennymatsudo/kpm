@@ -1,6 +1,7 @@
 import type { ChatState, ChatSet, ChatGet } from './types';
 import { streamingBuffer } from './utils';
 import { applyStreamEvent } from './chatStreamReducer';
+import { BACKGROUND_STREAMING_THROTTLE_MS, VIEWED_STREAMING_THROTTLE_MS } from '../../utils/streamingBuffer';
 
 function updateSession(set: ChatSet, chatSessionId: string, event: Parameters<typeof applyStreamEvent>[1]): void {
   set((state) => {
@@ -26,31 +27,24 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
       }
 
       const isViewed = get().viewedSessionId === chatSessionId;
+      const intervalMs = isViewed ? VIEWED_STREAMING_THROTTLE_MS : BACKGROUND_STREAMING_THROTTLE_MS;
 
-      if (isViewed) {
-        streamingBuffer.append(chunk, (buffered) => {
-          updateSession(set, chatSessionId, { type: 'chunk', text: buffered });
-        });
-      } else {
-        updateSession(set, chatSessionId, { type: 'chunk', text: chunk });
-      }
+      streamingBuffer.append(chatSessionId, chunk, (buffered) => {
+        updateSession(set, chatSessionId, { type: 'chunk', text: buffered });
+      }, intervalMs);
     },
 
     appendThinking: (chatSessionId, text) => updateSession(set, chatSessionId, { type: 'thinking', text }),
 
     flushStreamingContent: (chatSessionId) => {
-      const isViewed = get().viewedSessionId === chatSessionId;
-      if (!isViewed) return;
-
-      const buffered = streamingBuffer.flush();
+      const buffered = streamingBuffer.flush(chatSessionId);
       if (buffered) {
         updateSession(set, chatSessionId, { type: 'flush', text: buffered });
       }
     },
 
     finalizeMessage: (chatSessionId, options) => {
-      const isViewed = get().viewedSessionId === chatSessionId;
-      const buffered = isViewed ? streamingBuffer.flush() : '';
+      const buffered = streamingBuffer.flush(chatSessionId);
 
       set((state) => {
         const session = state.sessions.get(chatSessionId);
