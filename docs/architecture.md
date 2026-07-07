@@ -1,11 +1,5 @@
 # Architecture
 
-## Process Boundaries
-
-| Process | Restart |
-|---------|---------|
-| Electron App | Quit and reopen |
-
 ## Directory Structure
 
 ```
@@ -47,38 +41,7 @@ src/
 │   ├── tracker-clients/     # Jira/Linear API clients
 │   └── wiki-clients/        # Confluence API client
 ├── renderer/                # React frontend
-│   ├── components/
-│   │   ├── app/             # App-shell providers and boundaries
-│   │   ├── background-tasks/ # Background task badge/surfaces
-│   │   ├── ui/              # Shared primitives (Modal, Button, StatusBadge)
-│   │   ├── layout/          # App shell (Layout, TopBar) + hooks
-│   │   ├── planning/        # Plan views (Canvas, TreeView, BoardView, PlanCard)
-│   │   ├── board-view/      # Board/kanban view components
-│   │   ├── tree-view/       # Tree view components
-│   │   ├── chat/            # Chat interface
-│   │   ├── tracker/         # Jira integration
-│   │   ├── development/     # Shared PR/review components used by the board
-│   │   ├── workspace/       # Workspace view (chat-first with file browser)
-│   │   ├── sidebar/         # Left sidebar components
-│   │   ├── sidebar-tree/    # Hierarchical tree navigation
-│   │   ├── settings/        # Settings dialogs
-│   │   ├── command-palette/ # Command palette
-│   │   ├── confluence/      # Confluence sync modals
-│   │   ├── briefing/        # Project briefing modal
-│   │   ├── permission/      # Permission request UI
-│   │   ├── onboarding/      # Project creation + context regeneration
-│   │   ├── welcome/         # No-project landing pane
-│   │   ├── slack/           # Slack triage UI
-│   │   ├── icons/           # SVG icon components
-│   │   ├── file-ref/        # File reference link rendering
-│   │   ├── plan-ref/        # `@plan/<uuid>` chip + preview rendering
-│   │   ├── focus-mode/      # Single-doc focus reader + lean doc-scoped chat
-│   │   ├── markdown-document-modal/ # Markdown document modal
-│   │   ├── global-search/   # Global search UI
-│   │   ├── image-viewer-modal/ # Image viewer modal
-│   │   ├── keyboard-shortcuts/ # Shortcut help UI
-│   │   ├── terminal/        # Integrated terminal panel
-│   │   └── tool-log/        # Tool call log panel
+│   ├── components/          # Feature-organized UI — see src/renderer/CLAUDE.md and the UI Surface Map in docs/features.md
 │   ├── stores/              # Zustand state management
 │   │   ├── project/         # Sliced project store
 │   │   ├── chat/            # Chat store slices
@@ -103,7 +66,7 @@ A KPM project has a KPM-owned project folder. That folder may be a git repositor
 ```
 {project_folder}/
 ├── attachments/             # Uploaded attachment copies
-├── outputs/                 # Generated artifacts (weekly updates, test plans)
+├── outputs/                 # Generated artifacts (markdown outputs from custom prompts)
 ├── AGENTS.md                # Preferred project context file, when present
 └── CLAUDE.md                # Backward-compatible project context file
 ```
@@ -134,7 +97,6 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 | `sync_queue` | Items staged for export (with custom field overrides) |
 | `sync_snapshots` | Last-synced state for three-way conflict detection |
 | `chat_messages` | Persistent message history |
-| `documents` | Dormant — created by migration 018 but no repository/service writes to it. `BriefingService` is the only reader and tolerates emptiness. Filesystem path is the canonical doc identity. See `src/main/db/CLAUDE.md`. |
 | `dev_sessions` | Plan-item-tied dev sessions for board agentic execution (pending/active/inactive status); `base_sha` records the immutable fork-point SHA used for commit-range attribution; `execution_mode` (standard/workflow) and `review_policy` (auto/skip) columns added in migration 093 |
 | `worktrees` | Git worktrees for dev sessions |
 | `app_settings` | Global key-value application preferences |
@@ -144,7 +106,6 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 | `groups` | Visual group containers |
 | `custom_prompts` | Custom prompts; `target_type` (none/document/repo) and `run_mode` (artifact/chat) columns added in migration 090 |
 | `task_prompt_templates` | Task prompt templates |
-| `agent_prompts` | Dormant — agent-team mode was removed; table remains from a prior migration but no code reads or writes it. Board prompts are configured via settings. |
 | `tool_permissions` | Persisted per-project tool permission grants |
 | `project_briefings` | Cached generated project briefings |
 | `review_tasks` | GitHub review threads normalized into KPM review tasks |
@@ -162,7 +123,7 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 | `loop_runs` | Run history for scheduled loops (outcome, summary, error, artifact path) |
 
 **Key fields for features:**
-- `plan_items.completed_at` - When item marked done (for weekly updates)
+- `plan_items.completed_at` - Stamped on transition to done, cleared on transition away; no feature currently reads it
 - `chat_sessions.claude_session_id` - Claude SDK session ID for resuming conversations
 - `dev_sessions.worktree_path` - Path to isolated git worktree
 - `dev_sessions.status` - Session lifecycle state (pending, active, inactive)
@@ -185,40 +146,7 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 - Clean separation between interface and implementation
 - Enables mocking for unit tests
 
-**All Repositories:**
-| Repository | Purpose |
-|------------|---------|
-| `ProjectRepository` | Project CRUD |
-| `RepoRepository` | Connected git repositories |
-| `AttachmentRepository` | File attachments |
-| `PlanItemRepository` | Plan items with hierarchy (cached statements) |
-| `PlanRelationRepository` | Item dependencies |
-| `GroupRepository` | Visual group containers |
-| `TrackerRepository` | Three-level tracker config |
-| `TypeMappingRepository` | Label → tracker type mappings |
-| `SyncRepository` | Conflict detection snapshots |
-| `SyncQueueRepository` | Export queue management |
-| `ExternalPlanItemRepository` | Tracker-linked items |
-| `DevSessionRepository` | Implementation sessions |
-| `WorktreeRepository` | Git worktree persistence |
-| `ChatMessageRepository` | Unified chat history |
-| `ChatSessionRepository` | Chat session metadata |
-| `AppSettingsRepository` | Global preferences |
-| `CustomThemeRepository` | Imported theme persistence |
-| `ConfluenceLinkRepository` | Document ↔ Confluence page links |
-| `CustomPromptRepository` | Custom prompts |
-| `TaskPromptTemplateRepository` | Task prompt templates |
-| `ToolPermissionRepository` | Persisted tool permission grants |
-| `ReviewTaskRepository` | GitHub review tasks |
-| `ReviewOwnershipRepository` | Review ownership/routing state |
-| `ReviewSyncStateRepository` | Review polling and reconciliation cursors |
-| `AgentReviewRepository` | Opposing-agent review runs and findings |
-| `SlackChannelLinkRepository` | Slack channel links |
-| `SlackTriageItemRepository` | Slack triage items and action suggestions |
-| `ClaudeUsageRepository` | Claude usage and cost accounting |
-| `ProjectFileMetadataRepository` | Project file summary metadata |
-| `ScheduledLoopRepository` | Scheduled loop definitions |
-| `LoopRunRepository` | Scheduled loop run history |
+Repositories live in `src/main/db/repositories/impl/` — read the directory for the full list (see [`src/main/db/CLAUDE.md`](../src/main/db/CLAUDE.md)).
 
 ## Service Architecture
 
@@ -232,18 +160,9 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 2. **Application Services** (`src/main/services/`):
    - Testable with dependency injection
    - Return `ServiceResult<T>` for explicit error handling
-   - Organized by domain:
-     - `core/` - PlanService, ProjectService, ChatRuntimeService, ChatService, ContextFileService, AttachmentService, ArtifactService, SearchService, PromptOverrideService, BriefingService, TrackerService, GroupService, SettingsService, CustomThemeService, CustomPromptService, TaskPromptTemplateService, PermissionService, PermissionPromptService (`promptUser`/`resolvePromptResponse`), SlackTriageService, ClaudeUsageService, McpDiscoveryService, ScheduledLoopService, SlashCommandService, PollScheduler, AppLifecycleService, NotificationService, UpdateEventBus
-     - `repo/` - RepoService, WorktreeService, DevSessionService, RepoWatcherService, EnvironmentService, ReviewService, ReviewAssessmentService, ReviewPollService, ScheduledLoopRunnerService, GitHubService
-     - `files/` - FileExplorerService, FileSummaryService, TempImageService, RepoFileService, FileWatchService, ProjectWatcherService, scoped file-system/path-security helpers
-     - `streaming/` - TerminalService, StreamingSessionService
-     - `generation/` - CustomPromptGenerationService, OnboardingService
-     - `agents/` - AgentSessionManager, BoardAgentOrchestrator, BaseAgentSession, ClaudeSdkSession, CodexSdkAgentSession, CliAgentSession, hookServer, autoReview, agentCatalog
-     - `confluence/` - ConfluenceSyncService
-     - `toollog/` - ToolCallLogger, extractFilePaths
-     - `PerfLogger.ts` - PerfLogger
+   - Organized by domain under `src/main/services/` — see [`src/main/services/CLAUDE.md`](../src/main/services/CLAUDE.md) for the annotated catalog
 
-**Shared polling** (`PollScheduler`): a single timer drives all interval-based work — review polling, repo watching, project file watching, search reindex. Services register tasks instead of holding their own `setInterval`.
+**Shared polling** (`PollScheduler`): a single timer drives interval-based polling. `ReviewPollService`, `StreamingSessionService` (chat session cleanup ticks), and `ScheduledLoopRunnerService` register tasks instead of holding their own `setInterval`. Repo and project file watching use fs watchers, and `SearchService` runs its own interval — they do not register.
 
 **Composition Root** (`src/main/services/appServices.ts`):
 - Wires all services with their dependencies
@@ -255,101 +174,11 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 
 ## Frontend Architecture
 
-**Zustand Store Organization** (`src/renderer/stores/`):
+**Zustand Store Organization** (`src/renderer/stores/`): a sliced project store (`project/` — projectSlice, planSlice, uiSlice, resourceSlice) plus one specialized store per feature domain. See [`src/renderer/stores/CLAUDE.md`](../src/renderer/stores/CLAUDE.md) for the full organization and patterns. Focused resources live in the project UI slice (`project/uiSlice.ts`), accessed through `useProjectUiDomainStore`.
 
-**Sliced Project Store** - Main state management:
-- `project/projectSlice.ts` - Project CRUD
-- `project/planSlice.ts` - Plan items, actions, relations
-- `project/uiSlice.ts` - UI state (editing, focused resources)
-- `project/resourceSlice.ts` - Repos, attachments, worktrees
+**Cross-Store Events** (`storeEvents.ts`): stores communicate side effects via typed events to avoid circular imports. `storeEvents.ts` is the authoritative event list — don't duplicate it in docs.
 
-**Specialized Stores:**
-- `chat/` - Chat messages, streaming state, session history (Claude-only; provider selection was removed)
-- `devSessions/` - Plan-item dev sessions, PR context, review inbox, merge order
-- `workspaceStore.ts` - Workspace file tree, editor state
-- `trackerStore.ts` - Tracker associations
-- `tracker/useSyncStore.ts` - Sync preview & conflicts
-- `tracker/useSyncReviewStore.ts` - Sync review state
-- `tracker/useExportStore.ts` - Export queue
-- `tracker/useCredentialStore.ts` - Tracker credentials
-- `tracker/useConfigStore.ts` - Tracker config UI state
-- `tracker/useMetadataStore.ts` - Tracker metadata cache
-- `artifactsStore.ts` - Generated artifacts
-- `permissionStore.ts` - Permission requests
-- `fileTreeStore.ts` - File explorer state
-- `customPromptStore.ts` - Custom prompts
-- `customPromptTaskStore.ts` - Custom prompt task execution state
-- `confluenceStore.ts` - Confluence sync state
-- `groupStore.ts` - Group management state
-- `approvalQueueStore.ts` - Plan action approval queue
-- `searchStore.ts` - Global search state
-- `settingsUIStore.ts` - Settings UI state
-- `taskPromptTemplateStore.ts` - Task prompt templates
-- `toastStore.ts` - Toast notifications
-- `toolLogStore.ts` - Tool call log state
-- `terminalStore.ts` - Integrated terminal state
-- `promptOverrideStore.ts` - Prompt override state
-- `briefingStore.ts` - Project briefing state
-- `generalSettingsStore.ts` - General settings state
-- `mcpServersStore.ts` - MCP server state
-- `toolPermissionStore.ts` - Tool permission state
-- `contextRegenerationStore.ts` - Context regeneration modal state
-- `useSlackTriageStore.ts` - Slack triage panel and execution state
-- `backgroundTaskStore.ts` - Background task tracking
-- `claudeAvailabilityStore.ts` - Claude availability detection state
-- `focusModeStore.ts` - Focus reader's open document, reading theme, per-document scroll position
-- `scheduledLoopStore.ts` - Scheduled loop CRUD, enable/disable, run-now, run history
-
-Focused resources live in the sliced project UI state (`project/uiSlice.ts`) and are accessed through `useProjectUiDomainStore`.
-
-**Cross-Store Events** (`storeEvents.ts`):
-- `status-changed` - Plan item status updated
-- `plan-item-created` - New plan item created (local or imported)
-- `navigate-to-view` - Navigate between planning/workspace views
-- `reveal-board-column` - Scroll board view to a specific status column
-- `file-explorer-changed` - Project file watcher reported create/update/delete/rename
-- `chat-file-updated` - Chat/document flow updated a project file
-- `tracker-export-completed` - Export queue finished pushing an association's items
-- `sync-review-item-removed` - Sync review dropped an item; export queue should remove the matching entry
-- `sync-review-custom-field-overrides-updated` - Sync review edited custom field overrides; export queue should mirror them
-
-See `storeEvents.ts` for the authoritative, current list — avoid letting this bullet list drift from it.
-
-**Project-Scoped Store Management** (`projectScopedStores.ts`):
-- Manages store lifecycle tied to project switching
-- Clears relevant stores when project changes
-
-**Key Components:**
-| Component | Purpose |
-|-----------|---------|
-| `layout/` | Three-panel design (sidebar, main, chat) with resize hooks |
-| `planning/` | Card/Tree/Board views for plan items |
-| `chat/` | Claude chat interface with streaming |
-| `development/` | Shared PR/review components (CreatePrModal, ReviewTab, etc.) used by the board |
-| `workspace/` | Chat-first view with file browser and editor (default view) |
-| `background-tasks/` | Background task badge/surfaces |
-| `sidebar/` | Project list, sources, context editor |
-| `sidebar-tree/` | Hierarchical tree navigation (repos, files, context menus) |
-| `command-palette/` | Cmd+K command interface |
-| `confluence/` | Confluence sync modals (link, preview) |
-| `tracker/` | Jira config, sync UI, type/status mapping |
-| `board-view/` | Board/kanban view components |
-| `tree-view/` | Tree view components |
-| `settings/` | Application settings dialogs |
-| `permission/` | Permission request UI |
-| `ui/` | Shared UI primitives (Modal, Button, StatusBadge) |
-| `file-ref/` | File reference links in markdown surfaces |
-| `plan-ref/` | `@plan/<uuid>` chip and preview rendering in markdown surfaces |
-| `focus-mode/` | Single-doc focus reader with lean doc-scoped chat panel |
-| `global-search/` | Global search UI |
-| `image-viewer-modal/` | Image viewer modal |
-| `keyboard-shortcuts/` | Keyboard shortcut reference UI |
-| `terminal/` | Integrated terminal panel |
-| `tool-log/` | Tool call log panel |
-| `icons/` | SVG icon components |
-| `slack/` | Slack triage panel, badge, channel settings |
-| `onboarding/` | Project onboarding and context regeneration |
-| `welcome/` | No-project landing pane (open repository, project list, Claude status) |
+**Project-Scoped Store Management** (`projectScopedStores.ts`): manages store lifecycle tied to project switching; clears relevant stores when the project changes.
 
 ## IPC Pattern
 
@@ -360,43 +189,6 @@ Renderer → ipcRenderer.invoke (Zod validated) → Handler → Service → Repo
 **Validation Organization**:
 - Each domain's Zod payload schemas live in `src/shared/ipc/{domain}Endpoints.ts` — the endpoint registry is their single owner
 - `src/main/ipc/validation/` holds only what the registry can't express itself: shared validators (`shared.ts`: uuid, paths, etc.), handler wiring utilities (`createIpcHandler()`, `createRegistryIpcHandlers()`, `bindRegistryHandlers()` in `utils.ts`), and stronger refines layered on top of specific registry schemas (path-existence / temp-dir scoping checks needing Node builtins unavailable in registry files bundled into the renderer)
-
-## Cross-Store Communication
-
-Use `stores/storeEvents.ts` to avoid circular deps:
-```typescript
-emit({
-  type: 'status-changed',
-  payload: { projectId, itemId, statusCategory, externalKey, associationId },
-});
-```
-
-## RepoWatcherService
-
-Tracks git branch changes for connected repositories in real-time.
-
-**Files:**
-- `services/repo/RepoWatcherService.ts` - Service implementation
-- `ipc/handlers/repos.ts` - IPC handlers for watch/unwatch
-- `stores/project/resourceSlice.ts` - Branch state (`repoBranches`)
-- `components/sidebar-tree/RepoListSection.tsx`, `components/sidebar-tree/RepoItem.tsx` - Branch badge UI
-
-**How it works:**
-1. When repo connected → `watchRepo()` starts `fs.watch` on `.git/HEAD`
-2. Branch change detected → debounced (100ms) → `repo:branch-changed` IPC event
-3. Renderer updates `repoBranches` store → UI shows new branch
-
-**Lifecycle:**
-- `init()` called on app startup with window getter (avoids timing issues)
-- Watchers created per-repo when repos are loaded/connected
-- `unwatchRepo()` called when repo removed or project switched
-- `unwatchAll()` called on app quit
-
-**Gotchas:**
-- macOS fires `rename` events (not `change`) when git rewrites HEAD—handle both
-- Window getter pattern avoids null reference when IPC registers before window exists
-- Must clean up watchers on project switch to prevent memory leaks
-- Debouncing prevents rapid-fire events from some file systems
 
 ## Claude Integration Architecture
 
@@ -438,55 +230,15 @@ KPM uses the Claude Agent SDK for Claude chat/dev sessions, the Codex SDK for Co
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**Key files:**
-- `src/main/claude/tools/createKpmServer.ts` - MCP server factory
-- `src/main/claude/tools/plan-items.ts` - Plan query tools
-- `src/main/claude/tools/plan-changes.ts` - Plan modification tool
-- `src/main/claude/tools/relations.ts` - Dependency/relation tools
-- `src/main/claude/tools/jira.ts` - Jira integration
-- `src/main/claude/tools/storybook.ts` - Component discovery
-- `src/main/claude/tools/document-read.ts` - Document read tools
-- `src/main/claude/tools/document-update.ts` - Document update tools
-- `src/main/claude/tools/document-edit.ts` - Document edit tools
-- `src/main/claude/tools/claudemd-update.ts` - Project context updates
-- `src/main/claude/tools/groups.ts` - Group management tools
-- `src/main/claude/tools/github.ts` - GitHub PR description generation
-- `src/main/claude/tools/confluence.ts` - Confluence integration tools
-- `src/main/claude/tools/briefing.ts` - Project briefing generation
-- `src/main/claude/tools/file-move.ts` - File move tools
-- `src/main/claude/tools/file-delete.ts` - File delete tools
-- `src/main/claude/tools/plan-refs.ts` - Extract plan items from a doc; resolve `@plan/<uuid>` tokens
-- `src/main/claude/tools/list-project-files.ts` - Project file discovery
-- `src/main/claude/tools/review-assessment.ts` - Opposing-agent review structured output
-- `src/main/claude/tools/spill-read.ts` - `read_spill_file` tool: read-only access to SDK tool-result spill files under `~/.claude/projects/` (recovery when MCP results exceed SDK token budget)
-- `src/main/claude/tools/git-read.ts` - `git_read` tool: read-only git against a connected repo via `execFile` (no shell) — the only git path from chat
-- `src/main/claude/contextRefs.ts` - Expand plan refs into agent context
-- `src/main/documents/planRefResolver.ts` - Pure resolver (renderer + main)
-- `src/main/documents/exportBoundary.ts` - `toExternalMarkdown` choke point for external destinations (branded `ExternalMarkdown`)
-- `src/main/claude/streaming/` - Streaming session classes
-- `src/main/claude/prompts/` - System prompt modules
-- `src/main/services/streaming/StreamingSessionService.ts` - Main chat session management
-- `src/main/services/repo/DevSessionService.ts` - Plan-item dev session management
-- `src/main/services/agents/AgentSessionManager.ts` - Multi-agent lifecycle management
-- `src/main/services/agents/autoReview.ts` - Opposing-agent review pipeline
-- `src/main/services/streaming/TerminalService.ts` - Terminal emulation
+For the tool-by-tool and file-by-file map, see the File Organization table in [`src/main/claude/CLAUDE.md`](../src/main/claude/CLAUDE.md).
 
-**System Prompt Organization** (`src/main/claude/prompts/`):
-- `index.ts` - Entry point (`buildSystemPrompt()`, `buildFocusSystemPrompt()`)
-- `toolDocs.ts` - Tool usage guidance
-- `modes.ts` - Repo-access + plan-modification guidance (no mode taxonomy — modern Claude reads intent from the prompt)
-- `workspace.ts` - Constraints, workspace boundaries, plan rules, response style
-- `planFormatting.ts` - Plan display formatting
-- `focusedResources.ts` - Focused resource handling
-- `slackTriage.ts` - Slack triage prompt fragments
-- `promptRegistry.ts` - System prompt registry
-- `types.ts` - Prompt type definitions (`PlanContext`, `ContinuationTurn`)
+**System Prompt Organization**: prompt modules live in `src/main/claude/prompts/` with `buildSystemPrompt()` / `buildFocusSystemPrompt()` as entry points — see [`src/main/claude/CLAUDE.md`](../src/main/claude/CLAUDE.md).
 
 **Shared Prompt Defaults** (`src/shared/taskPromptDefaults.ts`):
 - Default task prompt template used by both prompt construction and persistence fallbacks
 
 **Streaming Sessions:**
-- Session key is `chat:{projectId}:{chatSessionId}` — multiple concurrent chat sessions per project, up to `MAX_CONCURRENT_SESSIONS`. See `src/main/claude/CLAUDE.md` for session-type/scope details.
+- Session key is `chat:{projectId}:{chatSessionId}` — multiple concurrent chat sessions per project, up to `session.maxConcurrentSessionsPerProject` from `getConfig()`. See `src/main/claude/CLAUDE.md` for session-type/scope details.
 - Connects on project open (zero-latency first message)
 - Auto-reconnects after 30min idle timeout
 - Full conversation history via SDK resume

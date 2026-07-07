@@ -39,7 +39,7 @@ System prompts (prompts/ directory)
 
 ### 1. Streaming Sessions
 
-Session key is `chat:{projectId}:{chatSessionId}` — multiple concurrent chat sessions per project are supported (up to `MAX_CONCURRENT_SESSIONS`), each connecting on open and staying alive for 30 minutes of idle time.
+Session key is `chat:{projectId}:{chatSessionId}` — multiple concurrent chat sessions per project are supported (up to `session.maxConcurrentSessionsPerProject` from `getConfig()`), each connecting on open and staying alive for 30 minutes of idle time.
 
 **Session Types (`ChatSessionScope`):**
 - **`main`**: full-featured session shared between Plan and Workspace views for a given chat thread
@@ -174,7 +174,7 @@ Descriptions, intents, and acceptance criteria may contain `@plan/<uuid>` tokens
 
 Guidance baked into the `modify_plan` tool prompt: prefer `intent` + `acceptance_criteria` for implementation items; rely on `description` alone for exploratory/research items where criteria can't be enumerated yet. `update_item.acceptance_criteria` **replaces** the full list — fetch current values first if you want to add/remove individual criteria.
 
-The fields are written to SQLite by `PlanActionService.executeCreateItem` / `executeUpdateItem`, surfaced in the agent prompt by `DevSessionService.buildAgentContext` (as `## Intent` + `## Acceptance Criteria` sections), and kept in sync via `PlanItem` (`src/shared/base-types.ts`) → `planActionSchema` (`ipc/validation/plan.ts`) → `PlanActionService`.
+The fields are written to SQLite by `PlanActionService.executeCreateItem` / `executeUpdateItem`, surfaced in the agent prompt by `DevSessionService.buildAgentContext` (as `## Intent` + `## Acceptance Criteria` sections), and kept in sync via `PLAN_ITEM_FIELDS` (`src/shared/planItemFields.ts`), which derives both the IPC schema (`src/shared/ipc/planEndpoints.ts`) and the PlanAction schema (`src/shared/planActionSchema.ts`) consumed by `PlanActionService`.
 
 ### Sync boundary
 

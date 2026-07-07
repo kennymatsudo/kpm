@@ -96,6 +96,7 @@ dist/
 /e2e-results/
 /playwright-report/
 /playwright/.cache/
+.playwright-mcp/
 /test-results/
 
 # SQLite databases (real db is in Electron userData, not project root)

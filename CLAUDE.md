@@ -26,7 +26,7 @@ make dev                                      # Run the app (dev)
 npx tsc --noEmit                              # Type check
 npm run lint                                  # ESLint
 npm test                                      # Unit tests (Vitest)
-npm test -- src/main/claude/errors.test.ts    # Single test file
+npm test -- src/main/claude/permissions.test.ts   # Single test file
 make test:e2e                                 # E2E tests (packages app first)
 make db:reset                                 # Reset DB (loses all data)
 ```
@@ -87,7 +87,7 @@ A missing executor is a compile error (`ACTION_EXECUTORS` is typed against every
 5. If it mutates the plan: emit `PlanAction[]` via `onPlanActions` — do **not** write to the DB.
 
 **Add an IPC handler**
-Every invoke domain is on the endpoint registry (tracker, fileExplorer, repoFiles, attachment, tempImage, artifact, context/claudeMd, search, chat, terminal, settings, permission, promptOverrides, toolLog, storybook, mcpServers, briefing, usage, worktree, devSession, agentSession, review, github, plan, group, export, confluence, scheduledLoop, slack, project, repo, customPrompts, taskPromptTemplates, customThemes, theme, onboarding, perf, debug, testing, shell): add one entry to `src/shared/ipc/{domain}Endpoints.ts` (channel + Zod params schema) and one handler to the typed binding in `src/main/ipc/handlers/{domain}.ts`. See "Migrating a domain to the endpoint registry" in [`src/main/ipc/CLAUDE.md`](src/main/ipc/CLAUDE.md).
+Every invoke domain is on the endpoint registry: add one entry to `src/shared/ipc/{domain}Endpoints.ts` (channel + Zod params schema) and one handler to the typed binding in `src/main/ipc/handlers/{domain}.ts`. See "Adding a New Domain Registry" in [`src/main/ipc/CLAUDE.md`](src/main/ipc/CLAUDE.md).
 
 **Touch `@plan/<uuid>` flow**
 - Parser: `src/shared/planRefs.ts`

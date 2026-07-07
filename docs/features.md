@@ -74,7 +74,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Dependencies / integrations:**
   - SQLite: `plan_items` table with parent_id, label, status, external_key fields
   - Jira/Linear: plan items link to external tracker issues via external_key and `kpm_tracker_associations`
-  - File system: item-level completion timestamps feed into weekly updates and artifact generation
+  - SQLite: `completed_at` is set/cleared by `PlanItemRepository` when items move to/from done; no feature currently reads it
   - Claude SDK: in-process tools for querying, creating, updating plan items (with user approval gate)
 - **Maturity signal:** Mature. Core to app. Full CRUD, multi-view rendering, performance optimized with perf logging.
 
@@ -90,9 +90,9 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Plan card modal (full details tab)
   - Agent context builder (`DevSessionService.buildAgentContext`): specs shape the agent's task definition
 - **Dependencies / integrations:**
-  - Artifact generation uses acceptance criteria for weekly updates
   - Dev sessions: intent + criteria feed into agent system prompt
-- **Maturity signal:** Mature. Roadmap documents phase 4a/4c for additional spec fields (e.g. type_of_change, deployment_risk).
+  - PR description generation (feature 25): `GitHubService` includes the plan item's intent and acceptance criteria in the generation context
+- **Maturity signal:** Mature. Follow-on ideas (per-criterion status ticking, doc→plan breadcrumb) are deliberately not built.
 
 ### 3. Plan Item Relations (Dependencies, Blockers, Related)
 - **What it does:** Link plan items via three relation types: depends_on (blocking dependencies), blocks (what this item blocks), relates_to (loose associations). Users query and modify relations; system prevents circular dependencies.
@@ -128,7 +128,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Dependencies / integrations:**
   - Tracker sync: `queueTrackerUpdateIfNeeded` called on status change
   - Briefing: filters by status to surface "in progress" and "blocked" items
-  - Weekly updates: queries `completed_at` timestamp when status transitions to done
+  - `completed_at`: stamped on transition to done and cleared on transition away (`PlanItemRepository`)
 - **Maturity signal:** Mature. Core feature, well-tested status flow.
 
 ### 5. Plan Views (Canvas, Tree, Board)
@@ -142,7 +142,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - View switcher in the planning header
   - Canvas: drag to reposition, right-click menu, double-click to edit, arrow keys to pan, wheel to zoom
   - Tree: drag-to-reparent, multi-select, arrow-key navigation
-  - Board: drag between columns, click card for detail pane (Activity/Changes/Artifacts/Agent tabs for dev sessions)
+  - Board: drag between columns, click card for detail pane (Activity/Changes/Review tabs for dev sessions)
 - **Dependencies / integrations:**
   - Canvas: items can be assigned to Visual Group containers (feature 8), which render as background frames
   - Board: detail pane pulls in dev-session state (`dev_sessions.automation_phase`) and GitHub PR info for active work
@@ -300,7 +300,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ### 19. Plan-item Dev Sessions (Implementation Workflow, Worktrees, Agent Context)
 - **What it does:** Users start agentic execution for a plan item from the board view. Each session creates an isolated git worktree, builds an agent prompt from the plan item's title/intent/acceptance-criteria/context (with `@plan/<uuid>` refs resolved, the project-level AGENTS.md prepended when it has real content, and attached context files wrapped in via `<context-file>` blocks), and spawns an implementation agent — Claude via the Agent SDK, Codex via the Codex SDK (Codex remains an alternate dev-session/opposing-review backend even though chat itself is Claude-only), or Gemini/legacy Claude via CLI, all dispatched through `AgentSessionManager`. Each board turn is a discrete single-shot `query()`; completion is the SDK async iterator ending, not a terminal process exiting. Sessions track status (pending → active → inactive) and persist across app restarts. Board cards show a compact phase badge (e.g. "Reviewing", "Needs attention", "Fixing checks", "Addressing review") derived from automation phase, agent liveness, and staleness — kept live even after the underlying session goes `inactive` between turns, so the board doesn't read as idle mid-automation. The detail pane's Activity tab renders tool calls as a narrative feed, grouped under the narration Claude wrote immediately before them.
 - **Key code locations:**
-  - Service: `src/main/services/repo/DevSessionService.ts` (`startAgentSession` entrypoint, `buildAgentContext(input: AgentContextInput)` — renders `## Intent`/`## Acceptance Criteria`/`## Context`-or-`## Description`/`## Instructions` based on which spec fields the item carries, `buildPlanRefSection` prepends a `<plan-refs>` block, `_scaffoldWorktree` creates the worktree via `git worktree add`)
+  - Service: `src/main/services/repo/DevSessionService.ts` (`startAgentSession` entrypoint, `buildAgentContext(input: AgentContextInput)` — renders `## Intent`/`## Acceptance Criteria`/`## Context`-or-`## Description`/`## Instructions` based on which spec fields the item carries, `buildPlanRefSection` prepends a `<plan-refs>` block; composes `scaffoldWorktree` from `src/main/services/repo/worktreeScaffold.ts` to create the worktree via `git worktree add`)
   - Orchestration: `src/main/services/agents/BoardAgentOrchestrator.ts` (automation state machine, wired in via `AgentSessionManager`)
   - Agent backends: `ClaudeSdkSession`, `CodexSdkAgentSession`, `CliAgentSession` (Gemini / legacy Claude via CLI) — dispatched by `AgentSessionManager`
   - Worktree support: `src/main/services/repo/WorktreeService.ts` (delete/status/`openInEditor`), `editorLauncher.ts`, `gitUtils.ts`, `WorktreeRepository.ts`
@@ -458,7 +458,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ## Documents & Context
 
 ### 38. Project Documents & Context File (CLAUDE.md / AGENTS.md)
-- **What it does:** Project documents (architecture notes, dev guides, any other markdown) live as plain files on disk in the project folder — there is no DB-backed document store; a `documents` table exists from an early migration but nothing writes to it today, so file path is the canonical identity. Documents are discovered by walking the project folder (filtered to markdown extensions) and indexed for full-text search. One file is special: CLAUDE.md or AGENTS.md at the project root is automatically read by Claude and Claude Code as project-level context on every session. Users edit any of these through the markdown editor; documents can also be linked to Confluence pages for publishing.
+- **What it does:** Project documents (architecture notes, dev guides, any other markdown) live as plain files on disk in the project folder — there is no DB-backed document store (the early `documents` table was dropped in migration `079_drop_documents_table`), so file path is the canonical identity. Documents are discovered by walking the project folder (filtered to markdown extensions) and indexed for full-text search. One file is special: CLAUDE.md or AGENTS.md at the project root is automatically read by Claude and Claude Code as project-level context on every session. Users edit any of these through the markdown editor; documents can also be linked to Confluence pages for publishing.
 - **Key code locations:**
   - Context file: `src/main/services/core/ContextFileService.ts` (read/write CLAUDE.md/AGENTS.md), `src/main/project-context/contextFileCompat.ts` (filename-variant compatibility)
   - Document discovery: `src/main/services/core/SearchService.ts` (`listDocumentFiles` walks the project folder and indexes results for FTS)
@@ -473,7 +473,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Global search: documents indexed for FTS queries
   - Confluence sync: documents can be synced to Confluence pages
   - File watching: detects external changes to open documents
-- **Maturity signal:** Mature for the context file. Plain project documents have no dedicated management UI beyond the shared file tree/editor — there's no in-app concept of document "type" (architecture/dev guide/custom) despite that shape existing in the dormant `documents` table.
+- **Maturity signal:** Mature for the context file. Plain project documents have no dedicated management UI beyond the shared file tree/editor — there's no in-app concept of document "type" (architecture/dev guide/custom).
 
 ### 40. Document & Context-File Editing Tools (Propose Create/Edit)
 - **What it does:** Claude proposes markdown changes through three tools that share one approval mechanism. Creating a document proposes a brand-new file — the diff shows full new content. Editing an existing document uses `old_string` → `new_string` matching, with a batched multi-hunk mode (`edits[]`) that validates and applies all hunks atomically as one combined diff and a single approval entry. The context-file tool uses the same edit mechanism but targets CLAUDE.md/AGENTS.md specifically, tracked as a distinct approval type from other documents. All three queue through the approval system (or apply immediately in auto-apply mode).
@@ -515,38 +515,32 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ## Artifacts & Generation
 
 ### 43. Artifact Generation (Weekly Updates, Test Plans, Custom Outputs)
-- **What it does:** Claude generates stakeholder-facing documents saved to the project `outputs/` folder. Two built-in types share the same service: a **weekly update** summarizing completed plan items and blockers over the past N days (default 7), highlighting progress and next week's focus; and a **test plan** that converts a plan item's acceptance criteria into test scenarios and validation steps. PR descriptions are generated through the GitHub/dev-session flow instead (see GitHub PR Integration).
+- **What it does:** Claude-generated markdown documents saved to a project's `outputs/` folder. There are no built-in generators today: a hardcoded weekly-update/test-plan pipeline was replaced by user-configurable custom prompts (migration `036_custom_prompts`'s stated purpose), and the "Weekly Update"/"Test Plan" prompts that were then seeded as built-ins were themselves later removed — `CustomPromptRepository.ensureBuiltinsExist` actively deletes any leftover built-in rows with those names on startup, and ships no replacement built-ins. Generating a weekly update, a test plan, or any other stakeholder-facing doc now means creating a custom prompt (see Custom Prompts, feature 65) with run mode "artifact" and running it. PR descriptions are generated through the GitHub/dev-session flow instead (see GitHub PR Integration).
 - **Key code locations:**
-  - Service: `src/main/services/core/ArtifactService.ts` (orchestrates generation and file management for both built-in types)
-  - Claude: extended thinking for quality (Sonnet for the weekly update's intermediate summary pass, Opus for final synthesis)
-  - Prompts: `src/main/claude/prompts/promptRegistry.ts` ("weekly-update", "test-plan")
-  - IPC handlers: `src/main/ipc/handlers/artifacts.ts`
-  - Store: `src/renderer/stores/artifactsStore.ts`
-  - Surface: `src/renderer/components/layout/Layout.tsx` (consumes `artifactsStore`; opened via `useLayoutShortcuts`)
+  - Execution: `src/main/services/generation/CustomPromptGenerationService.ts` (`executePrompt` — model is `getConfig().generation.deepModel`, defaulting to Sonnet, with adaptive extended thinking and access to the KPM MCP server's tools)
+  - Built-in cleanup: `src/main/db/repositories/impl/CustomPromptRepository.ts` (`ensureBuiltinsExist` deletes legacy "Weekly Update"/"Test Plan" rows; no built-ins are seeded)
+  - IPC handlers: `src/main/ipc/handlers/customPrompts.ts` (`execute` streams `progress`/`complete`/`error` events)
+  - UI: `src/renderer/components/command-palette/CommandPalette.tsx` (execution), `src/renderer/components/layout/CustomPromptTaskBadge.tsx` + `src/renderer/stores/customPromptTaskStore.ts` (in-flight indicator; reveals the file in the OS file manager on completion)
 - **Entry points / surfaces:**
-  - Artifacts surface opened from the layout (command-palette style), or board detail pane buttons: "Generate Weekly Update" (optional days-back) and "Generate Test Plan for [item]" (also callable from Claude chat)
-  - Modal shows generation progress and final output for review, saved to `outputs/` (e.g. `outputs/weekly-update-YYYY-MM-DD.md`)
+  - Command palette (Cmd+K): run any custom prompt with run mode "artifact"
+  - Top-bar badge shows in-flight generations with elapsed time; on completion the output file is revealed in the OS file manager
 - **Dependencies / integrations:**
-  - Plan items: `completed_at` (weekly update), `acceptance_criteria` (test plan)
-  - Claude SDK: extended-thinking model for quality output
-  - File system: saves `.md` to `project/outputs/`
-- **Maturity signal:** Mature. Both built-in artifact types are reliable; extended thinking used for quality.
+  - Custom Prompts (feature 65): the only current way to define what gets generated — there is no chat tool or board-detail button that triggers generation directly
+  - File system: writes `.md` to `project/outputs/`
+  - Artifacts Manager (feature 46): the backend for the files this pipeline writes, independent of how they were generated
+- **Maturity signal:** The generation pipeline itself (custom prompt → deep model → `outputs/`) is functional. The specific "weekly update" and "test plan" artifact types no longer exist as built-ins — producing either now requires the user to author their own custom prompt.
 
 ### 46. Artifacts Manager (File List + Open)
-- **What it does:** Lists generated artifacts (weekly updates, test plans, etc.) with timestamps and file sizes. Users can open, delete, or re-generate artifacts.
+- **What it does:** Backend file management for markdown files in a project's `outputs/` folder — list, read, delete, and import, exposed over IPC as `window.api.artifacts`. No renderer component currently calls any of these methods: there is no "Artifacts" tab in the board detail pane (its tabs are Activity/Changes/Review — see Plan-item Dev Sessions, feature 19) and `artifactsStore.ts`'s `artifacts`/`isLoadingArtifacts`/`artifactsError` state is unread and unset anywhere. The store's command-palette open/close state (unrelated to artifact listing) is the only part of it actually in use. In practice, files written to `outputs/` are reached via the File Explorer (feature 68), which does not hide the `outputs/` folder, or via the OS file manager, which opens automatically to the new file right after a custom-prompt generation completes (see Artifact Generation, feature 43).
 - **Key code locations:**
-  - Service: `src/main/services/core/ArtifactService.ts` (list, delete, open)
-  - Store: `src/renderer/stores/artifactsStore.ts`
-  - Component: Artifact listing in board detail pane
-  - IPC handlers: `src/main/ipc/handlers/artifacts.ts`
+  - Service: `src/main/services/core/ArtifactService.ts` (`list`, `read`, `delete`, `import`)
+  - IPC handlers: `src/main/ipc/handlers/artifacts.ts`; endpoints: `src/shared/ipc/artifactEndpoints.ts`
+  - Store: `src/renderer/stores/artifactsStore.ts` (artifact list/loading/error state defined but unused; only command-palette open state is read)
 - **Entry points / surfaces:**
-  - Board detail "Artifacts" tab: lists .md files in outputs/ folder
-  - Click to open in editor or system app
-  - Right-click: delete or regenerate
+  - None in-app today. Files are reachable via the File Explorer (feature 68) or the OS file manager.
 - **Dependencies / integrations:**
-  - File system: lists outputs/ folder
-  - App settings: can configure outputs folder location
-- **Maturity signal:** Mature. Straightforward artifact management.
+  - File system: lists/reads/deletes/imports files in `outputs/`
+- **Maturity signal:** Backend is implemented and IPC-wired but has no current renderer caller — the in-app artifact-management UI this backend was built for does not exist today.
 
 ---
 
@@ -638,34 +632,32 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ## Briefing & Project Overview
 
 ### 55. Project Briefing (Generation + Display)
-- **What it does:** A one-shot briefing gathers project status — blocked items, stale tasks, ready work, inactive dev sessions, recent chat — and Claude synthesizes it into an actionable summary with signal counts and recommendations, through a two-stage pipeline (Sonnet synthesis, Opus final pass with extended thinking). The result displays in a modal where the user can copy it, save it as an artifact, or dismiss it.
+- **What it does:** A one-shot briefing gathers project status — blocked items, stale tasks, ready work, inactive dev sessions, recent chat — and Claude synthesizes it into an actionable summary with signal counts and recommendations, through a two-stage pipeline (`fastModel` synthesis, `deepModel` final pass with extended thinking; both default to Sonnet). The result displays in a modal that streams the generation live, caches the finished briefing in `project_briefings` (reused until stale), and offers a Refresh action to regenerate; closing the modal dismisses it.
 - **Key code locations:**
-  - Service: `src/main/services/core/BriefingService.ts` (two-stage pipeline: Sonnet synthesis + Opus final)
+  - Service: `src/main/services/core/BriefingService.ts` (two-stage pipeline: `fastModel` synthesis + `deepModel` final, configurable via `getConfig().generation`)
   - Claude tool: `src/main/claude/tools/briefing.ts` (`get_briefing`)
   - Component: `src/renderer/components/briefing/BriefingModal.tsx`
   - IPC handlers: `src/main/ipc/handlers/briefing.ts`
   - Store: `src/renderer/stores/briefingStore.ts`
 - **Entry points / surfaces:**
   - Chat: user asks "what should I do next?" or "project briefing" — Claude calls `get_briefing`
-  - Modal shows the generated briefing with signal counts, a copy button, and an export-as-artifact option
+  - Modal shows the generated briefing with signal counts (blocked/stale/ready), a generated-at timestamp, and a Refresh button; generation streams into the modal as it runs
 - **Dependencies / integrations:**
-  - Plan items: blocked_by relations, completed_at, status queries
+  - Plan items: blocked items via `depends_on` relations, stale items via `updated_at`, ready items via status-category queries
   - Dev sessions: inactive sessions identified
   - Chat history: synthesized for context
-  - Confluence links: referenced in briefing if available
-  - Artifacts: briefing can be saved as a markdown artifact
-- **Maturity signal:** Mature. Two-stage synthesis approach is sophisticated; display/export UI is simple and functional.
+- **Maturity signal:** Mature. Two-stage synthesis approach is sophisticated; display UI is simple and functional (streaming render, cache, refresh).
 
 ---
 
 ## Agent Sessions & Orchestration
 
 ### 57. Board Agent Prompt Customization (Overrides + Task Templates)
-- **What it does:** Implementation and opposing-review prompts for board execution are configured via Settings, not a separate "agent team" subsystem — an earlier per-project agent-team mode (with an `agent_prompts` table and `AgentPromptRepository`) was removed, and that table is now dormant (kept by the historical migration; nothing reads or writes it). Two customization layers remain: system-prompt-section overrides via `PromptOverrideService` (same mechanism as chat prompt overrides, feature 13), and **task prompt templates** — per-project or global reusable instructions (e.g. "prioritize tests", "use TypeScript conventions") resolved to an effective template and folded into the agent's prompt when a dev session starts.
+- **What it does:** Implementation and opposing-review prompts for board execution are configured via Settings, not a separate "agent team" subsystem — an earlier per-project agent-team mode (with an `agent_prompts` table and `AgentPromptRepository`) was removed, and that table was dropped in migration `080_drop_agent_prompts`. Two customization layers remain: system-prompt-section overrides via `PromptOverrideService` (same mechanism as chat prompt overrides, feature 13), and **task prompt templates** — per-project or global reusable instructions (e.g. "prioritize tests", "use TypeScript conventions") resolved to an effective template and folded into the agent's prompt when a dev session starts.
 - **Key code locations:**
   - Overrides: `src/main/services/core/PromptOverrideService.ts`; Settings UI under the Prompts settings tab
   - Task templates: `src/main/db/repositories/impl/TaskPromptTemplateRepository.ts` (effective-template resolution), `src/main/services/core/TaskPromptTemplateService.ts`, `src/renderer/components/settings/TaskPromptSettings.tsx`, `src/renderer/stores/taskPromptTemplateStore.ts`, `src/main/ipc/handlers/taskPromptTemplates.ts`
-  - DB: `task_prompt_templates` table (project_id, name, prompt_content, is_default); `agent_prompts` table is dormant
+  - DB: `task_prompt_templates` table (project_id, name, prompt_content, is_default); `agent_prompts` table was dropped in migration `080_drop_agent_prompts`
 - **Entry points / surfaces:**
   - Settings → Prompts tab (board prompt overrides); Settings → Task Prompts tab (create global default or per-project override, editor with preview)
 - **Dependencies / integrations:**
@@ -1257,8 +1249,8 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 5 (Plan Views)
 - `BoardCard.tsx`: Card in board column, with phase indicator badge
   - Features: 5 (Plan Views), 19 (Plan-item Dev Sessions — phase indicators)
-- `DetailPane.tsx`: Right-side detail panel (activity, changes, artifacts, agent)
-  - Features: 19 (Plan-item Dev Sessions), 23 (Review Loop & Automated Addressing), 25 (GitHub PR Integration), 43 (Artifact Generation)
+- `DetailPane.tsx`: Right-side detail panel (activity, changes, review)
+  - Features: 19 (Plan-item Dev Sessions), 23 (Review Loop & Automated Addressing), 25 (GitHub PR Integration)
 - `ActivityTab.tsx`: Narrative activity feed tab
   - Features: 19 (Plan-item Dev Sessions — narrative activity feed)
 - `ChangesTab.tsx`: Detail panel tab showing dev session diff
@@ -1441,6 +1433,7 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 
 - **Orphaned:** The Tree view (one of the three Plan Views, feature 5) is well-implemented but rarely used (canvas and board are preferred).
 - **Dead/unreachable:** `CHAT_PROVIDER_KEY` (`chat_provider` app setting), `src/main/codex/CodexChatSession.ts`, and the wider Codex `ChatProvider` path in `ChatRuntimeService` are read but never written anywhere in the codebase — no settings UI or chat UI lets a user select a chat provider. Chat remains Claude-only in practice (see feature 19 for Codex's actual role, board dev sessions); this plumbing is backend-only dead weight, not a live feature.
+- **Dead/unreachable:** The artifacts-manager backend (`ArtifactService` list/read/delete/import, the `artifacts.*` IPC endpoints, and the `window.api.artifacts` preload surface) is fully wired but has no renderer caller — no component lists, opens, or deletes `outputs/` files through it (see feature 46).
 - **Optional:** Confluence integration (53) depends on Jira/Atlassian credentials and linked pages, so it is mature in code but not always visible in day-to-day project work.
 - **Half-finished:** Slack triage (80) is functional but not heavily marketed; limited user adoption signals.
 - **Experimental:** Custom prompts (65) are lightweight; prompt editor UI is basic.

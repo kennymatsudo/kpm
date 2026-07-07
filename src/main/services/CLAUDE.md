@@ -50,7 +50,7 @@ Git repositories, worktrees, development sessions, environment capture.
 - `RepoService` — Add/remove repos, watch for changes
 - `WorktreeService` — Manage git worktrees
 - `DevSessionService` — Board/dev session lifecycle (create, start, resume, destroy). Composes three sibling modules rather than containing their concerns inline: `devSessionPrompt.ts` owns `buildAgentContext(input: AgentContextInput)` (re-exported from `DevSessionService.ts`; input carries `item`, `project`, `children`, `parent`) which renders the implementation prompt with `## Intent`, `## Acceptance Criteria`, and `## Context`/`## Description` sections, falling back gracefully when spec fields are absent; `worktreeScaffold.ts` owns `scaffoldWorktree` so the board entrypoint has consistent error semantics (`checkedOutInMainRepo` / `checkedOutElsewhere` / `createFailed`); `devSessionGitInspection.ts` owns diff/log/commit reads on a session's worktree (`getSessionDiff`, `getSessionCommitLog`, `commitSessionChanges`, etc.).
-- `RepoWatcherService` — Watch git branch changes (fs.watch on .git/HEAD)
+- `RepoWatcherService` — Watch git branch changes (`fs.watch` on `.git/HEAD`; macOS fires `rename`, not `change`, when git rewrites HEAD — handle both). Events are debounced (100ms); watchers must be cleaned up on project switch and app quit.
 - `EnvironmentService` — Capture environment from direnv/Nix for dev sessions
 - `GitHubService` — PR description generation, PR creation, PR template enforcement, diff/commit log helpers
 - `ReviewService` — GitHub PR review thread CRUD (fetch threads, post replies, resolve)
