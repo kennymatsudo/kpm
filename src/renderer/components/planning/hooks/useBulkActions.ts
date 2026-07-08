@@ -1,11 +1,12 @@
 import { useCallback, useState } from 'react';
 import type { PlanAction } from '../../../../shared/types';
+import type { ApplyPlanActionsResult } from '../../../stores/project/types';
 import { toast } from '../../../stores/toastStore';
 
 interface BulkActionsDeps {
   selectedItemIds: Set<string>;
   descendantIds: Set<string>;
-  executePlanActions: (actions: PlanAction[]) => Promise<void>;
+  executePlanActions: (actions: PlanAction[]) => Promise<ApplyPlanActionsResult>;
   setSelectedItemIds: (ids: Set<string>) => void;
 }
 

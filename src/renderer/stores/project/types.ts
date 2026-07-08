@@ -57,10 +57,22 @@ export interface ProjectSlice {
   resetProjectState: () => void;  // Clears project-specific state while preserving project list
 }
 
+/**
+ * Outcome of applying a batch of plan actions. The batch is atomic, so either
+ * every action committed or none did. `error` marks an outright rejection
+ * (nothing persisted); `skipped` lists actions the batch accepted but did not
+ * apply, with reasons.
+ */
+export interface ApplyPlanActionsResult {
+  applied: number;
+  skipped: { type: string; reason: string }[];
+  error?: string;
+}
+
 export interface PlanSlice {
   updatePlanItems: (items: PlanItem[]) => void;
   setRelations: (relations: PlanRelation[]) => void;
-  executePlanActions: (actions: PlanAction[]) => Promise<void>;
+  executePlanActions: (actions: PlanAction[]) => Promise<ApplyPlanActionsResult>;
   addRelation: (fromId: string, toId: string, type: PlanRelation['relation_type']) => Promise<void>;
   removeRelation: (relationId: string) => Promise<void>;
   updateItemPosition: (itemId: string, x: number, y: number) => Promise<void>;

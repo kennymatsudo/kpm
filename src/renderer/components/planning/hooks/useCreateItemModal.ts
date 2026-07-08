@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { CreateItemData } from '../CreateItemModal';
 import type { PlanAction, StatusCategory } from '../../../../shared/types';
+import type { ApplyPlanActionsResult } from '../../../stores/project/types';
 
 interface CreateItemContext {
   isOpen: boolean;
@@ -10,7 +11,7 @@ interface CreateItemContext {
 }
 
 interface CreateItemModalDeps {
-  executePlanActions: (actions: PlanAction[]) => Promise<void>;
+  executePlanActions: (actions: PlanAction[]) => Promise<ApplyPlanActionsResult>;
   registerCreateItemHandler?: ((handler: (() => void) | null) => void) | undefined;
 }
 

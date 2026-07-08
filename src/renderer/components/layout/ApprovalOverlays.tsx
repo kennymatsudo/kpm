@@ -207,6 +207,9 @@ export function ApprovalOverlays() {
       const result = await executePlanActions(item.actions);
       if (result.success) {
         removeById(item.id);
+        if (result.warning) {
+          toast.warning(result.warning);
+        }
       } else {
         toast.error(`Failed to apply changes: ${result.error}`);
       }

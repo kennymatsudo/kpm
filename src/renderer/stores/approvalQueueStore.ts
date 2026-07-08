@@ -19,6 +19,7 @@
 import { create } from 'zustand';
 import { isContextFile } from '../../shared/contextFile';
 import type { PlanAction } from '../../shared/types';
+import type { ApplyPlanActionsResult } from './project/types';
 import { usePlanDomainStore } from './projectDomains';
 import { useDevSessionsStore } from './devSessions';
 import { useGeneralSettingsStore } from './generalSettingsStore';
@@ -187,8 +188,13 @@ interface ApprovalQueueState {
   // Execute methods — called by approval modal when user approves.
   // ───────────────────────────────────────────────────────────────────────────
 
-  /** Execute plan actions */
-  executePlanActions: (actions: PlanAction[]) => Promise<{ success: boolean; error?: string }>;
+  /**
+   * Execute plan actions. `success` is true only when the batch committed
+   * without an outright error; `warning` is set when it committed but some
+   * actions were skipped (or nothing was applied), so callers can dequeue
+   * without falsely reporting a clean apply.
+   */
+  executePlanActions: (actions: PlanAction[]) => Promise<{ success: boolean; error?: string; warning?: string }>;
 
   /** Execute project context file write */
   executeClaudeMdWrite: (
@@ -233,6 +239,35 @@ function shouldAutoApplyApprovals(): boolean {
     void settings.loadApprovalMode();
   }
   return settings.approvalMode === 'auto_apply';
+}
+
+/**
+ * Translate a plan-apply outcome into an approval result. Only a batch that
+ * committed with every action applied reports a clean `success` with no
+ * warning; an outright rejection is a failure (retryable), while skips or an
+ * empty apply commit but carry a warning so the UI never claims "applied" when
+ * nothing (or only part) landed.
+ */
+export function planApplyToApprovalOutcome(
+  result: ApplyPlanActionsResult
+): { success: boolean; error?: string; warning?: string } {
+  if (result.error) {
+    return { success: false, error: result.error };
+  }
+  if (result.skipped.length > 0) {
+    const summary = result.skipped.map((s) => `${s.type}: ${s.reason}`).join('; ');
+    return {
+      success: true,
+      warning:
+        result.applied > 0
+          ? `${result.applied} change(s) applied, ${result.skipped.length} skipped: ${summary}`
+          : `No changes applied — ${result.skipped.length} skipped: ${summary}`,
+    };
+  }
+  if (result.applied === 0) {
+    return { success: true, warning: 'No changes were applied' };
+  }
+  return { success: true };
 }
 
 // =============================================================================
@@ -437,10 +472,12 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
 
     void (async () => {
       const result = await get().executePlanActions(actions);
-      if (result.success) {
-        toast.success('Plan changes applied');
-      } else {
+      if (!result.success) {
         toast.error(`Failed to apply plan changes: ${result.error}`);
+      } else if (result.warning) {
+        toast.warning(result.warning);
+      } else {
+        toast.success('Plan changes applied');
       }
     })();
   },
@@ -524,8 +561,8 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
 
   executePlanActions: async (actions) => {
     try {
-      await usePlanDomainStore.getState().executePlanActions(actions);
-      return { success: true };
+      const result = await usePlanDomainStore.getState().executePlanActions(actions);
+      return planApplyToApprovalOutcome(result);
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }

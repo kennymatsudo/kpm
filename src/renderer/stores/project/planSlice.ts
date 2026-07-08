@@ -9,7 +9,7 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
 
   executePlanActions: async (actions) => {
     const { currentProjectId, refreshPlanItems, planItems } = get();
-    if (!currentProjectId || actions.length === 0) return;
+    if (!currentProjectId || actions.length === 0) return { applied: 0, skipped: [] };
 
     // Optimistic update for reparent actions - update UI immediately
     const reparentActions = actions.filter(a => a.type === 'reparent') as { type: 'reparent'; item_id: string; new_parent_id: string | null }[];
@@ -28,7 +28,7 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
     try {
       const result = await deps.api.plan.executeActions({ projectId: currentProjectId, actions });
       if (result.success) {
-        const skipped = result.skippedActions ?? [];
+        const skipped = (result.skippedActions ?? []).map((s) => ({ type: s.type, reason: s.reason }));
 
         // Only do full refresh if there were non-reparent actions or skipped actions
         const hasNonReparentActions = actions.some(a => a.type !== 'reparent');
@@ -48,23 +48,27 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
           await useGroupStore.getState().loadGroups(currentProjectId);
         }
 
+        const applied = actions.length - skipped.length;
         // Surface skipped actions as warning so user knows why some didn't apply
         if (hasSkippedActions) {
-          const applied = actions.length - skipped.length;
           const skippedSummary = skipped
-            .map((s: { type: string; reason: string }) => `${s.type}: ${s.reason}`)
+            .map((s) => `${s.type}: ${s.reason}`)
             .join('; ');
           set({ error: `${applied} action(s) applied, ${skipped.length} skipped: ${skippedSummary}` });
         }
+        return { applied, skipped };
       } else {
         // Revert optimistic update on failure
         await refreshPlanItems();
-        set({ error: result.error || 'Failed to execute plan actions' });
+        const error = result.error || 'Failed to execute plan actions';
+        set({ error });
+        return { applied: 0, skipped: [], error };
       }
     } catch (error) {
       // Revert optimistic update on error
       await refreshPlanItems();
       set({ error: String(error) });
+      return { applied: 0, skipped: [], error: String(error) };
     }
   },
 

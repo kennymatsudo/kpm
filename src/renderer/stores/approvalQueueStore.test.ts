@@ -1,7 +1,46 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { installMockApi, type MockApi } from '../../../tests/mocks/electron-api';
-import { useApprovalQueueStore } from './approvalQueueStore';
+import { useApprovalQueueStore, planApplyToApprovalOutcome } from './approvalQueueStore';
 import { useDevSessionsStore } from './devSessions';
+
+describe('planApplyToApprovalOutcome', () => {
+  it('reports clean success only when every action applied', () => {
+    expect(planApplyToApprovalOutcome({ applied: 3, skipped: [] })).toEqual({ success: true });
+  });
+
+  it('reports failure (retryable) when the batch was rejected outright', () => {
+    expect(
+      planApplyToApprovalOutcome({ applied: 0, skipped: [], error: 'references unknown plan item' })
+    ).toEqual({ success: false, error: 'references unknown plan item' });
+  });
+
+  it('does not claim a clean apply when some actions were skipped', () => {
+    const outcome = planApplyToApprovalOutcome({
+      applied: 2,
+      skipped: [{ type: 'reparent', reason: 'Cannot set item as its own parent' }],
+    });
+    expect(outcome.success).toBe(true);
+    expect(outcome.warning).toBe(
+      '2 change(s) applied, 1 skipped: reparent: Cannot set item as its own parent'
+    );
+  });
+
+  it('warns when everything was skipped so nothing landed', () => {
+    const outcome = planApplyToApprovalOutcome({
+      applied: 0,
+      skipped: [{ type: 'reparent', reason: 'Cannot un-nest Jira subtask from its Jira parent' }],
+    });
+    expect(outcome.success).toBe(true);
+    expect(outcome.warning).toMatch(/^No changes applied — 1 skipped:/);
+  });
+
+  it('warns rather than claims success when an empty batch applied nothing', () => {
+    expect(planApplyToApprovalOutcome({ applied: 0, skipped: [] })).toEqual({
+      success: true,
+      warning: 'No changes were applied',
+    });
+  });
+});
 
 describe('approvalQueueStore — review reply flow', () => {
   let api: MockApi;
