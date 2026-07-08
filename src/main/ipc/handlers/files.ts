@@ -1,6 +1,7 @@
-import { ipcMain, dialog, type BrowserWindow } from 'electron';
+import { dialog, type BrowserWindow } from 'electron';
 import { contextEndpoints, type ContextEndpointName } from '../../../shared/ipc/contextEndpoints';
 import type { HandlerFor } from '../../../shared/ipc/endpoints';
+import { createRegistryIpcHandlers } from '../validation/utils';
 import type { ContextFileService } from '../../services/core/ContextFileService';
 
 /**
@@ -86,19 +87,9 @@ export function registerFileHandlers(
   getMainWindow: () => BrowserWindow | null,
   contextFileService: ContextFileService,
 ): void {
-  const handlers = buildContextHandlers(getMainWindow, contextFileService);
-
-  for (const [name, { channel, params }] of Object.entries(contextEndpoints) as [
-    ContextEndpointName,
-    (typeof contextEndpoints)[ContextEndpointName],
-  ][]) {
-    // Each handler's parameter type was checked once against its own
-    // registry entry in `buildContextHandlers`; iterating erases that
-    // per-key correlation into a union, hence the cast here.
-    const handler = handlers[name] as (params: unknown, event: Electron.IpcMainInvokeEvent) => unknown;
-    ipcMain.handle(channel, async (event, rawParams: unknown) => {
-      const parsedParams = params ? params.parse(rawParams) : undefined;
-      return handler(parsedParams, event);
-    });
-  }
+  createRegistryIpcHandlers(
+    contextEndpoints,
+    buildContextHandlers(getMainWindow, contextFileService),
+    'Context operation failed',
+  );
 }
