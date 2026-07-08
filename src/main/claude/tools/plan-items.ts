@@ -17,13 +17,12 @@ import { tool, jsonResult, toolError, toolLog } from './index';
 import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
 import type { PlanItem, PlanAction } from '../../../shared/types';
 import { getDatabase } from '../../db/connection';
-import { StatusCategoryEnum, type PlanActionsCallback } from './schemas';
+import { StatusCategoryEnum, LabelEnum, type PlanActionsCallback } from './schemas';
 
 export type { PlanActionsCallback };
 
 // Status and label enums matching shared types
 const StatusEnum = z.literal('planned');
-const LabelEnum = z.enum(['project', 'feature', 'task']);
 
 type PlanItemSummary = Pick<
   PlanItem,

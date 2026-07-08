@@ -10,10 +10,9 @@
 
 import { z } from 'zod';
 import { tool, jsonResult, toolError, toolLog } from './index';
-import { StatusCategoryEnum, type PlanActionsCallback } from './schemas';
+import { StatusCategoryEnum, LabelEnum, type PlanActionsCallback } from './schemas';
 
 // Zod schemas matching the PlanAction type
-const LabelEnum = z.enum(['project', 'story', 'feature', 'task']);
 const RelationTypeEnum = z.enum(['depends_on', 'blocks', 'relates_to']);
 
 const CreateItemAction = z.object({

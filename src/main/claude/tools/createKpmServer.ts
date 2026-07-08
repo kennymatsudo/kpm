@@ -412,12 +412,16 @@ function logToolDefinitionFootprint(tools: NonNullable<typeof cachedTools>): voi
   }
 }
 
-/**
- * Collect all KPM tools. Cached after first call.
- */
-function collectTools() {
-  if (cachedTools) return cachedTools;
+type KpmToolDef = NonNullable<Parameters<typeof createSdkMcpServer>[0]['tools']>[number];
 
+/**
+ * Every KPM tool group declared once, tagged with whether it is available to
+ * focus-reader chat sessions. Both the full set (`collectTools`) and the focus
+ * subset (`collectFocusTools`) derive from this list, so the focus set is
+ * always a subset of the full set and enabling a tool in focus mode is a single
+ * `focus` flag flip rather than a second hand-maintained array.
+ */
+function buildToolGroups(): { focus: boolean; tools: KpmToolDef[] }[] {
   const { container, services, getMainWindow } = getKpmToolRuntime();
   const projectRepo = container.projects;
   const planItemRepo = container.planItems;
@@ -425,61 +429,42 @@ function collectTools() {
   const groupRepo = container.groups;
   const repoRepo = container.repos;
 
-  const planItemTools = createPlanItemTools(planItemRepo, planRelationRepo, emitPlanActions);
-  const relationTools = createRelationTools(planItemRepo);
-  const groupTools = createGroupTools(groupRepo);
-  const planChangeTools = createPlanChangeTools(emitPlanActions);
-  const jiraTools = createJiraTools();
-  const storybookTools = createStorybookTools(projectRepo);
-  const claudeMdEditTools = createClaudeMdEditTools(readProjectContextFileWithPending, emitClaudeMdUpdate);
-  const documentReadTools = createDocumentReadTools(readProjectFileWithPending);
-  const documentCreateTools = createDocumentCreateTools(emitDocumentUpdate);
-  const documentEditTools = createDocumentEditTools(readProjectFileWithPending, emitDocumentUpdate);
-  const githubTools = createGitHubTools(planItemRepo, repoRepo, container.devSessions);
-  const confluenceTools = createConfluenceTools(container.confluenceLinks);
-  const briefingTools = createBriefingTools(services.briefingService);
-  const fileMoveTools = createFileMoveTools({
-    fileExplorerService: services.fileExplorerService,
-    getMainWindow,
-  });
-  const fileDeleteTools = createFileDeleteTools({
-    fileExplorerService: services.fileExplorerService,
-    onFileDelete: emitFileDelete,
-  });
-  const listProjectFilesTools = createListProjectFilesTools({
-    fileExplorerService: services.fileExplorerService,
-  });
-  const planRefTools = createPlanRefTools({
-    planItems: planItemRepo,
-    projects: projectRepo,
-  });
-  const spillReadTools = createSpillReadTools();
-  const gitReadTools = createGitReadTools({ repos: repoRepo });
-
-  const tools = [
-    ...planItemTools,
-    ...relationTools,
-    ...groupTools,
-    ...planChangeTools,
-    ...jiraTools,
-    ...storybookTools,
-    ...claudeMdEditTools,
-    ...documentReadTools,
-    ...documentCreateTools,
-    ...documentEditTools,
-    ...githubTools,
-    ...confluenceTools,
-    ...briefingTools,
-    ...fileMoveTools,
-    ...fileDeleteTools,
-    ...listProjectFilesTools,
-    ...planRefTools,
-    ...spillReadTools,
-    ...gitReadTools,
+  return [
+    { focus: false, tools: createPlanItemTools(planItemRepo, planRelationRepo, emitPlanActions) },
+    { focus: false, tools: createRelationTools(planItemRepo) },
+    { focus: false, tools: createGroupTools(groupRepo) },
+    { focus: false, tools: createPlanChangeTools(emitPlanActions) },
+    { focus: false, tools: createJiraTools() },
+    { focus: false, tools: createStorybookTools(projectRepo) },
+    { focus: true, tools: createClaudeMdEditTools(readProjectContextFileWithPending, emitClaudeMdUpdate) },
+    { focus: true, tools: createDocumentReadTools(readProjectFileWithPending) },
+    { focus: true, tools: createDocumentCreateTools(emitDocumentUpdate) },
+    { focus: true, tools: createDocumentEditTools(readProjectFileWithPending, emitDocumentUpdate) },
+    { focus: false, tools: createGitHubTools(planItemRepo, repoRepo, container.devSessions) },
+    { focus: false, tools: createConfluenceTools(container.confluenceLinks) },
+    { focus: false, tools: createBriefingTools(services.briefingService) },
+    { focus: false, tools: createFileMoveTools({ fileExplorerService: services.fileExplorerService, getMainWindow }) },
+    {
+      focus: false,
+      tools: createFileDeleteTools({ fileExplorerService: services.fileExplorerService, onFileDelete: emitFileDelete }),
+    },
+    { focus: true, tools: createListProjectFilesTools({ fileExplorerService: services.fileExplorerService }) },
+    { focus: true, tools: createPlanRefTools({ planItems: planItemRepo, projects: projectRepo }) },
+    { focus: false, tools: createSpillReadTools() },
+    { focus: false, tools: createGitReadTools({ repos: repoRepo }) },
   ];
+}
+
+/**
+ * Collect all KPM tools. Cached after first call.
+ */
+function collectTools() {
+  if (cachedTools) return cachedTools;
+
+  const tools = buildToolGroups().flatMap((group) => group.tools);
   cachedTools = tools;
 
-  console.log('[KPM Server] Registered tools:', tools.map(t => t.name).join(', '));
+  console.log('[KPM Server] Registered tools:', tools.map((t) => t.name).join(', '));
   logToolDefinitionFootprint(tools);
   return tools;
 }
@@ -490,33 +475,12 @@ function collectTools() {
 function collectFocusTools() {
   if (cachedFocusTools) return cachedFocusTools;
 
-  const { container, services } = getKpmToolRuntime();
-  const projectRepo = container.projects;
-  const planItemRepo = container.planItems;
-
-  const claudeMdEditTools = createClaudeMdEditTools(readProjectContextFileWithPending, emitClaudeMdUpdate);
-  const documentReadTools = createDocumentReadTools(readProjectFileWithPending);
-  const documentCreateTools = createDocumentCreateTools(emitDocumentUpdate);
-  const documentEditTools = createDocumentEditTools(readProjectFileWithPending, emitDocumentUpdate);
-  const listProjectFilesTools = createListProjectFilesTools({
-    fileExplorerService: services.fileExplorerService,
-  });
-  const planRefTools = createPlanRefTools({
-    planItems: planItemRepo,
-    projects: projectRepo,
-  });
-
-  const tools = [
-    ...claudeMdEditTools,
-    ...documentReadTools,
-    ...documentCreateTools,
-    ...documentEditTools,
-    ...listProjectFilesTools,
-    ...planRefTools,
-  ];
+  const tools = buildToolGroups()
+    .filter((group) => group.focus)
+    .flatMap((group) => group.tools);
   cachedFocusTools = tools;
 
-  console.log('[KPM Server] Registered focus tools:', tools.map(t => t.name).join(', '));
+  console.log('[KPM Server] Registered focus tools:', tools.map((t) => t.name).join(', '));
   logToolDefinitionFootprint(tools);
   return tools;
 }
