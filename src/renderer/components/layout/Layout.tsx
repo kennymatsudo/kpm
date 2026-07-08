@@ -165,6 +165,8 @@ export const Layout = memo(function Layout({
     useToolLogStore.getState().togglePanel();
   }, []);
 
+  const handleToggleSidebar = useCallback(() => setSidebarCollapsed((prev) => !prev), []);
+
   const handleSwitchProjectByPosition = useCallback((position: number) => {
     const project = projects[position - 1];
     if (!project || project.id === currentProjectId) return;
@@ -254,7 +256,7 @@ export const Layout = memo(function Layout({
 
   // Keyboard shortcuts
   useLayoutShortcuts({
-    onToggleSidebar: () => setSidebarCollapsed((prev) => !prev),
+    onToggleSidebar: handleToggleSidebar,
     onToggleChat: handleToggleChat,
     onMainViewChange: handleMainViewChange,
     onOpenCommandPalette: openCommandPalette,
@@ -273,7 +275,7 @@ export const Layout = memo(function Layout({
         {/* Unified Top Bar */}
         <TopBar
           sidebarCollapsed={sidebarCollapsed}
-          onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
+          onToggleSidebar={handleToggleSidebar}
           chatCollapsed={chatCollapsed}
           onToggleChat={handleToggleChat}
           onDeleteProject={onDeleteProject}

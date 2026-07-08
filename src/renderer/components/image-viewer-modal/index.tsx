@@ -104,7 +104,7 @@ export function ImageViewerModal({
                 {naturalSize && (
                   <span>{naturalSize.width} x {naturalSize.height}</span>
                 )}
-                {fileSize && <span>{formatFileSize(fileSize)}</span>}
+                {fileSize ? <span>{formatFileSize(fileSize)}</span> : null}
               </div>
             </div>
           </div>

@@ -13,6 +13,23 @@ interface FileEditorProps {
   onClose: () => void;
 }
 
+function FileTypeIcon({ isMarkdown }: { isMarkdown: boolean }) {
+  if (isMarkdown) {
+    return (
+      <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    );
+  }
+  return (
+    <svg className="w-4 h-4 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+        d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+    </svg>
+  );
+}
+
 /**
  * File editor wrapper for the workspace view.
  * - Markdown files: Full MarkdownEditor with toolbar, shortcuts, side-by-side preview
@@ -122,24 +139,6 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
     </button>
   ) : null;
 
-  // Get file type icon
-  const FileTypeIcon = () => {
-    if (isMarkdown) {
-      return (
-        <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-      );
-    }
-    return (
-      <svg className="w-4 h-4 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-          d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-      </svg>
-    );
-  };
-
   // Confirmation shown when closing with unsaved changes. Shared across both
   // editor layouts (markdown / non-markdown).
   const unsavedConfirmDialog = showUnsavedConfirm ? (
@@ -160,32 +159,6 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
     />
   ) : null;
 
-  // Context button for adding file to chat context
-  const ContextButton = () => (
-    <button
-      onClick={handleToggleContext}
-      className={`
-        px-2 py-1 text-xs rounded-md flex items-center gap-1.5 transition-all
-        ${isInContext
-          ? 'bg-accent/15 text-accent hover:bg-accent/25'
-          : 'bg-surface-3 text-text-muted hover:text-text-primary hover:bg-surface-4'
-        }
-      `}
-      title={isInContext ? 'Remove from chat context' : 'Add to chat context'}
-    >
-      {isInContext ? (
-        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
-      ) : (
-        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-        </svg>
-      )}
-      <span>{isInContext ? 'In context' : 'Add to context'}</span>
-    </button>
-  );
-
   // For markdown files, use the full-featured MarkdownEditor
   if (isMarkdown && !editingFile.isReadOnly) {
     return (
@@ -193,7 +166,7 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
         {/* Header */}
         <div className="flex items-center gap-3 px-4 py-3 min-w-0">
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            <FileTypeIcon />
+            <FileTypeIcon isMarkdown={isMarkdown} />
             <span className="text-sm font-medium text-text-primary truncate" title={editingFile.path}>
               {filename}
             </span>
@@ -254,7 +227,7 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 min-w-0">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <FileTypeIcon />
+          <FileTypeIcon isMarkdown={isMarkdown} />
           <span className="text-sm font-medium text-text-primary truncate" title={editingFile.path}>
             {filename}
           </span>
@@ -284,7 +257,28 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
 
         <div className="flex items-center gap-2 flex-shrink-0">
           {focusButton}
-          <ContextButton />
+          <button
+            onClick={handleToggleContext}
+            className={`
+              px-2 py-1 text-xs rounded-md flex items-center gap-1.5 transition-all
+              ${isInContext
+                ? 'bg-accent/15 text-accent hover:bg-accent/25'
+                : 'bg-surface-3 text-text-muted hover:text-text-primary hover:bg-surface-4'
+              }
+            `}
+            title={isInContext ? 'Remove from chat context' : 'Add to chat context'}
+          >
+            {isInContext ? (
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            )}
+            <span>{isInContext ? 'In context' : 'Add to context'}</span>
+          </button>
           <button
             onClick={handleClose}
             className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-surface-3 text-text-muted hover:text-text-primary transition-all"

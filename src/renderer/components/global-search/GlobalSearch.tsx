@@ -173,12 +173,16 @@ export function GlobalSearch() {
     }
   }, [isOpen, filteredResults, selectedIndex, closeSearch, setSelectedIndex, navigateToResult]);
 
+  const handleKeyDownRef = useRef(handleKeyDown);
+  handleKeyDownRef.current = handleKeyDown;
+
   useEffect(() => {
     if (!isOpen) return;
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, handleKeyDown]);
+    const listener = (e: KeyboardEvent) => handleKeyDownRef.current(e);
+    document.addEventListener('keydown', listener);
+    return () => document.removeEventListener('keydown', listener);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
