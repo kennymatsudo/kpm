@@ -2,7 +2,6 @@ import type {
   Attachment,
   PlanItem,
   Repo,
-  Worktree,
 } from '../../../shared/types';
 import { useProjectStore } from '../projectStore';
 
@@ -11,7 +10,6 @@ export interface LoadedProjectData {
   repos: Repo[];
   attachments: Attachment[];
   planItems: PlanItem[];
-  worktrees: Worktree[];
 }
 
 /**
@@ -25,7 +23,6 @@ export function applyLoadedProjectData(data: LoadedProjectData): void {
   state.setRepos(data.repos);
   state.setAttachments(data.attachments);
   state.updatePlanItems(data.planItems);
-  state.setWorktrees(data.worktrees);
   state.setRepoBranches({});
 }
 

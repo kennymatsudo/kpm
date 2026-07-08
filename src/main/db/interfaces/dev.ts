@@ -11,7 +11,6 @@ import type {
   DevSession,
   DevSessionStatus,
   DevSessionWithPlanItem,
-  Worktree,
 } from '../../../shared/types';
 
 // =============================================================================
@@ -51,23 +50,4 @@ export interface IDevSessionRepository {
   delete(id: string): void;
   /** Mark all active sessions as inactive (called on app startup) */
   markActiveAsInactive(): void;
-}
-
-// =============================================================================
-// Worktree Repository
-// =============================================================================
-
-export interface IWorktreeRepository {
-  /** Get all worktrees for a project */
-  getByProject(projectId: string): Worktree[];
-  /** Get a worktree by ID */
-  get(id: string): Worktree | undefined;
-  /** Get worktree for a specific plan item */
-  getByPlanItem(planItemId: string): Worktree | undefined;
-  /** Create a new worktree record */
-  create(worktree: Omit<Worktree, 'created_at' | 'last_opened_at'>): Worktree;
-  /** Update last_opened_at timestamp */
-  updateLastOpened(id: string): void;
-  /** Delete a worktree record */
-  delete(id: string): void;
 }

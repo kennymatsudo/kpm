@@ -3,7 +3,6 @@ import { useShallow } from 'zustand/react/shallow';
 import {
   useProjectDomainStore,
   usePlanDomainStore,
-  useResourceDomainStore,
   useTrackerStore,
   toast,
 } from '../../stores';
@@ -253,14 +252,6 @@ export const PlanCard = memo(function PlanCard({
   const { addToQueue } = useExportActions();
 
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
-  const worktreeLoadingOp = useResourceDomainStore((state) => {
-    const worktreeMatch = state.worktreeByPlanItemId.get(item.id);
-    return (
-      state.worktreeLoading[item.id] ??
-      (worktreeMatch ? state.worktreeLoading[worktreeMatch.id] : null) ??
-      null
-    );
-  });
   // Narrow the sessions subscription to a scalar boolean so this card only
   // re-renders when its own active-session status changes, rather than on any
   // session update anywhere in the store.
@@ -269,7 +260,6 @@ export const PlanCard = memo(function PlanCard({
     return (state.sessionsByPlanItemId.get(item.id) ?? []).some((s) => activeStatuses.includes(s.status));
   });
   const activeTrackerType = useTrackerStore((state) => state.associations[0]?.tracker_type ?? null);
-  const isWorktreeLoading = !!worktreeLoadingOp;
 
   // Check if we have tracker associations (only relevant for default mode)
   const hasTrackerAssociation = !isPreview && !!activeTrackerType;
@@ -519,8 +509,6 @@ export const PlanCard = memo(function PlanCard({
         directMatch={directMatch}
         searchQuery={searchQuery}
         hasActiveDevSession={hasActiveDevSession}
-        isWorktreeLoading={isWorktreeLoading}
-        worktreeLoadingOp={worktreeLoadingOp}
         showMenu={showMenu}
         onEdit={() => {
           onPrepareEditItem?.(item.id);

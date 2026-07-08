@@ -1,4 +1,3 @@
-import { registerWorktreeHandlers } from '../handlers/worktree';
 import { registerGitHubHandlers } from '../handlers/github';
 import { registerReviewHandlers } from '../handlers/review';
 import { registerDevSessionHandlers } from '../handlers/devSessions';
@@ -11,7 +10,6 @@ export function registerDevelopmentHandlers({
   getMainWindow,
   services,
 }: IpcRegistrationContext): void {
-  registerWorktreeHandlers(services.worktreeService);
   registerGitHubHandlers(services.gitHubService);
   registerReviewHandlers(services.reviewService, services.reviewAssessmentService, services.reviewPollService);
   registerDevSessionHandlers(services.devSessionService, getMainWindow);

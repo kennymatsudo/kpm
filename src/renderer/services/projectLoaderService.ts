@@ -3,7 +3,6 @@ import type {
   PlanItem,
   Project,
   Repo,
-  Worktree,
 } from '../../shared/types';
 import { listProjectPlanItems } from './planService';
 import { listProjectRepos } from './repoService';
@@ -12,22 +11,19 @@ export interface LoadedProjectResources {
   repos: Repo[];
   attachments: Attachment[];
   planItems: PlanItem[];
-  worktrees: Worktree[];
 }
 
 export async function loadProjectResources(projectId: string): Promise<LoadedProjectResources> {
-  const [repos, attachments, planItems, worktrees] = await Promise.all([
+  const [repos, attachments, planItems] = await Promise.all([
     listProjectRepos(projectId),
     window.api.attachments.list({ projectId }),
     listProjectPlanItems(projectId),
-    window.api.worktrees.getByProject({ projectId }),
   ]);
 
   return {
     repos,
     attachments,
     planItems,
-    worktrees,
   };
 }
 

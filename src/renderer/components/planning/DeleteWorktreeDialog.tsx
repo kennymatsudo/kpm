@@ -1,8 +1,7 @@
-import type { Worktree } from '../../../shared/types';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 
 interface DeleteWorktreeDialogProps {
-  worktree: Worktree;
+  worktree: { branch_name: string };
   isDeleting: boolean;
   onConfirm: () => void;
   onCancel: () => void;

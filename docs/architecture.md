@@ -28,7 +28,7 @@ src/
 │   ├── security/            # URL and app-navigation safety helpers
 │   ├── services/            # Application services (DI pattern)
 │   │   ├── core/            # Plan, Project, Chat, Briefing, Tracker, Onboarding, settings
-│   │   ├── repo/            # Repo, Worktree, DevSession, GitHub, Environment, Review, ScheduledLoopRunner
+│   │   ├── repo/            # Repo, DevSession, GitHub, Environment, Review, ScheduledLoopRunner
 │   │   ├── files/           # FileExplorer, FileSummary, TempImage, RepoFile, watchers, scoped FS
 │   │   ├── streaming/       # Terminal and Claude StreamingSession
 │   │   ├── generation/      # CustomPrompt, Onboarding
@@ -97,8 +97,7 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 | `sync_queue` | Items staged for export (with custom field overrides) |
 | `sync_snapshots` | Last-synced state for three-way conflict detection |
 | `chat_messages` | Persistent message history |
-| `dev_sessions` | Plan-item-tied dev sessions for board agentic execution (pending/active/inactive status); `base_sha` records the immutable fork-point SHA used for commit-range attribution; `execution_mode` (standard/workflow) and `review_policy` (auto/skip) columns added in migration 093 |
-| `worktrees` | Git worktrees for dev sessions |
+| `dev_sessions` | Plan-item-tied dev sessions for board agentic execution (pending/active/inactive status); `base_sha` records the immutable fork-point SHA used for commit-range attribution; `execution_mode` (standard/workflow) and `review_policy` (auto/skip) columns added in migration 093; `worktree_path` records the session's isolated git worktree |
 | `app_settings` | Global key-value application preferences |
 | `custom_themes` | Imported VS Code/KPM theme definitions |
 | `confluence_page_links` | Document ↔ Confluence page links |

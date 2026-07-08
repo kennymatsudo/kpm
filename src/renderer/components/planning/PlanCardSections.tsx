@@ -8,8 +8,6 @@ import { Tooltip } from '../ui/Tooltip';
 import { HighlightedText } from './HighlightedText';
 import type { MenuPosition } from './PlanCardMenu';
 
-type WorktreeLoadingOperation = string | null;
-
 export function getPlanCardMenuPositionForPoint(x: number, y: number): MenuPosition {
   const menuHeight = 350;
   const spaceBelow = window.innerHeight - y;
@@ -50,14 +48,6 @@ export function getPlanCardMenuPositionForRect(rect: DOMRect): MenuPosition {
   };
 }
 
-export function getWorktreeLoadingTitle(operation: WorktreeLoadingOperation): string {
-  if (operation === 'launch') return 'Starting agent...';
-  if (operation === 'resume') return 'Resuming session...';
-  if (operation === 'openEditor') return 'Opening editor...';
-  if (operation === 'delete') return 'Removing...';
-  return 'Loading...';
-}
-
 interface PlanCardHeaderProps {
   item: TreeNode;
   titleSizeClass: string;
@@ -66,8 +56,6 @@ interface PlanCardHeaderProps {
   directMatch: boolean;
   searchQuery: string;
   hasActiveDevSession: boolean;
-  isWorktreeLoading: boolean;
-  worktreeLoadingOp: WorktreeLoadingOperation;
   showMenu: boolean;
   onEdit?: () => void;
   onPrepareEdit?: () => void;
@@ -82,8 +70,6 @@ export function PlanCardHeader({
   directMatch,
   searchQuery,
   hasActiveDevSession,
-  isWorktreeLoading,
-  worktreeLoadingOp,
   showMenu,
   onEdit,
   onPrepareEdit,
@@ -105,11 +91,6 @@ export function PlanCardHeader({
         <span className="flex-shrink-0 text-tiny text-text-muted">
           ({item.children.length})
         </span>
-      )}
-      {isWorktreeLoading && (
-        <div className="flex-shrink-0 flex items-center gap-1" title={getWorktreeLoadingTitle(worktreeLoadingOp)}>
-          <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-        </div>
       )}
       {!isPreview && (
         <Tooltip content="Edit (E or double-click)" side="top">

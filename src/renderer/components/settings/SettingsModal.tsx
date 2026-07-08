@@ -8,7 +8,6 @@ import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings';
 import { McpServersSettings } from './McpServersSettings';
 import { PermissionsSettings } from './PermissionsSettings';
 import { PromptsSettings } from './PromptsSettings';
-import { WorktreesSettings } from './WorktreesSettings';
 import { useSettingsUIStore, type SettingsTab } from '../../stores';
 
 interface Props {
@@ -83,16 +82,6 @@ const allTabs: { id: SettingsTab; label: string; icon: React.ReactNode; requires
       </svg>
     ),
   },
-  {
-    id: 'worktrees',
-    label: 'Worktrees',
-    requiresProject: true,
-    icon: (
-      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v8.25m19.5 0v.188a2.25 2.25 0 0 1-2.25 2.25H4.5A2.25 2.25 0 0 1 2.25 18.938V15m19.5 0h-18" />
-      </svg>
-    ),
-  },
 ];
 
 const noPaddingTabs = new Set<SettingsTab>(['prompts', 'workflow', 'commands']);
@@ -154,9 +143,6 @@ export function SettingsModal({ onClose, currentProjectId }: Props) {
           {activeTab === 'mcp' && <McpServersSettings />}
           {activeTab === 'permissions' && currentProjectId && (
             <PermissionsSettings currentProjectId={currentProjectId} />
-          )}
-          {activeTab === 'worktrees' && currentProjectId && (
-            <WorktreesSettings projectId={currentProjectId} />
           )}
         </div>
       </div>

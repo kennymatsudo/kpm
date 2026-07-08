@@ -20,7 +20,6 @@ export * from './ChatMessageRepository';
 export * from './ChatSessionRepository';
 export * from './TaskPromptTemplateRepository';
 export * from './CustomPromptRepository';
-export * from './WorktreeRepository';
 export * from './AppSettingsRepository';
 export * from './CustomThemeRepository';
 export * from './DevSessionRepository';

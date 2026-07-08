@@ -43,7 +43,6 @@ import { permissionEndpoints } from './ipc/permissionEndpoints';
 import { promptOverridesEndpoints } from './ipc/promptOverridesEndpoints';
 import { toolLogEndpoints } from './ipc/toolLogEndpoints';
 import { storybookEndpoints } from './ipc/storybookEndpoints';
-import { worktreeEndpoints } from './ipc/worktreeEndpoints';
 import { devSessionEndpoints } from './ipc/devSessionEndpoints';
 import { agentSessionEndpoints } from './ipc/agentSessionEndpoints';
 import { reviewEndpoints } from './ipc/reviewEndpoints';
@@ -333,16 +332,6 @@ const storybookChannels = toNestedChannels(storybookEndpoints) as {
   testConnection: string;
 };
 
-const worktreeChannels = toNestedChannels(worktreeEndpoints) as {
-  getByProject: string;
-  getByPlanItem: string;
-  openEditor: string;
-  getStatus: string;
-  delete: string;
-  push: string;
-  destroy: string;
-};
-
 const devSessionChannels = toNestedChannels(devSessionEndpoints) as {
   getByProject: string;
   getByProjectWithPlanItems: string;
@@ -592,7 +581,6 @@ export const IPC_CHANNELS = {
   // ===========================================================================
   // Worktrees
   // ===========================================================================
-  worktree: worktreeChannels,
 
   // ===========================================================================
   // Dev Sessions

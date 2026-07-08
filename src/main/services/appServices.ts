@@ -321,7 +321,6 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const {
     repoService,
-    worktreeService,
     fileExplorerService,
     devSessionService,
     gitHubService,
@@ -533,7 +532,6 @@ export function createAppServices(container: IRepositoryContainer) {
     // Repo
     repoService,
     repoWatcherService,
-    worktreeService,
     devSessionService,
     phaseMachine,
     gitHubService,

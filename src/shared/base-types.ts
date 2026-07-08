@@ -87,32 +87,6 @@ export interface PlanRelation {
   created_at?: string;
 }
 
-export interface Worktree {
-  id: string;
-  plan_item_id: string;
-  project_id: string;
-  worktree_path: string;
-  branch_name: string;
-  created_at?: string;
-  last_opened_at?: string;
-}
-
-// =============================================================================
-// Worktree Service Types
-// =============================================================================
-
-export interface WorktreeStatus {
-  worktree: Worktree;
-  commitsAhead: number;
-  hasUnpushedCommits: boolean;
-  branchExists: boolean;
-}
-
-export interface LaunchResult {
-  worktree: Worktree;
-  isNew: boolean;
-}
-
 // =============================================================================
 // Group Types - Visual containers for organizing plan items
 // =============================================================================

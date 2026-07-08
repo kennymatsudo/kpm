@@ -10,21 +10,17 @@ import type {
   PlanAction,
   StatusCategory,
   FocusedResource,
-  Worktree,
 } from '../../../shared/types';
 import type { API } from '../../../preload/api';
 import type { emit } from '../storeEvents';
 
 // Re-export shared types for consumers of the store
-export type { Project, Repo, Attachment, PlanItem, PlanRelation, FocusedResource, Worktree };
+export type { Project, Repo, Attachment, PlanItem, PlanRelation, FocusedResource };
 
 export interface ProjectStoreDependencies {
   api: API;
   emit: typeof emit;
 }
-
-/** Worktree operation types for loading state */
-export type WorktreeOperation = 'launch' | 'resume' | 'delete' | 'openEditor';
 
 export interface ProjectStoreValues {
   projects: Project[];
@@ -34,9 +30,6 @@ export interface ProjectStoreValues {
   repos: Repo[];
   repoBranches: Record<string, string | null>;  // repoId -> branch name
   attachments: Attachment[];
-  worktrees: Worktree[];  // Git worktrees for agent development
-  worktreeByPlanItemId: Map<string, Worktree>;
-  worktreeLoading: Record<string, WorktreeOperation | null>;  // planItemId or worktreeId -> operation in progress
   isLoading: boolean;
   isSwitchingProject: boolean;  // True while loading a different project
   error: string | null;
@@ -99,13 +92,6 @@ export interface ResourceSlice {
   setRepoBranch: (repoId: string, branch: string | null) => void;
   updateRepoEnvironmentMode: (projectId: string, repoId: string, mode: RepoEnvironmentMode) => Promise<boolean>;
   setActiveWorktreePath: (projectId: string, repoId: string, worktreePath: string | null) => Promise<boolean>;
-  // Worktree actions
-  setWorktrees: (worktrees: Worktree[]) => void;
-  addWorktree: (worktree: Worktree) => void;
-  removeWorktree: (worktreeId: string) => void;
-  openWorktreeInEditor: (worktreeId: string) => Promise<void>;
-  deleteWorktree: (worktreeId: string, force?: boolean) => Promise<void>;
-  destroyWorktree: (worktreeId: string) => Promise<void>;
 }
 
 export interface AddFocusedResourcesResult {
@@ -157,13 +143,10 @@ export type PlanDomainState = Pick<
 
 export type ResourceDomainState = Pick<
   ProjectState,
-  'repos' | 'repoBranches' | 'attachments' | 'worktrees' | 'worktreeLoading' |
-  'worktreeByPlanItemId' |
+  'repos' | 'repoBranches' | 'attachments' |
   'setRepos' | 'setAttachments' | 'addRepo' | 'addReposToProject' | 'addReposFromDialog' |
   'removeRepo' | 'removeRepoFromProject' | 'addAttachment' | 'removeAttachment' | 'refreshRepos' |
-  'setRepoBranches' | 'setRepoBranch' | 'updateRepoEnvironmentMode' | 'setActiveWorktreePath' |
-  'setWorktrees' | 'addWorktree' | 'removeWorktree' |
-  'openWorktreeInEditor' | 'deleteWorktree' | 'destroyWorktree'
+  'setRepoBranches' | 'setRepoBranch' | 'updateRepoEnvironmentMode' | 'setActiveWorktreePath'
 >;
 
 export type UiDomainState = Pick<

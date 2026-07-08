@@ -9,7 +9,7 @@ import type { IPlanItemRepository, IPlanRelationRepository, IExternalPlanItemRep
 import type { IGroupRepository } from './group';
 import type { ITrackerRepository, ISyncRepository, ISyncQueueRepository, ITypeMappingRepository } from './tracker';
 import type { IChatMessageRepository, IChatSessionRepository } from './chat';
-import type { IDevSessionRepository, IWorktreeRepository } from './dev';
+import type { IDevSessionRepository } from './dev';
 import type { IAppSettingsRepository, ICustomThemeRepository, ITaskPromptTemplateRepository, ICustomPromptRepository, IToolPermissionRepository } from './settings';
 import type { IConfluenceLinkRepository } from './confluence';
 import type { IAgentReviewRepository, IReviewOwnershipRepository, IReviewSyncStateRepository, IReviewTaskRepository } from './review';
@@ -38,7 +38,6 @@ export interface IRepositoryContainer {
   chatSessions: IChatSessionRepository;
   taskPromptTemplates: ITaskPromptTemplateRepository;
   customPrompts: ICustomPromptRepository;
-  worktrees: IWorktreeRepository;
   appSettings: IAppSettingsRepository;
   customThemes: ICustomThemeRepository;
   devSessions: IDevSessionRepository;

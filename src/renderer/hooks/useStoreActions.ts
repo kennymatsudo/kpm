@@ -53,12 +53,6 @@ export function useResourceDomainActions() {
     setRepoBranch: state.setRepoBranch,
     updateRepoEnvironmentMode: state.updateRepoEnvironmentMode,
     setActiveWorktreePath: state.setActiveWorktreePath,
-    setWorktrees: state.setWorktrees,
-    addWorktree: state.addWorktree,
-    removeWorktree: state.removeWorktree,
-    openWorktreeInEditor: state.openWorktreeInEditor,
-    deleteWorktree: state.deleteWorktree,
-    destroyWorktree: state.destroyWorktree,
   };
 }
 

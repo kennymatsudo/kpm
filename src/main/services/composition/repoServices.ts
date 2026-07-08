@@ -3,7 +3,6 @@ import * as nodeFs from 'fs';
 import type { BrowserWindow } from 'electron';
 import type { IRepositoryContainer } from '../../db/interfaces';
 import { createRepoService } from '../repo/RepoService';
-import { createWorktreeService } from '../repo/WorktreeService';
 import { createDevSessionService } from '../repo/DevSessionService';
 import { createGitHubService } from '../repo/GitHubService';
 import { createReviewService } from '../repo/ReviewService';
@@ -59,13 +58,6 @@ export function createRepoServices({
     fs: nodeFs,
     path,
     gitExec,
-  });
-
-  const worktreeService = createWorktreeService({
-    worktrees: container.worktrees,
-    planItems: container.planItems,
-    projects: container.projects,
-    repos: container.repos,
   });
 
   const getProjectFolder = (projectId: string) => {
@@ -169,7 +161,6 @@ export function createRepoServices({
 
   return {
     repoService,
-    worktreeService,
     fileExplorerService,
     devSessionService,
     gitHubService,

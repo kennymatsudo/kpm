@@ -8,7 +8,7 @@ import {
   useResourceDomainActions,
 } from './useStoreActions';
 import { logPerfEvent, startPerfSpan } from '../utils/perfLogger';
-import type { Attachment, PlanItem, Repo, Worktree } from '../../shared/types';
+import type { Attachment, PlanItem, Repo } from '../../shared/types';
 import {
   createProjectRecord,
   deleteProjectRecord,
@@ -98,7 +98,6 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       let repos: Repo[] = [];
       let attachments: Attachment[] = [];
       let planItems: PlanItem[] = [];
-      let worktrees: Worktree[] = [];
 
       try {
         const [resources] = await Promise.all([
@@ -108,12 +107,10 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
         repos = resources.repos;
         attachments = resources.attachments;
         planItems = resources.planItems;
-        worktrees = resources.worktrees;
         endFetch({
           repoCount: repos.length,
           attachmentCount: attachments.length,
           planItemCount: planItems.length,
-          worktreeCount: worktrees.length,
         });
       } catch (error) {
         endFetch({ error: true });
@@ -157,7 +154,6 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
         repos,
         attachments,
         planItems,
-        worktrees,
       });
 
       // Restore every chat tab that was open at last shutdown, then lazy-load
@@ -219,7 +215,6 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
         repoCount: repos.length,
         attachmentCount: attachments.length,
         planItemCount: planItems.length,
-        worktreeCount: worktrees.length,
       });
     } finally {
       // Hide loading overlay unless a newer load has taken over the flag

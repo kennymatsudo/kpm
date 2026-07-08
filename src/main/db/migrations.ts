@@ -3647,6 +3647,16 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1100,
+    name: '100_drop_worktrees_table',
+    // The worktrees table was never written to (its repository's create() had no
+    // callers); board dev-session worktrees are tracked on dev_sessions.worktree_path.
+    // Nothing references this leaf table by foreign key, so a plain drop is safe.
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`DROP TABLE IF EXISTS worktrees;`);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

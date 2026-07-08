@@ -21,7 +21,7 @@ export type { ITrackerRepository, ISyncRepository, ISyncQueueRepository, ITypeMa
 export type { IChatMessageRepository, IChatSessionRepository } from './chat';
 
 // Development domain
-export type { IDevSessionRepository, IWorktreeRepository } from './dev';
+export type { IDevSessionRepository } from './dev';
 
 // Settings domain
 export type {

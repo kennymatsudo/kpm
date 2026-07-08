@@ -43,7 +43,6 @@ import { permissionEndpoints } from '../shared/ipc/permissionEndpoints';
 import { promptOverridesEndpoints } from '../shared/ipc/promptOverridesEndpoints';
 import { toolLogEndpoints } from '../shared/ipc/toolLogEndpoints';
 import { storybookEndpoints } from '../shared/ipc/storybookEndpoints';
-import { worktreeEndpoints } from '../shared/ipc/worktreeEndpoints';
 import { devSessionEndpoints } from '../shared/ipc/devSessionEndpoints';
 import { agentSessionEndpoints } from '../shared/ipc/agentSessionEndpoints';
 import { reviewEndpoints } from '../shared/ipc/reviewEndpoints';
@@ -93,9 +92,6 @@ import type {
   PermissionAction,
   FocusedResource,
   TaskPromptTemplate,
-  Worktree,
-  WorktreeStatus,
-  LaunchResult,
   SessionState,
   DevSession,
   DevSessionWithPlanItem,
@@ -192,9 +188,6 @@ export type {
   PermissionRequest,
   PermissionAction,
   TaskPromptTemplate,
-  Worktree,
-  WorktreeStatus,
-  LaunchResult,
   SessionState,
   DevSession,
   DevSessionWithPlanItem,
@@ -849,19 +842,6 @@ const review = {
   onActionableChanged: reviewSubscriptions.pollActionable,
 };
 
-const worktreeInvoke = deriveDomainApi(worktreeEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
-
-const worktrees = {
-  getByProject: worktreeInvoke.getByProject,
-  getByPlanItem: worktreeInvoke.getByPlanItem,
-  openEditor: worktreeInvoke.openEditor,
-  getStatus: worktreeInvoke.getStatus,
-  delete: (payload: { worktreeId: string; force?: boolean }) =>
-    worktreeInvoke.delete({ worktreeId: payload.worktreeId, force: payload.force ?? false }),
-  push: worktreeInvoke.push,
-  destroy: worktreeInvoke.destroy,
-};
-
 const devSessionInvoke = deriveDomainApi(devSessionEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
 const devSessionSubscriptions = deriveEventSubscriptions(devSessionEvents, ipcRenderer);
 
@@ -1242,7 +1222,6 @@ export const api = {
   notifications,
   github,
   review,
-  worktrees,
   devSessions,
   agentSessions,
   fileExplorer,

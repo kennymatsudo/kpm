@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import {
   toast,
-  useResourceDomainStore,
 } from '../../stores';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { openDevSessionInEditor } from '../../services/devSessionService';
@@ -56,28 +55,6 @@ export function PlanCardMenu({
   onOpenDetail,
 }: PlanCardMenuProps) {
   const {
-    openWorktreeInEditor,
-    deleteWorktree,
-    destroyWorktree,
-  } = useResourceDomainStore(
-    useShallow((state) => ({
-      openWorktreeInEditor: state.openWorktreeInEditor,
-      deleteWorktree: state.deleteWorktree,
-      destroyWorktree: state.destroyWorktree,
-    }))
-  );
-  const { worktree, worktreeLoadingOp } = useResourceDomainStore(useShallow((state) => {
-    const worktreeMatch = state.worktreeByPlanItemId.get(itemId);
-    const loadingOp =
-      state.worktreeLoading[itemId] ??
-      (worktreeMatch ? state.worktreeLoading[worktreeMatch.id] : null) ??
-      null;
-    return {
-      worktree: worktreeMatch,
-      worktreeLoadingOp: loadingOp,
-    };
-  }));
-  const {
     deleteDevSession,
     deletingSessionIds,
   } = useDevSessionsStore(
@@ -115,15 +92,8 @@ export function PlanCardMenu({
       };
     }
 
-    if (worktree) {
-      return {
-        source: 'worktree' as const,
-        ...worktree,
-      };
-    }
-
     return null;
-  }, [actionableSession, itemId, worktree]);
+  }, [actionableSession, itemId]);
 
   const copyWorktreePath = targetWorktree?.worktree_path ?? itemSession?.worktree_path ?? '';
   const copyBranchName = targetWorktree?.branch_name ?? itemSession?.branch_name ?? '';
@@ -133,11 +103,6 @@ export function PlanCardMenu({
 
   const onOpenWorktreeInEditor = async () => {
     if (!targetWorktree) return;
-
-    if (targetWorktree.source === 'worktree') {
-      await openWorktreeInEditor(targetWorktree.id);
-      return;
-    }
 
     setIsOpeningSessionEditor(true);
     try {
@@ -152,28 +117,18 @@ export function PlanCardMenu({
   const onDeleteWorktree = async () => {
     if (!targetWorktree) return;
 
-    if (targetWorktree.source === 'session') {
-      const result = await deleteDevSession(targetWorktree.id, 'cleanup');
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to clean up worktree');
-      }
-      return;
+    const result = await deleteDevSession(targetWorktree.id, 'cleanup');
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to clean up worktree');
     }
-
-    await deleteWorktree(targetWorktree.id, true);
   };
   const onDestroyWorktree = async () => {
     if (!targetWorktree) return;
 
-    if (targetWorktree.source === 'session') {
-      const result = await deleteDevSession(targetWorktree.id, 'destroy');
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to destroy worktree');
-      }
-      return;
+    const result = await deleteDevSession(targetWorktree.id, 'destroy');
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to destroy worktree');
     }
-
-    await destroyWorktree(targetWorktree.id);
   };
   const [showDeleteWorktreeConfirm, setShowDeleteWorktreeConfirm] = useState(false);
   const [showDestroyWorktreeConfirm, setShowDestroyWorktreeConfirm] = useState(false);
@@ -183,8 +138,8 @@ export function PlanCardMenu({
 
   const isDeletingSessionWorktree = targetWorktree?.source === 'session' && deletingSessionIds.has(targetWorktree.id);
   const hasWorktree = !!targetWorktree;
-  const isWorktreeLoading = !!worktreeLoadingOp || isOpeningSessionEditor || isDeletingSessionWorktree;
-  const isOpeningEditor = worktreeLoadingOp === 'openEditor' || isOpeningSessionEditor;
+  const isWorktreeLoading = isOpeningSessionEditor || isDeletingSessionWorktree;
+  const isOpeningEditor = isOpeningSessionEditor;
   const showWorktreeSection = hasWorktree || !!onStartAgent;
   const trackerLabel = trackerLabelFor(trackerType);
 
@@ -496,7 +451,7 @@ export function PlanCardMenu({
       {showDeleteWorktreeConfirm && targetWorktree && (
         <DeleteWorktreeDialog
           worktree={targetWorktree}
-          isDeleting={worktreeLoadingOp === 'delete' || isDeletingSessionWorktree}
+          isDeleting={isDeletingSessionWorktree}
           onConfirm={() => {
             const deletePromise = onDeleteWorktree();
             setShowDeleteWorktreeConfirm(false);
@@ -521,7 +476,7 @@ export function PlanCardMenu({
             onClose();
           }}
           size="sm"
-          preventClose={worktreeLoadingOp === 'delete' || isDeletingSessionWorktree}
+          preventClose={isDeletingSessionWorktree}
         >
           <div className="p-5">
             <div className="flex items-center gap-3 mb-4">
@@ -561,7 +516,7 @@ export function PlanCardMenu({
                   onClose();
                 }}
                 className="flex-1 px-3 py-2 text-xs font-medium text-text-secondary bg-surface-3 hover:bg-surface-4 rounded-lg transition-colors"
-                disabled={worktreeLoadingOp === 'delete' || isDeletingSessionWorktree}
+                disabled={isDeletingSessionWorktree}
               >
                 Cancel
               </button>
@@ -575,9 +530,9 @@ export function PlanCardMenu({
                   });
                 }}
                 className="flex-1 px-3 py-2 text-xs font-medium text-white bg-danger hover:bg-danger/90 rounded-lg transition-colors"
-                disabled={worktreeLoadingOp === 'delete' || isDeletingSessionWorktree}
+                disabled={isDeletingSessionWorktree}
               >
-                {worktreeLoadingOp === 'delete' || isDeletingSessionWorktree ? 'Destroying...' : 'Destroy'}
+                {isDeletingSessionWorktree ? 'Destroying...' : 'Destroy'}
               </button>
             </div>
           </div>
