@@ -1,4 +1,4 @@
-import type { PlanAction, PlanActionResult, PlanItemUpdates } from '../../../shared/types';
+import type { PlanItemUpdates } from '../../../shared/types';
 import type { IPlanItemRepository } from '../../db/interfaces';
 import type { QueueTrackerUpdateIfNeeded } from '../../db/domain';
 import { failure, success, type ServiceResult } from '../result';
@@ -6,15 +6,10 @@ import { failure, success, type ServiceResult } from '../result';
 export interface PlanServiceDeps {
   planItems: IPlanItemRepository;
   queueTrackerUpdateIfNeeded: QueueTrackerUpdateIfNeeded;
-  executePlanActions: (projectId: string, actions: PlanAction[]) => PlanActionResult;
 }
 
 export function createPlanService(deps: PlanServiceDeps) {
   return {
-    executeActions(projectId: string, actions: PlanAction[]): PlanActionResult {
-      return deps.executePlanActions(projectId, actions);
-    },
-
     updatePositions(updates: { id: string; x: number; y: number }[]): ServiceResult<void> {
       if (updates.length === 0) {
         return success(undefined);

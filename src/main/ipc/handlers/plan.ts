@@ -1,8 +1,16 @@
 import { planEndpoints, type PlanEndpointName } from '../../../shared/ipc/planEndpoints';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { PlanService } from '../../services/core/PlanService';
+import type { PlanActionExecutor } from '../../db/domain/PlanActionService';
 import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
 import { createRegistryIpcHandlers } from '../validation/utils';
+
+/** Throws the standard `Item not found` error when `itemId` doesn't resolve. */
+function requirePlanItem(planItems: IPlanItemRepository, itemId: string): void {
+  if (!planItems.get(itemId)) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+}
 
 /**
  * One handler per `planEndpoints` entry. A registry entry without a matching
@@ -12,13 +20,14 @@ type PlanHandlers = { [K in PlanEndpointName]: UnwrappedHandlerFor<typeof planEn
 
 function buildPlanHandlers(
   planService: PlanService,
+  planActionExecutor: PlanActionExecutor,
   planItems: IPlanItemRepository,
   planRelations: IPlanRelationRepository,
 ): PlanHandlers {
   return {
     listItems: ({ projectId }) => ({ items: planItems.getByProject(projectId) }),
 
-    executeActions: ({ projectId, actions }) => ({ result: planService.executeActions(projectId, actions) }),
+    executeActions: ({ projectId, actions }) => ({ result: planActionExecutor.execute(projectId, actions) }),
 
     addRelation: (relation) => ({ relation: planRelations.add(relation) }),
 
@@ -29,9 +38,7 @@ function buildPlanHandlers(
     getRelations: ({ projectId }) => ({ relations: planRelations.getByProject(projectId) }),
 
     updatePosition: ({ itemId, x, y }) => {
-      if (!planItems.get(itemId)) {
-        throw new Error(`Item not found: ${itemId}`);
-      }
+      requirePlanItem(planItems, itemId);
       planItems.updatePosition(itemId, x, y);
     },
 
@@ -46,23 +53,17 @@ function buildPlanHandlers(
     },
 
     deleteItem: ({ itemId }) => {
-      if (!planItems.get(itemId)) {
-        throw new Error(`Item not found: ${itemId}`);
-      }
+      requirePlanItem(planItems, itemId);
       planItems.delete(itemId);
     },
 
     deleteItemWithDescendants: ({ itemId }) => {
-      if (!planItems.get(itemId)) {
-        throw new Error(`Item not found: ${itemId}`);
-      }
+      requirePlanItem(planItems, itemId);
       planItems.deleteWithDescendants(itemId);
     },
 
     getChildCount: ({ itemId }) => {
-      if (!planItems.get(itemId)) {
-        throw new Error(`Item not found: ${itemId}`);
-      }
+      requirePlanItem(planItems, itemId);
       return { count: planItems.getChildCount(itemId) };
     },
   };
@@ -70,9 +71,10 @@ function buildPlanHandlers(
 
 export function registerPlanHandlers(
   planService: PlanService,
+  planActionExecutor: PlanActionExecutor,
   planItems: IPlanItemRepository,
   planRelations: IPlanRelationRepository,
 ): void {
-  const handlers = buildPlanHandlers(planService, planItems, planRelations);
+  const handlers = buildPlanHandlers(planService, planActionExecutor, planItems, planRelations);
   createRegistryIpcHandlers(planEndpoints, handlers, 'Plan operation failed');
 }

@@ -16,7 +16,7 @@ Business logic layer with dependency injection. Services accept dependencies via
 
 Plan items, projects, attachments, tracker connections, and groups—the domain model.
 
-- `PlanService` — The behaviour that doesn't belong on a repository: `updateItem` (fires `queueTrackerUpdateIfNeeded` after the repo update), `updatePositions` (batch existence validation), `executeActions`. Plain reads and single-field CRUD (`listItems`, relations, `deleteItem`, `getChildCount`, ...) go straight from the IPC handler to `IPlanItemRepository`/`IPlanRelationRepository` — see `container` on `AppServices`
+- `PlanService` — The behaviour that doesn't belong on a repository: `updateItem` (fires `queueTrackerUpdateIfNeeded` after the repo update) and `updatePositions` (batch existence validation). Plain reads and single-field CRUD (`listItems`, relations, `deleteItem`, `getChildCount`, ...) go straight from the IPC handler to `IPlanItemRepository`/`IPlanRelationRepository` — see `container` on `AppServices`. Batched plan-action execution goes straight from the `plan:execute-actions` handler to `planActionExecutor.execute` (`db/domain/PlanActionService.ts`), also exposed on `AppServices` — not wrapped in a pass-through service method
 - `AttachmentService` — Upload files, track metadata
 - `SearchService` — Global search across plan items and documents
 - `PromptOverrideService` — Manage prompt overrides for board implementation/review prompts (the previous "agent-team" subsystem was removed; this is the surviving customization path)

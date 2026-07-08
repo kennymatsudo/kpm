@@ -660,3 +660,5 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
 
   return { execute };
 }
+
+export type PlanActionExecutor = ReturnType<typeof createPlanActionExecutor>;

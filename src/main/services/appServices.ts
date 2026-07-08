@@ -175,7 +175,6 @@ export function createAppServices(container: IRepositoryContainer) {
   const planService = createPlanService({
     planItems: container.planItems,
     queueTrackerUpdateIfNeeded: queueTrackerUpdate,
-    executePlanActions: planActionExecutor.execute,
   });
 
   const projectService = createProjectService({
@@ -517,6 +516,7 @@ export function createAppServices(container: IRepositoryContainer) {
     permissionService,
     taskPromptTemplateService,
     planService,
+    planActionExecutor,
     groupService,
     attachmentService,
     exportService,

@@ -58,16 +58,14 @@ function createMocks(overrides?: Partial<PlanServiceDeps>) {
   };
 
   const queueTrackerUpdateIfNeeded = vi.fn();
-  const executePlanActions = vi.fn(() => ({ success: true, createdIds: {} }));
 
   const deps: PlanServiceDeps = {
     planItems,
     queueTrackerUpdateIfNeeded,
-    executePlanActions,
     ...overrides,
   };
 
-  return { deps, planItems, queueTrackerUpdateIfNeeded, executePlanActions };
+  return { deps, planItems, queueTrackerUpdateIfNeeded };
 }
 
 describe('PlanService', () => {
@@ -102,17 +100,6 @@ describe('PlanService', () => {
     if (!result.ok) {
       expect(result.error).toContain('Item not found');
     }
-  });
-
-  it('delegates executeActions through injected executor', () => {
-    const { deps, executePlanActions } = createMocks();
-    const service = createPlanService(deps);
-    const actions = [{ type: 'create_item', title: 'New item', parent_id: null }] as const;
-
-    const result = service.executeActions('project-1', [...actions]);
-
-    expect(executePlanActions).toHaveBeenCalledWith('project-1', [...actions]);
-    expect(result).toEqual({ success: true, createdIds: {} });
   });
 
   it('batch updates item positions after validating all ids', () => {
