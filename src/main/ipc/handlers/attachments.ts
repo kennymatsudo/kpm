@@ -1,4 +1,4 @@
-import { dialog, shell, type BrowserWindow } from 'electron';
+import { app, dialog, shell, type BrowserWindow } from 'electron';
 import * as fs from 'fs/promises';
 import { attachmentEndpoints, type AttachmentEndpointName } from '../../../shared/ipc/attachmentEndpoints';
 import type { HandlerFor } from '../../../shared/ipc/endpoints';
@@ -33,6 +33,7 @@ function buildAttachmentHandlers(
       if (!mainWindow) return [];
 
       const result = await dialog.showOpenDialog(mainWindow, {
+        defaultPath: app.getPath('home'),
         properties: ['openFile', 'multiSelections'],
         title: 'Select Files',
       });
@@ -55,6 +56,7 @@ function buildAttachmentHandlers(
       }
 
       const result = await dialog.showOpenDialog(mainWindow, {
+        defaultPath: app.getPath('home'),
         properties: ['openFile', 'multiSelections'],
         title: 'Add attachments',
         filters: [

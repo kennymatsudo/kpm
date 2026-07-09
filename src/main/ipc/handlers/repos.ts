@@ -1,4 +1,4 @@
-import { dialog, shell, type BrowserWindow } from 'electron';
+import { app, dialog, shell, type BrowserWindow } from 'electron';
 import type { z } from 'zod';
 import type { RepoService } from '../../services/repo/RepoService';
 import { RepoSchemas } from '../validation/project';
@@ -38,6 +38,7 @@ function buildRepoHandlers(getMainWindow: () => BrowserWindow | null, repoServic
       }
 
       const result = await dialog.showOpenDialog(mainWindow, {
+        defaultPath: app.getPath('home'),
         properties: ['openDirectory', 'multiSelections'],
         title: 'Select Repositories',
       });

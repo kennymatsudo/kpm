@@ -1,9 +1,10 @@
-.PHONY: help dev start check app db db\:reset install package dist test\:e2e test\:e2e\:dev test\:e2e\:ui screenshots screenshots\:dev release-notes release\:patch release\:minor release\:major
+.PHONY: help dev up start check app db db\:reset install package dist test\:e2e test\:e2e\:dev test\:e2e\:ui screenshots screenshots\:dev release-notes release\:patch release\:minor release\:major
 
 help:
 	@echo "Available commands:"
 	@echo "  make install        Install all dependencies (run once after clone)"
 	@echo "  make dev            Start dev server"
+	@echo "  make up             Alias for make dev"
 	@echo "  make app            Build the app and install it to /Applications (macOS)"
 	@echo "  make start          Run production build"
 	@echo "  make check          Typecheck + lint + unit tests"
@@ -29,11 +30,22 @@ install:
 	rm -rf node_modules/better-sqlite3/prebuilds
 	CPPFLAGS="" npm install
 	git config core.hooksPath .githooks
+	@touch node_modules/.install-stamp
+
+# Reinstall (which rebuilds native modules against the current Electron ABI)
+# only when the lockfile changed since the last install. Lets targets depend on
+# this to self-heal after a pull that bumps deps, without paying the install
+# cost when nothing changed.
+node_modules/.install-stamp: package-lock.json
+	@$(MAKE) install
 
 
-# Start dev server
-dev:
+# Start dev server (reinstalls first if dependencies changed)
+dev: node_modules/.install-stamp
 	npm run dev
+
+# Alias for `make dev`
+up: dev
 
 # Build and run production build
 start:

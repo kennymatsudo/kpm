@@ -1,4 +1,4 @@
-import { dialog, type BrowserWindow } from 'electron';
+import { app, dialog, type BrowserWindow } from 'electron';
 import { contextEndpoints, type ContextEndpointName } from '../../../shared/ipc/contextEndpoints';
 import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import { createRegistryIpcHandlers } from '../validation/utils';
@@ -70,6 +70,7 @@ function buildContextHandlers(
       if (!mainWindow) return { paths: [] };
 
       const result = await dialog.showOpenDialog(mainWindow, {
+        defaultPath: app.getPath('home'),
         properties: ['openFile', 'multiSelections'],
         title: 'Select Context Files',
         filters: [

@@ -5,7 +5,7 @@
  * outputs/ directory (used by Custom Prompts and other generators).
  */
 
-import { ipcMain, dialog, type BrowserWindow } from 'electron';
+import { app, ipcMain, dialog, type BrowserWindow } from 'electron';
 import { artifactEndpoints, type ArtifactEndpointName } from '../../../shared/ipc/artifactEndpoints';
 import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import type { ArtifactService } from '../../services/core/ArtifactService';
@@ -66,6 +66,7 @@ function buildArtifactHandlers(
       }
 
       const result = await dialog.showOpenDialog(mainWindow, {
+        defaultPath: app.getPath('home'),
         properties: ['openFile', 'multiSelections'],
         title: 'Select Output Files',
         filters: [

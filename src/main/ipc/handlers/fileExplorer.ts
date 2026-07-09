@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell, type BrowserWindow } from 'electron';
+import { app, ipcMain, dialog, shell, type BrowserWindow } from 'electron';
 import { fileExplorerEndpoints, type FileExplorerEndpointName } from '../../../shared/ipc/fileExplorerEndpoints';
 import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import type { FileExplorerService } from '../../services/files/FileExplorerService';
@@ -159,6 +159,7 @@ function buildFileExplorerHandlers(
       if (!mainWindow) return null;
 
       const result = await dialog.showOpenDialog(mainWindow, {
+        defaultPath: app.getPath('home'),
         properties: ['openDirectory'],
         title: title ?? 'Select Folder to Link',
       });
