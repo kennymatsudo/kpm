@@ -876,7 +876,8 @@ export interface ChatSessionSummary {
   title: string | null;
   first_message: string;  // First user message (truncated for display)
   message_count: number;
-  created_at: string;
+  created_at: string;      // Earliest message (session start)
+  last_activity: string;   // Most recent message; matches the list's sort order
 }
 
 /** Chat session entity - stores Claude SDK session ID for resume functionality */

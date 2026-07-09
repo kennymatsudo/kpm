@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useChatStore, useProjectDomainStore } from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
 import { Z_INDEX } from '../../constants/zIndex';
+import { formatRelativeTime } from '../../utils/relativeTime';
 
 /**
  * Session history dropdown showing recent chat sessions.
@@ -64,18 +65,6 @@ export function SessionHistory() {
     const cleaned = message.replace(/Images attached.*?\n\n/s, '').trim();
     if (cleaned.length <= maxLength) return cleaned;
     return cleaned.slice(0, maxLength).trim() + '...';
-  };
-
-  const formatDateCompact = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMins = Math.floor((now.getTime() - date.getTime()) / 60000);
-    if (diffMins < 60) return `${diffMins}m`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h`;
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 7) return `${diffDays}d`;
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
   return (
@@ -199,9 +188,11 @@ export function SessionHistory() {
                             <span className="opacity-60 flex-shrink-0">·</span>
                           </>
                         )}
-                        <span className="flex-shrink-0">{formatDateCompact(session.created_at)}</span>
+                        <span className="flex-shrink-0">{formatRelativeTime(session.last_activity)}</span>
                         <span className="opacity-60 flex-shrink-0">·</span>
-                        <span className="flex-shrink-0">{session.message_count}</span>
+                        <span className="flex-shrink-0">
+                          {session.message_count} {session.message_count === 1 ? 'message' : 'messages'}
+                        </span>
                       </div>
                     </div>
                     {/* Arrow indicator on hover */}

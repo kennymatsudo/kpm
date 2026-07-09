@@ -34,6 +34,7 @@ describe('historySlice.restoreLastSession', () => {
         first_message: 'Hello',
         message_count: 2,
         created_at: '2026-01-01T00:00:00.000Z',
+        last_activity: '2026-01-01T00:00:00.000Z',
       }],
     });
 
@@ -82,6 +83,7 @@ describe('historySlice.restoreLastSession', () => {
         first_message: 'Hello',
         message_count: 2,
         created_at: '2026-01-01T00:00:00.000Z',
+        last_activity: '2026-01-01T00:00:00.000Z',
       }],
     });
     vi.mocked(loadChatSession).mockResolvedValue({
@@ -160,6 +162,7 @@ describe('historySlice.restoreLastSession', () => {
         first_message: 'Hello',
         message_count: 1,
         created_at: '2026-01-01T00:00:00.000Z',
+        last_activity: '2026-01-01T00:00:00.000Z',
       }],
     });
     vi.mocked(loadChatSession).mockResolvedValue({
@@ -232,6 +235,7 @@ describe('historySlice.restoreLastSession', () => {
         first_message: 'Other',
         message_count: 1,
         created_at: '2026-01-01T00:00:00.000Z',
+        last_activity: '2026-01-01T00:00:00.000Z',
       }],
     });
 
