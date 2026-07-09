@@ -26,11 +26,10 @@ export function usePlanTaskEdit({ planItemsById, updatePlanItem }: PlanTaskEditD
     const association = associationsRef.current.find((candidate) => candidate.id === item.association_id);
     if (!association?.project_key) return;
 
-    // Issue types are a Jira concept; the issueTypes.get endpoint always talks to
-    // Jira, so prefetching for a Linear association would 404 on its team key.
-    if (association.tracker_type !== 'jira') return;
-
-    void loadIssueTypes(association.project_key);
+    // The issue-types endpoint dispatches on tracker type behind getClient(type),
+    // so a Linear association resolves its own (synthetic) issue type rather than
+    // being forced through the Jira client.
+    void loadIssueTypes(association.project_key, association.tracker_type);
   }, [loadIssueTypes]);
 
   // Watch for editingItemId set by global search or other navigation

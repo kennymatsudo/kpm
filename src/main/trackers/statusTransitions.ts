@@ -15,7 +15,7 @@
  * - 'done' (Done) - corresponds to done/canceled
  */
 
-import type { StatusCategory, JiraTransition, StatusMapping, TrackerType } from '../../shared/types';
+import type { StatusCategory, TrackerTransition, StatusMapping, TrackerType } from '../../shared/types';
 
 /**
  * Map a Linear WorkflowState `type` to a KPM StatusCategory. Linear's six state types
@@ -75,8 +75,8 @@ const STATUS_KEYWORDS: Record<StatusCategory, string[]> = {
  */
 export function findBestTransition(
   targetCategory: StatusCategory,
-  availableTransitions: JiraTransition[]
-): JiraTransition | null {
+  availableTransitions: TrackerTransition[]
+): TrackerTransition | null {
   if (availableTransitions.length === 0) {
     return null;
   }
@@ -84,7 +84,7 @@ export function findBestTransition(
   const targetJiraCategories = CATEGORY_TO_JIRA_STATUS_CATEGORY[targetCategory];
   const keywords = STATUS_KEYWORDS[targetCategory];
 
-  const matchesKeyword = (t: JiraTransition): boolean => {
+  const matchesKeyword = (t: TrackerTransition): boolean => {
     const lowerName = t.name.toLowerCase();
     const lowerToName = t.to.name.toLowerCase();
     return keywords.some((k) => lowerName.includes(k) || lowerToName.includes(k));
@@ -126,7 +126,7 @@ export function findBestTransition(
 export function generateTransitionWarning(
   currentStatus: string,
   targetCategory: StatusCategory,
-  availableTransitions: JiraTransition[],
+  availableTransitions: TrackerTransition[],
   statusMapping?: StatusMapping | null
 ): string {
   const categoryLabels: Record<StatusCategory, string> = {
@@ -224,9 +224,9 @@ function normalizeStatusName(statusName: string): string {
  */
 export function findTransitionByMapping(
   targetCategory: StatusCategory,
-  availableTransitions: JiraTransition[],
+  availableTransitions: TrackerTransition[],
   statusMapping: StatusMapping | null
-): JiraTransition | null {
+): TrackerTransition | null {
   if (!statusMapping || availableTransitions.length === 0) {
     return null;
   }
@@ -282,9 +282,9 @@ export function inferCategoryFromMapping(
  */
 export function findTransitionWithMapping(
   targetCategory: StatusCategory,
-  availableTransitions: JiraTransition[],
+  availableTransitions: TrackerTransition[],
   statusMapping: StatusMapping | null
-): JiraTransition | null {
+): TrackerTransition | null {
   // The explicit mapping is the only source of truth. No heuristic fallback —
   // if the user hasn't mapped this category, or the mapped state isn't a
   // valid transition, we surface a warning instead of guessing.

@@ -68,7 +68,7 @@ export function createSyncService(deps: SyncServiceDeps) {
     onProgress?.('fetching', 0, 0);
     const externalIssues = await fetchIssuesWithSubtasks(
       client,
-      association.jql_filter,
+      association.issue_filter,
       (count) => onProgress?.('fetching', count, 0)
     );
     preview.stats.total = externalIssues.length;

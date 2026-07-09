@@ -3707,6 +3707,16 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1102,
+    name: '102_rename_association_jql_filter',
+    // The column stores a Jira JQL string OR a serialized Linear filter, so the
+    // Jira-specific name lied for Linear associations. RENAME COLUMN is a
+    // metadata-only, lossless operation (no table rebuild, no FK cascade risk).
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`ALTER TABLE kpm_tracker_associations RENAME COLUMN jql_filter TO issue_filter;`);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

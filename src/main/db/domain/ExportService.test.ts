@@ -35,13 +35,15 @@ function createLinearClient(options: {
     async *fetchIssuesByJql() {},
     fetchIssue: vi.fn(async () => createdIssue),
     searchIssues: vi.fn(),
+    searchIssuesByText: vi.fn(async () => []),
+    getRecentIssues: vi.fn(async () => []),
     fetchChildrenByParents: vi.fn(async () => []),
     formatCustomFieldsForApi: vi.fn((values) => values),
     getIssueTypes: vi.fn(async () => [{ id: 'linear-issue', name: 'Issue', subtask: false }]),
     createIssue: vi.fn(async () => ({
       id: 'issue-1',
       key: 'ENG-1',
-      self: 'https://linear.app/example/issue/ENG-1',
+      url: 'https://linear.app/example/issue/ENG-1',
     })),
     updateIssue: vi.fn(),
     getTransitions: vi.fn(async () => []),
@@ -89,13 +91,15 @@ function createJiraClient(): TrackerClient {
       .mockResolvedValueOnce(createdTodoIssue)
       .mockResolvedValueOnce(transitionedDoneIssue),
     searchIssues: vi.fn(),
+    searchIssuesByText: vi.fn(async () => []),
+    getRecentIssues: vi.fn(async () => []),
     fetchChildrenByParents: vi.fn(async () => []),
     formatCustomFieldsForApi: vi.fn((values) => values),
     getIssueTypes: vi.fn(async () => [{ id: 'story', name: 'Story', subtask: false }]),
     createIssue: vi.fn(async () => ({
       id: 'issue-1',
       key: 'PROJ-1',
-      self: 'https://example.atlassian.net/rest/api/3/issue/issue-1',
+      url: 'https://example.atlassian.net/browse/PROJ-1',
     })),
     updateIssue: vi.fn(),
     getTransitions: vi.fn(async () => [{
@@ -134,6 +138,8 @@ function createLinearUpdateClient(fetchIssueResults: ExternalIssue[]): TrackerCl
     async *fetchIssuesByJql() {},
     fetchIssue,
     searchIssues: vi.fn(),
+    searchIssuesByText: vi.fn(async () => []),
+    getRecentIssues: vi.fn(async () => []),
     fetchChildrenByParents: vi.fn(async () => []),
     formatCustomFieldsForApi: vi.fn((values) => values),
     getIssueTypes: vi.fn(),
@@ -197,7 +203,7 @@ describe('ExportService', () => {
     updatedAt: '2026-01-01T00:01:00.000Z',
   };
 
-  it('passes mapped Linear state id when creating an issue with a queued target status', async () => {
+  it('passes the mapped status name when creating an issue with a queued target status', async () => {
     const ctx = createTestRepositoryContext();
     const project = ctx.repos.projects.create({ name: 'Export Test Project' });
     const connection = ctx.repos.tracker.createConnection('linear', 'linear.app', 'Linear');
@@ -235,7 +241,7 @@ describe('ExportService', () => {
 
     expect(result.success).toBe(true);
     expect(client.createIssue).toHaveBeenCalledWith(expect.objectContaining({
-      targetStatusId: 'state-done',
+      initialStatusName: 'Done',
     }));
     expect(ctx.repos.planItems.get('plan-1')?.status_category).toBe('done');
     expect(ctx.repos.tracker.getAssociationById(association.id)?.status_mapping?.done).toBe('Done');
@@ -298,7 +304,7 @@ describe('ExportService', () => {
     const result = await service.executeApprovedExport(project.id, association.id, ['plan-1']);
 
     expect(result.success).toBe(true);
-    expect(vi.mocked(client.createIssue).mock.calls[0]?.[0].targetStatusId).toBeUndefined();
+    expect(vi.mocked(client.createIssue).mock.calls[0]?.[0].initialStatusName).toBeUndefined();
     expect(ctx.repos.planItems.get('plan-1')?.status_category).toBe('not_started');
   });
 

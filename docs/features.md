@@ -396,7 +396,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - IPC handlers: `src/main/ipc/handlers/tracker.ts`
   - Components: `src/renderer/components/settings/TrackerSettings.tsx` (credentials + scopes), `src/renderer/components/tracker/config/TrackerLinkProjectDialog.tsx` (association editor), `src/renderer/components/tracker/mapping/StatusMappingForm.tsx`, `TypeMappingDialog.tsx`
   - Repository: `src/main/db/repositories/impl/TypeMappingRepository.ts`
-  - DB: `tracker_connections` (tracker_type, site_url, display_name), `tracker_project_scopes` (connection_id, project_key/name), `kpm_tracker_associations` (kpm_project_id, scope_id, jql_filter, status_mapping, custom_field_values, epic_key), `tracker_type_mappings` (kpm_project_id, scope_id, kpm_label, tracker_issue_type_id/name)
+  - DB: `tracker_connections` (tracker_type, site_url, display_name), `tracker_project_scopes` (connection_id, project_key/name), `kpm_tracker_associations` (kpm_project_id, scope_id, issue_filter, status_mapping, custom_field_values, epic_key), `tracker_type_mappings` (kpm_project_id, scope_id, kpm_label, tracker_issue_type_id/name)
 - **Entry points / surfaces:**
   - Settings → Connections → Tracker: "Connect Jira"/"Connect Linear" with a credential dialog and test-connection; scope dropdown after connecting; "Add Association" with a JQL editor (Jira) or filter selector (Linear) plus a status-mapping table; Type Mapping grid (KPM labels × tracker types)
 - **Dependencies / integrations:**

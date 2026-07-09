@@ -17,26 +17,27 @@ import type {
   ExportPreview,
   ExportPreviewItem,
   ExportResult,
-  JiraIssueType,
+  TrackerIssueType,
   SyncReviewData,
   SyncReviewItem,
   FieldDiff,
   DiffHunk,
-  JiraTransition,
+  TrackerTransition,
   StatusTransitionInfo,
   CustomFieldValues,
   TrackerType,
   StatusCategory,
+  StatusMapping,
   TrackerAssociationWithScope,
 } from '../../../shared/types';
 import type { JiraClient, TrackerClient } from '../../tracker-clients';
-import { parseLinearFilter } from '../../tracker-clients/linear/filter-types';
 import {
   findTransitionWithMapping,
   generateTransitionWarning,
   isTransitionNeededWithMapping,
   inferCategoryWithMapping,
 } from '../../trackers/statusTransitions';
+import { createStatusReconciler } from '../../trackers/StatusReconciler';
 import { toExternalMarkdown, EMPTY_EXTERNAL_MARKDOWN, type ExternalDestination, type ExternalMarkdown } from '../../documents/exportBoundary';
 import { normalizeMarkdown } from '../../documents';
 import { hasRemoteFieldDrifted } from './trackerReconciliation';
@@ -74,14 +75,6 @@ function mergeCustomFieldValues(
   };
 }
 
-function readLinearProjectId(filter: string): string | undefined {
-  try {
-    return parseLinearFilter(filter).projectId;
-  } catch {
-    return undefined;
-  }
-}
-
 function trackerLabelFor(type: TrackerType): string {
   return type === 'linear' ? 'Linear' : 'Jira';
 }
@@ -108,8 +101,24 @@ const STATUS_CATEGORY_LABELS: Record<StatusCategory, string> = {
   canceled: 'Canceled',
 };
 
-function normalizeStatusName(statusName: string): string {
-  return statusName.trim().toLowerCase();
+/**
+ * The initial status *name* a new issue should be created in, resolved from the
+ * association's status mapping. Returns undefined for a default (not-started)
+ * create with no mapping; throws when a non-default target has no mapping so the
+ * export fails before any external issue is created. Clients that can create in
+ * a chosen state (Linear) apply this; others (Jira) reach it via a transition.
+ */
+function resolveInitialStatusName(
+  statusMapping: StatusMapping | null | undefined,
+  targetCategory: StatusCategory | null
+): string | undefined {
+  if (!targetCategory) return undefined;
+  const mappedName = statusMapping?.[targetCategory];
+  if (!mappedName) {
+    if (targetCategory === 'not_started') return undefined;
+    throw new Error(`No status mapping configured for "${STATUS_CATEGORY_LABELS[targetCategory]}"`);
+  }
+  return mappedName;
 }
 
 async function bootstrapStatusMappingForQueuedTargets(
@@ -137,37 +146,6 @@ async function bootstrapStatusMappingForQueuedTargets(
   }
 
   return association;
-}
-
-async function resolveLinearCreateStatusId(
-  client: TrackerClient,
-  association: TrackerAssociationWithScope,
-  targetCategory: StatusCategory | null
-): Promise<string | undefined> {
-  if (client.type !== 'linear' || !targetCategory) {
-    return undefined;
-  }
-
-  const mappedName = association.status_mapping?.[targetCategory];
-  if (!mappedName) {
-    if (targetCategory === 'not_started') {
-      return undefined;
-    }
-    throw new Error(`No status mapping configured for "${STATUS_CATEGORY_LABELS[targetCategory]}"`);
-  }
-
-  const statuses = await client.getProjectStatuses(association.project_key);
-  const status = statuses.find((candidate) =>
-    normalizeStatusName(candidate.name) === normalizeStatusName(mappedName)
-  );
-  if (!status) {
-    const available = statuses.map((candidate) => candidate.name).join(', ');
-    throw new Error(
-      `Status mapping for "${STATUS_CATEGORY_LABELS[targetCategory]}" is set to "${mappedName}", but "${mappedName}" isn't an available Linear state. Available: ${available}`
-    );
-  }
-
-  return status.id;
 }
 
 /**
@@ -400,7 +378,7 @@ export function createExportService(deps: ExportServiceDeps) {
 
     // Issue types are a Jira concept; Linear returns a synthetic "Issue" entry.
     // Either way we defer to the tracker-specific client.
-    let availableTypes: JiraIssueType[];
+    let availableTypes: TrackerIssueType[];
     try {
       const client = await TrackerClientService.getClient(association.tracker_type);
       availableTypes = await client.getIssueTypes(association.project_key);
@@ -885,13 +863,9 @@ export function createExportService(deps: ExportServiceDeps) {
     // Map to track newly created external keys for parent resolution
     const createdKeys = new Map<string, string>();
 
-    // Linear-only: if the association was scoped to a Linear Project at link time,
-    // mirror that scoping on export so new issues land in the same Project. The
-    // association's filter is stored as `JSON.stringify(LinearFilter)`; we treat
-    // a malformed filter as "no project scope" rather than failing the export.
-    const linearProjectId = association.tracker_type === 'linear'
-      ? readLinearProjectId(association.jql_filter)
-      : undefined;
+    // The transition-and-verify flow is identical across trackers; the reconciler
+    // owns it so neither this method nor the adapters branch on tracker type.
+    const reconciler = createStatusReconciler(client, association.status_mapping);
 
     // Process creates sequentially (parent must exist before child)
     for (const entry of sortedCreateEntries) {
@@ -947,12 +921,6 @@ export function createExportService(deps: ExportServiceDeps) {
           allItems,
           association.tracker_type
         );
-        const targetStatusId = await resolveLinearCreateStatusId(
-          client,
-          association,
-          entry.target_status_category
-        );
-
         const created = await client.createIssue({
           projectKey: association.project_key,
           issueTypeId: entry.target_issue_type_id!,
@@ -960,75 +928,42 @@ export function createExportService(deps: ExportServiceDeps) {
           description: resolvedDescription ?? undefined,
           parentKey,
           customFields,
-          linearProjectId,
-          targetStatusId,
+          issueFilter: association.issue_filter,
+          initialStatusName: resolveInitialStatusName(
+            association.status_mapping,
+            entry.target_status_category
+          ),
         });
 
         // Fetch the created issue so we record the tracker-assigned status.
         // Prevents sync from showing spurious status updates on the next pass.
         let createdIssue = await client.fetchIssue(created.key);
         if (entry.target_status_category) {
-          const transitionNeeded = isTransitionNeededWithMapping(
-            createdIssue.status,
-            entry.target_status_category,
-            association.status_mapping,
-            { trackerType: association.tracker_type, stateType: createdIssue.statusType ?? null }
+          const transition = await reconciler.planTransition(
+            created.key,
+            createdIssue,
+            entry.target_status_category
           );
-
-          if (transitionNeeded) {
-            const transitions = await client.getTransitions(created.key);
-            const transitionToApply = findTransitionWithMapping(
-              entry.target_status_category,
-              transitions,
-              association.status_mapping
-            );
-            if (!transitionToApply) {
-              throw new Error(
-                generateTransitionWarning(
-                  createdIssue.status,
-                  entry.target_status_category,
-                  transitions,
-                  association.status_mapping
-                )
-              );
-            }
-            await client.transitionIssue(
+          if (transition) {
+            createdIssue = await reconciler.applyTransition(
               created.key,
-              transitionToApply.id,
-              entry.target_status_category === 'done'
+              transition,
+              entry.target_status_category
             );
-            createdIssue = await client.fetchIssue(created.key);
+          } else {
+            reconciler.verifyCategory(createdIssue, entry.target_status_category);
           }
         }
 
         const trackerStatus = createdIssue.status;
-        const inferredCategory = inferCategoryWithMapping(
-          trackerStatus,
-          association.status_mapping,
-          { stateType: createdIssue.statusType ?? null }
-        );
-        if (
-          entry.target_status_category &&
-          inferredCategory !== entry.target_status_category
-        ) {
-          throw new Error(
-            `Tracker status for ${created.key} is "${trackerStatus}" after export, expected ${STATUS_CATEGORY_LABELS[entry.target_status_category]}`
-          );
-        }
-
-        // Jira's CreatedIssue.self is a REST API URL, not the browse URL, so
-        // we build the browse URL from siteUrl. Linear's `self` is already the
-        // user-facing URL; prefer it when present.
-        const externalUrl = client.type === 'linear' && created.self
-          ? created.self
-          : `https://${association.site_url}/browse/${created.key}`;
+        const inferredCategory = reconciler.categoryOf(createdIssue);
 
         const syncUpdate: PlanItemSyncUpdates = {
           external_key: created.key,
           external_id: created.id,
           external_type: association.tracker_type,
           external_status: trackerStatus,
-          external_url: externalUrl,
+          external_url: created.url,
           association_id: associationId,
           sync_source: 'local',
           last_synced_at: new Date().toISOString(),
@@ -1072,7 +1007,7 @@ export function createExportService(deps: ExportServiceDeps) {
           ? client.formatCustomFieldsForApi(entry.custom_field_overrides)
           : undefined;
 
-        let transitionToApply: JiraTransition | null = null;
+        let transitionToApply: TrackerTransition | null = null;
         let newExternalStatus: string | null = null;
 
         // Preflight status transitions before mutating title/description. If the
@@ -1081,31 +1016,12 @@ export function createExportService(deps: ExportServiceDeps) {
         const targetStatusCategory = entry.target_status_category;
         if (targetStatusCategory) {
           const currentIssue = await client.fetchIssue(planItem.external_key!);
-          const transitionNeeded = isTransitionNeededWithMapping(
-            currentIssue.status,
-            targetStatusCategory,
-            association.status_mapping,
-            { trackerType: association.tracker_type, stateType: currentIssue.statusType ?? null }
+          transitionToApply = await reconciler.planTransition(
+            planItem.external_key!,
+            currentIssue,
+            targetStatusCategory
           );
-
-          if (transitionNeeded) {
-            const transitions = await client.getTransitions(planItem.external_key!);
-            transitionToApply = findTransitionWithMapping(
-              targetStatusCategory,
-              transitions,
-              association.status_mapping
-            );
-            if (!transitionToApply) {
-              throw new Error(
-                generateTransitionWarning(
-                  currentIssue.status,
-                  targetStatusCategory,
-                  transitions,
-                  association.status_mapping
-                )
-              );
-            }
-          } else {
+          if (!transitionToApply) {
             newExternalStatus = currentIssue.status;
           }
         }
@@ -1128,25 +1044,13 @@ export function createExportService(deps: ExportServiceDeps) {
         let updatedIssue = await client.fetchIssue(planItem.external_key!);
 
         // Execute status transition if queued
-        if (transitionToApply) {
+        if (transitionToApply && targetStatusCategory) {
           try {
-            if (!targetStatusCategory) {
-              throw new Error(`Missing queued target status for ${planItem.external_key}`);
-            }
-            const toDoneCategory = transitionToApply.to.statusCategory.key === 'done';
-            console.log(`[ExportService] Transitioning ${planItem.external_key} via transition "${transitionToApply.name}" (id: ${transitionToApply.id}) to "${transitionToApply.to.name}" (done=${toDoneCategory})`);
-            await client.transitionIssue(planItem.external_key!, transitionToApply.id, toDoneCategory);
-            updatedIssue = await client.fetchIssue(planItem.external_key!);
-            const actualCategory = inferCategoryWithMapping(
-              updatedIssue.status,
-              association.status_mapping,
-              { trackerType: association.tracker_type, stateType: updatedIssue.statusType ?? null }
+            updatedIssue = await reconciler.applyTransition(
+              planItem.external_key!,
+              transitionToApply,
+              targetStatusCategory
             );
-            if (actualCategory !== targetStatusCategory) {
-              throw new Error(
-                `Tracker status for ${planItem.external_key} is "${updatedIssue.status}" after export, expected ${STATUS_CATEGORY_LABELS[targetStatusCategory]}`
-              );
-            }
             newExternalStatus = updatedIssue.status;
           } catch (transitionError) {
             console.error(`Failed to transition ${planItem.external_key}:`, transitionError);

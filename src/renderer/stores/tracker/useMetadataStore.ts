@@ -57,7 +57,7 @@ interface TrackerMetadataState {
 
   loadProjects: (force?: boolean) => Promise<{ success: boolean; error?: string }>;
   loadStatuses: (projectKey: string, trackerType?: TrackerType, force?: boolean) => Promise<{ success: boolean; error?: string }>;
-  loadIssueTypes: (projectKey: string, force?: boolean) => Promise<{ success: boolean; error?: string }>;
+  loadIssueTypes: (projectKey: string, trackerType?: TrackerType, force?: boolean) => Promise<{ success: boolean; error?: string }>;
 
   reset: () => void;
 }
@@ -185,7 +185,7 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
     }
   },
 
-  loadIssueTypes: async (projectKey, force = false) => {
+  loadIssueTypes: async (projectKey, trackerType = 'jira', force = false) => {
     const state = get();
 
     if (!force && state.issueTypesByProject[projectKey]?.length > 0) {
@@ -213,7 +213,7 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
     }));
 
     try {
-      const result = await listTrackerIssueTypes(projectKey);
+      const result = await listTrackerIssueTypes(projectKey, trackerType);
       if (result.success) {
         const issueTypes = result.issueTypes;
         set((s) => {

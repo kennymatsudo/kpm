@@ -38,7 +38,7 @@ export function createImportService(deps: ImportServiceDeps) {
       // Fetch all issues including subtasks recursively
       const issues = await fetchIssuesWithSubtasks(
         client,
-        association.jql_filter,
+        association.issue_filter,
         (fetched) => onProgress?.({ projectId, associationId, phase: 'fetching', current: fetched })
       );
 
@@ -103,7 +103,7 @@ export function createImportService(deps: ImportServiceDeps) {
 
       const allIssues = await fetchIssuesWithSubtasks(
         client,
-        association.jql_filter,
+        association.issue_filter,
         (fetched) => onProgress?.({ projectId, associationId, phase: 'fetching', current: fetched })
       );
 

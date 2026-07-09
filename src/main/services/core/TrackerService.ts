@@ -31,16 +31,10 @@ interface TrackerClientServiceLike {
   // Jira
   getJiraClient(): Promise<JiraClient>;
   getJiraCredentialsInfo(): Promise<{ configured: boolean; siteUrl?: string; email?: string } | null>;
-  saveJiraCredentials(siteUrl: string, email: string, apiToken: string): Promise<{ success: boolean; error?: string }>;
-  clearJiraCredentials(): Promise<void>;
-  testJiraConnection(siteUrl: string, email: string, apiToken: string): Promise<{ success: boolean; error?: string }>;
   getJiraProjects(): Promise<{ success: boolean; projects?: { key: string; name: string }[]; error?: string }>;
   // Linear
   getLinearClient(): Promise<LinearClient>;
   getLinearCredentialsInfo(): Promise<{ configured: boolean } | null>;
-  saveLinearCredentials(apiToken: string): Promise<{ success: boolean; error?: string }>;
-  clearLinearCredentials(): Promise<void>;
-  testLinearConnection(apiToken: string): Promise<{ success: boolean; error?: string }>;
   getLinearTeams(): Promise<{ success: boolean; teams?: { key: string; name: string }[]; error?: string }>;
 }
 
@@ -91,29 +85,6 @@ export function createTrackerService(deps: TrackerServiceDeps) {
       return rows;
     },
 
-    // ---- Jira credentials -------------------------------------------------
-    saveJiraCredentials(siteUrl: string, email: string, apiToken: string) {
-      return deps.clientService.saveJiraCredentials(siteUrl, email, apiToken);
-    },
-    async clearJiraCredentials(): Promise<{ success: true }> {
-      await deps.clientService.clearJiraCredentials();
-      return { success: true };
-    },
-    testJiraConnection(siteUrl: string, email: string, apiToken: string) {
-      return deps.clientService.testJiraConnection(siteUrl, email, apiToken);
-    },
-
-    // ---- Linear credentials -----------------------------------------------
-    saveLinearCredentials(apiToken: string) {
-      return deps.clientService.saveLinearCredentials(apiToken);
-    },
-    async clearLinearCredentials(): Promise<{ success: true }> {
-      await deps.clientService.clearLinearCredentials();
-      return { success: true };
-    },
-    testLinearConnection(apiToken: string) {
-      return deps.clientService.testLinearConnection(apiToken);
-    },
     listLinearTeams() {
       return deps.clientService.getLinearTeams();
     },
@@ -251,16 +222,15 @@ export function createTrackerService(deps: TrackerServiceDeps) {
     },
 
     // ---- Cross-tracker project queries ------------------------------------
+    // Each routes through the single getClient(type) seam; the provider choice
+    // is made once and the adapter owns its own behaviour (P): no method here
+    // branches on the tracker type.
     getProjectStatuses(
       projectKey: string,
       trackerType: TrackerType = 'jira'
     ): AsyncResult<{ id: string; name: string; categoryKey: string }[]> {
       return wrapAsync(async () => {
-        if (trackerType === 'linear') {
-          const client = await deps.clientService.getLinearClient();
-          return client.getProjectStatuses(projectKey);
-        }
-        const client = await deps.clientService.getJiraClient();
+        const client = await deps.clientService.getClient(trackerType);
         return client.getProjectStatuses(projectKey);
       }, 'Failed to load project statuses.');
     },
@@ -271,11 +241,7 @@ export function createTrackerService(deps: TrackerServiceDeps) {
       trackerType: TrackerType = 'jira'
     ): AsyncResult<IssueSummary[]> {
       return wrapAsync(async () => {
-        if (trackerType === 'linear') {
-          const client = await deps.clientService.getLinearClient();
-          return mapIssues(await client.searchIssues(projectKey));
-        }
-        const client = await deps.clientService.getJiraClient();
+        const client = await deps.clientService.getClient(trackerType);
         return mapIssues(await client.searchIssuesByText(projectKey, searchText));
       }, 'Issue search failed. Check your tracker connection.');
     },
@@ -285,11 +251,7 @@ export function createTrackerService(deps: TrackerServiceDeps) {
       trackerType: TrackerType = 'jira'
     ): AsyncResult<IssueSummary[]> {
       return wrapAsync(async () => {
-        if (trackerType === 'linear') {
-          const client = await deps.clientService.getLinearClient();
-          return mapIssues(await client.searchIssues(projectKey));
-        }
-        const client = await deps.clientService.getJiraClient();
+        const client = await deps.clientService.getClient(trackerType);
         return mapIssues(await client.getRecentIssues(projectKey));
       }, 'Failed to load recent issues. Verify your tracker credentials.');
     },

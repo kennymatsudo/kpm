@@ -46,7 +46,7 @@ export interface ITrackerRepository {
   createAssociation(
     projectId: string,
     scopeId: string,
-    jqlFilter: string,
+    issueFilter: string,
     displayName?: string
   ): TrackerAssociation;
   deleteAssociation(id: string): void;

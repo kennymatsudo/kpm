@@ -3,10 +3,16 @@ import {
   LinearClient,
   KeytarCredentialProvider,
   type TrackerClient,
+  type TrackerCredentials,
   type TrackerType,
 } from '../tracker-clients';
 
 const provider = new KeytarCredentialProvider();
+
+function createClientForCredentials(creds: TrackerCredentials): TrackerClient {
+  if (creds.type === 'jira') return new JiraClient(creds);
+  return new LinearClient(creds);
+}
 
 export interface JiraCredentialsInfo {
   configured: true;
@@ -33,6 +39,30 @@ export const TrackerClientService = {
     return this.getLinearClient();
   },
 
+  // ---- Credentials --------------------------------------------------------
+
+  async testConnection(creds: TrackerCredentials): Promise<{ success: boolean; error?: string }> {
+    const client = createClientForCredentials(creds);
+    return client.testConnection();
+  },
+
+  async saveCredentials(creds: TrackerCredentials): Promise<{ success: boolean; error?: string }> {
+    const testResult = await this.testConnection(creds);
+    if (!testResult.success) {
+      return { success: false, error: testResult.error };
+    }
+    try {
+      await provider.saveCredentials(creds);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to save credentials' };
+    }
+  },
+
+  async clearCredentials(type: TrackerType): Promise<void> {
+    await provider.clearCredentials(type);
+  },
+
   // ---- Jira ---------------------------------------------------------------
 
   async getJiraClient(): Promise<JiraClient> {
@@ -41,32 +71,6 @@ export const TrackerClientService = {
       throw new Error('No Jira credentials configured');
     }
     return new JiraClient(creds);
-  },
-
-  async testJiraConnection(
-    siteUrl: string,
-    email: string,
-    apiToken: string
-  ): Promise<{ success: boolean; error?: string }> {
-    const client = new JiraClient({ type: 'jira', siteUrl, email, apiToken });
-    return client.testConnection();
-  },
-
-  async saveJiraCredentials(
-    siteUrl: string,
-    email: string,
-    apiToken: string
-  ): Promise<{ success: boolean; error?: string }> {
-    const testResult = await this.testJiraConnection(siteUrl, email, apiToken);
-    if (!testResult.success) {
-      return { success: false, error: testResult.error };
-    }
-    try {
-      await provider.saveCredentials({ type: 'jira', siteUrl, email, apiToken });
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Failed to save credentials' };
-    }
   },
 
   async getJiraProjects(): Promise<{
@@ -93,10 +97,6 @@ export const TrackerClientService = {
     return { configured: true, siteUrl: creds.siteUrl, email: creds.email };
   },
 
-  async clearJiraCredentials(): Promise<void> {
-    await provider.clearCredentials('jira');
-  },
-
   // ---- Linear -------------------------------------------------------------
 
   async getLinearClient(): Promise<LinearClient> {
@@ -105,24 +105,6 @@ export const TrackerClientService = {
       throw new Error('No Linear credentials configured');
     }
     return new LinearClient(creds);
-  },
-
-  async testLinearConnection(apiToken: string): Promise<{ success: boolean; error?: string }> {
-    const client = new LinearClient({ type: 'linear', apiToken });
-    return client.testConnection();
-  },
-
-  async saveLinearCredentials(apiToken: string): Promise<{ success: boolean; error?: string }> {
-    const testResult = await this.testLinearConnection(apiToken);
-    if (!testResult.success) {
-      return { success: false, error: testResult.error };
-    }
-    try {
-      await provider.saveCredentials({ type: 'linear', apiToken });
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Failed to save credentials' };
-    }
   },
 
   async getLinearTeams(): Promise<{
@@ -149,7 +131,4 @@ export const TrackerClientService = {
     return { configured: true };
   },
 
-  async clearLinearCredentials(): Promise<void> {
-    await provider.clearCredentials('linear');
-  },
 };

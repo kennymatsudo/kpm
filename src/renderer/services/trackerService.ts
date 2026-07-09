@@ -1,6 +1,7 @@
 import type {
   CustomFieldValues,
   StatusCategory,
+  TrackerType,
 } from '../../shared/types';
 import type { EndpointPayload } from '../../shared/ipc/endpoints';
 import type { TrackerEndpointName, trackerEndpoints } from '../../shared/ipc/trackerEndpoints';
@@ -135,8 +136,8 @@ export function subscribeToTrackerSyncProgress(
   return window.api.tracker.sync.onProgress(callback);
 }
 
-export function listTrackerIssueTypes(projectKey: string) {
-  return window.api.tracker.issueTypes.get({ projectKey });
+export function listTrackerIssueTypes(projectKey: string, trackerType?: TrackerType) {
+  return window.api.tracker.issueTypes.get({ projectKey, trackerType });
 }
 
 export function getTrackerExportQueue(projectId: string) {

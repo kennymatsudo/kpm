@@ -11,7 +11,7 @@ function makeAssociation(id: string): TrackerAssociationWithScope {
     id,
     kpm_project_id: 'project-1',
     scope_id: 'scope-1',
-    jql_filter: '',
+    issue_filter: '',
     display_name: null,
     status_mapping: null,
     custom_field_values: null,

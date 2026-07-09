@@ -8,6 +8,7 @@ import type { TrackerService } from '../../services/core/TrackerService';
 import { bindRegistryHandlers } from '../validation/utils';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { trackerEvents, type TrackerImportProgressEventData } from '../../../shared/ipc/trackerEvents';
+import { TrackerClientService } from '../../trackers/TrackerClientService';
 
 /**
  * One handler per `trackerEndpoints` entry. A registry entry without a
@@ -27,18 +28,25 @@ function buildTrackerHandlers(
     'credentials.get': async () => trackerService.getCredentialInfo(),
 
     'credentials.saveJira': async ({ siteUrl, email, apiToken }) =>
-      trackerService.saveJiraCredentials(siteUrl, email, apiToken),
+      TrackerClientService.saveCredentials({ type: 'jira', siteUrl, email, apiToken }),
 
-    'credentials.delete': async () => trackerService.clearJiraCredentials(),
+    'credentials.delete': async () => {
+      await TrackerClientService.clearCredentials('jira');
+      return { success: true };
+    },
 
     'credentials.testJira': async ({ siteUrl, email, apiToken }) =>
-      trackerService.testJiraConnection(siteUrl, email, apiToken),
+      TrackerClientService.testConnection({ type: 'jira', siteUrl, email, apiToken }),
 
-    'credentials.saveLinear': async ({ apiToken }) => trackerService.saveLinearCredentials(apiToken),
+    'credentials.saveLinear': async ({ apiToken }) =>
+      TrackerClientService.saveCredentials({ type: 'linear', apiToken }),
 
-    'credentials.deleteLinear': async () => trackerService.clearLinearCredentials(),
+    'credentials.deleteLinear': async () => {
+      await TrackerClientService.clearCredentials('linear');
+      return { success: true };
+    },
 
-    'credentials.testLinear': async ({ apiToken }) => trackerService.testLinearConnection(apiToken),
+    'credentials.testLinear': async ({ apiToken }) => TrackerClientService.testConnection({ type: 'linear', apiToken }),
 
     // ============================================
     // Three-Level Tracker Architecture (ADR-002)
@@ -58,8 +66,8 @@ function buildTrackerHandlers(
     // Level 3: KPM-Jira Associations
     'associations.get': async ({ projectId }) => trackerService.getAssociations(projectId),
 
-    'associations.add': async ({ trackerType, projectId, siteUrl, projectKey, projectName, jqlFilter, displayName }) => {
-      const result = trackerService.addAssociation(trackerType, projectId, siteUrl, projectKey, projectName, jqlFilter, displayName);
+    'associations.add': async ({ trackerType, projectId, siteUrl, projectKey, projectName, issueFilter, displayName }) => {
+      const result = trackerService.addAssociation(trackerType, projectId, siteUrl, projectKey, projectName, issueFilter, displayName);
       return result.ok ? { success: true, association: result.data } : { success: false, error: result.error };
     },
 

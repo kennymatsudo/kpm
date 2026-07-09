@@ -28,7 +28,7 @@ const jiraProjectKey = z
   .min(1, 'Project key is required')
   .regex(/^[A-Z][A-Z0-9_]*$/, 'Project key must be uppercase letters/numbers (e.g., "PROJ", "MY_PROJECT")');
 
-interface JiraIssueTypeSummary {
+interface TrackerIssueTypeSummary {
   id: string;
   name: string;
   subtask: boolean;
@@ -137,8 +137,8 @@ export const exportEndpoints = {
 
   'issueTypes.get': {
     channel: 'export:issue-types:get',
-    params: z.object({ projectKey: jiraProjectKey }),
-    result: resultOf<RegistryResponse<{ issueTypes: JiraIssueTypeSummary[] }>>(),
+    params: z.object({ projectKey: jiraProjectKey, trackerType: z.enum(['jira', 'linear']).optional() }),
+    result: resultOf<RegistryResponse<{ issueTypes: TrackerIssueTypeSummary[] }>>(),
   },
 } satisfies Record<string, EndpointDefinition>;
 

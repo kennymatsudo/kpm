@@ -255,7 +255,7 @@ export const trackerEndpoints = {
       projectKey: trackerProjectKey,
       projectName: optionalString,
       // Jira: JQL. Linear: JSON.stringify(LinearFilter).
-      jqlFilter: nonEmptyString('Filter'),
+      issueFilter: nonEmptyString('Filter'),
       displayName: optionalString,
     }),
     result: resultOf<{ success: boolean; association?: TrackerAssociationWithScope; error?: string }>(),

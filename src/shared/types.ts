@@ -354,7 +354,7 @@ export interface TrackerAssociation {
   id: string;
   kpm_project_id: string;
   scope_id: string;
-  jql_filter: string;             // 'parent = PROJ-6224'
+  issue_filter: string;           // Tracker-native filter: JQL (Jira) or serialized LinearFilter (Linear)
   display_name: string | null;    // 'Support Pane Epic'
   status_mapping: StatusMapping | null;  // Explicit status category → Jira status mapping
   custom_field_values: CustomFieldValues | null;  // Static custom field values for export, applied to all issue types
@@ -716,8 +716,8 @@ export interface SyncQueueEntryWithPlanItem extends SyncQueueEntry {
   };
 }
 
-/** Jira issue type from API */
-export interface JiraIssueType {
+/** An issue type from a tracker (Jira issue types; Linear synthesizes a single "Issue"). */
+export interface TrackerIssueType {
   id: string;
   name: string;
   subtask: boolean;
@@ -779,8 +779,8 @@ export interface JiraCurrentValues {
   updated: string; // ISO timestamp from Jira
 }
 
-/** Jira workflow transition */
-export interface JiraTransition {
+/** A workflow transition (Jira) or a state change synthesized from a workflow state (Linear). */
+export interface TrackerTransition {
   id: string;
   name: string;
   to: {
@@ -797,7 +797,7 @@ export interface JiraTransition {
 export interface StatusTransitionInfo {
   currentStatus: string;           // Current Jira status name
   targetCategory: StatusCategory;  // KPM category to transition to
-  availableTransition: JiraTransition | null;  // Best matching transition, null if none
+  availableTransition: TrackerTransition | null;  // Best matching transition, null if none
   warning: string | null;          // Warning message if no valid transition
 }
 

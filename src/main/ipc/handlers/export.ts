@@ -91,11 +91,11 @@ function buildExportHandlers(
     },
 
     // ==========================================================================
-    // Jira Issue Types
+    // Tracker Issue Types
     // ==========================================================================
 
-    'issueTypes.get': async ({ projectKey }) => {
-      const client = await TrackerClientService.getClient('jira');
+    'issueTypes.get': async ({ projectKey, trackerType }) => {
+      const client = await TrackerClientService.getClient(trackerType ?? 'jira');
       const issueTypes = await client.getIssueTypes(projectKey);
       return { issueTypes };
     },

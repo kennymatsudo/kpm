@@ -44,7 +44,7 @@ interface TrackerState {
   // Association actions
   loadAssociations: (projectId: string) => Promise<void>;
   getAssociationById: (associationId: string) => TrackerAssociationWithScope | null;
-  addAssociation: (trackerType: TrackerType, projectId: string, siteUrl: string, projectKey: string, projectName: string | undefined, jqlFilter: string, displayName?: string) => Promise<{ success: boolean; error?: string }>;
+  addAssociation: (trackerType: TrackerType, projectId: string, siteUrl: string, projectKey: string, projectName: string | undefined, issueFilter: string, displayName?: string) => Promise<{ success: boolean; error?: string }>;
   updateAssociationEpicKey: (associationId: string, epicKey: string | null) => Promise<{ success: boolean; error?: string }>;
   removeAssociation: (associationId: string) => Promise<void>;
   hasAssociationItems: (associationId: string) => Promise<boolean>;
@@ -99,9 +99,9 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
     return get().associations.find((association) => association.id === associationId) ?? null;
   },
 
-  addAssociation: async (trackerType, projectId, siteUrl, projectKey, projectName, jqlFilter, displayName) => {
+  addAssociation: async (trackerType, projectId, siteUrl, projectKey, projectName, issueFilter, displayName) => {
     set({ error: null });
-    const result = await addTrackerAssociation({ trackerType, projectId, siteUrl, projectKey, projectName, jqlFilter, displayName });
+    const result = await addTrackerAssociation({ trackerType, projectId, siteUrl, projectKey, projectName, issueFilter, displayName });
     if (!result.success) {
       return { success: false, error: result.error };
     }

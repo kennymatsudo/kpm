@@ -204,7 +204,7 @@ export function createTrackerAssociation(
     id: options.id ?? randomUUID(),
     kpm_project_id: options.kpm_project_id,
     scope_id: options.scope_id,
-    jql_filter: options.jql_filter ?? 'project = TEST',
+    issue_filter: options.issue_filter ?? 'project = TEST',
     display_name: options.display_name ?? null,
     status_mapping: options.status_mapping ?? null,
     custom_field_values: options.custom_field_values ?? null,

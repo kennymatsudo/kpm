@@ -3,8 +3,8 @@ import type {
   TrackerClient,
   ExternalIssue,
   LinearCredentials,
-  JiraIssueType,
-  JiraTransition,
+  TrackerIssueType,
+  TrackerTransition,
   CreateIssueParams,
   CreatedIssue,
   UpdateIssueParams,
@@ -188,6 +188,19 @@ export class LinearClient implements TrackerClient {
     return out;
   }
 
+  /**
+   * Linear has no dedicated fuzzy-text endpoint analogous to Jira's; the browse
+   * UI's search text is not applied server-side, so fall back to the team's issues.
+   */
+  searchIssuesByText(projectKey: string, _searchText: string): Promise<ExternalIssue[]> {
+    return this.searchIssues(projectKey);
+  }
+
+  /** Linear's default issue query already returns issues newest-first. */
+  getRecentIssues(projectKey: string): Promise<ExternalIssue[]> {
+    return this.searchIssues(projectKey);
+  }
+
   async fetchChildrenByParents(parentKeys: string[]): Promise<ExternalIssue[]> {
     if (parentKeys.length === 0) return [];
     const filter = buildParentIdentifierFilter(parentKeys);
@@ -209,7 +222,7 @@ export class LinearClient implements TrackerClient {
    * downstream code that expects a non-empty list can render selection UI if needed.
    * Templates are a richer analogue if we want to surface them later.
    */
-  getIssueTypes(_projectKey: string): Promise<JiraIssueType[]> {
+  getIssueTypes(_projectKey: string): Promise<TrackerIssueType[]> {
     return Promise.resolve([{ id: 'linear-issue', name: 'Issue', subtask: false }]);
   }
 
@@ -217,7 +230,7 @@ export class LinearClient implements TrackerClient {
    * Synthesize one pseudo-transition per workflow state on the issue's team.
    * Matches the Jira signature so ExportService can treat both identically.
    */
-  async getTransitions(issueKey: string): Promise<JiraTransition[]> {
+  async getTransitions(issueKey: string): Promise<TrackerTransition[]> {
     try {
       const data = await this.client.request<{
         issue: { team: { states: { nodes: { id: string; name: string; type: string }[] } } };
@@ -289,8 +302,16 @@ export class LinearClient implements TrackerClient {
       const description = this.documentCodec.toExternal(params.description);
       if (description !== null) input.description = description;
       if (params.labels?.length) input.labelIds = params.labels; // Labels must be IDs, not names
-      if (params.linearProjectId) input.projectId = params.linearProjectId;
-      if (params.targetStatusId) input.stateId = params.targetStatusId;
+
+      // Scope the new issue to the association filter's Linear Project, if any.
+      const projectId = this.readProjectId(params.issueFilter);
+      if (projectId) input.projectId = projectId;
+
+      // Linear can create directly in the mapped workflow state, avoiding a
+      // follow-up transition. Resolve the mapped status name to its state UUID.
+      const stateId = await this.resolveInitialStateId(params.projectKey, params.initialStatusName);
+      if (stateId) input.stateId = stateId;
+
       if (params.parentKey) {
         const parent = await this.client.request<{ issue: { id: string } }>(
           gql`query ParentId($id: String!) { issue(id: $id) { id } }`,
@@ -313,10 +334,42 @@ export class LinearClient implements TrackerClient {
         throw new Error('Linear issueCreate returned success=false');
       }
       const created = data.issueCreate.issue;
-      return { id: created.id, key: created.identifier, self: created.url };
+      return { id: created.id, key: created.identifier, url: created.url };
     } catch (e) {
       throw linearError(e);
     }
+  }
+
+  /** Extract the Linear Project UUID from a stored association filter, if present. */
+  private readProjectId(issueFilter: string | undefined): string | undefined {
+    if (!issueFilter) return undefined;
+    try {
+      return parseLinearFilter(issueFilter).projectId;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Resolve a mapped status name to its Linear workflow-state UUID so a new issue
+   * can be created directly in that state. Returns undefined when no status is
+   * requested; throws if the requested name isn't an available state.
+   */
+  private async resolveInitialStateId(
+    projectKey: string,
+    initialStatusName: string | undefined
+  ): Promise<string | undefined> {
+    if (!initialStatusName) return undefined;
+    const normalize = (name: string) => name.trim().toLowerCase();
+    const statuses = await this.getProjectStatuses(projectKey);
+    const status = statuses.find((candidate) => normalize(candidate.name) === normalize(initialStatusName));
+    if (!status) {
+      const available = statuses.map((candidate) => candidate.name).join(', ');
+      throw new Error(
+        `Status "${initialStatusName}" isn't an available Linear state. Available: ${available}`
+      );
+    }
+    return status.id;
   }
 
   async updateIssue(issueKey: string, params: UpdateIssueParams): Promise<void> {

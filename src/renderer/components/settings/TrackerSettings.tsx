@@ -203,7 +203,7 @@ function LinkedProjectCard({
             {association.display_name || association.project_name || association.project_key}
           </p>
           <p className="text-xs text-text-tertiary font-mono truncate mt-0.5">
-            {association.jql_filter}
+            {association.issue_filter}
           </p>
         </div>
         <button

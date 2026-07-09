@@ -1,7 +1,7 @@
 /**
  * Linear-native filter shape. Stored as `JSON.stringify(filter)` in the
- * `tracker_associations.jql_filter` TEXT column (name is misleading — it's the
- * tracker-native filter string for whichever client owns the association).
+ * `kpm_tracker_associations.issue_filter` TEXT column — the tracker-native
+ * filter string for whichever client owns the association (JQL for Jira).
  *
  * The LinearClient parses this into Linear's GraphQL IssueFilter at query time.
  */

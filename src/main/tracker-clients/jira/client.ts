@@ -3,9 +3,9 @@ import type {
   TrackerClient,
   ExternalIssue,
   JiraCredentials,
-  JiraIssueType,
+  TrackerIssueType,
   JiraCustomField,
-  JiraTransition,
+  TrackerTransition,
   CreateIssueParams,
   CreatedIssue,
   UpdateIssueParams,
@@ -368,7 +368,7 @@ export class JiraClient implements TrackerClient {
    * Get available issue types for a project.
    * Used for type mapping configuration.
    */
-  async getIssueTypes(projectKey: string): Promise<JiraIssueType[]> {
+  async getIssueTypes(projectKey: string): Promise<TrackerIssueType[]> {
     try {
       const project = await this.client.projects.getProject({
         projectIdOrKey: projectKey,
@@ -510,13 +510,16 @@ export class JiraClient implements TrackerClient {
         Object.assign(fields, params.customFields);
       }
 
+      // `issueFilter` and `initialStatusName` are honored by trackers that can
+      // create in a chosen project/state (Linear). Jira has no create-time state
+      // control, so the queued status is reached by a post-create transition.
       console.log('[JiraClient] Creating issue with fields:', JSON.stringify(fields, null, 2));
       const result = await this.client.issues.createIssue({ fields });
       console.log('[JiraClient] Issue created successfully:', result?.key);
       return {
         id: result.id,
         key: result.key,
-        self: result.self,
+        url: `https://${this.siteUrl}/browse/${result.key}`,
       };
     } catch (error) {
       console.error('[JiraClient] createIssue failed. Full error:', JSON.stringify(error, null, 2));
@@ -564,7 +567,7 @@ export class JiraClient implements TrackerClient {
    * Get available workflow transitions for an issue.
    * Returns only transitions valid from the issue's current status.
    */
-  async getTransitions(issueKey: string): Promise<JiraTransition[]> {
+  async getTransitions(issueKey: string): Promise<TrackerTransition[]> {
     try {
       const result = await this.client.issues.getTransitions({
         issueIdOrKey: issueKey,

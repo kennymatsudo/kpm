@@ -1,5 +1,5 @@
 import type { ITypeMappingRepository, ITrackerRepository } from '../interfaces';
-import type { TrackerTypeMapping, JiraIssueType, PlanItem, TrackerType } from '../../../shared/types';
+import type { TrackerTypeMapping, TrackerIssueType, PlanItem, TrackerType } from '../../../shared/types';
 
 /**
  * Default mappings from common KPM labels to Jira issue type names.
@@ -43,7 +43,7 @@ export interface TypeMappingServiceDeps {
   tracker: ITrackerRepository;
   trackerClientService: {
     getClient(type: TrackerType): Promise<{
-      getIssueTypes(projectKey: string): Promise<JiraIssueType[]>;
+      getIssueTypes(projectKey: string): Promise<TrackerIssueType[]>;
     }>;
   };
 }
@@ -54,12 +54,12 @@ export function createTypeMappingService(deps: TypeMappingServiceDeps) {
   function createDefaultMappings(
     kpmProjectId: string,
     scopeId: string,
-    availableTypes: JiraIssueType[]
+    availableTypes: TrackerIssueType[]
   ): TrackerTypeMapping[] {
     const mappings: { kpmLabel: string; trackerIssueTypeId: string; trackerIssueTypeName: string }[] = [];
 
     // Build lookup map of Jira types by lowercase name
-    const typesByName = new Map<string, JiraIssueType>();
+    const typesByName = new Map<string, TrackerIssueType>();
     for (const type of availableTypes) {
       typesByName.set(type.name.toLowerCase(), type);
     }
@@ -175,7 +175,7 @@ export function createTypeMappingService(deps: TypeMappingServiceDeps) {
       kpmProjectId: string,
       scopeId: string,
       depth: number,
-      availableTypes: JiraIssueType[],
+      availableTypes: TrackerIssueType[],
       hasSyncableParent?: boolean,
       hasEpicKey?: boolean
     ): { id: string; name: string } | null {

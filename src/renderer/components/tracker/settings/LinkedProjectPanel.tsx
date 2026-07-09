@@ -170,7 +170,7 @@ export function LinkedProjectPanel({ association, onUnlink }: Props) {
           </span>
         </div>
         <p className="text-sm text-text-secondary mt-1 font-mono text-xs bg-surface-2 px-2 py-1.5 rounded-lg mt-2">
-          {association.jql_filter}
+          {association.issue_filter}
         </p>
 
         {/* Parent Epic — Jira-only. Linear's "Project" equivalent is not yet wired. */}

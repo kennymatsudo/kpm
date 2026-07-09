@@ -13,14 +13,14 @@ import {
   inferCategoryWithMapping,
   mapLinearStateTypeToCategory,
 } from './statusTransitions';
-import type { JiraTransition } from '../../shared/types';
+import type { TrackerTransition } from '../../shared/types';
 
 // Helper to create test transitions
 function createTransition(
   name: string,
   toName: string,
   statusCategoryKey: string
-): JiraTransition {
+): TrackerTransition {
   return {
     id: `${name.toLowerCase().replace(/\s/g, '-')}-id`,
     name,

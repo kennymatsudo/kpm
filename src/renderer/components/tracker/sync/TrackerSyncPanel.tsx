@@ -221,7 +221,7 @@ export function TrackerSyncPanel({ associationId, onClose }: TrackerSyncPanelPro
                 </div>
                 <div>
                   <label className="text-xs text-text-muted uppercase tracking-wide">{filterLabel}</label>
-                  <p className="text-sm text-text-primary font-mono break-words">{association.jql_filter}</p>
+                  <p className="text-sm text-text-primary font-mono break-words">{association.issue_filter}</p>
                 </div>
                 <div>
                   <label className="text-xs text-text-muted uppercase tracking-wide">Last Synced</label>

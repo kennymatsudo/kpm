@@ -45,6 +45,8 @@ function createMockClient(responses: Map<string, ExternalIssue[]>): TrackerClien
     }),
     fetchIssue: vi.fn(),
     searchIssues: vi.fn(),
+    searchIssuesByText: vi.fn(async () => []),
+    getRecentIssues: vi.fn(async () => []),
     async fetchChildrenByParents(keys: string[]): Promise<ExternalIssue[]> {
       const out: ExternalIssue[] = [];
       for (const k of keys) {

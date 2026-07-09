@@ -90,7 +90,7 @@ export class TrackerRepository implements ITrackerRepository {
     // Column lists for consistent queries
     const connCols = 'id, tracker_type, site_url, display_name, created_at';
     const scopeCols = 'id, connection_id, project_key, project_name, created_at';
-    const assocCols = 'id, kpm_project_id, scope_id, jql_filter, display_name, status_mapping, custom_field_values, epic_key, last_synced_at, created_at';
+    const assocCols = 'id, kpm_project_id, scope_id, issue_filter, display_name, status_mapping, custom_field_values, epic_key, last_synced_at, created_at';
 
     this.stmts = {
       // Connections
@@ -117,7 +117,7 @@ export class TrackerRepository implements ITrackerRepository {
       getAssociations: db.prepare(`SELECT ${assocCols} FROM kpm_tracker_associations WHERE kpm_project_id = ? ORDER BY created_at`),
       getAssociationsWithContext: db.prepare(`
         SELECT
-          a.id, a.kpm_project_id, a.scope_id, a.jql_filter, a.display_name,
+          a.id, a.kpm_project_id, a.scope_id, a.issue_filter, a.display_name,
           a.status_mapping, a.custom_field_values, a.epic_key, a.last_synced_at, a.created_at,
           c.tracker_type,
           s.project_key, s.project_name,
@@ -130,7 +130,7 @@ export class TrackerRepository implements ITrackerRepository {
       `),
       getAssociationById: db.prepare(`
         SELECT
-          a.id, a.kpm_project_id, a.scope_id, a.jql_filter, a.display_name,
+          a.id, a.kpm_project_id, a.scope_id, a.issue_filter, a.display_name,
           a.status_mapping, a.custom_field_values, a.epic_key, a.last_synced_at, a.created_at,
           c.tracker_type,
           s.project_key, s.project_name,
@@ -141,7 +141,7 @@ export class TrackerRepository implements ITrackerRepository {
         WHERE a.id = ?
       `),
       insertAssociation: db.prepare(`
-        INSERT INTO kpm_tracker_associations (id, kpm_project_id, scope_id, jql_filter, display_name)
+        INSERT INTO kpm_tracker_associations (id, kpm_project_id, scope_id, issue_filter, display_name)
         VALUES (?, ?, ?, ?, ?)
       `),
       deleteAssociation: db.prepare('DELETE FROM kpm_tracker_associations WHERE id = ?'),
@@ -260,11 +260,11 @@ export class TrackerRepository implements ITrackerRepository {
   createAssociation(
     projectId: string,
     scopeId: string,
-    jqlFilter: string,
+    issueFilter: string,
     displayName?: string
   ): TrackerAssociation {
     const id = randomUUID();
-    this.stmts.insertAssociation.run(id, projectId, scopeId, jqlFilter, displayName ?? null);
+    this.stmts.insertAssociation.run(id, projectId, scopeId, issueFilter, displayName ?? null);
     // Need to fetch with context for full return type
     return this.getAssociationById(id)!;
   }
