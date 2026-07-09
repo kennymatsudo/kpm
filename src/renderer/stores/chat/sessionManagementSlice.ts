@@ -21,7 +21,7 @@ export function createSessionManagementSlice(set: ChatSet, get: ChatGet): Pick<C
       }
 
       const newSession = {
-        ...createInitialPerSessionState(state.nextSessionNumber, state.model, state.effort),
+        ...createInitialPerSessionState(state.nextSessionNumber, state.model, state.effort, state.provider, state.piProviderModel, state.codexModel),
         hydrated: options?.hydrated ?? true,
       };
       const sessions = new Map(state.sessions);

@@ -38,6 +38,13 @@ export interface FileUpdateEventData {
   forceReview?: boolean;
 }
 
+export interface FileMoveEventData {
+  projectId: string;
+  chatSessionId?: string;
+  sourcePath: string;
+  targetPath: string;
+}
+
 export interface FileDeleteEventData {
   projectId: string;
   chatSessionId?: string;
@@ -160,6 +167,7 @@ export const chatEvents = {
   activity: { channel: 'chat:activity', payload: payloadOf<ActivityEventData>() },
   thinking: { channel: 'chat:thinking', payload: payloadOf<ThinkingEventData>() },
   fileUpdate: { channel: 'chat:file-update', payload: payloadOf<FileUpdateEventData>() },
+  fileMove: { channel: 'chat:file-move', payload: payloadOf<FileMoveEventData>() },
   fileDelete: { channel: 'chat:file-delete', payload: payloadOf<FileDeleteEventData>() },
   sessionConnecting: { channel: 'chat:session-connecting', payload: payloadOf<SessionEventData>() },
   sessionReady: { channel: 'chat:session-ready', payload: payloadOf<SessionReadyEventData>() },

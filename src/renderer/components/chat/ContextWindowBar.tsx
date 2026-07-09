@@ -8,10 +8,11 @@ function formatK(n: number): string {
 interface ContextWindowBarProps {
   usage: PerSessionState['lastTurnUsage'];
   model: string | null | undefined;
+  contextWindow?: number | null;
 }
 
-export function ContextWindowBar({ usage, model }: ContextWindowBarProps) {
-  const contextWindow = usage?.contextWindow ?? resolveModelContextWindow(model);
+export function ContextWindowBar({ usage, model, contextWindow: selectedContextWindow }: ContextWindowBarProps) {
+  const contextWindow = usage?.contextWindow ?? selectedContextWindow ?? resolveModelContextWindow(model);
 
   // input_tokens is only the uncached portion. Total context sent to the model
   // is input + cache reads + cache writes — that's what fills the context window.

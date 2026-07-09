@@ -5,12 +5,7 @@ import { createStreamingSessionService } from '../streaming/StreamingSessionServ
 import { createContextBuilder } from '../../claude/contextBuilders';
 import type { OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import { buildSdkOptions, type ModelType } from '../../claude/sdkOptionsBuilder';
-import {
-  subscribeToPlanActions,
-  subscribeToClaudeMdUpdate,
-  subscribeToDocumentUpdate,
-  subscribeToFileDelete,
-} from '../../claude/tools/createKpmServer';
+import { subscribeToKpmToolProposals } from '../../kpmTools/runtimeRegistry';
 import { createToolCallLogger } from '../toollog';
 import type { PlanContext } from '../../claude/prompts';
 import { unwrapOrThrow } from '../result';
@@ -126,10 +121,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         disabledMcpServerNames,
       });
     },
-    subscribeToPlanActions,
-    subscribeToClaudeMdUpdate,
-    subscribeToDocumentUpdate,
-    subscribeToFileDelete,
+    subscribeToKpmToolProposals,
     readClaudeMd: async (projectId: string) => {
       const result = await services.contextFileService.readClaudeMd(projectId);
       return result.ok
@@ -145,6 +137,10 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     toolCallLogger,
     scheduler: services.pollScheduler,
     isSlashCommand: (text: string) => services.slashCommandService.isCommandInvocation(text),
+    listSlashCommands: () => {
+      const result = services.slashCommandService.listCommands();
+      return result.ok ? result.data : [];
+    },
     onMcpStatusReady: (mcpStatus) => {
       const managed = mcpStatus
         .filter(s => s.name.startsWith('claude.ai'))
@@ -164,6 +160,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     chatSessions: container.chatSessions,
     getDefaultChatProvider: () => parseChatProvider(container.appSettings.get(CHAT_PROVIDER_KEY)),
     streamingSessionService,
+    slashCommandService: services.slashCommandService,
     emitChatError: ({ projectId, chatSessionId, error }) => {
       emitAppEvent(getMainWindow()?.webContents, chatEvents.error, { projectId, chatSessionId, error });
     },

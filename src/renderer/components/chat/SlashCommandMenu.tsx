@@ -45,6 +45,9 @@ export function SlashCommandMenu({ matches, highlightIndex, onHighlight, onSelec
                   {command.argumentHint && (
                     <span className="font-mono text-xxs text-text-muted whitespace-nowrap">{command.argumentHint}</span>
                   )}
+                  {command.source === 'pi-template' && (
+                    <span className="rounded border border-border-default px-1 py-0.5 text-xxs text-text-muted whitespace-nowrap">pi template</span>
+                  )}
                   <span className="ml-auto text-xs text-text-muted truncate">{command.description}</span>
                 </button>
               );

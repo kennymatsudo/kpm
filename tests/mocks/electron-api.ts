@@ -278,6 +278,7 @@ export function createMockApi() {
 
     fileExplorer: {
       writeFile: vi.fn().mockResolvedValue({ success: true }),
+      rename: vi.fn().mockResolvedValue({ id: 'renamed-file', name: 'renamed-file', path: 'renamed-file', type: 'file' }),
       delete: vi.fn().mockResolvedValue({ success: true }),
     },
     review: {

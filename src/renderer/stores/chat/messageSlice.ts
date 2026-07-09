@@ -214,6 +214,13 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
       set((state) => ({
         ...createInitialChatState(),
         model: state.model,
+        provider: state.provider,
+        codexModel: state.codexModel,
+        piProviderModel: state.piProviderModel,
+        piProviders: state.piProviders,
+        piProvidersAvailable: state.piProvidersAvailable,
+        piProvidersLoaded: state.piProvidersLoaded,
+        piAcknowledgedUnsafeProviders: state.piAcknowledgedUnsafeProviders,
       }));
     },
   };

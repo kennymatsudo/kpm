@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { SettingsSection, StatusBadge } from './SettingsSection';
 import { useClaudeAvailabilityStore, useGeneralSettingsStore } from '../../stores';
+import { ChatProviderSettings } from './ChatProviderSettings';
 import { UsageSettingsSection } from './UsageSettings';
 import { ThemesSettings } from './ThemesSettings';
 
@@ -94,6 +95,8 @@ export function GeneralSettings({ currentProjectId }: Props = {}) {
           </div>
         </div>
       </SettingsSection>
+
+      <ChatProviderSettings />
 
       <SettingsSection
         icon={

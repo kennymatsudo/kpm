@@ -35,7 +35,7 @@ import { getDiff, detectBaseBranch } from './gitUtils';
 import {
   createReviewAssessmentMcpServer,
   REVIEW_ASSESSMENT_TOOL_NAMES,
-} from '../../claude/tools/review-assessment';
+} from '../../kpmTools/tools/review-assessment';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import type { FileExplorerService } from '../files/FileExplorerService';
 

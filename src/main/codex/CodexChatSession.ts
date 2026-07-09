@@ -22,9 +22,12 @@ export interface CodexChatSessionConfig {
   context: PlanContext;
   chatSessionId?: string;
   resumeThreadId?: string;
+  model?: string;
   onMessage: (msg: unknown) => void;
   onSessionEnd?: (reason: SessionEndReason, error?: Error) => void;
   onReady?: (threadId: string) => void;
+  /** Injectable KPM MCP registration factory. The streaming shell supplies this so provider setup stays outside the session body. */
+  registerMcpSession?: () => Promise<CodexMcpRegistration>;
 }
 
 interface QueuedTurn {
@@ -199,11 +202,11 @@ export class CodexChatSession {
       ? initialMessage
       : contentBlocksToCodexInput(initialMessage);
 
-    this.mcpRegistration = await registerCodexMcpSession({
+    this.mcpRegistration = await (this.config.registerMcpSession ?? (() => registerCodexMcpSession({
       projectId: this.config.context.project.id,
       chatSessionId: this.config.chatSessionId,
       focus: Boolean(this.config.context.focusDocument),
-    });
+    })))();
 
     try {
       this.codex = new Codex({
@@ -290,6 +293,7 @@ export class CodexChatSession {
       .map((repo) => repo.active_worktree_path ?? repo.path)
       .filter((repoPath): repoPath is string => Boolean(repoPath));
     return {
+      ...(this.config.model ? { model: this.config.model } : {}),
       workingDirectory: this.config.context.project.folder_path,
       additionalDirectories,
       skipGitRepoCheck: true,

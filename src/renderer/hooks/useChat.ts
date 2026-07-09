@@ -94,6 +94,12 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     const sessionState = useChatStore.getState().sessions.get(chatSessionId);
     const model = sessionState?.model ?? 'sonnet';
     const effort = sessionState?.effort ?? 'medium';
+    const provider = sessionState?.provider ?? 'claude';
+    const providerModel = provider === 'pi'
+      ? sessionState?.piProviderModel
+      : provider === 'codex'
+        ? sessionState?.codexModel
+        : undefined;
 
     let sendResult: Awaited<ReturnType<typeof sendChatMessage>>;
     try {
@@ -107,6 +113,8 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
         chatSessionId,
         currentView,
         clientMessageId: effectiveClientMessageId,
+        provider,
+        providerModel,
       });
     } catch (error) {
       if (sendingWhileStreaming) {
@@ -149,6 +157,12 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
 
     const retrySessionState = useChatStore.getState().sessions.get(chatSessionId);
     const model = retrySessionState?.model ?? 'sonnet';
+    const provider = retrySessionState?.provider ?? 'claude';
+    const providerModel = provider === 'pi'
+      ? retrySessionState?.piProviderModel
+      : provider === 'codex'
+        ? retrySessionState?.codexModel
+        : undefined;
 
     try {
       const result = await sendChatMessage({
@@ -160,6 +174,8 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
         chatSessionId,
         currentView,
         clientMessageId,
+        provider,
+        providerModel,
       });
       if (!result.success) {
         setError(chatSessionId, result.error ?? 'Failed to retry message');

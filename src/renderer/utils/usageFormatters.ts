@@ -52,12 +52,30 @@ const MODEL_LABELS: Record<string, string> = {
 
 export function formatModel(model: string): string {
   if (MODEL_LABELS[model]) return MODEL_LABELS[model];
+  const piSelectorLabel = formatPiSelector(model);
+  if (piSelectorLabel) return piSelectorLabel;
   // Compact a full model id like "claude-opus-4-8" → "Opus 4.8"
   const lower = model.toLowerCase();
   if (lower.includes('opus')) return modelWithVersion('Opus', model);
   if (lower.includes('sonnet')) return modelWithVersion('Sonnet', model);
   if (lower.includes('haiku')) return modelWithVersion('Haiku', model);
+  if (lower.startsWith('gpt-')) return formatGptModel(model);
   return model;
+}
+
+function formatGptModel(raw: string): string {
+  return raw
+    .split('-')
+    .map((part) => part === 'gpt' ? 'GPT' : part)
+    .join('-');
+}
+
+function formatPiSelector(model: string): string | null {
+  const separatorIndex = model.indexOf('/');
+  if (separatorIndex <= 0 || separatorIndex === model.length - 1) return null;
+  const provider = model.slice(0, separatorIndex);
+  const modelId = model.slice(separatorIndex + 1);
+  return `${provider} · ${modelId}`;
 }
 
 function modelWithVersion(label: string, raw: string): string {

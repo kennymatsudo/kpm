@@ -3,7 +3,7 @@ import type { MessageSegment } from '../../stores';
 export type SegmentGroup =
   | { kind: 'process'; segments: MessageSegment[] }
   | { kind: 'text'; content: string }
-  | { kind: 'checkpoint'; gapMs: number | null };
+  | { kind: 'checkpoint'; gapMs: number | null; model?: string };
 
 /**
  * Split segments into ordered runs separated by text. Each text segment becomes
@@ -43,7 +43,7 @@ export function groupSegmentsForRender(segments: MessageSegment[], startTimestam
     } else if (seg.type === 'checkpoint') {
       flushProcess();
       const gapMs = previousTimestamp != null ? Math.max(0, seg.timestamp - previousTimestamp) : null;
-      groups.push({ kind: 'checkpoint', gapMs });
+      groups.push({ kind: 'checkpoint', gapMs, ...(seg.model ? { model: seg.model } : {}) });
       previousTimestamp = seg.timestamp;
     } else {
       buffer.push(seg);

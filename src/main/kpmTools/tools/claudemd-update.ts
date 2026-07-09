@@ -11,7 +11,6 @@
 import { z } from 'zod';
 import { tool, jsonResult, toolError, toolLog } from './index';
 
-// Keep legacy export aliases so existing imports don't break during migration
 export interface ClaudeMdUpdatePayload {
   projectId: string;
   chatSessionId?: string;

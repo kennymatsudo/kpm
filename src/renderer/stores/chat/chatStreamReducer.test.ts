@@ -139,6 +139,19 @@ describe('applyStreamEvent thinking/activity', () => {
 });
 
 describe('applyStreamEvent done: finalization', () => {
+  it('uses the pi provider selector when the backend does not report a resolved model', () => {
+    const session = {
+      ...createInitialPerSessionState(1, 'opus', 'medium', 'pi', 'cursor/auto'),
+      isStreaming: true,
+      streamingSegments: [{ type: 'text' as const, content: 'answer' }],
+      streamingContent: 'answer',
+    };
+
+    const next = applyStreamEvent(session, { type: 'done' });
+
+    expect(next.messages[0].model).toBe('cursor/auto');
+  });
+
   it('commits activity-only turns as an assistant message', () => {
     const activities = [makeActivity('a1', 'Running: npm test'), makeActivity('a2', 'edit: src/file.ts')];
     const session = { ...createInitialPerSessionState(1), isStreaming: true, activities };

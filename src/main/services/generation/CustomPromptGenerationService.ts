@@ -12,7 +12,7 @@
 import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
 import * as path from 'path';
 import * as fs from 'fs';
-import { getKpmServer } from '../../claude/tools/createKpmServer';
+import { getKpmServer } from '../../kpmTools/createKpmServer';
 import { getConfig } from '../../config';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import { runClaudeQuery, type ClaudeQueryUsage } from '../../claude/runClaudeQuery';

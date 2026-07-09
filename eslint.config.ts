@@ -81,9 +81,9 @@ export default tseslint.config(
     },
   },
 
-  // Claude SDK integration — SDK uses `any` extensively; unsafe rules add no signal here
+  // Claude SDK / KPM tool integration — SDK uses `any` extensively; unsafe rules add no signal here
   {
-    files: ['src/main/claude/**/*.ts'],
+    files: ['src/main/claude/**/*.ts', 'src/main/kpmTools/**/*.ts'],
     rules: {
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',

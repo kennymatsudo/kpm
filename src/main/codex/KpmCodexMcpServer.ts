@@ -11,12 +11,12 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import {
-  getFocusKpmToolDefinitions,
+  executeKpmTool,
   getKpmToolDefinitions,
   KPM_MCP_INSTRUCTIONS,
-  runWithToolExecutionContext,
   type KpmToolDefinition,
-} from '../claude/tools/createKpmServer';
+} from '../kpmTools/runtimeRegistry';
+import { toMcpToolResult } from '../kpmTools/runtime';
 
 interface RegisteredCodexMcpSession {
   token: string;
@@ -70,8 +70,8 @@ function isAuthorized(header: unknown, token: string): boolean {
   return header === `Bearer ${token}`;
 }
 
-function toolDefinitionsForSession(session: RegisteredCodexMcpSession): KpmToolDefinition[] {
-  return session.focus ? getFocusKpmToolDefinitions() : getKpmToolDefinitions();
+export function getCodexKpmToolDefinitions(options: { focus?: boolean }): KpmToolDefinition[] {
+  return getKpmToolDefinitions({ scope: options.focus ? 'focus_document' : 'main' });
 }
 
 function createMcpServerForSession(session: RegisteredCodexMcpSession): McpServer {
@@ -84,7 +84,7 @@ function createMcpServerForSession(session: RegisteredCodexMcpSession): McpServe
   );
   const registerTool = mcpServer.registerTool.bind(mcpServer) as unknown as RegisterToolLoose;
 
-  for (const tool of toolDefinitionsForSession(session)) {
+  for (const tool of getCodexKpmToolDefinitions({ focus: session.focus })) {
     registerTool(
       tool.name,
       {
@@ -94,11 +94,15 @@ function createMcpServerForSession(session: RegisteredCodexMcpSession): McpServe
         _meta: tool._meta,
       },
       async (args: unknown, extra: unknown) => {
-        const result = await runWithToolExecutionContext(
-          { projectId: session.projectId, chatSessionId: session.chatSessionId },
-          () => tool.handler(args, extra),
-        );
-        return result as CallToolResult;
+        const result = await executeKpmTool({
+          name: tool.name,
+          args,
+          extra,
+          projectId: session.projectId,
+          chatSessionId: session.chatSessionId,
+          scope: session.focus ? 'focus_document' : 'main',
+        });
+        return toMcpToolResult(result) as CallToolResult;
       },
     );
   }

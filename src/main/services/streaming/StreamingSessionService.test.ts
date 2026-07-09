@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserWindow } from 'electron';
 import type { PlanAction } from '../../../shared/types';
-import type {
-  PlanActionsEvent,
-} from '../../claude/tools/createKpmServer';
+import type { KpmToolProposal, PlanActionsEvent } from '../../kpmTools/runtimeRegistry';
 import {
   buildContinuationHistory,
   createStreamingSessionService,
@@ -40,6 +38,87 @@ const { configState } = vi.hoisted(() => ({
   // Defaults to the non-partial path so the existing complete-message lifecycle
   // tests keep asserting on chat:chunk.
   configState: { includePartialMessages: false },
+}));
+
+interface MockNativeSessionConfig {
+  onMessage: (msg: unknown) => void;
+  onSessionEnd?: (reason: 'completed' | 'error' | 'closed', error?: Error) => void;
+  onReady?: (sessionId: string) => void;
+}
+
+function createMockNativeChatSessionClass() {
+  return class MockNativeChatSession {
+    private readonly config: MockNativeSessionConfig;
+    private ready = true;
+    private pendingQueued = 0;
+    readonly sentMessages: string[] = [];
+    readonly interruptCallCount = { value: 0 };
+
+    constructor(config: MockNativeSessionConfig) {
+      this.config = config;
+      mockSessionInstances.push(this);
+    }
+
+    async start(initialMessage: string): Promise<void> {
+      this.sentMessages.push(initialMessage);
+      const sessionId = `mock-session-${mockSessionCounter.nextId++}`;
+      this.config.onReady?.(sessionId);
+    }
+
+    send(text: string): void {
+      this.sentMessages.push(text);
+      this.pendingQueued += 1;
+    }
+
+    cancelLastQueued(): unknown {
+      if (this.pendingQueued <= 0) return null;
+      this.pendingQueued -= 1;
+      return this.sentMessages.pop() ?? null;
+    }
+
+    pendingQueuedCount(): number {
+      return this.pendingQueued;
+    }
+
+    steerPendingIntoCurrentTurn(): void {
+      if (this.pendingQueued > 0) this.pendingQueued -= 1;
+    }
+
+    isReady(): boolean {
+      return this.ready;
+    }
+
+    async interrupt(): Promise<void> {
+      this.interruptCallCount.value += 1;
+      return Promise.resolve();
+    }
+
+    async close(): Promise<void> {
+      this.ready = false;
+      this.config.onSessionEnd?.('closed');
+    }
+
+    emitMessage(msg: unknown): void {
+      this.config.onMessage(msg);
+    }
+
+    emitSessionEnd(reason: 'completed' | 'error' | 'closed', error?: Error): void {
+      this.ready = false;
+      this.config.onSessionEnd?.(reason, error);
+    }
+
+    setReady(value: boolean): void {
+      this.ready = value;
+    }
+  };
+}
+
+vi.mock('../../codex/CodexChatSession', () => ({
+  CodexChatSession: createMockNativeChatSessionClass(),
+}));
+
+vi.mock('../../pi/PiChatSession', () => ({
+  PiChatSession: createMockNativeChatSessionClass(),
 }));
 
 vi.mock('../../claude/streaming', () => {
@@ -132,11 +211,12 @@ vi.mock('../../claude/streaming', () => {
   };
 });
 
-vi.mock('../../claude/tools/createKpmServer', () => ({
+vi.mock('../../kpmTools/runtimeRegistry', () => ({
   runWithToolExecutionContext: (_context: unknown, run: () => unknown) => run(),
   clearPendingDocumentContent: (chatSessionId: string) => {
     clearPendingDocumentContentCalls.push(chatSessionId);
   },
+  getKpmToolDefinitions: () => [],
 }));
 
 vi.mock('../../claude/clientManager', () => ({
@@ -235,34 +315,23 @@ function createDeps(sendSpy: (channel: string, payload: unknown) => void): Strea
     buildContext: () => ({ projectId: 'project-1' } as never),
     getPlanItems: () => [],
     buildSdkOptions: () => ({}),
-    subscribeToPlanActions: () => () => {},
-    subscribeToClaudeMdUpdate: () => () => {},
-    subscribeToDocumentUpdate: () => () => {},
-    subscribeToFileDelete: () => () => {},
+    subscribeToKpmToolProposals: () => () => {},
     readClaudeMd: async () => ({ success: true, content: '', filename: 'AGENTS.md' }),
     readDocumentFile: async () => ({ success: true, content: '' }),
   };
 }
 
 function createDepsWithToolEvents(sendSpy: (channel: string, payload: unknown) => void) {
-  const planActionSubscribers: ((event: PlanActionsEvent) => void)[] = [];
-  const contextFileSubscribers: ((update: { projectId: string; chatSessionId?: string; newContent: string; oldContent: string | null; filename: string }) => void)[] = [];
+  const proposalSubscribers: ((proposal: KpmToolProposal) => void)[] = [];
 
   const deps = createDeps(sendSpy);
   const depsWithEvents: StreamingSessionServiceDeps = {
     ...deps,
-    subscribeToPlanActions: (callback) => {
-      planActionSubscribers.push(callback);
+    subscribeToKpmToolProposals: (callback) => {
+      proposalSubscribers.push(callback);
       return () => {
-        const index = planActionSubscribers.indexOf(callback);
-        if (index !== -1) planActionSubscribers.splice(index, 1);
-      };
-    },
-    subscribeToClaudeMdUpdate: (callback) => {
-      contextFileSubscribers.push(callback);
-      return () => {
-        const index = contextFileSubscribers.indexOf(callback);
-        if (index !== -1) contextFileSubscribers.splice(index, 1);
+        const index = proposalSubscribers.indexOf(callback);
+        if (index !== -1) proposalSubscribers.splice(index, 1);
       };
     },
   };
@@ -270,10 +339,19 @@ function createDepsWithToolEvents(sendSpy: (channel: string, payload: unknown) =
   return {
     deps: depsWithEvents,
     emitPlanActions: (event: PlanActionsEvent) => {
-      for (const callback of planActionSubscribers) callback(event);
+      for (const callback of proposalSubscribers) callback({ type: 'plan-actions', ...event });
     },
     emitContextFileUpdate: (update: { projectId: string; chatSessionId?: string; newContent: string; oldContent: string | null; filename: string }) => {
-      for (const callback of contextFileSubscribers) callback(update);
+      for (const callback of proposalSubscribers) callback({ type: 'project-context-update', ...update });
+    },
+    emitDocumentUpdate: (update: { projectId: string; chatSessionId?: string; filePath: string; content: string; oldContent: string | null }) => {
+      for (const callback of proposalSubscribers) callback({ type: 'document-update', ...update });
+    },
+    emitFileMove: (proposal: { projectId: string; chatSessionId?: string; sourcePath: string; targetPath: string }) => {
+      for (const callback of proposalSubscribers) callback({ type: 'file-move', ...proposal });
+    },
+    emitFileDelete: (proposal: { projectId: string; chatSessionId?: string; path: string; isDirectory: boolean }) => {
+      for (const callback of proposalSubscribers) callback({ type: 'file-delete', ...proposal });
     },
   };
 }
@@ -438,6 +516,35 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     expect(session.sentMessages[0]).toBe('/compact');
   });
 
+  it('injects focused context at the template placeholder instead of prefixing it', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    await service.sendChatMessage('project-1', 'Ask Matt to review this.\n\n$KPM_CONTEXT\n\nUser request: validate it', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+      focusedResources: [{ type: 'project_file', path: 'docs/csat.md', isDirectory: false } as never],
+    });
+
+    const session = mockSessionInstances[0];
+    expect(session.sentMessages[0]).toContain('Ask Matt to review this.\n\n# Focused Selection');
+    expect(session.sentMessages[0]).toContain('- File: docs/csat.md');
+    expect(session.sentMessages[0]).toContain('\n\nUser request: validate it');
+    expect(session.sentMessages[0]).not.toMatch(/^# Focused Selection/);
+    expect(session.sentMessages[0]).not.toContain('$KPM_CONTEXT');
+  });
+
+  it('removes the focused-context placeholder when no context is selected', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    await service.sendChatMessage('project-1', 'Ask Matt.\n\n$KPM_CONTEXT\n\nUser request: validate it', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+
+    const session = mockSessionInstances[0];
+    expect(session.sentMessages[0]).toBe('Ask Matt.\n\n\n\nUser request: validate it');
+  });
+
   it('routes tool approval events only to their originating chat session', async () => {
     const toolEvents = createDepsWithToolEvents(sendSpy);
     service = createStreamingSessionService(toolEvents.deps);
@@ -502,6 +609,89 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       filePath: 'CLAUDE.md',
       content: '# Updated context',
       oldContent: '# Existing context',
+    });
+  });
+
+  it('forwards document update proposals to the approval queue', async () => {
+    const toolEvents = createDepsWithToolEvents(sendSpy);
+    service = createStreamingSessionService(toolEvents.deps);
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(sendResult.ok).toBe(true);
+
+    sentEvents.length = 0;
+    toolEvents.emitDocumentUpdate({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      filePath: 'docs/decision.md',
+      content: '# Updated decision',
+      oldContent: '# Existing decision',
+    });
+
+    const fileUpdate = sentEvents.find((event) => event.channel === 'chat:file-update');
+    expect(fileUpdate?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      filePath: 'docs/decision.md',
+      content: '# Updated decision',
+      oldContent: '# Existing decision',
+    });
+  });
+
+  it('forwards file move proposals to the approval queue', async () => {
+    const toolEvents = createDepsWithToolEvents(sendSpy);
+    service = createStreamingSessionService(toolEvents.deps);
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(sendResult.ok).toBe(true);
+
+    sentEvents.length = 0;
+    toolEvents.emitFileMove({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      sourcePath: 'docs/draft.md',
+      targetPath: 'archive/draft.md',
+    });
+
+    const fileMove = sentEvents.find((event) => event.channel === 'chat:file-move');
+    expect(fileMove?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      sourcePath: 'docs/draft.md',
+      targetPath: 'archive/draft.md',
+    });
+  });
+
+  it('forwards file delete proposals to the approval queue', async () => {
+    const toolEvents = createDepsWithToolEvents(sendSpy);
+    service = createStreamingSessionService(toolEvents.deps);
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(sendResult.ok).toBe(true);
+
+    sentEvents.length = 0;
+    toolEvents.emitFileDelete({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      path: 'docs/old.md',
+      isDirectory: false,
+    });
+
+    const fileDelete = sentEvents.find((event) => event.channel === 'chat:file-delete');
+    expect(fileDelete?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      path: 'docs/old.md',
+      isDirectory: false,
     });
   });
 
@@ -687,6 +877,44 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     });
   });
 
+  it.each([
+    { provider: 'codex' as const, providerModel: 'gpt-5.5' },
+    { provider: 'pi' as const, providerModel: 'cursor/auto' },
+  ])('emits complete $provider assistant messages even when Claude partial streaming is enabled', async ({ provider, providerModel }) => {
+    configState.includePartialMessages = true;
+    const deps = createDeps(sendSpy);
+    service = createStreamingSessionService(deps);
+
+    await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+      provider,
+      providerModel,
+    });
+    const session = mockSessionInstances[0];
+    sentEvents.length = 0;
+
+    session.emitMessage({
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: 'Visible without reload' }] },
+    });
+    session.emitMessage({ type: 'result' });
+
+    expect(sentEvents.find((e) => e.channel === 'chat:chunk')?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      text: 'Visible without reload',
+    });
+    expect(deps.chatMessageRepository.addMessage).toHaveBeenCalledWith(
+      'project-1',
+      'assistant',
+      'Visible without reload',
+      'chat-1',
+      undefined,
+      provider,
+    );
+  });
+
   it('streams partial text deltas as chunks without double-emitting the complete block', async () => {
     configState.includePartialMessages = true;
     const deps = createDeps(sendSpy);
@@ -730,6 +958,46 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       'chat-1',
       undefined,
       'claude',
+    );
+  });
+
+  it('does not double-emit pi text when pi provides both deltas and the final block', async () => {
+    configState.includePartialMessages = true;
+    const deps = createDeps(sendSpy);
+    service = createStreamingSessionService(deps);
+
+    await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+      provider: 'pi',
+      providerModel: 'cursor/auto',
+    });
+    const session = mockSessionInstances[0];
+    sentEvents.length = 0;
+
+    session.emitMessage({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Hello' } },
+    });
+    session.emitMessage({
+      type: 'assistant',
+      parent_tool_use_id: null,
+      message: { content: [{ type: 'text', text: 'Hello' }] },
+    });
+    session.emitMessage({ type: 'result' });
+
+    const chunkTexts = sentEvents
+      .filter((e) => e.channel === 'chat:chunk')
+      .map((e) => (e.payload as { text: string }).text);
+    expect(chunkTexts).toEqual(['Hello']);
+    expect(deps.chatMessageRepository.addMessage).toHaveBeenCalledWith(
+      'project-1',
+      'assistant',
+      'Hello',
+      'chat-1',
+      undefined,
+      'pi',
     );
   });
 

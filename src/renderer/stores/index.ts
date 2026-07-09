@@ -25,7 +25,7 @@ export type { PlanAction } from '../../shared/types';
 export { useTrackerStore, useHasAssociations } from './trackerStore';
 
 export { useChatStore } from './chat';
-export type { Message, ClaudeModel as ChatClaudeModel, MessageSegment, AgentEffortLevel } from './chat';
+export type { Message, ClaudeModel as ChatClaudeModel, ChatProvider, PiProviderOption, MessageSegment, AgentEffortLevel, CodexChatModel } from './chat';
 export type { Activity, ChatViewMode } from '../../shared/types';
 export { useClaudeAvailabilityStore } from './claudeAvailabilityStore';
 
@@ -72,6 +72,7 @@ export type {
   PendingPlanActionsItem,
   PendingClaudeMdItem,
   PendingDocumentItem,
+  PendingMoveItem,
   PendingDeleteItem,
 } from './approvalQueueStore';
 

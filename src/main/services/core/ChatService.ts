@@ -15,6 +15,7 @@ import type {
 } from '../../../shared/types';
 import { failure, success, wrap, type AsyncResult, type ServiceResult } from '../result';
 import type { StreamingSessionService } from '../streaming/StreamingSessionService';
+import type { SlashCommandService } from './SlashCommandService';
 import { DEFAULT_CHAT_PROVIDER } from '../../../shared/appSettings';
 
 export interface ChatServiceDeps {
@@ -27,6 +28,7 @@ export interface ChatServiceDeps {
     StreamingSessionService,
     'sendChatMessage' | 'disconnectChatSession'
   >;
+  slashCommandService?: Pick<SlashCommandService, 'expandPiPromptInvocation'>;
   emitChatError?: (payload: { projectId: string; chatSessionId?: string; error: string }) => void;
 }
 
@@ -35,6 +37,8 @@ export interface SendChatMessageInput {
   message: string;
   provider?: ChatProvider;
   model?: ClaudeModel;
+  /** pi-only `"<provider>/<modelId>"` selection; ignored unless `provider` is `'pi'`. */
+  providerModel?: string;
   effort?: 'low' | 'medium' | 'high' | 'max';
   /**
    * Wire-format list of paste-derived temp image absolute paths. Backward-
@@ -165,6 +169,7 @@ export function createChatService(deps: ChatServiceDeps) {
         message,
         model,
         provider: inputProvider,
+        providerModel,
         effort,
         tempImages,
         attachments: providedAttachments,
@@ -190,14 +195,24 @@ export function createChatService(deps: ChatServiceDeps) {
           return failure(errorText);
         }
 
+        const expansion = deps.slashCommandService?.expandPiPromptInvocation(message, {
+          projectFolderPath: project.folder_path,
+        });
+        if (expansion && !expansion.ok) {
+          emitError(projectId, chatSessionId, expansion.error);
+          return failure(expansion.error);
+        }
+        const messageForModel = expansion?.data ?? message;
+
         const result = await deps.streamingSessionService.sendChatMessage(
           projectId,
-          message,
+          messageForModel,
           {
             model: model ?? 'sonnet',
             provider,
+            providerModel,
             effort,
-            focusedResources: (promptContext?.focusedResources ?? []) as { type: string; path: string }[],
+            focusedResources: promptContext?.focusedResources ?? [],
             chatSessionId,
             currentView: promptContext?.currentView,
             focusDocument: promptContext?.focusDocument,

@@ -3657,6 +3657,56 @@ export const migrations: Migration[] = [
       db.exec(`DROP TABLE IF EXISTS worktrees;`);
     },
   },
+  {
+    id: 1101,
+    name: '101_drop_chat_sessions_provider_check',
+    // SQLite can't drop a CHECK constraint via ALTER TABLE, so recreate
+    // chat_sessions with `provider` as free-form TEXT to allow new provider
+    // values (e.g. 'pi') without another migration per provider added.
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+
+        CREATE TABLE chat_sessions_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          claude_session_id TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          title TEXT,
+          scope TEXT NOT NULL DEFAULT 'main' CHECK(scope IN ('main', 'focus_document')),
+          focus_document_path TEXT,
+          focus_document_title TEXT,
+          focus_document_hash TEXT,
+          last_opened_at DATETIME,
+          provider TEXT NOT NULL DEFAULT 'claude',
+          provider_session_id TEXT
+        );
+
+        INSERT INTO chat_sessions_new (
+          id, project_id, claude_session_id, created_at, title, scope,
+          focus_document_path, focus_document_title, focus_document_hash,
+          last_opened_at, provider, provider_session_id
+        )
+        SELECT
+          id, project_id, claude_session_id, created_at, title, scope,
+          focus_document_path, focus_document_title, focus_document_hash,
+          last_opened_at, provider, provider_session_id
+        FROM chat_sessions;
+
+        DROP TABLE chat_sessions;
+        ALTER TABLE chat_sessions_new RENAME TO chat_sessions;
+
+        CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_id);
+        CREATE INDEX IF NOT EXISTS idx_chat_sessions_project_scope
+          ON chat_sessions(project_id, scope);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_sessions_focus_document
+          ON chat_sessions(project_id, focus_document_path)
+          WHERE scope = 'focus_document' AND focus_document_path IS NOT NULL;
+
+        PRAGMA foreign_keys = ON;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

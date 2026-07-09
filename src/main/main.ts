@@ -4,7 +4,7 @@ import { initDatabase } from './db';
 import { registerAllIpcHandlers } from './ipc';
 import * as TempImageService from './services/files/TempImageService';
 import { initializeRepositoryContainer } from './db/container';
-import { warmupMcpSdk } from './claude/tools/createKpmServer';
+import { warmupMcpSdk } from './kpmTools/createKpmServer';
 import { initializeServices } from './services/container';
 import { getCommonDevToolPaths } from './claude/findClaude';
 import { initClaudeAvailability } from './claude/availabilityState';

@@ -53,7 +53,7 @@ Git repositories, worktrees, development sessions, environment capture.
 - `EnvironmentService` — Capture environment from direnv/Nix for dev sessions
 - `GitHubService` — PR description generation, PR creation, PR template enforcement, diff/commit log helpers
 - `ReviewService` — GitHub PR review thread CRUD (fetch threads, post replies, resolve)
-- `ReviewAssessmentService` — SDK-backed multi-turn assessment agent that classifies PR review threads and drafts replies (uses the standalone MCP server in `claude/tools/review-assessment.ts`)
+- `ReviewAssessmentService` — SDK-backed multi-turn assessment agent that classifies PR review threads and drafts replies (uses the standalone MCP server in `kpmTools/tools/review-assessment.ts`)
 - `ReviewPollService` — Polls linked PRs (registered with `PollScheduler`), triggers assessments, broadcasts `review-poll:actionable` events that drive the board orange-dot indicator
 - `ScheduledLoopRunnerService` — Drives each enabled scheduled loop on the shared `PollScheduler`, one registration per loop
 

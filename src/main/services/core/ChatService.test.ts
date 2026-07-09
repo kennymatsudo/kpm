@@ -250,6 +250,36 @@ describe('ChatService.sendMessage', () => {
     );
   });
 
+  it('expands pi prompt templates before sending while preserving the user-entered text in history', async () => {
+    const { deps, spies } = makeDeps({
+      slashCommandService: {
+        expandPiPromptInvocation: vi.fn(() => success('Expanded prompt')),
+      },
+    });
+    const service = createChatService(deps);
+
+    const result = await service.sendMessage({
+      projectId: 'project-1',
+      message: '/review src/main',
+      chatSessionId: 'session-1',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(spies.sendChatMessage).toHaveBeenCalledWith(
+      'project-1',
+      'Expanded prompt',
+      expect.objectContaining({ chatSessionId: 'session-1' }),
+    );
+    expect(spies.addMessage).toHaveBeenCalledWith(
+      'project-1',
+      'user',
+      '/review src/main',
+      'session-1',
+      undefined,
+      'claude',
+    );
+  });
+
   it('uses the configured default chat provider when none is supplied', async () => {
     const { deps, spies } = makeDeps({
       getDefaultChatProvider: () => 'codex',

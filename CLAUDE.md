@@ -80,8 +80,8 @@ Then conditionally: the **`PlanAction` recipe** below if writable via tool; `Dev
 A missing executor is a compile error (`ACTION_EXECUTORS` is typed against every `PlanAction['type']`), not a runtime failure.
 
 **Add a Claude tool**
-1. Implement in `src/main/claude/tools/`
-2. Register in `tools/createKpmServer.ts`
+1. Implement in `src/main/kpmTools/tools/`
+2. Register the tool group in `src/main/kpmTools/runtimeRegistry.ts`
 3. Document usage in `prompts/toolDocs.ts`
 4. If it should be hidden in a mode or disabled state, enforce that in `permissions.ts` / `canUseTool`; do not use SDK `allowedTools` because it hides external MCP tools
 5. If it mutates the plan: emit `PlanAction[]` via `onPlanActions` — do **not** write to the DB.
@@ -126,6 +126,6 @@ Common proposals from outside agents that violate KPM's design — push back, do
 ## Git workflow
 
 - Branch from `main`. Open PRs against `main`.
-- Pre-commit hooks run lint + typecheck. Don't `--no-verify` — fix the underlying issue.
+- Pre-commit hooks run lint + typecheck.
 - Never commit `*.db`, `release/`, or `dist/` (gitignored).
 - Migrations land in the same PR as the code that depends on them.

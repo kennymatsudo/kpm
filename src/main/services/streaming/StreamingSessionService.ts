@@ -19,22 +19,22 @@ import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-
 import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { StreamingSession, type McpServerStatus } from '../../claude/streaming';
 import { CodexChatSession } from '../../codex/CodexChatSession';
+import { registerCodexMcpSession } from '../../codex/KpmCodexMcpServer';
+import { PiChatSession } from '../../pi/PiChatSession';
+import { buildPiKpmTools } from '../../pi/kpmToolAdapter';
 import type { IChatSession } from './IChatSession';
-import type { ClaudeMdUpdatePayload } from '../../claude/tools/claudemd-update';
-import type { DocumentUpdatePayload } from '../../claude/tools/document-update';
-import type { FileDeletePayload } from '../../claude/tools/file-delete';
 import {
   runWithToolExecutionContext,
   clearPendingDocumentContent,
   peekPendingDocumentContent,
   recordPendingDocumentContent,
-  type PlanActionsEvent,
-} from '../../claude/tools/createKpmServer';
+  type KpmToolProposal,
+} from '../../kpmTools/runtimeRegistry';
 import { buildUserContentBlocks } from '../../claude/attachmentBlocks';
 import { buildFocusedSection } from '../../claude/prompts/focusedResources';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../claude/prompts';
-import type { ChatProvider, FocusChatDocument, FocusedResource, PlanItem, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope } from '../../../shared/types';
+import type { ChatProvider, FocusChatDocument, FocusedResource, PlanItem, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope, SlashCommandInfo } from '../../../shared/types';
 import { getConfig } from '../../config';
 import { clientManager } from '../../claude/clientManager';
 import { isMaxTokensReached, isMaxTurnsReached, getTerminalReason } from '../../claude/sdkTypeGuards';
@@ -58,6 +58,8 @@ export type SessionType = 'chat';
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
 /** UI view mode - injected as a per-message `[Context: …]` hint; the system prompt itself is view-independent. */
 export type ViewMode = 'plan' | 'workspace' | 'focus';
+
+const KPM_CONTEXT_PLACEHOLDER = '$KPM_CONTEXT';
 
 function buildViewHintLine(currentView?: ViewMode): string | undefined {
   if (currentView === 'plan') return '[Context: user is viewing the planning canvas]';
@@ -232,6 +234,8 @@ interface ManagedSession {
   state: SessionState;
   provider: ChatProvider;
   model: ModelType;
+  /** pi-only `"<provider>/<modelId>"` selector used by this native session. */
+  providerModel?: string;
   lastActivity: number;
   sessionId?: string; // SDK session ID for resume
   processingStartTime?: number; // Timestamp when processing started (for timeout detection)
@@ -254,6 +258,7 @@ interface ManagedSession {
   /** Document proposals from focus chat always surface for review. */
   forceApprovalReview: boolean;
   accumulatedResponse: string; // Accumulate assistant response for persistence
+  hasStreamedResponseText: boolean; // True after this turn emitted text deltas, so complete blocks shouldn't re-render
   lastTurnFinalized: boolean; // True after a turn has emitted chat:done
   suppressLifecycleEventsOnEnd: boolean; // Suppress renderer lifecycle events when session ends
   /**
@@ -288,10 +293,7 @@ interface ManagedSession {
   turnErrorSurfaced?: boolean;
   turnStartedAt?: number;
   firstContentAt?: number;
-  unsubscribePlanActions: () => void;
-  unsubscribeClaudeMdUpdate: () => void;
-  unsubscribeDocumentUpdate: () => void;
-  unsubscribeFileDelete: () => void;
+  unsubscribeToolProposals: () => void;
 }
 
 // =============================================================================
@@ -393,17 +395,8 @@ export interface StreamingSessionServiceDeps {
     }
   ) => SDKOptions;
 
-  /** Subscribe to plan actions from MCP tools */
-  subscribeToPlanActions: (callback: (event: PlanActionsEvent) => void) => () => void;
-
-  /** Subscribe to project context file update proposals from MCP tools */
-  subscribeToClaudeMdUpdate: (callback: (update: ClaudeMdUpdatePayload) => void) => () => void;
-
-  /** Subscribe to document update proposals from MCP tools */
-  subscribeToDocumentUpdate: (callback: (update: DocumentUpdatePayload) => void) => () => void;
-
-  /** Subscribe to file deletion proposals from MCP tools */
-  subscribeToFileDelete: (callback: (payload: FileDeletePayload) => void) => () => void;
+  /** Subscribe to every first-party KPM proposal emitted by MCP tools. */
+  subscribeToKpmToolProposals: (callback: (proposal: KpmToolProposal) => void) => () => void;
 
   /** Read project context file (AGENTS.md or CLAUDE.md) content for a project */
   readClaudeMd: (projectId: string) => Promise<{ success: boolean; content: string | null; filename?: string; error?: string }>;
@@ -433,6 +426,9 @@ export interface StreamingSessionServiceDeps {
    * prefixes that would displace the leading slash.
    */
   isSlashCommand?: (text: string) => boolean;
+
+  /** Optional filesystem-backed command scan merged into SDK command updates. */
+  listSlashCommands?: () => SlashCommandInfo[];
 }
 
 // =============================================================================
@@ -459,6 +455,10 @@ interface ChatProviderConfig {
   fetchSessionSummary?: (sdkSessionId: string) => Promise<{ summary?: string } | undefined>;
 }
 
+function getManagedDisplayModel(managed: Pick<ManagedSession, 'provider' | 'model' | 'providerModel'>): string {
+  return managed.provider !== 'claude' && managed.providerModel ? managed.providerModel : managed.model;
+}
+
 export const CHAT_PROVIDER_CONFIG: Record<ChatProvider, ChatProviderConfig> = {
   claude: {
     usageModel: (managed) => managed.model,
@@ -475,6 +475,14 @@ export const CHAT_PROVIDER_CONFIG: Record<ChatProvider, ChatProviderConfig> = {
       chatSession?.provider === 'codex' ? chatSession.provider_session_id ?? undefined : undefined,
     persistSessionId: (repo, chatSessionId, sessionId) => {
       repo.updateProviderSessionId?.(chatSessionId, 'codex', sessionId);
+    },
+  },
+  pi: {
+    usageModel: () => 'pi',
+    resolveResumeSessionId: (chatSession) =>
+      chatSession?.provider === 'pi' ? chatSession.provider_session_id ?? undefined : undefined,
+    persistSessionId: (repo, chatSessionId, sessionId) => {
+      repo.updateProviderSessionId?.(chatSessionId, 'pi', sessionId);
     },
   },
 };
@@ -506,6 +514,7 @@ export function markSessionReady(
   managed.lastSdkActivity = Date.now();
   managed.sessionId = params.sessionId;
   managed.lastTurnFinalized = false;
+  managed.resolvedModel = undefined;
   if (params.chatSessionId && params.persistHistory) {
     CHAT_PROVIDER_CONFIG[params.provider].persistSessionId(
       params.chatSessionRepository,
@@ -674,6 +683,7 @@ export function finalizeTurnResult(
 
   // Reset accumulated response for next turn
   managed.accumulatedResponse = '';
+  managed.hasStreamedResponseText = false;
 
   try {
     deps.toolCallLogger?.finalizeTurn(projectId, chatSessionId);
@@ -709,7 +719,7 @@ export function finalizeTurnResult(
   emitAppEvent(mainWindow?.webContents, chatEvents.done, {
     projectId,
     chatSessionId,
-    model: managed.resolvedModel,
+    model: managed.resolvedModel ?? getManagedDisplayModel(managed),
     hasQueuedFollowUp,
     queuedClientMessageId: nextQueuedClientMessageId,
     consumedQueuedClientMessageId: firstLiveFollowUpClientMessageId,
@@ -742,6 +752,8 @@ export function finalizeTurnResult(
     // triggers the suppression guard and the renderer never receives
     // chat:session-deactivated / chat:done — leaving isStreaming stuck.
     managed.lastTurnFinalized = false;
+    managed.hasStreamedResponseText = false;
+    managed.resolvedModel = undefined;
     managed.acceptedFollowUpClientMessageIds = [];
   } else {
     managed.acceptedFollowUpClientMessageIds = [];
@@ -1063,6 +1075,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
 
     managed.lastTurnFinalized = false;
+    managed.hasStreamedResponseText = false;
+    managed.resolvedModel = undefined;
     managed.state = 'processing';
     managed.processingStartTime = Date.now();
     managed.lastSdkActivity = Date.now();
@@ -1102,6 +1116,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     provider: ChatProvider;
     initialMessage: MessageEnvelope;
     model: ModelType;
+    /** pi-only `"<provider>/<modelId>"` selection; ignored unless `provider` is `'pi'`. */
+    providerModel?: string;
     effort?: 'low' | 'medium' | 'high' | 'max';
     resumeSessionId?: string;
     context: PlanContext;
@@ -1121,6 +1137,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       provider,
       initialMessage,
       model,
+      providerModel,
       effort,
       resumeSessionId,
       context,
@@ -1142,10 +1159,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Create subscriptions FIRST so we can always clean them up
     // Store references outside try block to ensure cleanup on any error
-    let unsubscribePlanActions: (() => void) | null = null;
-    let unsubscribeClaudeMdUpdate: (() => void) | null = null;
-    let unsubscribeDocumentUpdate: (() => void) | null = null;
-    let unsubscribeFileDelete: (() => void) | null = null;
+    let unsubscribeToolProposals: (() => void) | null = null;
 
     try {
       const createClaudeSdkOptions = () => deps.buildSdkOptions(context, {
@@ -1235,105 +1249,125 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         },
       });
 
-      // Subscribe to plan actions - store reference for cleanup
-      unsubscribePlanActions = deps.subscribeToPlanActions((event) => {
-        if (event.projectId !== projectId) return;
-        if (event.chatSessionId !== chatSessionId) return;
-        emitAppEvent(mainWindow?.webContents, chatEvents.planActions, {
-          projectId: event.projectId,
-          chatSessionId: event.chatSessionId,
-          actions: event.actions,
-        });
-      });
-
-      // Subscribe to project context file update proposals from the tool
-      unsubscribeClaudeMdUpdate = deps.subscribeToClaudeMdUpdate((update) => {
-        const matchesSession = update.chatSessionId
-          ? update.chatSessionId === chatSessionId
+      // Subscribe once to the KPM-native proposal seam and fan out to the
+      // existing renderer approval channels. The approval queue keeps manual
+      // review and auto-apply behavior unchanged.
+      unsubscribeToolProposals = deps.subscribeToKpmToolProposals((proposal) => {
+        const matchesSession = proposal.chatSessionId
+          ? proposal.chatSessionId === chatSessionId
           : ['connecting', 'processing'].includes(sessions.get(key)?.state ?? '');
 
-        if (
-          update.projectId === projectId &&
-          matchesSession
-        ) {
+        if (proposal.projectId !== projectId || !matchesSession) return;
+
+        if (proposal.type === 'plan-actions') {
+          emitAppEvent(mainWindow?.webContents, chatEvents.planActions, {
+            projectId: proposal.projectId,
+            chatSessionId: proposal.chatSessionId,
+            actions: proposal.actions,
+          });
+          return;
+        }
+
+        if (proposal.type === 'project-context-update') {
           // The tool already read the file to validate old_string; reuse what
           // it captured rather than reading disk a second time.
           emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
             projectId,
             chatSessionId,
-            filePath: update.filename ?? DEFAULT_CONTEXT_FILENAME,
-            content: update.newContent,
-            oldContent: update.oldContent,
+            filePath: proposal.filename ?? DEFAULT_CONTEXT_FILENAME,
+            content: proposal.newContent,
+            oldContent: proposal.oldContent,
             forceReview: sessions.get(key)?.forceApprovalReview ?? forceApprovalReview,
           });
+          return;
         }
-      });
 
-      // Subscribe to document update proposals from the tool
-      unsubscribeDocumentUpdate = deps.subscribeToDocumentUpdate((update) => {
-        const matchesSession = update.chatSessionId
-          ? update.chatSessionId === chatSessionId
-          : ['connecting', 'processing'].includes(sessions.get(key)?.state ?? '');
-
-        if (
-          update.projectId === projectId &&
-          matchesSession
-        ) {
+        if (proposal.type === 'document-update') {
           // The tool already has the pre-edit content (or null for create);
           // forward it instead of re-reading disk.
           emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
             projectId,
             chatSessionId,
-            filePath: update.filePath,
-            content: update.content,
-            oldContent: update.oldContent,
+            filePath: proposal.filePath,
+            content: proposal.content,
+            oldContent: proposal.oldContent,
             forceReview: sessions.get(key)?.forceApprovalReview ?? forceApprovalReview,
           });
+          return;
         }
-      });
 
-      // Subscribe to file deletion proposals from the tool
-      unsubscribeFileDelete = deps.subscribeToFileDelete((payload) => {
-        const matchesSession = payload.chatSessionId
-          ? payload.chatSessionId === chatSessionId
-          : ['connecting', 'processing'].includes(sessions.get(key)?.state ?? '');
+        if (proposal.type === 'file-move') {
+          emitAppEvent(mainWindow?.webContents, chatEvents.fileMove, {
+            projectId,
+            chatSessionId,
+            sourcePath: proposal.sourcePath,
+            targetPath: proposal.targetPath,
+          });
+          return;
+        }
 
-        if (payload.projectId === projectId && matchesSession) {
+        if (proposal.type === 'file-delete') {
           emitAppEvent(mainWindow?.webContents, chatEvents.fileDelete, {
             projectId,
             chatSessionId,
-            path: payload.path,
-            isDirectory: payload.isDirectory,
+            path: proposal.path,
+            isDirectory: proposal.isDirectory,
           });
+          return;
         }
+
+        const _exhaustive: never = proposal;
+        void _exhaustive;
       });
 
+      const isFocusDocumentSession = Boolean(context.focusDocument);
+      const piKpmToolSet = provider === 'pi'
+        ? buildPiKpmTools({ focus: isFocusDocumentSession, projectId, chatSessionId })
+        : undefined;
+      const registerCodexKpmMcpSession = provider === 'codex'
+        ? () => registerCodexMcpSession({ projectId, chatSessionId, focus: isFocusDocumentSession })
+        : undefined;
+
       // Create streaming session — let required: const can't be referenced in its own initializer closures
-      let session!: IChatSession;
       // eslint-disable-next-line prefer-const
+      let session!: IChatSession;
+      const onReadyWithoutMcpStatus = (sessionId: string) => {
+        const managed = sessions.get(key);
+        if (managed?.session !== session) {
+          console.log(`[StreamingSessionService] Ignoring stale onReady for ${key}`);
+          return;
+        }
+        markSessionReady(managed, {
+          sessionId,
+          provider,
+          chatSessionId,
+          persistHistory,
+          projectId,
+          mainWindow,
+          chatSessionRepository: deps.chatSessionRepository,
+        });
+      };
       session = provider === 'codex'
         ? new CodexChatSession({
             context,
             chatSessionId,
             resumeThreadId: resumeSessionId,
+            model: providerModel,
             onMessage: (msg) => onMessage(session, msg),
             onSessionEnd: (reason, error) => handleSessionEnd(key, session, reason, error),
-            onReady: (sessionId) => {
-              const managed = sessions.get(key);
-              if (managed?.session !== session) {
-                console.log(`[StreamingSessionService] Ignoring stale onReady for ${key}`);
-                return;
-              }
-              markSessionReady(managed, {
-                sessionId,
-                provider,
-                chatSessionId,
-                persistHistory,
-                projectId,
-                mainWindow,
-                chatSessionRepository: deps.chatSessionRepository,
-              });
-            },
+            onReady: onReadyWithoutMcpStatus,
+            registerMcpSession: registerCodexKpmMcpSession,
+          })
+        : provider === 'pi'
+        ? new PiChatSession({
+            context,
+            chatSessionId,
+            resumeSessionId,
+            model: providerModel,
+            onMessage: (msg) => onMessage(session, msg),
+            onSessionEnd: (reason, error) => handleSessionEnd(key, session, reason, error),
+            onReady: onReadyWithoutMcpStatus,
+            kpmTools: piKpmToolSet,
           })
         : new StreamingSession({
             sdkOptions: createClaudeSdkOptions(),
@@ -1376,7 +1410,16 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             },
             onSlashCommands: (commands, context) => {
               const visible = selectVisibleSlashCommands(commands, context);
-              emitAppEvent(mainWindow?.webContents, chatEvents.slashCommands, { projectId, chatSessionId, commands: visible });
+              const seen = new Set(visible.map((command) => command.name));
+              const merged = [
+                ...visible,
+                ...(deps.listSlashCommands?.() ?? []).filter((command) => {
+                  if (seen.has(command.name)) return false;
+                  seen.add(command.name);
+                  return true;
+                }),
+              ].sort((a, b) => a.name.localeCompare(b.name));
+              emitAppEvent(mainWindow?.webContents, chatEvents.slashCommands, { projectId, chatSessionId, commands: merged });
             },
           });
 
@@ -1391,6 +1434,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         state: 'connecting',
         provider,
         model,
+        providerModel,
         lastActivity: Date.now(),
         turnStartedAt: Date.now(),
         titleSeed: initialMessage.titleSeed,
@@ -1405,16 +1449,14 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         persistHistory,
         forceApprovalReview,
         accumulatedResponse: '',
+        hasStreamedResponseText: false,
         lastTurnFinalized: false,
         suppressLifecycleEventsOnEnd: false,
         interruptInProgress: false,
         pendingFollowUpClientMessageIds: [],
         acceptedFollowUpClientMessageIds: [],
         promotedFollowUpClientMessageIds: new Set(),
-        unsubscribePlanActions,
-        unsubscribeClaudeMdUpdate,
-        unsubscribeDocumentUpdate,
-        unsubscribeFileDelete,
+        unsubscribeToolProposals: unsubscribeToolProposals ?? (() => {}),
       });
 
       // Start session WITH the initial message (required by SDK).
@@ -1449,10 +1491,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         managed.state = 'error';
         managed.suppressLifecycleEventsOnEnd = true;
         if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
-        managed.unsubscribePlanActions();
-        managed.unsubscribeClaudeMdUpdate();
-        managed.unsubscribeDocumentUpdate();
-        managed.unsubscribeFileDelete();
+        managed.unsubscribeToolProposals();
         try {
           await managed.session.close();
         } catch (closeError) {
@@ -1460,10 +1499,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         }
       } else {
         // Session wasn't stored in map - clean up local references directly
-        unsubscribePlanActions?.();
-        unsubscribeClaudeMdUpdate?.();
-        unsubscribeDocumentUpdate?.();
-        unsubscribeFileDelete?.();
+        unsubscribeToolProposals?.();
       }
       if (sessions.get(key)?.session === managed?.session) {
         sessions.delete(key);
@@ -1516,8 +1552,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   interface SendChatMessageOptions {
     provider?: ChatProvider;
     model?: ModelType;
+    /** pi-only `"<provider>/<modelId>"` selection; ignored unless `provider` is `'pi'`. */
+    providerModel?: string;
     effort?: 'low' | 'medium' | 'high' | 'max';
-    focusedResources?: { type: string; path: string }[];
+    focusedResources?: FocusedResource[];
     chatSessionId?: string;
     /** Current UI view - injected as a per-message `[Context: …]` hint */
     currentView?: ViewMode;
@@ -1551,11 +1589,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const key = buildSessionKey(projectId, chatSessionId);
     const managed = sessions.get(key);
 
-    // Provider changes require a fresh native session/thread. KPM-side chat
-    // history remains intact and is replayed into the new provider when needed.
-    if (managed && managed.provider !== provider) {
+    // Provider or provider-model changes require a fresh native session/thread. KPM-side
+    // chat history remains intact and is replayed into the new provider when needed.
+    if (managed && (managed.provider !== provider || (provider !== 'claude' && managed.providerModel !== options.providerModel))) {
       await disconnectSession(key, {
-        reason: 'provider_changed',
+        reason: managed.provider !== provider ? 'provider_changed' : 'provider_model_changed',
         source: 'sendChatMessage',
       });
     }
@@ -1569,7 +1607,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const isCommandTurn = deps.isSlashCommand?.(message) ?? false;
     const viewHint = isCommandTurn ? undefined : buildViewHintLine(options.currentView);
 
-    const focused = options.focusedResources as FocusedResource[] | undefined;
+    const focused = options.focusedResources;
+    const hasContextPlaceholder = message.includes(KPM_CONTEXT_PLACEHOLDER);
     let focusedPrefix: string | undefined;
     if (focused && focused.length > 0 && !isCommandTurn) {
       const hasPlanItem = focused.some((r) => r.type === 'plan_item');
@@ -1578,8 +1617,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       if (prefix.trim()) focusedPrefix = prefix;
     }
 
-    const prefixLines = [viewHint, focusedPrefix].filter((line): line is string => !!line);
-    const messageText = prefixLines.length > 0 ? `${prefixLines.join('\n\n')}\n\n${message}` : message;
+    const messageWithContext = hasContextPlaceholder
+      ? message.replaceAll(KPM_CONTEXT_PLACEHOLDER, focusedPrefix?.trim() ?? '')
+      : message;
+    const prefixLines = [viewHint, hasContextPlaceholder ? undefined : focusedPrefix].filter((line): line is string => !!line);
+    const messageText = prefixLines.length > 0 ? `${prefixLines.join('\n\n')}\n\n${messageWithContext}` : messageWithContext;
 
     const envelope: MessageEnvelope = { text: messageText, titleSeed: message, attachments: options.attachments };
     return sendMessageToSession(
@@ -1670,6 +1712,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       provider,
       initialMessage,
       model: options.model ?? 'sonnet',
+      providerModel: options.providerModel,
       effort: options.effort,
       resumeSessionId,
       context,
@@ -1898,10 +1941,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
     managed.state = 'closing';
-    managed.unsubscribePlanActions();
-    managed.unsubscribeClaudeMdUpdate();
-    managed.unsubscribeDocumentUpdate();
-    managed.unsubscribeFileDelete();
+    managed.unsubscribeToolProposals();
     managed.suppressLifecycleEventsOnEnd = !!options.silent;
 
     // If a follow-up was queued behind a turn that never got to deliver it,
@@ -2075,10 +2115,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
 
     if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
-    managed.unsubscribePlanActions();
-    managed.unsubscribeClaudeMdUpdate();
-    managed.unsubscribeDocumentUpdate();
-    managed.unsubscribeFileDelete();
+    managed.unsubscribeToolProposals();
 
     sessions.delete(key);
 

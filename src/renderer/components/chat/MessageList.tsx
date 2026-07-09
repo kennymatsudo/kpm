@@ -29,11 +29,16 @@ const CHECKPOINT_GAP_DIVIDER_MS = 60_000;
 const CHECKPOINT_GAP_MIN_MS = 1_500;
 
 /** Muted inline divider marking a merged turn boundary — carries the "time is passing" signal that a repeated header used to provide. */
-const CheckpointDivider = memo(function CheckpointDivider({ gapMs }: { gapMs: number | null }) {
-  if (gapMs == null || gapMs < CHECKPOINT_GAP_MIN_MS) return null;
-  const label = formatTurnDuration(gapMs);
-  if (!label) return null;
-  const text = gapMs >= CHECKPOINT_GAP_DIVIDER_MS ? `resumed after ${label}` : `${label} later`;
+const CheckpointDivider = memo(function CheckpointDivider({ gapMs, model }: { gapMs: number | null; model?: string }) {
+  const durationLabel = gapMs != null && gapMs >= CHECKPOINT_GAP_MIN_MS ? formatTurnDuration(gapMs) : null;
+  const modelLabel = formatModelLabel(model);
+  if (!durationLabel && !modelLabel) return null;
+  const timeText = durationLabel
+    ? gapMs != null && gapMs >= CHECKPOINT_GAP_DIVIDER_MS
+      ? `resumed after ${durationLabel}`
+      : `${durationLabel} later`
+    : null;
+  const text = [modelLabel, timeText].filter(Boolean).join(' · ');
   return (
     <div className="flex items-center gap-2 my-2 text-xxs text-text-muted/60" aria-hidden="true">
       <span className="flex-1 h-px bg-border-subtle" />
@@ -226,7 +231,7 @@ const AssistantMessageContent = memo(function AssistantMessageContent({
           return <ProcessTimeline key={`p-${idx}`} segments={group.segments} />;
         }
         if (group.kind === 'checkpoint') {
-          return <CheckpointDivider key={`c-${idx}`} gapMs={group.gapMs} />;
+          return <CheckpointDivider key={`c-${idx}`} gapMs={group.gapMs} model={group.model} />;
         }
         const segmentProcessed = processMessageContent(group.content);
         return (
@@ -385,6 +390,18 @@ function formatTurnDuration(ms: number | undefined): string | null {
 function formatModelLabel(model: string | undefined): string | null {
   if (!model) return null;
   return formatModel(model).toLowerCase();
+}
+
+function getSessionDisplayModel(session: {
+  provider: string;
+  model: string;
+  codexModel?: string;
+  piProviderModel?: string;
+} | null): string | undefined {
+  if (!session) return undefined;
+  if (session.provider === 'pi' && session.piProviderModel) return session.piProviderModel;
+  if (session.provider === 'codex' && session.codexModel) return session.codexModel;
+  return session.model;
 }
 
 const MessageHeader = memo(function MessageHeader({
@@ -597,7 +614,7 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
       return {
         viewedSession: session,
         viewedSessionId: state.viewedSessionId,
-        model: session?.model ?? state.model,
+        model: getSessionDisplayModel(session),
       };
     })
   );

@@ -27,16 +27,14 @@ function makeManaged(): Parameters<typeof markSessionReady>[0] {
     persistHistory: true,
     forceApprovalReview: false,
     accumulatedResponse: '',
+    hasStreamedResponseText: false,
     lastTurnFinalized: false,
     suppressLifecycleEventsOnEnd: false,
     interruptInProgress: false,
     pendingFollowUpClientMessageIds: [],
     acceptedFollowUpClientMessageIds: [],
     promotedFollowUpClientMessageIds: new Set(),
-    unsubscribePlanActions: () => {},
-    unsubscribeClaudeMdUpdate: () => {},
-    unsubscribeDocumentUpdate: () => {},
-    unsubscribeFileDelete: () => {},
+    unsubscribeToolProposals: () => {},
   };
 }
 
@@ -68,6 +66,10 @@ describe('CHAT_PROVIDER_CONFIG', () => {
     it('codex always reports the fixed "codex" label regardless of model', () => {
       expect(CHAT_PROVIDER_CONFIG.codex.usageModel({ model: 'opus' })).toBe('codex');
     });
+
+    it('pi always reports the fixed "pi" label regardless of model', () => {
+      expect(CHAT_PROVIDER_CONFIG.pi.usageModel({ model: 'opus' })).toBe('pi');
+    });
   });
 
   describe('resolveResumeSessionId', () => {
@@ -91,9 +93,20 @@ describe('CHAT_PROVIDER_CONFIG', () => {
       expect(CHAT_PROVIDER_CONFIG.codex.resolveResumeSessionId(chatSession)).toBeUndefined();
     });
 
+    it('pi resumes from provider_session_id when the stored provider is pi', () => {
+      const chatSession = { claude_session_id: null, provider: 'pi' as const, provider_session_id: 'pi-thread-1', title: null };
+      expect(CHAT_PROVIDER_CONFIG.pi.resolveResumeSessionId(chatSession)).toBe('pi-thread-1');
+    });
+
+    it('pi does not resume from a claude-provider row even if provider_session_id is set', () => {
+      const chatSession = { claude_session_id: null, provider: 'claude' as const, provider_session_id: 'stale', title: null };
+      expect(CHAT_PROVIDER_CONFIG.pi.resolveResumeSessionId(chatSession)).toBeUndefined();
+    });
+
     it('returns undefined when there is no existing chat session row', () => {
       expect(CHAT_PROVIDER_CONFIG.claude.resolveResumeSessionId(undefined)).toBeUndefined();
       expect(CHAT_PROVIDER_CONFIG.codex.resolveResumeSessionId(undefined)).toBeUndefined();
+      expect(CHAT_PROVIDER_CONFIG.pi.resolveResumeSessionId(undefined)).toBeUndefined();
     });
   });
 
@@ -111,6 +124,13 @@ describe('CHAT_PROVIDER_CONFIG', () => {
       expect(repo.updateClaudeSessionId).not.toHaveBeenCalled();
       expect(repo.updateProviderSessionId).toHaveBeenCalledWith('chat-session-1', 'codex', 'codex-thread-1');
     });
+
+    it('pi writes only the generalized column', () => {
+      const repo = makeRepo();
+      CHAT_PROVIDER_CONFIG.pi.persistSessionId(repo, 'chat-session-1', 'pi-thread-1');
+      expect(repo.updateClaudeSessionId).not.toHaveBeenCalled();
+      expect(repo.updateProviderSessionId).toHaveBeenCalledWith('chat-session-1', 'pi', 'pi-thread-1');
+    });
   });
 
   describe('fetchSessionSummary', () => {
@@ -120,6 +140,10 @@ describe('CHAT_PROVIDER_CONFIG', () => {
 
     it('is absent for codex', () => {
       expect(CHAT_PROVIDER_CONFIG.codex.fetchSessionSummary).toBeUndefined();
+    });
+
+    it('is absent for pi', () => {
+      expect(CHAT_PROVIDER_CONFIG.pi.fetchSessionSummary).toBeUndefined();
     });
   });
 });

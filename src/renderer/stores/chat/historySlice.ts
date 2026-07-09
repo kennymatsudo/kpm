@@ -28,7 +28,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
       const newSessionId = crypto.randomUUID();
       const state = get();
 
-      const newSession = createInitialPerSessionState(state.nextSessionNumber, state.model, state.effort);
+      const newSession = createInitialPerSessionState(state.nextSessionNumber, state.model, state.effort, state.provider, state.piProviderModel, state.codexModel);
       const sessions = new Map(state.sessions);
       sessions.set(newSessionId, newSession);
 
@@ -52,7 +52,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         const sessions = new Map(state.sessions);
         sessions.set(
           state.viewedSessionId,
-          createInitialPerSessionState(state.nextSessionNumber, state.model, state.effort)
+          createInitialPerSessionState(state.nextSessionNumber, state.model, state.effort, state.provider, state.piProviderModel, state.codexModel)
         );
         set({
           sessions,
@@ -130,7 +130,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         for (const id of persisted.open) {
           if (sessions.has(id)) continue;
           const shell: PerSessionState = {
-            ...createInitialPerSessionState(nextSessionNumber, state.model, state.effort),
+            ...createInitialPerSessionState(nextSessionNumber, state.model, state.effort, state.provider, state.piProviderModel, state.codexModel),
             hydrated: false,
           };
           sessions.set(id, shell);

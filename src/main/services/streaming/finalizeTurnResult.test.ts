@@ -29,16 +29,14 @@ function makeManaged(overrides: Partial<ManagedSessionArg> = {}): ManagedSession
     persistHistory: true,
     forceApprovalReview: false,
     accumulatedResponse: 'Here is the answer.',
+    hasStreamedResponseText: false,
     lastTurnFinalized: false,
     suppressLifecycleEventsOnEnd: false,
     interruptInProgress: false,
     pendingFollowUpClientMessageIds: [],
     acceptedFollowUpClientMessageIds: [],
     promotedFollowUpClientMessageIds: new Set(),
-    unsubscribePlanActions: () => {},
-    unsubscribeClaudeMdUpdate: () => {},
-    unsubscribeDocumentUpdate: () => {},
-    unsubscribeFileDelete: () => {},
+    unsubscribeToolProposals: () => {},
     ...overrides,
   };
 }

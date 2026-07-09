@@ -7,6 +7,8 @@ import { chatEndpoints, type ChatEndpointName } from '../../../shared/ipc/chatEn
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import { ChatSendSchema } from '../validation/chat';
 import { createRegistryIpcHandlers } from '../validation/utils';
+import { isPiAvailable } from '../../pi/detect';
+import { listPiProviders } from '../../pi/providers';
 
 export interface ChatHandlerDeps {
   chatService: ChatService;
@@ -125,6 +127,12 @@ function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
       const result = await chatService.getOrCreateFocusDocumentSession(params);
       if (!result.ok) throw new Error(result.error);
       return result.data;
+    },
+
+    piProviders: async () => {
+      const available = await isPiAvailable();
+      const providers = available ? await listPiProviders() : [];
+      return { available, providers };
     },
   };
 }

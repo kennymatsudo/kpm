@@ -6,6 +6,7 @@ import { settingsEndpoints, type SettingsEndpointName } from '../../../shared/ip
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { SettingsService } from '../../services/core/SettingsService';
 import { getClaudeAvailability, refreshClaudeAvailability } from '../../claude/availabilityState';
+import { getCodexStatus } from '../../codex/auth';
 import { createRegistryIpcHandlers } from '../validation/utils';
 
 /**
@@ -58,6 +59,8 @@ function buildSettingsHandlers(settingsService: SettingsService): SettingsHandle
     'claude.getAvailability': () => ({ success: true, ...getClaudeAvailability() }),
 
     'claude.refreshAvailability': () => ({ success: true, ...refreshClaudeAvailability() }),
+
+    'codex.getStatus': async () => getCodexStatus(),
   };
 }
 

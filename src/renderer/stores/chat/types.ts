@@ -1,4 +1,4 @@
-import type { Activity, ChatAttachment, SessionState, ClaudeModel, ChatSessionSummary, MessageSegment, ChatEffortLevel, SlashCommandInfo } from '../../../shared/types';
+import type { Activity, ChatAttachment, SessionState, ClaudeModel, ChatProvider, ChatSessionSummary, MessageSegment, ChatEffortLevel, PiProviderOption, SlashCommandInfo, CodexChatModel } from '../../../shared/types';
 import type { StoreApi } from 'zustand';
 
 export interface Message {
@@ -35,7 +35,7 @@ export interface Message {
 }
 
 // Re-export types for consumers
-export type { Activity, ClaudeModel, MessageSegment, AgentEffortLevel, ChatEffortLevel } from '../../../shared/types';
+export type { Activity, ClaudeModel, ChatProvider, MessageSegment, AgentEffortLevel, ChatEffortLevel, PiProviderOption, CodexChatModel } from '../../../shared/types';
 
 /** Per-session state (each concurrent session has its own state) */
 export interface PerSessionState {
@@ -83,6 +83,12 @@ export interface PerSessionState {
   model: ClaudeModel;
   /** Effort level selected for this session. Independent per tab. */
   effort: ChatEffortLevel;
+  /** Chat backend provider for this session. Independent per tab, mirrors `model`. */
+  provider: ChatProvider;
+  /** Codex model selected for this session. Independent per tab. */
+  codexModel: CodexChatModel;
+  /** pi-only `"<provider>/<modelId>"` selection; meaningful only when `provider` is `'pi'`. */
+  piProviderModel: string | undefined;
   /** Token counts from the most recently completed turn, for context window display. */
   lastTurnUsage: {
     inputTokens: number;
@@ -107,6 +113,19 @@ export interface ChatState {
   // Shared state
   model: ClaudeModel;
   effort: ChatEffortLevel;
+  provider: ChatProvider;
+  /** Codex model default, inherited by new sessions. */
+  codexModel: CodexChatModel;
+  /** pi-only `"<provider>/<modelId>"` default, inherited by new sessions. */
+  piProviderModel: string | undefined;
+  /** pi.dev providers/models available for selection (empty until `loadPiProviders` resolves). */
+  piProviders: PiProviderOption[];
+  /** Whether pi.dev is configured at all — gates showing `pi` as a provider choice. */
+  piProvidersAvailable: boolean;
+  /** True once `loadPiProviders` has resolved at least once. */
+  piProvidersLoaded: boolean;
+  /** Provider ids the user has acknowledged the "runs its own agent" warning for. */
+  piAcknowledgedUnsafeProviders: ReadonlySet<string>;
   totalTokens: number;
   sessionHistory: ChatSessionSummary[];
   /** User slash commands and skills shown in the composer typeahead */
@@ -201,6 +220,16 @@ export interface ChatState {
   setDefaultModel: (model: ClaudeModel) => void;
   setModel: (chatSessionId: string, model: ClaudeModel) => void;
   setEffort: (chatSessionId: string, effort: ChatEffortLevel) => void;
+  /** Refresh the pi.dev provider/model list (cheap; called at boot and when the provider picker opens) */
+  loadPiProviders: () => Promise<void>;
+  setDefaultProvider: (provider: ChatProvider) => void;
+  setProvider: (chatSessionId: string, provider: ChatProvider) => void;
+  setDefaultCodexModel: (codexModel: CodexChatModel) => void;
+  setCodexModel: (chatSessionId: string, codexModel: CodexChatModel) => void;
+  setDefaultPiProviderModel: (piProviderModel: string | undefined) => void;
+  setPiProviderModel: (chatSessionId: string, piProviderModel: string | undefined) => void;
+  /** Record that the user has accepted the one-time warning for an unsafe pi provider. Persisted so it's asked once. */
+  acknowledgeUnsafePiProvider: (provider: string) => Promise<void>;
   reset: () => void;
   resetProjectState: () => void;
 

@@ -24,14 +24,14 @@ describe('groupSegmentsForRender', () => {
     const segments: MessageSegment[] = [
       { type: 'thinking', content: '   ' },
       { type: 'activity', activities: [] },
-      { type: 'checkpoint', timestamp: 5000 },
+      { type: 'checkpoint', timestamp: 5000, model: 'claude-opus-4-8' },
       { type: 'checkpoint', timestamp: 7000 },
     ];
 
     const groups = groupSegmentsForRender(segments, 1000);
 
     expect(groups).toEqual([
-      { kind: 'checkpoint', gapMs: 4000 },
+      { kind: 'checkpoint', gapMs: 4000, model: 'claude-opus-4-8' },
       { kind: 'checkpoint', gapMs: 2000 },
     ]);
   });

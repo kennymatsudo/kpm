@@ -141,6 +141,45 @@ describeIfFts('runMigrations', () => {
   });
 });
 
+describe('101_drop_chat_sessions_provider_check', () => {
+  it('applies cleanly and allows inserting a chat_sessions row with provider = pi', () => {
+    const db = new BetterSqlite3(':memory:');
+
+    try {
+      expect(() => runMigrations(db)).not.toThrow();
+
+      db.prepare('INSERT INTO projects (id, name, folder_path) VALUES (?, ?, ?)').run(
+        'proj-1',
+        'Project One',
+        '/tmp/proj-1'
+      );
+
+      expect(() =>
+        db.prepare(
+          'INSERT INTO chat_sessions (id, project_id, provider) VALUES (?, ?, ?)'
+        ).run('session-1', 'proj-1', 'pi')
+      ).not.toThrow();
+
+      const row = db.prepare('SELECT provider FROM chat_sessions WHERE id = ?').get('session-1') as { provider: string };
+      expect(row.provider).toBe('pi');
+
+      const columns = db.prepare('PRAGMA table_info(chat_sessions)').all() as { name: string }[];
+      expect(columns.map((column) => column.name)).toEqual(
+        expect.arrayContaining([
+          'id', 'project_id', 'claude_session_id', 'created_at', 'title', 'scope',
+          'focus_document_path', 'focus_document_title', 'focus_document_hash',
+          'last_opened_at', 'provider', 'provider_session_id',
+        ])
+      );
+
+      const violations = db.prepare('PRAGMA foreign_key_check').all();
+      expect(violations).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+});
+
 describe('review table migrations', () => {
   it('drops orphaned agent review runs when rebuilding review tables', () => {
     const db = new BetterSqlite3(':memory:');

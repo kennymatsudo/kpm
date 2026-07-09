@@ -28,6 +28,7 @@ import { toast } from './toastStore';
 import { replyToSessionReviewThread } from '../services/reviewService';
 import { writeClaudeMdFile } from '../services/contextFileService';
 import { writeProjectFile, deleteProjectFile } from '../services/workspaceFileService';
+import { renameProjectEntry } from '../services/projectFileService';
 import { getParentPath } from '../utils/path';
 
 // =============================================================================
@@ -55,6 +56,13 @@ export interface PendingDocumentItem {
   oldContent: string | null;
 }
 
+export interface PendingMoveItem {
+  type: 'move';
+  id: string;
+  sourcePath: string;
+  targetPath: string;
+}
+
 export interface PendingDeleteItem {
   type: 'delete';
   id: string;
@@ -79,6 +87,7 @@ export type ApprovalItem =
   | PendingPlanActionsItem
   | PendingClaudeMdItem
   | PendingDocumentItem
+  | PendingMoveItem
   | PendingDeleteItem
   | PendingReviewReplyItem;
 
@@ -116,6 +125,9 @@ interface ApprovalQueueState {
 
   /** Add a document update to the queue */
   enqueueDocumentUpdate: (filePath: string, content: string, oldContent: string | null) => void;
+
+  /** Add a file/folder move to the queue */
+  enqueueFileMove: (sourcePath: string, targetPath: string) => void;
 
   /** Add a file/folder deletion to the queue */
   enqueueFileDelete: (filePath: string, isDirectory: boolean) => void;
@@ -165,6 +177,13 @@ interface ApprovalQueueState {
     options?: { forceReview?: boolean }
   ) => void;
 
+  /** Process a file/folder move proposal from Claude */
+  processFileMove: (
+    projectId: string,
+    sourcePath: string,
+    targetPath: string
+  ) => void;
+
   /** Process a file/folder deletion proposal from Claude */
   processFileDelete: (
     projectId: string,
@@ -207,6 +226,13 @@ interface ApprovalQueueState {
     projectId: string,
     filePath: string,
     content: string
+  ) => Promise<{ success: boolean; error?: string }>;
+
+  /** Execute a file/folder move */
+  executeFileMove: (
+    projectId: string,
+    sourcePath: string,
+    targetPath: string
   ) => Promise<{ success: boolean; error?: string }>;
 
   /** Execute a file/folder deletion */
@@ -394,6 +420,24 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
     });
   },
 
+  enqueueFileMove: (sourcePath, targetPath) => {
+    set((state) => {
+      // Dedupe repeat proposals for the same move; keep a single confirmation.
+      const existing = state.queue.find(
+        (item): item is PendingMoveItem => item.type === 'move' && item.sourcePath === sourcePath && item.targetPath === targetPath
+      );
+      if (existing) return state;
+
+      const newItem: PendingMoveItem = {
+        type: 'move',
+        id: generateId(),
+        sourcePath,
+        targetPath,
+      };
+      return { queue: [...state.queue, newItem], userMinimized: false };
+    });
+  },
+
   enqueueFileDelete: (filePath, isDirectory) => {
     set((state) => {
       // Dedupe repeat proposals for the same path; keep a single confirmation.
@@ -533,6 +577,26 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
     })();
   },
 
+  processFileMove: (projectId, sourcePath, targetPath) => {
+    if (!shouldAutoApplyApprovals()) {
+      get().enqueueFileMove(sourcePath, targetPath);
+      return;
+    }
+
+    void (async () => {
+      const result = await get().executeFileMove(projectId, sourcePath, targetPath);
+      if (result.success) {
+        const sourceParentPath = getParentPath(sourcePath, '');
+        const targetParentPath = getParentPath(targetPath, '');
+        void useFileTreeStore.getState().refreshDirectory(sourceParentPath);
+        if (targetParentPath !== sourceParentPath) void useFileTreeStore.getState().refreshDirectory(targetParentPath);
+        toast.success(`Moved ${sourcePath}`);
+      } else {
+        toast.error(`Failed to move ${sourcePath}: ${result.error}`);
+      }
+    })();
+  },
+
   processFileDelete: (projectId, filePath, isDirectory) => {
     if (!shouldAutoApplyApprovals()) {
       get().enqueueFileDelete(filePath, isDirectory);
@@ -581,6 +645,15 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
     try {
       const result = await writeProjectFile(projectId, filePath, content);
       return result;
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  },
+
+  executeFileMove: async (projectId, sourcePath, targetPath) => {
+    try {
+      await renameProjectEntry({ projectId, oldPath: sourcePath, newPath: targetPath });
+      return { success: true };
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }

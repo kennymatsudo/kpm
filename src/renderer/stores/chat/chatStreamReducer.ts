@@ -236,6 +236,7 @@ function finalize(session: PerSessionState, options: FinalizeOptions | undefined
   }
 
   const durationMs = session.streamStartedAt != null ? Math.max(0, now - session.streamStartedAt) : undefined;
+  const displayModel = options?.model ?? getSessionDisplayModel(session);
 
   // Strip the queued flag (from a promoted or consumed follow-up) BEFORE
   // positioning so the insertion logic sees an accurate `queued` state. For a
@@ -270,7 +271,7 @@ function finalize(session: PerSessionState, options: FinalizeOptions | undefined
     const mergedMessage: Message = {
       ...mergeTarget,
       segments: [...mergeTarget.segments, checkpoint, ...finalSegments],
-      model: options?.model ?? session.model,
+      model: displayModel,
       // Cumulative since the exchange's first turn — a growing total that
       // signals ongoing progress across the merged turns, rather than
       // resetting to just this latest turn's own duration.
@@ -284,7 +285,7 @@ function finalize(session: PerSessionState, options: FinalizeOptions | undefined
       role: 'assistant',
       segments: finalSegments,
       timestamp: new Date(now),
-      model: options?.model ?? session.model,
+      model: displayModel,
       ...(durationMs != null ? { durationMs } : {}),
       ...(interrupted ? { interrupted: true } : {}),
     };
@@ -441,6 +442,12 @@ export function applyStreamEvent(session: PerSessionState, event: ChatStreamEven
 }
 
 const STREAM_STALE_THRESHOLD_MS = 30_000;
+
+function getSessionDisplayModel(session: Pick<PerSessionState, 'provider' | 'model' | 'codexModel' | 'piProviderModel'>): string {
+  if (session.provider === 'pi' && session.piProviderModel) return session.piProviderModel;
+  if (session.provider === 'codex') return session.codexModel;
+  return session.model;
+}
 
 /**
  * True once a session has been streaming without a chunk/activity update for

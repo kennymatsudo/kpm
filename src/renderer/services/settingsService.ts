@@ -29,3 +29,7 @@ export function getClaudeAvailability() {
 export function refreshClaudeAvailability() {
   return window.api.settings.claude.refreshAvailability();
 }
+
+export function getCodexStatus() {
+  return window.api.settings.codex.getStatus();
+}

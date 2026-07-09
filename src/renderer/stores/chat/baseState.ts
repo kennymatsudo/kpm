@@ -1,10 +1,13 @@
-import type { ClaudeModel, ChatEffortLevel, PerSessionState, ChatState } from './types';
+import type { ClaudeModel, ChatEffortLevel, ChatProvider, PerSessionState, ChatState, CodexChatModel } from './types';
 
 /** Create initial state for a new session */
 export const createInitialPerSessionState = (
   sessionNumber: number,
   model: ClaudeModel = 'sonnet',
   effort: ChatEffortLevel = 'medium',
+  provider: ChatProvider = 'claude',
+  piProviderModel: string | undefined = undefined,
+  codexModel: CodexChatModel = 'gpt-5.5',
 ): PerSessionState => ({
   messages: [],
   streamingSegments: [],
@@ -23,6 +26,9 @@ export const createInitialPerSessionState = (
   sessionNumber,
   model,
   effort,
+  provider,
+  codexModel,
+  piProviderModel,
   claudeSessionId: null,
   title: null,
   mcpDegraded: false,
@@ -34,13 +40,22 @@ export const createInitialPerSessionState = (
 });
 
 export const createInitialChatState = (): Pick<ChatState,
-  'sessions' | 'activeSessionIds' | 'viewedSessionId' | 'model' | 'effort' | 'totalTokens' | 'sessionHistory' | 'slashCommands' | 'slashCommandsSource' | 'nextSessionNumber' | 'persistedProjectId'
+  | 'sessions' | 'activeSessionIds' | 'viewedSessionId' | 'model' | 'effort' | 'provider' | 'codexModel' | 'piProviderModel'
+  | 'piProviders' | 'piProvidersAvailable' | 'piProvidersLoaded' | 'piAcknowledgedUnsafeProviders'
+  | 'totalTokens' | 'sessionHistory' | 'slashCommands' | 'slashCommandsSource' | 'nextSessionNumber' | 'persistedProjectId'
 > => ({
   sessions: new Map(),
   activeSessionIds: new Set(),
   viewedSessionId: null,
   model: 'sonnet',
   effort: 'medium',
+  provider: 'claude',
+  codexModel: 'gpt-5.5',
+  piProviderModel: undefined,
+  piProviders: [],
+  piProvidersAvailable: false,
+  piProvidersLoaded: false,
+  piAcknowledgedUnsafeProviders: new Set(),
   totalTokens: 0,
   sessionHistory: [],
   slashCommands: [],

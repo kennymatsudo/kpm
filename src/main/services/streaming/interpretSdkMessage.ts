@@ -43,6 +43,8 @@ export interface SdkMessageSessionView {
   /** Maps SDK tool_use id → the Activity emitted for it (diff/progress updates merge by id). */
   toolUseActivities: Map<string, Activity>;
   accumulatedResponse: string;
+  /** True once this turn has revealed response text from stream deltas. Complete text blocks then only feed persistence. */
+  hasStreamedResponseText: boolean;
   /** True while an interrupt-and-send orchestration is tearing down the old turn. */
   interruptInProgress: boolean;
   pendingFollowUpClientMessageIds: string[];
@@ -106,6 +108,7 @@ export function interpretSdkMessage(
             ? [...segState.pendingActivities]
             : undefined;
           if (precedingActivities) segState.pendingActivities = [];
+          view.hasStreamedResponseText = true;
           events.push({
             kind: 'chunk',
             text: deltaText,
@@ -247,11 +250,13 @@ export function interpretSdkMessage(
         // is the authoritative copy regardless of streaming mode.
         view.accumulatedResponse += block.text;
 
-        // With partial streaming on, this text was already revealed token-by-
-        // token from `stream_event` deltas (which also drained pendingActivities).
-        // Re-emitting the whole block here would duplicate it, so stop after
-        // accumulating.
-        if (options.streamPartialsEnabled) {
+        // If this turn already revealed text token-by-token from
+        // `stream_event` deltas, the complete block is a duplicate for display
+        // and should only feed accumulation/persistence. Some native providers
+        // (pi/codex) normally emit only complete blocks even when the global
+        // partial-streaming flag is enabled, so key off actual deltas seen this
+        // turn rather than the provider/config alone.
+        if (options.streamPartialsEnabled && view.hasStreamedResponseText) {
           continue;
         }
 

@@ -74,7 +74,7 @@ Spec fields (`intent`, `acceptance_criteria`) surface in one place today:
 
 **Board `components/board-view/BoardCard.tsx` and canvas `components/planning/PlanCard.tsx` are intentionally NOT wired.** Card faces stay clean; users open the modal to view or edit specs. Surfacing spec fields on canvas cards would also require extending the card box model in `constants/planCardStyles.ts` — see the next section.
 
-**`source_document_id` is unwired in the renderer** — the field is on `PlanItem` and is populated by the `modify_plan` Claude tool (`src/main/claude/tools/plan-changes.ts`) as an iteration-doc breadcrumb, but no UI here reads or displays it. Do not surface it without a clear use case; see `src/main/claude/CLAUDE.md` for the write side.
+**`source_document_id` is unwired in the renderer** — the field is on `PlanItem` and is populated by the `modify_plan` Claude tool (`src/main/kpmTools/tools/plan-changes.ts`) as an iteration-doc breadcrumb, but no UI here reads or displays it. Do not surface it without a clear use case; see `src/main/claude/CLAUDE.md` for the write side.
 
 **Conventions:**
 - **Editable section is always rendered in the modal.** The Spec block is how users discover and author specs — hiding it would bury the affordance.

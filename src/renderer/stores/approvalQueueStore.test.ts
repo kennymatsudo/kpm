@@ -123,6 +123,31 @@ describe('approvalQueueStore — review reply flow', () => {
   });
 });
 
+describe('approvalQueueStore — file move flow', () => {
+  let api: MockApi;
+
+  beforeEach(() => {
+    api = installMockApi();
+    useApprovalQueueStore.getState().clearQueue();
+  });
+
+  it('queues a move proposal for explicit confirmation rather than moving immediately', () => {
+    useApprovalQueueStore.getState().processFileMove('project-1', 'drafts/spec.md', 'archive/spec.md');
+
+    const queue = useApprovalQueueStore.getState().queue;
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({ type: 'move', sourcePath: 'drafts/spec.md', targetPath: 'archive/spec.md' });
+    expect(api.fileExplorer.rename).not.toHaveBeenCalled();
+  });
+
+  it('moves via the file explorer only when executed', async () => {
+    const result = await useApprovalQueueStore.getState().executeFileMove('project-1', 'drafts/spec.md', 'archive/spec.md');
+
+    expect(result).toEqual({ success: true });
+    expect(api.fileExplorer.rename).toHaveBeenCalledWith({ projectId: 'project-1', oldPath: 'drafts/spec.md', newPath: 'archive/spec.md' });
+  });
+});
+
 describe('approvalQueueStore — file delete flow', () => {
   let api: MockApi;
 

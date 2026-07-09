@@ -61,7 +61,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **What it does:** Organizes work into a three-level hierarchy (project/feature/task labels). Users create, edit, reorder, reparent, and delete items; items carry status, description, intent, acceptance criteria, external tracker links, release tags, and completion timestamps.
 - **Key code locations:**
   - Services: `src/main/services/core/PlanService.ts`, `src/main/db/domain/PlanActionService.ts`, `src/main/db/domain/PlanItemService.ts`, `src/main/db/repositories/impl/PlanItemRepository.ts`
-  - Claude tools: `src/main/claude/tools/plan-items.ts`, `src/main/claude/tools/plan-changes.ts`
+  - Claude tools: `src/main/kpmTools/tools/plan-items.ts`, `src/main/kpmTools/tools/plan-changes.ts`
   - IPC handlers: `src/main/ipc/handlers/plan.ts`
   - Stores: `src/renderer/stores/project/planSlice.ts`
   - Components: `src/renderer/components/planning/Canvas.tsx`, `src/renderer/components/planning/PlanCard.tsx`, `src/renderer/components/planning/CreateItemModal.tsx`
@@ -83,7 +83,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Key code locations:**
   - DB: `src/main/db/repositories/impl/PlanItemRepository.ts` (rowToPlanItem mapping)
   - Types: `src/shared/base-types.ts` (PlanItem interface)
-  - Claude tool: `src/main/claude/tools/plan-changes.ts` (CreateItemAction schema)
+  - Claude tool: `src/main/kpmTools/tools/plan-changes.ts` (CreateItemAction schema)
   - IPC validation: `src/shared/ipc/planEndpoints.ts`
   - Components: `src/renderer/components/planning/TaskEditModal.tsx`, `src/renderer/components/planning/action-details/UpdateItemDetail.tsx`
 - **Entry points / surfaces:**
@@ -98,7 +98,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **What it does:** Link plan items via three relation types: depends_on (blocking dependencies), blocks (what this item blocks), relates_to (loose associations). Users query and modify relations; system prevents circular dependencies.
 - **Key code locations:**
   - DB: `src/main/db/repositories/impl/PlanRelationRepository.ts`
-  - Claude tools: `src/main/claude/tools/relations.ts` (read), `src/main/claude/tools/plan-changes.ts` (modify: AddDependencyAction, RemoveDependencyAction)
+  - Claude tools: `src/main/kpmTools/tools/relations.ts` (read), `src/main/kpmTools/tools/plan-changes.ts` (modify: AddDependencyAction, RemoveDependencyAction)
   - IPC handlers: `src/main/ipc/handlers/plan.ts`
   - Stores: `src/renderer/stores/project/planSlice.ts`
   - Components: Plan card shows dependency summary; dedicated relation editor not yet in UI
@@ -154,7 +154,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Key code locations:**
   - DB: `src/main/db/repositories/impl/GroupRepository.ts`
   - Service: `src/main/services/core/GroupService.ts`
-  - Claude tools: `src/main/claude/tools/groups.ts` (read and modify with PlanActions)
+  - Claude tools: `src/main/kpmTools/tools/groups.ts` (read and modify with PlanActions)
   - IPC handlers: `src/main/ipc/handlers/groups.ts`
   - Component: `src/renderer/components/planning/GroupContainer.tsx` (canvas rendering)
   - Stores: `src/renderer/stores/groupStore.ts`
@@ -277,9 +277,9 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ### 17. In-Process MCP Tools (Claude Tool Integration)
 - **What it does:** KPM provides Claude with direct function calls to query and modify plan items, manage documents, and more — roughly 20 tools spanning plan/relations/groups, Jira, documents, GitHub, Confluence, briefing, files, git, and Storybook. Tools are implemented as direct function calls (not a subprocess MCP server), reducing latency, and run in the main process with full database access. Modification tools go through the approval flow before executing. When a tool result exceeds the SDK's token budget, the SDK spills the full payload to a file under `~/.claude/projects/` instead of returning it inline; the `read_spill_file` tool lets Claude page through that file (up to 50,000 characters per chunk via `offset`/`length`) since the spill directory sits outside the sandboxed Read/Grep/Glob scope — it's the only path back to that content.
 - **Key code locations:**
-  - Factory: `src/main/claude/tools/createKpmServer.ts` (creates MCP server from tool functions; `runWithToolExecutionContext`)
-  - Tool modules: `src/main/claude/tools/*.ts` (plan-items, plan-changes, jira, relations, document-read, document-update, document-edit, groups, confluence, github, storybook, briefing, claudemd-update, file-move, file-delete, list-project-files, plan-refs, review-assessment, spill-read, git-read)
-  - Spill recovery: `src/main/claude/tools/spill-read.ts` (`read_spill_file`, validates the path stays under `~/.claude/projects/`); tool docs in `toolDocs.ts` instruct calling with just `file_path` first to get `totalChars`, then paging until `hasMore` is false
+  - Factory: `src/main/kpmTools/tools/createKpmServer.ts` (creates MCP server from tool functions; `runWithToolExecutionContext`)
+  - Tool modules: `src/main/kpmTools/tools/*.ts` (plan-items, plan-changes, jira, relations, document-read, document-update, document-edit, groups, confluence, github, storybook, briefing, claudemd-update, file-move, file-delete, list-project-files, plan-refs, review-assessment, spill-read, git-read)
+  - Spill recovery: `src/main/kpmTools/tools/spill-read.ts` (`read_spill_file`, validates the path stays under `~/.claude/projects/`); tool docs in `toolDocs.ts` instruct calling with just `file_path` first to get `totalChars`, then paging until `hasMore` is false
   - Tool logging: `src/main/services/toollog/ToolCallLogger.ts` (logs all tool calls)
   - Permission prompting: `src/main/claude/permissions.ts` (permission model via SDK)
 - **Entry points / surfaces:**
@@ -328,7 +328,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Orchestration: `src/main/services/agents/BoardAgentOrchestrator.ts` (`onSessionComplete` review-complete branch; automation phases `reviewing` → `addressing_review` → `ready_for_review`)
   - Service: `src/main/services/agents/autoReview.ts` (one-shot opposing review launch + findings parsing), `DevSessionService.ts` (`sendAgentFollowUp` delivers aggregated findings back to the implementation session)
   - Repository: `src/main/db/repositories/impl/ReviewTaskRepository.ts`, `ReviewOwnershipRepository.ts`, `ReviewSyncStateRepository.ts`
-  - Claude tool: `src/main/claude/tools/review-assessment.ts` (`kpm_assess_review_status`)
+  - Claude tool: `src/main/kpmTools/tools/review-assessment.ts` (`kpm_assess_review_status`)
   - IPC handlers: `src/main/ipc/handlers/review.ts`
   - Component: `src/renderer/components/development/ReviewTab.tsx` (decision queue: `NextActionBar`, thread accordion, `summarizeReviewers` verdict strip), `ReviewReplyApprovalPanel.tsx`
   - Store: `src/renderer/stores/devSessions/index.ts` (review state)
@@ -352,7 +352,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Components: `src/renderer/components/development/LinkPrDialog.tsx`, `CreatePrModal.tsx`, `GeneratePrContentModal.tsx`
   - Store: `src/renderer/stores/devSessions/prSlice.ts`
   - IPC handlers: `src/main/ipc/handlers/github.ts`
-  - Claude chat tool: `src/main/claude/tools/github.ts` (`generate_pr_description`, returns context for chat rather than creating a PR)
+  - Claude chat tool: `src/main/kpmTools/tools/github.ts` (`generate_pr_description`, returns context for chat rather than creating a PR)
   - DB: `dev_sessions.pr_url`
 - **Entry points / surfaces:**
   - Board detail pane: "Link PR" button; "Create PR" button; overflow menu "PR content"; PR info (title, status, link) and file diff shown in the Changes tab
@@ -408,7 +408,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **What it does:** Claude chat tools query Jira issues by project and JQL, fetch a single issue, list projects, and compare a Jira issue's fields against a linked KPM plan item's fields for conflict detection. Linear has an equivalent read client (search issues, get issue, list teams) used by the tracker UI and sync pipeline, but it is **not currently exposed as a chat tool** — Claude chat can query Jira directly; Linear data only reaches chat indirectly, through KPM's own plan-item and sync surfaces.
 - **Key code locations:**
   - Jira client: `src/main/tracker-clients/jira/client.ts` (searchIssues, getIssue, getProjects, getCustomFields)
-  - Claude tools: `src/main/claude/tools/jira.ts` (`jira_list_projects`, `jira_search`, `jira_get_issue`, `jira_compare_plan`)
+  - Claude tools: `src/main/kpmTools/tools/jira.ts` (`jira_list_projects`, `jira_search`, `jira_get_issue`, `jira_compare_plan`)
   - Linear client: `src/main/tracker-clients/linear/client.ts` (searchIssues, getIssue, getTeams) — UI/sync-only, no chat tool wrapper today
   - IPC handlers: `src/main/ipc/handlers/tracker.ts`
 - **Entry points / surfaces:**
@@ -478,7 +478,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ### 40. Document & Context-File Editing Tools (Propose Create/Edit)
 - **What it does:** Claude proposes markdown changes through three tools that share one approval mechanism. Creating a document proposes a brand-new file — the diff shows full new content. Editing an existing document uses `old_string` → `new_string` matching, with a batched multi-hunk mode (`edits[]`) that validates and applies all hunks atomically as one combined diff and a single approval entry. The context-file tool uses the same edit mechanism but targets CLAUDE.md/AGENTS.md specifically, tracked as a distinct approval type from other documents. All three queue through the approval system (or apply immediately in auto-apply mode).
 - **Key code locations:**
-  - Claude tools: `src/main/claude/tools/document-update.ts` (create), `document-edit.ts` (edit, single- and multi-hunk), `claudemd-update.ts` (context-file edit)
+  - Claude tools: `src/main/kpmTools/tools/document-update.ts` (create), `document-edit.ts` (edit, single- and multi-hunk), `claudemd-update.ts` (context-file edit)
   - Approval queue: `src/renderer/stores/approvalQueueStore.ts` (`PendingDocumentItem`, `PendingClaudeMdItem` types)
   - Components: `src/renderer/components/planning/PendingDocumentPanel.tsx`, `src/renderer/components/ui/DiffViewer.tsx` (shared diff rendering)
 - **Entry points / surfaces:**
@@ -616,7 +616,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - DB: `confluence_page_links` table (document_path, site_url, space_key, page_id, page_title, last_synced_at)
   - Repository: `src/main/db/repositories/impl/ConfluenceLinkRepository.ts`
   - Service: `src/main/services/confluence/ConfluenceSyncService.ts` (link management + `generateSyncPreview`)
-  - Claude tool: `src/main/claude/tools/confluence.ts` (`get_confluence_url`)
+  - Claude tool: `src/main/kpmTools/tools/confluence.ts` (`get_confluence_url`)
   - Components: `src/renderer/components/confluence/LinkToConfluenceModal.tsx`, `ConfluenceSyncPreviewModal.tsx`
   - IPC handlers: `src/main/ipc/handlers/confluence.ts`
 - **Entry points / surfaces:**
@@ -635,7 +635,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **What it does:** A one-shot briefing gathers project status — blocked items, stale tasks, ready work, inactive dev sessions, recent chat — and Claude synthesizes it into an actionable summary with signal counts and recommendations, through a two-stage pipeline (`fastModel` synthesis, `deepModel` final pass with extended thinking; both default to Sonnet). The result displays in a modal that streams the generation live, caches the finished briefing in `project_briefings` (reused until stale), and offers a Refresh action to regenerate; closing the modal dismisses it.
 - **Key code locations:**
   - Service: `src/main/services/core/BriefingService.ts` (two-stage pipeline: `fastModel` synthesis + `deepModel` final, configurable via `getConfig().generation`)
-  - Claude tool: `src/main/claude/tools/briefing.ts` (`get_briefing`)
+  - Claude tool: `src/main/kpmTools/tools/briefing.ts` (`get_briefing`)
   - Component: `src/renderer/components/briefing/BriefingModal.tsx`
   - IPC handlers: `src/main/ipc/handlers/briefing.ts`
   - Store: `src/renderer/stores/briefingStore.ts`
@@ -1011,7 +1011,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ### 91. Claude Tool Schemas (Type-Safe Tool Definitions)
 - **Architecture:** Tools defined via `tool()` helper with Zod schemas for input/output. Tool handlers typed. SDK validates inputs before calling.
 - **Key code locations:**
-  - Tool factory: `src/main/claude/tools/index.ts` (tool() helper)
+  - Tool factory: `src/main/kpmTools/tools/index.ts` (tool() helper)
   - Schemas: Each tool file (plan-items, plan-changes, etc.) defines its own schemas
   - Creation: `createKpmServer.ts` assembles all tools into MCP server
 - **Why it matters:** Type-safe tool definitions. SDK validates inputs. Errors caught early.
@@ -1128,7 +1128,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **What it does:** Projects can store a Storybook URL. Claude tools query the Storybook `index.json` to list, inspect, and search design-system components before planning UI work.
 - **Key code locations:**
   - Project field: `projects.storybook_url`
-  - Claude tool: `src/main/claude/tools/storybook.ts`
+  - Claude tool: `src/main/kpmTools/tools/storybook.ts`
   - Prompt docs: `src/main/claude/prompts/toolDocs.ts`
   - Project service: `src/main/services/core/ProjectService.ts`
   - Component: `src/renderer/components/settings/StorybookSettings.tsx`
@@ -1149,7 +1149,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Token primitive: `src/shared/planRefs.ts` (pure parser/expander)
   - Resolver: `src/main/documents/planRefResolver.ts` (used at every export boundary)
   - Agent context: `src/main/claude/contextRefs.ts` (`formatPlanRefSection` prepends a `<plan-refs>` block)
-  - Claude tool: `src/main/claude/tools/plan-refs.ts` (`extract_plan_items_from_doc`)
+  - Claude tool: `src/main/kpmTools/tools/plan-refs.ts` (`extract_plan_items_from_doc`)
   - Validation: `src/main/db/domain/PlanActionService.ts` (rejects unresolved refs)
   - Renderer chip: `src/renderer/components/plan-ref/PlanRefChip.tsx`, `src/renderer/utils/markdown.tsx`
   - Monaco integration: `src/renderer/components/ui/planRefMonaco.tsx` (folds UUIDs to titles, surfaces unresolved-ref diagnostics)

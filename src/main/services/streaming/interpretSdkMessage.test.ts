@@ -11,6 +11,7 @@ function makeView(overrides: Partial<SdkMessageSessionView> = {}): SdkMessageSes
     segmentState: { currentSegmentId: 0, hasTextInCurrentSegment: false, pendingActivities: [] },
     toolUseActivities: new Map<string, Activity>(),
     accumulatedResponse: '',
+    hasStreamedResponseText: false,
     interruptInProgress: false,
     pendingFollowUpClientMessageIds: [],
     acceptedFollowUpClientMessageIds: [],
@@ -41,6 +42,7 @@ describe('partial assistant deltas', () => {
     const events = interpret(partialDelta('hello'), view);
 
     expect(events).toEqual([{ kind: 'chunk', text: 'hello', segmentId: 3, precedingActivities: undefined }]);
+    expect(view.hasStreamedResponseText).toBe(true);
   });
 
   it('drains pending activities as the segment boundary before the first token', () => {
@@ -77,8 +79,8 @@ describe('assistant messages', () => {
     ]);
   });
 
-  it('accumulates without re-emitting when partial streaming is on', () => {
-    const view = makeView();
+  it('accumulates without re-emitting when partial streaming already emitted text this turn', () => {
+    const view = makeView({ hasStreamedResponseText: true });
     const events = interpret(
       { type: 'assistant', message: { content: [{ type: 'text', text: 'answer' }] } },
       view,
@@ -87,6 +89,20 @@ describe('assistant messages', () => {
 
     expect(view.accumulatedResponse).toBe('answer');
     expect(events).toEqual([]);
+  });
+
+  it('emits the complete block when partial streaming is enabled but no text delta arrived', () => {
+    const view = makeView();
+    const events = interpret(
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'answer' }] } },
+      view,
+      { streamPartialsEnabled: true, now: 0 },
+    );
+
+    expect(view.accumulatedResponse).toBe('answer');
+    expect(events).toEqual([
+      { kind: 'chunk', text: 'answer', segmentId: 0, precedingActivities: undefined },
+    ]);
   });
 
   it('suppresses the chunk during interrupt-and-send but still accumulates and clears pending activities', () => {

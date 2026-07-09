@@ -36,9 +36,21 @@ export default defineConfig({
     build: {
       outDir: 'dist/main',
       minify: isProduction ? 'esbuild' : false,
-      // electron-vite externalizeDeps is enabled by default
-      // @openai/codex-sdk is ESM-only (no CJS exports) so it must be bundled
-      // rather than externalized, otherwise require() fails at runtime
+      // electron-vite externalizeDeps is enabled by default. Both SDKs are
+      // ESM-only (no CJS export condition) and are reached only via dynamic
+      // import(), never a static import/require.
+      //
+      // @openai/codex-sdk is bundled: it has no runtime plugin system, so a
+      // self-contained bundle is fine.
+      //
+      // @earendil-works/pi-coding-agent MUST stay externalized. It loads pi
+      // extensions at runtime with jiti, which resolves each extension's own
+      // dependencies (e.g. `typebox`) from pi's node_modules. Bundling pi into
+      // dist/main roots that resolution at the built chunk, where those deps
+      // don't exist, so every pi extension — including pi-cursor-sdk, which
+      // registers the `cursor` provider and its models — fails to load with
+      // "Cannot find module 'typebox'". Externalized, pi runs from node_modules
+      // with its dependency tree intact.
       externalizeDeps: { exclude: ['@openai/codex-sdk'] },
       // Compile to V8 bytecode in production for source protection
       bytecode: isProduction,

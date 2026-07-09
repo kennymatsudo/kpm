@@ -4,6 +4,7 @@ import { isStreamStale } from '../stores/chat/chatStreamReducer';
 import type { StoreEvent } from '../stores/storeEvents';
 import type {
   FileDeleteEventData,
+  FileMoveEventData,
   FileUpdateEventData,
   PlanActionsEventData,
   ChunkEventData,
@@ -25,6 +26,7 @@ export interface ChatEventHandlers {
   onChunk: (data: ChunkEventData) => void;
   onPlanActions: (data: PlanActionsEventData) => void;
   onFileUpdate: (data: FileUpdateEventData) => void;
+  onFileMove: (data: FileMoveEventData) => void;
   onFileDelete: (data: FileDeleteEventData) => void;
   onDone: (data: SessionEventData) => void;
   onQueued: (data: QueuedEventData) => void;
@@ -79,6 +81,7 @@ export interface ApprovalQueueActions {
     oldContent: string | null,
     options?: { forceReview?: boolean },
   ) => void;
+  processFileMove: (projectId: string, sourcePath: string, targetPath: string) => void;
   processFileDelete: (projectId: string, filePath: string, isDirectory: boolean) => void;
 }
 
@@ -113,6 +116,7 @@ export interface ChatEventRouterDeps {
 export type BufferedApprovalEvent =
   | { type: 'plan-actions'; data: PlanActionsEventData }
   | { type: 'file-update'; data: FileUpdateEventData }
+  | { type: 'file-move'; data: FileMoveEventData }
   | { type: 'file-delete'; data: FileDeleteEventData };
 
 /**
@@ -177,6 +181,9 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
       payload: data,
     });
   };
+  const processFileMoveEvent = (data: FileMoveEventData) => {
+    getApprovalQueue().processFileMove(data.projectId, data.sourcePath, data.targetPath);
+  };
   const processFileDeleteEvent = (data: FileDeleteEventData) => {
     getApprovalQueue().processFileDelete(data.projectId, data.path, data.isDirectory);
   };
@@ -189,6 +196,7 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
       if (!active) break;
       if (event.type === 'plan-actions') processPlanActionsEvent(event.data);
       if (event.type === 'file-update') processFileUpdateEvent(event.data);
+      if (event.type === 'file-move') processFileMoveEvent(event.data);
       if (event.type === 'file-delete') processFileDeleteEvent(event.data);
     }
   };
@@ -270,6 +278,14 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
         return;
       }
       processFileUpdateEvent(data);
+    },
+    onFileMove: (data) => {
+      if (!active) return;
+      if (!isActiveForProject(data.projectId)) {
+        bufferApprovalEvent(data.projectId, { type: 'file-move', data });
+        return;
+      }
+      processFileMoveEvent(data);
     },
     onFileDelete: (data) => {
       if (!active) return;

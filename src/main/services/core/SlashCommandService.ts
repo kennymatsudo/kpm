@@ -1,10 +1,12 @@
 /**
  * Slash Command Service
  *
- * Discovers the user's custom slash commands (~/.claude/commands/**\/*.md) and
- * skills (~/.claude/skills/*\/SKILL.md) so the chat input can offer a typeahead
- * menu before any session exists. Discovery only: expansion is handled by the
- * Agent SDK, which loads the same files via settingSources: ['user'].
+ * Discovers the user's custom slash commands under ~/.claude/commands,
+ * skills under ~/.claude/skills, and global pi prompt templates
+ * (~/.pi/agent/prompts/*.md) so the chat input can offer a typeahead menu
+ * before any session exists. Claude command expansion is handled by the Agent
+ * SDK; pi prompt templates are expanded by this service before the message is
+ * sent to any provider.
  *
  * Once a session is live, the SDK's own command list (supportedCommands /
  * commands_changed) replaces the scan — it also covers plugin skills. The
@@ -29,6 +31,13 @@ export interface SlashCommandServiceDeps {
   commandsDir?: string;
   /** Override for tests; defaults to ~/.claude/skills */
   skillsDir?: string;
+  /** Override for tests; defaults to ~/.pi/agent/prompts */
+  piPromptsDir?: string;
+}
+
+export interface ExpandPiPromptInvocationOptions {
+  /** Connected project root; when provided, `.pi/prompts/*.md` is checked before global pi prompts. */
+  projectFolderPath?: string | null;
 }
 
 /** Init-message context needed to classify the SDK's command list by source. */
@@ -91,12 +100,17 @@ function unquote(value: string): string {
   return value;
 }
 
+interface ParsedSlashCommandFile {
+  info: SlashCommandInfo;
+  body: string;
+}
+
 /**
- * Parse a command markdown file into its display metadata.
+ * Parse a command markdown file into display metadata and the prompt body.
  * Frontmatter is intentionally minimal (key: value lines only) — commands are
- * authored for Claude Code, which is just as forgiving for these two keys.
+ * authored for Claude Code and pi, both of which are forgiving for these keys.
  */
-export function parseSlashCommandFile(name: string, content: string): SlashCommandInfo {
+export function parseSlashCommandFileWithBody(name: string, content: string): ParsedSlashCommandFile {
   let description = '';
   let argumentHint: string | undefined;
   let body = content;
@@ -128,7 +142,12 @@ export function parseSlashCommandFile(name: string, content: string): SlashComma
     description = `${description.slice(0, MAX_DESCRIPTION_LENGTH - 1)}…`;
   }
 
-  return argumentHint ? { name, description, argumentHint } : { name, description };
+  const info = argumentHint ? { name, description, argumentHint } : { name, description };
+  return { info, body };
+}
+
+export function parseSlashCommandFile(name: string, content: string): SlashCommandInfo {
+  return parseSlashCommandFileWithBody(name, content).info;
 }
 
 /**
@@ -158,6 +177,7 @@ function collectCommandFiles(dir: string, segments: string[], results: SlashComm
       continue;
     }
     if (!isFile || !entry.name.endsWith('.md')) continue;
+
     const name = [...segments, entry.name.slice(0, -3)].join(':');
     if (/\s/.test(name)) continue; // not invocable as a slash command
     let content: string;
@@ -188,9 +208,113 @@ function collectSkillFiles(skillsDir: string, results: SlashCommandInfo[]): void
   }
 }
 
+interface PiPromptTemplate {
+  info: SlashCommandInfo;
+  body: string;
+}
+
+function collectPiPromptTemplates(promptsDir: string, existingNames: ReadonlySet<string>): PiPromptTemplate[] {
+  const templates: PiPromptTemplate[] = [];
+  const seen = new Set(existingNames);
+  const entries = fs.readdirSync(promptsDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name.startsWith('.') || !entry.isFile() || !entry.name.endsWith('.md')) continue;
+    const name = entry.name.slice(0, -3);
+    if (!name || /\s/.test(name) || seen.has(name)) continue;
+
+    let content: string;
+    try {
+      content = fs.readFileSync(path.join(promptsDir, entry.name), 'utf8');
+    } catch {
+      continue;
+    }
+    const parsed = parseSlashCommandFileWithBody(name, content);
+    templates.push({ ...parsed, info: { ...parsed.info, source: 'pi-template' } });
+    seen.add(name);
+  }
+  return templates;
+}
+
+function shellLikeSplit(input: string): string[] {
+  const args: string[] = [];
+  let current = '';
+  let quote: 'single' | 'double' | null = null;
+  let escaping = false;
+
+  for (const char of input) {
+    if (escaping) {
+      current += char;
+      escaping = false;
+      continue;
+    }
+    if (char === '\\' && quote !== 'single') {
+      escaping = true;
+      continue;
+    }
+    if (char === "'" && quote !== 'double') {
+      quote = quote === 'single' ? null : 'single';
+      continue;
+    }
+    if (char === '"' && quote !== 'single') {
+      quote = quote === 'double' ? null : 'double';
+      continue;
+    }
+    if (/\s/.test(char) && quote === null) {
+      if (current) {
+        args.push(current);
+        current = '';
+      }
+      continue;
+    }
+    current += char;
+  }
+  if (escaping) current += '\\';
+  if (current) args.push(current);
+  return args;
+}
+
+function expandPiPromptTemplateBody(body: string, args: readonly string[]): string {
+  const allArgs = args.join(' ');
+
+  return body
+    .replace(/\$ARGUMENTS/g, allArgs)
+    .replace(/\$@/g, allArgs)
+    .replace(/\$\{(\d+):-([^}]*)\}/g, (_match, indexText: string, fallback: string) => {
+      const value = args[Number(indexText) - 1];
+      return value && value.length > 0 ? value : fallback;
+    })
+    .replace(/\$\{@:(\d+)(?::(\d+))?\}/g, (_match, startText: string, lengthText: string | undefined) => {
+      const start = Number(startText) - 1;
+      const length = lengthText === undefined ? undefined : Number(lengthText);
+      return args.slice(start, length === undefined ? undefined : start + length).join(' ');
+    })
+    .replace(/\$(\d+)/g, (_match, indexText: string) => args[Number(indexText) - 1] ?? '');
+}
+
 export function createSlashCommandService(deps: SlashCommandServiceDeps = {}) {
   const commandsDir = deps.commandsDir ?? path.join(os.homedir(), '.claude', 'commands');
   const skillsDir = deps.skillsDir ?? path.join(os.homedir(), '.claude', 'skills');
+  const piPromptsDir = deps.piPromptsDir ?? path.join(os.homedir(), '.pi', 'agent', 'prompts');
+
+  function loadPiPromptTemplates(
+    existingNames: ReadonlySet<string>,
+    options: ExpandPiPromptInvocationOptions = {},
+  ): PiPromptTemplate[] {
+    const templates: PiPromptTemplate[] = [];
+    const seen = new Set(existingNames);
+    const projectPromptsDir = options.projectFolderPath
+      ? path.join(options.projectFolderPath, '.pi', 'prompts')
+      : null;
+
+    // Match pi's precedence: project resources shadow user-global resources.
+    for (const dir of [projectPromptsDir, piPromptsDir]) {
+      if (!dir || !fs.existsSync(dir)) continue;
+      const loaded = collectPiPromptTemplates(dir, seen);
+      templates.push(...loaded);
+      for (const template of loaded) seen.add(template.info.name);
+    }
+    return templates;
+  }
 
   /** Scan on every call — listings are cheap and the user edits these files outside KPM. */
   function listCommands(): ServiceResult<SlashCommandInfo[]> {
@@ -202,20 +326,45 @@ export function createSlashCommandService(deps: SlashCommandServiceDeps = {}) {
       if (fs.existsSync(skillsDir)) {
         collectSkillFiles(skillsDir, results);
       }
+      results.push(...loadPiPromptTemplates(new Set(results.map((command) => command.name))).map((template) => template.info));
       results.sort((a, b) => a.name.localeCompare(b.name));
       return results;
     });
   }
 
-  /** Whether the text invokes a known command: leading /name, optionally followed by arguments. */
+  function expandPiPromptInvocation(
+    text: string,
+    options: ExpandPiPromptInvocationOptions = {},
+  ): ServiceResult<string> {
+    return wrap(() => {
+      const trimmedStart = text.trimStart();
+      const leadingWhitespace = text.slice(0, text.length - trimmedStart.length);
+      const match = /^\/([A-Za-z0-9_:-]+)(?:\s+([\s\S]*))?$/.exec(trimmedStart);
+      if (!match) return text;
+
+      const existingCommands: SlashCommandInfo[] = [];
+      if (fs.existsSync(commandsDir)) collectCommandFiles(commandsDir, [], existingCommands);
+      if (fs.existsSync(skillsDir)) collectSkillFiles(skillsDir, existingCommands);
+      const template = loadPiPromptTemplates(new Set(existingCommands.map((command) => command.name)), options)
+        .find((candidate) => candidate.info.name === match[1]);
+      if (!template) return text;
+
+      const args = shellLikeSplit(match[2] ?? '');
+      return `${leadingWhitespace}${expandPiPromptTemplateBody(template.body, args).trim()}`;
+    });
+  }
+
+  /** Whether the text invokes a known non-expanded command: leading /name, optionally followed by arguments. */
   function isCommandInvocation(text: string): boolean {
     const match = /^\/([A-Za-z0-9_:-]+)(?:\s|$)/.exec(text.trimStart());
     if (!match) return false;
     const result = listCommands();
-    return result.ok && result.data.some((command) => command.name === match[1]);
+    if (!result.ok || !result.data.some((command) => command.name === match[1])) return false;
+    const expanded = expandPiPromptInvocation(text);
+    return !expanded.ok || expanded.data === text;
   }
 
-  return { listCommands, isCommandInvocation };
+  return { listCommands, expandPiPromptInvocation, isCommandInvocation };
 }
 
 export type SlashCommandService = ReturnType<typeof createSlashCommandService>;

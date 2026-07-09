@@ -14,7 +14,9 @@ import { AttachmentChip } from './AttachmentChip';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { useSlashCommandTypeahead } from './useSlashCommandTypeahead';
 import { CHAT_STYLES } from '../../constants/chatStyles';
+import { CODEX_CHAT_MODELS } from '../../../shared/types';
 import type { ChatAttachment, FocusedResource, ChatViewMode } from '../../../shared/types';
+import { findPiProviderOption } from '../../stores/chat/piProviderSelection';
 
 const WORKSPACE_PLACEHOLDERS = [
   'Reply or ask a follow-up…',
@@ -53,6 +55,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     viewedSessionId,
     viewedSessionDraftMessage,
     viewedSessionModel,
+    viewedSessionContextWindow,
     attachments,
     isStreaming,
     suggestions,
@@ -66,7 +69,16 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     return {
       viewedSessionId: state.viewedSessionId,
       viewedSessionDraftMessage: session?.draftMessage ?? '',
-      viewedSessionModel: session?.model,
+      viewedSessionModel: session?.provider === 'pi' && session.piProviderModel
+        ? session.piProviderModel
+        : session?.provider === 'codex'
+          ? session.codexModel
+          : session?.model,
+      viewedSessionContextWindow: session?.provider === 'pi'
+        ? findPiProviderOption(state.piProviders, session.piProviderModel)?.contextWindow
+        : session?.provider === 'codex'
+          ? CODEX_CHAT_MODELS.find((option) => option.value === session.codexModel)?.contextWindow
+          : undefined,
       attachments: session?.pendingAttachments ?? NO_ATTACHMENTS,
       isStreaming: session?.isStreaming ?? false,
       suggestions: session?.suggestions ?? NO_SUGGESTIONS,
@@ -516,7 +528,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
 
       {/* Context window usage — sits below the composer, inside the input padding zone */}
       {viewedSessionId && (
-        <ContextWindowBar usage={lastTurnUsage} model={viewedSessionModel} />
+        <ContextWindowBar usage={lastTurnUsage} model={viewedSessionModel} contextWindow={viewedSessionContextWindow} />
       )}
 
       {/* Argument hint for the chosen slash command, until arguments are typed */}
@@ -525,6 +537,9 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
           <span className="font-mono text-text-secondary whitespace-nowrap">/{slashTypeahead.pendingHint.name}</span>
           {slashTypeahead.pendingHint.argumentHint && (
             <span className="font-mono text-text-muted whitespace-nowrap">{slashTypeahead.pendingHint.argumentHint}</span>
+          )}
+          {slashTypeahead.pendingHint.source === 'pi-template' && (
+            <span className="rounded border border-border-default px-1 py-0.5 text-xxs text-text-muted whitespace-nowrap">pi template</span>
           )}
           <span className="text-text-muted truncate">{slashTypeahead.pendingHint.description}</span>
         </div>

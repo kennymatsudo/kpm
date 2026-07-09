@@ -15,10 +15,9 @@ vi.mock('../../claude/contextBuilders', () => ({
   createContextBuilder: () => (projectId: string) => ({ project: { id: projectId } }),
 }));
 
-vi.mock('../../claude/tools/createKpmServer', () => ({
+vi.mock('../../kpmTools/runtimeRegistry', () => ({
   runWithToolExecutionContext: (_context: unknown, run: () => unknown) => run(),
-  subscribeToDocumentUpdate: () => () => {},
-  subscribeToClaudeMdUpdate: () => () => {},
+  subscribeToKpmToolProposals: () => () => {},
 }));
 
 import { createScheduledLoopRunnerService } from './ScheduledLoopRunnerService';

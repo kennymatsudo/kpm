@@ -36,8 +36,11 @@ function makeSession(overrides: Partial<PerSessionState> = {}): PerSessionState 
     hydrated: true,
     model: 'sonnet',
     effort: 'medium',
+    provider: 'claude',
+    piProviderModel: undefined,
     lastTurnUsage: null,
     ...overrides,
+    codexModel: overrides.codexModel ?? 'gpt-5.5',
   };
 }
 
@@ -74,6 +77,7 @@ function makeDeps(chatState: ChatStoreView, overrides: Partial<ChatEventRouterDe
   const approvalQueue = {
     processPlanActions: vi.fn(),
     processFileUpdate: vi.fn(),
+    processFileMove: vi.fn(),
     processFileDelete: vi.fn(),
   };
   type ActiveSessionsResult = Awaited<ReturnType<ChatEventRouterServices['getActiveChatSessions']>>;
@@ -351,17 +355,27 @@ describe('queue-cleared handling', () => {
 });
 
 describe('approval event buffering', () => {
-  it('processes approval events for the active project immediately', () => {
+  it('routes every proposal event type for the active project into the approval queue', () => {
     const chatState = makeChatState();
     const { deps, approvalQueue } = makeDeps(chatState);
     const router = createChatEventRouter(deps);
+    const actions = [{ type: 'update_item', item_id: 'x' } as never];
 
-    router.handlers.onPlanActions({
-      projectId: PROJECT_ID,
-      actions: [{ type: 'update_item', item_id: 'x' } as never],
-    });
+    router.handlers.onPlanActions({ projectId: PROJECT_ID, actions });
+    router.handlers.onFileUpdate({ projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old' });
+    router.handlers.onFileUpdate({ projectId: PROJECT_ID, filePath: 'AGENTS.md', content: 'ctx', oldContent: 'old ctx' });
+    router.handlers.onFileMove({ projectId: PROJECT_ID, sourcePath: 'draft.md', targetPath: 'archive/draft.md' });
+    router.handlers.onFileDelete({ projectId: PROJECT_ID, path: 'old.md', isDirectory: false });
 
-    expect(approvalQueue.processPlanActions).toHaveBeenCalledTimes(1);
+    expect(approvalQueue.processPlanActions).toHaveBeenCalledWith(PROJECT_ID, actions);
+    expect(approvalQueue.processFileUpdate).toHaveBeenCalledWith(
+      PROJECT_ID, 'notes.md', 'new', 'old', { forceReview: undefined },
+    );
+    expect(approvalQueue.processFileUpdate).toHaveBeenCalledWith(
+      PROJECT_ID, 'AGENTS.md', 'ctx', 'old ctx', { forceReview: undefined },
+    );
+    expect(approvalQueue.processFileMove).toHaveBeenCalledWith(PROJECT_ID, 'draft.md', 'archive/draft.md');
+    expect(approvalQueue.processFileDelete).toHaveBeenCalledWith(PROJECT_ID, 'old.md', false);
   });
 
   it('emits chat-file-updated after processing a file update', () => {
@@ -388,10 +402,12 @@ describe('approval event buffering', () => {
       projectId: OTHER_PROJECT_ID,
       actions: [{ type: 'update_item', item_id: 'x' } as never],
     };
+    const fileMoveData = { projectId: OTHER_PROJECT_ID, sourcePath: 'draft.md', targetPath: 'archive/draft.md' };
     const fileDeleteData = { projectId: OTHER_PROJECT_ID, path: 'old.md', isDirectory: false };
     routerA.handlers.onPlanActions(planActionsData);
+    routerA.handlers.onFileMove(fileMoveData);
     routerA.handlers.onFileDelete(fileDeleteData);
-    expect(buffer.get(OTHER_PROJECT_ID)).toHaveLength(2);
+    expect(buffer.get(OTHER_PROJECT_ID)).toHaveLength(3);
 
     const chatStateB = makeChatState();
     const { deps: depsB, approvalQueue: approvalQueueB } = makeDeps(chatStateB, {
@@ -402,6 +418,7 @@ describe('approval event buffering', () => {
     await routerB.initialize();
 
     expect(approvalQueueB.processPlanActions).toHaveBeenCalledWith(OTHER_PROJECT_ID, planActionsData.actions);
+    expect(approvalQueueB.processFileMove).toHaveBeenCalledWith(OTHER_PROJECT_ID, 'draft.md', 'archive/draft.md');
     expect(approvalQueueB.processFileDelete).toHaveBeenCalledWith(OTHER_PROJECT_ID, 'old.md', false);
     expect(buffer.has(OTHER_PROJECT_ID)).toBe(false);
   });

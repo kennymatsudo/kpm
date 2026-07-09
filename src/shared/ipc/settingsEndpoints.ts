@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import { resultOf, type EndpointDefinition } from './endpoints';
-import type { ClaudeAvailability } from '../types';
+import type { ClaudeAvailability, CodexStatus } from '../types';
 
 /** Anthropic API key - starts with 'sk-ant-' */
 const anthropicApiKey = z
@@ -53,6 +53,12 @@ export const settingsEndpoints = {
     channel: 'settings:claude:refresh-availability',
     params: null,
     result: resultOf<RegistryResponse<ClaudeAvailability>>(),
+  },
+
+  'codex.getStatus': {
+    channel: 'settings:codex:get-status',
+    params: null,
+    result: resultOf<RegistryResponse<CodexStatus>>(),
   },
 
   'app.get': {

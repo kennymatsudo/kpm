@@ -25,6 +25,7 @@ import { toast } from '../../stores/toastStore';
 import { emit } from '../../stores/storeEvents';
 import { PendingActionsPanel } from '../planning/PendingActionsPanel';
 import { PendingDocumentPanel } from '../planning/PendingDocumentPanel';
+import { PendingMovePanel } from '../planning/PendingMovePanel';
 import { PendingDeletePanel } from '../planning/PendingDeletePanel';
 import { ReviewReplyApprovalPanel } from '../development/ReviewReplyApprovalPanel';
 import { Z_INDEX } from '../../constants/zIndex';
@@ -36,6 +37,7 @@ function getItemTypeLabel(type: ApprovalItem['type']): string {
     case 'plan-actions': return 'Plan Changes';
     case 'claude-md': return 'Project Context Update';
     case 'document': return 'Document Update';
+    case 'move': return 'Confirm Move';
     case 'delete': return 'Confirm Deletion';
     case 'review-reply': return 'Review Reply';
     default: return 'Pending Approval';
@@ -61,6 +63,12 @@ function getItemTypeIcon(type: ApprovalItem['type']): React.ReactNode {
       return (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+      );
+    case 'move':
+      return (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
         </svg>
       );
     case 'delete':
@@ -113,6 +121,7 @@ export function ApprovalOverlays() {
     executePlanActions,
     executeClaudeMdWrite,
     executeFileWrite,
+    executeFileMove,
     executeFileDelete,
     executeReviewReply,
   } = useApprovalQueueStore(
@@ -120,6 +129,7 @@ export function ApprovalOverlays() {
       executePlanActions: state.executePlanActions,
       executeClaudeMdWrite: state.executeClaudeMdWrite,
       executeFileWrite: state.executeFileWrite,
+      executeFileMove: state.executeFileMove,
       executeFileDelete: state.executeFileDelete,
       executeReviewReply: state.executeReviewReply,
     }))
@@ -260,6 +270,25 @@ export function ApprovalOverlays() {
     }
   }, [currentProjectId, executeFileWrite, focusModeOpen, focusedDocPath, removeById, updateFocusedDocContent]);
 
+  const handleConfirmMove = useCallback(async (item: ApprovalItem & { type: 'move' }) => {
+    if (!currentProjectId) return;
+    setIsApplying(true);
+    try {
+      const result = await executeFileMove(currentProjectId, item.sourcePath, item.targetPath);
+      if (result.success) {
+        removeById(item.id);
+        const sourceParentPath = getParentPath(item.sourcePath, '');
+        const targetParentPath = getParentPath(item.targetPath, '');
+        void useFileTreeStore.getState().refreshDirectory(sourceParentPath);
+        if (targetParentPath !== sourceParentPath) void useFileTreeStore.getState().refreshDirectory(targetParentPath);
+      } else {
+        toast.error(`Failed to move ${item.sourcePath}: ${result.error}`);
+      }
+    } finally {
+      setIsApplying(false);
+    }
+  }, [currentProjectId, executeFileMove, removeById]);
+
   const handleConfirmDelete = useCallback(async (item: ApprovalItem & { type: 'delete' }) => {
     if (!currentProjectId) return;
     setIsApplying(true);
@@ -381,6 +410,17 @@ export function ApprovalOverlays() {
           content={currentItem.content}
           oldContent={currentItem.oldContent}
           onAccept={(content) => handleAcceptDocument(currentItem, content)}
+          onDismiss={() => handleDismiss(currentItem.id)}
+          isApplying={isApplying}
+          embedded
+        />
+      )}
+
+      {currentItem.type === 'move' && (
+        <PendingMovePanel
+          sourcePath={currentItem.sourcePath}
+          targetPath={currentItem.targetPath}
+          onConfirm={() => handleConfirmMove(currentItem)}
           onDismiss={() => handleDismiss(currentItem.id)}
           isApplying={isApplying}
           embedded

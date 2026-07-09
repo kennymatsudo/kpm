@@ -123,6 +123,7 @@ import type {
   AgentReviewPolicy,
   CustomTheme,
   ImportedCustomThemeResult,
+  PiProviderOption,
 } from '../shared/types';
 
 type IpcSuccess<T extends object | void> = T extends void ? { success: true } : { success: true } & T;
@@ -212,6 +213,7 @@ export type {
   ImportedCustomThemeResult,
   AgentExecutionMode,
   AgentReviewPolicy,
+  PiProviderOption,
 };
 
 const tempImageInvoke = deriveDomainApi(tempImageEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
@@ -239,6 +241,8 @@ const chat = {
     effort?: 'low' | 'medium' | 'high' | 'max';
     focusDocument?: FocusChatDocument;
     provider?: ChatProvider;
+    /** pi-only `"<provider>/<modelId>"` selection; ignored unless `provider` is `'pi'`. */
+    providerModel?: string;
   }) => chatInvoke.send(payload),
   newSession: chatInvoke.newSession,
   cancel: chatInvoke.cancel,
@@ -253,6 +257,7 @@ const chat = {
       result.success ? { success: true, messages: result.messages } : result
     ),
   getSlashCommands: chatInvoke.getSlashCommands,
+  piProviders: chatInvoke.piProviders,
   getSessionHistory: (projectId: string, limit?: number): Promise<{ success: boolean; sessions?: ChatSessionSummary[]; error?: string }> =>
     invokeFlat<{ sessions: ChatSessionSummary[] }>(IPC_CHANNELS.chat.getSessionHistory, { projectId, limit }).then((result) =>
       result.success ? { success: true, sessions: result.sessions } : result
@@ -276,6 +281,7 @@ const chat = {
   onActivity: chatSubscriptions.activity,
   onThinking: chatSubscriptions.thinking,
   onFileUpdate: chatSubscriptions.fileUpdate,
+  onFileMove: chatSubscriptions.fileMove,
   onFileDelete: chatSubscriptions.fileDelete,
 
   // ─── Streaming Session Methods ───
@@ -611,6 +617,9 @@ const settings = {
   claude: {
     getAvailability: settingsInvoke['claude.getAvailability'],
     refreshAvailability: settingsInvoke['claude.refreshAvailability'],
+  },
+  codex: {
+    getStatus: settingsInvoke['codex.getStatus'],
   },
 };
 

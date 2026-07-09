@@ -11,7 +11,9 @@ StreamingSessionService (lifecycle management)
     ↓
 IPC handlers (chat.ts)
     ↓
-createKpmServer() (singleton MCP server)
+src/main/kpmTools/runtimeRegistry.ts (provider-neutral KPM tool runtime)
+    ↓
+src/main/kpmTools/createKpmServer.ts (Claude MCP server adapter)
     ├─ plan-items.ts (query tools)
     ├─ plan-changes.ts (modification tool + callbacks)
     ├─ groups.ts (read-only group query tools; group mutations go through modify_plan)
@@ -62,10 +64,10 @@ Session key is `chat:{projectId}:{chatSessionId}` — multiple concurrent chat s
 Tools are direct function calls registered with the SDK at startup—no subprocess spawning.
 
 **Lifecycle:**
-1. `createKpmServer()` called at app startup (`warmupMcpSdk()`)
-2. All tool implementations collected from `tools/` directory
-3. Singleton MCP server created with all tools
-4. Per-message callbacks via EventEmitter (`planActionsEmitter`, `claudeMdUpdateEmitter`, `documentUpdateEmitter`, `fileDeleteEmitter`)
+1. `warmupMcpSdk()` initializes the KPM tool runtime at app startup
+2. Tool implementations from `src/main/kpmTools/tools/` are collected by `src/main/kpmTools/runtimeRegistry.ts`
+3. Claude MCP server instances are created by `src/main/kpmTools/createKpmServer.ts` from the shared KPM tool definitions
+4. Tool proposals flow through the single KPM proposal bus (`src/main/kpmTools/proposals.ts`) before being fanned out to renderer approval events
 
 ### 3. Plan Modification Workflow
 
@@ -91,8 +93,8 @@ Claude calls modification tool (modify_plan, bulk_modify_plan, etc.)
 
 ## Adding New Tools
 
-1. Create tool in `tools/` directory — see `tools/plan-items.ts` for read-only example, `tools/plan-changes.ts` for modification example
-2. Register in `tools/createKpmServer.ts`
+1. Create tool in `src/main/kpmTools/tools/` — see `src/main/kpmTools/tools/plan-items.ts` for read-only example, `src/main/kpmTools/tools/plan-changes.ts` for modification example
+2. Register the tool group in `src/main/kpmTools/runtimeRegistry.ts`
 3. Add usage guidance in `prompts/toolDocs.ts`
 4. If the tool should be hidden in a mode or disabled state, enforce that in `permissions.ts` / `canUseTool`; do not use SDK `allowedTools` because it hides external MCP tools
 5. Restart Electron (no rebuild required)
@@ -146,12 +148,12 @@ The `currentView` ('plan' | 'workspace') sent with each message is injected as a
 | `findClaude.ts` | Claude binary discovery |
 | `sdkTypeGuards.ts` | Type guard utilities |
 | `streaming/` | Session management |
-| `tools/` | MCP tool implementations |
-| `tools/schemas.ts` | Shared Zod primitives (`StatusCategoryEnum`, `PlanActionsCallback`) reused across tool files |
-| `tools/review-assessment.ts` | Separate read-only MCP server used by `ReviewAssessmentService` (not part of the main-chat `createKpmServer`) |
-| `tools/plan-refs.ts` | `extract_plan_items_from_doc` — lift `@plan/<uuid>` tokens out of a project file by path |
-| `tools/spill-read.ts` | `read_spill_file` — read-only recovery of SDK tool-result spill files in `~/.claude/projects/` |
-| `tools/git-read.ts` | `git_read` — runs read-only git in a connected repo via `execFile` (no shell). Raw `git` in chat Bash is blocked (`permissions.ts` Rule -1); this is the only git path. Validation lives in `services/repo/gitReadOnly.ts`. |
+| `../kpmTools/` | Provider-neutral KPM tool runtime, tool implementations, tool manifest, MCP server adapter, and proposal bus |
+| `../kpmTools/tools/schemas.ts` | Shared Zod primitives (`StatusCategoryEnum`, `PlanActionsCallback`) reused across tool files |
+| `../kpmTools/tools/review-assessment.ts` | Separate read-only MCP server used by `ReviewAssessmentService` (not part of the main-chat `createKpmServer`) |
+| `../kpmTools/tools/plan-refs.ts` | `extract_plan_items_from_doc` — lift `@plan/<uuid>` tokens out of a project file by path |
+| `../kpmTools/tools/spill-read.ts` | `read_spill_file` — read-only recovery of SDK tool-result spill files in `~/.claude/projects/` |
+| `../kpmTools/tools/git-read.ts` | `git_read` — runs read-only git in a connected repo via `execFile` (no shell). Raw `git` in chat Bash is blocked (`permissions.ts` Rule -1); this is the only git path. Validation lives in `services/repo/gitReadOnly.ts`. |
 | `contextRefs.ts` | `formatPlanRefSection` — expand plan refs into agent context |
 | `prompts/` | System prompt builders |
 

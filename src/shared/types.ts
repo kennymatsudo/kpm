@@ -33,9 +33,29 @@ export type {
 // =============================================================================
 
 /** Main chat backend provider. */
-export type ChatProvider = 'claude' | 'codex';
+export type ChatProvider = 'claude' | 'codex' | 'pi';
 
-export const CHAT_PROVIDERS = ['claude', 'codex'] as const satisfies readonly ChatProvider[];
+export const CHAT_PROVIDERS = ['claude', 'codex', 'pi'] as const satisfies readonly ChatProvider[];
+
+/**
+ * Best-effort modelId for a configured pi provider whose model catalog is still empty
+ * after loading extensions (see `listPiProviders`). Not verified resolvable at
+ * enumeration time — pi's `ModelRegistry` has no "provider default model" lookup
+ * independent of a live session, so this is a guess rather than an enumerated id.
+ * `"auto"` matches Cursor's own alias for its default model (verified against
+ * `pi-cursor-sdk`'s model catalog: the `default`/"Auto" entry lists `auto` as
+ * an alias) — currently the only provider that reaches this branch, since every
+ * known-native pi provider is driven by pi-ai's bundled catalog and always
+ * resolves real enumerated ids here.
+ *
+ * TODO(pi.dev): if a future extension-registered provider without an "auto"
+ * alias lands in this branch, this selector will not resolve either. That's
+ * bounded, not silent: `createRealPiSession`'s `resolvePiModelSelection` falls
+ * back to any other model already registered for the same provider when the
+ * exact selector misses, so the chosen provider still runs — just not
+ * necessarily on this exact model.
+ */
+export const PI_UNRESOLVED_MODEL_ID = 'auto';
 
 /** Available Claude models for chat sessions */
 export type ClaudeModel = 'opus' | 'sonnet';
@@ -43,10 +63,38 @@ export type ClaudeModel = 'opus' | 'sonnet';
 /** Chat session scope controls where a persisted conversation is surfaced. */
 export type ChatSessionScope = 'main' | 'focus_document';
 
+export const CODEX_CHAT_MODELS = [
+  { value: 'gpt-5.5', label: 'GPT-5.5', description: 'Latest Codex model', contextWindow: 400_000 },
+  { value: 'gpt-5.4', label: 'GPT-5.4', description: 'Previous Codex model', contextWindow: 400_000 },
+  { value: 'gpt-5.4-mini', label: 'GPT-5.4 mini', description: 'Faster Codex model', contextWindow: 400_000 },
+] as const;
+
+export type CodexChatModel = typeof CODEX_CHAT_MODELS[number]['value'];
+
 /** Codex SDK availability/auth status */
 export interface CodexStatus {
   installed: boolean;
   authenticated: boolean;
+}
+
+/**
+ * A pi.dev provider/model the user has configured and authenticated.
+ * `provider`/`modelId` together form the `"<provider>/<modelId>"` selector
+ * accepted by `chat:send`'s `providerModel` param.
+ */
+export interface PiProviderOption {
+  provider: string;
+  modelId: string;
+  modelName?: string;
+  label: string;
+  /** Model context window reported by pi's model registry, when available. */
+  contextWindow?: number;
+  /**
+   * True only for providers confirmed to route tool calls through pi's own
+   * native tool loop, where KPM's read-only tool gate (P7) applies. See
+   * `main/pi/providers.ts` for the classification mechanism.
+   */
+  safe: boolean;
 }
 
 // =============================================================================
@@ -848,9 +896,9 @@ export interface ChatSession {
 }
 
 /**
- * A user-defined slash command from ~/.claude/commands.
- * Discovered by scanning markdown files; expansion happens in the Agent SDK,
- * which loads the same files via settingSources: ['user'].
+ * A user-defined slash command, skill, or imported prompt template.
+ * Claude commands/skills are expanded by the Agent SDK; pi prompt templates are
+ * expanded by KPM before dispatch.
  */
 export interface SlashCommandInfo {
   /** Command name without the leading slash. Subdirectory segments join with ':' (sub/foo.md → 'sub:foo'). */
@@ -859,6 +907,8 @@ export interface SlashCommandInfo {
   description: string;
   /** From frontmatter `argument-hint` (e.g. "<file>"). */
   argumentHint?: string;
+  /** Optional origin label for imported command sources. */
+  source?: 'pi-template';
 }
 
 // =============================================================================

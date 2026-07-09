@@ -65,11 +65,13 @@ describe('SlashCommandService.listCommands', () => {
   let dir: string;
   let commandsDir: string;
   let skillsDir: string;
+  let piPromptsDir: string;
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kpm-slash-'));
     commandsDir = path.join(dir, 'commands');
     skillsDir = path.join(dir, 'skills');
+    piPromptsDir = path.join(dir, 'pi-prompts');
   });
 
   afterEach(() => {
@@ -77,7 +79,7 @@ describe('SlashCommandService.listCommands', () => {
   });
 
   function createService() {
-    return createSlashCommandService({ commandsDir, skillsDir });
+    return createSlashCommandService({ commandsDir, skillsDir, piPromptsDir });
   }
 
   function write(relativePath: string, content: string): void {
@@ -90,6 +92,17 @@ describe('SlashCommandService.listCommands', () => {
     const skillDir = path.join(skillsDir, name);
     fs.mkdirSync(skillDir, { recursive: true });
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), content);
+  }
+
+  function writePiPrompt(filename: string, content: string): void {
+    fs.mkdirSync(piPromptsDir, { recursive: true });
+    fs.writeFileSync(path.join(piPromptsDir, filename), content);
+  }
+
+  function writeProjectPiPrompt(projectDir: string, filename: string, content: string): void {
+    const promptsDir = path.join(projectDir, '.pi', 'prompts');
+    fs.mkdirSync(promptsDir, { recursive: true });
+    fs.writeFileSync(path.join(promptsDir, filename), content);
   }
 
   it('returns an empty list when neither directory exists', () => {
@@ -173,10 +186,34 @@ describe('SlashCommandService.listCommands', () => {
     expect(result.data.map((c) => c.name)).toEqual(['real']);
   });
 
-  it('recognizes invocations of known commands and skills only', () => {
+  it('lists global pi prompt templates alongside commands', () => {
+    writePiPrompt('summarize.md', '---\ndescription: Summarize something\nargument-hint: <path>\n---\nSummarize $1');
+
+    const result = createService().listCommands();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toEqual([
+      { name: 'summarize', description: 'Summarize something', argumentHint: '<path>', source: 'pi-template' },
+    ]);
+  });
+
+  it('keeps Claude commands ahead of pi prompt templates with the same name', () => {
+    write('review.md', '---\ndescription: Claude command\n---\nBody');
+    writePiPrompt('review.md', '---\ndescription: Pi template\n---\nBody');
+
+    const result = createService().listCommands();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toEqual([{ name: 'review', description: 'Claude command' }]);
+  });
+
+  it('recognizes invocations of known non-expanded commands and skills only', () => {
     write('review.md', 'Review code');
     write('git/commit.md', 'Commit changes');
     writeSkill('squash', 'Squash commits');
+    writePiPrompt('summarize.md', 'Summarize $1');
 
     const service = createService();
 
@@ -184,9 +221,53 @@ describe('SlashCommandService.listCommands', () => {
     expect(service.isCommandInvocation('/review the last diff')).toBe(true);
     expect(service.isCommandInvocation('/git:commit -m fix')).toBe(true);
     expect(service.isCommandInvocation('/squash')).toBe(true);
+    expect(service.isCommandInvocation('/summarize docs')).toBe(false);
     expect(service.isCommandInvocation('/unknown')).toBe(false);
     expect(service.isCommandInvocation('/Users/foo/bar.txt looks odd')).toBe(false);
     expect(service.isCommandInvocation('use /review here')).toBe(false);
+  });
+
+  it('expands pi prompt templates with positional arguments', () => {
+    writePiPrompt(
+      'component.md',
+      [
+        '---',
+        'description: Create a component',
+        '---',
+        'Create $1 with features: $@',
+        'Second onward: ${@:2}',
+        'Default: ${3:-none}',
+      ].join('\n'),
+    );
+
+    const result = createService().expandPiPromptInvocation('/component Button "click handler"');
+
+    expect(result).toEqual({
+      ok: true,
+      data: 'Create Button with features: Button click handler\nSecond onward: click handler\nDefault: none',
+    });
+  });
+
+  it('leaves unknown and shadowed pi prompt invocations unchanged', () => {
+    write('review.md', 'Claude command');
+    writePiPrompt('review.md', 'Pi review');
+
+    const service = createService();
+
+    expect(service.expandPiPromptInvocation('/unknown hi')).toEqual({ ok: true, data: '/unknown hi' });
+    expect(service.expandPiPromptInvocation('/review hi')).toEqual({ ok: true, data: '/review hi' });
+  });
+
+  it('expands project pi prompt templates ahead of global templates', () => {
+    const projectDir = path.join(dir, 'project');
+    writePiPrompt('ask-matt.md', 'Global ask $ARGUMENTS');
+    writeProjectPiPrompt(projectDir, 'ask-matt.md', 'Project ask $KPM_CONTEXT then $ARGUMENTS');
+
+    const result = createService().expandPiPromptInvocation('/ask-matt validate this', {
+      projectFolderPath: projectDir,
+    });
+
+    expect(result).toEqual({ ok: true, data: 'Project ask $KPM_CONTEXT then validate this' });
   });
 
   it('ignores non-markdown files, hidden entries, and names containing whitespace', () => {

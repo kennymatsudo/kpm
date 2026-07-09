@@ -17,7 +17,8 @@
 import { z } from 'zod';
 import { resultOf, type EndpointDefinition } from './endpoints';
 import { absolutePath, uuid } from './sharedSchemas';
-import type { ChatMessage, ChatSessionScope, ChatSessionSummary, SessionState, SlashCommandInfo } from '../types';
+import { CHAT_PROVIDERS } from '../types';
+import type { ChatMessage, ChatSessionScope, ChatSessionSummary, PiProviderOption, SessionState, SlashCommandInfo } from '../types';
 
 /**
  * Response shape for endpoints registered through `createRegistryIpcHandlers`
@@ -45,7 +46,7 @@ interface FocusDocumentSessionResult {
 }
 
 const claudeModel = z.enum(['opus', 'sonnet'], { message: 'Model must be "opus" or "sonnet"' });
-const chatProvider = z.enum(['claude', 'codex'], { message: 'Provider must be "claude" or "codex"' });
+const chatProvider = z.enum(CHAT_PROVIDERS, { message: 'Provider must be "claude", "codex", or "pi"' });
 
 const focusedResourceSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('plan_item'), id: z.string(), title: z.string() }),
@@ -72,6 +73,8 @@ export const chatEndpoints = {
       focusedResources: z.array(focusedResourceSchema).default([]),
       provider: chatProvider.optional(),
       model: claudeModel.optional(),
+      /** pi-only `"<provider>/<modelId>"` selection; ignored unless `provider` is `'pi'`. */
+      providerModel: z.string().optional(),
       effort: z.enum(['low', 'medium', 'high', 'max']).optional(),
       tempImages: z.array(absolutePath).optional(),
       chatSessionId: uuid.optional(),
@@ -155,6 +158,11 @@ export const chatEndpoints = {
     channel: 'chat:get-slash-commands',
     params: null,
     result: resultOf<RegistryResponse<{ commands: SlashCommandInfo[] }>>(),
+  },
+  piProviders: {
+    channel: 'chat:pi-providers',
+    params: null,
+    result: resultOf<RegistryResponse<{ available: boolean; providers: PiProviderOption[] }>>(),
   },
 } satisfies Record<string, EndpointDefinition>;
 

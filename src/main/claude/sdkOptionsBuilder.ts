@@ -9,7 +9,7 @@ import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-
 import type { BrowserWindow } from 'electron';
 import { buildFocusSystemPrompt, buildSystemPrompt, type PlanContext } from './prompts/index';
 import { createPermissionHandler, type PermissionContext, type ClaudeMdInterceptFn, type ProjectFileInterceptFn } from './permissions';
-import { getFocusKpmServer, getKpmServer } from './tools/createKpmServer';
+import { getFocusKpmServer, getKpmServer } from '../kpmTools/createKpmServer';
 import { getConfig } from '../config';
 import { getClaudeSdkSpawnOptions } from './findClaude';
 import { promptUser } from '../services/core/PermissionPromptService';

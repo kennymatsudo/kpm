@@ -11,6 +11,7 @@ import type {
   ChunkEventData,
   PlanActionsEventData,
   FileUpdateEventData,
+  FileMoveEventData,
   FileDeleteEventData,
   SessionEventData,
   QueuedEventData,
@@ -29,6 +30,7 @@ export type {
   ChunkEventData,
   PlanActionsEventData,
   FileUpdateEventData,
+  FileMoveEventData,
   FileDeleteEventData,
   SessionEventData,
   QueuedEventData,
@@ -51,6 +53,10 @@ export function getSlashCommands() {
   return window.api.chat.getSlashCommands();
 }
 
+export function getPiProviders() {
+  return window.api.chat.piProviders();
+}
+
 export function getActiveChatSessions(projectId: string) {
   return window.api.chat.getActiveSessions(projectId);
 }
@@ -65,6 +71,8 @@ export function sendChatMessage(params: {
   focusedResources: FocusedResource[];
   model: string;
   provider?: ChatProvider;
+  /** pi-only `"<provider>/<modelId>"` selection; ignored unless `provider` is `'pi'`. */
+  providerModel?: string;
   effort?: ChatEffortLevel;
   tempImages?: string[];
   chatSessionId: string;
@@ -84,6 +92,7 @@ export function sendChatMessage(params: {
     effort: params.effort,
     focusDocument: params.focusDocument,
     provider: params.provider,
+    providerModel: params.providerModel,
   });
 }
 
@@ -124,6 +133,7 @@ export function subscribeToChatEvents(handlers: {
   onChunk?: (data: ChunkEventData) => void;
   onPlanActions?: (data: PlanActionsEventData) => void;
   onFileUpdate?: (data: FileUpdateEventData) => void;
+  onFileMove?: (data: FileMoveEventData) => void;
   onFileDelete?: (data: FileDeleteEventData) => void;
   onDone?: (data: SessionEventData) => void;
   onError?: (data: ErrorEventData) => void;
@@ -144,6 +154,7 @@ export function subscribeToChatEvents(handlers: {
     handlers.onChunk ? window.api.chat.onChunk(handlers.onChunk) : null,
     handlers.onPlanActions ? window.api.chat.onPlanActions(handlers.onPlanActions) : null,
     handlers.onFileUpdate ? window.api.chat.onFileUpdate(handlers.onFileUpdate) : null,
+    handlers.onFileMove ? window.api.chat.onFileMove(handlers.onFileMove) : null,
     handlers.onFileDelete ? window.api.chat.onFileDelete(handlers.onFileDelete) : null,
     handlers.onDone ? window.api.chat.onDone(handlers.onDone) : null,
     handlers.onError ? window.api.chat.onError(handlers.onError) : null,

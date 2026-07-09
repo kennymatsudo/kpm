@@ -291,6 +291,7 @@ const chatChannels = toNestedChannels(chatEndpoints) as {
   loadSession: string;
   getFocusDocumentSession: string;
   getSlashCommands: string;
+  piProviders: string;
 };
 
 const terminalChannels = toNestedChannels(terminalEndpoints) as {

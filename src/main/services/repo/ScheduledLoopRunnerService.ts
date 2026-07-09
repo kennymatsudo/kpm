@@ -38,11 +38,8 @@ import { runClaudeQuery, type RunClaudeQueryResult } from '../../claude/runClaud
 import { createContextBuilder } from '../../claude/contextBuilders';
 import {
   runWithToolExecutionContext,
-  subscribeToDocumentUpdate,
-  subscribeToClaudeMdUpdate,
-} from '../../claude/tools/createKpmServer';
-import type { DocumentUpdatePayload } from '../../claude/tools/document-update';
-import type { ClaudeMdUpdatePayload } from '../../claude/tools/claudemd-update';
+  subscribeToKpmToolProposals,
+} from '../../kpmTools/runtimeRegistry';
 import { resolveScopedPath, ensureParentDirectory } from '../files/scopedFs';
 
 const LOOP_TIMEOUT_MS = 10 * 60 * 1000;
@@ -259,11 +256,10 @@ export function createScheduledLoopRunnerService(deps: ScheduledLoopRunnerDeps) 
     // full content in the latest proposal payload.
     const fileWrites = new Map<string, string>();
 
-    const unsubDoc = subscribeToDocumentUpdate((u: DocumentUpdatePayload) => {
-      if (u.chatSessionId === sessionKey) fileWrites.set(u.filePath, u.content);
-    });
-    const unsubCtx = subscribeToClaudeMdUpdate((u: ClaudeMdUpdatePayload) => {
-      if (u.chatSessionId === sessionKey) fileWrites.set(u.filename, u.newContent);
+    const unsubscribeProposals = subscribeToKpmToolProposals((proposal) => {
+      if (proposal.chatSessionId !== sessionKey) return;
+      if (proposal.type === 'document-update') fileWrites.set(proposal.filePath, proposal.content);
+      if (proposal.type === 'project-context-update') fileWrites.set(proposal.filename, proposal.newContent);
     });
 
     const knownState = buildKnownStateBlock(loop);
@@ -282,8 +278,7 @@ export function createScheduledLoopRunnerService(deps: ScheduledLoopRunnerDeps) 
         () => runClaudeQuery({ prompt, sdkOptions, timeoutMs: LOOP_TIMEOUT_MS })
       );
     } finally {
-      unsubDoc();
-      unsubCtx();
+      unsubscribeProposals();
     }
 
     const { memory } = parseLoopReply(result.text);
