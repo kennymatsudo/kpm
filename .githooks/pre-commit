@@ -5,6 +5,15 @@ set -e
 
 cd "$(git rev-parse --show-toplevel)"
 
+# typecheck and lint are project-wide and can't be scoped to a file, so skip
+# them entirely when nothing staged can change their result: TS/TSX sources,
+# or the tsconfig/eslint/package manifests that configure them.
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+if ! printf '%s\n' "$staged" | grep -qE '\.(ts|tsx)$|(^|/)tsconfig[^/]*\.json$|(^|/)package(-lock)?\.json$'; then
+  echo "[pre-commit] no TypeScript changes staged; skipping typecheck + lint"
+  exit 0
+fi
+
 echo "[pre-commit] typecheck"
 npm run --silent typecheck
 

@@ -14,7 +14,7 @@
     "dist:win": "electron-builder --win",
     "dist:linux": "electron-builder --linux",
     "postinstall": "install-electron && electron-builder install-app-deps && node scripts/patch-electron-icon.js && node scripts/patch-electron-plist.js",
-    "lint": "eslint .",
+    "lint": "eslint . --cache",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run lint && npm test",
