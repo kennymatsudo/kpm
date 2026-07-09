@@ -55,6 +55,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     viewedSessionId,
     viewedSessionDraftMessage,
     viewedSessionModel,
+    viewedSessionProvider,
     viewedSessionContextWindow,
     attachments,
     isStreaming,
@@ -74,6 +75,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
         : session?.provider === 'codex'
           ? session.codexModel
           : session?.model,
+      viewedSessionProvider: session?.provider,
       viewedSessionContextWindow: session?.provider === 'pi'
         ? findPiProviderOption(state.piProviders, session.piProviderModel)?.contextWindow
         : session?.provider === 'codex'
@@ -528,7 +530,12 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
 
       {/* Context window usage — sits below the composer, inside the input padding zone */}
       {viewedSessionId && (
-        <ContextWindowBar usage={lastTurnUsage} model={viewedSessionModel} contextWindow={viewedSessionContextWindow} />
+        <ContextWindowBar
+          usage={lastTurnUsage}
+          model={viewedSessionModel}
+          provider={viewedSessionProvider}
+          contextWindow={viewedSessionContextWindow}
+        />
       )}
 
       {/* Argument hint for the chosen slash command, until arguments are typed */}
