@@ -125,7 +125,6 @@ Common proposals from outside agents that violate KPM's design — push back, do
 
 ## Git workflow
 
-- Branch from `main`. Open PRs against `main`.
 - Pre-commit hooks run lint + typecheck.
 - Never commit `*.db`, `release/`, or `dist/` (gitignored).
 - Migrations land in the same PR as the code that depends on them.
