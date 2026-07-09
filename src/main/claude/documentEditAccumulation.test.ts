@@ -42,7 +42,7 @@ const FILE_ABS = `${PROJECT_PATH}/guide.md`;
 const DISK = ['# Guide', 'Section A: old-A', 'Section B: old-B', ''].join('\n');
 
 function testOptions() {
-  return { signal: new AbortController().signal, toolUseID: 'tu-1' };
+  return { signal: new AbortController().signal, toolUseID: 'tu-1', requestId: 'req-1' };
 }
 
 async function editFile(

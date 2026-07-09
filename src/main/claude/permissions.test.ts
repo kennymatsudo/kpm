@@ -30,10 +30,22 @@ vi.mock('./clientManager', () => ({
 /**
  * Helper to create test options with required fields
  */
-function createTestOptions(): { signal: AbortSignal; toolUseID: string } {
+function createTestOptions(): { signal: AbortSignal; toolUseID: string; requestId: string } {
   return {
     signal: new AbortController().signal,
     toolUseID: 'test-tool-use-id',
+    requestId: 'test-request-id',
+  };
+}
+
+// createPermissionHandler's return type (the SDK's CanUseTool) allows a null
+// result to suppress the control response; KPM never uses it, so narrow it here.
+function buildHandler(context: PermissionContext, promptUser: PromptUserFn) {
+  const inner = createPermissionHandler(context, promptUser);
+  return async (...args: Parameters<typeof inner>) => {
+    const result = await inner(...args);
+    if (result === null) throw new Error('permission handler returned null');
+    return result;
   };
 }
 
@@ -120,7 +132,7 @@ describe('permissions', () => {
   describe('createPermissionHandler', () => {
     let context: PermissionContext;
     let mockPromptUser: PromptUserFn;
-    let handler: ReturnType<typeof createPermissionHandler>;
+    let handler: ReturnType<typeof buildHandler>;
 
     beforeEach(() => {
       vi.clearAllMocks();
@@ -133,7 +145,7 @@ describe('permissions', () => {
       };
 
       mockPromptUser = vi.fn().mockResolvedValue({ behavior: 'allow', updatedInput: {} });
-      handler = createPermissionHandler(context, mockPromptUser);
+      handler = buildHandler(context, mockPromptUser);
     });
 
     describe('auto-allow rules', () => {
@@ -203,7 +215,7 @@ describe('permissions', () => {
           projectId: 'test-project-id',
           disabledMcpServerNames: ['claude.ai Slack'],
         };
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
 
         for (const toolName of ['mcp__slack__search', 'mcp__claude-ai-slack__search']) {
           const result = await handler(toolName, { query: 'hello' }, createTestOptions());
@@ -247,7 +259,7 @@ describe('permissions', () => {
           updatedInput: {},
           allowAlways: true,
         });
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
 
         await handler('Edit', { file_path: '/outside/project/file.ts' }, createTestOptions());
 
@@ -261,7 +273,7 @@ describe('permissions', () => {
           updatedInput: {},
           // No allowAlways flag
         });
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
 
         await handler('Edit', { file_path: '/outside/project/file.ts' }, createTestOptions());
 
@@ -294,7 +306,7 @@ describe('permissions', () => {
           behavior: 'deny',
           updatedInput: {},
         });
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
 
         const result = await handler('Edit', { file_path: '/outside/project/file.ts' }, createTestOptions());
 
@@ -350,7 +362,7 @@ describe('permissions', () => {
 
       it('returns a deny decision for an unknown tool the user rejects', async () => {
         mockPromptUser = vi.fn().mockResolvedValue({ behavior: 'deny', updatedInput: {} });
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
 
         const result = await handler('SomeNewTool', { data: 'whatever' }, createTestOptions());
         expect(result.behavior).toBe('deny');
@@ -358,7 +370,7 @@ describe('permissions', () => {
 
       it('auto-allows unknown tools when autoApprove is set', async () => {
         context = { projectPath: '/test/project', projectId: 'test-project-id', autoApprove: true };
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
 
         const result = await handler('SomeNewTool', { data: 'whatever' }, createTestOptions());
         expect(result.behavior).toBe('allow');
@@ -422,7 +434,7 @@ describe('permissions', () => {
           projectId: 'test-project-id',
           repoPaths: ['/repos/my-app'],
         };
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
       });
 
       it('denies NotebookEdit into a connected repo', async () => {
@@ -463,7 +475,7 @@ describe('permissions', () => {
           projectId: 'test-project-id',
           onClaudeMdEdit: mockOnClaudeMdEdit,
         };
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
 
         for (const filename of ['AGENTS.md', 'CLAUDE.md']) {
           const result = await handler(
@@ -487,7 +499,7 @@ describe('permissions', () => {
           onClaudeMdEdit: mockOnClaudeMdEdit,
           readProjectFile: mockReadFile,
         };
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
 
         for (const filename of ['AGENTS.md', 'CLAUDE.md']) {
           mockOnClaudeMdEdit.mockClear();
@@ -515,7 +527,7 @@ describe('permissions', () => {
           onClaudeMdEdit: mockOnClaudeMdEdit,
           readProjectFile: mockReadFile,
         };
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
 
         const result = await handler(
           'Edit',
@@ -539,7 +551,7 @@ describe('permissions', () => {
           onClaudeMdEdit: mockOnClaudeMdEdit,
           readProjectFile: mockReadFile,
         };
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
 
         const result = await handler(
           'Edit',
@@ -565,7 +577,7 @@ describe('permissions', () => {
           readProjectFile: mockReadFile,
           peekPendingFile: () => pending.content,
         };
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
 
         const first = await handler(
           'Edit',
@@ -596,7 +608,7 @@ describe('permissions', () => {
           projectId: 'test-project-id',
           onProjectFileWrite: mockOnProjectFileWrite,
         };
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
 
         const result = await handler('Write', { file_path: '/test/project/docs/guide.md', content: 'Hello world' }, createTestOptions());
 
@@ -622,7 +634,7 @@ describe('permissions', () => {
           onProjectFileWrite: mockOnProjectFileWrite,
           readProjectFile: mockReadFile,
         };
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
 
         const result = await handler(
           'Edit',
@@ -645,7 +657,7 @@ describe('permissions', () => {
           onProjectFileWrite: mockOnProjectFileWrite,
           readProjectFile: mockReadFile,
         };
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
 
         const result = await handler(
           'Edit',
@@ -666,7 +678,7 @@ describe('permissions', () => {
           onProjectFileWrite: mockOnProjectFileWrite,
           readProjectFile: mockReadFile,
         };
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
 
         const result = await handler(
           'Edit',
@@ -686,7 +698,7 @@ describe('permissions', () => {
           projectId: 'test-project-id',
           repoPaths: ['/repos/my-app', '/repos/shared-lib'],
         };
-        handler = createPermissionHandler(context, mockPromptUser);
+        handler = buildHandler(context, mockPromptUser);
         vi.mocked(clientManager.hasPermissionCached).mockReturnValue(false);
         vi.mocked(clientManager.hasAllowAllRemaining).mockReturnValue(false);
       });
