@@ -318,7 +318,9 @@ export function TopBar({
               <span className="text-text-primary font-medium">"{currentProject?.name}"</span>?
               <br />
               <span className="text-warning text-xs mt-2 block">
-                This will delete all plan items, repos, and attachments associated with this project.
+                This removes the project from KPM, including its plan items and
+                attachments, and disconnects any linked repos. Your repo folders
+                and the code inside them are left untouched.
               </span>
             </>
           }
