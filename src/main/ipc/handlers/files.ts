@@ -3,6 +3,7 @@ import { contextEndpoints, type ContextEndpointName } from '../../../shared/ipc/
 import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import { createRegistryIpcHandlers } from '../validation/utils';
 import type { ContextFileService } from '../../services/core/ContextFileService';
+import { FileWatchService } from '../../services/files';
 
 /**
  * One handler per `contextEndpoints` entry. A registry entry without a
@@ -23,8 +24,8 @@ function buildContextHandlers(
     },
 
     'contextFile.write': async ({ projectId, content }) => {
-      const result = await contextFileService.writeProjectContextFile(projectId, content);
-      if (!result.ok) throw new Error(result.error);
+      const result = await FileWatchService.writeProjectContextFile(projectId, content);
+      if (!result.success) throw new Error(result.error);
     },
 
     // ==========================================================================
@@ -33,35 +34,35 @@ function buildContextHandlers(
 
     // List all context files in project root
     'context.list': async ({ projectId }) => {
-      const result = await contextFileService.listContextFiles(projectId);
-      if (!result.ok) throw new Error(result.error);
-      return result.data;
+      const result = await FileWatchService.listContextFiles(projectId);
+      if (!result.success) throw new Error(result.error);
+      return { files: result.files ?? [] };
     },
 
     // Read a context file by relative path
     'context.read': async ({ projectId, path }) => {
-      const result = await contextFileService.readContextFile(projectId, path);
-      if (!result.ok) throw new Error(result.error);
-      return result.data;
+      const result = await FileWatchService.readContextFile(projectId, path);
+      if (!result.success) throw new Error(result.error);
+      return { content: result.content };
     },
 
     // Write a context file by relative path
     'context.write': async ({ projectId, path, content }) => {
-      const result = await contextFileService.writeContextFile(projectId, path, content);
-      if (!result.ok) throw new Error(result.error);
+      const result = await FileWatchService.writeContextFile(projectId, path, content);
+      if (!result.success) throw new Error(result.error);
     },
 
     // Delete a context file by relative path
     'context.delete': async ({ projectId, path }) => {
-      const result = await contextFileService.deleteContextFile(projectId, path);
-      if (!result.ok) throw new Error(result.error);
+      const result = await FileWatchService.deleteContextFile(projectId, path);
+      if (!result.success) throw new Error(result.error);
     },
 
     // Import a file as context (copy to project root)
     'context.import': async ({ projectId, sourcePath }) => {
-      const result = await contextFileService.importContextFile(projectId, sourcePath);
-      if (!result.ok) throw new Error(result.error);
-      return result.data;
+      const result = await FileWatchService.importContextFile(projectId, sourcePath);
+      if (!result.success || !result.filename) throw new Error(result.error);
+      return { filename: result.filename };
     },
 
     // Show file dialog to select files for import

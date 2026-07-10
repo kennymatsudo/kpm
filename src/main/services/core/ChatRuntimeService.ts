@@ -14,6 +14,7 @@ import { SETTINGS } from '../../../shared/settingsRegistry';
 import { getSetting } from '../../db/appSettingsAccess';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { chatEvents } from '../../../shared/ipc/chatEvents';
+import { FileWatchService } from '../files';
 
 export interface ChatRuntimeServiceDeps {
   getMainWindow: () => BrowserWindow | null;
@@ -130,9 +131,9 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         : { success: false, content: null, error: result.error };
     },
     readDocumentFile: async (projectId: string, filePath: string) => {
-      const result = await services.contextFileService.readDocumentFile(projectId, filePath);
-      return result.ok
-        ? { success: true, content: result.data.content }
+      const result = await FileWatchService.readDocumentFile(projectId, filePath);
+      return result.success
+        ? { success: true, content: result.content }
         : { success: false, content: null, error: result.error };
     },
     toolCallLogger,
