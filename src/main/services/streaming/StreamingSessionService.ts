@@ -82,9 +82,13 @@ function compactTitleSeed(text: string): string | null {
   return normalized.length > 80 ? `${normalized.slice(0, 77).trimEnd()}…` : normalized;
 }
 
-function sanitizeSessionTitle(summary: string, fallbackSeed?: string): string | null {
-  const normalized = summary.replace(/\s+/g, ' ').trim();
-  if (!normalized) return null;
+// Leading `[Context: …]` view hint that sendChatMessage prepends to the user's
+// first turn. It steers the model but must not leak into the derived tab title.
+const CONTEXT_HINT_PREFIX = /^\[Context:[^\]]*\]\s*/;
+
+export function sanitizeSessionTitle(summary: string, fallbackSeed?: string): string | null {
+  const normalized = summary.replace(/\s+/g, ' ').trim().replace(CONTEXT_HINT_PREFIX, '').trim();
+  if (!normalized) return fallbackSeed ? compactTitleSeed(fallbackSeed) : null;
 
   if (normalized.startsWith('# Focused Selection') || normalized.startsWith('Focused Selection')) {
     return fallbackSeed ? compactTitleSeed(fallbackSeed) : null;

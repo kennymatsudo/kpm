@@ -1,8 +1,18 @@
 import { useChatStore, useProjectDomainStore } from '../../stores';
+import type { Message } from '../../stores/chat/types';
 import { cancelChatSession, disconnectChatSession } from '../../services/chatService';
 import { useShallow } from 'zustand/react/shallow';
 import { CloseIcon } from '../icons';
 import { getProviderCapabilities } from '../../../shared/providerCapabilities';
+
+/** First user message text, used as the tab label before a provider summary exists. */
+function firstUserMessageText(messages: Message[] | undefined): string | null {
+  const firstUser = messages?.find((message) => message.role === 'user');
+  const textSegment = firstUser?.segments.find((segment) => segment.type === 'text');
+  if (textSegment?.type !== 'text') return null;
+  const normalized = textSegment.content.replace(/\s+/g, ' ').trim();
+  return normalized || null;
+}
 
 /**
  * Session tabs showing all active and recent sessions.
@@ -48,6 +58,7 @@ function SessionTab({
     title,
     provider,
     sessionNumber,
+    firstMessage,
     messageCount,
     isStreaming,
     isActive,
@@ -60,6 +71,7 @@ function SessionTab({
       title: session?.title ?? null,
       provider: session?.provider ?? null,
       sessionNumber: session?.sessionNumber ?? null,
+      firstMessage: firstUserMessageText(session?.messages),
       messageCount: session?.messages.length ?? 0,
       isStreaming: session?.isStreaming ?? false,
       isActive: state.activeSessionIds.has(sessionId),
@@ -73,7 +85,10 @@ function SessionTab({
     return null;
   }
 
-  const displayTitle = provider && getProviderCapabilities(provider).sessionSummaries ? title : null;
+  // Prefer the provider's auto-summary; before it exists (or for providers
+  // without summaries) fall back to the first user message, matching SessionHistory.
+  const summaryTitle = provider && getProviderCapabilities(provider).sessionSummaries ? title : null;
+  const displayTitle = summaryTitle ?? firstMessage;
 
   const handleCloseSession = async (chatSessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
