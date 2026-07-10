@@ -209,6 +209,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
           const sessions = new Map(state.sessions);
           const existingSession = sessions.get(chatSessionId);
           const baseSession = existingSession ?? createInitialPerSessionState(state.nextSessionNumber);
+          const sessionProvider = result.messages.find((message) => message.provider)?.provider ?? baseSession.provider;
           const preserveLiveState =
             existingSession?.isStreaming ||
             existingSession?.sessionState === 'processing' ||
@@ -225,6 +226,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
             error: null,
             activities: preserveLiveState ? baseSession.activities : [],
             sessionState: baseSession.sessionState,
+            provider: sessionProvider,
             streamStartedAt: preserveLiveState ? baseSession.streamStartedAt : null,
             lastStreamUpdateAt: preserveLiveState ? baseSession.lastStreamUpdateAt : null,
             hydrated: true,

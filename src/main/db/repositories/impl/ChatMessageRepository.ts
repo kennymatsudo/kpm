@@ -63,6 +63,7 @@ export class ChatMessageRepository implements IChatMessageRepository {
       getRecentSessions: db.prepare(`
         SELECT
           m.chat_session_id,
+          COALESCE(s.provider, MIN(m.provider), 'claude') as provider,
           s.title as title,
           MIN(CASE WHEN m.role = 'user' THEN SUBSTR(m.content, 1, 100) END) as first_message,
           COUNT(*) as message_count,

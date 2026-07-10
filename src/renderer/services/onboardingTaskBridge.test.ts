@@ -9,11 +9,11 @@ type OnboardingCompleteHandler = (event: { taskId: string; content: string }) =>
 
 function installOnboardingApi() {
   let onCompleteHandler: OnboardingCompleteHandler | undefined;
-  const readClaudeMd = vi.fn().mockResolvedValue({ success: true, content: 'existing content' });
+  const readContextFile = vi.fn().mockResolvedValue({ success: true, content: 'existing content' });
 
   (globalThis as unknown as { window: unknown }).window = {
     api: {
-      claudeMd: { read: readClaudeMd },
+      contextFile: { read: readContextFile },
       onboarding: {
         generate: vi.fn(),
         onProgress: vi.fn().mockReturnValue(() => {}),
@@ -27,7 +27,7 @@ function installOnboardingApi() {
     },
   };
 
-  return { readClaudeMd, getOnCompleteHandler: () => onCompleteHandler! };
+  return { readContextFile, getOnCompleteHandler: () => onCompleteHandler! };
 }
 
 function seedTask(taskId: string, meta: OnboardingTaskMeta) {
@@ -53,19 +53,19 @@ describe('onboardingTaskBridge onComplete routing', () => {
     useBackgroundTaskStore.setState({ tasks: {} });
     useContextRegenerationStore.setState({ isOpen: false, resumeTaskId: null });
     useProjectDomainStore.setState({ currentProjectId: 'project-1' } as never);
-    useApprovalQueueStore.setState({ processClaudeMdUpdate: vi.fn() });
+    useApprovalQueueStore.setState({ processContextFileUpdate: vi.fn() });
   });
 
   it('routes into the approval queue and dismisses the badge when the task matches the open project', async () => {
-    const { readClaudeMd, getOnCompleteHandler } = installOnboardingApi();
+    const { readContextFile, getOnCompleteHandler } = installOnboardingApi();
     seedTask('task-1', { projectId: 'project-1', projectName: 'Project One' });
 
     initOnboardingTaskBridge();
     getOnCompleteHandler()({ taskId: 'task-1', content: 'generated content' });
     await flushMicrotasks();
 
-    expect(readClaudeMd).toHaveBeenCalledWith('project-1');
-    expect(useApprovalQueueStore.getState().processClaudeMdUpdate).toHaveBeenCalledWith(
+    expect(readContextFile).toHaveBeenCalledWith('project-1');
+    expect(useApprovalQueueStore.getState().processContextFileUpdate).toHaveBeenCalledWith(
       'project-1',
       'existing content',
       'generated content',
@@ -82,7 +82,7 @@ describe('onboardingTaskBridge onComplete routing', () => {
     getOnCompleteHandler()({ taskId: 'task-1', content: 'generated content' });
     await flushMicrotasks();
 
-    expect(useApprovalQueueStore.getState().processClaudeMdUpdate).not.toHaveBeenCalled();
+    expect(useApprovalQueueStore.getState().processContextFileUpdate).not.toHaveBeenCalled();
     const task = useBackgroundTaskStore.getState().tasks['task-1'];
     expect(task?.status).toBe('completed');
     expect(task?.result).toBe('generated content');
@@ -96,7 +96,7 @@ describe('onboardingTaskBridge onComplete routing', () => {
     getOnCompleteHandler()({ taskId: 'task-1', content: 'generated content' });
     await flushMicrotasks();
 
-    expect(useApprovalQueueStore.getState().processClaudeMdUpdate).not.toHaveBeenCalled();
+    expect(useApprovalQueueStore.getState().processContextFileUpdate).not.toHaveBeenCalled();
     const task = useBackgroundTaskStore.getState().tasks['task-1'];
     expect(task?.status).toBe('completed');
     expect(task?.result).toBe('generated content');

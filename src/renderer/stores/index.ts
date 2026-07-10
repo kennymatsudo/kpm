@@ -70,7 +70,7 @@ export { useApprovalQueueStore } from './approvalQueueStore';
 export type {
   ApprovalItem,
   PendingPlanActionsItem,
-  PendingClaudeMdItem,
+  PendingContextFileItem,
   PendingDocumentItem,
   PendingMoveItem,
   PendingDeleteItem,

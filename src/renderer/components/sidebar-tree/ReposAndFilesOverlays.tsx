@@ -179,7 +179,7 @@ export function ReposAndFilesOverlays({
   onCloseSyncModal,
   onConfluenceContentUpdated,
 }: ReposAndFilesOverlaysProps) {
-  const isViewingClaudeMd = isContextFile(viewingFilename);
+  const isViewingProjectContextFile = isContextFile(viewingFilename);
   const openFocusMode = useFocusModeStore((s) => s.open);
 
   return (
@@ -301,7 +301,7 @@ export function ReposAndFilesOverlays({
         isDeleting={false}
         documentKey={viewingPath ?? undefined}
         title={viewingFilename.replace(/\.md$/, '')}
-        subtitle={isViewingClaudeMd ? 'Project context for AI agents' : 'Markdown document'}
+        subtitle={isViewingProjectContextFile ? 'Project context for AI agents' : 'Markdown document'}
         content={viewingContent}
         placeholder="Start writing..."
         onEnterFocusMode={
@@ -319,11 +319,11 @@ export function ReposAndFilesOverlays({
         icon={
           <div
             className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-              isViewingClaudeMd ? 'bg-accent/15' : 'bg-surface-2'
+              isViewingProjectContextFile ? 'bg-accent/15' : 'bg-surface-2'
             }`}
           >
             <svg
-              className={`w-4 h-4 ${isViewingClaudeMd ? 'text-accent' : 'text-text-muted'}`}
+              className={`w-4 h-4 ${isViewingProjectContextFile ? 'text-accent' : 'text-text-muted'}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"

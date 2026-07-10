@@ -872,7 +872,8 @@ export interface ChatMessage {
 /** Summary of a chat session for history display */
 export interface ChatSessionSummary {
   chat_session_id: string;
-  /** SDK-derived display title (null for legacy rows or sessions that haven't generated one yet). */
+  provider: ChatProvider;
+  /** Provider-derived display title (null for legacy rows or sessions that haven't generated one yet). */
   title: string | null;
   first_message: string;  // First user message (truncated for display)
   message_count: number;
@@ -916,19 +917,13 @@ export interface SlashCommandInfo {
 // Permission System Types
 // =============================================================================
 
-/** Permission request sent from main to renderer */
+/** Permission request sent from main to renderer. Display copy is composed from these structured fields. */
 export interface PermissionRequest {
   requestId: string;
   projectId: string;
   toolName: string;
   targetPath: string | null;
   preview: string;
-  /** SDK-provided human-readable prompt (e.g. "Claude wants to read foo.txt") */
-  title?: string;
-  /** SDK-provided short noun phrase for the action (e.g. "Read file") */
-  displayName?: string;
-  /** SDK-provided subtitle (e.g. "Claude will have read and write access to files in ~/Downloads") */
-  description?: string;
 }
 
 /** User action for permission request */

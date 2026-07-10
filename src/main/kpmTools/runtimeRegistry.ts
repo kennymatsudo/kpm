@@ -17,7 +17,7 @@ import {
   type KpmToolGroup,
 } from './runtime';
 import { createBriefingTools } from './tools/briefing';
-import { createClaudeMdEditTools, type ClaudeMdUpdatePayload } from './tools/claudemd-update';
+import { createContextFileEditTools, type ContextFileUpdatePayload } from './tools/context-file-update';
 import { createConfluenceTools } from './tools/confluence';
 import { createDocumentEditTools } from './tools/document-edit';
 import { createDocumentReadTools } from './tools/document-read';
@@ -150,7 +150,7 @@ function emitPlanActions(actions: PlanAction[]): void {
   });
 }
 
-function emitClaudeMdUpdate(update: ClaudeMdUpdatePayload): void {
+function emitContextFileUpdate(update: ContextFileUpdatePayload): void {
   const context = getCurrentToolExecutionContext();
   const chatSessionId = update.chatSessionId ?? context?.chatSessionId;
   if (chatSessionId) {
@@ -227,7 +227,7 @@ function buildToolGroups(): KpmToolGroup[] {
     group('plan-changes', MAIN_ONLY, ['plan_items.propose'], createPlanChangeTools(emitPlanActions)),
     group('jira', MAIN_ONLY, ['integrations.read'], createJiraTools()),
     group('storybook', MAIN_ONLY, ['integrations.read'], createStorybookTools(projectRepo)),
-    group('project-context', ALL_CHAT_SCOPES, ['project_context.propose'], createClaudeMdEditTools(readProjectContextFileWithPending, emitClaudeMdUpdate)),
+    group('project-context', ALL_CHAT_SCOPES, ['project_context.propose'], createContextFileEditTools(readProjectContextFileWithPending, emitContextFileUpdate)),
     group('document-read', ALL_CHAT_SCOPES, ['documents.read'], createDocumentReadTools(readProjectFileWithPending)),
     group('document-create', ALL_CHAT_SCOPES, ['documents.propose'], createDocumentCreateTools(emitDocumentUpdate)),
     group('document-edit', ALL_CHAT_SCOPES, ['documents.propose'], createDocumentEditTools(readProjectFileWithPending, emitDocumentUpdate)),

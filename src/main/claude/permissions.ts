@@ -36,14 +36,11 @@ export type PromptUserFn = (
   input: Record<string, unknown>,
   options: {
     signal?: AbortSignal;
-    title?: string;
-    displayName?: string;
-    description?: string;
   }
 ) => Promise<PermissionResult>;
 
-/** Callback for intercepted CLAUDE.md edits */
-export type ClaudeMdInterceptFn = (
+/** Callback for intercepted project context file edits */
+export type ContextFileInterceptFn = (
   projectId: string,
   newContent: string
 ) => void;
@@ -61,8 +58,8 @@ export interface PermissionContext {
   projectId: string;
   /** Connected repository paths (read-only, writes are denied) */
   repoPaths?: string[];
-  /** Optional callback to intercept CLAUDE.md edits */
-  onClaudeMdEdit?: ClaudeMdInterceptFn;
+  /** Optional callback to intercept project context file edits */
+  onContextFileEdit?: ContextFileInterceptFn;
   /** Optional callback to intercept project file writes for approval */
   onProjectFileWrite?: ProjectFileInterceptFn;
   /**
@@ -265,10 +262,10 @@ export function createPermissionHandler(
 
     // Rule 0: Intercept project context file edits (AGENTS.md / CLAUDE.md) for user approval
     if (targetPath && isContextFilePath(targetPath, context.projectPath)) {
-      if (toolName === 'Write' && context.onClaudeMdEdit && typeof input.content === 'string') {
+      if (toolName === 'Write' && context.onContextFileEdit && typeof input.content === 'string') {
         const newContent = input.content;
         console.log(`[Permissions] Context file Write intercepted - capturing for approval (${newContent.length} chars)`);
-        context.onClaudeMdEdit(context.projectId, newContent);
+        context.onContextFileEdit(context.projectId, newContent);
         return {
           behavior: 'deny',
           message: 'Project context file update captured by KPM.',
@@ -276,9 +273,9 @@ export function createPermissionHandler(
       }
       // Edit tool on the context file: read the file, apply old_string ->
       // new_string ourselves, and route the full new content through
-      // onClaudeMdEdit so it lands in the same approval flow as Write.
+      // onContextFileEdit so it lands in the same approval flow as Write.
       // Mirrors Rule 0.5's Edit interception for regular project files.
-      if (toolName === 'Edit' && context.onClaudeMdEdit) {
+      if (toolName === 'Edit' && context.onContextFileEdit) {
         const oldString = typeof input.old_string === 'string' ? input.old_string : null;
         const newString = typeof input.new_string === 'string' ? input.new_string : null;
 
@@ -334,7 +331,7 @@ export function createPermissionHandler(
         const newContent =
           currentContent.slice(0, firstIndex) + newString + currentContent.slice(firstIndex + oldString.length);
         console.log(`[Permissions] Context file Edit intercepted - capturing for approval (${newContent.length} chars)`);
-        context.onClaudeMdEdit(context.projectId, newContent);
+        context.onContextFileEdit(context.projectId, newContent);
         return {
           behavior: 'deny',
           message: 'Project context file update captured by KPM.',

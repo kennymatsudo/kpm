@@ -22,7 +22,7 @@ import {
   buildSlackTriagePrompt,
   buildSlackTriageUserMessage,
   type SlackTriagePromptContext,
-} from '../../claude/prompts/slackTriage';
+} from '../../chat/prompts/slackTriage';
 import type { SlackMcpAvailability } from './McpDiscoveryService';
 import { getConfig } from '../../config';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';

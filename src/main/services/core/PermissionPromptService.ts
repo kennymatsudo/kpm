@@ -25,7 +25,7 @@ export async function promptUser(
   projectId: string,
   toolName: string,
   input: Record<string, unknown>,
-  options: { signal?: AbortSignal; title?: string; displayName?: string; description?: string },
+  options: { signal?: AbortSignal },
 ): Promise<PermissionResult> {
   if (!mainWindow) {
     return {
@@ -76,9 +76,6 @@ export async function promptUser(
       toolName,
       targetPath,
       preview,
-      ...(options.title && { title: options.title }),
-      ...(options.displayName && { displayName: options.displayName }),
-      ...(options.description && { description: options.description }),
     });
   });
 }

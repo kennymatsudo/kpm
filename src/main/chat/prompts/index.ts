@@ -68,12 +68,12 @@ Only create or modify plan items when the user explicitly asks. When creating im
  * 5. Reference (plan items, examples)
  */
 export function buildSystemPrompt(context: PlanContext): string {
-  const { project, repos, attachments, planItems, taskPromptTemplate, claudeMdContent, getPromptContent, continuationHistory } = context;
+  const { project, repos, attachments, planItems, taskPromptTemplate, contextFileContent, getPromptContent, continuationHistory } = context;
 
   const hasAttachments = attachments.length > 0;
   const hasRepos = repos.length > 0;
   const hasPlan = planItems.length > 0;
-  const hasClaudeMd = claudeMdContent && claudeMdContent.trim().length > 0;
+  const hasContextFile = contextFileContent && contextFileContent.trim().length > 0;
 
   // Prompt resolver: user override > registry default > hardcoded constant
   const getPrompt = (key: string): string => {
@@ -109,10 +109,10 @@ ${getPrompt('system.plan_rules')}
 ${buildTaskCreationGuidance(taskPromptTemplate)}
 
 ${getPrompt('system.response_style')}
-${hasClaudeMd ? `
+${hasContextFile ? `
 # Project Context
 
-${claudeMdContent}
+${contextFileContent}
 ` : ''}
 # Current Plan
 ${hasPlan

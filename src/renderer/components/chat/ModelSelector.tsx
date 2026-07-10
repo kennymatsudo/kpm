@@ -1,6 +1,7 @@
 import { useChatStore, type ChatClaudeModel, type CodexChatModel } from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
 import { CODEX_CHAT_MODELS } from '../../../shared/types';
+import { getProviderCapabilities } from '../../../shared/providerCapabilities';
 import { PiModelPicker } from './PiModelPicker';
 
 const MODELS: { value: ChatClaudeModel; label: string; description: string }[] = [
@@ -15,6 +16,7 @@ export function ModelSelector() {
     provider,
     model,
     codexModel,
+    messageCount,
     setDefaultModel,
     setModel,
     setDefaultCodexModel,
@@ -31,6 +33,7 @@ export function ModelSelector() {
       provider: viewedSession?.provider ?? state.provider,
       model: viewedSession?.model ?? state.model,
       codexModel: viewedSession?.codexModel ?? state.codexModel,
+      messageCount: viewedSession?.messages.length ?? 0,
       setDefaultModel: state.setDefaultModel,
       setModel: state.setModel,
       setDefaultCodexModel: state.setDefaultCodexModel,
@@ -58,6 +61,11 @@ export function ModelSelector() {
       setDefaultCodexModel(newModel);
     }
   };
+
+  const capabilities = getProviderCapabilities(provider);
+  if (viewedSessionId && hasViewedSession && messageCount > 0 && !capabilities.midSessionModelSwitch) {
+    return null;
+  }
 
   // The composer's model control adapts to the active provider: pi has its own
   // backend/model picker, Codex gets its supported model list, and Claude gets

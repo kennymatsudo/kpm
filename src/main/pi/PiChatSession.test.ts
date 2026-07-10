@@ -11,7 +11,7 @@ import {
   type PiModelRegistryHandle,
   type PiSessionHandle,
 } from './PiChatSession';
-import type { PlanContext } from '../claude/prompts';
+import type { PlanContext } from '../chat/prompts';
 
 vi.mock('../kpmTools/runtimeRegistry', () => ({
   executeKpmTool: vi.fn(),

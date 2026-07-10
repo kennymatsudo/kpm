@@ -469,11 +469,11 @@ describe('permissions', () => {
 
     describe('project file write interception', () => {
       it('intercepts Write to project context files and routes them through context approval', async () => {
-        const mockOnClaudeMdEdit = vi.fn();
+        const mockOnContextFileEdit = vi.fn();
         context = {
           projectPath: '/test/project',
           projectId: 'test-project-id',
-          onClaudeMdEdit: mockOnClaudeMdEdit,
+          onContextFileEdit: mockOnContextFileEdit,
         };
         handler = buildHandler(context, mockPromptUser);
 
@@ -485,24 +485,24 @@ describe('permissions', () => {
           );
 
           expect(result.behavior).toBe('deny');
-          expect(mockOnClaudeMdEdit).toHaveBeenCalledWith('test-project-id', '# Updated context');
+          expect(mockOnContextFileEdit).toHaveBeenCalledWith('test-project-id', '# Updated context');
         }
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
       it('intercepts Edit to project context files by applying old_string→new_string and routing the full content', async () => {
-        const mockOnClaudeMdEdit = vi.fn();
+        const mockOnContextFileEdit = vi.fn();
         const mockReadFile = vi.fn().mockResolvedValue('# Context\n\nalpha beta gamma');
         context = {
           projectPath: '/test/project',
           projectId: 'test-project-id',
-          onClaudeMdEdit: mockOnClaudeMdEdit,
+          onContextFileEdit: mockOnContextFileEdit,
           readProjectFile: mockReadFile,
         };
         handler = buildHandler(context, mockPromptUser);
 
         for (const filename of ['AGENTS.md', 'CLAUDE.md']) {
-          mockOnClaudeMdEdit.mockClear();
+          mockOnContextFileEdit.mockClear();
           const result = await handler(
             'Edit',
             { file_path: `/test/project/${filename}`, old_string: 'beta', new_string: 'BETA' },
@@ -513,18 +513,18 @@ describe('permissions', () => {
             behavior: 'deny',
             message: 'Project context file update captured by KPM.',
           });
-          expect(mockOnClaudeMdEdit).toHaveBeenCalledWith('test-project-id', '# Context\n\nalpha BETA gamma');
+          expect(mockOnContextFileEdit).toHaveBeenCalledWith('test-project-id', '# Context\n\nalpha BETA gamma');
         }
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
       it('denies Edit on context file when old_string is not found', async () => {
-        const mockOnClaudeMdEdit = vi.fn();
+        const mockOnContextFileEdit = vi.fn();
         const mockReadFile = vi.fn().mockResolvedValue('nothing matches here');
         context = {
           projectPath: '/test/project',
           projectId: 'test-project-id',
-          onClaudeMdEdit: mockOnClaudeMdEdit,
+          onContextFileEdit: mockOnContextFileEdit,
           readProjectFile: mockReadFile,
         };
         handler = buildHandler(context, mockPromptUser);
@@ -539,16 +539,16 @@ describe('permissions', () => {
           behavior: 'deny',
           message: 'old_string not found in the project context file. Read the file first and copy exact text including whitespace.',
         });
-        expect(mockOnClaudeMdEdit).not.toHaveBeenCalled();
+        expect(mockOnContextFileEdit).not.toHaveBeenCalled();
       });
 
       it('denies Edit on context file when old_string is not unique', async () => {
-        const mockOnClaudeMdEdit = vi.fn();
+        const mockOnContextFileEdit = vi.fn();
         const mockReadFile = vi.fn().mockResolvedValue('foo bar foo');
         context = {
           projectPath: '/test/project',
           projectId: 'test-project-id',
-          onClaudeMdEdit: mockOnClaudeMdEdit,
+          onContextFileEdit: mockOnContextFileEdit,
           readProjectFile: mockReadFile,
         };
         handler = buildHandler(context, mockPromptUser);
@@ -563,17 +563,17 @@ describe('permissions', () => {
           behavior: 'deny',
           message: 'old_string appears multiple times in the project context file. Include more surrounding context to make the match unique.',
         });
-        expect(mockOnClaudeMdEdit).not.toHaveBeenCalled();
+        expect(mockOnContextFileEdit).not.toHaveBeenCalled();
       });
 
       it('stacks sequential Edit calls to the context file via the pending cache instead of reading stale disk', async () => {
-        const mockOnClaudeMdEdit = vi.fn();
+        const mockOnContextFileEdit = vi.fn();
         const mockReadFile = vi.fn().mockResolvedValue('alpha beta gamma');
         const pending: { content?: string } = {};
         context = {
           projectPath: '/test/project',
           projectId: 'test-project-id',
-          onClaudeMdEdit: mockOnClaudeMdEdit,
+          onContextFileEdit: mockOnContextFileEdit,
           readProjectFile: mockReadFile,
           peekPendingFile: () => pending.content,
         };
@@ -585,9 +585,9 @@ describe('permissions', () => {
           createTestOptions()
         );
         expect(first.behavior).toBe('deny');
-        expect(mockOnClaudeMdEdit).toHaveBeenCalledWith('test-project-id', 'alpha BETA gamma');
+        expect(mockOnContextFileEdit).toHaveBeenCalledWith('test-project-id', 'alpha BETA gamma');
 
-        // Simulate the wiring that records onClaudeMdEdit's output into the
+        // Simulate the wiring that records onContextFileEdit's output into the
         // pending cache so the next Edit sees it instead of stale disk.
         pending.content = 'alpha BETA gamma';
 
@@ -597,7 +597,7 @@ describe('permissions', () => {
           createTestOptions()
         );
         expect(second.behavior).toBe('deny');
-        expect(mockOnClaudeMdEdit).toHaveBeenCalledWith('test-project-id', 'alpha BETA GAMMA');
+        expect(mockOnContextFileEdit).toHaveBeenCalledWith('test-project-id', 'alpha BETA GAMMA');
         expect(mockReadFile).toHaveBeenCalledTimes(1);
       });
 

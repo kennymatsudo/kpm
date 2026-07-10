@@ -13,7 +13,7 @@ export interface PlanContext {
   /** Custom task prompt template - if set, overrides default PLAN_STRUCTURE */
   taskPromptTemplate?: TaskPromptTemplate | null;
   /** Project context file content (AGENTS.md or CLAUDE.md), if it exists */
-  claudeMdContent?: string | null;
+  contextFileContent?: string | null;
   /** Focus-reader document context for slim focused chat sessions */
   focusDocument?: FocusChatDocument;
   /** Prompt content resolver for configurable prompts (user override > default) */

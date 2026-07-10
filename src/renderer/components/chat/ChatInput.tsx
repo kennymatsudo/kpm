@@ -15,6 +15,7 @@ import { SlashCommandMenu } from './SlashCommandMenu';
 import { useSlashCommandTypeahead } from './useSlashCommandTypeahead';
 import { CHAT_STYLES } from '../../constants/chatStyles';
 import { CODEX_CHAT_MODELS } from '../../../shared/types';
+import { getProviderCapabilities } from '../../../shared/providerCapabilities';
 import type { ChatAttachment, FocusedResource, ChatViewMode } from '../../../shared/types';
 import { findPiProviderOption } from '../../stores/chat/piProviderSelection';
 
@@ -75,7 +76,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
         : session?.provider === 'codex'
           ? session.codexModel
           : session?.model,
-      viewedSessionProvider: session?.provider,
+      viewedSessionProvider: session?.provider ?? state.provider,
       viewedSessionContextWindow: session?.provider === 'pi'
         ? findPiProviderOption(state.piProviders, session.piProviderModel)?.contextWindow
         : session?.provider === 'codex'
@@ -178,13 +179,16 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
-  // Slash command typeahead comes from the Claude SDK.
+  const capabilities = getProviderCapabilities(viewedSessionProvider ?? 'claude');
+  const visibleSuggestions = capabilities.promptSuggestions ? suggestions : NO_SUGGESTIONS;
+
+  // Slash command typeahead is shown only for providers that support live slash commands.
   const slashTypeahead = useSlashCommandTypeahead(
     message,
     cursorPosition,
     setMessage,
     setCursorPosition,
-    !disabled,
+    !disabled && capabilities.liveSlashCommands,
     textareaRef,
   );
   const [isPickingFiles, setIsPickingFiles] = useState(false);
@@ -198,24 +202,24 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   const [suggestionIndex, setSuggestionIndex] = useState(0);
 
   // Reset suggestion index when new suggestions arrive
-  const suggestionsKey = suggestions.join('|');
+  const suggestionsKey = visibleSuggestions.join('|');
   useEffect(() => {
     setSuggestionIndex(0);
   }, [suggestionsKey]);
 
   // Rotate placeholder on focus
   const handleFocus = useCallback(() => {
-    if (suggestions.length > 0) {
-      setSuggestionIndex((prev) => (prev + 1) % suggestions.length);
+    if (visibleSuggestions.length > 0) {
+      setSuggestionIndex((prev) => (prev + 1) % visibleSuggestions.length);
     } else {
       setFallbackIndex((prev) => (prev + 1) % fallbackPlaceholders.length);
     }
-  }, [suggestions.length, fallbackPlaceholders.length]);
+  }, [visibleSuggestions.length, fallbackPlaceholders.length]);
 
   const currentPlaceholder = disabled
     ? 'Select a project first'
-    : suggestions.length > 0
-      ? suggestions[suggestionIndex % suggestions.length]
+    : visibleSuggestions.length > 0
+      ? visibleSuggestions[suggestionIndex % visibleSuggestions.length]
       : (fallbackPlaceholders[fallbackIndex] ?? DEFAULT_PLACEHOLDER);
 
   // Auto-resize textarea
@@ -397,9 +401,9 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
       handleSend();
     }
     // Tab accepts the current suggestion into the textarea
-    if (e.key === 'Tab' && !e.shiftKey && suggestions.length > 0 && !message.trim()) {
+    if (e.key === 'Tab' && !e.shiftKey && visibleSuggestions.length > 0 && !message.trim()) {
       e.preventDefault();
-      const suggestion = suggestions[suggestionIndex % suggestions.length];
+      const suggestion = visibleSuggestions[suggestionIndex % visibleSuggestions.length];
       setMessage(suggestion);
       setCursorPosition(suggestion.length);
     }

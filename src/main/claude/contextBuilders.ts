@@ -15,7 +15,7 @@ import type {
   IRepoRepository,
   ITaskPromptTemplateRepository,
 } from '../db/interfaces';
-import type { PlanContext } from './prompts/types';
+import type { PlanContext } from '../chat/prompts/types';
 
 export interface BuildContextDeps {
   projects: IProjectRepository;
@@ -59,7 +59,7 @@ export function createContextBuilder(deps: BuildContextDeps) {
     const attachments = deps.attachments.getByProject(projectId);
     const planItems = deps.planItems.getByProject(projectId);
     const taskPromptTemplate = deps.taskPromptTemplates.getEffective(projectId);
-    const claudeMdContent = readContextFile(project.folder_path);
+    const contextFileContent = readContextFile(project.folder_path);
 
     return {
       project,
@@ -68,7 +68,7 @@ export function createContextBuilder(deps: BuildContextDeps) {
       planItems,
       focusedResources: [], // Will be populated by message sender
       taskPromptTemplate,
-      claudeMdContent,
+      contextFileContent,
     };
   };
 }

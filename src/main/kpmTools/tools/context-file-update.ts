@@ -1,7 +1,7 @@
 /**
  * Project Context File Edit Tool
  *
- * Allows Claude to submit edits to the project context file (AGENTS.md / CLAUDE.md)
+ * Allows chat providers to submit edits to the project context file (AGENTS.md / CLAUDE.md)
  * using old_string → new_string. Only the changed portion is sent as output tokens;
  * the full new content is computed server-side and emitted as a ContextFileUpdatePayload.
  *
@@ -11,7 +11,7 @@
 import { z } from 'zod';
 import { tool, jsonResult, toolError, toolLog } from './index';
 
-export interface ClaudeMdUpdatePayload {
+export interface ContextFileUpdatePayload {
   projectId: string;
   chatSessionId?: string;
   newContent: string;
@@ -24,14 +24,14 @@ export interface ClaudeMdUpdatePayload {
   filename: string;
 }
 
-export type ClaudeMdUpdateCallback = (update: ClaudeMdUpdatePayload) => void;
+export type ContextFileUpdateCallback = (update: ContextFileUpdatePayload) => void;
 
 /**
  * Reads the project context file. Returns the content + which filename
  * (AGENTS.md / CLAUDE.md) was actually read, so the subscriber doesn't have to
  * re-resolve.
  */
-export type ReadClaudeMdFn = (
+export type ReadProjectContextFileFn = (
   projectId: string
 ) => Promise<{ content: string; filename: string } | null>;
 
@@ -52,9 +52,9 @@ Content: connected repos + key dirs, plan/tracker conventions, key file paths, g
  * @param readContextFile - Function to read project context file content for a project
  * @param onContextFileUpdate - Callback to emit proposed update to the UI for approval
  */
-export function createClaudeMdEditTools(
-  readContextFile: ReadClaudeMdFn,
-  onContextFileUpdate: ClaudeMdUpdateCallback
+export function createContextFileEditTools(
+  readContextFile: ReadProjectContextFileFn,
+  onContextFileUpdate: ContextFileUpdateCallback
 ) {
   console.log('[KPM Tools] Creating propose_context_edit tool');
 

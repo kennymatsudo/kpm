@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Codex } from '@openai/codex-sdk';
 import { CodexChatSession } from './CodexChatSession';
 import { stopCodexMcpServerForTests } from './KpmCodexMcpServer';
-import type { PlanContext } from '../claude/prompts';
+import type { PlanContext } from '../chat/prompts';
 
 const codexMocks = vi.hoisted(() => ({
   runStreamed: vi.fn(),

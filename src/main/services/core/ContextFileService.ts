@@ -12,8 +12,8 @@ export function createContextFileService(deps: ContextFileServiceDeps) {
   });
 
   return {
-    async readClaudeMd(projectId: string): AsyncResult<{ content: string | null; filename?: string }> {
-      const result = await FileWatchService.readClaudeMd(projectId);
+    async readProjectContextFile(projectId: string): AsyncResult<{ content: string | null; filename?: string }> {
+      const result = await FileWatchService.readProjectContextFile(projectId);
       if (!result.success) {
         return failure(result.error ?? 'Failed to read project context');
       }
@@ -22,8 +22,8 @@ export function createContextFileService(deps: ContextFileServiceDeps) {
       );
     },
 
-    async writeClaudeMd(projectId: string, content: string): AsyncResult<void> {
-      const result = await FileWatchService.writeClaudeMd(projectId, content);
+    async writeProjectContextFile(projectId: string, content: string): AsyncResult<void> {
+      const result = await FileWatchService.writeProjectContextFile(projectId, content);
       return result.success
         ? success(undefined)
         : failure(result.error ?? 'Failed to write project context');

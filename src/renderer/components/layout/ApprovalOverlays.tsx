@@ -1,11 +1,11 @@
 /**
  * ApprovalOverlays - Non-blocking side panel for pending approval items
  *
- * Renders a slide-in panel from the left for approval items (plan actions, CLAUDE.md edits,
+ * Renders a slide-in panel from the left for approval items (plan actions, context file edits,
  * document updates, review replies). The panel overlays the sidebar, keeping the
- * chat visible so users can reference Claude's explanations while reviewing changes.
+ * chat visible so users can reference the conversation while reviewing changes.
  *
- * Uses a unified approval queue to handle multiple pending items from Claude.
+ * Uses a unified approval queue to handle multiple pending items.
  * Panel auto-expands when items arrive.
  */
 
@@ -35,7 +35,7 @@ import { getParentPath } from '../../utils/path';
 function getItemTypeLabel(type: ApprovalItem['type']): string {
   switch (type) {
     case 'plan-actions': return 'Plan Changes';
-    case 'claude-md': return 'Project Context Update';
+    case 'context-file': return 'Project Context Update';
     case 'document': return 'Document Update';
     case 'move': return 'Confirm Move';
     case 'delete': return 'Confirm Deletion';
@@ -53,7 +53,7 @@ function getItemTypeIcon(type: ApprovalItem['type']): React.ReactNode {
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
         </svg>
       );
-    case 'claude-md':
+    case 'context-file':
       return (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -119,7 +119,7 @@ export function ApprovalOverlays() {
   // Get execution methods from approval queue store
   const {
     executePlanActions,
-    executeClaudeMdWrite,
+    executeContextFileWrite,
     executeFileWrite,
     executeFileMove,
     executeFileDelete,
@@ -127,7 +127,7 @@ export function ApprovalOverlays() {
   } = useApprovalQueueStore(
     useShallow((state) => ({
       executePlanActions: state.executePlanActions,
-      executeClaudeMdWrite: state.executeClaudeMdWrite,
+      executeContextFileWrite: state.executeContextFileWrite,
       executeFileWrite: state.executeFileWrite,
       executeFileMove: state.executeFileMove,
       executeFileDelete: state.executeFileDelete,
@@ -228,11 +228,11 @@ export function ApprovalOverlays() {
     }
   }, [executePlanActions, removeById]);
 
-  const handleApplyClaudeMdEdit = useCallback(async (item: ApprovalItem & { type: 'claude-md' }, content: string) => {
+  const handleApplyContextFileEdit = useCallback(async (item: ApprovalItem & { type: 'context-file' }, content: string) => {
     if (!currentProjectId) return;
     setIsApplying(true);
     try {
-      const result = await executeClaudeMdWrite(currentProjectId, content);
+      const result = await executeContextFileWrite(currentProjectId, content);
       if (result.success) {
         removeById(item.id);
       } else {
@@ -241,7 +241,7 @@ export function ApprovalOverlays() {
     } finally {
       setIsApplying(false);
     }
-  }, [currentProjectId, executeClaudeMdWrite, removeById]);
+  }, [currentProjectId, executeContextFileWrite, removeById]);
 
   const handleAcceptDocument = useCallback(async (item: ApprovalItem & { type: 'document' }, content: string) => {
     if (!currentProjectId) return;
@@ -392,12 +392,12 @@ export function ApprovalOverlays() {
         />
       )}
 
-      {currentItem.type === 'claude-md' && (
+      {currentItem.type === 'context-file' && (
         <PendingDocumentPanel
           filePath="Project Context"
           content={currentItem.newContent}
           oldContent={currentItem.oldContent}
-          onAccept={(content) => handleApplyClaudeMdEdit(currentItem, content)}
+          onAccept={(content) => handleApplyContextFileEdit(currentItem, content)}
           onDismiss={() => handleDismiss(currentItem.id)}
           isApplying={isApplying}
           embedded

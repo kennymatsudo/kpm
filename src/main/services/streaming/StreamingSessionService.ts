@@ -31,9 +31,9 @@ import {
   type KpmToolProposal,
 } from '../../kpmTools/runtimeRegistry';
 import { buildUserContentBlocks } from '../../claude/attachmentBlocks';
-import { buildFocusedSection } from '../../claude/prompts/focusedResources';
+import { buildFocusedSection } from '../../chat/prompts/focusedResources';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
-import type { PlanContext } from '../../claude/prompts';
+import type { PlanContext } from '../../chat/prompts';
 import type { ChatProvider, FocusChatDocument, FocusedResource, PlanItem, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope, SlashCommandInfo } from '../../../shared/types';
 import { getConfig } from '../../config';
 import { clientManager } from '../../claude/clientManager';
@@ -387,7 +387,7 @@ export interface StreamingSessionServiceDeps {
       effort?: 'low' | 'medium' | 'high' | 'max';
       resumeSessionId?: string;
       mainWindow: BrowserWindow | null;
-      onClaudeMdEdit?: (projectId: string, newContent: string) => void;
+      onContextFileEdit?: (projectId: string, newContent: string) => void;
       onProjectFileWrite?: (projectId: string, filePath: string, content: string) => void;
       peekPendingFile?: (relativeFilePath: string) => string | undefined;
       onElicitation?: OnElicitation;
@@ -399,7 +399,7 @@ export interface StreamingSessionServiceDeps {
   subscribeToKpmToolProposals: (callback: (proposal: KpmToolProposal) => void) => () => void;
 
   /** Read project context file (AGENTS.md or CLAUDE.md) content for a project */
-  readClaudeMd: (projectId: string) => Promise<{ success: boolean; content: string | null; filename?: string; error?: string }>;
+  readProjectContextFile: (projectId: string) => Promise<{ success: boolean; content: string | null; filename?: string; error?: string }>;
 
   /** Read a document file from the docs/ directory */
   readDocumentFile: (
@@ -1169,15 +1169,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         mainWindow,
         autoApprove: true,
         // Callback for intercepted context file edits from the permission handler
-        onClaudeMdEdit: (editProjectId: string, newContent: string) => {
+        onContextFileEdit: (editProjectId: string, newContent: string) => {
           // Record so a subsequent Edit (built-in or propose_context_edit)
           // this turn builds on this content instead of stale disk — the
           // interception denies the write, so disk never reflects it.
           recordPendingDocumentContent(chatSessionId, CONTEXT_FILE_PENDING_CACHE_KEY, newContent);
           // Read current context file for diff display
           void (async () => {
-            const currentContent = await deps.readClaudeMd(editProjectId);
-            emitAppEvent(mainWindow?.webContents, chatEvents.claudemdUpdate, {
+            const currentContent = await deps.readProjectContextFile(editProjectId);
+            emitAppEvent(mainWindow?.webContents, chatEvents.contextFileUpdate, {
               projectId: editProjectId,
               oldContent: currentContent.success ? currentContent.content : null,
               newContent,
@@ -1239,9 +1239,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             mode: request.mode,
           }, {
             signal,
-            title: request.title ?? `${request.serverName} requests input`,
-            displayName: request.displayName ?? request.serverName,
-            description: request.description ?? request.message,
           });
           return result.behavior === 'allow'
             ? { action: 'accept' as const, content: {} }

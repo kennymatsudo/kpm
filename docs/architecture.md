@@ -231,7 +231,7 @@ KPM uses the Claude Agent SDK for Claude chat/dev sessions, the Codex SDK for Co
 
 For the tool-by-tool and file-by-file map, see the File Organization table in [`src/main/claude/CLAUDE.md`](../src/main/claude/CLAUDE.md).
 
-**System Prompt Organization**: prompt modules live in `src/main/claude/prompts/` with `buildSystemPrompt()` / `buildFocusSystemPrompt()` as entry points — see [`src/main/claude/CLAUDE.md`](../src/main/claude/CLAUDE.md).
+**System Prompt Organization**: prompt modules live in `src/main/chat/prompts/` with `buildSystemPrompt()` / `buildFocusSystemPrompt()` as entry points — see [`src/main/claude/CLAUDE.md`](../src/main/claude/CLAUDE.md).
 
 **Shared Prompt Defaults** (`src/shared/taskPromptDefaults.ts`):
 - Default task prompt template used by both prompt construction and persistence fallbacks

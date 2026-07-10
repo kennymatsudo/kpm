@@ -30,6 +30,7 @@ describe('historySlice.restoreLastSession', () => {
       success: true,
       sessions: [{
         chat_session_id: 'chat-a',
+        provider: 'claude',
         title: null,
         first_message: 'Hello',
         message_count: 2,
@@ -79,6 +80,7 @@ describe('historySlice.restoreLastSession', () => {
       success: true,
       sessions: [{
         chat_session_id: 'chat-a',
+        provider: 'claude',
         title: null,
         first_message: 'Hello',
         message_count: 2,
@@ -158,6 +160,7 @@ describe('historySlice.restoreLastSession', () => {
       success: true,
       sessions: [{
         chat_session_id: 'chat-a',
+        provider: 'claude',
         title: null,
         first_message: 'Hello',
         message_count: 1,
@@ -231,6 +234,7 @@ describe('historySlice.restoreLastSession', () => {
       success: true,
       sessions: [{
         chat_session_id: 'chat-b',
+        provider: 'claude',
         title: null,
         first_message: 'Other',
         message_count: 1,

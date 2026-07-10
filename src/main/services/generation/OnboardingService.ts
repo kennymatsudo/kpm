@@ -49,7 +49,7 @@ interface RepoScanResult {
   branches: string;
   manifests: Record<string, string>;
   readmeContent: string | null;
-  existingClaudeMd: string | null;
+  existingContextFile: string | null;
   /** Directory-only map of the repo root, so the agent knows where to investigate. */
   repoTree: string;
   scopedDirectories: ScopedDirectoryScan[];
@@ -166,7 +166,7 @@ async function scanRepo(
 
   // README and existing context files
   const readmeContent = readFileSafe(path.join(repoPath, 'README.md'));
-  const existingClaudeMd =
+  const existingContextFile =
     readFileSafe(path.join(repoPath, 'AGENTS.md')) ??
     readFileSafe(path.join(repoPath, 'CLAUDE.md'));
 
@@ -215,7 +215,7 @@ async function scanRepo(
     branches,
     manifests,
     readmeContent,
-    existingClaudeMd,
+    existingContextFile,
     repoTree,
     scopedDirectories,
   };
@@ -254,8 +254,8 @@ function buildPrompt(
     if (repo.readmeContent) {
       sections.push(`### README.md\n${repo.readmeContent}`);
     }
-    if (repo.existingClaudeMd) {
-      sections.push(`### Existing AGENTS.md / CLAUDE.md\n${repo.existingClaudeMd}`);
+    if (repo.existingContextFile) {
+      sections.push(`### Existing AGENTS.md / CLAUDE.md\n${repo.existingContextFile}`);
     }
 
     if (repo.repoTree) {

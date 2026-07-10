@@ -339,7 +339,7 @@ export function createAppServices(container: IRepositoryContainer) {
     getPromptContent,
     buildContextPrefix: (projectId, contextPaths) =>
       contextFileService.buildContextPrefix(projectId, contextPaths),
-    readProjectContextFile: (projectId) => contextFileService.readClaudeMd(projectId),
+    readProjectContextFile: (projectId) => contextFileService.readProjectContextFile(projectId),
     claudeUsageService,
     fileSummaryService,
   });

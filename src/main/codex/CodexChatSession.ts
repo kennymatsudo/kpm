@@ -13,8 +13,8 @@ import { findCodexBinaryPath } from './binary';
 import { classifyCodexError } from './errors';
 import { registerCodexMcpSession, type CodexMcpRegistration } from './KpmCodexMcpServer';
 import { summarizeThreadItem } from './threadItemPresentation';
-import type { PlanContext } from '../claude/prompts';
-import { buildItemReferenceTable } from '../claude/prompts/planFormatting';
+import type { PlanContext } from '../chat/prompts';
+import { buildItemReferenceTable } from '../chat/prompts/planFormatting';
 
 type SessionEndReason = 'completed' | 'error' | 'closed';
 
@@ -50,8 +50,8 @@ function buildCodexSystemPrompt(context: PlanContext): string {
   const focusDocument = context.focusDocument
     ? `\n# Focused Document\nPath: \`${context.focusDocument.path}\`\nTitle: ${context.focusDocument.title}\n\n<document>\n${context.focusDocument.content}\n</document>\n`
     : '';
-  const projectContext = context.claudeMdContent?.trim()
-    ? `\n# Project Context\n\n${context.claudeMdContent.trim()}\n`
+  const projectContext = context.contextFileContent?.trim()
+    ? `\n# Project Context\n\n${context.contextFileContent.trim()}\n`
     : '';
 
   return `You are Codex running inside KPM's main chat. Help the user understand codebases, plan work, and reason across connected repos.

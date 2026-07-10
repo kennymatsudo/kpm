@@ -542,15 +542,15 @@ const tracker = {
   },
 };
 
-const claudeMd = {
+const contextFile = {
   read: (projectId: string): Promise<{ success: boolean; content: string | null; error?: string }> =>
-    invokeFlat<{ content: string | null; filename?: string }>(IPC_CHANNELS.claudeMd.read, { projectId }).then((result) =>
+    invokeFlat<{ content: string | null; filename?: string }>(IPC_CHANNELS.contextFile.read, { projectId }).then((result) =>
       result.success
         ? { success: true, content: result.content }
         : { success: false, content: null, error: result.error }
     ),
   write: (projectId: string, content: string): Promise<{ success: boolean; error?: string }> =>
-    invokeFlat<void>(IPC_CHANNELS.claudeMd.write, { projectId, content }),
+    invokeFlat<void>(IPC_CHANNELS.contextFile.write, { projectId, content }),
 };
 
 const contextFiles = {
@@ -559,14 +559,14 @@ const contextFiles = {
   files?: {
       path: string;
       name: string;
-      isClaudeMd: boolean;
+      isProjectContextFile: boolean;
       modifiedAt: string;
     }[];
     error?: string;
   }> => invokeFlat<{ files: {
       path: string;
       name: string;
-      isClaudeMd: boolean;
+      isProjectContextFile: boolean;
       modifiedAt: string;
     }[] }>(IPC_CHANNELS.context.list, { projectId }),
   read: (projectId: string, path: string): Promise<{ success: boolean; content: string | null; error?: string }> =>
@@ -1215,7 +1215,7 @@ export const api = {
   plan,
   groups,
   tracker,
-  claudeMd,
+  contextFile,
   contextFiles,
   menu,
   storybook,

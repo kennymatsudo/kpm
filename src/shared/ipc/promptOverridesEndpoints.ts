@@ -7,7 +7,7 @@ import { resultOf, type EndpointDefinition } from './endpoints';
 import type { PromptDefinitionInfo } from '../types';
 
 /**
- * Mirrors `PromptDefinition` from `main/claude/prompts/promptRegistry.ts` —
+ * Mirrors `PromptDefinition` from `main/chat/prompts/promptRegistry.ts` —
  * not re-imported from there to avoid a shared/ -> main/ dependency.
  */
 interface PromptDefinitionWithContent {

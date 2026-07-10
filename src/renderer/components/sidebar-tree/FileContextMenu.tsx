@@ -47,7 +47,7 @@ export function FileContextMenu({
   onUnlinkFromConfluence,
   isLinkedToConfluence,
 }: FileContextMenuProps) {
-  const isClaudeMd = isContextFile(node.name);
+  const isProjectContextFile = isContextFile(node.name);
   const isMarkdown = node.name.endsWith('.md');
 
   return (
@@ -230,7 +230,7 @@ export function FileContextMenu({
       {/* Rename */}
       <DropdownMenu.Item
         onClick={onRename}
-        disabled={isClaudeMd}
+        disabled={isProjectContextFile}
         icon={
           <svg
             className="w-4 h-4 text-text-tertiary"
@@ -344,7 +344,7 @@ export function FileContextMenu({
       <DropdownMenu.Item
         variant="danger"
         onClick={onDelete}
-        disabled={isClaudeMd}
+        disabled={isProjectContextFile}
         icon={
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path

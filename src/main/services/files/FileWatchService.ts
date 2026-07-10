@@ -19,7 +19,7 @@ export interface ContextFile {
   /** File name */
   name: string;
   /** Whether this is a project context file (AGENTS.md / CLAUDE.md) */
-  isClaudeMd: boolean;
+  isProjectContextFile: boolean;
   /** Last modified timestamp */
   modifiedAt: string;
 }
@@ -72,7 +72,7 @@ class FileWatchServiceClass {
             files.push({
               path: relativePath,
               name: relativePath,
-              isClaudeMd: isContextFile(entry.name),
+              isProjectContextFile: isContextFile(entry.name),
               modifiedAt: stats.mtime.toISOString(),
             });
           }
@@ -83,13 +83,13 @@ class FileWatchServiceClass {
 
       // Sort: context files first (by priority), then alphabetically by path
       files.sort((a, b) => {
-        if (a.isClaudeMd && b.isClaudeMd) {
+        if (a.isProjectContextFile && b.isProjectContextFile) {
           const priorityDiff =
             getContextFilePriority(path.basename(a.path)) - getContextFilePriority(path.basename(b.path));
           if (priorityDiff !== 0) return priorityDiff;
-        } else if (a.isClaudeMd) {
+        } else if (a.isProjectContextFile) {
           return -1;
-        } else if (b.isClaudeMd) {
+        } else if (b.isProjectContextFile) {
           return 1;
         }
         return a.path.localeCompare(b.path);
@@ -255,7 +255,7 @@ class FileWatchServiceClass {
    * Read the project context file (AGENTS.md or CLAUDE.md) for a project.
    * Checks AGENTS.md first, then falls back to CLAUDE.md.
    */
-  async readClaudeMd(projectId: string): Promise<{ success: boolean; content: string | null; filename?: string; error?: string }> {
+  async readProjectContextFile(projectId: string): Promise<{ success: boolean; content: string | null; filename?: string; error?: string }> {
     const project = this.getProject(projectId);
     if (!project) {
       return { success: false, content: null, error: 'Project not found' };
@@ -279,7 +279,7 @@ class FileWatchServiceClass {
    * Write content to the project context file for a project.
    * Writes to the first existing context file, or creates AGENTS.md if none exist.
    */
-  async writeClaudeMd(projectId: string, content: string): Promise<{ success: boolean; error?: string }> {
+  async writeProjectContextFile(projectId: string, content: string): Promise<{ success: boolean; error?: string }> {
     const project = this.getProject(projectId);
     if (!project) {
       return { success: false, error: 'Project not found' };

@@ -184,12 +184,11 @@ export const chatEvents = {
    */
   truncated: { channel: 'chat:truncated', payload: payloadOf<{ projectId: string; chatSessionId: string; reason: 'max_tokens' }>() },
   /**
-   * Emitted when the permission handler intercepts a Claude-initiated
-   * CLAUDE.md/context-file edit, for diff display. No preload subscriber
-   * exists today — kept wired per the migration's "don't silently delete a
-   * dead event" rule.
+   * Emitted when the permission handler intercepts a project context-file
+   * edit, for diff display. No preload subscriber exists today — kept wired
+   * per the migration's "don't silently delete a dead event" rule.
    */
-  claudemdUpdate: { channel: 'chat:claudemd-update', payload: payloadOf<{ projectId: string; oldContent: string | null; newContent: string; forceReview: boolean }>() },
+  contextFileUpdate: { channel: 'chat:context-file-update', payload: payloadOf<{ projectId: string; oldContent: string | null; newContent: string; forceReview: boolean }>() },
 } satisfies Record<string, EventDefinition>;
 
 export type ChatEvents = typeof chatEvents;

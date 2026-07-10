@@ -11,7 +11,7 @@ import {
   saveOnboardingContext,
   saveOnboardingContextDirectories,
 } from '../../services/onboardingService';
-import { readClaudeMdFile } from '../../services/contextFileService';
+import { readContextFile } from '../../services/contextFileService';
 import { isPlaceholderContext } from '../../../shared/contextFile';
 import type { OnboardingTaskMeta } from '../../services/onboardingTaskBridge';
 import {
@@ -75,7 +75,7 @@ export function RegenerateContextModal() {
   // Load existing context file and persisted directories when modal opens
   useEffect(() => {
     if (isOpen && contextProjectId) {
-      void readClaudeMdFile(contextProjectId).then((result) => {
+      void readContextFile(contextProjectId).then((result) => {
         setExistingContent(result.success ? result.content : null);
       });
       void getOnboardingContextDirectories(contextProjectId).then((dirs) => {

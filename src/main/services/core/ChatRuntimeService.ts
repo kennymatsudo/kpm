@@ -7,7 +7,7 @@ import type { OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import { buildSdkOptions, type ModelType } from '../../claude/sdkOptionsBuilder';
 import { subscribeToKpmToolProposals } from '../../kpmTools/runtimeRegistry';
 import { createToolCallLogger } from '../toollog';
-import type { PlanContext } from '../../claude/prompts';
+import type { PlanContext } from '../../chat/prompts';
 import { unwrapOrThrow } from '../result';
 import { createChatService } from './ChatService';
 import { CHAT_PROVIDER_KEY, parseChatProvider } from '../../../shared/appSettings';
@@ -82,7 +82,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
       effort?: 'low' | 'medium' | 'high' | 'max';
       resumeSessionId?: string;
       mainWindow: BrowserWindow | null;
-      onClaudeMdEdit?: (projectId: string, newContent: string) => void;
+      onContextFileEdit?: (projectId: string, newContent: string) => void;
       onProjectFileWrite?: (projectId: string, filePath: string, content: string) => void;
       peekPendingFile?: (relativeFilePath: string) => string | undefined;
       onElicitation?: OnElicitation;
@@ -110,7 +110,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         effort: options.effort,
         resumeSessionId: options.resumeSessionId,
         mainWindow: options.mainWindow,
-        onClaudeMdEdit: options.onClaudeMdEdit,
+        onContextFileEdit: options.onContextFileEdit,
         onProjectFileWrite: options.onProjectFileWrite,
         peekPendingFile: options.peekPendingFile,
         onElicitation: options.onElicitation,
@@ -122,8 +122,8 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
       });
     },
     subscribeToKpmToolProposals,
-    readClaudeMd: async (projectId: string) => {
-      const result = await services.contextFileService.readClaudeMd(projectId);
+    readProjectContextFile: async (projectId: string) => {
+      const result = await services.contextFileService.readProjectContextFile(projectId);
       return result.ok
         ? { success: true, ...result.data }
         : { success: false, content: null, error: result.error };

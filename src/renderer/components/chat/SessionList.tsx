@@ -2,6 +2,7 @@ import { useChatStore, useProjectDomainStore } from '../../stores';
 import { cancelChatSession, disconnectChatSession } from '../../services/chatService';
 import { useShallow } from 'zustand/react/shallow';
 import { CloseIcon } from '../icons';
+import { getProviderCapabilities } from '../../../shared/providerCapabilities';
 
 /**
  * Session tabs showing all active and recent sessions.
@@ -45,6 +46,7 @@ function SessionTab({
 }) {
   const {
     title,
+    provider,
     sessionNumber,
     messageCount,
     isStreaming,
@@ -56,6 +58,7 @@ function SessionTab({
     const session = state.sessions.get(sessionId);
     return {
       title: session?.title ?? null,
+      provider: session?.provider ?? null,
       sessionNumber: session?.sessionNumber ?? null,
       messageCount: session?.messages.length ?? 0,
       isStreaming: session?.isStreaming ?? false,
@@ -69,6 +72,8 @@ function SessionTab({
   if (sessionNumber === null) {
     return null;
   }
+
+  const displayTitle = provider && getProviderCapabilities(provider).sessionSummaries ? title : null;
 
   const handleCloseSession = async (chatSessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -130,9 +135,9 @@ function SessionTab({
         <span className="w-2 h-2 rounded-full flex-shrink-0 bg-text-muted/40" />
       )}
 
-      {/* Session name: SDK summary when available, fall back to "Session N". */}
-      <span className="flex-1 min-w-0 truncate" title={title ?? undefined}>
-        {title ?? `Session ${sessionNumber}`}
+      {/* Session name: provider summary when available, fall back to "Session N". */}
+      <span className="flex-1 min-w-0 truncate" title={displayTitle ?? undefined}>
+        {displayTitle ?? `Session ${sessionNumber}`}
       </span>
 
       {/* Message count badge */}

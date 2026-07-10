@@ -60,7 +60,7 @@ Each is tied to a principle. Breaking one breaks the cockpit's safety guarantees
 
 - **No emojis in the UI.** Use SVG icons from `src/renderer/components/icons/`.
 - **No self-referential UI text.** Labels describe what something *does*, not what it contains or how it works internally. Avoid "auto-injected", "system prompt for X", "used by Y".
-- **Claude responses are utilitarian, not chatty.** See `RESPONSE_STYLE` in `src/main/claude/prompts/workspace.ts`.
+- **Claude responses are utilitarian, not chatty.** See `RESPONSE_STYLE` in `src/main/chat/prompts/workspace.ts`.
 
 ## Multi-file recipes
 

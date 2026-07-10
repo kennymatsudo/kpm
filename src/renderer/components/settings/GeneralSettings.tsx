@@ -113,7 +113,7 @@ export function GeneralSettings({ currentProjectId }: Props = {}) {
           <div className="space-y-1">
             <p className="text-sm font-medium text-text-primary">Review Claude changes before applying</p>
             <p className="text-xs text-text-muted">
-              Turn off to apply plan edits, document updates, context changes, and deletions as soon as Claude proposes them.
+              Turn off to apply plan edits, document updates, context changes, and deletions as soon as they are proposed.
               Existing chat prompts update on the next new session.
             </p>
           </div>

@@ -238,7 +238,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Store: `src/renderer/stores/project/uiSlice.ts` and `src/renderer/stores/projectDomains.ts` (focused resources list)
   - Service: `src/main/services/core/ChatRuntimeService.ts` (builds context from focused resources)
   - Component: `src/renderer/components/sidebar-tree/ReposAndFilesSection.tsx`, `src/renderer/components/sidebar-tree/RepoContextMenu.tsx`, `src/renderer/components/sidebar-tree/FileContextMenu.tsx`
-  - Prompt building: `src/main/claude/prompts/focusedResources.ts`
+  - Prompt building: `src/main/chat/prompts/focusedResources.ts`
   - Type: `FocusedResource` in `shared/types.ts`
 - **Entry points / surfaces:**
   - Drag file from file tree to "Focused Resources" panel
@@ -255,13 +255,13 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ### 13. Claude System Prompts (Grounding, Constraints, Plan Rules, Response Style, User Overrides)
 - **What it does:** Dynamic system prompt assembled from fixed sections rather than a mode taxonomy — an earlier EXPLORE/PLAN/ANALYZE/ADVISE mode system was deliberately removed on the premise that modern Claude reads intent from the prompt rather than needing a mode switch. Sections include: grounding (repo access, scan-before-modify), constraints, change-application behavior (manual review vs. auto-apply), workspace boundaries, tool decision tree, plan structure rules, task creation guidance, response style, project context (CLAUDE.md), and the current plan reference table. `currentView` ('plan' | 'workspace') adds a short view-context hint without reintroducing mode-based behavior branching. Users can override any registry prompt section with custom content from Settings → Prompts; overrides take precedence over the built-in default and a "Reset" button restores it.
 - **Key code locations:**
-  - Module: `src/main/claude/prompts/` directory
-  - Assembly: `src/main/claude/prompts/index.ts` (`buildSystemPrompt`, `buildFocusSystemPrompt`)
-  - Repo access + plan-modification guidance: `src/main/claude/prompts/modes.ts` (name retained; no longer a mode taxonomy)
-  - Tool docs: `src/main/claude/prompts/toolDocs.ts`
-  - Workspace guidelines: `src/main/claude/prompts/workspace.ts` (grounding, constraints, workspace section, plan system rules, response style)
-  - Plan formatting: `src/main/claude/prompts/planFormatting.ts`
-  - Prompt registry: `src/main/claude/prompts/promptRegistry.ts` (all prompt keys and defaults)
+  - Module: `src/main/chat/prompts/` directory
+  - Assembly: `src/main/chat/prompts/index.ts` (`buildSystemPrompt`, `buildFocusSystemPrompt`)
+  - Repo access + plan-modification guidance: `src/main/chat/prompts/modes.ts` (name retained; no longer a mode taxonomy)
+  - Tool docs: `src/main/chat/prompts/toolDocs.ts`
+  - Workspace guidelines: `src/main/chat/prompts/workspace.ts` (grounding, constraints, workspace section, plan system rules, response style)
+  - Plan formatting: `src/main/chat/prompts/planFormatting.ts`
+  - Prompt registry: `src/main/chat/prompts/promptRegistry.ts` (all prompt keys and defaults)
   - Prompt building: `src/main/claude/sdkOptionsBuilder.ts` (selects focus vs. main prompt), `src/main/services/streaming/StreamingSessionService.ts` (supplies `PlanContext`)
   - Overrides: `src/main/services/core/PromptOverrideService.ts`, `src/main/ipc/handlers/promptOverrides.ts`, `src/renderer/stores/promptOverrideStore.ts`, `src/renderer/components/settings/PromptsSettings.tsx` (editor UI); stored in `app_settings` with a `prompt_override:` key prefix
 - **Entry points / surfaces:**
@@ -269,7 +269,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - View context (Plan vs. Workspace) influences a short contextual hint, not overall structure
   - Settings → Prompts tab: pick a prompt from a dropdown, edit in a text editor showing the default as placeholder, "Reset" to clear an override
 - **Dependencies / integrations:**
-  - Plan context: `PlanContext` (`src/main/claude/prompts/types.ts`) supplied by the streaming session
+  - Plan context: `PlanContext` (`src/main/chat/prompts/types.ts`) supplied by the streaming session
   - Approval mode: `chat_approval_mode` setting changes the "Change Application" section's wording (manual review vs. auto-apply)
   - Task prompts: task creation guidance includes the active `TaskPromptTemplate` when set
 - **Maturity signal:** Mature. Sophisticated multi-module approach with a straightforward override mechanism layered on top. Roadmap for phase 4 includes customer-facing prompt builder.
@@ -278,7 +278,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **What it does:** KPM provides Claude with direct function calls to query and modify plan items, manage documents, and more — roughly 20 tools spanning plan/relations/groups, Jira, documents, GitHub, Confluence, briefing, files, git, and Storybook. Tools are implemented as direct function calls (not a subprocess MCP server), reducing latency, and run in the main process with full database access. Modification tools go through the approval flow before executing. When a tool result exceeds the SDK's token budget, the SDK spills the full payload to a file under `~/.claude/projects/` instead of returning it inline; the `read_spill_file` tool lets Claude page through that file (up to 50,000 characters per chunk via `offset`/`length`) since the spill directory sits outside the sandboxed Read/Grep/Glob scope — it's the only path back to that content.
 - **Key code locations:**
   - Factory: `src/main/kpmTools/tools/createKpmServer.ts` (creates MCP server from tool functions; `runWithToolExecutionContext`)
-  - Tool modules: `src/main/kpmTools/tools/*.ts` (plan-items, plan-changes, jira, relations, document-read, document-update, document-edit, groups, confluence, github, storybook, briefing, claudemd-update, file-move, file-delete, list-project-files, plan-refs, review-assessment, spill-read, git-read)
+  - Tool modules: `src/main/kpmTools/tools/*.ts` (plan-items, plan-changes, jira, relations, document-read, document-update, document-edit, groups, confluence, github, storybook, briefing, context-file-update, file-move, file-delete, list-project-files, plan-refs, review-assessment, spill-read, git-read)
   - Spill recovery: `src/main/kpmTools/tools/spill-read.ts` (`read_spill_file`, validates the path stays under `~/.claude/projects/`); tool docs in `toolDocs.ts` instruct calling with just `file_path` first to get `totalChars`, then paging until `hasMore` is false
   - Tool logging: `src/main/services/toollog/ToolCallLogger.ts` (logs all tool calls)
   - Permission prompting: `src/main/claude/permissions.ts` (permission model via SDK)
@@ -478,8 +478,8 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ### 40. Document & Context-File Editing Tools (Propose Create/Edit)
 - **What it does:** Claude proposes markdown changes through three tools that share one approval mechanism. Creating a document proposes a brand-new file — the diff shows full new content. Editing an existing document uses `old_string` → `new_string` matching, with a batched multi-hunk mode (`edits[]`) that validates and applies all hunks atomically as one combined diff and a single approval entry. The context-file tool uses the same edit mechanism but targets CLAUDE.md/AGENTS.md specifically, tracked as a distinct approval type from other documents. All three queue through the approval system (or apply immediately in auto-apply mode).
 - **Key code locations:**
-  - Claude tools: `src/main/kpmTools/tools/document-update.ts` (create), `document-edit.ts` (edit, single- and multi-hunk), `claudemd-update.ts` (context-file edit)
-  - Approval queue: `src/renderer/stores/approvalQueueStore.ts` (`PendingDocumentItem`, `PendingClaudeMdItem` types)
+  - Claude tools: `src/main/kpmTools/tools/document-update.ts` (create), `document-edit.ts` (edit, single- and multi-hunk), `context-file-update.ts` (context-file edit)
+  - Approval queue: `src/renderer/stores/approvalQueueStore.ts` (`PendingDocumentItem`, `PendingContextFileItem` types)
   - Components: `src/renderer/components/planning/PendingDocumentPanel.tsx`, `src/renderer/components/ui/DiffViewer.tsx` (shared diff rendering)
 - **Entry points / surfaces:**
   - Pending document panel / pending actions panel (approval overlay): diff view with Accept/Reject
@@ -497,7 +497,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Hook: `src/renderer/components/focus-mode/useReadingProgress.ts` (active heading + scroll progress)
   - Store: `src/renderer/stores/focusModeStore.ts` (open/close, reading theme and scroll-position persistence in localStorage)
   - Entry point: `src/renderer/components/workspace/FileEditor.tsx` (`handleEnterFocus` — focus button shown only for markdown files)
-  - Prompt: `src/main/claude/prompts/index.ts` (focus-session system prompt: focused document is the implicit subject; repos read-only; document/context changes still require `propose_document_edit`/`propose_context_edit`)
+  - Prompt: `src/main/chat/prompts/index.ts` (focus-session system prompt: focused document is the implicit subject; repos read-only; document/context changes still require `propose_document_edit`/`propose_context_edit`)
   - Session plumbing: `src/main/services/core/ChatService.ts` (`focusDocument` param), `src/main/claude/sdkOptionsBuilder.ts` (`isFocusSession`), `getFocusDocumentChatSession` in `src/renderer/services/chatService.ts`
   - DB: `chat_sessions` columns `scope` (`'main' | 'focus_document'`), `focus_document_path`, `focus_document_title`, `focus_document_hash` — migration `091_focus_document_chat_sessions`; one session per (project, document path)
 - **Entry points / surfaces:**
@@ -698,7 +698,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Dependencies / integrations:**
   - `PollScheduler`: one registered task per enabled loop (`loop:<id>`), interval derived from `interval_minutes`
   - Claude Agent SDK: each tick is a single grounded agent turn with KPM MCP tools and the user's enabled external MCP servers/plugins; `autoApprove: true` since no UI is present to answer permission prompts on a background tick
-  - Document/context-file tools: `maintain` mode subscribes to `subscribeToDocumentUpdate` / `subscribeToClaudeMdUpdate` (keyed by a synthetic `loop:<id>` session key) and writes accumulated file content directly via `resolveScopedPath`, rather than emitting approval-queue proposals
+  - Document/context-file tools: `maintain` mode subscribes to `subscribeToDocumentUpdate` / `subscribeToContextFileUpdate` (keyed by a synthetic `loop:<id>` session key) and writes accumulated file content directly via `resolveScopedPath`, rather than emitting approval-queue proposals
   - `UpdateEventBus`: emits a `loop_finding` event consumed by the notification system
 - **Maturity signal:** Mature. `maintain` mode is a deliberate, scoped exception to the approval-queue convention — proposals never leave the main/board interactive flow, but a scheduled loop has no user present to approve them, so writes are auto-applied and scoped to the project folder via `resolveScopedPath`.
 
@@ -882,7 +882,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - File system: scans directories
   - Context file: saves generated AGENTS.md to project folder; also injected into board dev-session prompts (see feature 19)
   - Background task store: generation survives modal close; topbar badge resumes into `RegenerateContextModal` when the result can't be queue-routed (different project open)
-  - Approval queue: `processClaudeMdUpdate` handles review-or-auto-apply for background completions
+  - Approval queue: `processContextFileUpdate` handles review-or-auto-apply for background completions
 - **Maturity signal:** Mature. Create/generate flows decoupled; generation is opt-in and non-blocking.
 
 ---
@@ -926,7 +926,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Service: `src/main/services/core/SlackTriageService.ts` (triage logic, channel-link management, action validation)
   - Adapter: `src/main/services/core/slackTriageAdapter.ts` (MCP integration wrapper)
   - Repository: `src/main/db/interfaces/slack.ts` (`ISlackChannelLinkRepository`) and triage-item repositories
-  - Claude prompts: `src/main/claude/prompts/slackTriage.ts` (classification prompt)
+  - Claude prompts: `src/main/chat/prompts/slackTriage.ts` (classification prompt)
   - Types: `SlackTriageCreateTaskAction`, `SlackTriageUpdateDocumentAction`, `SlackTriageReplyAction` (`shared/types`)
   - Component: `src/renderer/components/slack/` (triage panel), `src/renderer/components/settings/` (channel-link UI)
   - Store: `src/renderer/stores/useSlackTriageStore.ts`
@@ -959,7 +959,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Key code locations:**
   - Store: `src/renderer/stores/approvalQueueStore.ts` (unified queue)
   - Component: `src/renderer/components/planning/PendingActionsPanel.tsx`, approval overlays
-  - Discriminated union types: `PendingPlanActionsItem`, `PendingDocumentItem`, `PendingClaudeMdItem`, `PendingImplementationItem`, `PendingReviewReplyItem`
+  - Discriminated union types: `PendingPlanActionsItem`, `PendingDocumentItem`, `PendingContextFileItem`, `PendingImplementationItem`, `PendingReviewReplyItem`
 - **Why it matters:** Prevents Claude from making changes unilaterally. Single approval model for all change types. Reduces user confusion.
 
 ### 85. Store Events (Cross-Store Communication)
@@ -1017,10 +1017,10 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Why it matters:** Type-safe tool definitions. SDK validates inputs. Errors caught early.
 
 ### 92. Prompt Registry (Centralized Prompt Definitions)
-- **Architecture:** All Claude system prompts registered in `src/main/claude/prompts/promptRegistry.ts`. Each prompt has: key, name, description, category, default content, variables. System prompt built by assembling registry modules. User can override any prompt.
+- **Architecture:** All Claude system prompts registered in `src/main/chat/prompts/promptRegistry.ts`. Each prompt has: key, name, description, category, default content, variables. System prompt built by assembling registry modules. User can override any prompt.
 - **Key code locations:**
-  - Registry: `src/main/claude/prompts/promptRegistry.ts`
-  - Modules: `src/main/claude/prompts/*.ts` (modes, tools, workspace, etc.)
+  - Registry: `src/main/chat/prompts/promptRegistry.ts`
+  - Modules: `src/main/chat/prompts/*.ts` (modes, tools, workspace, etc.)
   - Override service: `src/main/services/core/PromptOverrideService.ts` (resolves user overrides)
   - Prompt building: `src/main/services/streaming/StreamingSessionService.ts`
 - **Why it matters:** Centralized prompt management. Easy to customize. Versioning and testing prompts.
@@ -1039,8 +1039,8 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Architecture:** When a chat session needs plan context, `buildContext()` (from `createContextBuilder`) queries the project, repos, attachments, and plan items and assembles a `PlanContext` for the system prompt. `buildItemReferenceTable()` renders the item tree with hierarchy, status, and labels, switching to a root-only summary above `FULL_HIERARCHY_THRESHOLD` items to avoid prompt bloat.
 - **Key code locations:**
   - Function: `src/main/claude/contextBuilders.ts` (`createContextBuilder`, `buildContext`)
-  - Types: `src/main/claude/prompts/types.ts` (`PlanContext`)
-  - Formatting: `src/main/claude/prompts/planFormatting.ts` (`buildItemReferenceTable`, `FULL_HIERARCHY_THRESHOLD`)
+  - Types: `src/main/chat/prompts/types.ts` (`PlanContext`)
+  - Formatting: `src/main/chat/prompts/planFormatting.ts` (`buildItemReferenceTable`, `FULL_HIERARCHY_THRESHOLD`)
   - Size control: full hierarchy below threshold, root items + `query_plan_items` tool above it
 - **Why it matters:** Claude understands project structure without exposing all items. Efficient context encoding.
 
@@ -1129,7 +1129,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Key code locations:**
   - Project field: `projects.storybook_url`
   - Claude tool: `src/main/kpmTools/tools/storybook.ts`
-  - Prompt docs: `src/main/claude/prompts/toolDocs.ts`
+  - Prompt docs: `src/main/chat/prompts/toolDocs.ts`
   - Project service: `src/main/services/core/ProjectService.ts`
   - Component: `src/renderer/components/settings/StorybookSettings.tsx`
   - IPC handlers: `src/main/ipc/handlers/projects.ts`

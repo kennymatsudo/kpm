@@ -2,10 +2,10 @@
  * Context file domain endpoint registry.
  *
  * Covers two `IPC_CHANNELS` namespaces served by one handler file
- * (`handlers/files.ts`): `claudeMd.*` (the project's AGENTS.md / CLAUDE.md)
+ * (`handlers/files.ts`): `contextFile.*` (the project's AGENTS.md / CLAUDE.md)
  * and `context.*` (arbitrary .md files in the project root). Method names
- * are dotted with a `claudeMd.` / `context.` prefix so `toNestedChannels`
- * rebuilds both `IPC_CHANNELS.claudeMd` and `IPC_CHANNELS.context` from this
+ * are dotted with a `contextFile.` / `context.` prefix so `toNestedChannels`
+ * rebuilds both `IPC_CHANNELS.contextFile` and `IPC_CHANNELS.context` from this
  * one registry.
  */
 
@@ -17,7 +17,7 @@ import { uuid } from './sharedSchemas';
 interface ContextFile {
   path: string;
   name: string;
-  isClaudeMd: boolean;
+  isProjectContextFile: boolean;
   modifiedAt: string;
 }
 
@@ -83,13 +83,13 @@ const relativePath = z
   .refine(isSafeRelativePath, 'Path must be a normalized relative path within the project');
 
 export const contextEndpoints = {
-  'claudeMd.read': {
-    channel: 'claudemd:read',
+  'contextFile.read': {
+    channel: 'context-file:read',
     params: z.object({ projectId: uuid }),
     result: resultOf<{ content: string | null; filename?: string }>(),
   },
-  'claudeMd.write': {
-    channel: 'claudemd:write',
+  'contextFile.write': {
+    channel: 'context-file:write',
     params: z.object({ projectId: uuid, content: z.string().max(1000000, 'Content too large (max 1MB)') }),
     result: resultOf<void>(),
   },

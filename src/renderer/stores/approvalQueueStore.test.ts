@@ -123,6 +123,32 @@ describe('approvalQueueStore — review reply flow', () => {
   });
 });
 
+describe('approvalQueueStore — context file flow', () => {
+  let api: MockApi;
+
+  beforeEach(() => {
+    api = installMockApi();
+    useApprovalQueueStore.getState().clearQueue();
+    useApprovalQueueStore.setState({ userMinimized: false });
+  });
+
+  it('queues context file proposals with the neutral approval item type', () => {
+    useApprovalQueueStore.getState().processContextFileUpdate('project-1', 'old', 'new');
+
+    const queue = useApprovalQueueStore.getState().queue;
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({ type: 'context-file', oldContent: 'old', newContent: 'new' });
+    expect(api.contextFile.write).not.toHaveBeenCalled();
+  });
+
+  it('writes through the contextFile API when executed', async () => {
+    const result = await useApprovalQueueStore.getState().executeContextFileWrite('project-1', 'new content');
+
+    expect(result).toEqual({ success: true });
+    expect(api.contextFile.write).toHaveBeenCalledWith('project-1', 'new content');
+  });
+});
+
 describe('approvalQueueStore — file move flow', () => {
   let api: MockApi;
 

@@ -316,7 +316,7 @@ function createDeps(sendSpy: (channel: string, payload: unknown) => void): Strea
     getPlanItems: () => [],
     buildSdkOptions: () => ({}),
     subscribeToKpmToolProposals: () => () => {},
-    readClaudeMd: async () => ({ success: true, content: '', filename: 'AGENTS.md' }),
+    readProjectContextFile: async () => ({ success: true, content: '', filename: 'AGENTS.md' }),
     readDocumentFile: async () => ({ success: true, content: '' }),
   };
 }

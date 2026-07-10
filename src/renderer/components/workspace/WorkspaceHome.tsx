@@ -11,7 +11,7 @@ import {
 } from '../../stores';
 import type { FocusedResource } from '../../../shared/types';
 import { getBaseName } from '../../utils/path';
-import { readClaudeMdFile } from '../../services/contextFileService';
+import { readContextFile } from '../../services/contextFileService';
 import { isPlaceholderContext } from '../../../shared/contextFile';
 import { CloseIcon } from '../icons';
 
@@ -66,8 +66,8 @@ function useContextGenerationNudge() {
   const isRegenModalOpen = useContextRegenerationStore((state) => state.isOpen);
   // Re-check once a queue-routed context edit (see onboardingTaskBridge) drains,
   // since accepting it updates the file on disk without remounting this hook.
-  const pendingClaudeMdEdits = useApprovalQueueStore(
-    (state) => state.queue.filter((item) => item.type === 'claude-md').length,
+  const pendingContextFileEdits = useApprovalQueueStore(
+    (state) => state.queue.filter((item) => item.type === 'context-file').length,
   );
 
   const [needsContext, setNeedsContext] = useState(false);
@@ -78,7 +78,7 @@ function useContextGenerationNudge() {
       return;
     }
     let cancelled = false;
-    void readClaudeMdFile(projectId).then((result) => {
+    void readContextFile(projectId).then((result) => {
       if (cancelled) return;
       setNeedsContext(
         !result.success || result.content === null || isPlaceholderContext(result.content),
@@ -87,7 +87,7 @@ function useContextGenerationNudge() {
     return () => {
       cancelled = true;
     };
-  }, [projectId, hasRepos, isRegenModalOpen, pendingClaudeMdEdits]);
+  }, [projectId, hasRepos, isRegenModalOpen, pendingContextFileEdits]);
 
   const dismissed = projectId ? localStorage.getItem(dismissedNudgeKey(projectId)) === '1' : true;
 

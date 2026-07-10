@@ -33,7 +33,7 @@ export interface RepoServicesCompositionDeps {
   /** Wraps attached context files for prepending to agent prompts. */
   buildContextPrefix: (projectId: string, contextPaths: string[]) => ReturnType<ContextFileService['buildContextPrefix']>;
   /** Reads the project-level context file (AGENTS.md/CLAUDE.md) for prepending to agent prompts. */
-  readProjectContextFile: (projectId: string) => ReturnType<ContextFileService['readClaudeMd']>;
+  readProjectContextFile: (projectId: string) => ReturnType<ContextFileService['readProjectContextFile']>;
   /** Centralized Claude token + cost tracker. */
   claudeUsageService: ClaudeUsageService;
   fileSummaryService?: FileSummaryService;

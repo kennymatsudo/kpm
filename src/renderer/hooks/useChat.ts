@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { getProviderCapabilities } from '../../shared/providerCapabilities';
 import { useChatStore, useProjectUiDomainStore } from '../stores';
 import { useShallow } from 'zustand/react/shallow';
 import type { ChatAttachment, ChatViewMode } from '../../shared/types';
@@ -100,6 +101,7 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
       : provider === 'codex'
         ? sessionState?.codexModel
         : undefined;
+    const supportsEffort = getProviderCapabilities(provider).effortLevels.levels.length > 0;
 
     let sendResult: Awaited<ReturnType<typeof sendChatMessage>>;
     try {
@@ -108,7 +110,7 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
         message,
         focusedResources: sessionFocusedResources,
         model,
-        effort: model === 'opus' ? undefined : effort,
+        effort: supportsEffort && model !== 'opus' ? effort : undefined,
         tempImages,
         chatSessionId,
         currentView,

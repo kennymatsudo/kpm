@@ -1,8 +1,11 @@
 import { useEffect } from 'react';
 import { LoadingSpinner } from '../ui/LoadingButton';
-import { useMcpServersStore } from '../../stores';
+import { useChatStore, useMcpServersStore } from '../../stores';
+import { getProviderCapabilities } from '../../../shared/providerCapabilities';
 
 export function McpServersSettings() {
+  const provider = useChatStore((state) => state.provider);
+  const capabilities = getProviderCapabilities(provider);
   const {
     plugins,
     userServers,
@@ -16,8 +19,9 @@ export function McpServersSettings() {
   } = useMcpServersStore();
 
   useEffect(() => {
+    if (!capabilities.mcpServerManagement) return;
     void loadServers();
-  }, [loadServers]);
+  }, [capabilities.mcpServerManagement, loadServers]);
 
   const enabledPlugins = plugins.filter(p => p.enabledInClaudeCode);
 
@@ -39,17 +43,25 @@ export function McpServersSettings() {
       <div>
         <h3 className="text-base font-semibold text-text-primary">MCP Servers</h3>
         <p className="text-sm text-text-secondary mt-1">
-          Choose which MCP servers Claude can use. Changes apply to new chat sessions.
+          Choose which MCP servers are available in new chat sessions.
         </p>
       </div>
 
-      {error && (
+      {!capabilities.mcpServerManagement && (
+        <div className="p-4 rounded-xl bg-surface-2 border border-border-subtle">
+          <p className="text-sm text-text-secondary">
+            MCP server management is not available for the selected chat provider.
+          </p>
+        </div>
+      )}
+
+      {capabilities.mcpServerManagement && error && (
         <div className="p-3 rounded-xl bg-danger-muted/50 border border-danger/20">
           <p className="text-sm text-danger">{error}</p>
         </div>
       )}
 
-      {isLoading ? (
+      {capabilities.mcpServerManagement && (isLoading ? (
         <div className="flex items-center gap-2 py-3">
           <LoadingSpinner className="w-4 h-4 text-text-muted" />
           <p className="text-text-secondary text-sm">Discovering servers...</p>
@@ -120,12 +132,14 @@ export function McpServersSettings() {
             </ServerSection>
           )}
         </div>
-      )}
+      ))}
 
       {/* Info note */}
-      <p className="text-xs text-text-muted">
-        External MCP tool calls require approval before they run.
-      </p>
+      {capabilities.mcpServerManagement && (
+        <p className="text-xs text-text-muted">
+          External MCP tool calls require approval before they run.
+        </p>
+      )}
     </div>
   );
 }

@@ -1,13 +1,13 @@
 /**
  * Approval Queue Store
  *
- * Manages a unified queue for all pending approvals from Claude:
+ * Manages a unified queue for all pending proposed changes:
  * - Plan actions (create/update/delete plan items)
  * - Project context file edits (AGENTS.md / CLAUDE.md)
  * - Document updates (markdown files in the project folder)
  *
  * Items are queued and processed one at a time in manual review mode to prevent
- * UI conflicts when Claude proposes multiple changes in a single response.
+ * UI conflicts when multiple changes are proposed in a single response.
  * In auto-apply mode, process methods execute the same backing operations
  * immediately without rendering approval UI.
  *
@@ -26,7 +26,7 @@ import { useGeneralSettingsStore } from './generalSettingsStore';
 import { useFileTreeStore } from './fileTreeStore';
 import { toast } from './toastStore';
 import { replyToSessionReviewThread } from '../services/reviewService';
-import { writeClaudeMdFile } from '../services/contextFileService';
+import { writeContextFile } from '../services/contextFileService';
 import { writeProjectFile, deleteProjectFile } from '../services/workspaceFileService';
 import { renameProjectEntry } from '../services/projectFileService';
 import { getParentPath } from '../utils/path';
@@ -41,8 +41,8 @@ export interface PendingPlanActionsItem {
   actions: PlanAction[];
 }
 
-export interface PendingClaudeMdItem {
-  type: 'claude-md';
+export interface PendingContextFileItem {
+  type: 'context-file';
   id: string;
   oldContent: string | null;
   newContent: string;
@@ -85,7 +85,7 @@ export interface PendingReviewReplyItem {
 
 export type ApprovalItem =
   | PendingPlanActionsItem
-  | PendingClaudeMdItem
+  | PendingContextFileItem
   | PendingDocumentItem
   | PendingMoveItem
   | PendingDeleteItem
@@ -121,7 +121,7 @@ interface ApprovalQueueState {
   enqueuePlanActions: (actions: PlanAction[]) => void;
 
   /** Add a project context file edit to the queue */
-  enqueueClaudeMdEdit: (oldContent: string | null, newContent: string) => void;
+  enqueueContextFileEdit: (oldContent: string | null, newContent: string) => void;
 
   /** Add a document update to the queue */
   enqueueDocumentUpdate: (filePath: string, content: string, oldContent: string | null) => void;
@@ -158,17 +158,17 @@ interface ApprovalQueueState {
   // Changes are queued for review or auto-applied based on the global setting.
   // ───────────────────────────────────────────────────────────────────────────
 
-  /** Process plan actions from Claude */
+  /** Process proposed plan actions */
   processPlanActions: (projectId: string, actions: PlanAction[]) => void;
 
-  /** Process project context file update from Claude */
-  processClaudeMdUpdate: (
+  /** Process proposed project context file update */
+  processContextFileUpdate: (
     projectId: string,
     oldContent: string | null,
     newContent: string
   ) => void;
 
-  /** Process document/file update from Claude */
+  /** Process proposed document/file update */
   processFileUpdate: (
     projectId: string,
     filePath: string,
@@ -177,14 +177,14 @@ interface ApprovalQueueState {
     options?: { forceReview?: boolean }
   ) => void;
 
-  /** Process a file/folder move proposal from Claude */
+  /** Process a file/folder move proposal */
   processFileMove: (
     projectId: string,
     sourcePath: string,
     targetPath: string
   ) => void;
 
-  /** Process a file/folder deletion proposal from Claude */
+  /** Process a file/folder deletion proposal */
   processFileDelete: (
     projectId: string,
     filePath: string,
@@ -216,7 +216,7 @@ interface ApprovalQueueState {
   executePlanActions: (actions: PlanAction[]) => Promise<{ success: boolean; error?: string; warning?: string }>;
 
   /** Execute project context file write */
-  executeClaudeMdWrite: (
+  executeContextFileWrite: (
     projectId: string,
     content: string
   ) => Promise<{ success: boolean; error?: string }>;
@@ -364,23 +364,23 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
     });
   },
 
-  enqueueClaudeMdEdit: (oldContent, newContent) => {
+  enqueueContextFileEdit: (oldContent, newContent) => {
     set((state) => {
-      // Replace any existing claude-md item (user should handle one at a time).
+      // Replace any existing context-file item (user should handle one at a time).
       // Preserve the *first* event's oldContent so the diff shown is original
       // disk → latest proposal, not intermediate → latest.
       const existing = state.queue.find(
-        (item): item is PendingClaudeMdItem => item.type === 'claude-md'
+        (item): item is PendingContextFileItem => item.type === 'context-file'
       );
-      const newItem: PendingClaudeMdItem = {
-        type: 'claude-md',
+      const newItem: PendingContextFileItem = {
+        type: 'context-file',
         id: existing?.id ?? generateId(),
         oldContent: existing?.oldContent ?? oldContent,
         newContent,
       };
-      const filtered = state.queue.filter((item) => item.type !== 'claude-md');
+      const filtered = state.queue.filter((item) => item.type !== 'context-file');
       // Same-content replacement during streaming preserves the user's minimize
-      // choice; a brand-new claude-md edit re-opens the panel.
+      // choice; a brand-new context-file edit re-opens the panel.
       return existing
         ? { queue: [...filtered, newItem] }
         : { queue: [...filtered, newItem], userMinimized: false };
@@ -395,7 +395,7 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
       );
 
       if (existingIndex !== -1) {
-        // Same-file replacement — Claude is still editing this file. Preserve
+        // Same-file replacement — the proposal is still editing this file. Preserve
         // both the *first* event's oldContent (so the diff stays anchored to
         // the original disk content) and the user's minimize choice.
         const existing = state.queue[existingIndex] as PendingDocumentItem;
@@ -526,14 +526,14 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
     })();
   },
 
-  processClaudeMdUpdate: (projectId, oldContent, newContent) => {
+  processContextFileUpdate: (projectId, oldContent, newContent) => {
     if (!shouldAutoApplyApprovals()) {
-      get().enqueueClaudeMdEdit(oldContent, newContent);
+      get().enqueueContextFileEdit(oldContent, newContent);
       return;
     }
 
     void (async () => {
-      const result = await get().executeClaudeMdWrite(projectId, newContent);
+      const result = await get().executeContextFileWrite(projectId, newContent);
       if (result.success) {
         toast.success('Project context updated');
       } else {
@@ -548,11 +548,11 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
       // Handle project context files specially
       if (isContextFile(filePath)) {
         if (forceReview || !shouldAutoApplyApprovals()) {
-          get().enqueueClaudeMdEdit(oldContent, content);
+          get().enqueueContextFileEdit(oldContent, content);
           return;
         }
 
-        const result = await get().executeClaudeMdWrite(projectId, content);
+        const result = await get().executeContextFileWrite(projectId, content);
         if (result.success) {
           toast.success('Project context updated');
         } else {
@@ -632,9 +632,9 @@ export const useApprovalQueueStore = create<ApprovalQueueState>((set, get) => ({
     }
   },
 
-  executeClaudeMdWrite: async (projectId, content) => {
+  executeContextFileWrite: async (projectId, content) => {
     try {
-      const result = await writeClaudeMdFile(projectId, content);
+      const result = await writeContextFile(projectId, content);
       return result;
     } catch (error) {
       return { success: false, error: (error as Error).message };

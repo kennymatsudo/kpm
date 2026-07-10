@@ -155,7 +155,7 @@ export const AgentStartModal = memo(function AgentStartModal({
         if (result.success && result.files) {
           setContextFiles(
             result.files
-              .filter((f) => !f.isClaudeMd)
+              .filter((f) => !f.isProjectContextFile)
               .map((f) => ({ path: f.path, name: f.name }))
           );
         } else if (!result.success) {

@@ -11,7 +11,7 @@ import { useBackgroundTaskStore } from '../stores/backgroundTaskStore';
 import { useApprovalQueueStore } from '../stores/approvalQueueStore';
 import { useContextRegenerationStore } from '../stores/contextRegenerationStore';
 import { useProjectDomainStore } from '../stores/projectDomains';
-import { readClaudeMdFile } from './contextFileService';
+import { readContextFile } from './contextFileService';
 import {
   generateOnboardingContext,
   hasOnboardingApi,
@@ -98,10 +98,10 @@ export function initOnboardingTaskBridge(): () => void {
       if (!isRegenModalOpen && meta?.projectId === currentProjectId) {
         void (async () => {
           try {
-            const existing = await readClaudeMdFile(meta.projectId);
+            const existing = await readContextFile(meta.projectId);
             useApprovalQueueStore
               .getState()
-              .processClaudeMdUpdate(meta.projectId, existing.content, content);
+              .processContextFileUpdate(meta.projectId, existing.content, content);
             useBackgroundTaskStore.getState().complete(taskId, { result: content });
             useBackgroundTaskStore.getState().dismiss(taskId);
           } catch {

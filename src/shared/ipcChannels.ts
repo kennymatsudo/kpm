@@ -242,7 +242,7 @@ const artifactChannels = toNestedChannels(artifactEndpoints) as {
 };
 
 const contextEndpointChannels = toNestedChannels(contextEndpoints) as {
-  claudeMd: { read: string; write: string };
+  contextFile: { read: string; write: string };
   context: {
     list: string;
     read: string;
@@ -618,7 +618,7 @@ export const IPC_CHANNELS = {
   // ===========================================================================
   // Project Context File (AGENTS.md / CLAUDE.md)
   // ===========================================================================
-  claudeMd: contextEndpointChannels.claudeMd,
+  contextFile: contextEndpointChannels.contextFile,
 
   // ===========================================================================
   // Prompt Overrides

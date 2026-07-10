@@ -6,7 +6,7 @@
  */
 
 import type { IAppSettingsRepository } from '../../db/interfaces';
-import { PROMPT_REGISTRY, PROMPT_REGISTRY_MAP, type PromptCategory, type PromptDefinition } from '../../claude/prompts/promptRegistry';
+import { PROMPT_REGISTRY, PROMPT_REGISTRY_MAP, type PromptCategory, type PromptDefinition } from '../../chat/prompts/promptRegistry';
 import { success, failure, type ServiceResult } from '../result';
 
 // =============================================================================

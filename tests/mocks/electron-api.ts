@@ -52,7 +52,6 @@ export function createMockApi() {
       onDone: noopUnsub,
       onError: noopUnsub,
       onActivity: noopUnsub,
-      onClaudeMdUpdate: noopUnsub,
     },
 
     projects: {
@@ -188,7 +187,7 @@ export function createMockApi() {
       },
     },
 
-    claudeMd: {
+    contextFile: {
       read: vi.fn().mockResolvedValue({ success: true, content: '' }),
       write: vi.fn().mockResolvedValue({ success: true }),
       watch: vi.fn().mockResolvedValue({ success: true }),

@@ -4,8 +4,8 @@ import type { ToolDefinition as PiSdkToolDefinition } from '@earendil-works/pi-c
 import type { IChatSession } from '../services/streaming/IChatSession';
 import { getConfig } from '../config';
 import { buildPiKpmTools, type PiKpmToolDefinition, type PiToolImageContent } from './kpmToolAdapter';
-import type { PlanContext } from '../claude/prompts';
-import { buildItemReferenceTable } from '../claude/prompts/planFormatting';
+import type { PlanContext } from '../chat/prompts';
+import { buildItemReferenceTable } from '../chat/prompts/planFormatting';
 
 type SessionEndReason = 'completed' | 'error' | 'closed';
 
@@ -139,8 +139,8 @@ function buildPiSystemPrompt(context: PlanContext): string {
   const focusDocument = context.focusDocument
     ? `\n# Focused Document\nPath: \`${context.focusDocument.path}\`\nTitle: ${context.focusDocument.title}\n\n<document>\n${context.focusDocument.content}\n</document>\n`
     : '';
-  const projectContext = context.claudeMdContent?.trim()
-    ? `\n# Project Context\n\n${context.claudeMdContent.trim()}\n`
+  const projectContext = context.contextFileContent?.trim()
+    ? `\n# Project Context\n\n${context.contextFileContent.trim()}\n`
     : '';
 
   return `You are pi running inside KPM's main chat. Help the user understand codebases, plan work, and reason across connected repos.

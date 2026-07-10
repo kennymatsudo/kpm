@@ -16,14 +16,14 @@ function buildContextHandlers(
 ): ContextHandlers {
   return {
     // Project context file operations (AGENTS.md / CLAUDE.md)
-    'claudeMd.read': async ({ projectId }) => {
-      const result = await contextFileService.readClaudeMd(projectId);
+    'contextFile.read': async ({ projectId }) => {
+      const result = await contextFileService.readProjectContextFile(projectId);
       if (!result.ok) throw new Error(result.error);
       return result.data;
     },
 
-    'claudeMd.write': async ({ projectId, content }) => {
-      const result = await contextFileService.writeClaudeMd(projectId, content);
+    'contextFile.write': async ({ projectId, content }) => {
+      const result = await contextFileService.writeProjectContextFile(projectId, content);
       if (!result.ok) throw new Error(result.error);
     },
 

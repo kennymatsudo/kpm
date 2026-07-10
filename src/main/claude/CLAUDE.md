@@ -23,7 +23,7 @@ src/main/kpmTools/createKpmServer.ts (Claude MCP server adapter)
     ├─ document-read.ts (document read tools)
     ├─ document-update.ts (document update tools)
     ├─ document-edit.ts (document edit tools)
-    ├─ claudemd-update.ts (project context updates)
+    ├─ context-file-update.ts (project context updates)
     ├─ github.ts (GitHub PR description generation)
     ├─ confluence.ts (Confluence integration tools)
     ├─ briefing.ts (project briefing generation)
@@ -34,7 +34,7 @@ src/main/kpmTools/createKpmServer.ts (Claude MCP server adapter)
     ├─ spill-read.ts (read_spill_file: recover SDK tool-result overflow files)
     └─ git-read.ts (git_read: read-only git against connected repos)
     ↓
-System prompts (prompts/ directory)
+Shared chat prompts (`../chat/prompts/`)
 ```
 
 ## Key Patterns
@@ -105,7 +105,7 @@ Claude calls modification tool (modify_plan, bulk_modify_plan, etc.)
 
 ### System Prompts (Main Chat)
 
-Files in `prompts/` directory. Entry point is `index.ts` with `buildSystemPrompt()`.
+Files live in `../chat/prompts/` so Claude, Codex, and pi chat adapters can share them without depending on Claude-specific paths. Entry point is `index.ts` with `buildSystemPrompt()`.
 
 Key files: `toolDocs.ts` (tool decision tree), `modes.ts` (repo-access + plan-modification guidance), `workspace.ts` (constraints, workspace boundaries, plan rules, response style), `planFormatting.ts` (plan display), `focusedResources.ts` (focused resource handling), `slackTriage.ts` (Slack triage prompt fragments), `promptRegistry.ts` (system prompt registry), `types.ts` (`PlanContext` / `ContinuationTurn`).
 
@@ -155,7 +155,7 @@ The `currentView` ('plan' | 'workspace') sent with each message is injected as a
 | `../kpmTools/tools/spill-read.ts` | `read_spill_file` — read-only recovery of SDK tool-result spill files in `~/.claude/projects/` |
 | `../kpmTools/tools/git-read.ts` | `git_read` — runs read-only git in a connected repo via `execFile` (no shell). Raw `git` in chat Bash is blocked (`permissions.ts` Rule -1); this is the only git path. Validation lives in `services/repo/gitReadOnly.ts`. |
 | `contextRefs.ts` | `formatPlanRefSection` — expand plan refs into agent context |
-| `prompts/` | System prompt builders |
+| `../chat/prompts/` | Shared chat system prompt builders |
 
 ## Plan References (`@plan/<uuid>`)
 

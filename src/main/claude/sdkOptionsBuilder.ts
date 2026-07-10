@@ -7,8 +7,8 @@
 
 import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import type { BrowserWindow } from 'electron';
-import { buildFocusSystemPrompt, buildSystemPrompt, type PlanContext } from './prompts/index';
-import { createPermissionHandler, type PermissionContext, type ClaudeMdInterceptFn, type ProjectFileInterceptFn } from './permissions';
+import { buildFocusSystemPrompt, buildSystemPrompt, type PlanContext } from '../chat/prompts/index';
+import { createPermissionHandler, type PermissionContext, type ContextFileInterceptFn, type ProjectFileInterceptFn } from './permissions';
 import { getFocusKpmServer, getKpmServer } from '../kpmTools/createKpmServer';
 import { getConfig } from '../config';
 import { getClaudeSdkSpawnOptions } from './findClaude';
@@ -23,7 +23,7 @@ export interface BuildSdkOptionsParams {
   resumeSessionId?: string;
   mainWindow: BrowserWindow | null;
   /** Callback for intercepted project context file edits */
-  onClaudeMdEdit?: ClaudeMdInterceptFn;
+  onContextFileEdit?: ContextFileInterceptFn;
   /** Callback for intercepted project file writes */
   onProjectFileWrite?: ProjectFileInterceptFn;
   /** Returns pending content for a project-relative path so same-file edits accumulate */
@@ -46,7 +46,7 @@ export interface BuildSdkOptionsParams {
  * Build SDK options for a Claude session.
  */
 export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
-  const { context, model, effort, resumeSessionId, mainWindow, onClaudeMdEdit, onProjectFileWrite, peekPendingFile, enabledPluginPaths, enabledUserMcpConfigs, disabledMcpTools, disabledMcpServerNames, onElicitation, autoApprove } = params;
+  const { context, model, effort, resumeSessionId, mainWindow, onContextFileEdit, onProjectFileWrite, peekPendingFile, enabledPluginPaths, enabledUserMcpConfigs, disabledMcpTools, disabledMcpServerNames, onElicitation, autoApprove } = params;
   // Resume restores conversation history only — the SDK applies whatever
   // systemPrompt we pass now and discards the one persisted in the transcript.
   // So always send the full prompt; slimming it on resume silently drops
@@ -65,7 +65,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     projectPath: context.project.folder_path,
     projectId: context.project.id,
     repoPaths: effectiveRepoPaths,
-    onClaudeMdEdit,
+    onContextFileEdit,
     onProjectFileWrite,
     peekPendingFile,
     disabledMcpServerNames,
@@ -90,9 +90,6 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     canUseTool: createPermissionHandler(permissionContext, async (toolName, input, opts) => {
       return promptUser(mainWindow, permissionContext.projectId, toolName, input, {
         signal: opts.signal,
-        title: opts.title,
-        displayName: opts.displayName,
-        description: opts.description,
       });
     }),
     // Load user settings so claude.ai managed MCP servers (Whimsical, Glean, etc.) connect.

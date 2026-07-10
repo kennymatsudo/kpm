@@ -1,7 +1,7 @@
 export interface ContextFileInfo {
   path: string;
   name: string;
-  isClaudeMd: boolean;
+  isProjectContextFile: boolean;
   modifiedAt: string;
 }
 
@@ -11,15 +11,15 @@ export function listContextFiles(
   return window.api.contextFiles.list(projectId);
 }
 
-export function readClaudeMdFile(
+export function readContextFile(
   projectId: string
 ): Promise<{ success: boolean; content: string | null }> {
-  return window.api.claudeMd.read(projectId);
+  return window.api.contextFile.read(projectId);
 }
 
-export function writeClaudeMdFile(
+export function writeContextFile(
   projectId: string,
   content: string
 ): Promise<{ success: boolean; error?: string }> {
-  return window.api.claudeMd.write(projectId, content);
+  return window.api.contextFile.write(projectId, content);
 }
