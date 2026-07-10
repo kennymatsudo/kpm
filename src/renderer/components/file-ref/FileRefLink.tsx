@@ -73,6 +73,9 @@ export function FileRefLink({ text }: FileRefLinkProps) {
     [pending, projectId, repos, openFile, text]
   );
 
+  const { path, line } = parsePathRef(text);
+  const label = line != null ? `${filename(path)}:${line}` : filename(path);
+
   return (
     <button
       type="button"
@@ -81,7 +84,7 @@ export function FileRefLink({ text }: FileRefLinkProps) {
       title={`Open ${text}`}
     >
       <FileTextIcon className="w-3 h-3 flex-shrink-0" />
-      <span>{text}</span>
+      <span>{label}</span>
     </button>
   );
 }
