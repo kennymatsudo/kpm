@@ -27,8 +27,7 @@ export function formatTokensFull(n: number): string {
 
 const SOURCE_LABELS: Record<string, string> = {
   chat: 'Chat',
-  board_implement: 'Board · Implement',
-  board_review: 'Board · Review',
+  board_playbook: 'Board · Playbook',
   briefing: 'Briefing',
   onboarding: 'Onboarding',
   pr_description: 'PR description',

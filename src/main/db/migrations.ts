@@ -3717,6 +3717,215 @@ export const migrations: Migration[] = [
       db.exec(`ALTER TABLE kpm_tracker_associations RENAME COLUMN jql_filter TO issue_filter;`);
     },
   },
+  {
+    id: 1103,
+    name: '103_execution_playbook_persistence',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+
+        CREATE TABLE dev_sessions_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          plan_item_id TEXT REFERENCES plan_items(id) ON DELETE CASCADE,
+          repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+          worktree_path TEXT NOT NULL,
+          branch_name TEXT NOT NULL,
+          base_branch TEXT NOT NULL DEFAULT 'main',
+          base_sha TEXT,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'active', 'inactive')),
+          initial_instructions TEXT NOT NULL DEFAULT '',
+          pr_number INTEGER,
+          pr_url TEXT,
+          pr_state TEXT,
+          review_state TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME,
+          name TEXT,
+          agent_type TEXT NOT NULL DEFAULT 'claude',
+          agent_state TEXT NOT NULL DEFAULT 'inactive',
+          automation_phase TEXT CHECK(automation_phase IN (
+            'idle',
+            'reviewing',
+            'addressing_review',
+            'fixing_commit_hooks',
+            'paused',
+            'ready_for_review',
+            'needs_attention'
+          )),
+          merge_order INTEGER,
+          execution_mode TEXT NOT NULL DEFAULT 'standard'
+            CHECK(execution_mode IN ('standard', 'workflow')),
+          review_policy TEXT NOT NULL DEFAULT 'auto'
+            CHECK(review_policy IN ('auto', 'skip')),
+          playbook_id TEXT,
+          playbook_snapshot TEXT,
+          current_step_id TEXT,
+          step_pass_counts TEXT,
+          paused_reason TEXT CHECK(paused_reason IN ('gate', 'max_passes'))
+        );
+
+        INSERT INTO dev_sessions_new (
+          id,
+          project_id,
+          plan_item_id,
+          repo_id,
+          worktree_path,
+          branch_name,
+          base_branch,
+          base_sha,
+          status,
+          initial_instructions,
+          pr_number,
+          pr_url,
+          pr_state,
+          review_state,
+          created_at,
+          updated_at,
+          completed_at,
+          name,
+          agent_type,
+          agent_state,
+          automation_phase,
+          merge_order,
+          execution_mode,
+          review_policy,
+          playbook_id,
+          playbook_snapshot,
+          current_step_id,
+          step_pass_counts,
+          paused_reason
+        )
+        SELECT
+          id,
+          project_id,
+          plan_item_id,
+          repo_id,
+          worktree_path,
+          branch_name,
+          base_branch,
+          base_sha,
+          status,
+          initial_instructions,
+          pr_number,
+          pr_url,
+          pr_state,
+          review_state,
+          created_at,
+          updated_at,
+          completed_at,
+          name,
+          agent_type,
+          agent_state,
+          CASE
+            WHEN automation_phase = 'fixing_commit_hooks_after_review' THEN 'fixing_commit_hooks'
+            ELSE automation_phase
+          END,
+          merge_order,
+          execution_mode,
+          review_policy,
+          CASE WHEN review_policy = 'skip' THEN 'builtin.implement_only' ELSE 'builtin.implement_opposing_review' END,
+          NULL,
+          CASE
+            WHEN automation_phase = 'reviewing' THEN 'review'
+            WHEN automation_phase = 'addressing_review' THEN 'address'
+            WHEN automation_phase = 'fixing_commit_hooks_after_review' THEN 'address'
+            WHEN automation_phase = 'fixing_commit_hooks' THEN 'implement'
+            ELSE NULL
+          END,
+          NULL,
+          NULL
+        FROM dev_sessions;
+
+        DROP TABLE dev_sessions;
+        ALTER TABLE dev_sessions_new RENAME TO dev_sessions;
+
+        CREATE INDEX idx_dev_sessions_project ON dev_sessions(project_id);
+        CREATE INDEX idx_dev_sessions_plan_item ON dev_sessions(plan_item_id);
+        CREATE INDEX idx_dev_sessions_status ON dev_sessions(status);
+
+        ALTER TABLE claude_usage_events ADD COLUMN step_id TEXT;
+        ALTER TABLE claude_usage_events ADD COLUMN run_index INTEGER;
+
+        UPDATE claude_usage_events
+        SET source = 'board_playbook', step_id = 'implement'
+        WHERE source = 'board_implement';
+
+        UPDATE claude_usage_events
+        SET source = 'board_playbook', step_id = 'review', run_index = 0
+        WHERE source = 'board_review';
+
+        CREATE TABLE agent_review_findings_new (
+          id TEXT PRIMARY KEY,
+          review_run_id TEXT NOT NULL REFERENCES agent_review_runs(id) ON DELETE CASCADE,
+          finding_order INTEGER NOT NULL,
+          severity TEXT NOT NULL CHECK(severity IN ('critical', 'warning', 'suggestion')),
+          file TEXT,
+          line INTEGER,
+          description TEXT NOT NULL,
+          agent TEXT NOT NULL CHECK(agent IN ('claude', 'codex', 'gemini')),
+          source TEXT NOT NULL CHECK(source IN ('agent', 'pr')),
+          UNIQUE(review_run_id, finding_order)
+        );
+
+        INSERT INTO agent_review_findings_new (
+          id, review_run_id, finding_order, severity, file, line, description, agent, source
+        )
+        SELECT id, review_run_id, finding_order, severity, file, line, description, agent, source
+        FROM agent_review_findings;
+
+        DROP TABLE agent_review_findings;
+        ALTER TABLE agent_review_findings_new RENAME TO agent_review_findings;
+
+        CREATE INDEX idx_agent_review_findings_run_order
+          ON agent_review_findings(review_run_id, finding_order);
+
+        PRAGMA foreign_keys = ON;
+      `);
+    },
+  },
+  {
+    id: 1104,
+    name: '104_custom_execution_playbooks',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        CREATE TABLE execution_playbooks (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          steps_json TEXT NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX idx_execution_playbooks_name ON execution_playbooks(name COLLATE NOCASE);
+
+        ALTER TABLE agent_review_runs ADD COLUMN step_id TEXT;
+        ALTER TABLE agent_review_runs ADD COLUMN run_index INTEGER;
+        CREATE INDEX idx_agent_review_runs_review_session
+          ON agent_review_runs(review_session_id, completed_at DESC, created_at DESC);
+      `);
+    },
+  },
+  {
+    id: 1105,
+    name: '105_playbook_step_outputs',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`ALTER TABLE dev_sessions ADD COLUMN step_outputs TEXT;`);
+    },
+  },
+  {
+    id: 1106,
+    name: '106_usage_dev_session_attribution',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE claude_usage_events ADD COLUMN dev_session_id TEXT;
+        CREATE INDEX idx_claude_usage_dev_session_step
+          ON claude_usage_events(dev_session_id, source, step_id)
+          WHERE dev_session_id IS NOT NULL;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

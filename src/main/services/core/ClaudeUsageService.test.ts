@@ -26,6 +26,9 @@ function createUsageRepo(): IClaudeUsageRepository & { events: ClaudeUsageEvent[
         cost_source: event.cost_source,
         ttft_ms: event.ttft_ms ?? null,
         duration_ms: event.duration_ms ?? null,
+        step_id: event.step_id ?? null,
+        run_index: event.run_index ?? null,
+        dev_session_id: event.dev_session_id ?? null,
         created_at: new Date(events.length).toISOString(),
       };
       events.push(row);
@@ -46,6 +49,7 @@ function createUsageRepo(): IClaudeUsageRepository & { events: ClaudeUsageEvent[
     breakdownByProjectAll: () => [],
     globalTotals: () => ({ events: 0, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_micro_usd: 0 }),
     listRecent: () => [],
+    listBoardPlaybookCostsByDevSession: () => [],
     deleteByProject: () => {},
   };
 }
@@ -93,6 +97,23 @@ describe('ClaudeUsageService', () => {
     expect(usageRepo.events.map((event) => event.cost_micro_usd)).toEqual([1_250_000, 750_000]);
     expect(usageRepo.events.map((event) => event.sdk_cumulative_cost_micro_usd)).toEqual([1_250_000, 2_000_000]);
     expect(usageRepo.events.every((event) => event.cost_source === 'sdk_cumulative_delta')).toBe(true);
+  });
+
+  it('groups persisted playbook costs by step for one dev session, including fan-out runs', () => {
+    const usageRepo = createUsageRepo();
+    const rows = [
+      { step_id: 'review', cost_micro_usd: 1200 },
+      { step_id: 'review', cost_micro_usd: 800 },
+      { step_id: 'implement', cost_micro_usd: 5000 },
+    ];
+    (usageRepo as unknown as { listBoardPlaybookCostsByDevSession: (id: string) => typeof rows }).listBoardPlaybookCostsByDevSession = (id) => id === 'dev-1' ? rows : [];
+    const service = createClaudeUsageService({
+      claudeUsage: usageRepo,
+      projects: createProjectRepo(),
+      getMainWindow: () => null,
+    });
+
+    expect(service.getBoardPlaybookStepCosts('dev-1')).toEqual({ implement: 5000, review: 2000 });
   });
 
   it('uses corrected Opus pricing for local fallback', () => {

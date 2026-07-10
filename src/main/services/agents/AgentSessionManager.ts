@@ -46,6 +46,8 @@ export interface AgentSessionManagerDeps {
     implementationSessionId: string;
     reviewSessionId: string;
     reviewerAgent: AgentType;
+    stepId?: string;
+    runIndex?: number;
   }) => void | Promise<void>;
   persistReviewResult?: (result: {
     implementationSessionId: string;
@@ -53,6 +55,8 @@ export interface AgentSessionManagerDeps {
     reviewerAgent: AgentType;
     findings: ReviewFinding[];
     rawOutput: string | null;
+    stepId?: string;
+    runIndex?: number;
   }) => void | Promise<void>;
   persistReviewFailure?: (result: {
     implementationSessionId: string;
@@ -60,16 +64,25 @@ export interface AgentSessionManagerDeps {
     reviewerAgent: AgentType;
     rawOutput: string | null;
     error: string;
+    stepId?: string;
+    runIndex?: number;
   }) => void | Promise<void>;
   onSessionComplete?: (event: {
     devSessionId: string;
+    implementationSessionId?: string;
+    stepId?: string;
+    runIndex?: number;
     role: AgentSessionRole;
     summary: AgentCompletionSummary;
     findings?: ReviewFinding[];
     reviewError?: string;
+    finalText?: string | null;
   }) => void | Promise<void>;
   onSessionStateChange?: (event: {
     devSessionId: string;
+    implementationSessionId?: string;
+    stepId?: string;
+    runIndex?: number;
     role: AgentSessionRole;
     state: AgentSessionState;
   }) => void | Promise<void>;
@@ -80,16 +93,22 @@ export interface AgentSessionManagerDeps {
    */
   onSessionUsage?: (event: {
     devSessionId: string;
+    implementationSessionId: string;
     projectId: string;
     role: AgentSessionRole;
     usage: AgentSessionUsage;
+    stepId?: string;
+    runIndex?: number;
   }) => void;
 }
 
 interface TrackedSession {
   agentSession: IAgentSession;
   devSessionId: string;
+  implementationSessionId: string;
   projectId: string;
+  stepId?: string;
+  runIndex?: number;
 }
 
 export interface CreateSessionParams {
@@ -105,6 +124,11 @@ export interface CreateSessionParams {
   sdkOptions?: SDKOptions;
   /** Model override for agent sessions (e.g. 'gpt-5.5' for Codex) */
   model?: string;
+  expectsFindings?: boolean;
+  readOnly?: boolean;
+  implementationSessionId?: string;
+  stepId?: string;
+  runIndex?: number;
 }
 
 // =============================================================================
@@ -140,12 +164,16 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         id: devSessionId,
         role,
         sdkOptions,
+        expectsFindings: params.expectsFindings,
+        readOnly: params.readOnly,
       });
     } else if (agentType === 'codex') {
       agentSession = new CodexSdkAgentSession({
         id: devSessionId,
         role,
         model,
+        expectsFindings: params.expectsFindings,
+        readOnly: params.readOnly,
       });
     } else {
       // Gemini/legacy Claude CLI — use PTY + hooks session
@@ -157,6 +185,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         agentType,
         role,
         hookPort,
+        expectsFindings: params.expectsFindings,
       });
     }
 
@@ -164,7 +193,11 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     const tracked: TrackedSession = {
       agentSession,
       devSessionId,
+      implementationSessionId: params.implementationSessionId
+        ?? (role === 'review' ? toImplSessionId(devSessionId) : devSessionId),
       projectId,
+      stepId: params.stepId,
+      runIndex: params.runIndex,
     };
     const existingTimer = terminalEvictionTimers.get(agentSession.id);
     if (existingTimer) {
@@ -243,6 +276,15 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     console.log(`${LOG_PREFIX} Removed session ${sessionId}`);
   }
 
+  async function stopForImplementationSession(implementationSessionId: string): Promise<boolean> {
+    const matching = [...sessions.values()].filter((tracked) =>
+      tracked.implementationSessionId === implementationSessionId && isActiveState(tracked.agentSession.state),
+    );
+    if (matching.length === 0) return false;
+    await Promise.allSettled(matching.map((tracked) => tracked.agentSession.stop()));
+    return true;
+  }
+
   /** Stop all sessions for a project (e.g., on project switch) */
   async function stopAllForProject(projectId: string): Promise<void> {
     const toStop = getActiveForProject(projectId);
@@ -283,6 +325,8 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
       void Promise.resolve(
         deps.onSessionStateChange?.({
           devSessionId,
+          implementationSessionId: tracked.implementationSessionId,
+          ...getStepContext(tracked),
           role: agentSession.role,
           state,
         })
@@ -345,9 +389,11 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
       try {
         deps.onSessionUsage?.({
           devSessionId,
+          implementationSessionId: tracked.implementationSessionId,
           projectId: tracked.projectId,
           role: agentSession.role,
           usage,
+          ...getStepContext(tracked),
         });
       } catch (error) {
         console.error(`${LOG_PREFIX} onSessionUsage hook failed for ${devSessionId}:`, error);
@@ -359,21 +405,23 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
       const findings = result.review && 'findings' in result.review ? result.review.findings : undefined;
       const reviewError = result.review && 'error' in result.review ? result.review.error : undefined;
 
+      let reviewPersistence = Promise.resolve();
       if (agentSession.role === 'review' && findings) {
-        const implementationSessionId = toImplSessionId(devSessionId);
-        void Promise.resolve(
+        const implementationSessionId = tracked.implementationSessionId;
+        reviewPersistence = Promise.resolve(
           deps.persistReviewResult?.({
             implementationSessionId,
             reviewSessionId: devSessionId,
             reviewerAgent: agentSession.agentType,
             findings,
             rawOutput: result.reviewRawOutput ?? null,
+            ...getStepContext(tracked),
           })
         ).catch((error) => {
           console.error(`${LOG_PREFIX} Failed to persist review result for ${devSessionId}:`, error);
         });
       } else if (agentSession.role === 'review' && reviewError) {
-        persistReviewFailureOnce(agentSession, reviewError, result.reviewRawOutput ?? null);
+        reviewPersistence = persistReviewFailureOnce(agentSession, reviewError, result.reviewRawOutput ?? null);
         broadcast(agentSessionEvents.error, {
           sessionId: agentSession.id,
           devSessionId,
@@ -389,15 +437,18 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         findings,
       });
 
-      void Promise.resolve(
-        deps.onSessionComplete?.({
-          devSessionId,
-          role: agentSession.role,
-          summary,
-          findings,
-          reviewError,
-        })
-      ).catch((error) => {
+      // Fan-out settlement reconstructs from persisted review rows. Ensure this
+      // concrete run is durable before the orchestrator observes completion.
+      void reviewPersistence.then(() => deps.onSessionComplete?.({
+        devSessionId,
+        implementationSessionId: tracked.implementationSessionId,
+        ...getStepContext(tracked),
+        role: agentSession.role,
+        summary,
+        findings,
+        reviewError,
+        finalText: result.finalText,
+      })).catch((error) => {
         console.error(`${LOG_PREFIX} Session completion hook failed for ${devSessionId}:`, error);
       });
     });
@@ -405,7 +456,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     agentSession.on('onError', (error: string) => {
       if (agentSession.role === 'review') {
         const result: AgentTurnResult = agentSession.getResult();
-        persistReviewFailureOnce(agentSession, error, result.reviewRawOutput ?? result.finalText ?? null);
+        void persistReviewFailureOnce(agentSession, error, result.reviewRawOutput ?? result.finalText ?? null);
       }
 
       broadcast(agentSessionEvents.error, {
@@ -431,36 +482,50 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     return state === 'starting' || state === 'working' || state === 'waiting_for_input';
   }
 
+  function getStepContext(tracked: Pick<TrackedSession, 'stepId' | 'runIndex'> | undefined): {
+    stepId?: string;
+    runIndex?: number;
+  } {
+    return {
+      ...(tracked?.stepId !== undefined ? { stepId: tracked.stepId } : {}),
+      ...(tracked?.runIndex !== undefined ? { runIndex: tracked.runIndex } : {}),
+    };
+  }
+
   function persistReviewStartedOnce(agentSession: IAgentSession): void {
     if (persistedReviewStartIds.has(agentSession.id)) {
       return;
     }
 
     persistedReviewStartIds.add(agentSession.id);
+    const tracked = sessions.get(agentSession.id);
     void Promise.resolve(
       deps.persistReviewStarted?.({
-        implementationSessionId: toImplSessionId(agentSession.id),
+        implementationSessionId: tracked?.implementationSessionId ?? toImplSessionId(agentSession.id),
         reviewSessionId: agentSession.id,
         reviewerAgent: agentSession.agentType,
+        ...getStepContext(tracked),
       })
     ).catch((error) => {
       console.error(`${LOG_PREFIX} Failed to persist review start for ${agentSession.id}:`, error);
     });
   }
 
-  function persistReviewFailureOnce(agentSession: IAgentSession, error: string, rawOutput: string | null): void {
+  function persistReviewFailureOnce(agentSession: IAgentSession, error: string, rawOutput: string | null): Promise<void> {
     if (persistedReviewFailureIds.has(agentSession.id)) {
-      return;
+      return Promise.resolve();
     }
 
     persistedReviewFailureIds.add(agentSession.id);
-    void Promise.resolve(
+    const tracked = sessions.get(agentSession.id);
+    return Promise.resolve(
       deps.persistReviewFailure?.({
-        implementationSessionId: toImplSessionId(agentSession.id),
+        implementationSessionId: tracked?.implementationSessionId ?? toImplSessionId(agentSession.id),
         reviewSessionId: agentSession.id,
         reviewerAgent: agentSession.agentType,
         rawOutput,
         error,
+        ...getStepContext(tracked),
       })
     ).catch((persistError) => {
       console.error(`${LOG_PREFIX} Failed to persist review failure for ${agentSession.id}:`, persistError);
@@ -498,6 +563,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     getActiveForProject,
     getActiveCountForProject,
     isSessionBusy,
+    stopForImplementationSession,
     remove,
     stopAllForProject,
     stopAll,

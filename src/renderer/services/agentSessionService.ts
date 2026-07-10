@@ -10,7 +10,6 @@ import type {
   AgentSessionRole,
   AgentType,
   AgentEffortLevel,
-  AgentExecutionMode,
   AgentReviewPolicy,
   DevSession,
   RepoEnvironmentMode,
@@ -34,8 +33,8 @@ export function createAndStartAgentSession(payload: {
   contextPaths?: string[];
   effort?: AgentEffortLevel;
   environmentMode?: RepoEnvironmentMode;
-  executionMode?: AgentExecutionMode;
   reviewPolicy?: AgentReviewPolicy;
+  playbookId?: string;
 }): Promise<{ success: boolean; session?: DevSession; error?: string }> {
   return window.api.agentSessions.createAndStart(payload);
 }
@@ -47,6 +46,12 @@ export function startAgentSession(
   payload: { devSessionId: string; agentType?: AgentType; role?: AgentSessionRole },
 ): Promise<{ success: boolean; session?: DevSession; error?: string }> {
   return window.api.agentSessions.startAgent(payload);
+}
+
+export function resumePlaybook(
+  payload: { devSessionId: string; note?: string; action?: 'resume' | 'proceed' | 'one_more_pass' },
+): Promise<{ success: boolean; session?: DevSession; error?: string }> {
+  return window.api.agentSessions.resumePlaybook(payload);
 }
 
 export function respondToAgent(

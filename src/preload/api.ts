@@ -45,6 +45,7 @@ import { toolLogEndpoints } from '../shared/ipc/toolLogEndpoints';
 import { storybookEndpoints } from '../shared/ipc/storybookEndpoints';
 import { devSessionEndpoints } from '../shared/ipc/devSessionEndpoints';
 import { agentSessionEndpoints } from '../shared/ipc/agentSessionEndpoints';
+import { playbookEndpoints } from '../shared/ipc/playbookEndpoints';
 import { reviewEndpoints } from '../shared/ipc/reviewEndpoints';
 import { githubEndpoints } from '../shared/ipc/githubEndpoints';
 import { projectEndpoints } from '../shared/ipc/projectEndpoints';
@@ -119,7 +120,6 @@ import type {
   ReviewInboxSnapshot,
   SlackChannelLink,
   SlackTriageItem,
-  AgentExecutionMode,
   AgentReviewPolicy,
   CustomTheme,
   ImportedCustomThemeResult,
@@ -211,7 +211,6 @@ export type {
   SlackTriageItem,
   CustomTheme,
   ImportedCustomThemeResult,
-  AgentExecutionMode,
   AgentReviewPolicy,
   PiProviderOption,
 };
@@ -907,6 +906,8 @@ const agentSessions = {
   // Start an agent session for an existing pending/inactive dev session
   startAgent: agentSessionInvoke.startAgent,
 
+  resumePlaybook: agentSessionInvoke.resumePlaybook,
+
   respond: agentSessionInvoke.respond,
 
   followUp: agentSessionInvoke.followUp,
@@ -944,6 +945,8 @@ const agentSessions = {
   onComplete: agentSessionSubscriptions.complete,
   onError: agentSessionSubscriptions.error,
 };
+
+const playbooks = deriveDomainApi(playbookEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
 
 const fileExplorerInvoke = deriveDomainApi(fileExplorerEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
 const fileExplorerSubscriptions = deriveEventSubscriptions(fileExplorerEvents, ipcRenderer);
@@ -1121,6 +1124,7 @@ const usage = {
   getProjectStats: usageInvoke.getProjectStats,
   getGlobalStats: usageInvoke.getGlobalStats,
   listEvents: usageInvoke.listEvents,
+  getDevSessionStepCosts: usageInvoke.getDevSessionStepCosts,
   resetProject: usageInvoke.resetProject,
   /**
    * Subscribe to live usage events broadcast every time a Claude turn
@@ -1237,6 +1241,7 @@ export const api = {
   review,
   devSessions,
   agentSessions,
+  playbooks,
   fileExplorer,
   repoFiles,
   shell,

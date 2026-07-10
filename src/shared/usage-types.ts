@@ -21,6 +21,9 @@ export interface ClaudeUsageEvent {
   cost_source?: string;
   ttft_ms: number | null;
   duration_ms: number | null;
+  step_id: string | null;
+  run_index: number | null;
+  dev_session_id: string | null;
   created_at: string;
 }
 
@@ -41,6 +44,11 @@ export interface ClaudeUsageBreakdownRow extends ClaudeUsageTotals {
 export interface ClaudeUsageProjectBreakdownRow extends ClaudeUsageTotals {
   project_id: string | null;
   project_name: string | null;
+}
+
+export interface BoardPlaybookCostRow {
+  step_id: string;
+  cost_micro_usd: number;
 }
 
 export interface ProjectUsageStats {

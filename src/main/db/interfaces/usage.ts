@@ -14,6 +14,7 @@ export type {
   ClaudeUsageTotals,
   ClaudeUsageBreakdownRow,
   ClaudeUsageProjectBreakdownRow,
+  BoardPlaybookCostRow,
 } from '../../../shared/usage-types';
 
 import type {
@@ -21,6 +22,7 @@ import type {
   ClaudeUsageTotals,
   ClaudeUsageBreakdownRow,
   ClaudeUsageProjectBreakdownRow,
+  BoardPlaybookCostRow,
 } from '../../../shared/usage-types';
 
 export interface ClaudeUsageEventInsert {
@@ -46,6 +48,9 @@ export interface ClaudeUsageEventInsert {
   cost_source?: string;
   ttft_ms?: number | null;
   duration_ms?: number | null;
+  step_id?: string | null;
+  run_index?: number | null;
+  dev_session_id?: string | null;
 }
 
 export interface IClaudeUsageRepository {
@@ -68,6 +73,8 @@ export interface IClaudeUsageRepository {
   globalTotals(): ClaudeUsageTotals;
   /** Most recent events for a project (or globally when null). */
   listRecent(projectId: string | null, limit: number): ClaudeUsageEvent[];
+  /** Billable playbook rows for one persisted dev session; fan-out runs stay separate for service aggregation. */
+  listBoardPlaybookCostsByDevSession(devSessionId: string): BoardPlaybookCostRow[];
   /** Drop all events for a project (used by reset). */
   deleteByProject(projectId: string): void;
 }

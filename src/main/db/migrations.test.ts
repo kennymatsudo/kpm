@@ -141,6 +141,72 @@ describeIfFts('runMigrations', () => {
   });
 });
 
+describe('103_execution_playbook_persistence', () => {
+  it('adds playbook cursor columns, maps legacy usage, and preserves foreign keys', () => {
+    const db = new BetterSqlite3(':memory:');
+
+    try {
+      expect(() => runMigrations(db)).not.toThrow();
+
+      db.prepare('INSERT INTO projects (id, name, folder_path) VALUES (?, ?, ?)').run(
+        'proj-1',
+        'Project One',
+        '/tmp/proj-1'
+      );
+      db.prepare('INSERT INTO repos (id, project_id, path) VALUES (?, ?, ?)').run(
+        'repo-1',
+        'proj-1',
+        '/tmp/proj-1/repo'
+      );
+
+      expect(() => db.prepare(`
+        INSERT INTO dev_sessions (
+          id, project_id, repo_id, worktree_path, branch_name, base_branch,
+          status, initial_instructions, automation_phase, current_step_id, paused_reason
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'session-1',
+        'proj-1',
+        'repo-1',
+        '/tmp/proj-1/worktree',
+        'feature/test',
+        'main',
+        'inactive',
+        'Implement feature',
+        'paused',
+        'review',
+        'gate'
+      )).not.toThrow();
+
+      db.prepare(`
+        INSERT INTO claude_usage_events (
+          id, project_id, source, model, input_tokens, output_tokens,
+          cache_creation_tokens, cache_read_tokens, cost_micro_usd, step_id, run_index,
+          dev_session_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run('usage-1', 'proj-1', 'board_playbook', 'sonnet', 1, 1, 0, 0, 1, 'review', 0, 'session-1');
+
+      const session = db.prepare('SELECT automation_phase, current_step_id, paused_reason FROM dev_sessions WHERE id = ?').get('session-1') as {
+        automation_phase: string;
+        current_step_id: string;
+        paused_reason: string;
+      };
+      expect(session).toEqual({ automation_phase: 'paused', current_step_id: 'review', paused_reason: 'gate' });
+
+      const usage = db.prepare('SELECT source, step_id, run_index, dev_session_id FROM claude_usage_events WHERE id = ?').get('usage-1') as {
+        source: string;
+        step_id: string;
+        run_index: number;
+        dev_session_id: string;
+      };
+      expect(usage).toEqual({ source: 'board_playbook', step_id: 'review', run_index: 0, dev_session_id: 'session-1' });
+      expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+});
+
 describe('101_drop_chat_sessions_provider_check', () => {
   it('applies cleanly and allows inserting a chat_sessions row with provider = pi', () => {
     const db = new BetterSqlite3(':memory:');

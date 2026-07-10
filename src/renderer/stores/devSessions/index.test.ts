@@ -17,6 +17,11 @@ function createDevSession() {
     status: 'inactive' as const,
     initial_instructions: 'Implement the task',
     automation_phase: null,
+    playbook_id: null,
+    playbook_snapshot: null,
+    current_step_id: null,
+    step_pass_counts: null,
+    paused_reason: null,
     pr_number: 42,
     pr_url: 'https://github.com/test/repo/pull/42',
     pr_state: 'OPEN' as const,
@@ -175,6 +180,15 @@ describe('devSessionsStore', () => {
     api = installMockApi();
     useDevSessionsStore.getState().reset();
     vi.clearAllMocks();
+  });
+
+  it('loads persisted playbook step costs for a dev session', async () => {
+    api.usage.getDevSessionStepCosts.mockResolvedValue({ costs: { implement: 1500, review: 2500 } });
+
+    await useDevSessionsStore.getState().loadStepCosts('dev-session-1');
+
+    expect(api.usage.getDevSessionStepCosts).toHaveBeenCalledWith({ devSessionId: 'dev-session-1' });
+    expect(useDevSessionsStore.getState().stepCostsBySessionId.get('dev-session-1')).toEqual({ implement: 1500, review: 2500 });
   });
 
   it('clears stale failed commit state when an agent run starts again', () => {

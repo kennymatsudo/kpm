@@ -41,8 +41,7 @@ import { usageEvents } from '../../../shared/ipc/usageEvents';
  */
 export type UsageSource =
   | 'chat'
-  | 'board_implement'
-  | 'board_review'
+  | 'board_playbook'
   | 'briefing'
   | 'onboarding'
   | 'pr_description'
@@ -83,6 +82,9 @@ export interface RecordUsageInput {
   isCumulativeCostSnapshot?: boolean;
   ttftMs?: number | null;
   durationMs?: number | null;
+  stepId?: string | null;
+  runIndex?: number | null;
+  devSessionId?: string | null;
 }
 
 export interface ProjectUsageStats {
@@ -198,6 +200,9 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
         cost_source: costSource,
         ttft_ms: input.ttftMs ?? null,
         duration_ms: input.durationMs ?? null,
+        step_id: input.stepId ?? null,
+        run_index: input.runIndex ?? null,
+        dev_session_id: input.devSessionId ?? null,
       });
 
       // Roll up to the existing project token columns so legacy UI surfaces
@@ -261,6 +266,14 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
     return deps.claudeUsage.listRecent(projectId, limit);
   }
 
+  function getBoardPlaybookStepCosts(devSessionId: string): Record<string, number> {
+    const costs: Record<string, number> = {};
+    for (const row of deps.claudeUsage.listBoardPlaybookCostsByDevSession(devSessionId)) {
+      costs[row.step_id] = (costs[row.step_id] ?? 0) + row.cost_micro_usd;
+    }
+    return costs;
+  }
+
   function resetProject(projectId: string): void {
     deps.claudeUsage.deleteByProject(projectId);
     deps.projects.resetTokens(projectId);
@@ -272,6 +285,7 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
     getProjectStats,
     getGlobalStats,
     listRecentEvents,
+    getBoardPlaybookStepCosts,
     resetProject,
   };
 }

@@ -74,6 +74,8 @@ export interface PersistedAgentReviewUpsert {
   diff_fingerprint?: string | null;
   raw_output?: string | null;
   findings: PersistedAgentReview['findings'];
+  step_id?: string | null;
+  run_index?: number | null;
 }
 
 export interface PersistedAgentReviewStart {
@@ -81,6 +83,8 @@ export interface PersistedAgentReviewStart {
   review_session_id: string;
   reviewer_agent: PersistedAgentReview['reviewer_agent'];
   diff_fingerprint?: string | null;
+  step_id?: string | null;
+  run_index?: number | null;
 }
 
 export interface PersistedAgentReviewFailure {
@@ -90,6 +94,8 @@ export interface PersistedAgentReviewFailure {
   diff_fingerprint?: string | null;
   raw_output?: string | null;
   error: string;
+  step_id?: string | null;
+  run_index?: number | null;
 }
 
 export interface IReviewTaskRepository {
@@ -116,6 +122,8 @@ export interface IAgentReviewRepository {
   persistCompletedReview(review: PersistedAgentReviewUpsert): PersistedAgentReview;
   persistFailedReview(review: PersistedAgentReviewFailure): PersistedAgentReview;
   getLatestByImplementationSessionIds(sessionIds: string[]): PersistedAgentReview[];
+  /** Latest persisted row for each concrete review runtime id (fan-out reconstruction). */
+  getByReviewSessionIds(reviewSessionIds: string[]): PersistedAgentReview[];
   /**
    * For each implementation session, the distinct reviewer agents that have
    * completed at least one review (including runs later marked stale). Use

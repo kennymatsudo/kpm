@@ -5,7 +5,7 @@
  * can be unit-tested without a DB or git fixture.
  */
 
-import type { AgentEffortLevel, AgentExecutionMode, AgentType, PlanItem, Project } from '../../../shared/types';
+import type { AgentEffortLevel, PlanItem, Project } from '../../../shared/types';
 import { DEFAULT_CONTEXT_FILENAME, isPlaceholderContext } from '../../../shared/contextFile';
 import type { Settings as SDKSettings } from '@anthropic-ai/claude-agent-sdk';
 
@@ -111,57 +111,21 @@ function splitMarkdownListItems(section: string | undefined): string[] {
 
 export type BoardClaudeModel = 'opus' | 'sonnet' | 'haiku';
 
-const WORKFLOW_EXECUTION_INSTRUCTIONS = `## KPM Structured Workflow Mode
-
-You are running in KPM workflow mode. Use Claude Code's Workflow tool before making repository edits when it is available. Create an in-memory workflow script; do not write .claude/workflows, .kpm, or other orchestration files into the repository.
-
-The workflow should use these phases:
-1. Inspect: read the task, repo instructions, likely touched files, current tests, and verification commands.
-2. Discover: use read-only subagents for independent codebase questions. Use web search only when current external APIs, releases, security guidance, or software-development best practices materially affect the implementation.
-3. Plan: choose a small implementation path, identify file ownership, and avoid parallel writers unless files are clearly partitioned.
-4. Implement: make the code changes in this worktree only.
-5. Verify: run targeted tests/checks and inspect the diff. Treat verification as a gate; if a command cannot run, record the exact reason.
-6. Self-review: use a fresh-context review pass for correctness, requirements, security/data-loss risk, migrations, tests, and scope. Do not report style nits.
-7. Finalize: produce the normal concise final summary with files changed, verification commands, and residual risks.
-
-KPM will run the external opposing-agent review gate after your implementation completes when the session policy allows it. Do not ask the user for input. If the Workflow tool is unavailable, follow the same phases manually and say so in the final summary.`;
-
-export function resolveBoardModel(executionMode: AgentExecutionMode, agentType: AgentType): BoardClaudeModel {
-  return executionMode === 'workflow' && agentType === 'claude' ? 'opus' : 'sonnet';
-}
-
 export function resolveBoardEffort(
   model: BoardClaudeModel,
   requestedEffort: AgentEffortLevel | undefined,
-  executionMode: AgentExecutionMode,
 ): AgentEffortLevel | undefined {
-  const effort = requestedEffort ?? (executionMode === 'workflow' ? 'xhigh' : undefined);
-  if (model !== 'opus' && (effort === 'xhigh' || effort === 'max')) {
+  if (model !== 'opus' && (requestedEffort === 'xhigh' || requestedEffort === 'max')) {
     return 'high';
   }
-  return effort;
+  return requestedEffort;
 }
 
-export function buildBoardSdkSettings(executionMode: AgentExecutionMode, effectiveEffort: AgentEffortLevel | undefined): SDKSettings {
-  if (executionMode !== 'workflow') {
-    return {
-      disableWorkflows: true,
-      workflowKeywordTriggerEnabled: false,
-    };
-  }
-
+export function buildBoardSdkSettings(): SDKSettings {
   return {
-    enableWorkflows: true,
-    workflowKeywordTriggerEnabled: true,
-    ...(effectiveEffort === 'xhigh' && { ultracode: true }),
+    disableWorkflows: true,
+    workflowKeywordTriggerEnabled: false,
   };
-}
-
-export function buildExecutionPrompt(basePrompt: string, executionMode: AgentExecutionMode): string {
-  if (executionMode !== 'workflow') {
-    return basePrompt;
-  }
-  return `${WORKFLOW_EXECUTION_INSTRUCTIONS}\n\n${basePrompt}`;
 }
 
 /**

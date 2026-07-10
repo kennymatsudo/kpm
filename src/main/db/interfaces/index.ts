@@ -81,5 +81,8 @@ export type {
   LoopRunCreate,
 } from './scheduling';
 
+// Execution playbooks
+export type { IPlaybookRepository } from './playbook';
+
 // Container
 export type { IRepositoryContainer } from './container';

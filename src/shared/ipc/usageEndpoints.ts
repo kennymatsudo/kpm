@@ -28,6 +28,11 @@ export const usageEndpoints = {
     params: z.object({ projectId: uuid.nullable(), limit: z.number().int().min(1).max(500).optional() }),
     result: resultOf<ClaudeUsageEvent[]>(),
   },
+  getDevSessionStepCosts: {
+    channel: 'usage:get-dev-session-step-costs',
+    params: z.object({ devSessionId: uuid }),
+    result: resultOf<{ costs: Record<string, number> }>(),
+  },
   resetProject: {
     channel: 'usage:reset-project',
     params: z.object({ projectId: uuid }),

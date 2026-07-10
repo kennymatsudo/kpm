@@ -45,6 +45,7 @@ import { toolLogEndpoints } from './ipc/toolLogEndpoints';
 import { storybookEndpoints } from './ipc/storybookEndpoints';
 import { devSessionEndpoints } from './ipc/devSessionEndpoints';
 import { agentSessionEndpoints } from './ipc/agentSessionEndpoints';
+import { playbookEndpoints } from './ipc/playbookEndpoints';
 import { reviewEndpoints } from './ipc/reviewEndpoints';
 import { githubEndpoints } from './ipc/githubEndpoints';
 import { projectEndpoints } from './ipc/projectEndpoints';
@@ -354,6 +355,7 @@ const devSessionChannels = toNestedChannels(devSessionEndpoints) as {
 const agentSessionChannels = toNestedChannels(agentSessionEndpoints) as {
   createAndStart: string;
   startAgent: string;
+  resumePlaybook: string;
   respond: string;
   followUp: string;
   stop: string;
@@ -366,6 +368,17 @@ const agentSessionChannels = toNestedChannels(agentSessionEndpoints) as {
   getCommitLog: string;
   getCommitFiles: string;
   dismissInterruption: string;
+};
+
+const playbookChannels = toNestedChannels(playbookEndpoints) as {
+  list: string;
+  create: string;
+  update: string;
+  delete: string;
+  duplicate: string;
+  setDefault: string;
+  providers: string;
+  skills: string;
 };
 
 const reviewChannels = toNestedChannels(reviewEndpoints) as {
@@ -684,6 +697,7 @@ export const IPC_CHANNELS = {
   // Agent Sessions (Board-Driven Execution)
   // ===========================================================================
   agentSession: agentSessionChannels,
+  playbook: playbookChannels,
 
   // ===========================================================================
   // Claude Usage Tracking

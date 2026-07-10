@@ -6,7 +6,6 @@
 
 import type {
   DevSessionAutomationPhase,
-  AgentExecutionMode,
   AgentReviewPolicy,
   DevSession,
   DevSessionStatus,
@@ -36,8 +35,21 @@ export interface IDevSessionRepository {
   updateStatus(id: string, status: DevSessionStatus): void;
   /** Update persisted automation phase for session orchestration. */
   updateAutomationPhase(id: string, phase: DevSessionAutomationPhase | null): void;
-  /** Update persisted run mode/review policy for session orchestration. */
-  updateWorkflowControls(id: string, executionMode: AgentExecutionMode, reviewPolicy: AgentReviewPolicy): void;
+  /** Update persisted automation phase and generic playbook cursor fields. */
+  updateAutomationState(
+    id: string,
+    state: {
+      phase: DevSessionAutomationPhase | null;
+      currentStepId?: string | null;
+      stepPassCounts?: string | null;
+      pausedReason?: DevSession['paused_reason'] | null;
+    },
+  ): void;
+  /** Persist the selected immutable playbook snapshot and its initial cursor. */
+  updatePlaybook(id: string, playbookId: string, snapshot: string, currentStepId: string, agentType: DevSession['agent_type']): void;
+  updateStepOutputs(id: string, outputs: string): void;
+  /** Update the persisted opposing-review policy for a session. */
+  updateReviewPolicy(id: string, reviewPolicy: AgentReviewPolicy): void;
   /** Update PR tracking info on a session */
   updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null): void;
   /** Update session name */

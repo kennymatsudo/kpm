@@ -30,6 +30,8 @@ import { createAttachmentService } from './core/AttachmentService';
 import { createGroupService } from './core/GroupService';
 import { createSearchService } from './core/SearchService';
 import { createSlashCommandService } from './core/SlashCommandService';
+import { createPlaybookService } from './core/PlaybookService';
+import { listBoardProviders } from './agents/boardProviderRegistry';
 import { createTrackerService } from './core/TrackerService';
 import { createRepoWatcherService } from './repo/RepoWatcherService';
 import { createPollScheduler } from './core/PollScheduler';
@@ -228,6 +230,11 @@ export function createAppServices(container: IRepositoryContainer) {
   });
 
   const slashCommandService = createSlashCommandService();
+  const playbookService = createPlaybookService({
+    playbooks: container.playbooks,
+    appSettings: container.appSettings,
+    listSkills: slashCommandService.listCommands,
+  });
 
   const trackerService = createTrackerService({
     tracker: container.tracker,
@@ -284,6 +291,8 @@ export function createAppServices(container: IRepositoryContainer) {
     getPromptContent,
     claudeUsageService,
     requestPlanRefresh,
+    listBoardProviders,
+    getSkillBody: slashCommandService.getSkillBody,
   });
 
   const agentSessionManager = createAgentSessionManager({
@@ -341,6 +350,10 @@ export function createAppServices(container: IRepositoryContainer) {
     readProjectContextFile: (projectId) => contextFileService.readProjectContextFile(projectId),
     claudeUsageService,
     fileSummaryService,
+    playbookService,
+    listBoardProviders,
+    getSkillBody: slashCommandService.getSkillBody,
+    resumePlaybook: boardAgentOrchestrator.resumePlaybook,
   });
   devSessionServiceRef = devSessionService;
   reviewServiceRef = reviewService;
@@ -522,6 +535,7 @@ export function createAppServices(container: IRepositoryContainer) {
     trackerService,
     searchService,
     slashCommandService,
+    playbookService,
     appLifecycleService,
     pollScheduler,
     updateEventBus,

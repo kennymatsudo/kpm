@@ -6,6 +6,7 @@ export type SettingsTab =
   | 'workflow'
   | 'shortcuts'
   | 'prompts'
+  | 'playbooks'
   | 'mcp'
   | 'permissions';
 

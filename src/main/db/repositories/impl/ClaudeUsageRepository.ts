@@ -15,6 +15,7 @@ import type {
   ClaudeUsageTotals,
   ClaudeUsageBreakdownRow,
   ClaudeUsageProjectBreakdownRow,
+  BoardPlaybookCostRow,
 } from '../../interfaces/usage';
 
 interface PreparedStatements {
@@ -31,6 +32,7 @@ interface PreparedStatements {
   deleteByProject: Statement;
   lastSdkCumulativeCost: Statement;
   findBySdkResultScope: Statement;
+  boardPlaybookCostsByDevSession: Statement;
 }
 
 const EMPTY_TOTALS: ClaudeUsageTotals = {
@@ -76,8 +78,9 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
           id, project_id, project_name_snapshot, source, model,
           input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
           cost_micro_usd, sdk_session_id, sdk_result_uuid, sdk_cost_scope,
-          sdk_cumulative_cost_micro_usd, cost_source, ttft_ms, duration_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          sdk_cumulative_cost_micro_usd, cost_source, ttft_ms, duration_ms, step_id, run_index,
+          dev_session_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *
       `),
       totalsByProject: db.prepare(`${totalsSelect} WHERE project_id = ?`),
@@ -144,6 +147,14 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
           AND source = ?
         LIMIT 1
       `),
+      boardPlaybookCostsByDevSession: db.prepare(`
+        SELECT step_id, cost_micro_usd
+        FROM claude_usage_events
+        WHERE dev_session_id = ?
+          AND source = 'board_playbook'
+          AND step_id IS NOT NULL
+        ORDER BY created_at, rowid
+      `),
     };
   }
 
@@ -167,6 +178,9 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
       event.cost_source ?? 'local_pricing_fallback',
       event.ttft_ms ?? null,
       event.duration_ms ?? null,
+      event.step_id ?? null,
+      event.run_index ?? null,
+      event.dev_session_id ?? null,
     ) as ClaudeUsageEvent | undefined;
 
     if (inserted) return inserted;
@@ -224,6 +238,10 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
       ? this.stmts.listRecentAllProjects.all(safeLimit)
       : this.stmts.listRecentByProject.all(projectId, safeLimit);
     return rows as ClaudeUsageEvent[];
+  }
+
+  listBoardPlaybookCostsByDevSession(devSessionId: string): BoardPlaybookCostRow[] {
+    return this.stmts.boardPlaybookCostsByDevSession.all(devSessionId) as BoardPlaybookCostRow[];
   }
 
   deleteByProject(projectId: string): void {

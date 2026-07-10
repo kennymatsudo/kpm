@@ -25,7 +25,6 @@ import {
   type DevSessionStatus,
   type DevSessionWithPlanItem,
   type AgentEffortLevel,
-  type AgentExecutionMode,
   type AgentReviewPolicy,
   type RepoEnvironmentMode,
 } from '../../../shared/types';
@@ -51,16 +50,18 @@ import { openDirectoryInCodeEditor } from './editorLauncher';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
 import { FollowUpNotAllowedError } from '../agents/BaseAgentSession';
 import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
+import type { PlaybookService } from '../core/PlaybookService';
+import { parsePlaybook, type BoardProvider, type Playbook } from '../../../shared/playbooks';
+import { renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import {
   type AgentContextInput,
+  type BoardClaudeModel,
   buildAgentContext,
   buildProjectContextPrefix,
   buildBoardStartInstructions,
   buildCommitHookRepairPrompt,
-  buildExecutionPrompt,
   buildBoardSdkSettings,
   resolveBoardEffort,
-  resolveBoardModel,
 } from './devSessionPrompt';
 import {
   generateBranchName,
@@ -101,10 +102,27 @@ export interface DevSessionServiceDeps {
   agentSessionManager?: AgentSessionManager;
   /** Sole writer of `automation_phase` — see automationPhaseMachine.ts */
   phaseMachine: Pick<AutomationPhaseMachine, 'transition'>;
+  playbookService: Pick<PlaybookService, 'get' | 'getDefault'>;
+  listBoardProviders: () => Promise<BoardProvider[]>;
+  getSkillBody: (name: string) => ServiceResult<string>;
+  resumePlaybook: (sessionId: string, options?: { note?: string; action?: 'resume' | 'proceed' | 'one_more_pass' }) => Promise<boolean>;
 }
 const broadcastSessionStatusChange = createStatusBroadcaster<DevSession, typeof devSessionEvents.statusChanged>(devSessionEvents.statusChanged);
 
 export function createDevSessionService(deps: DevSessionServiceDeps) {
+  function playbookFromSnapshot(session: DevSession): Playbook | null {
+    if (!session.playbook_snapshot) return null;
+    try { return parsePlaybook(JSON.parse(session.playbook_snapshot)); } catch { return null; }
+  }
+
+  function selectedPlaybook(id?: string): ServiceResult<Playbook> {
+    if (id) return deps.playbookService.get(id);
+    const defaultResult = deps.playbookService.getDefault();
+    return defaultResult.ok
+      ? deps.playbookService.get(defaultResult.data)
+      : failure(defaultResult.error);
+  }
+
   function getAgentContextInput(planItemId: string): ServiceResult<AgentContextInput> {
     const item = deps.planItems.get(planItemId);
     if (!item) {
@@ -133,6 +151,19 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
   }
 
   const service = {
+    savePlaybookOutputs(sessionId: string, outputs: Record<string, string[]>): void {
+      deps.devSessions.updateStepOutputs(sessionId, JSON.stringify(outputs));
+    },
+
+    async resumePlaybook(
+      sessionId: string,
+      options?: { note?: string; action?: 'resume' | 'proceed' | 'one_more_pass' },
+    ): AsyncResult<{ session: DevSession }> {
+      const handled = await deps.resumePlaybook(sessionId, options);
+      const session = deps.devSessions.get(sessionId);
+      return handled && session ? success({ session }) : failure('Session does not have a resumable playbook step');
+    },
+
     /**
      * Get all sessions for a project
      */
@@ -285,10 +316,9 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       contextPaths?: string[];
       effort?: AgentEffortLevel;
       environmentMode?: RepoEnvironmentMode;
-      executionMode?: AgentExecutionMode;
       reviewPolicy?: AgentReviewPolicy;
+      playbookId?: string;
     }): AsyncResult<{ session: DevSession }> {
-      const executionMode = input.executionMode ?? 'standard';
       const reviewPolicy = input.reviewPolicy ?? 'auto';
       const instructionsResult = service.buildBoardStartInstructions(input.planItemId, input.prompt);
       if (!instructionsResult.ok) {
@@ -300,25 +330,50 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       let projectId: string;
 
       const existing = deps.devSessions.getByPlanItem(input.planItemId);
+      const snapshot = existing ? playbookFromSnapshot(existing) : null;
+      const playbookResult = snapshot ? success(snapshot) : selectedPlaybook(input.playbookId);
+      if (!playbookResult.ok) return playbookResult;
+      const playbook: Playbook = playbookResult.data;
+      const providers = await deps.listBoardProviders();
+      const resolvedPlan = resolvePlaybookPlan(playbook, providers);
+      if (!resolvedPlan.main) return failure('No available provider can run the first main playbook step');
+      if (!['claude', 'codex', 'gemini'].includes(resolvedPlan.main.provider)) {
+        return failure(`Provider ${resolvedPlan.main.provider} is not enabled for board execution`);
+      }
+
       if (
         existing?.repo_id === input.repoId
         && (existing.status === 'inactive' || existing.status === 'pending')
       ) {
         sessionId = existing.id;
         projectId = existing.project_id;
-        deps.devSessions.updateWorkflowControls(sessionId, executionMode, reviewPolicy);
+        deps.devSessions.updateReviewPolicy(sessionId, reviewPolicy);
+        if (!snapshot) {
+          deps.devSessions.updatePlaybook(sessionId, playbook.id, JSON.stringify(playbook), playbook.steps[0].id, resolvedPlan.main.provider as DevSession['agent_type']);
+        }
       } else {
         const createResult = await service.createPendingSession(
           input.planItemId,
           input.repoId,
           instructions,
-          { baseBranch: input.baseBranch, executionMode, reviewPolicy },
+          {
+            baseBranch: input.baseBranch,
+            reviewPolicy,
+            playbook,
+            agentType: resolvedPlan.main.provider as DevSession['agent_type'],
+          },
         );
         if (!createResult.ok) {
           return createResult;
         }
         sessionId = createResult.data.id;
         projectId = createResult.data.project_id;
+      }
+
+      const persisted = deps.devSessions.get(sessionId);
+      if (persisted?.playbook_snapshot && persisted.current_step_id && (persisted.automation_phase === 'paused' || persisted.automation_phase === 'needs_attention')) {
+        const resumed = await deps.resumePlaybook(sessionId);
+        return resumed ? success({ session: deps.devSessions.get(sessionId)! }) : failure('Could not resume the persisted playbook step');
       }
 
       const projectContextResult = await deps.readProjectContextFile(projectId);
@@ -332,12 +387,24 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       const contextPrefix = prefixResult?.ok ? prefixResult.data : '';
       const baseAugmented = projectContextPrefix + contextPrefix + instructions;
       const augmentedPrompt = service.buildPlanRefSection(projectId, baseAugmented) + baseAugmented;
+      const firstStep = playbook.steps.find((step) => step.session === 'main') ?? playbook.steps[0];
+      const provider = providers.find((entry) => entry.id === resolvedPlan.main!.provider)!;
+      const skillBody = firstStep.directive.kind === 'skill' && !provider.capabilities.nativeSkills
+        ? deps.getSkillBody(firstStep.directive.name)
+        : null;
+      if (skillBody && !skillBody.ok) return failure(skillBody.error);
+      const stepPrompt = renderPlaybookDirective(firstStep, {}, {
+        nativeSkills: provider.capabilities.nativeSkills,
+        taskContext: augmentedPrompt,
+        promptContent: deps.getPromptContent,
+        skillBody: skillBody?.ok ? skillBody.data : null,
+      });
 
       return service.startAgentSession(sessionId, {
-        prompt: augmentedPrompt,
-        effort: input.effort,
+        prompt: stepPrompt,
+        effort: resolvedPlan.main.effort ?? input.effort,
         environmentMode: input.environmentMode,
-        executionMode,
+        model: resolvedPlan.main.model,
       });
     },
 
@@ -348,11 +415,13 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       planItemId: string,
       repoId: string,
       instructions: string,
-      options?: {
+      options: {
+        /** New rows always carry an immutable snapshot and enter the interpreter. */
+        playbook: Playbook;
         freshStart?: boolean;
         baseBranch?: string;
-        executionMode?: AgentExecutionMode;
         reviewPolicy?: AgentReviewPolicy;
+        agentType?: DevSession['agent_type'];
       }
     ): AsyncResult<DevSession> {
       try {
@@ -402,10 +471,14 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           // in startAgentSession after scaffoldWorktree.
           base_sha: null,
           status: 'pending',
-          agent_type: 'claude',
-          execution_mode: options?.executionMode ?? 'standard',
-          review_policy: options?.reviewPolicy ?? 'auto',
+          agent_type: options.agentType ?? 'claude',
+          review_policy: options.reviewPolicy ?? 'auto',
           automation_phase: null,
+          playbook_id: options.playbook.id,
+          playbook_snapshot: JSON.stringify(options.playbook),
+          current_step_id: options.playbook.steps[0].id,
+          step_pass_counts: null,
+          paused_reason: null,
           initial_instructions: instructions,
           pr_number: null,
           pr_url: null,
@@ -434,7 +507,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         prompt?: string;
         effort?: AgentEffortLevel;
         environmentMode?: RepoEnvironmentMode;
-        executionMode?: AgentExecutionMode;
+        model?: string;
       },
     ): AsyncResult<{ session: DevSession }> {
       try {
@@ -506,23 +579,24 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         );
 
         // Use the user's prompt override if provided, otherwise the stored instructions
-        const executionMode = options?.executionMode ?? session.execution_mode ?? 'standard';
-        const prompt = buildExecutionPrompt(options?.prompt || session.initial_instructions, executionMode);
+        const prompt = options?.prompt || session.initial_instructions;
 
         deps.agentReviews.markLatestCompletedStale(sessionId);
         deps.phaseMachine.transition(sessionId, { type: 'sessionStarted' });
 
-        const developerModel = resolveBoardModel(executionMode, session.agent_type);
-        const effectiveEffort = resolveBoardEffort(developerModel, options?.effort, executionMode);
-        const sdkSettings = buildBoardSdkSettings(executionMode, effectiveEffort);
-        const disallowedTools = executionMode === 'workflow'
-          ? ['AskUserQuestion']
-          : ['AskUserQuestion', 'Workflow'];
+        const sessionPlaybook = playbookFromSnapshot(session);
+        const firstMainStep = sessionPlaybook?.steps.find((step) => step.session === 'main');
+        const developerModel = options?.model ?? 'sonnet';
+        const effectiveEffort = session.agent_type === 'claude'
+          ? resolveBoardEffort(developerModel as BoardClaudeModel, options?.effort)
+          : options?.effort;
+        const sdkSettings = buildBoardSdkSettings();
+        const disallowedTools = ['AskUserQuestion', 'Workflow'];
 
         // Build SDK options for the dev session
         // Dev sessions use a minimal config — no KPM MCP server, no plan tools
         const sdkOptions: SDKOptions = {
-          systemPrompt: deps.getPromptContent('agents.implementation_system'),
+          systemPrompt: deps.getPromptContent(firstMainStep?.systemPromptKey ?? 'agents.implementation_system'),
           model: developerModel,
           cwd: worktreeCwd,
           maxTurns: getConfig().claude.maxTurns,
@@ -532,7 +606,6 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           disallowedTools,
           settingSources: ['user'],
           settings: sdkSettings,
-          skills: [],
           env: { ...process.env, ...capturedEnv, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
           thinking: { type: 'adaptive' as const, display: 'summarized' as const },
           agentProgressSummaries: true,
@@ -547,7 +620,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           agentType: session.agent_type,
           role: 'implement',
           sdkOptions: session.agent_type === 'claude' ? sdkOptions : undefined,
-          model: session.agent_type === 'codex' ? getConfig().agentSession.codexModel : undefined,
+          model: session.agent_type === 'codex' ? options?.model ?? getConfig().agentSession.codexModel : undefined,
         });
 
         // Update DB status to active

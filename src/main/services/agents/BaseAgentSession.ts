@@ -54,6 +54,7 @@ const MAX_ACTIVITIES_BUFFER = 500;
 export abstract class BaseAgentSession {
   readonly id: string;
   readonly role: AgentSessionRole;
+  private readonly expectsFindings: boolean;
   abstract readonly agentType: AgentType;
 
   protected _state: AgentSessionState = 'starting';
@@ -88,9 +89,10 @@ export abstract class BaseAgentSession {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   protected handlers = new Map<string, Set<(...args: any[]) => void>>();
 
-  constructor(id: string, role: AgentSessionRole) {
+  constructor(id: string, role: AgentSessionRole, expectsFindings = role === 'review') {
     this.id = id;
     this.role = role;
+    this.expectsFindings = expectsFindings;
   }
 
   // ===========================================================================
@@ -133,7 +135,7 @@ export abstract class BaseAgentSession {
    */
   getResult(): AgentTurnResult {
     const finalText = this.finalOutput();
-    if (this.role !== 'review') {
+    if (!this.expectsFindings) {
       return { finalText };
     }
 

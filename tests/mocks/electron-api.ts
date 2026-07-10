@@ -36,6 +36,15 @@ const noopUnsub = vi.fn().mockReturnValue(() => {});
 
 export function createMockApi() {
   return {
+    usage: {
+      getProjectStats: vi.fn(),
+      getGlobalStats: vi.fn(),
+      listEvents: vi.fn(),
+      getDevSessionStepCosts: vi.fn().mockResolvedValue({ costs: {} }),
+      resetProject: vi.fn(),
+      onUsageEvent: noopUnsub,
+    },
+
     tempImages: {
       save: vi.fn().mockResolvedValue({ success: true, path: '/tmp/mock.png', filename: 'mock.png' }),
       delete: vi.fn().mockResolvedValue({ success: true }),

@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildPlaceholderContext } from '../../../shared/contextFile';
 import { buildProjectContextPrefix, createDevSessionService } from './DevSessionService';
 import { FollowUpNotAllowedError } from '../agents/BaseAgentSession';
+import { BUILT_IN_PLAYBOOKS } from '../../../shared/playbooks';
+
+vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] } }));
 
 describe('buildProjectContextPrefix', () => {
   it('excludes placeholder content', () => {
@@ -22,6 +25,35 @@ describe('buildProjectContextPrefix', () => {
   it('defaults the label when no filename is returned', () => {
     const result = buildProjectContextPrefix({ content: 'Conventions.' });
     expect(result).toBe('<context-file path="AGENTS.md">\nConventions.\n</context-file>\n\n');
+  });
+});
+
+describe('DevSessionService playbook migration boundary', () => {
+  it('snapshots every newly created board session for interpreter execution', async () => {
+    const create = vi.fn((session) => ({
+      ...session,
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+      completed_at: null,
+    }));
+    const service = createDevSessionService({
+      planItems: { get: vi.fn(() => ({ id: 'item-1', project_id: 'project-1', title: 'Task' })) },
+      repos: { getById: vi.fn(() => ({ id: 'repo-1', path: '/tmp/repo' })) },
+      devSessions: { getActiveByPlanItem: vi.fn(), create },
+      appSettings: { get: vi.fn() },
+    } as never);
+
+    const result = await service.createPendingSession('item-1', 'repo-1', 'Do work', {
+      baseBranch: 'main',
+      playbook: BUILT_IN_PLAYBOOKS.implementOnly,
+    });
+
+    if (!result.ok) throw new Error(result.error);
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      playbook_id: BUILT_IN_PLAYBOOKS.implementOnly.id,
+      playbook_snapshot: JSON.stringify(BUILT_IN_PLAYBOOKS.implementOnly),
+      current_step_id: 'implement',
+    }));
   });
 });
 

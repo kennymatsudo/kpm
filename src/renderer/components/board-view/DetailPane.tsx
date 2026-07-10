@@ -24,7 +24,7 @@ import { LinkPrDialog } from '../development/LinkPrDialog';
 import { ReviewTab } from '../development/ReviewTab';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useDevSessionsStore } from '../../stores/devSessions';
-import { commitAgentSession, dismissAgentInterruption, launchAutoReview, startAgentSession, stopAgentSession } from '../../services/agentSessionService';
+import { commitAgentSession, dismissAgentInterruption, launchAutoReview, resumePlaybook, startAgentSession, stopAgentSession } from '../../services/agentSessionService';
 import { openDevSessionInEditor } from '../../services/devSessionService';
 import { openExternalUrl } from '../../services/shellService';
 import { usePlanDomainStore, useProjectUiDomainStore, toast } from '../../stores';
@@ -59,14 +59,16 @@ export const DetailPane = memo(function DetailPane({
   const [commitTransitionsToReview, setCommitTransitionsToReview] = useState(false);
   const chatInputRef = useRef<DetailChatInputHandle>(null);
 
-  const { commitState, diff } = useDevSessionsStore(
+  const { commitState, diff, stepCosts } = useDevSessionsStore(
     useShallow((s) => ({
       commitState: s.commitStateBySessionId.get(session.id),
       diff: s.diffBySessionId.get(session.id),
+      stepCosts: s.stepCostsBySessionId.get(session.id),
     }))
   );
   const setCommitState = useDevSessionsStore((s) => s.setCommitState);
   const loadDiff = useDevSessionsStore((s) => s.loadDiff);
+  const loadStepCosts = useDevSessionsStore((s) => s.loadStepCosts);
 
   const status = usePanelStatus(session);
 
@@ -81,6 +83,10 @@ export const DetailPane = memo(function DetailPane({
     || reviewSession.agentState === 'stopped';
   const effectiveAgentState = showReviewSession ? reviewSession.agentState : implementationSession.agentState;
   const effectiveActivities = showReviewSession ? reviewSession.activities : implementationSession.activities;
+
+  useEffect(() => {
+    void loadStepCosts(session.id);
+  }, [effectiveAgentState, loadStepCosts, session.current_step_id, session.id]);
 
   const updateStatusCategory = usePlanDomainStore((s) => s.updateStatusCategory);
   const planItem = usePlanDomainStore((s) =>
@@ -157,6 +163,14 @@ export const DetailPane = memo(function DetailPane({
         }
       }
     })();
+  }, [pendingPanelAction, session.id]);
+
+  const handlePauseAction = useCallback((action: 'proceed' | 'one_more_pass') => {
+    if (pendingPanelAction) return;
+    setPendingPanelAction(action);
+    void resumePlaybook({ devSessionId: session.id, action }).then((result) => {
+      if (!result.success) toast.error(result.error ?? 'Failed to continue playbook');
+    }).finally(() => { if (isMountedRef.current) setPendingPanelAction(null); });
   }, [pendingPanelAction, session.id]);
 
   const handleDismissInterruption = useCallback(() => {
@@ -271,6 +285,10 @@ export const DetailPane = memo(function DetailPane({
       case 'resume':
         handleResume();
         break;
+      case 'proceed':
+      case 'one_more_pass':
+        handlePauseAction(id);
+        break;
       case 'dismiss':
         handleDismissInterruption();
         break;
@@ -302,7 +320,7 @@ export const DetailPane = memo(function DetailPane({
         setActiveTab('review');
         break;
     }
-  }, [handleStop, handleResume, handleDismissInterruption, handleReadyForReview, handleRunReview, handleOpenPr]);
+  }, [handleStop, handleResume, handlePauseAction, handleDismissInterruption, handleReadyForReview, handleRunReview, handleOpenPr]);
 
   const detailSession = {
     ...session,
@@ -414,7 +432,13 @@ export const DetailPane = memo(function DetailPane({
         onAddToContext={handleAddToContext}
       />
 
-      <PhaseStepper stepIndex={status.stepIndex} />
+      <PhaseStepper
+        stepIndex={status.stepIndex}
+        playbookSnapshot={session.playbook_snapshot}
+        currentStepId={session.current_step_id}
+        stepPassCounts={session.step_pass_counts}
+        stepCosts={stepCosts}
+      />
 
       {/* Tab bar — kept directly under the stepper so its position never shifts;
           the Next strip lives below it so toggling the strip can't move tabs. */}
@@ -492,6 +516,9 @@ export const DetailPane = memo(function DetailPane({
           ref={chatInputRef}
           devSessionId={session.id}
           agentState={effectiveAgentState}
+          playbookSnapshot={session.playbook_snapshot}
+          currentStepId={session.current_step_id}
+          automationPhase={session.automation_phase}
         />
       )}
     </div>

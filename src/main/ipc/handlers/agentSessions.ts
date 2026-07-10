@@ -48,6 +48,16 @@ type AgentSessionHandlers = {
     : UnwrappedHandlerFor<typeof agentSessionEndpoints, K>;
 };
 
+function assertInterpreterAllowsInteraction(devSessionService: DevSessionService, devSessionId: string): void {
+  const persisted = devSessionService.get(devSessionId);
+  if (
+    persisted?.playbook_snapshot
+    && persisted.current_step_id
+  ) {
+    throw new Error('Stop to interact');
+  }
+}
+
 function buildAgentSessionHandlers(
   agentSessionManager: AgentSessionManager,
   devSessionService: DevSessionService,
@@ -68,14 +78,28 @@ function buildAgentSessionHandlers(
 
     // Start an agent session for an existing pending/inactive dev session
     startAgent: async ({ devSessionId }) => {
-      const result = await devSessionService.startAgentSession(devSessionId);
+      const persisted = devSessionService.get(devSessionId);
+      // The direct start fallback is retained only for pre-migration sessions
+      // that have no snapshot. Every newly created row is snapshotted and uses
+      // interpreter resume/dispatch semantics.
+      const result = persisted?.playbook_snapshot && persisted.current_step_id
+        && (persisted.automation_phase === 'paused' || persisted.automation_phase === 'needs_attention')
+        ? await devSessionService.resumePlaybook(devSessionId)
+        : await devSessionService.startAgentSession(devSessionId);
       if (!result.ok) {
         throw new Error(result.error);
       }
       return { session: result.data.session };
     },
 
+    resumePlaybook: async ({ devSessionId, note, action }) => {
+      const result = await devSessionService.resumePlaybook(devSessionId, { note, action });
+      if (!result.ok) throw new Error(result.error);
+      return { session: result.data.session };
+    },
+
     respond: async ({ devSessionId, text }) => {
+      assertInterpreterAllowsInteraction(devSessionService, devSessionId);
       const session = agentSessionManager.getByDevSession(devSessionId);
       if (!session) {
         throw new Error(`No active agent session for dev session ${devSessionId}`);
@@ -84,6 +108,7 @@ function buildAgentSessionHandlers(
     },
 
     followUp: async ({ devSessionId, text }) => {
+      assertInterpreterAllowsInteraction(devSessionService, devSessionId);
       const result = await devSessionService.sendAgentFollowUp(devSessionId, text);
       if (!result.ok) {
         throw new Error(result.error);
@@ -93,10 +118,13 @@ function buildAgentSessionHandlers(
 
     stop: async ({ devSessionId }) => {
       const session = agentSessionManager.getByDevSession(devSessionId);
-      if (!session) {
+      if (session) {
+        await session.stop();
+        return;
+      }
+      if (!await agentSessionManager.stopForImplementationSession(devSessionId)) {
         throw new Error(`No active agent session for dev session ${devSessionId}`);
       }
-      await session.stop();
     },
 
     getActivities: ({ devSessionId }) => {

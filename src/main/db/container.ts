@@ -41,6 +41,7 @@ import {
   ProjectFileMetadataRepository as ProjectFileMetadataRepositoryClass,
   ScheduledLoopRepository as ScheduledLoopRepositoryClass,
   LoopRunRepository as LoopRunRepositoryClass,
+  PlaybookRepository as PlaybookRepositoryClass,
 } from './repositories/impl';
 import type { IFileSystem, IPathUtils } from './repositories/impl/ProjectRepository';
 
@@ -128,6 +129,7 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
     projectFileMetadata: new ProjectFileMetadataRepositoryClass(database),
     scheduledLoops: new ScheduledLoopRepositoryClass(database),
     loopRuns: new LoopRunRepositoryClass(database),
+    playbooks: new PlaybookRepositoryClass(database),
   };
 }
 

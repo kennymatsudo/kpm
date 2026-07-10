@@ -16,13 +16,17 @@ import type { ClaudeUsageService } from '../../services/core/ClaudeUsageService'
  */
 type UsageHandlers = { [K in UsageEndpointName]: HandlerFor<typeof usageEndpoints, K> };
 
-function buildUsageHandlers(claudeUsageService: ClaudeUsageService): UsageHandlers {
+export function buildUsageHandlers(claudeUsageService: ClaudeUsageService): UsageHandlers {
   return {
     getProjectStats: ({ projectId }) => claudeUsageService.getProjectStats(projectId),
 
     getGlobalStats: () => claudeUsageService.getGlobalStats(),
 
     listEvents: ({ projectId, limit }) => claudeUsageService.listRecentEvents(projectId, limit ?? 100),
+
+    getDevSessionStepCosts: ({ devSessionId }) => ({
+      costs: claudeUsageService.getBoardPlaybookStepCosts(devSessionId),
+    }),
 
     resetProject: ({ projectId }) => {
       claudeUsageService.resetProject(projectId);

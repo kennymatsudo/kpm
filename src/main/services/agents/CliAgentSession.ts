@@ -33,6 +33,7 @@ export interface CliAgentSessionConfig {
   role: AgentSessionRole;
   /** Hook server port for configuring agent hooks */
   hookPort: number;
+  expectsFindings?: boolean;
 }
 
 export class CliAgentSession extends BaseAgentSession implements IAgentSession {
@@ -45,7 +46,7 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
   private hookPort: number;
 
   constructor(config: CliAgentSessionConfig) {
-    super(config.id, config.role);
+    super(config.id, config.role, config.expectsFindings);
     this.agentType = config.agentType;
     this.hookPort = config.hookPort;
   }

@@ -38,6 +38,8 @@ export interface CodexSdkAgentSessionConfig {
   id: string;
   role: AgentSessionRole;
   model?: string;
+  expectsFindings?: boolean;
+  readOnly?: boolean;
 }
 
 export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSession {
@@ -48,10 +50,14 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
   private thread: Thread | null = null;
   private worktreePath: string | null = null;
   private lastAssistantMessage = '';
+  private readonly structuredFindings: boolean;
+  private readonly readOnly: boolean;
 
   constructor(config: CodexSdkAgentSessionConfig) {
-    super(config.id, config.role);
+    super(config.id, config.role, config.expectsFindings);
     this.model = config.model;
+    this.structuredFindings = config.expectsFindings ?? config.role === 'review';
+    this.readOnly = config.readOnly ?? config.role === 'review';
     this.codex = new Codex({ codexPathOverride: findCodexBinaryPath() });
   }
 
@@ -108,7 +114,7 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
   private buildThreadOptions(worktreePath: string): ThreadOptions {
     return {
       workingDirectory: worktreePath,
-      sandboxMode: this.role === 'review' ? 'read-only' : 'workspace-write',
+      sandboxMode: this.readOnly ? 'read-only' : 'workspace-write',
       approvalPolicy: 'never',
       networkAccessEnabled: false,
       webSearchMode: 'disabled',
@@ -124,7 +130,7 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
     await this.runGuardedTurn(async (signal) => {
       const turnOptions: TurnOptions = {
         signal,
-        ...(this.role === 'review' && { outputSchema: REVIEW_FINDINGS_SCHEMA }),
+        ...(this.structuredFindings && { outputSchema: REVIEW_FINDINGS_SCHEMA }),
       };
 
       const { events } = await this.thread!.runStreamed(prompt, turnOptions);

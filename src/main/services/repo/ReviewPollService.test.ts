@@ -40,9 +40,13 @@ function createSession(overrides: Partial<DevSession> = {}): DevSession {
     base_sha: null,
     status: 'inactive',
     agent_type: 'claude',
-    execution_mode: 'standard',
     review_policy: 'auto',
     automation_phase: 'ready_for_review',
+    playbook_id: null,
+    playbook_snapshot: null,
+    current_step_id: null,
+    step_pass_counts: null,
+    paused_reason: null,
     initial_instructions: 'Do the work',
     pr_number: 42,
     pr_url: 'https://github.com/acme/repo/pull/42',
@@ -211,6 +215,16 @@ function buildHarness(options: {
   };
   const reviewService = {
     syncSessionReviewState: vi.fn().mockResolvedValue({ ok: true, data: createInbox(snapshot, tasks) }),
+    queueReviewTasks: vi.fn((_sessionId: string, taskIds: string[]) => {
+      for (const taskId of taskIds) {
+        const task = tasks.find((candidate) => candidate.id === taskId);
+        if (task) {
+          task.status = 'in_progress';
+          task.internal_state = 'implementation_queued';
+        }
+      }
+      return { ok: true, data: undefined };
+    }),
   };
   const reviewAssessmentService = {
     assessThreads: vi.fn().mockResolvedValue({ ok: true, data: [] }),
@@ -230,7 +244,10 @@ function buildHarness(options: {
         mergeable: 'MERGEABLE',
       },
     }),
-    buildAddressReviewContext: vi.fn(),
+    buildAddressReviewContext: vi.fn().mockResolvedValue({ ok: true, data: 'REVIEW CONTEXT' }),
+  };
+  const devSessionService = {
+    sendAgentFollowUp: vi.fn().mockResolvedValue({ ok: true, data: { restarted: false, deferred: false } }),
   };
   const planService = {
     updateItem: vi.fn().mockReturnValue({ ok: true, data: undefined }),
@@ -260,7 +277,7 @@ function buildHarness(options: {
     },
     reviewService,
     reviewAssessmentService,
-    devSessionService: {},
+    devSessionService,
     phaseMachine,
     gitHubService,
     planService,
@@ -287,6 +304,7 @@ function buildHarness(options: {
     reviewService,
     reviewAssessmentService,
     gitHubService,
+    devSessionService,
     planService,
     phaseMachine,
     broadcastToWindows,
@@ -423,6 +441,21 @@ describe('ReviewPollService', () => {
     expect(harness.planService.updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'done' });
   });
 
+  it('does not discover a custom-id playbook cursor that is live during provider resolution or dispatch', async () => {
+    const harness = buildHarness({
+      session: createSession({
+        automation_phase: 'idle',
+        playbook_snapshot: '{"id":"custom"}',
+        current_step_id: 'critic-a',
+      }),
+    });
+
+    const summary = await harness.service.pollNow();
+
+    expect(summary.processed).toBe(0);
+    expect(harness.reviewService.syncSessionReviewState).not.toHaveBeenCalled();
+  });
+
   it('does not discover a session that is actively mid-automation', async () => {
     const harness = buildHarness({
       session: createSession({ automation_phase: 'addressing_review' }),
@@ -432,6 +465,49 @@ describe('ReviewPollService', () => {
 
     expect(summary.processed).toBe(0);
     expect(harness.reviewService.syncSessionReviewState).not.toHaveBeenCalled();
+  });
+
+  it('clears implementation_queued state after the poller successfully sends a follow-up', async () => {
+    const task = createTask({
+      status: 'needs_review',
+      internal_state: null,
+      disposition: null,
+      error: null,
+    });
+    const harness = buildHarness({
+      snapshot: createSnapshot({
+        state: 'OPEN',
+        reviewDecision: 'CHANGES_REQUESTED',
+        threads: [createThread()],
+      }),
+      tasks: [task],
+    });
+    harness.reviewAssessmentService.assessThreads.mockImplementation(() => {
+      task.status = 'assessed';
+      task.disposition = 'implement';
+      task.internal_state = null;
+      return Promise.resolve({ ok: true, data: [] });
+    });
+    harness.reviewService.queueReviewTasks = vi.fn((_sessionId: string, taskIds: string[]) => {
+      for (const taskId of taskIds) {
+        const queuedTask = harness.tasks.find((candidate) => candidate.id === taskId);
+        if (queuedTask) {
+          queuedTask.status = 'in_progress';
+          queuedTask.internal_state = 'implementation_queued';
+        }
+      }
+      return { ok: true, data: undefined };
+    });
+
+    const result = await harness.service.pollSession('session-1');
+
+    expect(result.action).toBe('fix_started');
+    expect(harness.devSessionService.sendAgentFollowUp).toHaveBeenCalledWith('session-1', expect.any(String));
+    expect(harness.reviewTasks.updateStatus).toHaveBeenCalledWith('task-1', 'in_progress', expect.objectContaining({
+      internal_state: null,
+      error: null,
+    }));
+    expect(task.internal_state).toBeNull();
   });
 
   it('uses linked PR status as a fallback when the review snapshot was unchanged', async () => {

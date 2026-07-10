@@ -171,9 +171,6 @@ export type AgentEffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 /** Effort levels the main chat accepts; 'xhigh' is board-agent-only. */
 export type ChatEffortLevel = Exclude<AgentEffortLevel, 'xhigh'>;
 
-/** Board implementation strategy. Standard preserves the existing one-agent flow. */
-export type AgentExecutionMode = 'standard' | 'workflow';
-
 /** Opposing-agent review policy for a board implementation session. */
 export type AgentReviewPolicy = 'auto' | 'skip';
 
@@ -1033,14 +1030,16 @@ export type DevSessionAutomationPhase =
   | 'reviewing'
   | 'addressing_review'
   | 'fixing_commit_hooks'
-  | 'fixing_commit_hooks_after_review'
+  | 'paused'
   | 'ready_for_review'
   | 'needs_attention';
+
+export type DevSessionPausedReason = 'gate' | 'max_passes';
 
 export function isCommitHookRepairPhase(
   phase: DevSessionAutomationPhase | null | undefined,
 ): boolean {
-  return phase === 'fixing_commit_hooks' || phase === 'fixing_commit_hooks_after_review';
+  return phase === 'fixing_commit_hooks';
 }
 
 /**
@@ -1056,6 +1055,7 @@ export function isLiveAutomationPhase(
   return (
     phase === 'reviewing'
     || phase === 'addressing_review'
+    || phase === 'paused'
     || phase === 'needs_attention'
     || isCommitHookRepairPhase(phase)
   );
@@ -1088,9 +1088,14 @@ export interface DevSession {
 
   // Agent type used for this session
   agent_type: AgentType;
-  execution_mode: AgentExecutionMode;
   review_policy: AgentReviewPolicy;
   automation_phase: DevSessionAutomationPhase | null;
+  playbook_id: string | null;
+  playbook_snapshot: string | null;
+  current_step_id: string | null;
+  step_pass_counts: string | null;
+  step_outputs?: string | null;
+  paused_reason: DevSessionPausedReason | null;
 
   // Context passed to Claude Code
   initial_instructions: string;

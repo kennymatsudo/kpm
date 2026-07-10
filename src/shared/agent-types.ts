@@ -91,7 +91,7 @@ export interface AgentCompletionSummary {
 /** A finding from an opposing-agent review or GitHub PR review */
 export interface ReviewFinding {
   severity: 'critical' | 'warning' | 'suggestion';
-  file: string;
+  file?: string;
   line?: number;
   description: string;
   /** Which agent produced this finding */
@@ -134,6 +134,8 @@ export interface PersistedAgentReview {
   diff_fingerprint: string | null;
   raw_output: string | null;
   error: string | null;
+  step_id: string | null;
+  run_index: number | null;
   findings: ReviewFinding[];
   created_at: string;
   updated_at: string;

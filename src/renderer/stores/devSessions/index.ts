@@ -20,6 +20,7 @@ import { createDevSessionsPrSlice } from './prSlice';
 import { invalidateLoadSessionsRequests } from './requestState';
 import { createDevSessionsReviewSlice } from './reviewSlice';
 import { getAgentState } from '../../services/agentSessionService';
+import { getDevSessionStepCosts } from '../../services/usageService';
 
 export interface BackgroundCommitState {
   status: 'running' | 'failed';
@@ -66,6 +67,7 @@ export interface DevSessionsState {
   questionBySessionId: Map<string, AgentQuestion | null>;
   completionBySessionId: Map<string, AgentCompletionSummary>;
   reviewFindingsBySessionId: Map<string, ReviewFinding[]>;
+  stepCostsBySessionId: Map<string, Record<string, number>>;
 
   // Actions
   setSessions: (sessions: DevSessionWithPlanItem[]) => void;
@@ -130,6 +132,7 @@ export interface DevSessionsState {
     }
   ) => void;
   reconcileAgentStates: (devSessionIds: string[]) => Promise<void>;
+  loadStepCosts: (devSessionId: string) => Promise<void>;
   getAgentState: (devSessionId: string) => AgentSessionState | undefined;
 
   // Reset
@@ -172,6 +175,7 @@ function createInitialState() {
     questionBySessionId: new Map<string, AgentQuestion | null>(),
     completionBySessionId: new Map<string, AgentCompletionSummary>(),
     reviewFindingsBySessionId: new Map<string, ReviewFinding[]>(),
+    stepCostsBySessionId: new Map<string, Record<string, number>>(),
   };
 }
 
@@ -316,6 +320,15 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
 
   getAgentState: (devSessionId) => {
     return get().agentStateBySessionId.get(devSessionId);
+  },
+
+  loadStepCosts: async (devSessionId) => {
+    const response = await getDevSessionStepCosts(devSessionId);
+    set((state) => {
+      const next = new Map(state.stepCostsBySessionId);
+      next.set(devSessionId, response.costs);
+      return { stepCostsBySessionId: next };
+    });
   },
 
   // Pull authoritative state from the main process for each session and merge

@@ -21,6 +21,9 @@ import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { fileExplorerEvents } from '../../../shared/ipc/fileExplorerEvents';
 import type { ClaudeUsageService } from '../core/ClaudeUsageService';
 import type { ContextFileService } from '../core/ContextFileService';
+import type { PlaybookService } from '../core/PlaybookService';
+import type { BoardProvider } from '../../../shared/playbooks';
+import type { ServiceResult } from '../result';
 
 export interface RepoServicesCompositionDeps {
   container: IRepositoryContainer;
@@ -37,6 +40,10 @@ export interface RepoServicesCompositionDeps {
   /** Centralized Claude token + cost tracker. */
   claudeUsageService: ClaudeUsageService;
   fileSummaryService?: FileSummaryService;
+  playbookService: Pick<PlaybookService, 'get' | 'getDefault'>;
+  listBoardProviders: () => Promise<BoardProvider[]>;
+  getSkillBody: (name: string) => ServiceResult<string>;
+  resumePlaybook: (sessionId: string, options?: { note?: string; action?: 'resume' | 'proceed' | 'one_more_pass' }) => Promise<boolean>;
 }
 
 export function createRepoServices({
@@ -51,6 +58,10 @@ export function createRepoServices({
   readProjectContextFile,
   claudeUsageService,
   fileSummaryService,
+  playbookService,
+  listBoardProviders,
+  getSkillBody,
+  resumePlaybook,
 }: RepoServicesCompositionDeps) {
   const repoService = createRepoService({
     repos: container.repos,
@@ -89,6 +100,10 @@ export function createRepoServices({
     getPromptContent,
     buildContextPrefix,
     readProjectContextFile,
+    playbookService,
+    listBoardProviders,
+    getSkillBody,
+    resumePlaybook,
   });
 
   const gitHubService = createGitHubService({

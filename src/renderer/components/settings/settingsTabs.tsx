@@ -6,6 +6,7 @@ import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings';
 import { McpServersSettings } from './McpServersSettings';
 import { PermissionsSettings } from './PermissionsSettings';
 import { PromptsSettings } from './PromptsSettings';
+import { PlaybooksSettings } from './PlaybooksSettings';
 
 export interface SettingsTabContext {
   currentProjectId?: string | null;
@@ -81,6 +82,17 @@ export const SETTINGS_TABS: SettingsTabDef[] = [
       </svg>
     ),
     render: ({ currentProjectId }) => <PromptsSettings currentProjectId={currentProjectId} />,
+  },
+  {
+    id: 'playbooks',
+    label: 'Playbooks',
+    noPadding: true,
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h7m2 0h7M4 12h4m2 0h10M4 18h10m2 0h4" />
+      </svg>
+    ),
+    render: () => <PlaybooksSettings />,
   },
   {
     id: 'mcp',

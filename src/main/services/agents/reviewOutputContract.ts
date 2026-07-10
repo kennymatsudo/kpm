@@ -20,7 +20,7 @@ export const REVIEW_FINDINGS_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['severity', 'file', 'line', 'description'],
+        required: ['severity', 'description'],
         properties: {
           severity: {
             type: 'string',
@@ -98,7 +98,7 @@ export function parseReviewFindings(output: string, reviewerAgent: AgentType): R
         severity: (['critical', 'warning', 'suggestion'].includes(f.severity as string)
           ? f.severity
           : 'suggestion') as ReviewFinding['severity'],
-        file: typeof f.file === 'string' ? f.file : '',
+        file: typeof f.file === 'string' ? f.file : undefined,
         line: typeof f.line === 'number' ? f.line : undefined,
         description: String(f.description),
         agent: reviewerAgent,

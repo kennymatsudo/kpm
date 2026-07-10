@@ -18,11 +18,11 @@ import {
 import { toast, useResourceDomainStore } from '../../stores';
 import { listContextFiles } from '../../services/contextFileService';
 import { listAllRepoBranches } from '../../services/repoService';
+import { listBoardProviders, listPlaybooks } from '../../services/playbookService';
+import { resolvePlaybookPlan } from '../../../shared/playbookRuntime';
+import { formatPlaybookStepTitle, type BoardProvider, type Playbook } from '../../../shared/playbooks';
 import type {
   PlanItem,
-  AgentEffortLevel,
-  AgentExecutionMode,
-  AgentReviewPolicy,
   RepoEnvironmentMode,
 } from '../../../shared/types';
 
@@ -31,26 +31,10 @@ const SELECT_TRIGGER_CLASS =
 
 const SELECT_VALUE_CLASS = 'block min-w-0 flex-1 truncate text-left';
 
-const EFFORT_OPTIONS: { value: AgentEffortLevel; label: string; title: string }[] = [
-  { value: 'high', label: 'High', title: 'Deep thinking for complex tasks' },
-  { value: 'xhigh', label: 'XHigh', title: 'Extended thinking for workflow runs' },
-  { value: 'max', label: 'Max', title: 'Maximum effort (Opus only)' },
-];
-
 const ENV_OPTIONS: { value: RepoEnvironmentMode; label: string; title: string }[] = [
   { value: 'auto', label: 'Auto', title: 'Detect .envrc and apply direnv automatically' },
   { value: 'direnv', label: 'DirEnv', title: 'Always capture environment with direnv' },
   { value: 'none', label: 'None', title: 'Skip environment capture' },
-];
-
-const EXECUTION_MODE_OPTIONS: { value: AgentExecutionMode; label: string; title: string }[] = [
-  { value: 'standard', label: 'Standard', title: 'Single-agent execution' },
-  { value: 'workflow', label: 'Workflow', title: 'Structured discovery, implementation, verification, and review' },
-];
-
-const REVIEW_POLICY_OPTIONS: { value: AgentReviewPolicy; label: string; title: string }[] = [
-  { value: 'auto', label: 'Review', title: 'Run opposing-agent review when changes are ready' },
-  { value: 'skip', label: 'Skip', title: 'Move to human review without opposing-agent review' },
 ];
 
 interface ContextFileEntry {
@@ -66,10 +50,8 @@ interface AgentStartModalProps {
     prompt: string;
     baseBranch?: string;
     contextPaths?: string[];
-    effort?: AgentEffortLevel;
     environmentMode?: RepoEnvironmentMode;
-    executionMode?: AgentExecutionMode;
-    reviewPolicy?: AgentReviewPolicy;
+    playbookId?: string;
   }) => void;
   onClose: () => void;
   onMoveOnly?: () => void;
@@ -90,10 +72,10 @@ export const AgentStartModal = memo(function AgentStartModal({
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [branchError, setBranchError] = useState<string | null>(null);
   const [branchReloadToken, setBranchReloadToken] = useState(0);
-  const [effort, setEffort] = useState<AgentEffortLevel>('high');
-  const [executionMode, setExecutionMode] = useState<AgentExecutionMode>('standard');
-  const [reviewPolicy, setReviewPolicy] = useState<AgentReviewPolicy>('auto');
   const [environmentMode, setEnvironmentMode] = useState<RepoEnvironmentMode>('auto');
+  const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
+  const [selectedPlaybookId, setSelectedPlaybookId] = useState('');
+  const [boardProviders, setBoardProviders] = useState<BoardProvider[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Context file attachment state
@@ -168,6 +150,21 @@ export const AgentStartModal = memo(function AgentStartModal({
       });
   }, [item.project_id]);
 
+  useEffect(() => {
+    void Promise.all([listPlaybooks(), listBoardProviders()]).then(([playbookResponse, providerResponse]) => {
+      if (playbookResponse.success) {
+        setPlaybooks(playbookResponse.playbooks);
+        setSelectedPlaybookId(playbookResponse.defaultId);
+      } else {
+        toast.error(playbookResponse.error);
+      }
+      if (providerResponse.success) setBoardProviders(providerResponse.providers);
+    });
+  }, []);
+
+  const selectedPlaybook = playbooks.find((entry) => entry.id === selectedPlaybookId);
+  const resolvedPlan = selectedPlaybook ? resolvePlaybookPlan(selectedPlaybook, boardProviders) : null;
+
   const toggleContextFile = useCallback((filePath: string) => {
     setSelectedContextPaths((prev) =>
       prev.includes(filePath)
@@ -175,13 +172,6 @@ export const AgentStartModal = memo(function AgentStartModal({
         : [...prev, filePath]
     );
   }, []);
-
-  const handleExecutionModeChange = useCallback((mode: AgentExecutionMode) => {
-    setExecutionMode(mode);
-    if (mode === 'workflow' && effort === 'high') {
-      setEffort('xhigh');
-    }
-  }, [effort]);
 
   const handleStart = useCallback(() => {
     if (!selectedRepoId || isStarting) return;
@@ -192,10 +182,8 @@ export const AgentStartModal = memo(function AgentStartModal({
       prompt: prompt.trim() || item.title,
       baseBranch: selectedBranch || undefined,
       contextPaths: selectedContextPaths.length > 0 ? selectedContextPaths : undefined,
-      effort,
       environmentMode,
-      executionMode,
-      reviewPolicy,
+      playbookId: selectedPlaybookId || undefined,
     });
   }, [
     item.id,
@@ -205,10 +193,8 @@ export const AgentStartModal = memo(function AgentStartModal({
     selectedBranch,
     selectedContextPaths,
     isStarting,
-    effort,
     environmentMode,
-    executionMode,
-    reviewPolicy,
+    selectedPlaybookId,
     onStart,
   ]);
 
@@ -376,75 +362,19 @@ export const AgentStartModal = memo(function AgentStartModal({
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-tiny text-text-muted">Run mode</label>
-                  <div className="flex gap-1">
-                    {EXECUTION_MODE_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        title={opt.title}
-                        onClick={() => handleExecutionModeChange(opt.value)}
-                        className={`
-                          flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors
-                          ${executionMode === opt.value
-                            ? 'bg-accent text-white'
-                            : 'border border-border-subtle bg-surface-1 text-text-secondary hover:bg-surface-2'
-                          }
-                        `}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-tiny text-text-muted">Review</label>
-                  <div className="flex gap-1">
-                    {REVIEW_POLICY_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        title={opt.title}
-                        onClick={() => setReviewPolicy(opt.value)}
-                        className={`
-                          flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors
-                          ${reviewPolicy === opt.value
-                            ? 'bg-accent text-white'
-                            : 'border border-border-subtle bg-surface-1 text-text-secondary hover:bg-surface-2'
-                          }
-                        `}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-tiny text-text-muted">Effort</label>
-                <div className="flex gap-1">
-                  {EFFORT_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      title={opt.title}
-                      onClick={() => setEffort(opt.value)}
-                      className={`
-                        flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors
-                        ${effort === opt.value
-                          ? 'bg-accent text-white'
-                          : 'border border-border-subtle bg-surface-1 text-text-secondary hover:bg-surface-2'
-                        }
-                      `}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
+              <div className="rounded-xl border border-border-subtle bg-surface-1 p-4">
+                <label className="mb-1.5 block text-tiny text-text-muted">Playbook</label>
+                <Select value={selectedPlaybookId || undefined} onValueChange={setSelectedPlaybookId}>
+                  <SelectTrigger aria-label="Playbook" className={SELECT_TRIGGER_CLASS}>
+                    <SelectValue className={SELECT_VALUE_CLASS} placeholder="Select a playbook" />
+                  </SelectTrigger>
+                  <SelectContent style={{ minWidth: 'var(--radix-select-trigger-width)' }}>
+                    {playbooks.map((playbook) => <SelectItem key={playbook.id} value={playbook.id}><SelectItemText>{playbook.name}</SelectItemText></SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {resolvedPlan && <div className="mt-3 space-y-1 text-tiny text-text-secondary">
+                  {resolvedPlan.steps.map((step) => <div key={step.stepId} className="flex items-center justify-between gap-3"><span>{formatPlaybookStepTitle(step.stepId)}</span><span className={step.runs.some((run) => !run) ? 'text-danger' : ''}>{step.runs.map((run, index) => run ? `${run.provider}/${run.model}` : `run ${index + 1}: unavailable`).join(' · ')}</span></div>)}
+                </div>}
               </div>
 
               <div>
@@ -553,7 +483,7 @@ export const AgentStartModal = memo(function AgentStartModal({
         )}
         <button
           onClick={handleStart}
-          disabled={!selectedRepoId || isStarting || loadingBranches}
+          disabled={!selectedRepoId || !selectedPlaybookId || isStarting || loadingBranches || Boolean(resolvedPlan?.steps.some((step) => step.runs.some((run) => !run)))}
           className="
             px-4 py-1.5 rounded-lg text-sm font-medium
             bg-accent text-white hover:bg-accent/90
@@ -570,7 +500,7 @@ export const AgentStartModal = memo(function AgentStartModal({
               Starting...
             </>
           ) : (
-            'Start with Claude'
+            'Start'
           )}
         </button>
       </ModalFooter>

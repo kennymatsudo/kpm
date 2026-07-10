@@ -94,7 +94,7 @@ Current phases:
 - `reviewing`
 - `addressing_review`
 - `fixing_commit_hooks`
-- `fixing_commit_hooks_after_review`
+- `paused`
 - `ready_for_review`
 - `needs_attention`
 
@@ -106,7 +106,7 @@ When the implementation session completes:
 
 - if the session was already in `addressing_review`, KPM marks it `ready_for_review` and moves the plan item to `In Review`
 - otherwise KPM marks it `reviewing` and launches one opposing review
-- if the branch-capture commit fails because hooks report issues, KPM sends one follow-up to the implementation agent with the raw hook output, using `fixing_commit_hooks` or `fixing_commit_hooks_after_review` to remember where the lifecycle should resume
+- if the branch-capture commit fails because hooks report issues, KPM sends one follow-up to the implementation agent with the raw hook output, using `fixing_commit_hooks` plus the persisted playbook cursor to remember where the lifecycle should resume
 
 ### Review completion
 

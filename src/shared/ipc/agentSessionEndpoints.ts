@@ -28,7 +28,6 @@ const agentType = z.enum(['claude', 'codex', 'gemini'], {
   message: 'Agent type must be "claude", "codex", or "gemini"',
 });
 const agentEffortLevel = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
-const agentExecutionMode = z.enum(['standard', 'workflow']);
 const agentReviewPolicy = z.enum(['auto', 'skip']);
 const agentSessionRole = z.enum(['implement', 'review'], {
   message: 'Role must be "implement" or "review"',
@@ -46,8 +45,8 @@ export const agentSessionEndpoints = {
       contextPaths: z.array(z.string().min(1)).optional(),
       effort: agentEffortLevel.optional(),
       environmentMode: z.enum(['auto', 'direnv', 'nix', 'none']).optional(),
-      executionMode: agentExecutionMode.optional().default('standard'),
       reviewPolicy: agentReviewPolicy.optional().default('auto'),
+      playbookId: z.string().min(1).max(200).optional(),
     }),
     result: resultOf<RegistryResponse<{ session: DevSession }>>(),
   },
@@ -57,6 +56,15 @@ export const agentSessionEndpoints = {
       devSessionId: uuid,
       agentType: agentType.optional().default('claude'),
       role: agentSessionRole.optional().default('implement'),
+    }),
+    result: resultOf<RegistryResponse<{ session: DevSession }>>(),
+  },
+  resumePlaybook: {
+    channel: 'agent-session:resume-playbook',
+    params: z.object({
+      devSessionId: uuid,
+      note: z.string().max(100000).optional(),
+      action: z.enum(['resume', 'proceed', 'one_more_pass']).optional().default('resume'),
     }),
     result: resultOf<RegistryResponse<{ session: DevSession }>>(),
   },

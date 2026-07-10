@@ -35,3 +35,4 @@ export * from './ClaudeUsageRepository';
 export * from './ProjectFileMetadataRepository';
 export * from './ScheduledLoopRepository';
 export * from './LoopRunRepository';
+export * from './PlaybookRepository';

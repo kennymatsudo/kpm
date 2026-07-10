@@ -116,6 +116,11 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
   // Session Discovery
   // ---------------------------------------------------------------------------
 
+  function hasLiveAutomation(session: DevSession): boolean {
+    return isLiveAutomationPhase(session.automation_phase)
+      || Boolean(session.playbook_snapshot && session.current_step_id);
+  }
+
   function discoverEligibleSessions(): DevSession[] {
     const config = getConfig().reviewPoll;
     const now = Date.now();
@@ -129,13 +134,16 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         if (!session.pr_number) continue;
         if (session.status !== 'inactive') continue;
         // Skip sessions actively mid-automation (reviewing, addressing review,
-        // needing attention, commit-hook repair). Treat null the same as
+        // needing attention, commit-hook repair), plus every persisted playbook
+        // cursor regardless of its phase. The cursor is the explicit liveness
+        // signal during async completion, provider resolution, and dispatch.
+        // Treat null the same as
         // 'idle' — every session starts life with a null phase and only
         // flips to 'idle' once its agent actually starts; a session whose PR
         // was created and merged without that transition should still be
         // eligible, or it never gets polled and its cached pr_state/review_state
         // go stale forever.
-        if (isLiveAutomationPhase(session.automation_phase)) continue;
+        if (hasLiveAutomation(session)) continue;
         if (!session.plan_item_id) continue;
         const planItem = deps.planItems.get(session.plan_item_id);
         if (!planItem || planItem.status_category === 'done') continue;
@@ -517,6 +525,16 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         };
       }
 
+      const now = new Date().toISOString();
+      for (const task of implementTasks) {
+        deps.reviewTasks.updateStatus(task.id, 'in_progress', {
+          internal_state: null,
+          last_agent_run_at: now,
+          completed_at: null,
+          error: null,
+        });
+      }
+
       deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued' });
 
       broadcast(reviewEvents.pollFixStarted, {
@@ -671,6 +689,10 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
 
     if (!session.pr_number) {
       return { sessionId, action: 'error', newThreadCount: 0, implementCount: 0, error: 'No PR associated' };
+    }
+
+    if (hasLiveAutomation(session)) {
+      return { sessionId, action: 'skipped', newThreadCount: 0, implementCount: 0 };
     }
 
     const agentSession = deps.agentSessionManager.getByDevSession(sessionId);

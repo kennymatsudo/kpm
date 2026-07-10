@@ -11,9 +11,9 @@
  */
 
 import { memo, forwardRef, useState, useCallback, useRef, useEffect, useImperativeHandle } from 'react';
-import { respondToAgent, followUpAgent } from '../../services/agentSessionService';
+import { respondToAgent, followUpAgent, resumePlaybook } from '../../services/agentSessionService';
 import { toast } from '../../stores';
-import type { AgentSessionState } from '../../../shared/types';
+import type { AgentSessionState, DevSessionAutomationPhase } from '../../../shared/types';
 
 export interface DetailChatInputHandle {
   focus: () => void;
@@ -22,6 +22,16 @@ export interface DetailChatInputHandle {
 interface DetailChatInputProps {
   devSessionId: string;
   agentState: AgentSessionState | undefined;
+  playbookSnapshot?: string | null;
+  currentStepId?: string | null;
+  automationPhase?: DevSessionAutomationPhase | null;
+}
+
+interface DetailChatInputAvailability {
+  agentState: AgentSessionState | undefined;
+  playbookSnapshot?: string | null;
+  currentStepId?: string | null;
+  automationPhase?: DevSessionAutomationPhase | null;
 }
 
 function getPlaceholder(state: AgentSessionState | undefined): string {
@@ -41,17 +51,72 @@ function getPlaceholder(state: AgentSessionState | undefined): string {
   }
 }
 
+/**
+ * A snapshotted playbook owns the implementation session until its persisted
+ * cursor reaches a halt point. Runtime `complete` is only turn completion and
+ * must not open a between-step window where a user follow-up can race dispatch.
+ * Unsnapshotted sessions use the legacy interaction contract for upgrade
+ * compatibility with sessions created before execution playbooks shipped.
+ */
+export function getDetailChatInputSendMode({
+  agentState,
+  playbookSnapshot,
+  currentStepId,
+}: Pick<DetailChatInputAvailability, 'agentState' | 'playbookSnapshot' | 'currentStepId'>): 'resume_playbook' | 'respond' | 'follow_up' {
+  if (playbookSnapshot && currentStepId) return 'resume_playbook';
+  return agentState === 'waiting_for_input' ? 'respond' : 'follow_up';
+}
+
+export function getDetailChatInputAvailability({
+  agentState,
+  playbookSnapshot,
+  currentStepId,
+  automationPhase,
+}: DetailChatInputAvailability): { allowed: boolean; placeholder: string } {
+  if (!playbookSnapshot) {
+    const allowed = agentState === 'waiting_for_input'
+      || agentState === 'complete'
+      || agentState === 'failed'
+      || agentState === 'stopped'
+      || agentState === undefined;
+    return { allowed, placeholder: allowed ? getPlaceholder(agentState) : 'Stop to interact' };
+  }
+
+  const atPersistedHalt = automationPhase === 'paused'
+    || automationPhase === 'needs_attention'
+    || automationPhase === 'ready_for_review'
+    || currentStepId == null;
+  const stopped = agentState === 'failed' || agentState === 'stopped';
+  const allowed = atPersistedHalt || stopped;
+  return { allowed, placeholder: allowed ? getPlaceholder(agentState) : 'Stop to interact' };
+}
+
 export const DetailChatInput = memo(forwardRef<DetailChatInputHandle, DetailChatInputProps>(
-  function DetailChatInput({ devSessionId, agentState }, ref) {
+  function DetailChatInput({
+    devSessionId,
+    agentState,
+    playbookSnapshot,
+    currentStepId,
+    automationPhase,
+  }, ref) {
     const [text, setText] = useState('');
     const [isSending, setIsSending] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-    useImperativeHandle(ref, () => ({
-      focus: () => textareaRef.current?.focus(),
-    }), []);
+    const availability = getDetailChatInputAvailability({
+      agentState,
+      playbookSnapshot,
+      currentStepId,
+      automationPhase,
+    });
 
-    const placeholder = getPlaceholder(agentState);
+    useImperativeHandle(ref, () => ({
+      focus: () => {
+        if (availability.allowed) textareaRef.current?.focus();
+      },
+    }), [availability.allowed]);
+
+    const placeholder = availability.placeholder;
 
     // Auto-resize textarea
     useEffect(() => {
@@ -64,27 +129,40 @@ export const DetailChatInput = memo(forwardRef<DetailChatInputHandle, DetailChat
 
     const handleSend = useCallback(async () => {
       const trimmed = text.trim();
-      if (!trimmed || isSending) return;
+      if (!trimmed || isSending || !availability.allowed) return;
 
       setIsSending(true);
       try {
-        const result = agentState === 'waiting_for_input'
-          ? await respondToAgent({ devSessionId, text: trimmed })
-          : await followUpAgent({ devSessionId, text: trimmed });
+        const sendMode = getDetailChatInputSendMode({ agentState, playbookSnapshot, currentStepId });
+        const result = sendMode === 'resume_playbook'
+          ? await resumePlaybook({ devSessionId, note: trimmed, action: 'resume' })
+          : sendMode === 'respond'
+            ? await respondToAgent({ devSessionId, text: trimmed })
+            : await followUpAgent({ devSessionId, text: trimmed });
 
         if (!result.success) {
           toast.error(result.error || 'Failed to send message to agent');
           return;
         }
 
-        toast.info(agentState === 'waiting_for_input' ? 'Sent response' : 'Sent follow-up');
+        toast.info(playbookSnapshot && currentStepId
+          ? 'Playbook resumed'
+          : agentState === 'waiting_for_input' ? 'Sent response' : 'Sent follow-up');
         setText('');
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Failed to send message to agent');
       } finally {
         setIsSending(false);
       }
-    }, [text, isSending, agentState, devSessionId]);
+    }, [
+      text,
+      isSending,
+      availability.allowed,
+      agentState,
+      devSessionId,
+      playbookSnapshot,
+      currentStepId,
+    ]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -101,7 +179,7 @@ export const DetailChatInput = memo(forwardRef<DetailChatInputHandle, DetailChat
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isSending}
+            disabled={isSending || !availability.allowed}
             placeholder={placeholder}
             rows={1}
             className={`
@@ -113,10 +191,10 @@ export const DetailChatInput = memo(forwardRef<DetailChatInputHandle, DetailChat
           />
           <button
             onClick={() => void handleSend()}
-            disabled={isSending || !text.trim()}
+            disabled={isSending || !availability.allowed || !text.trim()}
             className={`
               shrink-0 p-2 rounded-lg transition-colors
-              ${isSending || !text.trim()
+              ${isSending || !availability.allowed || !text.trim()
                 ? 'text-text-muted cursor-not-allowed'
                 : 'text-accent hover:bg-accent/10'
               }

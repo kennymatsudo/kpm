@@ -364,26 +364,6 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Review Loop (feature 23): linked PRs feed review-thread polling and assessment
 - **Maturity signal:** Mature. PR linking and description generation are well-integrated with the review loop and dev-session lifecycle.
 
-### 105. Workflow Mode (Structured Multi-Task Board Runs)
-- **What it does:** When starting a board agent, users choose an execution mode: `standard` (single-agent, the existing implement pipeline) or `workflow` (Claude Code's dynamic workflow feature — the agent plans and runs a structured sequence of discovery, implementation, verification, and review tasks within one session). Board completion waits for all workflow-declared tasks to finish before the review phase starts, and opposing-agent review stays conditional on the persisted review policy either way.
-- **Key code locations:**
-  - Types: `src/shared/types.ts` (`AgentExecutionMode = 'standard' | 'workflow'`)
-  - Component: `src/renderer/components/board-view/AgentStartModal.tsx` (mode picker: Standard / Workflow, with an effort-level constraint when Workflow is selected)
-  - Service: `src/main/services/agents/ClaudeSdkSession.ts` (tracks `local_workflow` task lifecycle: `workflowTaskIds`/`workflowTaskLabels`)
-  - Service: `src/main/services/repo/DevSessionService.ts` (persists run mode and review policy at session creation)
-  - Service: `src/main/services/agents/BoardAgentOrchestrator.ts` (gates completion until workflow tasks finish)
-  - Repository: `src/main/db/repositories/impl/DevSessionRepository.ts`
-  - IPC validation: `src/shared/ipc/agentSessionEndpoints.ts`
-  - DB: `dev_sessions` columns for run mode / review policy (see `src/main/db/interfaces/dev.ts`)
-- **Entry points / surfaces:**
-  - "Start Implementation" modal: execution mode selector (Standard / Workflow)
-  - Board activity view: workflow sub-tasks appear as they start/complete, labeled by workflow/task name
-- **Dependencies / integrations:**
-  - Claude Agent SDK: Claude Code's own dynamic-workflow planning, not a KPM-authored task breakdown
-  - Board execution state machine: completion and review-phase gating both account for outstanding workflow tasks
-  - Review Loop & Automated Addressing (feature 23): opposing review still runs per the persisted review policy, independent of execution mode
-- **Maturity signal:** Mature. Persisted per session (survives app restart), with dedicated orchestrator test coverage.
-
 ---
 
 ## Tracker Integration (Jira/Linear)
@@ -1257,8 +1237,8 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 19, 25
 - `MergeQueuePanel.tsx`: Open-PR ordering with dependency-derived blockers
   - Features: 99 (Merge Queue)
-- `AgentStartModal.tsx`: Start Implementation modal, including execution mode picker
-  - Features: 19 (Plan-item Dev Sessions), 105 (Workflow Mode)
+- `AgentStartModal.tsx`: Start Implementation modal
+  - Features: 19 (Plan-item Dev Sessions)
 
 ### tree-view/ Components
 - `TreeView.tsx`: Hierarchical tree outline

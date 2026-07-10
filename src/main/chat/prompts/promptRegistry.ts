@@ -223,6 +223,31 @@ Also surface, as findings whose fix removes or simplifies code:
 
 Be evidence-based; do not speculate beyond the task, diff, and visible code. The diff omits lockfiles and generated artifacts and shows limited surrounding context — when a hunk is not enough to judge, read the surrounding files in the worktree before deciding. Prefer findings tied to observable behavior, public contracts, or repository conventions over private implementation trivia. Call out places where the implementation assumes values, environment, timing, or state without validating them. Treat task Verification guidance and the implementation agent's stated verification as context, but trust the diff and code over claims. Ignore formatting the project's own tooling handles, but do not let that suppress the over-engineering, convention, comment, or test findings above.`,
   },
+  {
+    key: 'agents.review_assessment',
+    name: 'Review Assessment Prompt',
+    description: 'Instructions sent back to the implementation agent when an opposing review produced findings. The {{findings}} variable is replaced with the parsed review findings.',
+    category: 'agents',
+    defaultContent: `An opposing review agent completed a review of your implementation.
+
+Assess the findings against the current code, original task intent, and repository conventions.
+- Address findings that are real, important, and worth fixing now.
+- Ignore findings that are incorrect, redundant, or not worth addressing for this task.
+- Do not ask for human confirmation.
+- If you decide to address a finding, make the code changes directly.
+- If no findings are worth addressing, do not change code unnecessarily.
+
+In your final summary, include three short sections:
+1. Addressed findings
+2. Ignored findings
+3. Verification after addressing findings (include exact commands, or "not run" with reason)
+
+Review findings:
+{{findings}}`,
+    variables: [
+      { name: 'findings', description: 'Formatted opposing-agent findings.' },
+    ],
+  },
 ];
 
 // =============================================================================

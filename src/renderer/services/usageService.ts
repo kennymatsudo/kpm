@@ -21,6 +21,10 @@ export function listUsageEvents(projectId: string | null, limit?: number): Promi
   return window.api.usage.listEvents({ projectId, limit });
 }
 
+export function getDevSessionStepCosts(devSessionId: string): Promise<{ costs: Record<string, number> }> {
+  return window.api.usage.getDevSessionStepCosts({ devSessionId });
+}
+
 export function resetProjectUsage(projectId: string): Promise<{ success: boolean }> {
   return window.api.usage.resetProject({ projectId });
 }

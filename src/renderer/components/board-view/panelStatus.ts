@@ -41,6 +41,7 @@ export type PanelPhase =
   | 'awaiting_input'  // agent paused with a question (Gemini-only path)
   | 'reviewing'       // opposing-agent review is running
   | 'addressing'      // a code update is running to address review feedback
+  | 'paused'         // playbook intentionally stopped at a user gate
   | 'needs_attention' // automation was interrupted and needs a user decision
   | 'review_open'     // PR exists with review work waiting on the user
   | 'ready'           // PR approved and unblocked — ready to merge
@@ -61,6 +62,8 @@ export type PanelActionId =
   | 'stop'
   | 'retry'
   | 'resume'
+  | 'proceed'
+  | 'one_more_pass'
   | 'dismiss'
   | 'follow_up'
   | 'ready_for_review'
@@ -136,6 +139,7 @@ export interface PanelStatusInputs {
   /** Opposing-review agent state, if a review session is running. */
   reviewAgentState: AgentSessionState | undefined;
   automationPhase: DevSessionAutomationPhase | null;
+  pausedReason?: 'gate' | 'max_passes' | null;
   /** PR linkage / status. */
   hasPr: boolean;
   prState: string | null;      // 'OPEN' | 'CLOSED' | 'MERGED'
@@ -177,6 +181,7 @@ const PHASE_TO_STEP: Record<PanelPhase, PanelStep> = {
   failed: 'build',
   stopped: 'build',
   idle: 'build',
+  paused: 'build',
   needs_attention: 'build',
   reviewing: 'review',
   review_open: 'review',
@@ -360,6 +365,19 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
   }
 
   // 6. Persisted automation interruptions outrank quiet decision points.
+  if (i.automationPhase === 'paused') {
+    return withStep('paused', i.pausedReason === 'max_passes' ? {
+      tone: 'warning',
+      text: 'Findings remain after the pass limit',
+      primary: { label: 'One more pass', action: 'one_more_pass' },
+      secondary: { label: 'Proceed', action: 'proceed' },
+    } : {
+      tone: 'info',
+      text: 'Paused at playbook gate',
+      primary: { label: 'Resume', action: 'resume' },
+    }, null);
+  }
+
   if (i.automationPhase === 'needs_attention') {
     return withStep('needs_attention', {
       tone: 'warning',

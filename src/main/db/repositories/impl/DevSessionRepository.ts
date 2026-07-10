@@ -9,7 +9,6 @@
 
 import type { Database, Statement } from 'better-sqlite3';
 import type {
-  AgentExecutionMode,
   AgentReviewPolicy,
   DevSessionAutomationPhase,
   DevSession,
@@ -34,7 +33,10 @@ interface PreparedStatements {
   insert: Statement;
   updateStatus: Statement;
   updateAutomationPhase: Statement;
-  updateWorkflowControls: Statement;
+  updateAutomationState: Statement;
+  updatePlaybook: Statement;
+  updateStepOutputs: Statement;
+  updateReviewPolicy: Statement;
   updatePrInfo: Statement;
   updateName: Statement;
   updateBaseSha: Statement;
@@ -84,9 +86,11 @@ export class DevSessionRepository implements IDevSessionRepository {
         INSERT INTO dev_sessions (
           id, project_id, plan_item_id, repo_id, name,
           worktree_path, branch_name, base_branch,
-          status, agent_type, execution_mode, review_policy, automation_phase, initial_instructions
+          status, agent_type, review_policy, automation_phase,
+          playbook_id, playbook_snapshot, current_step_id, step_pass_counts, paused_reason,
+          initial_instructions
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *
       `),
       updateStatus: db.prepare('UPDATE dev_sessions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
@@ -95,9 +99,28 @@ export class DevSessionRepository implements IDevSessionRepository {
         SET automation_phase = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `),
-      updateWorkflowControls: db.prepare(`
+      updateAutomationState: db.prepare(`
         UPDATE dev_sessions
-        SET execution_mode = ?, review_policy = ?, updated_at = CURRENT_TIMESTAMP
+        SET automation_phase = ?,
+            current_step_id = ?,
+            step_pass_counts = ?,
+            paused_reason = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `),
+      updatePlaybook: db.prepare(`
+        UPDATE dev_sessions
+        SET playbook_id = ?, playbook_snapshot = ?, current_step_id = ?,
+            step_pass_counts = NULL, paused_reason = NULL, agent_type = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `),
+      updateStepOutputs: db.prepare(`
+        UPDATE dev_sessions SET step_outputs = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `),
+      updateReviewPolicy: db.prepare(`
+        UPDATE dev_sessions
+        SET review_policy = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `),
       updatePrInfo: db.prepare(`
@@ -148,9 +171,14 @@ export class DevSessionRepository implements IDevSessionRepository {
       base_sha: row.base_sha ?? null,
       status: row.status,
       agent_type: row.agent_type,
-      execution_mode: row.execution_mode ?? 'standard',
       review_policy: row.review_policy ?? 'auto',
       automation_phase: row.automation_phase ?? null,
+      playbook_id: row.playbook_id ?? null,
+      playbook_snapshot: row.playbook_snapshot ?? null,
+      current_step_id: row.current_step_id ?? null,
+      step_pass_counts: row.step_pass_counts ?? null,
+      paused_reason: row.paused_reason ?? null,
+      step_outputs: row.step_outputs ?? null,
       initial_instructions: row.initial_instructions,
       pr_number: row.pr_number ?? null,
       pr_url: row.pr_url ?? null,
@@ -196,9 +224,13 @@ export class DevSessionRepository implements IDevSessionRepository {
       session.base_branch,
       session.status,
       session.agent_type,
-      session.execution_mode,
       session.review_policy,
       session.automation_phase ?? null,
+      session.playbook_id ?? null,
+      session.playbook_snapshot ?? null,
+      session.current_step_id ?? null,
+      session.step_pass_counts ?? null,
+      session.paused_reason ?? null,
       session.initial_instructions,
     ) as DevSession;
   }
@@ -211,8 +243,35 @@ export class DevSessionRepository implements IDevSessionRepository {
     this.stmts.updateAutomationPhase.run(phase, id);
   }
 
-  updateWorkflowControls(id: string, executionMode: AgentExecutionMode, reviewPolicy: AgentReviewPolicy): void {
-    this.stmts.updateWorkflowControls.run(executionMode, reviewPolicy, id);
+  updateAutomationState(
+    id: string,
+    state: {
+      phase: DevSessionAutomationPhase | null;
+      currentStepId?: string | null;
+      stepPassCounts?: string | null;
+      pausedReason?: DevSession['paused_reason'] | null;
+    },
+  ): void {
+    const current = this.get(id);
+    this.stmts.updateAutomationState.run(
+      state.phase,
+      state.currentStepId === undefined ? current?.current_step_id ?? null : state.currentStepId,
+      state.stepPassCounts === undefined ? current?.step_pass_counts ?? null : state.stepPassCounts,
+      state.pausedReason === undefined ? current?.paused_reason ?? null : state.pausedReason,
+      id,
+    );
+  }
+
+  updatePlaybook(id: string, playbookId: string, snapshot: string, currentStepId: string, agentType: DevSession['agent_type']): void {
+    this.stmts.updatePlaybook.run(playbookId, snapshot, currentStepId, agentType, id);
+  }
+
+  updateStepOutputs(id: string, outputs: string): void {
+    this.stmts.updateStepOutputs.run(outputs, id);
+  }
+
+  updateReviewPolicy(id: string, reviewPolicy: AgentReviewPolicy): void {
+    this.stmts.updateReviewPolicy.run(reviewPolicy, id);
   }
 
   updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null): void {

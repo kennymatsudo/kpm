@@ -95,6 +95,7 @@ export function usePanelStatus(session: DevSessionWithPlanItem): PanelStatus {
         implAgentState: impl.agentState,
         reviewAgentState: review.agentState,
         automationPhase: session.automation_phase,
+        pausedReason: session.paused_reason,
         hasPr: session.pr_number != null,
         prState: session.pr_state,
         reviewState: session.review_state,

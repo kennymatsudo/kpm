@@ -85,7 +85,10 @@ async function commandReferencesDeniedRoot(command: string): Promise<boolean> {
  * and git-hook writes; allows everything else. Fails open on unexpected error
  * so a non-interactive board run is never broken by the guard.
  */
-export async function evaluateBoardToolCall(input: HookInput): Promise<HookJSONOutput> {
+export async function evaluateBoardToolCall(
+  input: HookInput,
+  options: { readOnly?: boolean } = {},
+): Promise<HookJSONOutput> {
   try {
     if (input.hook_event_name !== 'PreToolUse') return allow();
     const pre = input;
@@ -95,10 +98,17 @@ export async function evaluateBoardToolCall(input: HookInput): Promise<HookJSONO
 
     if (shortName === 'Bash') {
       const command = typeof toolInput.command === 'string' ? toolInput.command : '';
+      if (options.readOnly && /(?:^|[;&|]\s*)(?:rm|mv|cp|touch|mkdir|rmdir|chmod|chown|git\s+(?:add|commit|checkout|switch|reset|clean|rebase|merge)|sed\s+-i|tee)\b|(?:^|[^<])>{1,2}(?!>)/i.test(command)) {
+        return deny('This subagent step is read-only. Enable file editing on the step to allow writes.');
+      }
       if (command && (await commandReferencesDeniedRoot(command))) {
         return deny('Reading credential files is not permitted for board agents.');
       }
       return allow();
+    }
+
+    if (options.readOnly && WRITE_TOOLS.has(shortName)) {
+      return deny('This subagent step is read-only. Enable file editing on the step to allow writes.');
     }
 
     const getPathArg = PATH_ARG_BY_TOOL[shortName];
@@ -127,8 +137,8 @@ export async function evaluateBoardToolCall(input: HookInput): Promise<HookJSONO
 }
 
 /** PreToolUse matcher wiring the guard into a board Claude session's hooks. */
-export function createCredentialGuardMatcher(): HookCallbackMatcher {
+export function createCredentialGuardMatcher(options: { readOnly?: boolean } = {}): HookCallbackMatcher {
   return {
-    hooks: [(input) => evaluateBoardToolCall(input)],
+    hooks: [(input) => evaluateBoardToolCall(input, options)],
   };
 }

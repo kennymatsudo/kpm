@@ -26,12 +26,12 @@ const LOG_PREFIX = '[AutoReview]';
 // Static output format appended to every review prompt regardless of user customizations.
 // parseReviewFindings() (see reviewOutputContract.ts) depends on this exact shape —
 // do not make it user-editable.
-const REVIEW_OUTPUT_FORMAT = `Return ONLY a JSON object with this shape:
+export const REVIEW_OUTPUT_FORMAT = `Return ONLY a JSON object with this shape:
 - findings: an array of finding objects
 
 Each finding should have:
 - severity: "critical" | "warning" | "suggestion"
-- file: the file path
+- file: the file path, when applicable
 - line: the line number, or null when not applicable
 - description: the concrete issue, why it matters, and the smallest reasonable fix direction
 
@@ -45,7 +45,7 @@ Example:
   "findings": [
     { "severity": "critical", "file": "src/auth.ts", "line": 42, "description": "Password comparison uses == instead of constant-time comparison, vulnerable to timing attacks. Use crypto.timingSafeEqual instead." },
     { "severity": "warning", "file": "src/api.ts", "line": 17, "description": "Error from external call is swallowed — callers receive undefined instead of a failure signal. Return the error or rethrow." },
-    { "severity": "suggestion", "file": "src/utils.ts", "line": 5, "description": "Variable name 'd' is ambiguous in context. Renaming to 'durationMs' would improve readability." }
+    { "severity": "suggestion", "description": "The verification command failed in an integration environment outside a single source line. Re-run the integration test after fixing the setup." }
   ]
 }
 \`\`\``;
@@ -109,7 +109,7 @@ const REVIEW_DIFF_EXCLUDES: readonly string[] = [
  * Excludes generated/locked artifacts (see REVIEW_DIFF_EXCLUDES) but keeps full
  * per-hunk context.
  */
-async function getWorktreeDiff(worktreePath: string, baseBranch?: string | null): Promise<string> {
+export async function getWorktreeDiff(worktreePath: string, baseBranch?: string | null): Promise<string> {
   const maxBuffer = 5 * 1024 * 1024; // 5MB
   const excludes = [...REVIEW_DIFF_EXCLUDES];
   try {
@@ -137,6 +137,11 @@ async function startReviewSession(params: {
   reviewSystemPrompt: string;
   agentSessionManager: AgentSessionManager;
   model?: string;
+  readOnly?: boolean;
+  expectsFindings?: boolean;
+  implementationSessionId?: string;
+  stepId?: string;
+  runIndex?: number;
 }): Promise<void> {
   const {
     reviewAgentType,
@@ -156,14 +161,13 @@ async function startReviewSession(params: {
   if (reviewAgentType === 'claude') {
     const sdkOptions: SDKOptions = {
       systemPrompt: reviewSystemPrompt,
-      model: getConfig().generation.fastModel,
+      model: model ?? getConfig().generation.fastModel,
       cwd: worktreePath,
       maxTurns: 5,
       permissionMode: getConfig().claude.defaultPermissionMode,
       // One-shot review agent — disable the built-in option-picker tool.
       disallowedTools: ['AskUserQuestion'],
       settingSources: ['user'],
-      skills: [],
       env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
       ...getClaudeSdkSpawnOptions(),
     };
@@ -174,6 +178,11 @@ async function startReviewSession(params: {
       agentType: 'claude',
       role: 'review',
       sdkOptions,
+      readOnly: params.readOnly,
+      expectsFindings: params.expectsFindings,
+      implementationSessionId: params.implementationSessionId,
+      stepId: params.stepId,
+      runIndex: params.runIndex,
     });
 
     await session.start(worktreePath, reviewPrompt);
@@ -186,6 +195,11 @@ async function startReviewSession(params: {
     agentType: reviewAgentType,
     role: 'review',
     model: reviewAgentType === 'codex' ? model : undefined,
+    readOnly: params.readOnly,
+    expectsFindings: params.expectsFindings,
+    implementationSessionId: params.implementationSessionId,
+    stepId: params.stepId,
+    runIndex: params.runIndex,
   });
 
   await session.start(worktreePath, prompt);
@@ -277,6 +291,11 @@ export async function launchAutoReview(params: {
       reviewSystemPrompt,
       agentSessionManager,
       model: codexModel,
+      readOnly: true,
+      expectsFindings: true,
+      implementationSessionId,
+      stepId: 'review',
+      runIndex: 0,
     });
 
     console.log(`${LOG_PREFIX} Started ${reviewAgentType} review for session ${implementationSessionId}`);
@@ -293,6 +312,11 @@ export async function launchAutoReview(params: {
           reviewPrompt,
           reviewSystemPrompt,
           agentSessionManager,
+          readOnly: true,
+          expectsFindings: true,
+          implementationSessionId,
+          stepId: 'review',
+          runIndex: 0,
         });
         console.log(`${LOG_PREFIX} Started claude fallback review for session ${implementationSessionId}`);
         return reviewSessionId;
@@ -303,4 +327,69 @@ export async function launchAutoReview(params: {
     console.error(`${LOG_PREFIX} Failed to start auto-review:`, error);
     return null;
   }
+}
+
+export function toPlaybookSubagentSessionId(
+  implementationSessionId: string,
+  stepId: string,
+  attempt: number,
+  runIndex: number,
+): string {
+  return `${implementationSessionId}-playbook-${stepId}-${attempt}-${runIndex}`;
+}
+
+/** Launch one resolved subagent run without silently substituting providers. */
+export async function launchPlaybookSubagent(params: {
+  implementationSessionId: string;
+  stepId: string;
+  runIndex: number;
+  attempt: number;
+  agent: { provider: string; model: string };
+  worktreePath: string;
+  baseBranch?: string | null;
+  taskContext: string;
+  directive: string;
+  systemPrompt: string;
+  verdict: boolean;
+  writes: boolean;
+  projectId: string;
+  agentSessionManager: AgentSessionManager;
+}): Promise<string> {
+  const provider = params.agent.provider;
+  if (provider !== 'claude' && provider !== 'codex' && provider !== 'gemini') {
+    throw new Error(`Provider ${provider} is not enabled for board execution`);
+  }
+  const diff = await getWorktreeDiff(params.worktreePath, params.baseBranch);
+  const contextPayload = [
+    '## Task context',
+    params.taskContext,
+    '## Current changes (git diff)',
+    `\`\`\`diff\n${diff}\n\`\`\``,
+  ].join('\n\n');
+  const prompt = (params.directive.trimStart().startsWith('/')
+    ? [params.directive, contextPayload, params.verdict ? REVIEW_OUTPUT_FORMAT : '']
+    : [contextPayload, params.directive, params.verdict ? REVIEW_OUTPUT_FORMAT : ''])
+    .filter(Boolean).join('\n\n');
+  const sessionId = toPlaybookSubagentSessionId(
+    params.implementationSessionId,
+    params.stepId,
+    params.attempt,
+    params.runIndex,
+  );
+  await startReviewSession({
+    reviewAgentType: provider,
+    reviewSessionId: sessionId,
+    projectId: params.projectId,
+    worktreePath: params.worktreePath,
+    reviewPrompt: prompt,
+    reviewSystemPrompt: `${params.systemPrompt}\n\n${params.writes ? 'You may edit files in the task worktree.' : 'This step is read-only. Do not modify files.'}`,
+    agentSessionManager: params.agentSessionManager,
+    model: params.agent.model,
+    readOnly: !params.writes,
+    expectsFindings: params.verdict,
+    implementationSessionId: params.implementationSessionId,
+    stepId: params.stepId,
+    runIndex: params.runIndex,
+  });
+  return sessionId;
 }

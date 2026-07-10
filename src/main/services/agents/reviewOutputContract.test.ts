@@ -44,6 +44,24 @@ describe('parseReviewFindings', () => {
     ]);
   });
 
+  it('parses findings without file or line when the issue has no source location', () => {
+    expect(
+      parseReviewFindings(
+        '{"findings":[{"severity":"critical","description":"The integration test failed before a file-specific assertion ran."}]}',
+        'claude'
+      )
+    ).toEqual([
+      {
+        severity: 'critical',
+        file: undefined,
+        line: undefined,
+        description: 'The integration test failed before a file-specific assertion ran.',
+        agent: 'claude',
+        source: 'agent',
+      },
+    ]);
+  });
+
   it('returns null for invalid output instead of pretending there were no findings', () => {
     expect(parseReviewFindings('not valid json', 'claude')).toBeNull();
   });

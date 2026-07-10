@@ -354,6 +354,16 @@ export function createSlashCommandService(deps: SlashCommandServiceDeps = {}) {
     });
   }
 
+  /** Read a user skill body for providers without a native skill runtime. */
+  function getSkillBody(name: string): ServiceResult<string> {
+    return wrap(() => {
+      if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error('Invalid skill name');
+      const file = path.join(skillsDir, name, 'SKILL.md');
+      if (!fs.existsSync(file)) throw new Error(`Skill not found: ${name}`);
+      return parseSlashCommandFileWithBody(name, fs.readFileSync(file, 'utf8')).body.trim();
+    });
+  }
+
   /** Whether the text invokes a known non-expanded command: leading /name, optionally followed by arguments. */
   function isCommandInvocation(text: string): boolean {
     const match = /^\/([A-Za-z0-9_:-]+)(?:\s|$)/.exec(text.trimStart());
@@ -364,7 +374,7 @@ export function createSlashCommandService(deps: SlashCommandServiceDeps = {}) {
     return !expanded.ok || expanded.data === text;
   }
 
-  return { listCommands, expandPiPromptInvocation, isCommandInvocation };
+  return { listCommands, getSkillBody, expandPiPromptInvocation, isCommandInvocation };
 }
 
 export type SlashCommandService = ReturnType<typeof createSlashCommandService>;

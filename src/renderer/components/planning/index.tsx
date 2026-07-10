@@ -42,9 +42,6 @@ import type { ViewMode } from './ViewSwitcher';
 import type {
   PlanItem,
   StatusCategory,
-  AgentEffortLevel,
-  AgentExecutionMode,
-  AgentReviewPolicy,
   RepoEnvironmentMode,
 } from '../../../shared/types';
 
@@ -258,10 +255,8 @@ export function PlanView({
     prompt: string;
     baseBranch?: string;
     contextPaths?: string[];
-    effort?: AgentEffortLevel;
     environmentMode?: RepoEnvironmentMode;
-    executionMode?: AgentExecutionMode;
-    reviewPolicy?: AgentReviewPolicy;
+    playbookId?: string;
   }) => {
     const item = planItems.find((i) => i.id === params.planItemId);
     const currentStatus = item
@@ -276,10 +271,8 @@ export function PlanView({
       prompt: params.prompt,
       baseBranch: params.baseBranch,
       contextPaths: params.contextPaths,
-      effort: params.effort,
       environmentMode: params.environmentMode,
-      executionMode: params.executionMode,
-      reviewPolicy: params.reviewPolicy,
+      playbookId: params.playbookId,
     });
 
     if (!result.success) {

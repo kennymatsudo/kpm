@@ -42,6 +42,13 @@ afterEach(() => {
 });
 
 describe('evaluateBoardToolCall credential denial', () => {
+  it('enforces read-only subagents while allowing inspection tools', async () => {
+    expect(isDeny(await evaluateBoardToolCall(preToolUse('Write', { file_path: '/repo/src/a.ts' }), { readOnly: true }))).toBe(true);
+    expect(isDeny(await evaluateBoardToolCall(preToolUse('Bash', { command: 'echo x > src/a.ts' }), { readOnly: true }))).toBe(true);
+    expect(isAllow(await evaluateBoardToolCall(preToolUse('Read', { file_path: '/repo/src/a.ts' }), { readOnly: true }))).toBe(true);
+    expect(isAllow(await evaluateBoardToolCall(preToolUse('Bash', { command: 'npm test' }), { readOnly: true }))).toBe(true);
+  });
+
   it('denies reading a credential file addressed via ~', async () => {
     const result = await evaluateBoardToolCall(
       preToolUse('Read', { file_path: '~/.ssh/id_rsa' })
