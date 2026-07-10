@@ -130,16 +130,6 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
   function create(params: CreateSessionParams): IAgentSession {
     const { devSessionId, projectId, agentType, role, sdkOptions, model } = params;
 
-    // Enforce concurrency limit
-    const projectCount = getActiveCountForProject(projectId);
-    const maxConcurrentSessions = getConfig().agentSession.maxConcurrentSessionsPerProject;
-    if (projectCount >= maxConcurrentSessions) {
-      throw new Error(
-        `Maximum concurrent sessions (${maxConcurrentSessions}) reached for this project. ` +
-        'Stop an existing session before starting a new one.'
-      );
-    }
-
     let agentSession: IAgentSession;
 
     if (agentType === 'claude') {

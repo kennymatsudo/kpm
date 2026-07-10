@@ -115,7 +115,7 @@ export interface NetworkConfig {
 }
 
 export interface AgentSessionConfig {
-  /** Maximum concurrent agent sessions per project */
+  /** Active-session threshold above which the review poller holds off auto-launching more reviews */
   maxConcurrentSessionsPerProject: number;
   /** How long to keep terminal sessions around for follow-up interactions (ms) */
   terminalSessionTtlMs: number;
