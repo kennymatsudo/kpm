@@ -1,5 +1,4 @@
-import type { IAppSettingsRepository } from '../../db/interfaces';
-import { failure, success, wrap, type AsyncResult, type ServiceResult } from '../result';
+import { failure, success, type AsyncResult } from '../result';
 
 export interface AnthropicAuthApi {
   hasApiKey(): Promise<boolean>;
@@ -8,7 +7,6 @@ export interface AnthropicAuthApi {
 }
 
 export interface SettingsServiceDeps {
-  appSettings: IAppSettingsRepository;
   anthropicAuth: AnthropicAuthApi;
   fetchFn?: typeof fetch;
 }
@@ -71,20 +69,6 @@ export function createSettingsService(deps: SettingsServiceDeps) {
         const message = error instanceof Error ? error.message : 'Unknown error';
         return success({ valid: false, error: `Connection error: ${message}` });
       }
-    },
-
-    getAppSetting(key: string): ServiceResult<{ value: string | null }> {
-      return wrap(() => ({ value: deps.appSettings.get(key) ?? null }));
-    },
-
-    setAppSetting(key: string, value: string): ServiceResult<void> {
-      return wrap(() => {
-        deps.appSettings.set(key, value);
-      });
-    },
-
-    getAllAppSettings(): ServiceResult<{ settings: Record<string, string> }> {
-      return wrap(() => ({ settings: deps.appSettings.getAll() }));
     },
   };
 }

@@ -1,9 +1,28 @@
+import type { SettingDefinition } from '../../shared/settingsRegistry';
+
 export function getAppSetting(key: string) {
   return window.api.settings.app.get({ key });
 }
 
 export function setAppSetting(key: string, value: string) {
   return window.api.settings.app.set({ key, value });
+}
+
+/**
+ * Read a setting as its typed value. Folds the default when unset, unreadable,
+ * or invalid — callers never see a raw string or restate the default.
+ */
+export async function getSetting<T>(def: SettingDefinition<T>): Promise<T> {
+  try {
+    const result = await getAppSetting(def.key);
+    return def.decode(result.success ? result.value : null);
+  } catch {
+    return def.decode(null);
+  }
+}
+
+export function setSetting<T>(def: SettingDefinition<T>, value: T) {
+  return setAppSetting(def.key, def.encode(value));
 }
 
 export function hasAnthropicApiKey() {

@@ -40,7 +40,7 @@ export function registerWorkspaceHandlers({
   registerFileHandlers(getMainWindow, services.contextFileService);
   registerExportHandlers(services.exportService, services.typeMappingService);
   registerTrackerHandlers(getMainWindow, services.trackerService);
-  registerSettingsHandlers(services.settingsService);
+  registerSettingsHandlers(services.settingsService, services.container.appSettings);
   registerCustomThemeHandlers(services.customThemeService);
   registerThemeHandlers();
   registerPermissionHandlers(services.permissionService);

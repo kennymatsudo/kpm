@@ -184,7 +184,6 @@ export function createAppServices(container: IRepositoryContainer) {
   });
 
   const settingsService = createSettingsService({
-    appSettings: container.appSettings,
     anthropicAuth: AnthropicAuth,
   });
 

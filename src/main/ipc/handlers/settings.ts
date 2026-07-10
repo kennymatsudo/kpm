@@ -5,6 +5,7 @@
 import { settingsEndpoints, type SettingsEndpointName } from '../../../shared/ipc/settingsEndpoints';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { SettingsService } from '../../services/core/SettingsService';
+import type { IAppSettingsRepository } from '../../db/interfaces';
 import { getClaudeAvailability, refreshClaudeAvailability } from '../../claude/availabilityState';
 import { getCodexStatus } from '../../codex/auth';
 import { getProviderReadiness, refreshProviderReadiness } from '../../providers/readiness';
@@ -16,7 +17,10 @@ import { createRegistryIpcHandlers } from '../validation/utils';
  */
 type SettingsHandlers = { [K in SettingsEndpointName]: UnwrappedHandlerFor<typeof settingsEndpoints, K> };
 
-function buildSettingsHandlers(settingsService: SettingsService): SettingsHandlers {
+function buildSettingsHandlers(
+  settingsService: SettingsService,
+  appSettings: IAppSettingsRepository
+): SettingsHandlers {
   return {
     'anthropic.hasKey': async () => {
       const result = await settingsService.hasAnthropicKey();
@@ -40,22 +44,13 @@ function buildSettingsHandlers(settingsService: SettingsService): SettingsHandle
       return result.data;
     },
 
-    'app.get': ({ key }) => {
-      const result = settingsService.getAppSetting(key);
-      if (!result.ok) throw new Error(result.error);
-      return result.data;
-    },
+    'app.get': ({ key }) => ({ value: appSettings.get(key) ?? null }),
 
     'app.set': ({ key, value }) => {
-      const result = settingsService.setAppSetting(key, value);
-      if (!result.ok) throw new Error(result.error);
+      appSettings.set(key, value);
     },
 
-    'app.getAll': () => {
-      const result = settingsService.getAllAppSettings();
-      if (!result.ok) throw new Error(result.error);
-      return result.data;
-    },
+    'app.getAll': () => ({ settings: appSettings.getAll() }),
 
     'claude.getAvailability': () => ({ success: true, ...getClaudeAvailability() }),
 
@@ -69,6 +64,13 @@ function buildSettingsHandlers(settingsService: SettingsService): SettingsHandle
   };
 }
 
-export function registerSettingsHandlers(settingsService: SettingsService): void {
-  createRegistryIpcHandlers(settingsEndpoints, buildSettingsHandlers(settingsService), 'Settings operation failed');
+export function registerSettingsHandlers(
+  settingsService: SettingsService,
+  appSettings: IAppSettingsRepository
+): void {
+  createRegistryIpcHandlers(
+    settingsEndpoints,
+    buildSettingsHandlers(settingsService, appSettings),
+    'Settings operation failed'
+  );
 }
