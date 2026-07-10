@@ -459,6 +459,15 @@ function getManagedDisplayModel(managed: Pick<ManagedSession, 'provider' | 'mode
   return managed.provider !== 'claude' && managed.providerModel ? managed.providerModel : managed.model;
 }
 
+function authErrorMessage(provider: ChatProvider): string {
+  const reconnect: Record<ChatProvider, string> = {
+    claude: 'Run /login in a terminal',
+    codex: 'Run codex login in a terminal',
+    pi: 'Run pi auth in a terminal',
+  };
+  return `Coding agent not signed in. ${reconnect[provider]}, then click Retry.`;
+}
+
 export const CHAT_PROVIDER_CONFIG: Record<ChatProvider, ChatProviderConfig> = {
   claude: {
     usageModel: (managed) => managed.model,
@@ -804,10 +813,11 @@ export function finalizeTurnResult(
   }
 
   // Auth error: tear down the session so the next message spawns a fresh subprocess
-  // that picks up updated credentials after /login, then surface an actionable banner.
+  // that picks up updated credentials after re-authenticating, then surface an
+  // actionable banner naming how to reconnect the failing provider.
   if (isAuthError) {
     console.log(`[StreamingSessionService] Auth error detected for ${key} — tearing down session`);
-    sendChatError(mainWindow, projectId, chatSessionId, 'Not logged in to Claude Code. Run /login in a terminal, then click Retry.');
+    sendChatError(mainWindow, projectId, chatSessionId, authErrorMessage(managed.provider));
     void deps.disconnectSession(key, { silent: true });
   }
 

@@ -100,7 +100,7 @@ describe('finalizeTurnResult', () => {
     expect(deps.disconnectSession).toHaveBeenCalledWith('key', { silent: true });
     const errorEvent = sent.find((e) => e.channel === 'chat:error');
     expect(errorEvent).toBeTruthy();
-    expect((errorEvent!.payload as { error: string }).error).toMatch(/Not logged in/);
+    expect((errorEvent!.payload as { error: string }).error).toMatch(/not signed in.*\/login/i);
   });
 
   it('stays processing and skips chat:session-ready when a follow-up is already queued', () => {

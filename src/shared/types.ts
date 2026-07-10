@@ -78,6 +78,30 @@ export interface CodexStatus {
 }
 
 /**
+ * Whether a chat provider is usable right now, derived from its on-disk
+ * install/sign-in state. Distinct from `PROVIDER_CAPABILITIES` (what a provider
+ * *can do*, static) — this is whether it *works now*, computed in the main
+ * process from filesystem checks. Never reflects token contents; only presence.
+ */
+export type ProviderReadinessState =
+  | 'ready'
+  | 'installed-not-configured'
+  | 'not-installed';
+
+export interface ProviderReadiness {
+  provider: ChatProvider;
+  state: ProviderReadinessState;
+  /** Short human-readable status, e.g. "Signed in" or "Run codex login". */
+  detail: string;
+}
+
+export interface ProvidersReadiness {
+  byProvider: Record<ChatProvider, ProviderReadiness>;
+  /** True when at least one provider is `ready`. The "is KPM usable" signal. */
+  anyReady: boolean;
+}
+
+/**
  * A pi.dev provider/model the user has configured and authenticated.
  * `provider`/`modelId` together form the `"<provider>/<modelId>"` selector
  * accepted by `chat:send`'s `providerModel` param.

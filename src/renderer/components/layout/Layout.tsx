@@ -1,4 +1,4 @@
-import { memo, useState, useCallback } from 'react';
+import { memo, useState, useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Sidebar } from '../sidebar';
 import { PlanView } from '../planning';
@@ -68,7 +68,18 @@ export const Layout = memo(function Layout({
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
   const projects = useProjectDomainStore((state) => state.projects);
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Collapse the sidebar when no project is open — its empty state duplicates
+  // the WelcomePane. Re-derive on project open/close transitions, but leave a
+  // manual toggle in between untouched.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => !currentProjectId);
+  const hadProjectRef = useRef(Boolean(currentProjectId));
+  useEffect(() => {
+    const hasProject = Boolean(currentProjectId);
+    if (hasProject !== hadProjectRef.current) {
+      hadProjectRef.current = hasProject;
+      setSidebarCollapsed(!hasProject);
+    }
+  }, [currentProjectId]);
 
   // Create item handler registered by PlanView (for Cmd+Shift+I)
   const [createItemHandler, setCreateItemHandler] = useState<(() => void) | null>(null);

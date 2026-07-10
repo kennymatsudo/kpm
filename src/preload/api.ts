@@ -621,6 +621,10 @@ const settings = {
   codex: {
     getStatus: settingsInvoke['codex.getStatus'],
   },
+  providers: {
+    getReadiness: settingsInvoke['providers.getReadiness'],
+    refreshReadiness: settingsInvoke['providers.refreshReadiness'],
+  },
 };
 
 const customThemeInvoke = deriveDomainApi(customThemeEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));

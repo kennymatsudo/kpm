@@ -20,9 +20,13 @@ function hasConfiguredCredential(data: unknown): boolean {
   );
 }
 
-/** Check if the user has at least one configured pi provider/credential. Result is cached. */
-export async function isPiAvailable(): Promise<boolean> {
-  if (cachedAvailability !== null) return cachedAvailability;
+/**
+ * Check if the user has at least one configured pi provider/credential.
+ * Result is cached; pass `forceRefresh` to re-read the auth file (e.g. after the
+ * user runs `pi auth` mid-session).
+ */
+export async function isPiAvailable(forceRefresh = false): Promise<boolean> {
+  if (!forceRefresh && cachedAvailability !== null) return cachedAvailability;
   try {
     const raw = await readFile(AUTH_FILE, 'utf-8');
     const data = JSON.parse(raw) as unknown;

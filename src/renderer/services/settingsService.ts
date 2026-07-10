@@ -33,3 +33,11 @@ export function refreshClaudeAvailability() {
 export function getCodexStatus() {
   return window.api.settings.codex.getStatus();
 }
+
+export function getProviderReadiness() {
+  return window.api.settings.providers.getReadiness();
+}
+
+export function refreshProviderReadiness() {
+  return window.api.settings.providers.refreshReadiness();
+}

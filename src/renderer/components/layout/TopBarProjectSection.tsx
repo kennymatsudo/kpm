@@ -263,9 +263,7 @@ export function TopBarProjectSection({
               </DropdownMenu>
             </div>
           )
-        ) : (
-          <span className="text-sm text-text-muted">No project</span>
-        )}
+        ) : null}
       </div>
 
       {currentProject && (

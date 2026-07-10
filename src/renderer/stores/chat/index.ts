@@ -6,9 +6,11 @@ import { createStreamingSlice } from './streamingSlice';
 import { createMessageSlice } from './messageSlice';
 import { createHistorySlice } from './historySlice';
 import { createSettingsSlice, PI_UNSAFE_ACK_SETTING_KEY } from './settingsSlice';
-import { getAppSetting } from '../../services/settingsService';
+import { getAppSetting, getProviderReadiness } from '../../services/settingsService';
 import { writePersistedTabs } from './persistence';
-import { CHAT_PROVIDERS, CODEX_CHAT_MODELS } from '../../../shared/types';
+import { CODEX_CHAT_MODELS } from '../../../shared/types';
+import { getStoredChatProvider } from '../../../shared/appSettings';
+import { resolveEffectiveProvider } from '../../../shared/providerResolution';
 
 export const useChatStore: UseBoundStore<StoreApi<ChatState>> = create<ChatState>((set, get) => ({
   ...createInitialChatState(),
@@ -40,10 +42,20 @@ if (typeof window !== 'undefined') {
       useChatStore.setState({ effort: result.value });
     }
   });
-  void getAppSetting('chat_provider').then((result) => {
-    if (!result.success || !result.value) return;
-    if ((CHAT_PROVIDERS as readonly string[]).includes(result.value)) {
-      useChatStore.setState({ provider: result.value as (typeof CHAT_PROVIDERS)[number] });
+  // Resolve the effective provider from the user's stored choice and what's
+  // actually ready — never fall back to a hardcoded provider. A deliberate
+  // choice that is ready is kept; otherwise adopt a single ready provider, or
+  // leave the initial default in place for the connect step to resolve.
+  void Promise.all([getAppSetting('chat_provider'), getProviderReadiness()]).then(([stored, readinessResult]) => {
+    const storedChoice = stored.success ? getStoredChatProvider(stored.value) : null;
+    if (!readinessResult.success) {
+      if (storedChoice) useChatStore.setState({ provider: storedChoice });
+      return;
+    }
+    const { success: _success, ...readiness } = readinessResult;
+    const { provider } = resolveEffectiveProvider(readiness, storedChoice);
+    if (provider) {
+      useChatStore.setState({ provider });
     }
   });
   void getAppSetting('chat_codex_model').then((result) => {

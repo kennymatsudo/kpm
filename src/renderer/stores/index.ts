@@ -28,6 +28,7 @@ export { useChatStore } from './chat';
 export type { Message, ClaudeModel as ChatClaudeModel, ChatProvider, PiProviderOption, MessageSegment, AgentEffortLevel, CodexChatModel } from './chat';
 export type { Activity, ChatViewMode } from '../../shared/types';
 export { useClaudeAvailabilityStore } from './claudeAvailabilityStore';
+export { useProviderReadinessStore } from './providerReadinessStore';
 
 export { useFileTreeStore } from './fileTreeStore';
 

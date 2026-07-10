@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Project } from '../../../shared/types';
-import { useClaudeAvailabilityStore } from '../../stores';
+import type { ChatProvider, Project, ProvidersReadiness } from '../../../shared/types';
+import { CHAT_PROVIDERS } from '../../../shared/types';
+import { useProviderReadinessStore, useSettingsUIStore } from '../../stores';
 import { selectRepoPaths } from '../../services/repoService';
+import { getAppSetting, setAppSetting } from '../../services/settingsService';
+import { CONNECT_PROMPT_SEEN_KEY } from '../../../shared/appSettings';
 import { LoadingSpinner } from '../ui/LoadingButton';
+import { SettingsIcon } from '../icons';
+import { ConnectAgentModal } from './ConnectAgentModal';
+
+const PROVIDER_LABELS: Record<ChatProvider, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  pi: 'pi',
+};
 
 interface WelcomePaneProps {
   projects: Project[];
@@ -35,35 +46,56 @@ function FolderOpenIcon({ className = 'w-4 h-4' }: { className?: string }) {
   );
 }
 
-function claudeStatusLine(
-  availability: ReturnType<typeof useClaudeAvailabilityStore.getState>['availability'],
+function providerStatusLine(
+  readiness: ProvidersReadiness | null,
   isLoading: boolean,
   error: string | null,
-): { label: string; dotClassName: string } {
-  if (isLoading && !availability) {
-    return { label: 'Checking Claude Code…', dotClassName: 'bg-text-tertiary' };
+): { label: string; dotClassName: string; needsSetup: boolean } {
+  if (isLoading && !readiness) {
+    return { label: 'Checking coding agents…', dotClassName: 'bg-text-tertiary', needsSetup: false };
   }
-  if (!availability || error) {
-    return { label: 'Sign in to Claude Code from your terminal to enable AI features', dotClassName: 'bg-warning' };
+  if (!readiness || error) {
+    return { label: 'No coding agent connected', dotClassName: 'bg-warning', needsSetup: true };
   }
-  if (availability.status === 'bundled') {
-    return { label: 'Claude Code connected', dotClassName: 'bg-success' };
+  const ready = CHAT_PROVIDERS.filter((provider) => readiness.byProvider[provider].state === 'ready');
+  if (ready.length === 0) {
+    return { label: 'No coding agent connected', dotClassName: 'bg-warning', needsSetup: true };
   }
-  if (availability.status === 'path-fallback') {
-    return { label: 'Using system claude', dotClassName: 'bg-warning' };
-  }
-  return { label: 'Sign in with `claude` in your terminal to enable AI features', dotClassName: 'bg-warning' };
+  return {
+    label: `${ready.map((provider) => PROVIDER_LABELS[provider]).join(', ')} connected`,
+    dotClassName: 'bg-success',
+    needsSetup: false,
+  };
 }
 
 export function WelcomePane({ projects, onNewProject, onOpenProject, onCreateProjectFromRepos }: WelcomePaneProps) {
-  const { availability, isLoading, error, load } = useClaudeAvailabilityStore();
+  const { readiness, isLoading, error, load, refresh } = useProviderReadinessStore();
+  const openSettings = useSettingsUIStore((state) => state.setIsOpen);
   const [isOpeningRepo, setIsOpeningRepo] = useState(false);
+  const [isConnectOpen, setIsConnectOpen] = useState(false);
+  const [firstRunChecked, setFirstRunChecked] = useState(false);
+
+  const handleConnectClose = useCallback(() => {
+    setIsConnectOpen(false);
+    void setAppSetting(CONNECT_PROMPT_SEEN_KEY, 'true');
+    void refresh();
+  }, [refresh]);
 
   useEffect(() => {
-    if (!availability && !isLoading) {
+    if (!readiness && !isLoading) {
       void load();
     }
-  }, [availability, isLoading, load]);
+  }, [readiness, isLoading, load]);
+
+  // On first run, if no agent is connected, open the connect step once.
+  useEffect(() => {
+    if (firstRunChecked || !readiness || readiness.anyReady) return;
+    setFirstRunChecked(true);
+    void getAppSetting(CONNECT_PROMPT_SEEN_KEY).then((result) => {
+      const seen = result.success && result.value === 'true';
+      if (!seen) setIsConnectOpen(true);
+    });
+  }, [firstRunChecked, readiness]);
 
   const handleOpenRepo = useCallback(async () => {
     setIsOpeningRepo(true);
@@ -77,7 +109,7 @@ export function WelcomePane({ projects, onNewProject, onOpenProject, onCreatePro
     }
   }, [onCreateProjectFromRepos]);
 
-  const status = claudeStatusLine(availability, isLoading, error);
+  const status = providerStatusLine(readiness, isLoading, error);
 
   return (
     <div className="flex flex-1 min-h-0 flex-col bg-surface-0">
@@ -95,7 +127,7 @@ export function WelcomePane({ projects, onNewProject, onOpenProject, onCreatePro
           <div className="text-center space-y-2">
             <h1 className="text-[20px] font-semibold tracking-tight text-text-primary">KPM</h1>
             <p className="text-[13px] leading-snug text-text-tertiary max-w-[380px] mx-auto">
-              Plan, explore, and ship against your repos.
+              Your developer's source of truth.
             </p>
           </div>
 
@@ -138,9 +170,30 @@ export function WelcomePane({ projects, onNewProject, onOpenProject, onCreatePro
           <div className="mt-2 flex items-center gap-1.5 text-[12px] text-text-tertiary">
             <span className={`w-1.5 h-1.5 rounded-full ${status.dotClassName}`} />
             {status.label}
+            {status.needsSetup && (
+              <>
+                <span className="text-text-tertiary/50">·</span>
+                <button
+                  onClick={() => setIsConnectOpen(true)}
+                  className="text-accent hover:underline"
+                >
+                  Set one up
+                </button>
+              </>
+            )}
           </div>
+
+          <button
+            onClick={() => openSettings(true)}
+            className="mt-1 flex items-center gap-1.5 text-[12px] text-text-tertiary hover:text-text-secondary transition-colors"
+          >
+            <SettingsIcon className="w-3.5 h-3.5" />
+            Settings
+          </button>
         </div>
       </div>
+
+      <ConnectAgentModal isOpen={isConnectOpen} onClose={handleConnectClose} />
     </div>
   );
 }
