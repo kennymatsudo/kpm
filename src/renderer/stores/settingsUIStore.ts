@@ -7,52 +7,34 @@ export type SettingsTab =
   | 'shortcuts'
   | 'prompts'
   | 'mcp'
-  | 'permissions'
-  | 'worktrees';
+  | 'permissions';
 
 interface SettingsUIState {
   isOpen: boolean;
   activeTab: SettingsTab;
-  /** Number of visible tabs (depends on whether a project is open) */
-  visibleTabCount: number;
+  /** Currently visible tabs in display order; set by the modal, which knows which tabs a project gates. */
+  visibleTabIds: SettingsTab[];
 
   setIsOpen: (open: boolean) => void;
   setActiveTab: (tab: SettingsTab) => void;
-  setVisibleTabCount: (count: number) => void;
+  setVisibleTabIds: (ids: SettingsTab[]) => void;
   /** Navigate to tab by 1-indexed number (for Cmd+1/2/3 shortcuts) */
   goToTab: (index: number) => void;
 }
 
-/** Ordered list of tabs for index-based navigation */
-const TAB_ORDER: SettingsTab[] = [
-  'general',
-  'commands',
-  'workflow',
-  'shortcuts',
-  'prompts',
-  'mcp',
-  'permissions',
-  'worktrees',
-];
-
 export const useSettingsUIStore = create<SettingsUIState>((set, get) => ({
   isOpen: false,
   activeTab: 'general',
-  visibleTabCount: 6, // Default tabs without a project (Permissions is project-gated)
+  visibleTabIds: [],
 
   setIsOpen: (open) => set({ isOpen: open, activeTab: open ? get().activeTab : 'general' }),
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
-  setVisibleTabCount: (count) => set({ visibleTabCount: count }),
+  setVisibleTabIds: (ids) => set({ visibleTabIds: ids }),
 
   goToTab: (index) => {
-    const { visibleTabCount } = get();
-    // Bounds check: 1-indexed, must be within visible tabs
-    if (index < 1 || index > visibleTabCount) {
-      return;
-    }
-    const tab = TAB_ORDER[index - 1];
+    const tab = get().visibleTabIds[index - 1];
     if (tab) {
       set({ activeTab: tab });
     }

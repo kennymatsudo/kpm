@@ -118,12 +118,12 @@ export function useLayoutShortcuts({
       }
       // Cmd+1-9 - Context-aware: Settings tabs (when open) or Main views (1-2)
       if (!isEditableElement && (e.metaKey || e.ctrlKey) && /^[1-9]$/.test(e.key)) {
-        const { isOpen: settingsIsOpen, goToTab, visibleTabCount } = useSettingsUIStore.getState();
+        const { isOpen: settingsIsOpen, goToTab, visibleTabIds } = useSettingsUIStore.getState();
         const keyNum = parseInt(e.key, 10);
 
         if (settingsIsOpen) {
-          // Navigate settings tabs (1-indexed, up to visibleTabCount)
-          if (keyNum <= visibleTabCount) {
+          // Navigate settings tabs (1-indexed, up to the number of visible tabs)
+          if (keyNum <= visibleTabIds.length) {
             e.preventDefault();
             goToTab(keyNum);
           }
