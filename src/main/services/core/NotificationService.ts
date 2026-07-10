@@ -9,6 +9,10 @@
  *   - Fan-out: broadcast a stable `notification:new` payload to renderer
  *     windows so any UI surface (toast, badge, panel) can subscribe.
  *
+ * The mapping from an `UpdateEvent` to an `AppNotification` lives in the pure,
+ * exported `notificationFor` (backed by `NOTIFY_RULES`), so it can be tested by
+ * handing it an event and reading the result — no fake bus required.
+ *
  * Intentionally does NOT own:
  *   - Notification *display* — that's the renderer's job.
  *   - Persistence — notifications are ephemeral until proven otherwise. Add a
@@ -18,7 +22,7 @@
  */
 
 import type { AppNotification } from '../../../shared/types';
-import type { UpdateEvent, UpdateEventBus } from './UpdateEventBus';
+import type { EventOfKind, UpdateEvent, UpdateEventBus, UpdateEventKind } from './UpdateEventBus';
 import { notificationEvents } from '../../../shared/ipc/notificationEvents';
 
 export interface NotificationServiceDeps {
@@ -37,96 +41,109 @@ export const NOTIFICATION_CHANNEL = notificationEvents.new.channel;
 
 // =============================================================================
 // Mapping: UpdateEvent → Notification
+//
+// One rule per event kind. Each rule owns its dedupe key and how the event
+// presents to the user. A rule whose `present` returns null suppresses the
+// event (it is observability-only and never reaches a surface). Because
+// `NOTIFY_RULES` is keyed over the whole union, a new event kind won't compile
+// until it declares a rule and decides explicitly whether it notifies.
 // =============================================================================
 
-function buildDedupeKey(event: UpdateEvent): string {
-  switch (event.kind) {
-    case 'pr_changed':
-      return `pr:${event.repoId}:${event.prNumber}:${event.change}`;
-    case 'ticket_changed':
-      return `ticket:${event.source}:${event.externalKey}:${event.change}`;
-    case 'branch_changed':
-      return `branch:${event.repoId}:${event.branch ?? 'null'}`;
-    case 'generic_update':
-      return `generic:${event.source}:${event.summary}`;
-    case 'loop_finding':
-      return `loop:${event.loopId}:${event.title}`;
-  }
+/** The user-facing half of a notification — the id/timestamp are stamped by `notificationFor`. */
+type NotificationBody = Pick<AppNotification, 'severity' | 'title' | 'body' | 'link'>;
+
+interface NotifyRule<K extends UpdateEventKind> {
+  dedupeKey: (event: EventOfKind<K>) => string;
+  /** Return the presentation, or null to suppress this event. */
+  present: (event: EventOfKind<K>) => NotificationBody | null;
 }
 
-function shouldNotify(event: UpdateEvent): boolean {
-  // Branch changes are observability-only — they don't warrant a user notification.
-  if (event.kind === 'branch_changed') return false;
-  return true;
-}
+const prTitleByChange: Record<EventOfKind<'pr_changed'>['change'], string> = {
+  new_review_threads: 'New review feedback',
+  new_comments: 'New comments',
+  status_changed: 'status changed',
+  checks_changed: 'checks updated',
+  merged: 'merged',
+  closed: 'closed',
+};
 
-function eventToNotification(event: UpdateEvent): AppNotification {
-  const base = {
-    id: `${event.kind}-${event.detectedAt}-${Math.random().toString(36).slice(2, 8)}`,
-    at: event.detectedAt,
-    source: event.source,
-    eventKind: event.kind,
-  };
+const ticketTitleByChange: Record<EventOfKind<'ticket_changed'>['change'], (key: string) => string> = {
+  status_changed: (key) => `${key} status changed`,
+  assignee_changed: (key) => `${key} assignee changed`,
+  new_comment: (key) => `New comment on ${key}`,
+  description_changed: (key) => `${key} description updated`,
+  closed: (key) => `${key} closed`,
+};
 
-  switch (event.kind) {
-    case 'pr_changed': {
-      const titleByChange: Record<typeof event.change, string> = {
-        new_review_threads: `New review feedback on PR #${event.prNumber}`,
-        new_comments: `New comments on PR #${event.prNumber}`,
-        status_changed: `PR #${event.prNumber} status changed`,
-        checks_changed: `PR #${event.prNumber} checks updated`,
-        merged: `PR #${event.prNumber} merged`,
-        closed: `PR #${event.prNumber} closed`,
-      };
+const NOTIFY_RULES: { [K in UpdateEventKind]: NotifyRule<K> } = {
+  pr_changed: {
+    dedupeKey: (event) => `pr:${event.repoId}:${event.prNumber}:${event.change}`,
+    present: (event) => {
+      const suffix = prTitleByChange[event.change];
+      const title =
+        event.change === 'new_review_threads' || event.change === 'new_comments'
+          ? `${suffix} on PR #${event.prNumber}`
+          : `PR #${event.prNumber} ${suffix}`;
       return {
-        ...base,
         severity: event.change === 'merged' ? 'success' : 'info',
-        title: titleByChange[event.change],
+        title,
         body: event.summary,
         link: event.sessionId
           ? { kind: 'session', id: event.sessionId }
           : { kind: 'pr', id: `${event.repoId}#${event.prNumber}` },
       };
-    }
-    case 'ticket_changed': {
-      const titleByChange: Record<typeof event.change, string> = {
-        status_changed: `${event.externalKey} status changed`,
-        assignee_changed: `${event.externalKey} assignee changed`,
-        new_comment: `New comment on ${event.externalKey}`,
-        description_changed: `${event.externalKey} description updated`,
-        closed: `${event.externalKey} closed`,
-      };
-      return {
-        ...base,
-        severity: 'info',
-        title: titleByChange[event.change],
-        body: event.summary,
-        link: event.planItemId
-          ? { kind: 'plan_item', id: event.planItemId }
-          : { kind: 'external', id: event.externalKey },
-      };
-    }
-    case 'generic_update':
-      return {
-        ...base,
-        severity: 'info',
-        title: event.summary,
-      };
-    case 'loop_finding':
-      return {
-        ...base,
-        severity: 'info',
-        title: event.title,
-        body: event.body,
-      };
-    case 'branch_changed':
-      // Filtered above by shouldNotify, but fall through cleanly anyway.
-      return {
-        ...base,
-        severity: 'info',
-        title: `Branch changed: ${event.branch ?? 'detached'}`,
-      };
-  }
+    },
+  },
+  ticket_changed: {
+    dedupeKey: (event) => `ticket:${event.source}:${event.externalKey}:${event.change}`,
+    present: (event) => ({
+      severity: 'info',
+      title: ticketTitleByChange[event.change](event.externalKey),
+      body: event.summary,
+      link: event.planItemId
+        ? { kind: 'plan_item', id: event.planItemId }
+        : { kind: 'external', id: event.externalKey },
+    }),
+  },
+  branch_changed: {
+    // Observability-only — branch changes don't warrant a user notification.
+    dedupeKey: (event) => `branch:${event.repoId}:${event.branch ?? 'null'}`,
+    present: () => null,
+  },
+  generic_update: {
+    dedupeKey: (event) => `generic:${event.source}:${event.summary}`,
+    present: (event) => ({ severity: 'info', title: event.summary }),
+  },
+  loop_finding: {
+    dedupeKey: (event) => `loop:${event.loopId}:${event.title}`,
+    present: (event) => ({ severity: 'info', title: event.title, body: event.body }),
+  },
+};
+
+function ruleFor<K extends UpdateEventKind>(kind: K): NotifyRule<K> {
+  return NOTIFY_RULES[kind];
+}
+
+/** Stable dedupe key for an event, independent of whether it notifies. */
+export function dedupeKeyFor(event: UpdateEvent): string {
+  return ruleFor(event.kind).dedupeKey(event);
+}
+
+/**
+ * Map an `UpdateEvent` to the notification the user should see, or null when
+ * the event is observability-only. Pure — this is the notification module's
+ * test surface.
+ */
+export function notificationFor(event: UpdateEvent): AppNotification | null {
+  const body = ruleFor(event.kind).present(event);
+  if (!body) return null;
+  return {
+    ...body,
+    id: `${event.kind}-${event.detectedAt}-${Math.random().toString(36).slice(2, 8)}`,
+    at: event.detectedAt,
+    source: event.source,
+    eventKind: event.kind,
+  };
 }
 
 // =============================================================================
@@ -138,7 +155,7 @@ export function createNotificationService(deps: NotificationServiceDeps) {
   const recent = new Map<string, number>(); // dedupe key → timestamp
 
   function isDuplicate(event: UpdateEvent): boolean {
-    const key = buildDedupeKey(event);
+    const key = dedupeKeyFor(event);
     const now = Date.now();
     const last = recent.get(key);
     if (last !== undefined && now - last < dedupeWindowMs) {
@@ -156,10 +173,10 @@ export function createNotificationService(deps: NotificationServiceDeps) {
   }
 
   function handle(event: UpdateEvent): void {
-    if (!shouldNotify(event)) return;
+    const notification = notificationFor(event);
+    if (!notification) return;
     if (isDuplicate(event)) return;
 
-    const notification = eventToNotification(event);
     deps.broadcastToWindows(NOTIFICATION_CHANNEL, notification);
   }
 
