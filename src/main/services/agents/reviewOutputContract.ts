@@ -20,13 +20,15 @@ export const REVIEW_FINDINGS_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['severity', 'description'],
+        required: ['severity', 'file', 'line', 'description'],
         properties: {
           severity: {
             type: 'string',
             enum: ['critical', 'warning', 'suggestion'],
           },
-          file: { type: 'string' },
+          file: {
+            type: ['string', 'null'],
+          },
           line: {
             type: ['integer', 'null'],
           },

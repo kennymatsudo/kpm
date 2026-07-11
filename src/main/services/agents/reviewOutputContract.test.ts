@@ -1,5 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { deriveReviewOutcome, parseReviewFindings } from './reviewOutputContract';
+import { deriveReviewOutcome, parseReviewFindings, REVIEW_FINDINGS_SCHEMA } from './reviewOutputContract';
+
+describe('REVIEW_FINDINGS_SCHEMA', () => {
+  // Codex forwards this schema to the OpenAI Responses API in strict mode,
+  // which rejects any object whose `required` omits a `properties` key.
+  it('lists every property key in required on every object', () => {
+    interface SchemaNode {
+      type?: unknown;
+      properties?: Record<string, SchemaNode>;
+      required?: unknown;
+      items?: SchemaNode;
+    }
+    const assertStrict = (schema: SchemaNode): void => {
+      if (schema.type === 'object' && schema.properties) {
+        expect(schema.required).toEqual(Object.keys(schema.properties));
+        Object.values(schema.properties).forEach(assertStrict);
+      }
+      if (schema.type === 'array' && schema.items) {
+        assertStrict(schema.items);
+      }
+    };
+    assertStrict(REVIEW_FINDINGS_SCHEMA);
+  });
+});
 
 describe('parseReviewFindings', () => {
   it('parses fenced JSON output', () => {
