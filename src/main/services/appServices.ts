@@ -103,7 +103,7 @@ export function createAppServices(container: IRepositoryContainer) {
   const getPromptContent = (key: string) => unwrapOrThrow(promptOverrideService.getContent(key));
   const planItemServiceDeps: PlanItemServiceDeps = {
     planItems: container.planItems,
-    syncQueue: container.syncQueue,
+    outboundChanges: container.outboundChanges,
     tracker: container.tracker,
   };
   const queueTrackerUpdate: QueueTrackerUpdateIfNeeded = (item, updates, queuedBy) => {
@@ -170,7 +170,7 @@ export function createAppServices(container: IRepositoryContainer) {
     planRelations: container.planRelations,
     groups: container.groups,
     tracker: container.tracker,
-    syncQueue: container.syncQueue,
+    outboundChanges: container.outboundChanges,
     queueTrackerUpdateIfNeeded: queueTrackerUpdate,
   });
 
@@ -255,7 +255,7 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const exportService = createExportService({
     database,
-    syncQueue: container.syncQueue,
+    outboundChanges: container.outboundChanges,
     planItems: container.planItems,
     tracker: container.tracker,
     sync: container.sync,

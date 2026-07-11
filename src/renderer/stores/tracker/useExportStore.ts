@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type {
   CustomFieldValues,
   TrackerTypeMapping,
-  SyncQueueEntryWithPlanItem,
+  OutboundChangeWithPlanItem,
   ExportPreview,
   ExportResult,
   StatusCategory,
@@ -23,7 +23,7 @@ import {
   updateTrackerExportQueueStatus,
 } from '../../services/trackerService';
 
-function getQueueCountsByAssociation(entries: SyncQueueEntryWithPlanItem[]): Record<string, number> {
+function getQueueCountsByAssociation(entries: OutboundChangeWithPlanItem[]): Record<string, number> {
   return entries.reduce<Record<string, number>>((counts, entry) => {
     if (!entry.association_id) return counts;
     counts[entry.association_id] = (counts[entry.association_id] ?? 0) + 1;
@@ -33,7 +33,7 @@ function getQueueCountsByAssociation(entries: SyncQueueEntryWithPlanItem[]): Rec
 
 interface ExportState {
   // Queue state
-  queueEntries: SyncQueueEntryWithPlanItem[];
+  queueEntries: OutboundChangeWithPlanItem[];
   queueCount: number;
   queueCountsByAssociation: Record<string, number>;
   isLoadingQueue: boolean;
@@ -100,7 +100,7 @@ interface ExportState {
 }
 
 const initialState = {
-  queueEntries: [] as SyncQueueEntryWithPlanItem[],
+  queueEntries: [] as OutboundChangeWithPlanItem[],
   queueCount: 0,
   queueCountsByAssociation: {} as Record<string, number>,
   isLoadingQueue: false,
@@ -126,7 +126,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
     try {
       const result = await getTrackerExportQueue(projectId);
       if (result.success) {
-        const itemIds = new Set<string>(result.entries.map((entry: SyncQueueEntryWithPlanItem) => entry.plan_item_id));
+        const itemIds = new Set<string>(result.entries.map((entry: OutboundChangeWithPlanItem) => entry.plan_item_id));
         set({
           queueEntries: result.entries,
           queueCount: result.entries.length,

@@ -21,7 +21,6 @@ import type {
   TrackerProjectScope,
   TrackerAssociation,
   TrackerAssociationWithScope,
-  SyncQueueEntry,
   TrackerTypeMapping,
   SyncSnapshot,
   SyncNewItem,
@@ -300,34 +299,6 @@ export function createSyncPreview(options: Partial<SyncPreview> = {}): SyncPrevi
       deleted: 0,
       unchanged: 0,
     },
-  };
-}
-
-// =============================================================================
-// Export Queue Factories
-// =============================================================================
-
-export function createSyncQueueEntry(
-  options: Partial<SyncQueueEntry> & {
-    kpm_project_id: string;
-    plan_item_id: string;
-    association_id: string;
-  }
-): SyncQueueEntry {
-  return {
-    id: options.id ?? randomUUID(),
-    kpm_project_id: options.kpm_project_id,
-    plan_item_id: options.plan_item_id,
-    association_id: options.association_id,
-    operation: options.operation ?? 'create',
-    target_issue_type_id: options.target_issue_type_id ?? null,
-    target_issue_type_name: options.target_issue_type_name ?? null,
-    target_parent_key: options.target_parent_key ?? null,
-    target_status_category: options.target_status_category ?? null,
-    custom_field_overrides: options.custom_field_overrides ?? null,
-    queued_by: options.queued_by ?? 'user',
-    queued_at: options.queued_at ?? new Date().toISOString(),
-    error_message: options.error_message ?? null,
   };
 }
 

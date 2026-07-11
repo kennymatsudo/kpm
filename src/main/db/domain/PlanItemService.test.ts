@@ -3,7 +3,7 @@ import { queueTrackerUpdateIfNeeded } from './PlanItemService';
 
 describe('queueTrackerUpdateIfNeeded', () => {
   it('updates an existing queue entry when status changes', () => {
-    const syncQueue = {
+    const outboundChanges = {
       getByItemId: vi.fn().mockReturnValue({ id: 'queue-1' }),
       updateStatusCategory: vi.fn(),
       add: vi.fn(),
@@ -21,12 +21,12 @@ describe('queueTrackerUpdateIfNeeded', () => {
       'user',
       {
         planItems: {},
-        syncQueue,
+        outboundChanges,
         tracker: {},
       } as never
     );
 
-    expect(syncQueue.updateStatusCategory).toHaveBeenCalledWith('queue-1', 'done');
-    expect(syncQueue.add).not.toHaveBeenCalled();
+    expect(outboundChanges.updateStatusCategory).toHaveBeenCalledWith('queue-1', 'done');
+    expect(outboundChanges.add).not.toHaveBeenCalled();
   });
 });

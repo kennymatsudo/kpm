@@ -14,7 +14,7 @@ import { uuid } from './sharedSchemas';
 import type {
   ExportPreview,
   ExportResult,
-  SyncQueueEntryWithPlanItem,
+  OutboundChangeWithPlanItem,
   SyncReviewData,
   TrackerTypeMapping,
 } from '../types';
@@ -50,7 +50,7 @@ export const exportEndpoints = {
   'queue.get': {
     channel: 'export:queue:get',
     params: z.object({ projectId: uuid }),
-    result: resultOf<RegistryResponse<{ entries: SyncQueueEntryWithPlanItem[] }>>(),
+    result: resultOf<RegistryResponse<{ entries: OutboundChangeWithPlanItem[] }>>(),
   },
   'queue.add': {
     channel: 'export:queue:add',

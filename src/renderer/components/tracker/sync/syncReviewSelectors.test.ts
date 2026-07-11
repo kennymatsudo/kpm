@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PlanItem, SyncQueueEntry, SyncReviewItem } from '../../../../shared/types';
+import type { PlanItem, OutboundChange, SyncReviewItem } from '../../../../shared/types';
 import {
   buildItemMap,
   buildItemTree,
@@ -48,7 +48,7 @@ function makePlanItem(overrides: Partial<PlanItem> = {}): PlanItem {
   };
 }
 
-function makeQueueEntry(overrides: Partial<SyncQueueEntry> = {}): SyncQueueEntry {
+function makeQueueEntry(overrides: Partial<OutboundChange> = {}): OutboundChange {
   return {
     id: 'queue-1',
     kpm_project_id: 'proj-1',
@@ -63,6 +63,9 @@ function makeQueueEntry(overrides: Partial<SyncQueueEntry> = {}): SyncQueueEntry
     queued_by: 'user',
     queued_at: '2026-01-01T00:00:00Z',
     error_message: null,
+    external_key: null,
+    external_id: null,
+    tracker_type: null,
     ...overrides,
   };
 }

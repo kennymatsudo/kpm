@@ -13,7 +13,7 @@ export * from './RepoRepository';
 export * from './AttachmentRepository';
 export * from './TrackerRepository';
 export * from './SyncRepository';
-export * from './SyncQueueRepository';
+export * from './OutboundChangeRepository';
 export * from './TypeMappingRepository';
 export * from './ExternalPlanItemRepository';
 export * from './ChatMessageRepository';

@@ -3926,6 +3926,73 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1107,
+    name: '107_outbound_change_deletion_sync',
+    up: (db: BetterSqliteDatabase) => {
+      // Rename sync_queue → outbound_changes and widen it so a single table can
+      // carry create/update/delete. SQLite can't widen a CHECK or drop NOT NULL
+      // in place, so the table is recreated: new table under the new name, copy
+      // rows across, drop the old. sync_queue is a leaf (nothing references it),
+      // so DROP does not cascade.
+      const oldCount = (db.prepare('SELECT COUNT(*) AS count FROM sync_queue').get() as { count: number }).count;
+
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+
+        CREATE TABLE outbound_changes (
+          id TEXT PRIMARY KEY,
+          kpm_project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          plan_item_id TEXT REFERENCES plan_items(id) ON DELETE CASCADE,
+          association_id TEXT NOT NULL REFERENCES kpm_tracker_associations(id) ON DELETE CASCADE,
+          operation TEXT NOT NULL CHECK(operation IN ('create', 'update', 'delete')),
+          target_issue_type_id TEXT,
+          target_issue_type_name TEXT,
+          target_parent_key TEXT,
+          target_status_category TEXT CHECK(target_status_category IN ('not_started', 'in_progress', 'in_review', 'done', 'blocked', 'canceled')),
+          queued_by TEXT NOT NULL CHECK(queued_by IN ('user', 'claude')),
+          queued_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          error_message TEXT,
+          custom_field_overrides TEXT,
+          external_key TEXT,
+          external_id TEXT,
+          tracker_type TEXT,
+          UNIQUE(plan_item_id)
+        );
+
+        INSERT INTO outbound_changes (
+          id, kpm_project_id, plan_item_id, association_id, operation,
+          target_issue_type_id, target_issue_type_name, target_parent_key,
+          target_status_category, queued_by, queued_at, error_message, custom_field_overrides
+        )
+        SELECT
+          id, kpm_project_id, plan_item_id, association_id, operation,
+          target_issue_type_id, target_issue_type_name, target_parent_key,
+          target_status_category, queued_by, queued_at, error_message, custom_field_overrides
+        FROM sync_queue;
+      `);
+
+      const newCount = (db.prepare('SELECT COUNT(*) AS count FROM outbound_changes').get() as { count: number }).count;
+      if (newCount !== oldCount) {
+        throw new Error(
+          `[Migration 107] Row-count mismatch copying sync_queue → outbound_changes: expected ${oldCount}, got ${newCount}`
+        );
+      }
+
+      db.exec(`
+        DROP TABLE sync_queue;
+
+        CREATE INDEX idx_outbound_changes_project ON outbound_changes(kpm_project_id);
+        CREATE INDEX idx_outbound_changes_association ON outbound_changes(association_id);
+        CREATE INDEX idx_outbound_changes_plan_item ON outbound_changes(plan_item_id);
+        CREATE UNIQUE INDEX idx_outbound_changes_delete_dedup
+          ON outbound_changes(association_id, external_key)
+          WHERE operation = 'delete';
+
+        PRAGMA foreign_keys = ON;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

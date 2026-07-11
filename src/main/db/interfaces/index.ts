@@ -15,7 +15,7 @@ export type { IPlanItemRepository, IPlanRelationRepository, IExternalPlanItemRep
 export type { IGroupRepository, GroupUpdates } from './group';
 
 // Tracker domain
-export type { ITrackerRepository, ISyncRepository, ISyncQueueRepository, ITypeMappingRepository } from './tracker';
+export type { ITrackerRepository, ISyncRepository, IOutboundChangeRepository, ITypeMappingRepository } from './tracker';
 
 // Chat domain
 export type { IChatMessageRepository, IChatSessionRepository } from './chat';

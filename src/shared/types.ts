@@ -707,13 +707,20 @@ export interface TrackerTypeMapping {
   created_at: string;
 }
 
-/** Sync queue entry: item staged for push to Jira */
-export interface SyncQueueEntry {
+/** The three tracker mutations an Outbound Change can carry. */
+export type OutboundChangeOperation = 'create' | 'update' | 'delete';
+
+/**
+ * Outbound Change: a pending tracker mutation staged for push. Create and
+ * update carry a live plan item (`plan_item_id`); delete rows are detached
+ * (`plan_item_id` is null) and snapshot the external identity being removed.
+ */
+export interface OutboundChange {
   id: string;
   kpm_project_id: string;
-  plan_item_id: string;
+  plan_item_id: string | null;
   association_id: string;
-  operation: 'create' | 'update';
+  operation: OutboundChangeOperation;
   target_issue_type_id: string | null;
   target_issue_type_name: string | null;
   target_parent_key: string | null;
@@ -722,10 +729,28 @@ export interface SyncQueueEntry {
   queued_by: 'user' | 'claude';
   queued_at: string;
   error_message: string | null;
+  external_key: string | null;   // Snapshot of the target issue key (delete rows)
+  external_id: string | null;    // Snapshot of the target issue id (delete rows)
+  tracker_type: string | null;   // Snapshot of the tracker (delete rows)
 }
 
-/** Queue entry with joined plan item data for display */
-export interface SyncQueueEntryWithPlanItem extends SyncQueueEntry {
+/**
+ * Narrows to create/update Outbound Changes — those carrying a live plan item —
+ * and excludes detached delete rows. The create/update export path uses this to
+ * drop delete rows, which are drained separately.
+ */
+export function hasLivePlanItem<T extends { plan_item_id: string | null }>(
+  change: T
+): change is T & { plan_item_id: string } {
+  return change.plan_item_id !== null;
+}
+
+/**
+ * Outbound Change joined with its live plan item, for display. Only create and
+ * update rows join, so `plan_item_id` is always present here.
+ */
+export interface OutboundChangeWithPlanItem extends Omit<OutboundChange, 'plan_item_id'> {
+  plan_item_id: string;
   plan_item: {
     id: string;
     title: string;
@@ -748,7 +773,7 @@ export interface TrackerIssueType {
 
 /** Export preview item with validation status */
 export interface ExportPreviewItem {
-  queueEntry: SyncQueueEntry;
+  queueEntry: OutboundChange;
   planItem: PlanItem;
   resolvedType: {
     id: string;

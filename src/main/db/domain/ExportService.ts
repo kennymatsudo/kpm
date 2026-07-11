@@ -1,17 +1,17 @@
 import type { Database } from 'better-sqlite3';
 import type {
   IPlanItemRepository,
-  ISyncQueueRepository,
+  IOutboundChangeRepository,
   ISyncRepository,
   ITrackerRepository,
   ITypeMappingRepository,
 } from '../interfaces';
 import { createTypeMappingService } from './TypeMappingService';
-import { resolveOperation } from './SyncQueuePolicy';
+import { resolveOperation } from './OutboundChangePolicy';
 import { diffWords } from 'diff';
 import type {
-  SyncQueueEntryWithPlanItem,
-  SyncQueueEntry,
+  OutboundChangeWithPlanItem,
+  OutboundChange,
   PlanItem,
   PlanItemSyncUpdates,
   ExportPreview,
@@ -30,6 +30,7 @@ import type {
   StatusMapping,
   TrackerAssociationWithScope,
 } from '../../../shared/types';
+import { hasLivePlanItem } from '../../../shared/types';
 import type { JiraClient, TrackerClient } from '../../tracker-clients';
 import {
   findTransitionWithMapping,
@@ -52,7 +53,7 @@ interface TrackerClientServiceLike {
 
 export interface ExportServiceDeps {
   database: Database;
-  syncQueue: ISyncQueueRepository;
+  outboundChanges: IOutboundChangeRepository;
   planItems: IPlanItemRepository;
   tracker: ITrackerRepository;
   sync: ISyncRepository;
@@ -123,7 +124,7 @@ function resolveInitialStatusName(
 
 async function bootstrapStatusMappingForQueuedTargets(
   association: TrackerAssociationWithScope,
-  queueEntries: readonly Pick<SyncQueueEntry, 'target_status_category'>[],
+  queueEntries: readonly Pick<OutboundChange, 'target_status_category'>[],
   client: TrackerClient,
   updateStatusMapping: ITrackerRepository['updateStatusMapping']
 ): Promise<TrackerAssociationWithScope> {
@@ -154,7 +155,7 @@ async function bootstrapStatusMappingForQueuedTargets(
  */
 export function createExportService(deps: ExportServiceDeps) {
   const getDatabase = () => deps.database;
-  const SyncQueueRepository = deps.syncQueue;
+  const OutboundChangeRepository = deps.outboundChanges;
   const PlanItemRepository = deps.planItems;
   const TrackerRepository = deps.tracker;
   const SyncRepository = deps.sync;
@@ -250,7 +251,7 @@ export function createExportService(deps: ExportServiceDeps) {
 
       const operation = resolveOperation(item);
 
-      const existing = SyncQueueRepository.getByPlanItem(itemId);
+      const existing = OutboundChangeRepository.getByPlanItem(itemId);
       if (existing) {
         // Only report as skipped if it was in the original itemIds (not auto-added parent)
         if (itemIds.includes(itemId)) {
@@ -260,7 +261,7 @@ export function createExportService(deps: ExportServiceDeps) {
       }
 
       // Try to add to queue
-      const entry = SyncQueueRepository.add({
+      const entry = OutboundChangeRepository.add({
         kpm_project_id: kpmProjectId,
         plan_item_id: itemId,
         association_id: association.id,
@@ -284,29 +285,29 @@ export function createExportService(deps: ExportServiceDeps) {
   /**
    * Get all queued items for a project with plan item data.
    */
-  getQueuedItems(kpmProjectId: string): SyncQueueEntryWithPlanItem[] {
-    return SyncQueueRepository.getQueuedItemsWithPlanData(kpmProjectId);
+  getQueuedItems(kpmProjectId: string): OutboundChangeWithPlanItem[] {
+    return OutboundChangeRepository.getQueuedItemsWithPlanData(kpmProjectId);
   },
 
   /**
    * Get queue count for a project.
    */
   getQueueCount(kpmProjectId: string): number {
-    return SyncQueueRepository.getQueueCount(kpmProjectId);
+    return OutboundChangeRepository.getQueueCount(kpmProjectId);
   },
 
   /**
    * Remove an item from the queue.
    */
   removeFromQueue(queueEntryId: string): void {
-    SyncQueueRepository.remove(queueEntryId);
+    OutboundChangeRepository.remove(queueEntryId);
   },
 
   /**
    * Clear the entire queue for a project.
    */
   clearQueue(kpmProjectId: string): void {
-    SyncQueueRepository.removeByProject(kpmProjectId);
+    OutboundChangeRepository.removeByProject(kpmProjectId);
   },
 
   /**
@@ -318,8 +319,8 @@ export function createExportService(deps: ExportServiceDeps) {
     queueEntryId: string,
     statusCategory: string | null
   ): { removed: boolean } {
-    const queueEntry = SyncQueueRepository.get(queueEntryId);
-    if (queueEntry && statusCategory) {
+    const queueEntry = OutboundChangeRepository.get(queueEntryId);
+    if (queueEntry?.plan_item_id && statusCategory) {
       const planItem = PlanItemRepository.get(queueEntry.plan_item_id);
       if (planItem?.external_status) {
         const association = TrackerRepository.getAssociationById(queueEntry.association_id);
@@ -330,13 +331,13 @@ export function createExportService(deps: ExportServiceDeps) {
         if (syncedCategory === statusCategory) {
           // Status matches what's in Jira - remove from queue
           console.log(`[ExportService] Removing ${planItem.external_key} from queue - status reverted to synced value (${statusCategory})`);
-          SyncQueueRepository.remove(queueEntryId);
+          OutboundChangeRepository.remove(queueEntryId);
           return { removed: true };
         }
       }
     }
     // Otherwise, update the target status category
-    SyncQueueRepository.updateStatusCategory(queueEntryId, statusCategory);
+    OutboundChangeRepository.updateStatusCategory(queueEntryId, statusCategory);
     return { removed: false };
   },
 
@@ -350,7 +351,7 @@ export function createExportService(deps: ExportServiceDeps) {
     const cleaned = customFieldOverrides && Object.keys(customFieldOverrides).length > 0
       ? customFieldOverrides
       : null;
-    SyncQueueRepository.update(queueEntryId, { custom_field_overrides: cleaned });
+    OutboundChangeRepository.update(queueEntryId, { custom_field_overrides: cleaned });
   },
 
   /**
@@ -390,8 +391,11 @@ export function createExportService(deps: ExportServiceDeps) {
       };
     }
 
-    // Get all queued items for this association
-    const queueEntries = SyncQueueRepository.getByAssociation(associationId);
+    // Get all queued items for this association. The create/update export
+    // pipeline only handles rows with a live plan item; detached delete rows are
+    // drained separately.
+    const queueEntries = OutboundChangeRepository.getByAssociation(associationId)
+      .filter(hasLivePlanItem);
     if (queueEntries.length === 0) {
       return {
         items: [],
@@ -510,7 +514,7 @@ export function createExportService(deps: ExportServiceDeps) {
       const db = getDatabase();
       db.transaction(() => {
         for (const update of queueUpdates) {
-          SyncQueueRepository.updateResolvedType(update.id, update.typeId, update.typeName, update.parentKey);
+          OutboundChangeRepository.updateResolvedType(update.id, update.typeId, update.typeName, update.parentKey);
         }
       })();
     }
@@ -807,7 +811,8 @@ export function createExportService(deps: ExportServiceDeps) {
 
     // Get queued items - filter to approved ones, but force-include unsynced
     // parents so subtasks don't get orphaned under the epic fallback.
-    const allQueueEntries = SyncQueueRepository.getByAssociation(associationId);
+    const allQueueEntries = OutboundChangeRepository.getByAssociation(associationId)
+      .filter(hasLivePlanItem);
     association = await bootstrapStatusMappingForQueuedTargets(
       association,
       allQueueEntries,
@@ -872,7 +877,7 @@ export function createExportService(deps: ExportServiceDeps) {
       const planItem = itemMap.get(entry.plan_item_id);
       if (!planItem) {
         result.errors.push({ plan_item_id: entry.plan_item_id, error: 'Plan item not found' });
-        SyncQueueRepository.setError(entry.id, 'Plan item not found');
+        OutboundChangeRepository.setError(entry.id, 'Plan item not found');
         continue;
       }
 
@@ -985,11 +990,11 @@ export function createExportService(deps: ExportServiceDeps) {
 
         createdKeys.set(planItem.id, created.key);
         result.created.push({ plan_item_id: planItem.id, jira_key: created.key });
-        SyncQueueRepository.remove(entry.id);
+        OutboundChangeRepository.remove(entry.id);
       } catch (e) {
         const errorMsg = e instanceof Error ? e.message : 'Unknown error';
         result.errors.push({ plan_item_id: planItem.id, error: errorMsg });
-        SyncQueueRepository.setError(entry.id, errorMsg);
+        OutboundChangeRepository.setError(entry.id, errorMsg);
         result.success = false;
       }
     }
@@ -1077,7 +1082,7 @@ export function createExportService(deps: ExportServiceDeps) {
 
         if (!updateResult.planItem) {
           result.errors.push({ plan_item_id: updateResult.entry.plan_item_id, error: errorMessage });
-          SyncQueueRepository.setError(updateResult.entry.id, errorMessage);
+          OutboundChangeRepository.setError(updateResult.entry.id, errorMessage);
           continue;
         }
 
@@ -1107,10 +1112,10 @@ export function createExportService(deps: ExportServiceDeps) {
             plan_item_id: updateResult.planItem.id,
             jira_key: updateResult.planItem.external_key ?? '',
           });
-          SyncQueueRepository.remove(updateResult.entry.id);
+          OutboundChangeRepository.remove(updateResult.entry.id);
         } else {
           result.errors.push({ plan_item_id: updateResult.planItem.id, error: errorMessage });
-          SyncQueueRepository.setError(updateResult.entry.id, errorMessage);
+          OutboundChangeRepository.setError(updateResult.entry.id, errorMessage);
           result.success = false;
         }
       }

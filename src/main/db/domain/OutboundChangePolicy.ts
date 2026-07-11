@@ -1,7 +1,5 @@
 import type { StatusCategory, TrackerAssociationWithScope } from '../../../shared/types';
-import type { ISyncQueueRepository, ITrackerRepository } from '../interfaces';
-
-type SyncQueueOperation = 'create' | 'update';
+import type { IOutboundChangeRepository, ITrackerRepository } from '../interfaces';
 
 type QueueSource = 'user' | 'claude';
 
@@ -19,12 +17,12 @@ interface QueuePolicyItem {
   status_category?: string | null;
 }
 
-export interface SyncQueuePolicyDeps {
-  syncQueue: ISyncQueueRepository;
+export interface OutboundChangePolicyDeps {
+  outboundChanges: IOutboundChangeRepository;
   tracker: ITrackerRepository;
 }
 
-export function resolveOperation(item: { external_key: string | null }): SyncQueueOperation {
+export function resolveOperation(item: { external_key: string | null }): 'create' | 'update' {
   return item.external_key ? 'update' : 'create';
 }
 
@@ -38,7 +36,7 @@ export function applyAutoQueue(
   item: QueuePolicyItem,
   updates: ExportableUpdates,
   queuedBy: QueueSource,
-  deps: SyncQueuePolicyDeps
+  deps: OutboundChangePolicyDeps
 ): void {
   if (!item.project_id) return;
 
@@ -47,16 +45,16 @@ export function applyAutoQueue(
     updates.description !== undefined ||
     updates.status_category !== undefined;
 
-  const existing = deps.syncQueue.getByItemId(item.id);
+  const existing = deps.outboundChanges.getByItemId(item.id);
   if (existing) {
     if (updates.status_category !== undefined) {
-      deps.syncQueue.updateStatusCategory(existing.id, updates.status_category ?? null);
+      deps.outboundChanges.updateStatusCategory(existing.id, updates.status_category ?? null);
     }
     return;
   }
 
   if (hasExportableChange && item.external_key && item.association_id) {
-    deps.syncQueue.add({
+    deps.outboundChanges.add({
       kpm_project_id: item.project_id,
       plan_item_id: item.id,
       association_id: item.association_id,
@@ -70,7 +68,7 @@ export function applyAutoQueue(
     const changedFields = Object.keys(updates).filter(k =>
       ['title', 'description', 'status_category'].includes(k)
     );
-    console.log(`[SyncQueuePolicy] Auto-queued ${item.external_key} for update (changed: ${changedFields.join(', ')})`);
+    console.log(`[OutboundChangePolicy] Auto-queued ${item.external_key} for update (changed: ${changedFields.join(', ')})`);
     return;
   }
 
@@ -78,7 +76,7 @@ export function applyAutoQueue(
     const associations = deps.tracker.getAssociationsByProject(item.project_id);
     if (associations.length === 1) {
       const association = associations[0];
-      deps.syncQueue.add({
+      deps.outboundChanges.add({
         kpm_project_id: item.project_id,
         plan_item_id: item.id,
         association_id: association.id,
@@ -89,7 +87,7 @@ export function applyAutoQueue(
         target_parent_key: null,
         target_status_category: updates.status_category,
       });
-      console.log(`[SyncQueuePolicy] Auto-queued new item for create to Jira (status: ${updates.status_category})`);
+      console.log(`[OutboundChangePolicy] Auto-queued new item for create to Jira (status: ${updates.status_category})`);
     }
   }
 }
@@ -108,7 +106,7 @@ interface QueueForTrackerInput {
   /** Preloaded item-id -> existing queue-entry-id map, to avoid an N+1 getByItemId query per item. */
   alreadyQueuedItemIds: ReadonlyMap<string, string>;
   getItem: (itemId: string) => QueueForTrackerItem | undefined;
-  syncQueue: Pick<ISyncQueueRepository, 'add' | 'updateStatusCategory'>;
+  outboundChanges: Pick<IOutboundChangeRepository, 'add' | 'updateStatusCategory'>;
   onItemNotFound?: (itemId: string) => void;
 }
 
@@ -128,7 +126,7 @@ interface QueueForTrackerResult {
  * queue_for_tracker call with a newer status is not silently dropped.
  */
 export function queueForTracker(input: QueueForTrackerInput): QueueForTrackerResult {
-  const { projectId, itemIds, queuedBy, associations, alreadyQueuedItemIds, getItem, syncQueue, onItemNotFound } = input;
+  const { projectId, itemIds, queuedBy, associations, alreadyQueuedItemIds, getItem, outboundChanges, onItemNotFound } = input;
 
   if (associations.length === 0) {
     return { queuedCount: 0, skippedReason: 'no_association' };
@@ -147,12 +145,12 @@ export function queueForTracker(input: QueueForTrackerInput): QueueForTrackerRes
     const existingQueueEntryId = alreadyQueuedItemIds.get(itemId);
     if (existingQueueEntryId) {
       if (item.status_category) {
-        syncQueue.updateStatusCategory(existingQueueEntryId, item.status_category);
+        outboundChanges.updateStatusCategory(existingQueueEntryId, item.status_category);
       }
       continue;
     }
 
-    syncQueue.add({
+    outboundChanges.add({
       kpm_project_id: projectId,
       plan_item_id: itemId,
       association_id: association.id,

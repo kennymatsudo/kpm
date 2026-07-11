@@ -3,7 +3,7 @@ import {
   resolveOperation,
   applyAutoQueue,
   queueForTracker,
-} from './SyncQueuePolicy';
+} from './OutboundChangePolicy';
 import type { TrackerAssociationWithScope } from '../../../shared/types';
 
 function makeAssociation(id: string): TrackerAssociationWithScope {
@@ -36,7 +36,7 @@ describe('resolveOperation', () => {
 });
 
 describe('applyAutoQueue', () => {
-  function makeSyncQueue(overrides: Partial<{ getByItemId: unknown; updateStatusCategory: unknown; add: unknown }> = {}) {
+  function makeOutboundChanges(overrides: Partial<{ getByItemId: unknown; updateStatusCategory: unknown; add: unknown }> = {}) {
     return {
       getByItemId: vi.fn().mockReturnValue(undefined),
       updateStatusCategory: vi.fn(),
@@ -46,7 +46,7 @@ describe('applyAutoQueue', () => {
   }
 
   it('queues an update for a linked item when an exportable field changes', () => {
-    const syncQueue = makeSyncQueue();
+    const outboundChanges = makeOutboundChanges();
     const tracker = { getAssociationsByProject: vi.fn() };
 
     applyAutoQueue(
@@ -59,10 +59,10 @@ describe('applyAutoQueue', () => {
       },
       { title: 'New title' },
       'user',
-      { syncQueue, tracker } as never
+      { outboundChanges, tracker } as never
     );
 
-    expect(syncQueue.add).toHaveBeenCalledWith(
+    expect(outboundChanges.add).toHaveBeenCalledWith(
       expect.objectContaining({
         kpm_project_id: 'project-1',
         plan_item_id: 'item-1',
@@ -74,21 +74,21 @@ describe('applyAutoQueue', () => {
   });
 
   it('does not auto-queue a new item for create when the project has zero associations', () => {
-    const syncQueue = makeSyncQueue();
+    const outboundChanges = makeOutboundChanges();
     const tracker = { getAssociationsByProject: vi.fn().mockReturnValue([]) };
 
     applyAutoQueue(
       { id: 'item-1', project_id: 'project-1', external_key: null, association_id: null, status_category: null },
       { status_category: 'not_started' },
       'user',
-      { syncQueue, tracker } as never
+      { outboundChanges, tracker } as never
     );
 
-    expect(syncQueue.add).not.toHaveBeenCalled();
+    expect(outboundChanges.add).not.toHaveBeenCalled();
   });
 
   it('auto-queues a new item for create when the project has exactly one association', () => {
-    const syncQueue = makeSyncQueue();
+    const outboundChanges = makeOutboundChanges();
     const association = makeAssociation('assoc-1');
     const tracker = { getAssociationsByProject: vi.fn().mockReturnValue([association]) };
 
@@ -96,10 +96,10 @@ describe('applyAutoQueue', () => {
       { id: 'item-1', project_id: 'project-1', external_key: null, association_id: null, status_category: null },
       { status_category: 'not_started' },
       'claude',
-      { syncQueue, tracker } as never
+      { outboundChanges, tracker } as never
     );
 
-    expect(syncQueue.add).toHaveBeenCalledWith(
+    expect(outboundChanges.add).toHaveBeenCalledWith(
       expect.objectContaining({
         association_id: 'assoc-1',
         operation: 'create',
@@ -110,7 +110,7 @@ describe('applyAutoQueue', () => {
   });
 
   it('does not auto-queue a new item for create when the project has multiple associations', () => {
-    const syncQueue = makeSyncQueue();
+    const outboundChanges = makeOutboundChanges();
     const tracker = {
       getAssociationsByProject: vi.fn().mockReturnValue([makeAssociation('assoc-1'), makeAssociation('assoc-2')]),
     };
@@ -119,14 +119,14 @@ describe('applyAutoQueue', () => {
       { id: 'item-1', project_id: 'project-1', external_key: null, association_id: null, status_category: null },
       { status_category: 'not_started' },
       'user',
-      { syncQueue, tracker } as never
+      { outboundChanges, tracker } as never
     );
 
-    expect(syncQueue.add).not.toHaveBeenCalled();
+    expect(outboundChanges.add).not.toHaveBeenCalled();
   });
 
   it('updates the queued status target when the item is already queued and a status is set', () => {
-    const syncQueue = makeSyncQueue({ getByItemId: vi.fn().mockReturnValue({ id: 'queue-1' }) });
+    const outboundChanges = makeOutboundChanges({ getByItemId: vi.fn().mockReturnValue({ id: 'queue-1' }) });
     const tracker = { getAssociationsByProject: vi.fn() };
 
     applyAutoQueue(
@@ -139,15 +139,15 @@ describe('applyAutoQueue', () => {
       },
       { status_category: 'done' },
       'user',
-      { syncQueue, tracker } as never
+      { outboundChanges, tracker } as never
     );
 
-    expect(syncQueue.updateStatusCategory).toHaveBeenCalledWith('queue-1', 'done');
-    expect(syncQueue.add).not.toHaveBeenCalled();
+    expect(outboundChanges.updateStatusCategory).toHaveBeenCalledWith('queue-1', 'done');
+    expect(outboundChanges.add).not.toHaveBeenCalled();
   });
 
   it('leaves an already-queued entry alone when no status is being set', () => {
-    const syncQueue = makeSyncQueue({ getByItemId: vi.fn().mockReturnValue({ id: 'queue-1' }) });
+    const outboundChanges = makeOutboundChanges({ getByItemId: vi.fn().mockReturnValue({ id: 'queue-1' }) });
     const tracker = { getAssociationsByProject: vi.fn() };
 
     applyAutoQueue(
@@ -160,11 +160,11 @@ describe('applyAutoQueue', () => {
       },
       { title: 'New title' },
       'user',
-      { syncQueue, tracker } as never
+      { outboundChanges, tracker } as never
     );
 
-    expect(syncQueue.updateStatusCategory).not.toHaveBeenCalled();
-    expect(syncQueue.add).not.toHaveBeenCalled();
+    expect(outboundChanges.updateStatusCategory).not.toHaveBeenCalled();
+    expect(outboundChanges.add).not.toHaveBeenCalled();
   });
 });
 
@@ -179,7 +179,7 @@ describe('queueForTracker', () => {
   }
 
   it('uses the first association when multiple exist', () => {
-    const syncQueue = { add: vi.fn(), updateStatusCategory: vi.fn() };
+    const outboundChanges = { add: vi.fn(), updateStatusCategory: vi.fn() };
     const associations = [makeAssociation('assoc-1'), makeAssociation('assoc-2')];
 
     const result = queueForTracker({
@@ -189,17 +189,17 @@ describe('queueForTracker', () => {
       associations,
       alreadyQueuedItemIds: new Map(),
       getItem: () => makeItem({ id: 'item-1' }),
-      syncQueue,
+      outboundChanges,
     });
 
-    expect(syncQueue.add).toHaveBeenCalledWith(
+    expect(outboundChanges.add).toHaveBeenCalledWith(
       expect.objectContaining({ association_id: 'assoc-1' })
     );
     expect(result.queuedCount).toBe(1);
   });
 
   it('derives create vs update per item from external_key', () => {
-    const syncQueue = { add: vi.fn(), updateStatusCategory: vi.fn() };
+    const outboundChanges = { add: vi.fn(), updateStatusCategory: vi.fn() };
     const items = new Map([
       ['item-1', makeItem({ id: 'item-1', external_key: null })],
       ['item-2', makeItem({ id: 'item-2', external_key: 'PROJ-9' })],
@@ -212,15 +212,15 @@ describe('queueForTracker', () => {
       associations: [makeAssociation('assoc-1')],
       alreadyQueuedItemIds: new Map(),
       getItem: (id) => items.get(id),
-      syncQueue,
+      outboundChanges,
     });
 
-    expect(syncQueue.add).toHaveBeenCalledWith(expect.objectContaining({ plan_item_id: 'item-1', operation: 'create' }));
-    expect(syncQueue.add).toHaveBeenCalledWith(expect.objectContaining({ plan_item_id: 'item-2', operation: 'update' }));
+    expect(outboundChanges.add).toHaveBeenCalledWith(expect.objectContaining({ plan_item_id: 'item-1', operation: 'create' }));
+    expect(outboundChanges.add).toHaveBeenCalledWith(expect.objectContaining({ plan_item_id: 'item-2', operation: 'update' }));
   });
 
   it('adds one entry for an item that is not already queued', () => {
-    const syncQueue = { add: vi.fn(), updateStatusCategory: vi.fn() };
+    const outboundChanges = { add: vi.fn(), updateStatusCategory: vi.fn() };
 
     const result = queueForTracker({
       projectId: 'project-1',
@@ -229,15 +229,15 @@ describe('queueForTracker', () => {
       associations: [makeAssociation('assoc-1')],
       alreadyQueuedItemIds: new Map(),
       getItem: () => makeItem({ id: 'item-1' }),
-      syncQueue,
+      outboundChanges,
     });
 
-    expect(syncQueue.add).toHaveBeenCalledTimes(1);
+    expect(outboundChanges.add).toHaveBeenCalledTimes(1);
     expect(result.queuedCount).toBe(1);
   });
 
   it('refreshes the status target instead of skipping when the item is already queued', () => {
-    const syncQueue = { add: vi.fn(), updateStatusCategory: vi.fn() };
+    const outboundChanges = { add: vi.fn(), updateStatusCategory: vi.fn() };
 
     const result = queueForTracker({
       projectId: 'project-1',
@@ -246,16 +246,16 @@ describe('queueForTracker', () => {
       associations: [makeAssociation('assoc-1')],
       alreadyQueuedItemIds: new Map([['item-1', 'queue-1']]),
       getItem: () => makeItem({ id: 'item-1', status_category: 'done' }),
-      syncQueue,
+      outboundChanges,
     });
 
-    expect(syncQueue.add).not.toHaveBeenCalled();
-    expect(syncQueue.updateStatusCategory).toHaveBeenCalledWith('queue-1', 'done');
+    expect(outboundChanges.add).not.toHaveBeenCalled();
+    expect(outboundChanges.updateStatusCategory).toHaveBeenCalledWith('queue-1', 'done');
     expect(result.queuedCount).toBe(0);
   });
 
   it('skips adding when no tracker association is configured for the project', () => {
-    const syncQueue = { add: vi.fn(), updateStatusCategory: vi.fn() };
+    const outboundChanges = { add: vi.fn(), updateStatusCategory: vi.fn() };
 
     const result = queueForTracker({
       projectId: 'project-1',
@@ -264,10 +264,10 @@ describe('queueForTracker', () => {
       associations: [],
       alreadyQueuedItemIds: new Map(),
       getItem: () => makeItem({ id: 'item-1' }),
-      syncQueue,
+      outboundChanges,
     });
 
-    expect(syncQueue.add).not.toHaveBeenCalled();
+    expect(outboundChanges.add).not.toHaveBeenCalled();
     expect(result.queuedCount).toBe(0);
     expect(result.skippedReason).toBe('no_association');
   });

@@ -1,15 +1,16 @@
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import type { PlanAction, PlanActionResult, PlanItem } from '../../../shared/types';
+import { hasLivePlanItem } from '../../../shared/types';
 import type {
   IPlanItemRepository,
   IPlanRelationRepository,
   ITrackerRepository,
-  ISyncQueueRepository,
+  IOutboundChangeRepository,
   IGroupRepository,
 } from '../interfaces';
 import type { QueueTrackerUpdateIfNeeded } from './PlanItemService';
-import { queueForTracker } from './SyncQueuePolicy';
+import { queueForTracker } from './OutboundChangePolicy';
 import { assignItemToGroup } from './GroupAssignmentService';
 import { findRefs } from '../../../shared/planRefs';
 
@@ -21,7 +22,7 @@ export interface PlanActionExecutorDeps {
   planRelations: IPlanRelationRepository;
   groups: IGroupRepository;
   tracker: ITrackerRepository;
-  syncQueue: ISyncQueueRepository;
+  outboundChanges: IOutboundChangeRepository;
   queueTrackerUpdateIfNeeded: QueueTrackerUpdateIfNeeded;
   logger?: Logger;
 }
@@ -231,9 +232,13 @@ function executeQueueForTracker(
   const associations = ctx.deps.tracker.getAssociationsByProject(ctx.projectId);
 
   // Prefetch all queued items for this project once, then look up membership in
-  // memory — avoids an N+1 getByItemId query per item.
+  // memory — avoids an N+1 getByItemId query per item. Detached delete rows have
+  // no plan item, so they never participate in this create/update dedup map.
   const alreadyQueuedItemIds = new Map(
-    ctx.deps.syncQueue.getByProject(ctx.projectId).map((entry) => [entry.plan_item_id, entry.id])
+    ctx.deps.outboundChanges
+      .getByProject(ctx.projectId)
+      .filter(hasLivePlanItem)
+      .map((entry) => [entry.plan_item_id, entry.id])
   );
 
   const result = queueForTracker({
@@ -243,7 +248,7 @@ function executeQueueForTracker(
     associations,
     alreadyQueuedItemIds,
     getItem: (itemId) => getItem(ctx, itemId),
-    syncQueue: ctx.deps.syncQueue,
+    outboundChanges: ctx.deps.outboundChanges,
     onItemNotFound: (itemId) => ctx.logger.warn(`[PlanActionService] queue_for_tracker: Item not found: ${itemId}`),
   });
 

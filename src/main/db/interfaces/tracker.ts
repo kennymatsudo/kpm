@@ -7,8 +7,8 @@
 import type {
   CustomFieldValues,
   StatusMapping,
-  SyncQueueEntry,
-  SyncQueueEntryWithPlanItem,
+  OutboundChange,
+  OutboundChangeWithPlanItem,
   SyncSnapshot,
   TrackerAssociation,
   TrackerAssociationWithScope,
@@ -72,26 +72,26 @@ export interface ISyncRepository {
 }
 
 // =============================================================================
-// Sync Queue Repository
+// Outbound Change Repository
 // =============================================================================
 
-export interface ISyncQueueRepository {
-  get(id: string): SyncQueueEntry | undefined;
-  getByProject(projectId: string): SyncQueueEntry[];
-  getByProjectWithPlanItems(projectId: string): SyncQueueEntryWithPlanItem[];
-  getByPlanItem(planItemId: string): SyncQueueEntry | undefined;
-  getByItemId(planItemId: string): SyncQueueEntry | undefined;
-  getByAssociation(associationId: string): SyncQueueEntry[];
-  getQueuedItemsWithPlanData(projectId: string): SyncQueueEntryWithPlanItem[];
+export interface IOutboundChangeRepository {
+  get(id: string): OutboundChange | undefined;
+  getByProject(projectId: string): OutboundChange[];
+  getByProjectWithPlanItems(projectId: string): OutboundChangeWithPlanItem[];
+  getByPlanItem(planItemId: string): OutboundChange | undefined;
+  getByItemId(planItemId: string): OutboundChange | undefined;
+  getByAssociation(associationId: string): OutboundChange[];
+  getQueuedItemsWithPlanData(projectId: string): OutboundChangeWithPlanItem[];
   getQueueCount(projectId: string): number;
-  add(entry: Omit<SyncQueueEntry, 'id' | 'queued_at' | 'error_message' | 'custom_field_overrides'> & { custom_field_overrides?: CustomFieldValues | null }): SyncQueueEntry;
-  add(projectId: string, planItemId: string, associationId: string, operation: 'create' | 'update', queuedBy: 'user' | 'claude'): SyncQueueEntry | null;
-  update(id: string, updates: Partial<Pick<SyncQueueEntry, 'target_issue_type_id' | 'target_issue_type_name' | 'target_parent_key' | 'target_status_category' | 'custom_field_overrides' | 'error_message'>>): void;
+  add(entry: Omit<OutboundChange, 'id' | 'plan_item_id' | 'operation' | 'queued_at' | 'error_message' | 'custom_field_overrides' | 'external_key' | 'external_id' | 'tracker_type'> & { plan_item_id: string; operation: 'create' | 'update'; custom_field_overrides?: CustomFieldValues | null }): OutboundChange;
+  add(projectId: string, planItemId: string, associationId: string, operation: 'create' | 'update', queuedBy: 'user' | 'claude'): OutboundChange | null;
+  addDelete(entry: { kpm_project_id: string; association_id: string; external_key: string; external_id: string | null; tracker_type: string; queued_by: 'user' | 'claude' }): OutboundChange;
+  update(id: string, updates: Partial<Pick<OutboundChange, 'target_issue_type_id' | 'target_issue_type_name' | 'target_parent_key' | 'target_status_category' | 'custom_field_overrides' | 'error_message'>>): void;
   updateStatusCategory(id: string, statusCategory: string | null): void;
   updateResolvedType(id: string, typeId: string, typeName: string, parentKey: string | null): void;
   setError(id: string, errorMessage: string): void;
   remove(id: string): void;
-  removeByPlanItem(planItemId: string): void;
   removeByProject(projectId: string): void;
   clearProject(projectId: string): void;
 }

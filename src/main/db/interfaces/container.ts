@@ -7,7 +7,7 @@
 import type { IProjectRepository, IRepoRepository, IAttachmentRepository } from './project';
 import type { IPlanItemRepository, IPlanRelationRepository, IExternalPlanItemRepository } from './plan';
 import type { IGroupRepository } from './group';
-import type { ITrackerRepository, ISyncRepository, ISyncQueueRepository, ITypeMappingRepository } from './tracker';
+import type { ITrackerRepository, ISyncRepository, IOutboundChangeRepository, ITypeMappingRepository } from './tracker';
 import type { IChatMessageRepository, IChatSessionRepository } from './chat';
 import type { IDevSessionRepository } from './dev';
 import type { IAppSettingsRepository, ICustomThemeRepository, ITaskPromptTemplateRepository, ICustomPromptRepository, IToolPermissionRepository } from './settings';
@@ -32,7 +32,7 @@ export interface IRepositoryContainer {
   attachments: IAttachmentRepository;
   tracker: ITrackerRepository;
   sync: ISyncRepository;
-  syncQueue: ISyncQueueRepository;
+  outboundChanges: IOutboundChangeRepository;
   typeMappings: ITypeMappingRepository;
   externalPlanItems: IExternalPlanItemRepository;
   chatMessages: IChatMessageRepository;

@@ -90,7 +90,7 @@ function createHarness(seed: PlanItem[] = []) {
       delete: vi.fn(),
     } as unknown as PlanActionExecutorDeps['groups'],
     tracker: { getAssociationsByProject: vi.fn(() => []) } as unknown as PlanActionExecutorDeps['tracker'],
-    syncQueue: { getByProject: vi.fn(() => []) } as unknown as PlanActionExecutorDeps['syncQueue'],
+    outboundChanges: { getByProject: vi.fn(() => []) } as unknown as PlanActionExecutorDeps['outboundChanges'],
     queueTrackerUpdateIfNeeded,
     logger: { log: vi.fn(), warn: vi.fn() },
   };

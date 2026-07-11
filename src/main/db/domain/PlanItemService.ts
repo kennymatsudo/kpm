@@ -1,11 +1,11 @@
 import { isSubtaskIssueType } from '../../../shared/types';
 import type { IPlanItemRepository } from '../interfaces';
-import { applyAutoQueue, type QueueTrackerUpdateIfNeeded, type SyncQueuePolicyDeps } from './SyncQueuePolicy';
+import { applyAutoQueue, type QueueTrackerUpdateIfNeeded, type OutboundChangePolicyDeps } from './OutboundChangePolicy';
 
 /**
  * Dependencies for PlanItemService functions.
  */
-export interface PlanItemServiceDeps extends SyncQueuePolicyDeps {
+export interface PlanItemServiceDeps extends OutboundChangePolicyDeps {
   planItems: IPlanItemRepository;
 }
 

@@ -22,6 +22,9 @@ function createReviewItem(planItemId: string, queueEntryId: string): SyncReviewI
       queued_by: 'user',
       queued_at: '2024-01-01T00:00:00.000Z',
       error_message: null,
+      external_key: null,
+      external_id: null,
+      tracker_type: null,
     },
     planItem: {
       id: planItemId,

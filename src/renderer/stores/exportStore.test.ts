@@ -29,6 +29,9 @@ describe('export store', () => {
           queued_by: 'user',
           queued_at: '2024-01-01T00:00:00.000Z',
           error_message: null,
+          external_key: null,
+          external_id: null,
+          tracker_type: null,
           plan_item: {
             id: 'plan-1',
             title: 'Plan item',
@@ -71,6 +74,9 @@ describe('export store', () => {
           queued_by: 'user',
           queued_at: '2024-01-01T00:00:00.000Z',
           error_message: null,
+          external_key: null,
+          external_id: null,
+          tracker_type: null,
           plan_item: {
             id: 'plan-1',
             title: 'Plan item',
@@ -121,6 +127,9 @@ describe('export store', () => {
           queued_by: 'user',
           queued_at: '2024-01-01T00:00:00.000Z',
           error_message: null,
+          external_key: null,
+          external_id: null,
+          tracker_type: null,
           plan_item: {
             id: 'plan-1',
             title: 'Plan item',
@@ -169,6 +178,9 @@ describe('export store', () => {
           queued_by: 'user',
           queued_at: '2024-01-01T00:00:00.000Z',
           error_message: null,
+          external_key: null,
+          external_id: null,
+          tracker_type: null,
           plan_item: {
             id: 'plan-1',
             title: 'Plan item 1',
@@ -193,6 +205,9 @@ describe('export store', () => {
           queued_by: 'user',
           queued_at: '2024-01-01T00:00:00.000Z',
           error_message: null,
+          external_key: null,
+          external_id: null,
+          tracker_type: null,
           plan_item: {
             id: 'plan-2',
             title: 'Plan item 2',
@@ -217,6 +232,9 @@ describe('export store', () => {
           queued_by: 'user',
           queued_at: '2024-01-01T00:00:00.000Z',
           error_message: null,
+          external_key: null,
+          external_id: null,
+          tracker_type: null,
           plan_item: {
             id: 'plan-3',
             title: 'Plan item 3',

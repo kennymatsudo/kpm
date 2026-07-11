@@ -27,6 +27,6 @@ export type { PlanActionExecutorDeps } from './PlanActionService';
 export { queueTrackerUpdateIfNeeded, moveSubtasksToPlan } from './PlanItemService';
 export type { MoveSubtasksToPlan, PlanItemServiceDeps, QueueTrackerUpdateIfNeeded } from './PlanItemService';
 
-// Sync-queue decision policy (create vs update, association selection, dedup)
-export { resolveOperation, applyAutoQueue, queueForTracker } from './SyncQueuePolicy';
-export type { SyncQueuePolicyDeps } from './SyncQueuePolicy';
+// Outbound-change decision policy (create vs update, association selection, dedup)
+export { resolveOperation, applyAutoQueue, queueForTracker } from './OutboundChangePolicy';
+export type { OutboundChangePolicyDeps } from './OutboundChangePolicy';

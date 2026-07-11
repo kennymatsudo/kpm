@@ -31,7 +31,7 @@ describe('PlanActionExecutor — create_item with spec fields', () => {
       planRelations: ctx.repos.planRelations,
       groups: ctx.repos.groups,
       tracker: ctx.repos.tracker,
-      syncQueue: ctx.repos.syncQueue,
+      outboundChanges: ctx.repos.outboundChanges,
       queueTrackerUpdateIfNeeded: vi.fn(),
       logger: { log: vi.fn(), warn: vi.fn() },
     });
@@ -171,7 +171,7 @@ describe('PlanActionExecutor — create_item with spec fields', () => {
     ]);
 
     expect(result.success).toBe(true);
-    const entry = ctx.repos.syncQueue.getByPlanItem('plan-queue');
+    const entry = ctx.repos.outboundChanges.getByPlanItem('plan-queue');
     expect(entry?.association_id).toBe(association.id);
     expect(entry?.target_status_category).toBe('done');
   });

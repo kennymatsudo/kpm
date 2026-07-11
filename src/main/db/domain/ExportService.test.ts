@@ -168,7 +168,7 @@ function createService(
 ) {
   return createExportService({
     database: ctx.db,
-    syncQueue: ctx.repos.syncQueue,
+    outboundChanges: ctx.repos.outboundChanges,
     planItems: ctx.repos.planItems,
     tracker: ctx.repos.tracker,
     sync: ctx.repos.sync,
@@ -221,7 +221,7 @@ describe('ExportService', () => {
       title: 'Ship fix',
       status_category: 'done',
     }));
-    ctx.repos.syncQueue.add({
+    ctx.repos.outboundChanges.add({
       kpm_project_id: project.id,
       plan_item_id: 'plan-1',
       association_id: association.id,
@@ -265,7 +265,7 @@ describe('ExportService', () => {
       title: 'Default state item',
       status_category: 'not_started',
     }));
-    ctx.repos.syncQueue.add({
+    ctx.repos.outboundChanges.add({
       kpm_project_id: project.id,
       plan_item_id: 'plan-1',
       association_id: association.id,
@@ -326,7 +326,7 @@ describe('ExportService', () => {
       title: 'Ship Jira fix',
       status_category: 'done',
     }));
-    ctx.repos.syncQueue.add({
+    ctx.repos.outboundChanges.add({
       kpm_project_id: project.id,
       plan_item_id: 'plan-1',
       association_id: association.id,
@@ -374,7 +374,7 @@ describe('ExportService', () => {
       external_status: 'In Review',
       status_category: 'done',
     }));
-    const queueEntry = ctx.repos.syncQueue.add({
+    const queueEntry = ctx.repos.outboundChanges.add({
       kpm_project_id: project.id,
       plan_item_id: 'plan-1',
       association_id: association.id,
@@ -398,7 +398,7 @@ describe('ExportService', () => {
     expect(result.success).toBe(true);
     expect(client.transitionIssue).toHaveBeenCalledWith('ENG-1', 'state-done', true);
     expect(ctx.repos.planItems.get('plan-1')?.external_status).toBe('Done');
-    expect(ctx.repos.syncQueue.get(queueEntry.id)).toBeUndefined();
+    expect(ctx.repos.outboundChanges.get(queueEntry.id)).toBeUndefined();
   });
 
   it('keeps the queue entry when Linear does not reach the exported status', async () => {
@@ -425,7 +425,7 @@ describe('ExportService', () => {
       external_status: 'In Review',
       status_category: 'done',
     }));
-    const queueEntry = ctx.repos.syncQueue.add({
+    const queueEntry = ctx.repos.outboundChanges.add({
       kpm_project_id: project.id,
       plan_item_id: 'plan-1',
       association_id: association.id,
@@ -448,7 +448,7 @@ describe('ExportService', () => {
 
     expect(result.success).toBe(false);
     expect(result.errors[0]?.error).toContain('expected Done');
-    expect(ctx.repos.syncQueue.get(queueEntry.id)?.error_message).toContain('expected Done');
+    expect(ctx.repos.outboundChanges.get(queueEntry.id)?.error_message).toContain('expected Done');
   });
 
   it('preserves current board status when manually queueing a local item', () => {
@@ -473,7 +473,7 @@ describe('ExportService', () => {
     const result = service.queueItems(project.id, ['plan-1'], 'user', association.id);
 
     expect(result.queued).toEqual(['plan-1']);
-    expect(ctx.repos.syncQueue.getByPlanItem('plan-1')?.target_status_category).toBe('done');
+    expect(ctx.repos.outboundChanges.getByPlanItem('plan-1')?.target_status_category).toBe('done');
   });
 
   it('uses status mappings when deciding whether a queued status was reverted', () => {
@@ -497,7 +497,7 @@ describe('ExportService', () => {
       external_status: 'Ready to Ship',
       status_category: 'in_progress',
     }));
-    const queueEntry = ctx.repos.syncQueue.add({
+    const queueEntry = ctx.repos.outboundChanges.add({
       kpm_project_id: project.id,
       plan_item_id: 'plan-1',
       association_id: association.id,
@@ -514,6 +514,6 @@ describe('ExportService', () => {
     const result = service.updateQueueStatus(queueEntry.id, 'done');
 
     expect(result).toEqual({ removed: true });
-    expect(ctx.repos.syncQueue.get(queueEntry.id)).toBeUndefined();
+    expect(ctx.repos.outboundChanges.get(queueEntry.id)).toBeUndefined();
   });
 });

@@ -377,3 +377,77 @@ describe('review table migrations', () => {
     }
   });
 });
+
+describe('107_outbound_change_deletion_sync', () => {
+  it('recreates sync_queue as outbound_changes, preserving rows and widening the schema', () => {
+    const db = new BetterSqlite3(':memory:');
+
+    try {
+      db.exec(`
+        CREATE TABLE schema_migrations (
+          id INTEGER PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE sync_queue (
+          id TEXT PRIMARY KEY,
+          kpm_project_id TEXT NOT NULL,
+          plan_item_id TEXT NOT NULL,
+          association_id TEXT NOT NULL,
+          operation TEXT NOT NULL CHECK(operation IN ('create', 'update')),
+          target_issue_type_id TEXT,
+          target_issue_type_name TEXT,
+          target_parent_key TEXT,
+          target_status_category TEXT,
+          queued_by TEXT NOT NULL CHECK(queued_by IN ('user', 'claude')),
+          queued_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          error_message TEXT,
+          custom_field_overrides TEXT,
+          UNIQUE(plan_item_id)
+        );
+      `);
+
+      // Record every migration except the one under test as already applied, so
+      // runMigrations only runs 107 against the seeded old-shape table.
+      const recordMigration = db.prepare('INSERT INTO schema_migrations (id, name) VALUES (?, ?)');
+      for (const migration of migrations) {
+        if (migration.name !== '107_outbound_change_deletion_sync') {
+          recordMigration.run(migration.id, migration.name);
+        }
+      }
+
+      const insertOld = db.prepare(
+        `INSERT INTO sync_queue (id, kpm_project_id, plan_item_id, association_id, operation, queued_by) VALUES (?, ?, ?, ?, ?, ?)`
+      );
+      insertOld.run('sq-1', 'proj-1', 'item-1', 'assoc-1', 'create', 'user');
+      insertOld.run('sq-2', 'proj-1', 'item-2', 'assoc-1', 'update', 'user');
+
+      expect(() => runMigrations(db)).not.toThrow();
+
+      const tables = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('sync_queue', 'outbound_changes')"
+      ).all() as { name: string }[];
+      expect(tables.map((t) => t.name)).toEqual(['outbound_changes']);
+
+      const rowCount = db.prepare('SELECT COUNT(*) AS count FROM outbound_changes').get() as { count: number };
+      expect(rowCount.count).toBe(2);
+
+      const columns = db.prepare('PRAGMA table_info(outbound_changes)').all() as { name: string; notnull: number }[];
+      expect(columns.map((column) => column.name)).toEqual(
+        expect.arrayContaining(['external_key', 'external_id', 'tracker_type'])
+      );
+      expect(columns.find((column) => column.name === 'plan_item_id')?.notnull).toBe(0);
+
+      // A detached delete row proves both the widened CHECK and the now-nullable plan_item_id.
+      expect(() =>
+        db.prepare(
+          `INSERT INTO outbound_changes (id, kpm_project_id, plan_item_id, association_id, operation, external_key, external_id, tracker_type, queued_by)
+           VALUES (?, ?, NULL, ?, 'delete', ?, ?, ?, ?)`
+        ).run('oc-del-1', 'proj-1', 'assoc-1', 'ENG-1', 'issue-1', 'linear', 'user')
+      ).not.toThrow();
+    } finally {
+      db.close();
+    }
+  });
+});

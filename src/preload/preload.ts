@@ -25,7 +25,7 @@ export type {
   ConflictResolution,
   DeletedItemAction,
   TrackerTypeMapping,
-  SyncQueueEntryWithPlanItem,
+  OutboundChangeWithPlanItem,
   ExportPreview,
   ExportResult,
   SyncReviewData,
