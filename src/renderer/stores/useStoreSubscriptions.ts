@@ -9,6 +9,7 @@ import { useEffect } from 'react';
 import { subscribe } from './storeEvents';
 import { useExportStore } from './tracker/useExportStore';
 import { useTrackerStore } from './trackerStore';
+import { useDevSessionsStore } from './devSessions';
 
 /**
  * Initialize all cross-store subscriptions.
@@ -49,9 +50,22 @@ export function useStoreSubscriptions(): void {
       }
     });
 
+    const unsubscribeReviewReplyApplied = subscribe('review-reply-applied', (event) => {
+      const { sessionId, inbox } = event.payload;
+      if (inbox) {
+        useDevSessionsStore.setState((state) => ({
+          reviewInboxBySessionId: new Map(state.reviewInboxBySessionId).set(sessionId, inbox),
+          reviewErrorBySessionId: new Map(state.reviewErrorBySessionId).set(sessionId, null),
+        }));
+      }
+      const projectId = useDevSessionsStore.getState().projectId;
+      if (projectId) void useDevSessionsStore.getState().loadSessions(projectId);
+    });
+
     return () => {
       unsubscribeStatusChanged();
       unsubscribePlanItemCreated();
+      unsubscribeReviewReplyApplied();
     };
   }, []);
 }

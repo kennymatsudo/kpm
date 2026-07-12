@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useChatStore, useApprovalQueueStore, useGeneralSettingsStore } from '../stores';
+import { useChatStore, useProposedChangeDisposal, useGeneralSettingsStore } from '../stores';
 import { emit } from '../stores/storeEvents';
 import {
   getActiveChatSessions,
@@ -30,7 +30,7 @@ export function useChatIpcBridge(projectId: string | null): void {
     const router = createChatEventRouter({
       projectId,
       getChatState: () => useChatStore.getState(),
-      getApprovalQueue: () => useApprovalQueueStore.getState(),
+      getApprovalQueue: () => useProposedChangeDisposal.getState(),
       services: { getChatUsage, getActiveChatSessions, getChatSessionState },
       emitStoreEvent: emit,
       now: Date.now,

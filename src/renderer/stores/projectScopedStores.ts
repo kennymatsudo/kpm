@@ -33,7 +33,7 @@ import { useWorkspaceStore } from './workspaceStore';
 import { useProjectStore } from './projectStore';
 import { useTaskPromptTemplateStore } from './taskPromptTemplateStore';
 import { useToolPermissionStore } from './toolPermissionStore';
-import { useApprovalQueueStore } from './approvalQueueStore';
+import { useProposedChangeDisposal } from './proposedChangeDisposal';
 
 interface AnyStore { getState: () => unknown }
 
@@ -60,7 +60,7 @@ const PROJECT_SCOPED_STORES: StoreEntry[] = [
   { name: 'project', store: useProjectStore },
   { name: 'taskPromptTemplates', store: useTaskPromptTemplateStore },
   { name: 'toolPermissions', store: useToolPermissionStore },
-  { name: 'approvalQueue', store: useApprovalQueueStore },
+  { name: 'proposedChanges', store: useProposedChangeDisposal },
 ];
 
 /**

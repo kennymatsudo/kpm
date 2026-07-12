@@ -26,7 +26,7 @@ interface WorkspaceViewProps {
  * - Editing: Editor (center) + Chat (right, narrower)
  *
  * Note: Pending file approvals (from Claude-generated content) are now handled
- * by ApprovalOverlays via the unified approval queue.
+ * by ApprovalOverlays via Proposed Change disposal.
  */
 export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: WorkspaceViewProps) {
   const {

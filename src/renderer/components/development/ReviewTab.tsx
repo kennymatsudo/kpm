@@ -19,7 +19,7 @@ import type {
   ReviewTask,
 } from '../../../shared/types';
 import { useDevSessionsStore } from '../../stores/devSessions';
-import { useApprovalQueueStore } from '../../stores/approvalQueueStore';
+import { useProposedChangeDisposal } from '../../stores/proposedChangeDisposal';
 import { toast } from '../../stores/toastStore';
 import { openExternalUrl } from '../../services/shellService';
 import type { ReviewAssessmentOptions } from '../../stores/devSessions/helpers';
@@ -782,7 +782,7 @@ export function ReviewTab({ session }: ReviewTabProps) {
   const unresolveReviewThread = useDevSessionsStore((state) => state.unresolveReviewThread);
   const ignoreReviewTask = useDevSessionsStore((state) => state.ignoreReviewTask);
   const overrideReviewDisposition = useDevSessionsStore((state) => state.overrideReviewDisposition);
-  const processReviewReplyDraft = useApprovalQueueStore((state) => state.processReviewReplyDraft);
+  const proposeChange = useProposedChangeDisposal((state) => state.propose);
 
   const [actionState, setActionState] = useState<ReviewActionState | null>(null);
   const [replyThreadId, setReplyThreadId] = useState<string | null>(null);
@@ -938,7 +938,7 @@ export function ReviewTab({ session }: ReviewTabProps) {
       if (!task.draft_reply) continue;
       const thread = snapshot?.threads.find((item) => item.id === task.thread_id);
       if (!thread) continue;
-      processReviewReplyDraft({
+      proposeChange({ type: 'review-reply', projectId: session.project_id,
         sessionId: session.id,
         threadId: task.thread_id,
         threadUrl: thread.url,
@@ -964,7 +964,7 @@ export function ReviewTab({ session }: ReviewTabProps) {
     }
 
     await withAction(`reply:${threadId}`, () => {
-      processReviewReplyDraft({
+      proposeChange({ type: 'review-reply', projectId: session.project_id,
         sessionId: session.id,
         threadId,
         threadUrl: thread.url,

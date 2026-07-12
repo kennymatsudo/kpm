@@ -66,16 +66,9 @@ export { resetAllProjectScopedStores, getRegisteredStoreNames } from './projectS
 export { useWorkspaceStore, isEditableFile, useHasUnsavedChanges } from './workspaceStore';
 export type { FileSource, SelectedFile, EditingFile } from './workspaceStore';
 
-// Approval Queue
-export { useApprovalQueueStore } from './approvalQueueStore';
-export type {
-  ApprovalItem,
-  PendingPlanActionsItem,
-  PendingContextFileItem,
-  PendingDocumentItem,
-  PendingMoveItem,
-  PendingDeleteItem,
-} from './approvalQueueStore';
+// Proposed Change disposal
+export { useProposedChangeDisposal, getProposedChangePresentation } from './proposedChangeDisposal';
+export type { ProposedChange, ProposedChangeInput, ProposedChangeEdits, DisposalOutcome, DisposalPolicy } from './proposedChangeDisposal';
 
 // Toast notifications
 export { useToastStore, toast } from './toastStore';

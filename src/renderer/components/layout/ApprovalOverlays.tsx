@@ -5,7 +5,7 @@
  * document updates, review replies). The panel overlays the sidebar, keeping the
  * chat visible so users can reference the conversation while reviewing changes.
  *
- * Uses a unified approval queue to handle multiple pending items.
+ * Renders the pending projection of the Proposed Change disposal module.
  * Panel auto-expands when items arrive.
  */
 
@@ -14,13 +14,12 @@ import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { useShallow } from 'zustand/react/shallow';
 import {
-  useProjectDomainStore,
   usePlanDomainStore,
-  useApprovalQueueStore,
-  useFileTreeStore,
+  useProposedChangeDisposal,
   useFocusModeStore,
+  getProposedChangePresentation,
 } from '../../stores';
-import type { ApprovalItem } from '../../stores';
+import type { ProposedChange, ProposedChangeEdits } from '../../stores';
 import { toast } from '../../stores/toastStore';
 import { emit } from '../../stores/storeEvents';
 import { PendingActionsPanel } from '../planning/PendingActionsPanel';
@@ -29,23 +28,10 @@ import { PendingMovePanel } from '../planning/PendingMovePanel';
 import { PendingDeletePanel } from '../planning/PendingDeletePanel';
 import { ReviewReplyApprovalPanel } from '../development/ReviewReplyApprovalPanel';
 import { Z_INDEX } from '../../constants/zIndex';
-import { getParentPath } from '../../utils/path';
 
 /** Get a display label for approval item type */
-function getItemTypeLabel(type: ApprovalItem['type']): string {
-  switch (type) {
-    case 'plan-actions': return 'Plan Changes';
-    case 'context-file': return 'Project Context Update';
-    case 'document': return 'Document Update';
-    case 'move': return 'Confirm Move';
-    case 'delete': return 'Confirm Deletion';
-    case 'review-reply': return 'Review Reply';
-    default: return 'Pending Approval';
-  }
-}
-
 /** Get an icon for approval item type */
-function getItemTypeIcon(type: ApprovalItem['type']): React.ReactNode {
+function getItemTypeIcon(type: ProposedChange['type']): React.ReactNode {
   switch (type) {
     case 'plan-actions':
       return (
@@ -94,10 +80,11 @@ function getItemTypeIcon(type: ApprovalItem['type']): React.ReactNode {
 
 export function ApprovalOverlays() {
   // Get queue state
-  const { queue, removeById, userMinimized, panelWidth, setUserMinimized, setPanelWidth } = useApprovalQueueStore(
+  const { pending, approve, dismiss, userMinimized, panelWidth, setUserMinimized, setPanelWidth } = useProposedChangeDisposal(
     useShallow((state) => ({
-      queue: state.queue,
-      removeById: state.removeById,
+      pending: state.pending,
+      approve: state.approve,
+      dismiss: state.dismiss,
       userMinimized: state.userMinimized,
       panelWidth: state.panelWidth,
       setUserMinimized: state.setUserMinimized,
@@ -106,32 +93,12 @@ export function ApprovalOverlays() {
   );
 
   // Get project store data needed for panels
-  const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
   const planItems = usePlanDomainStore((state) => state.planItems);
   const { focusModeOpen, focusedDocPath, updateFocusedDocContent } = useFocusModeStore(
     useShallow((state) => ({
       focusModeOpen: state.isOpen,
       focusedDocPath: state.docPath,
       updateFocusedDocContent: state.updateContent,
-    }))
-  );
-
-  // Get execution methods from approval queue store
-  const {
-    executePlanActions,
-    executeContextFileWrite,
-    executeFileWrite,
-    executeFileMove,
-    executeFileDelete,
-    executeReviewReply,
-  } = useApprovalQueueStore(
-    useShallow((state) => ({
-      executePlanActions: state.executePlanActions,
-      executeContextFileWrite: state.executeContextFileWrite,
-      executeFileWrite: state.executeFileWrite,
-      executeFileMove: state.executeFileMove,
-      executeFileDelete: state.executeFileDelete,
-      executeReviewReply: state.executeReviewReply,
     }))
   );
 
@@ -201,58 +168,34 @@ export function ApprovalOverlays() {
   }, [isResizingPanel]);
 
   // Current item to show (first in queue)
-  const currentItem = queue.length > 0 ? queue[0] : null;
-  const queueLength = queue.length;
+  const currentItem = pending.length > 0 ? pending[0] : null;
+  const queueLength = pending.length;
 
   // Panel is open iff there's something to show and the user hasn't explicitly
   // minimized this batch. The store resets userMinimized on any meaningful new
   // enqueue, so subsequent approvals re-surface even after the user minimized.
   const isPanelOpen = queueLength > 0 && !userMinimized;
 
-  // Handlers for different approval types
-
-  const handleApprovePlanActions = useCallback(async (item: ApprovalItem & { type: 'plan-actions' }) => {
+  const apply = useCallback(async (
+    item: ProposedChange,
+    edits?: ProposedChangeEdits,
+    onApplied?: () => void,
+  ) => {
     setIsApplying(true);
     try {
-      const result = await executePlanActions(item.actions);
-      if (result.success) {
-        removeById(item.id);
-        if (result.warning) {
-          toast.warning(result.warning);
-        }
-      } else {
-        toast.error(`Failed to apply changes: ${result.error}`);
+      const outcome = await approve(item.id, edits);
+      if (outcome.kind === 'failed') toast.error(outcome.error);
+      else {
+        if (outcome.kind === 'applied_with_warning') toast.warning(outcome.warning);
+        onApplied?.();
       }
     } finally {
       setIsApplying(false);
     }
-  }, [executePlanActions, removeById]);
+  }, [approve]);
 
-  const handleApplyContextFileEdit = useCallback(async (item: ApprovalItem & { type: 'context-file' }, content: string) => {
-    if (!currentProjectId) return;
-    setIsApplying(true);
-    try {
-      const result = await executeContextFileWrite(currentProjectId, content);
-      if (result.success) {
-        removeById(item.id);
-      } else {
-        toast.error(`Failed to update project context file: ${result.error}`);
-      }
-    } finally {
-      setIsApplying(false);
-    }
-  }, [currentProjectId, executeContextFileWrite, removeById]);
-
-  const handleAcceptDocument = useCallback(async (item: ApprovalItem & { type: 'document' }, content: string) => {
-    if (!currentProjectId) return;
-    setIsApplying(true);
-    try {
-      const result = await executeFileWrite(currentProjectId, item.filePath, content);
-      if (result.success) {
-        removeById(item.id);
-        // Refresh the parent directory so the new file appears in the tree
-        const parentPath = getParentPath(item.filePath, '');
-        void useFileTreeStore.getState().refreshDirectory(parentPath);
+  const handleAcceptDocument = useCallback(async (item: Extract<ProposedChange, { type: 'document' }>, content: string) => {
+    await apply(item, { type: 'document', content }, () => {
         if (focusModeOpen && focusedDocPath === item.filePath) {
           updateFocusedDocContent(item.filePath, content);
           return;
@@ -262,78 +205,18 @@ export function ApprovalOverlays() {
           type: 'navigate-to-view',
           payload: { view: 'workspace', filePath: item.filePath },
         });
-      } else {
-        toast.error(`Failed to update ${item.filePath}: ${result.error}`);
-      }
-    } finally {
-      setIsApplying(false);
-    }
-  }, [currentProjectId, executeFileWrite, focusModeOpen, focusedDocPath, removeById, updateFocusedDocContent]);
+    });
+  }, [apply, focusModeOpen, focusedDocPath, updateFocusedDocContent]);
 
-  const handleConfirmMove = useCallback(async (item: ApprovalItem & { type: 'move' }) => {
-    if (!currentProjectId) return;
-    setIsApplying(true);
-    try {
-      const result = await executeFileMove(currentProjectId, item.sourcePath, item.targetPath);
-      if (result.success) {
-        removeById(item.id);
-        const sourceParentPath = getParentPath(item.sourcePath, '');
-        const targetParentPath = getParentPath(item.targetPath, '');
-        void useFileTreeStore.getState().refreshDirectory(sourceParentPath);
-        if (targetParentPath !== sourceParentPath) void useFileTreeStore.getState().refreshDirectory(targetParentPath);
-      } else {
-        toast.error(`Failed to move ${item.sourcePath}: ${result.error}`);
-      }
-    } finally {
-      setIsApplying(false);
-    }
-  }, [currentProjectId, executeFileMove, removeById]);
-
-  const handleConfirmDelete = useCallback(async (item: ApprovalItem & { type: 'delete' }) => {
-    if (!currentProjectId) return;
-    setIsApplying(true);
-    try {
-      const result = await executeFileDelete(currentProjectId, item.filePath);
-      if (result.success) {
-        removeById(item.id);
-        // Refresh the parent directory so the deleted entry disappears from the tree
-        const parentPath = getParentPath(item.filePath, '');
-        void useFileTreeStore.getState().refreshDirectory(parentPath);
-      } else {
-        toast.error(`Failed to delete ${item.filePath}: ${result.error}`);
-      }
-    } finally {
-      setIsApplying(false);
-    }
-  }, [currentProjectId, executeFileDelete, removeById]);
-
-  const handleApproveReviewReply = useCallback(async (
-    item: ApprovalItem & { type: 'review-reply' },
-    body: string,
-    resolve: boolean
-  ) => {
-    setIsApplying(true);
-    try {
-      const result = await executeReviewReply({
-        sessionId: item.sessionId,
-        threadId: item.threadId,
-        body,
-        resolve,
-      });
-      if (result.success) {
-        removeById(item.id);
+  const handleApproveReviewReply = useCallback(async (item: Extract<ProposedChange, { type: 'review-reply' }>, body: string, resolve: boolean) => {
+    await apply(item, { type: 'review-reply', body, resolve }, () => {
         toast.success(resolve ? 'Reply posted and thread resolved' : 'Reply posted');
-      } else {
-        toast.error(`Failed to post review reply: ${result.error}`);
-      }
-    } finally {
-      setIsApplying(false);
-    }
-  }, [executeReviewReply, removeById]);
+    });
+  }, [apply]);
 
   const handleDismiss = useCallback((id: string) => {
-    removeById(id);
-  }, [removeById]);
+    dismiss(id);
+  }, [dismiss]);
 
   const handleCollapse = useCallback(() => {
     setUserMinimized(true);
@@ -385,7 +268,7 @@ export function ApprovalOverlays() {
         <PendingActionsPanel
           actions={currentItem.actions}
           planItems={planItems}
-          onApprove={() => handleApprovePlanActions(currentItem)}
+          onApprove={() => void apply(currentItem)}
           onDismiss={() => handleDismiss(currentItem.id)}
           isApplying={isApplying}
           embedded
@@ -397,7 +280,7 @@ export function ApprovalOverlays() {
           filePath="Project Context"
           content={currentItem.newContent}
           oldContent={currentItem.oldContent}
-          onAccept={(content) => handleApplyContextFileEdit(currentItem, content)}
+          onAccept={(content) => void apply(currentItem, { type: 'context-file', newContent: content })}
           onDismiss={() => handleDismiss(currentItem.id)}
           isApplying={isApplying}
           embedded
@@ -420,7 +303,7 @@ export function ApprovalOverlays() {
         <PendingMovePanel
           sourcePath={currentItem.sourcePath}
           targetPath={currentItem.targetPath}
-          onConfirm={() => handleConfirmMove(currentItem)}
+          onConfirm={() => apply(currentItem).then(() => {})}
           onDismiss={() => handleDismiss(currentItem.id)}
           isApplying={isApplying}
           embedded
@@ -431,7 +314,7 @@ export function ApprovalOverlays() {
         <PendingDeletePanel
           filePath={currentItem.filePath}
           isDirectory={currentItem.isDirectory}
-          onConfirm={() => handleConfirmDelete(currentItem)}
+          onConfirm={() => apply(currentItem).then(() => {})}
           onDismiss={() => handleDismiss(currentItem.id)}
           isApplying={isApplying}
           embedded
@@ -489,7 +372,7 @@ export function ApprovalOverlays() {
                 </div>
                 <div className="flex flex-col">
                   <span className="text-sm font-semibold text-text-primary leading-tight">
-                    {getItemTypeLabel(currentItem.type)}
+                    {getProposedChangePresentation(currentItem).label}
                   </span>
                   {queueLength > 1 && (
                     <span className="text-xxs text-text-muted mt-0.5">

@@ -8,7 +8,7 @@
  */
 
 import { useBackgroundTaskStore } from '../stores/backgroundTaskStore';
-import { useApprovalQueueStore } from '../stores/approvalQueueStore';
+import { useProposedChangeDisposal } from '../stores/proposedChangeDisposal';
 import { useContextRegenerationStore } from '../stores/contextRegenerationStore';
 import { useProjectDomainStore } from '../stores/projectDomains';
 import { readContextFile } from './contextFileService';
@@ -93,15 +93,16 @@ export function initOnboardingTaskBridge(): () => void {
 
       // If the modal is open, its own generate → review flow owns the result.
       // If it belongs to a different (or no longer open) project, fall back to
-      // the badge-resume path. Otherwise route it into the approval queue so
+      // the badge-resume path. Otherwise route it into Proposed Change disposal so
       // the user reviews it there instead of having to reopen the modal.
       if (!isRegenModalOpen && meta?.projectId === currentProjectId) {
         void (async () => {
           try {
             const existing = await readContextFile(meta.projectId);
-            useApprovalQueueStore
-              .getState()
-              .processContextFileUpdate(meta.projectId, existing.content, content);
+            useProposedChangeDisposal.getState().propose({
+              type: 'context-file', projectId: meta.projectId,
+              oldContent: existing.content, newContent: content,
+            });
             useBackgroundTaskStore.getState().complete(taskId, { result: content });
             useBackgroundTaskStore.getState().dismiss(taskId);
           } catch {

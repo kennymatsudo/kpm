@@ -1,4 +1,6 @@
-import type { PlanAction, SessionState } from '../../shared/types';
+import type { SessionState } from '../../shared/types';
+import type { ProposedChangeInput, DisposalPolicy } from '../stores/proposedChangeDisposal';
+import { isContextFile } from '../../shared/contextFile';
 import type { ChatState } from '../stores/chat/types';
 import { isStreamStale } from '../stores/chat/chatStreamReducer';
 import type { StoreEvent } from '../stores/storeEvents';
@@ -72,17 +74,8 @@ export type ChatStoreView = Pick<
   | 'removeQueuedUserMessage'
 >;
 
-export interface ApprovalQueueActions {
-  processPlanActions: (projectId: string, actions: PlanAction[]) => void;
-  processFileUpdate: (
-    projectId: string,
-    filePath: string,
-    content: string,
-    oldContent: string | null,
-    options?: { forceReview?: boolean },
-  ) => void;
-  processFileMove: (projectId: string, sourcePath: string, targetPath: string) => void;
-  processFileDelete: (projectId: string, filePath: string, isDirectory: boolean) => void;
+export interface ProposedChangeActions {
+  propose: (change: ProposedChangeInput, options?: { policy?: DisposalPolicy }) => void;
 }
 
 export interface ChatEventRouterServices {
@@ -105,7 +98,7 @@ export interface ChatEventRouterServices {
 export interface ChatEventRouterDeps {
   projectId: string;
   getChatState: () => ChatStoreView;
-  getApprovalQueue: () => ApprovalQueueActions;
+  getApprovalQueue: () => ProposedChangeActions;
   services: ChatEventRouterServices;
   emitStoreEvent: (event: StoreEvent) => void;
   now: () => number;
@@ -143,7 +136,7 @@ const WATCHDOG_POLL_MS = 15_000;
 export { WATCHDOG_POLL_MS };
 
 /**
- * Routes chat IPC events into the chat store and approval queue, owns the
+ * Routes chat IPC events into the chat store and Proposed Change disposal, owns the
  * cross-project approval-event buffer, and runs the stale-stream watchdog.
  * Pure wiring target: no React, no timers, no direct store imports — the
  * `useChatIpcBridge` hook adapts it to the component lifecycle.
@@ -165,27 +158,24 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
 
   const processPlanActionsEvent = (data: PlanActionsEventData) => {
     if (data.actions.length > 0) {
-      getApprovalQueue().processPlanActions(data.projectId, data.actions);
+      getApprovalQueue().propose({ type: 'plan-actions', projectId: data.projectId, actions: data.actions });
     }
   };
   const processFileUpdateEvent = (data: FileUpdateEventData) => {
-    getApprovalQueue().processFileUpdate(
-      data.projectId,
-      data.filePath,
-      data.content,
-      data.oldContent ?? null,
-      { forceReview: data.forceReview }
-    );
+    const change: ProposedChangeInput = isContextFile(data.filePath)
+      ? { type: 'context-file', projectId: data.projectId, newContent: data.content, oldContent: data.oldContent ?? null }
+      : { type: 'document', projectId: data.projectId, filePath: data.filePath, content: data.content, oldContent: data.oldContent ?? null };
+    getApprovalQueue().propose(change, data.forceReview ? { policy: 'review_required' } : undefined);
     emitStoreEvent({
       type: 'chat-file-updated',
       payload: data,
     });
   };
   const processFileMoveEvent = (data: FileMoveEventData) => {
-    getApprovalQueue().processFileMove(data.projectId, data.sourcePath, data.targetPath);
+    getApprovalQueue().propose({ type: 'move', projectId: data.projectId, sourcePath: data.sourcePath, targetPath: data.targetPath });
   };
   const processFileDeleteEvent = (data: FileDeleteEventData) => {
-    getApprovalQueue().processFileDelete(data.projectId, data.path, data.isDirectory);
+    getApprovalQueue().propose({ type: 'delete', projectId: data.projectId, filePath: data.path, isDirectory: data.isDirectory });
   };
 
   const flushBufferedApprovalEvents = (): void => {

@@ -10,7 +10,7 @@
  * - Subscription hook listens → calls Store B action
  */
 
-import type { CustomFieldValues, StatusCategory } from '../../shared/types';
+import type { CustomFieldValues, ReviewInboxSnapshot, StatusCategory } from '../../shared/types';
 
 // =============================================================================
 // Event Types
@@ -79,6 +79,11 @@ export interface ChatFileUpdatedEvent {
   };
 }
 
+export interface ReviewReplyAppliedEvent {
+  type: 'review-reply-applied';
+  payload: { sessionId: string; inbox: ReviewInboxSnapshot | null };
+}
+
 export interface TrackerExportCompletedEvent {
   type: 'tracker-export-completed';
   payload: {
@@ -109,6 +114,7 @@ export type StoreEvent =
   | RevealBoardColumnEvent
   | FileExplorerChangedEvent
   | ChatFileUpdatedEvent
+  | ReviewReplyAppliedEvent
   | TrackerExportCompletedEvent
   | SyncReviewItemRemovedEvent
   | SyncReviewCustomFieldOverridesUpdatedEvent;

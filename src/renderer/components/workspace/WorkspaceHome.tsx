@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
-  useApprovalQueueStore,
+  useProposedChangeDisposal,
   useBriefingStore,
   useChatStore,
   useContextRegenerationStore,
@@ -66,8 +66,8 @@ function useContextGenerationNudge() {
   const isRegenModalOpen = useContextRegenerationStore((state) => state.isOpen);
   // Re-check once a queue-routed context edit (see onboardingTaskBridge) drains,
   // since accepting it updates the file on disk without remounting this hook.
-  const pendingContextFileEdits = useApprovalQueueStore(
-    (state) => state.queue.filter((item) => item.type === 'context-file').length,
+  const pendingContextFileEdits = useProposedChangeDisposal(
+    (state) => state.pending.filter((item) => item.type === 'context-file').length,
   );
 
   const [needsContext, setNeedsContext] = useState(false);

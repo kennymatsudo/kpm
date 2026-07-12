@@ -7,7 +7,7 @@ UI state management with slice pattern, typed events for cross-store communicati
 - **`projectStore.ts`** — Main store factory (sliced into `project/` subdirectory: projectSlice, planSlice, resourceSlice, uiSlice)
 - **`chat/`** — Sliced store for unified chat state shared between Plan & Workspace views: `historySlice`, `messageSlice`, `streamingSlice`, `sessionManagementSlice`, `settingsSlice` plus shared `baseState.ts`, `types.ts`, `persistence.ts`. Exported as `useChatStore` from `stores/chat` (or via `stores/index.ts`).
 - **`devSessions/`** — Sliced store for board agent sessions. `index.ts` composes `lifecycleSlice` (load/delete/dismiss/rename sessions, diff loading), `prSlice` (PR context, creation, linking, and status polling), `reviewSlice` (review inbox: load/assign/assess, draft and send replies, resolve/ignore threads) plus shared `helpers.ts` and `requestState.ts`. Live agent state (`agentStateBySessionId`, `activitiesBySessionId`, `commitStateBySessionId`, etc.) lives on the root store object. Import as `useDevSessionsStore` from `stores/devSessions` (or via `stores/index.ts`).
-- **`approvalQueueStore.ts`** — Unified queue/executor for Claude-proposed changes (plan actions, context-file edits, document updates, implementation proposals, review replies). Owns both the **process methods** (called by `useChatIpcBridge` when Claude emits events — they enqueue for review or auto-apply based on the global setting) and the **execute methods** (called by `ApprovalOverlays` when the user approves, or by process methods in auto-apply mode — they call the backing services). Project-scoped.
+- **`proposedChangeDisposal.ts`** — Deep, project-scoped disposal module for Proposed Changes. Its five-operation interface (`propose`, `approve`, `retry`, `dismiss`, `resetProject`) owns review versus auto-apply policy, per-kind merging, serialized execution, and failed auto-apply recovery. A static exhaustive adapter registry owns kind-specific identity, edits, mutation execution, presentation data, and success projection.
 - **`trackerStore.ts`** — Association and scope management (top-level file, not under `tracker/`).
 - **`tracker/`** — Other tracker-related sub-stores:
   - `useSyncStore` — Sync preview state, conflict resolutions, and `syncAvailability` (keyed by associationId). `checkForUpdates()` is called by `useTrackerTopBarIntegration` on a 2-minute polling interval; badge UI reads from `syncAvailability`.
@@ -17,7 +17,7 @@ UI state management with slice pattern, typed events for cross-store communicati
   - `useTrackerMetadataStore` — Cached tracker project/issue-type/status metadata, keyed by `trackerType:projectKey`.
   - `useSyncReviewStore` — Sync review state (project-scoped).
 - **Specialized stores** — One per feature domain (workspace, artifacts, groups, search, background tasks, Claude availability, etc.). Includes `backgroundTaskStore.ts`, `customPromptTaskStore.ts`, and `claudeAvailabilityStore.ts` in addition to the domain stores listed above.
-- **Infrastructure** — `storeEvents.ts` (typed event emitter), `projectScopedStores.ts` (lifecycle management — reset list includes `approvalQueue`, `syncReview`, and `devSessions`), `useStoreSubscriptions.ts` (event wiring)
+- **Infrastructure** — `storeEvents.ts` (typed event emitter), `projectScopedStores.ts` (lifecycle management — reset list includes `proposedChanges`, `syncReview`, and `devSessions`), `useStoreSubscriptions.ts` (event wiring)
 
 All stores exported from `index.ts`. See the directory for the full list.
 
@@ -65,7 +65,7 @@ Stores use **typed events** for side effects, to avoid circular dependencies:
 2. Emit from store actions: `deps.emit({ type: 'status-changed', payload })`
 3. Listen in `useStoreSubscriptions.ts` for cross-domain reactions (e.g. status change → auto-queue export), or via a module-level `subscribe(...)` call at the bottom of the consuming store's own file when the reaction belongs entirely to that store's domain (see `useSyncStore.ts`, `useExportStore.ts`)
 
-Direct cross-store imports are fine for simple reads (e.g. `approvalQueueStore` reads `generalSettingsStore`/`fileTreeStore`/`toastStore`) — reserve events for side effects that should stay decoupled.
+Direct cross-store imports are fine for simple reads (e.g. Proposed Change disposal reads `generalSettingsStore`) — use typed events for side effects such as projecting successful mutations into other stores.
 
 ## Key Patterns
 

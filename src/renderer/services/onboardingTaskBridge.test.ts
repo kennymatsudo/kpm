@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { initOnboardingTaskBridge, type OnboardingTaskMeta } from './onboardingTaskBridge';
 import { useBackgroundTaskStore, type BackgroundTask } from '../stores/backgroundTaskStore';
-import { useApprovalQueueStore } from '../stores/approvalQueueStore';
+import { useProposedChangeDisposal } from '../stores/proposedChangeDisposal';
 import { useContextRegenerationStore } from '../stores/contextRegenerationStore';
 import { useProjectDomainStore } from '../stores/projectDomains';
 
@@ -53,7 +53,7 @@ describe('onboardingTaskBridge onComplete routing', () => {
     useBackgroundTaskStore.setState({ tasks: {} });
     useContextRegenerationStore.setState({ isOpen: false, resumeTaskId: null });
     useProjectDomainStore.setState({ currentProjectId: 'project-1' } as never);
-    useApprovalQueueStore.setState({ processContextFileUpdate: vi.fn() });
+    useProposedChangeDisposal.setState({ propose: vi.fn() });
   });
 
   it('routes into the approval queue and dismisses the badge when the task matches the open project', async () => {
@@ -65,11 +65,9 @@ describe('onboardingTaskBridge onComplete routing', () => {
     await flushMicrotasks();
 
     expect(readContextFile).toHaveBeenCalledWith('project-1');
-    expect(useApprovalQueueStore.getState().processContextFileUpdate).toHaveBeenCalledWith(
-      'project-1',
-      'existing content',
-      'generated content',
-    );
+    expect(useProposedChangeDisposal.getState().propose).toHaveBeenCalledWith({
+      type: 'context-file', projectId: 'project-1', oldContent: 'existing content', newContent: 'generated content',
+    });
     expect(useBackgroundTaskStore.getState().tasks['task-1']).toBeUndefined();
   });
 
@@ -82,7 +80,7 @@ describe('onboardingTaskBridge onComplete routing', () => {
     getOnCompleteHandler()({ taskId: 'task-1', content: 'generated content' });
     await flushMicrotasks();
 
-    expect(useApprovalQueueStore.getState().processContextFileUpdate).not.toHaveBeenCalled();
+    expect(useProposedChangeDisposal.getState().propose).not.toHaveBeenCalled();
     const task = useBackgroundTaskStore.getState().tasks['task-1'];
     expect(task?.status).toBe('completed');
     expect(task?.result).toBe('generated content');
@@ -96,7 +94,7 @@ describe('onboardingTaskBridge onComplete routing', () => {
     getOnCompleteHandler()({ taskId: 'task-1', content: 'generated content' });
     await flushMicrotasks();
 
-    expect(useApprovalQueueStore.getState().processContextFileUpdate).not.toHaveBeenCalled();
+    expect(useProposedChangeDisposal.getState().propose).not.toHaveBeenCalled();
     const task = useBackgroundTaskStore.getState().tasks['task-1'];
     expect(task?.status).toBe('completed');
     expect(task?.result).toBe('generated content');

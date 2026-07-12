@@ -75,10 +75,7 @@ function makeChatState(overrides: Partial<ChatStoreView> = {}): ChatStoreView {
 
 function makeDeps(chatState: ChatStoreView, overrides: Partial<ChatEventRouterDeps> = {}) {
   const approvalQueue = {
-    processPlanActions: vi.fn(),
-    processFileUpdate: vi.fn(),
-    processFileMove: vi.fn(),
-    processFileDelete: vi.fn(),
+    propose: vi.fn(),
   };
   type ActiveSessionsResult = Awaited<ReturnType<ChatEventRouterServices['getActiveChatSessions']>>;
   type SessionStateResult = Awaited<ReturnType<ChatEventRouterServices['getChatSessionState']>>;
@@ -367,15 +364,15 @@ describe('approval event buffering', () => {
     router.handlers.onFileMove({ projectId: PROJECT_ID, sourcePath: 'draft.md', targetPath: 'archive/draft.md' });
     router.handlers.onFileDelete({ projectId: PROJECT_ID, path: 'old.md', isDirectory: false });
 
-    expect(approvalQueue.processPlanActions).toHaveBeenCalledWith(PROJECT_ID, actions);
-    expect(approvalQueue.processFileUpdate).toHaveBeenCalledWith(
-      PROJECT_ID, 'notes.md', 'new', 'old', { forceReview: undefined },
+    expect(approvalQueue.propose).toHaveBeenCalledWith({ type: 'plan-actions', projectId: PROJECT_ID, actions });
+    expect(approvalQueue.propose).toHaveBeenCalledWith(
+      { type: 'document', projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old' }, undefined,
     );
-    expect(approvalQueue.processFileUpdate).toHaveBeenCalledWith(
-      PROJECT_ID, 'AGENTS.md', 'ctx', 'old ctx', { forceReview: undefined },
+    expect(approvalQueue.propose).toHaveBeenCalledWith(
+      { type: 'context-file', projectId: PROJECT_ID, newContent: 'ctx', oldContent: 'old ctx' }, undefined,
     );
-    expect(approvalQueue.processFileMove).toHaveBeenCalledWith(PROJECT_ID, 'draft.md', 'archive/draft.md');
-    expect(approvalQueue.processFileDelete).toHaveBeenCalledWith(PROJECT_ID, 'old.md', false);
+    expect(approvalQueue.propose).toHaveBeenCalledWith({ type: 'move', projectId: PROJECT_ID, sourcePath: 'draft.md', targetPath: 'archive/draft.md' });
+    expect(approvalQueue.propose).toHaveBeenCalledWith({ type: 'delete', projectId: PROJECT_ID, filePath: 'old.md', isDirectory: false });
   });
 
   it('emits chat-file-updated after processing a file update', () => {
@@ -386,8 +383,8 @@ describe('approval event buffering', () => {
     const data = { projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old' };
     router.handlers.onFileUpdate(data);
 
-    expect(approvalQueue.processFileUpdate).toHaveBeenCalledWith(
-      PROJECT_ID, 'notes.md', 'new', 'old', { forceReview: undefined },
+    expect(approvalQueue.propose).toHaveBeenCalledWith(
+      { type: 'document', projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old' }, undefined,
     );
     expect(deps.emitStoreEvent).toHaveBeenCalledWith({ type: 'chat-file-updated', payload: data });
   });
@@ -417,9 +414,9 @@ describe('approval event buffering', () => {
     const routerB = createChatEventRouter(depsB);
     await routerB.initialize();
 
-    expect(approvalQueueB.processPlanActions).toHaveBeenCalledWith(OTHER_PROJECT_ID, planActionsData.actions);
-    expect(approvalQueueB.processFileMove).toHaveBeenCalledWith(OTHER_PROJECT_ID, 'draft.md', 'archive/draft.md');
-    expect(approvalQueueB.processFileDelete).toHaveBeenCalledWith(OTHER_PROJECT_ID, 'old.md', false);
+    expect(approvalQueueB.propose).toHaveBeenCalledWith({ type: 'plan-actions', projectId: OTHER_PROJECT_ID, actions: planActionsData.actions });
+    expect(approvalQueueB.propose).toHaveBeenCalledWith({ type: 'move', projectId: OTHER_PROJECT_ID, sourcePath: 'draft.md', targetPath: 'archive/draft.md' });
+    expect(approvalQueueB.propose).toHaveBeenCalledWith({ type: 'delete', projectId: OTHER_PROJECT_ID, filePath: 'old.md', isDirectory: false });
     expect(buffer.has(OTHER_PROJECT_ID)).toBe(false);
   });
 
