@@ -1,4 +1,4 @@
-import type { ReviewFinding } from '../../../shared/agent-types';
+import type { ReviewAxis, ReviewFinding } from '../../../shared/agent-types';
 import { toImplSessionId } from '../../../shared/agent-types';
 import { DEFAULT_PLAYBOOK, BUILT_IN_PLAYBOOKS, parsePlaybook, type BoardProvider, type Playbook, type PlaybookStep } from '../../../shared/playbooks';
 import { advancePlaybook, parsePassCounts, renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
@@ -55,11 +55,36 @@ type AgentManagerCallbacks = Pick<
   | 'onSessionUsage'
 >;
 
-function formatFindings(findings: ReviewFinding[]): string {
+function formatFindingLines(findings: ReviewFinding[]): string {
   return findings.map((finding, index) => {
     const location = finding.file ? `${finding.file}${finding.line ? `:${finding.line}` : ''}` : '—';
     return `${index + 1}. [${finding.severity}] ${location}\n   ${finding.description}`;
   }).join('\n');
+}
+
+const AXIS_SECTIONS: { axis: ReviewAxis | null; title: string }[] = [
+  { axis: 'standards', title: '## Standards' },
+  { axis: 'spec', title: '## Spec' },
+  { axis: null, title: '## Other' },
+];
+
+/**
+ * Render findings for the address turn. When a two-axis review tagged them,
+ * group by axis under headings and keep each axis's findings in their own order
+ * — never merged or reranked across axes, so one lens can't mask another.
+ */
+export function formatFindings(findings: ReviewFinding[]): string {
+  const tagged = findings.some((finding) => finding.axis === 'standards' || finding.axis === 'spec');
+  if (!tagged) return formatFindingLines(findings);
+  return AXIS_SECTIONS
+    .map(({ axis, title }) => {
+      const group = findings.filter((finding) => (
+        axis === null ? finding.axis == null || finding.axis === 'general' : finding.axis === axis
+      ));
+      return group.length ? `${title}\n${formatFindingLines(group)}` : null;
+    })
+    .filter((section): section is string => section !== null)
+    .join('\n\n');
 }
 
 function playbookForSession(session: DevSession): Playbook {
@@ -317,7 +342,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         baseBranch: session.base_branch,
         taskContext: session.initial_instructions,
         directive,
-        systemPrompt: deps.getPromptContent(step.systemPromptKey!),
+        systemPrompt: deps.getPromptContent(step.runOverrides?.[runIndex]?.systemPromptKey ?? step.systemPromptKey!),
         verdict: step.verdict === 'findings',
         writes: step.writes === true,
         projectId: session.project_id,
@@ -408,7 +433,10 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     else {
       if (!group.succeeded.has(params.runIndex)) {
         group.succeeded.add(params.runIndex);
-        group.findings.push(...(params.findings ?? []));
+        const axis = params.step.runOverrides?.[params.runIndex]?.axis;
+        group.findings.push(...(params.findings ?? []).map((finding) => (
+          axis ? { ...finding, axis: finding.axis ?? axis } : finding
+        )));
       }
       if (params.finalText) group.output.set(params.runIndex, params.finalText);
     }

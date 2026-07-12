@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AgentEffortLevel } from './types';
+import type { ReviewAxis } from './agent-types';
 
 export type SessionKind = 'main' | 'subagent';
 export type Directive =
@@ -30,11 +31,20 @@ export interface BoardProvider {
   unavailableReason?: string;
 }
 
+/** Per-run overrides for a fan-out subagent step, aligned by index with `runs`. */
+export interface PlaybookRunOverride {
+  /** Review lens this run's findings are tagged with. */
+  axis?: ReviewAxis;
+  /** Prompt for this run, overriding the step's systemPromptKey. */
+  systemPromptKey?: string;
+}
+
 export interface PlaybookStep {
   id: string;
   session: SessionKind;
   agents?: AgentCandidate[];
   runs?: AgentCandidate[][];
+  runOverrides?: PlaybookRunOverride[];
   systemPromptKey?: string;
   writes?: true;
   directive: Directive;
@@ -90,6 +100,10 @@ export const playbookStepSchema: z.ZodType<PlaybookStep> = z.object({
   session: z.enum(['main', 'subagent']),
   agents: z.array(agentCandidateSchema).min(1).optional(),
   runs: z.array(z.array(agentCandidateSchema).min(1)).min(1).optional(),
+  runOverrides: z.array(z.object({
+    axis: z.enum(['standards', 'spec', 'general']).optional(),
+    systemPromptKey: z.string().min(1).optional(),
+  }).strict()).optional(),
   systemPromptKey: z.string().min(1).optional(),
   writes: z.literal(true).optional(),
   directive: directiveSchema,
@@ -181,6 +195,12 @@ function validatePlaybookStructure(
     }
     if (step.runs && step.session !== 'subagent') {
       addIssue(['steps', index, 'runs'], 'runs is allowed only on subagent steps');
+    }
+    if (step.runOverrides && !step.runs) {
+      addIssue(['steps', index, 'runOverrides'], 'runOverrides requires runs');
+    }
+    if (step.runOverrides && step.runs && step.runOverrides.length > step.runs.length) {
+      addIssue(['steps', index, 'runOverrides'], 'runOverrides has more entries than runs');
     }
     if (step.writes && (step.session !== 'subagent' || step.runs)) {
       addIssue(['steps', index, 'writes'], 'writes is allowed only on single-run subagent steps');
@@ -396,6 +416,42 @@ export const BUILT_IN_PLAYBOOKS = {
         session: 'subagent',
         agents: [{ provider: 'codex' }, { provider: 'gemini' }],
         systemPromptKey: 'agents.review_system',
+        directive: { kind: 'prompt' },
+        verdict: 'findings',
+        onFindings: { goto: 'address', maxPasses: 3, onMaxPasses: 'pause' },
+      },
+      {
+        id: 'address',
+        session: 'main',
+        directive: { kind: 'prompt', promptKey: 'agents.review_assessment' },
+        next: 'review',
+      },
+    ],
+  }),
+  implementCodeReview: parsePlaybook({
+    id: 'builtin.implement_code_review',
+    name: 'Implement (TDD) + two-axis review',
+    builtIn: true,
+    steps: [
+      {
+        id: 'implement',
+        session: 'main',
+        agents: [{ provider: 'claude' }],
+        systemPromptKey: 'agents.implementation_tdd_system',
+        directive: { kind: 'prompt' },
+      },
+      {
+        id: 'review',
+        session: 'subagent',
+        runs: [
+          [{ provider: 'codex' }, { provider: 'gemini' }],
+          [{ provider: 'codex' }, { provider: 'gemini' }],
+        ],
+        systemPromptKey: 'agents.code_review_standards',
+        runOverrides: [
+          { axis: 'standards' },
+          { axis: 'spec', systemPromptKey: 'agents.code_review_spec' },
+        ],
         directive: { kind: 'prompt' },
         verdict: 'findings',
         onFindings: { goto: 'address', maxPasses: 3, onMaxPasses: 'pause' },

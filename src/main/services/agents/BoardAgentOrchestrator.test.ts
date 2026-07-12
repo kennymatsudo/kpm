@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createBoardAgentOrchestrator } from './BoardAgentOrchestrator';
+import { createBoardAgentOrchestrator, formatFindings } from './BoardAgentOrchestrator';
 import { createAutomationPhaseMachine, type AutomationPhaseRepository } from './automationPhaseMachine';
 import { launchAutoReview, launchPlaybookSubagent } from './autoReview';
 import type * as AutoReviewModule from './autoReview';
@@ -652,5 +652,31 @@ describe('BoardAgentOrchestrator', () => {
     expect(sendAgentFollowUp).toHaveBeenCalledWith(session.id, expect.stringContaining('first persisted output'));
     expect(sendAgentFollowUp).toHaveBeenCalledWith(session.id, expect.stringContaining('second persisted output'));
     expect(session.step_pass_counts).toBe('{"critics":0}');
+  });
+});
+
+describe('formatFindings', () => {
+  const finding = (description: string, axis?: 'standards' | 'spec' | 'general') => ({
+    severity: 'warning' as const,
+    description,
+    agent: 'codex' as const,
+    source: 'agent' as const,
+    ...(axis ? { axis } : {}),
+  });
+
+  it('leaves untagged findings as a flat numbered list', () => {
+    expect(formatFindings([finding('a'), finding('b')]))
+      .toBe('1. [warning] —\n   a\n2. [warning] —\n   b');
+  });
+
+  it('groups two-axis findings under headings, preserving within-axis order and never reranking', () => {
+    expect(formatFindings([
+      finding('spec one', 'spec'),
+      finding('standards one', 'standards'),
+      finding('spec two', 'spec'),
+    ])).toBe(
+      '## Standards\n1. [warning] —\n   standards one\n\n'
+      + '## Spec\n1. [warning] —\n   spec one\n2. [warning] —\n   spec two',
+    );
   });
 });

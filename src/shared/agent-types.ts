@@ -88,6 +88,9 @@ export interface AgentCompletionSummary {
   terminalReason?: string;
 }
 
+/** The review lens a finding was produced under (see the two-axis review playbook). */
+export type ReviewAxis = 'standards' | 'spec' | 'general';
+
 /** A finding from an opposing-agent review or GitHub PR review */
 export interface ReviewFinding {
   severity: 'critical' | 'warning' | 'suggestion';
@@ -98,6 +101,8 @@ export interface ReviewFinding {
   agent: AgentType;
   /** Distinguish agent review from GitHub PR comments */
   source: 'agent' | 'pr';
+  /** Which review axis produced this finding, when the playbook step declares one. */
+  axis?: ReviewAxis;
 }
 
 /**

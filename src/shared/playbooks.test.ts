@@ -14,6 +14,35 @@ describe('playbookSchema', () => {
     expect(BUILT_IN_PLAYBOOKS.loopUntilClean.steps.find((step) => step.id === 'address')?.next).toBe('review');
   });
 
+  it('models the two-axis code-review playbook', () => {
+    const playbook = BUILT_IN_PLAYBOOKS.implementCodeReview;
+    expect(playbook.name).toBe('Implement (TDD) + two-axis review');
+    expect(playbook.steps.find((step) => step.id === 'implement')?.systemPromptKey).toBe('agents.implementation_tdd_system');
+    const review = playbook.steps.find((step) => step.id === 'review');
+    expect(review?.runs).toHaveLength(2);
+    expect(review?.runOverrides?.map((run) => run.axis)).toEqual(['standards', 'spec']);
+  });
+
+  it('rejects runOverrides without runs', () => {
+    expect(() => parsePlaybook({
+      id: 'bad', name: 'Bad', builtIn: false,
+      steps: [
+        { id: 'implement', session: 'main', agents: [{ provider: 'claude' }], systemPromptKey: 'agents.implementation_system', directive: { kind: 'prompt' } },
+        { id: 'review', session: 'subagent', agents: [{ provider: 'codex' }], runOverrides: [{ axis: 'spec' }], systemPromptKey: 'agents.review_system', directive: { kind: 'prompt' } },
+      ],
+    })).toThrow(/runOverrides requires runs/);
+  });
+
+  it('rejects more runOverrides than runs', () => {
+    expect(() => parsePlaybook({
+      id: 'bad', name: 'Bad', builtIn: false,
+      steps: [
+        { id: 'implement', session: 'main', agents: [{ provider: 'claude' }], systemPromptKey: 'agents.implementation_system', directive: { kind: 'prompt' } },
+        { id: 'review', session: 'subagent', runs: [[{ provider: 'codex' }]], runOverrides: [{ axis: 'standards' }, { axis: 'spec' }], systemPromptKey: 'agents.review_system', directive: { kind: 'prompt' } },
+      ],
+    })).toThrow(/more entries than runs/);
+  });
+
   it('rejects unreachable steps and unknown targets', () => {
     expect(() => parsePlaybook({
       id: 'bad',

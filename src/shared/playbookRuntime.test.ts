@@ -40,6 +40,15 @@ describe('playbook runtime', () => {
     ]);
   });
 
+  it('resolves a run per axis for the two-axis code-review playbook', () => {
+    const plan = resolvePlaybookPlan(BUILT_IN_PLAYBOOKS.implementCodeReview, providers);
+    expect(plan.steps.map((step) => [step.stepId, step.runs.map((run) => run?.provider)])).toEqual([
+      ['implement', ['claude']],
+      ['review', ['codex', 'codex']],
+      ['address', ['claude']],
+    ]);
+  });
+
   it('routes findings through the bounded back edge and pauses at the budget', () => {
     const playbook = BUILT_IN_PLAYBOOKS.loopUntilClean;
     expect(advancePlaybook(playbook, 'review', true, {})).toEqual({ kind: 'step', stepId: 'address', passCounts: { review: 1 } });
