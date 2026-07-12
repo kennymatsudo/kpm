@@ -26,9 +26,9 @@ const providers: BoardProvider[] = [
 ];
 
 describe('playbook runtime', () => {
-  it('resolves ordered candidates and opposing relative to the main provider', () => {
+  it('resolves the first available provider in an ordered fallback chain', () => {
     expect(resolveCandidateChain([{ provider: 'missing' }, { provider: 'claude' }], providers)).toMatchObject({ provider: 'claude', model: 'sonnet' });
-    expect(resolveCandidateChain(['opposing'], providers, 'claude')).toMatchObject({ provider: 'codex', model: 'gpt-5.5' });
+    expect(resolveCandidateChain([{ provider: 'codex' }], providers)).toMatchObject({ provider: 'codex', model: 'gpt-5.5' });
   });
 
   it('resolves a visible provider plan for every run', () => {

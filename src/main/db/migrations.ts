@@ -3993,6 +3993,58 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1108,
+    name: '108_replace_opposing_agent_candidate',
+    up: (db: BetterSqliteDatabase) => {
+      // The 'opposing' agent candidate (resolve a reviewer that differs from the
+      // implementer at run time) was removed in favour of explicit provider
+      // selection. Rewrite any stored candidate to a concrete Codex → Gemini
+      // fallback so existing custom playbooks still parse under the new schema.
+      const replacement = [{ provider: 'codex' }, { provider: 'gemini' }];
+      const expand = (chain: unknown): unknown =>
+        Array.isArray(chain)
+          ? chain.flatMap((candidate) => (candidate === 'opposing' ? replacement : [candidate]))
+          : chain;
+
+      const rows = db.prepare('SELECT id, steps_json FROM execution_playbooks').all() as {
+        id: string;
+        steps_json: string;
+      }[];
+      const update = db.prepare('UPDATE execution_playbooks SET steps_json = ? WHERE id = ?');
+
+      for (const row of rows) {
+        let steps: unknown;
+        try {
+          steps = JSON.parse(row.steps_json);
+        } catch {
+          continue;
+        }
+        if (!Array.isArray(steps)) continue;
+
+        let changed = false;
+        for (const step of steps) {
+          if (!step || typeof step !== 'object') continue;
+          const record = step as { agents?: unknown; runs?: unknown };
+          if (Array.isArray(record.agents) && record.agents.includes('opposing')) {
+            record.agents = expand(record.agents);
+            changed = true;
+          }
+          if (Array.isArray(record.runs)) {
+            record.runs = record.runs.map((chain) => {
+              if (Array.isArray(chain) && chain.includes('opposing')) {
+                changed = true;
+                return expand(chain);
+              }
+              return chain;
+            });
+          }
+        }
+
+        if (changed) update.run(JSON.stringify(steps), row.id);
+      }
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

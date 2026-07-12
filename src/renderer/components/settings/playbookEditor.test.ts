@@ -12,7 +12,7 @@ import {
 const singleStep = (): PlaybookStep => ({
   id: 'review',
   session: 'subagent',
-  agents: ['opposing', { provider: 'claude', model: 'sonnet' }],
+  agents: [{ provider: 'gemini' }, { provider: 'claude', model: 'sonnet' }],
   systemPromptKey: 'agents.review_system',
   directive: { kind: 'prompt', text: '' },
 });
@@ -22,7 +22,7 @@ const fanoutStep = (): PlaybookStep => ({
   session: 'subagent',
   runs: [
     [{ provider: 'codex', model: 'gpt-5' }, { provider: 'claude', model: 'sonnet' }],
-    ['opposing'],
+    [{ provider: 'gemini' }],
   ],
   systemPromptKey: 'agents.review_system',
   directive: { kind: 'prompt', text: '' },
@@ -34,7 +34,7 @@ describe('playbook agent-chain editing', () => {
     single = moveAgentCandidate(single, 0, 2, -1);
     single = updateAgentCandidate(single, 0, 1, { provider: 'codex', effort: 'high' });
     expect(single.agents).toEqual([
-      'opposing',
+      { provider: 'gemini' },
       { provider: 'codex', effort: 'high' },
       { provider: 'claude', model: 'sonnet' },
     ]);
@@ -44,14 +44,14 @@ describe('playbook agent-chain editing', () => {
     fanout = removeAgentCandidate(fanout, 0, 0);
     expect(fanout.runs).toEqual([
       [{ provider: 'claude', model: 'sonnet' }],
-      ['opposing', { provider: 'claude' }],
+      [{ provider: 'gemini' }, { provider: 'claude' }],
     ]);
     expect(fanout.agents).toBeUndefined();
   });
 
   it('never empties a chain when removing its only candidate', () => {
-    const onlyCandidate: PlaybookStep = { ...singleStep(), agents: ['opposing'] };
-    expect(removeAgentCandidate(onlyCandidate, 0, 0).agents).toEqual(['opposing']);
+    const onlyCandidate: PlaybookStep = { ...singleStep(), agents: [{ provider: 'gemini' }] };
+    expect(removeAgentCandidate(onlyCandidate, 0, 0).agents).toEqual([{ provider: 'gemini' }]);
   });
 });
 

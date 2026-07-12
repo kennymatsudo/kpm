@@ -30,7 +30,7 @@ describe('playbookSchema', () => {
         {
           id: 'review',
           session: 'subagent',
-          agents: ['opposing'],
+          agents: [{ provider: 'codex' }],
           systemPromptKey: 'agents.review_system',
           directive: { kind: 'prompt' },
         },
@@ -54,7 +54,7 @@ describe('playbookSchema', () => {
         {
           id: 'review',
           session: 'subagent',
-          agents: ['opposing'],
+          agents: [{ provider: 'codex' }],
           systemPromptKey: 'agents.review_system',
           directive: { kind: 'prompt' },
           next: 'review',
@@ -125,7 +125,7 @@ describe('playbookSchema', () => {
         {
           id: 'review',
           session: 'subagent',
-          agents: ['opposing'],
+          agents: [{ provider: 'codex' }],
           systemPromptKey: 'agents.review_system',
           directive: { kind: 'prompt' },
         },
@@ -149,7 +149,7 @@ describe('playbookSchema', () => {
         {
           id: 'review',
           session: 'subagent',
-          agents: ['opposing'],
+          agents: [{ provider: 'codex' }],
           systemPromptKey: 'agents.review_system',
           directive: { kind: 'prompt' },
           next: 'review',

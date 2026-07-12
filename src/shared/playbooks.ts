@@ -6,13 +6,11 @@ export type Directive =
   | { kind: 'prompt'; promptKey?: string; text?: string }
   | { kind: 'skill'; name: string; args?: string };
 
-export type AgentCandidate =
-  | 'opposing'
-  | {
-      provider: string;
-      model?: string;
-      effort?: AgentEffortLevel;
-    };
+export interface AgentCandidate {
+  provider: string;
+  model?: string;
+  effort?: AgentEffortLevel;
+}
 
 export interface ModelDescriptor {
   id: string;
@@ -68,14 +66,11 @@ export function formatPlaybookStepTitle(id: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-const agentCandidateSchema: z.ZodType<AgentCandidate> = z.union([
-  z.literal('opposing'),
-  z.object({
-    provider: z.string().min(1),
-    model: z.string().min(1).optional(),
-    effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
-  }).strict(),
-]);
+const agentCandidateSchema: z.ZodType<AgentCandidate> = z.object({
+  provider: z.string().min(1),
+  model: z.string().min(1).optional(),
+  effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
+}).strict();
 
 const directiveSchema: z.ZodType<Directive> = z.discriminatedUnion('kind', [
   z.object({
@@ -357,7 +352,7 @@ export const BUILT_IN_PLAYBOOKS = {
       {
         id: 'review',
         session: 'subagent',
-        agents: ['opposing'],
+        agents: [{ provider: 'codex' }, { provider: 'gemini' }],
         systemPromptKey: 'agents.review_system',
         directive: { kind: 'prompt' },
         verdict: 'findings',
@@ -399,7 +394,7 @@ export const BUILT_IN_PLAYBOOKS = {
       {
         id: 'review',
         session: 'subagent',
-        agents: ['opposing'],
+        agents: [{ provider: 'codex' }, { provider: 'gemini' }],
         systemPromptKey: 'agents.review_system',
         directive: { kind: 'prompt' },
         verdict: 'findings',

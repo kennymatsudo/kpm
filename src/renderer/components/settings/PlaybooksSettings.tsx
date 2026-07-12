@@ -87,8 +87,8 @@ function LoopGroup({ loop, children }: { loop: PlaybookLoop; children: React.Rea
   );
 }
 
-function candidateObject(candidate: AgentCandidate | undefined): Exclude<AgentCandidate, string> {
-  return candidate && candidate !== 'opposing' ? candidate : { provider: 'claude' };
+function candidateObject(candidate: AgentCandidate | undefined): AgentCandidate {
+  return candidate ?? { provider: 'claude' };
 }
 
 function uniqueId(steps: PlaybookStep[], base: string): string {
@@ -106,7 +106,7 @@ function stepTemplate(kind: string, steps: PlaybookStep[]): PlaybookStep {
     directive: { kind: 'prompt' as const, text: '' },
   };
   switch (kind) {
-    case 'review': return { id: uniqueId(steps, 'review'), session: 'subagent', agents: ['opposing'], systemPromptKey: 'agents.review_system', directive: { kind: 'prompt' }, verdict: 'findings' };
+    case 'review': return { id: uniqueId(steps, 'review'), session: 'subagent', agents: [{ provider: 'codex' }], systemPromptKey: 'agents.review_system', directive: { kind: 'prompt' }, verdict: 'findings' };
     case 'address': return { ...commonMain, id: uniqueId(steps, 'address'), directive: { kind: 'prompt', promptKey: 'agents.review_assessment' } };
     case 'skill': return { ...commonMain, id: uniqueId(steps, 'skill'), directive: { kind: 'skill', name: 'tdd' } };
     case 'fanout': return { id: uniqueId(steps, 'review'), session: 'subagent', runs: [[{ provider: 'codex' }], [{ provider: 'claude' }]], systemPromptKey: 'agents.review_system', directive: { kind: 'prompt' }, verdict: 'findings' };
@@ -187,7 +187,7 @@ export function PlaybooksSettings() {
         </div>
         <div className="space-y-1.5">
           {playbooks.map((playbook) => {
-            const disconnected = playbook.steps.some((step) => [...(step.agents ?? []), ...(step.runs?.flat() ?? [])].some((candidate) => candidate !== 'opposing' && providers.some((provider) => provider.id === candidate.provider && !provider.available)));
+            const disconnected = playbook.steps.some((step) => [...(step.agents ?? []), ...(step.runs?.flat() ?? [])].some((candidate) => providers.some((provider) => provider.id === candidate.provider && !provider.available)));
             return (
               <button key={playbook.id} onClick={() => setSelectedId(playbook.id)} className={`w-full rounded-lg border p-2.5 text-left ${selectedId === playbook.id ? 'border-accent bg-accent/10' : 'border-border-subtle bg-surface-1 hover:bg-surface-2'}`}>
                 <div className="flex items-center gap-2"><input aria-label={`Default ${playbook.name}`} type="radio" checked={defaultId === playbook.id} onChange={(event) => { event.stopPropagation(); void setDefaultPlaybook(playbook.id).then(() => { setDefaultId(playbook.id); }); }} /><span className="min-w-0 flex-1 truncate text-sm text-text-primary">{playbook.name}</span></div>
@@ -294,17 +294,15 @@ function AgentEditor({ step, providers, disabled, onChange }: { step: PlaybookSt
                 <div key={candidateIndex} className="rounded-md border border-border-subtle bg-surface-1 p-2">
                   <div className="mb-2 flex items-center gap-1 text-tiny text-text-muted">
                     <span className="rounded-full bg-surface-3 px-2 py-0.5">{candidateIndex + 1}</span>
-                    <span className="mr-auto">{rawCandidate === 'opposing' ? 'Opposing available provider' : provider?.name ?? candidate.provider}</span>
+                    <span className="mr-auto">{provider?.name ?? candidate.provider}</span>
                     <button type="button" disabled={disabled || candidateIndex === 0} onClick={() => apply(moveAgentCandidate(step, runIndex, candidateIndex, -1))} className="rounded px-1.5 py-0.5 transition-colors hover:bg-surface-3 disabled:opacity-30" aria-label="Move candidate up">Up</button>
                     <button type="button" disabled={disabled || candidateIndex === chain.length - 1} onClick={() => apply(moveAgentCandidate(step, runIndex, candidateIndex, 1))} className="rounded px-1.5 py-0.5 transition-colors hover:bg-surface-3 disabled:opacity-30" aria-label="Move candidate down">Down</button>
                     <button type="button" disabled={disabled || chain.length === 1} onClick={() => apply(removeAgentCandidate(step, runIndex, candidateIndex))} className="rounded px-1.5 py-0.5 text-danger transition-colors hover:bg-danger-muted/50 disabled:opacity-30">Remove</button>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <select disabled={disabled} value={rawCandidate === 'opposing' ? 'opposing' : candidate.provider} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, event.target.value === 'opposing' ? 'opposing' : { provider: event.target.value }))} className="input"><option value="opposing">Opposing</option>{providers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}{entry.available ? '' : ' (unavailable)'}</option>)}</select>
-                    {rawCandidate !== 'opposing' && <>
-                      <select disabled={disabled} value={candidate.model ?? provider?.models.find((model) => model.isDefault)?.id ?? ''} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, { ...candidate, model: event.target.value }))} className="input">{provider?.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>
-                      <select disabled={disabled} value={candidate.effort ?? ''} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, { ...candidate, effort: (event.target.value || undefined) as typeof candidate.effort }))} className="input"><option value="">Default effort</option>{['low','medium','high','xhigh','max'].map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select>
-                    </>}
+                    <select disabled={disabled} value={candidate.provider} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, { provider: event.target.value }))} className="input">{providers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}{entry.available ? '' : ' (unavailable)'}</option>)}</select>
+                    <select disabled={disabled} value={candidate.model ?? provider?.models.find((model) => model.isDefault)?.id ?? ''} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, { ...candidate, model: event.target.value }))} className="input">{provider?.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>
+                    <select disabled={disabled} value={candidate.effort ?? ''} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, { ...candidate, effort: (event.target.value || undefined) as typeof candidate.effort }))} className="input"><option value="">Default effort</option>{['low','medium','high','xhigh','max'].map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select>
                   </div>
                 </div>
               );

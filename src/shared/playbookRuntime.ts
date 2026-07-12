@@ -19,23 +19,19 @@ export interface ResolvedPlaybookStep {
 export function resolveCandidateChain(
   candidates: AgentCandidate[] | undefined,
   providers: BoardProvider[],
-  mainProvider?: string,
 ): ResolvedAgent | null {
   const available = providers.filter((provider) => provider.available);
   for (const candidate of candidates ?? []) {
-    const provider = candidate === 'opposing'
-      ? available.find((entry) => entry.id !== mainProvider)
-      : available.find((entry) => entry.id === candidate.provider);
+    const provider = available.find((entry) => entry.id === candidate.provider);
     if (!provider) continue;
-    const requestedModel = candidate === 'opposing' ? undefined : candidate.model;
-    const model = provider.models.find((entry) => entry.id === requestedModel)
+    const model = provider.models.find((entry) => entry.id === candidate.model)
       ?? provider.models.find((entry) => entry.isDefault)
       ?? provider.models[0];
     if (!model) continue;
     return {
       provider: provider.id,
       model: model.id,
-      ...(candidate !== 'opposing' && candidate.effort ? { effort: candidate.effort } : {}),
+      ...(candidate.effort ? { effort: candidate.effort } : {}),
     };
   }
   return null;
@@ -54,8 +50,8 @@ export function resolvePlaybookPlan(playbook: Playbook, providers: BoardProvider
       runs: step.session === 'main'
         ? [main]
         : step.runs
-          ? step.runs.map((chain) => resolveCandidateChain(chain, providers, main?.provider))
-          : [resolveCandidateChain(step.agents, providers, main?.provider)],
+          ? step.runs.map((chain) => resolveCandidateChain(chain, providers))
+          : [resolveCandidateChain(step.agents, providers)],
     })),
   };
 }
