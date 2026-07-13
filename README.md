@@ -41,8 +41,7 @@ You'll need:
 ```bash
 git clone https://github.com/kennymatsudo/kpm.git
 cd kpm
-make install   # installs deps and rebuilds native modules for Electron
-make dev       # start the app
+make dev   # installs dependencies on first run, then starts the app
 ```
 
 On first launch, macOS asks to allow keychain access — that's KPM storing tracker credentials securely. Approve it to enable Jira/Linear integrations.
