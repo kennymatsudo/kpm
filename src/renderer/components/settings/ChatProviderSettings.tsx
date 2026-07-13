@@ -1,9 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingsSection, StatusBadge } from './SettingsSection';
-import { useChatStore, useClaudeAvailabilityStore, type ChatProvider } from '../../stores';
-import { getCodexStatus } from '../../services/settingsService';
-import type { CodexStatus } from '../../../shared/types';
+import { useChatStore, useProviderReadinessStore, type ChatProvider } from '../../stores';
 
 const PROVIDERS: { value: ChatProvider; label: string; description: string }[] = [
   { value: 'claude', label: 'Claude', description: 'Fast, balanced coding agent' },
@@ -12,7 +10,7 @@ const PROVIDERS: { value: ChatProvider; label: string; description: string }[] =
 ];
 
 export function ChatProviderSettings() {
-  const { viewedSessionId, hasViewedSession, provider, piProvidersAvailable, piProvidersLoaded, loadPiProviders, setDefaultProvider, setProvider } = useChatStore(
+  const { viewedSessionId, hasViewedSession, provider, setDefaultProvider, setProvider } = useChatStore(
     useShallow((state) => {
       const viewedSession = state.viewedSessionId
         ? state.sessions.get(state.viewedSessionId) ?? null
@@ -21,43 +19,25 @@ export function ChatProviderSettings() {
         viewedSessionId: state.viewedSessionId,
         hasViewedSession: viewedSession !== null,
         provider: viewedSession?.provider ?? state.provider,
-        piProvidersAvailable: state.piProvidersAvailable,
-        piProvidersLoaded: state.piProvidersLoaded,
-        loadPiProviders: state.loadPiProviders,
         setDefaultProvider: state.setDefaultProvider,
         setProvider: state.setProvider,
       };
     }),
   );
-  const claudeAvailability = useClaudeAvailabilityStore((state) => state.availability);
-  const [codexStatus, setCodexStatus] = useState<CodexStatus | null>(null);
+  const readiness = useProviderReadinessStore((state) => state.readiness);
+  const isLoadingReadiness = useProviderReadinessStore((state) => state.isLoading);
+  const loadReadiness = useProviderReadinessStore((state) => state.load);
 
   useEffect(() => {
-    void loadPiProviders();
-    let cancelled = false;
-    void getCodexStatus().then((result) => {
-      if (cancelled || !result.success) return;
-      setCodexStatus({ installed: result.installed, authenticated: result.authenticated });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [loadPiProviders]);
+    if (!readiness && !isLoadingReadiness) void loadReadiness();
+  }, [readiness, isLoadingReadiness, loadReadiness]);
 
   const activeLabel = PROVIDERS.find((option) => option.value === provider)?.label ?? provider;
   const providerRequirement = (value: ChatProvider): { disabled: boolean; detail: string | null } => {
-    if (value === 'claude') {
-      if (claudeAvailability?.status !== 'unreachable') return { disabled: false, detail: null };
-      return { disabled: true, detail: 'Claude Code unavailable' };
-    }
-    if (value === 'codex') {
-      if (!codexStatus) return { disabled: false, detail: 'Checking requirements…' };
-      if (!codexStatus.authenticated) return { disabled: true, detail: 'Run codex login first' };
-      return { disabled: false, detail: null };
-    }
-    if (!piProvidersLoaded) return { disabled: false, detail: 'Checking requirements…' };
-    if (!piProvidersAvailable) return { disabled: true, detail: 'Run pi auth first' };
-    return { disabled: false, detail: null };
+    if (!readiness) return { disabled: false, detail: 'Checking requirements…' };
+    const entry = readiness.byProvider[value];
+    if (entry.state === 'ready') return { disabled: false, detail: null };
+    return { disabled: true, detail: entry.detail };
   };
 
   const handleProviderSelect = (nextProvider: ChatProvider) => {

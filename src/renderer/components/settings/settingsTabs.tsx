@@ -1,5 +1,7 @@
 import type { SettingsTab } from '../../stores';
 import { GeneralSettings } from './GeneralSettings';
+import { ThemesSettings } from './ThemesSettings';
+import { UsageSettings } from './UsageSettings';
 import { CustomPromptSettings } from './CustomPromptSettings';
 import { WorkflowSettings } from './WorkflowSettings';
 import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings';
@@ -38,7 +40,17 @@ export const SETTINGS_TABS: SettingsTabDef[] = [
         <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
       </svg>
     ),
-    render: ({ currentProjectId }) => <GeneralSettings currentProjectId={currentProjectId} />,
+    render: () => <GeneralSettings />,
+  },
+  {
+    id: 'appearance',
+    label: 'Appearance',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4.098 19.902a3.75 3.75 0 0 0 5.304 0l6.401-6.402M6.75 21A3.75 3.75 0 0 1 3 17.25V4.125C3 3.504 3.504 3 4.125 3h5.25c.621 0 1.125.504 1.125 1.125v4.072M6.75 21a3.75 3.75 0 0 0 3.75-3.75V8.197M6.75 21h13.125c.621 0 1.125-.504 1.125-1.125v-5.25c0-.621-.504-1.125-1.125-1.125h-4.072M10.5 8.197l2.88-2.88c.438-.439 1.15-.439 1.59 0l3.712 3.713c.44.44.44 1.152 0 1.59l-2.879 2.88M6.75 17.25h.008v.008H6.75v-.008Z" />
+      </svg>
+    ),
+    render: () => <ThemesSettings />,
   },
   {
     id: 'commands',
@@ -115,5 +127,15 @@ export const SETTINGS_TABS: SettingsTabDef[] = [
     ),
     render: ({ currentProjectId }) =>
       currentProjectId ? <PermissionsSettings currentProjectId={currentProjectId} /> : null,
+  },
+  {
+    id: 'usage',
+    label: 'Usage',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
+      </svg>
+    ),
+    render: ({ currentProjectId }) => <UsageSettings currentProjectId={currentProjectId} />,
   },
 ];

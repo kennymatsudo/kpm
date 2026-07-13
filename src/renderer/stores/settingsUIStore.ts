@@ -2,13 +2,15 @@ import { create } from 'zustand';
 
 export type SettingsTab =
   | 'general'
+  | 'appearance'
   | 'commands'
   | 'workflow'
   | 'shortcuts'
   | 'prompts'
   | 'playbooks'
   | 'mcp'
-  | 'permissions';
+  | 'permissions'
+  | 'usage';
 
 interface SettingsUIState {
   isOpen: boolean;

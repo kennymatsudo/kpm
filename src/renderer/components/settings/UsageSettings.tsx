@@ -1,14 +1,10 @@
 /**
  * UsageSettings — Claude API usage and cost dashboard.
  *
- * Lives as a section inside Settings > General (alongside AI Provider).
+ * The full page rendered by the Settings > Usage tab.
  * Layout intentionally mirrors what users see in familiar billing dashboards
  * (Anthropic Console, OpenAI Platform, GitHub billing): big headline numbers,
  * a per-source breakdown table, then a recent-events drilldown list.
- *
- * Exposed two ways:
- *   - <UsageSettings /> — full page (used standalone if ever needed)
- *   - <UsageSettingsSection /> — wrapped in SettingsSection, default-collapsed
  *
  * Data lifecycle:
  *   - Initial load: getProjectStats(projectId) or getGlobalStats()
@@ -19,7 +15,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
-import { SettingsSection, StatusBadge } from './SettingsSection';
 import {
   getProjectUsageStats,
   getGlobalUsageStats,
@@ -71,16 +66,14 @@ const TIER_STYLE: Record<ModelTier, { bg: string; dot: string; ring: string }> =
 
 interface Props {
   currentProjectId?: string | null;
-  initialStats?: ProjectUsageStats;
-  initialEvents?: ClaudeUsageEvent[];
 }
 
-export function UsageSettings({ currentProjectId, initialStats, initialEvents }: Props) {
+export function UsageSettings({ currentProjectId }: Props) {
   const [scope, setScope] = useState<Scope>(currentProjectId ? 'project' : 'global');
-  const [stats, setStats] = useState<ProjectUsageStats | null>(initialStats ?? null);
-  const [recentEvents, setRecentEvents] = useState<ClaudeUsageEvent[]>(initialEvents ?? []);
+  const [stats, setStats] = useState<ProjectUsageStats | null>(null);
+  const [recentEvents, setRecentEvents] = useState<ClaudeUsageEvent[]>([]);
   const [showRecent, setShowRecent] = useState(false);
-  const [isLoading, setIsLoading] = useState(!initialStats);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -682,68 +675,3 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
-// =============================================================================
-// Section Wrapper (used inside General tab)
-// =============================================================================
-
-/**
- * Wraps <UsageSettings /> in a SettingsSection card that lives alongside other
- * General tab sections. Shows a small "$X.XX" badge in the section header so
- * users can see lifetime cost without expanding.
- */
-export function UsageSettingsSection({ currentProjectId }: { currentProjectId?: string | null }) {
-  const [preloaded, setPreloaded] = useState<{ stats: ProjectUsageStats; events: ClaudeUsageEvent[] } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const projectIdForQuery = currentProjectId ?? null;
-    const load = async () => {
-      try {
-        const [stats, events] = await Promise.all([
-          currentProjectId ? getProjectUsageStats(currentProjectId) : getGlobalUsageStats(),
-          listUsageEvents(projectIdForQuery, 50),
-        ]);
-        if (!cancelled) setPreloaded({ stats, events });
-      } catch {
-        // ignore — UsageSettings will handle its own error state on expand
-      }
-    };
-    void load();
-    const unsubscribe = onUsageEvent(() => {
-      void load();
-    });
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, [currentProjectId]);
-
-  const badge = preloaded === null
-    ? null
-    : (
-      <StatusBadge variant="muted">
-        {formatCurrency(preloaded.stats.totals.cost_micro_usd)}
-      </StatusBadge>
-    );
-
-  return (
-    <SettingsSection
-      icon={
-        <svg className="w-4 h-4 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
-        </svg>
-      }
-      title="Claude usage"
-      description="Token use and estimated cost across all AI features"
-      collapsible
-      defaultCollapsed
-      statusBadge={badge}
-    >
-      <UsageSettings
-        currentProjectId={currentProjectId}
-        initialStats={preloaded?.stats}
-        initialEvents={preloaded?.events}
-      />
-    </SettingsSection>
-  );
-}

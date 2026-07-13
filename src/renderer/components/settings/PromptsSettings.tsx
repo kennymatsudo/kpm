@@ -4,6 +4,7 @@
  * Consolidated settings UI for all prompt types.
  */
 
+import { useEffect } from 'react';
 import { usePromptOverrideStore, type PromptSubTab } from '../../stores/promptOverrideStore';
 import { PromptEditorSettings } from './PromptEditorSettings';
 import { TaskPromptSettings } from './TaskPromptSettings';
@@ -16,12 +17,19 @@ const SUB_TABS: { id: PromptSubTab; label: string }[] = [
   { id: 'system', label: 'System' },
   { id: 'generation', label: 'Generation' },
   { id: 'taskCreation', label: 'Task Creation' },
-  { id: 'agents', label: 'Board Agents' },
 ];
 
 export function PromptsSettings({ currentProjectId }: Props) {
   const activeCategory = usePromptOverrideStore((s) => s.activeCategory);
   const setCategory = usePromptOverrideStore((s) => s.setCategory);
+
+  // Board-agent role instructions moved to the Playbooks tab, which leaves the
+  // shared category set to 'agents'. Snap back to a category this tab owns.
+  useEffect(() => {
+    if (!SUB_TABS.some((tab) => tab.id === activeCategory)) {
+      setCategory('system');
+    }
+  }, [activeCategory, setCategory]);
 
   return (
     <div className="flex flex-col h-full">
@@ -62,9 +70,7 @@ export function PromptsSettings({ currentProjectId }: Props) {
 
       {/* Content area fills remaining modal height */}
       <div className="flex-1 min-h-0 px-5 py-4 flex flex-col">
-        {(activeCategory === 'system'
-          || activeCategory === 'generation'
-          || activeCategory === 'agents') && (
+        {(activeCategory === 'system' || activeCategory === 'generation') && (
           <PromptEditorSettings />
         )}
         {activeCategory === 'taskCreation' && (

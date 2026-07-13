@@ -22,7 +22,9 @@ import {
   updatePlaybook,
 } from '../../services/playbookService';
 import { toast } from '../../stores';
+import { usePromptOverrideStore } from '../../stores/promptOverrideStore';
 import { ChevronRightIcon } from '../icons/ChevronRightIcon';
+import { PromptEditorSettings } from './PromptEditorSettings';
 import {
   addAgentCandidate,
   earlierOutputStepIds,
@@ -125,6 +127,12 @@ export function PlaybooksSettings() {
   const [providers, setProviders] = useState<BoardProvider[]>([]);
   const [skills, setSkills] = useState<SlashCommandInfo[]>([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [subTab, setSubTab] = useState<'playbooks' | 'instructions'>('playbooks');
+  const setPromptCategory = usePromptOverrideStore((s) => s.setCategory);
+
+  useEffect(() => {
+    if (subTab === 'instructions') setPromptCategory('agents');
+  }, [subTab, setPromptCategory]);
 
   const reload = useCallback(async () => {
     const response = await listPlaybooks();
@@ -176,7 +184,17 @@ export function PlaybooksSettings() {
   };
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[240px_minmax(0,1fr)]">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 gap-1 border-b border-border-subtle bg-surface-2/30 px-3 pt-2">
+        <PlaybookSubTab active={subTab === 'playbooks'} onClick={() => setSubTab('playbooks')}>Playbooks</PlaybookSubTab>
+        <PlaybookSubTab active={subTab === 'instructions'} onClick={() => setSubTab('instructions')}>Role instructions</PlaybookSubTab>
+      </div>
+      {subTab === 'instructions' ? (
+        <div className="flex min-h-0 flex-1 flex-col px-5 py-4">
+          <PromptEditorSettings />
+        </div>
+      ) : (
+      <div className="grid min-h-0 flex-1 grid-cols-[240px_minmax(0,1fr)]">
       <aside className="overflow-y-auto border-r border-border-subtle bg-surface-2/30 p-3">
         <div className="mb-3 flex items-center justify-between">
           <div><h3 className="text-sm font-medium text-text-primary">Playbooks</h3><p className="text-tiny text-text-muted">Changes apply to new runs.</p></div>
@@ -269,7 +287,20 @@ export function PlaybooksSettings() {
           </div>
         )}
       </main>
+      </div>
+      )}
     </div>
+  );
+}
+
+function PlaybookSubTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-t px-3 py-1.5 text-xs font-medium transition-colors ${active ? '-mb-px border-b-2 border-accent text-accent' : 'text-text-muted hover:text-text-secondary'}`}
+    >
+      {children}
+    </button>
   );
 }
 
