@@ -425,6 +425,31 @@ describe('ReviewPollService', () => {
     });
   });
 
+  it('broadcasts user-attention facts for open Review Threads', async () => {
+    const harness = buildHarness({
+      snapshot: createSnapshot({
+        state: 'OPEN',
+        reviewDecision: 'CHANGES_REQUESTED',
+        threads: [createThread()],
+      }),
+      tasks: [createTask({
+        status: 'assessed',
+        internal_state: null,
+        disposition: 'needs_user_input',
+        error: null,
+      })],
+    });
+
+    const result = await harness.service.pollSession('session-1');
+
+    expect(result.action).toBe('synced');
+    expect(harness.broadcastToWindows).toHaveBeenCalledWith('review-poll:actionable', {
+      sessionId: 'session-1',
+      hasActionable: true,
+      counts: { needsInput: 1, failed: 0, stale: 0, errored: 0 },
+    });
+  });
+
   it('discovers and completes a session with a null automation_phase whose PR has already merged', async () => {
     // Every session is created with automation_phase: null and only flips to
     // 'idle' once its agent actually starts. A session whose PR was created

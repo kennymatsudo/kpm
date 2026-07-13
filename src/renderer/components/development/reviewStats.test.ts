@@ -97,6 +97,24 @@ function makeInbox(thread: PrReviewThread | null, task: ReviewTask): ReviewInbox
 }
 
 describe('getStats', () => {
+  it('counts a new open Review Thread as review work without requiring user attention', () => {
+    const task = makeTask({
+      status: 'needs_review',
+      internal_state: null,
+      disposition: null,
+      error: null,
+    });
+
+    const stats = getStats(makeInbox(makeThread(), task), 'session-1');
+
+    expect(stats.queueCount).toBe(1);
+    expect(stats.needsReviewCount).toBe(1);
+    expect(stats.assessableCount).toBe(1);
+    expect(stats.needsInputCount).toBe(0);
+    expect(stats.failedCount).toBe(0);
+    expect(stats.staleCount).toBe(0);
+  });
+
   it('ignores attention tasks whose live thread is resolved', () => {
     const stats = getStats(makeInbox(makeThread({ isResolved: true }), makeTask()), 'session-1');
 

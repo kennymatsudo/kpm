@@ -254,6 +254,27 @@ describe('devSessionsStore', () => {
     });
   });
 
+  it('updates card attention from the latest open Review Thread facts', async () => {
+    const base = createReviewInbox();
+    const inbox = {
+      ...base,
+      tasks: base.tasks.map((task) => ({
+        ...task,
+        status: 'assessed' as const,
+        disposition: 'needs_user_input' as const,
+      })),
+    };
+    api.review.getInbox.mockResolvedValue({ success: true, inbox });
+
+    await useDevSessionsStore.getState().loadReviewInbox('dev-session-1');
+
+    expect(useDevSessionsStore.getState().reviewActionableBySessionId.get('dev-session-1')).toEqual({
+      sessionId: 'dev-session-1',
+      hasActionable: true,
+      counts: { needsInput: 1, failed: 0, stale: 0, errored: 0 },
+    });
+  });
+
   it('tracks pending review reassessment task ids while the request is running', async () => {
     const inbox = createReviewInbox();
     useDevSessionsStore.setState({
