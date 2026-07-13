@@ -1,6 +1,5 @@
 import type { ChatState, ChatSet, ChatGet } from './types';
 import { setSetting } from '../../services/settingsService';
-import { SETTINGS } from '../../../shared/settingsRegistry';
 import { getSlashCommands, getPiProviders } from '../../services/chatService';
 import {
   findPiProviderOption,
@@ -27,21 +26,21 @@ export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
     setSlashCommands: (slashCommands) => set({ slashCommands, slashCommandsSource: 'sdk' }),
     setDefaultModel: (model) => {
       set({ model });
-      void setSetting(SETTINGS.chatModel, model);
+      void setSetting('chatModel', model);
     },
     setModel: (chatSessionId, model) => {
       const state = get();
       const session = state.sessions.get(chatSessionId);
       if (!session) {
         set({ model });
-        void setSetting(SETTINGS.chatModel, model);
+        void setSetting('chatModel', model);
         return;
       }
       const sessions = new Map(state.sessions);
       sessions.set(chatSessionId, { ...session, model });
       // Update global default so new sessions inherit this choice
       set({ sessions, model });
-      void setSetting(SETTINGS.chatModel, model);
+      void setSetting('chatModel', model);
     },
     setEffort: (chatSessionId, effort) => {
       const state = get();
@@ -51,7 +50,7 @@ export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
       sessions.set(chatSessionId, { ...session, effort });
       // Update global default so new sessions inherit this choice
       set({ sessions, effort });
-      void setSetting(SETTINGS.chatEffort, effort);
+      void setSetting('chatEffort', effort);
     },
     loadPiProviders: async () => {
       const result = await getPiProviders();
@@ -73,64 +72,64 @@ export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
     },
     setDefaultProvider: (provider) => {
       set({ provider });
-      void setSetting(SETTINGS.chatProvider, provider);
+      void setSetting('chatProvider', provider);
     },
     setProvider: (chatSessionId, provider) => {
       const state = get();
       const session = state.sessions.get(chatSessionId);
       if (!session) {
         set({ provider });
-        void setSetting(SETTINGS.chatProvider, provider);
+        void setSetting('chatProvider', provider);
         return;
       }
       const sessions = new Map(state.sessions);
       sessions.set(chatSessionId, { ...session, provider });
       // Update global default so new sessions inherit this choice
       set({ sessions, provider });
-      void setSetting(SETTINGS.chatProvider, provider);
+      void setSetting('chatProvider', provider);
     },
     setDefaultCodexModel: (codexModel) => {
       set({ codexModel });
-      void setSetting(SETTINGS.chatCodexModel, codexModel);
+      void setSetting('chatCodexModel', codexModel);
     },
     setCodexModel: (chatSessionId, codexModel) => {
       const state = get();
       const session = state.sessions.get(chatSessionId);
       if (!session) {
         set({ codexModel });
-        void setSetting(SETTINGS.chatCodexModel, codexModel);
+        void setSetting('chatCodexModel', codexModel);
         return;
       }
       const sessions = new Map(state.sessions);
       sessions.set(chatSessionId, { ...session, codexModel });
       // Update global default so new sessions inherit this choice
       set({ sessions, codexModel });
-      void setSetting(SETTINGS.chatCodexModel, codexModel);
+      void setSetting('chatCodexModel', codexModel);
     },
     setDefaultPiProviderModel: (piProviderModel) => {
       set({ piProviderModel });
-      void setSetting(SETTINGS.chatPiProviderModel, piProviderModel ?? null);
+      void setSetting('chatPiProviderModel', piProviderModel ?? null);
     },
     setPiProviderModel: (chatSessionId, piProviderModel) => {
       const state = get();
       const session = state.sessions.get(chatSessionId);
       if (!session) {
         set({ piProviderModel });
-        void setSetting(SETTINGS.chatPiProviderModel, piProviderModel ?? null);
+        void setSetting('chatPiProviderModel', piProviderModel ?? null);
         return;
       }
       const sessions = new Map(state.sessions);
       sessions.set(chatSessionId, { ...session, piProviderModel });
       // Update global default so new sessions inherit this choice
       set({ sessions, piProviderModel });
-      void setSetting(SETTINGS.chatPiProviderModel, piProviderModel ?? null);
+      void setSetting('chatPiProviderModel', piProviderModel ?? null);
     },
     acknowledgeUnsafePiProvider: async (provider) => {
       const state = get();
       const next = withAcknowledgedProvider(state.piAcknowledgedUnsafeProviders, provider);
       if (next === state.piAcknowledgedUnsafeProviders) return;
       set({ piAcknowledgedUnsafeProviders: next });
-      await setSetting(SETTINGS.chatPiAckUnsafeProviders, next);
+      await setSetting('chatPiAckUnsafeProviders', next);
     },
   };
 }

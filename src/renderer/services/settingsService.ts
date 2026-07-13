@@ -1,10 +1,14 @@
-import type { SettingDefinition } from '../../shared/settingsRegistry';
+import {
+  getSettingDefinition,
+  type SettingName,
+  type SettingValue,
+} from '../../shared/settingsRegistry';
 
-export function getAppSetting(key: string) {
+function getAppSetting(key: string) {
   return window.api.settings.app.get({ key });
 }
 
-export function setAppSetting(key: string, value: string) {
+function setAppSetting(key: string, value: string) {
   return window.api.settings.app.set({ key, value });
 }
 
@@ -12,7 +16,8 @@ export function setAppSetting(key: string, value: string) {
  * Read a setting as its typed value. Folds the default when unset, unreadable,
  * or invalid — callers never see a raw string or restate the default.
  */
-export async function getSetting<T>(def: SettingDefinition<T>): Promise<T> {
+export async function getSetting<K extends SettingName>(name: K): Promise<SettingValue<K>> {
+  const def = getSettingDefinition(name);
   try {
     const result = await getAppSetting(def.key);
     return def.decode(result.success ? result.value : null);
@@ -21,7 +26,20 @@ export async function getSetting<T>(def: SettingDefinition<T>): Promise<T> {
   }
 }
 
-export function setSetting<T>(def: SettingDefinition<T>, value: T) {
+export async function getOptionalSetting<K extends SettingName>(
+  name: K
+): Promise<SettingValue<K> | undefined> {
+  const def = getSettingDefinition(name);
+  try {
+    const result = await getAppSetting(def.key);
+    return result.success && result.value != null ? def.decode(result.value) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function setSetting<K extends SettingName>(name: K, value: SettingValue<K>) {
+  const def = getSettingDefinition(name);
   return setAppSetting(def.key, def.encode(value));
 }
 

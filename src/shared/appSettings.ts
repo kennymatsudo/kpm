@@ -1,6 +1,3 @@
-/** Set once the user has seen the connect-agent step, so it auto-opens only on first run. */
-export const CONNECT_PROMPT_SEEN_KEY = 'connect_prompt_seen';
-
 export const CHAT_APPROVAL_MODES = ['manual', 'auto_apply'] as const;
 export type ChatApprovalMode = typeof CHAT_APPROVAL_MODES[number];
 export const CHAT_PROVIDERS = ['claude', 'codex', 'pi'] as const;

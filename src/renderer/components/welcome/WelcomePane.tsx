@@ -3,8 +3,7 @@ import type { ChatProvider, Project, ProvidersReadiness } from '../../../shared/
 import { CHAT_PROVIDERS } from '../../../shared/types';
 import { useProviderReadinessStore, useSettingsUIStore } from '../../stores';
 import { selectRepoPaths } from '../../services/repoService';
-import { getAppSetting, setAppSetting } from '../../services/settingsService';
-import { CONNECT_PROMPT_SEEN_KEY } from '../../../shared/appSettings';
+import { getSetting, setSetting } from '../../services/settingsService';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { SettingsIcon } from '../icons';
 import { ConnectAgentModal } from './ConnectAgentModal';
@@ -77,7 +76,7 @@ export function WelcomePane({ projects, onNewProject, onOpenProject, onCreatePro
 
   const handleConnectClose = useCallback(() => {
     setIsConnectOpen(false);
-    void setAppSetting(CONNECT_PROMPT_SEEN_KEY, 'true');
+    void setSetting('connectPromptSeen', true);
     void refresh();
   }, [refresh]);
 
@@ -91,8 +90,7 @@ export function WelcomePane({ projects, onNewProject, onOpenProject, onCreatePro
   useEffect(() => {
     if (firstRunChecked || !readiness || readiness.anyReady) return;
     setFirstRunChecked(true);
-    void getAppSetting(CONNECT_PROMPT_SEEN_KEY).then((result) => {
-      const seen = result.success && result.value === 'true';
+    void getSetting('connectPromptSeen').then((seen) => {
       if (!seen) setIsConnectOpen(true);
     });
   }, [firstRunChecked, readiness]);

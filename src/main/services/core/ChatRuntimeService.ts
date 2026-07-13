@@ -10,7 +10,6 @@ import { createToolCallLogger } from '../toollog';
 import type { PlanContext } from '../../chat/prompts';
 import { unwrapOrThrow } from '../result';
 import { createChatService } from './ChatService';
-import { SETTINGS } from '../../../shared/settingsRegistry';
 import { getSetting } from '../../db/appSettingsAccess';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { chatEvents } from '../../../shared/ipc/chatEvents';
@@ -160,7 +159,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     projects: container.projects,
     chatMessages: container.chatMessages,
     chatSessions: container.chatSessions,
-    getDefaultChatProvider: () => getSetting(container.appSettings, SETTINGS.chatProvider),
+    getDefaultChatProvider: () => getSetting(container.appSettings, 'chatProvider'),
     streamingSessionService,
     slashCommandService: services.slashCommandService,
     emitChatError: ({ projectId, chatSessionId, error }) => {

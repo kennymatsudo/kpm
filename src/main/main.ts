@@ -9,6 +9,7 @@ import { initializeServices } from './services/container';
 import { getCommonDevToolPaths } from './claude/findClaude';
 import { initClaudeAvailability } from './claude/availabilityState';
 import type { IRepositoryContainer } from './db/interfaces';
+import { getSetting, setSetting } from './db/appSettingsAccess';
 import type { AppServices } from './services/appServices';
 import { default as installExtension, REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
 import { createMainWindowManager } from './bootstrap/windowManager';
@@ -82,27 +83,22 @@ function getRuntimeRepositories(): Pick<IRepositoryContainer, 'appSettings' | 'p
 
 function saveWindowBounds(bounds: Electron.Rectangle): void {
   const { appSettings } = getRuntimeRepositories();
-  appSettings.set('window_bounds', JSON.stringify(bounds));
+  setSetting(appSettings, 'windowBounds', bounds);
 }
 
 function loadWindowBounds(): Electron.Rectangle | null {
   const { appSettings } = getRuntimeRepositories();
-  const saved = appSettings.get('window_bounds');
-  if (!saved) return null;
+  const bounds = getSetting(appSettings, 'windowBounds');
+  if (!bounds) return null;
 
-  try {
-    const bounds = JSON.parse(saved) as Electron.Rectangle;
-    // Validate bounds are on a visible display
-    const displays = screen.getAllDisplays();
-    const isVisible = displays.some(display => {
-      const { x, y, width, height } = display.bounds;
-      return bounds.x >= x && bounds.x < x + width &&
-             bounds.y >= y && bounds.y < y + height;
-    });
-    return isVisible ? bounds : null;
-  } catch {
-    return null;
-  }
+  // Validate bounds are on a visible display
+  const displays = screen.getAllDisplays();
+  const isVisible = displays.some(display => {
+    const { x, y, width, height } = display.bounds;
+    return bounds.x >= x && bounds.x < x + width &&
+           bounds.y >= y && bounds.y < y + height;
+  });
+  return isVisible ? bounds : null;
 }
 
 const { createWindow, getMainWindow } = createMainWindowManager({

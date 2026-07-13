@@ -36,6 +36,13 @@ export interface SettingDefinition<T> {
   encode(value: T): string;
 }
 
+export interface WindowBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /**
  * Build a codec for a setting whose value is one of a fixed set of strings,
  * folding anything else (including unset) to `fallback`.
@@ -53,6 +60,14 @@ function enumSetting<T extends string>(
   };
 }
 
+function booleanSetting(key: string, fallback: boolean): SettingDefinition<boolean> {
+  return {
+    key,
+    decode: (raw) => (raw === 'true' ? true : raw === 'false' ? false : fallback),
+    encode: String,
+  };
+}
+
 const CODEX_MODEL_VALUES = CODEX_CHAT_MODELS.map((option) => option.value);
 const DEFAULT_CODEX_MODEL: CodexChatModel = CODEX_CHAT_MODELS[0].value;
 
@@ -62,7 +77,7 @@ const chatPiProviderModel: SettingDefinition<string | null> = {
   encode: (value) => value ?? '',
 };
 
-const chatPiAckUnsafeProviders: SettingDefinition<Set<string>> = {
+const chatPiAckUnsafeProviders: SettingDefinition<ReadonlySet<string>> = {
   key: 'chat_pi_ack_unsafe_providers',
   decode: (raw) => {
     if (!raw) return new Set();
@@ -81,6 +96,40 @@ const branchNameTemplate: SettingDefinition<string> = {
   key: 'branch_name_template',
   decode: (raw) => raw ?? '',
   encode: (value) => value,
+};
+
+const lastOpenedProjectId: SettingDefinition<string> = {
+  key: 'lastOpenedProjectId',
+  decode: (raw) => raw ?? '',
+  encode: (value) => value,
+};
+
+const windowBounds: SettingDefinition<WindowBounds | null> = {
+  key: 'window_bounds',
+  decode: (raw) => {
+    if (!raw) return null;
+    try {
+      const value: unknown = JSON.parse(raw);
+      if (
+        typeof value !== 'object' ||
+        value === null ||
+        !('x' in value) ||
+        !('y' in value) ||
+        !('width' in value) ||
+        !('height' in value) ||
+        typeof value.x !== 'number' ||
+        typeof value.y !== 'number' ||
+        typeof value.width !== 'number' ||
+        typeof value.height !== 'number'
+      ) {
+        return null;
+      }
+      return { x: value.x, y: value.y, width: value.width, height: value.height };
+    } catch {
+      return null;
+    }
+  },
+  encode: (value) => JSON.stringify(value),
 };
 
 /** The typed settings that live in the `app_settings` key-value store. */
@@ -105,4 +154,16 @@ export const SETTINGS = {
   chatPiProviderModel,
   chatPiAckUnsafeProviders,
   branchNameTemplate,
+  lastOpenedProjectId,
+  connectPromptSeen: booleanSetting('connect_prompt_seen', false),
+  windowBounds,
 } as const;
+
+export type SettingName = keyof typeof SETTINGS;
+export type SettingValue<K extends SettingName> = ReturnType<(typeof SETTINGS)[K]['decode']>;
+
+export function getSettingDefinition<K extends SettingName>(
+  name: K
+): SettingDefinition<SettingValue<K>> {
+  return SETTINGS[name] as SettingDefinition<SettingValue<K>>;
+}

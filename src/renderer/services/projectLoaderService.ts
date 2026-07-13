@@ -6,6 +6,7 @@ import type {
 } from '../../shared/types';
 import { listProjectPlanItems } from './planService';
 import { listProjectRepos } from './repoService';
+import { getOptionalSetting, setSetting } from './settingsService';
 
 export interface LoadedProjectResources {
   repos: Repo[];
@@ -66,12 +67,11 @@ export async function disconnectActiveChatSessions(projectId: string): Promise<v
 }
 
 export async function persistLastOpenedProjectId(projectId: string): Promise<void> {
-  await window.api.settings.app.set({ key: 'lastOpenedProjectId', value: projectId });
+  await setSetting('lastOpenedProjectId', projectId);
 }
 
 export async function getLastOpenedProjectId(): Promise<string | undefined> {
-  const result = await window.api.settings.app.get({ key: 'lastOpenedProjectId' });
-  return result.success ? result.value ?? undefined : undefined;
+  return getOptionalSetting('lastOpenedProjectId');
 }
 
 export function createProjectRecord(input: {

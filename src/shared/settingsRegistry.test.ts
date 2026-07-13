@@ -116,6 +116,21 @@ describe('settings registry codecs', () => {
     });
   });
 
+  describe('windowBounds', () => {
+    const def = SETTINGS.windowBounds;
+
+    it('round-trips visible-window coordinates', () => {
+      const bounds = { x: 120, y: 80, width: 1440, height: 900 };
+
+      expect(def.decode(def.encode(bounds))).toEqual(bounds);
+    });
+
+    it('folds malformed stored coordinates to no saved bounds', () => {
+      expect(def.decode('{"x":"left"}')).toBeNull();
+      expect(def.decode('not json')).toBeNull();
+    });
+  });
+
   it('exposes a unique storage key per setting', () => {
     const keys = Object.values(SETTINGS).map((d) => d.key);
     expect(new Set(keys).size).toBe(keys.length);

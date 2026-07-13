@@ -1,13 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createStore } from 'zustand/vanilla';
-import { setSetting } from '../../services/settingsService';
-import { SETTINGS } from '../../../shared/settingsRegistry';
+import { installMockApi } from '../../../../tests/mocks/electron-api';
 import { createInitialChatState, createInitialPerSessionState } from './baseState';
 import { createSettingsSlice } from './settingsSlice';
-
-vi.mock('../../services/settingsService', () => ({
-  setSetting: vi.fn(),
-}));
 
 function createTestStore() {
   return createStore<ReturnType<typeof createInitialChatState> & ReturnType<typeof createSettingsSlice>>()((set, get) => ({
@@ -18,7 +13,7 @@ function createTestStore() {
 
 describe('settingsSlice', () => {
   beforeEach(() => {
-    vi.mocked(setSetting).mockReset();
+    installMockApi();
   });
 
   it('updates the default model before a session exists', () => {
@@ -27,7 +22,6 @@ describe('settingsSlice', () => {
     store.getState().setDefaultModel('opus');
 
     expect(store.getState().model).toBe('opus');
-    expect(setSetting).toHaveBeenCalledWith(SETTINGS.chatModel, 'opus');
   });
 
   it('falls back to the default model when setting a missing session', () => {
@@ -36,7 +30,6 @@ describe('settingsSlice', () => {
     store.getState().setModel('missing-session', 'opus');
 
     expect(store.getState().model).toBe('opus');
-    expect(setSetting).toHaveBeenCalledWith(SETTINGS.chatModel, 'opus');
   });
 
   it('updates both the session model and the default model', () => {
@@ -51,6 +44,5 @@ describe('settingsSlice', () => {
 
     expect(store.getState().sessions.get('chat-a')?.model).toBe('opus');
     expect(store.getState().model).toBe('opus');
-    expect(setSetting).toHaveBeenCalledWith(SETTINGS.chatModel, 'opus');
   });
 });

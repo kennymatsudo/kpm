@@ -7,7 +7,6 @@ import {
   setSetting,
   testAnthropicApiKey,
 } from '../services/settingsService';
-import { SETTINGS } from '../../shared/settingsRegistry';
 import { DEFAULT_CHAT_APPROVAL_MODE, type ChatApprovalMode } from '../../shared/appSettings';
 
 interface GeneralSettingsState {
@@ -64,8 +63,8 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
         success: false,
         error: error instanceof Error ? error.message : 'Failed to load API key status',
       })),
-      getSetting(SETTINGS.branchNameTemplate),
-      getSetting(SETTINGS.chatApprovalMode),
+      getSetting('branchNameTemplate'),
+      getSetting('chatApprovalMode'),
     ]);
 
     set({
@@ -171,7 +170,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
   saveBranchTemplate: async (branchTemplate) => {
     set({ error: null });
     try {
-      const result = await setSetting(SETTINGS.branchNameTemplate, branchTemplate);
+      const result = await setSetting('branchNameTemplate', branchTemplate);
       if (!result.success) {
         const error = result.error || 'Failed to save branch template';
         set({ error });
@@ -193,7 +192,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
 
     set({ isLoadingApprovalMode: true, error: null });
     try {
-      const approvalMode = await getSetting(SETTINGS.chatApprovalMode);
+      const approvalMode = await getSetting('chatApprovalMode');
       set({ approvalMode, isLoadingApprovalMode: false, approvalModeLoaded: true });
       return approvalMode;
     } catch (error) {
@@ -211,7 +210,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
   saveApprovalMode: async (approvalMode) => {
     set({ error: null });
     try {
-      const result = await setSetting(SETTINGS.chatApprovalMode, approvalMode);
+      const result = await setSetting('chatApprovalMode', approvalMode);
       if (!result.success) {
         const error = result.error || 'Failed to save chat approval mode';
         set({ error });

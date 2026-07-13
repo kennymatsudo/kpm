@@ -6,9 +6,8 @@ import { createStreamingSlice } from './streamingSlice';
 import { createMessageSlice } from './messageSlice';
 import { createHistorySlice } from './historySlice';
 import { createSettingsSlice } from './settingsSlice';
-import { getAppSetting, getSetting, getProviderReadiness } from '../../services/settingsService';
+import { getOptionalSetting, getSetting, getProviderReadiness } from '../../services/settingsService';
 import { writePersistedTabs } from './persistence';
-import { SETTINGS } from '../../../shared/settingsRegistry';
 import { getStoredChatProvider } from '../../../shared/appSettings';
 import { resolveEffectiveProvider } from '../../../shared/providerResolution';
 
@@ -30,16 +29,16 @@ export const useChatStore: UseBoundStore<StoreApi<ChatState>> = create<ChatState
 // Load persisted model and effort preferences (guarded for Node.js test environments)
 if (typeof window !== 'undefined') {
   void useChatStore.getState().loadSlashCommands();
-  void getSetting(SETTINGS.chatModel).then((model) => useChatStore.setState({ model }));
-  void getSetting(SETTINGS.chatEffort).then((effort) => useChatStore.setState({ effort }));
+  void getSetting('chatModel').then((model) => useChatStore.setState({ model }));
+  void getSetting('chatEffort').then((effort) => useChatStore.setState({ effort }));
   // Resolve the effective provider from the user's stored choice and what's
   // actually ready — never fall back to a hardcoded provider. A deliberate
   // choice that is ready is kept; otherwise adopt a single ready provider, or
   // leave the initial default in place for the connect step to resolve. This
   // read uses the null-distinguishing stored form, not the default-folding
   // registry codec, so "no choice yet" stays distinct from an explicit claude.
-  void Promise.all([getAppSetting(SETTINGS.chatProvider.key), getProviderReadiness()]).then(([stored, readinessResult]) => {
-    const storedChoice = stored.success ? getStoredChatProvider(stored.value) : null;
+  void Promise.all([getOptionalSetting('chatProvider'), getProviderReadiness()]).then(([stored, readinessResult]) => {
+    const storedChoice = getStoredChatProvider(stored);
     if (!readinessResult.success) {
       if (storedChoice) useChatStore.setState({ provider: storedChoice });
       return;
@@ -50,11 +49,11 @@ if (typeof window !== 'undefined') {
       useChatStore.setState({ provider });
     }
   });
-  void getSetting(SETTINGS.chatCodexModel).then((codexModel) => useChatStore.setState({ codexModel }));
-  void getSetting(SETTINGS.chatPiProviderModel).then((piProviderModel) => {
+  void getSetting('chatCodexModel').then((codexModel) => useChatStore.setState({ codexModel }));
+  void getSetting('chatPiProviderModel').then((piProviderModel) => {
     if (piProviderModel) useChatStore.setState({ piProviderModel });
   });
-  void getSetting(SETTINGS.chatPiAckUnsafeProviders).then((piAcknowledgedUnsafeProviders) => {
+  void getSetting('chatPiAckUnsafeProviders').then((piAcknowledgedUnsafeProviders) => {
     if (piAcknowledgedUnsafeProviders.size > 0) {
       useChatStore.setState({ piAcknowledgedUnsafeProviders });
     }

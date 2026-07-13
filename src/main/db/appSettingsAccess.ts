@@ -4,17 +4,35 @@
  * callers work with typed values instead of raw string keys.
  */
 
-import type { SettingDefinition } from '../../shared/settingsRegistry';
+import {
+  getSettingDefinition,
+  type SettingName,
+  type SettingValue,
+} from '../../shared/settingsRegistry';
 import type { IAppSettingsRepository } from './interfaces';
 
-export function getSetting<T>(appSettings: IAppSettingsRepository, def: SettingDefinition<T>): T {
+export function getSetting<K extends SettingName>(
+  appSettings: IAppSettingsRepository,
+  name: K
+): SettingValue<K> {
+  const def = getSettingDefinition(name);
   return def.decode(appSettings.get(def.key));
 }
 
-export function setSetting<T>(
+export function getOptionalSetting<K extends SettingName>(
   appSettings: IAppSettingsRepository,
-  def: SettingDefinition<T>,
-  value: T
+  name: K
+): SettingValue<K> | undefined {
+  const def = getSettingDefinition(name);
+  const raw = appSettings.get(def.key);
+  return raw === undefined ? undefined : def.decode(raw);
+}
+
+export function setSetting<K extends SettingName>(
+  appSettings: IAppSettingsRepository,
+  name: K,
+  value: SettingValue<K>
 ): void {
+  const def = getSettingDefinition(name);
   appSettings.set(def.key, def.encode(value));
 }
