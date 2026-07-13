@@ -4045,6 +4045,59 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    id: 1109,
+    name: '109_backfill_opposing_in_session_snapshots',
+    up: (db: BetterSqliteDatabase) => {
+      // Migration 108 rewrote the removed 'opposing' agent candidate in stored
+      // playbook definitions but not in the immutable per-session snapshots on
+      // dev_sessions. Sessions started before 108 froze the legacy shape and now
+      // fail to parse. Apply the same Codex → Gemini rewrite to those snapshots.
+      const replacement = [{ provider: 'codex' }, { provider: 'gemini' }];
+      const expand = (chain: unknown): unknown =>
+        Array.isArray(chain)
+          ? chain.flatMap((candidate) => (candidate === 'opposing' ? replacement : [candidate]))
+          : chain;
+
+      const rows = db
+        .prepare('SELECT id, playbook_snapshot FROM dev_sessions WHERE playbook_snapshot IS NOT NULL')
+        .all() as { id: string; playbook_snapshot: string }[];
+      const update = db.prepare('UPDATE dev_sessions SET playbook_snapshot = ? WHERE id = ?');
+
+      for (const row of rows) {
+        let snapshot: unknown;
+        try {
+          snapshot = JSON.parse(row.playbook_snapshot);
+        } catch {
+          continue;
+        }
+        if (!snapshot || typeof snapshot !== 'object') continue;
+        const steps = (snapshot as { steps?: unknown }).steps;
+        if (!Array.isArray(steps)) continue;
+
+        let changed = false;
+        for (const step of steps) {
+          if (!step || typeof step !== 'object') continue;
+          const record = step as { agents?: unknown; runs?: unknown };
+          if (Array.isArray(record.agents) && record.agents.includes('opposing')) {
+            record.agents = expand(record.agents);
+            changed = true;
+          }
+          if (Array.isArray(record.runs)) {
+            record.runs = record.runs.map((chain) => {
+              if (Array.isArray(chain) && chain.includes('opposing')) {
+                changed = true;
+                return expand(chain);
+              }
+              return chain;
+            });
+          }
+        }
+
+        if (changed) update.run(JSON.stringify(snapshot), row.id);
+      }
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {
