@@ -53,6 +53,8 @@ import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
 import type { PlaybookService } from '../core/PlaybookService';
 import { parsePlaybook, type BoardProvider, type Playbook } from '../../../shared/playbooks';
 import { renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
+import { renderBranchName } from '../../../shared/branchNaming';
+import { getSetting } from '../../db/appSettingsAccess';
 import {
   type AgentContextInput,
   type BoardClaudeModel,
@@ -64,7 +66,6 @@ import {
   resolveBoardEffort,
 } from './devSessionPrompt';
 import {
-  generateBranchName,
   getWorktreesDir,
   generateUniqueBranchName,
   detectDefaultBranch,
@@ -449,8 +450,11 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         const baseBranch = options?.baseBranch ?? await detectDefaultBranch(repo.path);
 
         // Generate branch name and worktree path
-        const template = deps.appSettings.get('branch_name_template');
-        const baseBranchName = generateBranchName(item, template);
+        const template = getSetting(deps.appSettings, 'branchNameTemplate');
+        const baseBranchName = renderBranchName(
+          { id: item.id, title: item.title, externalKey: item.external_key },
+          template
+        );
         // If freshStart, generate a unique branch name (adds -v2, -v3, etc.)
         const branchName = options?.freshStart
           ? await generateUniqueBranchName(repo.path, baseBranchName)

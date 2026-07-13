@@ -6,6 +6,10 @@ import { SettingsSection, StatusBadge } from './SettingsSection';
 import { TrackerSettings } from './TrackerSettings';
 import { StorybookSettings } from './StorybookSettings';
 import { SlackChannelSettings } from '../slack';
+import {
+  BRANCH_NAME_TEMPLATE_VARIABLES,
+  previewBranchName,
+} from '../../../shared/branchNaming';
 
 type WorkflowSubTab = 'git' | 'tracker' | 'slack' | 'storybook';
 
@@ -105,23 +109,7 @@ function GitSubTab() {
     }
   };
 
-  const branchNamePreview = useMemo(() => {
-    if (!branchTemplate) {
-      return 'PROJ-123-example-branch-name';
-    }
-    const now = new Date();
-    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-    let preview = branchTemplate
-      .replace(/{date}/g, dateStr)
-      .replace(/{ticket}/g, 'PROJ-123')
-      .replace(/{name}/g, 'example-branch-name')
-      .replace(/{id}/g, 'abc123');
-    preview = preview
-      .replace(/[_\-/]{2,}/g, (match) => match[0])
-      .replace(/[_-]$/g, '')
-      .replace(/^[_-]/g, '');
-    return preview;
-  }, [branchTemplate]);
+  const branchNamePreview = useMemo(() => previewBranchName(branchTemplate), [branchTemplate]);
 
   return (
     <div className="space-y-4">
@@ -164,17 +152,12 @@ function GitSubTab() {
                   Available variables:
                 </p>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                  {[
-                    { var: '{date}', desc: 'YYYYMM (e.g., 202601)' },
-                    { var: '{ticket}', desc: 'External key (e.g., PROJ-123)' },
-                    { var: '{name}', desc: 'Plan item title slug' },
-                    { var: '{id}', desc: 'Plan item ID (6 chars)' },
-                  ].map((item) => (
-                    <div key={item.var} className="flex items-center gap-2">
+                  {BRANCH_NAME_TEMPLATE_VARIABLES.map((variable) => (
+                    <div key={variable.token} className="flex items-center gap-2">
                       <code className="px-1 py-0.5 bg-surface-3 rounded text-xxs text-accent font-mono">
-                        {item.var}
+                        {variable.token}
                       </code>
-                      <span className="text-xxs text-text-muted">{item.desc}</span>
+                      <span className="text-xxs text-text-muted">{variable.description}</span>
                     </div>
                   ))}
                 </div>

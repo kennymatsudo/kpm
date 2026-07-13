@@ -8,56 +8,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { failure, success, type ServiceResult } from '../result';
-import type { DevSession, PlanItem } from '../../../shared/types';
+import type { DevSession } from '../../../shared/types';
 import { gitExec, getCurrentBranch, resolveUpstreamBranch, getMergeBase } from './gitUtils';
-
-/**
- * Generate branch name from plan item using template
- *
- * Template variables:
- * - {date}   - YYYYMM (e.g., 202601)
- * - {ticket} - External key (e.g., PROJ-123)
- * - {name}   - Plan item title slug
- * - {id}     - Plan item ID prefix (6 chars)
- *
- * Smart default when template is empty:
- * - If ticket exists: {ticket}-{name}
- * - Otherwise: {id}-{name}
- */
-export function generateBranchName(item: PlanItem, template: string | undefined): string {
-  const slug = item.title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .substring(0, 50);
-
-  // If no template, use smart default
-  if (!template || template.trim() === '') {
-    if (item.external_key) {
-      return `${item.external_key}-${slug}`;
-    }
-    return `${item.id.substring(0, 6)}-${slug}`;
-  }
-
-  // Build date string (YYYYMM)
-  const now = new Date();
-  const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-  // Apply template substitutions
-  let branchName = template
-    .replace(/{date}/g, dateStr)
-    .replace(/{ticket}/g, item.external_key || '')
-    .replace(/{name}/g, slug)
-    .replace(/{id}/g, item.id.substring(0, 6));
-
-  // Clean up double separators and trailing/leading separators
-  branchName = branchName
-    .replace(/[_\-/]{2,}/g, (match) => match[0])  // Collapse multiple separators
-    .replace(/^[_\-/]+/, '')  // Remove leading separators
-    .replace(/[_\-/]+$/, ''); // Remove trailing separators
-
-  return branchName;
-}
 
 /**
  * Get the worktrees directory for a repo
