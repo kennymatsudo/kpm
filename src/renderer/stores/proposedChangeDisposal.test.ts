@@ -168,38 +168,45 @@ describe('Proposed Change disposal', () => {
       kind: 'plan-actions',
       first: { type: 'plan-actions', projectId: 'project-1', actions: [{ type: 'update_item', item_id: 'item-1', changes: { title: 'one' } } as never] },
       second: { type: 'plan-actions', projectId: 'project-1', actions: [{ type: 'update_item', item_id: 'item-1', changes: { title: 'two' } } as never] },
+      expected: { type: 'plan-actions', actions: [{ item_id: 'item-1', changes: { title: 'two' } }] },
     },
     {
       kind: 'context-file',
       first: { type: 'context-file', projectId: 'project-1', oldContent: 'disk', newContent: 'one' },
       second: { type: 'context-file', projectId: 'project-1', oldContent: 'intermediate', newContent: 'two' },
+      expected: { type: 'context-file', oldContent: 'disk', newContent: 'two' },
     },
     {
       kind: 'document',
       first: { type: 'document', projectId: 'project-1', filePath: 'same.md', oldContent: 'disk', content: 'one' },
       second: { type: 'document', projectId: 'project-1', filePath: 'same.md', oldContent: 'intermediate', content: 'two' },
+      expected: { type: 'document', oldContent: 'disk', content: 'two' },
     },
     {
       kind: 'move',
       first: { type: 'move', projectId: 'project-1', sourcePath: 'a.md', targetPath: 'b.md' },
       second: { type: 'move', projectId: 'project-1', sourcePath: 'a.md', targetPath: 'b.md' },
+      expected: { type: 'move', sourcePath: 'a.md', targetPath: 'b.md' },
     },
     {
       kind: 'delete',
       first: { type: 'delete', projectId: 'project-1', filePath: 'same.md', isDirectory: false },
       second: { type: 'delete', projectId: 'project-1', filePath: 'same.md', isDirectory: false },
+      expected: { type: 'delete', filePath: 'same.md', isDirectory: false },
     },
     {
       kind: 'review-reply',
       first: { type: 'review-reply', projectId: 'project-1', sessionId: 's1', threadId: 't1', threadUrl: 'url', threadTitle: 'title', threadLocation: 'a.ts:1', latestCommentPreview: null, body: 'one', resolve: false },
       second: { type: 'review-reply', projectId: 'project-1', sessionId: 's1', threadId: 't1', threadUrl: 'url', threadTitle: 'title', threadLocation: 'a.ts:1', latestCommentPreview: null, body: 'two', resolve: true },
+      expected: { type: 'review-reply', body: 'two', resolve: true },
     },
-  ] satisfies { kind: string; first: ProposedChangeInput; second: ProposedChangeInput }[])(
-    'applies the $kind adapter identity and merge contract', ({ first, second }) => {
+  ] satisfies { kind: string; first: ProposedChangeInput; second: ProposedChangeInput; expected: object }[])(
+    'applies the $kind adapter identity and merge contract', ({ first, second, expected }) => {
       const disposal = useProposedChangeDisposal.getState();
       disposal.propose(first);
       disposal.propose(second);
       expect(useProposedChangeDisposal.getState().pending).toHaveLength(1);
+      expect(useProposedChangeDisposal.getState().pending[0]).toMatchObject(expected);
     },
   );
 

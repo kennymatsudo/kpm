@@ -49,11 +49,11 @@ describe('DevSessionService playbook migration boundary', () => {
     });
 
     if (!result.ok) throw new Error(result.error);
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+    expect(result.data).toMatchObject({
       playbook_id: BUILT_IN_PLAYBOOKS.implementOnly.id,
       playbook_snapshot: JSON.stringify(BUILT_IN_PLAYBOOKS.implementOnly),
       current_step_id: 'implement',
-    }));
+    });
   });
 });
 
