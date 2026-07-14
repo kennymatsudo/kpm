@@ -209,13 +209,14 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ## Chat & Claude Integration
 
 ### 11. Main Chat Interface (Streaming Sessions, History, Images, Slash Commands)
-- **What it does:** Unified Claude chat connected via persistent streaming sessions, supporting text, dragged/pasted images, and focused resources. Users can run multiple independent, named chat sessions per project — a session switcher lists them and switching loads that session's isolated history. Typing `/` opens a slash-command menu (user commands from `~/.claude/commands/`, installed skills, plugin commands; CLI built-ins filtered out) — filesystem-scanned before a session connects, then backed by the SDK's own `supportedCommands`/`commands_changed` once live. Messages sent while Claude is still responding are queued and steered into the current turn, rendering in strict chronological order (queued message, then the response that answered it). Long-running tool calls show a live elapsed-timer label.
+- **What it does:** Unified chat connected via persistent streaming sessions, supporting text, dragged/pasted images, and focused resources. The provider is selectable per session — Claude (Claude Agent SDK), Codex (Codex SDK), or pi (pi.dev) — with the provider/model picker in the header; Codex and pi run on a shared turn-queue base and expose a leaner capability set than Claude (see `providerCapabilities.ts`). Users can run multiple independent, named chat sessions per project — a session switcher lists them and switching loads that session's isolated history. Typing `/` opens a slash-command menu (user commands from `~/.claude/commands/`, installed skills, plugin commands; CLI built-ins filtered out) — filesystem-scanned before a session connects, then backed by the SDK's own `supportedCommands`/`commands_changed` once live. Messages sent while Claude is still responding are queued and steered into the current turn, rendering in strict chronological order (queued message, then the response that answered it). Long-running tool calls show a live elapsed-timer label.
 - **Key code locations:**
   - Service: `src/main/services/streaming/StreamingSessionService.ts` (session lifecycle, reconnection, queued-message ordering, `tool_progress` heartbeat merge)
   - Service: `src/main/services/core/ChatService.ts` (message-send orchestration, chat reset, focus-document session reconciliation; plain history/usage reads go from `ipc/handlers/chat.ts` straight to the repositories)
   - Store: `src/renderer/stores/chat/index.ts` (sessions map, viewed session, draft messages, model state)
   - Components: `MessageList.tsx` (queued messages + inline image rendering), `ChatInput.tsx` (text/image input, drag-drop + paste), `ChatHeader.tsx`, `SessionList.tsx` + `NewSessionButton.tsx` (session switcher), `ProcessTimeline.tsx` (tool activity + elapsed-seconds label), `ModelSelector.tsx`
-  - Slash commands: `src/main/services/core/SlashCommandService.ts` (filesystem scan), `src/renderer/components/chat/SlashCommandMenu.tsx` + `useSlashCommandTypeahead.ts`, IPC channel `chat:get-slash-commands`
+  - Provider selection: `src/shared/types.ts` (`ChatProvider = 'claude' | 'codex' | 'pi'`); backends `ClaudeSdkSession` / `CodexChatSession` / `src/main/pi/PiChatSession.ts` behind `IChatSession` (Codex + pi share `BaseTurnQueueChatSession`); capability descriptor `src/shared/providerCapabilities.ts`, readiness `src/shared/providerResolution.ts`; renderer picker `ModelSelector.tsx` → `PiModelPicker.tsx` + `usePiProviderPicker.ts`, store `src/renderer/stores/chat/settingsSlice.ts` (persisted via the `chatProvider` setting)
+  - Slash commands: `src/main/services/core/SlashCommandService.ts` (filesystem scan), `src/renderer/components/chat/SlashCommandMenu.tsx` + `useSlashCommandTypeahead.ts`, IPC channel `chat:get-slash-commands` (Claude only — `liveSlashCommands` capability)
   - Images: `src/main/services/files/TempImageService.ts` (save/delete temp images), `src/main/ipc/handlers/tempImages.ts`, `src/renderer/components/image-viewer-modal/index.tsx` (full-resolution viewer with zoom/pan, delete)
   - Type guard: `src/main/claude/sdkTypeGuards.ts` (`tool_progress` heartbeat message)
   - IPC handlers: `src/main/ipc/handlers/chat.ts`
@@ -298,17 +299,17 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ## Agentic Task Execution (Board)
 
 ### 19. Plan-item Dev Sessions (Implementation Workflow, Worktrees, Agent Context)
-- **What it does:** Users start agentic execution for a plan item from the board view. Each session creates an isolated git worktree, builds an agent prompt from the plan item's title/intent/acceptance-criteria/context (with `@plan/<uuid>` refs resolved, the project-level AGENTS.md prepended when it has real content, and attached context files wrapped in via `<context-file>` blocks), and spawns an implementation agent — Claude via the Agent SDK, Codex via the Codex SDK (Codex remains an alternate dev-session/opposing-review backend even though chat itself is Claude-only), or Gemini/legacy Claude via CLI, all dispatched through `AgentSessionManager`. Each board turn is a discrete single-shot `query()`; completion is the SDK async iterator ending, not a terminal process exiting. Sessions track status (pending → active → inactive) and persist across app restarts. Board cards show a compact phase badge (e.g. "Reviewing", "Needs attention", "Fixing checks", "Addressing review") derived from automation phase, agent liveness, and staleness — kept live even after the underlying session goes `inactive` between turns, so the board doesn't read as idle mid-automation. The detail pane's Activity tab renders tool calls as a narrative feed, grouped under the narration Claude wrote immediately before them.
+- **What it does:** Users start agentic execution for a plan item from the board view. Each session creates an isolated git worktree, builds an agent prompt from the plan item's title/intent/acceptance-criteria/context (with `@plan/<uuid>` refs resolved, the project-level AGENTS.md prepended when it has real content, and attached context files wrapped in via `<context-file>` blocks), and spawns an implementation agent — Claude via the Agent SDK, Codex via the Codex SDK (Codex also backs main chat and opposing review — see feature 11), or Gemini/legacy Claude via CLI, all dispatched through `AgentSessionManager`. Each board turn is a discrete single-shot `query()`; completion is the SDK async iterator ending, not a terminal process exiting. Sessions track status (pending → active → inactive) and persist across app restarts. Board cards show a compact phase badge (e.g. "Reviewing", "Needs attention", "Fixing checks", "Addressing review") derived from automation phase, agent liveness, and staleness — kept live even after the underlying session goes `inactive` between turns, so the board doesn't read as idle mid-automation. The detail pane's Activity tab renders tool calls as a narrative feed, grouped under the narration Claude wrote immediately before them.
 - **Key code locations:**
   - Service: `src/main/services/repo/DevSessionService.ts` (`startAgentSession` entrypoint, `buildAgentContext(input: AgentContextInput)` — renders `## Intent`/`## Acceptance Criteria`/`## Context`-or-`## Description`/`## Instructions` based on which spec fields the item carries, `buildPlanRefSection` prepends a `<plan-refs>` block; composes `scaffoldWorktree` from `src/main/services/repo/worktreeScaffold.ts` to create the worktree via `git worktree add`)
   - Orchestration: `src/main/services/agents/BoardAgentOrchestrator.ts` (automation state machine, wired in via `AgentSessionManager`)
   - Agent backends: `ClaudeSdkSession`, `CodexSdkAgentSession`, `CliAgentSession` (Gemini / legacy Claude via CLI) — dispatched by `AgentSessionManager`
-  - Worktree support: `src/main/services/repo/WorktreeService.ts` (delete/status/`openInEditor`), `editorLauncher.ts`, `gitUtils.ts`, `WorktreeRepository.ts`
+  - Worktree support: `src/main/services/repo/worktreeScaffold.ts` (create via `git worktree add`), `DevSessionService.openInEditor` + `editorLauncher.ts` (open in editor), `devSessionGitInspection.ts` + `gitUtils.ts` (status/diff); worktree state lives on `dev_sessions.worktree_path` — the dead `worktrees` table plus `WorktreeService`/`WorktreeRepository` were removed
   - Repository: `src/main/db/repositories/impl/DevSessionRepository.ts`
   - IPC handlers: `src/main/ipc/handlers/devSessions.ts`, `agentSessions.ts`, `worktree.ts`
   - Components: `src/renderer/components/board-view/DetailPane.tsx`, `BoardCard.tsx` (`phaseIndicator` computation), `MergeQueuePanel.tsx`, `ActivityTab.tsx` (narrative grouping, non-stealing auto-scroll), `DetailPaneHeader.tsx` + `src/renderer/components/planning/PlanCardMenu.tsx` ("Open in Editor")
   - Types: `DevSessionAutomationPhase`, `isLiveAutomationPhase`, `isCommitHookRepairPhase` (`shared/types.ts`)
-  - DB: `dev_sessions` table (status, worktree_path, branch_name, automation_phase, etc.), `worktrees` table
+  - DB: `dev_sessions` table (status, worktree_path, branch_name, automation_phase, etc.)
 - **Entry points / surfaces:**
   - Board card: drag to `in_progress` or click `Play` — prefers resuming the latest inactive/pending session over creating a new worktree; `Stop` stops the active run; phase badge on each card face
   - Board detail pane: Activity (narrative feed) / Changes / Review tabs
@@ -363,6 +364,28 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Project documents: optional markdown file summarized into reviewer-facing feature context
   - Review Loop (feature 23): linked PRs feed review-thread polling and assessment
 - **Maturity signal:** Mature. PR linking and description generation are well-integrated with the review loop and dev-session lifecycle.
+
+### 105. Execution Playbooks (Configurable Board Agent Flows)
+- **What it does:** A playbook is a persisted, validated recipe defining the bounded multi-step flow a board agent runs to implement a plan item — it replaced the old boolean Standard/Workflow `execution_mode` picker with a first-class, reusable, user-editable object. Each playbook is `{ id, name, builtIn, steps[] }`; a step names the session (`main` implementation agent vs. a spawned `subagent`), an ordered agent fallback chain (or parallel `runs` for fan-out, e.g. two-axis review), a role-instruction prompt key, a directive (inline prompt or skill invocation, with `{{output:stepId}}` / `{{findings}}` interpolation), and routing (a findings-check loop-back with a bounded `maxPasses`, an explicit `next`, a `pauseBefore` human gate, and a `writes` flag letting a subagent edit the worktree). The split of responsibility is the point: the **user owns the recipe** (which agents, which prompts, how many review passes, where to pause); **KPM owns the guarantees** — worktree safety (the harness commits agent work onto the task branch), persistence (the cursor, pass counts, step outputs, and an immutable snapshot survive a restart), and terminal states (the phase machine, not the playbook, decides `ready_for_review` / `needs_attention` / move to In Review).
+- **Built-in playbooks** (`BUILT_IN_PLAYBOOKS`, read-only, duplicate-to-edit): `builtin.implement_opposing_review` — implement → one opposing review → one address pass (the default); `builtin.implement_only` — a single implement step (also the legacy `review_policy = 'skip'` fallback); `builtin.loop_until_clean` — implement → review → address, looping up to 3 passes then pausing; `builtin.implement_code_review` — TDD implement → parallel two-axis review (Standards + Spec) → address loop.
+- **Key code locations:**
+  - Shared model + logic: `src/shared/playbooks.ts` (types, Zod `playbookSchema`, `BUILT_IN_PLAYBOOKS`, `DEFAULT_PLAYBOOK`, validation helpers), `src/shared/playbookRuntime.ts` (`resolvePlaybookPlan`, `advancePlaybook`, `renderPlaybookDirective`)
+  - Service + repository: `src/main/services/core/PlaybookService.ts` (CRUD + default; built-ins read-only), `src/main/db/repositories/impl/PlaybookRepository.ts`
+  - Interpreter: `src/main/services/agents/BoardAgentOrchestrator.ts` (loads the snapshot, dispatches steps, aggregates fan-out runs, advances the cursor), `automationPhaseMachine.ts` (sole writer of `automation_phase` + cursor fields), `autoReview.ts` (`launchPlaybookSubagent`), `boardProviderRegistry.ts`
+  - Session wiring: `src/main/services/repo/DevSessionService.ts` (snapshot creation, `savePlaybookOutputs`, `resumePlaybook`)
+  - Renderer: `src/renderer/services/playbookService.ts`; settings `src/renderer/components/settings/PlaybooksSettings.tsx` + `playbookEditor.ts`; board `src/renderer/components/board-view/AgentStartModal.tsx` (playbook picker + resolved-plan preview), `PhaseStepper.tsx` + `panelStatus.ts` (`derivePanelStatus`)
+  - IPC: `src/shared/ipc/playbookEndpoints.ts` (`playbook:list|create|update|delete|duplicate|set-default|providers|skills`), handlers `src/main/ipc/handlers/playbooks.ts`; the selected `playbookId` flows through `agent-session:create-and-start`
+  - DB: `execution_playbooks` table (custom playbooks; migration `104_custom_execution_playbooks`), default id in `app_settings` (`default_playbook_id`); running-session columns on `dev_sessions` — `playbook_id`, `playbook_snapshot` (immutable authoritative copy), `current_step_id`, `step_pass_counts`, `step_outputs`, `paused_reason` (migrations `103_execution_playbook_persistence` + `105_playbook_step_outputs`)
+- **Entry points / surfaces:**
+  - Settings → Playbooks tab: create / select / duplicate / delete playbooks and pick the default; a "Role instructions" sub-tab overrides the agent role prompts; built-ins render read-only; validation issues block Save
+  - Board "Start Implementation" modal: playbook picker (defaults to the configured default) with a per-step resolved-plan preview (`provider/model`, flagged when a provider is unavailable); Start is disabled when a required provider can't be resolved
+  - Board detail pane: `PhaseStepper` renders the snapshot's steps with the live cursor and pass counts; a paused run surfaces `one_more_pass` / `proceed` (max-passes) or `resume` (gate) actions
+- **Dependencies / integrations:**
+  - Plan-item Dev Sessions (feature 19) and Review Loop & Automated Addressing (feature 23): playbooks drive the same automation-phase machine and opposing-review pass those features describe
+  - Chat/agent providers (feature 11): agent candidate chains resolve against available providers (Claude / Codex / pi / Gemini) via `boardProviderRegistry`
+  - `review_policy` (auto/skip): honored only as a compatibility fallback for pre-migration-103 sessions with no snapshot; new runs are always snapshot-driven
+  - Board Agent Prompt Customization (feature 57): role prompts (`agents.*` keys) are registered in `promptRegistry.ts` and user-overridable
+- **Maturity signal:** Mature. Replaced the Standard/Workflow `execution_mode` boolean (that column is now vestigial — unread by any service); the persisted snapshot plus the phase machine make runs restart-safe, and the Zod schema enforces reachability and bounded review cycles.
 
 ---
 
@@ -1170,7 +1193,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 
 The standalone "Permissions & Security" group was folded into Settings & Configuration (feature 64). A second, verbatim-duplicate copy of the Cross-Cutting Infrastructure section (features 83–95) was also removed — it existed only as a condensed restatement and had already drifted from the primary copy.
 
-Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board Agent Prompts"; Features 98 and 100 were removed; Feature 102 "Plan References" was added.
+Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board Agent Prompts"; Feature 105 was reworked from "Workflow Mode" into "Execution Playbooks"; Features 98 and 100 were removed; Feature 102 "Plan References" was added.
 
 **Feature density by area:**
 - Planning & Plan Management (8)
@@ -1230,15 +1253,17 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 - `BoardCard.tsx`: Card in board column, with phase indicator badge
   - Features: 5 (Plan Views), 19 (Plan-item Dev Sessions — phase indicators)
 - `DetailPane.tsx`: Right-side detail panel (activity, changes, review)
-  - Features: 19 (Plan-item Dev Sessions), 23 (Review Loop & Automated Addressing), 25 (GitHub PR Integration)
+  - Features: 19 (Plan-item Dev Sessions), 23 (Review Loop & Automated Addressing), 25 (GitHub PR Integration), 105 (Execution Playbooks)
+- `PhaseStepper.tsx`: Playbook step progress + paused-run actions in the detail pane
+  - Features: 105 (Execution Playbooks), 19 (Plan-item Dev Sessions)
 - `ActivityTab.tsx`: Narrative activity feed tab
   - Features: 19 (Plan-item Dev Sessions — narrative activity feed)
 - `ChangesTab.tsx`: Detail panel tab showing dev session diff
   - Features: 19, 25
 - `MergeQueuePanel.tsx`: Open-PR ordering with dependency-derived blockers
   - Features: 99 (Merge Queue)
-- `AgentStartModal.tsx`: Start Implementation modal
-  - Features: 19 (Plan-item Dev Sessions)
+- `AgentStartModal.tsx`: Start Implementation modal, including the playbook picker and resolved-plan preview
+  - Features: 19 (Plan-item Dev Sessions), 105 (Execution Playbooks)
 
 ### tree-view/ Components
 - `TreeView.tsx`: Hierarchical tree outline
@@ -1253,7 +1278,7 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 11 (Main Chat Interface), 13 (System Prompts)
 - `SessionList.tsx`: List of chat sessions
   - Features: 11 (Main Chat Interface)
-- `ModelSelector.tsx`: Choose Claude model
+- `ModelSelector.tsx`: Choose chat provider (Claude/Codex/pi) and model
   - Features: 11 (Main Chat Interface)
 - `SessionHistory.tsx`: Past messages in session
   - Features: 11 (Main Chat Interface)
@@ -1329,6 +1354,8 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 96 (Custom Themes)
 - `TaskPromptSettings.tsx`: Implementation agent instructions
   - Features: 57 (Board Agent Prompt Customization)
+- `PlaybooksSettings.tsx`: Execution playbook editor + role-instruction overrides
+  - Features: 105 (Execution Playbooks)
 - `StorybookSettings.tsx`: Storybook URL and connection test
   - Features: 101 (Storybook Component Discovery)
 
@@ -1412,7 +1439,6 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 ## Gaps & Orphaned Features
 
 - **Orphaned:** The Tree view (one of the three Plan Views, feature 5) is well-implemented but rarely used (canvas and board are preferred).
-- **Dead/unreachable:** `CHAT_PROVIDER_KEY` (`chat_provider` app setting), `src/main/codex/CodexChatSession.ts`, and the wider Codex `ChatProvider` path in `ChatRuntimeService` are read but never written anywhere in the codebase — no settings UI or chat UI lets a user select a chat provider. Chat remains Claude-only in practice (see feature 19 for Codex's actual role, board dev sessions); this plumbing is backend-only dead weight, not a live feature.
 - **Dead/unreachable:** The artifacts-manager backend (`ArtifactService` list/read/delete/import, the `artifacts.*` IPC endpoints, and the `window.api.artifacts` preload surface) is fully wired but has no renderer caller — no component lists, opens, or deletes `outputs/` files through it (see feature 46).
 - **Optional:** Confluence integration (53) depends on Jira/Atlassian credentials and linked pages, so it is mature in code but not always visible in day-to-day project work.
 - **Half-finished:** Slack triage (80) is functional but not heavily marketed; limited user adoption signals.

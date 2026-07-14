@@ -191,7 +191,7 @@ Renderer → ipcRenderer.invoke (Zod validated) → Handler → Service → Repo
 
 ## Claude Integration Architecture
 
-KPM uses the Claude Agent SDK for Claude chat/dev sessions, the Codex SDK for Codex chat/dev sessions, and in-process MCP tools for KPM-aware Claude tool calls:
+KPM runs chat/dev sessions on one of three provider backends behind a provider-neutral `IChatSession` — the Claude Agent SDK (Claude), the Codex SDK (Codex), and pi.dev (pi) — plus in-process MCP tools (`src/main/kpmTools/`) shared across all three for KPM-aware tool calls:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -230,6 +230,8 @@ KPM uses the Claude Agent SDK for Claude chat/dev sessions, the Codex SDK for Co
 ```
 
 For the tool-by-tool and file-by-file map, see the File Organization table in [`src/main/claude/CLAUDE.md`](../src/main/claude/CLAUDE.md).
+
+**Chat Provider Abstraction**: the main chat runs on one provider per session — Claude (`ClaudeSdkSession`, streaming-input), Codex (`CodexChatSession`), or pi (`src/main/pi/PiChatSession.ts`). All implement `IChatSession` (`src/main/services/streaming/IChatSession.ts`); Codex and pi share `BaseTurnQueueChatSession`, while Claude steers mid-turn on its own base. Per-provider feature support is declared in `src/shared/providerCapabilities.ts` (`PROVIDER_CAPABILITIES`) and readiness is resolved via `src/shared/providerResolution.ts`. `ChatProvider = 'claude' | 'codex' | 'pi'` is defined in `src/shared/types.ts`. `StreamingSessionService.createSession` dispatches to the backend.
 
 **System Prompt Organization**: prompt modules live in `src/main/chat/prompts/` with `buildSystemPrompt()` / `buildFocusSystemPrompt()` as entry points — see [`src/main/claude/CLAUDE.md`](../src/main/claude/CLAUDE.md).
 

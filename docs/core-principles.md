@@ -14,7 +14,7 @@ The commitments a contributor — human or agent — should consult when a featu
 | P6 | Internal stays internal | Translate at every export boundary; refs and spec fields are local-only. |
 | P7 | Reads by default | Chat is read-only against repos; writes are scoped to worktrees. |
 | P8 | Claude proposes, user configures disposal | Plan mutations go through the `PlanAction` approval flow unless the user explicitly enables auto-apply. |
-| P9 | Agent execution is a lifecycle | Implement → opposing review → one address pass → human review. Persisted state. |
+| P9 | Agent execution is a lifecycle | A bounded, persisted run driven by a chosen playbook (default: implement → opposing review → one address pass → human review) — never a one-shot prompt. |
 | P10 | Sync on your terms | No live feeds. Inbound queues; outbound drafts. |
 
 ---
@@ -92,9 +92,9 @@ The plan is the developer's mental model externalized. Approval remains the safe
 
 ## 9. Agent execution is a lifecycle
 
-Running a coding agent is not a prompt — it is a structured run with a beginning, middle, and end. Each plan item gets an isolated git worktree so parallel runs don't collide. Implementation runs under one agent; review runs under a different one so the implementer isn't grading its own work. The automation phase is persisted to `dev_sessions.automation_phase` so the loop survives restarts, stops, and resumes. Agents are interchangeable — Claude, Codex, and others plug into the same harness.
+Running a coding agent is not a prompt — it is a structured run with a beginning, middle, and end. Each plan item gets an isolated git worktree so parallel runs don't collide. Implementation runs under one agent; review runs under a different one so the implementer isn't grading its own work. The automation phase is persisted to `dev_sessions.automation_phase` so the run survives restarts, stops, and resumes. Agents are interchangeable — Claude, Codex, and others plug into the same harness. The specific sequence is a *playbook* the user chooses and can configure; KPM keeps the safety rails constant across every playbook — worktree isolation, persisted phase, opposing review by policy, and bounded terminal states.
 
-**The loop:** implement → opposing review → one addressing pass → human review. Not a prompt; not infinite.
+**The default playbook:** implement → opposing review → one addressing pass → human review. Other playbooks define a different bounded sequence; none is a one-shot prompt and none loops forever.
 
 **Lean toward:** features that extend the harness (isolation, review quality, persisted state).
 **Lean away from:** one-shot prompts without accountability, renderer-only orchestration state, agent identity baked into the schema.
