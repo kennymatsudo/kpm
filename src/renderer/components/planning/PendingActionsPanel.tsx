@@ -531,12 +531,15 @@ function ActionDetailView({ action, planItems, planItemsById, placeholderMap }: 
         </div>
       );
     }
-    default:
+    default: {
+      const _exhaustive: never = action;
+      void _exhaustive;
       return (
         <div className="p-4 rounded-lg bg-surface-1 border border-border-subtle">
           <p className="text-xs text-text-muted">Unknown action type</p>
         </div>
       );
+    }
   }
 }
 
@@ -583,6 +586,10 @@ function getActionTypeLabel(type: PlanAction['type']): string {
     case 'update_group': return 'group';
     case 'delete_group': return 'group';
     case 'assign_to_group': return 'assign';
-    default: return 'action';
+    default: {
+      const _exhaustive: never = type;
+      void _exhaustive;
+      return 'action';
+    }
   }
 }

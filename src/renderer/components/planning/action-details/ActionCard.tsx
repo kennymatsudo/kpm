@@ -85,8 +85,11 @@ function getActionStyle(type: PlanAction['type']): { icon: string; color: string
       return { icon: '\u00d7', color: 'bg-danger/12 text-danger', label: 'Group' };
     case 'assign_to_group':
       return { icon: '\u2192', color: 'bg-info/12 text-info', label: 'Assign' };
-    default:
+    default: {
+      const _exhaustive: never = type;
+      void _exhaustive;
       return { icon: '\u2022', color: 'bg-surface-3 text-text-muted', label: 'Action' };
+    }
   }
 }
 
@@ -136,7 +139,10 @@ function describeAction(
       return `Delete group`;
     case 'assign_to_group':
       return `${getTitle(action.item_id)} ${action.group_id ? '\u2192 group' : '\u2192 ungroup'}`;
-    default:
+    default: {
+      const _exhaustive: never = action;
+      void _exhaustive;
       return 'Unknown action';
+    }
   }
 }
