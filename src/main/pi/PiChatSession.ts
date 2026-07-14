@@ -1,13 +1,11 @@
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
 import type * as PiCodingAgent from '@earendil-works/pi-coding-agent';
 import type { ToolDefinition as PiSdkToolDefinition } from '@earendil-works/pi-coding-agent';
-import type { IChatSession } from '../services/streaming/IChatSession';
+import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/streaming/BaseTurnQueueChatSession';
 import { getConfig } from '../config';
 import { buildPiKpmTools, type PiKpmToolDefinition, type PiToolImageContent } from './kpmToolAdapter';
 import type { PlanContext } from '../chat/prompts';
 import { buildItemReferenceTable } from '../chat/prompts/planFormatting';
-
-type SessionEndReason = 'completed' | 'error' | 'closed';
 
 /** Built-in pi tools that are read-only against the filesystem. `write`, `edit`, and `bash` are never included (P7). */
 const READ_ONLY_BUILTIN_TOOLS = ['read', 'grep', 'find', 'ls'] as const;
@@ -345,24 +343,18 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
   };
 }
 
-export class PiChatSession implements IChatSession {
+export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   private readonly config: PiChatSessionConfig;
   private readonly systemPrompt: string;
   private readonly createSessionFn: CreatePiSessionFn;
   private sessionHandle: PiSessionHandle | null = null;
   private unsubscribe: (() => void) | null = null;
-  private active = false;
-  private ready = false;
-  private closing = false;
-  /** True while an in-flight `abort()` is settling the current turn, so the `runTurn` catch does not treat a user-initiated interrupt as a session error. */
+  /** True while an in-flight `abort()` is settling the current turn, so the `executeTurn` catch does not treat a user-initiated interrupt as a session error. */
   private interrupting = false;
-  private processing = false;
-  private closePromise: Promise<void> | null = null;
-  private turnPromise: Promise<void> | null = null;
-  private queue: QueuedTurn[] = [];
   private latestUsage: PiUsageLike | undefined;
 
   constructor(config: PiChatSessionConfig) {
+    super(config.onMessage, config.onSessionEnd);
     this.config = config;
     this.systemPrompt = buildPiSystemPrompt(config.context);
     this.createSessionFn = config.createSession ?? createRealPiSession;
@@ -417,53 +409,21 @@ export class PiChatSession implements IChatSession {
     return this.sessionHandle?.abort() ?? Promise.resolve();
   }
 
-  pendingQueuedCount(): number {
-    return this.queue.length;
-  }
-
-  cancelLastQueued(): QueuedTurn | null {
-    return this.queue.pop() ?? null;
-  }
-
   getSessionId(): string | null {
     return this.sessionHandle?.getSessionId() ?? null;
   }
 
-  isActive(): boolean {
-    return this.active;
-  }
-
-  isReady(): boolean {
-    return this.ready && !this.closing;
-  }
-
-  async close(): Promise<void> {
-    if (this.closePromise) return this.closePromise;
-    this.closePromise = (async () => {
-      this.closing = true;
-      this.ready = false;
-      this.queue = [];
-      try {
-        await this.sessionHandle?.abort();
-      } catch {
-        // Ignore errors aborting during close.
-      }
-      try {
-        await this.turnPromise;
-      } catch {
-        // Ignore errors during close.
-      }
-      this.active = false;
-      this.processing = false;
-      this.unsubscribe?.();
-      this.unsubscribe = null;
-      this.config.onSessionEnd?.('closed');
-    })();
+  protected async abortActiveTurn(): Promise<void> {
     try {
-      await this.closePromise;
-    } finally {
-      this.closePromise = null;
+      await this.sessionHandle?.abort();
+    } catch {
+      // Ignore errors aborting during close.
     }
+  }
+
+  protected disposeAfterClose(): void {
+    this.unsubscribe?.();
+    this.unsubscribe = null;
   }
 
   /**
@@ -479,36 +439,7 @@ export class PiChatSession implements IChatSession {
     return repo?.active_worktree_path ?? repo?.path ?? this.config.context.project.folder_path;
   }
 
-  private enqueue(turn: QueuedTurn): void {
-    if (!this.active || !this.ready) {
-      throw new Error('Session is not ready');
-    }
-    this.queue.push(turn);
-    if (!this.processing) {
-      this.turnPromise = this.drainQueue();
-    }
-  }
-
-  private async runTurnAndDrain(turn: QueuedTurn): Promise<void> {
-    await this.runTurn(turn);
-    await this.drainQueue();
-  }
-
-  private async drainQueue(): Promise<void> {
-    while (!this.closing && this.queue.length > 0) {
-      const next = this.queue.shift();
-      if (!next) return;
-      this.config.onMessage({
-        type: 'user',
-        message: { role: 'user', content: [] },
-      });
-      await this.runTurn(next);
-    }
-  }
-
-  private async runTurn(turn: QueuedTurn): Promise<void> {
-    if (this.processing) return;
-    this.processing = true;
+  protected async executeTurn(turn: QueuedTurn): Promise<void> {
     // Reset per-turn state. `interrupting` also guards against a leaked flag
     // from an interrupt() call that had no in-flight turn to consume it.
     this.interrupting = false;
@@ -522,7 +453,6 @@ export class PiChatSession implements IChatSession {
       if (this.closing || this.interrupting) return;
       this.config.onSessionEnd?.('error', error as Error);
     } finally {
-      this.processing = false;
       this.interrupting = false;
     }
   }

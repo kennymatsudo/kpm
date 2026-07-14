@@ -15,8 +15,7 @@ import { registerCodexMcpSession, type CodexMcpRegistration } from './KpmCodexMc
 import { summarizeThreadItem } from './threadItemPresentation';
 import type { PlanContext } from '../chat/prompts';
 import { buildItemReferenceTable } from '../chat/prompts/planFormatting';
-
-type SessionEndReason = 'completed' | 'error' | 'closed';
+import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/streaming/BaseTurnQueueChatSession';
 
 export interface CodexChatSessionConfig {
   context: PlanContext;
@@ -172,23 +171,17 @@ function codexConfigWithKpmMcp(url: string): NonNullable<CodexOptions['config']>
   };
 }
 
-export class CodexChatSession {
+export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   private readonly config: CodexChatSessionConfig;
   private readonly systemPrompt: string;
   private codex: Codex | null = null;
   private thread: Thread | null = null;
   private mcpRegistration: CodexMcpRegistration | null = null;
   private abortController: AbortController | null = null;
-  private active = false;
-  private ready = false;
-  private closing = false;
-  private processing = false;
-  private closePromise: Promise<void> | null = null;
-  private turnPromise: Promise<void> | null = null;
-  private queue: QueuedTurn[] = [];
   private threadId: string | null;
 
   constructor(config: CodexChatSessionConfig) {
+    super(config.onMessage, config.onSessionEnd);
     this.config = config;
     this.systemPrompt = buildCodexSystemPrompt(config.context);
     this.threadId = config.resumeThreadId ?? null;
@@ -244,48 +237,16 @@ export class CodexChatSession {
     return Promise.resolve();
   }
 
-  pendingQueuedCount(): number {
-    return this.queue.length;
-  }
-
-  cancelLastQueued(): QueuedTurn | null {
-    return this.queue.pop() ?? null;
-  }
-
   getSessionId(): string | null {
     return this.threadId;
   }
 
-  isActive(): boolean {
-    return this.active;
+  protected abortActiveTurn(): void {
+    this.abortController?.abort();
   }
 
-  isReady(): boolean {
-    return this.ready && !this.closing;
-  }
-
-  async close(): Promise<void> {
-    if (this.closePromise) return this.closePromise;
-    this.closePromise = (async () => {
-      this.closing = true;
-      this.ready = false;
-      this.queue = [];
-      this.abortController?.abort();
-      try {
-        await this.turnPromise;
-      } catch {
-        // Ignore errors during close.
-      }
-      this.active = false;
-      this.processing = false;
-      this.disposeMcpRegistration();
-      this.config.onSessionEnd?.('closed');
-    })();
-    try {
-      await this.closePromise;
-    } finally {
-      this.closePromise = null;
-    }
+  protected disposeAfterClose(): void {
+    this.disposeMcpRegistration();
   }
 
   private buildThreadOptions() {
@@ -304,36 +265,7 @@ export class CodexChatSession {
     };
   }
 
-  private enqueue(turn: QueuedTurn): void {
-    if (!this.active || !this.ready) {
-      throw new Error('Session is not ready');
-    }
-    this.queue.push(turn);
-    if (!this.processing) {
-      this.turnPromise = this.drainQueue();
-    }
-  }
-
-  private async runTurnAndDrain(turn: QueuedTurn): Promise<void> {
-    await this.runTurn(turn);
-    await this.drainQueue();
-  }
-
-  private async drainQueue(): Promise<void> {
-    while (!this.closing && this.queue.length > 0) {
-      const next = this.queue.shift();
-      if (!next) return;
-      this.config.onMessage({
-        type: 'user',
-        message: { role: 'user', content: [] },
-      });
-      await this.runTurn(next);
-    }
-  }
-
-  private async runTurn(turn: QueuedTurn): Promise<void> {
-    if (this.processing) return;
-    this.processing = true;
+  protected async executeTurn(turn: QueuedTurn): Promise<void> {
     this.abortController = new AbortController();
     try {
       const input = turn.prependSystemPrompt
@@ -356,9 +288,6 @@ export class CodexChatSession {
       this.config.onSessionEnd?.('error', err);
     } finally {
       this.abortController = null;
-      if (this.processing) {
-        this.processing = false;
-      }
     }
   }
 
