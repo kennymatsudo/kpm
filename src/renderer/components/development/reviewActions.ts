@@ -17,6 +17,7 @@ import type {
   ReviewTaskStatus,
 } from '../../../shared/types';
 import type { BadgeVariant } from '../ui/Badge';
+import type { ProposedChangeInput } from '../../stores/proposedChangeDisposal';
 import { isThreadClosed, type ReviewStats } from './reviewStats';
 
 export const STATUS_LABEL: Record<ReviewTaskStatus, string> = {
@@ -105,6 +106,12 @@ export function getThreadPill(
   if (task.disposition === 'push_back') return { label: 'Push back', variant: 'warning' };
   if (task.status === 'needs_review') return { label: 'To assess', variant: 'warning' };
   return { label: STATUS_LABEL[task.status], variant: 'default' };
+}
+
+export function getThreadLocation(thread: PrReviewThread): string {
+  if (thread.path && thread.line != null) return `${thread.path}:${thread.line}`;
+  if (thread.path) return thread.path;
+  return 'General';
 }
 
 export function formatReviewerVerdict(state: PrTopLevelReview['state']): string {
@@ -313,4 +320,26 @@ export function deriveNextAction(inputs: NextActionInputs): NextActionDecision |
     };
   }
   return null;
+}
+
+export function buildReviewReplyProposal(input: {
+  session: { id: string; project_id: string };
+  thread: PrReviewThread;
+  threadId: string;
+  title: string;
+  body: string;
+  resolve: boolean;
+}): Extract<ProposedChangeInput, { type: 'review-reply' }> {
+  return {
+    type: 'review-reply',
+    projectId: input.session.project_id,
+    sessionId: input.session.id,
+    threadId: input.threadId,
+    threadUrl: input.thread.url,
+    threadTitle: input.title,
+    threadLocation: getThreadLocation(input.thread),
+    latestCommentPreview: input.thread.latestCommentPreview,
+    body: input.body,
+    resolve: input.resolve,
+  };
 }

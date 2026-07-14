@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { PrReviewThread, PrTopLevelReview, ReviewTask } from '../../../shared/types';
 import type { ReviewStats } from './reviewStats';
 import {
+  buildReviewReplyProposal,
   canReassessTask,
   deriveNextAction,
+  getThreadLocation,
   getThreadPill,
   getThreadRailClass,
   isAddressingReview,
@@ -351,5 +353,77 @@ describe('deriveNextAction', () => {
       ownerTitle: title,
     });
     expect(action?.button).toMatchObject({ disabled: true, title });
+  });
+});
+
+describe('getThreadLocation', () => {
+  it('formats path and line together', () => {
+    expect(getThreadLocation(makeThread({ path: 'src/a.ts', line: 42 }))).toBe('src/a.ts:42');
+  });
+
+  it('falls back to the path alone when there is no line', () => {
+    expect(getThreadLocation(makeThread({ path: 'src/a.ts', line: null }))).toBe('src/a.ts');
+  });
+
+  it('returns General when the thread has no path', () => {
+    expect(getThreadLocation(makeThread({ path: null, line: null }))).toBe('General');
+  });
+});
+
+describe('buildReviewReplyProposal', () => {
+  it('maps every field of the review-reply proposal', () => {
+    const thread = makeThread({
+      url: 'https://github.com/x/y/pull/3#discussion_r9',
+      path: 'src/b.ts',
+      line: 7,
+      latestCommentPreview: 'please rename this',
+    });
+    const proposal = buildReviewReplyProposal({
+      session: { id: 'session-9', project_id: 'proj-9' },
+      thread,
+      threadId: 'thread-9',
+      title: 'Rename the variable',
+      body: 'Done in the latest push.',
+      resolve: true,
+    });
+
+    expect(proposal).toEqual({
+      type: 'review-reply',
+      projectId: 'proj-9',
+      sessionId: 'session-9',
+      threadId: 'thread-9',
+      threadUrl: 'https://github.com/x/y/pull/3#discussion_r9',
+      threadTitle: 'Rename the variable',
+      threadLocation: getThreadLocation(thread),
+      latestCommentPreview: 'please rename this',
+      body: 'Done in the latest push.',
+      resolve: true,
+    });
+  });
+
+  it('derives threadLocation from the thread, not the caller', () => {
+    const thread = makeThread({ path: 'src/c.ts', line: 123 });
+    const proposal = buildReviewReplyProposal({
+      session: { id: 's', project_id: 'p' },
+      thread,
+      threadId: 't',
+      title: 'anything',
+      body: 'reply',
+      resolve: false,
+    });
+    expect(proposal.threadLocation).toBe(getThreadLocation(thread));
+    expect(proposal.threadLocation).toBe('src/c.ts:123');
+  });
+
+  it('passes the caller-supplied title through verbatim', () => {
+    const proposal = buildReviewReplyProposal({
+      session: { id: 's', project_id: 'p' },
+      thread: makeThread(),
+      threadId: 't',
+      title: 'Caller decides the title',
+      body: 'reply',
+      resolve: false,
+    });
+    expect(proposal.threadTitle).toBe('Caller decides the title');
   });
 });

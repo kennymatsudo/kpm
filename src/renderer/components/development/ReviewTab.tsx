@@ -38,10 +38,12 @@ import {
   isReviewTaskUpdatingCode,
 } from './reviewStats';
 import {
+  buildReviewReplyProposal,
   canReassessTask,
   deriveNextAction,
   DISPOSITION_LABEL,
   formatReviewerVerdict,
+  getThreadLocation,
   getThreadPill,
   getThreadRailClass,
   isAddressingReview,
@@ -105,12 +107,6 @@ interface NextAction {
 
 function cx(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(' ');
-}
-
-function getThreadLocation(thread: PrReviewThread): string {
-  if (thread.path && thread.line != null) return `${thread.path}:${thread.line}`;
-  if (thread.path) return thread.path;
-  return 'General';
 }
 
 function getLatestComment(thread: PrReviewThread): PrReviewThreadComment | null {
@@ -938,16 +934,14 @@ export function ReviewTab({ session }: ReviewTabProps) {
       if (!task.draft_reply) continue;
       const thread = snapshot?.threads.find((item) => item.id === task.thread_id);
       if (!thread) continue;
-      proposeChange({ type: 'review-reply', projectId: session.project_id,
-        sessionId: session.id,
+      proposeChange(buildReviewReplyProposal({
+        session,
+        thread,
         threadId: task.thread_id,
-        threadUrl: thread.url,
-        threadTitle: task.title,
-        threadLocation: getThreadLocation(thread),
-        latestCommentPreview: thread.latestCommentPreview,
+        title: task.title,
         body: task.draft_reply,
         resolve: true,
-      });
+      }));
     }
     toast.success(`Queued ${stats.readyToPostTasks.length} replies for approval`);
   }
@@ -964,16 +958,14 @@ export function ReviewTab({ session }: ReviewTabProps) {
     }
 
     await withAction(`reply:${threadId}`, () => {
-      proposeChange({ type: 'review-reply', projectId: session.project_id,
-        sessionId: session.id,
+      proposeChange(buildReviewReplyProposal({
+        session,
+        thread,
         threadId,
-        threadUrl: thread.url,
-        threadTitle: task?.title ?? getThreadLocation(thread),
-        threadLocation: getThreadLocation(thread),
-        latestCommentPreview: thread.latestCommentPreview,
+        title: task?.title ?? getThreadLocation(thread),
         body,
         resolve,
-      });
+      }));
       setReplyThreadId(null);
       setReplyBody('');
       return true;
