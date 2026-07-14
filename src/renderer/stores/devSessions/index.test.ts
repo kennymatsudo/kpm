@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { installMockApi, type MockApi } from '../../../../tests/mocks/electron-api';
 import { useDevSessionsStore } from './index';
+import { DEFAULT_REVIEW_FILTERS, runReviewInboxOp } from './helpers';
 
 function createDevSession() {
   return {
@@ -549,6 +550,204 @@ describe('devSessionsStore', () => {
 
     expect(useDevSessionsStore.getState().reviewFindingsBySessionId.get('dev-session-1')).toEqual(
       persistedReview.findings
+    );
+  });
+
+  describe('runReviewInboxOp', () => {
+    it('projects the inbox on success, clearing a prior error and recomputing actionable state', async () => {
+      const base = createReviewInbox();
+      const inbox = {
+        ...base,
+        tasks: base.tasks.map((task) => ({
+          ...task,
+          status: 'assessed' as const,
+          disposition: 'needs_user_input' as const,
+        })),
+      };
+      useDevSessionsStore.setState({
+        reviewErrorBySessionId: new Map([['dev-session-1', 'previous failure']]),
+      });
+
+      const result = await runReviewInboxOp(
+        useDevSessionsStore.setState,
+        'dev-session-1',
+        'Fallback label',
+        () => Promise.resolve({ success: true, inbox })
+      );
+
+      expect(result).toEqual({ success: true, inbox });
+      const state = useDevSessionsStore.getState();
+      expect(state.reviewInboxBySessionId.get('dev-session-1')).toEqual(inbox);
+      expect(state.reviewErrorBySessionId.get('dev-session-1')).toBeNull();
+      expect(state.reviewActionableBySessionId.get('dev-session-1')).toEqual({
+        sessionId: 'dev-session-1',
+        hasActionable: true,
+        counts: { needsInput: 1, failed: 0, stale: 0, errored: 0 },
+      });
+    });
+
+    it('sets and returns the service error when the call is unsuccessful', async () => {
+      const result = await runReviewInboxOp(
+        useDevSessionsStore.setState,
+        'dev-session-1',
+        'Fallback label',
+        () => Promise.resolve({ success: false, error: 'service exploded' })
+      );
+
+      expect(result).toEqual({ success: false, error: 'service exploded' });
+      expect(useDevSessionsStore.getState().reviewErrorBySessionId.get('dev-session-1')).toBe('service exploded');
+    });
+
+    it('falls back to the label when the unsuccessful result carries an empty error', async () => {
+      const result = await runReviewInboxOp(
+        useDevSessionsStore.setState,
+        'dev-session-1',
+        'Fallback label',
+        () => Promise.resolve({ success: false, error: '' })
+      );
+
+      expect(result).toEqual({ success: false, error: 'Fallback label' });
+      expect(useDevSessionsStore.getState().reviewErrorBySessionId.get('dev-session-1')).toBe('Fallback label');
+    });
+
+    it('surfaces the message when the call throws an Error', async () => {
+      const result = await runReviewInboxOp(
+        useDevSessionsStore.setState,
+        'dev-session-1',
+        'Fallback label',
+        () => Promise.reject(new Error('kaboom'))
+      );
+
+      expect(result).toEqual({ success: false, error: 'kaboom' });
+      expect(useDevSessionsStore.getState().reviewErrorBySessionId.get('dev-session-1')).toBe('kaboom');
+    });
+
+    it('falls back to the label when the call throws a non-Error', async () => {
+      const nonError: unknown = 'plain rejection';
+      const result = await runReviewInboxOp(
+        useDevSessionsStore.setState,
+        'dev-session-1',
+        'Fallback label',
+        async () => { throw nonError; }
+      );
+
+      expect(result).toEqual({ success: false, error: 'Fallback label' });
+      expect(useDevSessionsStore.getState().reviewErrorBySessionId.get('dev-session-1')).toBe('Fallback label');
+    });
+
+    it('threads the ensureFilters option through to setReviewInbox', async () => {
+      const inbox = createReviewInbox();
+
+      await runReviewInboxOp(
+        useDevSessionsStore.setState,
+        'dev-session-1',
+        'Fallback label',
+        () => Promise.resolve({ success: true, inbox }),
+        { ensureFilters: true }
+      );
+
+      expect(useDevSessionsStore.getState().reviewFiltersBySessionId.get('dev-session-1')).toEqual(DEFAULT_REVIEW_FILTERS);
+    });
+
+    it('does not create default filters when ensureFilters is omitted', async () => {
+      const inbox = createReviewInbox();
+
+      await runReviewInboxOp(
+        useDevSessionsStore.setState,
+        'dev-session-1',
+        'Fallback label',
+        () => Promise.resolve({ success: true, inbox })
+      );
+
+      expect(useDevSessionsStore.getState().reviewFiltersBySessionId.has('dev-session-1')).toBe(false);
+    });
+
+    it('keeps loadReviewInbox loading while the request is pending and clears it on success', async () => {
+      const inbox = createReviewInbox();
+      let resolveInbox!: (value: { success: true; inbox: typeof inbox }) => void;
+      api.review.getInbox.mockReturnValue(new Promise((resolve) => {
+        resolveInbox = resolve;
+      }));
+
+      const pending = useDevSessionsStore.getState().loadReviewInbox('dev-session-1');
+      expect(useDevSessionsStore.getState().reviewLoadingIds.has('dev-session-1')).toBe(true);
+
+      resolveInbox({ success: true, inbox });
+      await expect(pending).resolves.toEqual({ success: true, inbox });
+      expect(useDevSessionsStore.getState().reviewLoadingIds.has('dev-session-1')).toBe(false);
+    });
+
+    it('clears refreshReviewInbox loading after an unsuccessful result', async () => {
+      api.review.refreshSession.mockResolvedValue({ success: false, error: 'refresh failed' });
+
+      const result = await useDevSessionsStore.getState().refreshReviewInbox('dev-session-1');
+
+      expect(result).toEqual({ success: false, error: 'refresh failed' });
+      expect(useDevSessionsStore.getState().reviewLoadingIds.has('dev-session-1')).toBe(false);
+    });
+
+    it('clears loadReviewInbox loading after the request throws', async () => {
+      api.review.getInbox.mockRejectedValue(new Error('network down'));
+
+      const result = await useDevSessionsStore.getState().loadReviewInbox('dev-session-1', { force: true });
+
+      expect(result).toEqual({ success: false, error: 'network down' });
+      expect(useDevSessionsStore.getState().reviewLoadingIds.has('dev-session-1')).toBe(false);
+    });
+  });
+
+  describe('migrated review inbox op adapters', () => {
+    const migrationCases = [
+      {
+        name: 'assignReviewOwnership',
+        apiMethod: () => api.review.assignOwnership,
+        invoke: () => useDevSessionsStore.getState().assignReviewOwnership('dev-session-1'),
+        expectedPayload: { sessionId: 'dev-session-1' },
+      },
+      {
+        name: 'draftPostImplReplies',
+        apiMethod: () => api.review.draftPostImplReplies,
+        invoke: () => useDevSessionsStore.getState().draftPostImplReplies('dev-session-1'),
+        expectedPayload: { sessionId: 'dev-session-1' },
+      },
+      {
+        name: 'resolveReviewThread',
+        apiMethod: () => api.review.resolveThread,
+        invoke: () => useDevSessionsStore.getState().resolveReviewThread('dev-session-1', 'thread-1'),
+        expectedPayload: { sessionId: 'dev-session-1', threadId: 'thread-1' },
+      },
+      {
+        name: 'unresolveReviewThread',
+        apiMethod: () => api.review.unresolveThread,
+        invoke: () => useDevSessionsStore.getState().unresolveReviewThread('dev-session-1', 'thread-1'),
+        expectedPayload: { sessionId: 'dev-session-1', threadId: 'thread-1' },
+      },
+      {
+        name: 'ignoreReviewTask',
+        apiMethod: () => api.review.ignoreTask,
+        invoke: () => useDevSessionsStore.getState().ignoreReviewTask('dev-session-1', 'task-1'),
+        expectedPayload: { taskId: 'task-1' },
+      },
+      {
+        name: 'overrideReviewDisposition',
+        apiMethod: () => api.review.overrideDisposition,
+        invoke: () => useDevSessionsStore.getState().overrideReviewDisposition('dev-session-1', 'task-1', 'implement'),
+        expectedPayload: { taskId: 'task-1', disposition: 'implement' },
+      },
+    ];
+
+    it.each(migrationCases)(
+      'routes $name to its review endpoint with the exact payload and projects the inbox',
+      async ({ apiMethod, invoke, expectedPayload }) => {
+        const inbox = createReviewInbox();
+        apiMethod().mockResolvedValue({ success: true, inbox });
+
+        const result = await invoke();
+
+        expect(apiMethod()).toHaveBeenCalledWith(expectedPayload);
+        expect(result).toEqual({ success: true, inbox });
+        expect(useDevSessionsStore.getState().reviewInboxBySessionId.get('dev-session-1')).toEqual(inbox);
+      }
     );
   });
 });

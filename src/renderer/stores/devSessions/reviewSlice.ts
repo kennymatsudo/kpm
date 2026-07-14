@@ -1,5 +1,6 @@
 import {
   DEFAULT_REVIEW_FILTERS,
+  runReviewInboxOp,
   setMapValue,
   setReviewError,
   setReviewInbox,
@@ -95,23 +96,13 @@ export function createDevSessionsReviewSlice(
       set((state) => setReviewLoading(state, sessionId, true));
 
       try {
-        const result = await getReviewInbox({ sessionId });
-        if (!result.success) {
-          const error = result.error || 'Failed to load review inbox';
-          set((state) => setReviewError(state, sessionId, error));
-          return { success: false, error };
-        }
-
-        const inbox = result.inbox;
-        set((state) => setReviewInbox(state, sessionId, inbox, { ensureFilters: true }));
-        return { success: true, inbox };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to load review inbox';
-        set((state) => setReviewError(state, sessionId, message));
-        return {
-          success: false,
-          error: message,
-        };
+        return await runReviewInboxOp(
+          set,
+          sessionId,
+          'Failed to load review inbox',
+          () => getReviewInbox({ sessionId }),
+          { ensureFilters: true }
+        );
       } finally {
         set((state) => setReviewLoading(state, sessionId, false));
       }
@@ -121,43 +112,24 @@ export function createDevSessionsReviewSlice(
       set((state) => setReviewLoading(state, sessionId, true));
 
       try {
-        const result = await refreshSessionReviewInbox({ sessionId });
-        if (!result.success) {
-          const error = result.error || 'Failed to refresh review inbox';
-          set((state) => setReviewError(state, sessionId, error));
-          return { success: false, error };
-        }
-
-        const inbox = result.inbox;
-        set((state) => setReviewInbox(state, sessionId, inbox));
-        return { success: true, inbox };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to refresh review inbox';
-        set((state) => setReviewError(state, sessionId, message));
-        return { success: false, error: message };
+        return await runReviewInboxOp(
+          set,
+          sessionId,
+          'Failed to refresh review inbox',
+          () => refreshSessionReviewInbox({ sessionId })
+        );
       } finally {
         set((state) => setReviewLoading(state, sessionId, false));
       }
     },
 
-    assignReviewOwnership: async (sessionId) => {
-      try {
-        const result = await assignSessionReviewOwnership({ sessionId });
-        if (!result.success) {
-          const error = result.error || 'Failed to assign review ownership';
-          set((state) => setReviewError(state, sessionId, error));
-          return { success: false, error };
-        }
-
-        const inbox = result.inbox;
-        set((state) => setReviewInbox(state, sessionId, inbox));
-        return { success: true, inbox };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to assign review ownership';
-        set((state) => setReviewError(state, sessionId, message));
-        return { success: false, error: message };
-      }
-    },
+    assignReviewOwnership: (sessionId) =>
+      runReviewInboxOp(
+        set,
+        sessionId,
+        'Failed to assign review ownership',
+        () => assignSessionReviewOwnership({ sessionId })
+      ),
 
     assessReviewThreads: async (sessionId, options) => {
       const pending = buildAssessmentPending(sessionId, get().reviewInboxBySessionId.get(sessionId), options);
@@ -183,24 +155,13 @@ export function createDevSessionsReviewSlice(
       }
     },
 
-    draftPostImplReplies: async (sessionId) => {
-      try {
-        const result = await draftSessionPostImplReplies({ sessionId });
-        if (!result.success) {
-          const error = result.error || 'Failed to draft post-implementation replies';
-          set((state) => setReviewError(state, sessionId, error));
-          return { success: false, error };
-        }
-
-        const inbox = result.inbox;
-        set((state) => setReviewInbox(state, sessionId, inbox));
-        return { success: true, inbox };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to draft post-implementation replies';
-        set((state) => setReviewError(state, sessionId, message));
-        return { success: false, error: message };
-      }
-    },
+    draftPostImplReplies: (sessionId) =>
+      runReviewInboxOp(
+        set,
+        sessionId,
+        'Failed to draft post-implementation replies',
+        () => draftSessionPostImplReplies({ sessionId })
+      ),
 
     triggerReviewAutomation: async (sessionId, taskIds) => {
       try {
@@ -261,81 +222,37 @@ export function createDevSessionsReviewSlice(
       }
     },
 
-    resolveReviewThread: async (sessionId, threadId) => {
-      try {
-        const result = await resolveSessionReviewThread({ sessionId, threadId });
-        if (!result.success) {
-          const error = result.error || 'Failed to resolve review thread';
-          set((state) => setReviewError(state, sessionId, error));
-          return { success: false, error };
-        }
+    resolveReviewThread: (sessionId, threadId) =>
+      runReviewInboxOp(
+        set,
+        sessionId,
+        'Failed to resolve review thread',
+        () => resolveSessionReviewThread({ sessionId, threadId })
+      ),
 
-        const inbox = result.inbox;
-        set((state) => setReviewInbox(state, sessionId, inbox));
-        return { success: true, inbox };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to resolve review thread';
-        set((state) => setReviewError(state, sessionId, message));
-        return { success: false, error: message };
-      }
-    },
+    unresolveReviewThread: (sessionId, threadId) =>
+      runReviewInboxOp(
+        set,
+        sessionId,
+        'Failed to reopen review thread',
+        () => unresolveSessionReviewThread({ sessionId, threadId })
+      ),
 
-    unresolveReviewThread: async (sessionId, threadId) => {
-      try {
-        const result = await unresolveSessionReviewThread({ sessionId, threadId });
-        if (!result.success) {
-          const error = result.error || 'Failed to reopen review thread';
-          set((state) => setReviewError(state, sessionId, error));
-          return { success: false, error };
-        }
+    ignoreReviewTask: (sessionId, taskId) =>
+      runReviewInboxOp(
+        set,
+        sessionId,
+        'Failed to ignore review task',
+        () => ignoreSessionReviewTask({ taskId })
+      ),
 
-        const inbox = result.inbox;
-        set((state) => setReviewInbox(state, sessionId, inbox));
-        return { success: true, inbox };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to reopen review thread';
-        set((state) => setReviewError(state, sessionId, message));
-        return { success: false, error: message };
-      }
-    },
-
-    ignoreReviewTask: async (sessionId, taskId) => {
-      try {
-        const result = await ignoreSessionReviewTask({ taskId });
-        if (!result.success) {
-          const error = result.error || 'Failed to ignore review task';
-          set((state) => setReviewError(state, sessionId, error));
-          return { success: false, error };
-        }
-
-        const inbox = result.inbox;
-        set((state) => setReviewInbox(state, sessionId, inbox));
-        return { success: true, inbox };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to ignore review task';
-        set((state) => setReviewError(state, sessionId, message));
-        return { success: false, error: message };
-      }
-    },
-
-    overrideReviewDisposition: async (sessionId, taskId, disposition) => {
-      try {
-        const result = await overrideSessionReviewDisposition({ taskId, disposition });
-        if (!result.success) {
-          const error = result.error || 'Failed to override disposition';
-          set((state) => setReviewError(state, sessionId, error));
-          return { success: false, error };
-        }
-
-        const inbox = result.inbox;
-        set((state) => setReviewInbox(state, sessionId, inbox));
-        return { success: true, inbox };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to override disposition';
-        set((state) => setReviewError(state, sessionId, message));
-        return { success: false, error: message };
-      }
-    },
+    overrideReviewDisposition: (sessionId, taskId, disposition) =>
+      runReviewInboxOp(
+        set,
+        sessionId,
+        'Failed to override disposition',
+        () => overrideSessionReviewDisposition({ taskId, disposition })
+      ),
 
     setReviewFilters: (sessionId, filters) =>
       set((state) => {

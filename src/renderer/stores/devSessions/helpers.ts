@@ -5,7 +5,7 @@ import type {
   ReviewInboxSnapshot,
 } from '../../../shared/types';
 import { summarizeReviewThreads } from '../../../shared/reviewThreadSummary';
-import type { BackgroundCommitState } from './index';
+import type { BackgroundCommitState, DevSessionsSet } from './index';
 
 export interface PrCreationContext {
   suggestedTitle: string;
@@ -217,4 +217,36 @@ export function setReviewInbox<State extends ReviewState>(
       computeActionableFromInbox(inbox, sessionId)
     ),
   };
+}
+
+export type ReviewInboxOpResult =
+  | { success: true; inbox: ReviewInboxSnapshot }
+  | { success: false; error: string };
+
+type ReviewInboxCall = () => Promise<
+  | { success: true; inbox: ReviewInboxSnapshot }
+  | { success: false; error?: string }
+>;
+
+export async function runReviewInboxOp(
+  set: DevSessionsSet,
+  sessionId: string,
+  fallbackError: string,
+  call: ReviewInboxCall,
+  options?: { ensureFilters?: boolean }
+): Promise<ReviewInboxOpResult> {
+  try {
+    const result = await call();
+    if (!result.success) {
+      const error = result.error || fallbackError;
+      set((state) => setReviewError(state, sessionId, error));
+      return { success: false, error };
+    }
+    set((state) => setReviewInbox(state, sessionId, result.inbox, options));
+    return { success: true, inbox: result.inbox };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : fallbackError;
+    set((state) => setReviewError(state, sessionId, message));
+    return { success: false, error: message };
+  }
 }
