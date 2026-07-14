@@ -58,7 +58,17 @@ import { createSlackTriageService } from './core/SlackTriageService';
 import { createSlackTriageAdapter } from './core/slackTriageAdapter';
 
 // Claude usage tracking
-import { createClaudeUsageService } from './core/ClaudeUsageService';
+import { createClaudeUsageService, type UsageSource } from './core/ClaudeUsageService';
+import { configureGeneration, type GenerationPurpose } from '../generation';
+
+/** Maps a generation purpose to the usage-ledger source it records under. */
+const GENERATION_PURPOSE_TO_USAGE_SOURCE: Record<GenerationPurpose, UsageSource> = {
+  briefing: 'briefing',
+  pr_description: 'pr_description',
+  commit_message: 'commit_message',
+  slack_triage: 'slack_triage',
+  file_summary: 'file-summary',
+};
 
 // Confluence services
 import { createConfluenceSyncService } from './confluence';
@@ -149,6 +159,27 @@ export function createAppServices(container: IRepositoryContainer) {
   // the recorder globally rather than threading deps through executeCustomPrompt.
   setCustomPromptUsageRecorder(({ projectId, source, model, usage, totalCostUsd }) => {
     claudeUsageService.recordUsage({ projectId, source, model, usage, totalCostUsd });
+  });
+
+  // Route the one-shot generation seam's usage through the same central
+  // tracker. The seam records every migrated generation site now, so the
+  // per-site recordUsage plumbing is gone; this maps the neutral (purpose,
+  // usage) shape onto the ledger's source + raw token block.
+  configureGeneration({
+    recordUsage: ({ purpose, model, projectId, usage, totalCostUsd }) => {
+      claudeUsageService.recordUsage({
+        projectId,
+        source: GENERATION_PURPOSE_TO_USAGE_SOURCE[purpose],
+        model,
+        usage: {
+          input_tokens: usage.inputTokens,
+          output_tokens: usage.outputTokens,
+          cache_read_input_tokens: usage.cacheReadTokens,
+          cache_creation_input_tokens: usage.cacheWriteTokens ?? 0,
+        },
+        totalCostUsd,
+      });
+    },
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -316,15 +347,6 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const fileSummaryService = createFileSummaryService({
     repository: container.projectFileMetadata,
-    recordUsage: ({ projectId, model, usage, totalCostUsd }) => {
-      claudeUsageService.recordUsage({
-        projectId,
-        source: 'file-summary',
-        model,
-        usage,
-        totalCostUsd,
-      });
-    },
   });
 
   const {
@@ -409,15 +431,6 @@ export function createAppServices(container: IRepositoryContainer) {
     getPromptContent,
     fileExplorerService,
     projects: container.projects,
-    recordUsage: ({ projectId, model, usage, totalCostUsd }) => {
-      claudeUsageService.recordUsage({
-        projectId,
-        source: 'briefing',
-        model,
-        usage,
-        totalCostUsd,
-      });
-    },
   });
 
   const {
@@ -506,9 +519,6 @@ export function createAppServices(container: IRepositoryContainer) {
     sendSlackMessage: slackAdapter.sendSlackMessage,
     createTaskFromTriage: slackAdapter.createTaskFromTriage,
     applyDocumentUpdate: slackAdapter.applyDocumentUpdate,
-    recordUsage: ({ projectId, source, model, usage, totalCostUsd }) => {
-      claudeUsageService.recordUsage({ projectId, source, model, usage, totalCostUsd });
-    },
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

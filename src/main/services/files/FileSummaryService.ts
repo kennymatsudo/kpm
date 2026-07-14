@@ -8,9 +8,7 @@
 import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import type { ClaudeQueryUsage } from '../../claude/runClaudeQuery';
-import { runClaudeQuery } from '../../claude/runClaudeQuery';
-import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
+import { runGeneration } from '../../generation';
 import type { IProjectFileMetadataRepository } from '../../db/interfaces/files';
 
 const SUMMARIZABLE_EXTENSIONS = new Set(['.md', '.txt', '.mdx', '.rst', '.yaml', '.yml', '.json', '.toml']);
@@ -29,7 +27,6 @@ interface DiskSummaryTask {
 
 export interface FileSummaryServiceDeps {
   repository: IProjectFileMetadataRepository;
-  recordUsage?: (event: { projectId: string; model: string; usage: ClaudeQueryUsage; totalCostUsd?: number | null }) => void;
 }
 
 function computeHash(content: string): string {
@@ -56,21 +53,15 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
     const prompt = `File: ${filePath}\n\n${truncated}`;
 
     try {
-      const result = await runClaudeQuery({
+      const result = await runGeneration({
+        purpose: 'file_summary',
+        tier: 'cheap',
+        systemPrompt: SYSTEM_PROMPT,
         prompt,
-        sdkOptions: {
-          model: 'haiku',
-          systemPrompt: SYSTEM_PROMPT,
-          tools: [],
-          persistSession: false,
-          maxTurns: 1,
-          ...getClaudeSdkSpawnOptions(),
-        },
+        maxTurns: 1,
         timeoutMs: 30_000,
         timeoutMessage: 'File summary timed out',
-        recordUsage: deps.recordUsage
-          ? ({ usage, totalCostUsd }) => deps.recordUsage!({ projectId, model: 'haiku', usage, totalCostUsd })
-          : undefined,
+        projectId,
       });
 
       return result.text.trim() || null;

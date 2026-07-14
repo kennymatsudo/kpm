@@ -5,9 +5,8 @@
  * Follows the factory + DI pattern used by other services.
  */
 
-import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync } from 'fs';
-import { runClaudeQuery, type ClaudeQueryUsage } from '../../claude/runClaudeQuery';
+import { runGeneration } from '../../generation';
 import { randomUUID } from 'crypto';
 import type { IDevSessionRepository, IRepoRepository, IPlanItemRepository } from '../../db/interfaces';
 import type {
@@ -20,7 +19,6 @@ import type {
 } from '../../../shared/types';
 import { success, failure, wrapAsync, type AsyncResult } from '../result';
 import { getConfig } from '../../config';
-import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import {
   checkGhAuth,
   createPr,
@@ -61,18 +59,6 @@ export interface GitHubServiceDeps {
   readProjectDocument?: (projectId: string, path: string) => AsyncResult<string>;
   /** Resolves configurable prompt content (override > registry default). */
   getPromptContent?: (key: string) => string;
-  /**
-   * Centralized Claude usage recorder. Optional so existing tests don't need
-   * to wire it. PR-description generation calls in this service should funnel
-   * through here.
-   */
-  recordUsage?: (event: {
-    projectId: string | null;
-    source: 'pr_description';
-    model: string;
-    usage: ClaudeQueryUsage;
-    totalCostUsd?: number | null;
-  }) => void;
 }
 
 export interface PrContextResult {
@@ -207,7 +193,6 @@ export function createGitHubService(deps: GitHubServiceDeps) {
     baseBranch: string;
     diff: string;
     commitLog: string;
-    recordUsage?: GitHubServiceDeps['recordUsage'];
   }): Promise<string | null> {
     if (!input.projectId || !input.featureContextPath || !deps.readProjectDocument) {
       return null;
@@ -267,30 +252,15 @@ Secondary chronology for intent and grouping only. Do not report reverted or aba
 
 ${input.commitLog || 'No commit log provided.'}`;
 
-    const sdkModel = getConfig().generation.fastModel;
-    const result = await runClaudeQuery({
+    const result = await runGeneration({
+      purpose: 'pr_description',
+      tier: 'fast',
+      systemPrompt:
+        'You extract concise feature context for pull request reviewers. Return only bullets, no preamble.',
       prompt,
-      sdkOptions: {
-        model: sdkModel,
-        tools: [],
-        persistSession: false,
-        systemPrompt: 'You extract concise feature context for pull request reviewers. Return only bullets, no preamble.',
-        stderr: () => {},
-        ...getClaudeSdkSpawnOptions(),
-      },
       timeoutMs: getConfig().generation.prGenerationTimeoutMs,
       timeoutMessage: 'Feature context extraction timed out',
-      recordUsage: input.recordUsage
-        ? ({ usage, totalCostUsd }) => {
-            input.recordUsage!({
-              projectId: input.projectId,
-              source: 'pr_description',
-              model: sdkModel,
-              usage,
-              totalCostUsd,
-            });
-          }
-        : undefined,
+      projectId: input.projectId,
     });
 
     return result.text.trim() || null;
@@ -629,7 +599,6 @@ ${input.commitLog || 'No commit log provided.'}`;
           baseBranch,
           diff: sessionDiff,
           commitLog: sessionCommitLog,
-          recordUsage: deps.recordUsage,
         });
 
         // Build the generation prompt
@@ -704,36 +673,16 @@ ${effectivePrTemplate}`
 
         const prompt = `Generate a PR title and description for the following changes:\n\n${contextParts.join('\n\n')}`;
 
-        log('Calling Sonnet to generate PR content...');
+        log('Calling the fast model to generate PR content...');
 
-        const sdkOptions: SDKOptions = {
-          model: getConfig().generation.fastModel,
-          tools: [],
-          persistSession: false,
+        const result = await runGeneration({
+          purpose: 'pr_description',
+          tier: 'fast',
           systemPrompt,
-          stderr: (data: string) => { logError(`stderr: ${data}`); },
-          ...getClaudeSdkSpawnOptions(),
-        };
-
-        const TIMEOUT_MS = getConfig().generation.prGenerationTimeoutMs;
-        const sdkModel = getConfig().generation.fastModel;
-
-        const result = await runClaudeQuery({
           prompt,
-          sdkOptions,
-          timeoutMs: TIMEOUT_MS,
+          timeoutMs: getConfig().generation.prGenerationTimeoutMs,
           timeoutMessage: 'PR generation timed out',
-          recordUsage: deps.recordUsage
-            ? ({ usage, totalCostUsd }) => {
-                deps.recordUsage!({
-                  projectId: session.project_id,
-                  source: 'pr_description',
-                  model: sdkModel,
-                  usage,
-                  totalCostUsd,
-                });
-              }
-            : undefined,
+          projectId: session.project_id,
         });
 
         const generatedContent = result.text;

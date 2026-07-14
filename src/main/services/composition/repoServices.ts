@@ -113,9 +113,6 @@ export function createRepoServices({
     readProjectDocument: (projectId, documentPath) =>
       fileExplorerService.readFileAsync(projectId, documentPath),
     getPromptContent,
-    recordUsage: ({ projectId, source, model, usage, totalCostUsd }) => {
-      claudeUsageService.recordUsage({ projectId, source, model, usage, totalCostUsd });
-    },
   });
 
   const reviewService = createReviewService({

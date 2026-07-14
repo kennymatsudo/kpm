@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import type { IDevSessionRepository, IPlanItemRepository, IRepoRepository } from '../../db/interfaces';
 
-const runClaudeQueryMock = vi.hoisted(() => vi.fn());
+const runGenerationMock = vi.hoisted(() => vi.fn());
 const gitMocks = vi.hoisted(() => ({
   getCommittedDiff: vi.fn(),
   getCommitLog: vi.fn(),
@@ -14,18 +14,13 @@ const gitMocks = vi.hoisted(() => ({
   readPrTemplate: vi.fn(),
 }));
 
-vi.mock('../../claude/runClaudeQuery', () => ({
-  runClaudeQuery: runClaudeQueryMock,
-}));
-
-vi.mock('../../claude/findClaude', () => ({
-  getClaudeSdkSpawnOptions: () => ({}),
+vi.mock('../../generation', () => ({
+  runGeneration: runGenerationMock,
 }));
 
 vi.mock('../../config', () => ({
   getConfig: () => ({
     generation: {
-      fastModel: 'sonnet',
       prGenerationTimeoutMs: 60_000,
     },
   }),
@@ -104,7 +99,7 @@ describe('GitHubService PR generation', () => {
     gitMocks.getCommitLog.mockResolvedValue('abc123 Add attachment records');
     gitMocks.hasCommitsAhead.mockResolvedValue(true);
     gitMocks.readPrTemplate.mockResolvedValue(null);
-    runClaudeQueryMock.mockResolvedValue({
+    runGenerationMock.mockResolvedValue({
       text: 'TITLE: PROJ-184: Add attachment records\nBODY:\nThis adds attachment records for the media service upload flow.',
       errors: [],
     });
@@ -132,8 +127,8 @@ describe('GitHubService PR generation', () => {
 
     expect(result.ok).toBe(true);
     expect(gitMocks.getCommittedDiff).toHaveBeenCalledWith('/repo', 'main', 80_000);
-    expect(runClaudeQueryMock).toHaveBeenCalledTimes(1);
-    const prompt = runClaudeQueryMock.mock.calls[0][0].prompt as string;
+    expect(runGenerationMock).toHaveBeenCalledTimes(1);
+    const prompt = runGenerationMock.mock.calls[0][0].prompt as string;
     expect(prompt).toContain('Intent: Persist attachment authorization state for the upload lifecycle.');
     expect(prompt).toContain('- Finalize validates supported image MIME types before making an attachment available.');
     expect(prompt).toContain('+new committed behavior');
@@ -150,7 +145,7 @@ describe('GitHubService PR generation', () => {
       ok: true as const,
       data: '# Support attachments\n\nThis feature lets App store bytes while media service owns access control.',
     }));
-    runClaudeQueryMock
+    runGenerationMock
       .mockResolvedValueOnce({
         text: [
           '- Larger feature: decouple attachment byte storage from media service authorization.',
@@ -177,14 +172,14 @@ describe('GitHubService PR generation', () => {
 
     expect(result.ok).toBe(true);
     expect(readProjectDocument).toHaveBeenCalledWith('project-1', 'docs/support-attachments.md');
-    expect(runClaudeQueryMock).toHaveBeenCalledTimes(2);
-    const extractionPrompt = runClaudeQueryMock.mock.calls[0][0].prompt as string;
+    expect(runGenerationMock).toHaveBeenCalledTimes(2);
+    const extractionPrompt = runGenerationMock.mock.calls[0][0].prompt as string;
     expect(extractionPrompt).toContain('[REFERENCE - Feature Document]');
     expect(extractionPrompt).toContain('docs/support-attachments.md');
     expect(extractionPrompt.indexOf('[REFERENCE - Net Diff]')).toBeLessThan(
       extractionPrompt.indexOf('[REFERENCE - Commit History]')
     );
-    const finalPrompt = runClaudeQueryMock.mock.calls[1][0].prompt as string;
+    const finalPrompt = runGenerationMock.mock.calls[1][0].prompt as string;
     expect(finalPrompt).toContain('[REFERENCE — Feature Context]');
     expect(finalPrompt).toContain('decouple attachment byte storage');
     expect(finalPrompt).toContain('media service record lifecycle');
@@ -204,7 +199,7 @@ describe('GitHubService PR generation', () => {
       ''
     );
 
-    const systemPrompt = runClaudeQueryMock.mock.calls[0][0].sdkOptions.systemPrompt as string;
+    const systemPrompt = runGenerationMock.mock.calls[0][0].systemPrompt as string;
     expect(systemPrompt).toContain('MUST use the repository');
     expect(systemPrompt).toContain('## PR Template');
     expect(systemPrompt).toContain('## Manual Test Plan');
@@ -269,7 +264,7 @@ describe('GitHubService PR generation', () => {
       ''
     );
 
-    const systemPrompt = runClaudeQueryMock.mock.calls[0][0].sdkOptions.systemPrompt as string;
+    const systemPrompt = runGenerationMock.mock.calls[0][0].systemPrompt as string;
     expect(systemPrompt).toContain('Custom PR system prompt.');
     expect(systemPrompt).toContain('Description guidance:');
     expect(systemPrompt).toContain('## PR Template');
@@ -278,7 +273,7 @@ describe('GitHubService PR generation', () => {
 
   it('resolves plan refs in generated PR content before returning it to the UI', async () => {
     const linkedId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-    runClaudeQueryMock.mockResolvedValueOnce({
+    runGenerationMock.mockResolvedValueOnce({
       text: `TITLE: PROJ-184: Add attachment records\nBODY:\nPart of @plan/${linkedId}.`,
       errors: [],
     });
@@ -314,7 +309,7 @@ describe('GitHubService PR generation', () => {
   });
 
   it('falls back to raw context when the generated response is malformed', async () => {
-    runClaudeQueryMock.mockResolvedValueOnce({ text: 'No structured response', errors: [] });
+    runGenerationMock.mockResolvedValueOnce({ text: 'No structured response', errors: [] });
     const { service } = buildService();
 
     const result = await service.generatePrContent('session-1', 'Raw title', 'Raw body', null, '', '');

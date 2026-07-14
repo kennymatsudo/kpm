@@ -21,7 +21,6 @@ export function registerDevelopmentHandlers({
     services.agentSessionManager,
     services.devSessionService,
     services.promptOverrideService,
-    services.claudeUsageService,
     services.phaseMachine,
   );
 }

@@ -3,22 +3,17 @@ import type { Database } from 'better-sqlite3';
 import { createTestDb } from '../../db/testing/createTestDb';
 
 // Hoisted mock state — must be declared before the vi.mock calls below.
-const runClaudeQueryMock = vi.hoisted(() => vi.fn());
+// BriefingService drives the provider-neutral generation seam; the test mocks
+// that seam, not any provider SDK.
+const runGenerationMock = vi.hoisted(() => vi.fn());
 
-vi.mock('../../claude/runClaudeQuery', () => ({
-  runClaudeQuery: runClaudeQueryMock,
-}));
-
-vi.mock('../../claude/findClaude', () => ({
-  getClaudeSdkSpawnOptions: () => ({}),
+vi.mock('../../generation', () => ({
+  runGeneration: runGenerationMock,
 }));
 
 vi.mock('../../config', () => ({
   getConfig: () => ({
     generation: {
-      fastModel: 'sonnet',
-      deepModel: 'sonnet',
-      cheapModel: 'haiku',
       briefingStageTimeoutMs: 60_000,
     },
   }),
@@ -39,11 +34,9 @@ function seedProject(db: Database): void {
 
 interface BuildOpts {
   withProject?: boolean;
-  recordUsage?: boolean;
 }
 
 function buildService(db: Database, opts: BuildOpts = {}) {
-  const recordUsage = opts.recordUsage ? vi.fn() : undefined;
   const service = createBriefingService({
     getDatabase: () => db,
     getPromptContent: () => 'test briefing instructions',
@@ -56,9 +49,8 @@ function buildService(db: Database, opts: BuildOpts = {}) {
           ? { id, name: 'Test', folder_path: null }
           : undefined,
     },
-    recordUsage,
   });
-  return { service, recordUsage };
+  return { service };
 }
 
 describe('BriefingService', () => {
@@ -67,7 +59,7 @@ describe('BriefingService', () => {
   beforeEach(() => {
     db = createTestDb();
     seedProject(db);
-    runClaudeQueryMock.mockReset();
+    runGenerationMock.mockReset();
   });
 
   describe('generateBriefing', () => {
@@ -79,14 +71,14 @@ describe('BriefingService', () => {
     });
 
     it('skips chat synthesis when there are no messages, runs only Stage 2', async () => {
-      runClaudeQueryMock.mockResolvedValueOnce({ text: '## Briefing\n\nNo work yet.', errors: [] });
+      runGenerationMock.mockResolvedValueOnce({ text: '## Briefing\n\nNo work yet.', errors: [] });
 
       const { service } = buildService(db);
       const result = await service.generateBriefing(PROJECT_ID);
 
       expect(result.ok).toBe(true);
       // With zero chat messages, only Stage 2 should call the SDK.
-      expect(runClaudeQueryMock).toHaveBeenCalledTimes(1);
+      expect(runGenerationMock).toHaveBeenCalledTimes(1);
       if (result.ok) {
         expect(result.data.summary).toContain('No work yet.');
       }
@@ -97,7 +89,7 @@ describe('BriefingService', () => {
         `INSERT INTO chat_messages (id, session_id, role, content) VALUES (?, ?, ?, ?)`,
       ).run('m1', PROJECT_ID, 'user', 'I will fix the bug.');
 
-      runClaudeQueryMock
+      runGenerationMock
         .mockResolvedValueOnce({ text: 'Chat synthesis output', errors: [] }) // Stage 1c
         .mockResolvedValueOnce({ text: 'Final briefing', errors: [] }); // Stage 2
 
@@ -107,13 +99,13 @@ describe('BriefingService', () => {
       expect(result.ok).toBe(true);
       if (!result.ok) return;
       expect(result.data.summary).toBe('Final briefing');
-      expect(runClaudeQueryMock).toHaveBeenCalledTimes(2);
-      const stage2Prompt = JSON.stringify(runClaudeQueryMock.mock.calls[1][0]);
+      expect(runGenerationMock).toHaveBeenCalledTimes(2);
+      const stage2Prompt = JSON.stringify(runGenerationMock.mock.calls[1][0]);
       expect(stage2Prompt).toContain('Chat synthesis output');
     });
 
     it('streams Stage 2 chunks via onChunk callback', async () => {
-      runClaudeQueryMock.mockImplementationOnce(async (opts: { onText?: (s: string) => void }) => {
+      runGenerationMock.mockImplementationOnce(async (opts: { onText?: (s: string) => void }) => {
         opts.onText?.('part 1 ');
         opts.onText?.('part 2');
         return { text: 'part 1 part 2', errors: [] };
@@ -129,27 +121,6 @@ describe('BriefingService', () => {
       expect(onChunk).toHaveBeenNthCalledWith(2, 'part 2');
     });
 
-    it('records usage for each Claude call when recordUsage is provided', async () => {
-      db.prepare(
-        `INSERT INTO chat_messages (id, session_id, role, content) VALUES (?, ?, ?, ?)`,
-      ).run('m1', PROJECT_ID, 'user', 'msg');
-
-      runClaudeQueryMock.mockImplementation(async (opts: {
-        recordUsage?: (e: { usage: object; totalCostUsd?: number | null }) => void;
-      }) => {
-        opts.recordUsage?.({ usage: { input_tokens: 10 }, totalCostUsd: 0.01 });
-        return { text: 'out', errors: [] };
-      });
-
-      const { service, recordUsage } = buildService(db, { recordUsage: true });
-      await service.generateBriefing(PROJECT_ID);
-
-      expect(recordUsage).toHaveBeenCalledTimes(2);
-      expect(recordUsage).toHaveBeenCalledWith(
-        expect.objectContaining({ projectId: PROJECT_ID, model: 'sonnet' }),
-      );
-    });
-
     it('persists briefing with signal counts derived from plan items', async () => {
       db.prepare(
         `INSERT INTO plan_items (id, project_id, title, status_category, item_order) VALUES (?, ?, ?, ?, ?)`,
@@ -158,7 +129,7 @@ describe('BriefingService', () => {
         `INSERT INTO plan_items (id, project_id, title, status_category, item_order) VALUES (?, ?, ?, ?, ?)`,
       ).run('pi-2', PROJECT_ID, 'ready one', 'not_started', 1);
 
-      runClaudeQueryMock.mockResolvedValueOnce({ text: 'summary', errors: [] });
+      runGenerationMock.mockResolvedValueOnce({ text: 'summary', errors: [] });
 
       const { service } = buildService(db);
       const result = await service.generateBriefing(PROJECT_ID);

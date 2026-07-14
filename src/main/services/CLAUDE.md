@@ -82,6 +82,10 @@ Terminal/PTY and Claude session management.
 - `TerminalService` — Create/manage pseudo-terminals (singleton)
 - `StreamingSessionService` — Main chat session lifecycle
 
+### One-shot generation seam (`src/main/generation/`)
+
+`runGeneration({ purpose, tier, prompt, systemPrompt?, maxTurns?, timeoutMs?, onText? })` is the single seam every genuinely one-shot generation site calls (file summary, briefing, commit message, PR description, Slack triage classification). It resolves `(purpose, tier)` to a provider + model via `getConfig().generation`, applies the pinned invariants, records usage keyed by `(purpose, provider)`, and dispatches to a provider adapter (`claude`, `codex`). Call sites pass intent, not provider SDK options — do **not** hand-build `sdkOptions` and call `runClaudeQuery` from a new generation site; add a `runGeneration` call. Default routing is Claude for every purpose; flip one to Codex via `generation.providerByPurpose`. See [`CONTEXT.md`](../../../CONTEXT.md) for the domain terms. Tool-using / multi-turn work (custom prompt, onboarding, review assessment, scheduled loops, the Slack tool-reading adapter) is agentic, not one-shot generation, and deliberately stays off this seam.
+
 ### Generation Services (`services/generation/`)
 
 - `CustomPromptGenerationService` — Custom prompt generation

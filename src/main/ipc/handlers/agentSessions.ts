@@ -4,18 +4,15 @@
  * Handles renderer <-> main process communication for board-driven agent execution.
  */
 
-import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
-import { runClaudeQuery } from '../../claude/runClaudeQuery';
+import { runGeneration } from '../../generation';
 import type { AgentSessionManager } from '../../services/agents/AgentSessionManager';
 import type { DevSessionService } from '../../services/repo/DevSessionService';
 import type { AutomationPhaseMachine } from '../../services/agents/automationPhaseMachine';
 import type { PromptOverrideService } from '../../services/core/PromptOverrideService';
-import type { ClaudeUsageService } from '../../services/core/ClaudeUsageService';
 import { getAvailableAgents } from '../../services/agents/agentCatalog';
 import { launchAutoReview } from '../../services/agents/autoReview';
 import { unwrapOrThrow } from '../../services/result';
 import { getConfig } from '../../config';
-import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import { toReviewSessionId } from '../../../shared/agent-types';
 import { agentSessionEndpoints, type AgentSessionEndpointName } from '../../../shared/ipc/agentSessionEndpoints';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
@@ -62,7 +59,6 @@ function buildAgentSessionHandlers(
   agentSessionManager: AgentSessionManager,
   devSessionService: DevSessionService,
   promptOverrideService: PromptOverrideService,
-  claudeUsageService: ClaudeUsageService,
   phaseMachine: Pick<AutomationPhaseMachine, 'transition'>,
 ): AgentSessionHandlers {
   return {
@@ -222,32 +218,15 @@ function buildAgentSessionHandlers(
 
       const prompt = `Generate a git commit message for these changes:\n\n${contextLines.join('\n')}${diffSection}\n\n${instructions}`;
 
-      const sdkOptions: SDKOptions = {
-        model: getConfig().generation.cheapModel,
-        allowedTools: [],
-        persistSession: false,
-        systemPrompt: 'You generate descriptive git commit messages. Return only the commit message — no explanation, no code fences.',
-        stderr: () => {},
-        ...getClaudeSdkSpawnOptions(),
-      };
-
-      const TIMEOUT_MS = getConfig().generation.prGenerationTimeoutMs;
-      const sdkModel = getConfig().generation.cheapModel;
-
-      const result = await runClaudeQuery({
+      const result = await runGeneration({
+        purpose: 'commit_message',
+        tier: 'cheap',
+        systemPrompt:
+          'You generate descriptive git commit messages. Return only the commit message — no explanation, no code fences.',
         prompt,
-        sdkOptions,
-        timeoutMs: TIMEOUT_MS,
+        timeoutMs: getConfig().generation.prGenerationTimeoutMs,
         timeoutMessage: 'Commit message generation timed out',
-        recordUsage: ({ usage, totalCostUsd }) => {
-          claudeUsageService.recordUsage({
-            projectId: session.project_id,
-            source: 'commit_message',
-            model: sdkModel,
-            usage,
-            totalCostUsd,
-          });
-        },
+        projectId: session.project_id,
       });
 
       return { message: result.text.trim() };
@@ -318,7 +297,6 @@ export function registerAgentSessionHandlers(
   agentSessionManager: AgentSessionManager,
   devSessionService: DevSessionService,
   promptOverrideService: PromptOverrideService,
-  claudeUsageService: ClaudeUsageService,
   phaseMachine: Pick<AutomationPhaseMachine, 'transition'>,
 ): void {
   createRegistryIpcHandlers(
@@ -327,7 +305,6 @@ export function registerAgentSessionHandlers(
       agentSessionManager,
       devSessionService,
       promptOverrideService,
-      claudeUsageService,
       phaseMachine,
     ),
     'Agent session operation failed'

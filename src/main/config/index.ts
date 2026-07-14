@@ -8,6 +8,7 @@
  */
 
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
+import type { GenerationProvider, GenerationPurpose, GenerationTier } from '../generation/types';
 
 type ClaudeModel = 'opus' | 'sonnet' | 'haiku';
 
@@ -89,12 +90,18 @@ export interface SessionConfig {
 }
 
 export interface GenerationConfig {
-  /** Model for quick interactive generation tasks where speed matters most */
+  /** Claude model for quick generation tasks where speed matters most (the `fast` tier). */
   fastModel: ClaudeModel;
-  /** Model for higher-value synthesis tasks where quality matters most */
+  /** Claude model for higher-value synthesis tasks where quality matters most (the `deep` tier). */
   deepModel: ClaudeModel;
-  /** Model for constrained low-cost generation tasks */
+  /** Claude model for constrained low-cost generation tasks (the `cheap` tier). */
   cheapModel: ClaudeModel;
+  /** Provider that serves generation purposes unless overridden per purpose. */
+  defaultProvider: GenerationProvider;
+  /** Per-purpose provider override; a purpose absent here uses `defaultProvider`. */
+  providerByPurpose: Partial<Record<GenerationPurpose, GenerationProvider>>;
+  /** Codex tier → model id. The Claude tiers use fastModel/deepModel/cheapModel above. */
+  codexModels: Record<GenerationTier, string>;
   /** Note refinement timeout (ms) */
   noteRefinementTimeoutMs: number;
   /** Artifact generation timeout (ms) */
@@ -263,6 +270,15 @@ function createDefaultConfig(): AppConfig {
       fastModel: 'sonnet',
       deepModel: 'sonnet',
       cheapModel: 'haiku',
+      // Behavior-preserving default: every generation purpose runs on Claude.
+      // Flip a purpose to Codex by adding it to providerByPurpose.
+      defaultProvider: 'claude',
+      providerByPurpose: {},
+      codexModels: {
+        fast: 'gpt-5.5',
+        deep: 'gpt-5.5',
+        cheap: 'gpt-5.5',
+      },
       noteRefinementTimeoutMs: 2 * 60 * 1000, // 2 minutes
       artifactGenerationTimeoutMs: 5 * 60 * 1000, // 5 minutes
       briefingStageTimeoutMs: 2 * 60 * 1000, // 2 minutes per stage

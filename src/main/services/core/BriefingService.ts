@@ -10,14 +10,12 @@
  *   Stage 2: deep-model synthesis of all Stage 1 outputs into the final briefing
  */
 
-import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
 import type { Database, Statement } from 'better-sqlite3';
 import type { BriefingResult, FileNode } from '../../../shared/types';
 import type { AsyncResult } from '../result';
 import { success, failure } from '../result';
 import { getConfig } from '../../config';
-import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
-import { runClaudeQuery, type ClaudeQueryUsage } from '../../claude/runClaudeQuery';
+import { runGeneration, type GenerationTier } from '../../generation';
 
 // =============================================================================
 // Types
@@ -123,17 +121,6 @@ export interface BriefingServiceDeps {
   projects: {
     get: (projectId: string) => { id: string; name: string; folder_path: string | null } | undefined;
   };
-  /**
-   * Optional centralized usage recorder. When provided, every Claude call in
-   * the briefing pipeline routes its result usage through this so the
-   * dashboard can attribute tokens + cost to the right project.
-   */
-  recordUsage?: (event: {
-    projectId: string;
-    model: string;
-    usage: ClaudeQueryUsage;
-    totalCostUsd?: number | null;
-  }) => void;
 }
 
 export interface GenerateBriefingOptions {
@@ -145,41 +132,27 @@ export interface GenerateBriefingOptions {
 }
 
 // =============================================================================
-// Claude API Helper
+// Generation Helper
 // =============================================================================
 
-interface ClaudeCallContext {
-  onUsage?: (event: { model: string; usage: ClaudeQueryUsage; totalCostUsd?: number | null }) => void;
-  onText?: (delta: string) => void;
-}
-
-async function callClaude(
-  model: 'sonnet' | 'opus' | 'haiku',
+async function generateBriefingStage(
+  tier: GenerationTier,
   systemPrompt: string,
   userPrompt: string,
   timeoutMs: number,
-  ctx?: ClaudeCallContext,
+  projectId: string,
+  onText?: (delta: string) => void,
 ): Promise<string> {
-  const sdkOptions: SDKOptions = {
-    model,
-    tools: [],
-    persistSession: false,
+  const result = await runGeneration({
+    purpose: 'briefing',
+    tier,
     systemPrompt,
-    maxTurns: 1,
-    ...getClaudeSdkSpawnOptions(),
-  };
-
-  const result = await runClaudeQuery({
     prompt: userPrompt,
-    sdkOptions,
+    maxTurns: 1,
     timeoutMs,
-    timeoutMessage: `Claude ${model} call timed out`,
-    onText: ctx?.onText,
-    recordUsage: ctx?.onUsage
-      ? ({ usage, totalCostUsd }) => {
-          ctx.onUsage!({ model, usage, totalCostUsd });
-        }
-      : undefined,
+    timeoutMessage: `Briefing ${tier} call timed out`,
+    projectId,
+    onText,
   });
 
   return result.text;
@@ -356,18 +329,11 @@ export function createBriefingService(deps: BriefingServiceDeps) {
           `Stage 1: SQL queries complete. ${context.recentMessages.length} messages, ${context.blockedItems.length} blocked, ${context.staleItems.length} stale`,
         );
 
-        const usageCtx: ClaudeCallContext | undefined = deps.recordUsage
-          ? {
-              onUsage: ({ model, usage, totalCostUsd }) =>
-                deps.recordUsage!({ projectId, model, usage, totalCostUsd }),
-            }
-          : undefined;
-
         // ─── Stage 1c: chat synthesis (skipped when no messages) ───────
         const chatSynthesis: string =
           context.recentMessages.length > 0
-            ? await callClaude(
-                generationConfig.fastModel,
+            ? await generateBriefingStage(
+                'fast',
                 'You summarize project chat history into structured insights.',
                 `Analyze these recent chat messages from a project management tool (newest first).
 
@@ -381,7 +347,7 @@ Produce a structured summary with these sections:
 Messages:
 ${context.recentMessages.map((m) => `[${m.created_at}] ${m.role}: ${m.content.substring(0, CHAT_MESSAGE_CONTENT_LIMIT)}`).join('\n\n')}`,
                 timeoutMs,
-                usageCtx,
+                projectId,
               ).catch((e) => `[Chat synthesis failed: ${e instanceof Error ? e.message : 'unknown error'}]`)
             : 'No recent chat messages found.';
 
@@ -436,17 +402,13 @@ NEVER use emojis, colored circles, or status indicators. No icons of any kind. U
 
         log('Stage 2: streaming synthesis...');
 
-        const stage2Ctx: ClaudeCallContext = {
-          onUsage: usageCtx?.onUsage,
-          onText: options?.onChunk,
-        };
-
-        const summary = await callClaude(
-          generationConfig.deepModel,
+        const summary = await generateBriefingStage(
+          'deep',
           briefingSystemPrompt,
           synthesisContext,
           timeoutMs * 2, // Give Stage 2 more time
-          stage2Ctx,
+          projectId,
+          options?.onChunk,
         );
 
         const elapsed = Date.now() - startTime;
