@@ -18,6 +18,7 @@ export type {
   PlanRelation,
   Group,
 } from './base-types';
+export { STATUS_CATEGORIES } from './base-types';
 export type { AgentType, AgentSessionState, AgentSessionRole } from './base-types';
 export type {
   CustomTheme,

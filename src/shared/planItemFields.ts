@@ -30,7 +30,8 @@
  * (main/db/repositories) without either depending on the other.
  */
 
-import type { PlanItem, StatusCategory } from './base-types';
+import { STATUS_CATEGORIES } from './base-types';
+import type { PlanItem } from './base-types';
 
 /**
  * A closed set of field shapes. Every PlanItemUpdates field fits one of
@@ -116,7 +117,7 @@ export const PLAN_ITEM_FIELDS = {
     sqlColumn: 'status_category',
     fieldKind: {
       kind: 'nullableEnum',
-      values: ['not_started', 'in_progress', 'in_review', 'done', 'blocked', 'canceled'] satisfies readonly StatusCategory[],
+      values: STATUS_CATEGORIES,
     },
     editableVia: IPC_AND_PLAN_ACTION,
   },

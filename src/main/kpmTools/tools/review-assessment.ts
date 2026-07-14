@@ -14,7 +14,7 @@
 import { z } from 'zod';
 import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import { tool, jsonResult, toolError } from './index';
-import { LabelEnum } from './schemas';
+import { LabelEnum, StatusCategoryEnum } from './schemas';
 import type { IPlanItemRepository, IPlanRelationRepository, IRepoRepository } from '../../db/interfaces';
 import type { FileExplorerService } from '../../services/files/FileExplorerService';
 import { gitExec, detectBaseBranch } from '../../services/repo/gitUtils';
@@ -202,10 +202,7 @@ export function createReviewAssessmentTools(deps: ReviewAssessmentToolsDeps) {
       {
         projectId: z.string().uuid().describe('The project UUID'),
         search: z.string().optional().describe('Case-insensitive substring match on title'),
-        statusCategory: z
-          .enum(['not_started', 'in_progress', 'in_review', 'done', 'blocked', 'canceled'])
-          .optional()
-          .describe('Filter by status category'),
+        statusCategory: StatusCategoryEnum.optional().describe('Filter by status category'),
         label: LabelEnum.optional().describe('Filter by label'),
       },
       async ({ projectId, search, statusCategory, label }) => {

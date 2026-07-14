@@ -30,7 +30,6 @@ export {
   projectName,
   projectPhase,
   planItemStatus,
-  statusCategory,
   planItemLabel,
   relationType,
   canvasPosition,

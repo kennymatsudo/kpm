@@ -13,6 +13,7 @@
 import { z } from 'zod';
 import { resultOf, type EndpointDefinition } from './endpoints';
 import { uuid } from './sharedSchemas';
+import { STATUS_CATEGORIES } from '../types';
 import type {
   ImportPreview,
   ImportResult,
@@ -41,7 +42,7 @@ interface IssueSummary {
 
 const nonEmptyString = (fieldName: string) => z.string().min(1, `${fieldName} cannot be empty`).trim();
 const optionalString = z.string().trim().optional();
-const statusCategory = z.enum(['not_started', 'in_progress', 'in_review', 'done', 'blocked', 'canceled'], {
+const statusCategory = z.enum(STATUS_CATEGORIES, {
   message: 'Status category must be one of: not_started, in_progress, in_review, done, blocked, canceled',
 });
 

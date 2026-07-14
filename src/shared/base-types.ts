@@ -10,7 +10,8 @@
 // Status Types
 // =============================================================================
 
-export type StatusCategory = 'not_started' | 'in_progress' | 'in_review' | 'done' | 'blocked' | 'canceled';
+export const STATUS_CATEGORIES = ['not_started', 'in_progress', 'in_review', 'done', 'blocked', 'canceled'] as const;
+export type StatusCategory = typeof STATUS_CATEGORIES[number];
 
 export type TrackerType = 'jira' | 'linear';
 
