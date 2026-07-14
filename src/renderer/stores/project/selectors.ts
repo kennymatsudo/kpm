@@ -1,5 +1,5 @@
 import type { Project, PlanItem, FocusedResource, StatusCategory } from '../../../shared/types';
-import { getStatusCategory } from '../../constants/statusConfig';
+import { resolveStatusCategory } from '../../constants/statusConfig';
 import type { ProjectDomainState } from './types';
 
 export const selectProjectSummary = (state: ProjectDomainState) => ({
@@ -76,7 +76,7 @@ export function selectFilteredPlannedItems(
   }
 
   const filtered = plannedItems.filter((item) => {
-    const effectiveStatus = item.status_category ?? getStatusCategory(item.external_status, item.external_type);
+    const effectiveStatus = resolveStatusCategory(item);
     if (effectiveStatus && hiddenStatusCategories.has(effectiveStatus)) return false;
     if (peopleFilterKeys.size === 0) return true;
     // Local-only KPM items have no tracker people fields until export.

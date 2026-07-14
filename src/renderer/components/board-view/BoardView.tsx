@@ -9,7 +9,7 @@ import {
 } from '../../stores';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { stopAgentSession } from '../../services/agentSessionService';
-import { getStatusCategory, STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
+import { resolveStatusCategory, STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import { subscribe } from '../../stores/storeEvents';
 import { OPENABLE_SESSION_STATUSES } from '../../../shared/types';
 import type { PlanItem, StatusCategory, DevSessionWithPlanItem } from '../../../shared/types';
@@ -171,8 +171,7 @@ export const BoardView = memo(function BoardView({
 
   // Resolve effective status for an item
   const getEffectiveStatus = useCallback(
-    (item: PlanItem): StatusCategory =>
-      item.status_category ?? getStatusCategory(item.external_status, item.external_type) ?? 'not_started',
+    (item: PlanItem): StatusCategory => resolveStatusCategory(item) ?? 'not_started',
     []
   );
 
@@ -268,8 +267,7 @@ export const BoardView = memo(function BoardView({
         return;
       }
 
-      const previousStatus =
-        item.status_category ?? getStatusCategory(item.external_status, item.external_type) ?? 'not_started';
+      const previousStatus = resolveStatusCategory(item) ?? 'not_started';
       const activeSession = useDevSessionsStore.getState().sessions.find(
         (s) => s.plan_item_id === itemId && ['pending', 'active'].includes(s.status)
       );

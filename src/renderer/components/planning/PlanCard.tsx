@@ -12,7 +12,7 @@ import type { TreeNode } from '../../utils/planHierarchy';
 import { CARD_BOX_MODEL, getStyleForDepth, MAX_DEPTH } from '../../constants/planCardStyles';
 import { DragSource } from '../../constants/dragSource';
 import { DeleteConfirmDialog } from '../ui/DeleteConfirmDialog';
-import { getStatusCategory } from '../../constants/statusConfig';
+import { resolveStatusCategory } from '../../constants/statusConfig';
 import { isPerfLoggingEnabled, logPerfEvent } from '../../utils/perfLogger';
 import type { OrderedIdsGetter, RangeSelectHandler } from '../../utils/rangeSelection';
 import { PlanCardMenu, type MenuPosition } from './PlanCardMenu';
@@ -266,7 +266,7 @@ export const PlanCard = memo(function PlanCard({
 
   // Derive effective status: use status_category if set, otherwise derive from external_status
   const effectiveStatus = useMemo(
-    () => item.status_category ?? getStatusCategory(item.external_status, item.external_type),
+    () => resolveStatusCategory(item),
     [item.status_category, item.external_status, item.external_type]
   );
 

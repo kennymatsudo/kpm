@@ -15,7 +15,7 @@ import { useMemo } from 'react';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { usePlanDomainStore } from '../../stores';
-import { getStatusCategory } from '../../constants/statusConfig';
+import { resolveStatusCategory } from '../../constants/statusConfig';
 import { getStats, type ReviewStats } from '../development/reviewStats';
 import { toReviewSessionId } from '../../../shared/agent-types';
 import type { DevSessionWithPlanItem } from '../../../shared/types';
@@ -59,9 +59,7 @@ export function usePanelStatus(session: DevSessionWithPlanItem): PanelStatus {
     session.plan_item_id ? s.planItems.find((p) => p.id === session.plan_item_id) : undefined,
   );
   const itemStatus = planItem
-    ? planItem.status_category
-      ?? getStatusCategory(planItem.external_status, planItem.external_type)
-      ?? 'not_started'
+    ? resolveStatusCategory(planItem) ?? 'not_started'
     : null;
 
   const reviewStats = useMemo(

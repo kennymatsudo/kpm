@@ -6,7 +6,7 @@ import { CardActivityLine } from './CardActivityLine';
 import { derivePanelStatus, type PanelPhase, type NextAction } from './panelStatus';
 import { toReviewPhaseStats } from './usePanelStatus';
 import { getStats } from '../development/reviewStats';
-import { getStatusCategory } from '../../constants/statusConfig';
+import { resolveStatusCategory } from '../../constants/statusConfig';
 import { ACTIVE_SESSION_STATUSES, isLiveAutomationPhase, OPENABLE_SESSION_STATUSES } from '../../../shared/types';
 import type { PlanItem } from '../../../shared/types';
 import { toReviewSessionId } from '../../../shared/agent-types';
@@ -241,9 +241,7 @@ export const BoardCard = memo(function BoardCard({
     [mergeBlockedByNamesKey],
   );
 
-  const itemStatus = item.status_category
-    ?? getStatusCategory(item.external_status, item.external_type)
-    ?? 'not_started';
+  const itemStatus = resolveStatusCategory(item) ?? 'not_started';
 
   const repoName = repoSession?.repo_name ?? null;
   const automationPhase = activeSession?.automation_phase;

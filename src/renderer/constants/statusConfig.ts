@@ -1,4 +1,4 @@
-import type { TrackerType, StatusCategory } from '../../shared/types';
+import type { TrackerType, StatusCategory, PlanItem } from '../../shared/types';
 
 // Default status mappings per tracker type
 // These can be made configurable in the future
@@ -129,4 +129,14 @@ export function getStatusCategory(
 
   // Default: assume not started for truly unknown statuses
   return 'not_started';
+}
+
+/**
+ * Effective status category of a plan item: the local `status_category` override
+ * wins, otherwise fall back to the tracker-derived category. Null when neither resolves.
+ */
+export function resolveStatusCategory(
+  item: Pick<PlanItem, 'status_category' | 'external_status' | 'external_type'>,
+): StatusCategory | null {
+  return item.status_category ?? getStatusCategory(item.external_status, item.external_type);
 }

@@ -2,7 +2,7 @@ import { useMemo, memo, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { TreeNode } from '../../utils/planHierarchy';
 import { StatusSelector } from '../ui/StatusSelector';
-import { getStatusCategory } from '../../constants/statusConfig';
+import { resolveStatusCategory } from '../../constants/statusConfig';
 import { usePlanDomainStore } from '../../stores';
 import { useLatestRef } from '../../hooks/useLatestRef';
 import { MAX_DEPTH } from '../../constants/planCardStyles';
@@ -97,7 +97,7 @@ const TreeRow = memo(function TreeRow({
 
   // Derive effective status
   const effectiveStatus = useMemo(
-    () => node.status_category ?? getStatusCategory(node.external_status, node.external_type),
+    () => resolveStatusCategory(node),
     [node.status_category, node.external_status, node.external_type]
   );
 

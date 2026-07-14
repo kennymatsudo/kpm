@@ -1,6 +1,6 @@
 import { useCallback, useEffect, type MutableRefObject } from 'react';
 import type { StatusCategory } from '../../../../shared/types';
-import { getStatusCategory } from '../../../constants/statusConfig';
+import { resolveStatusCategory } from '../../../constants/statusConfig';
 import {
   emit,
   subscribe as subscribeToStoreEvent,
@@ -78,8 +78,7 @@ export function useLayoutNavigationEffects({
           useProjectUiDomainStore.getState().setEditingItemId(itemId);
         }, 100);
 
-        const effectiveStatus = item.status_category
-          ?? getStatusCategory(item.external_status, item.external_type);
+        const effectiveStatus = resolveStatusCategory(item);
         const currentHidden = hiddenStatusCategoriesRef.current;
         const isHiddenByFilter = effectiveStatus != null && currentHidden.has(effectiveStatus);
 

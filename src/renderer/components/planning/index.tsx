@@ -27,7 +27,7 @@ import {
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { createAndStartAgentSession } from '../../services/agentSessionService';
 import { buildHierarchyTree } from '../../utils/planHierarchy';
-import { getStatusCategory } from '../../constants/statusConfig';
+import { resolveStatusCategory } from '../../constants/statusConfig';
 import { useShallow } from 'zustand/react/shallow';
 import {
   useBulkActions,
@@ -260,7 +260,7 @@ export function PlanView({
   }) => {
     const item = planItems.find((i) => i.id === params.planItemId);
     const currentStatus = item
-      ? item.status_category ?? getStatusCategory(item.external_status, item.external_type) ?? 'not_started'
+      ? resolveStatusCategory(item) ?? 'not_started'
       : null;
 
     setAgentStartItemId(null);
