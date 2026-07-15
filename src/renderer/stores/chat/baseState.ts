@@ -1,4 +1,5 @@
 import type { ClaudeModel, ChatEffortLevel, ChatProvider, PerSessionState, ChatState, CodexChatModel } from './types';
+import { DEFAULT_CODEX_CHAT_MODEL } from '../../../shared/types';
 
 /** Create initial state for a new session */
 export const createInitialPerSessionState = (
@@ -7,7 +8,7 @@ export const createInitialPerSessionState = (
   effort: ChatEffortLevel = 'medium',
   provider: ChatProvider = 'claude',
   piProviderModel: string | undefined = undefined,
-  codexModel: CodexChatModel = 'gpt-5.5',
+  codexModel: CodexChatModel = DEFAULT_CODEX_CHAT_MODEL,
 ): PerSessionState => ({
   messages: [],
   streamingSegments: [],
@@ -50,7 +51,7 @@ export const createInitialChatState = (): Pick<ChatState,
   model: 'sonnet',
   effort: 'medium',
   provider: 'claude',
-  codexModel: 'gpt-5.5',
+  codexModel: DEFAULT_CODEX_CHAT_MODEL,
   piProviderModel: undefined,
   piProviders: [],
   piProvidersAvailable: false,

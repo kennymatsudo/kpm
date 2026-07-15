@@ -40,7 +40,7 @@ function makeSession(overrides: Partial<PerSessionState> = {}): PerSessionState 
     piProviderModel: undefined,
     lastTurnUsage: null,
     ...overrides,
-    codexModel: overrides.codexModel ?? 'gpt-5.5',
+    codexModel: overrides.codexModel ?? 'gpt-5.6-sol',
   };
 }
 

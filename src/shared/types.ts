@@ -65,12 +65,28 @@ export type ClaudeModel = 'opus' | 'sonnet';
 export type ChatSessionScope = 'main' | 'focus_document';
 
 export const CODEX_CHAT_MODELS = [
-  { value: 'gpt-5.5', label: 'GPT-5.5', description: 'Latest Codex model', contextWindow: 400_000 },
-  { value: 'gpt-5.4', label: 'GPT-5.4', description: 'Previous Codex model', contextWindow: 400_000 },
-  { value: 'gpt-5.4-mini', label: 'GPT-5.4 mini', description: 'Faster Codex model', contextWindow: 400_000 },
+  {
+    value: 'gpt-5.6-sol',
+    label: 'Sol',
+    description: 'GPT-5.6 Sol — Detail and polish for complex work',
+    contextWindow: 372_000,
+  },
+  {
+    value: 'gpt-5.6-terra',
+    label: 'Terra',
+    description: 'GPT-5.6 Terra — Pragmatic all-rounder',
+    contextWindow: 372_000,
+  },
+  {
+    value: 'gpt-5.6-luna',
+    label: 'Luna',
+    description: 'GPT-5.6 Luna — Clear, repeatable work at scale',
+    contextWindow: 372_000,
+  },
 ] as const;
 
 export type CodexChatModel = typeof CODEX_CHAT_MODELS[number]['value'];
+export const DEFAULT_CODEX_CHAT_MODEL: CodexChatModel = CODEX_CHAT_MODELS[0].value;
 
 /** Codex SDK availability/auth status */
 export interface CodexStatus {

@@ -63,11 +63,11 @@ describe('settings registry codecs', () => {
   describe('chatCodexModel', () => {
     const def = SETTINGS.chatCodexModel;
     it('decodes a known codex model', () => {
-      expect(def.decode('gpt-5.4')).toBe('gpt-5.4');
+      expect(def.decode('gpt-5.6-terra')).toBe('gpt-5.6-terra');
     });
     it('folds unknown/unset to the default codex model', () => {
-      expect(def.decode(null)).toBe('gpt-5.5');
-      expect(def.decode('gpt-4')).toBe('gpt-5.5');
+      expect(def.decode(null)).toBe('gpt-5.6-sol');
+      expect(def.decode('gpt-5.5')).toBe('gpt-5.6-sol');
     });
   });
 

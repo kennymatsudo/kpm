@@ -11,6 +11,7 @@
 
 import {
   CODEX_CHAT_MODELS,
+  DEFAULT_CODEX_CHAT_MODEL,
   type ClaudeModel,
   type ChatEffortLevel,
   type CodexChatModel,
@@ -69,7 +70,6 @@ function booleanSetting(key: string, fallback: boolean): SettingDefinition<boole
 }
 
 const CODEX_MODEL_VALUES = CODEX_CHAT_MODELS.map((option) => option.value);
-const DEFAULT_CODEX_MODEL: CodexChatModel = CODEX_CHAT_MODELS[0].value;
 
 const chatPiProviderModel: SettingDefinition<string | null> = {
   key: 'chat_pi_provider_model',
@@ -149,7 +149,7 @@ export const SETTINGS = {
   chatCodexModel: enumSetting<CodexChatModel>(
     'chat_codex_model',
     CODEX_MODEL_VALUES,
-    DEFAULT_CODEX_MODEL
+    DEFAULT_CODEX_CHAT_MODEL
   ),
   chatPiProviderModel,
   chatPiAckUnsafeProviders,

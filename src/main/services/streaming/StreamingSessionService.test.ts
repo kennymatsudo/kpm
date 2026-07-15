@@ -878,7 +878,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
   });
 
   it.each([
-    { provider: 'codex' as const, providerModel: 'gpt-5.5' },
+    { provider: 'codex' as const, providerModel: 'gpt-5.6-sol' },
     { provider: 'pi' as const, providerModel: 'cursor/auto' },
   ])('emits complete $provider assistant messages even when Claude partial streaming is enabled', async ({ provider, providerModel }) => {
     configState.includePartialMessages = true;
