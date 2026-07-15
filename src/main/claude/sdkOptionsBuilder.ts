@@ -81,6 +81,10 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     // No allowedTools: setting it would hide external MCP tools (Slack, etc.)
     // from Claude. Tool access is governed by canUseTool instead. There is no
     // plan/workspace tool gating — view affects prompt hints only.
+    // Native SDK builds omit the dedicated search tools from their default set
+    // in favor of shell grep/find. Add them explicitly so connected-repo reads
+    // stay on the structured read-only path instead of falling back to Bash.
+    tools: ['default', 'Grep', 'Glob'],
     systemPrompt,
     model,
     cwd: context.project.folder_path ?? context.repos[0]?.active_worktree_path ?? context.repos[0]?.path,
