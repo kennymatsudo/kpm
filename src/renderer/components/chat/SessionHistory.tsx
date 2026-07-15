@@ -17,16 +17,11 @@ export function SessionHistory() {
     currentProjectId: state.currentProjectId,
   })));
 
-  // Access per-session chat state
-  const { sessionHistory, isStreaming, loadSessionHistory, loadFromHistory } = useChatStore(useShallow((state) => {
-    const session = state.viewedSessionId ? state.sessions.get(state.viewedSessionId) : null;
-    return {
-      sessionHistory: state.sessionHistory,
-      isStreaming: session?.isStreaming ?? false,
-      loadSessionHistory: state.loadSessionHistory,
-      loadFromHistory: state.loadFromHistory,
-    };
-  }));
+  const { sessionHistory, loadSessionHistory, loadFromHistory } = useChatStore(useShallow((state) => ({
+    sessionHistory: state.sessionHistory,
+    loadSessionHistory: state.loadSessionHistory,
+    loadFromHistory: state.loadFromHistory,
+  })));
 
   // Load session history when dropdown opens
   useEffect(() => {
@@ -73,7 +68,6 @@ export function SessionHistory() {
       {/* Trigger button - subtle icon */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        disabled={isStreaming}
         className={`
           flex items-center gap-1.5 px-2 py-1 rounded-lg
           transition-all duration-150
@@ -81,7 +75,6 @@ export function SessionHistory() {
             ? 'bg-accent-subtle text-accent'
             : 'text-text-tertiary hover:text-text-secondary hover:bg-surface-3'
           }
-          disabled:opacity-40 disabled:cursor-not-allowed
         `}
         title="Session history"
         aria-label="Session history"
