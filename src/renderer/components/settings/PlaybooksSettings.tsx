@@ -10,6 +10,7 @@ import {
   type PlaybookStep,
   type PlaybookValidationIssue,
 } from '../../../shared/playbooks';
+import { resolveCandidateChain } from '../../../shared/playbookRuntime';
 import type { SlashCommandInfo } from '../../../shared/types';
 import {
   createPlaybook,
@@ -205,7 +206,7 @@ export function PlaybooksSettings() {
         </div>
         <div className="space-y-1.5">
           {playbooks.map((playbook) => {
-            const disconnected = playbook.steps.some((step) => [...(step.agents ?? []), ...(step.runs?.flat() ?? [])].some((candidate) => providers.some((provider) => provider.id === candidate.provider && !provider.available)));
+            const disconnected = playbook.steps.some((step) => (step.runs ?? (step.agents ? [step.agents] : [])).some((chain) => chain.length > 0 && !resolveCandidateChain(chain, providers)));
             return (
               <button key={playbook.id} onClick={() => setSelectedId(playbook.id)} className={`w-full rounded-lg border p-2.5 text-left ${selectedId === playbook.id ? 'border-accent bg-accent/10' : 'border-border-subtle bg-surface-1 hover:bg-surface-2'}`}>
                 <div className="flex items-center gap-2"><input aria-label={`Default ${playbook.name}`} type="radio" checked={defaultId === playbook.id} onChange={(event) => { event.stopPropagation(); void setDefaultPlaybook(playbook.id).then(() => { setDefaultId(playbook.id); }); }} /><span className="min-w-0 flex-1 truncate text-sm text-text-primary">{playbook.name}</span></div>
