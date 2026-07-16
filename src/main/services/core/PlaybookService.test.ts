@@ -23,11 +23,22 @@ describe('PlaybookService', () => {
     return { service, set };
   }
 
-  it('lists built-in and custom playbooks together', () => {
+  it('lists built-in and custom playbooks together, Implement only first', () => {
     const { service } = createService();
 
-    expect(unwrapOrThrow(service.list()).map((playbook) => playbook.id)).toContain('builtin.implement_only');
-    expect(unwrapOrThrow(service.list()).map((playbook) => playbook.id)).toContain('custom-1');
+    const ids = unwrapOrThrow(service.list()).map((playbook) => playbook.id);
+    expect(ids[0]).toBe('builtin.implement_only');
+    expect(ids).toContain('custom-1');
+  });
+
+  it('defaults a fresh install with no configured default to Implement only', () => {
+    const service = createPlaybookService({
+      playbooks: { list: () => [], get: () => undefined, create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+      appSettings: { get: () => undefined, set: vi.fn() },
+      listSkills: () => ({ ok: true, data: [] }),
+    });
+
+    expect(unwrapOrThrow(service.getDefault())).toBe('builtin.implement_only');
   });
 
   it('returns a configured custom playbook as the default', () => {

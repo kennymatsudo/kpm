@@ -72,6 +72,20 @@ describe('playbook runtime', () => {
     ]);
   });
 
+  it('runs the built-in main step on the user default, leaving review pinned', () => {
+    const plan = resolvePlaybookPlan(BUILT_IN_PLAYBOOKS.implementOpposingReview, providers, { provider: 'codex', model: 'gpt-5.5' });
+    expect(plan.steps.map((step) => [step.stepId, step.runs.map((run) => run?.provider)])).toEqual([
+      ['implement', ['codex']],
+      ['review', ['codex']],
+      ['address', ['codex']],
+    ]);
+  });
+
+  it('falls the built-in main step back to Claude when the default is unrunnable', () => {
+    const plan = resolvePlaybookPlan(BUILT_IN_PLAYBOOKS.implementOpposingReview, providers, { provider: 'pi', model: 'auto' });
+    expect(plan.main).toMatchObject({ provider: 'claude', model: 'sonnet' });
+  });
+
   it('resolves a run per axis for the two-axis code-review playbook', () => {
     const plan = resolvePlaybookPlan(BUILT_IN_PLAYBOOKS.implementCodeReview, providers);
     expect(plan.steps.map((step) => [step.stepId, step.runs.map((run) => run?.provider)])).toEqual([
@@ -82,7 +96,7 @@ describe('playbook runtime', () => {
   });
 
   it('routes findings through the bounded back edge and pauses at the budget', () => {
-    const playbook = BUILT_IN_PLAYBOOKS.loopUntilClean;
+    const playbook = BUILT_IN_PLAYBOOKS.implementCodeReview;
     expect(advancePlaybook(playbook, 'review', true, {})).toEqual({ kind: 'step', stepId: 'address', passCounts: { review: 1 } });
     expect(advancePlaybook(playbook, 'review', true, { review: 2 })).toEqual({ kind: 'step', stepId: 'address', passCounts: { review: 3 } });
     expect(advancePlaybook(playbook, 'review', true, { review: 3 })).toEqual({ kind: 'pause', stepId: 'review', reason: 'max_passes', passCounts: { review: 3 } });

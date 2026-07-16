@@ -380,15 +380,29 @@ export function getPlaybookLoops(playbook: Playbook): PlaybookLoop[] {
 }
 
 export const BUILT_IN_PLAYBOOKS = {
-  implementOpposingReview: parsePlaybook({
-    id: 'builtin.implement_opposing_review',
-    name: 'Implement + opposing review',
+  implementOnly: parsePlaybook({
+    id: 'builtin.implement_only',
+    name: 'Implement (no review)',
     builtIn: true,
     steps: [
       {
         id: 'implement',
         session: 'main',
-        agents: [{ provider: 'claude' }],
+        agents: [{ useDefault: true }, { provider: 'claude' }],
+        systemPromptKey: 'agents.implementation_system',
+        directive: { kind: 'prompt' },
+      },
+    ],
+  }),
+  implementOpposingReview: parsePlaybook({
+    id: 'builtin.implement_opposing_review',
+    name: 'Implement + review',
+    builtIn: true,
+    steps: [
+      {
+        id: 'implement',
+        session: 'main',
+        agents: [{ useDefault: true }, { provider: 'claude' }],
         systemPromptKey: 'agents.implementation_system',
         directive: { kind: 'prompt' },
       },
@@ -408,58 +422,15 @@ export const BUILT_IN_PLAYBOOKS = {
       },
     ],
   }),
-  implementOnly: parsePlaybook({
-    id: 'builtin.implement_only',
-    name: 'Implement only',
-    builtIn: true,
-    steps: [
-      {
-        id: 'implement',
-        session: 'main',
-        agents: [{ provider: 'claude' }],
-        systemPromptKey: 'agents.implementation_system',
-        directive: { kind: 'prompt' },
-      },
-    ],
-  }),
-  loopUntilClean: parsePlaybook({
-    id: 'builtin.loop_until_clean',
-    name: 'Loop until clean',
-    builtIn: true,
-    steps: [
-      {
-        id: 'implement',
-        session: 'main',
-        agents: [{ provider: 'claude', model: 'opus' }],
-        systemPromptKey: 'agents.implementation_system',
-        directive: { kind: 'prompt' },
-      },
-      {
-        id: 'review',
-        session: 'subagent',
-        agents: [{ provider: 'codex' }, { provider: 'gemini' }],
-        systemPromptKey: 'agents.review_system',
-        directive: { kind: 'prompt' },
-        verdict: 'findings',
-        onFindings: { goto: 'address', maxPasses: 3, onMaxPasses: 'pause' },
-      },
-      {
-        id: 'address',
-        session: 'main',
-        directive: { kind: 'prompt', promptKey: 'agents.review_assessment' },
-        next: 'review',
-      },
-    ],
-  }),
   implementCodeReview: parsePlaybook({
     id: 'builtin.implement_code_review',
-    name: 'Implement (TDD) + two-axis review',
+    name: 'Implement test-first + deep review',
     builtIn: true,
     steps: [
       {
         id: 'implement',
         session: 'main',
-        agents: [{ provider: 'claude' }],
+        agents: [{ useDefault: true }, { provider: 'claude' }],
         systemPromptKey: 'agents.implementation_tdd_system',
         directive: { kind: 'prompt' },
       },
@@ -489,4 +460,5 @@ export const BUILT_IN_PLAYBOOKS = {
   }),
 } as const;
 
-export const DEFAULT_PLAYBOOK = BUILT_IN_PLAYBOOKS.implementOpposingReview;
+/** The playbook a fresh install defaults to before the user chooses one. */
+export const DEFAULT_PLAYBOOK = BUILT_IN_PLAYBOOKS.implementOnly;

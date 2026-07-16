@@ -9,14 +9,14 @@ import {
 
 describe('playbookSchema', () => {
   it('validates built-in playbooks', () => {
-    expect(BUILT_IN_PLAYBOOKS.implementOpposingReview.name).toBe('Implement + opposing review');
+    expect(BUILT_IN_PLAYBOOKS.implementOpposingReview.name).toBe('Implement + review');
     expect(BUILT_IN_PLAYBOOKS.implementOnly.steps.map((step) => step.id)).toEqual(['implement']);
-    expect(BUILT_IN_PLAYBOOKS.loopUntilClean.steps.find((step) => step.id === 'address')?.next).toBe('review');
+    expect(BUILT_IN_PLAYBOOKS.implementCodeReview.steps.find((step) => step.id === 'address')?.next).toBe('review');
   });
 
   it('models the two-axis code-review playbook', () => {
     const playbook = BUILT_IN_PLAYBOOKS.implementCodeReview;
-    expect(playbook.name).toBe('Implement (TDD) + two-axis review');
+    expect(playbook.name).toBe('Implement test-first + deep review');
     expect(playbook.steps.find((step) => step.id === 'implement')?.systemPromptKey).toBe('agents.implementation_tdd_system');
     const review = playbook.steps.find((step) => step.id === 'review');
     expect(review?.runs).toHaveLength(2);
@@ -212,7 +212,7 @@ describe('playbookSchema', () => {
   });
 
   it('detects only genuine loops, spanning the body with its bound and exit', () => {
-    expect(getPlaybookLoops(BUILT_IN_PLAYBOOKS.loopUntilClean)).toEqual([
+    expect(getPlaybookLoops(BUILT_IN_PLAYBOOKS.implementCodeReview)).toEqual([
       { startIndex: 1, endIndex: 2, maxPasses: 3, onMaxPasses: 'pause' },
     ]);
     // A one-time forward onFindings route is not a loop.

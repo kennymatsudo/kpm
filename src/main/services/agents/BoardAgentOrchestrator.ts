@@ -1,6 +1,6 @@
 import type { ReviewAxis, ReviewFinding } from '../../../shared/agent-types';
 import { toImplSessionId } from '../../../shared/agent-types';
-import { DEFAULT_PLAYBOOK, BUILT_IN_PLAYBOOKS, parsePlaybook, type BoardProvider, type Playbook, type PlaybookStep } from '../../../shared/playbooks';
+import { BUILT_IN_PLAYBOOKS, parsePlaybook, type BoardProvider, type Playbook, type PlaybookStep } from '../../../shared/playbooks';
 import { advancePlaybook, parsePassCounts, renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import { isCommitHookRepairPhase, type DevSession } from '../../../shared/types';
 import type { DefaultModel } from '../../../shared/modelDefault';
@@ -100,7 +100,7 @@ function playbookForSession(session: DevSession): Playbook {
   // Compatibility boundary only: rows created before migration 103 have no
   // immutable snapshot. Newly started board sessions are snapshotted and must
   // use the interpreter path below; do not expand this fallback to new runs.
-  return session.review_policy === 'skip' ? BUILT_IN_PLAYBOOKS.implementOnly : DEFAULT_PLAYBOOK;
+  return session.review_policy === 'skip' ? BUILT_IN_PLAYBOOKS.implementOnly : BUILT_IN_PLAYBOOKS.implementOpposingReview;
 }
 
 function stepById(playbook: Playbook, stepId: string): PlaybookStep | undefined {
