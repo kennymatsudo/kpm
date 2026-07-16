@@ -58,7 +58,12 @@ describe('buildSdkOptions', () => {
       enabledUserMcpConfigs: { external: externalMcp },
     });
 
-    expect(options.tools).toEqual(['default', 'Grep', 'Glob']);
+    // 'default' must be the sole `tools` value so the native binary expands it
+    // to the full built-in preset; Grep/Glob (omitted from native presets) are
+    // enabled via allowedTools. Listing them in `tools` alongside 'default'
+    // would collapse the preset to only those two tools.
+    expect(options.tools).toEqual(['default']);
+    expect(options.allowedTools).toEqual(['Grep', 'Glob']);
     expect(options.mcpServers).toMatchObject({ external: externalMcp });
   });
 });
