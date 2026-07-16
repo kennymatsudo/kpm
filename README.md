@@ -28,7 +28,7 @@ KPM runs on macOS with Apple Silicon.
 
 You'll need:
 
-- **Node.js 20+**
+- **Node.js 22.19+** — the version in `.nvmrc` is the supported development runtime
 - **Git** — powers worktrees, diffs, and agent runs
 - **Claude Code**, installed and logged in — runs every AI feature using your existing session. No Anthropic API key required.
 - **Xcode Command Line Tools** — compiles the native modules (`xcode-select --install`)

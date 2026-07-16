@@ -2,8 +2,13 @@
   "name": "kpm",
   "productName": "KPM - Planning Workbench",
   "version": "0.10.16",
+  "private": true,
   "description": "A codebase-aware planning workbench for developers",
   "main": "dist/main/index.js",
+  "packageManager": "npm@10.9.3",
+  "engines": {
+    "node": ">=22.19.0 <23"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -70,6 +75,7 @@
       "@xmldom/xmldom": "^0.8.0"
     },
     "brace-expansion": "^5.0.6",
+    "js-yaml": "^4.3.0",
     "tar": "^7.5.15",
     "lodash": "^4.18.1",
     "ip-address": "^10.2.0",
