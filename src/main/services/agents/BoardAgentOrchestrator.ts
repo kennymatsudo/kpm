@@ -3,6 +3,7 @@ import { toImplSessionId } from '../../../shared/agent-types';
 import { DEFAULT_PLAYBOOK, BUILT_IN_PLAYBOOKS, parsePlaybook, type BoardProvider, type Playbook, type PlaybookStep } from '../../../shared/playbooks';
 import { advancePlaybook, parsePassCounts, renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import { isCommitHookRepairPhase, type DevSession } from '../../../shared/types';
+import type { DefaultModel } from '../../../shared/modelDefault';
 import type { IAgentReviewRepository } from '../../db/interfaces/review';
 import type { PlanService } from '../core/PlanService';
 import type { ClaudeUsageService } from '../core/ClaudeUsageService';
@@ -42,6 +43,7 @@ interface BoardAgentOrchestratorDeps {
   claudeUsageService: Pick<ClaudeUsageService, 'recordUsage'>;
   requestPlanRefresh: (projectId: string) => void;
   listBoardProviders?: () => Promise<BoardProvider[]>;
+  getDefaultModel?: () => DefaultModel;
   getSkillBody?: (name: string) => ServiceResult<string>;
 }
 
@@ -274,7 +276,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       phase: phaseForPlaybookStep(step),
     });
     const providers = await (deps.listBoardProviders ?? detectBoardProviders)();
-    const plan = resolvePlaybookPlan(playbook, providers);
+    const plan = resolvePlaybookPlan(playbook, providers, deps.getDefaultModel?.());
     const resolved = plan.steps.find((entry) => entry.stepId === step.id);
     if (!resolved || resolved.runs.some((run) => !run)) {
       deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: `provider-unavailable:${step.id}` });

@@ -1,14 +1,17 @@
-import type {
-  AgentCandidate,
-  BoardProvider,
-  Playbook,
-  PlaybookStep,
+import type { AgentEffortLevel } from './types';
+import type { DefaultModel } from './modelDefault';
+import {
+  isDefaultAgent,
+  type AgentCandidate,
+  type BoardProvider,
+  type Playbook,
+  type PlaybookStep,
 } from './playbooks';
 
 export interface ResolvedAgent {
   provider: string;
   model: string;
-  effort?: Exclude<AgentCandidate, string>['effort'];
+  effort?: AgentEffortLevel;
 }
 
 export interface ResolvedPlaybookStep {
@@ -19,12 +22,18 @@ export interface ResolvedPlaybookStep {
 export function resolveCandidateChain(
   candidates: AgentCandidate[] | undefined,
   providers: BoardProvider[],
+  defaultModel?: DefaultModel,
 ): ResolvedAgent | null {
   const available = providers.filter((provider) => provider.available);
   for (const candidate of candidates ?? []) {
-    const provider = available.find((entry) => entry.id === candidate.provider);
+    // A `useDefault` candidate follows the user's KPM model. When that model
+    // is unknown, or names a provider the board can't run, it falls through to
+    // the next candidate — exactly like a concrete provider being unavailable.
+    const wanted = isDefaultAgent(candidate) ? defaultModel : candidate;
+    if (!wanted) continue;
+    const provider = available.find((entry) => entry.id === wanted.provider);
     if (!provider) continue;
-    const model = provider.models.find((entry) => entry.id === candidate.model)
+    const model = provider.models.find((entry) => entry.id === wanted.model)
       ?? provider.models.find((entry) => entry.isDefault)
       ?? provider.models[0];
     if (!model) continue;
@@ -37,12 +46,16 @@ export function resolveCandidateChain(
   return null;
 }
 
-export function resolvePlaybookPlan(playbook: Playbook, providers: BoardProvider[]): {
+export function resolvePlaybookPlan(
+  playbook: Playbook,
+  providers: BoardProvider[],
+  defaultModel?: DefaultModel,
+): {
   main: ResolvedAgent | null;
   steps: ResolvedPlaybookStep[];
 } {
   const firstMain = playbook.steps.find((step) => step.session === 'main');
-  const main = resolveCandidateChain(firstMain?.agents ?? [{ provider: 'claude' }], providers);
+  const main = resolveCandidateChain(firstMain?.agents ?? [{ provider: 'claude' }], providers, defaultModel);
   return {
     main,
     steps: playbook.steps.map((step) => ({
@@ -50,8 +63,8 @@ export function resolvePlaybookPlan(playbook: Playbook, providers: BoardProvider
       runs: step.session === 'main'
         ? [main]
         : step.runs
-          ? step.runs.map((chain) => resolveCandidateChain(chain, providers))
-          : [resolveCandidateChain(step.agents, providers)],
+          ? step.runs.map((chain) => resolveCandidateChain(chain, providers, defaultModel))
+          : [resolveCandidateChain(step.agents, providers, defaultModel)],
     })),
   };
 }

@@ -19,8 +19,10 @@ import { toast, useResourceDomainStore } from '../../stores';
 import { listContextFiles } from '../../services/contextFileService';
 import { listAllRepoBranches } from '../../services/repoService';
 import { listBoardProviders, listPlaybooks } from '../../services/playbookService';
+import { getDefaultModel } from '../../services/settingsService';
 import { resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import { formatPlaybookStepTitle, type BoardProvider, type Playbook } from '../../../shared/playbooks';
+import type { DefaultModel } from '../../../shared/modelDefault';
 import type {
   PlanItem,
   RepoEnvironmentMode,
@@ -76,6 +78,7 @@ export const AgentStartModal = memo(function AgentStartModal({
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
   const [selectedPlaybookId, setSelectedPlaybookId] = useState('');
   const [boardProviders, setBoardProviders] = useState<BoardProvider[]>([]);
+  const [defaultModel, setDefaultModel] = useState<DefaultModel | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Context file attachment state
@@ -160,10 +163,11 @@ export const AgentStartModal = memo(function AgentStartModal({
       }
       if (providerResponse.success) setBoardProviders(providerResponse.providers);
     });
+    void getDefaultModel().then(setDefaultModel);
   }, []);
 
   const selectedPlaybook = playbooks.find((entry) => entry.id === selectedPlaybookId);
-  const resolvedPlan = selectedPlaybook ? resolvePlaybookPlan(selectedPlaybook, boardProviders) : null;
+  const resolvedPlan = selectedPlaybook ? resolvePlaybookPlan(selectedPlaybook, boardProviders, defaultModel ?? undefined) : null;
 
   const toggleContextFile = useCallback((filePath: string) => {
     setSelectedContextPaths((prev) =>

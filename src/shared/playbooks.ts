@@ -7,10 +7,27 @@ export type Directive =
   | { kind: 'prompt'; promptKey?: string; text?: string }
   | { kind: 'skill'; name: string; args?: string };
 
-export interface AgentCandidate {
+/** A concrete provider (and optionally model) choice for a playbook step. */
+export interface ConcreteAgent {
   provider: string;
   model?: string;
   effort?: AgentEffortLevel;
+}
+
+/**
+ * Follow the user's KPM model default (see `resolveDefaultModel`) instead of a
+ * pinned provider+model. Resolved live at execution time, so the step tracks
+ * whatever model the user has chosen in KPM.
+ */
+export interface DefaultAgent {
+  useDefault: true;
+  effort?: AgentEffortLevel;
+}
+
+export type AgentCandidate = ConcreteAgent | DefaultAgent;
+
+export function isDefaultAgent(candidate: AgentCandidate): candidate is DefaultAgent {
+  return 'useDefault' in candidate && candidate.useDefault === true;
 }
 
 export interface ModelDescriptor {
@@ -76,11 +93,17 @@ export function formatPlaybookStepTitle(id: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-const agentCandidateSchema: z.ZodType<AgentCandidate> = z.object({
+const effortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional();
+const concreteAgentSchema = z.object({
   provider: z.string().min(1),
   model: z.string().min(1).optional(),
-  effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
+  effort: effortSchema,
 }).strict();
+const defaultAgentSchema = z.object({
+  useDefault: z.literal(true),
+  effort: effortSchema,
+}).strict();
+const agentCandidateSchema: z.ZodType<AgentCandidate> = z.union([concreteAgentSchema, defaultAgentSchema]);
 
 const directiveSchema: z.ZodType<Directive> = z.discriminatedUnion('kind', [
   z.object({

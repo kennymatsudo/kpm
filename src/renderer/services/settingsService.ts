@@ -3,6 +3,7 @@ import {
   type SettingName,
   type SettingValue,
 } from '../../shared/settingsRegistry';
+import { resolveDefaultModel, type DefaultModel } from '../../shared/modelDefault';
 
 function getAppSetting(key: string) {
   return window.api.settings.app.get({ key });
@@ -41,6 +42,17 @@ export async function getOptionalSetting<K extends SettingName>(
 export function setSetting<K extends SettingName>(name: K, value: SettingValue<K>) {
   const def = getSettingDefinition(name);
   return setAppSetting(def.key, def.encode(value));
+}
+
+/** The user's current KPM model choice, for playbook `useDefault` candidates. */
+export async function getDefaultModel(): Promise<DefaultModel> {
+  const [provider, claudeModel, codexModel, piProviderModel] = await Promise.all([
+    getSetting('chatProvider'),
+    getSetting('chatModel'),
+    getSetting('chatCodexModel'),
+    getSetting('chatPiProviderModel'),
+  ]);
+  return resolveDefaultModel({ provider, claudeModel, codexModel, piProviderModel });
 }
 
 export function hasAnthropicApiKey() {

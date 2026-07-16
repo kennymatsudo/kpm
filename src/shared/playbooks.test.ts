@@ -23,6 +23,18 @@ describe('playbookSchema', () => {
     expect(review?.runOverrides?.map((run) => run.axis)).toEqual(['standards', 'spec']);
   });
 
+  it('accepts a useDefault candidate and rejects mixing it with a concrete provider', () => {
+    const withDefault = parsePlaybook({
+      id: 'default', name: 'Default', builtIn: false,
+      steps: [{ id: 'implement', session: 'main', agents: [{ useDefault: true }], systemPromptKey: 'agents.implementation_system', directive: { kind: 'prompt' } }],
+    });
+    expect(withDefault.steps[0].agents).toEqual([{ useDefault: true }]);
+    expect(() => parsePlaybook({
+      id: 'bad', name: 'Bad', builtIn: false,
+      steps: [{ id: 'implement', session: 'main', agents: [{ provider: 'claude', useDefault: true }], systemPromptKey: 'agents.implementation_system', directive: { kind: 'prompt' } }],
+    })).toThrow();
+  });
+
   it('rejects runOverrides without runs', () => {
     expect(() => parsePlaybook({
       id: 'bad', name: 'Bad', builtIn: false,

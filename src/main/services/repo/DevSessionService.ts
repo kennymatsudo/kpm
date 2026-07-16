@@ -54,7 +54,7 @@ import type { PlaybookService } from '../core/PlaybookService';
 import { parsePlaybook, type BoardProvider, type Playbook } from '../../../shared/playbooks';
 import { renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import { renderBranchName } from '../../../shared/branchNaming';
-import { getSetting } from '../../db/appSettingsAccess';
+import { getSetting, getDefaultModel } from '../../db/appSettingsAccess';
 import {
   type AgentContextInput,
   type BoardClaudeModel,
@@ -336,7 +336,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       if (!playbookResult.ok) return playbookResult;
       const playbook: Playbook = playbookResult.data;
       const providers = await deps.listBoardProviders();
-      const resolvedPlan = resolvePlaybookPlan(playbook, providers);
+      const resolvedPlan = resolvePlaybookPlan(playbook, providers, getDefaultModel(deps.appSettings));
       if (!resolvedPlan.main) return failure('No available provider can run the first main playbook step');
       if (!['claude', 'codex', 'gemini'].includes(resolvedPlan.main.provider)) {
         return failure(`Provider ${resolvedPlan.main.provider} is not enabled for board execution`);

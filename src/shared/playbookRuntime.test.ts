@@ -31,6 +31,38 @@ describe('playbook runtime', () => {
     expect(resolveCandidateChain([{ provider: 'codex' }], providers)).toMatchObject({ provider: 'codex', model: 'gpt-5.5' });
   });
 
+  it('follows the default model for a useDefault candidate', () => {
+    expect(resolveCandidateChain([{ useDefault: true }], providers, { provider: 'claude', model: 'opus' }))
+      .toMatchObject({ provider: 'claude', model: 'opus' });
+    expect(resolveCandidateChain([{ useDefault: true, effort: 'high' }], providers, { provider: 'codex', model: 'gpt-5.5' }))
+      .toMatchObject({ provider: 'codex', model: 'gpt-5.5', effort: 'high' });
+  });
+
+  it('degrades a useDefault model to the board provider default when the id is unknown', () => {
+    // The chat codex model catalog differs from the board's; an unknown id
+    // still keeps the provider and falls to that provider's default model.
+    expect(resolveCandidateChain([{ useDefault: true }], providers, { provider: 'codex', model: 'gpt-5.6-sol' }))
+      .toMatchObject({ provider: 'codex', model: 'gpt-5.5' });
+  });
+
+  it('falls through the chain when the default model names an unrunnable provider', () => {
+    expect(resolveCandidateChain([{ useDefault: true }, { provider: 'claude', model: 'sonnet' }], providers, { provider: 'pi', model: 'auto' }))
+      .toMatchObject({ provider: 'claude', model: 'sonnet' });
+  });
+
+  it('skips a useDefault candidate when no default model is known', () => {
+    expect(resolveCandidateChain([{ useDefault: true }], providers)).toBeNull();
+  });
+
+  it('resolves a useDefault main step against the supplied default model', () => {
+    const playbook: Playbook = {
+      id: 'custom', name: 'Custom', builtIn: false,
+      steps: [{ id: 'implement', session: 'main', systemPromptKey: 'agents.implementation_system', agents: [{ useDefault: true }], directive: { kind: 'prompt', text: 'go' } }],
+    };
+    expect(resolvePlaybookPlan(playbook, providers, { provider: 'claude', model: 'opus' }).main)
+      .toMatchObject({ provider: 'claude', model: 'opus' });
+  });
+
   it('resolves a visible provider plan for every run', () => {
     const plan = resolvePlaybookPlan(BUILT_IN_PLAYBOOKS.implementOpposingReview, providers);
     expect(plan.steps.map((step) => [step.stepId, step.runs.map((run) => run?.provider)])).toEqual([

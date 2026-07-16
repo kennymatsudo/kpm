@@ -11,6 +11,7 @@ import { BrowserWindow, shell } from 'electron';
 import type { IRepositoryContainer } from '../db/interfaces';
 import { getConfig } from '../config';
 import { getDatabase, getUserDataPath } from '../db/connection';
+import { getDefaultModel } from '../db/appSettingsAccess';
 import { createExportService, createImportService, createSyncService, createTypeMappingService, queueTrackerUpdateIfNeeded } from '../db/domain';
 import type { PlanItemServiceDeps, QueueTrackerUpdateIfNeeded } from '../db/domain';
 import { createPlanActionExecutor } from '../db/domain/PlanActionService';
@@ -323,6 +324,7 @@ export function createAppServices(container: IRepositoryContainer) {
     claudeUsageService,
     requestPlanRefresh,
     listBoardProviders,
+    getDefaultModel: () => getDefaultModel(container.appSettings),
     getSkillBody: slashCommandService.getSkillBody,
   });
 

@@ -3,6 +3,7 @@ import {
   formatPlaybookStepTitle,
   getPlaybookLoops,
   getPlaybookValidationIssues,
+  isDefaultAgent,
   type AgentCandidate,
   type BoardProvider,
   type Playbook,
@@ -11,6 +12,7 @@ import {
   type PlaybookValidationIssue,
 } from '../../../shared/playbooks';
 import { resolveCandidateChain } from '../../../shared/playbookRuntime';
+import type { DefaultModel } from '../../../shared/modelDefault';
 import type { SlashCommandInfo } from '../../../shared/types';
 import {
   createPlaybook,
@@ -22,6 +24,7 @@ import {
   setDefaultPlaybook,
   updatePlaybook,
 } from '../../services/playbookService';
+import { getDefaultModel } from '../../services/settingsService';
 import { toast } from '../../stores';
 import { usePromptOverrideStore } from '../../stores/promptOverrideStore';
 import { ChevronRightIcon } from '../icons/ChevronRightIcon';
@@ -94,6 +97,9 @@ function candidateObject(candidate: AgentCandidate | undefined): AgentCandidate 
   return candidate ?? { provider: 'claude' };
 }
 
+/** Provider-select value that stands for the user's KPM model default. */
+const DEFAULT_PROVIDER_VALUE = '__default__';
+
 function uniqueId(steps: PlaybookStep[], base: string): string {
   let id = base;
   let index = 2;
@@ -126,6 +132,7 @@ export function PlaybooksSettings() {
   const [draft, setDraft] = useState<Playbook | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [providers, setProviders] = useState<BoardProvider[]>([]);
+  const [defaultModel, setDefaultModel] = useState<DefaultModel | null>(null);
   const [skills, setSkills] = useState<SlashCommandInfo[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [subTab, setSubTab] = useState<'playbooks' | 'instructions'>('playbooks');
@@ -147,6 +154,7 @@ export function PlaybooksSettings() {
   useEffect(() => {
     void listBoardProviders().then((response) => response.success && setProviders(response.providers));
     void listPlaybookSkills().then((response) => response.success && setSkills(response.skills));
+    void getDefaultModel().then(setDefaultModel);
   }, []);
   useEffect(() => {
     const selected = playbooks.find((playbook) => playbook.id === selectedId);
@@ -206,7 +214,7 @@ export function PlaybooksSettings() {
         </div>
         <div className="space-y-1.5">
           {playbooks.map((playbook) => {
-            const disconnected = playbook.steps.some((step) => (step.runs ?? (step.agents ? [step.agents] : [])).some((chain) => chain.length > 0 && !resolveCandidateChain(chain, providers)));
+            const disconnected = playbook.steps.some((step) => (step.runs ?? (step.agents ? [step.agents] : [])).some((chain) => chain.length > 0 && !resolveCandidateChain(chain, providers, defaultModel ?? undefined)));
             return (
               <button key={playbook.id} onClick={() => setSelectedId(playbook.id)} className={`w-full rounded-lg border p-2.5 text-left ${selectedId === playbook.id ? 'border-accent bg-accent/10' : 'border-border-subtle bg-surface-1 hover:bg-surface-2'}`}>
                 <div className="flex items-center gap-2"><input aria-label={`Default ${playbook.name}`} type="radio" checked={defaultId === playbook.id} onChange={(event) => { event.stopPropagation(); void setDefaultPlaybook(playbook.id).then(() => { setDefaultId(playbook.id); }); }} /><span className="min-w-0 flex-1 truncate text-sm text-text-primary">{playbook.name}</span></div>
@@ -244,7 +252,7 @@ export function PlaybooksSettings() {
                     {routeIssues.map((issue) => <AnchoredIssue key={`${issue.field}-${issue.message}`} issue={issue} />)}
                     {expanded === step.id && <div className="space-y-3 border-t border-border-subtle px-4 py-4 text-sm">
                       <Row label="Runs as"><select disabled={draft.builtIn} value={step.session} onChange={(event) => patchStep(step.id, { session: event.target.value as PlaybookStep['session'], ...(event.target.value === 'main' ? { runs: undefined, writes: undefined, agents: canOwnMainIdentity ? step.agents ?? [{ provider: 'claude' }] : undefined, systemPromptKey: canOwnMainIdentity ? step.systemPromptKey ?? 'agents.implementation_system' : undefined } : { systemPromptKey: step.systemPromptKey ?? 'agents.review_system', agents: step.agents ?? [{ provider: 'claude' }] }) })} className="input"><option value="main">Main</option><option value="subagent">Subagent</option></select></Row>
-                      {(step.session === 'subagent' || firstMain) && <Row label="Agents"><AgentEditor step={step} providers={providers} disabled={draft.builtIn} onChange={(patch) => patchStep(step.id, patch)} /></Row>}
+                      {(step.session === 'subagent' || firstMain) && <Row label="Agents"><AgentEditor step={step} providers={providers} defaultModel={defaultModel} disabled={draft.builtIn} onChange={(patch) => patchStep(step.id, patch)} /></Row>}
                       {(step.session === 'subagent' || firstMain) && <Row label="Role instructions"><select disabled={draft.builtIn} value={step.systemPromptKey ?? ''} onChange={(event) => patchStep(step.id, { systemPromptKey: event.target.value || undefined })} className="input w-full"><option value="agents.implementation_system">Implement changes</option><option value="agents.review_system">Review changes</option>{step.systemPromptKey && !['agents.implementation_system', 'agents.review_system'].includes(step.systemPromptKey) && <option value={step.systemPromptKey}>Saved instruction set</option>}</select></Row>}
                       <Row label="Task">
                         <div className="space-y-2">
@@ -309,7 +317,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   return <div className="grid gap-2 sm:grid-cols-[120px_minmax(0,1fr)]"><label className="text-xs font-medium text-text-muted">{label}</label><div>{children}</div></div>;
 }
 
-function AgentEditor({ step, providers, disabled, onChange }: { step: PlaybookStep; providers: BoardProvider[]; disabled: boolean; onChange: (patch: Partial<PlaybookStep>) => void }) {
+function AgentEditor({ step, providers, defaultModel, disabled, onChange }: { step: PlaybookStep; providers: BoardProvider[]; defaultModel: DefaultModel | null; disabled: boolean; onChange: (patch: Partial<PlaybookStep>) => void }) {
   const chains = step.runs ?? [step.agents ?? [{ provider: 'claude' }]];
   const apply = (next: PlaybookStep) => onChange({ agents: next.agents, runs: next.runs });
   return (
@@ -321,20 +329,24 @@ function AgentEditor({ step, providers, disabled, onChange }: { step: PlaybookSt
           <div className="space-y-2">
             {chain.map((rawCandidate, candidateIndex) => {
               const candidate = candidateObject(rawCandidate);
-              const provider = providers.find((entry) => entry.id === candidate.provider);
+              const isDefault = isDefaultAgent(candidate);
+              const provider = isDefaultAgent(candidate) ? undefined : providers.find((entry) => entry.id === candidate.provider);
+              const effort = candidate.effort;
               return (
                 <div key={candidateIndex} className="rounded-md border border-border-subtle bg-surface-1 p-2">
                   <div className="mb-2 flex items-center gap-1 text-tiny text-text-muted">
                     <span className="rounded-full bg-surface-3 px-2 py-0.5">{candidateIndex + 1}</span>
-                    <span className="mr-auto">{provider?.name ?? candidate.provider}</span>
+                    <span className="mr-auto">{isDefaultAgent(candidate) ? 'Default' : (provider?.name ?? candidate.provider)}</span>
                     <button type="button" disabled={disabled || candidateIndex === 0} onClick={() => apply(moveAgentCandidate(step, runIndex, candidateIndex, -1))} className="rounded px-1.5 py-0.5 transition-colors hover:bg-surface-3 disabled:opacity-30" aria-label="Move candidate up">Up</button>
                     <button type="button" disabled={disabled || candidateIndex === chain.length - 1} onClick={() => apply(moveAgentCandidate(step, runIndex, candidateIndex, 1))} className="rounded px-1.5 py-0.5 transition-colors hover:bg-surface-3 disabled:opacity-30" aria-label="Move candidate down">Down</button>
                     <button type="button" disabled={disabled || chain.length === 1} onClick={() => apply(removeAgentCandidate(step, runIndex, candidateIndex))} className="rounded px-1.5 py-0.5 text-danger transition-colors hover:bg-danger-muted/50 disabled:opacity-30">Remove</button>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <select disabled={disabled} value={candidate.provider} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, { provider: event.target.value }))} className="input">{providers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}{entry.available ? '' : ' (unavailable)'}</option>)}</select>
-                    <select disabled={disabled} value={candidate.model ?? provider?.models.find((model) => model.isDefault)?.id ?? ''} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, { ...candidate, model: event.target.value }))} className="input">{provider?.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>
-                    <select disabled={disabled} value={candidate.effort ?? ''} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, { ...candidate, effort: (event.target.value || undefined) as typeof candidate.effort }))} className="input"><option value="">Default effort</option>{['low','medium','high','xhigh','max'].map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select disabled={disabled} value={isDefault ? DEFAULT_PROVIDER_VALUE : candidate.provider} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, event.target.value === DEFAULT_PROVIDER_VALUE ? { useDefault: true, ...(effort ? { effort } : {}) } : { provider: event.target.value, ...(effort ? { effort } : {}) }))} className="input"><option value={DEFAULT_PROVIDER_VALUE}>Default (your KPM model)</option>{providers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}{entry.available ? '' : ' (unavailable)'}</option>)}</select>
+                    {isDefaultAgent(candidate)
+                      ? <span className="text-tiny text-text-muted">Follows your KPM model{defaultModel ? ` · ${defaultModel.provider}/${defaultModel.model}` : ''}</span>
+                      : <select disabled={disabled} value={candidate.model ?? provider?.models.find((model) => model.isDefault)?.id ?? ''} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, { provider: candidate.provider, model: event.target.value, ...(effort ? { effort } : {}) }))} className="input">{provider?.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>}
+                    <select disabled={disabled} value={effort ?? ''} onChange={(event) => { const next = (event.target.value || undefined) as AgentCandidate['effort']; apply(updateAgentCandidate(step, runIndex, candidateIndex, isDefaultAgent(candidate) ? { useDefault: true, ...(next ? { effort: next } : {}) } : { provider: candidate.provider, ...(candidate.model ? { model: candidate.model } : {}), ...(next ? { effort: next } : {}) })); }} className="input"><option value="">Default effort</option>{['low','medium','high','xhigh','max'].map((level) => <option key={level} value={level}>{level}</option>)}</select>
                   </div>
                 </div>
               );

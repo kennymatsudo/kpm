@@ -9,6 +9,7 @@ import {
   type SettingName,
   type SettingValue,
 } from '../../shared/settingsRegistry';
+import { resolveDefaultModel, type DefaultModel } from '../../shared/modelDefault';
 import type { IAppSettingsRepository } from './interfaces';
 
 export function getSetting<K extends SettingName>(
@@ -35,4 +36,14 @@ export function setSetting<K extends SettingName>(
 ): void {
   const def = getSettingDefinition(name);
   appSettings.set(def.key, def.encode(value));
+}
+
+/** The user's current KPM model choice, for playbook `useDefault` candidates. */
+export function getDefaultModel(appSettings: IAppSettingsRepository): DefaultModel {
+  return resolveDefaultModel({
+    provider: getSetting(appSettings, 'chatProvider'),
+    claudeModel: getSetting(appSettings, 'chatModel'),
+    codexModel: getSetting(appSettings, 'chatCodexModel'),
+    piProviderModel: getSetting(appSettings, 'chatPiProviderModel'),
+  });
 }
