@@ -10,7 +10,8 @@ import type { ClaudeUsageService } from '../core/ClaudeUsageService';
 import type { DevSessionService } from '../repo/DevSessionService';
 import type { ReviewService } from '../repo/ReviewService';
 import type { AgentSessionManager, AgentSessionManagerDeps } from './AgentSessionManager';
-import { launchAutoReview, launchPlaybookSubagent, toPlaybookSubagentSessionId } from './autoReview';
+import { launchAutoReview, launchPlaybookSubagent } from './autoReview';
+import { createPlaybookRoundStore, type RunGroup } from './playbookRoundStore';
 import { listBoardProviders as detectBoardProviders } from './boardProviderRegistry';
 import type { ServiceResult } from '../result';
 import { effectivePhase, type AutomationPhaseMachine } from './automationPhaseMachine';
@@ -113,7 +114,12 @@ function nextStep(playbook: Playbook, step: PlaybookStep): PlaybookStep | undefi
   return nextId ? stepById(playbook, nextId) : undefined;
 }
 
-type CaptureWorkOutcome = 'captured' | 'repair_started' | 'failed';
+type CaptureWorkOutcome = 'committed' | 'nothing_to_commit' | 'repair_started' | 'failed';
+
+/** Both committed and clean-tree outcomes mean the branch capture succeeded. */
+function isCaptured(outcome: CaptureWorkOutcome): boolean {
+  return outcome === 'committed' || outcome === 'nothing_to_commit';
+}
 
 /**
  * Commit the implementation agent's worktree changes onto the task's own branch.
@@ -135,8 +141,11 @@ async function captureWorkOnBranch(
     : session.name?.trim() || 'KPM task changes';
 
   const result = await devSessionService.commitSessionChanges(session.id, subject);
-  if (result.ok || /nothing to commit/i.test(result.error)) {
-    return 'captured';
+  if (result.ok) {
+    return 'committed';
+  }
+  if (/nothing to commit/i.test(result.error)) {
+    return 'nothing_to_commit';
   }
 
   if (!isCommitHookRepairPhase(session.automation_phase)) {
@@ -154,73 +163,14 @@ async function captureWorkOnBranch(
 export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): AgentManagerCallbacks & {
   resumePlaybook: (sessionId: string, options?: { note?: string; action?: 'resume' | 'proceed' | 'one_more_pass' }) => Promise<boolean>;
 } {
-  const outputs = new Map<string, Record<string, string[]>>();
-  interface RunGroup {
-    expected: number;
-    attempt: number;
-    succeeded: Set<number>;
-    failed: Set<number>;
-    findings: ReviewFinding[];
-    output: Map<number, string>;
-  }
-  // Cache only. Persisted review rows are authoritative and reconstruct this
-  // aggregation after a main-process restart.
-  const runGroups = new Map<string, RunGroup>();
+  const rounds = createPlaybookRoundStore({
+    agentReviews: deps.agentReviews,
+    saveOutputs: (id, value) => { deps.getDevSessionService()?.savePlaybookOutputs?.(id, value); },
+  });
 
-  const groupKey = (sessionId: string, stepId: string) => `${sessionId}:${stepId}`;
   const phaseForPlaybookStep = (step: PlaybookStep) => step.session === 'subagent'
     ? 'reviewing' as const
     : 'addressing_review' as const;
-  const attemptForStep = (session: DevSession, step: PlaybookStep) => parsePassCounts(session.step_pass_counts)[step.id] ?? 0;
-  const reviewSessionIds = (session: DevSession, step: PlaybookStep, expected: number) => {
-    const attempt = attemptForStep(session, step);
-    return Array.from({ length: expected }, (_, runIndex) =>
-      toPlaybookSubagentSessionId(session.id, step.id, attempt, runIndex));
-  };
-
-  function reconstructRunGroup(session: DevSession, step: PlaybookStep, expected: number): RunGroup {
-    const group: RunGroup = {
-      expected,
-      attempt: attemptForStep(session, step),
-      succeeded: new Set<number>(),
-      failed: new Set<number>(),
-      findings: [],
-      output: new Map<number, string>(),
-    };
-    const persisted = deps.agentReviews.getByReviewSessionIds(reviewSessionIds(session, step, expected));
-    for (const run of persisted) {
-      if (run.run_index == null || run.run_index < 0 || run.run_index >= expected) continue;
-      if (run.status === 'complete') {
-        group.succeeded.add(run.run_index);
-        group.findings.push(...run.findings);
-        if (run.raw_output) group.output.set(run.run_index, run.raw_output);
-      } else if (run.status === 'failed') {
-        group.failed.add(run.run_index);
-      }
-      // A persisted `running` row belongs to a process that no longer owns a
-      // runtime after restart. Dispatch relaunches that same concrete run id.
-    }
-    return group;
-  }
-  function outputsFor(session: DevSession): Record<string, string[]> {
-    const cached = outputs.get(session.id);
-    if (cached) return cached;
-    if (session.step_outputs) {
-      try {
-        const parsed = JSON.parse(session.step_outputs) as Record<string, string[]>;
-        outputs.set(session.id, parsed);
-        return parsed;
-      } catch { /* start with an empty output channel */ }
-    }
-    const empty: Record<string, string[]> = {};
-    outputs.set(session.id, empty);
-    return empty;
-  }
-
-  function persistOutputs(session: DevSession, value: Record<string, string[]>): void {
-    outputs.set(session.id, value);
-    deps.getDevSessionService()?.savePlaybookOutputs?.(session.id, value);
-  }
 
   function moveSessionPlanItemToReview(sessionId: string): void {
     const devSessionService = deps.getDevSessionService();
@@ -282,7 +232,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: `provider-unavailable:${step.id}` });
       return;
     }
-    const sessionOutputs = outputsFor(session);
+    const sessionOutputs = rounds.outputsFor(session);
 
     if (step.session === 'main') {
       const provider = providers.find((entry) => entry.id === plan.main?.provider);
@@ -308,13 +258,13 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'follow-up-send-failed' });
       } else if (hasWorktreeNotice) {
         delete sessionOutputs[WORKTREE_MODIFIED_NOTICE_KEY];
-        persistOutputs(session, sessionOutputs);
+        rounds.persistOutputs(session, sessionOutputs);
       }
       return;
     }
 
-    const group = reconstructRunGroup(session, step, resolved.runs.length);
-    runGroups.set(groupKey(session.id, step.id), group);
+    const group = rounds.reconstructRunGroup(session, step, resolved.runs.length);
+    rounds.setGroup(session.id, step.id, group);
     if (group.succeeded.size === group.expected) {
       await finalizeSubagentGroup(session, playbook, step, group);
       return;
@@ -363,8 +313,14 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     playbook: Playbook,
     step: PlaybookStep,
     findings: ReviewFinding[],
+    madeProgress = true,
   ): Promise<void> {
-    const advance = advancePlaybook(playbook, step.id, findings.length > 0, parsePassCounts(session.step_pass_counts));
+    const advance = advancePlaybook(
+      playbook,
+      step.id,
+      { hasFindings: findings.length > 0, madeProgress },
+      parsePassCounts(session.step_pass_counts),
+    );
     if (advance.kind === 'complete') {
       deps.phaseMachine.transition(session.id, { type: 'stepCompleted', stepId: step.id, nextStepId: null, stepPassCounts: advance.passCounts });
       await finishAtTerminal(session);
@@ -396,24 +352,24 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     step: PlaybookStep,
     group: RunGroup,
   ): Promise<void> {
-    runGroups.delete(groupKey(session.id, step.id));
+    rounds.deleteGroup(session.id, step.id);
     if (group.succeeded.size === 0) {
       deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: `all-runs-failed:${step.id}` });
       return;
     }
-    const sessionOutputs = outputsFor(session);
+    const sessionOutputs = rounds.outputsFor(session);
     sessionOutputs[step.id] = [...group.output.entries()].sort(([a], [b]) => a - b).map(([, value]) => value);
-    persistOutputs(session, sessionOutputs);
+    rounds.persistOutputs(session, sessionOutputs);
     if (step.writes) {
       const service = deps.getDevSessionService();
       if (service) {
         const capture = await captureWorkOnBranch(service, deps.phaseMachine, session);
-        if (capture !== 'captured') return;
+        if (!isCaptured(capture)) return;
       }
       // Persist before advancing the cursor so a restart between the writing
       // subagent and the next main turn cannot lose this harness-owned notice.
       sessionOutputs[WORKTREE_MODIFIED_NOTICE_KEY] = [step.id];
-      persistOutputs(session, sessionOutputs);
+      rounds.persistOutputs(session, sessionOutputs);
     }
     await advanceAfterStep(session, playbook, step, group.findings);
   }
@@ -427,10 +383,9 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     finalText?: string | null;
     failed?: boolean;
   }): Promise<void> {
-    const key = groupKey(params.session.id, params.step.id);
-    const group = runGroups.get(key)
-      ?? reconstructRunGroup(params.session, params.step, params.step.runs?.length ?? 1);
-    runGroups.set(key, group);
+    const group = rounds.getGroup(params.session.id, params.step.id)
+      ?? rounds.reconstructRunGroup(params.session, params.step, params.step.runs?.length ?? 1);
+    rounds.setGroup(params.session.id, params.step.id, group);
     if (params.failed) group.failed.add(params.runIndex);
     else {
       if (!group.succeeded.has(params.runIndex)) {
@@ -456,11 +411,14 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         deps.phaseMachine.transition(sessionId, { type: 'automationFailed', reason: 'missing-resume-step' });
         return true;
       }
-      if (options.action === 'proceed' && session.paused_reason === 'max_passes') {
+      // Both the pass-limit and stalemate pauses stop at a findings loop head and
+      // offer the same tiebreak: proceed to review, or push one more pass.
+      const findingsPause = session.paused_reason === 'max_passes' || session.paused_reason === 'stalled';
+      if (options.action === 'proceed' && findingsPause) {
         await advanceAfterStep(session, playbook, step, []);
         return true;
       }
-      if (options.action === 'one_more_pass' && session.paused_reason === 'max_passes' && step.onFindings) {
+      if (options.action === 'one_more_pass' && findingsPause && step.onFindings) {
         const target = stepById(playbook, step.onFindings.goto);
         if (!target) return false;
         const counts = parsePassCounts(session.step_pass_counts);
@@ -469,7 +427,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           type: 'stepCompleted', stepId: step.id, nextStepId: target.id,
           nextPhase: phaseForPlaybookStep(target), stepPassCounts: counts,
         });
-        const surviving = outputsFor(session)[step.id]?.join('\n\n');
+        const surviving = rounds.outputsFor(session)[step.id]?.join('\n\n');
         const note = [options.note, surviving ? `Surviving reviewer output:\n${surviving}` : ''].filter(Boolean).join('\n\n');
         await dispatchStep(session, playbook, target, [], note);
         return true;
@@ -528,7 +486,8 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         const playbook = playbookForSession(session);
         if (role === 'implement') {
           const capture = await captureWorkOnBranch(devSessionService, deps.phaseMachine, session);
-          if (capture !== 'captured') return;
+          if (!isCaptured(capture)) return;
+          const madeProgress = capture === 'committed';
           // A null cursor is the interpreter's terminal halt point. Free-form
           // follow-up is allowed there, but it is an ad-hoc turn — never infer
           // the first step and restart the completed playbook.
@@ -538,11 +497,11 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           }
           const completed = stepById(playbook, session.current_step_id) ?? playbook.steps[0];
           if (finalText) {
-            const sessionOutputs = outputsFor(session);
+            const sessionOutputs = rounds.outputsFor(session);
             sessionOutputs[completed.id] = [finalText];
-            persistOutputs(session, sessionOutputs);
+            rounds.persistOutputs(session, sessionOutputs);
           }
-          await advanceAfterStep(session, playbook, completed, []);
+          await advanceAfterStep(session, playbook, completed, [], madeProgress);
           return;
         }
         const completed = stepById(playbook, stepId ?? session.current_step_id ?? 'review');

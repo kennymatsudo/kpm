@@ -1076,7 +1076,7 @@ export type DevSessionAutomationPhase =
   | 'ready_for_review'
   | 'needs_attention';
 
-export type DevSessionPausedReason = 'gate' | 'max_passes';
+export type DevSessionPausedReason = 'gate' | 'max_passes' | 'stalled';
 
 export function isCommitHookRepairPhase(
   phase: DevSessionAutomationPhase | null | undefined,

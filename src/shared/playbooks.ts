@@ -66,7 +66,7 @@ export interface PlaybookStep {
   writes?: true;
   directive: Directive;
   verdict?: 'findings';
-  onFindings?: { goto: string; maxPasses: number; onMaxPasses: 'pause' | 'proceed' };
+  onFindings?: { goto: string; maxPasses: number; onMaxPasses: 'pause' | 'proceed'; onStall?: 'pause' | 'proceed' };
   next?: string;
   pauseBefore?: true;
 }
@@ -135,6 +135,7 @@ export const playbookStepSchema: z.ZodType<PlaybookStep> = z.object({
     goto: z.string().min(1),
     maxPasses: z.number().int().positive().finite(),
     onMaxPasses: z.enum(['pause', 'proceed']),
+    onStall: z.enum(['pause', 'proceed']).optional(),
   }).strict().optional(),
   next: z.string().min(1).optional(),
   pauseBefore: z.literal(true).optional(),
@@ -448,7 +449,7 @@ export const BUILT_IN_PLAYBOOKS = {
         ],
         directive: { kind: 'prompt' },
         verdict: 'findings',
-        onFindings: { goto: 'address', maxPasses: 3, onMaxPasses: 'pause' },
+        onFindings: { goto: 'address', maxPasses: 3, onMaxPasses: 'pause', onStall: 'pause' },
       },
       {
         id: 'address',

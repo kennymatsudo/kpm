@@ -139,7 +139,7 @@ export interface PanelStatusInputs {
   /** Opposing-review agent state, if a review session is running. */
   reviewAgentState: AgentSessionState | undefined;
   automationPhase: DevSessionAutomationPhase | null;
-  pausedReason?: 'gate' | 'max_passes' | null;
+  pausedReason?: 'gate' | 'max_passes' | 'stalled' | null;
   /** PR linkage / status. */
   hasPr: boolean;
   prState: string | null;      // 'OPEN' | 'CLOSED' | 'MERGED'
@@ -366,12 +366,17 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
 
   // 6. Persisted automation interruptions outrank quiet decision points.
   if (i.automationPhase === 'paused') {
-    return withStep('paused', i.pausedReason === 'max_passes' ? {
-      tone: 'warning',
-      text: 'Findings remain after the pass limit',
-      primary: { label: 'One more pass', action: 'one_more_pass' },
-      secondary: { label: 'Proceed', action: 'proceed' },
-    } : {
+    if (i.pausedReason === 'max_passes' || i.pausedReason === 'stalled') {
+      return withStep('paused', {
+        tone: 'warning',
+        text: i.pausedReason === 'stalled'
+          ? 'Reviewer and implementer disagree — the last pass changed nothing'
+          : 'Findings remain after the pass limit',
+        primary: { label: 'One more pass', action: 'one_more_pass' },
+        secondary: { label: 'Proceed', action: 'proceed' },
+      }, null);
+    }
+    return withStep('paused', {
       tone: 'info',
       text: 'Paused at playbook gate',
       primary: { label: 'Resume', action: 'resume' },

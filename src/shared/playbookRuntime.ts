@@ -71,19 +71,46 @@ export function resolvePlaybookPlan(
 
 export type PlaybookAdvance =
   | { kind: 'step'; stepId: string; passCounts: Record<string, number> }
-  | { kind: 'pause'; stepId: string; reason: 'gate' | 'max_passes'; passCounts: Record<string, number> }
+  | { kind: 'pause'; stepId: string; reason: 'gate' | 'max_passes' | 'stalled'; passCounts: Record<string, number> }
   | { kind: 'complete'; passCounts: Record<string, number> };
+
+/** What a just-completed step tells the cursor about whether the loop can converge. */
+export interface RoundOutcome {
+  /** The review that just completed raised findings. */
+  hasFindings: boolean;
+  /** The step that just completed changed code (a commit was captured). */
+  madeProgress: boolean;
+}
 
 function defaultNext(playbook: Playbook, step: PlaybookStep): string | undefined {
   const index = playbook.steps.findIndex((entry) => entry.id === step.id);
   return step.next ?? playbook.steps[index + 1]?.id;
 }
 
+/**
+ * A back-edge into a findings loop head whose round changed nothing is a
+ * stalemate: the diff is unchanged, so the reviewer would only re-derive the
+ * same findings. Returns that loop head when its onStall route should apply.
+ */
+function stalledLoopHead(
+  playbook: Playbook,
+  completed: PlaybookStep,
+  nextId: string,
+  outcome: RoundOutcome,
+): PlaybookStep | undefined {
+  if (outcome.madeProgress) return undefined;
+  const sourceIndex = playbook.steps.findIndex((entry) => entry.id === completed.id);
+  const targetIndex = playbook.steps.findIndex((entry) => entry.id === nextId);
+  if (targetIndex < 0 || targetIndex > sourceIndex) return undefined;
+  const target = playbook.steps[targetIndex];
+  return target.onFindings?.onStall ? target : undefined;
+}
+
 /** Pure cursor transition used by the persisted interpreter. */
 export function advancePlaybook(
   playbook: Playbook,
   completedStepId: string,
-  hasFindings: boolean,
+  outcome: RoundOutcome,
   passCounts: Record<string, number>,
 ): PlaybookAdvance {
   const step = playbook.steps.find((entry) => entry.id === completedStepId);
@@ -91,7 +118,7 @@ export function advancePlaybook(
 
   let nextId: string | undefined;
   let nextCounts = passCounts;
-  if (hasFindings && step.onFindings) {
+  if (outcome.hasFindings && step.onFindings) {
     const spent = passCounts[step.id] ?? 0;
     if (spent >= step.onFindings.maxPasses) {
       if (step.onFindings.onMaxPasses === 'pause') {
@@ -106,6 +133,16 @@ export function advancePlaybook(
     nextId = undefined;
   } else {
     nextId = defaultNext(playbook, step);
+    if (nextId) {
+      const head = stalledLoopHead(playbook, step, nextId, outcome);
+      const onStall = head?.onFindings?.onStall;
+      if (head && onStall) {
+        if (onStall === 'pause') {
+          return { kind: 'pause', stepId: head.id, reason: 'stalled', passCounts: nextCounts };
+        }
+        nextId = head.next;
+      }
+    }
   }
 
   if (!nextId) return { kind: 'complete', passCounts: nextCounts };

@@ -97,10 +97,37 @@ describe('playbook runtime', () => {
 
   it('routes findings through the bounded back edge and pauses at the budget', () => {
     const playbook = BUILT_IN_PLAYBOOKS.implementCodeReview;
-    expect(advancePlaybook(playbook, 'review', true, {})).toEqual({ kind: 'step', stepId: 'address', passCounts: { review: 1 } });
-    expect(advancePlaybook(playbook, 'review', true, { review: 2 })).toEqual({ kind: 'step', stepId: 'address', passCounts: { review: 3 } });
-    expect(advancePlaybook(playbook, 'review', true, { review: 3 })).toEqual({ kind: 'pause', stepId: 'review', reason: 'max_passes', passCounts: { review: 3 } });
-    expect(advancePlaybook(playbook, 'review', false, { review: 1 })).toEqual({ kind: 'complete', passCounts: { review: 1 } });
+    const found = { hasFindings: true, madeProgress: true };
+    const clean = { hasFindings: false, madeProgress: true };
+    expect(advancePlaybook(playbook, 'review', found, {})).toEqual({ kind: 'step', stepId: 'address', passCounts: { review: 1 } });
+    expect(advancePlaybook(playbook, 'review', found, { review: 2 })).toEqual({ kind: 'step', stepId: 'address', passCounts: { review: 3 } });
+    expect(advancePlaybook(playbook, 'review', found, { review: 3 })).toEqual({ kind: 'pause', stepId: 'review', reason: 'max_passes', passCounts: { review: 3 } });
+    expect(advancePlaybook(playbook, 'review', clean, { review: 1 })).toEqual({ kind: 'complete', passCounts: { review: 1 } });
+  });
+
+  it('pauses as stalled when an address round loops back with no progress', () => {
+    const playbook = BUILT_IN_PLAYBOOKS.implementCodeReview;
+    // The implementer declined every finding and committed nothing: re-reviewing
+    // the identical diff would only re-raise the same findings.
+    expect(advancePlaybook(playbook, 'address', { hasFindings: false, madeProgress: false }, { review: 1 }))
+      .toEqual({ kind: 'pause', stepId: 'review', reason: 'stalled', passCounts: { review: 1 } });
+    // Progress this round keeps the loop running — the diff changed.
+    expect(advancePlaybook(playbook, 'address', { hasFindings: false, madeProgress: true }, { review: 1 }))
+      .toEqual({ kind: 'step', stepId: 'review', passCounts: { review: 1 } });
+  });
+
+  it('exits the loop instead of pausing when onStall is proceed', () => {
+    const playbook: Playbook = {
+      id: 'custom', name: 'Custom', builtIn: false,
+      steps: [
+        { id: 'implement', session: 'main', systemPromptKey: 'agents.implementation_system', directive: { kind: 'prompt', text: 'go' } },
+        { id: 'review', session: 'subagent', systemPromptKey: 'agents.review_system', agents: [{ provider: 'codex' }], directive: { kind: 'prompt' }, verdict: 'findings', onFindings: { goto: 'address', maxPasses: 3, onMaxPasses: 'pause', onStall: 'proceed' } },
+        { id: 'address', session: 'main', directive: { kind: 'prompt', promptKey: 'agents.review_assessment' }, next: 'review' },
+      ],
+    };
+    // review has no `next`, so proceeding out of the stalled loop completes.
+    expect(advancePlaybook(playbook, 'address', { hasFindings: false, madeProgress: false }, { review: 1 }))
+      .toEqual({ kind: 'complete', passCounts: { review: 1 } });
   });
 
   it('preserves canonical integer pass counts including zero', () => {
