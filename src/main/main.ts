@@ -123,9 +123,10 @@ void app.whenReady().then(async () => {
   await TempImageService.init();
 
   // The Claude Agent SDK registers process exit handlers per query() call.
-  // With multi-session support (up to 3 concurrent sessions), this exceeds
-  // Node's default limit of 10. Raise it to accommodate concurrent sessions.
-  process.setMaxListeners(20);
+  // Concurrent sessions are unbounded, so any fixed cap would surface as a
+  // spurious MaxListenersExceededWarning. Disable the limit on the process
+  // emitter (0 = unlimited); the SDK removes each query's handlers when it ends.
+  process.setMaxListeners(0);
 
   const container = initializeRepositoryContainer();
   runtimeRepositories = {

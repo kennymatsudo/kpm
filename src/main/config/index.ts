@@ -83,8 +83,6 @@ export interface SessionConfig {
   sessionReadyTimeoutMs: number;
   /** How often to poll for connecting sessions to become ready (ms) */
   sessionReadyPollIntervalMs: number;
-  /** Maximum concurrent main chat sessions per project */
-  maxConcurrentSessionsPerProject: number;
   /** Number of consecutive MCP recovery attempts before tearing down a session */
   mcpRecoveryMaxAttempts: number;
 }
@@ -262,7 +260,6 @@ function createDefaultConfig(): AppConfig {
       cleanupIntervalMs: 30 * 1000, // 30 seconds
       sessionReadyTimeoutMs: 30 * 1000, // 30 seconds
       sessionReadyPollIntervalMs: 100,
-      maxConcurrentSessionsPerProject: 3,
       mcpRecoveryMaxAttempts: 3,
     },
 

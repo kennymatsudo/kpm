@@ -8,7 +8,7 @@
  * - Connect on project open (zero-latency first message)
  * - Auto-reconnect on timeout or crash
  * - Unified chat session for Plan and Workspace views (shared history)
- * - Multiple concurrent sessions per project (up to MAX_CONCURRENT_SESSIONS)
+ * - Multiple concurrent sessions per project
  *
  * Session keys:
  * - Main chat: `chat:{projectId}:{chatSessionId}` (unique per session)
@@ -944,13 +944,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   }
 
   /**
-   * Get count of active sessions for a project.
-   */
-  function getActiveSessionCount(projectId: string): number {
-    return getSessionKeysForProject(projectId).length;
-  }
-
-  /**
    * Get info about all active sessions for a project.
    */
   function getActiveSessions(projectId: string): ActiveSessionInfo[] {
@@ -1666,18 +1659,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     const sessionKey = buildSessionKey(projectId, chatSessionId);
     const persistHistory = options.persistHistory ?? true;
-
-    // Check if this specific session already exists (resuming)
-    const existingSession = sessions.get(sessionKey);
-    const isResume = !!existingSession;
-
-    // Enforce session limit only for NEW sessions (not resumes)
-    if (!isResume) {
-      const activeCount = getActiveSessionCount(projectId);
-      if (activeCount >= getSessionConfig().maxConcurrentSessionsPerProject) {
-        return failure(`Maximum ${getSessionConfig().maxConcurrentSessionsPerProject} concurrent sessions reached. Close an existing session first.`);
-      }
-    }
 
     const context = deps.buildContext(projectId);
     if (!context) {
