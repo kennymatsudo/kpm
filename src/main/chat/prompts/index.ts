@@ -36,6 +36,18 @@ ${turns}
 `;
 }
 
+export function buildUserGlobalInstructionsSection(userGlobalInstructions?: string | null): string {
+  const content = userGlobalInstructions?.trim();
+  if (!content) return '';
+
+  return `# User Global Preferences
+
+The developer maintains these personal working preferences globally. Honor them in your replies and any content you author. Where they conflict with KPM's operating rules (read-only chat, plan/proposal tools, export boundaries), KPM's rules win.
+
+${content}
+`;
+}
+
 function buildApprovalBehaviorSection(): string {
   return `## Change Application
 
@@ -68,7 +80,7 @@ Only create or modify plan items when the user explicitly asks. When creating im
  * 5. Reference (plan items, examples)
  */
 export function buildSystemPrompt(context: PlanContext): string {
-  const { project, repos, attachments, planItems, taskPromptTemplate, contextFileContent, getPromptContent, continuationHistory } = context;
+  const { project, repos, attachments, planItems, taskPromptTemplate, contextFileContent, userGlobalInstructions, getPromptContent, continuationHistory } = context;
 
   const hasAttachments = attachments.length > 0;
   const hasRepos = repos.length > 0;
@@ -109,7 +121,7 @@ ${getPrompt('system.plan_rules')}
 ${buildTaskCreationGuidance(taskPromptTemplate)}
 
 ${getPrompt('system.response_style')}
-${hasContextFile ? `
+${buildUserGlobalInstructionsSection(userGlobalInstructions)}${hasContextFile ? `
 # Project Context
 
 ${contextFileContent}
@@ -134,7 +146,7 @@ Rules:
 }
 
 export function buildFocusSystemPrompt(context: PlanContext): string {
-  const { project, repos, focusDocument } = context;
+  const { project, repos, focusDocument, userGlobalInstructions } = context;
   const connectedRepos = repos.length > 0
     ? repos.map((repo) => `- \`${repo.active_worktree_path ?? repo.path}\``).join('\n')
     : 'No repos connected.';
@@ -162,7 +174,7 @@ Read/Grep/Glob can also reach any other folder on disk when the user points you 
 
 ${focusedDocumentSection}
 
-# Operating Rules
+${buildUserGlobalInstructionsSection(userGlobalInstructions)}# Operating Rules
 - Answer from the focused document first.
 - Use KPM project-file tools when you need other project documents.
 - Use Read/Grep/Glob for connected repo validation and cite file paths when you reference code.

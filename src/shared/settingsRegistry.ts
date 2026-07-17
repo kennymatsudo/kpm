@@ -156,6 +156,7 @@ export const SETTINGS = {
   branchNameTemplate,
   lastOpenedProjectId,
   connectPromptSeen: booleanSetting('connect_prompt_seen', false),
+  respectGlobalClaudeMd: booleanSetting('respect_global_claude_md', true),
   windowBounds,
 } as const;
 

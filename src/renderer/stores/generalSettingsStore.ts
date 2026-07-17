@@ -20,6 +20,9 @@ interface GeneralSettingsState {
   approvalMode: ChatApprovalMode;
   isLoadingApprovalMode: boolean;
   approvalModeLoaded: boolean;
+  respectGlobalClaudeMd: boolean;
+  isLoadingRespectGlobalClaudeMd: boolean;
+  respectGlobalClaudeMdLoaded: boolean;
   error: string | null;
   loadGeneralSettings: () => Promise<void>;
   loadAnthropicKeyStatus: () => Promise<{ success: boolean; hasKey?: boolean; error?: string }>;
@@ -29,6 +32,8 @@ interface GeneralSettingsState {
   saveBranchTemplate: (branchTemplate: string) => Promise<{ success: boolean; error?: string }>;
   loadApprovalMode: () => Promise<ChatApprovalMode>;
   saveApprovalMode: (approvalMode: ChatApprovalMode) => Promise<{ success: boolean; error?: string }>;
+  loadRespectGlobalClaudeMd: () => Promise<boolean>;
+  saveRespectGlobalClaudeMd: (respectGlobalClaudeMd: boolean) => Promise<{ success: boolean; error?: string }>;
   clearError: () => void;
   reset: () => void;
 }
@@ -44,6 +49,9 @@ const initialState = {
   approvalMode: DEFAULT_CHAT_APPROVAL_MODE,
   isLoadingApprovalMode: true,
   approvalModeLoaded: false,
+  respectGlobalClaudeMd: true,
+  isLoadingRespectGlobalClaudeMd: true,
+  respectGlobalClaudeMdLoaded: false,
   error: null as string | null,
 };
 
@@ -55,16 +63,18 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
       isLoadingAnthropicKey: true,
       isLoadingBranchTemplate: true,
       isLoadingApprovalMode: true,
+      isLoadingRespectGlobalClaudeMd: true,
       error: null,
     });
 
-    const [keyResult, branchTemplate, approvalMode] = await Promise.all([
+    const [keyResult, branchTemplate, approvalMode, respectGlobalClaudeMd] = await Promise.all([
       hasAnthropicApiKey().catch((error: unknown) => ({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to load API key status',
       })),
       getSetting('branchNameTemplate'),
       getSetting('chatApprovalMode'),
+      getSetting('respectGlobalClaudeMd'),
     ]);
 
     set({
@@ -75,6 +85,9 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
       approvalMode,
       isLoadingApprovalMode: false,
       approvalModeLoaded: true,
+      respectGlobalClaudeMd,
+      isLoadingRespectGlobalClaudeMd: false,
+      respectGlobalClaudeMdLoaded: true,
       error: (!keyResult.success && keyResult.error) || null,
     });
   },
@@ -221,6 +234,46 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
       return { success: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save chat approval mode';
+      set({ error: message });
+      return { success: false, error: message };
+    }
+  },
+
+  loadRespectGlobalClaudeMd: async () => {
+    const state = get();
+    if (state.respectGlobalClaudeMdLoaded) return state.respectGlobalClaudeMd;
+
+    set({ isLoadingRespectGlobalClaudeMd: true, error: null });
+    try {
+      const respectGlobalClaudeMd = await getSetting('respectGlobalClaudeMd');
+      set({ respectGlobalClaudeMd, isLoadingRespectGlobalClaudeMd: false, respectGlobalClaudeMdLoaded: true });
+      return respectGlobalClaudeMd;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load global instructions setting';
+      set({
+        respectGlobalClaudeMd: true,
+        isLoadingRespectGlobalClaudeMd: false,
+        respectGlobalClaudeMdLoaded: true,
+        error: message,
+      });
+      return true;
+    }
+  },
+
+  saveRespectGlobalClaudeMd: async (respectGlobalClaudeMd) => {
+    set({ error: null });
+    try {
+      const result = await setSetting('respectGlobalClaudeMd', respectGlobalClaudeMd);
+      if (!result.success) {
+        const error = result.error || 'Failed to save global instructions setting';
+        set({ error });
+        return { success: false, error };
+      }
+
+      set({ respectGlobalClaudeMd, respectGlobalClaudeMdLoaded: true });
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save global instructions setting';
       set({ error: message });
       return { success: false, error: message };
     }

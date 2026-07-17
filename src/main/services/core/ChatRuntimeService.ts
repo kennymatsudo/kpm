@@ -30,6 +30,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     attachments: container.attachments,
     planItems: container.planItems,
     taskPromptTemplates: container.taskPromptTemplates,
+    appSettings: container.appSettings,
   });
 
   const buildContextWithPrompts = (projectId: string): PlanContext | null => {

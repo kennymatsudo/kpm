@@ -5,6 +5,7 @@ import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/str
 import { getConfig } from '../config';
 import { buildPiKpmTools, type PiKpmToolDefinition, type PiToolImageContent } from './kpmToolAdapter';
 import type { PlanContext } from '../chat/prompts';
+import { buildUserGlobalInstructionsSection } from '../chat/prompts';
 import { buildItemReferenceTable } from '../chat/prompts/planFormatting';
 
 /** Built-in pi tools that are read-only against the filesystem. `write`, `edit`, and `bash` are never included (P7). */
@@ -140,6 +141,8 @@ function buildPiSystemPrompt(context: PlanContext): string {
   const projectContext = context.contextFileContent?.trim()
     ? `\n# Project Context\n\n${context.contextFileContent.trim()}\n`
     : '';
+  const userPrefsSection = buildUserGlobalInstructionsSection(context.userGlobalInstructions);
+  const userPrefs = userPrefsSection ? `\n${userPrefsSection}` : '';
 
   return `You are pi running inside KPM's main chat. Help the user understand codebases, plan work, and reason across connected repos.
 
@@ -159,7 +162,7 @@ Project folder: \`${context.project.folder_path}\`
 
 Connected repos:
 ${repos}
-${continuation}${focusDocument}${projectContext}
+${continuation}${focusDocument}${projectContext}${userPrefs}
 # Current Plan
 ${context.planItems.length} items.
 ${planSummary}

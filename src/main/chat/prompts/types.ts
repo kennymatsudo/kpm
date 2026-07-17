@@ -14,6 +14,8 @@ export interface PlanContext {
   taskPromptTemplate?: TaskPromptTemplate | null;
   /** Project context file content (AGENTS.md or CLAUDE.md), if it exists */
   contextFileContent?: string | null;
+  /** The developer's global ~/.claude/CLAUDE.md, if present and enabled by setting */
+  userGlobalInstructions?: string | null;
   /** Focus-reader document context for slim focused chat sessions */
   focusDocument?: FocusChatDocument;
   /** Prompt content resolver for configurable prompts (user override > default) */

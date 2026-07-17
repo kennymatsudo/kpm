@@ -14,6 +14,7 @@ import { classifyCodexError } from './errors';
 import { registerCodexMcpSession, type CodexMcpRegistration } from './KpmCodexMcpServer';
 import { summarizeThreadItem } from './threadItemPresentation';
 import type { PlanContext } from '../chat/prompts';
+import { buildUserGlobalInstructionsSection } from '../chat/prompts';
 import { buildItemReferenceTable } from '../chat/prompts/planFormatting';
 import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/streaming/BaseTurnQueueChatSession';
 
@@ -52,6 +53,8 @@ function buildCodexSystemPrompt(context: PlanContext): string {
   const projectContext = context.contextFileContent?.trim()
     ? `\n# Project Context\n\n${context.contextFileContent.trim()}\n`
     : '';
+  const userPrefsSection = buildUserGlobalInstructionsSection(context.userGlobalInstructions);
+  const userPrefs = userPrefsSection ? `\n${userPrefsSection}` : '';
 
   return `You are Codex running inside KPM's main chat. Help the user understand codebases, plan work, and reason across connected repos.
 
@@ -71,7 +74,7 @@ Project folder: \`${context.project.folder_path}\`
 
 Connected repos:
 ${repos}
-${continuation}${focusDocument}${projectContext}
+${continuation}${focusDocument}${projectContext}${userPrefs}
 # Current Plan
 ${context.planItems.length} items.
 ${planSummary}

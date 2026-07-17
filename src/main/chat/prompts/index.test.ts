@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildSystemPrompt } from './index';
+import { buildSystemPrompt, buildFocusSystemPrompt } from './index';
 import type { PlanContext } from './types';
 
 function buildContext(overrides: Partial<PlanContext> = {}): PlanContext {
@@ -50,5 +50,34 @@ describe('buildSystemPrompt', () => {
     expect(prompt).not.toContain('Action tools require user review');
     expect(prompt).not.toContain('delete immediately');
     expect(prompt).not.toContain('propose deletion for user confirmation');
+  });
+
+  it('folds in the user global instructions when present', () => {
+    const prompt = buildSystemPrompt(
+      buildContext({ userGlobalInstructions: 'Lead with the answer.' })
+    );
+    expect(prompt).toContain('# User Global Preferences');
+    expect(prompt).toContain('Lead with the answer.');
+  });
+
+  it('omits the global instructions section when absent or blank', () => {
+    expect(buildSystemPrompt(buildContext())).not.toContain('# User Global Preferences');
+    expect(
+      buildSystemPrompt(buildContext({ userGlobalInstructions: '   ' }))
+    ).not.toContain('# User Global Preferences');
+  });
+});
+
+describe('buildFocusSystemPrompt', () => {
+  it('folds in the user global instructions when present', () => {
+    const prompt = buildFocusSystemPrompt(
+      buildContext({ userGlobalInstructions: 'Skip filler openers.' })
+    );
+    expect(prompt).toContain('# User Global Preferences');
+    expect(prompt).toContain('Skip filler openers.');
+  });
+
+  it('omits the global instructions section when absent', () => {
+    expect(buildFocusSystemPrompt(buildContext())).not.toContain('# User Global Preferences');
   });
 });
