@@ -18,3 +18,13 @@ Tool-using or multi-turn work is **not** a generation even when it feels one-sho
 The **default model** is the provider+model the user has chosen in KPM — their chat pick, persisted in `app_settings` (`chatProvider` plus the per-provider `chatModel` / `chatCodexModel` / `chatPiProviderModel`). `resolveDefaultModel` (`src/shared/modelDefault.ts`) folds those settings into one `{ provider, model }` pair; both the main process (`getDefaultModel` in `db/appSettingsAccess.ts`) and the renderer (`getDefaultModel` in `services/settingsService.ts`) read it through that one pure resolver.
 
 A **Default candidate** is a playbook `AgentCandidate` marked `useDefault: true` instead of naming a concrete provider+model. It follows the default model, resolved live at execution time — so a playbook step tracks whatever model the user later switches to. Resolution happens in the one seam every candidate already resolves through (`resolveCandidateChain`); a Default candidate that resolves to a provider board execution can't run (e.g. `pi`) is skipped, falling through to the next candidate in its chain exactly like an unavailable concrete provider.
+
+## Connected repos
+
+A **connected repo** is a git repository attached to a project (the `Repo` type / `repos` table). Its files are read-only in chat; agents write only in isolated worktrees during board execution.
+
+- The **main checkout** is the repo's canonical clone (`repos.path`) — the working tree at the primary checkout.
+- The **active worktree** is a linked git worktree the user has switched the connected repo to (`repos.active_worktree_path`, null when none), set via the "Switch worktree" menu.
+- The **effective path** is where the connected repo currently resolves on disk: the active worktree if set, otherwise the main checkout. `resolveEffectiveRepoPath` (`src/shared/repoPath.ts`) is the one resolver both processes read it through; every connected-repo read — chat tools, system prompts, workspace file access, add-dir scoping, branch watching — resolves through it so the switch is honored consistently.
+
+Distinct from a **session worktree** (`dev_sessions.worktree_path`): a throwaway worktree scaffolded per board agent execution for isolated writes. The two never cross — switching a connected repo's active worktree does not touch session worktrees, and board execution does not read `active_worktree_path`.

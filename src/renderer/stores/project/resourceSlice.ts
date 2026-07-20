@@ -1,4 +1,5 @@
 import type { ResourceSlice, SliceCreator } from './types';
+import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
 
 export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, get) => ({
   setRepos: (repos) => set({ repos }),
@@ -8,16 +9,16 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
     if (repoPaths.length === 0) return [];
 
     const repos = await Promise.all(repoPaths.map((path) => deps.api.repos.add({ projectId, path })));
-    const effectivePaths = repos.map((repo) => repo.active_worktree_path ?? repo.path);
+    const effectivePaths = repos.map((repo) => resolveEffectiveRepoPath(repo));
     const branchesByPath = await deps.api.repos.getBranches({ paths: effectivePaths });
 
-    await Promise.all(repos.map((repo) => deps.api.repos.watch({ repoId: repo.id, path: repo.active_worktree_path ?? repo.path })));
+    await Promise.all(repos.map((repo) => deps.api.repos.watch({ repoId: repo.id, path: resolveEffectiveRepoPath(repo) })));
 
     set((state) => ({
       repos: [...state.repos, ...repos],
       repoBranches: {
         ...state.repoBranches,
-        ...Object.fromEntries(repos.map((repo) => [repo.id, branchesByPath[repo.active_worktree_path ?? repo.path] ?? null])),
+        ...Object.fromEntries(repos.map((repo) => [repo.id, branchesByPath[resolveEffectiveRepoPath(repo)] ?? null])),
       },
     }));
 
@@ -42,7 +43,7 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
     await deps.api.repos.remove({ repoId });
 
     if (repo) {
-      await deps.api.repos.unwatch({ path: repo.active_worktree_path ?? repo.path }).catch(() => undefined);
+      await deps.api.repos.unwatch({ path: resolveEffectiveRepoPath(repo) }).catch(() => undefined);
     }
 
     get().removeRepo(repoId);
@@ -55,7 +56,7 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
   })),
   refreshRepos: async (projectId) => {
     const repos = await deps.api.repos.list({ projectId });
-    const effectivePaths = repos.map((r) => r.active_worktree_path ?? r.path);
+    const effectivePaths = repos.map(resolveEffectiveRepoPath);
     const branchesByPath = repos.length > 0
       ? await deps.api.repos.getBranches({ paths: effectivePaths })
       : {};
@@ -63,7 +64,7 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
     set({
       repos,
       repoBranches: Object.fromEntries(
-        repos.map((repo) => [repo.id, branchesByPath[repo.active_worktree_path ?? repo.path] ?? null])
+        repos.map((repo) => [repo.id, branchesByPath[resolveEffectiveRepoPath(repo)] ?? null])
       ),
     });
 
@@ -97,7 +98,7 @@ export const createResourceSlice: SliceCreator<ResourceSlice> = (deps) => (set, 
     }));
 
     // Re-watch with new effective path so branch badge reflects the worktree
-    const oldPath = repo.active_worktree_path ?? repo.path;
+    const oldPath = resolveEffectiveRepoPath(repo);
     const newPath = worktreePath ?? repo.path;
     if (oldPath !== newPath) {
       await deps.api.repos.unwatch({ path: oldPath }).catch(() => undefined);

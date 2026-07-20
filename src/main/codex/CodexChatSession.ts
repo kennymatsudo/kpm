@@ -17,6 +17,7 @@ import type { PlanContext } from '../chat/prompts';
 import { buildUserGlobalInstructionsSection } from '../chat/prompts';
 import { buildItemReferenceTable } from '../chat/prompts/planFormatting';
 import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/streaming/BaseTurnQueueChatSession';
+import { resolveEffectiveRepoPath } from '../../shared/repoPath';
 
 export interface CodexChatSessionConfig {
   context: PlanContext;
@@ -37,7 +38,7 @@ interface QueuedTurn {
 
 function buildCodexSystemPrompt(context: PlanContext): string {
   const repos = context.repos.length > 0
-    ? context.repos.map((repo) => `- \`${repo.active_worktree_path ?? repo.path}\``).join('\n')
+    ? context.repos.map((repo) => `- \`${resolveEffectiveRepoPath(repo)}\``).join('\n')
     : 'No repos connected.';
   const planSummary = context.planItems.length > 0
     ? buildItemReferenceTable(context.planItems)
@@ -254,7 +255,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
 
   private buildThreadOptions() {
     const additionalDirectories = this.config.context.repos
-      .map((repo) => repo.active_worktree_path ?? repo.path)
+      .map(resolveEffectiveRepoPath)
       .filter((repoPath): repoPath is string => Boolean(repoPath));
     return {
       ...(this.config.model ? { model: this.config.model } : {}),

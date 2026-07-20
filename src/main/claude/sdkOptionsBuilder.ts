@@ -13,6 +13,7 @@ import { getFocusKpmServer, getKpmServer } from '../kpmTools/createKpmServer';
 import { getConfig } from '../config';
 import { getClaudeSdkSpawnOptions } from './findClaude';
 import { promptUser } from '../services/core/PermissionPromptService';
+import { resolveEffectiveRepoPath } from '../../shared/repoPath';
 
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
 
@@ -55,7 +56,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   // already expired the cache TTL).
   const isFocusSession = !!context.focusDocument;
   const systemPrompt = isFocusSession ? buildFocusSystemPrompt(context) : buildSystemPrompt(context);
-  const effectiveRepoPaths = context.repos.map(r => r.active_worktree_path ?? r.path);
+  const effectiveRepoPaths = context.repos.map(resolveEffectiveRepoPath);
 
   // Create permission handler. canUseTool scopes file access (repos read-only,
   // project-file writes intercepted) and gates external MCP servers. It does
@@ -94,7 +95,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     allowedTools: ['Grep', 'Glob'],
     systemPrompt,
     model,
-    cwd: context.project.folder_path ?? context.repos[0]?.active_worktree_path ?? context.repos[0]?.path,
+    cwd: context.project.folder_path ?? effectiveRepoPaths[0],
     // Pin the bundled native Claude binary so the SDK skips its own PATH lookup.
     // See findClaude.ts for platform-specific resolution details.
     ...getClaudeSdkSpawnOptions(),

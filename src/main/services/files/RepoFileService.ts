@@ -10,6 +10,7 @@ import {
   resolveScopedPath,
 } from './scopedFs';
 import { findEnclosingGitRoot, getIgnoredPaths } from '../repo/gitUtils';
+import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
 import { shouldHideFileTreeEntry } from './fileTreeVisibility';
 
 /** Mark gitignored nodes in-place. */
@@ -53,7 +54,7 @@ export function createRepoFileService(deps: RepoFileServiceDeps) {
         return failure('Repository not found');
       }
 
-      const repoPath = repo.path;
+      const repoPath = resolveEffectiveRepoPath(repo);
       if (!(await pathExists(repoPath))) {
         return failure('Repository path does not exist');
       }
@@ -91,7 +92,7 @@ export function createRepoFileService(deps: RepoFileServiceDeps) {
         return failure('Repository not found');
       }
 
-      const repoPath = repo.path;
+      const repoPath = resolveEffectiveRepoPath(repo);
       const { valid, fullPath } = resolveScopedPath(repoPath, relativePath);
       if (!valid) {
         return failure('Invalid path');
@@ -134,7 +135,7 @@ export function createRepoFileService(deps: RepoFileServiceDeps) {
         return failure('File type is not editable in workspace. Use your IDE for code files.');
       }
 
-      const repoPath = repo.path;
+      const repoPath = resolveEffectiveRepoPath(repo);
       const { valid, fullPath } = resolveScopedPath(repoPath, relativePath);
       if (!valid) {
         return failure('Invalid path');
@@ -160,7 +161,7 @@ export function createRepoFileService(deps: RepoFileServiceDeps) {
         return failure('Repository not found');
       }
 
-      const repoPath = repo.path;
+      const repoPath = resolveEffectiveRepoPath(repo);
       const { valid, fullPath } = resolveScopedPath(repoPath, relativePath);
       if (!valid) {
         return failure('Invalid path');
@@ -186,7 +187,7 @@ export function createRepoFileService(deps: RepoFileServiceDeps) {
         return failure('Repository not found');
       }
 
-      const repoPath = repo.path;
+      const repoPath = resolveEffectiveRepoPath(repo);
       const { valid, fullPath } = resolveScopedPath(repoPath, relativePath);
       if (!valid) {
         return failure('Invalid path');

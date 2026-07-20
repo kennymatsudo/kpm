@@ -14,6 +14,7 @@ import { tool, jsonResult, toolError, toolLog } from './index';
 import type { IRepoRepository } from '../../db/interfaces';
 import { gitExec } from '../../services/repo/gitUtils';
 import { READ_GIT_SUBCOMMANDS, classifyGitInvocation } from '../../services/repo/gitReadOnly';
+import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
 
 interface GitReadToolDeps {
   repos: Pick<IRepoRepository, 'getByProject'>;
@@ -91,21 +92,24 @@ export function createGitReadTools(deps: GitReadToolDeps) {
           return toolError('No repositories are connected to this project.');
         }
 
+        const effectivePathOf = (r: { path: string; active_worktree_path?: string | null }) =>
+          path.resolve(resolveEffectiveRepoPath(r));
+
         let cwd: string;
         if (repoPath) {
           const resolved = path.resolve(repoPath);
-          const match = repos.find((r) => isWithinDir(resolved, path.resolve(r.path)));
+          const match = repos.find((r) => isWithinDir(resolved, effectivePathOf(r)));
           if (!match) {
             return toolError(
-              `"${repoPath}" is not within a connected repository. Connected: ${repos.map((r) => r.path).join(', ')}`
+              `"${repoPath}" is not within a connected repository. Connected: ${repos.map(effectivePathOf).join(', ')}`
             );
           }
           cwd = resolved;
         } else if (repos.length === 1) {
-          cwd = path.resolve(repos[0].path);
+          cwd = effectivePathOf(repos[0]);
         } else {
           return toolError(
-            `Multiple repositories are connected — pass repoPath. Options: ${repos.map((r) => r.path).join(', ')}`
+            `Multiple repositories are connected — pass repoPath. Options: ${repos.map(effectivePathOf).join(', ')}`
           );
         }
 

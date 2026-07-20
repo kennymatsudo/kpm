@@ -6,6 +6,7 @@ import type { RepoWatcherService } from './RepoWatcherService';
 import { failure, success, wrap, type ServiceResult, type AsyncResult, wrapAsync } from '../result';
 import type { gitExec } from './gitUtils';
 import { openDirectoryInCodeEditor } from './editorLauncher';
+import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
 
 interface RepoFs {
   existsSync: typeof fs.existsSync;
@@ -54,7 +55,7 @@ export function createRepoService(deps: RepoServiceDeps) {
     getPath(repoId: string): ServiceResult<string> {
       try {
         const repo = deps.repos.getById(repoId);
-        return repo ? success(repo.path) : failure('Repository not found');
+        return repo ? success(resolveEffectiveRepoPath(repo)) : failure('Repository not found');
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }
@@ -67,7 +68,7 @@ export function createRepoService(deps: RepoServiceDeps) {
           throw new Error('Repository not found');
         }
 
-        const targetPath = repo.active_worktree_path ?? repo.path;
+        const targetPath = resolveEffectiveRepoPath(repo);
         if (!deps.fs.existsSync(targetPath)) {
           throw new Error(`Repository path does not exist: ${targetPath}`);
         }

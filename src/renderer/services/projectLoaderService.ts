@@ -7,6 +7,7 @@ import type {
 import { listProjectPlanItems } from './planService';
 import { listProjectRepos } from './repoService';
 import { getOptionalSetting, setSetting } from './settingsService';
+import { resolveEffectiveRepoPath } from '../../shared/repoPath';
 
 export interface LoadedProjectResources {
   repos: Repo[];
@@ -32,17 +33,12 @@ export function loadProjectRepoBranches(repoPaths: string[]): Promise<Record<str
   return window.api.repos.getBranches({ paths: repoPaths });
 }
 
-/** Returns the path that should be watched/queried for branch info (worktree if set, else main). */
-export function getEffectiveRepoPath(repo: Repo): string {
-  return repo.active_worktree_path ?? repo.path;
-}
-
 export function watchProjectRepos(repos: Repo[]): string[] {
   for (const repo of repos) {
-    void window.api.repos.watch({ repoId: repo.id, path: getEffectiveRepoPath(repo) });
+    void window.api.repos.watch({ repoId: repo.id, path: resolveEffectiveRepoPath(repo) });
   }
 
-  return repos.map(getEffectiveRepoPath);
+  return repos.map(resolveEffectiveRepoPath);
 }
 
 export async function unwatchProjectRepos(repoPaths: string[]): Promise<void> {

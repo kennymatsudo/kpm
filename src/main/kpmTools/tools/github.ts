@@ -17,6 +17,7 @@ import {
   detectBaseBranch,
   getRecentCommits,
 } from '../../services/repo/gitUtils';
+import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
 
 /**
  * Create GitHub integration tools.
@@ -81,10 +82,11 @@ Requires at least a plan_item_id (to find the repo and context) or a repo_id.`,
           }
 
           // Gather context
-          const baseBranch = base_branch || await detectBaseBranch(repo.path);
-          const currentBranch = await getCurrentBranch(repo.path);
-          const diff = await getCommittedDiff(repo.path, baseBranch, 80_000);
-          const commitLog = await getCommitLog(repo.path, baseBranch);
+          const repoPath = resolveEffectiveRepoPath(repo);
+          const baseBranch = base_branch || await detectBaseBranch(repoPath);
+          const currentBranch = await getCurrentBranch(repoPath);
+          const diff = await getCommittedDiff(repoPath, baseBranch, 80_000);
+          const commitLog = await getCommitLog(repoPath, baseBranch);
 
           // Build context sections
           const sections: string[] = [];
@@ -133,7 +135,7 @@ Requires at least a plan_item_id (to find the repo and context) or a repo_id.`,
             const otherRepos = allRepos.filter(r => r.id !== resolvedRepoId);
             const crossRepoInfo: string[] = [];
             for (const other of otherRepos) {
-              const recentCommits = await getRecentCommits(other.path);
+              const recentCommits = await getRecentCommits(resolveEffectiveRepoPath(other));
               if (recentCommits) {
                 crossRepoInfo.push(`${path.basename(other.path)}:\n${recentCommits}`);
               }

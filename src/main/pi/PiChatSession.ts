@@ -7,6 +7,7 @@ import { buildPiKpmTools, type PiKpmToolDefinition, type PiToolImageContent } fr
 import type { PlanContext } from '../chat/prompts';
 import { buildUserGlobalInstructionsSection } from '../chat/prompts';
 import { buildItemReferenceTable } from '../chat/prompts/planFormatting';
+import { resolveEffectiveRepoPath } from '../../shared/repoPath';
 
 /** Built-in pi tools that are read-only against the filesystem. `write`, `edit`, and `bash` are never included (P7). */
 const READ_ONLY_BUILTIN_TOOLS = ['read', 'grep', 'find', 'ls'] as const;
@@ -125,7 +126,7 @@ export function resolvePiModelSelection<TModel extends { provider: string; id: s
 
 function buildPiSystemPrompt(context: PlanContext): string {
   const repos = context.repos.length > 0
-    ? context.repos.map((repo) => `- \`${repo.active_worktree_path ?? repo.path}\``).join('\n')
+    ? context.repos.map((repo) => `- \`${resolveEffectiveRepoPath(repo)}\``).join('\n')
     : 'No repos connected.';
   const planSummary = context.planItems.length > 0
     ? buildItemReferenceTable(context.planItems)
@@ -439,7 +440,7 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
    */
   private resolveCwd(): string {
     const repo = this.config.context.repos[0];
-    return repo?.active_worktree_path ?? repo?.path ?? this.config.context.project.folder_path;
+    return repo ? resolveEffectiveRepoPath(repo) : this.config.context.project.folder_path;
   }
 
   protected async executeTurn(turn: QueuedTurn): Promise<void> {
