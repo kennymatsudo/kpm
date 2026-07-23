@@ -196,7 +196,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
 
   async function finishAtTerminal(session: DevSession): Promise<void> {
     const reviewService = deps.getReviewService();
-    if (reviewService) {
+    if (reviewService && session.pr_number != null) {
       const queued = await reviewService.flushQueuedReviewTasks(session.id);
       if (!queued.ok) {
         deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'queued-review-flush-failed' });

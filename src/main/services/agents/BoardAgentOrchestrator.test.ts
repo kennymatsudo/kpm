@@ -552,6 +552,51 @@ describe('BoardAgentOrchestrator', () => {
     expect(session.current_step_id).toBeNull();
   });
 
+  it('finishes a terminal playbook without flushing PR review tasks when no PR exists', async () => {
+    const playbook = {
+      id: 'custom-terminal', name: 'Terminal', builtIn: false,
+      steps: [{ id: 'build', session: 'main', agents: [{ provider: 'claude' }], systemPromptKey: 'agents.implementation_system', directive: { kind: 'prompt', text: 'Build' } }],
+    } as const;
+    const session = createSession({
+      playbook_id: playbook.id,
+      playbook_snapshot: JSON.stringify(playbook),
+      current_step_id: null,
+      automation_phase: 'idle',
+      pr_number: null,
+    });
+    const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
+    const flushQueuedReviewTasks = vi.fn().mockResolvedValue({
+      ok: false,
+      error: 'No PR associated with this session',
+    });
+    const requestPlanRefresh = vi.fn();
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
+        getByReviewSessionIds: vi.fn(() => []),
+      },
+      planService: { updateItem }, phaseMachine: createTestPhaseMachine(session),
+      getDevSessionService: () => ({
+        get: vi.fn(() => session), sendAgentFollowUp: vi.fn(), updateStatus: vi.fn(),
+        commitSessionChanges: vi.fn().mockResolvedValue({ ok: true, data: undefined }), requestCommitHookRepair: vi.fn(),
+      }),
+      getReviewService: () => ({ flushQueuedReviewTasks }),
+      getAgentSessionManager: () => ({ isSessionBusy: vi.fn(() => false) } as never),
+      getPromptContent: vi.fn(), claudeUsageService: { recordUsage: vi.fn() }, requestPlanRefresh,
+    });
+
+    await callbacks.onSessionComplete?.({
+      devSessionId: session.id,
+      role: 'implement',
+      summary: { filesChanged: 1, additions: 1, deletions: 0 },
+    });
+
+    expect(flushQueuedReviewTasks).not.toHaveBeenCalled();
+    expect(updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
+    expect(session.automation_phase).toBe('ready_for_review');
+    expect(requestPlanRefresh).toHaveBeenCalledWith(session.project_id);
+  });
+
   it('persists and delivers a harness notice when a writing subagent is followed by a main step', async () => {
     const playbook = {
       id: 'custom-writer', name: 'Writer', builtIn: false,
