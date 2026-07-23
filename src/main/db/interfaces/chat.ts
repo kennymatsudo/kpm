@@ -25,6 +25,7 @@ export interface IChatMessageRepository {
     chatSessionId?: string,
     clientMessageId?: string,
     provider?: ChatProvider,
+    model?: string | null,
   ): ChatMessage;
   getRecentSessions(sessionId: string, limit?: number): ChatSessionSummary[];
   /** Delete sessions beyond the keep limit (default 10), returns count deleted */
@@ -62,6 +63,8 @@ export interface IChatSessionRepository {
   updateClaudeSessionId(id: string, claudeSessionId: string): void;
   /** Update the native provider session/thread ID for resume functionality. */
   updateProviderSessionId(id: string, provider: ChatProvider, providerSessionId: string): void;
+  /** Atomically persist the versioned model-choice aggregate at an expected revision. */
+  updateModelChoice(id: string, expectedRevision: number, choiceJson: string): ChatSession | undefined;
   /** Update the SDK-derived display title (auto-summary or user-renamed). */
   updateTitle(id: string, title: string): void;
   /**

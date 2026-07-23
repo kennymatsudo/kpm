@@ -4120,6 +4120,17 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1111,
+    name: '111_chat_model_choice',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE chat_sessions ADD COLUMN chat_model_choice TEXT;
+        ALTER TABLE chat_sessions ADD COLUMN chat_model_choice_revision INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE chat_messages ADD COLUMN model TEXT;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

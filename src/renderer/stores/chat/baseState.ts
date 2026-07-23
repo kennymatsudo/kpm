@@ -25,6 +25,7 @@ export const createInitialPerSessionState = (
   pendingAttachments: [],
   suggestions: [],
   sessionNumber,
+  choice: null,
   model,
   effort,
   provider,

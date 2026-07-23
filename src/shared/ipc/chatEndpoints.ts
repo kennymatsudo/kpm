@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { resultOf, type EndpointDefinition } from './endpoints';
 import { absolutePath, uuid } from './sharedSchemas';
 import { CHAT_PROVIDERS } from '../types';
-import type { ChatMessage, ChatSessionScope, ChatSessionSummary, PiProviderOption, SessionState, SlashCommandInfo } from '../types';
+import type { ChatChoiceView, ChatMessage, ChatSessionScope, ChatSessionSummary, PiProviderOption, SessionState, SlashCommandInfo } from '../types';
 
 /**
  * Response shape for endpoints registered through `createRegistryIpcHandlers`
@@ -43,9 +43,9 @@ interface ActiveSessionInfo {
 interface FocusDocumentSessionResult {
   chatSessionId: string;
   messages: ChatMessage[];
+  choice: ChatChoiceView;
 }
 
-const claudeModel = z.enum(['opus', 'sonnet'], { message: 'Model must be "opus" or "sonnet"' });
 const chatProvider = z.enum(CHAT_PROVIDERS, { message: 'Provider must be "claude", "codex", or "pi"' });
 
 const focusedResourceSchema = z.discriminatedUnion('type', [
@@ -71,11 +71,6 @@ export const chatEndpoints = {
       projectId: uuid,
       message: z.string().min(1, 'Message cannot be empty').max(100000, 'Message too long'),
       focusedResources: z.array(focusedResourceSchema).default([]),
-      provider: chatProvider.optional(),
-      model: claudeModel.optional(),
-      /** pi-only `"<provider>/<modelId>"` selection; ignored unless `provider` is `'pi'`. */
-      providerModel: z.string().optional(),
-      effort: z.enum(['low', 'medium', 'high', 'max']).optional(),
       tempImages: z.array(absolutePath).optional(),
       chatSessionId: uuid.optional(),
       clientMessageId: uuid.optional(),
@@ -83,6 +78,40 @@ export const chatEndpoints = {
       focusDocument: focusChatDocumentSchema.optional(),
     }),
     result: resultOf<RegistryResponse>(),
+  },
+  openChoice: {
+    channel: 'chat:choice:open',
+    params: z.discriminatedUnion('scope', [
+      z.object({ projectId: uuid, chatSessionId: uuid, scope: z.literal('main') }),
+      z.object({
+        projectId: uuid,
+        chatSessionId: uuid,
+        scope: z.literal('focus_document'),
+        focusDocument: z.object({
+          path: z.string().min(1).max(1000),
+          title: z.string().min(1).max(300),
+          contentHash: z.string().min(1).max(128),
+        }),
+      }),
+    ]),
+    result: resultOf<RegistryResponse<{ choice: ChatChoiceView }>>(),
+  },
+  changeChoice: {
+    channel: 'chat:choice:change',
+    params: z.object({
+      projectId: uuid,
+      chatSessionId: uuid,
+      expectedRevision: z.number().int().nonnegative(),
+      intent: z.discriminatedUnion('type', [
+        z.object({ type: z.literal('choose_provider'), provider: chatProvider }),
+        z.object({ type: z.literal('choose_model'), model: z.string().min(1).max(300) }),
+        z.object({
+          type: z.literal('choose_effort'),
+          effort: z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']),
+        }),
+      ]),
+    }),
+    result: resultOf<RegistryResponse<{ choice: ChatChoiceView }>>(),
   },
   cancel: {
     channel: 'chat:cancel',
@@ -142,7 +171,7 @@ export const chatEndpoints = {
   loadSession: {
     channel: 'chat:load-session',
     params: z.object({ projectId: uuid, chatSessionId: uuid }),
-    result: resultOf<RegistryResponse<{ messages: ChatMessage[]; chatSessionId: string }>>(),
+    result: resultOf<RegistryResponse<{ messages: ChatMessage[]; chatSessionId: string; choice: ChatChoiceView }>>(),
   },
   getFocusDocumentSession: {
     channel: 'chat:get-focus-document-session',

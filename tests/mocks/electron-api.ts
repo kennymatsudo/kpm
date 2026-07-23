@@ -52,6 +52,8 @@ export function createMockApi() {
 
     chat: {
       sendMessage: vi.fn().mockResolvedValue({ success: true }),
+      openChoice: vi.fn().mockResolvedValue({ success: false, error: 'Not configured' }),
+      changeChoice: vi.fn().mockResolvedValue({ success: false, error: 'Not configured' }),
       newSession: vi.fn().mockResolvedValue({ success: true }),
       cancel: vi.fn().mockResolvedValue({ success: true }),
       getUsage: vi.fn().mockResolvedValue({ totalTokens: 0 }),

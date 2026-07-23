@@ -44,13 +44,13 @@ export class ChatMessageRepository implements IChatMessageRepository {
       `),
       // Use RETURNING to get inserted row in one query
       insert: db.prepare(`
-        INSERT INTO chat_messages (id, session_id, role, content, chat_session_id, provider, client_message_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO chat_messages (id, session_id, role, content, chat_session_id, provider, client_message_id, model)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *
       `),
       insertOrIgnoreWithClientMessageId: db.prepare(`
-        INSERT OR IGNORE INTO chat_messages (id, session_id, role, content, chat_session_id, provider, client_message_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO chat_messages (id, session_id, role, content, chat_session_id, provider, client_message_id, model)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *
       `),
       getByClientMessageId: db.prepare(`
@@ -113,6 +113,7 @@ export class ChatMessageRepository implements IChatMessageRepository {
     chatSessionId?: string,
     clientMessageId?: string,
     provider: ChatProvider = 'claude',
+    model: string | null = null,
   ): ChatMessage {
     if (clientMessageId && chatSessionId) {
       const existing = this.stmts.getByClientMessageId.get(
@@ -132,7 +133,8 @@ export class ChatMessageRepository implements IChatMessageRepository {
         content,
         chatSessionId,
         provider,
-        clientMessageId
+        clientMessageId,
+        model,
       ) as ChatMessage | undefined;
       if (inserted) {
         return inserted;
@@ -148,7 +150,8 @@ export class ChatMessageRepository implements IChatMessageRepository {
       content,
       chatSessionId ?? null,
       provider,
-      clientMessageId ?? null
+      clientMessageId ?? null,
+      model,
     ) as ChatMessage;
   }
 

@@ -73,13 +73,18 @@ describe('CHAT_PROVIDER_CONFIG', () => {
   });
 
   describe('resolveResumeSessionId', () => {
-    it('claude resumes from claude_session_id', () => {
-      const chatSession = { claude_session_id: 'sdk-session-1', title: null };
+    it('claude resumes from claude_session_id when the stored provider is claude', () => {
+      const chatSession = { claude_session_id: 'sdk-session-1', provider: 'claude' as const, title: null };
       expect(CHAT_PROVIDER_CONFIG.claude.resolveResumeSessionId(chatSession)).toBe('sdk-session-1');
     });
 
+    it('claude does not resume its old session after another provider handled a turn', () => {
+      const chatSession = { claude_session_id: 'sdk-session-1', provider: 'codex' as const, title: null };
+      expect(CHAT_PROVIDER_CONFIG.claude.resolveResumeSessionId(chatSession)).toBeUndefined();
+    });
+
     it('claude returns undefined when claude_session_id is null', () => {
-      const chatSession = { claude_session_id: null, title: null };
+      const chatSession = { claude_session_id: null, provider: 'claude' as const, title: null };
       expect(CHAT_PROVIDER_CONFIG.claude.resolveResumeSessionId(chatSession)).toBeUndefined();
     });
 

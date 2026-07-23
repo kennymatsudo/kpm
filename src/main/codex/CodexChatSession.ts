@@ -24,6 +24,7 @@ export interface CodexChatSessionConfig {
   chatSessionId?: string;
   resumeThreadId?: string;
   model?: string;
+  modelReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
   onMessage: (msg: unknown) => void;
   onSessionEnd?: (reason: SessionEndReason, error?: Error) => void;
   onReady?: (threadId: string) => void;
@@ -259,6 +260,9 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       .filter((repoPath): repoPath is string => Boolean(repoPath));
     return {
       ...(this.config.model ? { model: this.config.model } : {}),
+      ...(this.config.modelReasoningEffort
+        ? { modelReasoningEffort: this.config.modelReasoningEffort }
+        : {}),
       workingDirectory: this.config.context.project.folder_path,
       additionalDirectories,
       skipGitRepoCheck: true,

@@ -528,16 +528,10 @@ describe('resolvePiModelSelection', () => {
     });
   });
 
-  it('falls back to another available model for the same provider when the exact modelId misses', async () => {
-    // listPiProviders() enumerated a placeholder/stale id (e.g. cursor's guessed
-    // "auto") that the live ModelRuntime never actually registered under that
-    // exact id — the provider itself is still real and available.
+  it('does not substitute another model when the exact modelId misses', async () => {
     const runtime = makeFakeModelRuntime([{ provider: 'cursor', id: 'opus-latest@1m' }]);
 
-    await expect(resolvePiModelSelection(runtime, { provider: 'cursor', modelId: 'auto' })).resolves.toEqual({
-      model: { provider: 'cursor', id: 'opus-latest@1m' },
-      usedFallback: true,
-    });
+    await expect(resolvePiModelSelection(runtime, { provider: 'cursor', modelId: 'auto' })).resolves.toBeUndefined();
   });
 
   it('returns undefined when the provider has no available model at all', async () => {

@@ -91,6 +91,7 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
       updateFocusDocument,
       updateClaudeSessionId: vi.fn(),
       updateProviderSessionId: vi.fn(),
+      updateModelChoice: vi.fn(),
       updateTitle: vi.fn(),
       clearClaudeSessionIdsByProject: vi.fn(),
       clearProviderSessionIdsByProject: vi.fn(),
@@ -224,6 +225,37 @@ describe('ChatService.sendMessage', () => {
     expect(spies.sendChatMessage).toHaveBeenCalledTimes(1);
     const [, , options] = spies.sendChatMessage.mock.calls[0];
     expect(options.attachments).toBeUndefined();
+  });
+
+  it('uses one authoritative choice snapshot for dispatch and user-message attribution', async () => {
+    const resolvedChoice = {
+      provider: 'codex' as const,
+      model: 'gpt-5.6-terra',
+      effort: 'xhigh' as const,
+      revision: 7,
+    };
+    const resolveForTurn = vi.fn(async () => success(resolvedChoice));
+    const { deps, spies } = makeDeps({
+      modelChoice: {
+        resolveForTurn,
+      } as unknown as ChatServiceDeps['modelChoice'],
+    });
+    const service = createChatService(deps);
+
+    const result = await service.sendMessage({
+      projectId: 'project-1',
+      message: 'use the selected model',
+      chatSessionId: 'session-1',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(resolveForTurn).toHaveBeenCalledTimes(1);
+    expect(spies.sendChatMessage).toHaveBeenCalledWith(
+      'project-1',
+      'use the selected model',
+      expect.objectContaining({ authoritativeChoice: resolvedChoice }),
+    );
+    expect(spies.addMessage.mock.calls[0][5]).toBe('codex');
   });
 
   it('forwards and persists an explicit chat provider', async () => {
@@ -385,6 +417,7 @@ describe('ChatService.getOrCreateFocusDocumentSession', () => {
         })),
         updateClaudeSessionId: vi.fn(),
         updateProviderSessionId: vi.fn(),
+        updateModelChoice: vi.fn(),
         updateTitle: vi.fn(),
         clearClaudeSessionIdsByProject: vi.fn(),
         clearProviderSessionIdsByProject: vi.fn(),

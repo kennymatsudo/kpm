@@ -1,6 +1,7 @@
 import type { ChatState, ChatSet, ChatGet } from './types';
 import { setSetting } from '../../services/settingsService';
-import { getSlashCommands, getPiProviders } from '../../services/chatService';
+import { changeChatChoice as persistChatChoiceChange, getSlashCommands, getPiProviders, openChatChoice as persistChatChoiceOpen } from '../../services/chatService';
+import { CODEX_CHAT_MODELS, type ChatChoiceView } from '../../../shared/types';
 import {
   findPiProviderOption,
   pickDefaultPiProviderOption,
@@ -8,13 +9,78 @@ import {
   withAcknowledgedProvider,
 } from './piProviderSelection';
 
+function applyChoiceToSession(session: ReturnType<ChatGet>['sessions'] extends Map<string, infer S> ? S : never, choice: ChatChoiceView) {
+  const selected = choice.selected;
+  const effort = selected.effort === 'low' || selected.effort === 'medium' || selected.effort === 'high' || selected.effort === 'max'
+    ? selected.effort
+    : session.effort;
+  const codexModel = CODEX_CHAT_MODELS.some((model) => model.value === selected.model)
+    ? selected.model as typeof session.codexModel
+    : session.codexModel;
+  return {
+    ...session,
+    choice,
+    provider: selected.provider,
+    model: selected.model === 'opus' ? 'opus' as const : selected.model === 'sonnet' ? 'sonnet' as const : session.model,
+    codexModel,
+    piProviderModel: selected.provider === 'pi' ? selected.model : session.piProviderModel,
+    effort,
+  };
+}
+
 export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
-  | 'setTokens' | 'loadSlashCommands' | 'setSlashCommands' | 'setDefaultModel' | 'setModel' | 'setEffort'
+  | 'setTokens' | 'loadSlashCommands' | 'setSlashCommands' | 'setDefaultModel' | 'setDefaultEffort' | 'setModel' | 'setEffort'
   | 'loadPiProviders' | 'setDefaultProvider' | 'setProvider' | 'setDefaultCodexModel' | 'setCodexModel'
   | 'setDefaultPiProviderModel' | 'setPiProviderModel' | 'acknowledgeUnsafePiProvider'
+  | 'setChatChoice' | 'openChatChoice' | 'changeChatChoice'
 > {
+  const setChatChoice = (chatSessionId: string, choice: ChatChoiceView) => {
+    const state = get();
+    const session = state.sessions.get(chatSessionId);
+    if (!session) return;
+    const sessions = new Map(state.sessions);
+    sessions.set(chatSessionId, applyChoiceToSession(session, choice));
+    set({ sessions });
+  };
+
+  const changeChoice = async (chatSessionId: string, intent: Parameters<ChatState['changeChatChoice']>[1]) => {
+    const state = get();
+    const session = state.sessions.get(chatSessionId);
+    if (!session?.choice || !state.persistedProjectId) return;
+    const result = await persistChatChoiceChange({
+      projectId: state.persistedProjectId,
+      chatSessionId,
+      expectedRevision: session.choice.revision,
+      intent,
+    });
+    if (result.success && result.choice) {
+      setChatChoice(chatSessionId, result.choice);
+    } else {
+      const sessions = new Map(get().sessions);
+      const current = sessions.get(chatSessionId);
+      if (current) sessions.set(chatSessionId, { ...current, error: 'error' in result ? result.error : 'Failed to change Chat model choice' });
+      set({ sessions });
+    }
+  };
+
   return {
     setTokens: (totalTokens) => set({ totalTokens }),
+    setChatChoice,
+    openChatChoice: async (projectId, chatSessionId) => {
+      const result = await persistChatChoiceOpen(projectId, chatSessionId);
+      if (result.success && result.choice) {
+        setChatChoice(chatSessionId, result.choice);
+        return result.choice;
+      }
+      const session = get().sessions.get(chatSessionId);
+      if (session) {
+        const sessions = new Map(get().sessions);
+        sessions.set(chatSessionId, { ...session, error: 'error' in result ? result.error : 'Failed to open Chat model choice' });
+        set({ sessions });
+      }
+      return null;
+    },
+    changeChatChoice: changeChoice,
     loadSlashCommands: async () => {
       const result = await getSlashCommands();
       // Re-check the source after the await: an SDK list may have landed
@@ -28,29 +94,21 @@ export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
       set({ model });
       void setSetting('chatModel', model);
     },
+    setDefaultEffort: (effort) => {
+      set({ effort });
+      void setSetting('chatEffort', effort);
+    },
     setModel: (chatSessionId, model) => {
       const state = get();
       const session = state.sessions.get(chatSessionId);
-      if (!session) {
-        set({ model });
-        void setSetting('chatModel', model);
-        return;
-      }
-      const sessions = new Map(state.sessions);
-      sessions.set(chatSessionId, { ...session, model });
-      // Update global default so new sessions inherit this choice
-      set({ sessions, model });
-      void setSetting('chatModel', model);
+      if (!session) return;
+      void changeChoice(chatSessionId, { type: 'choose_model', model });
     },
     setEffort: (chatSessionId, effort) => {
       const state = get();
       const session = state.sessions.get(chatSessionId);
       if (!session) return;
-      const sessions = new Map(state.sessions);
-      sessions.set(chatSessionId, { ...session, effort });
-      // Update global default so new sessions inherit this choice
-      set({ sessions, effort });
-      void setSetting('chatEffort', effort);
+      void changeChoice(chatSessionId, { type: 'choose_effort', effort });
     },
     loadPiProviders: async () => {
       const result = await getPiProviders();
@@ -77,16 +135,8 @@ export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
     setProvider: (chatSessionId, provider) => {
       const state = get();
       const session = state.sessions.get(chatSessionId);
-      if (!session) {
-        set({ provider });
-        void setSetting('chatProvider', provider);
-        return;
-      }
-      const sessions = new Map(state.sessions);
-      sessions.set(chatSessionId, { ...session, provider });
-      // Update global default so new sessions inherit this choice
-      set({ sessions, provider });
-      void setSetting('chatProvider', provider);
+      if (!session) return;
+      void changeChoice(chatSessionId, { type: 'choose_provider', provider });
     },
     setDefaultCodexModel: (codexModel) => {
       set({ codexModel });
@@ -95,16 +145,8 @@ export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
     setCodexModel: (chatSessionId, codexModel) => {
       const state = get();
       const session = state.sessions.get(chatSessionId);
-      if (!session) {
-        set({ codexModel });
-        void setSetting('chatCodexModel', codexModel);
-        return;
-      }
-      const sessions = new Map(state.sessions);
-      sessions.set(chatSessionId, { ...session, codexModel });
-      // Update global default so new sessions inherit this choice
-      set({ sessions, codexModel });
-      void setSetting('chatCodexModel', codexModel);
+      if (!session) return;
+      void changeChoice(chatSessionId, { type: 'choose_model', model: codexModel });
     },
     setDefaultPiProviderModel: (piProviderModel) => {
       set({ piProviderModel });
@@ -113,16 +155,8 @@ export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
     setPiProviderModel: (chatSessionId, piProviderModel) => {
       const state = get();
       const session = state.sessions.get(chatSessionId);
-      if (!session) {
-        set({ piProviderModel });
-        void setSetting('chatPiProviderModel', piProviderModel ?? null);
-        return;
-      }
-      const sessions = new Map(state.sessions);
-      sessions.set(chatSessionId, { ...session, piProviderModel });
-      // Update global default so new sessions inherit this choice
-      set({ sessions, piProviderModel });
-      void setSetting('chatPiProviderModel', piProviderModel ?? null);
+      if (!session) return;
+      if (piProviderModel) void changeChoice(chatSessionId, { type: 'choose_model', model: piProviderModel });
     },
     acknowledgeUnsafePiProvider: async (provider) => {
       const state = get();

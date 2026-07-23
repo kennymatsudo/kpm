@@ -56,6 +56,7 @@ import { themeEndpoints } from '../shared/ipc/themeEndpoints';
 import { perfEndpoints } from '../shared/ipc/perfEndpoints';
 import { shellEndpoints } from '../shared/ipc/shellEndpoints';
 import type {
+  ChatChoiceView,
   Project,
   Repo,
   RepoEnvironmentMode,
@@ -96,7 +97,6 @@ import type {
   SessionState,
   DevSession,
   DevSessionWithPlanItem,
-  ChatProvider,
   ClaudeModel,
   ChatSessionScope,
   ChatViewMode,
@@ -154,6 +154,7 @@ async function invokeOrThrow<T extends object, TResult>(
 
 // Re-export shared types for renderer consumers
 export type {
+  ChatChoiceView,
   Project,
   Repo,
   RepoEnvironmentMode,
@@ -230,19 +231,14 @@ const chat = {
     projectId: string;
     message: string;
     focusedResources: FocusedResource[];
-    model?: ClaudeModel;
     tempImages?: string[];
     chatSessionId?: string;
     currentView?: ChatViewMode;
     clientMessageId?: string;
-    // Narrower than board agents' effort levels (no `xhigh`) — matches
-    // `chatEndpoints.send.params.effort` and `ChatService`'s `SendMessageInput.effort`.
-    effort?: 'low' | 'medium' | 'high' | 'max';
     focusDocument?: FocusChatDocument;
-    provider?: ChatProvider;
-    /** pi-only `"<provider>/<modelId>"` selection; ignored unless `provider` is `'pi'`. */
-    providerModel?: string;
   }) => chatInvoke.send(payload),
+  openChoice: chatInvoke.openChoice,
+  changeChoice: chatInvoke.changeChoice,
   newSession: chatInvoke.newSession,
   cancel: chatInvoke.cancel,
   cancelQueued: chatInvoke.cancelQueued,
@@ -261,13 +257,13 @@ const chat = {
     invokeFlat<{ sessions: ChatSessionSummary[] }>(IPC_CHANNELS.chat.getSessionHistory, { projectId, limit }).then((result) =>
       result.success ? { success: true, sessions: result.sessions } : result
     ),
-  loadSession: (projectId: string, chatSessionId: string): Promise<{ success: boolean; messages?: ChatMessage[]; chatSessionId?: string; error?: string }> =>
-    invokeFlat<{ messages: ChatMessage[]; chatSessionId: string }>(
+  loadSession: (projectId: string, chatSessionId: string): Promise<{ success: boolean; messages?: ChatMessage[]; chatSessionId?: string; choice?: ChatChoiceView; error?: string }> =>
+    invokeFlat<{ messages: ChatMessage[]; chatSessionId: string; choice: ChatChoiceView }>(
       IPC_CHANNELS.chat.loadSession,
       { projectId, chatSessionId },
     ).then((result) => (result.success ? result : result)),
-  getFocusDocumentSession: (projectId: string, path: string, title: string, contentHash: string): Promise<{ success: boolean; messages?: ChatMessage[]; chatSessionId?: string; error?: string }> =>
-    invokeFlat<{ messages: ChatMessage[]; chatSessionId: string }>(
+  getFocusDocumentSession: (projectId: string, path: string, title: string, contentHash: string): Promise<{ success: boolean; messages?: ChatMessage[]; chatSessionId?: string; choice?: ChatChoiceView; error?: string }> =>
+    invokeFlat<{ messages: ChatMessage[]; chatSessionId: string; choice: ChatChoiceView }>(
       IPC_CHANNELS.chat.getFocusDocumentSession,
       { projectId, path, title, contentHash },
     ).then((result) => (result.success ? result : result)),

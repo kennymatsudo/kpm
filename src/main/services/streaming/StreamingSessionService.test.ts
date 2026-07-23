@@ -9,7 +9,8 @@ import {
 } from './StreamingSessionService';
 import type * as SdkTypeGuardsModule from '../../claude/sdkTypeGuards';
 
-const { mockSessionInstances, mockSessionCounter, clearPendingDocumentContentCalls } = vi.hoisted(() => ({
+const { mockSessionInstances, mockSessionConfigs, mockSessionCounter, clearPendingDocumentContentCalls } = vi.hoisted(() => ({
+  mockSessionConfigs: [] as Record<string, unknown>[],
   mockSessionInstances: [] as {
     emitMessage: (msg: unknown) => void;
     emitSessionEnd: (reason: 'completed' | 'error' | 'closed', error?: Error) => void;
@@ -56,6 +57,7 @@ function createMockNativeChatSessionClass() {
 
     constructor(config: MockNativeSessionConfig) {
       this.config = config;
+      mockSessionConfigs.push(config as unknown as Record<string, unknown>);
       mockSessionInstances.push(this);
     }
 
@@ -383,6 +385,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     service = null;
     sentEvents.length = 0;
     mockSessionInstances.length = 0;
+    mockSessionConfigs.length = 0;
   });
 
   it('suppresses redundant session-deactivated after a finalized turn', async () => {
@@ -877,6 +880,59 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     });
   });
 
+  it('uses a caller-resolved authoritative choice without loading the catalog again', async () => {
+    const resolveForTurn = vi.fn();
+    const deps: StreamingSessionServiceDeps = {
+      ...createDeps(sendSpy),
+      modelChoice: { resolveForTurn },
+    };
+    service = createStreamingSessionService(deps);
+
+    const result = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      authoritativeChoice: {
+        provider: 'codex',
+        model: 'gpt-5.6-terra',
+        effort: 'xhigh',
+        revision: 4,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(resolveForTurn).not.toHaveBeenCalled();
+    expect(mockSessionConfigs[0]).toMatchObject({
+      model: 'gpt-5.6-terra',
+      modelReasoningEffort: 'xhigh',
+    });
+  });
+
+  it('falls back to resolving the persisted choice for internal callers', async () => {
+    const deps: StreamingSessionServiceDeps = {
+      ...createDeps(sendSpy),
+      modelChoice: {
+        resolveForTurn: vi.fn().mockResolvedValue({
+          ok: true,
+          data: { provider: 'codex', model: 'gpt-5.6-terra', effort: 'xhigh', revision: 4 },
+        }),
+      },
+    };
+    service = createStreamingSessionService(deps);
+
+    const result = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      provider: 'pi',
+      providerModel: 'ignored/model',
+      effort: 'low',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(deps.modelChoice?.resolveForTurn).toHaveBeenCalledWith('project-1', 'chat-1');
+    expect(mockSessionConfigs[0]).toMatchObject({
+      model: 'gpt-5.6-terra',
+      modelReasoningEffort: 'xhigh',
+    });
+  });
+
   it.each([
     { provider: 'codex' as const, providerModel: 'gpt-5.6-sol' },
     { provider: 'pi' as const, providerModel: 'cursor/auto' },
@@ -912,6 +968,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       'chat-1',
       undefined,
       provider,
+      providerModel,
     );
   });
 
@@ -958,6 +1015,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       'chat-1',
       undefined,
       'claude',
+      'sonnet',
     );
   });
 
@@ -998,6 +1056,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       'chat-1',
       undefined,
       'pi',
+      'cursor/auto',
     );
   });
 
@@ -1429,7 +1488,7 @@ describe('createChatSession continuation wiring', () => {
       ...deps,
       chatSessionRepository: {
         ...deps.chatSessionRepository,
-        get: () => ({ claude_session_id: 'prior-sdk-session', title: null }),
+        get: () => ({ claude_session_id: 'prior-sdk-session', provider: 'claude', title: null }),
       },
       chatMessageRepository: {
         ...deps.chatMessageRepository,
@@ -1453,6 +1512,55 @@ describe('createChatSession continuation wiring', () => {
 
     const ctx = capturedContexts[0] as { continuationHistory?: unknown };
     expect(ctx.continuationHistory).toBeUndefined();
+
+    await service.disposeAll();
+  });
+
+  it('replays persisted history instead of resuming stale Claude context after a provider switch', async () => {
+    const deps = createDeps(sendSpy);
+    const capturedContexts: unknown[] = [];
+    const depsWithCapture: StreamingSessionServiceDeps = {
+      ...deps,
+      chatSessionRepository: {
+        ...deps.chatSessionRepository,
+        get: () => ({
+          claude_session_id: 'claude-session-before-codex',
+          provider: 'codex',
+          provider_session_id: 'current-codex-thread',
+          title: null,
+        }),
+      },
+      chatMessageRepository: {
+        ...deps.chatMessageRepository,
+        getMessagesByChatSession: vi.fn(() => [
+          { role: 'user' as const, content: 'question for Claude' },
+          { role: 'assistant' as const, content: 'answer from Claude' },
+          { role: 'user' as const, content: 'question for Codex' },
+          { role: 'assistant' as const, content: 'answer from Codex' },
+          { role: 'user' as const, content: 'switching back to Claude' },
+        ]),
+      },
+      buildSdkOptions: (ctx) => {
+        capturedContexts.push(ctx);
+        return {};
+      },
+    };
+
+    const service = createStreamingSessionService(depsWithCapture);
+    const result = await service.sendChatMessage('project-1', 'switching back to Claude', {
+      chatSessionId: 'chat-1',
+      provider: 'claude',
+      model: 'sonnet',
+    });
+    expect(result.ok).toBe(true);
+
+    const ctx = capturedContexts[0] as { continuationHistory?: unknown };
+    expect(ctx.continuationHistory).toEqual([
+      { role: 'user', content: 'question for Claude' },
+      { role: 'assistant', content: 'answer from Claude' },
+      { role: 'user', content: 'question for Codex' },
+      { role: 'assistant', content: 'answer from Codex' },
+    ]);
 
     await service.disposeAll();
   });

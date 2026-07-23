@@ -1,5 +1,4 @@
 import { useCallback } from 'react';
-import { getProviderCapabilities } from '../../shared/providerCapabilities';
 import { useChatStore, useProjectUiDomainStore } from '../stores';
 import { useShallow } from 'zustand/react/shallow';
 import type { ChatAttachment, ChatViewMode } from '../../shared/types';
@@ -63,13 +62,23 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     // Ensure session exists in store
     getOrCreateSession(chatSessionId);
 
+    let currentSession = useChatStore.getState().sessions.get(chatSessionId);
+    if (!currentSession?.choice) {
+      await useChatStore.getState().openChatChoice(projectId, chatSessionId);
+      currentSession = useChatStore.getState().sessions.get(chatSessionId);
+    }
+    if (!currentSession?.choice) return effectiveClientMessageId;
+    if (!currentSession.choice.send.allowed) {
+      setError(chatSessionId, currentSession.choice.send.reason ?? 'Choose an available model before sending.');
+      return effectiveClientMessageId;
+    }
+
     // If the session is already streaming, queue this message behind the
     // in-flight turn rather than interrupting it. The user bubble appears
     // immediately with a "queued" indicator; the backend pushes the message
     // into the SDK's input generator, which pulls it when the current turn
     // finishes.
-    const currentSession = useChatStore.getState().sessions.get(chatSessionId);
-    const sendingWhileStreaming = !!currentSession?.isStreaming;
+    const sendingWhileStreaming = !!currentSession.isStreaming;
 
     addUserMessage(
       chatSessionId,
@@ -92,31 +101,16 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
       ? attachments.map((a) => a.path)
       : undefined;
 
-    const sessionState = useChatStore.getState().sessions.get(chatSessionId);
-    const model = sessionState?.model ?? 'sonnet';
-    const effort = sessionState?.effort ?? 'medium';
-    const provider = sessionState?.provider ?? 'claude';
-    const providerModel = provider === 'pi'
-      ? sessionState?.piProviderModel
-      : provider === 'codex'
-        ? sessionState?.codexModel
-        : undefined;
-    const supportsEffort = getProviderCapabilities(provider).effortLevels.levels.length > 0;
-
     let sendResult: Awaited<ReturnType<typeof sendChatMessage>>;
     try {
       sendResult = await sendChatMessage({
         projectId,
         message,
         focusedResources: sessionFocusedResources,
-        model,
-        effort: supportsEffort && model !== 'opus' ? effort : undefined,
         tempImages,
         chatSessionId,
         currentView,
         clientMessageId: effectiveClientMessageId,
-        provider,
-        providerModel,
       });
     } catch (error) {
       if (sendingWhileStreaming) {
@@ -158,26 +152,22 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     const sessionFocusedResources = focusedResourcesBySession[chatSessionId] ?? focusedResources;
 
     const retrySessionState = useChatStore.getState().sessions.get(chatSessionId);
-    const model = retrySessionState?.model ?? 'sonnet';
-    const provider = retrySessionState?.provider ?? 'claude';
-    const providerModel = provider === 'pi'
-      ? retrySessionState?.piProviderModel
-      : provider === 'codex'
-        ? retrySessionState?.codexModel
-        : undefined;
+    if (!retrySessionState?.choice) await useChatStore.getState().openChatChoice(projectId, chatSessionId);
+    const authoritative = useChatStore.getState().sessions.get(chatSessionId)?.choice;
+    if (!authoritative?.send.allowed) {
+      setError(chatSessionId, authoritative?.send.reason ?? 'Choose an available model before sending.');
+      return;
+    }
 
     try {
       const result = await sendChatMessage({
         projectId,
         message,
         focusedResources: sessionFocusedResources,
-        model,
         tempImages,
         chatSessionId,
         currentView,
         clientMessageId,
-        provider,
-        providerModel,
       });
       if (!result.success) {
         setError(chatSessionId, result.error ?? 'Failed to retry message');

@@ -34,7 +34,8 @@ import { buildUserContentBlocks } from '../../claude/attachmentBlocks';
 import { buildFocusedSection } from '../../chat/prompts/focusedResources';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../chat/prompts';
-import type { ChatProvider, FocusChatDocument, FocusedResource, PlanItem, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope, SlashCommandInfo } from '../../../shared/types';
+import type { ChatChoiceEffort, ChatProvider, FocusChatDocument, FocusedResource, PlanItem, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope, SlashCommandInfo } from '../../../shared/types';
+import type { ChatModelChoiceService, ResolvedChatChoice } from '../../chat/modelChoice';
 import { getConfig } from '../../config';
 import { clientManager } from '../../claude/clientManager';
 import { isMaxTokensReached, isMaxTurnsReached, getTerminalReason } from '../../claude/sdkTypeGuards';
@@ -240,6 +241,7 @@ interface ManagedSession {
   model: ModelType;
   /** pi-only `"<provider>/<modelId>"` selector used by this native session. */
   providerModel?: string;
+  effort?: ChatChoiceEffort | null;
   lastActivity: number;
   sessionId?: string; // SDK session ID for resume
   processingStartTime?: number; // Timestamp when processing started (for timeout detection)
@@ -312,6 +314,9 @@ const getSessionConfig = () => getConfig().session;
 // =============================================================================
 
 export interface StreamingSessionServiceDeps {
+  /** Authoritative per-Chat choice resolver. Optional only for legacy unit-test construction. */
+  modelChoice?: Pick<ChatModelChoiceService, 'resolveForTurn'>;
+
   /** Project repository for session persistence */
   projectRepository: {
     get(id: string): Project | undefined;
@@ -349,7 +354,8 @@ export interface StreamingSessionServiceDeps {
       content: string,
       chatSessionId?: string,
       clientMessageId?: string,
-      provider?: ChatProvider
+      provider?: ChatProvider,
+      model?: string | null,
     ): void;
     getMessagesByChatSession(
       sessionId: string,
@@ -475,7 +481,8 @@ function authErrorMessage(provider: ChatProvider): string {
 export const CHAT_PROVIDER_CONFIG: Record<ChatProvider, ChatProviderConfig> = {
   claude: {
     usageModel: (managed) => managed.model,
-    resolveResumeSessionId: (chatSession) => chatSession?.claude_session_id ?? undefined,
+    resolveResumeSessionId: (chatSession) =>
+      chatSession?.provider === 'claude' ? chatSession.claude_session_id ?? undefined : undefined,
     persistSessionId: (repo, chatSessionId, sessionId) => {
       repo.updateClaudeSessionId(chatSessionId, sessionId);
       repo.updateProviderSessionId?.(chatSessionId, 'claude', sessionId);
@@ -688,6 +695,7 @@ export function finalizeTurnResult(
         managed.chatSessionId,
         undefined,
         managed.provider,
+        managed.resolvedModel ?? getManagedDisplayModel(managed),
       );
     }
   } catch (dbError) {
@@ -1125,7 +1133,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     model: ModelType;
     /** pi-only `"<provider>/<modelId>"` selection; ignored unless `provider` is `'pi'`. */
     providerModel?: string;
-    effort?: 'low' | 'medium' | 'high' | 'max';
+    effort?: ChatChoiceEffort | null;
     resumeSessionId?: string;
     context: PlanContext;
     persistHistory: boolean;
@@ -1169,9 +1177,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     let unsubscribeToolProposals: (() => void) | null = null;
 
     try {
+      const claudeEffort = effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'max'
+        ? effort
+        : undefined;
       const createClaudeSdkOptions = () => deps.buildSdkOptions(context, {
         model,
-        effort,
+        effort: claudeEffort,
         resumeSessionId,
         mainWindow,
         autoApprove: true,
@@ -1357,6 +1368,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             chatSessionId,
             resumeThreadId: resumeSessionId,
             model: providerModel,
+            modelReasoningEffort: effort === 'minimal' || effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh'
+              ? effort
+              : undefined,
             onMessage: (msg) => onMessage(session, msg),
             onSessionEnd: (reason, error) => handleSessionEnd(key, session, reason, error),
             onReady: onReadyWithoutMcpStatus,
@@ -1368,6 +1382,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             chatSessionId,
             resumeSessionId,
             model: providerModel,
+            thinkingLevel: effort ?? undefined,
             onMessage: (msg) => onMessage(session, msg),
             onSessionEnd: (reason, error) => handleSessionEnd(key, session, reason, error),
             onReady: onReadyWithoutMcpStatus,
@@ -1439,6 +1454,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         provider,
         model,
         providerModel,
+        effort,
         lastActivity: Date.now(),
         turnStartedAt: Date.now(),
         titleSeed: initialMessage.titleSeed,
@@ -1554,11 +1570,16 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
   /** Options for sending a chat message */
   interface SendChatMessageOptions {
+    /** Main-process-only snapshot resolved by ChatService at turn acceptance. */
+    authoritativeChoice?: ResolvedChatChoice;
+    /** @deprecated Main-process callers use modelChoice; retained for headless tests. */
     provider?: ChatProvider;
+    /** @deprecated Main-process callers use modelChoice; retained for headless tests. */
     model?: ModelType;
-    /** pi-only `"<provider>/<modelId>"` selection; ignored unless `provider` is `'pi'`. */
+    /** @deprecated Main-process callers use modelChoice; retained for headless tests. */
     providerModel?: string;
-    effort?: 'low' | 'medium' | 'high' | 'max';
+    /** @deprecated Main-process callers use modelChoice; retained for headless tests. */
+    effort?: ChatChoiceEffort | null;
     focusedResources?: FocusedResource[];
     chatSessionId?: string;
     /** Current UI view - injected as a per-message `[Context: …]` hint */
@@ -1589,17 +1610,56 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       return failure('chatSessionId is required');
     }
 
+    let selected = options.authoritativeChoice;
+    if (!selected && deps.modelChoice) {
+      const resolved = await deps.modelChoice.resolveForTurn(projectId, chatSessionId);
+      if (!resolved.ok) return failure(resolved.error);
+      selected = resolved.data;
+    }
+    if (selected) {
+      if (selected.provider === 'claude' && selected.model !== 'sonnet' && selected.model !== 'opus') {
+        return failure(`The saved Claude model “${selected.model}” is unavailable. Choose another model.`);
+      }
+      options = {
+        ...options,
+        provider: selected.provider,
+        model: selected.provider === 'claude' ? selected.model as ModelType : 'sonnet',
+        providerModel: selected.provider === 'claude' ? undefined : selected.model,
+        effort: selected.effort,
+      };
+    }
+
     const provider = options.provider ?? 'claude';
+    const desiredModel = options.model ?? 'sonnet';
     const key = buildSessionKey(projectId, chatSessionId);
     const managed = sessions.get(key);
 
-    // Provider or provider-model changes require a fresh native session/thread. KPM-side
-    // chat history remains intact and is replayed into the new provider when needed.
-    if (managed && (managed.provider !== provider || (provider !== 'claude' && managed.providerModel !== options.providerModel))) {
-      await disconnectSession(key, {
-        reason: managed.provider !== provider ? 'provider_changed' : 'provider_model_changed',
-        source: 'sendChatMessage',
-      });
+    if (managed) {
+      const providerChanged = managed.provider !== provider;
+      const nativeOptionsChanged = provider !== 'claude' && (
+        managed.providerModel !== options.providerModel || managed.effort !== options.effort
+      );
+      const claudeEffortChanged = provider === 'claude' && managed.effort !== options.effort;
+      if (providerChanged || nativeOptionsChanged || claudeEffortChanged) {
+        await disconnectSession(key, {
+          reason: providerChanged ? 'provider_changed' : 'provider_model_or_effort_changed',
+          source: 'sendChatMessage',
+        });
+      } else if (provider === 'claude' && managed.model !== desiredModel) {
+        if (managed.session.setModel) {
+          try {
+            await managed.session.setModel(desiredModel);
+            managed.model = desiredModel;
+          } catch (error) {
+            return failure(`Failed to apply Chat model choice: ${(error as Error).message}`);
+          }
+        } else {
+          await disconnectSession(key, {
+            reason: 'provider_model_changed',
+            source: 'sendChatMessage',
+          });
+        }
+      }
     }
 
     // Inject per-message context into the text so it is accurate for every

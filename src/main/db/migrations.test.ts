@@ -451,3 +451,27 @@ describe('107_outbound_change_deletion_sync', () => {
     }
   });
 });
+
+describe('111_chat_model_choice', () => {
+  it('adds nullable legacy choice/model columns and a zero revision', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      runMigrations(db);
+      db.prepare('INSERT INTO projects (id, name, folder_path) VALUES (?, ?, ?)').run('p-choice', 'Choice', '/tmp/choice');
+      db.prepare('INSERT INTO chat_sessions (id, project_id, provider) VALUES (?, ?, ?)').run('c-choice', 'p-choice', 'claude');
+      db.prepare(`
+        INSERT INTO chat_messages (id, session_id, chat_session_id, role, content, provider)
+        VALUES (?, ?, ?, 'assistant', 'legacy', 'claude')
+      `).run('m-choice', 'p-choice', 'c-choice');
+
+      const session = db.prepare(`
+        SELECT chat_model_choice, chat_model_choice_revision FROM chat_sessions WHERE id = ?
+      `).get('c-choice') as { chat_model_choice: string | null; chat_model_choice_revision: number };
+      const message = db.prepare('SELECT model FROM chat_messages WHERE id = ?').get('m-choice') as { model: string | null };
+      expect(session).toEqual({ chat_model_choice: null, chat_model_choice_revision: 0 });
+      expect(message.model).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+});

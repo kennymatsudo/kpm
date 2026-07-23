@@ -14,6 +14,10 @@ import { getSetting } from '../../db/appSettingsAccess';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { chatEvents } from '../../../shared/ipc/chatEvents';
 import { FileWatchService } from '../files';
+import { createChatModelChoiceService } from '../../chat/modelChoice';
+import { getProviderReadiness } from '../../providers/readiness';
+import { listPiProviders } from '../../pi/providers';
+import { isPiAvailable } from '../../pi/detect';
 
 export interface ChatRuntimeServiceDeps {
   getMainWindow: () => BrowserWindow | null;
@@ -43,7 +47,23 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
 
   const toolCallLogger = createToolCallLogger({ getMainWindow });
 
+  const modelChoice = createChatModelChoiceService({
+    chatSessions: container.chatSessions,
+    getDefaults: () => ({
+      provider: getSetting(container.appSettings, 'chatProvider'),
+      models: {
+        claude: getSetting(container.appSettings, 'chatModel'),
+        codex: getSetting(container.appSettings, 'chatCodexModel'),
+        pi: getSetting(container.appSettings, 'chatPiProviderModel'),
+      },
+      effort: getSetting(container.appSettings, 'chatEffort'),
+    }),
+    getReadiness: getProviderReadiness,
+    listPiProviders: async () => await isPiAvailable() ? listPiProviders() : [],
+  });
+
   const streamingSessionService = createStreamingSessionService({
+    modelChoice,
     projectRepository: {
       get: container.projects.get.bind(container.projects),
       updateTokens: container.projects.updateTokens.bind(container.projects),
@@ -160,7 +180,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     projects: container.projects,
     chatMessages: container.chatMessages,
     chatSessions: container.chatSessions,
-    getDefaultChatProvider: () => getSetting(container.appSettings, 'chatProvider'),
+    modelChoice,
     streamingSessionService,
     slashCommandService: services.slashCommandService,
     emitChatError: ({ projectId, chatSessionId, error }) => {
@@ -172,6 +192,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     toolCallLogger,
     streamingSessionService,
     chatService,
+    modelChoice,
   };
 }
 

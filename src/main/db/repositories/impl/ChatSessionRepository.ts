@@ -21,6 +21,7 @@ interface PreparedStatements {
   updateFocusDocumentAndClearClaudeSession: Statement;
   updateClaudeSessionId: Statement;
   updateProviderSessionId: Statement;
+  updateModelChoice: Statement;
   updateTitle: Statement;
   clearClaudeSessionIdsByProject: Statement;
   clearProviderSessionIdsByProject: Statement;
@@ -85,6 +86,13 @@ export class ChatSessionRepository implements IChatSessionRepository {
         SET provider = ?,
             provider_session_id = ?
         WHERE id = ?
+      `),
+      updateModelChoice: db.prepare(`
+        UPDATE chat_sessions
+        SET chat_model_choice = ?,
+            chat_model_choice_revision = chat_model_choice_revision + 1
+        WHERE id = ? AND chat_model_choice_revision = ?
+        RETURNING *
       `),
       updateTitle: db.prepare(`
         UPDATE chat_sessions
@@ -153,6 +161,10 @@ export class ChatSessionRepository implements IChatSessionRepository {
 
   updateProviderSessionId(id: string, provider: ChatProvider, providerSessionId: string): void {
     this.stmts.updateProviderSessionId.run(provider, providerSessionId, id);
+  }
+
+  updateModelChoice(id: string, expectedRevision: number, choiceJson: string): ChatSession | undefined {
+    return this.stmts.updateModelChoice.get(choiceJson, id, expectedRevision) as ChatSession | undefined;
   }
 
   updateTitle(id: string, title: string): void {

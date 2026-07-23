@@ -41,8 +41,9 @@ export interface CreatePiSessionOptions {
   systemPrompt: string;
   tools: PiKpmToolDefinition[];
   toolNames: string[];
-  /** `"<provider>/<modelId>"` selection resolved via the pi SDK's ModelRuntime after session creation. Unset keeps pi's own default model. */
+  /** `"<provider>/<modelId>"` selection resolved via the pi SDK's ModelRuntime after session creation. */
   model?: string;
+  thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /** pi's own persisted session id to continue. Unset starts a fresh persisted session. */
   resumeSessionId?: string;
 }
@@ -53,8 +54,9 @@ export interface PiChatSessionConfig {
   context: PlanContext;
   chatSessionId?: string;
   resumeSessionId?: string;
-  /** `"<provider>/<modelId>"` selection. Unset keeps pi's own default model. */
+  /** `"<provider>/<modelId>"` selection. */
   model?: string;
+  thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   onMessage: (msg: unknown) => void;
   onSessionEnd?: (reason: SessionEndReason, error?: Error) => void;
   onReady?: (sessionId: string) => void;
@@ -113,24 +115,15 @@ export interface PiModelSelectionResult<TModel> {
 /**
  * Resolve a parsed `{ provider, modelId }` selector against a live `ModelRuntime`.
  *
- * Falls back to any other model already registered under the same provider when
- * the exact modelId misses, rather than giving up on the provider entirely.
- * `listPiProviders()`'s enumeration and the `ModelRuntime` a chat session later
- * builds are two independent extension loads — a provider that registers with a
- * different exact model catalog between the two (or, for an extension-registered
- * provider like cursor, one enumerated via a guessed placeholder id — see
- * `UNRESOLVED_MODEL_ID` in `providers.ts`) would otherwise silently keep pi's
- * construction-time default model from an unrelated provider, running the turn
- * on a provider the user never selected.
+ * Exact means exact: a stale or guessed catalog entry returns undefined and the
+ * KPM Chat turn fails rather than silently using a different registered model.
  */
-export async function resolvePiModelSelection<TModel extends { provider: string; id: string }>(
+export function resolvePiModelSelection<TModel extends { provider: string; id: string }>(
   modelRuntime: PiModelRuntimeHandle<TModel>,
   selector: { provider: string; modelId: string },
 ): Promise<PiModelSelectionResult<TModel> | undefined> {
   const exact = modelRuntime.getModel(selector.provider, selector.modelId);
-  if (exact) return { model: exact, usedFallback: false };
-  const fallback = (await modelRuntime.getAvailable()).find((model) => model.provider === selector.provider);
-  return fallback ? { model: fallback, usedFallback: true } : undefined;
+  return Promise.resolve(exact ? { model: exact, usedFallback: false } : undefined);
 }
 
 function buildPiSystemPrompt(context: PlanContext): string {
@@ -343,19 +336,15 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
     tools: allowedToolNames,
     customTools: options.tools as unknown as PiSdkToolDefinition[],
     resourceLoader,
+    ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
   });
 
   if (options.model) {
     const selector = parsePiModelSelector(options.model);
     const resolution = selector ? await resolvePiModelSelection(session.modelRuntime, selector) : undefined;
-    if (resolution) {
-      await session.setModel(resolution.model);
-      if (resolution.usedFallback) {
-        console.warn(`[PiChatSession] pi model "${options.model}" is not registered; using "${resolution.model.provider}/${resolution.model.id}" instead so the requested provider still runs.`);
-      }
-    } else {
-      console.warn(`[PiChatSession] Could not resolve pi model "${options.model}"; keeping the session default.`);
-    }
+    if (!selector) throw new Error(`Invalid pi model selector “${options.model}”. Choose a provider/model pair.`);
+    if (!resolution) throw new Error(`The saved pi model “${options.model}” is unavailable. Choose another model.`);
+    await session.setModel(resolution.model);
   }
 
   return {
@@ -406,6 +395,7 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
         tools,
         toolNames,
         model: this.config.model,
+        thinkingLevel: this.config.thinkingLevel,
         resumeSessionId: this.config.resumeSessionId,
       });
     } catch (error) {

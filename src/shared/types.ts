@@ -49,12 +49,8 @@ export const CHAT_PROVIDERS = ['claude', 'codex', 'pi'] as const satisfies reado
  * known-native pi provider is driven by pi-ai's bundled catalog and always
  * resolves real enumerated ids here.
  *
- * TODO(pi.dev): if a future extension-registered provider without an "auto"
- * alias lands in this branch, this selector will not resolve either. That's
- * bounded, not silent: `createRealPiSession`'s `resolvePiModelSelection` falls
- * back to any other model already registered for the same provider when the
- * exact selector misses, so the chosen provider still runs — just not
- * necessarily on this exact model.
+ * If this guessed selector does not resolve later, Chat dispatch fails with an
+ * actionable error. It is never substituted with another registered model.
  */
 export const PI_UNRESOLVED_MODEL_ID = 'auto';
 
@@ -185,8 +181,65 @@ export interface TaskPromptTemplate {
  */
 export type AgentEffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
-/** Effort levels the main chat accepts; 'xhigh' is board-agent-only. */
+/** Legacy Claude-chat effort vocabulary retained for app-setting compatibility. */
 export type ChatEffortLevel = Exclude<AgentEffortLevel, 'xhigh'>;
+
+/** Provider-neutral effort vocabulary persisted with a Chat model choice. */
+export type ChatChoiceEffort = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+export interface PersistedChatProviderChoice {
+  model: string;
+  effort: ChatChoiceEffort | null;
+}
+
+/** Versioned aggregate stored atomically on chat_sessions. */
+export interface PersistedChatModelChoice {
+  version: 1;
+  selectedProvider: ChatProvider;
+  remembered: Record<ChatProvider, PersistedChatProviderChoice>;
+}
+
+export interface ChatEffortDescriptor {
+  value: ChatChoiceEffort;
+  label: string;
+}
+
+export interface ChatModelDescriptor {
+  id: string;
+  label: string;
+  available: boolean;
+  unavailableReason?: string;
+  effortLevels: ChatEffortDescriptor[];
+  defaultEffort: ChatChoiceEffort | null;
+}
+
+export interface ChatProviderDescriptor {
+  provider: ChatProvider;
+  label: string;
+  available: boolean;
+  detail: string;
+  models: ChatModelDescriptor[];
+}
+
+/** Authoritative renderer projection of one persisted Chat model choice. */
+export interface ChatChoiceView {
+  revision: number;
+  selected: {
+    provider: ChatProvider;
+    model: string;
+    effort: ChatChoiceEffort | null;
+  };
+  remembered: Record<ChatProvider, PersistedChatProviderChoice>;
+  providers: ChatProviderDescriptor[];
+  controlsEnabled: boolean;
+  responding: boolean;
+  send: { allowed: boolean; reason?: string };
+}
+
+export type ChatChoiceIntent =
+  | { type: 'choose_provider'; provider: ChatProvider }
+  | { type: 'choose_model'; model: string }
+  | { type: 'choose_effort'; effort: ChatChoiceEffort };
 
 /** Opposing-agent review policy for a board implementation session. */
 export type AgentReviewPolicy = 'auto' | 'skip';
@@ -927,6 +980,8 @@ export interface ChatMessage {
   chat_session_id: string | null;  // Groups messages into distinct sessions within a project
   client_message_id?: string | null; // Stable client-generated id for idempotent user retries
   provider: ChatProvider;
+  /** Concrete model that produced an assistant turn; null for users and legacy rows. */
+  model?: string | null;
   role: 'user' | 'assistant';
   content: string;
   created_at: string;
@@ -957,6 +1012,9 @@ export interface ChatSession {
   focus_document_hash: string | null;
   last_opened_at: string | null;
   title: string | null;
+  /** Raw versioned Chat model-choice JSON; parsed only by the main model-choice module. */
+  chat_model_choice?: string | null;
+  chat_model_choice_revision?: number;
   created_at: string;
 }
 

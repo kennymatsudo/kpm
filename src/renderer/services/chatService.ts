@@ -1,8 +1,6 @@
 import type {
-  ChatEffortLevel,
-  ChatProvider,
+  ChatChoiceIntent,
   ChatViewMode,
-  ClaudeModel,
   FocusChatDocument,
   FocusedResource,
 } from '../../shared/types';
@@ -69,11 +67,6 @@ export function sendChatMessage(params: {
   projectId: string;
   message: string;
   focusedResources: FocusedResource[];
-  model: string;
-  provider?: ChatProvider;
-  /** pi-only `"<provider>/<modelId>"` selection; ignored unless `provider` is `'pi'`. */
-  providerModel?: string;
-  effort?: ChatEffortLevel;
   tempImages?: string[];
   chatSessionId: string;
   currentView?: ChatViewMode;
@@ -84,16 +77,25 @@ export function sendChatMessage(params: {
     projectId: params.projectId,
     message: params.message,
     focusedResources: params.focusedResources,
-    model: params.model as ClaudeModel,
     tempImages: params.tempImages,
     chatSessionId: params.chatSessionId,
     currentView: params.currentView,
     clientMessageId: params.clientMessageId,
-    effort: params.effort,
     focusDocument: params.focusDocument,
-    provider: params.provider,
-    providerModel: params.providerModel,
   });
+}
+
+export function openChatChoice(projectId: string, chatSessionId: string) {
+  return window.api.chat.openChoice({ projectId, chatSessionId, scope: 'main' });
+}
+
+export function changeChatChoice(params: {
+  projectId: string;
+  chatSessionId: string;
+  expectedRevision: number;
+  intent: ChatChoiceIntent;
+}) {
+  return window.api.chat.changeChoice(params);
 }
 
 export function disconnectChatSession(projectId: string, chatSessionId: string) {

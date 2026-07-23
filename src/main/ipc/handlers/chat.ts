@@ -3,6 +3,7 @@ import type { SlashCommandService } from '../../services/core/SlashCommandServic
 import type { PermissionService } from '../../services/core/PermissionService';
 import type { StreamingSessionService } from '../../services/streaming/StreamingSessionService';
 import type { IChatMessageRepository, IProjectRepository } from '../../db/interfaces';
+import type { ChatModelChoiceService } from '../../chat/modelChoice';
 import { chatEndpoints, type ChatEndpointName } from '../../../shared/ipc/chatEndpoints';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import { ChatSendSchema } from '../validation/chat';
@@ -20,6 +21,7 @@ export interface ChatHandlerDeps {
   >;
   projects: IProjectRepository;
   chatMessages: IChatMessageRepository;
+  modelChoice: ChatModelChoiceService;
 }
 
 /**
@@ -37,8 +39,17 @@ function requireProject(projects: IProjectRepository, projectId: string): void {
   }
 }
 
+function modelChoiceControlsBusy(
+  streamingSessionService: ChatHandlerDeps['streamingSessionService'],
+  projectId: string,
+  chatSessionId: string,
+): boolean {
+  const state = streamingSessionService.getChatSessionState(projectId, chatSessionId);
+  return state === 'processing' || state === 'connecting';
+}
+
 function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
-  const { chatService, slashCommandService, permissionService, streamingSessionService, projects, chatMessages } = deps;
+  const { chatService, slashCommandService, permissionService, streamingSessionService, projects, chatMessages, modelChoice } = deps;
 
   return {
     getSlashCommands: async () => {
@@ -51,6 +62,32 @@ function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
       const { focusedResources, currentView, focusDocument, ...input } = params;
       const result = await chatService.sendMessage(input, { focusedResources, currentView, focusDocument });
       if (!result.ok) throw new Error(result.error);
+    },
+
+    openChoice: async (params) => {
+      const result = await modelChoice.open({
+        ...params,
+        responding: modelChoiceControlsBusy(
+          streamingSessionService,
+          params.projectId,
+          params.chatSessionId,
+        ),
+      });
+      if (!result.ok) throw new Error(result.error);
+      return { choice: result.data };
+    },
+
+    changeChoice: async (params) => {
+      const result = await modelChoice.change({
+        ...params,
+        responding: modelChoiceControlsBusy(
+          streamingSessionService,
+          params.projectId,
+          params.chatSessionId,
+        ),
+      });
+      if (!result.ok) throw new Error(result.error);
+      return { choice: result.data };
     },
 
     cancel: async ({ projectId, chatSessionId }) => {
@@ -117,16 +154,20 @@ function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
 
     loadSession: async ({ projectId, chatSessionId }) => {
       requireProject(projects, projectId);
+      const opened = await modelChoice.open({ projectId, chatSessionId, scope: 'main' });
+      if (!opened.ok) throw new Error(opened.error);
       return {
         messages: chatMessages.getMessagesByChatSession(projectId, chatSessionId),
         chatSessionId,
+        choice: opened.data,
       };
     },
 
     getFocusDocumentSession: async (params) => {
       const result = await chatService.getOrCreateFocusDocumentSession(params);
       if (!result.ok) throw new Error(result.error);
-      return result.data;
+      if (!result.data.choice) throw new Error('Chat model choice was not hydrated');
+      return { ...result.data, choice: result.data.choice };
     },
 
     piProviders: async () => {

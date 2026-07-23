@@ -76,7 +76,7 @@ describe('finalizeTurnResult', () => {
     finalizeTurnResult('chat:project-1:session-1', 'project-1', 'session-1', managed, { type: 'result', usage: { input_tokens: 10, output_tokens: 20 } }, window, deps);
 
     expect(deps.chatMessageRepository.addMessage).toHaveBeenCalledWith(
-      'project-1', 'assistant', 'Here is the answer.', 'session-1', undefined, 'claude',
+      'project-1', 'assistant', 'Here is the answer.', 'session-1', undefined, 'claude', 'sonnet',
     );
     expect(managed.accumulatedResponse).toBe('');
     expect(managed.lastTurnFinalized).toBe(true);

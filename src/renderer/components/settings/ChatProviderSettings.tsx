@@ -1,7 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingsSection, StatusBadge } from './SettingsSection';
 import { useChatStore, useProviderReadinessStore, type ChatProvider } from '../../stores';
+import { CODEX_CHAT_MODELS, type PiProviderOption } from '../../../shared/types';
+import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
+import { piProviderModelSelector } from '../../stores/chat/piProviderSelection';
 
 const PROVIDERS: { value: ChatProvider; label: string; description: string }[] = [
   { value: 'claude', label: 'Claude', description: 'Fast, balanced coding agent' },
@@ -10,20 +13,25 @@ const PROVIDERS: { value: ChatProvider; label: string; description: string }[] =
 ];
 
 export function ChatProviderSettings() {
-  const { viewedSessionId, hasViewedSession, provider, setDefaultProvider, setProvider } = useChatStore(
-    useShallow((state) => {
-      const viewedSession = state.viewedSessionId
-        ? state.sessions.get(state.viewedSessionId) ?? null
-        : null;
-      return {
-        viewedSessionId: state.viewedSessionId,
-        hasViewedSession: viewedSession !== null,
-        provider: viewedSession?.provider ?? state.provider,
-        setDefaultProvider: state.setDefaultProvider,
-        setProvider: state.setProvider,
-      };
-    }),
+  const { provider, model, codexModel, effort, piProviders, piProviderModel, acknowledgedUnsafeProviders, setDefaultProvider, setDefaultModel, setDefaultCodexModel, setDefaultEffort, setDefaultPiProviderModel, acknowledgeUnsafePiProvider, loadPiProviders } = useChatStore(
+    useShallow((state) => ({
+      provider: state.provider,
+      model: state.model,
+      codexModel: state.codexModel,
+      effort: state.effort,
+      piProviders: state.piProviders,
+      piProviderModel: state.piProviderModel,
+      acknowledgedUnsafeProviders: state.piAcknowledgedUnsafeProviders,
+      setDefaultProvider: state.setDefaultProvider,
+      setDefaultModel: state.setDefaultModel,
+      setDefaultCodexModel: state.setDefaultCodexModel,
+      setDefaultEffort: state.setDefaultEffort,
+      setDefaultPiProviderModel: state.setDefaultPiProviderModel,
+      acknowledgeUnsafePiProvider: state.acknowledgeUnsafePiProvider,
+      loadPiProviders: state.loadPiProviders,
+    })),
   );
+  const [pendingUnsafeOption, setPendingUnsafeOption] = useState<PiProviderOption | null>(null);
   const readiness = useProviderReadinessStore((state) => state.readiness);
   const isLoadingReadiness = useProviderReadinessStore((state) => state.isLoading);
   const loadReadiness = useProviderReadinessStore((state) => state.load);
@@ -31,6 +39,18 @@ export function ChatProviderSettings() {
   useEffect(() => {
     if (!readiness && !isLoadingReadiness) void loadReadiness();
   }, [readiness, isLoadingReadiness, loadReadiness]);
+
+  useEffect(() => {
+    if (provider === 'pi') void loadPiProviders();
+  }, [provider, loadPiProviders]);
+
+  const selectDefaultPiOption = (option: PiProviderOption) => {
+    if (!option.safe && !acknowledgedUnsafeProviders.has(option.provider)) {
+      setPendingUnsafeOption(option);
+      return;
+    }
+    setDefaultPiProviderModel(piProviderModelSelector(option));
+  };
 
   const activeLabel = PROVIDERS.find((option) => option.value === provider)?.label ?? provider;
   const providerRequirement = (value: ChatProvider): { disabled: boolean; detail: string | null } => {
@@ -43,11 +63,7 @@ export function ChatProviderSettings() {
   const handleProviderSelect = (nextProvider: ChatProvider) => {
     const requirement = providerRequirement(nextProvider);
     if (requirement.disabled) return;
-    if (viewedSessionId && hasViewedSession) {
-      setProvider(viewedSessionId, nextProvider);
-    } else {
-      setDefaultProvider(nextProvider);
-    }
+    setDefaultProvider(nextProvider);
   };
 
   return (
@@ -58,7 +74,7 @@ export function ChatProviderSettings() {
         </svg>
       }
       title="Chat provider"
-      description="Choose which AI agent powers the active chat and new chats."
+      description="Choose the provider inherited by future chats."
       collapsible={false}
       statusBadge={<StatusBadge variant="muted">{activeLabel}</StatusBadge>}
     >
@@ -103,8 +119,63 @@ export function ChatProviderSettings() {
           })}
         </div>
 
+        {provider === 'claude' && (
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs text-text-muted">Default model
+              <select value={model} onChange={(event) => setDefaultModel(event.target.value as typeof model)} className="mt-1 block w-full rounded-md bg-surface-2 p-2 text-text-primary">
+                <option value="sonnet">Sonnet</option><option value="opus">Opus</option>
+              </select>
+            </label>
+            <label className="text-xs text-text-muted">Default effort
+              <select value={effort} onChange={(event) => setDefaultEffort(event.target.value as typeof effort)} className="mt-1 block w-full rounded-md bg-surface-2 p-2 text-text-primary">
+                {(['low', 'medium', 'high', 'max'] as const).map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+            </label>
+          </div>
+        )}
+        {provider === 'codex' && (
+          <label className="block text-xs text-text-muted">Default model
+            <select value={codexModel} onChange={(event) => setDefaultCodexModel(event.target.value as typeof codexModel)} className="mt-1 block w-full rounded-md bg-surface-2 p-2 text-text-primary">
+              {CODEX_CHAT_MODELS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+        )}
         {provider === 'pi' && (
-          <p className="text-xs text-text-muted">Pick the pi backend and model from the chat input.</p>
+          <label className="block text-xs text-text-muted">Default provider and model
+            <select
+              value={piProviderModel ?? ''}
+              onChange={(event) => {
+                const option = piProviders.find((candidate) => piProviderModelSelector(candidate) === event.target.value);
+                if (option) selectDefaultPiOption(option);
+              }}
+              className="mt-1 block w-full rounded-md bg-surface-2 p-2 text-text-primary"
+            >
+              <option value="" disabled>Select a model</option>
+              {piProviders.map((option) => {
+                const selector = piProviderModelSelector(option);
+                return <option key={selector} value={selector}>{option.label}{option.safe ? '' : ' — unsafe'}</option>;
+              })}
+            </select>
+          </label>
+        )}
+        {pendingUnsafeOption && (
+          <ConfirmActionDialog
+            title="Enable an unsafe pi.dev provider?"
+            message={`${pendingUnsafeOption.label} runs its own agent and can modify repo files or run commands from chat. KPM cannot prevent this.`}
+            dialogId="settings-pi-unsafe-provider-dialog"
+            onCancel={() => setPendingUnsafeOption(null)}
+            action={{
+              label: 'Enable anyway',
+              loadingText: 'Enabling...',
+              variant: 'danger',
+              ariaLabel: `Acknowledge and enable ${pendingUnsafeOption.label}`,
+              onClick: async () => {
+                await acknowledgeUnsafePiProvider(pendingUnsafeOption.provider);
+                setDefaultPiProviderModel(piProviderModelSelector(pendingUnsafeOption));
+                setPendingUnsafeOption(null);
+              },
+            }}
+          />
         )}
       </div>
     </SettingsSection>

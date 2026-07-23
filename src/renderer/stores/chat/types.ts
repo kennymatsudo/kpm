@@ -1,4 +1,4 @@
-import type { Activity, ChatAttachment, SessionState, ClaudeModel, ChatProvider, ChatSessionSummary, MessageSegment, ChatEffortLevel, PiProviderOption, SlashCommandInfo, CodexChatModel } from '../../../shared/types';
+import type { Activity, ChatAttachment, ChatChoiceIntent, ChatChoiceView, SessionState, ClaudeModel, ChatProvider, ChatSessionSummary, MessageSegment, ChatEffortLevel, PiProviderOption, SlashCommandInfo, CodexChatModel } from '../../../shared/types';
 import type { StoreApi } from 'zustand';
 
 export interface Message {
@@ -79,7 +79,9 @@ export interface PerSessionState {
    * start at `false` so `setViewedSession` can lazy-load them on first focus.
    */
   hydrated: boolean;
-  /** Model selected for this session. Independent per tab. */
+  /** Authoritative persisted provider/model/effort projection. */
+  choice?: ChatChoiceView | null;
+  /** Legacy renderer mirrors retained for unrelated streaming presentation. */
   model: ClaudeModel;
   /** Effort level selected for this session. Independent per tab. */
   effort: ChatEffortLevel;
@@ -210,6 +212,9 @@ export interface ChatState {
   setSessionTitle: (chatSessionId: string, title: string) => void;
   setMcpStatus: (chatSessionId: string, degraded: boolean, error?: string | null) => void;
   setLastTurnUsage: (chatSessionId: string, usage: PerSessionState['lastTurnUsage']) => void;
+  setChatChoice: (chatSessionId: string, choice: ChatChoiceView) => void;
+  openChatChoice: (projectId: string, chatSessionId: string) => Promise<ChatChoiceView | null>;
+  changeChatChoice: (chatSessionId: string, intent: ChatChoiceIntent) => Promise<void>;
 
   // Shared actions
   setTokens: (tokens: number) => void;
@@ -218,6 +223,7 @@ export interface ChatState {
   /** Replace the list with the SDK's authoritative one (init fetch or commands_changed push) */
   setSlashCommands: (commands: SlashCommandInfo[]) => void;
   setDefaultModel: (model: ClaudeModel) => void;
+  setDefaultEffort: (effort: ChatEffortLevel) => void;
   setModel: (chatSessionId: string, model: ClaudeModel) => void;
   setEffort: (chatSessionId: string, effort: ChatEffortLevel) => void;
   /** Refresh the pi.dev provider/model list (cheap; called at boot and when the provider picker opens) */

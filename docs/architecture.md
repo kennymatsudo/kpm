@@ -96,12 +96,12 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 | `tracker_type_mappings` | Label → tracker issue type |
 | `sync_queue` | Items staged for export (with custom field overrides) |
 | `sync_snapshots` | Last-synced state for three-way conflict detection |
-| `chat_messages` | Persistent message history |
+| `chat_messages` | Persistent message history, including nullable actual-model attribution for assistant turns |
 | `dev_sessions` | Plan-item-tied dev sessions for board agentic execution (pending/active/inactive status); `base_sha` records the immutable fork-point SHA used for commit-range attribution; `review_policy` (auto/skip) selects whether opposing review runs, added in migration 093 (which also added the now-unused `execution_mode` column); `worktree_path` records the session's isolated git worktree |
 | `app_settings` | Global key-value application preferences |
 | `custom_themes` | Imported VS Code/KPM theme definitions |
 | `confluence_page_links` | Document ↔ Confluence page links |
-| `chat_sessions` | Chat session metadata; `scope` (main/focus_document) and `focus_document_*` columns added in migration 091 for focus-mode threads |
+| `chat_sessions` | Chat session metadata, native provider resume IDs, scope/focus metadata, and the versioned per-Chat model-choice aggregate |
 | `groups` | Visual group containers |
 | `custom_prompts` | Custom prompts; `target_type` (none/document/repo) and `run_mode` (artifact/chat) columns added in migration 090 |
 | `task_prompt_templates` | Task prompt templates |
@@ -124,6 +124,8 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 **Key fields for features:**
 - `plan_items.completed_at` - Stamped on transition to done, cleared on transition away; no feature currently reads it
 - `chat_sessions.claude_session_id` - Claude SDK session ID for resuming conversations
+- `chat_sessions.chat_model_choice` - Versioned provider/model/effort memory owned by that Chat; null only until legacy adoption
+- `chat_messages.model` - Actual model attribution for new assistant turns; null for user and legacy rows
 - `dev_sessions.worktree_path` - Path to isolated git worktree
 - `dev_sessions.status` - Session lifecycle state (pending, active, inactive)
 - `dev_sessions.automation_phase` - Board automation state (`idle`, `reviewing`, `addressing_review`, `fixing_commit_hooks`, `fixing_commit_hooks_after_review`, `ready_for_review`, `needs_attention`)

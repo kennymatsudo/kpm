@@ -178,6 +178,7 @@ async function startChatInvestigation(item: SlackTriageItem, projectId: string):
   assertSuccess(backendSession, 'Failed to start investigation chat');
 
   const latestChatState = useChatStore.getState();
+  await latestChatState.openChatChoice(projectId, chatSessionId);
   latestChatState.addUserMessage(chatSessionId, message);
 
   const uiState = useProjectUiDomainStore.getState();
@@ -188,8 +189,6 @@ async function startChatInvestigation(item: SlackTriageItem, projectId: string):
     projectId,
     message,
     focusedResources,
-    model: latestChatState.model,
-    effort: latestChatState.effort,
     chatSessionId,
     currentView: 'workspace',
     clientMessageId,

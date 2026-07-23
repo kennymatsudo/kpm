@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Markdown } from 'markdown-to-jsx';
-import type { ChatMessage } from '../../../shared/types';
+import type { ChatChoiceView, ChatMessage } from '../../../shared/types';
 import { useProjectDomainStore } from '../../stores';
-import { cancelChatSession, getFocusDocumentChatSession, sendChatMessage, subscribeToChatEvents } from '../../services/chatService';
+import { cancelChatSession, changeChatChoice, getFocusDocumentChatSession, sendChatMessage, subscribeToChatEvents } from '../../services/chatService';
 import { useFocusModeStore } from '../../stores/focusModeStore';
 import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
 import { ChevronRightIcon, CloseIcon } from '../icons';
+import { ChatChoiceControls } from '../chat/ChatChoiceControls';
 
 type FocusChatRole = 'user' | 'assistant' | 'status';
 
@@ -53,11 +54,13 @@ export function FocusChatPanel({
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [choice, setChoice] = useState<ChatChoiceView | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const streamRef = useRef('');
 
-  const canSend = !!projectId && !!sessionId && !!docPath && !isStreaming && !isLoadingSession && draft.trim().length > 0;
+  const canSend = !!projectId && !!sessionId && !!docPath && !isStreaming && !isLoadingSession
+    && choice?.send.allowed !== false && draft.trim().length > 0;
   const composerStatus = isStreaming
     ? 'Working'
     : isLoadingSession
@@ -74,6 +77,7 @@ export function FocusChatPanel({
     setIsStreaming(false);
     setIsLoadingSession(false);
     setError(null);
+    setChoice(null);
   }, [projectId, docPath]);
 
   useEffect(() => {
@@ -84,7 +88,7 @@ export function FocusChatPanel({
   }, [sessionId]);
 
   useEffect(() => {
-    if (!isOpen || !projectId || !docPath || sessionId) return;
+    if (!isOpen || !projectId || !docPath || choice) return;
 
     let cancelled = false;
 
@@ -111,6 +115,7 @@ export function FocusChatPanel({
         }
 
         setMessages(toFocusChatMessages(result.messages ?? []));
+        setChoice(result.choice ?? null);
         useFocusModeStore.getState().setChatSessionId(docPath, result.chatSessionId);
       } catch (loadError: unknown) {
         if (!cancelled) {
@@ -128,7 +133,7 @@ export function FocusChatPanel({
     return () => {
       cancelled = true;
     };
-  }, [docContent, docPath, docTitle, isOpen, projectId, sessionId]);
+  }, [choice, docContent, docPath, docTitle, isOpen, projectId]);
 
   useEffect(() => {
     if (!isOpen || !sessionId || !projectId) return;
@@ -227,8 +232,6 @@ export function FocusChatPanel({
       projectId,
       message: text,
       focusedResources: [],
-      model: 'sonnet',
-      effort: 'low',
       chatSessionId: sessionId,
       currentView: 'focus',
       clientMessageId: crypto.randomUUID(),
@@ -247,6 +250,18 @@ export function FocusChatPanel({
       setIsStreaming(false);
     });
   }, [docContent, docPath, docTitle, draft, isLoadingSession, isStreaming, projectId, sessionId]);
+
+  const updateChoice = useCallback(async (intent: Parameters<typeof changeChatChoice>[0]['intent']) => {
+    if (!projectId || !sessionId || !choice) return;
+    const result = await changeChatChoice({
+      projectId,
+      chatSessionId: sessionId,
+      expectedRevision: choice.revision,
+      intent,
+    });
+    if (result.success && result.choice) setChoice(result.choice);
+    else setError('error' in result ? result.error : 'Failed to change Chat model choice');
+  }, [choice, projectId, sessionId]);
 
   const cancel = useCallback(() => {
     if (!projectId || !sessionId) return;
@@ -342,8 +357,17 @@ export function FocusChatPanel({
             placeholder={isStreaming ? 'Waiting for response' : isLoadingSession ? 'Loading' : 'Ask about this document'}
             className="block max-h-32 min-h-[58px] w-full resize-none bg-transparent px-3 py-2 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted disabled:opacity-60"
           />
-          <div className="flex items-center justify-between px-2 pb-2">
-            <span className="inline-flex min-w-0 items-center gap-1.5 text-[11px] text-text-muted">
+          <div className="flex items-center gap-1.5 px-2 pb-2">
+            {choice ? (
+              <ChatChoiceControls
+                choice={choice}
+                disabled={isStreaming}
+                ariaLabelPrefix="Focus chat"
+                className="max-w-[255px]"
+                onChange={updateChoice}
+              />
+            ) : null}
+            <span className="inline-flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-text-muted">
               {isStreaming && <span className="pulse-dot shrink-0" style={{ width: 5, height: 5 }} />}
               <span className="truncate">{composerStatus}</span>
             </span>

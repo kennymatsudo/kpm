@@ -6,6 +6,7 @@ import {
 import type { IChatMessageRepository, IChatSessionRepository, IProjectRepository } from '../../db/interfaces';
 import type {
   ChatAttachment,
+  ChatChoiceView,
   ChatMessage,
   ChatProvider,
   ChatViewMode,
@@ -16,12 +17,13 @@ import type {
 import { failure, success, wrap, type AsyncResult, type ServiceResult } from '../result';
 import type { StreamingSessionService } from '../streaming/StreamingSessionService';
 import type { SlashCommandService } from './SlashCommandService';
-import { DEFAULT_CHAT_PROVIDER } from '../../../shared/appSettings';
+import type { ChatModelChoiceService } from '../../chat/modelChoice';
 
 export interface ChatServiceDeps {
   projects: IProjectRepository;
   chatMessages: IChatMessageRepository;
   chatSessions: IChatSessionRepository;
+  modelChoice?: ChatModelChoiceService;
   getDefaultChatProvider?: () => ChatProvider;
   clearSessionCache?: (projectId: string) => void;
   streamingSessionService: Pick<
@@ -35,10 +37,13 @@ export interface ChatServiceDeps {
 export interface SendChatMessageInput {
   projectId: string;
   message: string;
+  /** @deprecated Ignored when the authoritative model-choice module is configured. */
   provider?: ChatProvider;
+  /** @deprecated Ignored when the authoritative model-choice module is configured. */
   model?: ClaudeModel;
-  /** pi-only `"<provider>/<modelId>"` selection; ignored unless `provider` is `'pi'`. */
+  /** @deprecated Ignored when the authoritative model-choice module is configured. */
   providerModel?: string;
+  /** @deprecated Ignored when the authoritative model-choice module is configured. */
   effort?: 'low' | 'medium' | 'high' | 'max';
   /**
    * Wire-format list of paste-derived temp image absolute paths. Backward-
@@ -75,6 +80,7 @@ export interface FocusDocumentSessionInput {
 export interface FocusDocumentSessionResult {
   chatSessionId: string;
   messages: ChatMessage[];
+  choice?: ChatChoiceView;
 }
 
 /**
@@ -167,17 +173,11 @@ export function createChatService(deps: ChatServiceDeps) {
       const {
         projectId,
         message,
-        model,
-        provider: inputProvider,
-        providerModel,
-        effort,
         tempImages,
         attachments: providedAttachments,
         chatSessionId,
         clientMessageId,
       } = input;
-      const provider = inputProvider ?? deps.getDefaultChatProvider?.() ?? DEFAULT_CHAT_PROVIDER;
-
       try {
         const project = deps.projects.get(projectId);
         if (!project) {
@@ -204,14 +204,34 @@ export function createChatService(deps: ChatServiceDeps) {
         }
         const messageForModel = expansion?.data ?? message;
 
+        if (!chatSessionId) {
+          emitError(projectId, chatSessionId, 'chatSessionId is required');
+          return failure('chatSessionId is required');
+        }
+        const resolvedChoice = deps.modelChoice
+          ? await deps.modelChoice.resolveForTurn(projectId, chatSessionId)
+          : success({
+              provider: input.provider ?? deps.getDefaultChatProvider?.() ?? 'claude',
+              model: input.providerModel ?? input.model ?? 'sonnet',
+              effort: input.effort ?? null,
+              revision: 0,
+            });
+        if (!resolvedChoice.ok) {
+          emitError(projectId, chatSessionId, resolvedChoice.error);
+          return failure(resolvedChoice.error);
+        }
+
         const result = await deps.streamingSessionService.sendChatMessage(
           projectId,
           messageForModel,
           {
-            model: model ?? 'sonnet',
-            provider,
-            providerModel,
-            effort,
+            authoritativeChoice: resolvedChoice.data,
+            ...(!deps.modelChoice ? {
+              provider: resolvedChoice.data.provider,
+              model: input.model,
+              providerModel: input.providerModel,
+              effort: input.effort,
+            } : {}),
             focusedResources: promptContext?.focusedResources ?? [],
             chatSessionId,
             currentView: promptContext?.currentView,
@@ -227,7 +247,13 @@ export function createChatService(deps: ChatServiceDeps) {
           return failure(result.error);
         }
 
-        persistAcceptedUserMessage(projectId, message, chatSessionId, clientMessageId, provider);
+        persistAcceptedUserMessage(
+          projectId,
+          message,
+          chatSessionId,
+          clientMessageId,
+          resolvedChoice.data.provider,
+        );
         return success(undefined);
       } catch (error) {
         const messageText = error instanceof Error ? error.message : 'Unknown error';
@@ -296,10 +322,23 @@ export function createChatService(deps: ChatServiceDeps) {
           );
         }
 
+        const openedChoice = deps.modelChoice ? await deps.modelChoice.open({
+          projectId,
+          chatSessionId: chatSession.id,
+          scope: 'focus_document',
+          focusDocument: {
+            path: documentPath,
+            title: trimmedTitle,
+            contentHash,
+          },
+        }) : null;
+        if (openedChoice && !openedChoice.ok) return failure(openedChoice.error);
+
         const messages = deps.chatMessages.getMessagesByChatSession(projectId, chatSession.id);
         return success({
           chatSessionId: chatSession.id,
           messages,
+          ...(openedChoice?.ok ? { choice: openedChoice.data } : {}),
         });
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));

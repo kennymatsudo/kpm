@@ -29,6 +29,8 @@ const PlanSchemas = {
 };
 const ChatSchemas = {
   send: chatEndpoints.send.params,
+  openChoice: chatEndpoints.openChoice.params,
+  changeChoice: chatEndpoints.changeChoice.params,
 };
 const TrackerSchemas = {
   saveJiraCredentials: trackerEndpoints['credentials.saveJira'].params,
@@ -158,6 +160,29 @@ describe('ProjectSchemas', () => {
   });
 });
 
+describe('ChatSchemas', () => {
+  it('does not forward renderer-supplied responding state for model-choice operations', () => {
+    const projectId = randomUUID();
+    const chatSessionId = randomUUID();
+    const opened = ChatSchemas.openChoice.parse({
+      projectId,
+      chatSessionId,
+      scope: 'main',
+      responding: true,
+    });
+    const changed = ChatSchemas.changeChoice.parse({
+      projectId,
+      chatSessionId,
+      expectedRevision: 1,
+      intent: { type: 'choose_provider', provider: 'codex' },
+      responding: true,
+    });
+
+    expect(opened).not.toHaveProperty('responding');
+    expect(changed).not.toHaveProperty('responding');
+  });
+});
+
 describe('PlanSchemas', () => {
   describe('updatePosition', () => {
     it('accepts ordinary and boundary canvas positions', () => {
@@ -276,18 +301,29 @@ describe('ChatSchemas', () => {
             { type: 'project_file', path: 'CLAUDE.md', isDirectory: false },
           ],
         },
-        { projectId: randomUUID(), message: 'Hello', model: 'opus' },
         { projectId: randomUUID(), message: 'Hello', clientMessageId: randomUUID() },
       ]) {
         expectValid(ChatSchemas.send, input);
       }
     });
 
-    it('rejects empty, oversized, or invalid-model messages', () => {
+    it('strips renderer-supplied provider options from the authoritative send contract', () => {
+      const parsed = ChatSchemas.send.parse({
+        projectId: randomUUID(),
+        message: 'Hello',
+        provider: 'pi',
+        model: 'gpt-4',
+        effort: 'max',
+      });
+      expect(parsed).not.toHaveProperty('provider');
+      expect(parsed).not.toHaveProperty('model');
+      expect(parsed).not.toHaveProperty('effort');
+    });
+
+    it('rejects empty or oversized messages', () => {
       for (const input of [
         { projectId: randomUUID(), message: '' },
         { projectId: randomUUID(), message: 'a'.repeat(100001) },
-        { projectId: randomUUID(), message: 'Hello', model: 'gpt-4' },
       ]) {
         expectInvalid(ChatSchemas.send, input);
       }

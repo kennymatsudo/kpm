@@ -37,6 +37,9 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         viewedSessionId: newSessionId,
         nextSessionNumber: state.nextSessionNumber + 1,
       });
+      if (state.persistedProjectId) {
+        void get().openChatChoice(state.persistedProjectId, newSessionId);
+      }
 
       return newSessionId;
     },
@@ -58,6 +61,9 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
           sessions,
           nextSessionNumber: state.nextSessionNumber + 1,
         });
+        if (state.persistedProjectId) {
+          void get().openChatChoice(state.persistedProjectId, state.viewedSessionId);
+        }
         return state.viewedSessionId;
       }
       return get().startNewChatSession();
@@ -187,7 +193,11 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
             const timestamp = new Date(m.created_at);
             const previous = acc[acc.length - 1];
 
-            if (m.role === 'assistant' && previous?.role === 'assistant') {
+            if (
+              m.role === 'assistant'
+              && previous?.role === 'assistant'
+              && previous.model === (m.model ?? undefined)
+            ) {
               const checkpoint: MessageSegment = { type: 'checkpoint', timestamp: timestamp.getTime() };
               acc[acc.length - 1] = {
                 ...previous,
@@ -201,6 +211,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
               role: m.role,
               segments: [{ type: 'text', content: m.content }],
               timestamp,
+              model: m.model ?? undefined,
             });
             return acc;
           }, []);
@@ -209,7 +220,9 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
           const sessions = new Map(state.sessions);
           const existingSession = sessions.get(chatSessionId);
           const baseSession = existingSession ?? createInitialPerSessionState(state.nextSessionNumber);
-          const sessionProvider = result.messages.find((message) => message.provider)?.provider ?? baseSession.provider;
+          const sessionProvider = result.choice?.selected.provider
+            ?? result.messages.find((message) => message.provider)?.provider
+            ?? baseSession.provider;
           const preserveLiveState =
             existingSession?.isStreaming ||
             existingSession?.sessionState === 'processing' ||
@@ -227,6 +240,14 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
             activities: preserveLiveState ? baseSession.activities : [],
             sessionState: baseSession.sessionState,
             provider: sessionProvider,
+            choice: result.choice ?? baseSession.choice,
+            model: result.choice?.selected.model === 'opus' ? 'opus' : result.choice?.selected.model === 'sonnet' ? 'sonnet' : baseSession.model,
+            codexModel: result.choice?.selected.provider === 'codex'
+              ? result.choice.selected.model as PerSessionState['codexModel']
+              : baseSession.codexModel,
+            piProviderModel: result.choice?.selected.provider === 'pi'
+              ? result.choice.selected.model
+              : baseSession.piProviderModel,
             streamStartedAt: preserveLiveState ? baseSession.streamStartedAt : null,
             lastStreamUpdateAt: preserveLiveState ? baseSession.lastStreamUpdateAt : null,
             hydrated: true,

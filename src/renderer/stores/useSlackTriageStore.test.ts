@@ -26,6 +26,7 @@ vi.mock('../services/slackService', () => ({
 
 vi.mock('../services/chatService', () => ({
   sendChatMessage: vi.fn(),
+  openChatChoice: vi.fn().mockResolvedValue({ success: true }),
   startNewBackendChatSession: vi.fn(),
 }));
 

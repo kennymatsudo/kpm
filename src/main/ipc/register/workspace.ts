@@ -36,6 +36,7 @@ export function registerWorkspaceHandlers({
     streamingSessionService: chatRuntime.streamingSessionService,
     projects: services.container.projects,
     chatMessages: services.container.chatMessages,
+    modelChoice: chatRuntime.modelChoice,
   });
   registerFileHandlers(getMainWindow, services.contextFileService);
   registerExportHandlers(services.exportService, services.typeMappingService);

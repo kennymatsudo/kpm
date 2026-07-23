@@ -62,6 +62,8 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     isStreaming,
     suggestions,
     lastTurnUsage,
+    choiceSendAllowed,
+    choiceSendReason,
     setDraftMessage,
     setPendingAttachments,
     getChatSessionId,
@@ -86,6 +88,8 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
       isStreaming: session?.isStreaming ?? false,
       suggestions: session?.suggestions ?? NO_SUGGESTIONS,
       lastTurnUsage: session?.lastTurnUsage ?? null,
+      choiceSendAllowed: session?.choice?.send.allowed ?? true,
+      choiceSendReason: session?.choice?.send.reason,
       setDraftMessage: state.setDraftMessage,
       setPendingAttachments: state.setPendingAttachments,
       getChatSessionId: state.getChatSessionId,
@@ -93,7 +97,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     };
   }));
 
-  const sendDisabledWhileStreaming = false;
+  const sendDisabledWhileStreaming = !choiceSendAllowed;
 
   // Local draft state so keystrokes feel instant: the textarea never waits on a
   // global store write (which replaces the session object and re-renders its
@@ -626,7 +630,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
             className="btn btn-primary h-8 w-8 !p-0 flex-shrink-0 rounded-lg transition-transform active:scale-90"
             title={
               sendDisabledWhileStreaming
-                ? 'Wait for the current response to finish'
+                ? choiceSendReason ?? 'Choose an available model before sending'
                 : isStreaming
                   ? 'Add to current response (Enter)'
                   : 'Send message (Enter)'
