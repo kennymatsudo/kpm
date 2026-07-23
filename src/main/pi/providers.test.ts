@@ -1,16 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const piMocks = vi.hoisted(() => ({
-  list: vi.fn(),
+  listCredentials: vi.fn(),
   getAvailable: vi.fn(),
-  getProviderDisplayName: vi.fn((provider: string) => provider),
+  getProvider: vi.fn((provider: string): { name: string } | undefined => ({ name: provider })),
   createAgentSessionServices: vi.fn(),
 }));
 
 vi.mock('@earendil-works/pi-coding-agent', () => ({
-  AuthStorage: {
-    create: () => ({ list: piMocks.list }),
-  },
   createAgentSessionServices: piMocks.createAgentSessionServices,
 }));
 
@@ -18,9 +15,11 @@ import { PI_UNRESOLVED_MODEL_ID } from '../../shared/types';
 import { isPiProviderSafe, listPiProviders } from './providers';
 
 describe('isPiProviderSafe', () => {
-  it('classifies pi-ai built-in providers as safe', () => {
+  it('classifies pi-ai and pi-coding-agent built-in providers as safe', () => {
     expect(isPiProviderSafe('openai-codex')).toBe(true);
     expect(isPiProviderSafe('anthropic')).toBe(true);
+    expect(isPiProviderSafe('qwen-token-plan')).toBe(true);
+    expect(isPiProviderSafe('llama.cpp')).toBe(true);
   });
 
   it('classifies a user-trusted extension provider (cursor) as safe', () => {
@@ -37,13 +36,14 @@ describe('isPiProviderSafe', () => {
 
 describe('listPiProviders', () => {
   beforeEach(() => {
-    piMocks.list.mockReset();
+    piMocks.listCredentials.mockReset();
     piMocks.getAvailable.mockReset();
-    piMocks.getProviderDisplayName.mockReset().mockImplementation((provider: string) => provider);
+    piMocks.getProvider.mockReset().mockImplementation((provider: string): { name: string } | undefined => ({ name: provider }));
     piMocks.createAgentSessionServices.mockReset().mockImplementation(async () => ({
-      modelRegistry: {
+      modelRuntime: {
+        listCredentials: piMocks.listCredentials,
         getAvailable: piMocks.getAvailable,
-        getProviderDisplayName: piMocks.getProviderDisplayName,
+        getProvider: piMocks.getProvider,
       },
       resourceLoader: {
         getExtensions: () => ({ extensions: [], errors: [], runtime: { pendingProviderRegistrations: [] } }),
@@ -53,8 +53,8 @@ describe('listPiProviders', () => {
   });
 
   it('loads extensions with the same trust posture as a real chat session', async () => {
-    piMocks.list.mockReturnValue(['openai-codex']);
-    piMocks.getAvailable.mockReturnValue([]);
+    piMocks.listCredentials.mockResolvedValue([{ providerId: 'openai-codex', type: 'oauth' }]);
+    piMocks.getAvailable.mockResolvedValue([]);
 
     await listPiProviders();
 
@@ -68,18 +68,18 @@ describe('listPiProviders', () => {
   });
 
   it('returns an empty list when the user has nothing configured', async () => {
-    piMocks.list.mockReturnValue([]);
+    piMocks.listCredentials.mockResolvedValue([]);
 
     expect(await listPiProviders()).toEqual([]);
   });
 
   it('lists resolved models for a known-native provider as safe', async () => {
-    piMocks.list.mockReturnValue(['openai-codex']);
-    piMocks.getAvailable.mockReturnValue([
+    piMocks.listCredentials.mockResolvedValue([{ providerId: 'openai-codex', type: 'oauth' }]);
+    piMocks.getAvailable.mockResolvedValue([
       { provider: 'openai-codex', id: 'gpt-5.4', name: 'GPT-5.4' },
       { provider: 'openai-codex', id: 'gpt-5.4-mini', name: 'GPT-5.4 mini' },
     ]);
-    piMocks.getProviderDisplayName.mockReturnValue('OpenAI Codex');
+    piMocks.getProvider.mockReturnValue({ name: 'OpenAI Codex' });
 
     expect(await listPiProviders()).toEqual([
       { provider: 'openai-codex', modelId: 'gpt-5.4', modelName: 'GPT-5.4', label: 'OpenAI Codex — GPT-5.4', safe: true },
@@ -91,11 +91,11 @@ describe('listPiProviders', () => {
     // Extensions load during enumeration (mirroring PiChatSession), so a
     // provider registered by an installed extension (e.g. pi-cursor-sdk)
     // surfaces its real models here — cursor is user-trusted, so safe.
-    piMocks.list.mockReturnValue(['cursor']);
-    piMocks.getAvailable.mockReturnValue([
+    piMocks.listCredentials.mockResolvedValue([{ providerId: 'cursor', type: 'oauth' }]);
+    piMocks.getAvailable.mockResolvedValue([
       { provider: 'cursor', id: 'cursor-default', name: 'Cursor Default', contextWindow: 200_000 },
     ]);
-    piMocks.getProviderDisplayName.mockReturnValue('cursor');
+    piMocks.getProvider.mockReturnValue({ name: 'cursor' });
 
     expect(await listPiProviders()).toEqual([
       { provider: 'cursor', modelId: 'cursor-default', modelName: 'Cursor Default', label: 'cursor — Cursor Default', safe: true, contextWindow: 200_000 },
@@ -106,9 +106,9 @@ describe('listPiProviders', () => {
     // Even after extensions load, a provider can end up with no models (e.g.
     // its extension failed to register, or the credential is stale). An
     // unknown, untrusted provider stays unsafe.
-    piMocks.list.mockReturnValue(['some-future-provider']);
-    piMocks.getAvailable.mockReturnValue([]);
-    piMocks.getProviderDisplayName.mockReturnValue('some-future-provider');
+    piMocks.listCredentials.mockResolvedValue([{ providerId: 'some-future-provider', type: 'api_key' }]);
+    piMocks.getAvailable.mockResolvedValue([]);
+    piMocks.getProvider.mockReturnValue(undefined);
 
     expect(await listPiProviders()).toEqual([
       { provider: 'some-future-provider', modelId: PI_UNRESOLVED_MODEL_ID, label: 'some-future-provider', safe: false },
@@ -116,12 +116,15 @@ describe('listPiProviders', () => {
   });
 
   it('classifies each configured provider independently', async () => {
-    piMocks.list.mockReturnValue(['openai-codex', 'some-future-provider']);
-    piMocks.getAvailable.mockReturnValue([
+    piMocks.listCredentials.mockResolvedValue([
+      { providerId: 'openai-codex', type: 'oauth' },
+      { providerId: 'some-future-provider', type: 'api_key' },
+    ]);
+    piMocks.getAvailable.mockResolvedValue([
       { provider: 'openai-codex', id: 'gpt-5.4', name: 'GPT-5.4' },
     ]);
-    piMocks.getProviderDisplayName.mockImplementation((provider: string) =>
-      provider === 'openai-codex' ? 'OpenAI Codex' : 'some-future-provider',
+    piMocks.getProvider.mockImplementation((provider: string) =>
+      provider === 'openai-codex' ? { name: 'OpenAI Codex' } : undefined,
     );
 
     const options = await listPiProviders();

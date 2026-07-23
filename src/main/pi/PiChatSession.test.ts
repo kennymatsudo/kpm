@@ -8,7 +8,7 @@ import {
   resolvePiProjectTrust,
   resolvePiSessionManager,
   type CreatePiSessionFn,
-  type PiModelRegistryHandle,
+  type PiModelRuntimeHandle,
   type PiSessionHandle,
 } from './PiChatSession';
 import type { PlanContext } from '../chat/prompts';
@@ -469,41 +469,41 @@ interface FakeModel {
   id: string;
 }
 
-function makeFakeModelRegistry(models: FakeModel[]): PiModelRegistryHandle<FakeModel> {
+function makeFakeModelRuntime(models: FakeModel[]): PiModelRuntimeHandle<FakeModel> {
   return {
-    find: (provider, modelId) => models.find((model) => model.provider === provider && model.id === modelId),
-    getAvailable: () => models,
+    getModel: (provider, modelId) => models.find((model) => model.provider === provider && model.id === modelId),
+    getAvailable: async () => models,
   };
 }
 
 describe('resolvePiModelSelection', () => {
-  it('resolves the exact model when the provider/modelId selector matches', () => {
-    const registry = makeFakeModelRegistry([
+  it('resolves the exact model when the provider/modelId selector matches', async () => {
+    const runtime = makeFakeModelRuntime([
       { provider: 'cursor', id: 'auto' },
       { provider: 'cursor', id: 'opus-latest@1m' },
     ]);
 
-    expect(resolvePiModelSelection(registry, { provider: 'cursor', modelId: 'opus-latest@1m' })).toEqual({
+    await expect(resolvePiModelSelection(runtime, { provider: 'cursor', modelId: 'opus-latest@1m' })).resolves.toEqual({
       model: { provider: 'cursor', id: 'opus-latest@1m' },
       usedFallback: false,
     });
   });
 
-  it('falls back to another available model for the same provider when the exact modelId misses', () => {
+  it('falls back to another available model for the same provider when the exact modelId misses', async () => {
     // listPiProviders() enumerated a placeholder/stale id (e.g. cursor's guessed
-    // "auto") that the live ModelRegistry never actually registered under that
+    // "auto") that the live ModelRuntime never actually registered under that
     // exact id — the provider itself is still real and available.
-    const registry = makeFakeModelRegistry([{ provider: 'cursor', id: 'opus-latest@1m' }]);
+    const runtime = makeFakeModelRuntime([{ provider: 'cursor', id: 'opus-latest@1m' }]);
 
-    expect(resolvePiModelSelection(registry, { provider: 'cursor', modelId: 'auto' })).toEqual({
+    await expect(resolvePiModelSelection(runtime, { provider: 'cursor', modelId: 'auto' })).resolves.toEqual({
       model: { provider: 'cursor', id: 'opus-latest@1m' },
       usedFallback: true,
     });
   });
 
-  it('returns undefined when the provider has no available model at all', () => {
-    const registry = makeFakeModelRegistry([{ provider: 'openai-codex', id: 'gpt-5.4' }]);
+  it('returns undefined when the provider has no available model at all', async () => {
+    const runtime = makeFakeModelRuntime([{ provider: 'openai-codex', id: 'gpt-5.4' }]);
 
-    expect(resolvePiModelSelection(registry, { provider: 'cursor', modelId: 'auto' })).toBeUndefined();
+    await expect(resolvePiModelSelection(runtime, { provider: 'cursor', modelId: 'auto' })).resolves.toBeUndefined();
   });
 });

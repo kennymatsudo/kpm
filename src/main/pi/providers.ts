@@ -25,10 +25,12 @@ function modelContextWindow(model: { contextWindow?: unknown }): number | undefi
 }
 
 /**
- * Providers shipped in pi-ai's own built-in catalog
- * (`@earendil-works/pi-ai`'s `providers/all.js` — verified by reading
- * `node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/models.generated.js`
- * at the time this was written). Every one of these models is driven through
+ * Providers shipped in pi-ai's own built-in catalog, plus providers shipped by
+ * pi-coding-agent's built-in extensions (`llama.cpp`). The generated catalog was
+ * verified by reading
+ * `node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/models.generated.js`;
+ * built-in extension providers were verified under `pi-coding-agent/dist/extensions`.
+ * Every one of these models is driven through
  * one of pi-ai's own bundled API-dialect implementations (`anthropic-messages`,
  * `openai-codex-responses`, etc.) — pi's own `AgentSession` runs the ReAct
  * loop and executes tool calls itself for all of them, so KPM's
@@ -45,12 +47,13 @@ function modelContextWindow(model: { contextWindow?: unknown }): number | undefi
  * `USER_TRUSTED_PI_PROVIDERS` below) — `cursor` is currently trusted that way.
  *
  * TODO(pi.dev): this allowlist is hand-curated from pi-ai's bundled provider
- * catalog rather than read from the SDK at runtime — `pi-coding-agent`'s
- * public exports (`index.d.ts`) don't re-export pi-ai's `getBuiltinProviders()`,
- * and `@earendil-works/pi-ai` isn't a direct KPM dependency (only nested under
- * `pi-coding-agent`'s own `node_modules`), so there's no import path that
- * would keep this list in sync automatically. It will silently miss a new
- * built-in provider added in a future `pi-coding-agent` upgrade (that
+ * catalog and pi-coding-agent's built-in extensions rather than read from the
+ * SDK at runtime — `pi-coding-agent`'s public exports (`index.d.ts`) don't
+ * re-export pi-ai's built-in provider catalog, and `@earendil-works/pi-ai`
+ * isn't a direct KPM dependency (only nested under `pi-coding-agent`'s own
+ * `node_modules`), so there's no import path that would keep this list in sync
+ * automatically. It will silently miss a new built-in provider added in a
+ * future `pi-coding-agent` upgrade (that
  * provider would default to `safe: false`, the conservative direction) and,
  * more importantly, would NOT catch a future built-in provider that itself
  * ships an embedded agent runtime — this allowlist trusts "built into pi-ai"
@@ -79,6 +82,7 @@ const KNOWN_NATIVE_PI_PROVIDERS = new Set<string>([
   'groq',
   'huggingface',
   'kimi-coding',
+  'llama.cpp',
   'minimax',
   'minimax-cn',
   'mistral',
@@ -90,6 +94,8 @@ const KNOWN_NATIVE_PI_PROVIDERS = new Set<string>([
   'opencode',
   'opencode-go',
   'openrouter',
+  'qwen-token-plan',
+  'qwen-token-plan-cn',
   'together',
   'vercel-ai-gateway',
   'xai',
@@ -131,7 +137,7 @@ export function isPiProviderSafe(provider: string): boolean {
  * Loads global/user pi extensions the same way `PiChatSession.ts`'s
  * `createRealPiSession` does (`noExtensions: false`, `resolveProjectTrust`
  * always denying — see `resolvePiProjectTrust`), via `createAgentSessionServices`
- * — the SDK's helper for building `resourceLoader`/`modelRegistry` without
+ * — the SDK's helper for building a `resourceLoader`/`modelRuntime` without
  * constructing a live `AgentSession`. This runs each loaded extension's own
  * module code (e.g. `pi-cursor-sdk`, already a trusted local install — see
  * `KNOWN_NATIVE_PI_PROVIDERS` above) so it can register its declared models
@@ -147,13 +153,8 @@ export function isPiProviderSafe(provider: string): boolean {
  */
 export async function listPiProviders(): Promise<PiProviderOption[]> {
   const pi = await import('@earendil-works/pi-coding-agent');
-  const authStorage = pi.AuthStorage.create();
-  const configuredProviders = authStorage.list();
-  if (configuredProviders.length === 0) return [];
-
-  const { modelRegistry, diagnostics, resourceLoader } = await pi.createAgentSessionServices({
+  const { modelRuntime, diagnostics, resourceLoader } = await pi.createAgentSessionServices({
     cwd: homedir(),
-    authStorage,
     resourceLoaderOptions: {
       noExtensions: false,
       noSkills: true,
@@ -176,12 +177,15 @@ export async function listPiProviders(): Promise<PiProviderOption[]> {
   if (diagnostics.length > 0) {
     console.warn('[listPiProviders] pi diagnostics:', diagnostics);
   }
-  const availableModels = modelRegistry.getAvailable();
+
+  const configuredProviders = (await modelRuntime.listCredentials()).map((credential) => credential.providerId);
+  if (configuredProviders.length === 0) return [];
+  const availableModels = await modelRuntime.getAvailable();
 
   const options: PiProviderOption[] = [];
   for (const provider of configuredProviders) {
     const safe = isPiProviderSafe(provider);
-    const displayName = modelRegistry.getProviderDisplayName(provider);
+    const displayName = modelRuntime.getProvider(provider)?.name ?? provider;
     const models = availableModels.filter((model) => model.provider === provider);
 
     if (models.length === 0) {

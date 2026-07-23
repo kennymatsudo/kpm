@@ -32,7 +32,7 @@ export interface CreatePiSessionOptions {
   systemPrompt: string;
   tools: PiKpmToolDefinition[];
   toolNames: string[];
-  /** `"<provider>/<modelId>"` selection resolved via the pi SDK's ModelRegistry after session creation. Unset keeps pi's own default model. */
+  /** `"<provider>/<modelId>"` selection resolved via the pi SDK's ModelRuntime after session creation. Unset keeps pi's own default model. */
   model?: string;
   /** pi's own persisted session id to continue. Unset starts a fresh persisted session. */
   resumeSessionId?: string;
@@ -89,10 +89,10 @@ export function parsePiModelSelector(selector: string): { provider: string; mode
   };
 }
 
-/** Structurally compatible with pi's real `ModelRegistry` — narrowed to what model selection needs. */
-export interface PiModelRegistryHandle<TModel extends { provider: string; id: string }> {
-  find: (provider: string, modelId: string) => TModel | undefined;
-  getAvailable: () => TModel[];
+/** Structurally compatible with pi's real `ModelRuntime` — narrowed to what model selection needs. */
+export interface PiModelRuntimeHandle<TModel extends { provider: string; id: string }> {
+  getModel: (provider: string, modelId: string) => TModel | undefined;
+  getAvailable: () => Promise<readonly TModel[]>;
 }
 
 export interface PiModelSelectionResult<TModel> {
@@ -102,11 +102,11 @@ export interface PiModelSelectionResult<TModel> {
 }
 
 /**
- * Resolve a parsed `{ provider, modelId }` selector against a live `ModelRegistry`.
+ * Resolve a parsed `{ provider, modelId }` selector against a live `ModelRuntime`.
  *
  * Falls back to any other model already registered under the same provider when
  * the exact modelId misses, rather than giving up on the provider entirely.
- * `listPiProviders()`'s enumeration and the `ModelRegistry` a chat session later
+ * `listPiProviders()`'s enumeration and the `ModelRuntime` a chat session later
  * builds are two independent extension loads — a provider that registers with a
  * different exact model catalog between the two (or, for an extension-registered
  * provider like cursor, one enumerated via a guessed placeholder id — see
@@ -114,13 +114,13 @@ export interface PiModelSelectionResult<TModel> {
  * construction-time default model from an unrelated provider, running the turn
  * on a provider the user never selected.
  */
-export function resolvePiModelSelection<TModel extends { provider: string; id: string }>(
-  modelRegistry: PiModelRegistryHandle<TModel>,
+export async function resolvePiModelSelection<TModel extends { provider: string; id: string }>(
+  modelRuntime: PiModelRuntimeHandle<TModel>,
   selector: { provider: string; modelId: string },
-): PiModelSelectionResult<TModel> | undefined {
-  const exact = modelRegistry.find(selector.provider, selector.modelId);
+): Promise<PiModelSelectionResult<TModel> | undefined> {
+  const exact = modelRuntime.getModel(selector.provider, selector.modelId);
   if (exact) return { model: exact, usedFallback: false };
-  const fallback = modelRegistry.getAvailable().find((model) => model.provider === selector.provider);
+  const fallback = (await modelRuntime.getAvailable()).find((model) => model.provider === selector.provider);
   return fallback ? { model: fallback, usedFallback: true } : undefined;
 }
 
@@ -328,7 +328,7 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
 
   if (options.model) {
     const selector = parsePiModelSelector(options.model);
-    const resolution = selector ? resolvePiModelSelection(session.modelRegistry, selector) : undefined;
+    const resolution = selector ? await resolvePiModelSelection(session.modelRuntime, selector) : undefined;
     if (resolution) {
       await session.setModel(resolution.model);
       if (resolution.usedFallback) {
