@@ -42,6 +42,7 @@ Main process
   ├── AgentSessionManager
   │   ├── ClaudeSdkSession   — Claude via Agent SDK
   │   ├── CodexSdkAgentSession — Codex via Codex SDK
+  │   ├── PiSdkAgentSession  — pi.dev models via the in-process Pi SDK
   │   └── CliAgentSession    — Gemini / legacy Claude via CLI + hooks
   └── BoardAgentOrchestrator (wired in by appServices.ts)
       ├── implement complete -> launch one auto-review
@@ -143,6 +144,7 @@ The board workflow still uses opposing-agent review, but it is largely internal:
 | `claude` | `codex` |
 | `codex` | `claude` |
 | `gemini` | `claude` |
+| `pi` | `claude` |
 
 Review results are persisted in `agent_review_runs` / `agent_review_findings`, keyed to the implementation session (not only the `-review` session id). Used for restart-safe audit and stale review detection; not the primary board interaction model.
 
@@ -174,6 +176,7 @@ If a session was destroyed rather than stopped, the old worktree is gone and KPM
 |------|---------|
 | `src/shared/agent-types.ts` | shared types + `toReviewSessionId` / `toImplSessionId` helpers |
 | `src/main/services/agents/AgentSessionManager.ts` | session registry, event wiring, review persistence, 30 min TTL eviction |
+| `src/main/services/agents/PiSdkAgentSession.ts` | Pi SDK board adapter, model selection, worktree tools, usage, and activity mapping |
 | `src/main/services/agents/autoReview.ts` | one-shot opposing review launch; accepts `baseBranch` |
 | `src/main/services/agents/reviewOutputContract.ts` | `REVIEW_FINDINGS_SCHEMA`, `parseReviewFindings`, `deriveReviewOutcome` — the shared review-output contract every adapter's `getResult()` parses through |
 | `src/main/services/agents/BoardAgentOrchestrator.ts` | automation state machine: implement → review → address → ready |

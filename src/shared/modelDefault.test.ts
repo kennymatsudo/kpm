@@ -19,9 +19,9 @@ describe('resolveDefaultModel', () => {
       .toEqual({ provider: 'codex', model: 'gpt-5.6-terra' });
   });
 
-  it('takes the model half of a pi selector', () => {
+  it('keeps the full Pi provider/model selector for board execution', () => {
     expect(resolveDefaultModel({ ...base, provider: 'pi', piProviderModel: 'openai/gpt-4o' }))
-      .toEqual({ provider: 'pi', model: 'gpt-4o' });
+      .toEqual({ provider: 'pi', model: 'openai/gpt-4o' });
   });
 
   it('falls back to auto for an unset pi selector', () => {

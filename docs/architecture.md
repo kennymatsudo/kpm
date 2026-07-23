@@ -220,7 +220,7 @@ KPM runs chat/dev sessions on one of three provider backends behind a provider-n
 │  ↑ Triggered from the Board UI via IPC                           │
 │    (agent-session:create-and-start) — not a chat tool call       │
 │  ├─ DevSessionService (session + worktree management)            │
-│  ├─ AgentSessionManager (Claude/Codex/Gemini backends)           │
+│  ├─ AgentSessionManager (Claude/Codex/Pi/Gemini backends)        │
 │  ├─ BoardAgentOrchestrator (implement → review → address → ready)│
 │  └─ Multiple concurrent sessions:                                │
 │      ├─ Session 1: Git worktree + implementation agent           │

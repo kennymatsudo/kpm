@@ -23,6 +23,13 @@ const providers: BoardProvider[] = [
     models: [{ id: 'gpt-5.5', name: 'GPT-5.5', isDefault: true }],
     capabilities: { nativeSkills: false, reviewSandbox: true },
   },
+  {
+    id: 'pi',
+    name: 'Pi',
+    available: true,
+    models: [{ id: 'openai/gpt-5.6-sol', name: 'OpenAI — GPT-5.6 Sol', isDefault: true }],
+    capabilities: { nativeSkills: false, reviewSandbox: false },
+  },
 ];
 
 describe('playbook runtime', () => {
@@ -39,14 +46,19 @@ describe('playbook runtime', () => {
   });
 
   it('degrades a useDefault model to the board provider default when the id is unknown', () => {
-    // The chat codex model catalog differs from the board's; an unknown id
-    // still keeps the provider and falls to that provider's default model.
-    expect(resolveCandidateChain([{ useDefault: true }], providers, { provider: 'codex', model: 'gpt-5.6-sol' }))
+    // An obsolete or externally supplied model id still keeps the provider and
+    // falls to that provider's default model.
+    expect(resolveCandidateChain([{ useDefault: true }], providers, { provider: 'codex', model: 'gpt-9-unknown' }))
       .toMatchObject({ provider: 'codex', model: 'gpt-5.5' });
   });
 
-  it('falls through the chain when the default model names an unrunnable provider', () => {
-    expect(resolveCandidateChain([{ useDefault: true }, { provider: 'claude', model: 'sonnet' }], providers, { provider: 'pi', model: 'auto' }))
+  it('resolves the selected Pi model when Pi is the KPM default', () => {
+    expect(resolveCandidateChain([{ useDefault: true }, { provider: 'claude', model: 'sonnet' }], providers, { provider: 'pi', model: 'openai/gpt-5.6-sol' }))
+      .toMatchObject({ provider: 'pi', model: 'openai/gpt-5.6-sol' });
+  });
+
+  it('falls through the chain when the default provider is unavailable', () => {
+    expect(resolveCandidateChain([{ useDefault: true }, { provider: 'claude', model: 'sonnet' }], providers, { provider: 'gemini', model: 'default' }))
       .toMatchObject({ provider: 'claude', model: 'sonnet' });
   });
 
@@ -81,9 +93,9 @@ describe('playbook runtime', () => {
     ]);
   });
 
-  it('falls the built-in main step back to Claude when the default is unrunnable', () => {
+  it('uses the configured Pi default when no explicit Pi model was saved', () => {
     const plan = resolvePlaybookPlan(BUILT_IN_PLAYBOOKS.implementOpposingReview, providers, { provider: 'pi', model: 'auto' });
-    expect(plan.main).toMatchObject({ provider: 'claude', model: 'sonnet' });
+    expect(plan.main).toMatchObject({ provider: 'pi', model: 'openai/gpt-5.6-sol' });
   });
 
   it('resolves a run per axis for the two-axis code-review playbook', () => {

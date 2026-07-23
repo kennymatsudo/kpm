@@ -8,6 +8,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { AgentType } from '../../../shared/agent-types';
 import { hasCodexAuth } from '../../codex/auth';
+import { isPiAvailable } from '../../pi/detect';
 
 const execFileAsync = promisify(execFile);
 
@@ -33,6 +34,10 @@ const AGENT_CONFIGS: Record<AgentType, AgentConfig> = {
   },
   gemini: {
     binaries: ['gemini'],
+    reviewOpponent: 'claude',
+  },
+  pi: {
+    binaries: [],
     reviewOpponent: 'claude',
   },
 };
@@ -69,6 +74,11 @@ export async function isAgentAvailable(agentType: AgentType): Promise<boolean> {
     availabilityCache.set(agentType, { available, binaryPath: null });
     return available;
   }
+  if (agentType === 'pi') {
+    const available = await isPiAvailable();
+    availabilityCache.set(agentType, { available, binaryPath: null });
+    return available;
+  }
 
   const config = AGENT_CONFIGS[agentType];
   for (const binary of config.binaries) {
@@ -97,7 +107,7 @@ export async function getAgentBinary(agentType: AgentType): Promise<string | nul
  * Get all available agent types on this machine.
  */
 export async function getAvailableAgents(): Promise<AgentType[]> {
-  const types: AgentType[] = ['claude', 'codex', 'gemini'];
+  const types: AgentType[] = ['claude', 'codex', 'gemini', 'pi'];
   const results = await Promise.all(types.map(async (t) => ({ type: t, available: await isAgentAvailable(t) })));
   return results.filter((r) => r.available).map((r) => r.type);
 }

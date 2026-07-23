@@ -25,7 +25,7 @@ const LOG_PREFIX = '[CliAgentSession]';
 /** Max output buffer per session (1MB) */
 const MAX_OUTPUT_BUFFER = 1024 * 1024;
 
-type CliAgentType = Exclude<AgentType, 'codex'>;
+type CliAgentType = Exclude<AgentType, 'codex' | 'pi'>;
 
 export interface CliAgentSessionConfig {
   id: string;

@@ -36,6 +36,21 @@ describe('AgentSessionManager.isSessionBusy', () => {
     });
   });
 
+  it('creates Pi board sessions through the provider-neutral manager', () => {
+    const manager = createManager();
+    const session = manager.create({
+      devSessionId: 'pi-dev-session',
+      projectId: 'project-1',
+      agentType: 'pi',
+      role: 'implement',
+      model: 'cursor/auto',
+      systemPrompt: 'Implement carefully.',
+    });
+
+    expect(session.agentType).toBe('pi');
+    expect(manager.getByDevSession('pi-dev-session')).toBe(session);
+  });
+
   it('is false when no session is registered for the dev session id', () => {
     const manager = createManager();
     expect(manager.isSessionBusy('unknown-dev-session')).toBe(false);

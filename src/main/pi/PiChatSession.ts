@@ -17,6 +17,12 @@ interface PiUsageLike {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  cost?: { total?: number };
+}
+
+interface PiSessionStatsLike {
+  tokens: PiUsageLike;
+  cost: number;
 }
 
 /** Structurally compatible with pi's real `AgentSession` — narrowed to what PiChatSession needs. */
@@ -25,6 +31,9 @@ export interface PiSessionHandle {
   subscribe: (listener: (event: unknown) => void) => () => void;
   prompt: (text: string, options?: { images?: PiToolImageContent[] }) => Promise<void>;
   abort: () => Promise<void>;
+  /** Added in the current SDK path so KPM can include tool/compaction usage. */
+  getSessionStats?: () => PiSessionStatsLike;
+  dispose?: () => void;
 }
 
 export interface CreatePiSessionOptions {
@@ -191,6 +200,16 @@ function contentBlocksToPiPrompt(content: ContentBlockParam[]): { text: string; 
   return { text: textParts.join('\n\n'), images };
 }
 
+function sessionStatsDelta(before: PiSessionStatsLike, after: PiSessionStatsLike): PiUsageLike {
+  return {
+    input: Math.max(0, after.tokens.input - before.tokens.input),
+    output: Math.max(0, after.tokens.output - before.tokens.output),
+    cacheRead: Math.max(0, after.tokens.cacheRead - before.tokens.cacheRead),
+    cacheWrite: Math.max(0, after.tokens.cacheWrite - before.tokens.cacheWrite),
+    cost: { total: Math.max(0, after.cost - before.cost) },
+  };
+}
+
 function usageToClaudeShape(usage: PiUsageLike | undefined): {
   input_tokens: number;
   output_tokens: number;
@@ -344,6 +363,8 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
     subscribe: (listener) => session.subscribe(listener),
     prompt: (text, promptOptions) => session.prompt(text, promptOptions),
     abort: () => session.abort(),
+    getSessionStats: () => session.getSessionStats(),
+    dispose: () => session.dispose(),
   };
 }
 
@@ -428,6 +449,8 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   protected disposeAfterClose(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.sessionHandle?.dispose?.();
+    this.sessionHandle = null;
   }
 
   /**
@@ -452,7 +475,11 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       if (!this.sessionHandle) {
         throw new Error('pi session is not initialized');
       }
+      const before = this.sessionHandle.getSessionStats?.();
       await this.sessionHandle.prompt(turn.text, turn.images.length > 0 ? { images: turn.images } : undefined);
+      const after = this.sessionHandle.getSessionStats?.();
+      if (before && after) this.latestUsage = sessionStatsDelta(before, after);
+      this.emitTurnResult();
     } catch (error) {
       if (this.closing || this.interrupting) return;
       this.config.onSessionEnd?.('error', error as Error);
@@ -563,10 +590,15 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   }
 
   private handleAgentEnd(event: { messages?: unknown[] }): void {
-    const usage = this.latestUsage ?? extractLastAssistantUsage(event.messages);
+    this.latestUsage = extractLastAssistantUsage(event.messages) ?? this.latestUsage;
+  }
+
+  private emitTurnResult(): void {
+    const totalCostUsd = this.latestUsage?.cost?.total;
     this.config.onMessage({
       type: 'result',
-      usage: usageToClaudeShape(usage),
+      usage: usageToClaudeShape(this.latestUsage),
+      ...(typeof totalCostUsd === 'number' ? { total_cost_usd: totalCostUsd } : {}),
       session_id: this.getSessionId(),
     });
   }

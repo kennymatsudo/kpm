@@ -146,6 +146,45 @@ describe('PiChatSession', () => {
     });
   });
 
+  it('emits one result after prompt settlement when agent_end retries', async () => {
+    const fake = makeFakeSession(() => {
+      fake.emit({
+        type: 'agent_end',
+        messages: [{ role: 'assistant', content: [], usage: { input: 4, output: 1, cacheRead: 0, cacheWrite: 0 } }],
+        willRetry: true,
+      });
+      fake.emit({
+        type: 'agent_end',
+        messages: [{ role: 'assistant', content: [], usage: { input: 6, output: 2, cacheRead: 0, cacheWrite: 0 } }],
+        willRetry: false,
+      });
+    });
+    const onMessage = vi.fn();
+    const session = new PiChatSession({
+      context: makeContext(),
+      onMessage,
+      createSession: async () => fake.handle,
+    });
+
+    await session.start('hi');
+    await waitFor(() => {
+      const resultMessages = (onMessage.mock.calls as unknown[][])
+        .filter((call) => (call[0] as { type?: unknown }).type === 'result');
+      expect(resultMessages).toHaveLength(1);
+    });
+
+    expect(onMessage).toHaveBeenCalledWith({
+      type: 'result',
+      usage: {
+        input_tokens: 6,
+        output_tokens: 2,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+      session_id: 'pi-session-1',
+    });
+  });
+
   it('interrupt() calls session.abort()', async () => {
     const fake = makeFakeSession(() => {
       fake.emit({ type: 'agent_end', messages: [], willRetry: false });

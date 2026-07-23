@@ -1,7 +1,7 @@
 /**
  * AgentSessionManager - Factory + registry for agent sessions.
  *
- * Creates agent sessions (Claude SDK, Codex SDK, or CLI), tracks active sessions per project,
+ * Creates agent sessions (Claude SDK, Codex SDK, Pi SDK, or CLI), tracks active sessions per project,
  * enforces concurrency limits, and broadcasts state changes to the renderer via IPC.
  */
 
@@ -23,10 +23,12 @@ import { toImplSessionId } from '../../../shared/agent-types';
 import { ClaudeSdkSession } from './ClaudeSdkSession';
 import { CliAgentSession } from './CliAgentSession';
 import { CodexSdkAgentSession } from './CodexSdkAgentSession';
+import { PiSdkAgentSession } from './PiSdkAgentSession';
 import type { HookEvent } from './hookServer';
 import { getConfig } from '../../config';
 import { emitAppEvent, type EventDefinition, type EventPayload } from '../../../shared/ipc/appEvents';
 import { agentSessionEvents } from '../../../shared/ipc/agentSessionEvents';
+import type { AgentEffortLevel } from '../../../shared/types';
 
 // =============================================================================
 // Constants
@@ -122,8 +124,11 @@ export interface CreateSessionParams {
   role: AgentSessionRole;
   /** SDK options (for Claude sessions) */
   sdkOptions?: SDKOptions;
-  /** Model override for agent sessions (e.g. 'gpt-5.5' for Codex) */
+  /** Model override for agent sessions (e.g. 'gpt-5.5' for Codex or 'openai/gpt-5.6-sol' for Pi) */
   model?: string;
+  /** Provider-neutral role instructions used by Pi board sessions. */
+  systemPrompt?: string;
+  effort?: AgentEffortLevel;
   expectsFindings?: boolean;
   readOnly?: boolean;
   implementationSessionId?: string;
@@ -175,6 +180,16 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         expectsFindings: params.expectsFindings,
         readOnly: params.readOnly,
       });
+    } else if (agentType === 'pi') {
+      agentSession = new PiSdkAgentSession({
+        id: devSessionId,
+        role,
+        model,
+        systemPrompt: params.systemPrompt ?? '',
+        effort: params.effort,
+        expectsFindings: params.expectsFindings,
+        readOnly: params.readOnly,
+      });
     } else {
       // Gemini/legacy Claude CLI — use PTY + hooks session
       if (!hookPort) {
@@ -206,6 +221,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     }
     const existingTracked = sessions.get(agentSession.id);
     existingTracked?.agentSession.clearHandlers();
+    existingTracked?.agentSession.dispose?.();
     persistedReviewStartIds.delete(agentSession.id);
     persistedReviewFailureIds.delete(agentSession.id);
     sessions.set(agentSession.id, tracked);
@@ -273,6 +289,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
 
     sessions.delete(sessionId);
     tracked.agentSession.clearHandlers();
+    tracked.agentSession.dispose?.();
     console.log(`${LOG_PREFIX} Removed session ${sessionId}`);
   }
 
@@ -300,6 +317,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     await Promise.allSettled(allActive.map(s => s.stop()));
     for (const tracked of allTracked) {
       tracked.agentSession.clearHandlers();
+      tracked.agentSession.dispose?.();
     }
     for (const timer of terminalEvictionTimers.values()) {
       clearTimeout(timer);
@@ -363,6 +381,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
           // runtime of the app. Keep this outside the identity check so an old
           // terminal session still releases handlers after a same-id restart.
           agentSession.clearHandlers();
+          agentSession.dispose?.();
           console.log(`${LOG_PREFIX} Evicted terminal session ${agentSession.id} after TTL`);
         }, getConfig().agentSession.terminalSessionTtlMs);
         terminalEvictionTimers.set(agentSession.id, evictionTimer);

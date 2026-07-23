@@ -10,7 +10,7 @@
 // =============================================================================
 
 /** Supported agent backends */
-export type AgentType = 'claude' | 'codex' | 'gemini';
+export type AgentType = 'claude' | 'codex' | 'gemini' | 'pi';
 
 /** Agent session lifecycle states */
 export type AgentSessionState =
@@ -116,7 +116,7 @@ export type AgentReviewOutcome =
 
 /**
  * What an agent session produced at the end of a turn. Every adapter
- * (`ClaudeSdkSession`, `CodexSdkAgentSession`, `CliAgentSession`) parses its
+ * (`ClaudeSdkSession`, `CodexSdkAgentSession`, `PiSdkAgentSession`, `CliAgentSession`) parses its
  * own final output into this shape — the session manager consumes it without
  * knowing how any backend represents review findings internally.
  */
@@ -152,9 +152,8 @@ export interface PersistedAgentReview {
 // =============================================================================
 
 /**
- * Token usage emitted by a session when the underlying model returns a
- * result message with billable token counts. Only Claude SDK sessions
- * emit this — CLI agents (Codex, Gemini) are tracked separately.
+ * Token usage emitted by an SDK-backed session when the underlying model
+ * returns billable token counts. CLI agents are tracked separately.
  */
 export interface AgentSessionUsage {
   model: string | null;
@@ -214,6 +213,8 @@ export interface IAgentSession {
   off<K extends keyof AgentSessionEvents>(event: K, handler: AgentSessionEvents[K]): void;
   /** Remove every registered handler in one go — used when the session is being evicted. */
   clearHandlers(): void;
+  /** Release provider-owned resources after the manager evicts the session. */
+  dispose?(): void;
 
   /**
    * Capability hook for backends that receive out-of-band hook events (CLI

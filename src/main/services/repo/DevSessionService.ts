@@ -338,7 +338,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       const providers = await deps.listBoardProviders();
       const resolvedPlan = resolvePlaybookPlan(playbook, providers, getDefaultModel(deps.appSettings));
       if (!resolvedPlan.main) return failure('No available provider can run the first main playbook step');
-      if (!['claude', 'codex', 'gemini'].includes(resolvedPlan.main.provider)) {
+      if (!['claude', 'codex', 'gemini', 'pi'].includes(resolvedPlan.main.provider)) {
         return failure(`Provider ${resolvedPlan.main.provider} is not enabled for board execution`);
       }
 
@@ -597,10 +597,12 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         const sdkSettings = buildBoardSdkSettings();
         const disallowedTools = ['AskUserQuestion', 'Workflow'];
 
+        const roleSystemPrompt = deps.getPromptContent(firstMainStep?.systemPromptKey ?? 'agents.implementation_system');
+
         // Build SDK options for the dev session
         // Dev sessions use a minimal config — no KPM MCP server, no plan tools
         const sdkOptions: SDKOptions = {
-          systemPrompt: deps.getPromptContent(firstMainStep?.systemPromptKey ?? 'agents.implementation_system'),
+          systemPrompt: roleSystemPrompt,
           model: developerModel,
           cwd: worktreeCwd,
           maxTurns: getConfig().claude.maxTurns,
@@ -624,7 +626,11 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           agentType: session.agent_type,
           role: 'implement',
           sdkOptions: session.agent_type === 'claude' ? sdkOptions : undefined,
-          model: session.agent_type === 'codex' ? options?.model ?? getConfig().agentSession.codexModel : undefined,
+          model: session.agent_type === 'codex'
+            ? options?.model ?? getConfig().agentSession.codexModel
+            : session.agent_type === 'pi' ? options?.model : undefined,
+          systemPrompt: session.agent_type === 'pi' ? roleSystemPrompt : undefined,
+          effort: session.agent_type === 'pi' ? effectiveEffort : undefined,
         });
 
         // Update DB status to active

@@ -9,6 +9,7 @@
  *   claude  → review with codex (or claude if codex unavailable)
  *   codex   → review with claude
  *   gemini  → review with claude
+ *   pi      → review with claude
  */
 
 import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
@@ -16,6 +17,7 @@ import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import { getConfig } from '../../config';
 import { getDiff, gitExec } from '../repo/gitUtils';
 import type { AgentType } from '../../../shared/agent-types';
+import type { AgentEffortLevel } from '../../../shared/types';
 import { toReviewSessionId } from '../../../shared/agent-types';
 import { getReviewOpponent, isAgentAvailable } from './agentCatalog';
 import { hasCodexAuth } from '../../codex/auth';
@@ -137,6 +139,7 @@ async function startReviewSession(params: {
   reviewSystemPrompt: string;
   agentSessionManager: AgentSessionManager;
   model?: string;
+  effort?: AgentEffortLevel;
   readOnly?: boolean;
   expectsFindings?: boolean;
   implementationSessionId?: string;
@@ -154,7 +157,7 @@ async function startReviewSession(params: {
     model,
   } = params;
 
-  const prompt = reviewAgentType === 'claude'
+  const prompt = reviewAgentType === 'claude' || reviewAgentType === 'pi'
     ? reviewPrompt
     : `${reviewSystemPrompt}\n\n${reviewPrompt}`;
 
@@ -194,7 +197,9 @@ async function startReviewSession(params: {
     projectId,
     agentType: reviewAgentType,
     role: 'review',
-    model: reviewAgentType === 'codex' ? model : undefined,
+    model: reviewAgentType === 'codex' || reviewAgentType === 'pi' ? model : undefined,
+    systemPrompt: reviewAgentType === 'pi' ? reviewSystemPrompt : undefined,
+    effort: reviewAgentType === 'pi' ? params.effort : undefined,
     readOnly: params.readOnly,
     expectsFindings: params.expectsFindings,
     implementationSessionId: params.implementationSessionId,
@@ -344,7 +349,7 @@ export async function launchPlaybookSubagent(params: {
   stepId: string;
   runIndex: number;
   attempt: number;
-  agent: { provider: string; model: string };
+  agent: { provider: string; model: string; effort?: AgentEffortLevel };
   worktreePath: string;
   baseBranch?: string | null;
   taskContext: string;
@@ -356,7 +361,7 @@ export async function launchPlaybookSubagent(params: {
   agentSessionManager: AgentSessionManager;
 }): Promise<string> {
   const provider = params.agent.provider;
-  if (provider !== 'claude' && provider !== 'codex' && provider !== 'gemini') {
+  if (provider !== 'claude' && provider !== 'codex' && provider !== 'gemini' && provider !== 'pi') {
     throw new Error(`Provider ${provider} is not enabled for board execution`);
   }
   const diff = await getWorktreeDiff(params.worktreePath, params.baseBranch);
@@ -385,6 +390,7 @@ export async function launchPlaybookSubagent(params: {
     reviewSystemPrompt: `${params.systemPrompt}\n\n${params.writes ? 'You may edit files in the task worktree.' : 'This step is read-only. Do not modify files.'}`,
     agentSessionManager: params.agentSessionManager,
     model: params.agent.model,
+    effort: params.agent.effort,
     readOnly: !params.writes,
     expectsFindings: params.verdict,
     implementationSessionId: params.implementationSessionId,

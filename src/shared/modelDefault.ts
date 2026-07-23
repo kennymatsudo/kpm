@@ -4,9 +4,8 @@ import { PI_UNRESOLVED_MODEL_ID, type ClaudeModel, type CodexChatModel } from '.
 /**
  * The provider+model the user has chosen in KPM, expressed as an agent-execution
  * pair. A playbook candidate marked `useDefault` follows this pair; board
- * execution then reconciles it against the providers it can actually run, so a
- * pair naming an unrunnable provider (e.g. `pi`) is skipped and the candidate
- * falls through to the next entry in its chain.
+ * execution then reconciles it against the providers and models available to
+ * the board, falling through to the next candidate when it cannot resolve.
  */
 export interface DefaultModel {
   provider: string;
@@ -26,16 +25,9 @@ export function resolveDefaultModel(inputs: DefaultModelInputs): DefaultModel {
     case 'codex':
       return { provider: 'codex', model: inputs.codexModel };
     case 'pi':
-      return { provider: 'pi', model: piModelId(inputs.piProviderModel) };
+      return { provider: 'pi', model: inputs.piProviderModel ?? PI_UNRESOLVED_MODEL_ID };
     case 'claude':
     default:
       return { provider: 'claude', model: inputs.claudeModel };
   }
-}
-
-/** A pi selector is `"<provider>/<modelId>"`; take the model half, or `auto`. */
-function piModelId(selector: string | null): string {
-  if (!selector) return PI_UNRESOLVED_MODEL_ID;
-  const slash = selector.indexOf('/');
-  return slash >= 0 ? selector.slice(slash + 1) : selector;
 }

@@ -2,7 +2,7 @@
  * BaseAgentSession - Shared base for SDK and CLI board agent sessions.
  *
  * Owns the event handler map, state field, activity list, and the helpers that
- * manipulate them, plus the turn lifecycle mechanics shared by all three
+ * manipulate them, plus the turn lifecycle mechanics shared by all board
  * backends: starting a turn, running it under an `AbortController` with a
  * shared failure path, stopping it, failing it, and completing it exactly
  * once. Concrete subclasses implement `start`, `respond`, `followUp`, and

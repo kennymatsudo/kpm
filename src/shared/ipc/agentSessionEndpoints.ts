@@ -24,8 +24,8 @@ type RegistryResponse<T = void> =
   | (T extends void ? { success: true } : { success: true } & T)
   | { success: false; error: string };
 
-const agentType = z.enum(['claude', 'codex', 'gemini'], {
-  message: 'Agent type must be "claude", "codex", or "gemini"',
+const agentType = z.enum(['claude', 'codex', 'gemini', 'pi'], {
+  message: 'Agent type must be "claude", "codex", "gemini", or "pi"',
 });
 const agentEffortLevel = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 const agentReviewPolicy = z.enum(['auto', 'skip']);

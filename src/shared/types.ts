@@ -41,8 +41,8 @@ export const CHAT_PROVIDERS = ['claude', 'codex', 'pi'] as const satisfies reado
 /**
  * Best-effort modelId for a configured pi provider whose model catalog is still empty
  * after loading extensions (see `listPiProviders`). Not verified resolvable at
- * enumeration time — pi's `ModelRegistry` has no "provider default model" lookup
- * independent of a live session, so this is a guess rather than an enumerated id.
+ * enumeration time — the provider's `ModelRuntime` catalog has no available
+ * model to identify as its default, so this is a guess rather than an enumerated id.
  * `"auto"` matches Cursor's own alias for its default model (verified against
  * `pi-cursor-sdk`'s model catalog: the `default`/"Auto" entry lists `auto` as
  * an alias) — currently the only provider that reaches this branch, since every

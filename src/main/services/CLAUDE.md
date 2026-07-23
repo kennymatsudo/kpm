@@ -63,7 +63,7 @@ Board agent session execution (implementation + opposing review). See [`services
 
 - `AgentSessionManager` — Tracks live agent sessions, dispatches to the right session type
 - `BoardAgentOrchestrator` — Runs implementation → opposing review → auto-fix → `In Review` transition
-- `ClaudeSdkSession` / `CodexSdkAgentSession` / `CliAgentSession` — Agent-specific session implementations over `BaseAgentSession`
+- `ClaudeSdkSession` / `CodexSdkAgentSession` / `PiSdkAgentSession` / `CliAgentSession` — Agent-specific session implementations over `BaseAgentSession`
 
 ### File Services (`services/files/`)
 
