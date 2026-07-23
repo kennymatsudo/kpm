@@ -3,6 +3,7 @@ import {
   formatPlaybookStepTitle,
   getPlaybookLoops,
   getPlaybookValidationIssues,
+  isBuiltInPlaybookId,
   isDefaultAgent,
   type AgentCandidate,
   type BoardProvider,
@@ -171,10 +172,17 @@ export function PlaybooksSettings() {
   }));
 
   const save = async () => {
-    if (!draft || issues.length || draft.builtIn) return;
+    if (!draft || issues.length) return;
     const response = await updatePlaybook({ id: draft.id, name: draft.name, steps: draft.steps });
     if (!response.success) return toast.error(response.error);
     toast.success('Playbook saved');
+    await reload();
+  };
+
+  const remove = async (id: string) => {
+    const response = await deletePlaybook(id);
+    if (!response.success) return toast.error(response.error);
+    setSelectedId(isBuiltInPlaybookId(id) ? id : '');
     await reload();
   };
 
@@ -218,7 +226,7 @@ export function PlaybooksSettings() {
             return (
               <button key={playbook.id} onClick={() => setSelectedId(playbook.id)} className={`w-full rounded-lg border p-2.5 text-left ${selectedId === playbook.id ? 'border-accent bg-accent/10' : 'border-border-subtle bg-surface-1 hover:bg-surface-2'}`}>
                 <div className="flex items-center gap-2"><input aria-label={`Default ${playbook.name}`} type="radio" checked={defaultId === playbook.id} onChange={(event) => { event.stopPropagation(); void setDefaultPlaybook(playbook.id).then(() => { setDefaultId(playbook.id); }); }} /><span className="min-w-0 flex-1 truncate text-sm text-text-primary">{playbook.name}</span></div>
-                <div className="mt-1 flex items-center gap-1 text-tiny text-text-muted"><span>{playbook.builtIn ? 'Built-in' : 'Custom'}</span>{disconnected && <span className="text-warning">Provider unavailable</span>}</div>
+                <div className="mt-1 flex items-center gap-1 text-tiny text-text-muted"><span>{playbook.builtIn ? 'Built-in' : isBuiltInPlaybookId(playbook.id) ? 'Customized' : 'Custom'}</span>{disconnected && <span className="text-warning">Provider unavailable</span>}</div>
                 <PlaybookFlowSummary playbook={playbook} />
               </button>
             );
@@ -230,9 +238,12 @@ export function PlaybooksSettings() {
         {!draft ? <p className="text-sm text-text-muted">Select a playbook.</p> : (
           <div className="mx-auto max-w-3xl">
             <div className="mb-4 flex items-center gap-3">
-              <input value={draft.name} disabled={draft.builtIn} onChange={(event) => setDraft({ ...draft, name: event.target.value })} className="input min-w-0 flex-1 font-medium" />
-              {draft.builtIn ? <button className="btn btn-secondary" onClick={() => void duplicate(draft.id)}>Duplicate to edit</button> : <button className="btn btn-primary" disabled={issues.length > 0} onClick={() => void save()}>{issues.length ? `Fix ${issues.length} issues` : 'Save'}</button>}
-              {!draft.builtIn && <button className="btn text-danger hover:bg-danger-muted/50" onClick={async () => { const response = await deletePlaybook(draft.id); if (!response.success) return toast.error(response.error); await reload(); setSelectedId(defaultId); }}>Delete</button>}
+              <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} className="input min-w-0 flex-1 font-medium" />
+              <button className="btn btn-primary" disabled={issues.length > 0} onClick={() => void save()}>{issues.length ? `Fix ${issues.length} issues` : 'Save'}</button>
+              {draft.builtIn && <button className="btn btn-secondary" onClick={() => void duplicate(draft.id)}>Duplicate</button>}
+              {isBuiltInPlaybookId(draft.id) && !draft.builtIn
+                ? <button className="btn text-danger hover:bg-danger-muted/50" onClick={() => void remove(draft.id)}>Reset</button>
+                : !draft.builtIn && <button className="btn text-danger hover:bg-danger-muted/50" onClick={() => void remove(draft.id)}>Delete</button>}
             </div>
             {issues.length > 0 && <div className="mb-3 rounded-lg border border-danger/40 bg-danger-muted p-3 text-xs text-danger"><div className="font-medium">Fix the highlighted playbook structure before saving.</div>{issues.slice(0, 3).map((issue, index) => <div key={`${issue.message}-${index}`}>{issue.message}</div>)}{issues.length > 3 && <div>{issues.length - 3} more</div>}</div>}
 
@@ -251,24 +262,24 @@ export function PlaybooksSettings() {
                     {unreachableIssues.map((issue) => <AnchoredIssue key={issue.message} issue={issue} />)}
                     {routeIssues.map((issue) => <AnchoredIssue key={`${issue.field}-${issue.message}`} issue={issue} />)}
                     {expanded === step.id && <div className="space-y-3 border-t border-border-subtle px-4 py-4 text-sm">
-                      <Row label="Runs as"><select disabled={draft.builtIn} value={step.session} onChange={(event) => patchStep(step.id, { session: event.target.value as PlaybookStep['session'], ...(event.target.value === 'main' ? { runs: undefined, writes: undefined, agents: canOwnMainIdentity ? step.agents ?? [{ provider: 'claude' }] : undefined, systemPromptKey: canOwnMainIdentity ? step.systemPromptKey ?? 'agents.implementation_system' : undefined } : { systemPromptKey: step.systemPromptKey ?? 'agents.review_system', agents: step.agents ?? [{ provider: 'claude' }] }) })} className="input"><option value="main">Main</option><option value="subagent">Subagent</option></select></Row>
-                      {(step.session === 'subagent' || firstMain) && <Row label="Agents"><AgentEditor step={step} providers={providers} defaultModel={defaultModel} disabled={draft.builtIn} onChange={(patch) => patchStep(step.id, patch)} /></Row>}
-                      {(step.session === 'subagent' || firstMain) && <Row label="Role instructions"><select disabled={draft.builtIn} value={step.systemPromptKey ?? ''} onChange={(event) => patchStep(step.id, { systemPromptKey: event.target.value || undefined })} className="input w-full"><option value="agents.implementation_system">Implement changes</option><option value="agents.review_system">Review changes</option>{step.systemPromptKey && !['agents.implementation_system', 'agents.review_system'].includes(step.systemPromptKey) && <option value={step.systemPromptKey}>Saved instruction set</option>}</select></Row>}
+                      <Row label="Runs as"><select value={step.session} onChange={(event) => patchStep(step.id, { session: event.target.value as PlaybookStep['session'], ...(event.target.value === 'main' ? { runs: undefined, writes: undefined, agents: canOwnMainIdentity ? step.agents ?? [{ provider: 'claude' }] : undefined, systemPromptKey: canOwnMainIdentity ? step.systemPromptKey ?? 'agents.implementation_system' : undefined } : { systemPromptKey: step.systemPromptKey ?? 'agents.review_system', agents: step.agents ?? [{ provider: 'claude' }] }) })} className="input"><option value="main">Main</option><option value="subagent">Subagent</option></select></Row>
+                      {(step.session === 'subagent' || firstMain) && <Row label="Agents"><AgentEditor step={step} providers={providers} defaultModel={defaultModel} onChange={(patch) => patchStep(step.id, patch)} /></Row>}
+                      {(step.session === 'subagent' || firstMain) && <Row label="Role instructions"><select value={step.systemPromptKey ?? ''} onChange={(event) => patchStep(step.id, { systemPromptKey: event.target.value || undefined })} className="input w-full"><option value="agents.implementation_system">Implement changes</option><option value="agents.review_system">Review changes</option>{step.systemPromptKey && !['agents.implementation_system', 'agents.review_system'].includes(step.systemPromptKey) && <option value={step.systemPromptKey}>Saved instruction set</option>}</select></Row>}
                       <Row label="Task">
                         <div className="space-y-2">
-                          <select disabled={draft.builtIn} value={step.directive.kind} onChange={(event) => patchStep(step.id, { directive: event.target.value === 'skill' ? { kind: 'skill', name: skills[0]?.name ?? 'tdd' } : { kind: 'prompt', text: '' } })} className="input"><option value="prompt">Instructions</option><option value="skill">Skill</option></select>
+                          <select value={step.directive.kind} onChange={(event) => patchStep(step.id, { directive: event.target.value === 'skill' ? { kind: 'skill', name: skills[0]?.name ?? 'tdd' } : { kind: 'prompt', text: '' } })} className="input"><option value="prompt">Instructions</option><option value="skill">Skill</option></select>
                           {step.directive.kind === 'skill' ? <>
-                            <select disabled={draft.builtIn} value={step.directive.name} onChange={(event) => patchStep(step.id, { directive: { kind: 'skill', name: event.target.value, args: step.directive.kind === 'skill' ? step.directive.args : undefined } })} className="input"><option value={step.directive.name}>{step.directive.name}</option>{skills.filter((skill) => skill.name !== (step.directive.kind === 'skill' ? step.directive.name : '')).map((skill) => <option key={skill.name} value={skill.name}>{skill.name}</option>)}</select>
-                            <input disabled={draft.builtIn} value={step.directive.args ?? ''} onChange={(event) => patchStep(step.id, { directive: { kind: 'skill', name: step.directive.kind === 'skill' ? step.directive.name : 'tdd', args: event.target.value || undefined } })} className="input w-full" placeholder="Arguments; use an earlier step's output if needed" />
+                            <select value={step.directive.name} onChange={(event) => patchStep(step.id, { directive: { kind: 'skill', name: event.target.value, args: step.directive.kind === 'skill' ? step.directive.args : undefined } })} className="input"><option value={step.directive.name}>{step.directive.name}</option>{skills.filter((skill) => skill.name !== (step.directive.kind === 'skill' ? step.directive.name : '')).map((skill) => <option key={skill.name} value={skill.name}>{skill.name}</option>)}</select>
+                            <input value={step.directive.args ?? ''} onChange={(event) => patchStep(step.id, { directive: { kind: 'skill', name: step.directive.kind === 'skill' ? step.directive.name : 'tdd', args: event.target.value || undefined } })} className="input w-full" placeholder="Arguments; use an earlier step's output if needed" />
                           </> : <>
-                            <select disabled={draft.builtIn} value={step.directive.promptKey ?? 'custom'} onChange={(event) => patchStep(step.id, { directive: event.target.value === 'agents.review_assessment' ? { kind: 'prompt', promptKey: 'agents.review_assessment' } : { kind: 'prompt', text: step.directive.kind === 'prompt' ? step.directive.text ?? '' : '' } })} className="input w-full"><option value="custom">Custom instructions</option><option value="agents.review_assessment">Assess and address review findings</option>{step.directive.promptKey && step.directive.promptKey !== 'agents.review_assessment' && <option value={step.directive.promptKey}>Saved step instructions</option>}</select>
-                            {!step.directive.promptKey && <PromptTextEditor step={step} steps={draft.steps} issues={stepIssues} disabled={draft.builtIn} onChange={(text) => patchStep(step.id, { directive: { kind: 'prompt', text } })} />}
+                            <select value={step.directive.promptKey ?? 'custom'} onChange={(event) => patchStep(step.id, { directive: event.target.value === 'agents.review_assessment' ? { kind: 'prompt', promptKey: 'agents.review_assessment' } : { kind: 'prompt', text: step.directive.kind === 'prompt' ? step.directive.text ?? '' : '' } })} className="input w-full"><option value="custom">Custom instructions</option><option value="agents.review_assessment">Assess and address review findings</option>{step.directive.promptKey && step.directive.promptKey !== 'agents.review_assessment' && <option value={step.directive.promptKey}>Saved step instructions</option>}</select>
+                            {!step.directive.promptKey && <PromptTextEditor step={step} steps={draft.steps} issues={stepIssues} onChange={(text) => patchStep(step.id, { directive: { kind: 'prompt', text } })} />}
                           </>}
                         </div>
                       </Row>
-                      {step.session === 'subagent' && <Row label="Findings check"><div className="space-y-2"><label className="flex gap-2"><input disabled={draft.builtIn} type="checkbox" checked={step.verdict === 'findings'} onChange={(event) => patchStep(step.id, event.target.checked ? { verdict: 'findings' } : { verdict: undefined, onFindings: undefined })} />Machine-readable findings</label>{step.verdict === 'findings' && <div className="flex flex-wrap items-center gap-2"><span>If findings, continue to</span><select disabled={draft.builtIn} value={step.onFindings?.goto ?? ''} onChange={(event) => patchStep(step.id, { onFindings: event.target.value ? { goto: event.target.value, maxPasses: step.onFindings?.maxPasses ?? 1, onMaxPasses: step.onFindings?.onMaxPasses ?? 'pause' } : undefined })} className="input"><option value="">No route</option>{draft.steps.filter((entry) => entry.id !== step.id).map((entry) => <option key={entry.id} value={entry.id}>{formatPlaybookStepTitle(entry.id)}</option>)}</select>{step.onFindings && <><span>max</span><input disabled={draft.builtIn} type="number" min={1} value={step.onFindings.maxPasses} onChange={(event) => patchStep(step.id, { onFindings: { ...step.onFindings!, maxPasses: Math.max(1, Number(event.target.value)) } })} className="input w-16" /><select disabled={draft.builtIn} value={step.onFindings.onMaxPasses} onChange={(event) => patchStep(step.id, { onFindings: { ...step.onFindings!, onMaxPasses: event.target.value as 'pause' | 'proceed' } })} className="input"><option value="pause">Pause</option><option value="proceed">Proceed</option></select></>}</div>}</div></Row>}
-                      <Row label="More"><div className="grid gap-2 sm:grid-cols-3"><select disabled={draft.builtIn} value={step.next ?? ''} onChange={(event) => patchStep(step.id, { next: event.target.value || undefined })} className="input"><option value="">Next in list</option>{draft.steps.map((entry) => <option key={entry.id} value={entry.id}>{formatPlaybookStepTitle(entry.id)}</option>)}</select><label><input disabled={draft.builtIn} type="checkbox" checked={Boolean(step.pauseBefore)} onChange={(event) => patchStep(step.id, { pauseBefore: event.target.checked ? true : undefined })} /> Wait for me first</label>{step.session === 'subagent' && !step.runs && <label><input disabled={draft.builtIn} type="checkbox" checked={Boolean(step.writes)} onChange={(event) => patchStep(step.id, { writes: event.target.checked ? true : undefined })} /> Can edit files</label>}</div></Row>
-                      {!draft.builtIn && <button className="text-xs text-danger hover:underline" onClick={() => setDraft({ ...draft, steps: draft.steps.filter((entry) => entry.id !== step.id) })}>Remove step</button>}
+                      {step.session === 'subagent' && <Row label="Findings check"><div className="space-y-2"><label className="flex gap-2"><input type="checkbox" checked={step.verdict === 'findings'} onChange={(event) => patchStep(step.id, event.target.checked ? { verdict: 'findings' } : { verdict: undefined, onFindings: undefined })} />Machine-readable findings</label>{step.verdict === 'findings' && <div className="flex flex-wrap items-center gap-2"><span>If findings, continue to</span><select value={step.onFindings?.goto ?? ''} onChange={(event) => patchStep(step.id, { onFindings: event.target.value ? { goto: event.target.value, maxPasses: step.onFindings?.maxPasses ?? 1, onMaxPasses: step.onFindings?.onMaxPasses ?? 'pause' } : undefined })} className="input"><option value="">No route</option>{draft.steps.filter((entry) => entry.id !== step.id).map((entry) => <option key={entry.id} value={entry.id}>{formatPlaybookStepTitle(entry.id)}</option>)}</select>{step.onFindings && <><span>max</span><input type="number" min={1} value={step.onFindings.maxPasses} onChange={(event) => patchStep(step.id, { onFindings: { ...step.onFindings!, maxPasses: Math.max(1, Number(event.target.value)) } })} className="input w-16" /><select value={step.onFindings.onMaxPasses} onChange={(event) => patchStep(step.id, { onFindings: { ...step.onFindings!, onMaxPasses: event.target.value as 'pause' | 'proceed' } })} className="input"><option value="pause">Pause</option><option value="proceed">Proceed</option></select></>}</div>}</div></Row>}
+                      <Row label="More"><div className="grid gap-2 sm:grid-cols-3"><select value={step.next ?? ''} onChange={(event) => patchStep(step.id, { next: event.target.value || undefined })} className="input"><option value="">Next in list</option>{draft.steps.map((entry) => <option key={entry.id} value={entry.id}>{formatPlaybookStepTitle(entry.id)}</option>)}</select><label><input type="checkbox" checked={Boolean(step.pauseBefore)} onChange={(event) => patchStep(step.id, { pauseBefore: event.target.checked ? true : undefined })} /> Wait for me first</label>{step.session === 'subagent' && !step.runs && <label><input type="checkbox" checked={Boolean(step.writes)} onChange={(event) => patchStep(step.id, { writes: event.target.checked ? true : undefined })} /> Can edit files</label>}</div></Row>
+                      <button className="text-xs text-danger hover:underline" onClick={() => setDraft({ ...draft, steps: draft.steps.filter((entry) => entry.id !== step.id) })}>Remove step</button>
                     </div>}
                   </section>
                 );
@@ -292,7 +303,7 @@ export function PlaybooksSettings() {
                 return blocks;
               })()}
             </div>
-            {!draft.builtIn && <div className="relative mt-3"><button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-accent transition-colors hover:bg-accent-subtle" onClick={() => setShowAdd(!showAdd)}><svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>Add step</button>{showAdd && <div className="absolute z-10 mt-1 w-56 rounded-lg border border-border-subtle bg-surface-elevated p-1 shadow-lg">{[['review','Review the work'],['address','Address findings'],['skill','Run my skill'],['fanout','Ask several agents'],['synthesize','Synthesize reports'],['pause','Pause for approval'],['blank','Blank step']].map(([kind, label]) => <button key={kind} className="dropdown-item w-full text-left" onClick={() => { setDraft({ ...draft, steps: [...draft.steps, stepTemplate(kind, draft.steps)] }); setShowAdd(false); }}>{label}</button>)}</div>}</div>}
+            <div className="relative mt-3"><button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-accent transition-colors hover:bg-accent-subtle" onClick={() => setShowAdd(!showAdd)}><svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>Add step</button>{showAdd && <div className="absolute z-10 mt-1 w-56 rounded-lg border border-border-subtle bg-surface-elevated p-1 shadow-lg">{[['review','Review the work'],['address','Address findings'],['skill','Run my skill'],['fanout','Ask several agents'],['synthesize','Synthesize reports'],['pause','Pause for approval'],['blank','Blank step']].map(([kind, label]) => <button key={kind} className="dropdown-item w-full text-left" onClick={() => { setDraft({ ...draft, steps: [...draft.steps, stepTemplate(kind, draft.steps)] }); setShowAdd(false); }}>{label}</button>)}</div>}</div>
           </div>
         )}
       </main>
@@ -317,12 +328,12 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   return <div className="grid gap-2 sm:grid-cols-[120px_minmax(0,1fr)]"><label className="text-xs font-medium text-text-muted">{label}</label><div>{children}</div></div>;
 }
 
-function AgentEditor({ step, providers, defaultModel, disabled, onChange }: { step: PlaybookStep; providers: BoardProvider[]; defaultModel: DefaultModel | null; disabled: boolean; onChange: (patch: Partial<PlaybookStep>) => void }) {
+function AgentEditor({ step, providers, defaultModel, onChange }: { step: PlaybookStep; providers: BoardProvider[]; defaultModel: DefaultModel | null; onChange: (patch: Partial<PlaybookStep>) => void }) {
   const chains = step.runs ?? [step.agents ?? [{ provider: 'claude' }]];
   const apply = (next: PlaybookStep) => onChange({ agents: next.agents, runs: next.runs });
   return (
     <div className="space-y-3">
-      <label className="flex gap-2"><input disabled={disabled || step.session !== 'subagent'} type="checkbox" checked={Boolean(step.runs)} onChange={(event) => onChange(event.target.checked ? { runs: chains.length > 1 ? chains : [chains[0], [{ provider: 'claude' }]], agents: undefined, writes: undefined } : { agents: chains[0], runs: undefined })} /> Run in parallel ({chains.length})</label>
+      <label className="flex gap-2"><input disabled={step.session !== 'subagent'} type="checkbox" checked={Boolean(step.runs)} onChange={(event) => onChange(event.target.checked ? { runs: chains.length > 1 ? chains : [chains[0], [{ provider: 'claude' }]], agents: undefined, writes: undefined } : { agents: chains[0], runs: undefined })} /> Run in parallel ({chains.length})</label>
       {chains.map((chain, runIndex) => (
         <div key={runIndex} className="rounded-lg border border-border-subtle bg-surface-2/40 p-2">
           <div className="mb-2 text-tiny font-medium text-text-muted">{step.runs ? `Run ${runIndex + 1} fallback order` : 'Fallback order'}</div>
@@ -337,25 +348,25 @@ function AgentEditor({ step, providers, defaultModel, disabled, onChange }: { st
                   <div className="mb-2 flex items-center gap-1 text-tiny text-text-muted">
                     <span className="rounded-full bg-surface-3 px-2 py-0.5">{candidateIndex + 1}</span>
                     <span className="mr-auto">{isDefaultAgent(candidate) ? 'Default' : (provider?.name ?? candidate.provider)}</span>
-                    <button type="button" disabled={disabled || candidateIndex === 0} onClick={() => apply(moveAgentCandidate(step, runIndex, candidateIndex, -1))} className="rounded px-1.5 py-0.5 transition-colors hover:bg-surface-3 disabled:opacity-30" aria-label="Move candidate up">Up</button>
-                    <button type="button" disabled={disabled || candidateIndex === chain.length - 1} onClick={() => apply(moveAgentCandidate(step, runIndex, candidateIndex, 1))} className="rounded px-1.5 py-0.5 transition-colors hover:bg-surface-3 disabled:opacity-30" aria-label="Move candidate down">Down</button>
-                    <button type="button" disabled={disabled || chain.length === 1} onClick={() => apply(removeAgentCandidate(step, runIndex, candidateIndex))} className="rounded px-1.5 py-0.5 text-danger transition-colors hover:bg-danger-muted/50 disabled:opacity-30">Remove</button>
+                    <button type="button" disabled={candidateIndex === 0} onClick={() => apply(moveAgentCandidate(step, runIndex, candidateIndex, -1))} className="rounded px-1.5 py-0.5 transition-colors hover:bg-surface-3 disabled:opacity-30" aria-label="Move candidate up">Up</button>
+                    <button type="button" disabled={candidateIndex === chain.length - 1} onClick={() => apply(moveAgentCandidate(step, runIndex, candidateIndex, 1))} className="rounded px-1.5 py-0.5 transition-colors hover:bg-surface-3 disabled:opacity-30" aria-label="Move candidate down">Down</button>
+                    <button type="button" disabled={chain.length === 1} onClick={() => apply(removeAgentCandidate(step, runIndex, candidateIndex))} className="rounded px-1.5 py-0.5 text-danger transition-colors hover:bg-danger-muted/50 disabled:opacity-30">Remove</button>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <select disabled={disabled} value={isDefault ? DEFAULT_PROVIDER_VALUE : candidate.provider} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, event.target.value === DEFAULT_PROVIDER_VALUE ? { useDefault: true, ...(effort ? { effort } : {}) } : { provider: event.target.value, ...(effort ? { effort } : {}) }))} className="input"><option value={DEFAULT_PROVIDER_VALUE}>Default (your KPM model)</option>{providers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}{entry.available ? '' : ' (unavailable)'}</option>)}</select>
+                    <select value={isDefault ? DEFAULT_PROVIDER_VALUE : candidate.provider} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, event.target.value === DEFAULT_PROVIDER_VALUE ? { useDefault: true, ...(effort ? { effort } : {}) } : { provider: event.target.value, ...(effort ? { effort } : {}) }))} className="input"><option value={DEFAULT_PROVIDER_VALUE}>Default (your KPM model)</option>{providers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}{entry.available ? '' : ' (unavailable)'}</option>)}</select>
                     {isDefaultAgent(candidate)
                       ? <span className="text-tiny text-text-muted">Follows your KPM model{defaultModel ? ` · ${defaultModel.provider}/${defaultModel.model}` : ''}</span>
-                      : <select disabled={disabled} value={candidate.model ?? provider?.models.find((model) => model.isDefault)?.id ?? ''} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, { provider: candidate.provider, model: event.target.value, ...(effort ? { effort } : {}) }))} className="input">{provider?.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>}
-                    <select disabled={disabled} value={effort ?? ''} onChange={(event) => { const next = (event.target.value || undefined) as AgentCandidate['effort']; apply(updateAgentCandidate(step, runIndex, candidateIndex, isDefaultAgent(candidate) ? { useDefault: true, ...(next ? { effort: next } : {}) } : { provider: candidate.provider, ...(candidate.model ? { model: candidate.model } : {}), ...(next ? { effort: next } : {}) })); }} className="input"><option value="">Default effort</option>{['low','medium','high','xhigh','max'].map((level) => <option key={level} value={level}>{level}</option>)}</select>
+                      : <select value={candidate.model ?? provider?.models.find((model) => model.isDefault)?.id ?? ''} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, { provider: candidate.provider, model: event.target.value, ...(effort ? { effort } : {}) }))} className="input">{provider?.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>}
+                    <select value={effort ?? ''} onChange={(event) => { const next = (event.target.value || undefined) as AgentCandidate['effort']; apply(updateAgentCandidate(step, runIndex, candidateIndex, isDefaultAgent(candidate) ? { useDefault: true, ...(next ? { effort: next } : {}) } : { provider: candidate.provider, ...(candidate.model ? { model: candidate.model } : {}), ...(next ? { effort: next } : {}) })); }} className="input"><option value="">Default effort</option>{['low','medium','high','xhigh','max'].map((level) => <option key={level} value={level}>{level}</option>)}</select>
                   </div>
                 </div>
               );
             })}
           </div>
-          {!disabled && <button type="button" className="mt-2 text-xs text-accent hover:underline" onClick={() => apply(addAgentCandidate(step, runIndex))}>Add fallback candidate</button>}
+          <button type="button" className="mt-2 text-xs text-accent hover:underline" onClick={() => apply(addAgentCandidate(step, runIndex))}>Add fallback candidate</button>
         </div>
       ))}
-      {step.runs && !disabled && <button type="button" className="text-xs text-accent hover:underline" onClick={() => onChange({ runs: [...chains, [{ provider: 'claude' }]], agents: undefined })}>Add parallel run</button>}
+      {step.runs && <button type="button" className="text-xs text-accent hover:underline" onClick={() => onChange({ runs: [...chains, [{ provider: 'claude' }]], agents: undefined })}>Add parallel run</button>}
     </div>
   );
 }
@@ -364,7 +375,7 @@ function AnchoredIssue({ issue }: { issue: PlaybookValidationIssue }) {
   return <div className="border-t border-danger/30 bg-danger-muted px-4 py-1.5 text-xs text-danger">{issue.message}</div>;
 }
 
-function PromptTextEditor({ step, steps, issues, disabled, onChange }: { step: PlaybookStep; steps: PlaybookStep[]; issues: PlaybookValidationIssue[]; disabled: boolean; onChange: (text: string) => void }) {
+function PromptTextEditor({ step, steps, issues, onChange }: { step: PlaybookStep; steps: PlaybookStep[]; issues: PlaybookValidationIssue[]; onChange: (text: string) => void }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const outputIssues = issues.filter((issue) => issue.kind === 'output');
   const suggestions = earlierOutputStepIds(steps, step.id);
@@ -379,8 +390,8 @@ function PromptTextEditor({ step, steps, issues, disabled, onChange }: { step: P
     });
   };
   return <div className="space-y-1.5">
-    <textarea ref={textareaRef} disabled={disabled} value={text} onChange={(event) => onChange(event.target.value)} className={`input min-h-20 w-full ${outputIssues.length ? 'border-danger ring-1 ring-danger' : ''}`} placeholder="Describe what this step should accomplish" />
-    {suggestions.length > 0 && <div className="flex flex-wrap items-center gap-1"><span className="text-tiny text-text-muted">Insert output</span>{suggestions.map((id) => <button key={id} type="button" disabled={disabled} onClick={() => insert(id)} className="rounded-full border border-border-subtle bg-surface-2 px-2 py-0.5 text-tiny text-text-secondary hover:border-accent">{formatPlaybookStepTitle(id)}</button>)}</div>}
+    <textarea ref={textareaRef} value={text} onChange={(event) => onChange(event.target.value)} className={`input min-h-20 w-full ${outputIssues.length ? 'border-danger ring-1 ring-danger' : ''}`} placeholder="Describe what this step should accomplish" />
+    {suggestions.length > 0 && <div className="flex flex-wrap items-center gap-1"><span className="text-tiny text-text-muted">Insert output</span>{suggestions.map((id) => <button key={id} type="button" onClick={() => insert(id)} className="rounded-full border border-border-subtle bg-surface-2 px-2 py-0.5 text-tiny text-text-secondary hover:border-accent">{formatPlaybookStepTitle(id)}</button>)}</div>}
     {outputIssues.map((issue) => <div key={`${issue.token}-${issue.message}`} className="text-xs text-danger">{issue.token}: {issue.message}</div>)}
   </div>;
 }

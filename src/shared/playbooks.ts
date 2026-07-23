@@ -461,5 +461,13 @@ export const BUILT_IN_PLAYBOOKS = {
   }),
 } as const;
 
+const BUILT_IN_PLAYBOOK_IDS = new Set<string>(
+  Object.values(BUILT_IN_PLAYBOOKS).map((playbook) => playbook.id),
+);
+
+export function isBuiltInPlaybookId(id: string): boolean {
+  return BUILT_IN_PLAYBOOK_IDS.has(id);
+}
+
 /** The playbook a fresh install defaults to before the user chooses one. */
 export const DEFAULT_PLAYBOOK = BUILT_IN_PLAYBOOKS.implementOnly;

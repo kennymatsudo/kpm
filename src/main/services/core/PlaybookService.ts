@@ -4,6 +4,7 @@ import type { IPlaybookRepository } from '../../db/interfaces/playbook';
 import {
   BUILT_IN_PLAYBOOKS,
   DEFAULT_PLAYBOOK,
+  isBuiltInPlaybookId,
   parsePlaybook,
   type Playbook,
   type PlaybookStep,
@@ -21,12 +22,17 @@ export interface PlaybookServiceDeps {
 }
 
 export function createPlaybookService(deps: PlaybookServiceDeps) {
-  const find = (id: string): Playbook | undefined => builtIns.find((playbook) => playbook.id === id) ?? deps.playbooks.get(id);
+  const find = (id: string): Playbook | undefined => deps.playbooks.get(id) ?? builtIns.find((playbook) => playbook.id === id);
 
   return {
     list(): ServiceResult<Playbook[]> {
       try {
-        return success([...builtIns, ...deps.playbooks.list()]);
+        const customPlaybooks = deps.playbooks.list();
+        const customById = new Map(customPlaybooks.map((playbook) => [playbook.id, playbook] as const));
+        return success([
+          ...builtIns.map((playbook) => customById.get(playbook.id) ?? playbook),
+          ...customPlaybooks.filter((playbook) => !isBuiltInPlaybookId(playbook.id)),
+        ]);
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }
@@ -47,20 +53,27 @@ export function createPlaybookService(deps: PlaybookServiceDeps) {
     },
 
     update(id: string, input: { name: string; steps: PlaybookStep[] }): ServiceResult<Playbook> {
-      if (builtIns.some((playbook) => playbook.id === id)) return failure('Built-in playbooks are read-only; duplicate to edit');
       try {
         const playbook = parsePlaybook({ id, name: input.name.trim(), builtIn: false, steps: input.steps });
-        const updated = deps.playbooks.update(id, playbook);
-        return updated ? success(updated) : failure(`Playbook not found: ${id}`);
+        const existing = deps.playbooks.get(id);
+        if (existing) {
+          const updated = deps.playbooks.update(id, playbook);
+          return updated ? success(updated) : failure(`Playbook not found: ${id}`);
+        }
+        if (isBuiltInPlaybookId(id)) return success(deps.playbooks.create(playbook));
+        return failure(`Playbook not found: ${id}`);
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }
     },
 
     delete(id: string): ServiceResult<void> {
-      if (builtIns.some((playbook) => playbook.id === id)) return failure('Built-in playbooks cannot be deleted');
+      const customizedBuiltIn = isBuiltInPlaybookId(id) && deps.playbooks.get(id);
+      if (isBuiltInPlaybookId(id) && !customizedBuiltIn) return failure('Built-in playbooks cannot be deleted');
       if (!deps.playbooks.delete(id)) return failure(`Playbook not found: ${id}`);
-      if (deps.appSettings.get(DEFAULT_SETTING) === id) deps.appSettings.set(DEFAULT_SETTING, DEFAULT_PLAYBOOK.id);
+      if (!isBuiltInPlaybookId(id) && deps.appSettings.get(DEFAULT_SETTING) === id) {
+        deps.appSettings.set(DEFAULT_SETTING, DEFAULT_PLAYBOOK.id);
+      }
       return success(undefined);
     },
 
