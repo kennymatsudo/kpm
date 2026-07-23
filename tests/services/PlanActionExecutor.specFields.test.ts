@@ -1,7 +1,7 @@
 /**
  * PlanActionExecutor — spec-field integration
  *
- * Proves that a Claude-authored create_item / update_item PlanAction carrying
+ * Proves that a chat-provider-authored create_item / update_item PlanAction carrying
  * intent, acceptance_criteria, and source_document_id lands in the DB correctly
  * after going through PlanActionService.execute().
  *
@@ -32,6 +32,7 @@ describe('PlanActionExecutor — create_item with spec fields', () => {
       groups: ctx.repos.groups,
       tracker: ctx.repos.tracker,
       outboundChanges: ctx.repos.outboundChanges,
+      repos: ctx.repos.repos,
       queueTrackerUpdateIfNeeded: vi.fn(),
       logger: { log: vi.fn(), warn: vi.fn() },
     });
@@ -54,7 +55,7 @@ describe('PlanActionExecutor — create_item with spec fields', () => {
       },
     ]);
 
-    expect(result.success).toBe(true);
+    expect(result.success, result.error).toBe(true);
 
     // The executor maps placeholders $1, $2… → real UUIDs in `createdIds`.
     const createdId = result.createdIds?.$1;

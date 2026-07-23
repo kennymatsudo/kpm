@@ -224,7 +224,7 @@ function buildToolGroups(): KpmToolGroup[] {
     group('plan-items', MAIN_ONLY, ['plan_items.read', 'plan_items.propose'], createPlanItemTools(planItemRepo, planRelationRepo, emitPlanActions)),
     group('plan-relations', MAIN_ONLY, ['plan_relations.read'], createRelationTools(planItemRepo)),
     group('groups', MAIN_ONLY, ['groups.read'], createGroupTools(groupRepo)),
-    group('plan-changes', MAIN_ONLY, ['plan_items.propose'], createPlanChangeTools(emitPlanActions)),
+    group('plan-changes', MAIN_ONLY, ['plan_items.propose'], createPlanChangeTools(emitPlanActions, repoRepo)),
     group('jira', MAIN_ONLY, ['integrations.read'], createJiraTools()),
     group('storybook', MAIN_ONLY, ['integrations.read'], createStorybookTools(projectRepo)),
     group('project-context', ALL_CHAT_SCOPES, ['project_context.propose'], createContextFileEditTools(readProjectContextFileWithPending, emitContextFileUpdate)),

@@ -55,6 +55,9 @@ export interface PlanItem {
   position_y: number | null;
   // Visual grouping (Figma-style frames)
   group_id: string | null;
+  // Connected repo targets (KPM-local; never exported to trackers)
+  primary_repo_id?: string | null;
+  affected_repo_ids?: string[];
   // External tracker fields
   association_id?: string | null;
   external_key: string | null;

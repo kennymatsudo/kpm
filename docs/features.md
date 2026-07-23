@@ -58,7 +58,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ## Planning & Plan Management
 
 ### 1. Plan Item Hierarchy (Project → Feature → Task)
-- **What it does:** Organizes work into a three-level hierarchy (project/feature/task labels). Users create, edit, reorder, reparent, and delete items; items carry status, description, intent, acceptance criteria, external tracker links, release tags, and completion timestamps.
+- **What it does:** Organizes work into a three-level hierarchy (project/feature/task labels). Users create, edit, reorder, reparent, and delete items; items carry status, description, intent, acceptance criteria, external tracker links, release tags, completion timestamps, and KPM-local repo targets (one primary connected repo plus optional affected repos). Chat providers infer repo targets when proposing an item, and the user can change them in the approval panel before the item is created.
 - **Key code locations:**
   - Services: `src/main/services/core/PlanService.ts`, `src/main/db/domain/PlanActionService.ts`, `src/main/db/domain/PlanItemService.ts`, `src/main/db/repositories/impl/PlanItemRepository.ts`
   - Claude tools: `src/main/kpmTools/tools/plan-items.ts`, `src/main/kpmTools/tools/plan-changes.ts`
@@ -72,7 +72,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Create item modal: triggered from Cmd+K or canvas context menu
   - Inline editing on cards: title, description fields
 - **Dependencies / integrations:**
-  - SQLite: `plan_items` table with parent_id, label, status, external_key fields
+  - SQLite: `plan_items` table with parent_id, label, status, external_key fields; `plan_item_repositories` stores primary/affected connected repo targets
   - Jira/Linear: plan items link to external tracker issues via external_key and `kpm_tracker_associations`
   - SQLite: `completed_at` is set/cleared by `PlanItemRepository` when items move to/from done; no feature currently reads it
   - Claude SDK: in-process tools for querying, creating, updating plan items (with user approval gate)
@@ -311,7 +311,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Types: `DevSessionAutomationPhase`, `isLiveAutomationPhase`, `isCommitHookRepairPhase` (`shared/types.ts`)
   - DB: `dev_sessions` table (status, worktree_path, branch_name, automation_phase, etc.)
 - **Entry points / surfaces:**
-  - Board card: drag to `in_progress` or click `Play` — prefers resuming the latest inactive/pending session over creating a new worktree; `Stop` stops the active run; phase badge on each card face
+  - Board card: drag to `in_progress` or click `Play` — prefers resuming the latest inactive/pending session over creating a new worktree; `Stop` stops the active run; phase badge on each card face. New sessions default to the Plan Item's primary repo, while the user can select a different repo for that execution without changing the Plan Item.
   - Board detail pane: Activity (narrative feed) / Changes / Review tabs
   - Detail pane header overflow menu / plan card menu: "Open in Editor" opens the worktree in the system editor
 - **Dependencies / integrations:**

@@ -100,7 +100,7 @@ ${buildContinuationSection(continuationHistory)}# Project: ${project.name}
 ID: \`${project.id}\` (use for all tool calls)
 Phase: ${project.phase}
 Project folder: \`${project.folder_path}\`
-${hasRepos ? `Connected repos (read-only; ground truth for code):\n${repos.map(r => `- \`${resolveEffectiveRepoPath(r)}\``).join('\n')}` : 'No repos connected.'}
+${hasRepos ? `Connected repos (read-only; ground truth for code):\n${repos.map(r => `- ID: \`${r.id}\` — path: \`${resolveEffectiveRepoPath(r)}\``).join('\n')}` : 'No repos connected.'}
 Read/Grep/Glob can also reach any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.
 
 ${getPrompt('system.grounding')}
@@ -149,7 +149,7 @@ Rules:
 export function buildFocusSystemPrompt(context: PlanContext): string {
   const { project, repos, focusDocument, userGlobalInstructions } = context;
   const connectedRepos = repos.length > 0
-    ? repos.map((repo) => `- \`${resolveEffectiveRepoPath(repo)}\``).join('\n')
+    ? repos.map((repo) => `- ID: \`${repo.id}\` — path: \`${resolveEffectiveRepoPath(repo)}\``).join('\n')
     : 'No repos connected.';
 
   const focusedDocumentSection = focusDocument

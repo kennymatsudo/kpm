@@ -39,7 +39,7 @@ function makeItem(overrides: Partial<PlanItem> & { id: string }): PlanItem {
  * better-sqlite3 — so the executor's catch/rollback path is exercised without a
  * real database.
  */
-function createHarness(seed: PlanItem[] = []) {
+function createHarness(seed: PlanItem[] = [], connectedRepoIds: string[] = []) {
   const store = new Map<string, PlanItem>(seed.map((item) => [item.id, item]));
 
   const add = vi.fn((item: PlanItem) => {
@@ -51,6 +51,7 @@ function createHarness(seed: PlanItem[] = []) {
   });
   const del = vi.fn((id: string) => store.delete(id));
   const updatePosition = vi.fn();
+  const setRepositoryTargets = vi.fn();
   const batchReparent = vi.fn((updates: { id: string; parentId: string | null }[]) => {
     for (const { id, parentId } of updates) {
       const existing = store.get(id);
@@ -71,6 +72,7 @@ function createHarness(seed: PlanItem[] = []) {
         .map((i) => ({ id: i.id, item_order: i.item_order }))
         .sort((a, b) => a.item_order - b.item_order),
     add,
+    setRepositoryTargets,
     update,
     delete: del,
     updatePosition,
@@ -91,11 +93,14 @@ function createHarness(seed: PlanItem[] = []) {
     } as unknown as PlanActionExecutorDeps['groups'],
     tracker: { getAssociationsByProject: vi.fn(() => []) } as unknown as PlanActionExecutorDeps['tracker'],
     outboundChanges: { getByProject: vi.fn(() => []) } as unknown as PlanActionExecutorDeps['outboundChanges'],
+    repos: {
+      getByProject: vi.fn(() => connectedRepoIds.map((id) => ({ id, project_id: PROJECT_ID, path: `/tmp/${id}` }))),
+    },
     queueTrackerUpdateIfNeeded,
     logger: { log: vi.fn(), warn: vi.fn() },
   };
 
-  return { deps, store, spies: { add, update, del, updatePosition, batchReparent, relationAdd, queueTrackerUpdateIfNeeded } };
+  return { deps, store, spies: { add, setRepositoryTargets, update, del, updatePosition, batchReparent, relationAdd, queueTrackerUpdateIfNeeded } };
 }
 
 function run(deps: PlanActionExecutorDeps, actions: PlanAction[]) {
@@ -115,6 +120,51 @@ describe('createPlanActionExecutor', () => {
     expect(created.status_category).toBe('not_started');
     // The one created item is auto-queued for tracker sync.
     expect(spies.queueTrackerUpdateIfNeeded).toHaveBeenCalledTimes(1);
+  });
+
+  it('assigns the sole connected repo when create_item omits repo targets', () => {
+    const { deps, spies } = createHarness([], ['repo-only']);
+
+    const result = run(deps, [{ type: 'create_item', title: 'New', parent_id: null }]);
+
+    expect(result.success).toBe(true);
+    const createdId = result.createdIds?.$1;
+    expect(spies.setRepositoryTargets).toHaveBeenCalledWith(createdId, 'repo-only', []);
+  });
+
+  it('persists an explicit primary repo plus distinct affected repos', () => {
+    const { deps, spies } = createHarness([], ['repo-primary', 'repo-affected']);
+
+    const result = run(deps, [{
+      type: 'create_item',
+      title: 'Cross-repo item',
+      parent_id: null,
+      primary_repo_id: 'repo-primary',
+      affected_repo_ids: ['repo-affected', 'repo-primary'],
+    }]);
+
+    expect(result.success).toBe(true);
+    const createdId = result.createdIds?.$1;
+    expect(spies.setRepositoryTargets).toHaveBeenCalledWith(
+      createdId,
+      'repo-primary',
+      ['repo-affected', 'repo-primary'],
+    );
+  });
+
+  it('rejects repo targets that are not connected to the project', () => {
+    const { deps, spies } = createHarness([], ['repo-connected']);
+
+    const result = run(deps, [{
+      type: 'create_item',
+      title: 'Invalid target',
+      parent_id: null,
+      primary_repo_id: 'repo-other',
+    }]);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('repo-other');
+    expect(spies.add).not.toHaveBeenCalled();
   });
 
   it('resolves a $-placeholder id from an earlier create in the same batch', () => {

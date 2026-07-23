@@ -4098,6 +4098,28 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    id: 1110,
+    name: '110_plan_item_repo_targets',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        CREATE TABLE plan_item_repositories (
+          plan_item_id TEXT NOT NULL REFERENCES plan_items(id) ON DELETE CASCADE,
+          repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+          role TEXT NOT NULL CHECK(role IN ('primary', 'affected')),
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (plan_item_id, repo_id)
+        );
+
+        CREATE UNIQUE INDEX idx_plan_item_repositories_primary
+          ON plan_item_repositories(plan_item_id)
+          WHERE role = 'primary';
+
+        CREATE INDEX idx_plan_item_repositories_repo
+          ON plan_item_repositories(repo_id);
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

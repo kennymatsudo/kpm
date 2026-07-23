@@ -1,5 +1,5 @@
 /**
- * PendingActionsPanel - Review and approve proposed plan changes from Claude.
+ * PendingActionsPanel - Review and approve plan changes proposed by the active chat provider.
  *
  * Two states:
  * 1. Collapsed: Floating panel at bottom with summary and quick actions
@@ -8,10 +8,10 @@
  * Uses all-or-nothing approval: approve all actions or dismiss all.
  */
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
-import type { PlanAction, PlanItem } from '../../../shared/types';
+import type { PlanAction, PlanItem, Repo } from '../../../shared/types';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { MotionButton } from '../ui/MotionButton';
 import { CloseIcon } from '../icons';
@@ -34,16 +34,35 @@ import {
 interface PendingActionsPanelProps {
   actions: PlanAction[];
   planItems: PlanItem[];
-  onApprove: () => void;
+  repos: Repo[];
+  onApprove: (actions: PlanAction[]) => void;
   onDismiss: () => void;
   isApplying?: boolean;
   /** When true, renders inline content for embedding in a side panel (no floating panel/modal) */
   embedded?: boolean;
 }
 
-export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, isApplying = false, embedded = false }: PendingActionsPanelProps) {
+export function PendingActionsPanel({
+  actions: proposedActions,
+  planItems,
+  repos,
+  onApprove,
+  onDismiss,
+  isApplying = false,
+  embedded = false,
+}: PendingActionsPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedActionIndex, setSelectedActionIndex] = useState(0);
+  const [actions, setActions] = useState<PlanAction[]>(proposedActions);
+
+  useEffect(() => {
+    setActions(proposedActions);
+    setSelectedActionIndex(0);
+  }, [proposedActions]);
+
+  const updateAction = (index: number, action: PlanAction) => {
+    setActions((current) => current.map((entry, entryIndex) => entryIndex === index ? action : entry));
+  };
 
   // Build placeholder map for resolving $N references to items being created
   const placeholderMap = useMemo(() => buildPlaceholderMap(actions), [actions]);
@@ -131,7 +150,7 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
         </MotionButton>
         <MotionButton
           variant="primary"
-          onClick={onApprove}
+          onClick={() => onApprove(actions)}
           disabled={isApplying}
           className="flex-1 disabled:opacity-70"
         >
@@ -238,6 +257,8 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
                         planItems={planItems}
                         planItemsById={planItemsById}
                         placeholderMap={placeholderMap}
+                        repos={repos}
+                        onActionChange={(action) => updateAction(safeSelectedIndex, action)}
                       />
                   ) : (
                     <div className="flex items-center justify-center h-full text-text-muted text-xs">
@@ -268,7 +289,7 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
                 </button>
                 <button
                   onClick={() => {
-                    onApprove();
+                    onApprove(actions);
                     setIsExpanded(false);
                   }}
                   disabled={isApplying}
@@ -364,6 +385,8 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
                 planItems={planItems}
                 planItemsById={planItemsById}
                 placeholderMap={placeholderMap}
+                repos={repos}
+                onActionChange={(action) => updateAction(safeSelectedIndex, action)}
               />
             </m.div>
           ) : (
@@ -408,7 +431,7 @@ export function PendingActionsPanel({ actions, planItems, onApprove, onDismiss, 
               Dismiss
             </button>
             <button
-              onClick={onApprove}
+              onClick={() => onApprove(actions)}
               disabled={isApplying}
               className="flex-[1.5] px-3 py-2 text-xs font-semibold text-white
                          bg-[color-mix(in_srgb,var(--color-accent)_85%,black)]
@@ -457,12 +480,33 @@ interface ActionDetailViewProps {
   planItems: PlanItem[];
   planItemsById: Map<string, PlanItem>;
   placeholderMap: Map<string, { title: string; description?: string; label?: string }>;
+  repos: Repo[];
+  onActionChange: (action: PlanAction) => void;
 }
 
-function ActionDetailView({ action, planItems, planItemsById, placeholderMap }: ActionDetailViewProps) {
+function ActionDetailView({
+  action,
+  planItems,
+  planItemsById,
+  placeholderMap,
+  repos,
+  onActionChange,
+}: ActionDetailViewProps) {
   switch (action.type) {
     case 'create_item':
-      return <CreateItemDetail action={action} planItems={planItems} placeholderMap={placeholderMap} />;
+      return (
+        <CreateItemDetail
+          action={action}
+          planItems={planItems}
+          placeholderMap={placeholderMap}
+          repos={repos}
+          onRepoTargetsChange={({ primaryRepoId, affectedRepoIds }) => onActionChange({
+            ...action,
+            primary_repo_id: primaryRepoId,
+            affected_repo_ids: affectedRepoIds,
+          })}
+        />
+      );
     case 'update_item':
       return <UpdateItemDetail action={action} planItems={planItems} />;
     case 'delete_item':

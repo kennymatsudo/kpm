@@ -38,8 +38,25 @@ function rowToPlanItem(row: Record<string, unknown>): PlanItem {
     source_document_id: (row.source_document_id as string | null) ?? null,
     status: (row.status as 'backlog' | 'planned') || 'planned',
     group_id: row.group_id as string | null ?? null,
+    primary_repo_id: (row.primary_repo_id as string | null) ?? null,
+    affected_repo_ids: parseStringArray((row.affected_repo_ids as string | null) ?? null) ?? [],
   } as PlanItem;
 }
+
+const PLAN_ITEM_SELECT = `
+  pi.*,
+  (
+    SELECT ptr.repo_id
+    FROM plan_item_repositories ptr
+    WHERE ptr.plan_item_id = pi.id AND ptr.role = 'primary'
+    LIMIT 1
+  ) AS primary_repo_id,
+  COALESCE((
+    SELECT json_group_array(ptr.repo_id)
+    FROM plan_item_repositories ptr
+    WHERE ptr.plan_item_id = pi.id AND ptr.role = 'affected'
+  ), '[]') AS affected_repo_ids
+`;
 
 /** Encode a registry-field value for binding: JSON-encoded kinds are stringified, empty to NULL. */
 function encodeFieldValue(descriptor: PlanItemFieldDescriptor, value: unknown): unknown {
@@ -116,6 +133,8 @@ interface PreparedStatements {
   deleteById: Statement;
   updatePosition: Statement;
   reparent: Statement;
+  deleteRepositoryTargets: Statement;
+  insertRepositoryTarget: Statement;
 }
 
 export class PlanItemRepository implements IPlanItemRepository {
@@ -143,9 +162,16 @@ export class PlanItemRepository implements IPlanItemRepository {
     this.stmts = {
       // Read operations
       getByProject: db.prepare(`
-        SELECT * FROM plan_items WHERE project_id = ? ORDER BY item_order
+        SELECT ${PLAN_ITEM_SELECT}
+        FROM plan_items pi
+        WHERE pi.project_id = ?
+        ORDER BY pi.item_order
       `),
-      getById: db.prepare('SELECT * FROM plan_items WHERE id = ?'),
+      getById: db.prepare(`
+        SELECT ${PLAN_ITEM_SELECT}
+        FROM plan_items pi
+        WHERE pi.id = ?
+      `),
       getChildCount: db.prepare('SELECT COUNT(*) as count FROM plan_items WHERE parent_id = ?'),
       getNextOrderWithParent: db.prepare(`
         SELECT MAX(item_order) as max_order FROM plan_items
@@ -165,9 +191,10 @@ export class PlanItemRepository implements IPlanItemRepository {
         SELECT id FROM descendants
       `),
       getChildrenByParent: db.prepare(`
-        SELECT * FROM plan_items
-        WHERE project_id = ? AND parent_id = ?
-        ORDER BY item_order
+        SELECT ${PLAN_ITEM_SELECT}
+        FROM plan_items pi
+        WHERE pi.project_id = ? AND pi.parent_id = ?
+        ORDER BY pi.item_order
       `),
       // Siblings: 4 variants for all combinations of parentId/excludeId
       siblingsWithParentWithExclude: db.prepare(`
@@ -204,6 +231,11 @@ export class PlanItemRepository implements IPlanItemRepository {
       reparent: db.prepare(`
         UPDATE plan_items SET parent_id = ?, status = 'planned', updated_at = CURRENT_TIMESTAMP WHERE id = ?
       `),
+      deleteRepositoryTargets: db.prepare('DELETE FROM plan_item_repositories WHERE plan_item_id = ?'),
+      insertRepositoryTarget: db.prepare(`
+        INSERT INTO plan_item_repositories (plan_item_id, repo_id, role)
+        VALUES (?, ?, ?)
+      `),
     };
   }
 
@@ -230,7 +262,11 @@ export class PlanItemRepository implements IPlanItemRepository {
   getMany(ids: string[]): PlanItem[] {
     if (ids.length === 0) return [];
     const placeholders = ids.map(() => '?').join(',');
-    const stmt = this.db.prepare(`SELECT * FROM plan_items WHERE id IN (${placeholders})`);
+    const stmt = this.db.prepare(`
+      SELECT ${PLAN_ITEM_SELECT}
+      FROM plan_items pi
+      WHERE pi.id IN (${placeholders})
+    `);
     const rows = stmt.all(...ids) as Record<string, unknown>[];
     return rows.map(rowToPlanItem);
   }
@@ -247,6 +283,17 @@ export class PlanItemRepository implements IPlanItemRepository {
     // Use RETURNING to get the inserted row in one query (no re-query needed)
     const row = this.stmts.insert.get(...INSERT_COLUMNS.map((c) => c.bind(item))) as Record<string, unknown>;
     return rowToPlanItem(row);
+  }
+
+  setRepositoryTargets(itemId: string, primaryRepoId: string | null, affectedRepoIds: string[]): void {
+    const affected = [...new Set(affectedRepoIds)].filter((repoId) => repoId !== primaryRepoId);
+    this.stmts.deleteRepositoryTargets.run(itemId);
+    if (primaryRepoId) {
+      this.stmts.insertRepositoryTarget.run(itemId, primaryRepoId, 'primary');
+    }
+    for (const repoId of affected) {
+      this.stmts.insertRepositoryTarget.run(itemId, repoId, 'affected');
+    }
   }
 
   update(id: string, updates: PlanItemUpdates | PlanItemSyncUpdates): void {
@@ -435,9 +482,10 @@ export class PlanItemRepository implements IPlanItemRepository {
     if (externalIssueTypes && externalIssueTypes.length > 0) {
       const placeholders = externalIssueTypes.map(() => '?').join(',');
       const stmt = this.db.prepare(`
-        SELECT * FROM plan_items
-        WHERE project_id = ? AND parent_id = ? AND external_issue_type IN (${placeholders})
-        ORDER BY item_order
+        SELECT ${PLAN_ITEM_SELECT}
+        FROM plan_items pi
+        WHERE pi.project_id = ? AND pi.parent_id = ? AND pi.external_issue_type IN (${placeholders})
+        ORDER BY pi.item_order
       `);
       const rows = stmt.all(projectId, parentId, ...externalIssueTypes) as Record<string, unknown>[];
       return rows.map(rowToPlanItem);

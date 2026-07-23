@@ -66,7 +66,10 @@ export const AgentStartModal = memo(function AgentStartModal({
   onMoveOnly,
 }: AgentStartModalProps) {
   const repos = useResourceDomainStore((state) => state.repos);
-  const [selectedRepoId, setSelectedRepoId] = useState<string>(repos[0]?.id ?? '');
+  const defaultRepoId = item.primary_repo_id && repos.some((repo) => repo.id === item.primary_repo_id)
+    ? item.primary_repo_id
+    : repos.length === 1 ? repos[0].id : '';
+  const [selectedRepoId, setSelectedRepoId] = useState<string>(defaultRepoId);
   const [prompt, setPrompt] = useState('');
   const [isStarting, setIsStarting] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
@@ -86,12 +89,17 @@ export const AgentStartModal = memo(function AgentStartModal({
   const [selectedContextPaths, setSelectedContextPaths] = useState<string[]>([]);
   const [showContextPicker, setShowContextPicker] = useState(false);
 
-  // Auto-select repo if only one
+  // Keep a valid user selection; otherwise use the Plan Item's primary repo,
+  // or the sole connected repo when there is only one.
   useEffect(() => {
-    if (repos.length === 1 && repos[0]) {
-      setSelectedRepoId(repos[0].id);
-    }
-  }, [repos]);
+    setSelectedRepoId((current) => {
+      if (current && repos.some((repo) => repo.id === current)) return current;
+      if (item.primary_repo_id && repos.some((repo) => repo.id === item.primary_repo_id)) {
+        return item.primary_repo_id;
+      }
+      return repos.length === 1 ? repos[0].id : '';
+    });
+  }, [item.primary_repo_id, repos]);
 
   // Sync environment mode from the selected repo's stored setting
   useEffect(() => {
@@ -303,7 +311,7 @@ export const AgentStartModal = memo(function AgentStartModal({
                         aria-label="Repository"
                         className={SELECT_TRIGGER_CLASS}
                       >
-                        <SelectValue className={SELECT_VALUE_CLASS} />
+                        <SelectValue className={SELECT_VALUE_CLASS} placeholder="Select repository" />
                         <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>

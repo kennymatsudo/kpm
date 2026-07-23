@@ -52,6 +52,14 @@ describe('buildSystemPrompt', () => {
     expect(prompt).not.toContain('propose deletion for user confirmation');
   });
 
+  it('grounds every chat provider with connected repo IDs and effective paths', () => {
+    const prompt = buildSystemPrompt(buildContext({
+      repos: [{ id: 'repo-1', project_id: 'project-1', path: '/tmp/repo-1' }],
+    }));
+
+    expect(prompt).toContain('ID: `repo-1` — path: `/tmp/repo-1`');
+  });
+
   it('folds in the user global instructions when present', () => {
     const prompt = buildSystemPrompt(
       buildContext({ userGlobalInstructions: 'Lead with the answer.' })

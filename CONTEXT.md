@@ -28,3 +28,9 @@ A **connected repo** is a git repository attached to a project (the `Repo` type 
 - The **effective path** is where the connected repo currently resolves on disk: the active worktree if set, otherwise the main checkout. `resolveEffectiveRepoPath` (`src/shared/repoPath.ts`) is the one resolver both processes read it through; every connected-repo read — chat tools, system prompts, workspace file access, add-dir scoping, branch watching — resolves through it so the switch is honored consistently.
 
 Distinct from a **session worktree** (`dev_sessions.worktree_path`): a throwaway worktree scaffolded per board agent execution for isolated writes. The two never cross — switching a connected repo's active worktree does not touch session worktrees, and board execution does not read `active_worktree_path`.
+
+## Plan Item repo targets
+
+A **repo target** records which connected repos a Plan Item is expected to affect. A Plan Item may have one **primary repo** and any number of **affected repos**. The primary repo is the default when board execution starts; a dev session may still run against a different connected repo without changing the Plan Item's repo target.
+
+An **unassigned** Plan Item has no primary repo. When work spans multiple connected repos but none is clearly primary, affected repos may remain recorded while the primary repo stays unassigned. Removing a connected repo removes its repo-target association and never promotes another repo automatically.

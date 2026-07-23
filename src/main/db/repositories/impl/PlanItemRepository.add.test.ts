@@ -101,6 +101,34 @@ describe('PlanItemRepository.add (registry-generated INSERT)', () => {
     expect(row?.code_refs).toEqual(['src/c.ts']);
   });
 
+  it('persists primary and affected connected repo targets', () => {
+    db.prepare('INSERT INTO repos (id, project_id, path) VALUES (?, ?, ?)').run('repo-primary', 'project-1', '/tmp/primary');
+    db.prepare('INSERT INTO repos (id, project_id, path) VALUES (?, ?, ?)').run('repo-affected', 'project-1', '/tmp/affected');
+    repo.add({ id: 'item-targeted', project_id: 'project-1', title: 'Targeted item', item_order: 0 });
+
+    repo.setRepositoryTargets('item-targeted', 'repo-primary', ['repo-affected', 'repo-primary']);
+
+    expect(repo.get('item-targeted')).toMatchObject({
+      primary_repo_id: 'repo-primary',
+      affected_repo_ids: ['repo-affected'],
+    });
+  });
+
+  it('removes only the deleted connected repo target without promoting another repo', () => {
+    db.prepare('INSERT INTO repos (id, project_id, path) VALUES (?, ?, ?)').run('repo-primary', 'project-1', '/tmp/primary');
+    db.prepare('INSERT INTO repos (id, project_id, path) VALUES (?, ?, ?)').run('repo-affected', 'project-1', '/tmp/affected');
+    repo.add({ id: 'item-targeted', project_id: 'project-1', title: 'Targeted item', item_order: 0 });
+    repo.setRepositoryTargets('item-targeted', 'repo-primary', ['repo-affected']);
+
+    db.pragma('foreign_keys = ON');
+    db.prepare('DELETE FROM repos WHERE id = ?').run('repo-primary');
+
+    expect(repo.get('item-targeted')).toMatchObject({
+      primary_repo_id: null,
+      affected_repo_ids: ['repo-affected'],
+    });
+  });
+
   it('persists a single-field update of intent via the fast path', () => {
     repo.add({ id: 'item-4', project_id: 'project-1', title: 'Fast path item', item_order: 0 });
     repo.update('item-4', { intent: 'Updated intent' });

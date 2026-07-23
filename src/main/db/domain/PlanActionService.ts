@@ -8,6 +8,7 @@ import type {
   ITrackerRepository,
   IOutboundChangeRepository,
   IGroupRepository,
+  IRepoRepository,
 } from '../interfaces';
 import type { QueueTrackerUpdateIfNeeded } from './PlanItemService';
 import { queueForTracker } from './OutboundChangePolicy';
@@ -23,6 +24,7 @@ export interface PlanActionExecutorDeps {
   groups: IGroupRepository;
   tracker: ITrackerRepository;
   outboundChanges: IOutboundChangeRepository;
+  repos: Pick<IRepoRepository, 'getByProject'>;
   queueTrackerUpdateIfNeeded: QueueTrackerUpdateIfNeeded;
   logger?: Logger;
 }
@@ -35,6 +37,7 @@ interface ExecutorContext {
   actionIndex: number;
   /** Transaction-scoped cache for individual items to avoid repeated fetches */
   itemCache: Map<string, PlanItem>;
+  singleProjectRepoId: string | null;
   deps: PlanActionExecutorDeps;
   logger: Logger;
 }
@@ -110,6 +113,10 @@ function executeCreateItem(
     parent_id: parentId,
     item_order: ctx.deps.planItems.getNextOrder(ctx.projectId, parentId),
   });
+
+  const proposedAffected = action.affected_repo_ids ?? [];
+  const primaryRepoId = action.primary_repo_id ?? ctx.singleProjectRepoId;
+  ctx.deps.planItems.setRepositoryTargets(id, primaryRepoId, proposedAffected);
 
   // Auto-queue for Jira sync if project has exactly one tracker association
   ctx.deps.queueTrackerUpdateIfNeeded(
@@ -572,16 +579,30 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
     return `Plan action references unknown plan item(s): ${unresolved.join(', ')}`;
   }
 
-  const createContext = (projectId: string): ExecutorContext => ({
+  const createContext = (projectId: string, projectRepoIds: Set<string>): ExecutorContext => ({
     projectId,
     idMap: new Map<string, string>(),
     skippedActions: [],
     placeholderCounter: 0,
     actionIndex: 0,
     itemCache: new Map<string, PlanItem>(),
+    singleProjectRepoId: projectRepoIds.size === 1 ? [...projectRepoIds][0] : null,
     deps,
     logger,
   });
+
+  function validateRepoTargets(actions: PlanAction[], projectRepoIds: Set<string>): string | null {
+    for (const action of actions) {
+      if (action.type !== 'create_item') continue;
+      const repoIds = [action.primary_repo_id, ...(action.affected_repo_ids ?? [])]
+        .filter((repoId): repoId is string => Boolean(repoId));
+      const invalid = [...new Set(repoIds)].filter((repoId) => !projectRepoIds.has(repoId));
+      if (invalid.length > 0) {
+        return `Plan action references repo(s) not connected to this project: ${invalid.join(', ')}`;
+      }
+    }
+    return null;
+  }
 
   /**
    * Execute a batch of plan actions in a single transaction.
@@ -600,12 +621,18 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
     // the same batch are fine: we don't know their concrete UUIDs yet (the
     // executor mints them with `randomUUID()`), but Claude has no way to know
     // them either, so any UUID it emits must already exist.
+    const projectRepoIds = new Set(deps.repos.getByProject(projectId).map((repo) => repo.id));
+    const repoValidationError = validateRepoTargets(actions, projectRepoIds);
+    if (repoValidationError) {
+      return { success: false, error: repoValidationError };
+    }
+
     const refValidationError = validatePlanRefs(projectId, actions);
     if (refValidationError) {
       return { success: false, error: refValidationError };
     }
 
-    const ctx = createContext(projectId);
+    const ctx = createContext(projectId, projectRepoIds);
 
     // Separate reparent actions for batch optimization
     const reparentActions: { action: ReparentAction; index: number }[] = [];

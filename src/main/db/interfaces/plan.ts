@@ -21,6 +21,7 @@ export interface IPlanItemRepository {
   get(id: string): PlanItem | undefined;
   add(item: NewPlanItem): PlanItem;
   getMany(ids: string[]): PlanItem[];
+  setRepositoryTargets(itemId: string, primaryRepoId: string | null, affectedRepoIds: string[]): void;
   /**
    * Existence-only batch check. Returns the subset of `ids` that exist in
    * `plan_items`. Cheaper than `getMany` when callers don't need the row data.

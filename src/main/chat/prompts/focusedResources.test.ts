@@ -28,7 +28,7 @@ describe('renderFocusedBlocks', () => {
       { type: 'repo', id: 'repo-uuid-1', path: '/home/user/projects/myrepo' },
     ];
     const { blocks } = renderFocusedBlocks(resources);
-    expect(blocks[0]).toBe('- Repo: /home/user/projects/myrepo');
+    expect(blocks[0]).toBe('- Repo: /home/user/projects/myrepo (id: `repo-uuid-1`)');
   });
 
   it('flags a repo resource as unresolved when no path is available', () => {

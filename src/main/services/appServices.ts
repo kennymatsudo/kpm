@@ -203,6 +203,7 @@ export function createAppServices(container: IRepositoryContainer) {
     groups: container.groups,
     tracker: container.tracker,
     outboundChanges: container.outboundChanges,
+    repos: container.repos,
     queueTrackerUpdateIfNeeded: queueTrackerUpdate,
   });
 

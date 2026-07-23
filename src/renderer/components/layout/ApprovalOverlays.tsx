@@ -15,6 +15,7 @@ import { m, AnimatePresence } from 'framer-motion';
 import { useShallow } from 'zustand/react/shallow';
 import {
   usePlanDomainStore,
+  useResourceDomainStore,
   useProposedChangeDisposal,
   useFocusModeStore,
   getProposedChangePresentation,
@@ -94,6 +95,7 @@ export function ApprovalOverlays() {
 
   // Get project store data needed for panels
   const planItems = usePlanDomainStore((state) => state.planItems);
+  const repos = useResourceDomainStore((state) => state.repos);
   const { focusModeOpen, focusedDocPath, updateFocusedDocContent } = useFocusModeStore(
     useShallow((state) => ({
       focusModeOpen: state.isOpen,
@@ -268,7 +270,8 @@ export function ApprovalOverlays() {
         <PendingActionsPanel
           actions={currentItem.actions}
           planItems={planItems}
-          onApprove={() => void apply(currentItem)}
+          repos={repos}
+          onApprove={(actions) => void apply(currentItem, { type: 'plan-actions', actions })}
           onDismiss={() => handleDismiss(currentItem.id)}
           isApplying={isApplying}
           embedded

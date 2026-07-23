@@ -139,7 +139,7 @@ function renderTypedResourceLine(resource: FocusedResource): string {
         : `- File: ${resource.path}`;
     case 'repo':
       if (resource.path) {
-        return `- Repo: ${resource.path}`;
+        return `- Repo: ${resource.path} (id: \`${resource.id}\`)`;
       }
       return `- Repo: [unresolved — id \`${resource.id}\` has no local path; do not attempt Read or Grep]`;
     case 'document':

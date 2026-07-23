@@ -42,6 +42,7 @@ export type ProposedChangeInput = ProposedChange extends infer Change
   : never;
 
 export type ProposedChangeEdits =
+  | { type: 'plan-actions'; actions: PlanAction[] }
   | { type: 'context-file'; newContent: string }
   | { type: 'document'; content: string }
   | { type: 'review-reply'; body: string; resolve: boolean };
@@ -103,13 +104,15 @@ const adapters = {
     defaultPolicy: 'follow_global_mode',
     identity: () => 'plan-actions',
     merge: mergePlanActions,
-    applyEdits: (change, edits) => edits ? invalidEdits(change, edits) : change,
+    applyEdits: (change, edits) => !edits ? change : edits.type === 'plan-actions'
+      ? { ...change, actions: edits.actions, error: undefined }
+      : invalidEdits(change, edits),
     execute: async (change) => {
       try { return planApplyOutcome(await usePlanDomainStore.getState().executePlanActions(change.actions)); }
       catch (error) { return { kind: 'failed', error: error instanceof Error ? error.message : String(error) }; }
     },
     projectSuccess: () => {},
-    presentation: { label: 'Plan Changes', editable: false },
+    presentation: { label: 'Plan Changes', editable: true },
   } satisfies ProposedChangeAdapter<Extract<ProposedChange, { type: 'plan-actions' }>>,
   'context-file': {
     defaultPolicy: 'follow_global_mode',

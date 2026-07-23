@@ -102,9 +102,12 @@ describe('KpmToolRuntime', () => {
     const emitted: { context: unknown; actions: PlanAction[] }[] = [];
     const runtime = new KpmToolRuntime(() => [
       makeToolGroup({
-        tools: createPlanChangeTools((actions) => {
-          emitted.push({ context: getCurrentToolExecutionContext(), actions });
-        }),
+        tools: createPlanChangeTools(
+          (actions) => {
+            emitted.push({ context: getCurrentToolExecutionContext(), actions });
+          },
+          { getByProject: () => [] },
+        ),
       }),
     ]);
 
@@ -126,6 +129,72 @@ describe('KpmToolRuntime', () => {
       content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'Plan changes submitted to KPM.', actionCount: 1 }) }],
       mcpResult: { content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'Plan changes submitted to KPM.', actionCount: 1 }) }] },
     });
+  });
+
+  it('adds the sole connected repo to provider-proposed create_item actions', async () => {
+    const emitted: PlanAction[][] = [];
+    const repoId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const runtime = new KpmToolRuntime(() => [
+      makeToolGroup({
+        tools: createPlanChangeTools(
+          (actions) => emitted.push(actions),
+          { getByProject: () => [{ id: repoId, project_id: 'project-1', path: '/tmp/repo' }] },
+        ),
+      }),
+    ]);
+
+    await runtime.executeTool({
+      name: 'modify_plan',
+      args: {
+        message: 'Create targeted item',
+        actions: [{ type: 'create_item', title: 'Targeted item', parent_id: null }],
+      },
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      scope: 'main',
+    });
+
+    expect(emitted).toEqual([[
+      expect.objectContaining({
+        type: 'create_item',
+        primary_repo_id: repoId,
+        affected_repo_ids: [],
+      }),
+    ]]);
+  });
+
+  it('rejects provider-proposed repo IDs that are not connected to the project', async () => {
+    const onPlanActions = vi.fn();
+    const connectedRepoId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const runtime = new KpmToolRuntime(() => [
+      makeToolGroup({
+        tools: createPlanChangeTools(
+          onPlanActions,
+          { getByProject: () => [{ id: connectedRepoId, project_id: 'project-1', path: '/tmp/repo' }] },
+        ),
+      }),
+    ]);
+
+    const result = await runtime.executeTool({
+      name: 'modify_plan',
+      args: {
+        message: 'Create mistargeted item',
+        actions: [{
+          type: 'create_item',
+          title: 'Mistargeted item',
+          parent_id: null,
+          primary_repo_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        }],
+      },
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      scope: 'main',
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected repo target validation to fail');
+    expect(result.message).toContain('not connected');
+    expect(onPlanActions).not.toHaveBeenCalled();
   });
 
   it('normalizes legacy tool error results without throwing', async () => {

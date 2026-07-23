@@ -46,6 +46,29 @@ describe('Proposed Change disposal', () => {
     expect(useProposedChangeDisposal.getState().pending).toHaveLength(1);
   });
 
+  it('executes edited plan actions through the same disposal attempt', async () => {
+    const executePlanActions = vi.fn().mockResolvedValue({ applied: 1, skipped: [] });
+    usePlanDomainStore.setState({ executePlanActions });
+    const disposal = useProposedChangeDisposal.getState();
+    disposal.propose({
+      type: 'plan-actions',
+      projectId: 'project-1',
+      actions: [{ type: 'create_item', title: 'Targeted item', parent_id: null }],
+    });
+    const id = useProposedChangeDisposal.getState().pending[0].id;
+    const editedActions = [{
+      type: 'create_item' as const,
+      title: 'Targeted item',
+      parent_id: null,
+      primary_repo_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      affected_repo_ids: ['bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'],
+    }];
+
+    await disposal.approve(id, { type: 'plan-actions', actions: editedActions });
+
+    expect(executePlanActions).toHaveBeenCalledWith(editedActions);
+  });
+
   it('preserves approved edits when execution fails', async () => {
     const api = installMockApi();
     api.fileExplorer.writeFile.mockResolvedValue({ success: false, error: 'disk full' });

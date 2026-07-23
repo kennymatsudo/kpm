@@ -2,175 +2,72 @@
 /**
  * Plan Changes Tool
  *
- * Allows Claude to propose plan modifications via a structured tool call
+ * Allows the active chat provider to propose plan modifications via a structured tool call
  * instead of text-based plan-actions blocks.
  *
  * Note: Tool handlers are declared async per SDK requirements, though most don't await.
  */
 
 import { z } from 'zod';
+import { planActionSchema } from '../../../shared/planActionSchema';
+import type { PlanAction } from '../../../shared/types';
+import type { IRepoRepository } from '../../db/interfaces';
+import { getCurrentToolExecutionContext } from '../runtime';
 import { tool, jsonResult, toolError, toolLog } from './index';
-import { StatusCategoryEnum, LabelEnum, type PlanActionsCallback } from './schemas';
-
-// Zod schemas matching the PlanAction type
-const RelationTypeEnum = z.enum(['depends_on', 'blocks', 'relates_to']);
-
-const CreateItemAction = z.object({
-  type: z.literal('create_item'),
-  title: z.string(),
-  description: z.string().optional().describe('Rationale / context. For the *contract* the agent executes, use intent + acceptance_criteria instead.'),
-  intent: z
-    .string()
-    .max(500)
-    .optional()
-    .describe('One sentence: what this item commits to. The decided outcome, not the motivation.'),
-  acceptance_criteria: z
-    .array(z.string().min(1).max(1000))
-    .max(50)
-    .optional()
-    .describe('Testable checklist the agent will satisfy. Each entry is one criterion. Omit when criteria cannot be enumerated upfront (exploratory or research items).'),
-  source_document_id: z
-    .string()
-    .optional()
-    .describe('ID of the iteration document this item was extracted from, if any. Preserves the breadcrumb back to discovery context.'),
-  label: LabelEnum.optional(),
-  parent_id: z.string().nullable().describe('Parent item ID, placeholder ($1, $2), or null for root'),
-});
-
-const ReparentAction = z.object({
-  type: z.literal('reparent'),
-  item_id: z.string(),
-  new_parent_id: z.string().nullable(),
-});
-
-const SetLabelAction = z.object({
-  type: z.literal('set_label'),
-  item_id: z.string(),
-  label: z.string(),
-});
-
-const SetReleaseAction = z.object({
-  type: z.literal('set_release'),
-  item_id: z.string(),
-  release_tag: z.string().nullable(),
-});
-
-const AddDependencyAction = z.object({
-  type: z.literal('add_dependency'),
-  from_id: z.string(),
-  to_id: z.string(),
-  relation_type: RelationTypeEnum,
-});
-
-const RemoveDependencyAction = z.object({
-  type: z.literal('remove_dependency'),
-  relation_id: z.string(),
-});
-
-const ReorderAction = z.object({
-  type: z.literal('reorder'),
-  item_id: z.string(),
-  after_item_id: z.string().nullable(),
-});
-
-const UpdateItemAction = z.object({
-  type: z.literal('update_item'),
-  item_id: z.string(),
-  updates: z.object({
-    title: z.string().optional(),
-    description: z.string().optional(),
-    intent: z.string().max(500).optional(),
-    acceptance_criteria: z
-      .array(z.string().min(1).max(1000))
-      .max(50)
-      .optional()
-      .describe('Replaces the full list. Fetch the current items first if you want to add/remove individual criteria.'),
-    source_document_id: z.string().optional(),
-    label: LabelEnum.optional(),
-    release_tag: z.string().optional(),
-    status_category: StatusCategoryEnum.optional(),
-  }),
-});
-
-const DeleteItemAction = z.object({
-  type: z.literal('delete_item'),
-  item_id: z.string(),
-});
-
-const SetPositionAction = z.object({
-  type: z.literal('set_position'),
-  item_id: z.string(),
-  x: z.number(),
-  y: z.number(),
-});
-
-const QueueForTrackerAction = z.object({
-  type: z.literal('queue_for_tracker'),
-  item_ids: z.array(z.string()),
-});
-
-// Group actions (visual containers). Shapes mirror `planActionSchema` in
-// `src/main/ipc/validation/plan.ts` exactly — the executor (PlanActionService)
-// already handles these, including `$1` placeholder resolution for a group
-// created earlier in the same batch. Keep these in sync with that schema.
-const CreateGroupAction = z.object({
-  type: z.literal('create_group'),
-  project_id: z.string(),
-  name: z.string(),
-  position_x: z.number(),
-  position_y: z.number(),
-  width: z.number(),
-  height: z.number(),
-});
-
-const UpdateGroupAction = z.object({
-  type: z.literal('update_group'),
-  group_id: z.string(),
-  updates: z.object({
-    name: z.string().optional(),
-    width: z.number().optional(),
-    height: z.number().optional(),
-  }),
-});
-
-const DeleteGroupAction = z.object({
-  type: z.literal('delete_group'),
-  group_id: z.string(),
-});
-
-const AssignToGroupAction = z.object({
-  type: z.literal('assign_to_group'),
-  item_id: z.string(),
-  group_id: z.string().nullable(),
-});
-
-// Union of all action types
-const PlanActionSchema = z.discriminatedUnion('type', [
-  CreateItemAction,
-  ReparentAction,
-  SetLabelAction,
-  SetReleaseAction,
-  AddDependencyAction,
-  RemoveDependencyAction,
-  ReorderAction,
-  UpdateItemAction,
-  DeleteItemAction,
-  SetPositionAction,
-  QueueForTrackerAction,
-  CreateGroupAction,
-  UpdateGroupAction,
-  DeleteGroupAction,
-  AssignToGroupAction,
-]);
+import type { PlanActionsCallback } from './schemas';
 
 export type { PlanActionsCallback };
+
+function normalizeRepoTargets(
+  actions: PlanAction[],
+  projectId: string | undefined,
+  repos: Pick<IRepoRepository, 'getByProject'>,
+): { actions: PlanAction[]; error?: string } {
+  if (!projectId) return { actions };
+
+  const connectedRepos = repos.getByProject(projectId);
+  const connectedRepoIds = new Set(connectedRepos.map((repo) => repo.id));
+  const soleRepoId = connectedRepos.length === 1 ? connectedRepos[0].id : null;
+
+  const normalized: PlanAction[] = [];
+  for (const action of actions) {
+    if (action.type !== 'create_item') {
+      normalized.push(action);
+      continue;
+    }
+
+    const primaryRepoId = action.primary_repo_id ?? soleRepoId;
+    const affectedRepoIds = [...new Set(action.affected_repo_ids ?? [])]
+      .filter((repoId) => repoId !== primaryRepoId);
+    const proposedRepoIds = [primaryRepoId, ...affectedRepoIds]
+      .filter((repoId): repoId is string => Boolean(repoId));
+    const invalidRepoIds = proposedRepoIds.filter((repoId) => !connectedRepoIds.has(repoId));
+    if (invalidRepoIds.length > 0) {
+      return {
+        actions,
+        error: `Repo target is not connected to this project: ${[...new Set(invalidRepoIds)].join(', ')}`,
+      };
+    }
+
+    normalized.push({
+      ...action,
+      primary_repo_id: primaryRepoId,
+      affected_repo_ids: affectedRepoIds,
+    });
+  }
+
+  return { actions: normalized };
+}
 
 /**
  * Create the plan changes tool.
  *
  * @param onPlanActions - Callback to emit proposed actions to the UI for approval
  */
-export function createPlanChangeTools(onPlanActions: PlanActionsCallback) {
+export function createPlanChangeTools(
+  onPlanActions: PlanActionsCallback,
+  repos: Pick<IRepoRepository, 'getByProject'>,
+) {
   console.log('[KPM Tools] Creating modify_plan tool');
 
   return [
@@ -183,6 +80,14 @@ Plan items carry structured fields that flow to the agent, the reviewer, and gen
 - **acceptance_criteria** (string[], local-only): testable checklist the agent will satisfy. Each entry is one criterion.
 - **description** (markdown, **synced to Jira/Linear**): rationale, context, rejected alternatives. Not the contract — the story.
 - **source_document_id** (local-only): if this item was extracted from an iteration doc, carry the breadcrumb here.
+- **primary_repo_id** (local-only): the connected repo UUID most likely to own implementation. Use the repo IDs shown in Project Context. Set null when multiple repos are plausible and none is clearly primary.
+- **affected_repo_ids** (local-only): other connected repo UUIDs the item is expected to affect. Do not repeat primary_repo_id.
+
+Repo targeting:
+- Infer targets from the focused repo/files and the repos you inspected before creating the item.
+- If exactly one repo is connected, KPM selects it automatically.
+- Never guess an opaque repo UUID. Use only IDs shown in Project Context.
+- Leave primary_repo_id null when the evidence is ambiguous. The user can change it during review.
 
 Use intent + acceptance_criteria as the primary shape for implementation items. Use description for discovery/research items where criteria cannot be enumerated yet.
 
@@ -223,7 +128,9 @@ Full create_item example (implementation item):
     "Dismissing the modal still lets the session expire on schedule"
   ],
   "description": "Users report losing draft work when sessions time out silently. Rejected: auto-extending the session without asking — conflicts with session-fixation mitigations.",
-  "parent_id": null
+  "parent_id": null,
+  "primary_repo_id": null,
+  "affected_repo_ids": []
 }
 
 Exploratory item example (no criteria yet):
@@ -255,13 +162,20 @@ Example — capturing N items with optional grouping:
 All three items are root-level; the Group provides organization. Do not invent an "OAuth migration" parent item to nest them under.`,
       {
         message: z.string().describe('Brief description of the proposed changes'),
-        actions: z.array(PlanActionSchema).describe('The plan actions to propose'),
+        actions: z.array(planActionSchema).describe('The plan actions to propose'),
       },
       async ({ message, actions }) => {
-        toolLog(`[KPM Tools] modify_plan "${message}" (${actions.length} actions: ${actions.map(a => a.type).join(', ')})`);
+        const repoTargets = normalizeRepoTargets(
+          actions,
+          getCurrentToolExecutionContext()?.projectId,
+          repos,
+        );
+        if (repoTargets.error) return toolError(repoTargets.error);
+
+        toolLog(`[KPM Tools] modify_plan "${message}" (${repoTargets.actions.length} actions: ${repoTargets.actions.map(a => a.type).join(', ')})`);
 
         try {
-          onPlanActions(actions);
+          onPlanActions(repoTargets.actions);
         } catch (error) {
           console.error(`[KPM Tools] Error emitting actions:`, error);
           return toolError(`Failed to emit plan actions: ${error instanceof Error ? error.message : String(error)}`);
@@ -270,7 +184,7 @@ All three items are root-level; the Group provides organization. Do not invent a
         return jsonResult({
           success: true,
           message: 'Plan changes submitted to KPM.',
-          actionCount: actions.length,
+          actionCount: repoTargets.actions.length,
         });
       }
     ),

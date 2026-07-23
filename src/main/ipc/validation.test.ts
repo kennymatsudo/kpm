@@ -208,6 +208,8 @@ describe('PlanSchemas', () => {
             parent_id: null,
             status: 'planned',
             label: 'feature',
+            primary_repo_id: randomUUID(),
+            affected_repo_ids: [randomUUID()],
           },
         ],
         [
@@ -227,8 +229,12 @@ describe('PlanSchemas', () => {
       }
     });
 
-    it('rejects empty action batches and unknown action types', () => {
-      for (const actions of [[], [{ type: 'unknown_action' }]]) {
+    it('rejects empty action batches, unknown action types, and malformed repo targets', () => {
+      for (const actions of [
+        [],
+        [{ type: 'unknown_action' }],
+        [{ type: 'create_item', title: 'Item', parent_id: null, primary_repo_id: 'not-a-uuid' }],
+      ]) {
         expectInvalid(PlanSchemas.executeActions, { projectId: randomUUID(), actions });
       }
     });
