@@ -27,7 +27,7 @@ import type { AgentActivity, AgentQuestion, AgentCompletionSummary, ReviewFindin
 export function createAndStartAgentSession(payload: {
   planItemId: string;
   repoId: string;
-  prompt: string;
+  prompt?: string;
   agentType?: AgentType;
   baseBranch?: string;
   contextPaths?: string[];

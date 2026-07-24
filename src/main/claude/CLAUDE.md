@@ -104,7 +104,7 @@ Claude calls modification tool (modify_plan, bulk_modify_plan, etc.)
 
 ### System Prompts (Main Chat)
 
-Files live in `../chat/prompts/` so Claude, Codex, and pi chat adapters can share them without depending on Claude-specific paths. Entry point is `index.ts` with `buildSystemPrompt()`.
+Files live in `../chat/prompts/` so Claude, Codex, and pi chat adapters can share them without depending on Claude-specific paths. Entry point is `index.ts` with `buildSystemPrompt()`. In main-chat scope the Codex/pi adapters (`buildCodexSystemPrompt`, `buildPiSystemPrompt`) compose the same registry sections and honor overrides via `resolveRegistryPrompt` (`promptRegistry.ts`) plus `buildResponseModesSection` and `buildPlanReferenceRulesSection`, so a prompt override reaches every provider. Their focus-document scope keeps its own hand-rolled operating rules (the focus tool contract deliberately excludes plan tools).
 
 Key files: `toolDocs.ts` (tool decision tree), `modes.ts` (repo-access + plan-modification guidance), `workspace.ts` (constraints, workspace boundaries, plan rules, response style), `planFormatting.ts` (plan display), `focusedResources.ts` (focused resource handling), `promptRegistry.ts` (system prompt registry), `types.ts` (`PlanContext` / `ContinuationTurn`).
 

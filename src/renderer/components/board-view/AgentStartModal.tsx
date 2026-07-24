@@ -53,7 +53,7 @@ interface AgentStartModalProps {
   onStart: (params: {
     planItemId: string;
     repoId: string;
-    prompt: string;
+    prompt?: string;
     baseBranch?: string;
     contextPaths?: string[];
     environmentMode?: RepoEnvironmentMode;
@@ -198,7 +198,7 @@ export const AgentStartModal = memo(function AgentStartModal({
     onStart({
       planItemId: item.id,
       repoId: selectedRepoId,
-      prompt: prompt.trim(),
+      prompt: prompt.trim() || undefined,
       baseBranch: selectedBranch || undefined,
       contextPaths: selectedContextPaths.length > 0 ? selectedContextPaths : undefined,
       environmentMode,

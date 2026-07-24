@@ -18,7 +18,7 @@ import { FULL_HIERARCHY_THRESHOLD, buildItemReferenceTable } from './planFormatt
 import { buildResponseModesSection } from './modes';
 import { buildToolDecisionTree } from './toolDocs';
 import { buildAttachmentsSection } from './workspace';
-import { PROMPT_REGISTRY_MAP } from './promptRegistry';
+import { resolveRegistryPrompt } from './promptRegistry';
 
 function buildContinuationSection(history?: ContinuationTurn[]): string {
   if (!history || history.length === 0) return '';
@@ -88,11 +88,7 @@ export function buildSystemPrompt(context: PlanContext): string {
   const hasPlan = planItems.length > 0;
   const hasContextFile = contextFileContent && contextFileContent.trim().length > 0;
 
-  // Prompt resolver: user override > registry default > hardcoded constant
-  const getPrompt = (key: string): string => {
-    if (getPromptContent) return getPromptContent(key);
-    return PROMPT_REGISTRY_MAP.get(key)?.defaultContent ?? '';
-  };
+  const getPrompt = (key: string): string => resolveRegistryPrompt(key, getPromptContent);
 
   return `You are a technical planning partner in KPM. Help developers understand codebases, break down work, and create actionable plans.
 
@@ -101,7 +97,7 @@ ID: \`${project.id}\` (use for all tool calls)
 Phase: ${project.phase}
 Project folder: \`${project.folder_path}\`
 ${hasRepos ? `Connected repos (read-only; ground truth for code):\n${repos.map(r => `- ID: \`${r.id}\` — path: \`${resolveEffectiveRepoPath(r)}\``).join('\n')}` : 'No repos connected.'}
-Read/Grep/Glob can also reach any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.
+Your read-only file tools can also reach any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.
 
 ${getPrompt('system.grounding')}
 
@@ -135,7 +131,11 @@ ${hasPlan
     : 'Empty.'}
 ${buildItemReferenceTable(planItems)}
 
-## Plan References
+${buildPlanReferenceRulesSection()}`;
+}
+
+export function buildPlanReferenceRulesSection(): string {
+  return `## Plan References
 
 Use \`@plan/<uuid>\` to reference a plan item inside any markdown you author (chat replies, plan-item description / intent / acceptance_criteria, document-edit proposals). KPM renders these as live chips that show the item's current title and status, and rewrites them to native syntax (Jira smart link, Linear URL, GitHub \`Closes ENG-123\`) on export.
 

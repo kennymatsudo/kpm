@@ -250,7 +250,7 @@ export function PlanView({
   const handleAgentStartConfirmed = useCallback(async (params: {
     planItemId: string;
     repoId: string;
-    prompt: string;
+    prompt?: string;
     baseBranch?: string;
     contextPaths?: string[];
     environmentMode?: RepoEnvironmentMode;

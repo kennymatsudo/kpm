@@ -5,8 +5,10 @@ import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/str
 import { getConfig } from '../config';
 import { buildPiKpmTools, type PiKpmToolDefinition, type PiToolImageContent } from './kpmToolAdapter';
 import type { PlanContext } from '../chat/prompts';
-import { buildUserGlobalInstructionsSection } from '../chat/prompts';
+import { buildUserGlobalInstructionsSection, buildPlanReferenceRulesSection } from '../chat/prompts';
 import { buildItemReferenceTable } from '../chat/prompts/planFormatting';
+import { buildResponseModesSection } from '../chat/prompts/modes';
+import { resolveRegistryPrompt } from '../chat/prompts/promptRegistry';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
 
 /** Built-in pi tools that are read-only against the filesystem. `write`, `edit`, and `bash` are never included (P7). */
@@ -126,8 +128,9 @@ export function resolvePiModelSelection<TModel extends { provider: string; id: s
   return Promise.resolve(exact ? { model: exact, usedFallback: false } : undefined);
 }
 
-function buildPiSystemPrompt(context: PlanContext): string {
-  const repos = context.repos.length > 0
+export function buildPiSystemPrompt(context: PlanContext): string {
+  const hasRepos = context.repos.length > 0;
+  const repos = hasRepos
     ? context.repos.map((repo) => `- \`${resolveEffectiveRepoPath(repo)}\``).join('\n')
     : 'No repos connected.';
   const planSummary = context.planItems.length > 0
@@ -147,15 +150,31 @@ function buildPiSystemPrompt(context: PlanContext): string {
   const userPrefsSection = buildUserGlobalInstructionsSection(context.userGlobalInstructions);
   const userPrefs = userPrefsSection ? `\n${userPrefsSection}` : '';
 
-  return `You are pi running inside KPM's main chat. Help the user understand codebases, plan work, and reason across connected repos.
-
-# Operating Rules
+  const isFocus = Boolean(context.focusDocument);
+  const operatingRules = isFocus
+    ? `# Operating Rules
 - This is a read-only chat context. Do not modify repo or project files from chat.
 - Jira, Linear, Confluence, and GitHub exports must not leak KPM-local fields or @plan internals.
 - Plan data lives in KPM SQLite, not in connected repos.
 - If the user asks to change the plan, use KPM plan tools so changes flow through KPM's proposal and review path.
 - For document, project-context, move, or delete requests, use KPM proposal tools rather than editing files directly.
-- Keep replies concise and utilitarian.
+- Keep replies concise and utilitarian.`
+    : [
+        resolveRegistryPrompt('system.grounding', context.getPromptContent),
+        resolveRegistryPrompt('system.constraints', context.getPromptContent),
+        buildResponseModesSection(hasRepos, context.planItems, context.getPromptContent),
+        resolveRegistryPrompt('system.workspace', context.getPromptContent),
+        resolveRegistryPrompt('system.plan_rules', context.getPromptContent),
+        resolveRegistryPrompt('system.response_style', context.getPromptContent),
+      ].join('\n\n');
+  const planRefs = isFocus
+    ? `## Plan References
+Use \`@plan/<uuid>\` when referring to plan items in markdown. Only use UUIDs listed in the current plan above.`
+    : buildPlanReferenceRulesSection();
+
+  return `You are pi running inside KPM's main chat. Help the user understand codebases, plan work, and reason across connected repos.
+
+${operatingRules}
 
 # Project
 Name: ${context.project.name}
@@ -170,8 +189,7 @@ ${continuation}${focusDocument}${projectContext}${userPrefs}
 ${context.planItems.length} items.
 ${planSummary}
 
-## Plan References
-Use \`@plan/<uuid>\` when referring to plan items in markdown. Only use UUIDs listed in the current plan above.`;
+${planRefs}`;
 }
 
 function contentBlocksToPiPrompt(content: ContentBlockParam[]): { text: string; images: PiToolImageContent[] } {

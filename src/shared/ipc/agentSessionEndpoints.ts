@@ -39,7 +39,7 @@ export const agentSessionEndpoints = {
     params: z.object({
       planItemId: uuid,
       repoId: uuid,
-      prompt: z.string().min(1, 'Prompt cannot be empty').max(100000),
+      prompt: z.string().max(100000).optional(),
       agentType: agentType.optional().default('claude'),
       baseBranch: z.string().min(1).optional(),
       contextPaths: z.array(z.string().min(1)).optional(),

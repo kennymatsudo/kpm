@@ -328,5 +328,13 @@ export const PROMPT_REGISTRY_MAP: ReadonlyMap<string, PromptDefinition> = new Ma
   PROMPT_REGISTRY.map((p) => [p.key, p])
 );
 
+export function resolveRegistryPrompt(
+  key: string,
+  getPromptContent?: (key: string) => string
+): string {
+  if (getPromptContent) return getPromptContent(key);
+  return PROMPT_REGISTRY_MAP.get(key)?.defaultContent ?? '';
+}
+
 /** Union type of all prompt keys */
 export type PromptKey = typeof PROMPT_REGISTRY[number]['key'];
