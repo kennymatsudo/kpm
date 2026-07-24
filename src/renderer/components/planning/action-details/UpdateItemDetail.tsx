@@ -3,11 +3,7 @@
  * Shows diff view for each changed field.
  */
 
-import { Markdown } from 'markdown-to-jsx';
 import type { PlanAction, PlanItem } from '../../../../shared/types';
-import { DiffViewer } from '../../ui/DiffViewer';
-import { markdownOptions, transformPlanRefs } from '../../../utils/markdown';
-import { findRefs } from '../../../../shared/planRefs';
 
 interface UpdateItemDetailProps {
   action: Extract<PlanAction, { type: 'update_item' }>;
@@ -28,12 +24,6 @@ export function UpdateItemDetail({ action, planItems }: UpdateItemDetailProps) {
   const updates = action.updates;
   const changedFields: { field: string; oldValue: string | null; newValue: string | null }[] = [];
 
-  if (updates.title !== undefined && updates.title !== item.title) {
-    changedFields.push({ field: 'title', oldValue: item.title, newValue: updates.title });
-  }
-  if (updates.description !== undefined && updates.description !== item.description) {
-    changedFields.push({ field: 'description', oldValue: item.description, newValue: updates.description });
-  }
   if (updates.label !== undefined && updates.label !== item.label) {
     changedFields.push({ field: 'label', oldValue: item.label, newValue: updates.label });
   }
@@ -65,23 +55,7 @@ export function UpdateItemDetail({ action, planItems }: UpdateItemDetailProps) {
               <div className="text-xxs font-semibold text-text-muted uppercase tracking-wider mb-1.5">
                 {formatFieldName(field)}
               </div>
-              {field === 'description' ? (
-                <>
-                  <DiffViewer oldContent={oldValue} newContent={newValue || ''} />
-                  {newValue && findRefs(newValue).length > 0 && (
-                    <div className="mt-2 px-2.5 py-2 rounded-lg bg-surface-1 border border-border-subtle">
-                      <div className="text-xxs font-semibold text-text-muted uppercase tracking-wider mb-1">
-                        Resolved preview
-                      </div>
-                      <div className="prose text-xs">
-                        <Markdown options={markdownOptions}>{transformPlanRefs(newValue)}</Markdown>
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <FieldChange field={field} oldValue={oldValue} newValue={newValue} />
-              )}
+              <FieldChange field={field} oldValue={oldValue} newValue={newValue} />
             </div>
           ))}
         </div>

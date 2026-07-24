@@ -14,6 +14,7 @@
 
 import { z } from 'zod';
 import { planItemUpdatesType } from './planItemFieldSchemas';
+import { repositoryScopeSchema, WORK_BRIEF_LIMITS, workBriefDraftSchema } from './workBrief';
 
 const relationType = z.enum(['depends_on', 'blocks', 'relates_to']);
 const canvasPosition = z.number().int().min(-10000).max(100000);
@@ -27,12 +28,22 @@ const nonEmptyString = (fieldName: string) => z.string().min(1, `${fieldName} ca
 export const PLAN_ACTION_REGISTRY = {
   create_item: z.object({
     type: z.literal('create_item'),
-    title: nonEmptyString('Item title').describe('Concise title for the plan item'),
-    description: z.string().optional().describe('Rationale and context; synced to Jira or Linear when linked'),
-    intent: z.string().max(500).optional().describe('One sentence describing the decided outcome'),
+    title: nonEmptyString('Item title')
+      .max(WORK_BRIEF_LIMITS.title)
+      .describe('Concise title for the plan item'),
+    description: z
+      .string()
+      .max(WORK_BRIEF_LIMITS.context)
+      .optional()
+      .describe('Rationale and context; synced to Jira or Linear when linked'),
+    intent: z
+      .string()
+      .max(WORK_BRIEF_LIMITS.intent)
+      .optional()
+      .describe('One sentence describing the decided outcome'),
     acceptance_criteria: z
-      .array(z.string().min(1).max(1000))
-      .max(50)
+      .array(z.string().min(1).max(WORK_BRIEF_LIMITS.criterion))
+      .max(WORK_BRIEF_LIMITS.criteria)
       .optional()
       .describe('Testable checklist the implementation must satisfy'),
     source_document_id: z.string().optional().describe('KPM document ID this item was extracted from, when applicable'),
@@ -84,6 +95,17 @@ export const PLAN_ACTION_REGISTRY = {
     type: z.literal('update_item'),
     item_id: z.string(),
     updates: planItemUpdatesType('planAction'),
+  }),
+  revise_work_brief: z.object({
+    type: z.literal('revise_work_brief'),
+    item_id: z.string(),
+    expected_revision: z.number().int().positive(),
+    work_brief: workBriefDraftSchema,
+  }),
+  set_repo_targets: z.object({
+    type: z.literal('set_repo_targets'),
+    item_id: z.string(),
+    repository_scope: repositoryScopeSchema,
   }),
   delete_item: z.object({
     type: z.literal('delete_item'),

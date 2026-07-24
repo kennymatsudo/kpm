@@ -69,7 +69,8 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Canvas view: drag-to-place cards, right-click context menu for CRUD
   - Tree view: hierarchical list with expand/collapse
   - Board view: kanban columns by status category
-  - Create item modal: triggered from Cmd+K or canvas context menu
+  - Create item modal: title-only quick create, with an expanded Work Brief, Repository Scope, and operational controls
+  - Task edit modal: unified Work Brief and Repository Scope editing with revision-guarded atomic saves
   - Inline editing on cards: title, description fields
 - **Dependencies / integrations:**
   - SQLite: `plan_items` table with parent_id, label, status, external_key fields; `plan_item_repositories` stores primary/affected connected repo targets
@@ -78,21 +79,22 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Claude SDK: in-process tools for querying, creating, updating plan items (with user approval gate)
 - **Maturity signal:** Mature. Core to app. Full CRUD, multi-view rendering, performance optimized with perf logging.
 
-### 2. Plan Item Spec Fields (Intent, Acceptance Criteria, Source Document)
-- **What it does:** Rich specification for implementation tasks. Intent (one-sentence commitment), acceptance_criteria (checklist), source_document_id (breadcrumb to discovery context). Visible in plan card modal (not on canvas per convention). Sent to implementation agents as the execution contract.
+### 2. Work Brief and Repository Scope (Intent, Context, Acceptance Criteria, Repos)
+- **What it does:** Treats title, context, intent, and acceptance criteria as one revisioned Work Brief while keeping Repository Scope separate. Expanded create and edit forms use the same controlled editors; edits submit one atomic action batch with a revision guard for Work Brief changes. Context can sync to Jira/Linear, while intent and acceptance criteria guide execution. `source_document_id` remains a non-UI breadcrumb to discovery context.
 - **Key code locations:**
-  - DB: `src/main/db/repositories/impl/PlanItemRepository.ts` (rowToPlanItem mapping)
-  - Types: `src/shared/base-types.ts` (PlanItem interface)
-  - Claude tool: `src/main/kpmTools/tools/plan-changes.ts` (CreateItemAction schema)
-  - IPC validation: `src/shared/ipc/planEndpoints.ts`
-  - Components: `src/renderer/components/planning/TaskEditModal.tsx`, `src/renderer/components/planning/action-details/UpdateItemDetail.tsx`
+  - DB: `src/main/db/repositories/impl/PlanItemRepository.ts` (Work Brief compare-and-revise and repo target persistence)
+  - Types and schemas: `src/shared/base-types.ts`, `src/shared/workBrief.ts`, `src/shared/planActionSchema.ts`
+  - Claude tool: `src/main/kpmTools/tools/plan-changes.ts`
+  - Components: `WorkBriefEditor.tsx`, `RepositoryScopeEditor.tsx`, `CreateItemModal.tsx`, `TaskEditModal.tsx`, and focused approval action details under `components/planning/action-details/`
 - **Entry points / surfaces:**
-  - Plan card modal (full details tab)
-  - Agent context builder (`DevSessionService.buildAgentContext`): specs shape the agent's task definition
+  - Expanded create modal and Plan Item edit modal
+  - Proposed-change approval details, including Work Brief diffs and editable connected-repo names
+  - Agent context builder (`DevSessionService.buildAgentContext`): the Work Brief defines the captured execution contract
 - **Dependencies / integrations:**
-  - Dev sessions: intent + criteria feed into agent system prompt
-  - PR description generation (feature 25): `GitHubService` includes the plan item's intent and acceptance criteria in the generation context
-- **Maturity signal:** Mature. Follow-on ideas (per-criterion status ticking, doc→plan breadcrumb) are deliberately not built.
+  - Tracker export: title and context can sync; intent, criteria, and Repository Scope stay KPM-local
+  - Dev sessions: new sessions snapshot the Work Brief revision and immutable initial instructions
+  - PR description generation (feature 25): `GitHubService` includes intent and acceptance criteria in generation context
+- **Maturity signal:** Mature. Follow-on ideas (per-criterion status ticking, doc→plan breadcrumb UI) are deliberately not built.
 
 ### 3. Plan Item Relations (Dependencies, Blockers, Related)
 - **What it does:** Link plan items via three relation types: depends_on (blocking dependencies), blocks (what this item blocks), relates_to (loose associations). Users query and modify relations; system prevents circular dependencies.
@@ -299,7 +301,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ## Agentic Task Execution (Board)
 
 ### 19. Plan-item Dev Sessions (Implementation Workflow, Worktrees, Agent Context)
-- **What it does:** Users start agentic execution for a plan item from the board view. Each session creates an isolated git worktree, builds an agent prompt from the plan item's title/intent/acceptance-criteria/context (with `@plan/<uuid>` refs resolved, the project-level AGENTS.md prepended when it has real content, and attached context files wrapped in via `<context-file>` blocks), and spawns an implementation agent — Claude via the Agent SDK, Codex via the Codex SDK, any authenticated Pi model (including extension-provided models such as Cursor) via the in-process Pi SDK, or Gemini/legacy Claude via CLI, all dispatched through `AgentSessionManager`. Each board turn is a discrete provider turn rather than a long-lived shell prompt. Sessions track status (pending → active → inactive) and persist across app restarts. Board cards show a compact phase badge (e.g. "Reviewing", "Needs attention", "Fixing checks", "Addressing review") derived from automation phase, agent liveness, and staleness — kept live even after the underlying session goes `inactive` between turns, so the board doesn't read as idle mid-automation. The detail pane's Activity tab renders tool calls as a narrative feed, grouped under the narration written immediately before them.
+- **What it does:** Users start agentic execution for a plan item from the board view. Each new session snapshots the current Work Brief revision and immutable instructions, creates an isolated git worktree, resolves `@plan/<uuid>` refs, prepends meaningful project context, attaches selected context files, and spawns an implementation agent through `AgentSessionManager`. Resuming the latest reusable session preserves its captured instructions; supplemental text is appended only when the user explicitly enters it. When the Plan Item's Work Brief has since changed, the start modal and detail pane show a non-blocking “Brief updated” warning with both revisions; legacy sessions with an unknown revision show nothing. Sessions track status (pending → active → inactive) across app restarts. Board cards show a compact phase badge derived from automation phase, agent liveness, and staleness, and the Activity tab groups tool calls under the narration written immediately before them.
 - **Key code locations:**
   - Service: `src/main/services/repo/DevSessionService.ts` (`startAgentSession` entrypoint, `buildAgentContext(input: AgentContextInput)` — renders `## Intent`/`## Acceptance Criteria`/`## Context`-or-`## Description`/`## Instructions` based on which spec fields the item carries, `buildPlanRefSection` prepends a `<plan-refs>` block; composes `scaffoldWorktree` from `src/main/services/repo/worktreeScaffold.ts` to create the worktree via `git worktree add`)
   - Orchestration: `src/main/services/agents/BoardAgentOrchestrator.ts` (automation state machine, wired in via `AgentSessionManager`)
@@ -312,7 +314,8 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - DB: `dev_sessions` table (status, worktree_path, branch_name, automation_phase, etc.)
 - **Entry points / surfaces:**
   - Board card: drag to `in_progress` or click `Play` — prefers resuming the latest inactive/pending session over creating a new worktree; `Stop` stops the active run; phase badge on each card face. New sessions default to the Plan Item's primary repo, while the user can select a different repo for that execution without changing the Plan Item.
-  - Board detail pane: Activity (narrative feed) / Changes / Review tabs
+  - Board detail pane: Activity (narrative feed) / Changes / Review tabs; the header flags execution against an earlier known Work Brief revision
+  - Start Agent modal: warns before resuming an earlier known Work Brief revision and accepts only explicit supplemental instructions
   - Detail pane header overflow menu / plan card menu: "Open in Editor" opens the worktree in the system editor
 - **Dependencies / integrations:**
   - Plan context: `buildAgentContext()` includes item title, intent, acceptance criteria, subtasks, and resolved `@plan/<uuid>` refs without a tool round-trip
@@ -1231,19 +1234,21 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 - `Canvas.tsx`: Free-form 2D canvas for plan items
   - Features: 5 (Canvas View), 8 (Visual Groups), 9 (Bulk Actions)
 - `PlanCard.tsx`: Individual card rendering with hierarchy awareness
-  - Features: 1 (Plan Item Hierarchy), 4 (Plan Item Status), 5 (Canvas View), 2 (Spec Fields)
-- `CreateItemModal.tsx`: Dialog to create new plan item
-  - Features: 1 (Plan Item Hierarchy), 2 (Spec Fields)
+  - Features: 1 (Plan Item Hierarchy), 4 (Plan Item Status), 5 (Canvas View)
+- `CreateItemModal.tsx` / `TaskEditModal.tsx`: Quick create plus unified Work Brief, Repository Scope, and operational editing
+  - Features: 1 (Plan Item Hierarchy), 2 (Work Brief and Repository Scope)
+- `WorkBriefEditor.tsx` / `RepositoryScopeEditor.tsx`: Reusable controlled editors shared by create, edit, and applicable approval paths
+  - Features: 2 (Work Brief and Repository Scope)
 - `CanvasContextMenu.tsx`: Right-click menu on canvas
   - Features: 1, 5, 8, 9 (Plan operations)
 - `../ui/StatusSelector.tsx`: Dropdown for status changes
   - Features: 4 (Plan Item Status Tracking)
-- `PendingActionsPanel.tsx`: Approval queue display for plan actions
-  - Features: 10 (Plan Item Approval Flow), 40 (Document & Context-File Editing Tools)
+- `PendingActionsPanel.tsx`: Approval queue display for plan actions, including Work Brief diffs and editable Repository Scope
+  - Features: 2 (Work Brief and Repository Scope), 10 (Plan Item Approval Flow), 40 (Document & Context-File Editing Tools)
 - `PlanCardMenu.tsx`: Card context menu
   - Features: 1, 4, 5, 9 (Plan item operations)
 - `PlanCardSections.tsx`: Card metadata display
-  - Features: 1, 2, 3 (Hierarchy, specs, relations)
+  - Features: 1, 3 (Hierarchy, relations)
 
 ### board-view/ Components
 - `BoardView.tsx`: Kanban board layout by status
@@ -1252,7 +1257,7 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 5 (Plan Views)
 - `BoardCard.tsx`: Card in board column, with phase indicator badge
   - Features: 5 (Plan Views), 19 (Plan-item Dev Sessions — phase indicators)
-- `DetailPane.tsx`: Right-side detail panel (activity, changes, review)
+- `DetailPane.tsx`: Right-side detail panel (activity, changes, review), with stale Work Brief revision indication in its header
   - Features: 19 (Plan-item Dev Sessions), 23 (Review Loop & Automated Addressing), 25 (GitHub PR Integration), 105 (Execution Playbooks)
 - `PhaseStepper.tsx`: Playbook step progress + paused-run actions in the detail pane
   - Features: 105 (Execution Playbooks), 19 (Plan-item Dev Sessions)
@@ -1262,7 +1267,7 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 19, 25
 - `MergeQueuePanel.tsx`: Open-PR ordering with dependency-derived blockers
   - Features: 99 (Merge Queue)
-- `AgentStartModal.tsx`: Start Implementation modal, including the playbook picker and resolved-plan preview
+- `AgentStartModal.tsx`: Start Implementation modal, including the playbook picker, resolved-plan preview, and warning when a reusable session captured an earlier Work Brief revision
   - Features: 19 (Plan-item Dev Sessions), 105 (Execution Playbooks)
 
 ### tree-view/ Components

@@ -59,6 +59,10 @@ function getActionStyle(type: PlanAction['type']): { icon: string; color: string
       return { icon: '+', color: 'bg-success/12 text-success', label: 'Create' };
     case 'update_item':
       return { icon: '\u270e', color: 'bg-info/12 text-info', label: 'Update' };
+    case 'revise_work_brief':
+      return { icon: '\u270e', color: 'bg-info/12 text-info', label: 'Brief' };
+    case 'set_repo_targets':
+      return { icon: '#', color: 'bg-info/12 text-info', label: 'Repos' };
     case 'delete_item':
       return { icon: '\u00d7', color: 'bg-danger/12 text-danger', label: 'Delete' };
     case 'reparent':
@@ -112,6 +116,10 @@ function describeAction(
     case 'create_item':
       return action.title;
     case 'update_item':
+      return getTitle(action.item_id);
+    case 'revise_work_brief':
+      return action.work_brief.title;
+    case 'set_repo_targets':
       return getTitle(action.item_id);
     case 'delete_item':
       return getTitle(action.item_id);

@@ -20,6 +20,8 @@ import {
   ActionCard,
   CreateItemDetail,
   UpdateItemDetail,
+  ReviseWorkBriefDetail,
+  RepositoryScopeDetail,
   DeleteItemDetail,
   ReparentDetail,
   AddDependencyDetail,
@@ -509,6 +511,16 @@ function ActionDetailView({
       );
     case 'update_item':
       return <UpdateItemDetail action={action} planItems={planItems} />;
+    case 'revise_work_brief':
+      return <ReviseWorkBriefDetail action={action} item={planItemsById.get(action.item_id)} />;
+    case 'set_repo_targets':
+      return (
+        <RepositoryScopeDetail
+          action={action}
+          repos={repos}
+          onChange={onActionChange}
+        />
+      );
     case 'delete_item':
       return <DeleteItemDetail action={action} planItems={planItems} />;
     case 'reparent':
@@ -617,6 +629,8 @@ function getActionTypeLabel(type: PlanAction['type']): string {
   switch (type) {
     case 'create_item': return 'create';
     case 'update_item': return 'update';
+    case 'revise_work_brief': return 'brief';
+    case 'set_repo_targets': return 'repos';
     case 'delete_item': return 'delete';
     case 'reparent': return 'move';
     case 'set_label': return 'label';

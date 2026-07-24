@@ -1199,6 +1199,8 @@ export interface DevSession {
 
   // Context passed to Claude Code
   initial_instructions: string;
+  /** Work Brief revision captured by initial_instructions; null for legacy sessions. */
+  work_brief_revision: number | null;
 
   // PR tracking
   pr_number: number | null;
@@ -1235,6 +1237,7 @@ export interface DevSessionWithPlanItem extends DevSession {
     description: string | null;
     label: string | null;
     external_key: string | null;
+    work_brief_revision: number;
   } | null;
 }
 

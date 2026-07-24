@@ -165,9 +165,11 @@ Descriptions, intents, and acceptance criteria may contain `@plan/<uuid>` tokens
 
 `PlanActionService` rejects `create_item` / `update_item` actions whose text contains unresolved refs. `DevSessionService` prepends a `<plan-refs>` block via `formatPlanRefSection` so agents see resolved ref state without a tool call. The pure parser/expander lives in `src/shared/planRefs.ts`.
 
-## Plan Item Spec Fields
+## Work Brief and Repository Scope
 
-`create_item` / `update_item` carry four fields that flow from the chat iteration doc → plan item → implementation agent:
+A Plan Item's Work Brief is the revisioned aggregate of title, context (persisted in `description`), intent, and acceptance criteria. `create_item` retains its flat payload for compatibility. After creation, chat must fetch the complete item and use `revise_work_brief` with `expected_revision`; `update_item` cannot mutate Work Brief fields. `set_repo_targets` replaces the separate Repository Scope and does not change the Work Brief revision or queue tracker sync.
+
+The aggregate fields flow from the chat iteration doc → plan item → implementation agent:
 
 | Field | Shape | Role |
 |-------|-------|------|
@@ -176,9 +178,9 @@ Descriptions, intents, and acceptance criteria may contain `@plan/<uuid>` tokens
 | `description` | `string` (markdown) | Rationale, context, rejected alternatives. The story, not the contract. |
 | `source_document_id` | `string` (no FK) | Breadcrumb to the iteration doc this item was extracted from. |
 
-Guidance baked into the `modify_plan` tool prompt: prefer `intent` + `acceptance_criteria` for implementation items; rely on `description` alone for exploratory/research items where criteria can't be enumerated yet. `update_item.acceptance_criteria` **replaces** the full list — fetch current values first if you want to add/remove individual criteria.
+Guidance baked into the `modify_plan` tool prompt: prefer `intent` + `acceptance_criteria` for implementation items; rely on context alone for exploratory/research items where criteria cannot be enumerated yet. `revise_work_brief` is a full replacement, so the model fetches current values first. Intent or Acceptance Criteria headings inside context are ordinary context, never a shadow contract.
 
-The fields are written to SQLite by `PlanActionService.executeCreateItem` / `executeUpdateItem`, surfaced in the agent prompt by `DevSessionService.buildAgentContext` (as `## Intent` + `## Acceptance Criteria` sections), and kept in sync via `PLAN_ITEM_FIELDS` (`src/shared/planItemFields.ts`), which derives both the IPC schema (`src/shared/ipc/planEndpoints.ts`) and the PlanAction schema (`src/shared/planActionSchema.ts`) consumed by `PlanActionService`.
+The fields are normalized by `shared/workBrief.ts`, revised atomically by `PlanItemRepository.compareAndReviseWorkBrief`, and projected to execution by `main/workBrief/projections.ts`. New dev sessions capture the projected prompt in `initial_instructions` and its revision in `dev_sessions.work_brief_revision`; resumed sessions reuse that snapshot.
 
 ### Sync boundary
 

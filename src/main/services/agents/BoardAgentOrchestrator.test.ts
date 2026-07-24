@@ -61,6 +61,7 @@ function createSession(overrides: Partial<DevSession> = {}): DevSession {
     paused_reason: null,
     step_outputs: null,
     initial_instructions: 'Implement task',
+    work_brief_revision: 1,
     pr_number: null,
     pr_url: null,
     pr_state: null,

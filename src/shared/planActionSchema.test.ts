@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { infer as ZodInfer } from 'zod';
 import type { PlanAction } from './types';
 import { planActionSchema } from './planActionSchema';
+import { WORK_BRIEF_LIMITS } from './workBrief';
 
 /**
  * Canonical list of PlanAction discriminators.
@@ -22,6 +23,8 @@ const CANONICAL_ACTION_TYPES = [
   'remove_dependency',
   'reorder',
   'update_item',
+  'revise_work_brief',
+  'set_repo_targets',
   'delete_item',
   'set_position',
   'queue_for_tracker',
@@ -70,45 +73,51 @@ describe('planActionSchema spec field pass-through', () => {
     });
   });
 
-  it('update_item.updates preserves intent, acceptance_criteria, and source_document_id', () => {
+  it('rejects create fields that exceed Work Brief authoring limits', () => {
+    expect(() => planActionSchema.parse({
+      type: 'create_item',
+      title: 'x'.repeat(WORK_BRIEF_LIMITS.title + 1),
+      parent_id: null,
+    })).toThrow();
+
+    expect(() => planActionSchema.parse({
+      type: 'create_item',
+      title: 'Example',
+      description: 'x'.repeat(WORK_BRIEF_LIMITS.context + 1),
+      parent_id: null,
+    })).toThrow();
+  });
+
+  it('uses revise_work_brief for full spec replacement and normalizes empty values', () => {
     const parsed = planActionSchema.parse({
-      type: 'update_item',
+      type: 'revise_work_brief',
       item_id: 'item-1',
-      updates: {
-        intent: 'Revised intent',
-        acceptance_criteria: ['Revised criterion'],
-        source_document_id: 'doc-456',
+      expected_revision: 2,
+      work_brief: {
+        title: ' Revised title ',
+        context: ' ',
+        intent: null,
+        acceptance_criteria: [' Criterion '],
       },
     });
 
     expect(parsed).toMatchObject({
-      type: 'update_item',
-      updates: {
-        intent: 'Revised intent',
-        acceptance_criteria: ['Revised criterion'],
-        source_document_id: 'doc-456',
+      type: 'revise_work_brief',
+      expected_revision: 2,
+      work_brief: {
+        title: 'Revised title',
+        context: null,
+        intent: null,
+        acceptance_criteria: ['Criterion'],
       },
     });
   });
 
-  it('update_item.updates accepts null to clear spec fields', () => {
-    const parsed = planActionSchema.parse({
+  it('does not allow Work Brief fields through update_item', () => {
+    expect(() => planActionSchema.parse({
       type: 'update_item',
       item_id: 'item-1',
-      updates: {
-        intent: null,
-        acceptance_criteria: null,
-        source_document_id: null,
-      },
-    });
-
-    expect(parsed).toMatchObject({
-      type: 'update_item',
-      updates: {
-        intent: null,
-        acceptance_criteria: null,
-        source_document_id: null,
-      },
-    });
+      updates: { title: 'Not allowed' },
+    })).toThrow();
   });
 });

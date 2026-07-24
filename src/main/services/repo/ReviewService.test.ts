@@ -23,6 +23,7 @@ function createSession(): DevSession {
     step_pass_counts: null,
     paused_reason: null,
     initial_instructions: 'Do the work',
+    work_brief_revision: 1,
     pr_number: 42,
     pr_url: 'https://github.com/acme/repo/pull/42',
     pr_state: 'OPEN',

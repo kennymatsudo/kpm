@@ -321,16 +321,30 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       playbookId?: string;
     }): AsyncResult<{ session: DevSession }> {
       const reviewPolicy = input.reviewPolicy ?? 'auto';
-      const instructionsResult = service.buildBoardStartInstructions(input.planItemId, input.prompt);
-      if (!instructionsResult.ok) {
-        return instructionsResult;
+      const existing = deps.devSessions.getByPlanItem(input.planItemId);
+      const isReusableSession = existing?.repo_id === input.repoId
+        && (existing.status === 'inactive' || existing.status === 'pending');
+      let instructions: string;
+      if (isReusableSession) {
+        instructions = existing.initial_instructions;
+        if (input.prompt?.trim()) {
+          const contextResult = getAgentContextInput(input.planItemId);
+          if (!contextResult.ok) return contextResult;
+          const currentDefault = buildAgentContext(contextResult.data);
+          const proposed = buildBoardStartInstructions({ ...contextResult.data, userPrompt: input.prompt });
+          if (proposed !== currentDefault) {
+            instructions += `\n\n## Additional User Instructions\n\n${input.prompt.trim()}`;
+          }
+        }
+      } else {
+        const instructionsResult = service.buildBoardStartInstructions(input.planItemId, input.prompt);
+        if (!instructionsResult.ok) return instructionsResult;
+        instructions = instructionsResult.data;
       }
-      const instructions = instructionsResult.data;
 
       let sessionId: string;
       let projectId: string;
 
-      const existing = deps.devSessions.getByPlanItem(input.planItemId);
       const snapshot = existing ? playbookFromSnapshot(existing) : null;
       const playbookResult = snapshot ? success(snapshot) : selectedPlaybook(input.playbookId);
       if (!playbookResult.ok) return playbookResult;
@@ -342,10 +356,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         return failure(`Provider ${resolvedPlan.main.provider} is not enabled for board execution`);
       }
 
-      if (
-        existing?.repo_id === input.repoId
-        && (existing.status === 'inactive' || existing.status === 'pending')
-      ) {
+      if (isReusableSession) {
         sessionId = existing.id;
         projectId = existing.project_id;
         deps.devSessions.updateReviewPolicy(sessionId, reviewPolicy);
@@ -484,6 +495,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           step_pass_counts: null,
           paused_reason: null,
           initial_instructions: instructions,
+          work_brief_revision: item.work_brief_revision ?? 1,
           pr_number: null,
           pr_url: null,
           pr_state: null,

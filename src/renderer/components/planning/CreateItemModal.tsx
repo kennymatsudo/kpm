@@ -3,7 +3,7 @@
  *
  * Two modes:
  * - Quick mode (default): Title input only, Enter to create
- * - Full mode: Title, description, label, parent selector
+ * - Full mode: Work Brief, Repository Scope, and operational fields
  *
  * Design: Refined minimalism matching KPM's developer tool aesthetic.
  * Quick mode is fast and lightweight; full mode provides clear structure.
@@ -24,9 +24,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/Select';
-import type { PlanItem, StatusCategory } from '../../../shared/types';
+import type { PlanItem, Repo, StatusCategory } from '../../../shared/types';
+import { PLAN_ITEM_FIELDS } from '../../../shared/planItemFields';
 import { STATUS_CATEGORY_OPTIONS, STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import { toast } from '../../stores/toastStore';
+import { WorkBriefEditor } from './WorkBriefEditor';
+import { RepositoryScopeEditor } from './RepositoryScopeEditor';
 
 // Type options with visual indicators
 const TYPE_OPTIONS: { value: string; label: string; color?: string }[] = [
@@ -42,6 +45,10 @@ const ROOT_PARENT_OPTION = { value: '', label: 'None (root level)' };
 export interface CreateItemData {
   title: string;
   description: string | null;
+  intent: string | null;
+  acceptance_criteria: string[] | null;
+  primary_repo_id: string | null;
+  affected_repo_ids: string[];
   label: string | null;
   parent_id: string | null;
   status_category: StatusCategory | null;
@@ -59,6 +66,8 @@ export interface CreateItemModalProps {
   canvasPosition?: { x: number; y: number } | null;
   /** All plan items for parent selection */
   planItems: PlanItem[];
+  /** Connected repositories available for execution scope */
+  repos: Repo[];
   /** Callback when item is created */
   onSubmit: (data: CreateItemData, canvasPosition?: { x: number; y: number } | null) => Promise<void>;
 }
@@ -71,11 +80,17 @@ export function CreateItemModal({
   defaultStatus = null,
   canvasPosition = null,
   planItems,
+  repos,
   onSubmit,
 }: CreateItemModalProps) {
   // Form state
+  const defaultPrimaryRepoId = repos.length === 1 ? repos[0].id : null;
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [intent, setIntent] = useState('');
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState<string[]>([]);
+  const [primaryRepoId, setPrimaryRepoId] = useState<string | null>(defaultPrimaryRepoId);
+  const [affectedRepoIds, setAffectedRepoIds] = useState<string[]>([]);
   const [label, setLabel] = useState('');
   const [parentId, setParentId] = useState<string | null>(defaultParentId);
   const [statusCategory, setStatusCategory] = useState<StatusCategory | ''>(defaultStatus ?? '');
@@ -93,13 +108,17 @@ export function CreateItemModal({
     if (isOpen) {
       setTitle('');
       setDescription('');
+      setIntent('');
+      setAcceptanceCriteria([]);
+      setPrimaryRepoId(defaultPrimaryRepoId);
+      setAffectedRepoIds([]);
       setLabel('');
       setParentId(defaultParentId);
       setStatusCategory(defaultStatus ?? '');
       setIsFullMode(false);
       setTitleFocused(false);
     }
-  }, [isOpen, defaultParentId, defaultStatus]);
+  }, [isOpen, defaultParentId, defaultStatus, defaultPrimaryRepoId]);
 
   // Build parent options from plan items
   const parentOptions = useMemo((): { value: string; label: string; parentLabel?: string }[] => {
@@ -138,9 +157,16 @@ export function CreateItemModal({
     ];
   }, [isFullMode, planItems]);
 
+  const sanitizedAcceptanceCriteria = useMemo(
+    () => acceptanceCriteria.map((criterion) => criterion.trim()).filter(Boolean),
+    [acceptanceCriteria],
+  );
+
   // Validation
   const canSubmit = useMemo(() => {
-    return title.trim().length > 0 && !isSubmitting;
+    return title.trim().length > 0
+      && title.length <= PLAN_ITEM_FIELDS.title.fieldKind.maxLength
+      && !isSubmitting;
   }, [title, isSubmitting]);
 
   // Handle submit
@@ -153,6 +179,10 @@ export function CreateItemModal({
         {
           title: title.trim(),
           description: description.trim() || null,
+          intent: intent.trim() || null,
+          acceptance_criteria: sanitizedAcceptanceCriteria.length > 0 ? sanitizedAcceptanceCriteria : null,
+          primary_repo_id: primaryRepoId,
+          affected_repo_ids: affectedRepoIds,
           label: label || null,
           parent_id: parentId,
           status_category: statusCategory || null,
@@ -166,7 +196,21 @@ export function CreateItemModal({
     } finally {
       setIsSubmitting(false);
     }
-  }, [canSubmit, title, description, label, parentId, statusCategory, canvasPosition, onSubmit, onClose]);
+  }, [
+    canSubmit,
+    title,
+    description,
+    intent,
+    sanitizedAcceptanceCriteria,
+    primaryRepoId,
+    affectedRepoIds,
+    label,
+    parentId,
+    statusCategory,
+    canvasPosition,
+    onSubmit,
+    onClose,
+  ]);
 
   // Handle keyboard shortcuts
   const handleKeyDown = useCallback(
@@ -188,8 +232,24 @@ export function CreateItemModal({
   // Dirty check: in full mode, any field with content counts
   const isDirty = useMemo(() => {
     if (!isFullMode) return false;
-    return title.trim().length > 0 || description.trim().length > 0 || label.length > 0;
-  }, [isFullMode, title, description, label]);
+    return title.trim().length > 0
+      || description.trim().length > 0
+      || intent.trim().length > 0
+      || sanitizedAcceptanceCriteria.length > 0
+      || primaryRepoId !== defaultPrimaryRepoId
+      || affectedRepoIds.length > 0
+      || label.length > 0;
+  }, [
+    isFullMode,
+    title,
+    description,
+    intent,
+    sanitizedAcceptanceCriteria,
+    primaryRepoId,
+    defaultPrimaryRepoId,
+    affectedRepoIds,
+    label,
+  ]);
 
   // Close guard: check dirty state before closing
   const handleRequestClose = useCallback(() => {
@@ -275,6 +335,8 @@ export function CreateItemModal({
               onFocus={() => setTitleFocused(true)}
               onBlur={() => setTitleFocused(false)}
               placeholder="What needs to be done?"
+              aria-label="Title"
+              maxLength={PLAN_ITEM_FIELDS.title.fieldKind.maxLength}
               disabled={isSubmitting}
               autoComplete="off"
               className="input relative w-full px-4 py-3 text-base"
@@ -335,23 +397,34 @@ export function CreateItemModal({
                 className="overflow-hidden"
               >
                 <div className="space-y-4 pt-5">
-                  {/* Description field */}
-                  <div>
-                    <label className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-medium text-text-muted uppercase tracking-wide">
-                        Description
-                      </span>
-                      <span className="text-xxs text-text-muted opacity-60">Markdown</span>
-                    </label>
-                    <textarea
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="Add context or notes..."
-                      rows={4}
-                      disabled={isSubmitting}
-                      className="input w-full px-4 py-3 text-sm font-mono leading-relaxed resize-y min-h-[100px]"
-                    />
-                  </div>
+                  <WorkBriefEditor
+                    value={{
+                      context: description,
+                      intent,
+                      acceptance_criteria: acceptanceCriteria,
+                    }}
+                    onChange={(workBrief) => {
+                      setDescription(workBrief.context ?? '');
+                      setIntent(workBrief.intent ?? '');
+                      setAcceptanceCriteria(workBrief.acceptance_criteria);
+                    }}
+                    disabled={isSubmitting}
+                    idPrefix="create-item-work-brief"
+                  />
+
+                  <RepositoryScopeEditor
+                    value={{
+                      primary_repo_id: primaryRepoId,
+                      affected_repo_ids: affectedRepoIds,
+                    }}
+                    onChange={(scope) => {
+                      setPrimaryRepoId(scope.primary_repo_id);
+                      setAffectedRepoIds(scope.affected_repo_ids);
+                    }}
+                    repos={repos}
+                    disabled={isSubmitting}
+                    idPrefix="create-item-repository-scope"
+                  />
 
                   {/* Type and Status row */}
                   <div className="grid grid-cols-2 gap-3">

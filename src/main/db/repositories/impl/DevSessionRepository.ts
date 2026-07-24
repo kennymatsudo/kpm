@@ -61,6 +61,7 @@ export class DevSessionRepository implements IDevSessionRepository {
           pi.description as pi_description,
           pi.label as pi_label,
           pi.external_key as pi_external_key,
+          pi.work_brief_revision as pi_work_brief_revision,
           r.path as repo_path
         FROM dev_sessions ds
         LEFT JOIN plan_items pi ON ds.plan_item_id = pi.id
@@ -88,9 +89,9 @@ export class DevSessionRepository implements IDevSessionRepository {
           worktree_path, branch_name, base_branch,
           status, agent_type, review_policy, automation_phase,
           playbook_id, playbook_snapshot, current_step_id, step_pass_counts, paused_reason,
-          initial_instructions
+          initial_instructions, work_brief_revision
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *
       `),
       updateStatus: db.prepare('UPDATE dev_sessions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
@@ -156,6 +157,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       pi_description: string | null;
       pi_label: string | null;
       pi_external_key: string | null;
+      pi_work_brief_revision: number | null;
       repo_path: string | null;
     })[];
 
@@ -180,6 +182,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       paused_reason: row.paused_reason ?? null,
       step_outputs: row.step_outputs ?? null,
       initial_instructions: row.initial_instructions,
+      work_brief_revision: row.work_brief_revision ?? null,
       pr_number: row.pr_number ?? null,
       pr_url: row.pr_url ?? null,
       pr_state: row.pr_state ?? null,
@@ -195,6 +198,7 @@ export class DevSessionRepository implements IDevSessionRepository {
         description: row.pi_description,
         label: row.pi_label,
         external_key: row.pi_external_key,
+        work_brief_revision: row.pi_work_brief_revision ?? 1,
       } : null,
     }));
   }
@@ -232,6 +236,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       session.step_pass_counts ?? null,
       session.paused_reason ?? null,
       session.initial_instructions,
+      session.work_brief_revision ?? null,
     ) as DevSession;
   }
 

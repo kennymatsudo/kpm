@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { CreateItemData } from '../CreateItemModal';
 import type { PlanAction, StatusCategory } from '../../../../shared/types';
 import type { ApplyPlanActionsResult } from '../../../stores/project/types';
+import { buildCreateItemActions } from '../planItemFormActions';
 
 interface CreateItemContext {
   isOpen: boolean;
@@ -76,35 +77,7 @@ export function useCreateItemModal({
       data: CreateItemData,
       canvasPosition?: { x: number; y: number } | null
     ) => {
-      const actions: PlanAction[] = [
-        {
-          type: 'create_item',
-          title: data.title,
-          description: data.description ?? undefined,
-          label: data.label ?? undefined,
-          parent_id: data.parent_id,
-        },
-      ];
-
-      // If we have a status, add an update action using placeholder $1
-      if (data.status_category) {
-        actions.push({
-          type: 'update_item',
-          item_id: '$1',
-          updates: { status_category: data.status_category },
-        });
-      }
-
-      // If we have a canvas position, add set_position action
-      if (canvasPosition) {
-        actions.push({
-          type: 'set_position',
-          item_id: '$1',
-          x: canvasPosition.x,
-          y: canvasPosition.y,
-        });
-      }
-
+      const actions = buildCreateItemActions(data, canvasPosition);
       await executePlanActions(actions);
     },
     [executePlanActions]

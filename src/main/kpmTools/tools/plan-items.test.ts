@@ -120,6 +120,7 @@ function createFakePlanItemRepo(db: Database): IPlanItemRepository {
       return db.prepare(`SELECT * FROM plan_items WHERE id IN (${placeholders})`).all(...ids) as PlanItem[];
     },
     setRepositoryTargets: () => {},
+    compareAndReviseWorkBrief: () => ({ status: 'not_found' }),
     getExistingIds: (ids) => {
       if (ids.length === 0) return new Set();
       const placeholders = ids.map(() => '?').join(',');

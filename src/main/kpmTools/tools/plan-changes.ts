@@ -89,7 +89,9 @@ Repo targeting:
 - Never guess an opaque repo UUID. Use only IDs shown in Project Context.
 - Leave primary_repo_id null when the evidence is ambiguous. The user can change it during review.
 
-Use intent + acceptance_criteria as the primary shape for implementation items. Use description for discovery/research items where criteria cannot be enumerated yet.
+Together, title + description/context + intent + acceptance_criteria are the item's **Work Brief**. After creation, **revise_work_brief is the only chat action allowed to change any Work Brief field**. First fetch the full current item, then submit the complete replacement Work Brief with its current work_brief_revision as expected_revision. Never send a partial brief. A revision conflict means you must fetch again before proposing another revision.
+
+Use intent + acceptance_criteria as the primary shape for implementation items. Use description for discovery/research items where criteria cannot be enumerated yet. Never put **Intent** or **Acceptance Criteria** headings inside description/context; headings there are ordinary context and do not define the execution contract.
 
 **Sync boundary — critical.** When an item has a Jira/Linear association, its \`description\` is pushed to the external tracker as-is. Keep description sync-clean:
 - **Never** mention KPM document IDs (e.g., \`doc-42\`, \`source_document_id: ...\`) or other local-only resources inside description. Those references are dead outside the developer's machine.
@@ -102,8 +104,12 @@ Use intent + acceptance_criteria as the primary shape for implementation items. 
 
 Item actions:
 - create_item: see full example below
+- revise_work_brief: { "type": "revise_work_brief", "item_id": "...", "expected_revision": 3, "work_brief": { "title": "Complete title", "context": "Complete context or null", "intent": "Complete intent or null", "acceptance_criteria": ["Complete criterion list"] } }
+  - Fetch the item first and replace all four fields. Never use update_item for title, description/context, intent, or acceptance_criteria.
+- set_repo_targets: { "type": "set_repo_targets", "item_id": "...", "repository_scope": { "primary_repo_id": null, "affected_repo_ids": [] } }
+  - Replaces the complete Repository Scope. Use only connected repo UUIDs from Project Context.
 - update_item: { "type": "update_item", "item_id": "...", "updates": { "status_category": "done" } }
-  - update_item can also set intent, acceptance_criteria (replaces full list), description, etc.
+  - update_item is only for non-brief metadata such as status_category, label, release_tag, and source_document_id.
 - delete_item: { "type": "delete_item", "item_id": "..." }
 - reparent: { "type": "reparent", "item_id": "...", "new_parent_id": "..." }
 - add_dependency: { "type": "add_dependency", "from_id": "...", "to_id": "..." }

@@ -52,6 +52,7 @@ function createReviewItem(planItemId: string, queueEntryId: string): SyncReviewI
       last_synced_at: null,
       intent: null,
       acceptance_criteria: null,
+      work_brief_revision: 1,
       source_document_id: null,
       created_at: '2024-01-01T00:00:00.000Z',
       updated_at: '2024-01-01T00:00:00.000Z',

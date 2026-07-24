@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useProjectUiDomainStore, useTrackerMetadataStore, useTrackerStore } from '../../../stores';
-import type { PlanItem } from '../../../../shared/types';
+import type { PlanAction, PlanItem } from '../../../../shared/types';
+import type { ApplyPlanActionsResult } from '../../../stores/project/types';
+import type { PlanTaskEditDraft } from '../planItemFormActions';
+import { buildPlanTaskEditActions } from '../planItemFormActions';
 
 interface PlanTaskEditDeps {
   planItemsById: Map<string, PlanItem>;
-  updatePlanItem: (id: string, updates: Record<string, unknown>) => Promise<void>;
+  executePlanActions: (actions: PlanAction[]) => Promise<ApplyPlanActionsResult>;
 }
 
-export function usePlanTaskEdit({ planItemsById, updatePlanItem }: PlanTaskEditDeps) {
+export function usePlanTaskEdit({ planItemsById, executePlanActions }: PlanTaskEditDeps) {
   const [editingItem, setEditingItem] = useState<PlanItem | null>(null);
   const associations = useTrackerStore((state) => state.associations);
   const loadIssueTypes = useTrackerMetadataStore((state) => state.loadIssueTypes);
@@ -57,17 +60,13 @@ export function usePlanTaskEdit({ planItemsById, updatePlanItem }: PlanTaskEditD
   );
 
   const handleSaveTask = useCallback(
-    async (updates: {
-      title: string;
-      description: string | null;
-      label: string | null;
-      intent?: string | null;
-      acceptance_criteria?: string[] | null;
-    }) => {
+    async (draft: PlanTaskEditDraft) => {
       if (!editingItem) return;
-      await updatePlanItem(editingItem.id, updates);
+      const actions = buildPlanTaskEditActions(editingItem, draft);
+      const result = await executePlanActions(actions);
+      if (result.error) throw new Error(result.error);
     },
-    [editingItem, updatePlanItem]
+    [editingItem, executePlanActions]
   );
 
   const closeEditModal = useCallback(() => setEditingItem(null), []);

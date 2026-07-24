@@ -30,6 +30,7 @@ const item: PlanItem = {
   last_synced_at: null,
   intent: null,
   acceptance_criteria: null,
+  work_brief_revision: 1,
   source_document_id: null,
   created_at: '',
   updated_at: '',

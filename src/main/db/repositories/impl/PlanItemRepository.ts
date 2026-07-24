@@ -5,7 +5,14 @@
 import type { Database, Statement } from 'better-sqlite3';
 import type { PlanItem, PlanItemUpdates, PlanItemSyncUpdates, NewPlanItem } from '../../../../shared/types';
 import type { IPlanItemRepository } from '../../interfaces';
+import type { WorkBriefRevisionResult } from '../../interfaces/plan';
 import { PLAN_ITEM_FIELDS, isJsonEncodedKind, type PlanItemFieldName, type PlanItemFieldDescriptor } from '../../../../shared/planItemFields';
+import {
+  normalizeWorkBriefDraft,
+  workBriefDraftsEqual,
+  workBriefFromPlanItem,
+  type WorkBriefDraft,
+} from '../../../../shared/workBrief';
 
 /**
  * Safely parse a JSON-encoded string[] column. Returns null on parse failure.
@@ -36,6 +43,7 @@ function rowToPlanItem(row: Record<string, unknown>): PlanItem {
     ...jsonDecodedFields,
     intent: (row.intent as string | null) ?? null,
     source_document_id: (row.source_document_id as string | null) ?? null,
+    work_brief_revision: (row.work_brief_revision as number | null) ?? 1,
     status: (row.status as 'backlog' | 'planned') || 'planned',
     group_id: row.group_id as string | null ?? null,
     primary_repo_id: (row.primary_repo_id as string | null) ?? null,
@@ -60,7 +68,9 @@ const PLAN_ITEM_SELECT = `
 
 /** Encode a registry-field value for binding: JSON-encoded kinds are stringified, empty to NULL. */
 function encodeFieldValue(descriptor: PlanItemFieldDescriptor, value: unknown): unknown {
-  return isJsonEncodedKind(descriptor.fieldKind) ? (value ? JSON.stringify(value) : null) : value;
+  if (!isJsonEncodedKind(descriptor.fieldKind)) return value;
+  if (value == null || (Array.isArray(value) && value.length === 0)) return null;
+  return JSON.stringify(value);
 }
 
 interface InsertColumn {
@@ -135,6 +145,7 @@ interface PreparedStatements {
   reparent: Statement;
   deleteRepositoryTargets: Statement;
   insertRepositoryTarget: Statement;
+  reviseWorkBrief: Statement;
 }
 
 export class PlanItemRepository implements IPlanItemRepository {
@@ -150,7 +161,13 @@ export class PlanItemRepository implements IPlanItemRepository {
   constructor(private db: Database) {
     this.singleFieldUpdate = new Map();
     for (const name of Object.keys(PLAN_ITEM_FIELDS) as PlanItemFieldName[]) {
-      if (name === 'status_category') continue;
+      if (
+        name === 'status_category'
+        || name === 'title'
+        || name === 'description'
+        || name === 'intent'
+        || name === 'acceptance_criteria'
+      ) continue;
       const descriptor = PLAN_ITEM_FIELDS[name];
       this.singleFieldUpdate.set(
         name,
@@ -236,6 +253,18 @@ export class PlanItemRepository implements IPlanItemRepository {
         INSERT INTO plan_item_repositories (plan_item_id, repo_id, role)
         VALUES (?, ?, ?)
       `),
+      reviseWorkBrief: db.prepare(`
+        UPDATE plan_items
+        SET title = ?, description = ?, intent = ?, acceptance_criteria = ?,
+            work_brief_revision = work_brief_revision + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND work_brief_revision = ?
+          AND (
+            title IS NOT ? OR description IS NOT ? OR intent IS NOT ?
+            OR acceptance_criteria IS NOT ?
+          )
+        RETURNING *
+      `),
     };
   }
 
@@ -287,13 +316,66 @@ export class PlanItemRepository implements IPlanItemRepository {
 
   setRepositoryTargets(itemId: string, primaryRepoId: string | null, affectedRepoIds: string[]): void {
     const affected = [...new Set(affectedRepoIds)].filter((repoId) => repoId !== primaryRepoId);
-    this.stmts.deleteRepositoryTargets.run(itemId);
-    if (primaryRepoId) {
-      this.stmts.insertRepositoryTarget.run(itemId, primaryRepoId, 'primary');
+    const replaceTargets = () => {
+      this.stmts.deleteRepositoryTargets.run(itemId);
+      if (primaryRepoId) {
+        this.stmts.insertRepositoryTarget.run(itemId, primaryRepoId, 'primary');
+      }
+      for (const repoId of affected) {
+        this.stmts.insertRepositoryTarget.run(itemId, repoId, 'affected');
+      }
+    };
+    this.db.exec('SAVEPOINT replace_repository_targets');
+    try {
+      replaceTargets();
+      this.db.exec('RELEASE SAVEPOINT replace_repository_targets');
+    } catch (error) {
+      this.db.exec('ROLLBACK TO SAVEPOINT replace_repository_targets');
+      this.db.exec('RELEASE SAVEPOINT replace_repository_targets');
+      throw error;
     }
-    for (const repoId of affected) {
-      this.stmts.insertRepositoryTarget.run(itemId, repoId, 'affected');
+  }
+
+  compareAndReviseWorkBrief(
+    itemId: string,
+    expectedRevision: number,
+    workBrief: WorkBriefDraft,
+  ): WorkBriefRevisionResult {
+    const normalized = normalizeWorkBriefDraft(workBrief);
+    const currentItem = this.get(itemId);
+    if (!currentItem) return { status: 'not_found' };
+    if ((currentItem.work_brief_revision ?? 1) !== expectedRevision) {
+      return { status: 'conflict', item: currentItem };
     }
+    if (workBriefDraftsEqual(workBriefFromPlanItem(currentItem), normalized)) {
+      return { status: 'unchanged', item: currentItem };
+    }
+
+    const encodedCriteria = normalized.acceptance_criteria.length > 0
+      ? JSON.stringify(normalized.acceptance_criteria)
+      : null;
+    const row = this.stmts.reviseWorkBrief.get(
+      normalized.title,
+      normalized.context,
+      normalized.intent,
+      encodedCriteria,
+      itemId,
+      expectedRevision,
+      normalized.title,
+      normalized.context,
+      normalized.intent,
+      encodedCriteria,
+    ) as Record<string, unknown> | undefined;
+
+    if (row) {
+      const item = this.get(itemId) ?? rowToPlanItem(row);
+      return { status: 'updated', item };
+    }
+
+    const item = this.get(itemId);
+    if (!item) return { status: 'not_found' };
+    if (item.work_brief_revision !== expectedRevision) return { status: 'conflict', item };
+    return { status: 'unchanged', item };
   }
 
   update(id: string, updates: PlanItemUpdates | PlanItemSyncUpdates): void {
@@ -314,6 +396,8 @@ export class PlanItemRepository implements IPlanItemRepository {
     // Slow path: dynamic SQL for multi-field updates or special cases
     const fields: string[] = [];
     const values: unknown[] = [];
+    const workBriefComparisons: string[] = [];
+    const workBriefComparisonValues: unknown[] = [];
 
     // Base PlanItemUpdates fields, generated from the registry so a new
     // field only needs an entry in src/shared/planItemFields.ts.
@@ -323,8 +407,18 @@ export class PlanItemRepository implements IPlanItemRepository {
       if (value === undefined) continue;
 
       const descriptor = PLAN_ITEM_FIELDS[name];
+      const encodedValue = encodeFieldValue(descriptor, value);
       fields.push(`${descriptor.sqlColumn} = ?`);
-      values.push(encodeFieldValue(descriptor, value));
+      values.push(encodedValue);
+      if (
+        name === 'title'
+        || name === 'description'
+        || name === 'intent'
+        || name === 'acceptance_criteria'
+      ) {
+        workBriefComparisons.push(`${descriptor.sqlColumn} IS NOT ?`);
+        workBriefComparisonValues.push(encodedValue);
+      }
     }
 
     if (updates.status_category !== undefined) {
@@ -402,6 +496,10 @@ export class PlanItemRepository implements IPlanItemRepository {
 
     if (fields.length === 0) return;
 
+    if (workBriefComparisons.length > 0) {
+      fields.push(`work_brief_revision = work_brief_revision + CASE WHEN (${workBriefComparisons.join(' OR ')}) THEN 1 ELSE 0 END`);
+      values.push(...workBriefComparisonValues);
+    }
     fields.push('updated_at = CURRENT_TIMESTAMP');
     values.push(id);
 

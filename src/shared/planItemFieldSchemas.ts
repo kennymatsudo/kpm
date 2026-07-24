@@ -91,7 +91,7 @@ export function planItemUpdatesType<Channel extends PlanItemFieldChannel>(
 ): z.ZodType<Partial<Pick<PlanItem, FieldsEditableVia<Channel>>>> {
   const shape = buildPlanItemUpdateShape(channel);
   return z.custom<Partial<Pick<PlanItem, FieldsEditableVia<Channel>>>>(
-    (value) => z.object(shape).safeParse(value).success,
+    (value) => z.object(shape).strict().safeParse(value).success,
     'Invalid update_item updates'
   );
 }

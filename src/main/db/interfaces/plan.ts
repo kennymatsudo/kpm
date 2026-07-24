@@ -11,10 +11,17 @@ import type {
   PlanItemSyncUpdates,
   NewPlanItem,
 } from '../../../shared/types';
+import type { WorkBriefDraft } from '../../../shared/workBrief';
 
 // =============================================================================
 // Plan Item Repository
 // =============================================================================
+
+export type WorkBriefRevisionResult =
+  | { status: 'updated'; item: PlanItem }
+  | { status: 'unchanged'; item: PlanItem }
+  | { status: 'conflict'; item: PlanItem }
+  | { status: 'not_found' };
 
 export interface IPlanItemRepository {
   getByProject(projectId: string): PlanItem[];
@@ -22,6 +29,11 @@ export interface IPlanItemRepository {
   add(item: NewPlanItem): PlanItem;
   getMany(ids: string[]): PlanItem[];
   setRepositoryTargets(itemId: string, primaryRepoId: string | null, affectedRepoIds: string[]): void;
+  compareAndReviseWorkBrief(
+    itemId: string,
+    expectedRevision: number,
+    workBrief: WorkBriefDraft,
+  ): WorkBriefRevisionResult;
   /**
    * Existence-only batch check. Returns the subset of `ids` that exist in
    * `plan_items`. Cheaper than `getMany` when callers don't need the row data.

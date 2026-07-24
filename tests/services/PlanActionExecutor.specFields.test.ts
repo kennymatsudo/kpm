@@ -1,7 +1,7 @@
 /**
  * PlanActionExecutor — spec-field integration
  *
- * Proves that a chat-provider-authored create_item / update_item PlanAction carrying
+ * Proves that chat-provider-authored create_item / revise_work_brief PlanActions carrying
  * intent, acceptance_criteria, and source_document_id lands in the DB correctly
  * after going through PlanActionService.execute().
  *
@@ -93,7 +93,7 @@ describe('PlanActionExecutor — create_item with spec fields', () => {
     expect(item?.source_document_id).toBeNull();
   });
 
-  it('updates spec fields on an existing item via update_item', () => {
+  it('replaces spec fields on an existing item via revise_work_brief', () => {
     const executor = makeExecutor();
 
     // Create
@@ -109,9 +109,12 @@ describe('PlanActionExecutor — create_item with spec fields', () => {
     // Update — add criteria after the fact (simulates refinement in chat)
     const update = executor.execute(projectId, [
       {
-        type: 'update_item',
+        type: 'revise_work_brief',
         item_id: itemId,
-        updates: {
+        expected_revision: 1,
+        work_brief: {
+          title: 'Item to refine',
+          context: null,
           intent: 'Make X reliable',
           acceptance_criteria: ['X never throws under condition Y'],
         },

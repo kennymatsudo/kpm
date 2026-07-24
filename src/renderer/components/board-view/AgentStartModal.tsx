@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '../ui/Select';
 import { toast, useResourceDomainStore } from '../../stores';
+import { useDevSessionsStore } from '../../stores/devSessions';
 import { listContextFiles } from '../../services/contextFileService';
 import { listAllRepoBranches } from '../../services/repoService';
 import { listBoardProviders, listPlaybooks } from '../../services/playbookService';
@@ -24,14 +25,17 @@ import { resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import { formatPlaybookStepTitle, type BoardProvider, type Playbook } from '../../../shared/playbooks';
 import type { DefaultModel } from '../../../shared/modelDefault';
 import type {
+  DevSessionWithPlanItem,
   PlanItem,
   RepoEnvironmentMode,
 } from '../../../shared/types';
+import { deriveStaleWorkBriefRevision, findReusableBoardSession } from './workBriefRevision';
 
 const SELECT_TRIGGER_CLASS =
   'flex h-10 min-w-0 w-full items-center justify-between gap-2 rounded-lg border border-border-subtle bg-surface-1 px-2.5 py-2 text-left text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50';
 
 const SELECT_VALUE_CLASS = 'block min-w-0 flex-1 truncate text-left';
+const EMPTY_SESSIONS: DevSessionWithPlanItem[] = [];
 
 const ENV_OPTIONS: { value: RepoEnvironmentMode; label: string; title: string }[] = [
   { value: 'auto', label: 'Auto', title: 'Detect .envrc and apply direnv automatically' },
@@ -66,6 +70,9 @@ export const AgentStartModal = memo(function AgentStartModal({
   onMoveOnly,
 }: AgentStartModalProps) {
   const repos = useResourceDomainStore((state) => state.repos);
+  const itemSessions = useDevSessionsStore(
+    (state) => state.sessionsByPlanItemId.get(item.id) ?? EMPTY_SESSIONS,
+  );
   const defaultRepoId = item.primary_repo_id && repos.some((repo) => repo.id === item.primary_repo_id)
     ? item.primary_repo_id
     : repos.length === 1 ? repos[0].id : '';
@@ -191,7 +198,7 @@ export const AgentStartModal = memo(function AgentStartModal({
     onStart({
       planItemId: item.id,
       repoId: selectedRepoId,
-      prompt: prompt.trim() || item.title,
+      prompt: prompt.trim(),
       baseBranch: selectedBranch || undefined,
       contextPaths: selectedContextPaths.length > 0 ? selectedContextPaths : undefined,
       environmentMode,
@@ -199,7 +206,6 @@ export const AgentStartModal = memo(function AgentStartModal({
     });
   }, [
     item.id,
-    item.title,
     selectedRepoId,
     prompt,
     selectedBranch,
@@ -218,6 +224,11 @@ export const AgentStartModal = memo(function AgentStartModal({
   }, [handleStart]);
 
   const selectedRepo = repos.find((r) => r.id === selectedRepoId);
+  const reusableSession = findReusableBoardSession(itemSessions, selectedRepoId);
+  const staleBriefRevision = deriveStaleWorkBriefRevision(
+    reusableSession?.work_brief_revision,
+    item.work_brief_revision,
+  );
   const acceptanceCriteria = item.acceptance_criteria ?? [];
   const hasAcceptanceCriteria = acceptanceCriteria.length > 0;
   const hasIntent = Boolean(item.intent?.trim());
@@ -247,7 +258,7 @@ export const AgentStartModal = memo(function AgentStartModal({
             <div className="space-y-4">
               <div className="rounded-xl border border-border-subtle bg-surface-1 p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-text-primary">Spec</p>
+                  <p className="text-sm font-semibold text-text-primary">Work Brief</p>
                   <span className="rounded-full border border-border-subtle bg-surface-2 px-2 py-1 text-tiny text-text-secondary">
                     {hasAcceptanceCriteria ? `${acceptanceCriteria.length} criteria` : 'No criteria'}
                   </span>
@@ -286,14 +297,14 @@ export const AgentStartModal = memo(function AgentStartModal({
                   {hasDescription && (
                     <div>
                       <p className="mb-1 text-tiny font-semibold uppercase tracking-wide text-text-muted">
-                        {hasAcceptanceCriteria ? 'Context' : 'Description'}
+                        Context
                       </p>
                       <p className="text-sm leading-5 text-text-secondary whitespace-pre-wrap">{item.description}</p>
                     </div>
                   )}
 
                   {!hasIntent && !hasAcceptanceCriteria && !hasDescription && (
-                    <p className="text-sm text-text-muted">No spec yet.</p>
+                    <p className="text-sm text-text-muted">No Work Brief details yet.</p>
                   )}
                 </div>
               </div>
@@ -302,6 +313,19 @@ export const AgentStartModal = memo(function AgentStartModal({
 
           <div className="flex min-h-0 min-w-0 flex-col overflow-hidden p-5">
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+              {staleBriefRevision && (
+                <div
+                  className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3"
+                  role="status"
+                  aria-label="Brief updated"
+                >
+                  <p className="text-xs font-semibold text-warning">Brief updated</p>
+                  <p className="mt-1 text-xs leading-relaxed text-text-secondary">
+                    This execution uses brief revision {staleBriefRevision.executionRevision}. The Plan Item is now revision {staleBriefRevision.itemRevision}. Continuing preserves the earlier brief.
+                  </p>
+                </div>
+              )}
+
               <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 {repos.length > 1 && (
                   <div className="min-w-0">

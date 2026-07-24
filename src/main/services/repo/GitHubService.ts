@@ -841,6 +841,7 @@ ${effectivePrTemplate}`
           step_pass_counts: null,
           paused_reason: null,
           initial_instructions: '',
+          work_brief_revision: null,
           pr_number: null,
           pr_url: null,
           pr_state: null,

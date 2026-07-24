@@ -33,8 +33,12 @@ A **connected repo** is a git repository attached to a project (the `Repo` type 
 
 Distinct from a **session worktree** (`dev_sessions.worktree_path`): a throwaway worktree scaffolded per board agent execution for isolated writes. The two never cross — switching a connected repo's active worktree does not touch session worktrees, and board execution does not read `active_worktree_path`.
 
-## Plan Item repo targets
+## Work Brief and Repository Scope
 
-A **repo target** records which connected repos a Plan Item is expected to affect. A Plan Item may have one **primary repo** and any number of **affected repos**. The primary repo is the default when board execution starts; a dev session may still run against a different connected repo without changing the Plan Item's repo target.
+A Plan Item's **Work Brief** is the revisioned aggregate that defines the work: `title`, optional **context** (persisted in the legacy `description` column), optional `intent`, and structured `acceptance_criteria`. Chat replaces the complete aggregate through `revise_work_brief` with an expected revision; semantic changes increment `work_brief_revision` once. Empty criteria are represented as `[]` in the aggregate and persisted as SQL `NULL`. Context headings are ordinary prose and are never parsed into execution fields.
 
-An **unassigned** Plan Item has no primary repo. When work spans multiple connected repos but none is clearly primary, affected repos may remain recorded while the primary repo stays unassigned. Removing a connected repo removes its repo-target association and never promotes another repo automatically.
+A Plan Item's **Repository Scope** is separate from its Work Brief. It records which connected repos the item is expected to affect: one optional **primary repo** and any number of **affected repos**. Changing scope does not revise the Work Brief and does not trigger tracker sync. The primary repo is the default when board execution starts; a dev session may still run against a different connected repo without changing the Plan Item's Repository Scope.
+
+An **unassigned** Plan Item has no primary repo. When work spans multiple connected repos but none is clearly primary, affected repos may remain recorded while the primary repo stays unassigned. Removing a connected repo removes its Repository Scope association and never promotes another repo automatically.
+
+A new dev session snapshots both the execution projection in `initial_instructions` and the corresponding Work Brief revision. Resuming a pending/inactive session reuses that immutable instruction snapshot; a supplemental user prompt may constrain the resumed turn but does not replace the captured contract. Legacy sessions have an unknown (`NULL`) Work Brief revision.

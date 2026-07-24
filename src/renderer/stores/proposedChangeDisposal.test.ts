@@ -189,9 +189,9 @@ describe('Proposed Change disposal', () => {
   it.each([
     {
       kind: 'plan-actions',
-      first: { type: 'plan-actions', projectId: 'project-1', actions: [{ type: 'update_item', item_id: 'item-1', changes: { title: 'one' } } as never] },
-      second: { type: 'plan-actions', projectId: 'project-1', actions: [{ type: 'update_item', item_id: 'item-1', changes: { title: 'two' } } as never] },
-      expected: { type: 'plan-actions', actions: [{ item_id: 'item-1', changes: { title: 'two' } }] },
+      first: { type: 'plan-actions', projectId: 'project-1', actions: [{ type: 'update_item', item_id: 'item-1', updates: { label: 'one' } }] },
+      second: { type: 'plan-actions', projectId: 'project-1', actions: [{ type: 'update_item', item_id: 'item-1', updates: { release_tag: 'two' } }] },
+      expected: { type: 'plan-actions', actions: [{ item_id: 'item-1', updates: { label: 'one', release_tag: 'two' } }] },
     },
     {
       kind: 'context-file',
@@ -232,6 +232,40 @@ describe('Proposed Change disposal', () => {
       expect(useProposedChangeDisposal.getState().pending[0]).toMatchObject(expected);
     },
   );
+
+  it('keeps Work Brief, repository scope, and metadata actions for the same item', () => {
+    const disposal = useProposedChangeDisposal.getState();
+    disposal.propose({
+      type: 'plan-actions', projectId: 'project-1', actions: [
+        { type: 'update_item', item_id: 'item-1', updates: { label: 'task' } },
+        {
+          type: 'revise_work_brief', item_id: 'item-1', expected_revision: 1,
+          work_brief: { title: 'First', context: null, intent: null, acceptance_criteria: [] },
+        },
+      ],
+    });
+    disposal.propose({
+      type: 'plan-actions', projectId: 'project-1', actions: [
+        {
+          type: 'set_repo_targets', item_id: 'item-1',
+          repository_scope: { primary_repo_id: null, affected_repo_ids: [] },
+        },
+        {
+          type: 'revise_work_brief', item_id: 'item-1', expected_revision: 1,
+          work_brief: { title: 'Latest', context: null, intent: null, acceptance_criteria: [] },
+        },
+      ],
+    });
+
+    const pending = useProposedChangeDisposal.getState().pending[0];
+    if (pending.type !== 'plan-actions') throw new Error('Expected plan actions');
+    const actions = pending.actions;
+    expect(actions).toHaveLength(3);
+    expect(actions.map((action) => (action as { type: string }).type)).toEqual([
+      'update_item', 'revise_work_brief', 'set_repo_targets',
+    ]);
+    expect(actions[1]).toMatchObject({ type: 'revise_work_brief', work_brief: { title: 'Latest' } });
+  });
 
   it('honors forced review even when global auto-apply is enabled', () => {
     const api = installMockApi();

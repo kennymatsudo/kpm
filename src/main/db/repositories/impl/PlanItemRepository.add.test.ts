@@ -77,6 +77,7 @@ describe('PlanItemRepository.add (registry-generated INSERT)', () => {
     });
 
     expect(created.status).toBe('planned');
+    expect(created.work_brief_revision).toBe(1);
     expect(created.sync_source).toBe('local');
     expect(created.parent_id).toBeNull();
     expect(created.description).toBeNull();
@@ -134,5 +135,37 @@ describe('PlanItemRepository.add (registry-generated INSERT)', () => {
     repo.update('item-4', { intent: 'Updated intent' });
     const row = repo.get('item-4');
     expect(row?.intent).toBe('Updated intent');
+  });
+
+  it('atomically revises the normalized Work Brief and increments once', () => {
+    repo.add({ id: 'item-brief', project_id: 'project-1', title: 'Original', item_order: 0 });
+
+    const result = repo.compareAndReviseWorkBrief('item-brief', 1, {
+      title: ' Revised ',
+      context: ' Context ',
+      intent: ' Intent ',
+      acceptance_criteria: [],
+    });
+
+    expect(result.status).toBe('updated');
+    expect(repo.get('item-brief')).toMatchObject({
+      title: 'Revised',
+      description: 'Context',
+      intent: 'Intent',
+      acceptance_criteria: null,
+      work_brief_revision: 2,
+    });
+  });
+
+  it('does not increment for a semantic no-op and reports stale revisions', () => {
+    repo.add({ id: 'item-brief', project_id: 'project-1', title: 'Original', item_order: 0 });
+
+    expect(repo.compareAndReviseWorkBrief('item-brief', 1, {
+      title: ' Original ', context: null, intent: null, acceptance_criteria: [],
+    }).status).toBe('unchanged');
+    expect(repo.compareAndReviseWorkBrief('item-brief', 2, {
+      title: 'Changed', context: null, intent: null, acceptance_criteria: [],
+    }).status).toBe('conflict');
+    expect(repo.get('item-brief')?.work_brief_revision).toBe(1);
   });
 });

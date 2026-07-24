@@ -123,6 +123,7 @@ export function createPlanItem(options: CreatePlanItemOptions = {}): PlanItem {
     last_synced_at: options.last_synced_at ?? null,
     intent: options.intent ?? null,
     acceptance_criteria: options.acceptance_criteria ?? null,
+    work_brief_revision: 1,
     source_document_id: options.source_document_id ?? null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

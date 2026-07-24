@@ -44,6 +44,8 @@ export interface PlanItem {
   intent: string | null;
   /** Structured agent contract: each entry is one testable criterion. Serialized as JSON in SQLite. */
   acceptance_criteria: string[] | null;
+  /** Monotonic revision of the aggregate title/context/intent/acceptance criteria Work Brief. */
+  work_brief_revision: number;
   /** Loose reference to the project document this item was extracted from. No FK — docs can be deleted without cascading. */
   source_document_id: string | null;
   label: string | null;

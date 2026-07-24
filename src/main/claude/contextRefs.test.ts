@@ -13,6 +13,7 @@ function makeItem(id: string, overrides: Partial<PlanItem> = {}): PlanItem {
     description: null,
     intent: null,
     acceptance_criteria: null,
+    work_brief_revision: 1,
     source_document_id: null,
     label: null,
     item_order: 0,

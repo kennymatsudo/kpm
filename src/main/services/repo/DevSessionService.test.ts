@@ -37,7 +37,7 @@ describe('DevSessionService playbook migration boundary', () => {
       completed_at: null,
     }));
     const service = createDevSessionService({
-      planItems: { get: vi.fn(() => ({ id: 'item-1', project_id: 'project-1', title: 'Task' })) },
+      planItems: { get: vi.fn(() => ({ id: 'item-1', project_id: 'project-1', title: 'Task', work_brief_revision: 7 })) },
       repos: { getById: vi.fn(() => ({ id: 'repo-1', path: '/tmp/repo' })) },
       devSessions: { getActiveByPlanItem: vi.fn(), create },
       appSettings: { get: vi.fn() },
@@ -50,10 +50,50 @@ describe('DevSessionService playbook migration boundary', () => {
 
     if (!result.ok) throw new Error(result.error);
     expect(result.data).toMatchObject({
+      work_brief_revision: 7,
       playbook_id: BUILT_IN_PLAYBOOKS.implementOnly.id,
       playbook_snapshot: JSON.stringify(BUILT_IN_PLAYBOOKS.implementOnly),
       current_step_id: 'implement',
     });
+  });
+
+  it('resumes with stored initial instructions instead of rebuilding the latest Work Brief', async () => {
+    const existing = {
+      id: 'session-1', project_id: 'project-1', plan_item_id: 'item-1', repo_id: 'repo-1',
+      status: 'inactive', initial_instructions: 'Captured revision 2 contract',
+      work_brief_revision: 2, playbook_snapshot: JSON.stringify(BUILT_IN_PLAYBOOKS.implementOnly),
+      current_step_id: 'implement', automation_phase: null,
+    };
+    const startAgentSession = vi.fn().mockImplementation(async (_id, options) => ({
+      ok: true, data: { session: { ...existing, launchedPrompt: options.prompt } },
+    }));
+    const service = createDevSessionService({
+      planItems: {
+        get: vi.fn(() => ({ id: 'item-1', project_id: 'project-1', title: 'Latest title', description: 'Latest context' })),
+        getByProject: vi.fn(() => []),
+      },
+      devSessions: {
+        getByPlanItem: vi.fn(() => existing), get: vi.fn(() => existing), updateReviewPolicy: vi.fn(),
+      },
+      listBoardProviders: vi.fn(async () => [{
+        id: 'claude', name: 'Claude', available: true,
+        models: [{ id: 'sonnet', name: 'Sonnet', isDefault: true }],
+        capabilities: { nativeSkills: true, reviewSandbox: false },
+      }]),
+      appSettings: { get: vi.fn() },
+      readProjectContextFile: vi.fn(async () => ({ ok: true, data: { content: null } })),
+      buildContextPrefix: vi.fn(),
+      getPromptContent: vi.fn(() => ''),
+      getSkillBody: vi.fn(),
+    } as never);
+    (service as unknown as { startAgentSession: typeof startAgentSession }).startAgentSession = startAgentSession;
+
+    await service.createAndStartFromBoard({ planItemId: 'item-1', repoId: 'repo-1' });
+
+    expect(startAgentSession).toHaveBeenCalledWith('session-1', expect.objectContaining({
+      prompt: expect.stringContaining('Captured revision 2 contract'),
+    }));
+    expect(startAgentSession.mock.calls[0][1].prompt).not.toContain('Latest context');
   });
 });
 

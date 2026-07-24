@@ -18,8 +18,13 @@ import { useTrackerStore } from '../../stores/trackerStore';
 import { useTrackerMetadataStore } from '../../stores';
 import type { TrackerIssueTypeOption } from '../../stores/tracker/useMetadataStore';
 import { TrackerIcon, trackerLabelFor } from '../tracker/shared/trackerDisplay';
-import type { PlanItem } from '../../../shared/types';
+import type { PlanItem, Repo } from '../../../shared/types';
+import { PLAN_ITEM_FIELDS } from '../../../shared/planItemFields';
+import type { PlanTaskEditDraft } from './planItemFormActions';
+import { buildPlanTaskEditActions } from './planItemFormActions';
 import { toast } from '../../stores/toastStore';
+import { WorkBriefEditor } from './WorkBriefEditor';
+import { RepositoryScopeEditor } from './RepositoryScopeEditor';
 
 // Stable empty array to avoid re-render loops
 const EMPTY_ISSUE_TYPES: TrackerIssueTypeOption[] = [];
@@ -31,23 +36,15 @@ const FALLBACK_TYPE_OPTIONS = [
   { value: 'bug', label: 'Bug' },
 ] as const;
 
+const MAX_CRITERIA = PLAN_ITEM_FIELDS.acceptance_criteria.fieldKind.maxItems;
+
 interface TaskEditModalProps {
   item: PlanItem;
+  repos: Repo[];
   isOpen: boolean;
   onClose: () => void;
-  onSave: (updates: {
-    title: string;
-    description: string | null;
-    label: string | null;
-    intent?: string | null;
-    acceptance_criteria?: string[] | null;
-  }) => Promise<void>;
+  onSave: (draft: PlanTaskEditDraft) => Promise<void>;
 }
-
-// Zod-aligned limits (see src/main/ipc/validation/plan.ts)
-const INTENT_MAX_CHARS = 500;
-const CRITERION_MAX_CHARS = 1000;
-const MAX_CRITERIA = 50;
 
 function TrackerPerson({ label, name, emptyLabel = 'Not available' }: { label: string; name: string | null | undefined; emptyLabel?: string }) {
   return (
@@ -64,6 +61,7 @@ function TrackerPerson({ label, name, emptyLabel = 'Not available' }: { label: s
 
 export function TaskEditModal({
   item,
+  repos,
   isOpen,
   onClose,
   onSave,
@@ -108,9 +106,10 @@ export function TaskEditModal({
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(item.description || '');
   const [label, setLabel] = useState(item.label || '');
-  // Spec fields — editable in this sprint.
   const [intent, setIntent] = useState(item.intent ?? '');
   const [criteria, setCriteria] = useState<string[]>(item.acceptance_criteria ?? []);
+  const [primaryRepoId, setPrimaryRepoId] = useState<string | null>(item.primary_repo_id ?? null);
+  const [affectedRepoIds, setAffectedRepoIds] = useState<string[]>(item.affected_repo_ids ?? []);
 
   // UI state
   const [isSaving, setIsSaving] = useState(false);
@@ -128,6 +127,8 @@ export function TaskEditModal({
       setLabel(item.label || '');
       setIntent(item.intent ?? '');
       setCriteria(item.acceptance_criteria ?? []);
+      setPrimaryRepoId(item.primary_repo_id ?? null);
+      setAffectedRepoIds(item.affected_repo_ids ?? []);
     }
   }, [
     item.id,
@@ -136,6 +137,8 @@ export function TaskEditModal({
     item.label,
     item.intent,
     item.acceptance_criteria,
+    item.primary_repo_id,
+    item.affected_repo_ids,
     isOpen,
   ]);
 
@@ -153,27 +156,35 @@ export function TaskEditModal({
     return trimmed.slice(0, MAX_CRITERIA);
   }, [criteria]);
 
-  const originalCriteria = useMemo(() => item.acceptance_criteria ?? [], [item.acceptance_criteria]);
+  const draft = useMemo<PlanTaskEditDraft>(() => ({
+    workBrief: {
+      title: title.trim(),
+      context: description.trim() || null,
+      intent: intent.trim() || null,
+      acceptance_criteria: sanitizedCriteria,
+    },
+    repositoryScope: {
+      primary_repo_id: primaryRepoId,
+      affected_repo_ids: affectedRepoIds,
+    },
+    label: label || null,
+  }), [
+    title,
+    description,
+    intent,
+    sanitizedCriteria,
+    primaryRepoId,
+    affectedRepoIds,
+    label,
+  ]);
 
-  // Track unsaved changes
-  const isDirty = useMemo(() => {
-    const titleChanged = title.trim() !== item.title.trim();
-    const descChanged = description.trim() !== (item.description || '').trim();
-    const labelChanged = label !== (item.label || '');
-    const intentChanged = intent.trim() !== (item.intent ?? '').trim();
-    const criteriaChanged =
-      sanitizedCriteria.length !== originalCriteria.length ||
-      sanitizedCriteria.some((c, i) => c !== originalCriteria[i]);
-    return titleChanged || descChanged || labelChanged || intentChanged || criteriaChanged;
-  }, [title, description, label, intent, sanitizedCriteria, originalCriteria, item]);
+  // Track unsaved changes by the same domain actions used to save.
+  const isDirty = useMemo(
+    () => title.trim().length > 0 && buildPlanTaskEditActions(item, draft).length > 0,
+    [item, draft, title],
+  );
 
-  // Validate form
-  const canSave = useMemo(() => {
-    if (!isDirty || title.trim().length === 0) return false;
-    if (intent.length > INTENT_MAX_CHARS) return false;
-    if (sanitizedCriteria.some((c) => c.length > CRITERION_MAX_CHARS)) return false;
-    return true;
-  }, [isDirty, title, intent, sanitizedCriteria]);
+  const canSave = isDirty && title.trim().length > 0;
 
   // Handle save
   const handleSave = useCallback(async () => {
@@ -181,14 +192,7 @@ export function TaskEditModal({
 
     setIsSaving(true);
     try {
-      const trimmedIntent = intent.trim();
-      await onSave({
-        title: title.trim(),
-        description: description.trim() || null,
-        label: label || null,
-        intent: trimmedIntent.length > 0 ? trimmedIntent : null,
-        acceptance_criteria: sanitizedCriteria.length > 0 ? sanitizedCriteria : null,
-      });
+      await onSave(draft);
       onClose();
     } catch (error) {
       console.error('Failed to save task:', error);
@@ -196,24 +200,7 @@ export function TaskEditModal({
     } finally {
       setIsSaving(false);
     }
-  }, [canSave, title, description, label, intent, sanitizedCriteria, onSave, onClose]);
-
-  // Criteria list helpers
-  const updateCriterion = useCallback((index: number, value: string) => {
-    setCriteria((prev) => {
-      const next = prev.slice();
-      next[index] = value;
-      return next;
-    });
-  }, []);
-
-  const removeCriterion = useCallback((index: number) => {
-    setCriteria((prev) => prev.filter((_, i) => i !== index));
-  }, []);
-
-  const addCriterion = useCallback(() => {
-    setCriteria((prev) => (prev.length >= MAX_CRITERIA ? prev : [...prev, '']));
-  }, []);
+  }, [canSave, draft, onSave, onClose]);
 
   // Handle close with unsaved changes check
   const handleRequestClose = useCallback(() => {
@@ -277,138 +264,47 @@ export function TaskEditModal({
         <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-2 pt-5 space-y-5">
           {/* Title field */}
           <div>
-            <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
+            <label htmlFor="task-edit-item-title" className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
               Title
             </label>
             <input
+              id="task-edit-item-title"
               ref={titleInputRef}
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Task title..."
+              maxLength={PLAN_ITEM_FIELDS.title.fieldKind.maxLength}
               className="input w-full text-base"
             />
           </div>
 
-          {/* Description — long-form context */}
-          <div>
-            <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
-              Description
-            </label>
-            <div className="relative">
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Add a description... (Markdown supported)"
-                rows={6}
-                className="input w-full min-h-[140px] resize-y text-sm font-mono leading-relaxed"
-              />
-              <div className="absolute bottom-2 right-2 text-xxs text-text-muted opacity-60 pointer-events-none">
-                Markdown
-              </div>
-            </div>
-          </div>
+          <WorkBriefEditor
+            value={{
+              context: description,
+              intent,
+              acceptance_criteria: criteria,
+            }}
+            onChange={(workBrief) => {
+              setDescription(workBrief.context ?? '');
+              setIntent(workBrief.intent ?? '');
+              setCriteria(workBrief.acceptance_criteria);
+            }}
+            idPrefix="task-edit-work-brief"
+          />
 
-          {/* Spec — intent + acceptance criteria. Always rendered so legacy items
-              can have specs added. */}
-          <div
-            className="rounded-lg border border-border-subtle bg-surface-1/50 px-4 py-3 space-y-3"
-            aria-label="Spec"
-          >
-            <h3 className="text-xs font-medium text-text-muted uppercase tracking-wide">
-              Spec
-            </h3>
-
-            {/* Intent */}
-            <div>
-              <label
-                htmlFor="task-edit-intent"
-                className="block text-xxs font-medium text-text-muted uppercase tracking-wide mb-1"
-              >
-                Intent
-                <span className="ml-1.5 text-text-muted/70 normal-case">one sentence</span>
-              </label>
-              <textarea
-                id="task-edit-intent"
-                value={intent}
-                onChange={(e) => setIntent(e.target.value)}
-                placeholder="What done looks like, in one sentence..."
-                rows={2}
-                maxLength={INTENT_MAX_CHARS}
-                className="input w-full text-sm leading-snug resize-none"
-              />
-            </div>
-
-            {/* Acceptance Criteria */}
-            <div>
-              <div className="text-xxs font-medium text-text-muted uppercase tracking-wide mb-1.5">
-                Acceptance Criteria
-                {sanitizedCriteria.length > 0 && (
-                  <span className="ml-1.5 text-text-muted/70 normal-case">
-                    ({sanitizedCriteria.length})
-                  </span>
-                )}
-              </div>
-
-              {criteria.length === 0 ? (
-                <p className="text-sm text-text-muted italic mb-2">
-                  A testable checklist for what counts as done.
-                </p>
-              ) : (
-                <ul className="space-y-1.5 mb-2">
-                  {criteria.map((criterion, index) => (
-                    <li key={index} className="flex items-start gap-2">
-                      <svg
-                        className="w-3.5 h-3.5 mt-2 flex-shrink-0 text-text-muted"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        aria-hidden="true"
-                      >
-                        <rect x="4" y="4" width="16" height="16" rx="2" strokeWidth="1.5" />
-                      </svg>
-                      <input
-                        type="text"
-                        value={criterion}
-                        onChange={(e) => updateCriterion(index, e.target.value)}
-                        placeholder="Testable criterion..."
-                        maxLength={CRITERION_MAX_CHARS}
-                        className="input flex-1 min-w-0 text-sm"
-                        aria-label={`Acceptance criterion ${index + 1}`}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeCriterion(index)}
-                        className="mt-1.5 p-1 text-text-muted hover:text-danger hover:bg-surface-2 rounded transition-colors"
-                        aria-label={`Remove criterion ${index + 1}`}
-                        title="Remove"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              <button
-                type="button"
-                onClick={addCriterion}
-                disabled={criteria.length >= MAX_CRITERIA}
-                title={criteria.length >= MAX_CRITERIA ? `Maximum ${MAX_CRITERIA} criteria reached` : undefined}
-                className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add criterion
-                {criteria.length >= MAX_CRITERIA && (
-                  <span className="text-text-muted ml-1">(max {MAX_CRITERIA})</span>
-                )}
-              </button>
-            </div>
-          </div>
+          <RepositoryScopeEditor
+            value={{
+              primary_repo_id: primaryRepoId,
+              affected_repo_ids: affectedRepoIds,
+            }}
+            onChange={(scope) => {
+              setPrimaryRepoId(scope.primary_repo_id);
+              setAffectedRepoIds(scope.affected_repo_ids);
+            }}
+            repos={repos}
+            idPrefix="task-edit-repository-scope"
+          />
 
           {/* Type — single attribute we let the user edit */}
           <div className="w-56">

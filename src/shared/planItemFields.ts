@@ -81,22 +81,22 @@ export const PLAN_ITEM_FIELDS = {
   title: {
     sqlColumn: 'title',
     fieldKind: { kind: 'text', maxLength: 500 },
-    editableVia: IPC_AND_PLAN_ACTION,
+    editableVia: IPC_ONLY,
   },
   description: {
     sqlColumn: 'description',
     fieldKind: { kind: 'nullableText', maxLength: 50000 },
-    editableVia: IPC_AND_PLAN_ACTION,
+    editableVia: IPC_ONLY,
   },
   intent: {
     sqlColumn: 'intent',
     fieldKind: { kind: 'nullableText', maxLength: 500 },
-    editableVia: IPC_AND_PLAN_ACTION,
+    editableVia: IPC_ONLY,
   },
   acceptance_criteria: {
     sqlColumn: 'acceptance_criteria',
     fieldKind: { kind: 'nullableJsonArray', maxItemLength: 1000, maxItems: 50 },
-    editableVia: IPC_AND_PLAN_ACTION,
+    editableVia: IPC_ONLY,
   },
   source_document_id: {
     sqlColumn: 'source_document_id',

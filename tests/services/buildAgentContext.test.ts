@@ -1,11 +1,11 @@
 /**
  * buildAgentContext — unit tests
  *
- * Covers the spec-field rendering branches added in sprint 1:
- *  - intent / acceptance_criteria surface above description
- *  - description is demoted to "## Context" when criteria carry the contract
- *  - legacy items (no spec fields) still render the classic shape
- *  - the instructions tail references criteria only when criteria exist
+ * Covers the Work Brief execution projection:
+ *  - intent / acceptance_criteria surface above context
+ *  - persisted description always projects as context
+ *  - headings inside context remain ordinary context
+ *  - the instructions tail references criteria only when structured criteria exist
  */
 
 import { describe, it, expect } from 'vitest';
@@ -15,7 +15,7 @@ import { createPlanItem, createProject } from '../factories';
 describe('buildAgentContext', () => {
   const project = createProject({ id: 'project-1', name: 'Test Project' });
 
-  it('renders the classic shape when no structured fields are set', () => {
+  it('renders persisted description as Work Brief context', () => {
     const item = createPlanItem({
       id: 'item-1',
       project_id: project.id,
@@ -26,10 +26,10 @@ describe('buildAgentContext', () => {
     const prompt = buildAgentContext({ item, project, children: [], parent: null });
 
     expect(prompt).toContain('# Task: Add login button');
-    expect(prompt).toContain('## Description\n\nUsers need a way to sign in.');
+    expect(prompt).toContain('## Context\n\nUsers need a way to sign in.');
     expect(prompt).not.toContain('## Intent');
     expect(prompt).not.toContain('## Acceptance Criteria');
-    expect(prompt).not.toContain('## Context');
+    expect(prompt).not.toContain('## Description');
     expect(prompt).toContain('Implement this task. In your final response');
     expect(prompt).toContain('Do not commit');
   });
@@ -92,7 +92,7 @@ describe('buildAgentContext', () => {
     expect(prompt).not.toContain('so that every acceptance criterion above is satisfied');
   });
 
-  it('falls back to "No description provided." only when everything is null', () => {
+  it('falls back to "No context provided." only when everything is null', () => {
     const item = createPlanItem({
       project_id: project.id,
       title: 'Bare item',
@@ -103,7 +103,7 @@ describe('buildAgentContext', () => {
 
     const prompt = buildAgentContext({ item, project, children: [], parent: null });
 
-    expect(prompt).toContain('## Description\n\nNo description provided.');
+    expect(prompt).toContain('## Context\n\nNo context provided.');
   });
 
   it('renders acceptance_criteria without intent, demoting description to Context', () => {
@@ -134,11 +134,11 @@ describe('buildAgentContext', () => {
     const prompt = buildAgentContext({ item, project, children: [], parent: null });
 
     expect(prompt).not.toContain('## Acceptance Criteria');
-    expect(prompt).toContain('## Description');
+    expect(prompt).toContain('## Context');
     expect(prompt).not.toContain('so that every acceptance criterion above is satisfied');
   });
 
-  it('promotes known description sections into execution-specific sections', () => {
+  it('keeps description headings inside ordinary context', () => {
     const item = createPlanItem({
       project_id: project.id,
       title: 'Structured description item',
@@ -167,19 +167,18 @@ describe('buildAgentContext', () => {
     const prompt = buildAgentContext({ item, project, children: [], parent: null });
 
     expect(prompt).toContain('## Acceptance Criteria\n\n- [ ] Session refresh keeps active users signed in');
-    expect(prompt).not.toContain('Duplicated legacy criterion should not render');
-    expect(prompt).toContain('## Out of Scope\n\nDo not modify billing flows.');
-    expect(prompt).toContain('## Dependencies\n\n- @plan/abc123 must land first');
     expect(prompt).toContain('## Context\n\nBackground context for the task.');
-    expect(prompt).toContain('## Relevant Files');
-    expect(prompt).toContain('- src/auth/client.ts (extendSession)');
-    expect(prompt).toContain('- src/auth/session.ts (refreshSession) — existing behavior');
-    expect(prompt).toContain('## Verification\n\nnpm test -- src/auth/session.test.ts');
-    expect(prompt).toContain('Run the Verification command(s) above before finishing unless impossible');
+    expect(prompt).toContain('Duplicated legacy criterion should not render when structured criteria exist');
+    expect(prompt).toContain('## Out of Scope\nDo not modify billing flows.');
+    expect(prompt).toContain('## Dependencies\n- @plan/abc123 must land first');
+    expect(prompt).toContain('## Code References\n- src/auth/session.ts (refreshSession) — existing behavior');
+    expect(prompt).toContain('## Verification\nnpm test -- src/auth/session.test.ts');
+    expect(prompt).toContain('## Relevant Files\n\n- src/auth/client.ts (extendSession)');
+    expect(prompt).not.toContain('Run the Verification command(s) above before finishing unless impossible');
     expect(prompt).toContain('criterion-by-criterion status');
   });
 
-  it('uses acceptance criteria from a legacy description section when structured criteria are absent', () => {
+  it('does not treat an Acceptance Criteria heading in context as the contract', () => {
     const item = createPlanItem({
       project_id: project.id,
       title: 'Legacy structured description',
@@ -195,10 +194,10 @@ describe('buildAgentContext', () => {
 
     const prompt = buildAgentContext({ item, project, children: [], parent: null });
 
-    expect(prompt).toContain('## Acceptance Criteria');
+    expect(prompt).toContain('## Context\n\nBackground context.\n\n## Acceptance Criteria');
     expect(prompt).toContain('- [ ] Endpoint returns 200 for valid input');
-    expect(prompt).toContain('- [ ] Endpoint returns 400 for invalid input');
-    expect(prompt).toContain('## Context\n\nBackground context.');
+    expect(prompt).not.toContain('so that every acceptance criterion above is satisfied');
+    expect(prompt).not.toContain('criterion-by-criterion status');
     expect(prompt).not.toContain('## Description');
   });
 });

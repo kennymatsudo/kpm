@@ -14,6 +14,11 @@ import type { QueueTrackerUpdateIfNeeded } from './PlanItemService';
 import { queueForTracker } from './OutboundChangePolicy';
 import { assignItemToGroup } from './GroupAssignmentService';
 import { findRefs } from '../../../shared/planRefs';
+import {
+  normalizeWorkBriefDraft,
+  repositoryScopeFromPlanItem,
+  workBriefFromPlanItem,
+} from '../../../shared/workBrief';
 
 type Logger = Pick<Console, 'log' | 'warn'>;
 
@@ -99,14 +104,20 @@ function executeCreateItem(
 ): void {
   const id = createId(ctx);
   const parentId = resolveId(ctx, action.parent_id);
+  const workBrief = normalizeWorkBriefDraft({
+    title: action.title,
+    context: action.description ?? null,
+    intent: action.intent ?? null,
+    acceptance_criteria: action.acceptance_criteria ?? [],
+  });
 
   ctx.deps.planItems.add({
     id,
     project_id: ctx.projectId,
-    title: action.title,
-    description: action.description || null,
-    intent: action.intent ?? null,
-    acceptance_criteria: action.acceptance_criteria ?? null,
+    title: workBrief.title,
+    description: workBrief.context,
+    intent: workBrief.intent,
+    acceptance_criteria: workBrief.acceptance_criteria.length > 0 ? workBrief.acceptance_criteria : null,
     source_document_id: action.source_document_id ?? null,
     label: action.label || 'story',
     status_category: 'not_started',
@@ -206,6 +217,63 @@ function executeUpdateItem(
   if (item) {
     ctx.deps.queueTrackerUpdateIfNeeded(item, action.updates, 'claude');
   }
+}
+
+function executeReviseWorkBrief(
+  ctx: ExecutorContext,
+  action: Extract<PlanAction, { type: 'revise_work_brief' }>
+): void {
+  const previousItem = getItem(ctx, action.item_id);
+  const result = ctx.deps.planItems.compareAndReviseWorkBrief(
+    action.item_id,
+    action.expected_revision,
+    action.work_brief,
+  );
+
+  if (result.status === 'not_found') {
+    throw new Error(`Plan item not found: ${action.item_id}`);
+  }
+  if (result.status === 'conflict') {
+    throw new Error(
+      `Work Brief revision conflict for ${action.item_id}: expected ${action.expected_revision}, current ${result.item.work_brief_revision}`,
+    );
+  }
+
+  ctx.itemCache.set(action.item_id, result.item);
+  if (result.status === 'unchanged' || !previousItem) return;
+
+  const previousBrief = workBriefFromPlanItem(previousItem);
+  const nextBrief = workBriefFromPlanItem(result.item);
+  const trackerUpdates: { title?: string; description?: string | null } = {};
+  if (previousBrief.title !== nextBrief.title) trackerUpdates.title = nextBrief.title;
+  if (previousBrief.context !== nextBrief.context) trackerUpdates.description = nextBrief.context;
+  if (Object.keys(trackerUpdates).length > 0) {
+    ctx.deps.queueTrackerUpdateIfNeeded(previousItem, trackerUpdates, 'claude');
+  }
+}
+
+function executeSetRepoTargets(
+  ctx: ExecutorContext,
+  action: Extract<PlanAction, { type: 'set_repo_targets' }>
+): void {
+  const item = getItem(ctx, action.item_id);
+  if (item?.project_id !== ctx.projectId) {
+    throw new Error(`Plan item not found in project: ${action.item_id}`);
+  }
+  const currentScope = repositoryScopeFromPlanItem(item);
+  const nextScope = action.repository_scope;
+  if (
+    currentScope.primary_repo_id === nextScope.primary_repo_id
+    && currentScope.affected_repo_ids.length === nextScope.affected_repo_ids.length
+    && currentScope.affected_repo_ids.every((repoId, index) => repoId === nextScope.affected_repo_ids[index])
+  ) return;
+
+  ctx.deps.planItems.setRepositoryTargets(
+    action.item_id,
+    nextScope.primary_repo_id,
+    nextScope.affected_repo_ids,
+  );
+  invalidateItem(ctx, action.item_id);
 }
 
 function executeDeleteItem(
@@ -368,6 +436,8 @@ const ACTION_EXECUTORS: { [T in PlanAction['type']]: ActionExecutor<T> } = {
   remove_dependency: executeRemoveDependency,
   reorder: executeReorder,
   update_item: executeUpdateItem,
+  revise_work_brief: executeReviseWorkBrief,
+  set_repo_targets: executeSetRepoTargets,
   delete_item: executeDeleteItem,
   set_position: executeSetPosition,
   queue_for_tracker: executeQueueForTracker,
@@ -404,6 +474,8 @@ function collectItemIdsForPrefetch(actions: PlanAction[]): Set<string> {
         break;
       case 'reorder':
       case 'update_item':
+      case 'revise_work_brief':
+      case 'set_repo_targets':
       case 'delete_item':
       case 'set_label':
       case 'set_release':
@@ -553,14 +625,11 @@ function collectRefIdsInActions(actions: PlanAction[]): string[] {
       if (action.acceptance_criteria) {
         for (const c of action.acceptance_criteria) consume(c);
       }
-    } else if (action.type === 'update_item') {
-      const u = action.updates;
-      consume(u.title);
-      consume(u.description);
-      consume(u.intent);
-      if (u.acceptance_criteria) {
-        for (const c of u.acceptance_criteria) consume(c);
-      }
+    } else if (action.type === 'revise_work_brief') {
+      consume(action.work_brief.title);
+      consume(action.work_brief.context);
+      consume(action.work_brief.intent);
+      for (const criterion of action.work_brief.acceptance_criteria) consume(criterion);
     }
   }
   return Array.from(ids);
@@ -593,10 +662,12 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
 
   function validateRepoTargets(actions: PlanAction[], projectRepoIds: Set<string>): string | null {
     for (const action of actions) {
-      if (action.type !== 'create_item') continue;
-      const repoIds = [action.primary_repo_id, ...(action.affected_repo_ids ?? [])]
-        .filter((repoId): repoId is string => Boolean(repoId));
-      const invalid = [...new Set(repoIds)].filter((repoId) => !projectRepoIds.has(repoId));
+      if (action.type !== 'create_item' && action.type !== 'set_repo_targets') continue;
+      const repoIds = action.type === 'create_item'
+        ? [action.primary_repo_id, ...(action.affected_repo_ids ?? [])]
+        : [action.repository_scope.primary_repo_id, ...action.repository_scope.affected_repo_ids];
+      const presentRepoIds = repoIds.filter((repoId): repoId is string => Boolean(repoId));
+      const invalid = [...new Set(presentRepoIds)].filter((repoId) => !projectRepoIds.has(repoId));
       if (invalid.length > 0) {
         return `Plan action references repo(s) not connected to this project: ${invalid.join(', ')}`;
       }

@@ -86,15 +86,36 @@ async function resultOutcome(operation: () => Promise<{ success: boolean; error?
 
 function mergePlanActions(current: Extract<ProposedChange, { type: 'plan-actions' }>, incoming: Extract<ProposedChange, { type: 'plan-actions' }>) {
   const merged = [...current.actions];
-  const existingByItemId = new Map<string, number>();
-  merged.forEach((action, index) => { if ('item_id' in action) existingByItemId.set(action.item_id, index); });
-  for (const action of incoming.actions) {
-    if ('item_id' in action && existingByItemId.has(action.item_id)) {
-      merged[existingByItemId.get(action.item_id)!] = action;
-    } else {
-      if ('item_id' in action) existingByItemId.set(action.item_id, merged.length);
-      merged.push(action);
+  const actionIdentity = (action: PlanAction): string | null => {
+    if (!('item_id' in action)) return null;
+    if (
+      action.type === 'revise_work_brief'
+      || action.type === 'set_repo_targets'
+      || action.type === 'update_item'
+    ) {
+      return compoundIdentity(action.type, action.item_id);
     }
+    return compoundIdentity('item', action.item_id);
+  };
+  const existingByIdentity = new Map<string, number>();
+  merged.forEach((action, index) => {
+    const identity = actionIdentity(action);
+    if (identity) existingByIdentity.set(identity, index);
+  });
+
+  for (const action of incoming.actions) {
+    const identity = actionIdentity(action);
+    const existingIndex = identity ? existingByIdentity.get(identity) : undefined;
+    if (existingIndex === undefined) {
+      if (identity) existingByIdentity.set(identity, merged.length);
+      merged.push(action);
+      continue;
+    }
+
+    const existing = merged[existingIndex];
+    merged[existingIndex] = existing.type === 'update_item' && action.type === 'update_item'
+      ? { ...existing, updates: { ...existing.updates, ...action.updates } }
+      : action;
   }
   return { ...current, actions: merged, error: undefined };
 }

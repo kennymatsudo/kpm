@@ -198,14 +198,9 @@ The review session ID is always `toReviewSessionId(implSessionId)` from `shared/
 
 ## Agent Prompt Shape
 
-`buildAgentContext` (`src/main/services/repo/devSessionPrompt.ts`, re-exported from `DevSessionService.ts`; takes an `AgentContextInput` with `item`/`project`/`children`/`parent`) chooses prompt sections based on what the plan item carries:
+`buildAgentContext` (`src/main/services/repo/devSessionPrompt.ts`, re-exported from `DevSessionService.ts`) consumes `workBriefFromPlanItem` and the central execution projection. It renders title, optional `## Intent`, structured `## Acceptance Criteria`, and optional `## Context`, followed by tracker key, children, parent, code refs, and instructions. It does not parse headings from context: a `## Acceptance Criteria` heading inside context remains ordinary context and cannot become the execution contract.
 
-- `## Intent` — rendered when `item.intent` is set.
-- `## Acceptance Criteria` — rendered when `item.acceptance_criteria` has entries; each becomes a `- [ ]` checkbox line.
-- `## Context` / `## Description` — the description block. Rendered as `## Context` when acceptance criteria are present (description is supplementary rationale), `## Description` otherwise. `No description provided.` is used as a final fallback only when neither intent, criteria, nor description exist.
-- `## Instructions` — instructs the agent not to commit. When acceptance criteria are present, the instruction explicitly tells the agent to satisfy every criterion.
-
-When adding new plan-item fields that should flow to the agent, update `buildAgentContext` accordingly.
+A new session stores this execution snapshot in `initial_instructions` and captures the matching Work Brief revision. Play on an existing pending/inactive same-repo session reuses its stored instructions instead of rebuilding from the latest item. Supplemental user text may constrain the resumed turn but does not replace that snapshot.
 
 `DevSessionService.buildPlanRefSection` additionally prepends a `<plan-refs>` block via `formatPlanRefSection` (`src/main/claude/contextRefs.ts`) so any `@plan/<uuid>` tokens referenced by the item resolve to full plan-item context without the agent needing to call a tool.
 

@@ -64,12 +64,18 @@ describe('PlanItemRepository.update (registry-generated slow path)', () => {
     db.close();
   });
 
-  it('writes multiple registry fields in one dynamic UPDATE', () => {
+  it('writes multiple registry fields and increments the Work Brief revision once', () => {
     repo.update('item-1', { title: 'New title', intent: 'New intent', release_tag: 'v1.0' });
     const row = repo.get('item-1');
     expect(row?.title).toBe('New title');
     expect(row?.intent).toBe('New intent');
     expect(row?.release_tag).toBe('v1.0');
+    expect(row?.work_brief_revision).toBe(2);
+  });
+
+  it('does not increment the Work Brief revision for semantically unchanged IPC values', () => {
+    repo.update('item-1', { title: 'Original title', description: null });
+    expect(repo.get('item-1')?.work_brief_revision).toBe(1);
   });
 
   it('JSON-encodes acceptance_criteria on write and round-trips through get()', () => {
@@ -78,12 +84,12 @@ describe('PlanItemRepository.update (registry-generated slow path)', () => {
     expect(row?.acceptance_criteria).toEqual(['Criterion A', 'Criterion B']);
   });
 
-  it('stores an empty acceptance_criteria array as "[]", not NULL (arrays are truthy in JS)', () => {
+  it('stores an empty acceptance_criteria array as SQL NULL', () => {
     repo.update('item-1', { acceptance_criteria: [], title: 'multi-field to hit slow path' });
     const raw = db.prepare('SELECT acceptance_criteria FROM plan_items WHERE id = ?').get('item-1') as {
       acceptance_criteria: string | null;
     };
-    expect(raw.acceptance_criteria).toBe('[]');
+    expect(raw.acceptance_criteria).toBeNull();
   });
 
   it('stores acceptance_criteria as NULL when explicitly set to null', () => {

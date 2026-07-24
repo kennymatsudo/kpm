@@ -7,6 +7,8 @@
 
 import type { AgentEffortLevel, PlanItem, Project } from '../../../shared/types';
 import { DEFAULT_CONTEXT_FILENAME, isPlaceholderContext } from '../../../shared/contextFile';
+import { workBriefFromPlanItem } from '../../../shared/workBrief';
+import { projectWorkBriefToExecution } from '../../workBrief/projections';
 import type { Settings as SDKSettings } from '@anthropic-ai/claude-agent-sdk';
 
 export interface AgentContextInput {
@@ -14,99 +16,6 @@ export interface AgentContextInput {
   project: Project;
   children: PlanItem[];
   parent: PlanItem | null;
-}
-
-type KnownDescriptionSection = 'acceptanceCriteria' | 'outOfScope' | 'dependencies' | 'codeReferences' | 'verification';
-
-interface ParsedDescription {
-  context: string | null;
-  knownSections: Partial<Record<KnownDescriptionSection, string>>;
-}
-
-const DESCRIPTION_SECTION_MAP: Record<string, KnownDescriptionSection> = {
-  'acceptance criteria': 'acceptanceCriteria',
-  'out of scope': 'outOfScope',
-  dependencies: 'dependencies',
-  'code references': 'codeReferences',
-  verification: 'verification',
-};
-
-function normalizeDescriptionHeading(heading: string): string {
-  return heading.trim().replace(/#+$/, '').trim().toLowerCase();
-}
-
-function appendDescriptionBlock(current: string | undefined, block: string): string {
-  return current ? `${current}\n\n${block}` : block;
-}
-
-function parseDescriptionSections(description: string | null): ParsedDescription {
-  if (!description?.trim()) {
-    return { context: null, knownSections: {} };
-  }
-
-  const knownSections: ParsedDescription['knownSections'] = {};
-  const contextBlocks: string[] = [];
-  const lines = description.trim().split(/\r?\n/);
-  let currentKnown: KnownDescriptionSection | null = null;
-  let currentContextHeading: string | null = null;
-  let buffer: string[] = [];
-
-  const flush = () => {
-    const block = buffer.join('\n').trim();
-    buffer = [];
-    if (!block) {
-      currentKnown = null;
-      currentContextHeading = null;
-      return;
-    }
-
-    if (currentKnown) {
-      knownSections[currentKnown] = appendDescriptionBlock(knownSections[currentKnown], block);
-    } else if (currentContextHeading) {
-      contextBlocks.push(`${currentContextHeading}\n${block}`);
-    } else {
-      contextBlocks.push(block);
-    }
-
-    currentKnown = null;
-    currentContextHeading = null;
-  };
-
-  for (const line of lines) {
-    const headingMatch = /^##\s+(.+)\s*$/.exec(line);
-    if (headingMatch) {
-      flush();
-      const normalized = normalizeDescriptionHeading(headingMatch[1]);
-      const known = DESCRIPTION_SECTION_MAP[normalized];
-      if (known) {
-        currentKnown = known;
-        currentContextHeading = null;
-      } else {
-        currentKnown = null;
-        currentContextHeading = line.trim();
-      }
-      continue;
-    }
-
-    buffer.push(line);
-  }
-
-  flush();
-
-  return {
-    context: contextBlocks.length > 0 ? contextBlocks.join('\n\n') : null,
-    knownSections,
-  };
-}
-
-function splitMarkdownListItems(section: string | undefined): string[] {
-  if (!section) return [];
-  return section
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => line.replace(/^[-*]\s+(?:\[[ xX]\]\s*)?/, '').trim())
-    .filter(Boolean);
 }
 
 export type BoardClaudeModel = 'opus' | 'sonnet' | 'haiku';
@@ -139,91 +48,33 @@ export function buildBoardSdkSettings(): SDKSettings {
  */
 export function buildAgentContext(input: AgentContextInput): string {
   const { item, children, parent } = input;
-  const sections: string[] = [];
-  const parsedDescription = parseDescriptionSections(item.description);
-  const parsedCriteria = splitMarkdownListItems(parsedDescription.knownSections.acceptanceCriteria);
-  const acceptanceCriteria = item.acceptance_criteria && item.acceptance_criteria.length > 0
-    ? item.acceptance_criteria
-    : parsedCriteria;
-  const hasCriteria = acceptanceCriteria.length > 0;
+  const workBrief = workBriefFromPlanItem(item);
+  const sections: string[] = [projectWorkBriefToExecution(workBrief)];
 
-  // Task title
-  sections.push(`# Task: ${item.title}`);
-
-  // Tracker reference (just the key for commit messages)
   if (item.external_key) {
     sections.push(`**Ticket:** ${item.external_key}`);
   }
 
-  // Intent — one-sentence commitment. What "done" means at a glance.
-  if (item.intent) {
-    sections.push('## Intent');
-    sections.push(item.intent);
-  }
-
-  // Acceptance criteria — the contract the agent must satisfy.
-  if (hasCriteria) {
-    sections.push('## Acceptance Criteria');
-    sections.push(acceptanceCriteria.map((c) => `- [ ] ${c}`).join('\n'));
-  }
-
-  // Promote execution-critical sections from the prose description so agents treat
-  // them as constraints/verification, not undifferentiated background context.
-  if (parsedDescription.knownSections.outOfScope) {
-    sections.push('## Out of Scope');
-    sections.push(parsedDescription.knownSections.outOfScope);
-  }
-
-  if (parsedDescription.knownSections.dependencies) {
-    sections.push('## Dependencies');
-    sections.push(parsedDescription.knownSections.dependencies);
-  }
-
-  // Description — rationale and context. Demoted to "Context" when structured fields carry the contract.
-  if (parsedDescription.context) {
-    sections.push(hasCriteria ? '## Context' : '## Description');
-    sections.push(parsedDescription.context);
-  } else if (!item.intent && !hasCriteria) {
-    sections.push('## Description');
-    sections.push('No description provided.');
-  }
-
-  // Sub-tasks
   if (children.length > 0) {
     sections.push('## Sub-tasks');
-    sections.push(children.map((c) => `- [ ] ${c.title}`).join('\n'));
+    sections.push(children.map((child) => `- [ ] ${child.title}`).join('\n'));
   }
 
-  // Parent context (only title, not full description - task should be self-contained)
   if (parent) {
     sections.push('## Parent Context');
     sections.push(`This is part of: **${parent.title}**`);
   }
 
-  // Code refs
-  const relevantFiles = [
-    ...(item.code_refs ?? []),
-    ...splitMarkdownListItems(parsedDescription.knownSections.codeReferences),
-  ];
-  if (relevantFiles.length > 0) {
+  if (item.code_refs && item.code_refs.length > 0) {
     sections.push('## Relevant Files');
-    sections.push(Array.from(new Set(relevantFiles)).map((r) => `- ${r}`).join('\n'));
+    sections.push(item.code_refs.map((reference) => `- ${reference}`).join('\n'));
   }
 
-  if (parsedDescription.knownSections.verification) {
-    sections.push('## Verification');
-    sections.push(parsedDescription.knownSections.verification);
-  }
-
-  // Instructions
   sections.push('---');
   sections.push('## Instructions');
-  sections.push('Task input priority: Acceptance Criteria are the completion contract; Intent explains why the task exists; Out of Scope is a hard boundary; Context/Description is background, not extra scope; Additional User Instructions may constrain implementation but should not expand scope unless explicit.');
+  sections.push('Task input priority: Acceptance Criteria are the completion contract; Intent explains the required outcome; Context is background, not extra scope; Additional User Instructions may constrain implementation but must not silently replace the captured contract.');
   sections.push('Execution order: inspect repo instructions and nearby code before editing; identify the smallest existing codepath to modify; implement the narrowest change that satisfies the task; run the most relevant verification available; stop after the task is satisfied and do not opportunistically refactor.');
-  if (parsedDescription.knownSections.verification) {
-    sections.push('Run the Verification command(s) above before finishing unless impossible. If you cannot run them, state why.');
-  }
-  sections.push(hasCriteria
+  sections.push(workBrief.acceptance_criteria.length > 0
     ? 'Implement this task so that every acceptance criterion above is satisfied. In your final response, include a criterion-by-criterion status, exact verification performed, and any assumptions or follow-ups. Do not commit - I will review and commit the changes myself.'
     : 'Implement this task. In your final response, include what changed, exact verification performed, and any assumptions or follow-ups. Do not commit - I will review and commit the changes myself.');
   if (item.external_key) {

@@ -39,8 +39,10 @@ import {
   inferCategoryWithMapping,
 } from '../../trackers/statusTransitions';
 import { createStatusReconciler } from '../../trackers/StatusReconciler';
-import { toExternalMarkdown, EMPTY_EXTERNAL_MARKDOWN, type ExternalDestination, type ExternalMarkdown } from '../../documents/exportBoundary';
+import type { ExternalDestination, ExternalMarkdown } from '../../documents/exportBoundary';
 import { normalizeMarkdown } from '../../documents';
+import { workBriefFromPlanItem } from '../../../shared/workBrief';
+import { projectWorkBriefToTracker, projectWorkBriefToTrackerUpdate } from '../../workBrief/projections';
 import { hasRemoteFieldDrifted } from './trackerReconciliation';
 import { suggestStatusMapping } from '../../../shared/statusMappingSuggest';
 
@@ -85,12 +87,15 @@ function refDestinationForTracker(type: TrackerType): ExternalDestination {
 }
 
 function resolveExportDescription(
-  description: string | null | undefined,
+  planItem: PlanItem,
   planItems: readonly PlanItem[],
   trackerType: TrackerType
 ): ExternalMarkdown | null {
-  if (!description) return null;
-  return toExternalMarkdown(description, planItems, refDestinationForTracker(trackerType));
+  return projectWorkBriefToTracker(
+    workBriefFromPlanItem(planItem),
+    planItems,
+    refDestinationForTracker(trackerType),
+  ).context;
 }
 
 const STATUS_CATEGORY_LABELS: Record<StatusCategory, string> = {
@@ -504,7 +509,7 @@ export function createExportService(deps: ExportServiceDeps) {
         planItem,
         resolvedType,
         resolvedParent,
-        resolvedDescription: resolveExportDescription(planItem.description, allItems, association.tracker_type),
+        resolvedDescription: resolveExportDescription(planItem, allItems, association.tracker_type),
         validationErrors,
       });
     }
@@ -921,16 +926,16 @@ export function createExportService(deps: ExportServiceDeps) {
         // tracker so the description never lands as literal `@plan/<uuid>` text
         // in Jira/Linear. Linked items become tracker-key links; unlinked
         // items degrade to the title.
-        const resolvedDescription = resolveExportDescription(
-          planItem.description,
+        const trackerBrief = projectWorkBriefToTracker(
+          workBriefFromPlanItem(planItem),
           allItems,
-          association.tracker_type
+          refDestinationForTracker(association.tracker_type),
         );
         const created = await client.createIssue({
           projectKey: association.project_key,
           issueTypeId: entry.target_issue_type_id!,
-          summary: planItem.title,
-          description: resolvedDescription ?? undefined,
+          summary: trackerBrief.title,
+          description: trackerBrief.context ?? undefined,
           parentKey,
           customFields,
           issueFilter: association.issue_filter,
@@ -1034,14 +1039,13 @@ export function createExportService(deps: ExportServiceDeps) {
         // Sync boundary: same rule as createIssue above — spec fields are local-only.
         // Do not add `intent`, `acceptance_criteria`, or `source_document_id` to this payload.
         // Plan refs in the description are resolved to native syntax for the tracker.
-        const updateResolvedDescription = resolveExportDescription(
-          planItem.description,
+        const trackerBriefUpdate = projectWorkBriefToTrackerUpdate(
+          workBriefFromPlanItem(planItem),
           allItems,
-          association.tracker_type
+          refDestinationForTracker(association.tracker_type),
         );
         await client.updateIssue(planItem.external_key!, {
-          summary: planItem.title,
-          description: updateResolvedDescription ?? EMPTY_EXTERNAL_MARKDOWN,
+          ...trackerBriefUpdate,
           customFields: overrideFields,
         });
 

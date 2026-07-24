@@ -13,6 +13,7 @@ function makeItem(overrides: Partial<PlanItem> & { id: string }): PlanItem {
     description: null,
     intent: null,
     acceptance_criteria: null,
+    work_brief_revision: 1,
     source_document_id: null,
     label: 'task',
     item_order: 0,
@@ -50,6 +51,28 @@ function createHarness(seed: PlanItem[] = [], connectedRepoIds: string[] = []) {
     if (existing) store.set(id, { ...existing, ...updates });
   });
   const del = vi.fn((id: string) => store.delete(id));
+  const compareAndReviseWorkBrief = vi.fn((id: string, expectedRevision: number, brief: {
+    title: string; context: string | null; intent: string | null; acceptance_criteria: string[];
+  }) => {
+    const existing = store.get(id);
+    if (!existing) return { status: 'not_found' as const };
+    if (existing.work_brief_revision !== expectedRevision) return { status: 'conflict' as const, item: existing };
+    const unchanged = existing.title === brief.title
+      && existing.description === brief.context
+      && existing.intent === brief.intent
+      && JSON.stringify(existing.acceptance_criteria ?? []) === JSON.stringify(brief.acceptance_criteria);
+    if (unchanged) return { status: 'unchanged' as const, item: existing };
+    const item = {
+      ...existing,
+      title: brief.title,
+      description: brief.context,
+      intent: brief.intent,
+      acceptance_criteria: brief.acceptance_criteria.length > 0 ? brief.acceptance_criteria : null,
+      work_brief_revision: existing.work_brief_revision + 1,
+    };
+    store.set(id, item);
+    return { status: 'updated' as const, item };
+  });
   const updatePosition = vi.fn();
   const setRepositoryTargets = vi.fn();
   const batchReparent = vi.fn((updates: { id: string; parentId: string | null }[]) => {
@@ -73,6 +96,7 @@ function createHarness(seed: PlanItem[] = [], connectedRepoIds: string[] = []) {
         .sort((a, b) => a.item_order - b.item_order),
     add,
     setRepositoryTargets,
+    compareAndReviseWorkBrief,
     update,
     delete: del,
     updatePosition,
@@ -100,7 +124,7 @@ function createHarness(seed: PlanItem[] = [], connectedRepoIds: string[] = []) {
     logger: { log: vi.fn(), warn: vi.fn() },
   };
 
-  return { deps, store, spies: { add, setRepositoryTargets, update, del, updatePosition, batchReparent, relationAdd, queueTrackerUpdateIfNeeded } };
+  return { deps, store, spies: { add, setRepositoryTargets, compareAndReviseWorkBrief, update, del, updatePosition, batchReparent, relationAdd, queueTrackerUpdateIfNeeded } };
 }
 
 function run(deps: PlanActionExecutorDeps, actions: PlanAction[]) {
@@ -186,11 +210,63 @@ describe('createPlanActionExecutor', () => {
   it('queues a tracker update when an existing item is updated', () => {
     const { deps, spies } = createHarness([makeItem({ id: 'a', external_key: 'ENG-1' })]);
 
-    const result = run(deps, [{ type: 'update_item', item_id: 'a', updates: { title: 'Renamed' } }]);
+    const result = run(deps, [{ type: 'update_item', item_id: 'a', updates: { status_category: 'in_progress' } }]);
 
     expect(result.success).toBe(true);
-    expect(spies.update).toHaveBeenCalledWith('a', { title: 'Renamed' });
+    expect(spies.update).toHaveBeenCalledWith('a', { status_category: 'in_progress' });
     expect(spies.queueTrackerUpdateIfNeeded).toHaveBeenCalledTimes(1);
+  });
+
+  it('revises the full Work Brief and queues tracker sync only for title/context changes', () => {
+    const { deps, store, spies } = createHarness([makeItem({ id: 'a', title: 'Old', intent: 'Old intent' })]);
+
+    const result = run(deps, [{
+      type: 'revise_work_brief',
+      item_id: 'a',
+      expected_revision: 1,
+      work_brief: {
+        title: 'New',
+        context: 'Context',
+        intent: 'New intent',
+        acceptance_criteria: ['Done'],
+      },
+    }]);
+
+    expect(result.success).toBe(true);
+    expect(store.get('a')).toMatchObject({ title: 'New', description: 'Context', work_brief_revision: 2 });
+    expect(spies.queueTrackerUpdateIfNeeded).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Old' }),
+      { title: 'New', description: 'Context' },
+      'claude',
+    );
+  });
+
+  it('fails the batch on a stale Work Brief revision', () => {
+    const { deps, spies } = createHarness([makeItem({ id: 'a', work_brief_revision: 2 })]);
+
+    const result = run(deps, [{
+      type: 'revise_work_brief', item_id: 'a', expected_revision: 1,
+      work_brief: { title: 'New', context: null, intent: null, acceptance_criteria: [] },
+    }]);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('revision conflict');
+    expect(spies.queueTrackerUpdateIfNeeded).not.toHaveBeenCalled();
+  });
+
+  it('replaces repository scope without tracker sync or brief revision changes', () => {
+    const item = makeItem({ id: 'a', work_brief_revision: 4, primary_repo_id: null, affected_repo_ids: [] });
+    const { deps, spies } = createHarness([item], ['repo-primary', 'repo-affected']);
+
+    const result = run(deps, [{
+      type: 'set_repo_targets', item_id: 'a',
+      repository_scope: { primary_repo_id: 'repo-primary', affected_repo_ids: ['repo-affected'] },
+    }]);
+
+    expect(result.success).toBe(true);
+    expect(spies.setRepositoryTargets).toHaveBeenCalledWith('a', 'repo-primary', ['repo-affected']);
+    expect(spies.queueTrackerUpdateIfNeeded).not.toHaveBeenCalled();
+    expect(item.work_brief_revision).toBe(4);
   });
 
   it('skips (does not throw) a delete of a missing item and still succeeds', () => {
@@ -261,6 +337,33 @@ describe('createPlanActionExecutor', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
     expect(spies.add).not.toHaveBeenCalled();
+  });
+
+  it('rejects unknown plan refs nested in a Work Brief', () => {
+    const { deps, spies } = createHarness([makeItem({ id: 'a' })]);
+
+    const result = run(deps, [{
+      type: 'revise_work_brief', item_id: 'a', expected_revision: 1,
+      work_brief: {
+        title: 'Task', context: null, intent: null,
+        acceptance_criteria: ['Depends on @plan/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+      },
+    }]);
+
+    expect(result.success).toBe(false);
+    expect(spies.compareAndReviseWorkBrief).not.toHaveBeenCalled();
+  });
+
+  it('rejects repository scope targets outside the project', () => {
+    const { deps, spies } = createHarness([makeItem({ id: 'a' })], ['repo-connected']);
+
+    const result = run(deps, [{
+      type: 'set_repo_targets', item_id: 'a',
+      repository_scope: { primary_repo_id: 'repo-other', affected_repo_ids: [] },
+    }]);
+
+    expect(result.success).toBe(false);
+    expect(spies.setRepositoryTargets).not.toHaveBeenCalled();
   });
 
   it('returns a failure (not a throw) when the transaction body throws', () => {

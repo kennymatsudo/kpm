@@ -26,6 +26,7 @@ function rowToPlanItem(row: Record<string, unknown>): PlanItem {
     ...row,
     code_refs: parseCodeRefs(row.code_refs as string | null),
     status: (row.status as 'backlog' | 'planned') || 'planned',
+    work_brief_revision: (row.work_brief_revision as number | null) ?? 1,
     sync_source: (row.sync_source as string) || 'local',
   } as PlanItem;
 }
@@ -271,14 +272,20 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
   ): void {
     const fields: string[] = [];
     const values: unknown[] = [];
+    const workBriefComparisons: string[] = [];
+    const workBriefComparisonValues: unknown[] = [];
 
     if (updates.title !== undefined) {
       fields.push('title = ?');
       values.push(updates.title);
+      workBriefComparisons.push('title IS NOT ?');
+      workBriefComparisonValues.push(updates.title);
     }
     if (updates.description !== undefined) {
       fields.push('description = ?');
       values.push(updates.description);
+      workBriefComparisons.push('description IS NOT ?');
+      workBriefComparisonValues.push(updates.description);
     }
     if (updates.label !== undefined) {
       fields.push('label = ?');
@@ -323,6 +330,10 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
 
     if (fields.length === 0) return;
 
+    if (workBriefComparisons.length > 0) {
+      fields.push(`work_brief_revision = work_brief_revision + CASE WHEN (${workBriefComparisons.join(' OR ')}) THEN 1 ELSE 0 END`);
+      values.push(...workBriefComparisonValues);
+    }
     fields.push('last_synced_at = CURRENT_TIMESTAMP');
     fields.push('updated_at = CURRENT_TIMESTAMP');
     values.push(planItemId);

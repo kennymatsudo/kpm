@@ -74,14 +74,12 @@ export function PlanView({
     executePlanActions,
     updateItemPosition,
     updateItemPositions,
-    updatePlanItem,
   } = usePlanDomainStore(
     useShallow((state) => ({
       planItems: state.planItems,
       executePlanActions: state.executePlanActions,
       updateItemPosition: state.updateItemPosition,
       updateItemPositions: state.updateItemPositions,
-      updatePlanItem: state.updatePlanItem,
     }))
   );
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
@@ -134,7 +132,7 @@ export function PlanView({
     prefetchEditItem,
     handleSaveTask,
     closeEditModal,
-  } = usePlanTaskEdit({ planItemsById, updatePlanItem });
+  } = usePlanTaskEdit({ planItemsById, executePlanActions });
 
   const {
     createItemContext,
@@ -629,6 +627,7 @@ export function PlanView({
         <ErrorBoundary name="TaskEditModal">
           <TaskEditModal
             item={editingItem}
+            repos={repos}
             isOpen={!!editingItem}
             onClose={closeEditModal}
             onSave={handleSaveTask}
@@ -647,6 +646,7 @@ export function PlanView({
             defaultStatus={createItemContext.status}
             canvasPosition={createItemContext.canvasPosition}
             planItems={planItems}
+            repos={repos}
             onSubmit={handleCreateItemSubmit}
           />
         </ErrorBoundary>

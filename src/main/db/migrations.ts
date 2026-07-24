@@ -4131,6 +4131,18 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1112,
+    name: '112_add_work_brief_revisions',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE plan_items ADD COLUMN work_brief_revision INTEGER NOT NULL DEFAULT 1
+          CHECK(work_brief_revision >= 1);
+        ALTER TABLE dev_sessions ADD COLUMN work_brief_revision INTEGER
+          CHECK(work_brief_revision IS NULL OR work_brief_revision >= 1);
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

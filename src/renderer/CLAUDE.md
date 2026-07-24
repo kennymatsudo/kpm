@@ -64,24 +64,20 @@ Don't create abstractions until you have 3+ actual uses of a pattern. Wait until
 - **Theme color tokens are projected in JS, not declared in CSS.** `src/shared/theme.ts` is the single source of palettes + `generateThemeVariables`; `themeBoot.ts` writes the CSS custom properties onto `document.documentElement` synchronously before React mounts, and `ThemeContext` re-applies them on change. `index.css` holds only theme-independent tokens (`--titlebar-height`, `--chat-measure`, etc.), a crash-safety background, and the `@theme` utility aliases — no hardcoded theme hex values. To change a theme color, edit `src/shared/theme.ts` (see the root CLAUDE.md "Change a theme token" recipe).
 - Existing `.btn`, `.btn-primary`, `.dropdown-item` classes for consistent styling
 
-## Plan Item Spec Fields in UI
+## Work Brief and Repository Scope in UI
 
-Spec fields (`intent`, `acceptance_criteria`) surface in one place today:
+`WorkBriefEditor` owns the controlled Intent, Context, and Acceptance Criteria controls. `RepositoryScopeEditor` owns the controlled primary/affected connected-repo controls. The full create modal, task edit modal, and applicable approval details reuse these editors; title stays with each modal so quick create remains title-only.
 
-| Site | Mode | What it shows |
-|------|------|---------------|
-| `components/planning/TaskEditModal.tsx` | **Editable** | "Spec" section between Description and Type/Status: `intent` textarea + `acceptance_criteria` editable checklist with Add/Remove affordances. Always rendered so legacy items can adopt specs. |
-
-**Board `components/board-view/BoardCard.tsx` and canvas `components/planning/PlanCard.tsx` are intentionally NOT wired.** Card faces stay clean; users open the modal to view or edit specs. Surfacing spec fields on canvas cards would also require extending the card box model in `constants/planCardStyles.ts` — see the next section.
+**Board `components/board-view/BoardCard.tsx` and canvas `components/planning/PlanCard.tsx` are intentionally NOT wired.** Card faces stay clean; users open the modal to view or edit the Work Brief and Repository Scope. Surfacing these fields on canvas cards would also require extending the card box model in `constants/planCardStyles.ts` — see the next section.
 
 **`source_document_id` is unwired in the renderer** — the field is on `PlanItem` and is populated by the `modify_plan` Claude tool (`src/main/kpmTools/tools/plan-changes.ts`) as an iteration-doc breadcrumb, but no UI here reads or displays it. Do not surface it without a clear use case; see `src/main/claude/CLAUDE.md` for the write side.
 
 **Conventions:**
-- **Editable section is always rendered in the modal.** The Spec block is how users discover and author specs — hiding it would bury the affordance.
-- **Sanitize on save, not on edit.** Keep the user's in-progress empty rows while typing; trim + drop empties + cap at the Zod limits (`MAX_CRITERIA = 50`, `CRITERION_MAX_CHARS = 1000`, `INTENT_MAX_CHARS = 500`) only when building the save payload. The caps are owned by `PLAN_ITEM_FIELDS` in `src/shared/planItemFields.ts`; `TaskEditModal` mirrors them as local consts.
-- **Save via `onSave` widening, not a side-channel.** `TaskEditModal.onSave` accepts optional `intent` and `acceptance_criteria`; `usePlanTaskEdit.handleSaveTask` passes them through to the existing `updatePlanItem` IPC path. The backing `planItemUpdates` Zod schema already accepts these fields — no service-layer changes needed when extending this pattern.
-- **`status_category` is not edited from `TaskEditModal`.** Column placement is handled by the board (drag-between-columns) and tracker sync — surfacing a Status select in the modal would let users override the tracker silently, which conflicts with treating the tracker as source of truth. Drag on the board if you need to move a card.
-- **New spec fields go through the modal first.** If a new spec-like field is added, wire it into the `TaskEditModal` Spec section before deciding whether it earns card-face surfacing.
+- **Editable sections are always rendered in expanded create and edit modals.** This lets legacy items adopt a complete Work Brief and Repository Scope.
+- **Sanitize on save, not on edit.** Keep in-progress empty criterion rows while typing; trim, drop empties, and cap at the limits owned by `PLAN_ITEM_FIELDS` in `src/shared/planItemFields.ts` when building the save payload.
+- **Work Brief edits are revision guarded.** `usePlanTaskEdit` sends one atomic action batch through `executePlanActions`: `revise_work_brief` for semantic Work Brief changes, `set_repo_targets` for scope changes, and `update_item` for generic operational fields.
+- **`status_category` is not edited from `TaskEditModal`.** Column placement is handled by the board and tracker sync. Drag on the board to move a card.
+- **Execution revisions stay visible.** Detail and start-agent surfaces show “Brief updated” only when both the captured session revision and current Plan Item revision are known and differ. Resuming preserves the captured brief; legacy null revisions show no warning.
 
 ## Plan Card Layout & Height Sync
 
