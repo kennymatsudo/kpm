@@ -18,6 +18,7 @@ import { CODEX_CHAT_MODELS } from '../../../shared/types';
 import { getProviderCapabilities } from '../../../shared/providerCapabilities';
 import type { ChatAttachment, FocusedResource, ChatViewMode } from '../../../shared/types';
 import { findPiProviderOption } from '../../stores/chat/piProviderSelection';
+import { resolveSessionDisplayModel } from '../../stores/chat/sessionModel';
 
 const WORKSPACE_PLACEHOLDERS = [
   'Reply or ask a follow-up…',
@@ -73,11 +74,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     return {
       viewedSessionId: state.viewedSessionId,
       viewedSessionDraftMessage: session?.draftMessage ?? '',
-      viewedSessionModel: session?.provider === 'pi' && session.piProviderModel
-        ? session.piProviderModel
-        : session?.provider === 'codex'
-          ? session.codexModel
-          : session?.model,
+      viewedSessionModel: session ? resolveSessionDisplayModel(session) : undefined,
       viewedSessionProvider: session?.provider ?? state.provider,
       viewedSessionContextWindow: session?.provider === 'pi'
         ? findPiProviderOption(state.piProviders, session.piProviderModel)?.contextWindow

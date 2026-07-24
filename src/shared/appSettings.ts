@@ -1,7 +1,7 @@
+import type { ChatProvider } from './base-types';
+
 export const CHAT_APPROVAL_MODES = ['manual', 'auto_apply'] as const;
 export type ChatApprovalMode = typeof CHAT_APPROVAL_MODES[number];
-export const CHAT_PROVIDERS = ['claude', 'codex', 'pi'] as const;
-export type ChatProvider = typeof CHAT_PROVIDERS[number];
 
 export const DEFAULT_CHAT_APPROVAL_MODE: ChatApprovalMode = 'manual';
 export const DEFAULT_CHAT_PROVIDER: ChatProvider = 'claude';

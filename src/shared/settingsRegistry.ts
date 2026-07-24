@@ -11,18 +11,18 @@
 
 import {
   CODEX_CHAT_MODELS,
+  CHAT_PROVIDERS,
   DEFAULT_CODEX_CHAT_MODEL,
   type ClaudeModel,
   type ChatEffortLevel,
   type CodexChatModel,
+  type ChatProvider,
 } from './types';
 import {
   CHAT_APPROVAL_MODES,
-  CHAT_PROVIDERS,
   DEFAULT_CHAT_APPROVAL_MODE,
   DEFAULT_CHAT_PROVIDER,
   type ChatApprovalMode,
-  type ChatProvider,
 } from './appSettings';
 
 /**

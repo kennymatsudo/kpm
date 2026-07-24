@@ -15,6 +15,9 @@ export type StatusCategory = typeof STATUS_CATEGORIES[number];
 
 export type TrackerType = 'jira' | 'linear';
 
+export const CHAT_PROVIDERS = ['claude', 'codex', 'pi'] as const;
+export type ChatProvider = typeof CHAT_PROVIDERS[number];
+
 // =============================================================================
 // Core Domain Types
 // =============================================================================

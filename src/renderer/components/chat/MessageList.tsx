@@ -14,6 +14,7 @@ import { Tooltip } from '../ui/Tooltip';
 import { AttachmentChip } from './AttachmentChip';
 import { formatModel } from '../../utils/usageFormatters';
 import { groupSegmentsForRender, type SegmentGroup } from './messageGroups';
+import { resolveSessionDisplayModel } from '../../stores/chat/sessionModel';
 
 /** Extract text content from message segments for copy/display */
 function getTextContent(segments: MessageSegment[]): string {
@@ -392,18 +393,6 @@ function formatModelLabel(model: string | undefined): string | null {
   return formatModel(model).toLowerCase();
 }
 
-function getSessionDisplayModel(session: {
-  provider: string;
-  model: string;
-  codexModel?: string;
-  piProviderModel?: string;
-} | null): string | undefined {
-  if (!session) return undefined;
-  if (session.provider === 'pi' && session.piProviderModel) return session.piProviderModel;
-  if (session.provider === 'codex' && session.codexModel) return session.codexModel;
-  return session.model;
-}
-
 const MessageHeader = memo(function MessageHeader({
   isUser,
   timestamp,
@@ -612,7 +601,7 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
         : null;
       return {
         viewedSession: session,
-        model: getSessionDisplayModel(session),
+        model: session ? resolveSessionDisplayModel(session) : undefined,
       };
     })
   );

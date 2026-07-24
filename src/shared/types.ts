@@ -8,6 +8,7 @@ import type {
   Project as ProjectBase,
   PlanItem as PlanItemBase,
   AgentType,
+  ChatProvider,
 } from './base-types';
 import type { PersistedAgentReview } from './agent-types';
 import type { FieldsEditableVia } from './planItemFields';
@@ -17,8 +18,9 @@ export type {
   StatusCategory,
   PlanRelation,
   Group,
+  ChatProvider,
 } from './base-types';
-export { STATUS_CATEGORIES } from './base-types';
+export { STATUS_CATEGORIES, CHAT_PROVIDERS } from './base-types';
 export type { AgentType, AgentSessionState, AgentSessionRole } from './base-types';
 export type {
   CustomTheme,
@@ -32,11 +34,6 @@ export type {
 // =============================================================================
 // Chat Agent Types
 // =============================================================================
-
-/** Main chat backend provider. */
-export type ChatProvider = 'claude' | 'codex' | 'pi';
-
-export const CHAT_PROVIDERS = ['claude', 'codex', 'pi'] as const satisfies readonly ChatProvider[];
 
 /**
  * Best-effort modelId for a configured pi provider whose model catalog is still empty

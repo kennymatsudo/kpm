@@ -1,5 +1,4 @@
-import type { ChatProvider } from './appSettings';
-import { PI_UNRESOLVED_MODEL_ID, type ClaudeModel, type CodexChatModel } from './types';
+import { PI_UNRESOLVED_MODEL_ID, type ClaudeModel, type CodexChatModel, type ChatProvider } from './types';
 
 /**
  * The provider+model the user has chosen in KPM, expressed as an agent-execution
