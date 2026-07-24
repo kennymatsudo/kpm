@@ -73,7 +73,7 @@ function createCustomPromptGenerationService() {
       options: CustomPromptExecutionOptions,
       callbacks: CustomPromptExecutionCallbacks
     ): Promise<void> {
-      const log = (msg: string) => console.log(`[CustomPromptGen] ${msg}`);
+      const log = (msg: string) => { if (getConfig().claude.debug) console.log(`[CustomPromptGen] ${msg}`); };
       const logError = (msg: string) => console.error(`[CustomPromptGen] ${msg}`);
 
       try {

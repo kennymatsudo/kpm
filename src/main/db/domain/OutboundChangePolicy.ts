@@ -1,5 +1,6 @@
 import type { StatusCategory, TrackerAssociationWithScope } from '../../../shared/types';
 import type { IOutboundChangeRepository, ITrackerRepository } from '../interfaces';
+import { getConfig } from '../../config';
 
 type QueueSource = 'user' | 'claude';
 
@@ -68,7 +69,7 @@ export function applyAutoQueue(
     const changedFields = Object.keys(updates).filter(k =>
       ['title', 'description', 'status_category'].includes(k)
     );
-    console.log(`[OutboundChangePolicy] Auto-queued ${item.external_key} for update (changed: ${changedFields.join(', ')})`);
+    if (getConfig().claude.debug) console.log(`[OutboundChangePolicy] Auto-queued ${item.external_key} for update (changed: ${changedFields.join(', ')})`);
     return;
   }
 
@@ -87,7 +88,7 @@ export function applyAutoQueue(
         target_parent_key: null,
         target_status_category: updates.status_category,
       });
-      console.log(`[OutboundChangePolicy] Auto-queued new item for create to Jira (status: ${updates.status_category})`);
+      if (getConfig().claude.debug) console.log(`[OutboundChangePolicy] Auto-queued new item for create to Jira (status: ${updates.status_category})`);
     }
   }
 }

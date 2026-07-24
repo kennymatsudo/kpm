@@ -13,6 +13,15 @@ import type { UpdateEventBus } from '../core/UpdateEventBus';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { repoEvents } from '../../../shared/ipc/repoEvents';
 
+/**
+ * Watcher setup/teardown trace. Silent unless `claude.debug` is on — these fire
+ * per repo on every project load/switch and only report bookkeeping. Actual
+ * branch-change events and watch failures still print.
+ */
+function rwLog(...args: unknown[]): void {
+  if (getConfig().claude.debug) console.log(...args);
+}
+
 // =============================================================================
 // Dependencies
 // =============================================================================
@@ -196,9 +205,12 @@ export function createRepoWatcherService(deps: RepoWatcherServiceDeps) {
 
       const gitHeadPath = path.join(repoPath, '.git', 'HEAD');
 
-      // Check if .git/HEAD exists
+      // No `.git/HEAD` to watch. This is the expected state for a git worktree
+      // (its `.git` is a gitdir-pointer *file*, and its HEAD lives under the main
+      // repo), which is what the effective repo path resolves to during board
+      // execution — so it is not an error worth surfacing at the info level.
       if (!fs.existsSync(gitHeadPath)) {
-        console.log(`[RepoWatcher] Not a git repo, skipping watch: ${repoPath}`);
+        rwLog(`[RepoWatcher] No .git/HEAD, skipping branch watch: ${repoPath}`);
         return;
       }
 
@@ -234,7 +246,7 @@ export function createRepoWatcherService(deps: RepoWatcherServiceDeps) {
         });
 
         watchers.set(repoPath, watcher);
-        console.log(`[RepoWatcher] Watching: ${repoPath} (branch: ${initialBranch})`);
+        rwLog(`[RepoWatcher] Watching: ${repoPath} (branch: ${initialBranch})`);
       } catch (error) {
         console.error(`[RepoWatcher] Failed to watch ${repoPath}:`, error);
       }
@@ -249,7 +261,7 @@ export function createRepoWatcherService(deps: RepoWatcherServiceDeps) {
         watcher.close();
         watchers.delete(repoPath);
         branchCache.delete(repoPath);
-        console.log(`[RepoWatcher] Stopped watching: ${repoPath}`);
+        rwLog(`[RepoWatcher] Stopped watching: ${repoPath}`);
       }
 
       // Clean up any pending debounce timer
@@ -268,7 +280,7 @@ export function createRepoWatcherService(deps: RepoWatcherServiceDeps) {
       for (const repoPath of watchers.keys()) {
         this.unwatchRepo(repoPath);
       }
-      console.log('[RepoWatcher] Stopped all watchers');
+      rwLog('[RepoWatcher] Stopped all watchers');
     },
 
     /**
@@ -314,7 +326,7 @@ export function init(getMainWindow: () => BrowserWindow | null): void {
   _getMainWindow = getMainWindow;
   // Pre-create the service to validate initialization
   getDefaultService();
-  console.log('[RepoWatcher] Initialized');
+  rwLog('[RepoWatcher] Initialized');
 }
 
 /** Get the current git branch for a repository path */

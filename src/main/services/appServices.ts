@@ -334,7 +334,6 @@ export function createAppServices(container: IRepositoryContainer) {
   // Start hook server asynchronously (non-blocking — CLI agents won't work until it's ready)
   void hookServer.start().then(() => {
     agentSessionManager.setHookPort(hookServer.port);
-    console.log(`[AppServices] Hook server ready on port ${hookServer.port}`);
   }).catch((err) => {
     console.error('[AppServices] Failed to start hook server:', err);
   });
@@ -399,7 +398,6 @@ export function createAppServices(container: IRepositoryContainer) {
 
   if (getConfig().reviewPoll.enabled) {
     reviewPollService.start();
-    console.log('[AppServices] Review poll service started');
   }
 
   const appLifecycleService = createAppLifecycleService({

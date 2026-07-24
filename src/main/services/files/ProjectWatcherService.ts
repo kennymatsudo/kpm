@@ -19,6 +19,14 @@ import { containsHiddenFileTreeSegment, getNativeWatcherIgnoreGlobs } from './fi
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { fileExplorerEvents } from '../../../shared/ipc/fileExplorerEvents';
 
+/**
+ * Watcher setup/teardown trace. Silent unless `claude.debug` is on — fires once
+ * per project open/switch and only reports bookkeeping; watch failures still print.
+ */
+function pwLog(...args: unknown[]): void {
+  if (getConfig().claude.debug) console.log(...args);
+}
+
 /** Glob patterns the watcher ignores natively (no event delivery for these). */
 const IGNORE_GLOBS = getNativeWatcherIgnoreGlobs();
 
@@ -150,7 +158,7 @@ export function createProjectWatcherService(deps: ProjectWatcherServiceDeps) {
     }
     pendingChanges.clear();
     if (watchedProjectId) {
-      console.log(`[ProjectWatcher] Stopped watching project: ${watchedProjectId}`);
+      pwLog(`[ProjectWatcher] Stopped watching project: ${watchedProjectId}`);
       watchedProjectId = null;
     }
     if (subscribeOperation) {
@@ -202,7 +210,7 @@ export function createProjectWatcherService(deps: ProjectWatcherServiceDeps) {
 
           subscription = sub;
           watchedProjectId = projectId;
-          console.log(`[ProjectWatcher] Watching: ${projectFolder}`);
+          pwLog(`[ProjectWatcher] Watching: ${projectFolder}`);
           return { success: true };
         } catch (error) {
           console.error(`[ProjectWatcher] Failed to watch ${projectFolder}:`, error);

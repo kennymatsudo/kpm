@@ -9,6 +9,7 @@ import type {
 import { createTypeMappingService } from './TypeMappingService';
 import { resolveOperation } from './OutboundChangePolicy';
 import { diffWords } from 'diff';
+import { getConfig } from '../../config';
 import type {
   OutboundChangeWithPlanItem,
   OutboundChange,
@@ -335,7 +336,7 @@ export function createExportService(deps: ExportServiceDeps) {
         );
         if (syncedCategory === statusCategory) {
           // Status matches what's in Jira - remove from queue
-          console.log(`[ExportService] Removing ${planItem.external_key} from queue - status reverted to synced value (${statusCategory})`);
+          if (getConfig().claude.debug) console.log(`[ExportService] Removing ${planItem.external_key} from queue - status reverted to synced value (${statusCategory})`);
           OutboundChangeRepository.remove(queueEntryId);
           return { removed: true };
         }
@@ -979,7 +980,7 @@ export function createExportService(deps: ExportServiceDeps) {
           last_synced_at: new Date().toISOString(),
           status_category: inferredCategory,
         };
-        console.log('[ExportService] Updating plan item with external_key:', { planItemId: planItem.id, external_key: created.key, external_url: syncUpdate.external_url });
+        if (getConfig().claude.debug) console.log('[ExportService] Updating plan item with external_key:', { planItemId: planItem.id, external_key: created.key, external_url: syncUpdate.external_url });
         PlanItemRepository.update(planItem.id, syncUpdate);
 
         // Create sync snapshot using the actual Jira data (after ADF roundtrip)

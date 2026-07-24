@@ -23,6 +23,9 @@ vi.mock('../../config', () => ({
     generation: {
       prGenerationTimeoutMs: 60_000,
     },
+    claude: {
+      debug: false,
+    },
   }),
 }));
 

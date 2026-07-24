@@ -1,5 +1,6 @@
 import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
+import { getConfig } from '../config';
 import type { ChatSessionScope } from '../../shared/types';
 import {
   executeKpmTool,
@@ -80,8 +81,10 @@ function collectTools() {
   const tools = toProviderToolDefinitions(getKpmToolDefinitions({ scope: 'main' }), 'main');
   cachedTools = tools;
 
-  console.log('[KPM Server] Registered tools:', tools.map((t) => t.name).join(', '));
-  logToolDefinitionFootprint(tools);
+  if (getConfig().claude.debug) {
+    console.log('[KPM Server] Registered tools:', tools.map((t) => t.name).join(', '));
+    logToolDefinitionFootprint(tools);
+  }
   return tools;
 }
 
@@ -91,8 +94,10 @@ function collectFocusTools() {
   const tools = toProviderToolDefinitions(getKpmToolDefinitions({ scope: 'focus_document' }), 'focus_document');
   cachedFocusTools = tools;
 
-  console.log('[KPM Server] Registered focus tools:', tools.map((t) => t.name).join(', '));
-  logToolDefinitionFootprint(tools);
+  if (getConfig().claude.debug) {
+    console.log('[KPM Server] Registered focus tools:', tools.map((t) => t.name).join(', '));
+    logToolDefinitionFootprint(tools);
+  }
   return tools;
 }
 
@@ -106,12 +111,11 @@ export function warmupMcpSdk(deps: KpmToolRuntimeDeps): void {
   cachedTools = null;
   cachedFocusTools = null;
 
-  console.log('[KPM Server] Initializing tools...');
   const startTime = Date.now();
-  collectTools();
-  collectFocusTools();
+  const tools = collectTools();
+  const focusTools = collectFocusTools();
   const elapsed = Date.now() - startTime;
-  console.log(`[KPM Server] Tools initialized in ${elapsed}ms`);
+  console.log(`[KPM Server] ${tools.length} tools ready (${focusTools.length} in focus mode) in ${elapsed}ms`);
 }
 
 export function getKpmServer() {

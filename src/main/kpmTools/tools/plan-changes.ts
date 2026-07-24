@@ -68,8 +68,6 @@ export function createPlanChangeTools(
   onPlanActions: PlanActionsCallback,
   repos: Pick<IRepoRepository, 'getByProject'>,
 ) {
-  console.log('[KPM Tools] Creating modify_plan tool');
-
   return [
     tool(
       'modify_plan',

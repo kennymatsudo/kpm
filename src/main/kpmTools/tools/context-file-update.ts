@@ -56,8 +56,6 @@ export function createContextFileEditTools(
   readContextFile: ReadProjectContextFileFn,
   onContextFileUpdate: ContextFileUpdateCallback
 ) {
-  console.log('[KPM Tools] Creating propose_context_edit tool');
-
   return [
     tool(
       'propose_context_edit',

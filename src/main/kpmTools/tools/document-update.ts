@@ -41,8 +41,6 @@ Multiple files: call ONE AT A TIME, never in parallel. Verify path matches conte
  * @param onDocumentUpdate - Callback to emit proposed update to the UI for approval
  */
 export function createDocumentCreateTools(onDocumentUpdate: DocumentUpdateCallback) {
-  console.log('[KPM Tools] Creating propose_document_create tool');
-
   return [
     tool(
       'propose_document_create',

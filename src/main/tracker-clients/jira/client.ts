@@ -12,8 +12,18 @@ import type {
 } from '../common/types';
 import { TrackerError } from '../common/errors';
 import { jiraAdfCodec } from '../../documents';
+import { getConfig } from '../../config';
 
 const DEFAULT_BATCH_SIZE = 50;
+
+/**
+ * Per-issue create/update trace. Silent unless `claude.debug` is on — it fires
+ * once per issue during a sync and echoes the full field payload; failures still
+ * surface via console.error below.
+ */
+function jiraLog(...args: unknown[]): void {
+  if (getConfig().claude.debug) console.log(...args);
+}
 
 /**
  * Jira option/select custom fields require values wrapped as { id: "<option-id>" }.
@@ -513,9 +523,9 @@ export class JiraClient implements TrackerClient {
       // `issueFilter` and `initialStatusName` are honored by trackers that can
       // create in a chosen project/state (Linear). Jira has no create-time state
       // control, so the queued status is reached by a post-create transition.
-      console.log('[JiraClient] Creating issue with fields:', JSON.stringify(fields, null, 2));
+      jiraLog('[JiraClient] Creating issue with fields:', JSON.stringify(fields, null, 2));
       const result = await this.client.issues.createIssue({ fields });
-      console.log('[JiraClient] Issue created successfully:', result?.key);
+      jiraLog('[JiraClient] Issue created successfully:', result?.key);
       return {
         id: result.id,
         key: result.key,
@@ -551,12 +561,12 @@ export class JiraClient implements TrackerClient {
         Object.assign(fields, params.customFields);
       }
 
-      console.log('[JiraClient] Updating issue:', issueKey, 'with fields:', JSON.stringify(fields, null, 2));
+      jiraLog('[JiraClient] Updating issue:', issueKey, 'with fields:', JSON.stringify(fields, null, 2));
       await this.client.issues.editIssue({
         issueIdOrKey: issueKey,
         fields,
       });
-      console.log('[JiraClient] Issue updated successfully:', issueKey);
+      jiraLog('[JiraClient] Issue updated successfully:', issueKey);
     } catch (error) {
       console.error('[JiraClient] updateIssue failed for', issueKey, '. Full error:', JSON.stringify(error, null, 2));
       throw TrackerError.fromJiraError(error);

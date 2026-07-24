@@ -643,7 +643,7 @@ export function applyPostImplBusinessRules(
 // =============================================================================
 
 export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps) {
-  const log = (msg: string) => console.log(`[ReviewAssessment] ${msg}`);
+  const log = (msg: string) => { if (getConfig().claude.debug) console.log(`[ReviewAssessment] ${msg}`); };
   const logError = (msg: string) => console.error(`[ReviewAssessment] ${msg}`);
 
   const reviewMcpServer = createReviewAssessmentMcpServer({

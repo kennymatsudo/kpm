@@ -4227,15 +4227,12 @@ function backupBeforeMigrations(db: BetterSqliteDatabase): void {
  * Call this after setupSchema() to apply any new migrations.
  */
 export function runMigrations(db: BetterSqliteDatabase): void {
-  console.log('[Migrations] Checking for pending migrations...');
-
   // Ensure the migrations table exists before checking applied migrations
   ensureMigrationsTable(db);
 
   const pending = migrations.filter((migration) => !isMigrationApplied(db, migration.name));
 
   if (pending.length === 0) {
-    console.log('[Migrations] No pending migrations.');
     return;
   }
 

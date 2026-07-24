@@ -6,6 +6,18 @@
  */
 
 import type { BrowserWindow } from 'electron';
+import { getConfig } from '../config';
+
+/**
+ * Session/permission-cache bookkeeping trace. Silent unless `claude.debug` is
+ * on — these fire per session open/close, per tool approval, and once per turn,
+ * and the UI already reflects the underlying state.
+ */
+function cmLog(...args: unknown[]): void {
+  if (getConfig().claude.debug) {
+    console.log(...args);
+  }
+}
 
 /**
  * Session metadata tracked by the client manager.
@@ -98,7 +110,7 @@ class ClaudeClientManager {
       lastActivity: Date.now(),
       model,
     });
-    console.log(`[ClientManager] Stored main session: ${key} (${sessionId})`);
+    cmLog(`[ClientManager] Stored main session: ${key} (${sessionId})`);
   }
 
   /**
@@ -120,7 +132,7 @@ class ClaudeClientManager {
     const session = this.sessions.get(key);
     if (session) {
       this.sessions.delete(key);
-      console.log(`[ClientManager] Disposed session: ${key} (${session.sessionId})`);
+      cmLog(`[ClientManager] Disposed session: ${key} (${session.sessionId})`);
     }
   }
 
@@ -131,7 +143,7 @@ class ClaudeClientManager {
   disposeAll(): void {
     const count = this.sessions.size;
     if (count > 0) {
-      console.log(`[ClientManager] Disposing all ${count} sessions`);
+      cmLog(`[ClientManager] Disposing all ${count} sessions`);
       this.sessions.clear();
     }
 
@@ -166,7 +178,7 @@ class ClaudeClientManager {
     }
 
     if (keysToDispose.length > 0) {
-      console.log(`[ClientManager] Cleaning up ${keysToDispose.length} idle sessions`);
+      cmLog(`[ClientManager] Cleaning up ${keysToDispose.length} idle sessions`);
       keysToDispose.forEach((key) => this.disposeSession(key));
     }
   }
@@ -190,7 +202,7 @@ class ClaudeClientManager {
       this.permissionCache.set(projectId, new Set());
     }
     this.permissionCache.get(projectId)!.add(cacheKey);
-    console.log(`[ClientManager] Cached permission: ${projectId} -> ${cacheKey}`);
+    cmLog(`[ClientManager] Cached permission: ${projectId} -> ${cacheKey}`);
   }
 
   /**
@@ -199,7 +211,7 @@ class ClaudeClientManager {
    */
   revokePermission(projectId: string, cacheKey: string): void {
     this.permissionCache.get(projectId)?.delete(cacheKey);
-    console.log(`[ClientManager] Revoked permission: ${projectId} -> ${cacheKey}`);
+    cmLog(`[ClientManager] Revoked permission: ${projectId} -> ${cacheKey}`);
   }
 
   /**
@@ -208,7 +220,7 @@ class ClaudeClientManager {
    */
   clearPermissionCache(projectId: string): void {
     this.permissionCache.delete(projectId);
-    console.log(`[ClientManager] Cleared permission cache for project ${projectId}`);
+    cmLog(`[ClientManager] Cleared permission cache for project ${projectId}`);
   }
 
   /**
@@ -216,7 +228,7 @@ class ClaudeClientManager {
    */
   clearAllPermissionCaches(): void {
     this.permissionCache.clear();
-    console.log(`[ClientManager] Cleared all permission caches`);
+    cmLog(`[ClientManager] Cleared all permission caches`);
   }
 
   // ============================================
@@ -237,7 +249,7 @@ class ClaudeClientManager {
    */
   setAllowAllRemaining(projectId: string): void {
     this.allowAllRemainingFlags.set(projectId, true);
-    console.log(`[ClientManager] Allow All Remaining enabled for project ${projectId}`);
+    cmLog(`[ClientManager] Allow All Remaining enabled for project ${projectId}`);
   }
 
   /**
@@ -247,7 +259,7 @@ class ClaudeClientManager {
   clearAllowAllRemaining(projectId: string): void {
     if (this.allowAllRemainingFlags.has(projectId)) {
       this.allowAllRemainingFlags.delete(projectId);
-      console.log(`[ClientManager] Allow All Remaining cleared for project ${projectId}`);
+      cmLog(`[ClientManager] Allow All Remaining cleared for project ${projectId}`);
     }
   }
 }

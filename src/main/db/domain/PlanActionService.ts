@@ -13,6 +13,7 @@ import type {
 import type { QueueTrackerUpdateIfNeeded } from './PlanItemService';
 import { queueForTracker } from './OutboundChangePolicy';
 import { assignItemToGroup } from './GroupAssignmentService';
+import { getConfig } from '../../config';
 import { findRefs } from '../../../shared/planRefs';
 import {
   normalizeWorkBriefDraft,
@@ -48,7 +49,9 @@ interface ExecutorContext {
 }
 
 const defaultLogger: Logger = {
-  log: console.log,
+  // Per-batch execution traces are silent unless `claude.debug` is on — these
+  // fire on every plan-action batch during ordinary chat editing.
+  log: (...args: unknown[]) => { if (getConfig().claude.debug) console.log(...args); },
   warn: console.warn,
 };
 

@@ -104,7 +104,9 @@ export interface PollTaskStatus {
 function createDefaultLogger(taskId: string): PollLogger {
   const prefix = `[Poll:${taskId}]`;
   return {
-    info: (msg) => console.log(`${prefix} ${msg}`),
+    // Routine tick/lifecycle info is silent unless `claude.debug` is on — pollers
+    // run for the whole session; warnings and errors still print.
+    info: (msg) => { if (getConfig().claude.debug) console.log(`${prefix} ${msg}`); },
     warn: (msg) => console.warn(`${prefix} ${msg}`),
     error: (msg) => console.error(`${prefix} ${msg}`),
   };

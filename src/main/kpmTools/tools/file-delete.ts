@@ -63,8 +63,6 @@ Use when the user explicitly asks to delete, remove, or discard a file or folder
 - For files inside connected code repositories, this tool does not apply.`;
 
 export function createFileDeleteTools(deps: FileDeleteToolDeps) {
-  console.log('[KPM Tools] Creating delete_project_file tool');
-
   return [
     tool(
       'delete_project_file',

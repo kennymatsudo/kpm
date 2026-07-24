@@ -50,6 +50,17 @@ import { randomUUID } from 'crypto';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { chatEvents } from '../../../shared/ipc/chatEvents';
 
+/**
+ * Internal session-lifecycle race trace. Silent unless `claude.debug` is on —
+ * these describe stale-callback and reconnect-path bookkeeping that fires during
+ * normal interrupt/reconnect/view-switch races and means nothing to a human.
+ */
+function ssLog(...args: unknown[]): void {
+  if (getConfig().claude.debug) {
+    console.log(...args);
+  }
+}
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -1349,7 +1360,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       const onReadyWithoutMcpStatus = (sessionId: string) => {
         const managed = sessions.get(key);
         if (managed?.session !== session) {
-          console.log(`[StreamingSessionService] Ignoring stale onReady for ${key}`);
+          ssLog(`[StreamingSessionService] Ignoring stale onReady for ${key}`);
           return;
         }
         markSessionReady(managed, {
@@ -1395,7 +1406,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             onReady: (sessionId, mcpStatus) => {
               const managed = sessions.get(key);
               if (managed?.session !== session) {
-                console.log(`[StreamingSessionService] Ignoring stale onReady for ${key}`);
+                ssLog(`[StreamingSessionService] Ignoring stale onReady for ${key}`);
                 return;
               }
               // The initial user message is already in-flight during start(),
@@ -1418,7 +1429,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
               if (managed?.session === session) {
                 managed.state = 'error';
               } else {
-                console.log(`[StreamingSessionService] Ignoring stale onMcpError for ${key}`);
+                ssLog(`[StreamingSessionService] Ignoring stale onMcpError for ${key}`);
                 return;
               }
               emitAppEvent(mainWindow?.webContents, chatEvents.sessionError, {
@@ -2034,12 +2045,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           projectId: managed.projectId,
           chatSessionId: managed.chatSessionId,
         });
-        console.log(`[StreamingSessionService] Disconnected session (events sent as fallback): ${key}`);
+        ssLog(`[StreamingSessionService] Disconnected session (events sent as fallback): ${key}`);
       } else {
-        console.log(`[StreamingSessionService] Disconnected session silently for reconnect: ${key}`);
+        ssLog(`[StreamingSessionService] Disconnected session silently for reconnect: ${key}`);
       }
     } else {
-      console.log(`[StreamingSessionService] Disconnected session (events already sent by handleSessionEnd): ${key}`);
+      ssLog(`[StreamingSessionService] Disconnected session (events already sent by handleSessionEnd): ${key}`);
     }
   }
 
@@ -2060,7 +2071,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     if (!managed) return;
     if (managed.session !== sourceSession) {
-      console.log(`[StreamingSessionService] Ignoring stale onMessage for ${key}`);
+      ssLog(`[StreamingSessionService] Ignoring stale onMessage for ${key}`);
       return;
     }
 
@@ -2162,7 +2173,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     if (!managed) return;
     const stateBefore = managed.state;
     if (managed.session !== sourceSession) {
-      console.log(`[StreamingSessionService] Ignoring stale onSessionEnd for ${key} (${reason})`);
+      ssLog(`[StreamingSessionService] Ignoring stale onSessionEnd for ${key} (${reason})`);
       return;
     }
 
@@ -2180,7 +2191,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       (managed.lastTurnFinalized && stateBefore !== 'closing');
 
     if (suppressRendererLifecycle) {
-      console.log(`[StreamingSessionService] Session ended after finalized turn; suppressing redundant lifecycle events: ${key} (${reason})`);
+      ssLog(`[StreamingSessionService] Session ended after finalized turn; suppressing redundant lifecycle events: ${key} (${reason})`);
       return;
     }
 

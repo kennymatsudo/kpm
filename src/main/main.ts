@@ -30,7 +30,6 @@ function fixPath(): void {
   const newPaths = additionalPaths.filter(p => !pathSet.has(p));
   if (newPaths.length > 0) {
     process.env.PATH = [...newPaths, currentPath].join(path.delimiter);
-    console.log('[Main] Extended PATH with:', newPaths.join(', '));
   }
 }
 

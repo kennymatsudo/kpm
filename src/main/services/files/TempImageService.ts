@@ -14,6 +14,15 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { randomBytes } from 'crypto';
+import { getConfig } from '../../config';
+
+/**
+ * Per-file save/delete trace. Silent unless `claude.debug` is on — one line per
+ * attachment/paste/cleanup would otherwise pile up in image-heavy chats.
+ */
+function tiLog(...args: unknown[]): void {
+  if (getConfig().claude.debug) console.log(...args);
+}
 
 /** Directory name for temp images within OS temp directory */
 const TEMP_DIR_NAME = 'kpm-images';
@@ -270,7 +279,7 @@ export function createTempImageService(deps: TempImageServiceDeps) {
         await fs.mkdir(tempDir, { recursive: true, mode: 0o700 });
         await fs.writeFile(filePath, data);
 
-        console.log(`[TempImage] Saved attachment: ${filename} (${data.byteLength} bytes, ${classification.kind})`);
+        tiLog(`[TempImage] Saved attachment: ${filename} (${data.byteLength} bytes, ${classification.kind})`);
 
         return {
           success: true,
@@ -366,7 +375,7 @@ export function createTempImageService(deps: TempImageServiceDeps) {
         // Write image to temp file
         await fs.writeFile(filePath, imageData);
 
-        console.log(`[TempImage] Saved: ${filename} (${imageData.byteLength} bytes)`);
+        tiLog(`[TempImage] Saved: ${filename} (${imageData.byteLength} bytes)`);
 
         return {
           success: true,
@@ -424,13 +433,13 @@ export function createTempImageService(deps: TempImageServiceDeps) {
         }
 
         await fs.unlink(filePath);
-        console.log(`[TempImage] Deleted: ${path.basename(filePath)}`);
+        tiLog(`[TempImage] Deleted: ${path.basename(filePath)}`);
       } catch (error) {
         // Ignore ENOENT (file not found) - file may already be deleted
         if (error instanceof Error && 'code' in error) {
           const nodeError = error as NodeJS.ErrnoException;
           if (nodeError.code === 'ENOENT') {
-            console.log(`[TempImage] File already deleted: ${path.basename(filePath)}`);
+            tiLog(`[TempImage] File already deleted: ${path.basename(filePath)}`);
             return;
           }
         }

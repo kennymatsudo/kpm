@@ -414,7 +414,9 @@ export function createScheduledLoopRunnerService(deps: ScheduledLoopRunnerDeps) 
 
   function start(): void {
     const enabled = deps.scheduledLoops.getAllEnabled();
-    log(`Reconciling ${enabled.length} enabled loop(s) on startup`);
+    if (enabled.length > 0) {
+      log(`Reconciling ${enabled.length} enabled loop(s) on startup`);
+    }
     for (const loop of enabled) syncLoop(loop);
   }
 

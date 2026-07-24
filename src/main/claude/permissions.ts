@@ -16,6 +16,18 @@ import { join, normalize, relative, resolve } from 'path';
 import { isContextFile, CONTEXT_FILE_PENDING_CACHE_KEY } from '../../shared/contextFile';
 import { checkRealpathAccess } from '../services/files/pathSecurity';
 import { clientManager } from './clientManager';
+import { getConfig } from '../config';
+
+/**
+ * Per-tool-call permission tracing. Silent unless `claude.debug` is on — this
+ * runs on every tool the agent invokes, so it would otherwise flood the console
+ * (and echo tool inputs) during any normal chat.
+ */
+function permLog(...args: unknown[]): void {
+  if (getConfig().claude.debug) {
+    console.log(...args);
+  }
+}
 const READ_TOOLS = ['Read', 'Grep', 'Glob'];
 const WRITE_TOOLS = ['Edit', 'Write', 'Bash', 'NotebookEdit'];
 const NETWORK_READ_TOOLS = ['WebFetch', 'WebSearch'];
@@ -234,10 +246,10 @@ export function createPermissionHandler(
   return async (toolName, input, options) => {
     // Debug logging for MCP tools
     if (toolName.startsWith('mcp__kpm__')) {
-      console.log(`[Permissions] ========== MCP TOOL PERMISSION CHECK ==========`);
-      console.log(`[Permissions] Tool: ${toolName}`);
-      console.log(`[Permissions] Input keys: ${Object.keys(input).join(', ')}`);
-      console.log(`[Permissions] Input: ${JSON.stringify(input).slice(0, 500)}`);
+      permLog(`[Permissions] ========== MCP TOOL PERMISSION CHECK ==========`);
+      permLog(`[Permissions] Tool: ${toolName}`);
+      permLog(`[Permissions] Input keys: ${Object.keys(input).join(', ')}`);
+      permLog(`[Permissions] Input: ${JSON.stringify(input).slice(0, 500)}`);
     }
 
     // Rule -1: Chat has no raw git access. Git runs only through the read-only
@@ -245,7 +257,7 @@ export function createPermissionHandler(
     // to parse (so pipes, redirects, and substitution can't smuggle a write).
     // Deny any git in Bash and point the agent at git_read.
     if (toolName === 'Bash' && typeof input.command === 'string' && commandInvokesGit(input.command)) {
-      console.log(`[Permissions] DENIED: git in Bash (use git_read): ${input.command}`);
+      permLog(`[Permissions] DENIED: git in Bash (use git_read): ${input.command}`);
       return {
         behavior: 'deny',
         message:
@@ -257,14 +269,14 @@ export function createPermissionHandler(
 
     // Debug logging for Write/Edit tools targeting files
     if ((toolName === 'Write' || toolName === 'Edit') && targetPath) {
-      console.log(`[Permissions] ${toolName} tool called for: ${targetPath}`);
+      permLog(`[Permissions] ${toolName} tool called for: ${targetPath}`);
     }
 
     // Rule 0: Intercept project context file edits (AGENTS.md / CLAUDE.md) for user approval
     if (targetPath && isContextFilePath(targetPath, context.projectPath)) {
       if (toolName === 'Write' && context.onContextFileEdit && typeof input.content === 'string') {
         const newContent = input.content;
-        console.log(`[Permissions] Context file Write intercepted - capturing for approval (${newContent.length} chars)`);
+        permLog(`[Permissions] Context file Write intercepted - capturing for approval (${newContent.length} chars)`);
         context.onContextFileEdit(context.projectId, newContent);
         return {
           behavior: 'deny',
@@ -330,7 +342,7 @@ export function createPermissionHandler(
 
         const newContent =
           currentContent.slice(0, firstIndex) + newString + currentContent.slice(firstIndex + oldString.length);
-        console.log(`[Permissions] Context file Edit intercepted - capturing for approval (${newContent.length} chars)`);
+        permLog(`[Permissions] Context file Edit intercepted - capturing for approval (${newContent.length} chars)`);
         context.onContextFileEdit(context.projectId, newContent);
         return {
           behavior: 'deny',
@@ -346,7 +358,7 @@ export function createPermissionHandler(
       if (toolName === 'Write' && context.onProjectFileWrite && typeof input.content === 'string') {
         // Compute relative path from project folder
         const relativePath = relative(normalize(context.projectPath), normalize(targetPath));
-        console.log(`[Permissions] Project file Write intercepted - capturing for approval: ${relativePath}`);
+        permLog(`[Permissions] Project file Write intercepted - capturing for approval: ${relativePath}`);
         context.onProjectFileWrite(context.projectId, relativePath, input.content);
         return {
           behavior: 'deny',
@@ -411,7 +423,7 @@ export function createPermissionHandler(
 
         const newContent =
           currentContent.slice(0, firstIndex) + newString + currentContent.slice(firstIndex + oldString.length);
-        console.log(`[Permissions] Project file Edit intercepted - capturing for approval: ${relativePath}`);
+        permLog(`[Permissions] Project file Edit intercepted - capturing for approval: ${relativePath}`);
         context.onProjectFileWrite(context.projectId, relativePath, newContent);
         return {
           behavior: 'deny',
@@ -471,7 +483,7 @@ export function createPermissionHandler(
 
     // Rule 3: KPM MCP tools always allowed (read-only, approval-gated by tool implementation)
     if (toolName.startsWith('mcp__kpm__')) {
-      console.log(`[Permissions] MCP tool auto-allowed: ${toolName}`);
+      permLog(`[Permissions] MCP tool auto-allowed: ${toolName}`);
       return { behavior: 'allow', updatedInput: input };
     }
 
@@ -494,10 +506,10 @@ export function createPermissionHandler(
         return { behavior: 'allow', updatedInput: input };
       }
       if (clientManager.hasAllowAllRemaining(context.projectId)) {
-        console.log(`[Permissions] Auto-allowing external MCP ${toolName} (Allow All Remaining active)`);
+        permLog(`[Permissions] Auto-allowing external MCP ${toolName} (Allow All Remaining active)`);
         return { behavior: 'allow', updatedInput: input };
       }
-      console.log(`[Permissions] External MCP tool requires approval: ${toolName}`);
+      permLog(`[Permissions] External MCP tool requires approval: ${toolName}`);
       const result = await promptUser(toolName, input, options);
       if (result.behavior === 'allow' && 'allowAlways' in result && result.allowAlways) {
         clientManager.cachePermission(context.projectId, mcpCacheKey);
@@ -513,14 +525,14 @@ export function createPermissionHandler(
 
     // Rule 4.5: Check "Allow All Remaining" flag (batch approval for current response)
     if (clientManager.hasAllowAllRemaining(context.projectId)) {
-      console.log(`[Permissions] Auto-allowing ${toolName} (Allow All Remaining active)`);
+      permLog(`[Permissions] Auto-allowing ${toolName} (Allow All Remaining active)`);
       return { behavior: 'allow', updatedInput: input };
     }
 
     // Rule 5: Prompt for writes outside project directory
     if (WRITE_TOOLS.includes(toolName)) {
       if (context.autoApprove) {
-        console.log(`[Permissions] Auto-allowing ${toolName} (autoApprove active)`);
+        permLog(`[Permissions] Auto-allowing ${toolName} (autoApprove active)`);
         return { behavior: 'allow', updatedInput: input };
       }
       const result = await promptUser(toolName, input, options);
@@ -537,10 +549,10 @@ export function createPermissionHandler(
     // user rather than being silently allowed — fail closed. autoApprove /
     // "Allow All Remaining" (Rule 4.5, above) / the session cache still apply.
     if (context.autoApprove) {
-      console.log(`[Permissions] Auto-allowing ${toolName} (autoApprove active)`);
+      permLog(`[Permissions] Auto-allowing ${toolName} (autoApprove active)`);
       return { behavior: 'allow', updatedInput: input };
     }
-    console.log(`[Permissions] Unrecognized tool requires approval: ${toolName}`);
+    permLog(`[Permissions] Unrecognized tool requires approval: ${toolName}`);
     const result = await promptUser(toolName, input, options);
     if (result.behavior === 'allow' && 'allowAlways' in result && result.allowAlways) {
       clientManager.cachePermission(context.projectId, cacheKey);

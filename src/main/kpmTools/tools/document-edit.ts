@@ -80,8 +80,6 @@ export function createDocumentEditTools(
   readFile: ReadProjectFileFn,
   onDocumentUpdate: DocumentUpdateCallback
 ) {
-  console.log('[KPM Tools] Creating propose_document_edit tool');
-
   return [
     tool(
       'propose_document_edit',

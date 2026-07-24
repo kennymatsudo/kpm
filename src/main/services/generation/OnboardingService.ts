@@ -20,6 +20,15 @@ import { runClaudeQuery, type ClaudeQueryUsage } from '../../claude/runClaudeQue
 import type { IProjectRepository } from '../../db/interfaces';
 import { CONTEXT_FILE_NAMES } from '../../../shared/contextFile';
 
+/**
+ * Scan/generation progress trace. Silent unless `claude.debug` is on — the same
+ * progress is already surfaced to the user via `callbacks.onProgress`; errors
+ * still print via console.error.
+ */
+function obLog(...args: unknown[]): void {
+  if (getConfig().claude.debug) console.log(...args);
+}
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -367,16 +376,16 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
     try {
       // Phase 1: Scan repos
       callbacks.onProgress('Starting repository scan...');
-      console.log('[OnboardingService] Starting scan for project:', options.projectId);
+      obLog('[OnboardingService] Starting scan for project:', options.projectId);
 
       const repos = deps.getReposByProject(options.projectId);
-      console.log('[OnboardingService] Found repos:', repos.length, repos.map(r => r.path));
+      obLog('[OnboardingService] Found repos:', repos.length, repos.map(r => r.path));
 
       const scanResults: RepoScanResult[] = [];
 
       for (const repo of repos) {
         const scopedDirs = options.repoDirectories[repo.path] ?? [];
-        console.log('[OnboardingService] Scanning repo:', repo.path, 'scopedDirs:', scopedDirs);
+        obLog('[OnboardingService] Scanning repo:', repo.path, 'scopedDirs:', scopedDirs);
         const result = await scanRepo(repo.path, scopedDirs, callbacks);
         scanResults.push(result);
       }
@@ -397,7 +406,7 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
         options.existingContext,
       );
 
-      console.log('[OnboardingService] Built prompt, length:', userPrompt.length);
+      obLog('[OnboardingService] Built prompt, length:', userPrompt.length);
 
       const sdkOptions: SDKOptions = {
         model: getConfig().generation.deepModel,
@@ -422,7 +431,7 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
         ...getClaudeSdkSpawnOptions(),
       };
 
-      console.log('[OnboardingService] Calling Claude Agent SDK query()...');
+      obLog('[OnboardingService] Calling Claude Agent SDK query()...');
 
       const timeoutMs = deps.getTimeoutMs?.() ?? getConfig().generation.onboardingTimeoutMs;
       const sdkModel = getConfig().generation.deepModel;

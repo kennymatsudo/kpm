@@ -186,7 +186,6 @@ export function createNotificationService(deps: NotificationServiceDeps) {
     start(): void {
       if (unsubscribe) return;
       unsubscribe = deps.bus.onAny(handle);
-      console.log('[NotificationService] Subscribed to update event bus');
     },
 
     stop(): void {

@@ -572,7 +572,7 @@ ${input.commitLog || 'No commit log provided.'}`;
       commitLog: string,
       featureContextPath?: string | null
     ): AsyncResult<{ title: string; body: string }> {
-      const log = (msg: string) => console.log(`[GitHubService:generatePr] ${msg}`);
+      const log = (msg: string) => { if (getConfig().claude.debug) console.log(`[GitHubService:generatePr] ${msg}`); };
       const logError = (msg: string) => console.error(`[GitHubService:generatePr] ${msg}`);
 
       try {
