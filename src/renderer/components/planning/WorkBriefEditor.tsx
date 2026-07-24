@@ -1,5 +1,7 @@
 import type { WorkBriefDraft } from '../../../shared/workBrief';
 import { PLAN_ITEM_FIELDS } from '../../../shared/planItemFields';
+import { useCredentialStore } from '../../stores/tracker/useCredentialStore';
+import { trackerLabelFor } from '../tracker/shared/trackerDisplay';
 
 export type WorkBriefEditorValue = Omit<WorkBriefDraft, 'title'>;
 
@@ -21,6 +23,8 @@ export function WorkBriefEditor({
   disabled = false,
   idPrefix,
 }: WorkBriefEditorProps) {
+  const selectedTrackerType = useCredentialStore((state) => state.selectedTrackerType);
+  const trackerLabel = trackerLabelFor(selectedTrackerType);
   const criteria = value.acceptance_criteria;
 
   const updateCriterion = (index: number, criterion: string) => {
@@ -42,7 +46,7 @@ export function WorkBriefEditor({
           Work Brief
         </h3>
         <p className="mt-1 text-xs leading-relaxed text-text-muted">
-          Context is shared with Jira or Linear. Intent and Acceptance Criteria guide execution.
+          Context is shared with {trackerLabel}. Intent and Acceptance Criteria guide execution.
         </p>
       </div>
 
