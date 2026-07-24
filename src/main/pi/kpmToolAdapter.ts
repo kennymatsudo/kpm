@@ -14,6 +14,7 @@ import {
   type KpmToolDefinition,
 } from '../kpmTools/runtimeRegistry';
 import { KpmToolRuntimeError } from '../kpmTools/runtime';
+import { toKpmToolInputJsonSchema } from '../kpmTools/toolInputSchema';
 import type {
   KpmToolExecutionResult,
   KpmToolImageContentBlock,
@@ -103,6 +104,8 @@ function toPiTool(
   chatSessionId: string | undefined,
   focus: boolean,
 ): PiKpmToolDefinition {
+  const inputSchema = z.object(tool.inputSchema);
+
   return {
     name: tool.name,
     label: tool.name,
@@ -110,12 +113,12 @@ function toPiTool(
     // KPM tool `inputSchema` is a Zod raw shape (the MCP/Codex path converts it
     // via `registerTool`); pi forwards `parameters` to the model provider as-is,
     // so it must be real JSON Schema or the provider rejects the function.
-    parameters: z.toJSONSchema(z.object(tool.inputSchema), { unrepresentable: 'any' }),
+    parameters: toKpmToolInputJsonSchema(tool.inputSchema),
     execute: async (_toolCallId, params) => {
       try {
         const result = await executeKpmTool({
           name: tool.name,
-          args: params,
+          args: inputSchema.parse(params),
           extra: {},
           projectId,
           chatSessionId,

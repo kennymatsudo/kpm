@@ -1,5 +1,4 @@
 import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
-import { z } from 'zod';
 import { getConfig } from '../config';
 import type { ChatSessionScope } from '../../shared/types';
 import {
@@ -13,6 +12,7 @@ import {
   toMcpToolResult,
   type KpmToolDefinition,
 } from './runtime';
+import { toKpmToolInputJsonSchema } from './toolInputSchema';
 
 type ClaudeMcpToolDefinitions = Parameters<typeof createSdkMcpServer>[0]['tools'];
 
@@ -52,7 +52,7 @@ function logToolDefinitionFootprint(tools: NonNullable<ClaudeMcpToolDefinitions>
   const rows = tools.map((t) => {
     let schemaChars = -1;
     try {
-      const jsonSchema = z.toJSONSchema(z.object(t.inputSchema), { unrepresentable: 'any' });
+      const jsonSchema = toKpmToolInputJsonSchema(t.inputSchema);
       schemaChars = JSON.stringify(jsonSchema).length;
     } catch {
       // Leave at -1; the name + description still count toward the footprint.

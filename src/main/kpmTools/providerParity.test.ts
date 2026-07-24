@@ -16,6 +16,7 @@ import {
   registerCodexMcpSession,
   stopCodexMcpServerForTests,
 } from '../codex/KpmCodexMcpServer';
+import { toKpmToolInputJsonSchema } from './toolInputSchema';
 
 const createSdkMcpServerMock = vi.hoisted(() => vi.fn((config: unknown) => config));
 
@@ -39,7 +40,10 @@ const mcpMocks = vi.hoisted(() => {
     return [...tools.entries()].map(([name, tool]) => ({
       name,
       description: tool.config.description ?? '',
-      parameters: z.toJSONSchema(z.object((tool.config.inputSchema ?? {}) as Record<string, unknown>), { unrepresentable: 'any' }),
+      parameters: z.toJSONSchema(
+        z.object((tool.config.inputSchema ?? {}) as Record<string, unknown>),
+        { io: 'input', target: 'draft-7' },
+      ),
     }));
   }
 
@@ -227,7 +231,7 @@ function toolNames(tools: { name: string }[]): string[] {
 }
 
 function jsonSchemaForInputSchema(inputSchema: Record<string, unknown>): unknown {
-  return z.toJSONSchema(z.object(inputSchema), { unrepresentable: 'any' });
+  return toKpmToolInputJsonSchema(inputSchema);
 }
 
 function providerDescriptors(tools: KpmToolDefinition[]): ProviderDescriptor[] {
@@ -590,7 +594,7 @@ describe('KPM provider tool adapter parity', () => {
     });
   });
 
-  it('exposes the same main Chat Session KPM tool contract through Claude, pi, and Codex adapters', async () => {
+  it('exposes JSON-Schema-compatible main Chat Session tool contracts consistently across providers', async () => {
     warmRuntime();
 
     const claudeTools = (getKpmServer() as unknown as CapturedClaudeServer).tools;

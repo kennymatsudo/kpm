@@ -6,6 +6,7 @@ import type { IRepositoryContainer } from '../db/interfaces';
 import { resolveScopedPath } from '../services/files/scopedFs';
 import type { AppServices } from '../services/appServices';
 import { processKpmToolProposalSink } from './proposals';
+import { assertKpmToolInputSchemas } from './toolInputSchema';
 import {
   getCurrentKpmToolProposalSink,
   getCurrentToolExecutionContext,
@@ -69,8 +70,12 @@ const resolvedContextFilename = new Map<string, string>();
 export function warmupKpmToolRuntime(deps: KpmToolRuntimeDeps): void {
   kpmToolRuntimeDeps = deps;
   cachedRuntime = null;
-  // Build once at startup so tool construction failures surface early.
-  getKpmToolRuntime().listToolManifest();
+  const runtime = getKpmToolRuntime();
+  runtime.listToolManifest();
+  assertKpmToolInputSchemas([
+    ...runtime.listTools({ scope: 'main' }),
+    ...runtime.listTools({ scope: 'focus_document' }),
+  ]);
 }
 
 function getKpmToolRuntimeDeps(): KpmToolRuntimeDeps {

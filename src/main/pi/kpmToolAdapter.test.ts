@@ -64,6 +64,18 @@ describe('buildPiKpmTools', () => {
     });
   });
 
+  it('validates and applies input defaults before runtime execution', async () => {
+    getKpmToolDefinitionsMock.mockReturnValue([
+      makeKpmTool({ inputSchema: { args: z.array(z.string()).default([]) } }),
+    ]);
+
+    const { tools } = buildPiKpmTools({ focus: false, projectId: 'project-1' });
+
+    await tools[0].execute('call-1', {}, undefined, undefined, {});
+
+    expect(executeKpmToolMock).toHaveBeenCalledWith(expect.objectContaining({ args: { args: [] } }));
+  });
+
   it('uses the focus tool set when focus is true', () => {
     getFocusKpmToolDefinitionsMock.mockReturnValue([makeKpmTool({ name: 'read_document' })]);
 
@@ -81,7 +93,7 @@ describe('buildPiKpmTools', () => {
 
     const { tools } = buildPiKpmTools({ focus: false, projectId: 'project-1' });
 
-    await expect(tools[0].execute('call-1', {}, undefined, undefined, {})).resolves.toEqual({
+    await expect(tools[0].execute('call-1', { title: 'Example' }, undefined, undefined, {})).resolves.toEqual({
       content: [{ type: 'text', text: '' }],
       details: {},
     });
@@ -96,7 +108,7 @@ describe('buildPiKpmTools', () => {
 
     const { tools } = buildPiKpmTools({ focus: false, projectId: 'project-1' });
 
-    await expect(tools[0].execute('call-1', {}, undefined, undefined, {})).rejects.toThrow('Error: item not found');
+    await expect(tools[0].execute('call-1', { title: 'Example' }, undefined, undefined, {})).rejects.toThrow('Error: item not found');
   });
 
   it('translates typed KPM runtime errors into native pi tool errors with the same message', async () => {
@@ -109,7 +121,7 @@ describe('buildPiKpmTools', () => {
 
     const { tools } = buildPiKpmTools({ focus: false, projectId: 'project-1' });
 
-    await expect(tools[0].execute('call-1', {}, undefined, undefined, {})).rejects.toSatisfy((error: unknown) => (
+    await expect(tools[0].execute('call-1', { title: 'Example' }, undefined, undefined, {})).rejects.toSatisfy((error: unknown) => (
       error instanceof Error
       && !(error instanceof KpmToolRuntimeError)
       && error.message === 'KPM tool "modify_plan" is not available for focus_document chat sessions.'
