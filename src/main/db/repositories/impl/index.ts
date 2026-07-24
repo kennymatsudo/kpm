@@ -29,8 +29,6 @@ export * from './ReviewTaskRepository';
 export * from './AgentReviewRepository';
 export * from './ReviewOwnershipRepository';
 export * from './ReviewSyncStateRepository';
-export * from './SlackChannelLinkRepository';
-export * from './SlackTriageItemRepository';
 export * from './ClaudeUsageRepository';
 export * from './ProjectFileMetadataRepository';
 export * from './ScheduledLoopRepository';

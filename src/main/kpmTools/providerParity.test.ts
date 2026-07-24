@@ -216,7 +216,6 @@ function warmRuntime(options: {
       confluenceLinks: {},
     } as never,
     services: {
-      briefingService: {},
       fileExplorerService: options.fileExplorerService ?? {},
     } as never,
     getMainWindow: () => null,

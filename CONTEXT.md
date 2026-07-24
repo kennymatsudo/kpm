@@ -4,14 +4,14 @@ The ubiquitous language for KPM. Use these terms exactly in code, comments, and 
 
 ## Generation
 
-A **one-shot generation** is a single, non-conversational AI call: a prompt in, text out. Briefing synthesis, onboarding context, PR descriptions, commit messages, PR review assessment, custom prompts, Slack triage classification, and file summaries are generations. They are distinct from **chat** (a steered, multi-turn streaming session) and from **board agent execution** (a worktree-scoped agent that writes code).
+A **one-shot generation** is a single, non-conversational AI call: a prompt in, text out. Onboarding context, PR descriptions, commit messages, PR review assessment, custom prompts, and file summaries are generations. They are distinct from **chat** (a steered, multi-turn streaming session) and from **board agent execution** (a worktree-scoped agent that writes code).
 
 - The **generation seam** is `runGeneration` (`src/main/generation/`). Every genuinely one-shot generation site calls it; call sites pass intent — **purpose**, **tier**, prompt — never provider SDK options.
 - A **generation provider** is a backend that can serve a generation (`claude`, `codex`). Each has a **generation adapter** behind the seam that translates the neutral request into that provider's SDK call and its result back into a neutral `GenerationResult`.
 - A **tier** (`fast` | `deep` | `cheap`) is a quality/cost band; the seam resolves it to a concrete provider model via `getConfig().generation`.
 - A **purpose** names the calling site; it keys usage attribution and per-purpose provider routing.
 
-Tool-using or multi-turn work is **not** a generation even when it feels one-shot: scheduled loops (a headless chat turn) and the Slack tool-reading adapter (a bespoke tool-driven loop) run on the chat/agent path, not the generation seam.
+Tool-using or multi-turn work is **not** a generation even when it feels one-shot: scheduled loops run as headless chat turns on the chat/agent path, not the generation seam.
 
 ## Model selection
 

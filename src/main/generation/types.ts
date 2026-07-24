@@ -7,8 +7,8 @@
  * and dispatches to a provider adapter.
  *
  * Deliberately small. Tool-using / multi-turn work (custom prompt, onboarding,
- * PR review assessment, scheduled loops, the Slack tool-reading adapter) is
- * agentic, not one-shot generation, and belongs on the chat/agent provider
+ * PR review assessment, and scheduled loops) is agentic, not one-shot
+ * generation, and belongs on the chat/agent provider
  * path — not here. Keeping those out is what lets this interface stay a plain
  * prompt→text call with no toolset, structured-output, or reasoning knobs.
  */
@@ -21,10 +21,8 @@ export type GenerationTier = 'fast' | 'deep' | 'cheap';
 
 /** Names the calling site. Keys provider routing and usage attribution. */
 export type GenerationPurpose =
-  | 'briefing'
   | 'pr_description'
   | 'commit_message'
-  | 'slack_triage'
   | 'file_summary';
 
 /** Coarse neutral terminal outcome. Providers map their native reasons in. */

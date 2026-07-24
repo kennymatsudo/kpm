@@ -13,7 +13,6 @@ import type { IDevSessionRepository } from './dev';
 import type { IAppSettingsRepository, ICustomThemeRepository, ITaskPromptTemplateRepository, ICustomPromptRepository, IToolPermissionRepository } from './settings';
 import type { IConfluenceLinkRepository } from './confluence';
 import type { IAgentReviewRepository, IReviewOwnershipRepository, IReviewSyncStateRepository, IReviewTaskRepository } from './review';
-import type { ISlackChannelLinkRepository, ISlackTriageItemRepository } from './slack';
 import type { IClaudeUsageRepository } from './usage';
 import type { IProjectFileMetadataRepository } from './files';
 import type { IScheduledLoopRepository, ILoopRunRepository } from './scheduling';
@@ -48,8 +47,6 @@ export interface IRepositoryContainer {
   agentReviews: IAgentReviewRepository;
   reviewOwnership: IReviewOwnershipRepository;
   reviewSyncState: IReviewSyncStateRepository;
-  slackChannelLinks: ISlackChannelLinkRepository;
-  slackTriageItems: ISlackTriageItemRepository;
   claudeUsage: IClaudeUsageRepository;
   projectFileMetadata: IProjectFileMetadataRepository;
   scheduledLoops: IScheduledLoopRepository;

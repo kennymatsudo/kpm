@@ -5,18 +5,16 @@ import { toast } from '../../stores/toastStore';
 import { SettingsSection, StatusBadge } from './SettingsSection';
 import { TrackerSettings } from './TrackerSettings';
 import { StorybookSettings } from './StorybookSettings';
-import { SlackChannelSettings } from '../slack';
 import {
   BRANCH_NAME_TEMPLATE_VARIABLES,
   previewBranchName,
 } from '../../../shared/branchNaming';
 
-type WorkflowSubTab = 'git' | 'tracker' | 'slack' | 'storybook';
+type WorkflowSubTab = 'git' | 'tracker' | 'storybook';
 
 const SUB_TABS: { id: WorkflowSubTab; label: string; requiresProject?: boolean }[] = [
   { id: 'tracker', label: 'Tracker', requiresProject: true },
   { id: 'git', label: 'Git' },
-  { id: 'slack', label: 'Slack', requiresProject: true },
   { id: 'storybook', label: 'Storybook', requiresProject: true },
 ];
 
@@ -63,9 +61,6 @@ export function WorkflowSettings({ currentProjectId }: Props) {
         {activeSubTab === 'git' && <GitSubTab />}
         {activeSubTab === 'tracker' && (
           currentProjectId ? <TrackerSettings currentProjectId={currentProjectId} /> : <ProjectGatedMessage />
-        )}
-        {activeSubTab === 'slack' && (
-          currentProjectId ? <SlackChannelSettings projectId={currentProjectId} /> : <ProjectGatedMessage />
         )}
         {activeSubTab === 'storybook' && (
           currentProjectId ? <StorybookSettings currentProjectId={currentProjectId} /> : <ProjectGatedMessage />

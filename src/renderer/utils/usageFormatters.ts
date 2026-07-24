@@ -28,15 +28,12 @@ export function formatTokensFull(n: number): string {
 const SOURCE_LABELS: Record<string, string> = {
   chat: 'Chat',
   board_playbook: 'Board · Playbook',
-  briefing: 'Briefing',
   onboarding: 'Onboarding',
   pr_description: 'PR description',
   commit_message: 'Commit message',
   review_assessment: 'Review assessment',
   review_assessment_post_impl: 'Review reply',
   custom_prompt: 'Custom prompt',
-  slack_triage: 'Slack triage',
-  slack_triage_adapter: 'Slack triage (adapter)',
 };
 
 export function formatSource(source: string): string {

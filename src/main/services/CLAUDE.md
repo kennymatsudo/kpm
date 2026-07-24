@@ -27,7 +27,7 @@ Plan items, projects, attachments, tracker connections, and groups—the domain 
 - `SettingsService` — App-level settings (Anthropic auth key presence, misc app_settings reads/writes)
 - `PermissionService` — Loads persisted tool permissions into the in-memory client cache on project open
 - `PermissionPromptService` — Bridges a pending tool-permission request to the renderer and back (prompt/resolve/timeout)
-- `ClaudeUsageService` — Centralized recording of Claude SDK token/cost usage across every call site (chat, board agents, briefing, PR description, commit message, review assessment, custom prompt generation, onboarding, Slack triage) into `claude_usage_events` and the rolled-up `projects.session_*_tokens` columns
+- `ClaudeUsageService` — Centralized recording of Claude SDK token/cost usage across every call site (chat, board agents, PR description, commit message, review assessment, custom prompt generation, onboarding) into `claude_usage_events` and the rolled-up `projects.session_*_tokens` columns
 - `ArtifactService` — List/read files written by Claude to a project's `outputs/` folder
 - `CustomPromptService` / `CustomPromptGenerationService` — Command+K custom prompt CRUD and execution (the configured deep model, defaults to Sonnet, with extended thinking and access to KPM MCP tools; output saved to `outputs/`)
 - `TaskPromptTemplateService` — CRUD for reusable task prompt templates
@@ -37,11 +37,9 @@ Plan items, projects, attachments, tracker connections, and groups—the domain 
 - `AppLifecycleService` — App startup/shutdown coordination
 - `NotificationService` — System notifications via Electron
 - `UpdateEventBus` — Cross-service update broadcast helper
-- `BriefingService` — Two-stage project briefing pipeline: Stage 1 gathers SQL context and synthesizes chat history with `fastModel`; Stage 2 produces the final briefing with `deepModel` (both default to sonnet; configured via `getConfig().generation`)
 - `TrackerService` — Tracker credential management, connection/scope/association CRUD, Jira API queries (issue search, labels, components, statuses, custom fields), import preview generation, and sync coordination. Wraps `TrackerClientService` + domain `ImportService`/`SyncService`.
 - `GroupService` — `assignItem`, which delegates to `GroupAssignmentService` for the shared assignment rule (project match, clears manual position). Plain CRUD (`list`, `get`, `create`, `update`, `delete`, `updatePosition`, `updateSize`) goes straight from the IPC handler to `IGroupRepository`.
 - `ContextFileService` — `readProjectContextFile` (shared by three call sites: the `contextFile.read` IPC handler, `ChatRuntimeService`, and `DevSessionService.buildAgentContext` via `appServices.ts` wiring) and `buildContextPrefix(projectId, contextPaths)`, which wraps attached context files in `<context-file>` blocks for prepending to agent prompts. Everything else it once forwarded to `FileWatchService` (list/read/write/delete/import a context file, write the project context file, read an arbitrary document file) now goes straight from `ipc/handlers/files.ts` or `ChatRuntimeService` to `FileWatchService` (`services/files/`) — no pass-through methods.
-- `slackTriageAdapter.ts` — Pure composition helper (no state). Owns Slack MCP block/JSON parsing, the Claude SDK adapter session, and plan-item mutation callbacks. `appServices.ts` calls `createSlackTriageAdapter()` and passes the returned deps straight into `createSlackTriageService()` — keeps `appServices.ts` focused on wiring.
 
 ### Repo Services (`services/repo/`)
 
@@ -84,7 +82,7 @@ Terminal/PTY and Claude session management.
 
 ### One-shot generation seam (`src/main/generation/`)
 
-`runGeneration({ purpose, tier, prompt, systemPrompt?, maxTurns?, timeoutMs?, onText? })` is the single seam every genuinely one-shot generation site calls (file summary, briefing, commit message, PR description, Slack triage classification). It resolves `(purpose, tier)` to a provider + model via `getConfig().generation`, applies the pinned invariants, records usage keyed by `(purpose, provider)`, and dispatches to a provider adapter (`claude`, `codex`). Call sites pass intent, not provider SDK options — do **not** hand-build `sdkOptions` and call `runClaudeQuery` from a new generation site; add a `runGeneration` call. Default routing is Claude for every purpose; flip one to Codex via `generation.providerByPurpose`. See [`CONTEXT.md`](../../../CONTEXT.md) for the domain terms. Tool-using / multi-turn work (custom prompt, onboarding, review assessment, scheduled loops, the Slack tool-reading adapter) is agentic, not one-shot generation, and deliberately stays off this seam.
+`runGeneration({ purpose, tier, prompt, systemPrompt?, maxTurns?, timeoutMs?, onText? })` is the single seam every genuinely one-shot generation site calls (file summary, commit message, PR description). It resolves `(purpose, tier)` to a provider + model via `getConfig().generation`, applies the pinned invariants, records usage keyed by `(purpose, provider)`, and dispatches to a provider adapter (`claude`, `codex`). Call sites pass intent, not provider SDK options — do **not** hand-build `sdkOptions` and call `runClaudeQuery` from a new generation site; add a `runGeneration` call. Default routing is Claude for every purpose; flip one to Codex via `generation.providerByPurpose`. See [`CONTEXT.md`](../../../CONTEXT.md) for the domain terms. Tool-using / multi-turn work (custom prompt, onboarding, review assessment, scheduled loops) is agentic, not one-shot generation, and deliberately stays off this seam.
 
 ### Generation Services (`services/generation/`)
 

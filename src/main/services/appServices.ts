@@ -48,15 +48,8 @@ import { createTerminalService } from './streaming/TerminalService';
 // Prompt override service
 import { createPromptOverrideService } from './core/PromptOverrideService';
 
-// Briefing service
-import { createBriefingService } from './core/BriefingService';
-
 // MCP discovery
 import { createMcpDiscoveryService } from './core/McpDiscoveryService';
-
-// Slack triage
-import { createSlackTriageService } from './core/SlackTriageService';
-import { createSlackTriageAdapter } from './core/slackTriageAdapter';
 
 // Claude usage tracking
 import { createClaudeUsageService, type UsageSource } from './core/ClaudeUsageService';
@@ -64,10 +57,8 @@ import { configureGeneration, type GenerationPurpose } from '../generation';
 
 /** Maps a generation purpose to the usage-ledger source it records under. */
 const GENERATION_PURPOSE_TO_USAGE_SOURCE: Record<GenerationPurpose, UsageSource> = {
-  briefing: 'briefing',
   pr_description: 'pr_description',
   commit_message: 'commit_message',
-  slack_triage: 'slack_triage',
   file_summary: 'file-summary',
 };
 
@@ -148,7 +139,7 @@ export function createAppServices(container: IRepositoryContainer) {
 
   // Centralized Claude usage tracking — every Claude SDK call site funnels
   // tokens + cost through this service. Created early so downstream services
-  // (chat runtime, board agents, briefing, etc.) can record into it.
+  // (chat runtime, board agents, etc.) can record into it.
   const claudeUsageService = createClaudeUsageService({
     claudeUsage: container.claudeUsage,
     projects: container.projects,
@@ -425,17 +416,6 @@ export function createAppServices(container: IRepositoryContainer) {
     disposeClaudeClients: () => clientManager.disposeAll(),
   });
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Briefing Service
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  const briefingService = createBriefingService({
-    getDatabase,
-    getPromptContent,
-    fileExplorerService,
-    projects: container.projects,
-  });
-
   const {
     onboardingService,
     artifactService,
@@ -497,33 +477,6 @@ export function createAppServices(container: IRepositoryContainer) {
 
   scheduledLoopRunnerService.start();
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Slack Triage Service
-  // ─────────────────────────────────────────────────────────────────────────
-
-  const slackAdapter = createSlackTriageAdapter({
-    projects: container.projects,
-    planItems: container.planItems,
-    mcpDiscoveryService,
-    queueTrackerUpdate,
-    recordUsage: ({ projectId, source, model, usage, totalCostUsd }) => {
-      claudeUsageService.recordUsage({ projectId, source, model, usage, totalCostUsd });
-    },
-  });
-
-  const slackTriageService = createSlackTriageService({
-    slackChannelLinks: container.slackChannelLinks,
-    slackTriageItems: container.slackTriageItems,
-    planItems: container.planItems,
-    resolveSlackChannel: slackAdapter.resolveSlackChannel,
-    getSlackAvailability: slackAdapter.getSlackAvailability,
-    readSlackChannel: slackAdapter.readSlackChannel,
-    readSlackThread: slackAdapter.readSlackThread,
-    sendSlackMessage: slackAdapter.sendSlackMessage,
-    createTaskFromTriage: slackAdapter.createTaskFromTriage,
-    applyDocumentUpdate: slackAdapter.applyDocumentUpdate,
-  });
-
   // ─────────────────────────────────────────────────────────────────────────────
   // Return All Services
   // ─────────────────────────────────────────────────────────────────────────────
@@ -577,14 +530,8 @@ export function createAppServices(container: IRepositoryContainer) {
     // Prompt overrides
     promptOverrideService,
 
-    // Briefing
-    briefingService,
-
     // Confluence
     confluenceSyncService,
-
-    // Slack
-    slackTriageService,
 
     // Claude usage tracking
     claudeUsageService,

@@ -27,8 +27,8 @@ export function resolveOperation(item: { external_key: string | null }): 'create
 }
 
 /**
- * Auto-queue path: fires when a plan-item field changes (IPC edit, `update_item`
- * plan action, Slack triage). Linked items always queue an update. New items only
+ * Auto-queue path: fires when a plan-item field changes (IPC edit or `update_item`
+ * plan action). Linked items always queue an update. New items only
  * auto-queue for create when the project has exactly one tracker association —
  * with more than one, the user must pick via the right-click menu.
  */

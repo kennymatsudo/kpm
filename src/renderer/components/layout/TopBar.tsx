@@ -2,7 +2,6 @@ import { memo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
   useProjectDomainStore,
-  useBriefingStore,
   useCredentialStore,
   useExportStore,
   useSyncStore,
@@ -17,7 +16,6 @@ import type { ViewMode } from '../planning/ViewSwitcher';
 import type { StatusCategory, TrackerAssociationWithScope, TrackerCredentialInfo, TrackerType } from '../../../shared/types';
 import { TopBarPlanningControls } from './TopBarPlanningControls';
 import { TopBarProjectSection } from './TopBarProjectSection';
-import { SlackTriageBadge, SlackTriagePanel } from '../slack';
 import { CustomPromptTaskBadge } from './CustomPromptTaskBadge';
 import { BackgroundTaskBadge } from '../background-tasks';
 import { NotificationBadge } from '../notifications';
@@ -210,24 +208,6 @@ export function TopBar({
 
               {/* Action buttons - independent toggles, no shared container */}
               <div className="flex items-center gap-1">
-                {/* Briefing button - read-only context, small icon */}
-                <Tooltip content="Project Briefing" side="bottom">
-                  <button
-                    onClick={() => {
-                      useBriefingStore.getState().openModal();
-                    }}
-                    className="p-1.5 text-text-muted hover:text-accent hover:bg-accent/10 rounded-md transition-colors"
-                    aria-label="Project briefing"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                    </svg>
-                  </button>
-                </Tooltip>
-
-                {/* Slack triage button - conditional, small icon */}
-                <SlackTriageBadge projectId={currentProjectId!} />
-
                 {/* Tracker sync - mutating state with queue, labeled button */}
                 <Tooltip
                   content={
@@ -327,11 +307,6 @@ export function TopBar({
           action={{ label: 'Delete', variant: 'danger', onClick: handleConfirmDelete }}
           onCancel={() => setShowDeleteConfirm(false)}
         />
-      )}
-
-      {/* Slack triage panel */}
-      {currentProjectId && (
-        <SlackTriagePanel projectId={currentProjectId} />
       )}
 
       <TopBarTrackerOverlays

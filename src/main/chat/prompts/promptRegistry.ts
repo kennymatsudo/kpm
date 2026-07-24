@@ -136,23 +136,6 @@ Never include: conventional-commit prefixes (\`feat:\`, \`fix:\`, etc.), co-auth
 
 Return ONLY the commit message — no preamble, no code fences.`,
   },
-  {
-    key: 'generation.briefing_instructions',
-    name: 'Briefing Instructions',
-    description: 'Controls how the "What should I do next?" briefing is written.',
-    category: 'generation',
-    defaultContent: `Produce a concise, prioritized briefing that helps a developer decide what to focus on next.
-
-Priority ordering rules:
-1. User commitments from chat ("I'll do X") are highest priority
-2. Blocked items that the user can unblock
-3. Stale in-progress work (hasn't been touched in 7+ days)
-4. Items ready to start (all dependencies met)
-5. Idle dev sessions that need cleanup or resuming
-
-Never use emojis, colored circles, or status indicators. Use plain markdown only.
-Keep it under 500 words. Be specific — reference actual item titles, not generic advice.`,
-  },
 ];
 
 // =============================================================================

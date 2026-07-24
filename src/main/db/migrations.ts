@@ -4143,6 +4143,23 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1113,
+    name: '113_drop_slack_triage_tables',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        DROP TABLE IF EXISTS slack_triage_items;
+        DROP TABLE IF EXISTS slack_channel_links;
+      `);
+    },
+  },
+  {
+    id: 1114,
+    name: '114_drop_project_briefings',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`DROP TABLE IF EXISTS project_briefings;`);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

@@ -15,7 +15,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
-import type { DiscoveredPlugin, DiscoveredMcpServer, McpServerSource, UserMcpServer } from '../../../shared/types';
+import type { DiscoveredPlugin, DiscoveredMcpServer, UserMcpServer } from '../../../shared/types';
 import type { IAppSettingsRepository } from '../../db/interfaces';
 import { success, failure, type ServiceResult } from '../result';
 
@@ -205,27 +205,6 @@ function findClaudeInPath(): string | null {
   return null;
 }
 
-function isSlackIdentifier(value: string | undefined | null): boolean {
-  return typeof value === 'string' && value.toLowerCase().includes('slack');
-}
-
-function hasSlackUrl(config: Record<string, unknown> | undefined): boolean {
-  if (!config) return false;
-  const url = config.url;
-  return typeof url === 'string' && url.toLowerCase().includes('slack');
-}
-
-function isEnabledInKpm(preferences: Record<string, boolean>, key: string): boolean {
-  return preferences[key] === true;
-}
-
-export interface SlackMcpAvailability {
-  available: boolean;
-  source: McpServerSource | null;
-  serverName: string | null;
-  reason: string | null;
-}
-
 // =============================================================================
 // Types
 // =============================================================================
@@ -360,97 +339,6 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
       } catch {
         return success([]);
       }
-    },
-
-    /**
-     * Detect whether Slack MCP is available from the user's Claude environment.
-     * This is used to gate Slack-specific features in KPM.
-     */
-    async getSlackAvailability(): Promise<ServiceResult<SlackMcpAvailability>> {
-      const prefsResult = this.getPreferences();
-      if (!prefsResult.ok) return failure(prefsResult.error);
-      const prefs = prefsResult.data;
-
-      const pluginsResult = this.discoverPlugins();
-      if (!pluginsResult.ok) return failure(pluginsResult.error);
-
-      const slackPlugins = pluginsResult.data.filter((plugin) =>
-        plugin.enabledInClaudeCode
-        && plugin.hasMcpServer
-        && (
-          isSlackIdentifier(plugin.name) ||
-          plugin.serverNames.some((serverName) => isSlackIdentifier(serverName))
-        )
-      );
-      const enabledSlackPlugin = slackPlugins.find((plugin) => isEnabledInKpm(prefs, plugin.name));
-      if (enabledSlackPlugin) {
-        return success({
-          available: true,
-          source: 'plugin',
-          serverName: enabledSlackPlugin.serverNames.find((serverName) => isSlackIdentifier(serverName)) ?? enabledSlackPlugin.name,
-          reason: null,
-        });
-      }
-
-      const userServersResult = this.discoverUserServers();
-      if (!userServersResult.ok) return failure(userServersResult.error);
-
-      const slackUserServers = userServersResult.data.filter((server) =>
-        isSlackIdentifier(server.name) || hasSlackUrl(server.config)
-      );
-      const enabledSlackUserServer = slackUserServers.find((server) => isEnabledInKpm(prefs, `user:${server.name}`));
-      if (enabledSlackUserServer) {
-        return success({
-          available: true,
-          source: 'user',
-          serverName: enabledSlackUserServer.name,
-          reason: null,
-        });
-      }
-
-      const managedServersResult = await this.getManagedServers();
-      if (!managedServersResult.ok) return failure(managedServersResult.error);
-
-      const slackManagedServer = managedServersResult.data.find((server) => isSlackIdentifier(server.name));
-      if (slackManagedServer) {
-        const available = slackManagedServer.status === 'connected';
-        const disabledInKpm = prefs[`managed:${slackManagedServer.name}`] === false;
-        return success({
-          available: available && !disabledInKpm,
-          source: 'claude-ai',
-          serverName: slackManagedServer.name,
-          reason: disabledInKpm
-            ? 'Slack MCP is connected in Claude but disabled in KPM settings'
-            : available
-              ? null
-              : `Slack MCP is detected but currently ${slackManagedServer.status}`,
-        });
-      }
-
-      if (slackPlugins.length > 0) {
-        return success({
-          available: false,
-          source: 'plugin',
-          serverName: slackPlugins[0].serverNames.find((serverName) => isSlackIdentifier(serverName)) ?? slackPlugins[0].name,
-          reason: 'Slack MCP plugin is enabled in Claude Code but not enabled in KPM settings',
-        });
-      }
-
-      if (slackUserServers.length > 0) {
-        return success({
-          available: false,
-          source: 'user',
-          serverName: slackUserServers[0].name,
-          reason: 'Slack MCP server is configured in Claude but not enabled in KPM settings',
-        });
-      }
-
-      return success({
-        available: false,
-        source: null,
-        serverName: null,
-        reason: 'Slack MCP not detected in the user Claude environment',
-      });
     },
 
     /**

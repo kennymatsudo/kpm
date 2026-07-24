@@ -17,14 +17,12 @@
 
 import { toNestedChannels } from './ipc/endpoints';
 import { toNestedEventChannels } from './ipc/appEvents';
-import { briefingEvents } from './ipc/briefingEvents';
 import { terminalEvents } from './ipc/terminalEvents';
 import { planEndpoints } from './ipc/planEndpoints';
 import { groupEndpoints } from './ipc/groupEndpoints';
 import { exportEndpoints } from './ipc/exportEndpoints';
 import { confluenceEndpoints } from './ipc/confluenceEndpoints';
 import { scheduledLoopEndpoints } from './ipc/scheduledLoopEndpoints';
-import { slackEndpoints } from './ipc/slackEndpoints';
 import { trackerEndpoints } from './ipc/trackerEndpoints';
 import { fileExplorerEndpoints } from './ipc/fileExplorerEndpoints';
 import { repoFilesEndpoints } from './ipc/repoFilesEndpoints';
@@ -34,7 +32,6 @@ import { artifactEndpoints } from './ipc/artifactEndpoints';
 import { contextEndpoints } from './ipc/contextEndpoints';
 import { searchEndpoints } from './ipc/searchEndpoints';
 import { mcpServersEndpoints } from './ipc/mcpServersEndpoints';
-import { briefingEndpoints } from './ipc/briefingEndpoints';
 import { usageEndpoints } from './ipc/usageEndpoints';
 import { chatEndpoints } from './ipc/chatEndpoints';
 import { terminalEndpoints } from './ipc/terminalEndpoints';
@@ -61,8 +58,8 @@ import { testingEndpoints } from './ipc/testingEndpoints';
 import { shellEndpoints } from './ipc/shellEndpoints';
 
 /**
- * Plan, group, export, confluence, scheduled-loop, and slack channels are
- * similarly derived from their own endpoint registries in `shared/ipc/`.
+ * Plan, group, export, confluence, and scheduled-loop channels are similarly
+ * derived from their own endpoint registries in `shared/ipc/`.
  */
 const planChannels = toNestedChannels(planEndpoints) as {
   listItems: string;
@@ -132,22 +129,6 @@ const scheduledLoopChannels = toNestedChannels(scheduledLoopEndpoints) as {
   delete: string;
   runNow: string;
   history: string;
-};
-
-const slackChannels = toNestedChannels(slackEndpoints) as {
-  availability: { get: string };
-  links: { list: string; create: string; delete: string };
-  triage: {
-    trigger: string;
-    getPending: string;
-    getAll: string;
-    countPending: string;
-    approve: string;
-    edit: string;
-    dismiss: string;
-    restore: string;
-    execute: string;
-  };
 };
 
 /**
@@ -262,11 +243,6 @@ const mcpServersChannels = toNestedChannels(mcpServersEndpoints) as {
   listAvailable: string;
   getPreferences: string;
   setEnabled: string;
-};
-
-const briefingChannels = toNestedChannels(briefingEndpoints) as {
-  generate: string;
-  get: string;
 };
 
 const usageChannels = toNestedChannels(usageEndpoints) as {
@@ -659,21 +635,6 @@ export const IPC_CHANNELS = {
   // Confluence Document Sync
   // ===========================================================================
   confluence: confluenceChannels,
-
-  // ===========================================================================
-  // Slack Triage
-  // ===========================================================================
-  slack: slackChannels,
-
-  // ===========================================================================
-  // Briefing
-  // ===========================================================================
-  briefing: {
-    ...briefingChannels,
-    // Streaming event (`sender.send` / `ipcRenderer.on`), not an invoke
-    // endpoint — derived from `briefingEvents` (`shared/ipc/briefingEvents.ts`).
-    ...(toNestedEventChannels(briefingEvents) as { chunk: string }),
-  },
 
   // ===========================================================================
   // MCP Servers

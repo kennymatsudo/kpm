@@ -1,1 +1,0 @@
-export { BriefingModal } from './BriefingModal';

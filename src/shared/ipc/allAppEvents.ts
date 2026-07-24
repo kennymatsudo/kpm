@@ -15,7 +15,6 @@ import { agentSessionEvents } from './agentSessionEvents';
 import { usageEvents } from './usageEvents';
 import { permissionEvents } from './permissionEvents';
 import { terminalEvents } from './terminalEvents';
-import { briefingEvents } from './briefingEvents';
 import { menuEvents } from './menuEvents';
 import { notificationEvents } from './notificationEvents';
 import { planEvents } from './planEvents';
@@ -35,7 +34,6 @@ const domainRegistries = {
   usage: usageEvents,
   permission: permissionEvents,
   terminal: terminalEvents,
-  briefing: briefingEvents,
   menu: menuEvents,
   notification: notificationEvents,
   plan: planEvents,

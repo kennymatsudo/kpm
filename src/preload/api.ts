@@ -9,7 +9,6 @@ import { agentSessionEvents } from '../shared/ipc/agentSessionEvents';
 import { usageEvents } from '../shared/ipc/usageEvents';
 import { permissionEvents } from '../shared/ipc/permissionEvents';
 import { terminalEvents } from '../shared/ipc/terminalEvents';
-import { briefingEvents } from '../shared/ipc/briefingEvents';
 import { menuEvents } from '../shared/ipc/menuEvents';
 import { notificationEvents } from '../shared/ipc/notificationEvents';
 import { planEvents } from '../shared/ipc/planEvents';
@@ -25,7 +24,6 @@ import { groupEndpoints } from '../shared/ipc/groupEndpoints';
 import { exportEndpoints } from '../shared/ipc/exportEndpoints';
 import { confluenceEndpoints } from '../shared/ipc/confluenceEndpoints';
 import { scheduledLoopEndpoints } from '../shared/ipc/scheduledLoopEndpoints';
-import { slackEndpoints } from '../shared/ipc/slackEndpoints';
 import { trackerEndpoints } from '../shared/ipc/trackerEndpoints';
 import { fileExplorerEndpoints } from '../shared/ipc/fileExplorerEndpoints';
 import { repoFilesEndpoints } from '../shared/ipc/repoFilesEndpoints';
@@ -34,7 +32,6 @@ import { tempImageEndpoints } from '../shared/ipc/tempImageEndpoints';
 import { artifactEndpoints } from '../shared/ipc/artifactEndpoints';
 import { searchEndpoints } from '../shared/ipc/searchEndpoints';
 import { mcpServersEndpoints } from '../shared/ipc/mcpServersEndpoints';
-import { briefingEndpoints } from '../shared/ipc/briefingEndpoints';
 import { usageEndpoints } from '../shared/ipc/usageEndpoints';
 import { chatEndpoints } from '../shared/ipc/chatEndpoints';
 import { terminalEndpoints } from '../shared/ipc/terminalEndpoints';
@@ -114,12 +111,9 @@ import type {
   SearchResult,
   PromptDefinitionInfo,
   PromptCategory,
-  BriefingResult,
   ToolPermission,
   FocusChatDocument,
   ReviewInboxSnapshot,
-  SlackChannelLink,
-  SlackTriageItem,
   AgentReviewPolicy,
   CustomTheme,
   ImportedCustomThemeResult,
@@ -205,11 +199,8 @@ export type {
   SearchResult,
   PromptDefinitionInfo,
   PromptCategory,
-  BriefingResult,
   ToolPermission,
   ReviewInboxSnapshot,
-  SlackChannelLink,
-  SlackTriageItem,
   CustomTheme,
   ImportedCustomThemeResult,
   AgentReviewPolicy,
@@ -1100,19 +1091,6 @@ const promptOverrides = {
   reset: promptOverridesInvoke.reset,
 };
 
-// Briefing API (project state synthesis)
-const briefingInvoke = deriveDomainApi(briefingEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
-const briefingSubscriptions = deriveEventSubscriptions(briefingEvents, ipcRenderer);
-const briefing = {
-  generate: briefingInvoke.generate,
-  get: briefingInvoke.get,
-  /**
-   * Subscribe to streaming briefing chunks. Fires per text delta as Stage 2
-   * synthesizes. Returns an unsubscribe function.
-   */
-  onChunk: briefingSubscriptions.chunk,
-};
-
 // Claude usage tracking API
 const usageInvoke = deriveDomainApi(usageEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
 const usageSubscriptions = deriveEventSubscriptions(usageEvents, ipcRenderer);
@@ -1185,31 +1163,6 @@ const onboarding = {
   onError: onboardingSubscriptions.error,
 };
 
-// Slack Triage API
-const slackInvoke = deriveDomainApi(slackEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
-
-const slack = {
-  availability: {
-    get: slackInvoke['availability.get'],
-  },
-  links: {
-    list: slackInvoke['links.list'],
-    create: slackInvoke['links.create'],
-    delete: slackInvoke['links.delete'],
-  },
-  triage: {
-    trigger: slackInvoke['triage.trigger'],
-    getPending: slackInvoke['triage.getPending'],
-    getAll: slackInvoke['triage.getAll'],
-    countPending: slackInvoke['triage.countPending'],
-    approve: slackInvoke['triage.approve'],
-    edit: slackInvoke['triage.edit'],
-    dismiss: slackInvoke['triage.dismiss'],
-    restore: slackInvoke['triage.restore'],
-    execute: slackInvoke['triage.execute'],
-  },
-};
-
 export const api = {
   tempImages,
   chat,
@@ -1249,11 +1202,9 @@ export const api = {
   toolLog,
   search,
   promptOverrides,
-  briefing,
   usage,
   mcpServers,
   onboarding,
-  slack,
 };
 
 export type API = typeof api;

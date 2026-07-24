@@ -16,7 +16,6 @@ import { registerTaskPromptTemplateHandlers } from '../handlers/taskPromptTempla
 import { registerCustomPromptHandlers } from '../handlers/customPrompts';
 import { registerScheduledLoopHandlers } from '../handlers/scheduledLoops';
 import { registerOnboardingHandlers } from '../handlers/onboarding';
-import { registerSlackHandlers } from '../handlers/slack';
 import type { IpcRegistrationContext } from './types';
 
 export function registerWorkspaceHandlers({
@@ -50,5 +49,4 @@ export function registerWorkspaceHandlers({
   registerCustomPromptHandlers(getMainWindow, services.customPromptService);
   registerScheduledLoopHandlers(services.scheduledLoopService);
   registerOnboardingHandlers(getMainWindow, services.onboardingService);
-  registerSlackHandlers(services.slackTriageService);
 }

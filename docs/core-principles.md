@@ -7,7 +7,7 @@ The commitments a contributor — human or agent — should consult when a featu
 | # | Principle | One-line rule |
 |---|-----------|---------------|
 | P1 | Single-user cockpit | No seats, permissions, shared state, or conflict resolution. |
-| P2 | Chat grounded in the project | Plan + briefing + repos are always in scope. |
+| P2 | Chat grounded in the project | Live plan + project context + focused resources + repos are always in scope. |
 | P3 | Cross-repo first | A plan can span any number of connected repos. |
 | P4 | Plans live in KPM | SQLite, not files in the repo. |
 | P5 | Extend the dev setup | Inherit the user's MCP tools; don't replace their env. |
@@ -30,9 +30,9 @@ KPM is the place one developer goes to know what to do next, why it matters, and
 
 ## 2. The chat is a thinking partner grounded in the project
 
-The chat always works against the live plan, briefing, and repos rather than starting cold. It is the primary surface for exploration, triage, investigation, and re-hydration — not a generic AI chat bolted onto a task manager. What makes it useful is that the plan hierarchy, focused documents, and connected repos are always in scope. The user rarely asks Claude to do something in the abstract; they ask Claude to think alongside them with the project's real state available.
+The chat always works against the live plan, project context and focused resources, and connected repos rather than starting cold. It is the primary surface for exploration, triage, investigation, and re-hydration — not a generic AI chat bolted onto a task manager. The user rarely asks Claude to do something in the abstract; they ask Claude to think alongside them with the project's real state available.
 
-**Lean toward:** features that deepen the grounding (richer briefings, better focused resources, faster doc re-hydration from live repo state).
+**Lean toward:** features that deepen general grounding and user-configurable capabilities (better focused resources, customizable prompts, faster doc re-hydration from live repo state).
 **Lean away from:** chat experiences that start without project context, or that treat the chat as a separate mode from the plan.
 
 ---
@@ -48,7 +48,7 @@ KPM spans all connected repos so the developer doesn't have to. Plans and contex
 
 ## 4. Plans live in KPM, not in repos
 
-Planning data — items, notes, context, briefings — lives in KPM's SQLite database. It does not live as files inside repos. Code changes go wherever they need to; plan artifacts do not pollute the working tree, do not risk accidental commits, and do not require .gitignore entries. The two concerns are separate: KPM is connected to repos, not embedded in them.
+Planning data — items, notes, and context — lives in KPM's SQLite database. It does not live as files inside repos. Code changes go wherever they need to; plan artifacts do not pollute the working tree, do not risk accidental commits, and do not require .gitignore entries. The two concerns are separate: KPM is connected to repos, not embedded in them.
 
 ---
 

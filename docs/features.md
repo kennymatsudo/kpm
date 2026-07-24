@@ -37,15 +37,13 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 6. [Artifacts & Generation](#artifacts--generation) (43, 46)
 7. [Global Search & Navigation](#global-search--navigation) (50–52)
 8. [Confluence Integration](#confluence-integration) (53)
-9. [Briefing & Project Overview](#briefing--project-overview) (55)
-10. [Agent Sessions & Orchestration](#agent-sessions--orchestration) (57, 59, 104)
-11. [Settings & Configuration](#settings--configuration) (61, 62, 64, 65)
-12. [File & Workspace Management](#file--workspace-management) (68, 69, 73)
-13. [Notifications & Updates](#notifications--updates) (74)
-14. [Onboarding & Initial Setup](#onboarding--initial-setup) (76)
-15. [Debugging & Monitoring](#debugging--monitoring) (77, 79)
-16. [Slack Integration](#slack-integration) (80)
-17. [Recently Audited Additions](#recently-audited-additions) (96, 97, 99, 101, 102)
+9. [Agent Sessions & Orchestration](#agent-sessions--orchestration) (57, 59, 104)
+10. [Settings & Configuration](#settings--configuration) (61, 62, 64, 65)
+11. [File & Workspace Management](#file--workspace-management) (68, 69, 73)
+12. [Notifications & Updates](#notifications--updates) (74)
+13. [Onboarding & Initial Setup](#onboarding--initial-setup) (76)
+14. [Debugging & Monitoring](#debugging--monitoring) (77, 79)
+15. [Recently Audited Additions](#recently-audited-additions) (96, 97, 99, 101, 102)
 
 **Reference Sections**
 - [UI Surface Map](#ui-surface--feature-map) — component directory → feature
@@ -110,7 +108,6 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Claude tool: `modify_plan` with AddDependency/RemoveDependency actions
 - **Dependencies / integrations:**
   - SQLite: `plan_relations` table (from_item_id, to_item_id, relation_type)
-  - Briefing service: identifies blocked items for prioritized briefing
   - Sync service: three-way conflict detection considers linked items
 - **Maturity signal:** Mature. Read-heavy. Circular dependency checks in place. No dedicated UI for managing relations yet (only via Claude or API).
 
@@ -129,7 +126,6 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Board view: columns organized by status category
 - **Dependencies / integrations:**
   - Tracker sync: `queueTrackerUpdateIfNeeded` called on status change
-  - Briefing: filters by status to surface "in progress" and "blocked" items
   - `completed_at`: stamped on transition to done and cleared on transition away (`PlanItemRepository`)
 - **Maturity signal:** Mature. Core feature, well-tested status flow.
 
@@ -278,10 +274,10 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Maturity signal:** Mature. Sophisticated multi-module approach with a straightforward override mechanism layered on top. Roadmap for phase 4 includes customer-facing prompt builder.
 
 ### 17. In-Process MCP Tools (Claude Tool Integration)
-- **What it does:** KPM provides Claude with direct function calls to query and modify plan items, manage documents, and more — roughly 20 tools spanning plan/relations/groups, Jira, documents, GitHub, Confluence, briefing, files, git, and Storybook. Tools are implemented as direct function calls (not a subprocess MCP server), reducing latency, and run in the main process with full database access. Modification tools go through the approval flow before executing. When a tool result exceeds the SDK's token budget, the SDK spills the full payload to a file under `~/.claude/projects/` instead of returning it inline; the `read_spill_file` tool lets Claude page through that file (up to 50,000 characters per chunk via `offset`/`length`) since the spill directory sits outside the sandboxed Read/Grep/Glob scope — it's the only path back to that content.
+- **What it does:** KPM provides Claude with direct function calls to query and modify plan items, manage documents, and more — roughly 20 tools spanning plan/relations/groups, Jira, documents, GitHub, Confluence, files, git, and Storybook. Tools are implemented as direct function calls (not a subprocess MCP server), reducing latency, and run in the main process with full database access. Modification tools go through the approval flow before executing. When a tool result exceeds the SDK's token budget, the SDK spills the full payload to a file under `~/.claude/projects/` instead of returning it inline; the `read_spill_file` tool lets Claude page through that file (up to 50,000 characters per chunk via `offset`/`length`) since the spill directory sits outside the sandboxed Read/Grep/Glob scope — it's the only path back to that content.
 - **Key code locations:**
   - Factory: `src/main/kpmTools/tools/createKpmServer.ts` (creates MCP server from tool functions; `runWithToolExecutionContext`)
-  - Tool modules: `src/main/kpmTools/tools/*.ts` (plan-items, plan-changes, jira, relations, document-read, document-update, document-edit, groups, confluence, github, storybook, briefing, context-file-update, file-move, file-delete, list-project-files, plan-refs, review-assessment, spill-read, git-read)
+  - Tool modules: `src/main/kpmTools/tools/*.ts` (plan-items, plan-changes, jira, relations, document-read, document-update, document-edit, groups, confluence, github, storybook, context-file-update, file-move, file-delete, list-project-files, plan-refs, review-assessment, spill-read, git-read)
   - Spill recovery: `src/main/kpmTools/tools/spill-read.ts` (`read_spill_file`, validates the path stays under `~/.claude/projects/`); tool docs in `toolDocs.ts` instruct calling with just `file_path` first to get `totalChars`, then paging until `hasMore` is false
   - Tool logging: `src/main/services/toollog/ToolCallLogger.ts` (logs all tool calls)
   - Permission prompting: `src/main/claude/permissions.ts` (permission model via SDK)
@@ -635,27 +631,6 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 
 ---
 
-## Briefing & Project Overview
-
-### 55. Project Briefing (Generation + Display)
-- **What it does:** A one-shot briefing gathers project status — blocked items, stale tasks, ready work, inactive dev sessions, recent chat — and Claude synthesizes it into an actionable summary with signal counts and recommendations, through a two-stage pipeline (`fastModel` synthesis, `deepModel` final pass with extended thinking; both default to Sonnet). The result displays in a modal that streams the generation live, caches the finished briefing in `project_briefings` (reused until stale), and offers a Refresh action to regenerate; closing the modal dismisses it.
-- **Key code locations:**
-  - Service: `src/main/services/core/BriefingService.ts` (two-stage pipeline: `fastModel` synthesis + `deepModel` final, configurable via `getConfig().generation`)
-  - Claude tool: `src/main/kpmTools/tools/briefing.ts` (`get_briefing`)
-  - Component: `src/renderer/components/briefing/BriefingModal.tsx`
-  - IPC handlers: `src/main/ipc/handlers/briefing.ts`
-  - Store: `src/renderer/stores/briefingStore.ts`
-- **Entry points / surfaces:**
-  - Chat: user asks "what should I do next?" or "project briefing" — Claude calls `get_briefing`
-  - Modal shows the generated briefing with signal counts (blocked/stale/ready), a generated-at timestamp, and a Refresh button; generation streams into the modal as it runs
-- **Dependencies / integrations:**
-  - Plan items: blocked items via `depends_on` relations, stale items via `updated_at`, ready items via status-category queries
-  - Dev sessions: inactive sessions identified
-  - Chat history: synthesized for context
-- **Maturity signal:** Mature. Two-stage synthesis approach is sophisticated; display UI is simple and functional (streaming render, cache, refresh).
-
----
-
 ## Agent Sessions & Orchestration
 
 ### 57. Board Agent Prompt Customization (Overrides + Task Templates)
@@ -713,11 +688,11 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ## Settings & Configuration
 
 ### 61. General Settings (Account, Workflow, App Preferences)
-- **What it does:** Global app preferences. The Account tab shows API key/auth state and the chat approval-mode toggle (manual review vs. auto-apply, feature 10). The Workflow tab holds a Git sub-tab (branch naming template) plus sub-tabs that surface other settings features in project context: Tracker (feature 27), Slack (feature 80), Storybook. Theme selection and imported themes are covered separately in feature 96.
+- **What it does:** Global app preferences. The Account tab shows API key/auth state and the chat approval-mode toggle (manual review vs. auto-apply, feature 10). The Workflow tab holds a Git sub-tab (branch naming template) plus sub-tabs that surface other settings features in project context: Tracker (feature 27) and Storybook. Theme selection and imported themes are covered separately in feature 96.
 - **Key code locations:**
   - Service: `src/main/services/core/SettingsService.ts`
   - Store: `src/renderer/stores/generalSettingsStore.ts`
-  - Component: `src/renderer/components/settings/GeneralSettings.tsx`, `src/renderer/components/settings/WorkflowSettings.tsx` (sub-tab shell for Tracker/Git/Slack/Storybook)
+  - Component: `src/renderer/components/settings/GeneralSettings.tsx`, `src/renderer/components/settings/WorkflowSettings.tsx` (sub-tab shell for Tracker/Git/Storybook)
   - DB: `app_settings` table (key-value store)
   - IPC handlers: `src/main/ipc/handlers/settings.ts`
 - **Entry points / surfaces:**
@@ -767,7 +742,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Maturity signal:** Mature. Permission model is clean, user-friendly, and non-intrusive once tools are approved.
 
 ### 65. Custom Prompts (User-Defined Prompt Library)
-- **What it does:** Users create global custom prompts that appear as commands in the command palette and can be executed independently. Each prompt has name, description, icon, keywords, content, a target type (`none` / `document` / `repo`), and a run mode (`artifact` / `chat`). Targeted prompts require the user to pick a document or repo before running. Built-in prompts are protected from deletion.
+- **What it does:** Users create global custom prompts that appear as commands in the command palette and can be executed independently. Each prompt has name, description, icon, keywords, content, a target type (`none` / `document` / `repo`), and a run mode (`artifact` / `chat`). Targeted prompts require the user to pick a document or repo before running. Project-status summaries are user-configurable here, especially with run mode `chat`; KPM does not seed a dedicated status command. Built-in prompts are protected from deletion.
 - **Key code locations:**
   - DB: `custom_prompts` table (name, description, icon, keywords, prompt_content, is_builtin, sort_order, target_type, run_mode) — migration 090
   - Service: `src/main/services/core/CustomPromptService.ts`
@@ -921,31 +896,6 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Electron `shell`
   - External URL allow-list validation
 - **Maturity signal:** Mature. Small, security-scoped platform integration.
-
----
-
-## Slack Integration
-
-### 80. Slack Triage (Channel Links, Classification, Actions)
-- **What it does:** Optional Slack integration: users link Slack channels to KPM projects (Settings → Connections → Slack). KPM monitors linked channels for new messages and classifies each with Claude (task, reply, document update, info-only, etc.), storing a suggested action for review in the Slack triage panel. Suggested actions map to one of: create a new plan item, update a project document, post a reply to the thread, or close as info-only. The user reviews each triaged item in the panel — edit, approve, dismiss, restore, or execute — before anything happens; execution creates the task, applies the document update, or posts the reply.
-- **Key code locations:**
-  - Service: `src/main/services/core/SlackTriageService.ts` (triage logic, channel-link management, action validation)
-  - Adapter: `src/main/services/core/slackTriageAdapter.ts` (MCP integration wrapper)
-  - Repository: `src/main/db/interfaces/slack.ts` (`ISlackChannelLinkRepository`) and triage-item repositories
-  - Claude prompts: `src/main/chat/prompts/slackTriage.ts` (classification prompt)
-  - Types: `SlackTriageCreateTaskAction`, `SlackTriageUpdateDocumentAction`, `SlackTriageReplyAction` (`shared/types`)
-  - Component: `src/renderer/components/slack/` (triage panel), `src/renderer/components/settings/` (channel-link UI)
-  - Store: `src/renderer/stores/useSlackTriageStore.ts`
-  - IPC handlers: `src/main/ipc/handlers/slack.ts`
-  - DB: `slack_channel_links`, `slack_triage_items` tables
-- **Entry points / surfaces:**
-  - Settings → Connections → Slack: "Link Channel" (enter channel name), list of linked channels with unlink
-  - Slack triage panel in sidebar (if linked): triaged messages with suggested actions; item status flow (`pending` → `edited`/`approved`/`dismissed` → `executed`)
-- **Dependencies / integrations:**
-  - Slack MCP (optional): used for channel reading and resolving channel names to IDs when available
-  - Claude: Sonnet for message classification
-  - Plan items: new tasks created via action; documents: updates applied via action; Slack API: replies posted to threads
-- **Maturity signal:** Mature. Triage service is comprehensive (bot/already-triaged filtering) and covers the full link → monitor → classify → review → execute lifecycle.
 
 ---
 
@@ -1174,7 +1124,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 
 ## Summary
 
-**Total distinct features cataloged:** 63, after a consolidation pass that folded narrowly-scoped entries into their higher-level parent feature (below) so the catalog tracks capabilities rather than every implementation detail. Feature IDs are stable and not reused — a retired number's content lives at the target number shown.
+**Total distinct features cataloged:** 61, after a consolidation pass that folded narrowly-scoped entries into their higher-level parent feature (below) so the catalog tracks capabilities rather than every implementation detail. Feature IDs are stable and not reused — a retired number's content lives at the target number shown.
 
 **Consolidation log (this pass):**
 
@@ -1182,7 +1132,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 |---|---|---|---|
 | 6, 7 | 5 (Plan Views) | 44, 45 | 43 (Artifact Generation) |
 | 14 | 13 (System Prompts) | 54 | 53 (Confluence Integration) |
-| 15, 16, 103 | 11 (Main Chat Interface) | 56 | 55 (Project Briefing) |
+| 15, 16, 103 | 11 (Main Chat Interface) | 55, 56 | removed |
 | 18, 20, 21, 108 | 19 (Plan-item Dev Sessions) | 58 | 57 (Board Agent Prompt Customization) |
 | 107 | 17 (In-Process MCP Tools) | 60 | 23 (Review Loop & Automated Addressing) |
 | 24 | 23 (Review Loop & Automated Addressing) | 63, 66 | removed — redundant pointers to 27/61 and 13 |
@@ -1192,7 +1142,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 | 34, 36, 37 | 33 (Sync Pipeline) | 72 | 11 (Main Chat Interface, image viewer) |
 | 39 | 38 (Project Documents & Context File) | 75 | removed — dead feature, no longer tracked |
 | 41, 42 | 40 (Document & Context-File Editing Tools) | 78 | 77 (Debug & Performance Logging) |
-| | | 81, 82 | 80 (Slack Triage) |
+| | | 80–82 | removed |
 
 The standalone "Permissions & Security" group was folded into Settings & Configuration (feature 64). A second, verbatim-duplicate copy of the Cross-Cutting Infrastructure section (features 83–95) was also removed — it existed only as a condensed restatement and had already drifted from the primary copy.
 
@@ -1207,14 +1157,12 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 - Artifacts & Generation (2)
 - Global Search & Navigation (3)
 - Confluence Integration (1)
-- Briefing & Project Overview (1)
 - Agent Sessions & Orchestration (3)
 - Settings & Configuration (4)
 - File & Workspace Management (3)
 - Notifications & Updates (1)
 - Onboarding & Initial Setup (1)
 - Debugging & Monitoring (2)
-- Slack Integration (1)
 - Cross-Cutting Infrastructure (13)
 - Recently Audited Additions (5)
 
@@ -1376,10 +1324,6 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 - `ConfluenceSyncPreviewModal.tsx`: Preview before syncing
   - Features: 53 (Confluence Integration)
 
-### briefing/ Components
-- `BriefingModal.tsx`: Display and export project briefing
-  - Features: 55 (Project Briefing)
-
 ### permission/ Components
 - `PermissionPrompt.tsx`: Runtime permission prompt
   - Features: 64 (Tool Permissions)
@@ -1420,9 +1364,9 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 
 ### By Maturity
 - **Mature (production-ready):** Nearly every cataloged feature, across every group, except the items called out below.
-- **Mature with roadmap items:** Board execution (19, 23, 105), Briefing (55), Agent orchestration (57, 59).
+- **Mature with roadmap items:** Board execution (19, 23, 105), Agent orchestration (57, 59).
 - **Early/Partial:** Some artifact types remain lighter-weight than the core planning/dev-session workflows.
-- **Experimental/Optional:** Slack triage (80), custom prompts (65, lightweight), scheduled loops (104, new and lightly used relative to chat/board).
+- **Experimental/Optional:** Custom prompts (65, lightweight) and scheduled loops (104, new and lightly used relative to chat/board).
 
 ### By Complexity (Internal)
 - **High complexity:** Sync Pipeline (33), board execution state machine (23, 105), streaming session architecture (87), context building (94).
@@ -1431,12 +1375,12 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 
 ### By User Touchpoints
 - **High-frequency:** Main chat (11), plan views (5), workspace view & file editor (69).
-- **Medium-frequency:** Settings (61, 62, 64, 65), briefing (55), Markdown focus reader (106).
-- **Low-frequency:** Onboarding (76), Confluence integration (53), Slack triage (80), scheduled loops (104).
+- **Medium-frequency:** Settings (61, 62, 64, 65), Markdown focus reader (106).
+- **Low-frequency:** Onboarding (76), Confluence integration (53), scheduled loops (104).
 
 ### By Dependency Complexity
 - **Core foundation:** Service container (83), store events (85), IPC pattern (86), repositories (88).
-- **Integrations:** Tracker (27, 31, 33, 35), GitHub (25), Confluence (53), Slack (80).
+- **Integrations:** Tracker (27, 31, 33, 35), GitHub (25), Confluence (53).
 - **Claude SDK:** Streaming (87), tools (91), prompts (92), context (94), agent sessions (59), scheduled loops (104).
 
 ---
@@ -1446,7 +1390,6 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 - **Orphaned:** The Tree view (one of the three Plan Views, feature 5) is well-implemented but rarely used (canvas and board are preferred).
 - **Dead/unreachable:** The artifacts-manager backend (`ArtifactService` list/read/delete/import, the `artifacts.*` IPC endpoints, and the `window.api.artifacts` preload surface) is fully wired but has no renderer caller — no component lists, opens, or deletes `outputs/` files through it (see feature 46).
 - **Optional:** Confluence integration (53) depends on Jira/Atlassian credentials and linked pages, so it is mature in code but not always visible in day-to-day project work.
-- **Half-finished:** Slack triage (80) is functional but not heavily marketed; limited user adoption signals.
 - **Experimental:** Custom prompts (65) are lightweight; prompt editor UI is basic.
 - **Known limitations:**
   - Canvas view (one of the three Plan Views, feature 5) has no auto-layout; manual positioning only.

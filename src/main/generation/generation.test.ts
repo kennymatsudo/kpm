@@ -121,10 +121,10 @@ describe('runGeneration', () => {
     );
     const recordUsage = vi.fn();
     configureGeneration({ recordUsage });
-    await runGeneration({ purpose: 'briefing', tier: 'deep', prompt: 'hi', projectId: 'p-1' });
+    await runGeneration({ purpose: 'commit_message', tier: 'deep', prompt: 'hi', projectId: 'p-1' });
     expect(recordUsage).toHaveBeenCalledWith(
       expect.objectContaining({
-        purpose: 'briefing',
+        purpose: 'commit_message',
         provider: 'claude',
         projectId: 'p-1',
         usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, cacheWriteTokens: 1 },

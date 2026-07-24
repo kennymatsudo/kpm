@@ -52,7 +52,7 @@ export const createProjectStore = (deps?: ProjectStoreDependencies) => {
 
 ## Standalone Stores
 
-Simpler domains use `create()` directly. See `briefingStore.ts` or `searchStore.ts` for a typical example.
+Simpler domains use `create()` directly. See `searchStore.ts` for a typical example.
 
 ## Chat Store (Unified Sessions)
 

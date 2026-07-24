@@ -26,7 +26,6 @@ src/main/kpmTools/createKpmServer.ts (Claude MCP server adapter)
     ├─ context-file-update.ts (project context updates)
     ├─ github.ts (GitHub PR description generation)
     ├─ confluence.ts (Confluence integration tools)
-    ├─ briefing.ts (project briefing generation)
     ├─ file-move.ts (file move tools)
     ├─ file-delete.ts (file delete tools)
     ├─ plan-refs.ts (extract plan items from a doc; resolve @plan/<uuid> tokens)
@@ -107,9 +106,9 @@ Claude calls modification tool (modify_plan, bulk_modify_plan, etc.)
 
 Files live in `../chat/prompts/` so Claude, Codex, and pi chat adapters can share them without depending on Claude-specific paths. Entry point is `index.ts` with `buildSystemPrompt()`.
 
-Key files: `toolDocs.ts` (tool decision tree), `modes.ts` (repo-access + plan-modification guidance), `workspace.ts` (constraints, workspace boundaries, plan rules, response style), `planFormatting.ts` (plan display), `focusedResources.ts` (focused resource handling), `slackTriage.ts` (Slack triage prompt fragments), `promptRegistry.ts` (system prompt registry), `types.ts` (`PlanContext` / `ContinuationTurn`).
+Key files: `toolDocs.ts` (tool decision tree), `modes.ts` (repo-access + plan-modification guidance), `workspace.ts` (constraints, workspace boundaries, plan rules, response style), `planFormatting.ts` (plan display), `focusedResources.ts` (focused resource handling), `promptRegistry.ts` (system prompt registry), `types.ts` (`PlanContext` / `ContinuationTurn`).
 
-The developer's global `~/.claude/CLAUDE.md` is folded into the chat prompt (main, focus, and the Codex/pi adapters) via `buildUserGlobalInstructionsSection`, gated by the `respectGlobalClaudeMd` setting and read in `contextBuilders.ts` (`appSettings` is an optional `BuildContextDeps` dep, so non-chat callers like scheduled loops don't inherit it). The SDK does **not** inject it natively: KPM passes a custom string `systemPrompt`, not the `claude_code` preset. Board/review/triage agents use their own prompt builders and are intentionally excluded.
+The developer's global `~/.claude/CLAUDE.md` is folded into the chat prompt (main, focus, and the Codex/pi adapters) via `buildUserGlobalInstructionsSection`, gated by the `respectGlobalClaudeMd` setting and read in `contextBuilders.ts` (`appSettings` is an optional `BuildContextDeps` dep, so non-chat callers like scheduled loops don't inherit it). The SDK does **not** inject it natively: KPM passes a custom string `systemPrompt`, not the `claude_code` preset. Board and review agents use their own prompt builders and are intentionally excluded.
 
 The `currentView` ('plan' | 'workspace') sent with each message is injected as a `[Context: …]` line ahead of the user's text (`StreamingSessionService.sendChatMessage`) rather than built into the system prompt — this keeps the prompt byte-stable across view switches for cache hits without changing response modes.
 

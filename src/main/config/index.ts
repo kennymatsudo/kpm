@@ -104,8 +104,6 @@ export interface GenerationConfig {
   noteRefinementTimeoutMs: number;
   /** Artifact generation timeout (ms) */
   artifactGenerationTimeoutMs: number;
-  /** Briefing generation timeout per stage (ms) */
-  briefingStageTimeoutMs: number;
   /** Project onboarding context generation timeout (ms) */
   onboardingTimeoutMs: number;
   /** PR description generation timeout (ms) */
@@ -278,7 +276,6 @@ function createDefaultConfig(): AppConfig {
       },
       noteRefinementTimeoutMs: 2 * 60 * 1000, // 2 minutes
       artifactGenerationTimeoutMs: 5 * 60 * 1000, // 5 minutes
-      briefingStageTimeoutMs: 2 * 60 * 1000, // 2 minutes per stage
       onboardingTimeoutMs: 10 * 60 * 1000, // 10 minutes (multi-repo scan + agent investigation)
       prGenerationTimeoutMs: 60 * 1000, // 1 minute
     },

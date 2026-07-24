@@ -27,7 +27,7 @@ src/
 │   ├── project-context/     # Project context file compatibility helpers
 │   ├── security/            # URL and app-navigation safety helpers
 │   ├── services/            # Application services (DI pattern)
-│   │   ├── core/            # Plan, Project, Chat, Briefing, Tracker, Onboarding, settings
+│   │   ├── core/            # Plan, Project, Chat, Tracker, Onboarding, settings
 │   │   ├── repo/            # Repo, DevSession, GitHub, Environment, Review, ScheduledLoopRunner
 │   │   ├── files/           # FileExplorer, FileSummary, TempImage, RepoFile, watchers, scoped FS
 │   │   ├── streaming/       # Terminal and Claude StreamingSession
@@ -106,14 +106,11 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 | `custom_prompts` | Custom prompts; `target_type` (none/document/repo) and `run_mode` (artifact/chat) columns added in migration 090 |
 | `task_prompt_templates` | Task prompt templates |
 | `tool_permissions` | Persisted per-project tool permission grants |
-| `project_briefings` | Cached generated project briefings |
 | `review_tasks` | GitHub review threads normalized into KPM review tasks |
 | `review_ownership` | Review-thread ownership decisions |
 | `review_sync_state` | PR review polling cursors and sync state |
 | `agent_review_runs` | Opposing-agent review run metadata |
 | `agent_review_findings` | Structured findings from opposing-agent reviews |
-| `slack_channel_links` | Slack channel links for project triage |
-| `slack_triage_items` | Triaged Slack messages and suggested actions |
 | `global_search_index` | Full-text search metadata |
 | `global_search_fts` | Virtual FTS5 table for full-text search |
 | `claude_usage_events` | Claude usage/cost accounting events |
@@ -210,7 +207,6 @@ KPM runs chat/dev sessions on one of three provider backends behind a provider-n
 │  │       ├─ Document tools (create, edit, context updates)      │
 │  │       ├─ Confluence tools (URL lookup)                       │
 │  │       ├─ GitHub tools (PR description generation)            │
-│  │       ├─ Briefing tools (project briefing generation)        │
 │  │       ├─ File tools (move/delete project files)              │
 │  │       ├─ Git tools (read-only git against connected repos)   │
 │  │       └─ Storybook tools (list/search components)            │

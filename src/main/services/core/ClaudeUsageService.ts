@@ -2,9 +2,9 @@
  * ClaudeUsageService
  *
  * Centralized recording of Claude API usage across every place KPM invokes
- * the Claude Agent SDK (main chat, board agents, briefing, PR description,
- * commit message, review assessment, custom prompt generation, onboarding,
- * Slack triage). Codex/Gemini sessions are tracked separately and do NOT
+ * the Claude Agent SDK (main chat, board agents, PR description, commit message,
+ * review assessment, custom prompt generation, and onboarding).
+ * Codex/Gemini sessions are tracked separately and do NOT
  * flow through this service.
  *
  * Each call to recordUsage:
@@ -42,15 +42,12 @@ import { usageEvents } from '../../../shared/ipc/usageEvents';
 export type UsageSource =
   | 'chat'
   | 'board_playbook'
-  | 'briefing'
   | 'onboarding'
   | 'pr_description'
   | 'commit_message'
   | 'review_assessment'
   | 'review_assessment_post_impl'
   | 'custom_prompt'
-  | 'slack_triage'
-  | 'slack_triage_adapter'
   | 'file-summary';
 
 /** Shape of the SDK's `result.usage` block (with the fields we care about). */

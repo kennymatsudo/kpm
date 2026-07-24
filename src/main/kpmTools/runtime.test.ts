@@ -307,7 +307,6 @@ describe('default KPM tool runtime manifest', () => {
         confluenceLinks: {},
       } as never,
       services: {
-        briefingService: {},
         fileExplorerService: {},
       } as never,
       getMainWindow: () => null,
@@ -335,7 +334,6 @@ describe('default KPM tool runtime manifest', () => {
         confluenceLinks: {},
       } as never,
       services: {
-        briefingService: {},
         fileExplorerService: {},
       } as never,
       getMainWindow: () => null,

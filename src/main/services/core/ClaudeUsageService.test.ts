@@ -159,7 +159,7 @@ describe('ClaudeUsageService', () => {
 
     service.recordUsage({
       projectId: 'project-1',
-      source: 'briefing',
+      source: 'commit_message',
       model: 'sonnet',
       usage: { input_tokens: 5, output_tokens: 5 },
     });

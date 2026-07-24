@@ -16,7 +16,6 @@ import {
   type KpmToolExecutionResult,
   type KpmToolGroup,
 } from './runtime';
-import { createBriefingTools } from './tools/briefing';
 import { createContextFileEditTools, type ContextFileUpdatePayload } from './tools/context-file-update';
 import { createConfluenceTools } from './tools/confluence';
 import { createDocumentEditTools } from './tools/document-edit';
@@ -52,7 +51,7 @@ export interface KpmToolRuntimeDeps {
     | 'devSessions'
     | 'confluenceLinks'
   >;
-  services: Pick<AppServices, 'briefingService' | 'fileExplorerService'>;
+  services: Pick<AppServices, 'fileExplorerService'>;
   getMainWindow: () => BrowserWindow | null;
 }
 
@@ -233,7 +232,6 @@ function buildToolGroups(): KpmToolGroup[] {
     group('document-edit', ALL_CHAT_SCOPES, ['documents.propose'], createDocumentEditTools(readProjectFileWithPending, emitDocumentUpdate)),
     group('github', MAIN_ONLY, ['integrations.read'], createGitHubTools(planItemRepo, repoRepo, container.devSessions)),
     group('confluence', MAIN_ONLY, ['integrations.read'], createConfluenceTools(container.confluenceLinks)),
-    group('briefing', MAIN_ONLY, ['briefing.read'], createBriefingTools(services.briefingService)),
     group('file-move', MAIN_ONLY, ['file_changes.propose'], createFileMoveTools({ onFileMove: emitFileMove })),
     group('file-delete', MAIN_ONLY, ['file_changes.propose'], createFileDeleteTools({ fileExplorerService: services.fileExplorerService, onFileDelete: emitFileDelete })),
     group('project-files', ALL_CHAT_SCOPES, ['project_files.read'], createListProjectFilesTools({ fileExplorerService: services.fileExplorerService })),

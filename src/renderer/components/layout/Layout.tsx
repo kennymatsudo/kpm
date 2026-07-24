@@ -13,7 +13,6 @@ import { GlobalSearch } from '../global-search';
 import { ApprovalOverlays } from './ApprovalOverlays';
 import { FocusMode } from '../focus-mode/FocusMode';
 import { ToastContainer } from '../ui';
-import { BriefingModal } from '../briefing';
 import { RegenerateContextModal } from '../onboarding';
 import { ToolLogPanel } from '../tool-log';
 import { SettingsModal } from '../settings';
@@ -28,7 +27,6 @@ import {
   useChatStore,
   useWorkspaceStore,
   useSettingsUIStore,
-  useBriefingStore,
   useTerminalStore,
   useFocusModeStore,
 } from '../../stores';
@@ -207,12 +205,6 @@ export const Layout = memo(function Layout({
     const { isOpen: isSettingsOpen, setIsOpen: setSettingsOpen } = useSettingsUIStore.getState();
     if (isSettingsOpen) {
       setSettingsOpen(false);
-      return;
-    }
-
-    const { isModalOpen: isBriefingOpen, closeModal: closeBriefing } = useBriefingStore.getState();
-    if (isBriefingOpen) {
-      closeBriefing();
       return;
     }
 
@@ -440,7 +432,6 @@ const LayoutOverlays = memo(function LayoutOverlays({
       <GlobalSearch />
       <FocusMode />
       <ApprovalOverlays />
-      <BriefingModal />
       <RegenerateContextModal />
       <ToastContainer />
       {isSettingsOpen && (

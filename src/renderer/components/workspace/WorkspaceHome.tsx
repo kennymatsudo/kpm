@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
   useProposedChangeDisposal,
-  useBriefingStore,
   useChatStore,
   useContextRegenerationStore,
   useProjectDomainStore,
@@ -111,7 +110,6 @@ function BullseyeIcon({ className = 'w-7 h-7' }: { className?: string }) {
 }
 
 export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
-  const openBriefing = useBriefingStore((state) => state.openModal);
   const focusedResources = useProjectUiDomainStore((state) => state.focusedResources);
   const contextNudge = useContextGenerationNudge();
 
@@ -168,7 +166,7 @@ export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
               What are we shipping today?
             </h2>
             <p className="text-[13px] leading-snug text-text-tertiary max-w-[380px] mx-auto">
-              Pick a starting point, pull up your briefing, or open chat.
+              Pick a starting point or open chat.
             </p>
           </div>
 
@@ -221,12 +219,6 @@ export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
               className="rounded-md bg-accent text-surface-0 hover:bg-accent/90 px-3 py-1.5 text-[12px] font-medium transition-colors"
             >
               {hasConversation ? `Resume chat · ${viewedSessionMessageCount} msgs` : 'Open chat'}
-            </button>
-            <button
-              onClick={openBriefing}
-              className="rounded-md bg-surface-2 border border-border-subtle hover:border-border-default px-3 py-1.5 text-[12px] text-text-secondary transition-colors"
-            >
-              Project briefing
             </button>
           </div>
 
