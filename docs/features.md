@@ -40,7 +40,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 9. [Agent Sessions & Orchestration](#agent-sessions--orchestration) (57, 59, 104)
 10. [Settings & Configuration](#settings--configuration) (61, 62, 64, 65)
 11. [File & Workspace Management](#file--workspace-management) (68, 69, 73)
-12. [Notifications & Updates](#notifications--updates) (74)
+12. [Notifications & Updates](#notifications--updates) (74, 107)
 13. [Onboarding & Initial Setup](#onboarding--initial-setup) (76)
 14. [Debugging & Monitoring](#debugging--monitoring) (77, 79)
 15. [Recently Audited Additions](#recently-audited-additions) (96, 97, 99, 101, 102)
@@ -837,6 +837,25 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 
 ---
 
+### 107. Notification Bell (Background Event Feed)
+- **What it does:** A topbar bell collects events the user should know about while they were doing something else, with an unread count and a dropdown of the 50 most recent. Each entry carries a severity, a relative timestamp, and — where a target can be resolved — a click-through. Producers run in the main process and funnel through one event bus, so every source presents identically. Today those are: scheduled loop findings, pull request changes picked up by review polling, and board agent automation reaching a phase that needs the user (`ready_for_review`, `needs_attention`, `paused`). Identical events inside a 30-second window collapse into one so a fast poller can't spam the feed. Notifications are in-memory only — the list resets on restart — and there is no OS-level delivery, so the app must be open to see them.
+- **Key code locations:**
+  - Bus: `src/main/services/core/UpdateEventBus.ts` (`UpdateEvent` union — one variant per source)
+  - Service: `src/main/services/core/NotificationService.ts` (`NOTIFY_RULES`, one rule per event kind, owning its dedupe key and presentation; `present()` returning null suppresses)
+  - Producers: `ScheduledLoopRunnerService` (`loop_finding`), `ReviewPollService` (`pr_changed`), `automationPhaseMachine` (`board_agent`)
+  - IPC: `src/shared/ipc/notificationEvents.ts` (`notification:new` push event; no invoke surface)
+  - Store: `src/renderer/stores/notificationStore.ts` (unread/read, 50-entry cap)
+  - Component: `src/renderer/components/notifications/NotificationBadge.tsx` (bell, dropdown, link resolution)
+- **Entry points / surfaces:**
+  - Topbar bell → unread count → dropdown → click an entry to navigate, or dismiss it
+  - `dev_session` links reveal the board session's detail pane; `plan_item` focuses the item; `pr`/`session`/`external` open the relevant URL
+- **Dependencies / integrations:**
+  - Board automation: `automationPhaseMachine` is the sole writer of `dev_sessions.automation_phase`, which is why it is also the single place board notifications are emitted from
+  - Unresolvable links (a session in a project that isn't open, a PR never linked) are deliberate no-ops
+- **Maturity signal:** Developing. The pipeline and the board/loop/PR producers work, but there is no persistence, no per-source settings, no OS delivery, and the toast system is entirely separate.
+
+---
+
 ## Onboarding & Initial Setup
 
 ### 76. Project Onboarding & Context Generation (AGENTS.md Generation)
@@ -1160,7 +1179,7 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 - Agent Sessions & Orchestration (3)
 - Settings & Configuration (4)
 - File & Workspace Management (3)
-- Notifications & Updates (1)
+- Notifications & Updates (2)
 - Onboarding & Initial Setup (1)
 - Debugging & Monitoring (2)
 - Cross-Cutting Infrastructure (13)
@@ -1174,7 +1193,7 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 - `Layout.tsx`: Overall app shell; hosts sidebar, main view, chat panel
   - Features: 52 (Sidebar Navigation), 74 (Toast Notifications)
 - `TopBar.tsx`: Header bar with project name, view switcher, search
-  - Features: 52 (Sidebar Navigation), 50 (Global Search)
+  - Features: 52 (Sidebar Navigation), 50 (Global Search), 107 (Notification Bell)
 - `Resize` hooks: Resizable panels
   - Features: 69 (Workspace View & File Editor)
 

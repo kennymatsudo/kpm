@@ -1,6 +1,10 @@
 /**
  * Sole writer of `dev_sessions.automation_phase` and the persisted playbook
  * cursor fields that make board automation restart-safe.
+ *
+ * Because every phase change funnels through here, this is also where board
+ * automation announces the phases a user has to act on (`BOARD_AGENT_NOTIFY_PHASES`)
+ * onto the `UpdateEventBus`, so they reach the notification bell.
  */
 
 import type { DevSession, DevSessionAutomationPhase, DevSessionPausedReason } from '../../../shared/types';
@@ -8,6 +12,7 @@ import { isCommitHookRepairPhase } from '../../../shared/types';
 import { createStatusBroadcaster } from '../repo/rendererBroadcast';
 import { devSessionEvents } from '../../../shared/ipc/devSessionEvents';
 import { parsePassCounts } from '../../../shared/playbookRuntime';
+import { isBoardAgentNotifyPhase, type UpdateEventBus } from '../core/UpdateEventBus';
 
 export type AutomationPhaseEvent =
   | { type: 'stepStarted'; stepId: string; phase?: DevSessionAutomationPhase | null }
@@ -48,6 +53,13 @@ export interface AutomationPhaseRepository {
 
 export interface AutomationPhaseMachineDeps {
   devSessions: AutomationPhaseRepository;
+  /**
+   * Optional bus for announcing user-actionable phases. Omitted in tests that
+   * only exercise the state table.
+   */
+  eventBus?: Pick<UpdateEventBus, 'emit'>;
+  /** Resolves the label a notification should call this session's work. */
+  resolveTaskName?: (session: DevSession) => string | null;
 }
 
 function isTerminationGuardedPhase(phase: DevSessionAutomationPhase | null): boolean {
@@ -212,6 +224,23 @@ export function createAutomationPhaseMachine(deps: AutomationPhaseMachineDeps) {
       if (updatedSession) {
         broadcastSessionStatusChange(updatedSession);
       }
+
+      // Only announce a phase the user has to act on, and only when the phase
+      // itself moved — a cursor or pass-count write is not news.
+      if (next.phase !== session.automation_phase && isBoardAgentNotifyPhase(next.phase)) {
+        deps.eventBus?.emit({
+          kind: 'board_agent',
+          source: 'agent',
+          detectedAt: new Date().toISOString(),
+          devSessionId: sessionId,
+          projectId: session.project_id,
+          planItemId: session.plan_item_id,
+          taskName: deps.resolveTaskName?.(session) ?? session.name,
+          phase: next.phase,
+          pausedReason: next.pausedReason ?? null,
+        });
+      }
+
       return next.phase;
     },
   };

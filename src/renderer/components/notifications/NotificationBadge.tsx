@@ -33,7 +33,8 @@ const severityDotClass: Record<NotificationSeverity, string> = {
  * project/session stores and takes the corresponding action. Kinds with no
  * resolvable target today (e.g. a 'pr' link when the PR was never linked to a
  * session, or an 'external' ticket not imported into the current project) are
- * silent no-ops — there is nothing to navigate to.
+ * silent no-ops — there is nothing to navigate to. That includes a
+ * 'dev_session' link for a session belonging to a project that isn't open.
  */
 function navigateToNotificationLink(link: NonNullable<AppNotification['link']>): void {
   switch (link.kind) {
@@ -49,6 +50,12 @@ function navigateToNotificationLink(link: NonNullable<AppNotification['link']>):
         .getState()
         .sessions.find((s) => s.repo_id === repoId && s.pr_number === prNumber);
       if (session?.pr_url) openExternalUrl(session.pr_url);
+      break;
+    }
+    case 'dev_session': {
+      const session = useDevSessionsStore.getState().sessions.find((s) => s.id === link.id);
+      if (!session) break;
+      emit({ type: 'navigate-to-view', payload: { view: 'planning', boardSessionId: session.id } });
       break;
     }
     case 'plan_item': {

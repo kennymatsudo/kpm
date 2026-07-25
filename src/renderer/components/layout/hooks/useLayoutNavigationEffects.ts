@@ -4,6 +4,7 @@ import { resolveStatusCategory } from '../../../constants/statusConfig';
 import {
   emit,
   subscribe as subscribeToStoreEvent,
+  useDevSessionsStore,
   usePlanDomainStore,
   useProjectUiDomainStore,
   useWorkspaceStore,
@@ -16,6 +17,7 @@ interface UseLayoutNavigationEffectsParams {
   hiddenStatusCategoriesRef: MutableRefObject<Set<StatusCategory>>;
   setHiddenStatusCategories: (categories: Set<StatusCategory>) => void;
   handleMainViewChange: (view: 'planning' | 'workspace') => void;
+  showBoardView: () => void;
   showWorkspaceChat: () => void;
 }
 
@@ -28,6 +30,7 @@ export function useLayoutNavigationEffects({
   hiddenStatusCategoriesRef,
   setHiddenStatusCategories,
   handleMainViewChange,
+  showBoardView,
   showWorkspaceChat,
 }: UseLayoutNavigationEffectsParams): UseLayoutNavigationEffectsReturn {
   const openFile = useWorkspaceStore((state) => state.openFile);
@@ -58,6 +61,13 @@ export function useLayoutNavigationEffects({
 
       if (event.payload.view === 'workspace' && event.payload.showChat) {
         showWorkspaceChat();
+      }
+
+      // The detail pane only exists in board mode, and PlanView may not be
+      // mounted yet, so park the request on the store for it to adopt on mount.
+      if (event.payload.view === 'planning' && event.payload.boardSessionId) {
+        showBoardView();
+        useDevSessionsStore.getState().setSelectedSessionId(event.payload.boardSessionId);
       }
 
       if (event.payload.view === 'workspace' && event.payload.filePath) {
@@ -106,7 +116,7 @@ export function useLayoutNavigationEffects({
     });
 
     return unsubscribe;
-  }, [handleFileOpen, handleMainViewChange, hiddenStatusCategoriesRef, setHiddenStatusCategories, showWorkspaceChat]);
+  }, [handleFileOpen, handleMainViewChange, hiddenStatusCategoriesRef, setHiddenStatusCategories, showBoardView, showWorkspaceChat]);
 
   return { handleFileOpen };
 }

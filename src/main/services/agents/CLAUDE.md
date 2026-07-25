@@ -101,6 +101,8 @@ Current phases:
 
 The orchestration lives in `src/main/services/agents/BoardAgentOrchestrator.ts` (`createBoardAgentOrchestrator`), wired into `AgentSessionManager` from `appServices.ts`.
 
+`automationPhaseMachine` is the sole writer of the phase, so it is also where board automation announces itself to the notification bell: a transition **into** `ready_for_review`, `needs_attention`, or `paused` emits a `board_agent` event on the `UpdateEventBus` (`BOARD_AGENT_NOTIFY_PHASES`). Mid-flight phases stay silent — the board card already shows them — and a write that only moves the cursor or pass counts is not announced. Do not emit board notifications from `BoardAgentOrchestrator` or `AgentSessionManager`; route the phase change through the machine and the notification follows.
+
 ### Implementation completion
 
 When the implementation session completes:

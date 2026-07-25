@@ -299,7 +299,12 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const hookServer = createHookServer();
   let agentSessionManagerRef: ReturnType<typeof createAgentSessionManager> | null = null;
-  const phaseMachine = createAutomationPhaseMachine({ devSessions: container.devSessions });
+  const phaseMachine = createAutomationPhaseMachine({
+    devSessions: container.devSessions,
+    eventBus: updateEventBus,
+    resolveTaskName: (session) =>
+      (session.plan_item_id ? container.planItems.get(session.plan_item_id)?.title : null) ?? session.name,
+  });
   const boardAgentOrchestrator = createBoardAgentOrchestrator({
     agentReviews: container.agentReviews,
     planService,

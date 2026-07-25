@@ -49,6 +49,11 @@ export interface NavigateToViewEvent {
     filePath?: string;
     /** Optional plan item ID to focus after navigation (for planning view) */
     planItemId?: string;
+    /**
+     * Optional dev session whose detail pane should open. Forces the planning
+     * view into board mode, since that is the only mode with a detail pane.
+     */
+    boardSessionId?: string;
   };
 }
 

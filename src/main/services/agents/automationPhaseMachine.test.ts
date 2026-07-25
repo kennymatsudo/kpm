@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { DevSession, DevSessionAutomationPhase } from '../../../shared/types';
+import type { DevSession, DevSessionAutomationPhase, DevSessionPausedReason } from '../../../shared/types';
 import {
   createAutomationPhaseMachine,
   effectivePhase,
@@ -183,6 +183,95 @@ describe('automationPhaseMachine.transition', () => {
     const machine = createAutomationPhaseMachine({ devSessions });
     machine.transition('s1', { type: 'automationDismissed' });
     expect(updateAutomationPhase).not.toHaveBeenCalled();
+  });
+});
+
+describe('automationPhaseMachine board agent events', () => {
+  function notifyingMachine(initialPhase: DevSessionAutomationPhase | null, initialPausedReason: DevSessionPausedReason | null = null) {
+    let session = {
+      id: 'session-1', project_id: 'p1', plan_item_id: 'item-7', name: 'Session name',
+      status: 'active', automation_phase: initialPhase, current_step_id: null,
+      step_pass_counts: null, paused_reason: initialPausedReason,
+    } as DevSession;
+    const emit = vi.fn();
+    const machine = createAutomationPhaseMachine({
+      devSessions: {
+        get: () => session,
+        updateAutomationPhase: vi.fn(),
+        updateAutomationState: (_id, next) => {
+          session = { ...session, automation_phase: next.phase, paused_reason: next.pausedReason ?? null };
+        },
+      },
+      eventBus: { emit },
+      resolveTaskName: () => 'Add rate limiting',
+    });
+    return { machine, emit };
+  }
+
+  it('announces a run that finished', () => {
+    const { machine, emit } = notifyingMachine('addressing_review');
+    machine.transition('session-1', { type: 'movedToReview' });
+
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'board_agent',
+      source: 'agent',
+      devSessionId: 'session-1',
+      projectId: 'p1',
+      planItemId: 'item-7',
+      taskName: 'Add rate limiting',
+      phase: 'ready_for_review',
+    }));
+  });
+
+  it('announces a run that stopped for a decision, with the reason', () => {
+    const { machine, emit } = notifyingMachine('reviewing');
+    machine.transition('session-1', { type: 'paused', stepId: 'review', reason: 'stalled' });
+
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ phase: 'paused', pausedReason: 'stalled' }));
+  });
+
+  it('announces automation failure as needs_attention', () => {
+    const { machine, emit } = notifyingMachine('reviewing');
+    machine.transition('session-1', { type: 'automationFailed', reason: 'commit-capture-failed' });
+
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ phase: 'needs_attention' }));
+  });
+
+  it('stays quiet for mid-flight phases', () => {
+    const { machine, emit } = notifyingMachine('idle');
+    machine.transition('session-1', { type: 'opposingReviewLaunched' });
+
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('stays quiet when only the paused reason changed, not the phase', () => {
+    const { machine, emit } = notifyingMachine('paused', 'gate');
+    machine.transition('session-1', { type: 'paused', stepId: 'review', reason: 'stalled' });
+
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the session name when no task name resolves', () => {
+    let session = {
+      id: 'session-1', project_id: 'p1', plan_item_id: null, name: 'Session name',
+      status: 'active', automation_phase: 'reviewing',
+      current_step_id: null, step_pass_counts: null, paused_reason: null,
+    } as DevSession;
+    const emit = vi.fn();
+    const machine = createAutomationPhaseMachine({
+      devSessions: {
+        get: () => session,
+        updateAutomationPhase: (_id, next) => {
+          session = { ...session, automation_phase: next };
+        },
+      },
+      eventBus: { emit },
+      resolveTaskName: () => null,
+    });
+
+    machine.transition('session-1', { type: 'automationFailed', reason: 'x' });
+
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ taskName: 'Session name' }));
   });
 });
 

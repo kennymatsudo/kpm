@@ -135,6 +135,8 @@ export const Layout = memo(function Layout({
     });
   }, [setViewMode, viewMode]);
 
+  const showBoardView = useCallback(() => handleViewModeChange('board'), [handleViewModeChange]);
+
   // Tool log subscription - lives at Layout level so it never unmounts during view switches
   useToolLog(currentProjectId);
 
@@ -167,6 +169,7 @@ export const Layout = memo(function Layout({
     hiddenStatusCategoriesRef,
     setHiddenStatusCategories,
     handleMainViewChange,
+    showBoardView,
     showWorkspaceChat,
   });
 

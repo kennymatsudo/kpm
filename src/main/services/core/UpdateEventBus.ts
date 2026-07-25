@@ -20,9 +20,9 @@
 // Event Variants
 // =============================================================================
 
-import type { LoopOutputMode } from '../../../shared/types';
+import type { DevSessionAutomationPhase, DevSessionPausedReason, LoopOutputMode } from '../../../shared/types';
 
-export type UpdateSource = 'github' | 'linear' | 'jira' | 'file' | 'git' | 'loop';
+export type UpdateSource = 'github' | 'linear' | 'jira' | 'file' | 'git' | 'loop' | 'agent';
 
 export interface BaseUpdateEvent {
   /** Event kind — discriminator for the union. */
@@ -98,12 +98,46 @@ export interface LoopFindingEvent extends BaseUpdateEvent {
   artifactPath?: string;
 }
 
+/**
+ * The automation phases worth interrupting the user for: the run finished, it
+ * needs a decision, or it stopped at a gate. Every other phase is mid-flight,
+ * and the board card already shows that.
+ */
+export const BOARD_AGENT_NOTIFY_PHASES = [
+  'ready_for_review',
+  'needs_attention',
+  'paused',
+] as const satisfies readonly DevSessionAutomationPhase[];
+
+export type BoardAgentNotifyPhase = (typeof BOARD_AGENT_NOTIFY_PHASES)[number];
+
+export function isBoardAgentNotifyPhase(
+  phase: DevSessionAutomationPhase | null,
+): phase is BoardAgentNotifyPhase {
+  return phase !== null && (BOARD_AGENT_NOTIFY_PHASES as readonly string[]).includes(phase);
+}
+
+/** A board agent session settled into a phase that wants the user's attention. */
+export interface BoardAgentEvent extends BaseUpdateEvent {
+  kind: 'board_agent';
+  source: 'agent';
+  devSessionId: string;
+  projectId: string;
+  planItemId: string | null;
+  /** Label for the work the session is doing, when one can be resolved. */
+  taskName: string | null;
+  phase: BoardAgentNotifyPhase;
+  /** Why automation paused; only meaningful when `phase` is 'paused'. */
+  pausedReason: DevSessionPausedReason | null;
+}
+
 export type UpdateEvent =
   | PrChangedEvent
   | TicketChangedEvent
   | BranchChangedEvent
   | GenericUpdateEvent
-  | LoopFindingEvent;
+  | LoopFindingEvent
+  | BoardAgentEvent;
 
 export type UpdateEventKind = UpdateEvent['kind'];
 

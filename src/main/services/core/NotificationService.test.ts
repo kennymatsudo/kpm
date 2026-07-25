@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createNotificationService, dedupeKeyFor, notificationFor } from './NotificationService';
 import type {
+  BoardAgentEvent,
   BranchChangedEvent,
   GenericUpdateEvent,
   LoopFindingEvent,
@@ -68,6 +69,21 @@ function loopEvent(overrides: Partial<LoopFindingEvent> = {}): LoopFindingEvent 
     outputMode: 'notify',
     title: 'Found a flaky test',
     body: 'auth.spec.ts fails intermittently',
+    ...overrides,
+  };
+}
+
+function boardAgentEvent(overrides: Partial<BoardAgentEvent> = {}): BoardAgentEvent {
+  return {
+    kind: 'board_agent',
+    source: 'agent',
+    detectedAt: AT,
+    devSessionId: 'sess-1',
+    projectId: 'proj-1',
+    planItemId: 'item-7',
+    taskName: 'Add rate limiting',
+    phase: 'ready_for_review',
+    pausedReason: null,
     ...overrides,
   };
 }
@@ -153,6 +169,43 @@ describe('notificationFor', () => {
   it('suppresses branch changes (observability-only)', () => {
     expect(notificationFor(branchEvent())).toBeNull();
   });
+
+  describe('board_agent', () => {
+    it('reports a finished run as a success and a stopped one as a warning', () => {
+      expect(notificationFor(boardAgentEvent({ phase: 'ready_for_review' }))).toMatchObject({
+        severity: 'success',
+        title: 'Add rate limiting is ready for review',
+      });
+      expect(notificationFor(boardAgentEvent({ phase: 'needs_attention' }))).toMatchObject({
+        severity: 'warning',
+        title: 'Add rate limiting needs attention',
+      });
+    });
+
+    it('explains why a paused run stopped', () => {
+      expect(notificationFor(boardAgentEvent({ phase: 'paused', pausedReason: 'gate' }))?.body).toBe(
+        'Waiting for your go-ahead before the next step.',
+      );
+      expect(
+        notificationFor(boardAgentEvent({ phase: 'paused', pausedReason: 'stalled' }))?.body,
+      ).toBe('The reviewer kept raising the same findings.');
+      expect(notificationFor(boardAgentEvent({ phase: 'paused', pausedReason: null }))?.body).toBeUndefined();
+    });
+
+    it('falls back to a generic label when the task name is unresolved', () => {
+      expect(notificationFor(boardAgentEvent({ taskName: null }))?.title).toBe('Task is ready for review');
+    });
+
+    it('links to the board session and carries the project', () => {
+      const n = notificationFor(boardAgentEvent());
+      expect(n?.link).toEqual({ kind: 'dev_session', id: 'sess-1' });
+      expect(n?.projectId).toBe('proj-1');
+    });
+  });
+
+  it('carries the project on loop findings', () => {
+    expect(notificationFor(loopEvent())?.projectId).toBe('proj-1');
+  });
 });
 
 describe('dedupeKeyFor', () => {
@@ -168,6 +221,13 @@ describe('dedupeKeyFor', () => {
     expect(dedupeKeyFor(ticketEvent())).toBe('ticket:linear:ENG-1234:status_changed');
     expect(dedupeKeyFor(branchEvent({ branch: null }))).toBe('branch:repo-1:null');
     expect(dedupeKeyFor(loopEvent())).toBe('loop:loop-1:Found a flaky test');
+    expect(dedupeKeyFor(boardAgentEvent())).toBe('agent:sess-1:ready_for_review');
+  });
+
+  it('separates board agent phases so a later phase is not swallowed as a duplicate', () => {
+    expect(dedupeKeyFor(boardAgentEvent({ phase: 'paused' }))).not.toBe(
+      dedupeKeyFor(boardAgentEvent({ phase: 'needs_attention' })),
+    );
   });
 });
 

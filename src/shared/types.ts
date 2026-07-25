@@ -354,8 +354,14 @@ export interface AppNotification {
   source: string;
   /** Original event kind, for consumers that want to filter. */
   eventKind: string;
-  /** Optional deep-link target — opaque to the service, interpreted by UI. */
-  link?: { kind: 'session' | 'plan_item' | 'pr' | 'external'; id: string };
+  /** Originating project, when the event belongs to one. */
+  projectId?: string;
+  /**
+   * Optional deep-link target — opaque to the service, interpreted by UI.
+   * `session` and `pr` both resolve to a pull request; `dev_session` reveals the
+   * board session itself.
+   */
+  link?: { kind: 'session' | 'dev_session' | 'plan_item' | 'pr' | 'external'; id: string };
 }
 
 // StatusCategory is re-exported from @kpm/shared-types above

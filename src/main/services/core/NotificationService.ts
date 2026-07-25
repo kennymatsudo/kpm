@@ -21,8 +21,14 @@
  *     user request makes the rules concrete.
  */
 
-import type { AppNotification } from '../../../shared/types';
-import type { EventOfKind, UpdateEvent, UpdateEventBus, UpdateEventKind } from './UpdateEventBus';
+import type { AppNotification, DevSessionPausedReason } from '../../../shared/types';
+import type {
+  BoardAgentNotifyPhase,
+  EventOfKind,
+  UpdateEvent,
+  UpdateEventBus,
+  UpdateEventKind,
+} from './UpdateEventBus';
 import { notificationEvents } from '../../../shared/ipc/notificationEvents';
 
 export interface NotificationServiceDeps {
@@ -50,7 +56,7 @@ export const NOTIFICATION_CHANNEL = notificationEvents.new.channel;
 // =============================================================================
 
 /** The user-facing half of a notification — the id/timestamp are stamped by `notificationFor`. */
-type NotificationBody = Pick<AppNotification, 'severity' | 'title' | 'body' | 'link'>;
+type NotificationBody = Pick<AppNotification, 'severity' | 'title' | 'body' | 'link' | 'projectId'>;
 
 interface NotifyRule<K extends UpdateEventKind> {
   dedupeKey: (event: EventOfKind<K>) => string;
@@ -73,6 +79,32 @@ const ticketTitleByChange: Record<EventOfKind<'ticket_changed'>['change'], (key:
   new_comment: (key) => `New comment on ${key}`,
   description_changed: (key) => `${key} description updated`,
   closed: (key) => `${key} closed`,
+};
+
+const pausedReasonBody: Record<DevSessionPausedReason, string> = {
+  gate: 'Waiting for your go-ahead before the next step.',
+  max_passes: 'Hit the review pass limit without converging.',
+  stalled: 'The reviewer kept raising the same findings.',
+};
+
+const boardAgentPresenterByPhase: Record<
+  BoardAgentNotifyPhase,
+  (event: EventOfKind<'board_agent'>, task: string) => NotificationBody
+> = {
+  ready_for_review: (_event, task) => ({
+    severity: 'success',
+    title: `${task} is ready for review`,
+  }),
+  needs_attention: (_event, task) => ({
+    severity: 'warning',
+    title: `${task} needs attention`,
+    body: 'Automation stopped before finishing. Open the task to pick it back up.',
+  }),
+  paused: (event, task) => ({
+    severity: 'warning',
+    title: `${task} is paused`,
+    body: event.pausedReason ? pausedReasonBody[event.pausedReason] : undefined,
+  }),
 };
 
 const NOTIFY_RULES: { [K in UpdateEventKind]: NotifyRule<K> } = {
@@ -116,7 +148,20 @@ const NOTIFY_RULES: { [K in UpdateEventKind]: NotifyRule<K> } = {
   },
   loop_finding: {
     dedupeKey: (event) => `loop:${event.loopId}:${event.title}`,
-    present: (event) => ({ severity: 'info', title: event.title, body: event.body }),
+    present: (event) => ({
+      severity: 'info',
+      title: event.title,
+      body: event.body,
+      projectId: event.projectId,
+    }),
+  },
+  board_agent: {
+    dedupeKey: (event) => `agent:${event.devSessionId}:${event.phase}`,
+    present: (event) => ({
+      ...boardAgentPresenterByPhase[event.phase](event, event.taskName ?? 'Task'),
+      projectId: event.projectId,
+      link: { kind: 'dev_session', id: event.devSessionId },
+    }),
   },
 };
 

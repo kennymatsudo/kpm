@@ -293,6 +293,15 @@ export function PlanView({
     }
   }, [boardDetailSessionId, viewMode]);
 
+  // A notification (or anything else) can ask for a session's detail pane before
+  // this view is mounted, so the request waits on the store until we can honour it.
+  const requestedDetailSessionId = useDevSessionsStore((state) => state.selectedSessionId);
+  useEffect(() => {
+    if (!requestedDetailSessionId || viewMode !== 'board') return;
+    setBoardDetailSessionId(requestedDetailSessionId);
+    useDevSessionsStore.getState().setSelectedSessionId(null);
+  }, [requestedDetailSessionId, viewMode]);
+
   // --- Auto layout & collision resolution ---
 
   const handleAutoLayout = useAutoLayout({
