@@ -65,7 +65,7 @@ describe('resolveGenerationRoute', () => {
 
   it('honors a per-purpose Codex override', () => {
     configFor({ pr_description: 'codex' });
-    expect(resolveGenerationRoute('pr_description', 'fast')).toEqual({ provider: 'codex', model: 'gpt-5.5' });
+    expect(resolveGenerationRoute('pr_description', 'fast')).toEqual({ provider: 'codex', model: 'gpt-5.6-terra' });
     // Untouched purposes still route to Claude.
     expect(resolveGenerationRoute('commit_message', 'cheap').provider).toBe('claude');
   });
@@ -98,7 +98,7 @@ describe('runGeneration', () => {
     expect(codexRunMock).toHaveBeenCalledTimes(1);
     expect(runClaudeQueryMock).not.toHaveBeenCalled();
     expect(result.provider).toBe('codex');
-    expect(result.model).toBe('gpt-5.5');
+    expect(result.model).toBe('gpt-5.6-terra');
   });
 
   it('prepends the system prompt for Codex (which has no system-prompt field)', async () => {

@@ -50,7 +50,7 @@ export function formatModel(model: string): string {
   if (MODEL_LABELS[model]) return MODEL_LABELS[model];
   const piSelectorLabel = formatPiSelector(model);
   if (piSelectorLabel) return piSelectorLabel;
-  // Compact a full model id like "claude-opus-4-8" → "Opus 4.8"
+  // Compact a full model id like "claude-opus-5" → "Opus 5", "claude-opus-4-8" → "Opus 4.8"
   const lower = model.toLowerCase();
   if (lower.includes('opus')) return modelWithVersion('Opus', model);
   if (lower.includes('sonnet')) return modelWithVersion('Sonnet', model);
@@ -75,8 +75,10 @@ function formatPiSelector(model: string): string | null {
 }
 
 function modelWithVersion(label: string, raw: string): string {
-  const versionMatch = /(\d+)[-.](\d+)/.exec(raw);
-  return versionMatch ? `${label} ${versionMatch[1]}.${versionMatch[2]}` : label;
+  const versionMatch = /(\d+)(?:[-.](\d+))?/.exec(raw);
+  if (!versionMatch) return label;
+  const [, major, minor] = versionMatch;
+  return minor ? `${label} ${major}.${minor}` : `${label} ${major}`;
 }
 
 export type ModelTier = 'opus' | 'sonnet' | 'haiku' | 'other';

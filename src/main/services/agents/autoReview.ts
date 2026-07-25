@@ -172,6 +172,7 @@ async function startReviewSession(params: {
       disallowedTools: ['AskUserQuestion'],
       settingSources: ['user'],
       env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
+      thinking: { type: 'adaptive' as const, display: 'summarized' as const },
       ...getClaudeSdkSpawnOptions(),
     };
 

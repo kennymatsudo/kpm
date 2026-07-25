@@ -126,7 +126,7 @@ export interface AgentSessionConfig {
   terminalSessionTtlMs: number;
   /** Timeout for the initial SDK agent session startup (ms) */
   sessionStartTimeoutMs: number;
-  /** Model for Codex agent sessions (e.g. 'gpt-5.5', 'gpt-5.4'). If omitted, Codex uses its own default. */
+  /** Model for Codex agent sessions (e.g. 'gpt-5.6-sol', 'gpt-5.6-terra'). If omitted, Codex uses its own default. */
   codexModel?: string;
 }
 
@@ -273,9 +273,9 @@ function createDefaultConfig(): AppConfig {
       defaultProvider: 'claude',
       providerByPurpose: {},
       codexModels: {
-        fast: 'gpt-5.5',
-        deep: 'gpt-5.5',
-        cheap: 'gpt-5.5',
+        fast: 'gpt-5.6-terra',
+        deep: 'gpt-5.6-sol',
+        cheap: 'gpt-5.6-luna',
       },
       noteRefinementTimeoutMs: 2 * 60 * 1000, // 2 minutes
       artifactGenerationTimeoutMs: 5 * 60 * 1000, // 5 minutes
@@ -292,7 +292,7 @@ function createDefaultConfig(): AppConfig {
       maxConcurrentSessionsPerProject: 3,
       terminalSessionTtlMs: 30 * 60 * 1000, // 30 minutes
       sessionStartTimeoutMs: 60 * 1000, // 1 minute
-      codexModel: 'gpt-5.5',
+      codexModel: 'gpt-5.6-sol',
     },
 
     reviewPoll: {
