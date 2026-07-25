@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StoreApi } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { createInitialPerSessionState } from './baseState';
@@ -14,9 +14,12 @@ type TestState = {
   activeSessionIds: Set<string>;
   viewedSessionId: string | null;
   nextSessionNumber: number;
+  startNewChatSession: () => string;
 } & SessionActions & StreamingActions;
 
-function createTestStore(): StoreApi<TestState> {
+function createTestStore(
+  startNewChatSession: () => string = vi.fn(() => 'session-new'),
+): StoreApi<TestState> {
   const sessionA = createInitialPerSessionState(1);
   const sessionB = createInitialPerSessionState(2);
 
@@ -28,6 +31,7 @@ function createTestStore(): StoreApi<TestState> {
     activeSessionIds: new Set(),
     viewedSessionId: 'session-a',
     nextSessionNumber: 3,
+    startNewChatSession,
     ...createSessionManagementSlice(set as never, get as never),
     ...createStreamingSlice(set as never, get as never),
   }));
@@ -69,5 +73,30 @@ describe('sessionManagementSlice.setViewedSession', () => {
     store.getState().getOrCreateSession('session-a', { hydrated: false });
 
     expect(store.getState().sessions.get('session-a')?.hydrated).toBe(false);
+  });
+});
+
+describe('sessionManagementSlice.removeSession', () => {
+  it('starts a fresh session when the last tab is closed', () => {
+    const startNewChatSession = vi.fn(() => 'session-new');
+    const store = createTestStore(startNewChatSession);
+
+    store.getState().removeSession('session-b');
+    expect(startNewChatSession).not.toHaveBeenCalled();
+
+    store.getState().removeSession('session-a');
+
+    expect(store.getState().sessions.size).toBe(0);
+    expect(startNewChatSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to a remaining tab without starting a new session', () => {
+    const startNewChatSession = vi.fn(() => 'session-new');
+    const store = createTestStore(startNewChatSession);
+
+    store.getState().removeSession('session-a');
+
+    expect(store.getState().viewedSessionId).toBe('session-b');
+    expect(startNewChatSession).not.toHaveBeenCalled();
   });
 });

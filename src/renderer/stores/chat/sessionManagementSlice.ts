@@ -92,6 +92,8 @@ export function createSessionManagementSlice(set: ChatSet, get: ChatGet): Pick<C
       }
 
       set({ sessions, activeSessionIds, viewedSessionId });
+
+      if (sessions.size === 0) get().startNewChatSession();
     },
   };
 }

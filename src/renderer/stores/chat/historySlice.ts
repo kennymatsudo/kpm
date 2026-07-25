@@ -125,6 +125,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         const persisted = readPersistedTabs(projectId);
         if (!persisted || persisted.open.length === 0) {
           set({ persistedProjectId: projectId });
+          if (get().sessions.size === 0) get().startNewChatSession();
           return;
         }
 
