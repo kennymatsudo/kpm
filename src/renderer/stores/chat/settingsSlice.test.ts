@@ -72,4 +72,49 @@ describe('settingsSlice', () => {
     expect(store.getState().sessions.get('chat-a')?.model).toBe('opus');
     expect(store.getState().model).toBe('sonnet');
   });
+
+  it('retries the pi enumeration in the background when it returns empty while available', async () => {
+    vi.useFakeTimers();
+    try {
+      const api = installMockApi();
+      const piMock = vi.mocked(api.chat.piProviders);
+      piMock
+        .mockResolvedValueOnce({ success: true, available: true, providers: [] })
+        .mockResolvedValue({
+          success: true,
+          available: true,
+          providers: [{ provider: 'cursor', modelId: 'auto', label: 'Cursor Auto', safe: true }],
+        });
+      const store = createTestStore();
+
+      await store.getState().loadPiProviders();
+      expect(store.getState().piProviders).toEqual([]);
+      expect(piMock).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(piMock).toHaveBeenCalledTimes(2);
+      expect(store.getState().piProviders).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(piMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not retry when pi is genuinely unavailable', async () => {
+    vi.useFakeTimers();
+    try {
+      const api = installMockApi();
+      const piMock = vi.mocked(api.chat.piProviders);
+      piMock.mockResolvedValue({ success: true, available: false, providers: [] });
+      const store = createTestStore();
+
+      await store.getState().loadPiProviders();
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(piMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

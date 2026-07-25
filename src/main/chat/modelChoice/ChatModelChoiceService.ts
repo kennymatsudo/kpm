@@ -137,13 +137,13 @@ function buildView(
 }
 
 export function createChatModelChoiceService(deps: ChatModelChoiceDeps): ChatModelChoiceService {
-  async function loadCatalog(): Promise<{
+  async function loadCatalog(includePiCatalog: boolean): Promise<{
     catalog: ChatProviderDescriptor[];
     piProviders: PiProviderOption[];
   }> {
     const [readiness, piProviders] = await Promise.all([
       deps.getReadiness(),
-      deps.listPiProviders(),
+      includePiCatalog ? deps.listPiProviders() : Promise.resolve<PiProviderOption[]>([]),
     ]);
     return { catalog: buildChatChoiceCatalog(readiness, piProviders), piProviders };
   }
@@ -177,7 +177,6 @@ export function createChatModelChoiceService(deps: ChatModelChoiceDeps): ChatMod
 
   async function open(input: ChatChoiceOpenInput): AsyncResult<ChatChoiceView> {
     try {
-      const { catalog, piProviders } = await loadCatalog();
       let row = deps.chatSessions.get(input.chatSessionId);
       if (!row) {
         try {
@@ -201,6 +200,10 @@ export function createChatModelChoiceService(deps: ChatModelChoiceDeps): ChatMod
 
       let aggregate = row.chat_model_choice ? parseAggregate(row.chat_model_choice) : undefined;
       if (row.chat_model_choice && !aggregate) return failure('This Chat has an invalid saved model choice. Reset or repair the Chat before sending.');
+
+      const presentedProvider: ChatProvider =
+        aggregate?.selectedProvider ?? row.provider ?? deps.getDefaults().provider;
+      const { catalog, piProviders } = await loadCatalog(presentedProvider === 'pi');
 
       if (!aggregate) {
         const defaults = deps.getDefaults();
@@ -256,7 +259,10 @@ export function createChatModelChoiceService(deps: ChatModelChoiceDeps): ChatMod
       if (!row.chat_model_choice) return failure('Open the Chat before changing its model choice.');
       const current = parseAggregate(row.chat_model_choice);
       if (!current) return failure('This Chat has an invalid saved model choice.');
-      const { catalog } = await loadCatalog();
+      const targetProvider = input.intent.type === 'choose_provider'
+        ? input.intent.provider
+        : current.selectedProvider;
+      const { catalog } = await loadCatalog(targetProvider === 'pi');
       let next = current;
 
       switch (input.intent.type) {

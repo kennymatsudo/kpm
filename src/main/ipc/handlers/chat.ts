@@ -10,6 +10,8 @@ import { ChatSendSchema } from '../validation/chat';
 import { createRegistryIpcHandlers } from '../validation/utils';
 import { isPiAvailable } from '../../pi/detect';
 import { listPiProviders } from '../../pi/providers';
+import { getConfig } from '../../config';
+import { withTimeout } from '../../utils/withTimeout';
 
 export interface ChatHandlerDeps {
   chatService: ChatService;
@@ -172,7 +174,9 @@ function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
 
     piProviders: async () => {
       const available = await isPiAvailable();
-      const providers = available ? await listPiProviders() : [];
+      const providers = available
+        ? await withTimeout(listPiProviders(), getConfig().session.piCatalogTimeoutMs, [])
+        : [];
       return { available, providers };
     },
   };

@@ -85,6 +85,8 @@ export interface SessionConfig {
   sessionReadyPollIntervalMs: number;
   /** Number of consecutive MCP recovery attempts before tearing down a session */
   mcpRecoveryMaxAttempts: number;
+  /** Timeout for enumerating pi providers and models (ms) */
+  piCatalogTimeoutMs: number;
 }
 
 export interface GenerationConfig {
@@ -259,6 +261,7 @@ function createDefaultConfig(): AppConfig {
       sessionReadyTimeoutMs: 30 * 1000, // 30 seconds
       sessionReadyPollIntervalMs: 100,
       mcpRecoveryMaxAttempts: 3,
+      piCatalogTimeoutMs: 10 * 1000, // 10 seconds
     },
 
     generation: {

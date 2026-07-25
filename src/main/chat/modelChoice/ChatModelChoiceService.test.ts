@@ -43,13 +43,14 @@ function harness(
     effort: 'medium',
   };
   const getDefaults = vi.fn(() => defaults);
+  const listPiProviders = vi.fn(async () => piProviders);
   const service = createChatModelChoiceService({
     chatSessions: sessions,
     getDefaults,
     getReadiness: async () => ready(),
-    listPiProviders: async () => piProviders,
+    listPiProviders,
   });
-  return { db, sessions, defaults, getDefaults, service };
+  return { db, sessions, defaults, getDefaults, listPiProviders, service };
 }
 
 describe('ChatModelChoiceService', () => {
@@ -217,6 +218,45 @@ describe('ChatModelChoiceService', () => {
 
     expect(opened.ok && opened.data.selected.effort).toBe('medium');
     expect(opened.ok && opened.data.revision).toBe(2);
+    h.db.close();
+  });
+
+  it('does not enumerate pi providers when opening a non-pi Chat', async () => {
+    const h = harness('claude');
+    const opened = await h.service.open({ projectId: 'p1', chatSessionId: 'c1', scope: 'main' });
+    expect(opened.ok).toBe(true);
+    expect(h.listPiProviders).not.toHaveBeenCalled();
+    h.db.close();
+  });
+
+  it('enumerates pi providers when opening a pi Chat', async () => {
+    const h = harness('pi');
+    const opened = await h.service.open({ projectId: 'p1', chatSessionId: 'c1', scope: 'main' });
+    expect(opened.ok).toBe(true);
+    expect(h.listPiProviders).toHaveBeenCalled();
+    h.db.close();
+  });
+
+  it('enumerates pi providers only when the change targets pi', async () => {
+    const h = harness('claude');
+    const opened = await h.service.open({ projectId: 'p1', chatSessionId: 'c1', scope: 'main' });
+    if (!opened.ok) throw new Error(opened.error);
+    h.listPiProviders.mockClear();
+
+    const toCodex = await h.service.change({
+      projectId: 'p1', chatSessionId: 'c1', expectedRevision: opened.data.revision,
+      intent: { type: 'choose_provider', provider: 'codex' },
+    });
+    if (!toCodex.ok) throw new Error(toCodex.error);
+    expect(h.listPiProviders).not.toHaveBeenCalled();
+
+    const toPi = await h.service.change({
+      projectId: 'p1', chatSessionId: 'c1', expectedRevision: toCodex.data.revision,
+      intent: { type: 'choose_provider', provider: 'pi' },
+    });
+    if (!toPi.ok) throw new Error(toPi.error);
+    expect(h.listPiProviders).toHaveBeenCalledTimes(1);
+    expect((toPi.data.providers.find((p) => p.provider === 'pi')?.models.length ?? 0)).toBeGreaterThan(0);
     h.db.close();
   });
 

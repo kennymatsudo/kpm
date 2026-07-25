@@ -58,6 +58,7 @@ export function createMockApi() {
       cancel: vi.fn().mockResolvedValue({ success: true }),
       getUsage: vi.fn().mockResolvedValue({ totalTokens: 0 }),
       getMessages: vi.fn().mockResolvedValue({ success: true, messages: [] }),
+      piProviders: vi.fn().mockResolvedValue({ success: true, available: false, providers: [] }),
       onChunk: noopUnsub,
       onPlanActions: noopUnsub,
       onDone: noopUnsub,

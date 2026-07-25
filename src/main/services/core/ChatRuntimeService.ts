@@ -18,6 +18,8 @@ import { createChatModelChoiceService } from '../../chat/modelChoice';
 import { getProviderReadiness } from '../../providers/readiness';
 import { listPiProviders } from '../../pi/providers';
 import { isPiAvailable } from '../../pi/detect';
+import { getConfig } from '../../config';
+import { withTimeout } from '../../utils/withTimeout';
 
 export interface ChatRuntimeServiceDeps {
   getMainWindow: () => BrowserWindow | null;
@@ -59,7 +61,9 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
       effort: getSetting(container.appSettings, 'chatEffort'),
     }),
     getReadiness: getProviderReadiness,
-    listPiProviders: async () => await isPiAvailable() ? listPiProviders() : [],
+    listPiProviders: async () => await isPiAvailable()
+      ? withTimeout(listPiProviders(), getConfig().session.piCatalogTimeoutMs, [])
+      : [],
   });
 
   const streamingSessionService = createStreamingSessionService({

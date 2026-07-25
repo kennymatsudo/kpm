@@ -178,6 +178,12 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         set({ sessions });
       };
 
+      const ensureChoiceHydrated = async () => {
+        if (!isCurrent(shouldContinue)) return;
+        if (get().sessions.get(chatSessionId)?.choice) return;
+        await get().openChatChoice(projectId, chatSessionId);
+      };
+
       try {
         const result = await loadChatSession(projectId, chatSessionId);
         if (!isCurrent(shouldContinue)) return;
@@ -263,10 +269,12 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         } else {
           markHydrationFailed(result.error || 'Failed to load conversation history');
         }
+        await ensureChoiceHydrated();
       } catch (error) {
         console.error('[ChatStore] Failed to load session from history:', error);
         if (!isCurrent(shouldContinue)) return;
         markHydrationFailed('Failed to load conversation history');
+        await ensureChoiceHydrated();
       }
     },
 

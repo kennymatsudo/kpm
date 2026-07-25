@@ -9,11 +9,17 @@ vi.mock('../../services/chatService', () => ({
   loadChatSession: vi.fn(),
 }));
 
-function createTestStore() {
-  return createStore<ReturnType<typeof createInitialChatState> & ReturnType<typeof createHistorySlice>>()((set, get) => ({
+function createTestStore(openChatChoice = vi.fn().mockResolvedValue(null)) {
+  const store = createStore<
+    ReturnType<typeof createInitialChatState>
+    & ReturnType<typeof createHistorySlice>
+    & { openChatChoice: typeof openChatChoice }
+  >()((set, get) => ({
     ...createInitialChatState(),
     ...createHistorySlice(set as never, get as never),
+    openChatChoice,
   }));
+  return store;
 }
 
 describe('historySlice.restoreLastSession', () => {
@@ -362,5 +368,66 @@ describe('historySlice.loadFromHistory turn merging', () => {
       { type: 'checkpoint', timestamp: new Date('2026-01-01T00:01:20.000Z').getTime() },
       { type: 'text', content: 'The research agent finished — here is what it found.' },
     ]);
+  });
+});
+
+describe('historySlice.loadFromHistory model choice hydration', () => {
+  beforeEach(() => {
+    vi.mocked(loadChatSession).mockReset();
+  });
+
+  it('opens the model choice when a restored session loads without one', async () => {
+    const openChatChoice = vi.fn().mockResolvedValue(null);
+    const store = createTestStore(openChatChoice);
+    vi.mocked(loadChatSession).mockResolvedValue({
+      success: true,
+      messages: [],
+      chatSessionId: 'chat-a',
+    });
+
+    await store.getState().loadFromHistory('project-a', 'chat-a', () => true);
+
+    expect(openChatChoice).toHaveBeenCalledWith('project-a', 'chat-a');
+  });
+
+  it('opens the model choice when the history load fails outright', async () => {
+    const openChatChoice = vi.fn().mockResolvedValue(null);
+    const store = createTestStore(openChatChoice);
+    vi.mocked(loadChatSession).mockResolvedValue({ success: false, error: 'boom' });
+
+    await store.getState().loadFromHistory('project-a', 'chat-a', () => true);
+
+    expect(openChatChoice).toHaveBeenCalledWith('project-a', 'chat-a');
+  });
+
+  it('does not re-open a choice the history load already supplied', async () => {
+    const openChatChoice = vi.fn().mockResolvedValue(null);
+    const store = createTestStore(openChatChoice);
+    store.setState({
+      sessions: new Map([['chat-a', createInitialPerSessionState(1)]]),
+    });
+    vi.mocked(loadChatSession).mockResolvedValue({
+      success: true,
+      messages: [],
+      chatSessionId: 'chat-a',
+      choice: {
+        revision: 1,
+        selected: { provider: 'claude', model: 'sonnet', effort: 'medium' },
+        remembered: {
+          claude: { model: 'sonnet', effort: 'medium' },
+          codex: { model: 'gpt-5.6-sol', effort: 'medium' },
+          pi: { model: 'cursor/auto', effort: 'medium' },
+        },
+        providers: [],
+        controlsEnabled: true,
+        responding: false,
+        send: { allowed: true },
+      },
+    });
+
+    await store.getState().loadFromHistory('project-a', 'chat-a', () => true);
+
+    expect(store.getState().sessions.get('chat-a')?.choice?.revision).toBe(1);
+    expect(openChatChoice).not.toHaveBeenCalled();
   });
 });

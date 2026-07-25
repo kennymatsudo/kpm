@@ -9,6 +9,19 @@ import {
   withAcknowledgedProvider,
 } from './piProviderSelection';
 
+const PI_RETRY_MAX_ATTEMPTS = 5;
+const PI_RETRY_BASE_DELAY_MS = 2000;
+const PI_RETRY_MAX_DELAY_MS = 30000;
+let piRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let piRetryAttempts = 0;
+
+function clearPiRetry() {
+  if (piRetryTimer) {
+    clearTimeout(piRetryTimer);
+    piRetryTimer = null;
+  }
+}
+
 function applyChoiceToSession(session: ReturnType<ChatGet>['sessions'] extends Map<string, infer S> ? S : never, choice: ChatChoiceView) {
   const selected = choice.selected;
   const effort = selected.effort === 'low' || selected.effort === 'medium' || selected.effort === 'high' || selected.effort === 'max'
@@ -118,6 +131,18 @@ export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         piProvidersAvailable: result.available,
         piProvidersLoaded: true,
       });
+
+      if (result.available && result.providers.length === 0) {
+        if (piRetryAttempts < PI_RETRY_MAX_ATTEMPTS) {
+          const delay = Math.min(PI_RETRY_BASE_DELAY_MS * 2 ** piRetryAttempts, PI_RETRY_MAX_DELAY_MS);
+          piRetryAttempts += 1;
+          clearPiRetry();
+          piRetryTimer = setTimeout(() => { void get().loadPiProviders(); }, delay);
+        }
+        return;
+      }
+      piRetryAttempts = 0;
+      clearPiRetry();
 
       // If there is no persisted selection that still resolves to a real
       // option, default to a safe one — never auto-select an unsafe provider.
