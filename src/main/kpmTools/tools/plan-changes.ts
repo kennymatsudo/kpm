@@ -10,6 +10,7 @@
 
 import { z } from 'zod';
 import { planActionSchema } from '../../../shared/planActionSchema';
+import { findUnresolvedRefIds } from '../../../shared/planActionRefs';
 import type { PlanAction } from '../../../shared/types';
 import type { IRepoRepository } from '../../db/interfaces';
 import { getCurrentToolExecutionContext } from '../runtime';
@@ -59,6 +60,32 @@ function normalizeRepoTargets(
   return { actions: normalized };
 }
 
+/** Structural minimum: the ref check only needs each item's ID. */
+interface PlanItemIdSource {
+  getByProject(projectId: string): { id: string }[];
+}
+
+/**
+ * Reject the batch while the provider can still fix it. `PlanActionService`
+ * makes the same check at apply time, but that failure surfaces to the user
+ * long after the turn ended — here it lands in the tool result, so the model
+ * can look the ID up and resubmit.
+ */
+function findRefTargetError(
+  actions: PlanAction[],
+  projectId: string | undefined,
+  planItems: PlanItemIdSource,
+): string | null {
+  if (!projectId) return null;
+
+  const unresolved = findUnresolvedRefIds(actions, () =>
+    planItems.getByProject(projectId).map((item) => item.id));
+  if (unresolved.length === 0) return null;
+
+  return `No plan item in this project has the ID: ${unresolved.join(', ')}. Nothing was submitted. `
+    + 'Resolve the real IDs with query_plan_items (or drop the @plan refs), then resubmit.';
+}
+
 /**
  * Create the plan changes tool.
  *
@@ -67,6 +94,7 @@ function normalizeRepoTargets(
 export function createPlanChangeTools(
   onPlanActions: PlanActionsCallback,
   repos: Pick<IRepoRepository, 'getByProject'>,
+  planItems: PlanItemIdSource,
 ) {
   return [
     tool(
@@ -152,12 +180,12 @@ Hierarchy and Groups: follow **Plan Structure** in the system prompt. A placehol
         actions: z.array(planActionSchema).describe('The plan actions to propose'),
       },
       async ({ message, actions }) => {
-        const repoTargets = normalizeRepoTargets(
-          actions,
-          getCurrentToolExecutionContext()?.projectId,
-          repos,
-        );
+        const projectId = getCurrentToolExecutionContext()?.projectId;
+        const repoTargets = normalizeRepoTargets(actions, projectId, repos);
         if (repoTargets.error) return toolError(repoTargets.error);
+
+        const refError = findRefTargetError(repoTargets.actions, projectId, planItems);
+        if (refError) return toolError(refError);
 
         toolLog(`[KPM Tools] modify_plan "${message}" (${repoTargets.actions.length} actions: ${repoTargets.actions.map(a => a.type).join(', ')})`);
 

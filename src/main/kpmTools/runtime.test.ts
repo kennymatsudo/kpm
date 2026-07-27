@@ -107,6 +107,7 @@ describe('KpmToolRuntime', () => {
             emitted.push({ context: getCurrentToolExecutionContext(), actions });
           },
           { getByProject: () => [] },
+          { getByProject: () => [] },
         ),
       }),
     ]);
@@ -139,6 +140,7 @@ describe('KpmToolRuntime', () => {
         tools: createPlanChangeTools(
           (actions) => emitted.push(actions),
           { getByProject: () => [{ id: repoId, project_id: 'project-1', path: '/tmp/repo' }] },
+          { getByProject: () => [] },
         ),
       }),
     ]);
@@ -171,6 +173,7 @@ describe('KpmToolRuntime', () => {
         tools: createPlanChangeTools(
           onPlanActions,
           { getByProject: () => [{ id: connectedRepoId, project_id: 'project-1', path: '/tmp/repo' }] },
+          { getByProject: () => [] },
         ),
       }),
     ]);
@@ -195,6 +198,76 @@ describe('KpmToolRuntime', () => {
     if (result.ok) throw new Error('Expected repo target validation to fail');
     expect(result.message).toContain('not connected');
     expect(onPlanActions).not.toHaveBeenCalled();
+  });
+
+  it('rejects @plan refs to plan items that do not exist in the project', async () => {
+    const onPlanActions = vi.fn();
+    const existingItemId = 'df2a7f51-4c7d-4e15-9d84-f88e0b816c1e';
+    const hallucinatedItemId = 'df2a7f51-24f4-4a1a-9e5d-1c8b0e7a6f3c';
+    const runtime = new KpmToolRuntime(() => [
+      makeToolGroup({
+        tools: createPlanChangeTools(
+          onPlanActions,
+          { getByProject: () => [] },
+          { getByProject: () => [{ id: existingItemId }] },
+        ),
+      }),
+    ]);
+
+    const result = await runtime.executeTool({
+      name: 'modify_plan',
+      args: {
+        message: 'Create item referencing a sibling',
+        actions: [{
+          type: 'create_item',
+          title: 'Emit agent-departed block',
+          parent_id: null,
+          intent: `Extends @plan/${hallucinatedItemId} with a departure marker.`,
+        }],
+      },
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      scope: 'main',
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected plan ref validation to fail');
+    expect(result.message).toContain(hallucinatedItemId);
+    expect(result.message).toContain('query_plan_items');
+    expect(onPlanActions).not.toHaveBeenCalled();
+  });
+
+  it('submits @plan refs that resolve to an existing plan item', async () => {
+    const emitted: PlanAction[][] = [];
+    const existingItemId = 'df2a7f51-4c7d-4e15-9d84-f88e0b816c1e';
+    const runtime = new KpmToolRuntime(() => [
+      makeToolGroup({
+        tools: createPlanChangeTools(
+          (actions) => emitted.push(actions),
+          { getByProject: () => [] },
+          { getByProject: () => [{ id: existingItemId }] },
+        ),
+      }),
+    ]);
+
+    const result = await runtime.executeTool({
+      name: 'modify_plan',
+      args: {
+        message: 'Create item referencing a sibling',
+        actions: [{
+          type: 'create_item',
+          title: 'Emit agent-departed block',
+          parent_id: null,
+          intent: `Extends @plan/${existingItemId.toUpperCase()} with a departure marker.`,
+        }],
+      },
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      scope: 'main',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(emitted).toHaveLength(1);
   });
 
   it('normalizes legacy tool error results without throwing', async () => {

@@ -14,7 +14,7 @@ import type { QueueTrackerUpdateIfNeeded } from './PlanItemService';
 import { queueForTracker } from './OutboundChangePolicy';
 import { assignItemToGroup } from './GroupAssignmentService';
 import { getConfig } from '../../config';
-import { findRefs } from '../../../shared/planRefs';
+import { findUnresolvedRefIds } from '../../../shared/planActionRefs';
 import {
   normalizeWorkBriefDraft,
   repositoryScopeFromPlanItem,
@@ -609,44 +609,12 @@ function executeBatchReparent(
 // Executor Factory
 // =============================================================================
 
-/**
- * Walk text fields on `create_item` / `update_item` actions. Returns the
- * unresolved UUIDs in document order (deduplicated).
- */
-function collectRefIdsInActions(actions: PlanAction[]): string[] {
-  const ids = new Set<string>();
-  const consume = (text: string | null | undefined) => {
-    if (!text) return;
-    for (const m of findRefs(text)) ids.add(m.id);
-  };
-
-  for (const action of actions) {
-    if (action.type === 'create_item') {
-      consume(action.title);
-      consume(action.description);
-      consume(action.intent);
-      if (action.acceptance_criteria) {
-        for (const c of action.acceptance_criteria) consume(c);
-      }
-    } else if (action.type === 'revise_work_brief') {
-      consume(action.work_brief.title);
-      consume(action.work_brief.context);
-      consume(action.work_brief.intent);
-      for (const criterion of action.work_brief.acceptance_criteria) consume(criterion);
-    }
-  }
-  return Array.from(ids);
-}
-
 export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
   const logger = deps.logger ?? defaultLogger;
 
   function validatePlanRefs(projectId: string, actions: PlanAction[]): string | null {
-    const refIds = collectRefIdsInActions(actions);
-    if (refIds.length === 0) return null;
-    const existing = deps.planItems.getByProject(projectId);
-    const existingIds = new Set(existing.map((i) => i.id.toLowerCase()));
-    const unresolved = refIds.filter((id) => !existingIds.has(id));
+    const unresolved = findUnresolvedRefIds(actions, () =>
+      deps.planItems.getByProject(projectId).map((item) => item.id));
     if (unresolved.length === 0) return null;
     return `Plan action references unknown plan item(s): ${unresolved.join(', ')}`;
   }
