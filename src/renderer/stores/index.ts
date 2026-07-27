@@ -83,17 +83,6 @@ export type { SettingsTab } from './settingsUIStore';
 export { useGeneralSettingsStore } from './generalSettingsStore';
 export { useMcpServersStore } from './mcpServersStore';
 
-// Custom Prompts
-export { useCustomPromptStore } from './customPromptStore';
-
-// Scheduled Loops
-export { useScheduledLoopStore } from './scheduledLoopStore';
-export type { LoopFormInput } from './scheduledLoopStore';
-export {
-  useCustomPromptTaskStore,
-  initCustomPromptTaskListeners,
-} from './customPromptTaskStore';
-export type { RunningCustomPromptTask } from './customPromptTaskStore';
 export { useDevSessionsStore } from './devSessions';
 
 // Tool Call Logging

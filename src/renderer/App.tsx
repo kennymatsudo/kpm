@@ -7,7 +7,6 @@ import { MotionProvider } from './components/app/MotionProvider';
 import { TooltipProvider } from './components/ui';
 import {
   useStoreSubscriptions,
-  initCustomPromptTaskListeners,
   initNotificationListener,
   useProjectDomainStore,
   usePlanDomainStore,
@@ -27,7 +26,6 @@ export default function App() {
 
   // Track in-flight Cmd+K custom prompt generations
   useEffect(() => {
-    return initCustomPromptTaskListeners();
   }, []);
 
   // Relay onboarding generation events into the generic background task store

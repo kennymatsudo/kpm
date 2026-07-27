@@ -146,6 +146,8 @@ void app.whenReady().then(async () => {
 
   registerAllIpcHandlers(getMainWindow, services);
   createWindow();
+  // Actions triggered on app open, once the tool runtime and a window exist.
+  services.actionRunnerService.handleAppOpened();
   // Keep the Dock icon following the macOS light/dark setting while running.
   watchSystemAppearance();
   buildApplicationMenu({

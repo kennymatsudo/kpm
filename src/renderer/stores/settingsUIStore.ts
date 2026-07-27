@@ -3,7 +3,7 @@ import { create } from 'zustand';
 export type SettingsTab =
   | 'general'
   | 'appearance'
-  | 'commands'
+  | 'actions'
   | 'workflow'
   | 'shortcuts'
   | 'prompts'

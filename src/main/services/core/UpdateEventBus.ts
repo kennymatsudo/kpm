@@ -20,9 +20,9 @@
 // Event Variants
 // =============================================================================
 
-import type { DevSessionAutomationPhase, DevSessionPausedReason, LoopOutputMode } from '../../../shared/types';
+import type { DevSessionAutomationPhase, DevSessionPausedReason } from '../../../shared/types';
 
-export type UpdateSource = 'github' | 'linear' | 'jira' | 'file' | 'git' | 'loop' | 'agent';
+export type UpdateSource = 'github' | 'linear' | 'jira' | 'file' | 'git' | 'action' | 'agent';
 
 export interface BaseUpdateEvent {
   /** Event kind — discriminator for the union. */
@@ -84,17 +84,16 @@ export interface GenericUpdateEvent extends BaseUpdateEvent {
   payload?: Record<string, unknown>;
 }
 
-/** A finding produced by a scheduled loop run. */
-export interface LoopFindingEvent extends BaseUpdateEvent {
-  kind: 'loop_finding';
-  source: 'loop';
-  loopId: string;
+/** A finding produced by an action run. */
+export interface ActionFindingEvent extends BaseUpdateEvent {
+  kind: 'action_finding';
+  source: 'action';
+  actionId: string;
   projectId: string;
-  loopName: string;
-  outputMode: LoopOutputMode;
+  actionName: string;
   title: string;
   body?: string;
-  /** Relative artifact path, for report-mode runs. */
+  /** Relative path to the file the run wrote, when it wrote one. */
   artifactPath?: string;
 }
 
@@ -136,7 +135,7 @@ export type UpdateEvent =
   | TicketChangedEvent
   | BranchChangedEvent
   | GenericUpdateEvent
-  | LoopFindingEvent
+  | ActionFindingEvent
   | BoardAgentEvent;
 
 export type UpdateEventKind = UpdateEvent['kind'];

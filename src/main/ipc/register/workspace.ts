@@ -13,8 +13,7 @@ import { registerThemeHandlers } from '../handlers/theme';
 import { registerPermissionHandlers } from '../handlers/permission';
 import { registerArtifactHandlers } from '../handlers/artifacts';
 import { registerTaskPromptTemplateHandlers } from '../handlers/taskPromptTemplates';
-import { registerCustomPromptHandlers } from '../handlers/customPrompts';
-import { registerScheduledLoopHandlers } from '../handlers/scheduledLoops';
+import { registerActionHandlers } from '../handlers/actions';
 import { registerOnboardingHandlers } from '../handlers/onboarding';
 import type { IpcRegistrationContext } from './types';
 
@@ -46,7 +45,6 @@ export function registerWorkspaceHandlers({
   registerPermissionHandlers(services.permissionService);
   registerArtifactHandlers(getMainWindow, services.artifactService);
   registerTaskPromptTemplateHandlers(services.taskPromptTemplateService);
-  registerCustomPromptHandlers(getMainWindow, services.customPromptService);
-  registerScheduledLoopHandlers(services.scheduledLoopService);
+  registerActionHandlers(services.actionService, services.container.actions, services.container.actionRuns);
   registerOnboardingHandlers(getMainWindow, services.onboardingService);
 }

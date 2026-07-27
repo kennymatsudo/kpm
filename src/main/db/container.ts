@@ -25,7 +25,6 @@ import {
   ChatMessageRepository as ChatMessageRepositoryClass,
   ChatSessionRepository as ChatSessionRepositoryClass,
   TaskPromptTemplateRepository as TaskPromptTemplateRepositoryClass,
-  CustomPromptRepository as CustomPromptRepositoryClass,
   AppSettingsRepository as AppSettingsRepositoryClass,
   CustomThemeRepository as CustomThemeRepositoryClass,
   DevSessionRepository as DevSessionRepositoryClass,
@@ -37,9 +36,9 @@ import {
   ReviewSyncStateRepository as ReviewSyncStateRepositoryClass,
   ClaudeUsageRepository as ClaudeUsageRepositoryClass,
   ProjectFileMetadataRepository as ProjectFileMetadataRepositoryClass,
-  ScheduledLoopRepository as ScheduledLoopRepositoryClass,
-  LoopRunRepository as LoopRunRepositoryClass,
   PlaybookRepository as PlaybookRepositoryClass,
+  ActionRepository as ActionRepositoryClass,
+  ActionRunRepository as ActionRunRepositoryClass,
 } from './repositories/impl';
 import type { IFileSystem, IPathUtils } from './repositories/impl/ProjectRepository';
 
@@ -111,7 +110,6 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
     chatMessages: new ChatMessageRepositoryClass(database),
     chatSessions: new ChatSessionRepositoryClass(database),
     taskPromptTemplates: new TaskPromptTemplateRepositoryClass(database),
-    customPrompts: new CustomPromptRepositoryClass(database),
     appSettings: new AppSettingsRepositoryClass(database),
     customThemes: new CustomThemeRepositoryClass(database),
     devSessions: new DevSessionRepositoryClass(database),
@@ -123,9 +121,9 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
     reviewSyncState: new ReviewSyncStateRepositoryClass(database),
     claudeUsage: new ClaudeUsageRepositoryClass(database),
     projectFileMetadata: new ProjectFileMetadataRepositoryClass(database),
-    scheduledLoops: new ScheduledLoopRepositoryClass(database),
-    loopRuns: new LoopRunRepositoryClass(database),
     playbooks: new PlaybookRepositoryClass(database),
+    actions: new ActionRepositoryClass(database),
+    actionRuns: new ActionRunRepositoryClass(database),
   };
 }
 

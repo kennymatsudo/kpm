@@ -2,7 +2,7 @@ import type { SettingsTab } from '../../stores';
 import { GeneralSettings } from './GeneralSettings';
 import { ThemesSettings } from './ThemesSettings';
 import { UsageSettings } from './UsageSettings';
-import { CustomPromptSettings } from './CustomPromptSettings';
+import { ActionsSettings } from './ActionsSettings';
 import { WorkflowSettings } from './WorkflowSettings';
 import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings';
 import { McpServersSettings } from './McpServersSettings';
@@ -53,15 +53,15 @@ export const SETTINGS_TABS: SettingsTabDef[] = [
     render: () => <ThemesSettings />,
   },
   {
-    id: 'commands',
-    label: 'Commands',
+    id: 'actions',
+    label: 'Actions',
     noPadding: true,
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
       </svg>
     ),
-    render: () => <CustomPromptSettings />,
+    render: ({ currentProjectId }) => <ActionsSettings currentProjectId={currentProjectId} />,
   },
   {
     id: 'workflow',

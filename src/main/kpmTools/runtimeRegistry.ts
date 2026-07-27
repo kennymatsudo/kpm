@@ -216,6 +216,24 @@ function group(
   return { id, availability, capabilities, tools };
 }
 
+/**
+ * The plan-item tools span both reading and proposing, so they are split into two
+ * groups — a capability grant is checked per group, and bundling them would deny
+ * plan reads to any caller that isn't also allowed to propose. Anything not named
+ * here lands in the propose group, so a tool added later is withheld from
+ * read-only callers rather than silently granted.
+ */
+const PLAN_ITEM_READ_TOOLS = new Set(['query_plan_items', 'get_plan_items']);
+
+function planItemGroups(tools: KpmToolDefinition[]): KpmToolGroup[] {
+  const reads = tools.filter((tool) => PLAN_ITEM_READ_TOOLS.has(tool.name));
+  const changes = tools.filter((tool) => !PLAN_ITEM_READ_TOOLS.has(tool.name));
+  return [
+    group('plan-items', MAIN_ONLY, ['plan_items.read'], reads),
+    group('plan-item-changes', MAIN_ONLY, ['plan_items.propose'], changes),
+  ];
+}
+
 function buildToolGroups(): KpmToolGroup[] {
   const { container, services } = getKpmToolRuntimeDeps();
   const projectRepo = container.projects;
@@ -225,7 +243,7 @@ function buildToolGroups(): KpmToolGroup[] {
   const repoRepo = container.repos;
 
   return [
-    group('plan-items', MAIN_ONLY, ['plan_items.read', 'plan_items.propose'], createPlanItemTools(planItemRepo, planRelationRepo, emitPlanActions)),
+    ...planItemGroups(createPlanItemTools(planItemRepo, planRelationRepo, emitPlanActions)),
     group('plan-relations', MAIN_ONLY, ['plan_relations.read'], createRelationTools(planItemRepo)),
     group('groups', MAIN_ONLY, ['groups.read'], createGroupTools(groupRepo)),
     group('plan-changes', MAIN_ONLY, ['plan_items.propose'], createPlanChangeTools(emitPlanActions, repoRepo)),
@@ -251,8 +269,14 @@ export function getKpmToolRuntime(): KpmToolRuntime {
   return cachedRuntime;
 }
 
-export function getKpmToolDefinitions(options: { scope: ChatSessionScope }): KpmToolDefinition[] {
-  return getKpmToolRuntime().listTools({ scope: options.scope });
+export function getKpmToolDefinitions(options: {
+  scope: ChatSessionScope;
+  grantedCapabilities?: readonly KpmToolCapability[];
+}): KpmToolDefinition[] {
+  return getKpmToolRuntime().listTools({
+    scope: options.scope,
+    grantedCapabilities: options.grantedCapabilities,
+  });
 }
 
 export function executeKpmTool(options: {
@@ -262,6 +286,7 @@ export function executeKpmTool(options: {
   projectId: string;
   chatSessionId?: string;
   scope: ChatSessionScope;
+  grantedCapabilities?: readonly KpmToolCapability[];
 }): Promise<KpmToolExecutionResult> {
   return getKpmToolRuntime().executeTool(options);
 }

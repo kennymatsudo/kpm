@@ -15,15 +15,15 @@ import { planEvents } from '../shared/ipc/planEvents';
 import { repoEvents } from '../shared/ipc/repoEvents';
 import { fileExplorerEvents } from '../shared/ipc/fileExplorerEvents';
 import { trackerEvents } from '../shared/ipc/trackerEvents';
-import { customPromptEvents } from '../shared/ipc/customPromptEvents';
 import { onboardingEvents } from '../shared/ipc/onboardingEvents';
-import { scheduledLoopEvents } from '../shared/ipc/scheduledLoopEvents';
 import { toolLogEvents } from '../shared/ipc/toolLogEvents';
 import { planEndpoints } from '../shared/ipc/planEndpoints';
 import { groupEndpoints } from '../shared/ipc/groupEndpoints';
 import { exportEndpoints } from '../shared/ipc/exportEndpoints';
 import { confluenceEndpoints } from '../shared/ipc/confluenceEndpoints';
-import { scheduledLoopEndpoints } from '../shared/ipc/scheduledLoopEndpoints';
+import { actionEndpoints } from '../shared/ipc/actionEndpoints';
+import { actionEvents } from '../shared/ipc/actionEvents';
+import type { ActionDefinition, ActionEditable, ActionRun } from '../shared/actions';
 import { trackerEndpoints } from '../shared/ipc/trackerEndpoints';
 import { fileExplorerEndpoints } from '../shared/ipc/fileExplorerEndpoints';
 import { repoFilesEndpoints } from '../shared/ipc/repoFilesEndpoints';
@@ -101,13 +101,6 @@ import type {
   Group,
   ConfluencePageLink,
   ConfluenceSyncPreview,
-  CustomPrompt,
-  CustomPromptIcon,
-  CustomPromptTargetType,
-  CustomPromptRunMode,
-  ScheduledLoop,
-  LoopRun,
-  LoopOutputMode,
   SearchResult,
   PromptDefinitionInfo,
   PromptCategory,
@@ -192,10 +185,6 @@ export type {
   Group,
   ConfluencePageLink,
   ConfluenceSyncPreview,
-  CustomPrompt,
-  CustomPromptIcon,
-  CustomPromptTargetType,
-  CustomPromptRunMode,
   SearchResult,
   PromptDefinitionInfo,
   PromptCategory,
@@ -672,131 +661,49 @@ const taskPromptTemplates = {
   ensureDefault: () => taskPromptTemplateInvoke.ensureDefault(),
 };
 
-// Custom Prompts API (Command+K palette prompts)
-const customPromptSubscriptions = deriveEventSubscriptions(customPromptEvents, ipcRenderer);
-const customPrompts = {
-  // List all custom prompts
-  list: (): Promise<{ success: boolean; data?: CustomPrompt[]; error?: string }> =>
-    invokeFlat<{ prompts: CustomPrompt[] }>(IPC_CHANNELS.customPrompts.list, {}).then((result) =>
-      result.success ? { success: true, data: result.prompts } : result
+// Actions API (saved prompts, optionally triggered — successor to custom prompts + loops)
+const actionSubscriptions = deriveEventSubscriptions(actionEvents, ipcRenderer);
+const actions = {
+  list: (payload: { projectId: string }): Promise<{ success: boolean; data?: ActionDefinition[]; error?: string }> =>
+    invokeFlat<{ actions: ActionDefinition[] }>(actionEndpoints.list.channel, payload).then((result) =>
+      result.success ? { success: true, data: result.actions } : result
     ),
 
-  // Get a single custom prompt
-  get: (promptId: string): Promise<{ success: boolean; data?: CustomPrompt; error?: string }> =>
-    invokeFlat<{ prompt: CustomPrompt }>(IPC_CHANNELS.customPrompts.get, { promptId }).then((result) =>
-      result.success ? { success: true, data: result.prompt } : result
+  get: (payload: { id: string }): Promise<{ success: boolean; data?: ActionDefinition; error?: string }> =>
+    invokeFlat<{ action: ActionDefinition }>(actionEndpoints.get.channel, payload).then((result) =>
+      result.success ? { success: true, data: result.action } : result
     ),
 
-  // Create a new custom prompt
-  create: (
-    name: string,
-    promptContent: string,
-    options?: {
-      description?: string | null;
-      icon?: CustomPromptIcon;
-      keywords?: string | null;
-      targetType?: CustomPromptTargetType;
-      runMode?: CustomPromptRunMode;
-    }
-  ): Promise<{ success: boolean; data?: CustomPrompt; error?: string }> =>
-    invokeFlat<{ prompt: CustomPrompt }>(IPC_CHANNELS.customPrompts.create, { name, promptContent, ...options }).then((result) =>
-      result.success ? { success: true, data: result.prompt } : result
-    ),
-
-  // Update a custom prompt
-  update: (
-    promptId: string,
-    updates: {
-      name?: string;
-      description?: string | null;
-      promptContent?: string;
-      icon?: CustomPromptIcon;
-      keywords?: string | null;
-      targetType?: CustomPromptTargetType;
-      runMode?: CustomPromptRunMode;
-    }
-  ): Promise<{ success: boolean; error?: string }> =>
-    invokeFlat<void>(IPC_CHANNELS.customPrompts.update, { promptId, ...updates }),
-
-  // Delete a custom prompt (not allowed for built-in prompts)
-  delete: (promptId: string): Promise<{ success: boolean; error?: string }> =>
-    invokeFlat<void>(IPC_CHANNELS.customPrompts.delete, { promptId }),
-
-  // Execute a custom prompt
-  execute: (
-    projectId: string,
-    promptId: string
-  ): Promise<{ success: boolean; taskId?: string; error?: string }> =>
-    invokeFlat<{ taskId: string }>(IPC_CHANNELS.customPrompts.execute, { promptId, projectId }),
-
-  // Ensure built-in prompts exist
-  ensureBuiltins: (): Promise<{ success: boolean; error?: string }> =>
-    invokeFlat<void>(IPC_CHANNELS.customPrompts.ensureBuiltins),
-
-  // Progress callback
-  onProgress: customPromptSubscriptions.progress,
-
-  // Complete callback
-  onComplete: customPromptSubscriptions.complete,
-
-  // Error callback
-  onError: customPromptSubscriptions.error,
-};
-
-// Scheduled Loops API (recurring AI-driven prompts, managed from Command+K)
-const scheduledLoopSubscriptions = deriveEventSubscriptions(scheduledLoopEvents, ipcRenderer);
-const scheduledLoops = {
-  list: (payload: { projectId: string }): Promise<{ success: boolean; data?: ScheduledLoop[]; error?: string }> =>
-    invokeFlat<{ loops: ScheduledLoop[] }>(scheduledLoopEndpoints.list.channel, payload).then((result) =>
-      result.success ? { success: true, data: result.loops } : result
-    ),
-
-  get: (payload: { id: string }): Promise<{ success: boolean; data?: ScheduledLoop; error?: string }> =>
-    invokeFlat<{ loop: ScheduledLoop }>(scheduledLoopEndpoints.get.channel, payload).then((result) =>
-      result.success ? { success: true, data: result.loop } : result
-    ),
-
-  create: (payload: {
-    projectId: string;
-    name: string;
-    prompt: string;
-    outputMode: LoopOutputMode;
-    intervalMinutes: number;
-    enabled?: boolean;
-  }): Promise<{ success: boolean; data?: ScheduledLoop; error?: string }> =>
-    invokeFlat<{ loop: ScheduledLoop }>(scheduledLoopEndpoints.create.channel, payload).then((result) =>
-      result.success ? { success: true, data: result.loop } : result
+  create: (payload: ActionEditable): Promise<{ success: boolean; data?: ActionDefinition; error?: string }> =>
+    invokeFlat<{ action: ActionDefinition }>(actionEndpoints.create.channel, payload).then((result) =>
+      result.success ? { success: true, data: result.action } : result
     ),
 
   update: (payload: {
     id: string;
-    name?: string;
-    prompt?: string;
-    outputMode?: LoopOutputMode;
-    intervalMinutes?: number;
-    enabled?: boolean;
-  }): Promise<{ success: boolean; data?: ScheduledLoop; error?: string }> =>
-    invokeFlat<{ loop: ScheduledLoop }>(scheduledLoopEndpoints.update.channel, payload).then((result) =>
-      result.success ? { success: true, data: result.loop } : result
+    updates: Partial<ActionEditable>;
+  }): Promise<{ success: boolean; data?: ActionDefinition; error?: string }> =>
+    invokeFlat<{ action: ActionDefinition }>(actionEndpoints.update.channel, payload).then((result) =>
+      result.success ? { success: true, data: result.action } : result
     ),
 
-  setEnabled: (payload: { id: string; enabled: boolean }): Promise<{ success: boolean; data?: ScheduledLoop; error?: string }> =>
-    invokeFlat<{ loop: ScheduledLoop }>(scheduledLoopEndpoints.setEnabled.channel, payload).then((result) =>
-      result.success ? { success: true, data: result.loop } : result
+  setEnabled: (payload: { id: string; enabled: boolean }): Promise<{ success: boolean; data?: ActionDefinition; error?: string }> =>
+    invokeFlat<{ action: ActionDefinition }>(actionEndpoints.setEnabled.channel, payload).then((result) =>
+      result.success ? { success: true, data: result.action } : result
     ),
 
   delete: (payload: { id: string }): Promise<{ success: boolean; error?: string }> =>
-    invokeFlat<void>(scheduledLoopEndpoints.delete.channel, payload),
+    invokeFlat<void>(actionEndpoints.delete.channel, payload),
 
   runNow: (payload: { id: string }): Promise<{ success: boolean; error?: string }> =>
-    invokeFlat<void>(scheduledLoopEndpoints.runNow.channel, payload),
+    invokeFlat<void>(actionEndpoints.runNow.channel, payload),
 
-  history: (payload: { loopId: string; limit?: number }): Promise<{ success: boolean; data?: LoopRun[]; error?: string }> =>
-    invokeFlat<{ runs: LoopRun[] }>(scheduledLoopEndpoints.history.channel, payload).then((result) =>
+  history: (payload: { actionId: string; limit?: number }): Promise<{ success: boolean; data?: ActionRun[]; error?: string }> =>
+    invokeFlat<{ runs: ActionRun[] }>(actionEndpoints.history.channel, payload).then((result) =>
       result.success ? { success: true, data: result.runs } : result
     ),
 
-  onRun: scheduledLoopSubscriptions.run,
+  onRun: actionSubscriptions.run,
 };
 
 // Notifications (kind-agnostic; fed by NotificationService's `notification:new` broadcast)
@@ -1183,8 +1090,7 @@ export const api = {
   permissions,
   artifacts,
   taskPromptTemplates,
-  customPrompts,
-  scheduledLoops,
+  actions,
   notifications,
   github,
   review,

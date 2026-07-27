@@ -21,10 +21,9 @@ import { planEvents } from './planEvents';
 import { repoEvents } from './repoEvents';
 import { fileExplorerEvents } from './fileExplorerEvents';
 import { trackerEvents } from './trackerEvents';
-import { customPromptEvents } from './customPromptEvents';
 import { onboardingEvents } from './onboardingEvents';
-import { scheduledLoopEvents } from './scheduledLoopEvents';
 import { toolLogEvents } from './toolLogEvents';
+import { actionEvents } from './actionEvents';
 
 const domainRegistries = {
   chat: chatEvents,
@@ -40,9 +39,8 @@ const domainRegistries = {
   repo: repoEvents,
   fileExplorer: fileExplorerEvents,
   tracker: trackerEvents,
-  customPrompt: customPromptEvents,
   onboarding: onboardingEvents,
-  scheduledLoop: scheduledLoopEvents,
+  action: actionEvents,
   toolLog: toolLogEvents,
 } satisfies Record<string, Record<string, EventDefinition>>;
 

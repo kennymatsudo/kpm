@@ -4160,6 +4160,203 @@ export const migrations: Migration[] = [
       db.exec(`DROP TABLE IF EXISTS project_briefings;`);
     },
   },
+  {
+    id: 1115,
+    name: '115_add_actions',
+    up: (db: BetterSqliteDatabase) => {
+      // Actions unify Command+K custom prompts with scheduled loops: the same
+      // saved prompt, differing only in what starts it. `output_mode` splits
+      // into a capability grant, since it was encoding both what a run may
+      // touch and where its result lands.
+      //
+      // `custom_prompts` and `scheduled_loops` are backfilled here but left in
+      // place — the code reading them is retired in a later change, and dropping
+      // them before that would break the app mid-migration.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS actions (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+          prompt TEXT NOT NULL,
+          icon TEXT NOT NULL DEFAULT 'document'
+            CHECK(icon IN ('chart', 'check', 'document', 'sparkles', 'clipboard')),
+          keywords TEXT NOT NULL DEFAULT '',
+          trigger_kind TEXT NOT NULL DEFAULT 'manual'
+            CHECK(trigger_kind IN ('manual', 'interval', 'event')),
+          trigger_interval_minutes INTEGER,
+          trigger_event TEXT
+            CHECK(trigger_event IS NULL OR trigger_event IN (
+              'app_opened', 'board_agent_finished', 'pr_changed', 'ticket_changed', 'branch_changed'
+            )),
+          enabled INTEGER NOT NULL DEFAULT 1,
+          capabilities TEXT NOT NULL DEFAULT '[]',
+          manual_run TEXT NOT NULL DEFAULT 'headless'
+            CHECK(manual_run IN ('chat', 'headless')),
+          target_type TEXT NOT NULL DEFAULT 'none'
+            CHECK(target_type IN ('none', 'document', 'repo')),
+          memory TEXT,
+          last_run_at DATETIME,
+          last_outcome TEXT CHECK(last_outcome IS NULL OR last_outcome IN ('ok', 'no_op', 'error')),
+          last_error TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          CHECK(trigger_kind != 'interval' OR trigger_interval_minutes IS NOT NULL),
+          CHECK(trigger_kind != 'event' OR trigger_event IS NOT NULL)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_actions_project ON actions(project_id);
+        CREATE INDEX IF NOT EXISTS idx_actions_name ON actions(project_id, name);
+        CREATE INDEX IF NOT EXISTS idx_actions_active_trigger
+          ON actions(trigger_kind, trigger_event) WHERE enabled = 1;
+
+        CREATE TABLE IF NOT EXISTS action_runs (
+          id TEXT PRIMARY KEY,
+          action_id TEXT NOT NULL REFERENCES actions(id) ON DELETE CASCADE,
+          outcome TEXT NOT NULL CHECK(outcome IN ('ok', 'no_op', 'error')),
+          summary TEXT,
+          detail TEXT,
+          error TEXT,
+          artifact_path TEXT,
+          started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          finished_at DATETIME
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_action_runs_action
+          ON action_runs(action_id, started_at DESC);
+      `);
+
+      // Ids carry over so run history repoints without a mapping table.
+      // Both sources keep read access to integrations, which every loop and
+      // command effectively had via the full KPM tool set.
+      //
+      // `maintain` loops become manual chat actions rather than triggered ones:
+      // their edits used to be auto-applied because a background tick had nobody
+      // to approve them, and an action that proposes changes now has to run where
+      // the changes can be reviewed. The prompt survives; the schedule does not,
+      // and can be restored once proposals outlive the session that made them.
+      db.exec(`
+        INSERT INTO actions (
+          id, name, description, project_id, prompt, icon, keywords,
+          trigger_kind, enabled, capabilities, manual_run, target_type,
+          created_at, updated_at
+        )
+        SELECT
+          id,
+          name,
+          COALESCE(description, ''),
+          NULL,
+          prompt_content,
+          COALESCE(icon, 'document'),
+          COALESCE(keywords, ''),
+          'manual',
+          1,
+          CASE run_mode
+            WHEN 'chat' THEN '["read_project","read_integrations"]'
+            ELSE '["read_project","read_integrations","write_outputs"]'
+          END,
+          CASE run_mode WHEN 'chat' THEN 'chat' ELSE 'headless' END,
+          target_type,
+          created_at,
+          updated_at
+        FROM custom_prompts;
+      `);
+
+      db.exec(`
+        INSERT INTO actions (
+          id, name, description, project_id, prompt, icon, keywords,
+          trigger_kind, trigger_interval_minutes, enabled, capabilities,
+          manual_run, target_type, memory, last_run_at, last_outcome, last_error,
+          created_at, updated_at
+        )
+        SELECT
+          id,
+          name,
+          '',
+          project_id,
+          prompt,
+          'document',
+          '',
+          CASE output_mode WHEN 'maintain' THEN 'manual' ELSE 'interval' END,
+          CASE output_mode WHEN 'maintain' THEN NULL ELSE interval_minutes END,
+          -- Always disabled: the legacy loop runner still drives the original
+          -- row, so an enabled copy here would run the same prompt twice per
+          -- interval. The user enables the action once the old path is retired.
+          0,
+          CASE output_mode
+            WHEN 'report' THEN '["read_project","read_integrations","write_outputs"]'
+            WHEN 'maintain' THEN '["read_project","read_integrations","propose_documents"]'
+            ELSE '["read_project","read_integrations","report_finding"]'
+          END,
+          CASE output_mode WHEN 'maintain' THEN 'chat' ELSE 'headless' END,
+          'none',
+          memory,
+          last_run_at,
+          last_outcome,
+          last_error,
+          created_at,
+          updated_at
+        FROM scheduled_loops;
+      `);
+
+      db.exec(`
+        INSERT INTO action_runs (
+          id, action_id, outcome, summary, detail, error, artifact_path, started_at, finished_at
+        )
+        SELECT id, loop_id, outcome, summary, detail, error, artifact_path, started_at, finished_at
+        FROM loop_runs
+        WHERE loop_id IN (SELECT id FROM actions);
+      `);
+    },
+  },
+  {
+    id: 1116,
+    name: '116_add_action_model',
+    up: (db: BetterSqliteDatabase) => {
+      // NULL follows the Claude model chosen in settings, resolved per run.
+      db.exec(`
+        ALTER TABLE actions ADD COLUMN model TEXT
+          CHECK(model IS NULL OR model IN ('opus', 'sonnet'));
+      `);
+    },
+  },
+  {
+    id: 1117,
+    name: '117_adopt_loop_schedules_as_actions',
+    up: (db: BetterSqliteDatabase) => {
+      // Migration 115 backfilled every loop-derived action disabled, because the
+      // legacy loop runner still owned the live schedule and an enabled copy
+      // would have run the same prompt twice. That runner is retired as of this
+      // change, so the schedules move across. Only interval-triggered rows are
+      // eligible — `maintain` loops became manual actions, which have no trigger
+      // to enable.
+      db.exec(`
+        UPDATE actions
+        SET enabled = 1, updated_at = CURRENT_TIMESTAMP
+        WHERE trigger_kind = 'interval'
+          AND id IN (SELECT id FROM scheduled_loops WHERE enabled = 1);
+      `);
+    },
+  },
+  {
+    id: 1118,
+    name: '118_drop_custom_prompts_and_scheduled_loops',
+    up: (db: BetterSqliteDatabase) => {
+      // Both features merged into `actions` (115) and their schedules moved
+      // across (117); nothing reads these tables now. Foreign keys are disabled
+      // for the drop so `scheduled_loops` going away cannot cascade into
+      // anything unexpected — `loop_runs` is dropped first regardless.
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+
+        DROP TABLE IF EXISTS loop_runs;
+        DROP TABLE IF EXISTS scheduled_loops;
+        DROP TABLE IF EXISTS custom_prompts;
+
+        PRAGMA foreign_keys = ON;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

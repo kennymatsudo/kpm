@@ -146,8 +146,8 @@ const NOTIFY_RULES: { [K in UpdateEventKind]: NotifyRule<K> } = {
     dedupeKey: (event) => `generic:${event.source}:${event.summary}`,
     present: (event) => ({ severity: 'info', title: event.summary }),
   },
-  loop_finding: {
-    dedupeKey: (event) => `loop:${event.loopId}:${event.title}`,
+  action_finding: {
+    dedupeKey: (event) => `action:${event.actionId}:${event.title}`,
     present: (event) => ({
       severity: 'info',
       title: event.title,

@@ -9,7 +9,6 @@ export { createProjectService, type ProjectServiceDeps, type ProjectService } fr
 export { createChatService, type ChatServiceDeps, type ChatService } from './ChatService';
 export { createArtifactService, type ArtifactServiceDeps, type ArtifactService } from './ArtifactService';
 export { createContextFileService, type ContextFileServiceDeps, type ContextFileService } from './ContextFileService';
-export { createCustomPromptService, type CustomPromptServiceDeps, type CustomPromptService } from './CustomPromptService';
 export { createChatRuntimeService, type ChatRuntimeServiceDeps, type ChatRuntimeService } from './ChatRuntimeService';
 export { createPermissionService, type PermissionServiceDeps, type PermissionService } from './PermissionService';
 export { promptUser, resolvePromptResponse } from './PermissionPromptService';

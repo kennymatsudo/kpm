@@ -92,6 +92,11 @@ export interface ToolExecutionContext {
   chatSessionId?: string;
   scope?: ChatSessionScope;
   proposalSink?: KpmToolProposalSink;
+  /**
+   * Narrows the tool set for this run. Set by callers that execute on a granted
+   * capability set (actions); omitted by chat and focus sessions.
+   */
+  grantedCapabilities?: readonly KpmToolCapability[];
 }
 
 export interface KpmToolExecutionRequest {
@@ -101,10 +106,14 @@ export interface KpmToolExecutionRequest {
   projectId: string;
   chatSessionId?: string;
   scope: ChatSessionScope;
+  /** Omit to leave the tool set unfiltered; see `isWithinGrant`. */
+  grantedCapabilities?: readonly KpmToolCapability[];
 }
 
 export interface KpmToolListRequest {
   scope: ChatSessionScope;
+  /** Omit to leave the tool set unfiltered; see `isWithinGrant`. */
+  grantedCapabilities?: readonly KpmToolCapability[];
 }
 
 const toolExecutionContext = new AsyncLocalStorage<ToolExecutionContext>();
@@ -126,6 +135,22 @@ export function getCurrentKpmToolProposalSink(): KpmToolProposalSink | undefined
 
 function isAvailableInScope(group: KpmToolGroup, scope: ChatSessionScope): boolean {
   return group.availability[scope];
+}
+
+/**
+ * A caller may narrow the tool set to a granted capability set — actions do this
+ * so a read-only one cannot reach a propose tool. Omitting the grant means
+ * unfiltered, which is what chat and focus sessions pass.
+ *
+ * A group is available only when every capability it declares is granted, so a
+ * group that mixes read and propose tools is withheld unless both are granted.
+ */
+function isWithinGrant(
+  group: KpmToolGroup,
+  granted: readonly KpmToolCapability[] | undefined,
+): boolean {
+  if (!granted) return true;
+  return group.capabilities.every((capability) => granted.includes(capability));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -191,6 +216,7 @@ export class KpmToolRuntime {
   listTools(request: KpmToolListRequest): KpmRuntimeTool[] {
     return this.toolGroups()
       .filter((group) => isAvailableInScope(group, request.scope))
+      .filter((group) => isWithinGrant(group, request.grantedCapabilities))
       .flatMap((group) => group.tools.map((tool) => ({
         ...tool,
         capabilities: group.capabilities,
@@ -210,12 +236,17 @@ export class KpmToolRuntime {
   }
 
   async executeTool(request: KpmToolExecutionRequest): Promise<KpmToolExecutionResult> {
-    const tool = this.listTools({ scope: request.scope }).find((candidate) => candidate.name === request.name);
+    const tool = this.listTools({
+      scope: request.scope,
+      grantedCapabilities: request.grantedCapabilities,
+    }).find((candidate) => candidate.name === request.name);
     if (!tool) {
       throw new KpmToolRuntimeError(
         'TOOL_NOT_AVAILABLE',
         request.name,
-        `KPM tool "${request.name}" is not available for ${request.scope} chat sessions.`,
+        request.grantedCapabilities
+          ? `KPM tool "${request.name}" is outside this run's granted capabilities.`
+          : `KPM tool "${request.name}" is not available for ${request.scope} chat sessions.`,
       );
     }
 
@@ -226,6 +257,7 @@ export class KpmToolRuntime {
           chatSessionId: request.chatSessionId,
           scope: request.scope,
           proposalSink: this.proposalSink,
+          grantedCapabilities: request.grantedCapabilities,
         },
         () => tool.handler(request.args, request.extra ?? {}),
       );

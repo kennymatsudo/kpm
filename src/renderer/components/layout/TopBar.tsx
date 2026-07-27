@@ -16,7 +16,6 @@ import type { ViewMode } from '../planning/ViewSwitcher';
 import type { StatusCategory, TrackerAssociationWithScope, TrackerCredentialInfo, TrackerType } from '../../../shared/types';
 import { TopBarPlanningControls } from './TopBarPlanningControls';
 import { TopBarProjectSection } from './TopBarProjectSection';
-import { CustomPromptTaskBadge } from './CustomPromptTaskBadge';
 import { BackgroundTaskBadge } from '../background-tasks';
 import { NotificationBadge } from '../notifications';
 import { ONBOARDING_TASK_KIND } from '../../services/onboardingTaskBridge';
@@ -246,9 +245,6 @@ export function TopBar({
               </div>
             </>
           )}
-
-          {/* Cmd+K custom prompt indicator - persists across project switches */}
-          <CustomPromptTaskBadge />
 
           {/* Generic background task indicator (onboarding generation, future kinds) */}
           <BackgroundTaskBadge

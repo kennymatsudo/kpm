@@ -28,11 +28,8 @@ export type {
   IAppSettingsRepository,
   ICustomThemeRepository,
   ITaskPromptTemplateRepository,
-  ICustomPromptRepository,
   IToolPermissionRepository,
   CustomThemeSaveInput,
-  CustomPromptCreate,
-  CustomPromptUpdate,
 } from './settings';
 
 // Confluence domain
@@ -64,17 +61,17 @@ export type {
 // File metadata
 export type { IProjectFileMetadataRepository, FileMetadataRow } from './files';
 
-// Scheduled loops domain
-export type {
-  IScheduledLoopRepository,
-  ILoopRunRepository,
-  ScheduledLoopCreate,
-  ScheduledLoopUpdate,
-  LoopRunCreate,
-} from './scheduling';
-
 // Execution playbooks
 export type { IPlaybookRepository } from './playbook';
+
+// Actions
+export type {
+  IActionRepository,
+  IActionRunRepository,
+  ActionCreate,
+  ActionUpdate,
+  ActionRunCreate,
+} from './actions';
 
 // Container
 export type { IRepositoryContainer } from './container';

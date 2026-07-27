@@ -9,7 +9,8 @@ import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-
 import type { BrowserWindow } from 'electron';
 import { buildFocusSystemPrompt, buildSystemPrompt, type PlanContext } from '../chat/prompts/index';
 import { createPermissionHandler, type PermissionContext, type ContextFileInterceptFn, type ProjectFileInterceptFn } from './permissions';
-import { getFocusKpmServer, getKpmServer } from '../kpmTools/createKpmServer';
+import { getFocusKpmServer, getGrantedKpmServer, getKpmServer } from '../kpmTools/createKpmServer';
+import type { KpmToolCapability } from '../kpmTools/runtime';
 import { getConfig } from '../config';
 import { getClaudeSdkSpawnOptions } from './findClaude';
 import { promptUser } from '../services/core/PermissionPromptService';
@@ -41,13 +42,18 @@ export interface BuildSdkOptionsParams {
   onElicitation?: OnElicitation;
   /** When true, skip permission prompts and auto-allow all non-denied tool calls */
   autoApprove?: boolean;
+  /**
+   * Narrows the KPM tool set to the capabilities this run was granted. Action
+   * runs pass their grant; chat and focus sessions omit it and get the full set.
+   */
+  grantedCapabilities?: readonly KpmToolCapability[];
 }
 
 /**
  * Build SDK options for a Claude session.
  */
 export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
-  const { context, model, effort, resumeSessionId, mainWindow, onContextFileEdit, onProjectFileWrite, peekPendingFile, enabledPluginPaths, enabledUserMcpConfigs, disabledMcpTools, disabledMcpServerNames, onElicitation, autoApprove } = params;
+  const { context, model, effort, resumeSessionId, mainWindow, onContextFileEdit, onProjectFileWrite, peekPendingFile, enabledPluginPaths, enabledUserMcpConfigs, disabledMcpTools, disabledMcpServerNames, onElicitation, autoApprove, grantedCapabilities } = params;
   // Resume restores conversation history only — the SDK applies whatever
   // systemPrompt we pass now and discards the one persisted in the transcript.
   // So always send the full prompt; slimming it on resume silently drops
@@ -74,7 +80,11 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   };
 
   // Get MCP server
-  const kpmServer = isFocusSession ? getFocusKpmServer() : getKpmServer();
+  const kpmServer = isFocusSession
+    ? getFocusKpmServer()
+    : grantedCapabilities
+      ? getGrantedKpmServer(grantedCapabilities)
+      : getKpmServer();
 
   // Build options
   const claudeConfig = getConfig().claude;

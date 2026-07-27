@@ -22,7 +22,7 @@ import { planEndpoints } from './ipc/planEndpoints';
 import { groupEndpoints } from './ipc/groupEndpoints';
 import { exportEndpoints } from './ipc/exportEndpoints';
 import { confluenceEndpoints } from './ipc/confluenceEndpoints';
-import { scheduledLoopEndpoints } from './ipc/scheduledLoopEndpoints';
+import { actionEndpoints } from './ipc/actionEndpoints';
 import { trackerEndpoints } from './ipc/trackerEndpoints';
 import { fileExplorerEndpoints } from './ipc/fileExplorerEndpoints';
 import { repoFilesEndpoints } from './ipc/repoFilesEndpoints';
@@ -47,7 +47,6 @@ import { reviewEndpoints } from './ipc/reviewEndpoints';
 import { githubEndpoints } from './ipc/githubEndpoints';
 import { projectEndpoints } from './ipc/projectEndpoints';
 import { repoEndpoints } from './ipc/repoEndpoints';
-import { customPromptEndpoints } from './ipc/customPromptEndpoints';
 import { taskPromptTemplateEndpoints } from './ipc/taskPromptTemplateEndpoints';
 import { customThemeEndpoints } from './ipc/customThemeEndpoints';
 import { themeEndpoints } from './ipc/themeEndpoints';
@@ -58,8 +57,8 @@ import { testingEndpoints } from './ipc/testingEndpoints';
 import { shellEndpoints } from './ipc/shellEndpoints';
 
 /**
- * Plan, group, export, confluence, and scheduled-loop channels are similarly
- * derived from their own endpoint registries in `shared/ipc/`.
+ * Plan, group, export, confluence, and action channels are similarly derived
+ * from their own endpoint registries in `shared/ipc/`.
  */
 const planChannels = toNestedChannels(planEndpoints) as {
   listItems: string;
@@ -120,7 +119,7 @@ const confluenceChannels = toNestedChannels(confluenceEndpoints) as {
   parseUrl: string;
 };
 
-const scheduledLoopChannels = toNestedChannels(scheduledLoopEndpoints) as {
+const actionChannels = toNestedChannels(actionEndpoints) as {
   list: string;
   get: string;
   create: string;
@@ -414,16 +413,6 @@ const repoChannels = toNestedChannels(repoEndpoints) as {
   openEditor: string;
 };
 
-const customPromptChannels = toNestedChannels(customPromptEndpoints) as {
-  list: string;
-  get: string;
-  create: string;
-  update: string;
-  delete: string;
-  execute: string;
-  ensureBuiltins: string;
-};
-
 const taskPromptTemplateChannels = toNestedChannels(taskPromptTemplateEndpoints) as {
   list: string;
   get: string;
@@ -565,8 +554,7 @@ export const IPC_CHANNELS = {
   // `custom-prompt:progress`/`custom-prompt:complete`/`custom-prompt:error`
   // (main-to-renderer events) are not invoke endpoints — they live in
   // `shared/ipc/customPromptEvents.ts`, not here.
-  customPrompts: customPromptChannels,
-  scheduledLoop: scheduledLoopChannels,
+  actions: actionChannels,
 
   // ===========================================================================
   // Worktrees

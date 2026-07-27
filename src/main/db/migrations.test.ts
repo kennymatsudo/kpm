@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import BetterSqlite3 from 'better-sqlite3';
 import { migrations, runMigrations } from './migrations';
 import { sqliteHasFts5 } from './testing/createTestDb';
+import { ActionRepository } from './repositories/impl/ActionRepository';
+import { getActionValidationIssues, toEditable } from '../../shared/actions';
 
 const describeIfFts = sqliteHasFts5() ? describe : describe.skip;
 
@@ -470,6 +472,219 @@ describe('111_chat_model_choice', () => {
       const message = db.prepare('SELECT model FROM chat_messages WHERE id = ?').get('m-choice') as { model: string | null };
       expect(session).toEqual({ chat_model_choice: null, chat_model_choice_revision: 0 });
       expect(message.model).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('actions migrations (115-118)', () => {
+  const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
+
+  /** Applies migrations in order up to and including `maxId`. */
+  function migrateThrough(db: BetterSqlite3.Database, maxId: number): void {
+    for (const migration of migrations) {
+      if (migration.id <= maxId) migration.up(db);
+    }
+  }
+
+  function apply(db: BetterSqlite3.Database, id: number): void {
+    migrations.find((migration) => migration.id === id)?.up(db);
+  }
+
+  /**
+   * Seeds the pre-merge state: migrations up to 114 leave `custom_prompts` and
+   * `scheduled_loops` in place, so legacy rows can be planted before 115 runs.
+   */
+  function seedLegacy(db: BetterSqlite3.Database): void {
+    migrateThrough(db, 1114);
+    db.prepare('INSERT INTO projects (id, name, folder_path) VALUES (?, ?, ?)').run(
+      PROJECT_ID,
+      'Actions',
+      '/tmp/actions'
+    );
+    db.prepare(`
+      INSERT INTO custom_prompts (id, name, description, prompt_content, icon, keywords, target_type, run_mode)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('cp-artifact', 'Test Plan', 'Draft one', 'Write a test plan.', 'clipboard', 'test,plan', 'none', 'artifact');
+    db.prepare(`
+      INSERT INTO custom_prompts (id, name, description, prompt_content, icon, keywords, target_type, run_mode)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('cp-chat', 'Explain Doc', null, 'Explain this document.', 'document', null, 'document', 'chat');
+
+    const insertLoop = db.prepare(`
+      INSERT INTO scheduled_loops (id, project_id, name, prompt, output_mode, interval_minutes, enabled, memory, last_outcome)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    insertLoop.run('loop-notify', PROJECT_ID, 'Watch', 'Anything broken?', 'notify', 60, 1, 'seen abc', 'ok');
+    insertLoop.run('loop-report', PROJECT_ID, 'Digest', 'Summarize.', 'report', 1440, 0, null, null);
+    insertLoop.run('loop-maintain', PROJECT_ID, 'Tidy docs', 'Fix drift.', 'maintain', 240, 1, null, null);
+
+    const insertRun = db.prepare(`
+      INSERT INTO loop_runs (id, loop_id, outcome, summary, started_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    insertRun.run('run-1', 'loop-notify', 'ok', 'found something', '2026-07-20T00:00:00.000Z');
+    insertRun.run('run-2', 'loop-notify', 'no_op', null, '2026-07-21T00:00:00.000Z');
+  }
+
+  /** Seed, then run the whole actions sequence except the table drop. */
+  function migrateToActions(db: BetterSqlite3.Database): void {
+    seedLegacy(db);
+    apply(db, 1115);
+    apply(db, 1116);
+    apply(db, 1117);
+  }
+
+  it('backfills custom prompts as manual actions, preserving ids and run mode', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      migrateToActions(db);
+
+      const artifact = db.prepare('SELECT * FROM actions WHERE id = ?').get('cp-artifact') as Record<string, unknown>;
+      expect(artifact).toMatchObject({
+        name: 'Test Plan',
+        project_id: null,
+        trigger_kind: 'manual',
+        manual_run: 'headless',
+        target_type: 'none',
+        keywords: 'test,plan',
+      });
+      expect(JSON.parse(artifact.capabilities as string)).toContain('write_outputs');
+
+      const chat = db.prepare('SELECT * FROM actions WHERE id = ?').get('cp-chat') as Record<string, unknown>;
+      expect(chat).toMatchObject({ manual_run: 'chat', target_type: 'document', description: '', keywords: '' });
+      expect(JSON.parse(chat.capabilities as string)).not.toContain('write_outputs');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('backfills each loop output mode as the equivalent capability grant', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      seedLegacy(db);
+      apply(db, 1115);
+
+      const rows = db.prepare('SELECT id, capabilities, trigger_kind, trigger_interval_minutes, enabled, project_id, memory FROM actions WHERE id LIKE ?').all('loop-%') as Record<string, unknown>[];
+      const byId = new Map(rows.map((row) => [row.id as string, row]));
+
+      expect(JSON.parse(byId.get('loop-notify')!.capabilities as string)).toContain('report_finding');
+      expect(JSON.parse(byId.get('loop-report')!.capabilities as string)).toContain('write_outputs');
+      expect(JSON.parse(byId.get('loop-maintain')!.capabilities as string)).toContain('propose_documents');
+
+      expect(byId.get('loop-notify')).toMatchObject({
+        trigger_kind: 'interval',
+        trigger_interval_minutes: 60,
+        project_id: PROJECT_ID,
+        memory: 'seen abc',
+      });
+
+      // Nothing arrives enabled — 117 is what moves the live schedules across.
+      for (const row of rows) expect(row.enabled).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('converts a maintain loop into a manual chat action, since its edits now need review', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      migrateToActions(db);
+
+      expect(db.prepare('SELECT * FROM actions WHERE id = ?').get('loop-maintain')).toMatchObject({
+        trigger_kind: 'manual',
+        trigger_interval_minutes: null,
+        manual_run: 'chat',
+        prompt: 'Fix drift.',
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('repoints run history onto the migrated action', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      seedLegacy(db);
+      apply(db, 1115);
+
+      const runs = db.prepare('SELECT id, action_id, outcome FROM action_runs ORDER BY started_at').all() as Record<string, unknown>[];
+      expect(runs).toEqual([
+        { id: 'run-1', action_id: 'loop-notify', outcome: 'ok' },
+        { id: 'run-2', action_id: 'loop-notify', outcome: 'no_op' },
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('adopts previously-enabled loop schedules once the legacy runner retires', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      migrateToActions(db);
+
+      const byId = new Map(
+        (db.prepare('SELECT id, enabled, trigger_kind FROM actions').all() as Record<string, unknown>[])
+          .map((row) => [row.id as string, row])
+      );
+
+      // loop-notify was enabled; loop-report was paused.
+      expect(byId.get('loop-notify')?.enabled).toBe(1);
+      expect(byId.get('loop-report')?.enabled).toBe(0);
+      // loop-maintain became manual, so there is no trigger to adopt.
+      expect(byId.get('loop-maintain')).toMatchObject({ trigger_kind: 'manual', enabled: 0 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('produces rows that satisfy the action schema', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      migrateToActions(db);
+
+      const repo = new ActionRepository(db);
+      const migrated = repo.listForProject(PROJECT_ID);
+      expect(migrated).toHaveLength(5);
+
+      for (const action of migrated) {
+        expect(getActionValidationIssues(toEditable(action))).toEqual([]);
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  it('drops the legacy tables once nothing reads them', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      migrateToActions(db);
+      apply(db, 1118);
+
+      const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[])
+        .map((row) => row.name);
+      expect(tables).not.toContain('custom_prompts');
+      expect(tables).not.toContain('scheduled_loops');
+      expect(tables).not.toContain('loop_runs');
+
+      // The migrated rows and their history survive the drop.
+      expect(db.prepare('SELECT COUNT(*) AS n FROM actions').get()).toEqual({ n: 5 });
+      expect(db.prepare('SELECT COUNT(*) AS n FROM action_runs').get()).toEqual({ n: 2 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('leaves no legacy tables behind on a fresh install', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      runMigrations(db);
+      const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[])
+        .map((row) => row.name);
+      expect(tables).toContain('actions');
+      expect(tables).toContain('action_runs');
+      expect(tables).not.toContain('scheduled_loops');
     } finally {
       db.close();
     }

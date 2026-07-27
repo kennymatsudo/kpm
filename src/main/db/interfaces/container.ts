@@ -10,13 +10,13 @@ import type { IGroupRepository } from './group';
 import type { ITrackerRepository, ISyncRepository, IOutboundChangeRepository, ITypeMappingRepository } from './tracker';
 import type { IChatMessageRepository, IChatSessionRepository } from './chat';
 import type { IDevSessionRepository } from './dev';
-import type { IAppSettingsRepository, ICustomThemeRepository, ITaskPromptTemplateRepository, ICustomPromptRepository, IToolPermissionRepository } from './settings';
+import type { IAppSettingsRepository, ICustomThemeRepository, ITaskPromptTemplateRepository, IToolPermissionRepository } from './settings';
 import type { IConfluenceLinkRepository } from './confluence';
 import type { IAgentReviewRepository, IReviewOwnershipRepository, IReviewSyncStateRepository, IReviewTaskRepository } from './review';
 import type { IClaudeUsageRepository } from './usage';
 import type { IProjectFileMetadataRepository } from './files';
-import type { IScheduledLoopRepository, ILoopRunRepository } from './scheduling';
 import type { IPlaybookRepository } from './playbook';
+import type { IActionRepository, IActionRunRepository } from './actions';
 
 /**
  * Container holding all repository instances.
@@ -37,7 +37,6 @@ export interface IRepositoryContainer {
   chatMessages: IChatMessageRepository;
   chatSessions: IChatSessionRepository;
   taskPromptTemplates: ITaskPromptTemplateRepository;
-  customPrompts: ICustomPromptRepository;
   appSettings: IAppSettingsRepository;
   customThemes: ICustomThemeRepository;
   devSessions: IDevSessionRepository;
@@ -49,7 +48,7 @@ export interface IRepositoryContainer {
   reviewSyncState: IReviewSyncStateRepository;
   claudeUsage: IClaudeUsageRepository;
   projectFileMetadata: IProjectFileMetadataRepository;
-  scheduledLoops: IScheduledLoopRepository;
-  loopRuns: ILoopRunRepository;
   playbooks: IPlaybookRepository;
+  actions: IActionRepository;
+  actionRuns: IActionRunRepository;
 }

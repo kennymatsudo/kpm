@@ -517,20 +517,20 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ## Artifacts & Generation
 
 ### 43. Artifact Generation (Weekly Updates, Test Plans, Custom Outputs)
-- **What it does:** Claude-generated markdown documents saved to a project's `outputs/` folder. There are no built-in generators today: a hardcoded weekly-update/test-plan pipeline was replaced by user-configurable custom prompts (migration `036_custom_prompts`'s stated purpose), and the "Weekly Update"/"Test Plan" prompts that were then seeded as built-ins were themselves later removed — `CustomPromptRepository.ensureBuiltinsExist` actively deletes any leftover built-in rows with those names on startup, and ships no replacement built-ins. Generating a weekly update, a test plan, or any other stakeholder-facing doc now means creating a custom prompt (see Custom Prompts, feature 65) with run mode "artifact" and running it. PR descriptions are generated through the GitHub/dev-session flow instead (see GitHub PR Integration).
+- **What it does:** Claude-generated markdown documents saved to a project's `outputs/` folder. There are no built-in generators: a hardcoded weekly-update/test-plan pipeline was replaced by user-configurable prompts, and the seeded "Weekly Update"/"Test Plan" built-ins were later removed. Generating a weekly update, a test plan, or any other stakeholder-facing doc means creating an action (see Actions, feature 109) granted `write_outputs` and running it — `ActionRunnerService` writes the file. PR descriptions are generated through the GitHub/dev-session flow instead (see GitHub PR Integration).
 - **Key code locations:**
   - Execution: `src/main/services/generation/CustomPromptGenerationService.ts` (`executePrompt` — model is `getConfig().generation.deepModel`, defaulting to Sonnet, with adaptive extended thinking and access to the KPM MCP server's tools)
   - Built-in cleanup: `src/main/db/repositories/impl/CustomPromptRepository.ts` (`ensureBuiltinsExist` deletes legacy "Weekly Update"/"Test Plan" rows; no built-ins are seeded)
   - IPC handlers: `src/main/ipc/handlers/customPrompts.ts` (`execute` streams `progress`/`complete`/`error` events)
   - UI: `src/renderer/components/command-palette/CommandPalette.tsx` (execution), `src/renderer/components/layout/CustomPromptTaskBadge.tsx` + `src/renderer/stores/customPromptTaskStore.ts` (in-flight indicator; reveals the file in the OS file manager on completion)
 - **Entry points / surfaces:**
-  - Command palette (Cmd+K): run any custom prompt with run mode "artifact"
+  - Command palette (Cmd+K): run any action granted `write_outputs`
   - Top-bar badge shows in-flight generations with elapsed time; on completion the output file is revealed in the OS file manager
 - **Dependencies / integrations:**
-  - Custom Prompts (feature 65): the only current way to define what gets generated — there is no chat tool or board-detail button that triggers generation directly
+  - Actions (feature 109): the only current way to define what gets generated — there is no chat tool or board-detail button that triggers generation directly
   - File system: writes `.md` to `project/outputs/`
   - Artifacts Manager (feature 46): the backend for the files this pipeline writes, independent of how they were generated
-- **Maturity signal:** The generation pipeline itself (custom prompt → deep model → `outputs/`) is functional. The specific "weekly update" and "test plan" artifact types no longer exist as built-ins — producing either now requires the user to author their own custom prompt.
+- **Maturity signal:** Functional. The specific "weekly update" and "test plan" artifact types no longer exist as built-ins — producing either now requires the user to author their own action. Note the writing path changed with feature 109: an action's output file is written by `ActionRunnerService`, not by `CustomPromptGenerationService`, which is no longer reachable from the palette.
 
 ### 46. Artifacts Manager (File List + Open)
 - **What it does:** Backend file management for markdown files in a project's `outputs/` folder — list, read, delete, and import, exposed over IPC as `window.api.artifacts`. No renderer component currently calls any of these methods: there is no "Artifacts" tab in the board detail pane (its tabs are Activity/Changes/Review — see Plan-item Dev Sessions, feature 19) and `artifactsStore.ts`'s `artifacts`/`isLoadingArtifacts`/`artifactsError` state is unread and unset anywhere. The store's command-palette open/close state (unrelated to artifact listing) is the only part of it actually in use. In practice, files written to `outputs/` are reached via the File Explorer (feature 68), which does not hide the `outputs/` folder, or via the OS file manager, which opens automatically to the new file right after a custom-prompt generation completes (see Artifact Generation, feature 43).
@@ -570,11 +570,11 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Maturity signal:** Mature. Search engine robust with incremental indexing.
 
 ### 51. Command Palette (Cmd+K)
-- **What it does:** Quick command palette for actions: create plan item, navigate to item, run custom prompts, execute saved commands. Supports fuzzy search on command names and descriptions. Targeted prompts open a second picker page to select the document or repo they should run against before executing.
+- **What it does:** Quick command palette: create plan item, navigate to item, and run any action (feature 109). Supports fuzzy search on command names, descriptions, and keywords. A chat-mode action with a target opens a second picker page to select the document or repo it runs against.
 - **Key code locations:**
   - Component: `src/renderer/components/command-palette/CommandPalette.tsx`
-  - Store: `src/renderer/stores/customPromptStore.ts` (custom prompts as commands)
-  - Integration: custom prompts appear as executable commands
+  - Store: `src/renderer/stores/actionStore.ts` (actions as commands)
+  - Integration: actions appear as executable commands; "Manage actions…" opens Settings → Actions
   - Keyboard hook: Cmd+K globally
 - **Entry points / surfaces:**
   - Cmd+K keyboard shortcut
@@ -586,7 +586,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Custom prompts: listed as executables in palette; targeted prompts attach selected entity as focused resource before sending
   - Plan navigation: can search and navigate to plan items
   - Project actions: create new project, etc.
-- **Maturity signal:** Mature. Command palette functional. Extensible via custom prompts.
+- **Maturity signal:** Mature. Command palette functional. Extensible via actions.
 
 ### 52. Sidebar Navigation (Projects, Sources, Context, Search)
 - **What it does:** Left sidebar with: project list, repo sources (branches, file tree), focused resources, global search. Collapsible sections.
@@ -657,31 +657,24 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Agent catalog: lists available agent types/backends
 - **Maturity signal:** Mature. Multi-session support and TTL-based eviction are well-tested.
 
-### 104. Scheduled Loops (Recurring Background Prompts)
-- **What it does:** Users define a freeform prompt that runs on a recurring interval in the background (app must be open), managed entirely from the Command+K palette. Each loop has an output mode that controls how results are delivered: `notify` (read-only; a finding becomes a notification, silent if nothing noteworthy), `report` (read-only; result is written to `outputs/loops/<name>.md` each run), or `maintain` (the agent's document/context-file edits from that run are written to disk immediately, bypassing the approval queue). A run history (up to 50 entries per loop) records outcome, summary, error, and artifact path for each tick, and a manual "Run now" is available regardless of the loop's enabled state.
+### 109. Actions (Saved Prompts, Optionally Triggered)
+- **What it does:** An action is a prompt the user wrote plus how it starts and what it is allowed to do. It replaced two features that were the same object with different activation — Command+K custom prompts (manual, global) and scheduled loops (interval, project-scoped). A trigger is `manual` (only when invoked), `interval` (5 min to 1 week), or `event` (`app_opened`, `board_agent_finished`, `pr_changed`, `ticket_changed`, `branch_changed`). Manual invocation stays available under every trigger kind.
+- **Capability grant replaces the output mode.** The retired `LoopOutputMode` enum was carrying two decisions at once — what a run may touch, and where its result lands. Both now come from a grant of `read_project`, `read_integrations`, `report_finding`, `write_outputs`, `propose_documents`, `propose_plan`. Delivery is a consequence of which grant the run exercises rather than a separate setting, so one action can both report a finding and write a file — a combination the enum could not express. The grant is enforced by the tool runtime, not by prompt wording: `listTools` and `executeTool` both check it, so the model never sees a withheld tool and is refused if it names one anyway.
+- **Where proposals go.** An action that proposes changes must have `manualRun: 'chat'`, which sends the prompt into a real chat session so its proposals reach the approval queue. A triggered propose grant is rejected outright, because a background run has no user present and the approval queue does not persist. This is the deliberate replacement for `maintain` mode, which auto-applied document edits to disk with nobody reviewing them.
 - **Key code locations:**
-  - Service: `src/main/services/repo/ScheduledLoopRunnerService.ts` (drives loops on the shared `PollScheduler`, one task per enabled loop; `executeNotify` / `executeReport` / `executeMaintain` per output mode)
-  - Service: `src/main/services/core/ScheduledLoopService.ts` (CRUD + run-history access)
-  - Repository: `src/main/db/repositories/impl/ScheduledLoopRepository.ts` (loop CRUD, `recordRunOutcome`), `ILoopRunRepository` (run history, `pruneOld`)
-  - Context: `src/main/claude/contextBuilders.ts` (`createContextBuilder`) builds the same grounded project context used by chat
-  - IPC handlers: `src/main/ipc/handlers/scheduledLoops.ts`; validation: `src/shared/ipc/scheduledLoopEndpoints.ts`
-  - Component: `src/renderer/components/command-palette/LoopModal.tsx` (create/edit loop, run history list)
-  - Store: `src/renderer/stores/scheduledLoopStore.ts`
-  - Service (renderer): `src/renderer/services/scheduledLoopService.ts` (`subscribeToScheduledLoopRun` — refreshes history when a run this window kicked off finishes)
-  - Command palette integration: `src/renderer/components/command-palette/CommandPalette.tsx` (`loops` category, "New loop…" command)
-  - DB: `scheduled_loops` table (project_id, name, prompt, output_mode, interval_minutes, enabled, last_run_at, last_outcome), `loop_runs` table (loop_id, outcome, summary, error, artifact_path, started_at, finished_at) — migration `096_add_scheduled_loops`
+  - Shared model: `src/shared/actions.ts` (types, Zod `actionFieldsSchema`/`actionEditableSchema`, `toEditable`, `formatTrigger`, capability label table, cross-field validation)
+  - Capability translation: `src/main/services/core/actionCapabilities.ts` (`toolCapabilitiesFor` — maps user-facing grants to `KpmToolCapability`); enforcement in `src/main/kpmTools/runtime.ts` (`isWithinGrant`) and `src/main/kpmTools/createKpmServer.ts` (`getGrantedKpmServer`)
+  - Service + repositories: `src/main/services/core/ActionService.ts` (name uniqueness, merged-state re-validation, scheduler coordination), `src/main/db/repositories/impl/ActionRepository.ts`, `ActionRunRepository.ts`
+  - Runner: `src/main/services/repo/ActionRunnerService.ts` (interval registration on `PollScheduler`, `UpdateEventBus` subscription for event triggers, single execution path, `report_finding` / `write_outputs` delivery, carried-forward memory)
+  - IPC: `src/shared/ipc/actionEndpoints.ts` (`action:list|get|create|update|set-enabled|delete|run-now|history`), handlers `src/main/ipc/handlers/actions.ts`; push event `src/shared/ipc/actionEvents.ts` (`action:run`)
+  - Renderer: `src/renderer/components/settings/ActionsSettings.tsx`, `src/renderer/stores/actionStore.ts`, `src/renderer/services/actionService.ts`, `src/renderer/components/command-palette/CommandPalette.tsx`
+  - DB: `actions` + `action_runs` tables (migration `115_add_actions`, which also backfills from `custom_prompts` and `scheduled_loops`), `actions.model` (migration `116_add_action_model`), schedule adoption (migration `117_adopt_loop_schedules_as_actions`), legacy table drop (migration `118_drop_custom_prompts_and_scheduled_loops`)
 - **Entry points / surfaces:**
-  - Cmd+K → "New loop…" or select an existing loop to edit
-  - Loop editor: name, prompt, output mode (notify/report/maintain), interval
-  - Run history list in the loop modal (outcome badges, summaries, "No runs yet" empty state)
-  - "Run now" button runs immediately regardless of enabled/schedule state
-  - Notifications (for `notify` mode) and `outputs/loops/<name>.md` (for `report` mode) surface results outside the modal
-- **Dependencies / integrations:**
-  - `PollScheduler`: one registered task per enabled loop (`loop:<id>`), interval derived from `interval_minutes`
-  - Claude Agent SDK: each tick is a single grounded agent turn with KPM MCP tools and the user's enabled external MCP servers/plugins; `autoApprove: true` since no UI is present to answer permission prompts on a background tick
-  - Document/context-file tools: `maintain` mode subscribes to `subscribeToDocumentUpdate` / `subscribeToContextFileUpdate` (keyed by a synthetic `loop:<id>` session key) and writes accumulated file content directly via `resolveScopedPath`, rather than emitting approval-queue proposals
-  - `UpdateEventBus`: emits a `loop_finding` event consumed by the notification system
-- **Maturity signal:** Mature. `maintain` mode is a deliberate, scoped exception to the approval-queue convention — proposals never leave the main/board interactive flow, but a scheduled loop has no user present to approve them, so writes are auto-applied and scoped to the project folder via `resolveScopedPath`.
+  - Settings → Actions: list plus editor; capabilities as plain-language checkboxes, one "Runs" dropdown for the trigger, live validation that blocks Save, Run now, and recent run outcomes
+  - Command+K: actions listed by name and keywords, plus "Manage actions…"; a chat-mode action with a target opens a second page to pick a document or repo
+  - Notifications (`report_finding`) and `outputs/actions/<name>.md` (`write_outputs`)
+- **Migration notes:** Ids carry over, so run history repointed without a mapping table. `notify` became `report_finding`, `report` became `write_outputs`, and `maintain` became a **manual chat action** — the prompt survives, the schedule does not, and it can be restored once proposals outlive the session that made them. `custom_prompts`, `scheduled_loops`, and `loop_runs` are dropped by migration 118, and the whole legacy stack — both services, the loop runner, the custom-prompt generation service, their handlers, endpoints, events, repositories, stores, and the Command+K task badge — is deleted. The `loop_finding` update event was renamed `action_finding` as part of that.
+- **Maturity signal:** New, but the merge is complete — no legacy path remains. The capability grant is enforced at two layers and covered by tests. Retiring `CustomPromptGenerationService` also removed the one agent path in KPM that ran without a permission layer.
 
 ---
 
@@ -741,26 +734,6 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Approval queue: a deferred permission request surfaces there while pending
 - **Maturity signal:** Mature. Permission model is clean, user-friendly, and non-intrusive once tools are approved.
 
-### 65. Custom Prompts (User-Defined Prompt Library)
-- **What it does:** Users create global custom prompts that appear as commands in the command palette and can be executed independently. Each prompt has name, description, icon, keywords, content, a target type (`none` / `document` / `repo`), and a run mode (`artifact` / `chat`). Targeted prompts require the user to pick a document or repo before running. Project-status summaries are user-configurable here, especially with run mode `chat`; KPM does not seed a dedicated status command. Built-in prompts are protected from deletion.
-- **Key code locations:**
-  - DB: `custom_prompts` table (name, description, icon, keywords, prompt_content, is_builtin, sort_order, target_type, run_mode) — migration 090
-  - Service: `src/main/services/core/CustomPromptService.ts`
-  - Service: `src/main/services/generation/CustomPromptGenerationService.ts` (execution for artifact mode)
-  - Component: `src/renderer/components/settings/CustomPromptSettings.tsx` (editor — "Runs On" and "Output" selectors; picking a target auto-locks output to chat)
-  - Component: `src/renderer/components/command-palette/CommandPalette.tsx` (execution + target picker page)
-  - Store: `src/renderer/stores/customPromptStore.ts`
-  - IPC handlers: `src/main/ipc/handlers/customPrompts.ts`
-- **Entry points / surfaces:**
-  - Settings → Custom Prompts tab
-  - Create new: name, description, icon, prompt text, "Runs On" selector (none/document/repo), "Output" selector (artifact/chat)
-  - Execute from command palette (Cmd+K); targeted prompts open a second page to pick the entity
-  - Edit/delete existing
-- **Dependencies / integrations:**
-  - Command palette: prompts listed as executable commands; chat-mode targeted prompts attach selected entity as focused resource and send prompt via chat
-  - Claude SDK: artifact-mode prompts executed as user message via generation service; chat-mode prompts navigate to chat view and send directly
-  - Effort selection: users can choose effort level (low/medium/high/max) when executing artifact prompts
-- **Maturity signal:** Mature. Custom prompt system functional and extensible.
 
 ---
 
@@ -1162,6 +1135,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 | 39 | 38 (Project Documents & Context File) | 75 | removed — dead feature, no longer tracked |
 | 41, 42 | 40 (Document & Context-File Editing Tools) | 78 | 77 (Debug & Performance Logging) |
 | | | 80–82 | removed |
+| 65, 104 | 109 (Actions) — Command+K custom prompts and scheduled loops merged into one object | | |
 
 The standalone "Permissions & Security" group was folded into Settings & Configuration (feature 64). A second, verbatim-duplicate copy of the Cross-Cutting Infrastructure section (features 83–95) was also removed — it existed only as a condensed restatement and had already drifted from the primary copy.
 
@@ -1318,8 +1292,8 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 62 (MCP Server Configuration)
 - `PermissionsSettings.tsx`: Tool permissions management
   - Features: 64 (Tool Permissions)
-- `CustomPromptSettings.tsx`: Custom prompt editor
-  - Features: 65 (Custom Prompts)
+- `ActionsSettings.tsx`: Action editor (prompt, trigger, capability grant)
+  - Features: 109 (Actions)
 - `PromptsSettings.tsx`: System prompt overrides
   - Features: 13 (Claude System Prompts)
 - `ThemesSettings.tsx`, `ThemeSelector.tsx`: Built-in and imported themes
@@ -1333,9 +1307,7 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 
 ### command-palette/ Components
 - `CommandPalette.tsx`: Cmd+K interface with fuzzy search
-  - Features: 51 (Command Palette), 65 (Custom Prompts)
-- `LoopModal.tsx`: Create/edit scheduled loops, view run history
-  - Features: 104 (Scheduled Loops)
+  - Features: 51 (Command Palette), 109 (Actions)
 
 ### confluence/ Components
 - `LinkToConfluenceModal.tsx`: Dialog to link document to Confluence page
@@ -1385,22 +1357,22 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 - **Mature (production-ready):** Nearly every cataloged feature, across every group, except the items called out below.
 - **Mature with roadmap items:** Board execution (19, 23, 105), Agent orchestration (57, 59).
 - **Early/Partial:** Some artifact types remain lighter-weight than the core planning/dev-session workflows.
-- **Experimental/Optional:** Custom prompts (65, lightweight) and scheduled loops (104, new and lightly used relative to chat/board).
+- **Experimental/Optional:** Actions (109, new — it merged the lightly-used custom-prompt and scheduled-loop features).
 
 ### By Complexity (Internal)
 - **High complexity:** Sync Pipeline (33), board execution state machine (23, 105), streaming session architecture (87), context building (94).
-- **Medium:** Plan action approval (10), dev sessions (19), tracker integration (27, 31, 33, 35), search (50), scheduled loops (104).
+- **Medium:** Plan action approval (10), dev sessions (19), tracker integration (27, 31, 33, 35), search (50), actions (109).
 - **Low:** Visual groups (8), notifications (74).
 
 ### By User Touchpoints
 - **High-frequency:** Main chat (11), plan views (5), workspace view & file editor (69).
 - **Medium-frequency:** Settings (61, 62, 64, 65), Markdown focus reader (106).
-- **Low-frequency:** Onboarding (76), Confluence integration (53), scheduled loops (104).
+- **Low-frequency:** Onboarding (76), Confluence integration (53), actions (109).
 
 ### By Dependency Complexity
 - **Core foundation:** Service container (83), store events (85), IPC pattern (86), repositories (88).
 - **Integrations:** Tracker (27, 31, 33, 35), GitHub (25), Confluence (53).
-- **Claude SDK:** Streaming (87), tools (91), prompts (92), context (94), agent sessions (59), scheduled loops (104).
+- **Claude SDK:** Streaming (87), tools (91), prompts (92), context (94), agent sessions (59), actions (109).
 
 ---
 

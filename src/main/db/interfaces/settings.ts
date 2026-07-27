@@ -6,10 +6,6 @@
 
 import type {
   TaskPromptTemplate,
-  CustomPrompt,
-  CustomPromptIcon,
-  CustomPromptTargetType,
-  CustomPromptRunMode,
   ToolPermission,
   CustomTheme,
 } from '../../../shared/types';
@@ -80,51 +76,6 @@ export interface ITaskPromptTemplateRepository {
 // =============================================================================
 
 /** Input type for creating a custom prompt */
-export interface CustomPromptCreate {
-  name: string;
-  description?: string | null;
-  prompt_content: string;
-  icon?: CustomPromptIcon;
-  keywords?: string | null;
-  is_builtin?: boolean;
-  sort_order?: number;
-  target_type?: CustomPromptTargetType;
-  run_mode?: CustomPromptRunMode;
-}
-
-/** Input type for updating a custom prompt */
-export interface CustomPromptUpdate {
-  name?: string;
-  description?: string | null;
-  prompt_content?: string;
-  icon?: CustomPromptIcon;
-  keywords?: string | null;
-  sort_order?: number;
-  target_type?: CustomPromptTargetType;
-  run_mode?: CustomPromptRunMode;
-}
-
-export interface ICustomPromptRepository {
-  /** List all custom prompts ordered by sort_order */
-  list(): CustomPrompt[];
-  /** Get a custom prompt by ID */
-  get(id: string): CustomPrompt | undefined;
-  /** Get a custom prompt by name */
-  getByName(name: string): CustomPrompt | undefined;
-  /** Create a new custom prompt */
-  create(prompt: CustomPromptCreate): CustomPrompt;
-  /** Update an existing custom prompt */
-  update(id: string, updates: CustomPromptUpdate): void;
-  /** Delete a custom prompt (fails for built-in prompts) */
-  delete(id: string): boolean;
-  /** Ensure built-in prompts exist */
-  ensureBuiltinsExist(): void;
-}
-
-// =============================================================================
-// Tool Permission Repository
-// =============================================================================
-
 export interface IToolPermissionRepository {
   /** List all persisted permissions for a project */
   listByProject(projectId: string): ToolPermission[];

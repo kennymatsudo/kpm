@@ -4,7 +4,7 @@ import type {
   BoardAgentEvent,
   BranchChangedEvent,
   GenericUpdateEvent,
-  LoopFindingEvent,
+  ActionFindingEvent,
   PrChangedEvent,
   TicketChangedEvent,
   UpdateEventBus,
@@ -58,15 +58,14 @@ function genericEvent(overrides: Partial<GenericUpdateEvent> = {}): GenericUpdat
   };
 }
 
-function loopEvent(overrides: Partial<LoopFindingEvent> = {}): LoopFindingEvent {
+function actionFindingEvent(overrides: Partial<ActionFindingEvent> = {}): ActionFindingEvent {
   return {
-    kind: 'loop_finding',
-    source: 'loop',
+    kind: 'action_finding',
+    source: 'action',
     detectedAt: AT,
-    loopId: 'loop-1',
+    actionId: 'action-1',
     projectId: 'proj-1',
-    loopName: 'Nightly sweep',
-    outputMode: 'notify',
+    actionName: 'Nightly sweep',
     title: 'Found a flaky test',
     body: 'auth.spec.ts fails intermittently',
     ...overrides,
@@ -90,9 +89,9 @@ function boardAgentEvent(overrides: Partial<BoardAgentEvent> = {}): BoardAgentEv
 
 describe('notificationFor', () => {
   it('carries the event identity fields onto every notification', () => {
-    const n = notificationFor(loopEvent());
-    expect(n).toMatchObject({ at: AT, source: 'loop', eventKind: 'loop_finding' });
-    expect(n?.id).toMatch(/^loop_finding-/);
+    const n = notificationFor(actionFindingEvent());
+    expect(n).toMatchObject({ at: AT, source: 'action', eventKind: 'action_finding' });
+    expect(n?.id).toMatch(/^action_finding-/);
   });
 
   describe('pr_changed', () => {
@@ -158,7 +157,7 @@ describe('notificationFor', () => {
     });
 
     it('uses the loop finding title and body', () => {
-      expect(notificationFor(loopEvent())).toMatchObject({
+      expect(notificationFor(actionFindingEvent())).toMatchObject({
         severity: 'info',
         title: 'Found a flaky test',
         body: 'auth.spec.ts fails intermittently',
@@ -204,7 +203,7 @@ describe('notificationFor', () => {
   });
 
   it('carries the project on loop findings', () => {
-    expect(notificationFor(loopEvent())?.projectId).toBe('proj-1');
+    expect(notificationFor(actionFindingEvent())?.projectId).toBe('proj-1');
   });
 });
 
@@ -220,7 +219,7 @@ describe('dedupeKeyFor', () => {
   it('keys other kinds by their identifying fields', () => {
     expect(dedupeKeyFor(ticketEvent())).toBe('ticket:linear:ENG-1234:status_changed');
     expect(dedupeKeyFor(branchEvent({ branch: null }))).toBe('branch:repo-1:null');
-    expect(dedupeKeyFor(loopEvent())).toBe('loop:loop-1:Found a flaky test');
+    expect(dedupeKeyFor(actionFindingEvent())).toBe('action:action-1:Found a flaky test');
     expect(dedupeKeyFor(boardAgentEvent())).toBe('agent:sess-1:ready_for_review');
   });
 
@@ -266,12 +265,12 @@ describe('createNotificationService', () => {
     const service = createNotificationService({ bus, broadcastToWindows });
     service.start();
 
-    fire(loopEvent());
+    fire(actionFindingEvent());
 
     expect(broadcastToWindows).toHaveBeenCalledTimes(1);
     expect(broadcastToWindows).toHaveBeenCalledWith(
       'notification:new',
-      expect.objectContaining({ title: 'Found a flaky test', eventKind: 'loop_finding' }),
+      expect.objectContaining({ title: 'Found a flaky test', eventKind: 'action_finding' }),
     );
   });
 
@@ -302,7 +301,7 @@ describe('createNotificationService', () => {
     service.start();
 
     fire(branchEvent());
-    fire(loopEvent());
+    fire(actionFindingEvent());
 
     expect(broadcastToWindows).toHaveBeenCalledTimes(1);
   });
@@ -312,7 +311,7 @@ describe('createNotificationService', () => {
     service.start();
     service.stop();
 
-    fire(loopEvent());
+    fire(actionFindingEvent());
 
     expect(broadcastToWindows).not.toHaveBeenCalled();
   });

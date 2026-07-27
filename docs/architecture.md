@@ -103,7 +103,6 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 | `confluence_page_links` | Document ↔ Confluence page links |
 | `chat_sessions` | Chat session metadata, native provider resume IDs, scope/focus metadata, and the versioned per-Chat model-choice aggregate |
 | `groups` | Visual group containers |
-| `custom_prompts` | Custom prompts; `target_type` (none/document/repo) and `run_mode` (artifact/chat) columns added in migration 090 |
 | `task_prompt_templates` | Task prompt templates |
 | `tool_permissions` | Persisted per-project tool permission grants |
 | `review_tasks` | GitHub review threads normalized into KPM review tasks |
@@ -115,8 +114,8 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 | `global_search_fts` | Virtual FTS5 table for full-text search |
 | `claude_usage_events` | Claude usage/cost accounting events |
 | `project_file_metadata` | Cached summaries and indexing metadata for project files |
-| `scheduled_loops` | Cmd+K-managed recurring agent prompts (notify/report/maintain output mode, interval, enabled, last outcome) |
-| `loop_runs` | Run history for scheduled loops (outcome, summary, error, artifact path) |
+| `actions` | Saved prompts with a trigger (`manual`/`interval`/`event`) and a capability grant; successor to `custom_prompts` + `scheduled_loops` (migrations 115–118; `custom_prompts`, `scheduled_loops`, and `loop_runs` were merged in and dropped) |
+| `action_runs` | Per-run history for an action (outcome, summary, artifact path), pruned to 50 per action |
 
 **Key fields for features:**
 - `plan_items.completed_at` - Stamped on transition to done, cleared on transition away; no feature currently reads it

@@ -2,35 +2,33 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Command } from 'cmdk';
 import {
   useProjectDomainStore,
-  useCustomPromptStore,
   useContextRegenerationStore,
-  useCustomPromptTaskStore,
   useSettingsUIStore,
   useResourceDomainStore,
   useProjectUiDomainStore,
   useChatStore,
-  useScheduledLoopStore,
 } from '../../stores';
+import { useActionStore } from '../../stores/actionStore';
 import { emit } from '../../stores/storeEvents';
-import { executeCustomPrompt } from '../../services/promptService';
 import { listProjectDirectory } from '../../services/projectFileService';
 import { useChat } from '../../hooks/useChat';
 import { getBaseName } from '../../utils/path';
 import { formatRelativeTime } from '../../utils/relativeTime';
 import { LoadingSpinner } from '../ui/LoadingButton';
-import type { CustomPrompt, CustomPromptIcon, FileNode, FocusedResource, ScheduledLoop } from '../../../shared/types';
+import type { FileNode, FocusedResource } from '../../../shared/types';
+import { formatTrigger, isAutomatic, type ActionDefinition, type ActionIcon } from '../../../shared/actions';
 import { useShallow } from 'zustand/react/shallow';
-import { LoopModal } from './LoopModal';
+import { toast } from '../../stores/toastStore';
 
 interface CommandItem {
   id: string;
   label: string;
   description: string;
-  icon: CustomPromptIcon;
-  category: 'prompts' | 'project' | 'navigation' | 'loops';
+  icon: ActionIcon;
+  category: 'actions' | 'project' | 'navigation';
   action: () => void;
   keywords: string[];
-  promptId?: string;
+  actionId?: string;
 }
 
 interface DocumentTarget {
@@ -50,14 +48,16 @@ function flattenMarkdownFiles(nodes: FileNode[], acc: DocumentTarget[] = []): Do
   return acc;
 }
 
-function describeLoop(loop: ScheduledLoop): string {
-  const mode = loop.output_mode.charAt(0).toUpperCase() + loop.output_mode.slice(1);
-  const cadence = loop.enabled ? `every ${loop.interval_minutes}m` : 'paused';
-  const ran = loop.last_run_at ? ` · ran ${formatRelativeTime(loop.last_run_at)}` : '';
-  return `${cadence} · ${mode}${ran}`;
+function describeAction(action: ActionDefinition): string {
+  if (action.description.trim()) return action.description;
+  const cadence = isAutomatic(action.trigger)
+    ? action.enabled ? formatTrigger(action.trigger) : `${formatTrigger(action.trigger)} · paused`
+    : 'Run on demand';
+  const ran = action.lastRunAt ? ` · ran ${formatRelativeTime(action.lastRunAt)}` : '';
+  return `${cadence}${ran}`;
 }
 
-function CommandIcon({ icon, className }: { icon: CustomPromptIcon; className?: string }) {
+function CommandIcon({ icon, className }: { icon: ActionIcon; className?: string }) {
   switch (icon) {
     case 'chart':
       return (
@@ -102,19 +102,12 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const [executingCommand, setExecutingCommand] = useState<string | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
-  const { prompts, loadPrompts, isLoading: promptsLoading } = useCustomPromptStore(
+  const { actions, loadActions, runActionNow, isLoading: actionsLoading } = useActionStore(
     useShallow((state) => ({
-      prompts: state.prompts,
-      loadPrompts: state.loadPrompts,
+      actions: state.actions,
+      loadActions: state.loadActions,
+      runActionNow: state.runNow,
       isLoading: state.isLoading,
-    }))
-  );
-  const { loops, loadLoops, openCreateLoop, openEditLoop } = useScheduledLoopStore(
-    useShallow((state) => ({
-      loops: state.loops,
-      loadLoops: state.loadLoops,
-      openCreateLoop: state.openCreate,
-      openEditLoop: state.openEdit,
     }))
   );
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -125,18 +118,18 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
   // Target-picker page state: set when a targeted chat prompt was selected and
   // is waiting for the user to pick which document/repo it runs on.
-  const [pickerPrompt, setPickerPrompt] = useState<CustomPrompt | null>(null);
+  const [pickerAction, setPickerAction] = useState<ActionDefinition | null>(null);
   const [docTargets, setDocTargets] = useState<DocumentTarget[] | null>(null);
   const [docsLoading, setDocsLoading] = useState(false);
 
   const closePicker = useCallback(() => {
-    setPickerPrompt(null);
+    setPickerAction(null);
     setSearch('');
   }, []);
 
   // Load the project's markdown documents when the document picker opens.
   useEffect(() => {
-    if (pickerPrompt?.target_type !== 'document' || !currentProjectId) return;
+    if (pickerAction?.targetType !== 'document' || !currentProjectId) return;
     let cancelled = false;
     setDocsLoading(true);
     listProjectDirectory({ projectId: currentProjectId, recursive: true })
@@ -153,9 +146,9 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     return () => {
       cancelled = true;
     };
-  }, [pickerPrompt, currentProjectId]);
+  }, [pickerAction, currentProjectId]);
 
-  const sendPromptToChat = useCallback((prompt: CustomPrompt, resource?: FocusedResource) => {
+  const sendActionToChat = useCallback((action: ActionDefinition, resource?: FocusedResource) => {
     const chatStore = useChatStore.getState();
     const sessionId = chatStore.getChatSessionId();
     chatStore.getOrCreateSession(sessionId);
@@ -164,26 +157,23 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     }
     emit({ type: 'navigate-to-view', payload: { view: 'workspace', showChat: true } });
     onClose();
-    void send(prompt.prompt_content, undefined, undefined, sessionId);
+    void send(action.prompt, undefined, undefined, sessionId);
   }, [onClose, send]);
 
   const handleTargetSelect = useCallback((resource: FocusedResource) => {
-    if (!pickerPrompt) return;
-    sendPromptToChat(pickerPrompt, resource);
-  }, [pickerPrompt, sendPromptToChat]);
+    if (!pickerAction) return;
+    sendActionToChat(pickerAction, resource);
+  }, [pickerAction, sendActionToChat]);
 
-  const openCustomPromptSettings = useCallback(() => {
+  const openActionSettings = useCallback(() => {
     onClose();
-    setSettingsTab('prompts');
+    setSettingsTab('actions');
     openSettings(true);
   }, [onClose, setSettingsTab, openSettings]);
 
   useEffect(() => {
-    if (isOpen) {
-      void loadPrompts();
-      if (currentProjectId) void loadLoops(currentProjectId);
-    }
-  }, [isOpen, loadPrompts, loadLoops, currentProjectId]);
+    if (isOpen && currentProjectId) void loadActions(currentProjectId);
+  }, [isOpen, loadActions, currentProjectId]);
 
   const commands = useMemo<CommandItem[]>(() => {
     if (!currentProjectId) return [];
@@ -202,98 +192,77 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       },
     ];
 
-    const promptCommands = prompts.map((prompt) => ({
-      id: `prompt-${prompt.id}`,
-      label: prompt.name,
-      description: prompt.description || 'Execute custom prompt',
-      icon: prompt.icon,
-      category: 'prompts' as const,
-      keywords: prompt.keywords ? prompt.keywords.split(',').map((k) => k.trim().toLowerCase()) : [],
-      promptId: prompt.id,
-      action: () => {
-        // Handled by executeCommand.
-      },
-    }));
-
-    const loopCommands: CommandItem[] = [
-      {
-        id: 'new-loop',
-        label: 'New loop…',
-        description: 'Schedule a recurring prompt — watch Slack/PRs/tickets or keep docs current',
-        icon: 'sparkles',
-        category: 'loops',
-        keywords: ['loop', 'schedule', 'recurring', 'watch', 'cron', 'new', 'automation'],
+    const actionCommands: CommandItem[] = [
+      ...actions.map((action): CommandItem => ({
+        id: `action-${action.id}`,
+        label: action.name,
+        description: describeAction(action),
+        icon: action.icon,
+        category: 'actions',
+        keywords: action.keywords ? action.keywords.split(',').map((word) => word.trim().toLowerCase()) : [],
+        actionId: action.id,
         action: () => {
-          openCreateLoop();
-        },
-      },
-      ...loops.map((loop): CommandItem => ({
-        id: `loop-${loop.id}`,
-        label: loop.name,
-        description: describeLoop(loop),
-        icon: 'check',
-        category: 'loops',
-        keywords: ['loop', 'schedule', loop.output_mode],
-        action: () => {
-          openEditLoop(loop);
+          // Handled by executeCommand.
         },
       })),
+      {
+        id: 'manage-actions',
+        label: 'Manage actions…',
+        description: 'Create or edit saved prompts, schedules, and triggers',
+        icon: 'sparkles',
+        category: 'actions',
+        keywords: ['action', 'new', 'edit', 'schedule', 'trigger', 'loop', 'command', 'automation'],
+        action: openActionSettings,
+      },
     ];
 
-    return [...builtIn, ...loopCommands, ...promptCommands];
-  }, [currentProjectId, prompts, loops, openCreateLoop, openEditLoop]);
+    return [...builtIn, ...actionCommands];
+  }, [currentProjectId, actions, openActionSettings]);
 
   const groupedCommands = useMemo(() => ({
     project: commands.filter((command) => command.category === 'project'),
-    loops: commands.filter((command) => command.category === 'loops'),
-    prompts: commands.filter((command) => command.category === 'prompts'),
+    actions: commands.filter((command) => command.category === 'actions'),
   }), [commands]);
 
   const executeCommand = useCallback(async (command: CommandItem) => {
     if (executingCommand) return;
 
-    if (!command.promptId) {
+    if (!command.actionId) {
       command.action();
       onClose();
       return;
     }
 
-    const prompt = prompts.find((p) => p.id === command.promptId);
-    if (prompt?.run_mode === 'chat') {
-      if (prompt.target_type === 'none') {
-        sendPromptToChat(prompt);
+    const action = actions.find((candidate) => candidate.id === command.actionId);
+    if (!action) return;
+
+    // A chat-mode action becomes an ordinary chat message, so its changes go
+    // through the normal review flow. Targeted ones pick their subject first.
+    if (action.manualRun === 'chat') {
+      if (action.targetType === 'none') {
+        sendActionToChat(action);
       } else {
-        setPickerPrompt(prompt);
+        setPickerAction(action);
         setSearch('');
       }
       return;
     }
 
+    // Headless runs are fire-and-forget: the runner can take minutes, and the
+    // result arrives as a notification, an output file, or run history.
     setExecutingCommand(command.id);
     setCommandError(null);
-
     try {
-      const result = await executeCustomPrompt(currentProjectId!, command.promptId);
-
-      if (result.success && result.taskId) {
-        useCustomPromptTaskStore.getState().startTask({
-          taskId: result.taskId,
-          promptName: command.label,
-          projectId: currentProjectId!,
-          startedAt: Date.now(),
-        });
-        closeTimeoutRef.current = setTimeout(() => {
-          onClose();
-        }, 200);
-      } else {
-        setCommandError(result.error || 'Failed to start generation');
-        setExecutingCommand(null);
-      }
+      await runActionNow(action.id);
+      toast.success(`Started "${action.name}"`);
+      closeTimeoutRef.current = setTimeout(() => {
+        onClose();
+      }, 200);
     } catch (error) {
       setCommandError(error instanceof Error ? error.message : 'An error occurred');
       setExecutingCommand(null);
     }
-  }, [executingCommand, currentProjectId, onClose, prompts, sendPromptToChat]);
+  }, [executingCommand, onClose, actions, sendActionToChat, runActionNow]);
 
   const filterCommand = useCallback((value: string, searchValue: string, keywords?: string[]) => {
     const haystack = `${value} ${(keywords ?? []).join(' ')}`.toLowerCase();
@@ -311,20 +280,20 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   // and only closes the palette from the root page.
   const handleOpenChange = useCallback((open: boolean) => {
     if (!open) {
-      if (pickerPrompt) {
+      if (pickerAction) {
         closePicker();
         return;
       }
       onClose();
     }
-  }, [onClose, pickerPrompt, closePicker]);
+  }, [onClose, pickerAction, closePicker]);
 
   useEffect(() => {
     if (!isOpen) {
       setSearch('');
       setExecutingCommand(null);
       setCommandError(null);
-      setPickerPrompt(null);
+      setPickerAction(null);
       setDocTargets(null);
       setDocsLoading(false);
       if (closeTimeoutRef.current) {
@@ -354,7 +323,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       >
         <Command
           className="overflow-hidden"
-          shouldFilter={!promptsLoading && Boolean(currentProjectId)}
+          shouldFilter={!actionsLoading && Boolean(currentProjectId)}
           vimBindings={false}
         >
           <div className="relative border-b border-border-default">
@@ -368,14 +337,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
               value={search}
               onValueChange={setSearch}
               onKeyDown={(e) => {
-                if (pickerPrompt && e.key === 'Backspace' && search === '') {
+                if (pickerAction && e.key === 'Backspace' && search === '') {
                   e.preventDefault();
                   closePicker();
                 }
               }}
               placeholder={
-                pickerPrompt
-                  ? pickerPrompt.target_type === 'document'
+                pickerAction
+                  ? pickerAction.targetType === 'document'
                     ? 'Search documents...'
                     : 'Search repos...'
                   : 'Type a command or search...'
@@ -395,20 +364,20 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             </div>
           )}
 
-          {pickerPrompt && (
+          {pickerAction && (
             <div className="flex items-center gap-2 px-5 py-2 border-b border-border-default bg-surface-2/50">
-              <CommandIcon icon={pickerPrompt.icon} className="w-3.5 h-3.5 text-accent shrink-0" />
+              <CommandIcon icon={pickerAction.icon} className="w-3.5 h-3.5 text-accent shrink-0" />
               <span className="text-xs font-medium text-text-secondary truncate">
-                {pickerPrompt.name}
+                {pickerAction.name}
               </span>
               <span className="text-xs text-text-muted shrink-0">
-                — pick {pickerPrompt.target_type === 'document' ? 'a document' : 'a repo'}
+                — pick {pickerAction.targetType === 'document' ? 'a document' : 'a repo'}
               </span>
             </div>
           )}
 
           <Command.List className="max-h-[60vh] overflow-y-auto py-2">
-            {pickerPrompt ? (
+            {pickerAction ? (
               docsLoading ? (
                 <Command.Loading className="px-6 py-12 text-center">
                   <LoadingSpinner className="w-6 h-6 mx-auto mb-3" color="accent" />
@@ -418,14 +387,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                 <>
                   <Command.Empty className="px-6 py-12 text-center">
                     <p className="text-text-muted text-sm font-medium">
-                      {pickerPrompt.target_type === 'document' ? 'No documents found' : 'No connected repos'}
+                      {pickerAction.targetType === 'document' ? 'No documents found' : 'No connected repos'}
                     </p>
                   </Command.Empty>
                   <Command.Group
-                    heading={pickerPrompt.target_type === 'document' ? 'Documents' : 'Repos'}
+                    heading={pickerAction.targetType === 'document' ? 'Documents' : 'Repos'}
                     className="px-2 [&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-text-muted"
                   >
-                    {pickerPrompt.target_type === 'document'
+                    {pickerAction.targetType === 'document'
                       ? (docTargets ?? []).map((doc) => (
                           <TargetItem
                             key={doc.path}
@@ -449,10 +418,10 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                   </Command.Group>
                 </>
               )
-            ) : promptsLoading ? (
+            ) : actionsLoading ? (
               <Command.Loading className="px-6 py-12 text-center">
                 <LoadingSpinner className="w-6 h-6 mx-auto mb-3" color="accent" />
-                <p className="text-text-muted text-sm font-medium">Loading prompts...</p>
+                <p className="text-text-muted text-sm font-medium">Loading actions...</p>
               </Command.Loading>
             ) : !currentProjectId ? (
               <div className="px-6 py-12 text-center">
@@ -470,15 +439,15 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                   </svg>
                   <p className="text-text-muted text-sm font-medium">No commands found</p>
                   <p className="text-text-tertiary text-xs mt-1">
-                    {prompts.length === 0 ? 'Create a custom prompt to run it from here' : 'Try different keywords'}
+                    {actions.length === 0 ? 'Create an action to run it from here' : 'Try different keywords'}
                   </p>
-                  {prompts.length === 0 && (
+                  {actions.length === 0 && (
                     <button
                       type="button"
-                      onClick={openCustomPromptSettings}
+                      onClick={openActionSettings}
                       className="btn btn-secondary mt-3"
                     >
-                      Open Custom Prompts settings
+                      Open Actions settings
                     </button>
                   )}
                 </Command.Empty>
@@ -492,25 +461,16 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                   </Command.Group>
                 )}
 
-                {groupedCommands.loops.length > 0 && (
-                  <Command.Group
-                    heading="Loops"
-                    className="px-2 [&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-text-muted"
-                  >
-                    {groupedCommands.loops.map((command) => renderCommandItem(command, executingCommand, executeCommand))}
-                  </Command.Group>
-                )}
-
-                {(groupedCommands.project.length > 0 || groupedCommands.loops.length > 0) && groupedCommands.prompts.length > 0 && (
+                {groupedCommands.project.length > 0 && groupedCommands.actions.length > 0 && (
                   <Command.Separator className="mx-4 my-2 h-px bg-border-default" />
                 )}
 
-                {groupedCommands.prompts.length > 0 && (
+                {groupedCommands.actions.length > 0 && (
                   <Command.Group
-                    heading="Prompts"
+                    heading="Actions"
                     className="px-2 [&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-text-muted"
                   >
-                    {groupedCommands.prompts.map((command) => renderCommandItem(command, executingCommand, executeCommand))}
+                    {groupedCommands.actions.map((command) => renderCommandItem(command, executingCommand, executeCommand))}
                   </Command.Group>
                 )}
               </>
@@ -539,7 +499,6 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         </div>
       </div>
     </Command.Dialog>
-    <LoopModal />
     </>
   );
 }

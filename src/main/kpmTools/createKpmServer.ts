@@ -10,6 +10,7 @@ import {
 import {
   getCurrentToolExecutionContext,
   toMcpToolResult,
+  type KpmToolCapability,
   type KpmToolDefinition,
 } from './runtime';
 import { toKpmToolInputJsonSchema } from './toolInputSchema';
@@ -40,6 +41,9 @@ function toProviderToolDefinitions(
         projectId: context.projectId,
         chatSessionId: context.chatSessionId,
         scope: context.scope ?? scope,
+        // Re-checked at execution, not just at listing, so a tool the model
+        // names anyway is still refused.
+        grantedCapabilities: context.grantedCapabilities,
       }).then(toMcpToolResult);
     },
   })) as NonNullable<ClaudeMcpToolDefinitions>;
@@ -136,6 +140,31 @@ export function getFocusKpmServer() {
     name: 'kpm',
     version: '1.0.0',
     tools: collectFocusTools(),
+    alwaysLoad: true,
+  });
+}
+
+const cachedGrantedTools = new Map<string, NonNullable<ClaudeMcpToolDefinitions>>();
+
+/**
+ * A server exposing only the tools a granted capability set reaches — used by
+ * action runs, where the grant is the boundary. Cached per distinct grant, since
+ * actions reuse a small number of combinations.
+ */
+export function getGrantedKpmServer(grantedCapabilities: readonly KpmToolCapability[]) {
+  const key = [...grantedCapabilities].sort().join(',');
+  let tools = cachedGrantedTools.get(key);
+  if (!tools) {
+    tools = toProviderToolDefinitions(
+      getKpmToolDefinitions({ scope: 'main', grantedCapabilities }),
+      'main',
+    );
+    cachedGrantedTools.set(key, tools);
+  }
+  return createSdkMcpServer({
+    name: 'kpm',
+    version: '1.0.0',
+    tools,
     alwaysLoad: true,
   });
 }

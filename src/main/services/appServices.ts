@@ -11,7 +11,7 @@ import { BrowserWindow, shell } from 'electron';
 import type { IRepositoryContainer } from '../db/interfaces';
 import { getConfig } from '../config';
 import { getDatabase, getUserDataPath } from '../db/connection';
-import { getDefaultModel } from '../db/appSettingsAccess';
+import { getDefaultModel, getSetting } from '../db/appSettingsAccess';
 import { createExportService, createImportService, createSyncService, createTypeMappingService, queueTrackerUpdateIfNeeded } from '../db/domain';
 import type { PlanItemServiceDeps, QueueTrackerUpdateIfNeeded } from '../db/domain';
 import { createPlanActionExecutor } from '../db/domain/PlanActionService';
@@ -22,7 +22,6 @@ import { createAppLifecycleService } from './core/AppLifecycleService';
 import { createProjectService } from './core/ProjectService';
 import { createChatRuntimeService } from './core/ChatRuntimeService';
 import { createContextFileService } from './core/ContextFileService';
-import { createCustomPromptService } from './core/CustomPromptService';
 import { createPermissionService } from './core/PermissionService';
 import { createSettingsService } from './core/SettingsService';
 import { createCustomThemeService } from './core/CustomThemeService';
@@ -40,7 +39,6 @@ import { createUpdateEventBus } from './core/UpdateEventBus';
 import { createNotificationService } from './core/NotificationService';
 
 // Generation services
-import { executeCustomPrompt, setCustomPromptUsageRecorder } from './generation/CustomPromptGenerationService';
 
 // Streaming services
 import { createTerminalService } from './streaming/TerminalService';
@@ -77,8 +75,8 @@ import { createHookServer } from './agents/hookServer';
 import { createBoardAgentOrchestrator } from './agents/BoardAgentOrchestrator';
 import { createAutomationPhaseMachine } from './agents/automationPhaseMachine';
 import { createReviewPollService } from './repo/ReviewPollService';
-import { createScheduledLoopService } from './core/ScheduledLoopService';
-import { createScheduledLoopRunnerService } from './repo/ScheduledLoopRunnerService';
+import { createActionService } from './core/ActionService';
+import { createActionRunnerService } from './repo/ActionRunnerService';
 import type { EventPayload } from '../../shared/ipc/appEvents';
 import { planEvents } from '../../shared/ipc/planEvents';
 
@@ -144,13 +142,6 @@ export function createAppServices(container: IRepositoryContainer) {
     claudeUsage: container.claudeUsage,
     projects: container.projects,
     getMainWindow: getPrimaryWindow,
-  });
-
-  // Wire the (singleton) custom prompt generation service into the central
-  // tracker. The function-level helper predates DI in this area, so we set
-  // the recorder globally rather than threading deps through executeCustomPrompt.
-  setCustomPromptUsageRecorder(({ projectId, source, model, usage, totalCostUsd }) => {
-    claudeUsageService.recordUsage({ projectId, source, model, usage, totalCostUsd });
   });
 
   // Route the one-shot generation seam's usage through the same central
@@ -219,12 +210,6 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const contextFileService = createContextFileService({
     getProjectById: container.projects.get.bind(container.projects),
-  });
-
-  const customPromptService = createCustomPromptService({
-    customPrompts: container.customPrompts,
-    projects: container.projects,
-    executeCustomPrompt,
   });
 
   const permissionService = createPermissionService({
@@ -447,15 +432,15 @@ export function createAppServices(container: IRepositoryContainer) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Scheduled Loops (recurring AI-driven prompts; created/managed from Cmd+K)
+  // Actions (saved prompts, optionally triggered)
   //
-  // The runner drives enabled loops on the shared PollScheduler; the CRUD
-  // service calls back into it (sync/remove/runNow) so edits take effect live.
+  // The runner owns every live schedule and the event-trigger subscription; the
+  // CRUD service calls back into it (sync/remove/runNow) so edits take effect
+  // immediately.
   // ─────────────────────────────────────────────────────────────────────────────
-
-  const scheduledLoopRunnerService = createScheduledLoopRunnerService({
-    scheduledLoops: container.scheduledLoops,
-    loopRuns: container.loopRuns,
+  const actionRunnerService = createActionRunnerService({
+    actions: container.actions,
+    actionRuns: container.actionRuns,
     projects: container.projects,
     repos: container.repos,
     attachments: container.attachments,
@@ -464,21 +449,22 @@ export function createAppServices(container: IRepositoryContainer) {
     scheduler: pollScheduler,
     eventBus: updateEventBus,
     mcpDiscoveryService,
+    getDefaultClaudeModel: () => getSetting(container.appSettings, 'chatModel'),
+    getFallbackProjectId: () => getSetting(container.appSettings, 'lastOpenedProjectId'),
     getMainWindow: getPrimaryWindow,
     broadcastToWindows,
   });
 
-  const scheduledLoopService = createScheduledLoopService({
-    scheduledLoops: container.scheduledLoops,
-    loopRuns: container.loopRuns,
+  const actionService = createActionService({
+    actions: container.actions,
     scheduler: {
-      sync: scheduledLoopRunnerService.syncLoop,
-      remove: scheduledLoopRunnerService.removeLoop,
-      runNow: scheduledLoopRunnerService.runNow,
+      sync: actionRunnerService.syncAction,
+      remove: actionRunnerService.removeAction,
+      runNow: actionRunnerService.runNow,
     },
   });
 
-  scheduledLoopRunnerService.start();
+  actionRunnerService.start();
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Return All Services
@@ -490,9 +476,8 @@ export function createAppServices(container: IRepositoryContainer) {
     settingsService,
     customThemeService,
     contextFileService,
-    customPromptService,
-    scheduledLoopService,
-    scheduledLoopRunnerService,
+    actionService,
+    actionRunnerService,
     permissionService,
     taskPromptTemplateService,
     planService,
