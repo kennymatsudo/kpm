@@ -68,7 +68,7 @@ Don't create abstractions until you have 3+ actual uses of a pattern. Wait until
 
 `WorkBriefEditor` owns the controlled Intent, Context, and Acceptance Criteria controls. `RepositoryScopeEditor` owns the controlled primary/affected connected-repo controls. The full create modal, task edit modal, and applicable approval details reuse these editors; title stays with each modal so quick create remains title-only.
 
-**Board `components/board-view/BoardCard.tsx` and canvas `components/planning/PlanCard.tsx` are intentionally NOT wired.** Card faces stay clean; users open the modal to view or edit the Work Brief and Repository Scope. Surfacing these fields on canvas cards would also require extending the card box model in `constants/planCardStyles.ts` — see the next section.
+**Card faces are editor-free; only the primary repo shows.** `components/board-view/BoardCard.tsx` renders one repo chip in its metadata row: the worktree's repo when a dev session has one, otherwise the item's `primary_repo_id` resolved through `connectedRepoName`. Affected repos, Intent, Context, and Acceptance Criteria stay off both card faces — users open the modal to view or edit them. Canvas `components/planning/PlanCard.tsx` shows no repo at all: adding a row there means extending the card box model in `constants/planCardStyles.ts` — see the next section.
 
 **`source_document_id` is unwired in the renderer** — the field is on `PlanItem` and is populated by the `modify_plan` Claude tool (`src/main/kpmTools/tools/plan-changes.ts`) as an iteration-doc breadcrumb, but no UI here reads or displays it. Do not surface it without a clear use case; see `src/main/claude/CLAUDE.md` for the write side.
 

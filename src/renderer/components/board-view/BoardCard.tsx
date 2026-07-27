@@ -1,7 +1,9 @@
 import { memo, Fragment, useCallback, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { HighlightedText } from '../planning/HighlightedText';
+import { connectedRepoName } from '../planning/RepositoryScopeEditor';
 import { useDevSessionsStore } from '../../stores/devSessions';
+import { useResourceDomainStore } from '../../stores';
 import { CardActivityLine } from './CardActivityLine';
 import { derivePanelStatus, type PanelPhase, type NextAction } from './panelStatus';
 import { toReviewPhaseStats } from './usePanelStatus';
@@ -243,7 +245,14 @@ export const BoardCard = memo(function BoardCard({
 
   const itemStatus = resolveStatusCategory(item) ?? 'not_started';
 
-  const repoName = repoSession?.repo_name ?? null;
+  const assignedRepoName = useResourceDomainStore((state) => {
+    if (!item.primary_repo_id) return null;
+    const assigned = state.repos.find((repo) => repo.id === item.primary_repo_id);
+    return assigned ? connectedRepoName(assigned.path) : null;
+  });
+  // The worktree's repo wins: once an agent has run, that is the repo the work
+  // actually landed in, which can differ from the repo the item was assigned.
+  const repoName = repoSession?.repo_name ?? assignedRepoName;
   const automationPhase = activeSession?.automation_phase;
   const reviewSessionId = activeSession ? toReviewSessionId(activeSession.id) : undefined;
   const isReviewVisible =
@@ -548,12 +557,14 @@ export const BoardCard = memo(function BoardCard({
 
           {(repoName || item.external_key || (prSession?.pr_url && prSession.pr_number != null) || item.external_assignee_name) && (
             <div className="flex min-w-0 items-center gap-1.5 text-tiny text-text-muted">
-              {repoName && repoSession && (
+              {repoName && (
                 <Tooltip
                   content={
                     <div className="max-w-[280px]">
                       <div>Repository: {repoName}</div>
-                      <div className="truncate text-text-tertiary">{repoSession.worktree_path}</div>
+                      {repoSession && (
+                        <div className="truncate text-text-tertiary">{repoSession.worktree_path}</div>
+                      )}
                     </div>
                   }
                   side="top"
