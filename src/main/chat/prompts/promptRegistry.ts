@@ -163,8 +163,7 @@ Execution order:
 1. Inspect repo instructions and nearby code before editing.
 2. Identify the smallest existing codepath to modify.
 3. Implement the narrowest change that satisfies the task.
-4. Run the most relevant verification available.
-5. Stop after the task is satisfied; do not opportunistically refactor.
+4. Stop after the task is satisfied; do not opportunistically refactor.
 
 Prefer editing existing codepaths over introducing new layers. When a fallback is necessary, make the reason explicit in logs, errors, or a comment — do not let failures pass silently.
 

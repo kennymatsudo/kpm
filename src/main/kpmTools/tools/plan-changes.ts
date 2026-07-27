@@ -96,9 +96,9 @@ Use intent + acceptance_criteria as the primary shape for implementation items. 
 - **Never** cite iteration-doc filenames or local project-folder paths unless they correspond to files actually in the synced code repo.
 - Breadcrumbs to iteration docs live in the \`source_document_id\` field, never in prose.
 - Code references (repo-relative paths like \`src/auth/session.ts\`) are fine in description — they exist wherever the code does.
-- intent and acceptance_criteria are local-only and not synced today, so they can reference local context freely. Still, prefer self-contained phrasing so they survive if sync coverage expands later.
+- intent and acceptance_criteria are local-only and not synced today, so they can reference local context freely.
 
-**Cross-item references — use \`@plan/<uuid>\`.** When an item's description, intent, or criteria mentions another plan item, write \`@plan/<uuid>\` instead of restating the title or guessing a tracker key. KPM rewrites these to native syntax on export (Jira smart link, Linear URL, GitHub \`Closes ENG-123\`), so refs are sync-safe by default and degrade to the item's title for unlinked items. Use only UUIDs from the **Item Reference** in the system prompt — KPM rejects unknown UUIDs at save. Refs do not work inside fenced code blocks.
+To reference another plan item from a description, intent, or criterion, follow **Plan References** in the system prompt.
 
 Item actions:
 - create_item: see full example below
@@ -146,24 +146,7 @@ Exploratory item example (no criteria yet):
   "parent_id": null
 }
 
-Hierarchy rules:
-- **Default \`parent_id: null\`.** Create items at root unless you have a concrete reason to nest.
-- **Only nest when expanding a specific existing item** the user named or focused, AND you have resolved its ID via a query tool (\`query_plan_items\` with \`format: 'tree'\`, or \`get_plan_items\`). Never use a \`parent_id\` you didn't resolve from real data — placeholders ($1, $2) are fine when you create the parent in the same batch, but inventing IDs leaves orphaned references and corrupts the plan.
-- **Do not create a parent item just to group siblings under it.** That's what Groups are for.
-
-Groups vs hierarchy: Groups are visual containers (like Figma frames) — use them for organization without semantic weight ("these belong to the OAuth effort"). Hierarchy (\`parent_id\`) is for genuine parent/child relationships and **becomes a sub-task link on export to Jira/Linear** — so nesting is a semantic commitment, not a layout choice.
-
-Example — capturing N items with optional grouping:
-[
-  { "type": "create_group", "project_id": "proj-1", "name": "OAuth migration", "position_x": 0, "position_y": 0, "width": 552, "height": 400 },
-  { "type": "create_item", "title": "Audit existing token refresh flow", "parent_id": null },
-  { "type": "create_item", "title": "Add PKCE support to authorize endpoint", "parent_id": null },
-  { "type": "create_item", "title": "Migrate session store to Redis", "parent_id": null },
-  { "type": "assign_to_group", "item_id": "$2", "group_id": "$1" },
-  { "type": "assign_to_group", "item_id": "$3", "group_id": "$1" },
-  { "type": "assign_to_group", "item_id": "$4", "group_id": "$1" }
-]
-All three items are root-level; the Group provides organization. Do not invent an "OAuth migration" parent item to nest them under.`,
+Hierarchy and Groups: follow **Plan Structure** in the system prompt. A placeholder ($1, $2) is a valid \`parent_id\` when the parent is created in the same batch; every other \`parent_id\` must be an ID resolved from a query tool.`,
       {
         message: z.string().describe('Brief description of the proposed changes'),
         actions: z.array(planActionSchema).describe('The plan actions to propose'),

@@ -67,7 +67,7 @@ function buildTaskCreationGuidance(taskPromptTemplate?: TaskPromptTemplate | nul
 
   return `## Plan Item Creation
 
-Only create or modify plan items when the user explicitly asks. When creating implementation items, use clear verb-first titles, a one-sentence \`intent\`, testable \`acceptance_criteria\`, and code references in \`description\` when repo exploration found relevant files. Keep synced descriptions free of KPM-local document paths and other local-only references.${activeTemplateSection}`;
+When creating implementation items, use clear verb-first titles, a one-sentence \`intent\`, testable \`acceptance_criteria\`, and code references in \`description\` when repo exploration found relevant files. Keep synced descriptions free of KPM-local document paths and other local-only references.${activeTemplateSection}`;
 }
 
 /**

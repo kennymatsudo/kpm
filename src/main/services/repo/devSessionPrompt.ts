@@ -73,7 +73,7 @@ export function buildAgentContext(input: AgentContextInput): string {
   sections.push('---');
   sections.push('## Instructions');
   sections.push('Task input priority: Acceptance Criteria are the completion contract; Intent explains the required outcome; Context is background, not extra scope; Additional User Instructions may constrain implementation but must not silently replace the captured contract.');
-  sections.push('Execution order: inspect repo instructions and nearby code before editing; identify the smallest existing codepath to modify; implement the narrowest change that satisfies the task; run the most relevant verification available; stop after the task is satisfied and do not opportunistically refactor.');
+  sections.push('Execution order: inspect repo instructions and nearby code before editing; identify the smallest existing codepath to modify; implement the narrowest change that satisfies the task; stop after the task is satisfied and do not opportunistically refactor.');
   sections.push(workBrief.acceptance_criteria.length > 0
     ? 'Implement this task so that every acceptance criterion above is satisfied. In your final response, include a criterion-by-criterion status, exact verification performed, and any assumptions or follow-ups. Do not commit - I will review and commit the changes myself.'
     : 'Implement this task. In your final response, include what changed, exact verification performed, and any assumptions or follow-ups. Do not commit - I will review and commit the changes myself.');
@@ -142,7 +142,6 @@ export function buildCommitHookRepairPrompt(hookOutput: string): string {
     '',
     'Fix only the issues shown in the hook output below. Do not commit.',
     'Do not broaden the task or refactor unrelated code.',
-    'After making the fix, rerun the narrowest relevant check if one is clear from the output.',
     '',
     'In your final response, include:',
     '1. What changed',

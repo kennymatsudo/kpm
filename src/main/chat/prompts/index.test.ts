@@ -5,13 +5,6 @@ import { buildSystemPrompt, buildFocusSystemPrompt } from './index';
 import type { PlanContext } from './types';
 import { richMainFixture, makePlanItem } from './__fixtures__/promptContextFixtures';
 
-const OLD_CONSTRAINTS_SENTENCE = "Use Grep/Glob/Read to explore them. You can edit repo files only when the user explicitly asks and KPM permits it.";
-const NEW_CONSTRAINTS_SENTENCE = "Use your read-only file tools to explore them. Connected repos are read-only in chat — repository changes happen in a board-agent worktree, not from chat.";
-const OLD_MODES_SENTENCE = "Read/Grep/Glob reach any folder on disk — the project, connected repos, or any other path the user points you to. If a path doesn't exist or you can't access it, say so. Writes stay scoped: connected repos are read-only, and changes outside the project folder need the user's approval.";
-const NEW_MODES_SENTENCE = "Use your read-only file tools to explore the project and connected repos. If a path doesn't exist or you can't access it, say so. Writes stay scoped: connected repos are read-only in chat, and changes outside the project folder need the user's approval.";
-const OLD_FOOTNOTE = "Read/Grep/Glob can also reach any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.";
-const NEW_FOOTNOTE = "Your read-only file tools can also reach any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.";
-
 function buildContext(overrides: Partial<PlanContext> = {}): PlanContext {
   return {
     project: {
@@ -85,7 +78,7 @@ describe('buildSystemPrompt', () => {
     ).not.toContain('# User Global Preferences');
   });
 
-  it('rewords the three capability-neutral tool sites and drops the Grep/Glob/Read wording', () => {
+  it('describes file access with capability-neutral wording, not Grep/Glob/Read', () => {
     const prompt = buildSystemPrompt(buildContext({
       repos: [{ id: 'repo-1', project_id: 'project-1', path: '/tmp/repo-1' }],
       attachments: [{ id: 'att-1', project_id: 'project-1', path: '/tmp/project-1/attachments/spec.md', filename: 'spec.md' }],
@@ -103,7 +96,7 @@ describe('buildSystemPrompt', () => {
       contextFileContent: '# Project notes\nUse the shared client.',
     }));
 
-    expect(prompt).toContain('Use your read-only file tools to explore them. Connected repos are read-only in chat — repository changes happen in a board-agent worktree, not from chat.');
+    expect(prompt).toContain('Use your read-only file tools to explore them; repository changes happen in a board-agent worktree, not from chat.');
     expect(prompt).toContain('Use your read-only file tools to explore the project and connected repos.');
     expect(prompt).toContain('Your read-only file tools can also reach any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.');
 
@@ -112,18 +105,13 @@ describe('buildSystemPrompt', () => {
     expect(prompt).not.toContain('Read/Grep/Glob can also reach any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.');
   });
 
-  it('changes only the three reworded tool sites versus the pre-refactor baseline', () => {
+  it('matches the committed prompt baseline', () => {
     const baseline = readFileSync(
       fileURLToPath(new URL('./__fixtures__/claudeMainBaseline.txt', import.meta.url)),
       'utf8'
     );
 
-    const expected = baseline
-      .replace(OLD_CONSTRAINTS_SENTENCE, NEW_CONSTRAINTS_SENTENCE)
-      .replace(OLD_MODES_SENTENCE, NEW_MODES_SENTENCE)
-      .replace(OLD_FOOTNOTE, NEW_FOOTNOTE);
-
-    expect(buildSystemPrompt(richMainFixture)).toBe(expected);
+    expect(buildSystemPrompt(richMainFixture)).toBe(baseline);
   });
 });
 

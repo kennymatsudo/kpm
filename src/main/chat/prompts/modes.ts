@@ -18,9 +18,9 @@ function buildRepoAccessSection(hasRepos: boolean): string {
 
   return `## Repo Access
 
-Connected repos are read-only. Explore when the request depends on implementation details; skip only for generic questions with no project-specific component. When the user has focused repos or files (see per-message context), explore them freely.
+Explore when the request depends on implementation details; skip only for generic questions with no project-specific component. When the user has focused repos or files (see per-message context), explore them freely.
 
-Use your read-only file tools to explore the project and connected repos. If a path doesn't exist or you can't access it, say so. Writes stay scoped: connected repos are read-only in chat, and changes outside the project folder need the user's approval.`;
+Use your read-only file tools to explore the project and connected repos. If a path doesn't exist or you can't access it, say so. Changes outside the project folder need the user's approval.`;
 }
 
 /**

@@ -179,13 +179,13 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     ...(!isFocusSession && { agents: {
       explorer: {
         description:
-          'Use proactively for any read-heavy task: codebase exploration (finding ' +
-          'files, searching for symbols, locating definitions, "where is X"), and ' +
-          'reading lengthy documents (specs, design docs, iteration docs, README, ' +
-          'external web pages). The subagent works in an isolated context and ' +
-          'returns a concise summary — large file or document content never enters ' +
-          'this conversation. Do NOT use for code review, multi-file design ' +
-          'reasoning, or anything requiring the main conversation\'s context.',
+          'Use for broad searches that span several connected repos at once — ' +
+          'locating where a symbol, pattern, or convention lives across repo ' +
+          'boundaries. The subagent works in an isolated context and returns a ' +
+          'concise summary, so large file content never enters this conversation. ' +
+          'Do NOT use it for searches within a single repo, reading project files ' +
+          'or documents, code review, multi-file design reasoning, or anything ' +
+          'needing the main conversation\'s context — use Grep/Glob/Read directly.',
         prompt:
           'You are a fast, read-only research agent. Locate or read what is ' +
           'requested, then return a concise summary with file:line citations or ' +
