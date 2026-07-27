@@ -499,7 +499,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     });
 
     const session = mockSessionInstances[0];
-    expect(session.sentMessages[0]).toBe('[Context: user is viewing the planning canvas]\n\nhello');
+    expect(session.sentMessages[0]).toBe('[Context: user is viewing the plan]\n\nhello');
   });
 
   it('does not prefix a view hint for slash-command turns', async () => {

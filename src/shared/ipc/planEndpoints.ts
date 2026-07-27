@@ -11,7 +11,7 @@
 import { z } from 'zod';
 import { resultOf, type EndpointDefinition } from './endpoints';
 import { planActionSchema } from '../planActionSchema';
-import { buildPlanItemUpdateShape } from '../planItemFieldSchemas';
+import { buildPlanItemUpdateShape, canvasPosition } from '../planItemFieldSchemas';
 import { uuid } from './sharedSchemas';
 import type { PlanActionResult, PlanRelation } from '../types';
 import type { PlanItem } from '../base-types';
@@ -19,7 +19,6 @@ import type { PlanItem } from '../base-types';
 const relationType = z.enum(['depends_on', 'blocks', 'relates_to'], {
   message: 'Relation type must be "depends_on", "blocks", or "relates_to"',
 });
-const canvasPosition = z.number().int().min(-10000).max(100000);
 
 const planItemUpdates = z
   .object(buildPlanItemUpdateShape('ipc'))

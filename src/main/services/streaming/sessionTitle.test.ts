@@ -8,7 +8,7 @@ import { sanitizeSessionTitle } from './StreamingSessionService';
  */
 describe('sanitizeSessionTitle', () => {
   it('strips a leading [Context: …] view hint', () => {
-    const summary = '[Context: user is viewing the planning canvas] Add a plan item field';
+    const summary = '[Context: user is viewing the plan] Add a plan item field';
     expect(sanitizeSessionTitle(summary, 'Add a plan item field')).toBe('Add a plan item field');
   });
 
@@ -22,7 +22,7 @@ describe('sanitizeSessionTitle', () => {
   });
 
   it('still routes a Focused Selection summary to the seed after stripping context', () => {
-    const summary = '[Context: user is viewing the planning canvas] # Focused Selection of three items';
+    const summary = '[Context: user is viewing the plan] # Focused Selection of three items';
     expect(sanitizeSessionTitle(summary, 'Review these tasks')).toBe('Review these tasks');
   });
 

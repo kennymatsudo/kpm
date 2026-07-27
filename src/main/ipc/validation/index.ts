@@ -32,7 +32,6 @@ export {
   planItemStatus,
   planItemLabel,
   relationType,
-  canvasPosition,
   // Path types
   absolutePath,
   existingDirectoryPath,

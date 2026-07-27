@@ -49,9 +49,6 @@ export const relationType = z.enum(['depends_on', 'blocks', 'relates_to'], {
   message: 'Relation type must be "depends_on", "blocks", or "relates_to"',
 });
 
-/** Canvas position (x, y coordinates) */
-export const canvasPosition = z.number().int().min(-10000).max(100000);
-
 // =============================================================================
 // Path Types
 // =============================================================================

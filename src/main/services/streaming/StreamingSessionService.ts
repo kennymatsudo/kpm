@@ -74,7 +74,7 @@ export type ViewMode = 'plan' | 'workspace' | 'focus';
 const KPM_CONTEXT_PLACEHOLDER = '$KPM_CONTEXT';
 
 function buildViewHintLine(currentView?: ViewMode): string | undefined {
-  if (currentView === 'plan') return '[Context: user is viewing the planning canvas]';
+  if (currentView === 'plan') return '[Context: user is viewing the plan]';
   if (currentView === 'workspace') return '[Context: user is viewing the workspace]';
   return undefined;
 }

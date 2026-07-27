@@ -13,11 +13,10 @@
  */
 
 import { z } from 'zod';
-import { planItemUpdatesType } from './planItemFieldSchemas';
+import { canvasPosition, planItemUpdatesType } from './planItemFieldSchemas';
 import { repositoryScopeSchema, WORK_BRIEF_LIMITS, workBriefDraftSchema } from './workBrief';
 
 const relationType = z.enum(['depends_on', 'blocks', 'relates_to']);
-const canvasPosition = z.number().int().min(-10000).max(100000);
 const planItemLabel = z.string().max(100, 'Label too long');
 const nonEmptyString = (fieldName: string) => z.string().min(1, `${fieldName} cannot be empty`).trim();
 

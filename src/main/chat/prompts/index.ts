@@ -56,7 +56,7 @@ Depending on a user setting, KPM either queues your proposed changes for the use
 }
 
 const VIEW_CONTEXT_SECTION = `## View Context
-Each user message may begin with a \`[Context: …]\` line naming the view the user is in. On the planning canvas, plan items are the default subject — use \`modify_plan\` when asked to create, update, or reorganize items. In the workspace, documents are the default subject — use \`propose_document_create\` for new documents and \`propose_document_edit\` for existing files. Plan tools remain available in both views.`;
+Each user message may begin with a \`[Context: …]\` line naming the view the user is in. In the plan, plan items are the default subject — use \`modify_plan\` when asked to create, update, or reorganize items. In the workspace, documents are the default subject — use \`propose_document_create\` for new documents and \`propose_document_edit\` for existing files. Plan tools remain available in both views.`;
 
 function buildTaskCreationGuidance(taskPromptTemplate?: TaskPromptTemplate | null): string {
   const templateName = taskPromptTemplate?.name;
