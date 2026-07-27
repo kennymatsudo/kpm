@@ -642,7 +642,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
             ? options?.model ?? getConfig().agentSession.codexModel
             : session.agent_type === 'pi' ? options?.model : undefined,
           systemPrompt: session.agent_type === 'pi' ? roleSystemPrompt : undefined,
-          effort: session.agent_type === 'pi' ? effectiveEffort : undefined,
+          effort: session.agent_type === 'pi' || session.agent_type === 'codex' ? effectiveEffort : undefined,
         });
 
         // Update DB status to active

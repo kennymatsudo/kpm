@@ -10,6 +10,7 @@ import {
   type CommandExecutionItem,
   type FileChangeItem,
   type McpToolCallItem,
+  type ModelReasoningEffort,
   type Thread,
   type ThreadEvent,
   type ThreadItem,
@@ -33,19 +34,32 @@ import type {
   AgentType,
   IAgentSession,
 } from '../../../shared/agent-types';
+import type { AgentEffortLevel } from '../../../shared/types';
 
 export interface CodexSdkAgentSessionConfig {
   id: string;
   role: AgentSessionRole;
   model?: string;
+  effort?: AgentEffortLevel;
   expectsFindings?: boolean;
   readOnly?: boolean;
+}
+
+/**
+ * Codex tops out at `xhigh`; `max` exists only in KPM's provider-neutral
+ * vocabulary, so it resolves to the highest level Codex actually accepts rather
+ * than being dropped for an unrecognized value.
+ */
+function toCodexReasoningEffort(effort: AgentEffortLevel | undefined): ModelReasoningEffort | undefined {
+  if (!effort) return undefined;
+  return effort === 'max' ? 'xhigh' : effort;
 }
 
 export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSession {
   readonly agentType: AgentType = 'codex';
 
   private readonly model: string | undefined;
+  private readonly reasoningEffort: ModelReasoningEffort | undefined;
   private readonly codex: Codex;
   private thread: Thread | null = null;
   private worktreePath: string | null = null;
@@ -56,6 +70,7 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
   constructor(config: CodexSdkAgentSessionConfig) {
     super(config.id, config.role, config.expectsFindings);
     this.model = config.model;
+    this.reasoningEffort = toCodexReasoningEffort(config.effort);
     this.structuredFindings = config.expectsFindings ?? config.role === 'review';
     this.readOnly = config.readOnly ?? config.role === 'review';
     this.codex = new Codex({ codexPathOverride: findCodexBinaryPath() });
@@ -119,6 +134,7 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
       networkAccessEnabled: false,
       webSearchMode: 'disabled',
       ...(this.model && { model: this.model }),
+      ...(this.reasoningEffort && { modelReasoningEffort: this.reasoningEffort }),
     };
   }
 

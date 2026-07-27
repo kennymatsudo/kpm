@@ -200,7 +200,7 @@ async function startReviewSession(params: {
     role: 'review',
     model: reviewAgentType === 'codex' || reviewAgentType === 'pi' ? model : undefined,
     systemPrompt: reviewAgentType === 'pi' ? reviewSystemPrompt : undefined,
-    effort: reviewAgentType === 'pi' ? params.effort : undefined,
+    effort: reviewAgentType === 'pi' || reviewAgentType === 'codex' ? params.effort : undefined,
     readOnly: params.readOnly,
     expectsFindings: params.expectsFindings,
     implementationSessionId: params.implementationSessionId,

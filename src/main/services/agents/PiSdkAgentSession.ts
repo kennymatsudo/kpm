@@ -7,6 +7,7 @@ import type {
   IAgentSession,
 } from '../../../shared/agent-types';
 import {
+  createEphemeralPiSettings,
   parsePiModelSelector,
   resolvePiModelSelection,
   resolvePiProjectTrust,
@@ -156,6 +157,7 @@ async function createRealPiBoardSession(
     cwd: options.cwd,
     resourceLoader,
     sessionManager: pi.SessionManager.inMemory(options.cwd),
+    settingsManager: createEphemeralPiSettings(pi, options.cwd),
     tools,
     ...(options.effort ? { thinkingLevel: options.effort } : {}),
   });

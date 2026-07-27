@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { ThreadOptions } from '@openai/codex-sdk';
 import { CodexSdkAgentSession } from './CodexSdkAgentSession';
+import type { AgentEffortLevel } from '../../../shared/types';
 
 vi.mock('@openai/codex-sdk', () => ({
   Codex: vi.fn(function Codex() {
@@ -72,5 +74,25 @@ describe('CodexSdkAgentSession.getResult', () => {
       review: { error: 'Review agent completed without findings output' },
       reviewRawOutput: null,
     });
+  });
+});
+
+describe('CodexSdkAgentSession reasoning effort', () => {
+  function threadOptions(effort?: AgentEffortLevel): ThreadOptions {
+    const session = new CodexSdkAgentSession({ id: 'test-codex-session', role: 'implement', effort });
+    return (session as unknown as { buildThreadOptions: (path: string) => ThreadOptions })
+      .buildThreadOptions('/tmp/worktree');
+  }
+
+  it('forwards an effort level Codex accepts', () => {
+    expect(threadOptions('high').modelReasoningEffort).toBe('high');
+  });
+
+  it('clamps max to xhigh, the highest level Codex accepts', () => {
+    expect(threadOptions('max').modelReasoningEffort).toBe('xhigh');
+  });
+
+  it('omits the field when no effort is configured', () => {
+    expect(threadOptions()).not.toHaveProperty('modelReasoningEffort');
   });
 });

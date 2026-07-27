@@ -316,6 +316,28 @@ export async function resolvePiSessionManager(
 }
 
 /**
+ * A `SettingsManager` that reads the user's pi settings but never writes them.
+ *
+ * `createAgentSession` defaults to `SettingsManager.create(cwd, agentDir)`,
+ * which is backed by `~/.pi/agent/settings.json`. That is a write-through
+ * handle: `AgentSession.setModel` calls `setDefaultModelAndProvider`, and
+ * `setThinkingLevel` calls `setDefaultThinkingLevel`, both of which `save()`.
+ * Since KPM sets a model on every session it starts, the default would make
+ * opening a KPM chat or running a board agent silently rewrite the default
+ * model and thinking level of the user's own `pi` CLI.
+ *
+ * Seeding the in-memory manager with the on-disk global settings keeps every
+ * read intact — compaction, retry, image, and transport preferences, plus the
+ * user's default thinking level, which `createAgentSession` falls back to when
+ * KPM passes none — while redirecting writes to memory, where they die with the
+ * session. Only global scope is seeded because KPM always denies project trust
+ * (`resolvePiProjectTrust`), so project-scoped settings are never read anyway.
+ */
+export function createEphemeralPiSettings(pi: typeof PiCodingAgent, cwd: string): PiCodingAgent.SettingsManager {
+  return pi.SettingsManager.inMemory(pi.SettingsManager.create(cwd, pi.getAgentDir()).getGlobalSettings());
+}
+
+/**
  * Real pi SDK wiring, isolated in its own function and loaded via dynamic
  * `import()`. @earendil-works/pi-coding-agent is ESM-only ("type": "module",
  * no `require` export condition); a static import would compile to a
@@ -351,6 +373,7 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
   const { session } = await pi.createAgentSession({
     cwd: options.cwd,
     sessionManager: await resolvePiSessionManager(pi, options.cwd, options.resumeSessionId),
+    settingsManager: createEphemeralPiSettings(pi, options.cwd),
     tools: allowedToolNames,
     customTools: options.tools as unknown as PiSdkToolDefinition[],
     resourceLoader,

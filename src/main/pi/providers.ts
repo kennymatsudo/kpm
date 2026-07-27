@@ -26,10 +26,13 @@ function modelContextWindow(model: { contextWindow?: unknown }): number | undefi
 
 /**
  * Providers shipped in pi-ai's own built-in catalog, plus providers shipped by
- * pi-coding-agent's built-in extensions (`llama.cpp`). The generated catalog was
- * verified by reading
- * `node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/models.generated.js`;
+ * pi-coding-agent's built-in extensions (`llama.cpp`). The catalog was verified
+ * by reading `builtinProviders()` in
+ * `node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/providers/all.js`;
  * built-in extension providers were verified under `pi-coding-agent/dist/extensions`.
+ * `builtinProviders()` is the registry, not `models.generated.js` — the latter
+ * holds only providers that ship a static model list, so it omits gateway-driven
+ * ones such as `radius`, whose catalog is fetched at runtime.
  * Every one of these models is driven through
  * one of pi-ai's own bundled API-dialect implementations (`anthropic-messages`,
  * `openai-codex-responses`, etc.) — pi's own `AgentSession` runs the ReAct
@@ -63,8 +66,13 @@ function modelContextWindow(model: { contextWindow?: unknown }): number | undefi
  * `registerProvider()` under an already-known-native provider name (out of
  * scope: KPM already trusts the user's local pi installation and its
  * extensions, the same trust boundary as Claude Code's local extensions).
- * Re-verify this list against `models.generated.js` on every
- * `@earendil-works/pi-coding-agent` version bump.
+ * A name list also cannot cover a user's own radius gateway: pi promotes any
+ * `~/.pi/agent/models.json` provider with `oauth: "radius"` and a `baseUrl` into
+ * a native radius provider under whatever id the user chose
+ * (`ModelRuntime.configureRadiusProviders`), so such a provider is natively
+ * driven yet unnameable here and falls to `safe: false`.
+ * Re-verify this list against `builtinProviders()` in `providers/all.js` on
+ * every `@earendil-works/pi-coding-agent` version bump.
  */
 const KNOWN_NATIVE_PI_PROVIDERS = new Set<string>([
   'amazon-bedrock',
@@ -96,6 +104,7 @@ const KNOWN_NATIVE_PI_PROVIDERS = new Set<string>([
   'openrouter',
   'qwen-token-plan',
   'qwen-token-plan-cn',
+  'radius',
   'together',
   'vercel-ai-gateway',
   'xai',

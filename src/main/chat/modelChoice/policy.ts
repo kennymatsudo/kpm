@@ -19,7 +19,7 @@ const LABELS: Record<ChatChoiceEffort, string> = {
   max: 'Max',
 };
 
-const CLAUDE_EFFORT = ['low', 'medium', 'high', 'max'] as const;
+const CLAUDE_EFFORT = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 const CODEX_EFFORT = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const;
 const PI_EFFORT = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 

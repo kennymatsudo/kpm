@@ -177,6 +177,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         id: devSessionId,
         role,
         model,
+        effort: params.effort,
         expectsFindings: params.expectsFindings,
         readOnly: params.readOnly,
       });
