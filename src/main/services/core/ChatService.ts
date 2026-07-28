@@ -208,6 +208,17 @@ export function createChatService(deps: ChatServiceDeps) {
           emitError(projectId, chatSessionId, 'chatSessionId is required');
           return failure('chatSessionId is required');
         }
+        if (clientMessageId) {
+          const owningChatSessionIds = deps.chatMessages.getChatSessionIdsByClientMessageId(
+            projectId,
+            clientMessageId,
+          );
+          if (owningChatSessionIds.some((sessionId) => sessionId !== chatSessionId)) {
+            const errorText = 'This message belongs to another chat session.';
+            emitError(projectId, chatSessionId, errorText);
+            return failure(errorText);
+          }
+        }
         const resolvedChoice = deps.modelChoice
           ? await deps.modelChoice.resolveForTurn(projectId, chatSessionId)
           : success({

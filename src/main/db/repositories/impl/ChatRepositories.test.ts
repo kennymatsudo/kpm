@@ -46,4 +46,16 @@ describe('Chat repositories model-choice persistence', () => {
     expect(messages.addMessage('p1', 'assistant', 'legacy', 'c1', undefined, 'claude').model).toBeNull();
     db.close();
   });
+
+  it('finds every chat session that persisted a client message ID', () => {
+    const db = database();
+    const messages = new ChatMessageRepository(db);
+    messages.addMessage('p1', 'user', 'first', 'c1', 'client-1');
+    messages.addMessage('p1', 'user', 'crossed retry', 'c2', 'client-1');
+    messages.addMessage('p2', 'user', 'other project', 'c3', 'client-1');
+
+    expect(messages.getChatSessionIdsByClientMessageId('p1', 'client-1')).toEqual(['c1', 'c2']);
+    expect(messages.getChatSessionIdsByClientMessageId('p2', 'client-1')).toEqual(['c3']);
+    db.close();
+  });
 });

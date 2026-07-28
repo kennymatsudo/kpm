@@ -18,6 +18,7 @@ import type { IChatMessageRepository } from '../../interfaces';
 interface PreparedStatements {
   getMessages: Statement;
   getMessagesByChatSession: Statement;
+  getChatSessionIdsByClientMessageId: Statement;
   insert: Statement;
   insertOrIgnoreWithClientMessageId: Statement;
   getByClientMessageId: Statement;
@@ -41,6 +42,10 @@ export class ChatMessageRepository implements IChatMessageRepository {
         SELECT * FROM chat_messages
         WHERE session_id = ? AND chat_session_id = ?
         ORDER BY created_at ASC
+      `),
+      getChatSessionIdsByClientMessageId: db.prepare(`
+        SELECT DISTINCT chat_session_id FROM chat_messages
+        WHERE session_id = ? AND client_message_id = ? AND chat_session_id IS NOT NULL
       `),
       // Use RETURNING to get inserted row in one query
       insert: db.prepare(`
@@ -104,6 +109,14 @@ export class ChatMessageRepository implements IChatMessageRepository {
 
   getMessagesByChatSession(sessionId: string, chatSessionId: string): ChatMessage[] {
     return this.stmts.getMessagesByChatSession.all(sessionId, chatSessionId) as ChatMessage[];
+  }
+
+  getChatSessionIdsByClientMessageId(sessionId: string, clientMessageId: string): string[] {
+    const rows = this.stmts.getChatSessionIdsByClientMessageId.all(
+      sessionId,
+      clientMessageId,
+    ) as { chat_session_id: string }[];
+    return rows.map((row) => row.chat_session_id);
   }
 
   addMessage(

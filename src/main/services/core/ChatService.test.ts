@@ -31,16 +31,28 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
   };
 } {
   const project = makeProject();
+  const chatSessionByClientMessageId = new Map<string, string>();
 
-  const addMessage = vi.fn(() => ({
-    id: 'msg-1',
-    session_id: project.id,
-    chat_session_id: null,
-    provider: 'claude' as const,
-    role: 'user' as const,
-    content: '',
-    created_at: '2026-01-01T00:00:00.000Z',
-  }));
+  const addMessage = vi.fn((
+    _projectId: string,
+    _role: 'user' | 'assistant',
+    _content: string,
+    chatSessionId?: string,
+    clientMessageId?: string,
+  ) => {
+    if (chatSessionId && clientMessageId) {
+      chatSessionByClientMessageId.set(clientMessageId, chatSessionId);
+    }
+    return {
+      id: 'msg-1',
+      session_id: project.id,
+      chat_session_id: chatSessionId ?? null,
+      provider: 'claude' as const,
+      role: 'user' as const,
+      content: '',
+      created_at: '2026-01-01T00:00:00.000Z',
+    };
+  });
 
   const sendChatMessage = vi.fn(async () => success(undefined));
   const disconnectChatSession = vi.fn(async () => success(undefined));
@@ -82,6 +94,12 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
     chatMessages: {
       addMessage,
       getMessagesByChatSession: vi.fn(() => []),
+      getChatSessionIdsByClientMessageId: vi.fn(
+        (_projectId: string, clientMessageId: string) =>
+          chatSessionByClientMessageId.has(clientMessageId)
+            ? [chatSessionByClientMessageId.get(clientMessageId)!]
+            : [],
+      ),
     } as unknown as ChatServiceDeps['chatMessages'],
     chatSessions: {
       create: vi.fn(),
@@ -190,6 +208,35 @@ describe('ChatService.sendMessage', () => {
       projectId: 'project-1',
       chatSessionId: 'session-1',
       error: 'A follow-up is already queued.',
+    });
+  });
+
+  it('rejects a retry client message ID when it targets another chat session', async () => {
+    const { deps, spies } = makeDeps();
+    const service = createChatService(deps);
+    const clientMessageId = 'client-from-session-2';
+
+    const original = await service.sendMessage({
+      projectId: 'project-1',
+      message: 'Plan the Playwright walkthrough',
+      chatSessionId: 'session-2',
+      clientMessageId,
+    });
+    const crossedRetry = await service.sendMessage({
+      projectId: 'project-1',
+      message: 'Plan the Playwright walkthrough',
+      chatSessionId: 'session-1',
+      clientMessageId,
+    });
+
+    expect(original.ok).toBe(true);
+    expect(crossedRetry.ok).toBe(false);
+    expect(spies.sendChatMessage).toHaveBeenCalledTimes(1);
+    expect(spies.addMessage).toHaveBeenCalledTimes(1);
+    expect(spies.emitChatError).toHaveBeenLastCalledWith({
+      projectId: 'project-1',
+      chatSessionId: 'session-1',
+      error: 'This message belongs to another chat session.',
     });
   });
 

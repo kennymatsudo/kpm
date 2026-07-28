@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { SessionList } from './SessionList';
@@ -16,6 +16,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { CloseIcon } from '../icons';
 import { LoadingSpinner } from '../ui';
 import { getBaseName } from '../../utils/path';
+import { findRetryMessage } from './retryMessage';
 
 // Re-export components for use in Layout and other consumers
 export { ChatHeader } from './ChatHeader';
@@ -77,11 +78,12 @@ export function Chat({ currentView }: ChatProps) {
     }))
   );
   // Access per-session chat state
-  const { viewedSessionId, viewedHydrated, error, mcpDegraded, mcpError, clearError, loadFromHistory } = useChatStore(useShallow((state) => {
+  const { viewedSessionId, viewedHydrated, retryMessage, error, mcpDegraded, mcpError, clearError, loadFromHistory } = useChatStore(useShallow((state) => {
     const session = state.viewedSessionId ? state.sessions.get(state.viewedSessionId) : null;
     return {
       viewedSessionId: state.viewedSessionId,
       viewedHydrated: session?.hydrated ?? true,
+      retryMessage: session ? findRetryMessage(session.messages) : undefined,
       error: session?.error ?? null,
       mcpDegraded: session?.mcpDegraded ?? false,
       mcpError: session?.mcpError ?? null,
@@ -99,23 +101,26 @@ export function Chat({ currentView }: ChatProps) {
   }, [currentProjectId, viewedSessionId, viewedHydrated, loadFromHistory]);
 
   const { send, retry, cancel, cancelQueued } = useChat(currentProjectId, currentView);
-  const [lastMessage, setLastMessage] = useState<string | null>(null);
-  const [lastClientMessageId, setLastClientMessageId] = useState<string | null>(null);
 
   const handleSend = useCallback((message: string, attachments?: ChatAttachment[], chatSessionId?: string) => {
     const clientMessageId = crypto.randomUUID();
+    const targetChatSessionId = chatSessionId ?? viewedSessionId;
     // Clear any stale error from a previous turn so it doesn't linger over the new send.
-    if (viewedSessionId) clearError(viewedSessionId);
-    setLastMessage(message);
-    setLastClientMessageId(clientMessageId);
+    if (targetChatSessionId) {
+      clearError(targetChatSessionId);
+    }
     void send(message, attachments, clientMessageId, chatSessionId);
   }, [send, clearError, viewedSessionId]);
 
   const handleRetry = useCallback(() => {
-    if (lastMessage && lastClientMessageId && viewedSessionId) {
-      void retry(lastMessage, lastClientMessageId);
+    if (retryMessage?.clientMessageId) {
+      const message = retryMessage.segments
+        .filter((segment) => segment.type === 'text')
+        .map((segment) => segment.content)
+        .join('');
+      void retry(message, retryMessage.clientMessageId);
     }
-  }, [lastMessage, lastClientMessageId, retry, viewedSessionId]);
+  }, [retry, retryMessage]);
 
   // Keep project store's visible focused resources aligned to the viewed chat session.
   useEffect(() => {
@@ -202,7 +207,7 @@ export function Chat({ currentView }: ChatProps) {
           </svg>
           <div className="flex-1 min-w-0">
             <p className="text-sm text-danger">{error}</p>
-            {lastMessage && (
+            {retryMessage && (
               <button
                 onClick={handleRetry}
                 className="text-xs text-danger/80 hover:text-danger underline mt-1"

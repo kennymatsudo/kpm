@@ -18,6 +18,7 @@ import type {
 export interface IChatMessageRepository {
   getMessages(sessionId: string): ChatMessage[];
   getMessagesByChatSession(sessionId: string, chatSessionId: string): ChatMessage[];
+  getChatSessionIdsByClientMessageId(sessionId: string, clientMessageId: string): string[];
   addMessage(
     sessionId: string,
     role: 'user' | 'assistant',
