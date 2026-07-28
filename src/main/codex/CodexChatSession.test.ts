@@ -29,10 +29,6 @@ vi.mock('./binary', () => ({
   findCodexBinaryPath: () => '/tmp/codex',
 }));
 
-vi.mock('../services/files/pathSecurity', () => ({
-  getDeniedPathRoots: () => ['/protected/credentials'],
-}));
-
 vi.mock('./KpmCodexMcpServer', () => ({
   registerCodexMcpSession: mcpMocks.registerCodexMcpSession,
   stopCodexMcpServerForTests: mcpMocks.stopCodexMcpServerForTests,
@@ -160,21 +156,18 @@ describe('CodexChatSession', () => {
     expect(codexMocks.startThread).toHaveBeenCalledWith(expect.objectContaining({
       workingDirectory: '/tmp/project',
       approvalPolicy: 'never',
+      sandboxMode: 'read-only',
+      networkAccessEnabled: false,
       webSearchMode: 'disabled',
     }));
-    const threadOptions = codexMocks.startThread.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(threadOptions).not.toHaveProperty('sandboxMode');
-    expect(threadOptions).not.toHaveProperty('networkAccessEnabled');
     const codexOptions = vi.mocked(Codex).mock.calls[0]?.[0] as CodexOptionsForTest | undefined;
     expect(codexOptions?.codexPathOverride).toBe('/tmp/codex');
     expect(codexOptions?.config?.mcp_servers?.kpm?.url).toBe('http://127.0.0.1:12345/mcp/session-1');
     expect(codexOptions?.config?.mcp_servers?.kpm?.bearer_token_env_var).toBe('KPM_MCP_TOKEN');
     expect(codexOptions?.config?.mcp_servers?.kpm?.required).toBe(true);
     expect(codexOptions?.config?.mcp_servers?.kpm?.default_tools_approval_mode).toBe('approve');
-    expect(codexOptions?.config?.default_permissions).toBe('kpm-chat-read');
-    expect(codexOptions?.config?.['permissions.kpm-chat-read.filesystem.":root"']).toBe('read');
-    expect(codexOptions?.config?.['permissions.kpm-chat-read.filesystem."/protected/credentials"']).toBe('deny');
-    expect(codexOptions?.config?.['permissions.kpm-chat-read.network.enabled']).toBe(false);
+    expect(codexOptions?.config).not.toHaveProperty('default_permissions');
+    expect(Object.keys(codexOptions?.config ?? {}).filter((key) => key.startsWith('permissions.'))).toEqual([]);
     expect(codexOptions?.env?.KPM_MCP_TOKEN).toBe('test-token');
     const firstInput = codexMocks.runStreamed.mock.calls[0]?.[0] as unknown;
     expect(firstInput).toEqual(expect.stringContaining('# User'));
@@ -278,8 +271,9 @@ describe('CodexChatSession', () => {
       await waitFor(() => {
         expect(requestWriteConsent).toHaveBeenCalledWith();
       });
-      const codexOptions = vi.mocked(Codex).mock.calls[0]?.[0] as CodexOptionsForTest | undefined;
-      expect(codexOptions?.config?.default_permissions).toBe('kpm-chat-read');
+      expect(codexMocks.startThread).toHaveBeenCalledWith(expect.objectContaining({
+        sandboxMode: 'read-only',
+      }));
     });
 
     it('asks after a command the sandbox blocked, but not after an ordinary command failure', async () => {
@@ -342,10 +336,10 @@ describe('CodexChatSession', () => {
       });
       await session.start('edit the file');
 
-      const codexOptions = vi.mocked(Codex).mock.calls[0]?.[0] as CodexOptionsForTest | undefined;
-      expect(codexOptions?.config?.default_permissions).toBe('kpm-chat-write');
-      expect(codexOptions?.config?.['permissions.kpm-chat-write.filesystem.":root"']).toBe('write');
-      expect(codexOptions?.config?.['permissions.kpm-chat-write.filesystem."/protected/credentials"']).toBe('deny');
+      expect(codexMocks.startThread).toHaveBeenCalledWith(expect.objectContaining({
+        sandboxMode: 'workspace-write',
+        networkAccessEnabled: false,
+      }));
     });
 
     it('does not ask again once the sandbox is already writable', async () => {
@@ -403,12 +397,12 @@ describe('CodexChatSession', () => {
       session.send('continue');
 
       await waitFor(() => {
-        expect(codexMocks.resumeThread).toHaveBeenCalledWith('thread-1', expect.any(Object));
+        expect(codexMocks.resumeThread).toHaveBeenCalledWith('thread-1', expect.objectContaining({
+          sandboxMode: 'read-only',
+          networkAccessEnabled: false,
+        }));
       });
-      expect(vi.mocked(Codex)).toHaveBeenCalledTimes(2);
-      const resumedOptions = vi.mocked(Codex).mock.calls[1]?.[0] as CodexOptionsForTest | undefined;
-      expect(resumedOptions?.config?.default_permissions).toBe('kpm-chat-read');
-      expect(resumedOptions?.config?.['permissions.kpm-chat-read.filesystem."/protected/credentials"']).toBe('deny');
+      expect(vi.mocked(Codex)).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -87,7 +87,7 @@ export function PermissionPrompt({ chatSessionId }: PermissionPromptProps) {
 
         <p className="text-xs text-text-tertiary mt-2">
           {isWriteAccess
-            ? 'Covers direct file changes, shell commands, and git operations until revoked or KPM restarts. Credential and secret paths stay blocked.'
+            ? 'Covers direct file changes, shell commands, and git operations in locations the selected agent allows until revoked or KPM restarts.'
             : 'Allow All Remaining covers the rest of this response. Allow Always covers this session.'}
         </p>
       </div>

@@ -20,7 +20,7 @@ function buildRepoAccessSection(hasRepos: boolean): string {
 
 Explore when the request depends on implementation details; skip only for generic questions with no project-specific component. When the user has focused repos or files (see per-message context), explore them freely.
 
-Use your file tools to explore the project and connected repos. If a path doesn't exist or you can't access it, say so. The first direct file, shell, or git write asks the user to enable writes for the conversation; that grant then covers every non-protected path until it is revoked.`;
+Use your file tools to explore the project and connected repos. If a path doesn't exist or you can't access it, say so. The first direct file, shell, or git write asks the user to enable writes for the conversation; that grant then enables the provider's native writable scope until it is revoked.`;
 }
 
 /**

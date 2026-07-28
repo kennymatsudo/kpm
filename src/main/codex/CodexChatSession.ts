@@ -20,8 +20,6 @@ import { buildResponseModesSection } from '../chat/prompts/modes';
 import { resolveRegistryPrompt } from '../chat/prompts/promptRegistry';
 import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/streaming/BaseTurnQueueChatSession';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
-import { getDeniedPathRoots } from '../services/files/pathSecurity';
-import { buildCodexPermissionConfig } from './permissionProfile';
 
 export interface CodexChatSessionConfig {
   context: PlanContext;
@@ -184,12 +182,8 @@ function codexEnvWithMcpToken(token: string): Record<string, string> {
   return env;
 }
 
-function codexConfigWithKpmMcp(
-  url: string,
-  writesEnabled: boolean,
-): NonNullable<CodexOptions['config']> {
+function codexConfigWithKpmMcp(url: string): NonNullable<CodexOptions['config']> {
   return {
-    ...buildCodexPermissionConfig(writesEnabled, getDeniedPathRoots()),
     mcp_servers: {
       kpm: {
         url,
@@ -220,7 +214,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   private mcpRegistration: CodexMcpRegistration | null = null;
   private abortController: AbortController | null = null;
   private threadId: string | null;
-  private threadWritesEnabled = false;
+  private threadSandboxMode: 'read-only' | 'workspace-write' = 'read-only';
 
   constructor(config: CodexChatSessionConfig) {
     super(config.onMessage, config.onSessionEnd);
@@ -244,7 +238,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
     })))();
 
     try {
-      this.threadWritesEnabled = this.desiredWriteAccess();
+      this.threadSandboxMode = this.desiredSandboxMode();
       this.codex = this.createCodexClient();
       this.thread = this.threadId
         ? this.codex.resumeThread(this.threadId, this.buildThreadOptions())
@@ -288,8 +282,8 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
     this.disposeMcpRegistration();
   }
 
-  private desiredWriteAccess(): boolean {
-    return this.config.hasWriteAccess?.() ?? false;
+  private desiredSandboxMode(): 'read-only' | 'workspace-write' {
+    return this.config.hasWriteAccess?.() ? 'workspace-write' : 'read-only';
   }
 
   private createCodexClient(): Codex {
@@ -299,7 +293,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
     return new Codex({
       codexPathOverride: findCodexBinaryPath(),
       env: codexEnvWithMcpToken(this.mcpRegistration.token),
-      config: codexConfigWithKpmMcp(this.mcpRegistration.url, this.threadWritesEnabled),
+      config: codexConfigWithKpmMcp(this.mcpRegistration.url),
     });
   }
 
@@ -316,15 +310,16 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       additionalDirectories,
       skipGitRepoCheck: true,
       approvalPolicy: 'never' as const,
+      sandboxMode: this.threadSandboxMode,
+      networkAccessEnabled: false,
       webSearchMode: 'disabled' as const,
     };
   }
 
   private applyPendingWriteAccess(): void {
-    const desired = this.desiredWriteAccess();
-    if (desired === this.threadWritesEnabled || !this.threadId) return;
-    this.threadWritesEnabled = desired;
-    this.codex = this.createCodexClient();
+    const desired = this.desiredSandboxMode();
+    if (desired === this.threadSandboxMode || !this.codex || !this.threadId) return;
+    this.threadSandboxMode = desired;
     this.thread = this.codex.resumeThread(this.threadId, this.buildThreadOptions());
   }
 
@@ -445,7 +440,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
    * grant takes effect on the next turn.
    */
   private offerWriteUnlock(): void {
-    if (this.threadWritesEnabled) return;
+    if (this.threadSandboxMode === 'workspace-write') return;
     void this.config.requestWriteConsent?.().catch((error) => {
       console.error('[CodexChatSession] Write consent request failed:', error);
     });

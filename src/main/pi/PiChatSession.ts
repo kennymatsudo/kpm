@@ -14,7 +14,6 @@ import {
   pathCanTraverseDeniedRoot,
   pathResolvesIntoDeniedRoot,
 } from '../services/files/pathSecurity';
-import { createProtectedBashOperations } from './protectedBash';
 
 /** Built-in pi tools that are read-only against the filesystem. */
 const READ_ONLY_BUILTIN_TOOLS = ['read', 'grep', 'find', 'ls'] as const;
@@ -420,10 +419,6 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
         : pathResolvesIntoDeniedRoot(candidatePath, options.cwd)
     ),
   );
-  const bashTool = pi.createBashToolDefinition(options.cwd, {
-    operations: createProtectedBashOperations(),
-  });
-
   const resourceLoader = new pi.DefaultResourceLoader({
     cwd: options.cwd,
     agentDir: pi.getAgentDir(),
@@ -449,7 +444,7 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
     sessionManager: await resolvePiSessionManager(pi, options.cwd, options.resumeSessionId),
     settingsManager: createEphemeralPiSettings(pi, options.cwd),
     tools: allowedToolNames,
-    customTools: [...options.tools, bashTool] as unknown as PiSdkToolDefinition[],
+    customTools: options.tools as unknown as PiSdkToolDefinition[],
     resourceLoader,
     ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
   });
