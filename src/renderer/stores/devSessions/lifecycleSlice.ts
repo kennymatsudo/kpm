@@ -149,13 +149,11 @@ export function createDevSessionsLifecycleSlice(
         }
         const validReviewSessionIds = new Set(devSessions.map((session) => `${session.id}-review`));
         const allTrackedIds = new Set<string>([...validSessionIds, ...validReviewSessionIds]);
-        const currentSelectedId = get().selectedSessionId;
-
-        let newSelectedId = currentSelectedId;
-        if (!currentSelectedId || !allSessions.find((session) => session.id === currentSelectedId)) {
-          const activeSession = allSessions.find((session) => session.status === 'active');
-          newSelectedId = activeSession?.id || allSessions[0]?.id || null;
-        }
+        const requestedSessionId = get().selectedSessionId;
+        const retainedRequestedSessionId =
+          requestedSessionId && validSessionIds.has(requestedSessionId)
+            ? requestedSessionId
+            : null;
 
         const nextReviewFindings = new Map(
           Array.from(get().reviewFindingsBySessionId.entries()).filter(([sessionId]) =>
@@ -175,7 +173,7 @@ export function createDevSessionsLifecycleSlice(
           sessions: devSessions,
           allSessions,
           ...buildSessionIndexes(devSessions),
-          selectedSessionId: newSelectedId,
+          selectedSessionId: retainedRequestedSessionId,
           isLoading: false,
           diffBySessionId: pruneMapByKeys(get().diffBySessionId, validSessionIds),
           diffLoadingIds: pruneSetByKeys(get().diffLoadingIds, validSessionIds),

@@ -514,6 +514,53 @@ describe('devSessionsStore', () => {
     });
   });
 
+  it('does not request another detail pane when PR creation refreshes sessions', async () => {
+    const currentSession = {
+      ...createDevSession(),
+      id: 'current-session',
+      plan_item_id: 'current-plan-item',
+      status: 'inactive' as const,
+      plan_item: {
+        ...createDevSession().plan_item,
+        id: 'current-plan-item',
+        title: 'Use Ada handoff-ended to start',
+      },
+    };
+    const neighboringSession = {
+      ...createDevSession(),
+      id: 'neighboring-session',
+      plan_item_id: 'neighboring-plan-item',
+      status: 'active' as const,
+      plan_item: {
+        ...createDevSession().plan_item,
+        id: 'neighboring-plan-item',
+        title: 'Show CSAT thank-you',
+      },
+    };
+    useDevSessionsStore.setState({
+      projectId: 'project-1',
+      selectedSessionId: null,
+    });
+    api.github.createPr.mockResolvedValue({
+      success: true,
+      number: 17,
+      url: 'https://github.com/test/repo/pull/17',
+    });
+    api.devSessions.getByProjectWithPlanItems.mockResolvedValue({
+      success: true,
+      sessions: [currentSession, neighboringSession],
+    });
+
+    await useDevSessionsStore.getState().createPullRequest(
+      currentSession.id,
+      currentSession.plan_item.title,
+      '## Summary',
+      false
+    );
+
+    expect(useDevSessionsStore.getState().selectedSessionId).toBeNull();
+  });
+
   it('stores review findings when a review agent completes', () => {
     const findings = [{
       severity: 'warning' as const,
