@@ -13,11 +13,22 @@ describe('provider capabilities', () => {
       liveSlashCommands: false,
       mcpServerManagement: false,
       midSessionModelSwitch: false,
-      permissionPrompts: false,
       promptSuggestions: false,
       textDeltas: true,
     });
     expect(getProviderCapabilities('pi').effortLevels.levels).toEqual([]);
+  });
+
+  it('marks the providers whose transport can pause a turn to ask permission', () => {
+    // pi's `tool_call` hook may return a promise, so it can block mid-turn.
+    // Codex cannot: `codex exec` closes stdin and refuses approvals outright,
+    // so its write grant only takes effect on the following turn.
+    expect(getProviderCapabilities('claude').inTurnWriteApproval).toBe(true);
+    expect(getProviderCapabilities('pi').inTurnWriteApproval).toBe(true);
+    expect(getProviderCapabilities('codex').inTurnWriteApproval).toBe(false);
+
+    expect(getProviderCapabilities('pi').permissionPrompts).toBe(true);
+    expect(getProviderCapabilities('codex').permissionPrompts).toBe(false);
   });
 
   it('preserves Claude-only interactive controls as capabilities', () => {

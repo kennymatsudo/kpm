@@ -1,4 +1,20 @@
 import type { PermissionAction, PermissionRequest, ToolPermission } from '../../shared/types';
+import type { WriteGrantChanged } from '../../shared/ipc/permissionEvents';
+
+export function subscribeToWriteGrantChanges(
+  callback: (change: WriteGrantChanged) => void
+): () => void {
+  return window.api.permission.onWriteGrantChanged(callback);
+}
+
+export async function getConversationWriteGrant(chatSessionId: string): Promise<boolean> {
+  const result = await window.api.permission.getWriteGrant({ chatSessionId });
+  return result.success && result.granted;
+}
+
+export function revokeConversationWriteGrant(chatSessionId: string): Promise<{ success: boolean }> {
+  return window.api.permission.revokeWriteGrant({ chatSessionId });
+}
 
 export function subscribeToPermissionRequests(
   callback: (request: PermissionRequest) => void

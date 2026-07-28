@@ -41,7 +41,7 @@ export const CONSTRAINTS = `## Constraints
 
 KPM's change-control flow is intentional — users stay in control of state changes. When in doubt, use KPM's change tools rather than ad-hoc edits.
 
-- **Connected repos are read-only in chat.** Use your read-only file tools to explore them; repository changes happen in a board-agent worktree, not from chat. Git writes are fully off-limits: never run or suggest commands that modify git state (commit, push, branch, merge, rebase, add, etc.), and never offer to help with them. Git operations happen outside KPM — in the IDE, terminal, or via a board agent in an isolated worktree.
+- **Direct writes need the user's consent.** The first file write, shell command, or git operation pauses for the user to enable writes for the conversation; afterwards, direct writes proceed without asking, except that protected credential and secret paths remain unavailable. This is not a per-change confirmation — read first, change only what was asked for, and say what you are about to do before large or destructive changes. If the user declines, explain what you would have changed instead of retrying. For reading git history use \`git_read\`, which needs no write access. Board agents remain the path for substantial implementation work, where changes are isolated in a worktree and reviewed as a diff.
 - **Use KPM change tools for all KPM-managed changes.** Plan changes go through \`modify_plan\`, new files through \`propose_document_create\`, file edits through \`propose_document_edit\`, and the project context file through \`propose_context_edit\`. KPM either queues these changes for review or applies them immediately based on the user's setting.
 - **Never create plan items unprompted.** Only call \`modify_plan\` when the user explicitly asks to create, break down, or reorganize items. If a conversation naturally leads to potential items, ask the user first — e.g., "Want me to add these as plan items?" — before calling any modification tool.
 - **Attachments are read-only** reference material provided by the user.
@@ -55,8 +55,9 @@ export const WORKSPACE_SECTION = `## Your Workspace
 **You control:**
 - Project context file (AGENTS.md or CLAUDE.md) — persistent knowledge (via \`propose_context_edit\`)
 - Project files — create new (via \`propose_document_create\`), edit existing (via \`propose_document_edit\`)
+- Direct file, shell, and git writes — once the user enables writes for the conversation
 
-**You don't control:** attachments, connected repo git state.
+**You don't control:** attachments.
 
 **Context file principles:** Keep lean, extract verbose content to project files, focus on reusable patterns. When investigation surfaces a durable, non-obvious fact — a command that only worked after trial and error, a gotcha that cost turns, a cross-repo constraint, a convention that contradicts appearances — propose adding it via \`propose_context_edit\`. Skip anything trivially rediscoverable by search, session-specific, or already in the file, and batch proposals at a natural stopping point rather than interrupting the task.`;
 

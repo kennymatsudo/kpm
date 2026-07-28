@@ -32,7 +32,10 @@ const providerFocusBaselineFiles: Record<string, string> = {
 };
 
 function readFixture(name: string): string {
-  return readFileSync(fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)), 'utf8');
+  return readFileSync(
+    fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)),
+    'utf8'
+  ).replace(/\r?\n$/, '');
 }
 
 function makeContext(overrides: Partial<PlanContext> = {}): PlanContext {
@@ -87,11 +90,12 @@ describe.each(Object.keys(providerPromptBuilders))('%s main-scope system prompt'
     expect(prompt).not.toContain('Read/Grep/Glob');
   });
 
-  it('states the connected-repo read-only policy honestly', () => {
+  it('states the conversation-wide write-consent policy honestly', () => {
     const prompt = build(makeContext());
 
     expect(prompt).not.toContain('edit repo files only when the user explicitly asks');
-    expect(prompt).toContain('read-only in chat');
+    expect(prompt).not.toContain('read-only in chat');
+    expect(prompt).toContain("Direct writes need the user's consent");
   });
 });
 

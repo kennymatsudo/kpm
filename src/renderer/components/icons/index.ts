@@ -13,4 +13,5 @@ export { MoonIcon } from './MoonIcon';
 export { SearchIcon } from './SearchIcon';
 export { SettingsIcon } from './SettingsIcon';
 export { SunIcon } from './SunIcon';
+export { UnlockIcon } from './UnlockIcon';
 export { WarningTriangleIcon } from './WarningTriangleIcon';

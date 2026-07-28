@@ -622,6 +622,9 @@ const permissionSubscriptions = deriveEventSubscriptions(permissionEvents, ipcRe
 const permission = {
   respond: permissionInvoke.respond,
   onRequest: permissionSubscriptions.request,
+  getWriteGrant: permissionInvoke.getWriteGrant,
+  revokeWriteGrant: permissionInvoke.revokeWriteGrant,
+  onWriteGrantChanged: permissionSubscriptions.writeGrantChanged,
 };
 
 const permissions = {

@@ -39,7 +39,7 @@ import { createStorybookTools } from './tools/storybook';
 export { runWithToolExecutionContext, type KpmToolDefinition, type KpmToolRuntime } from './runtime';
 export { subscribeToKpmToolProposals, type KpmToolProposal, type PlanActionsEvent } from './proposals';
 
-export const KPM_MCP_INSTRUCTIONS = `KPM tools are local project-planning tools. Chat is read-only against repos: do not write repo files from chat. Plan-mutating tools propose PlanAction[] for KPM review or auto-apply; they must not bypass KPM's approval flow or write plan rows directly. Document, context-file, move, and delete tools emit proposals for KPM to surface to the user. Use @plan/<uuid> only for plan item UUIDs returned by KPM tools. Keep responses concise and utilitarian.`;
+export const KPM_MCP_INSTRUCTIONS = `KPM tools are local project-planning tools. Direct file, shell, and git writes need conversation-wide consent, requested on the first attempt. Plan-mutating tools propose PlanAction[] for KPM review or auto-apply; they must not bypass KPM's approval flow or write plan rows directly. Document, context-file, move, and delete tools emit proposals for KPM to surface to the user. Use @plan/<uuid> only for plan item UUIDs returned by KPM tools. Keep responses concise and utilitarian.`;
 
 export interface KpmToolRuntimeDeps {
   container: Pick<

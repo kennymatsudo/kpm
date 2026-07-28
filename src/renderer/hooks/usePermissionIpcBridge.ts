@@ -1,5 +1,8 @@
 import { useEffect } from 'react';
-import { subscribeToPermissionRequests } from '../services/permissionService';
+import {
+  subscribeToPermissionRequests,
+  subscribeToWriteGrantChanges,
+} from '../services/permissionService';
 import { usePermissionStore } from '../stores';
 
 /**
@@ -8,10 +11,16 @@ import { usePermissionStore } from '../stores';
  */
 export function usePermissionIpcBridge(): void {
   useEffect(() => {
-    const unsubscribe = subscribeToPermissionRequests((request) => {
-      usePermissionStore.getState().setPendingRequest(request);
+    const unsubscribeRequests = subscribeToPermissionRequests((request) => {
+      usePermissionStore.getState().enqueueRequest(request);
+    });
+    const unsubscribeWriteGrants = subscribeToWriteGrantChanges((change) => {
+      usePermissionStore.getState().setWriteGrant(change.chatSessionId, change.granted);
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribeRequests();
+      unsubscribeWriteGrants();
+    };
   }, []);
 }

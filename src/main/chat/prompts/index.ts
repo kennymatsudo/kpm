@@ -43,7 +43,7 @@ export function buildUserGlobalInstructionsSection(userGlobalInstructions?: stri
 
   return `# User Global Preferences
 
-The developer maintains these personal working preferences globally. Honor them in your replies and any content you author. Where they conflict with KPM's operating rules (read-only chat, plan/proposal tools, export boundaries), KPM's rules win.
+The developer maintains these personal working preferences globally. Honor them in your replies and any content you author. Where they conflict with KPM's operating rules (write consent, plan/proposal tools, export boundaries), KPM's rules win.
 
 ${content}
 `;
@@ -96,8 +96,8 @@ ${buildContinuationSection(continuationHistory)}# Project: ${project.name}
 ID: \`${project.id}\` (use for all tool calls)
 Phase: ${project.phase}
 Project folder: \`${project.folder_path}\`
-${hasRepos ? `Connected repos (read-only; ground truth for code):\n${repos.map(r => `- ID: \`${r.id}\` — path: \`${resolveEffectiveRepoPath(r)}\``).join('\n')}` : 'No repos connected.'}
-Your read-only file tools can also reach any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.
+${hasRepos ? `Connected repos (ground truth for code):\n${repos.map(r => `- ID: \`${r.id}\` — path: \`${resolveEffectiveRepoPath(r)}\``).join('\n')}` : 'No repos connected.'}
+Your file tools can also read any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.
 
 ${getPrompt('system.grounding')}
 
@@ -169,7 +169,7 @@ Name: ${project.name}
 ID: \`${project.id}\`
 Project folder: \`${project.folder_path}\`
 
-Connected repos (read-only):
+Connected repos:
 ${connectedRepos}
 Read/Grep/Glob can also reach any other folder on disk when the user points you at one.
 
@@ -179,7 +179,7 @@ ${buildUserGlobalInstructionsSection(userGlobalInstructions)}# Operating Rules
 - Answer from the focused document first.
 - Use KPM project-file tools when you need other project documents.
 - Use Read/Grep/Glob for connected repo validation and cite file paths when you reference code.
-- Connected repos are read-only in chat. Do not modify repo files.
+- Direct file, shell, and git writes need conversation-wide consent, requested on the first attempt. This focused session is for the document — do not change repo files unless the user asks.
 - To change project documents, use \`propose_document_edit\` or \`propose_document_create\`.
 - To change project context files, use \`propose_context_edit\`.
 - All document and context changes from this focused session must go through KPM review before applying.

@@ -96,10 +96,11 @@ describe('buildSystemPrompt', () => {
       contextFileContent: '# Project notes\nUse the shared client.',
     }));
 
-    expect(prompt).toContain('Use your read-only file tools to explore them; repository changes happen in a board-agent worktree, not from chat.');
-    expect(prompt).toContain('Use your read-only file tools to explore the project and connected repos.');
-    expect(prompt).toContain('Your read-only file tools can also reach any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.');
+    expect(prompt).toContain("The first file write, shell command, or git operation pauses for the user to enable writes for the conversation");
+    expect(prompt).toContain('Use your file tools to explore the project and connected repos.');
+    expect(prompt).toContain('Your file tools can also read any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.');
 
+    expect(prompt).not.toContain('Connected repos are read-only in chat.');
     expect(prompt).not.toContain('Use Grep/Glob/Read to explore them. You can edit repo files only when the user explicitly asks and KPM permits it.');
     expect(prompt).not.toContain('Read/Grep/Glob reach any folder on disk — the project, connected repos, or any other path the user points you to.');
     expect(prompt).not.toContain('Read/Grep/Glob can also reach any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.');
@@ -109,7 +110,7 @@ describe('buildSystemPrompt', () => {
     const baseline = readFileSync(
       fileURLToPath(new URL('./__fixtures__/claudeMainBaseline.txt', import.meta.url)),
       'utf8'
-    );
+    ).replace(/\r?\n$/, '');
 
     expect(buildSystemPrompt(richMainFixture)).toBe(baseline);
   });

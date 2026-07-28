@@ -36,6 +36,10 @@ vi.mock('../services/core/PermissionPromptService', () => ({
   promptUser: vi.fn(),
 }));
 
+vi.mock('../services/files/pathSecurity', () => ({
+  getDeniedPathRoots: () => ['/protected/credentials'],
+}));
+
 const context = {
   project: {
     id: 'project-id',
@@ -65,5 +69,18 @@ describe('buildSdkOptions', () => {
     expect(options.tools).toEqual(['default']);
     expect(options.allowedTools).toEqual(['Grep', 'Glob']);
     expect(options.mcpServers).toMatchObject({ external: externalMcp });
+    expect(options.sandbox).toMatchObject({
+      enabled: true,
+      failIfUnavailable: true,
+      allowUnsandboxedCommands: false,
+      filesystem: {
+        allowWrite: ['/'],
+        denyRead: ['/protected/credentials'],
+        denyWrite: ['/protected/credentials'],
+      },
+      credentials: {
+        files: [{ path: '/protected/credentials', mode: 'deny' }],
+      },
+    });
   });
 });

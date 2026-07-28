@@ -25,7 +25,9 @@ A **Default candidate** is a playbook `AgentCandidate` marked `useDefault: true`
 
 ## Connected repos
 
-A **connected repo** is a git repository attached to a project (the `Repo` type / `repos` table). Its files are read-only in chat; agents write only in isolated worktrees during board execution.
+A **connected repo** is a git repository attached to a project (the `Repo` type / `repos` table). Chat reads its files freely; direct writes need a **write grant**. Agents write only in isolated worktrees during board execution.
+
+- A **write grant** is one conversation's permission for direct file, shell, and git writes at any path except protected credential and secret roots (P7). It is requested on the first attempted write and held in memory per chat session, so it survives an idle reconnect but not an app restart. Revoking it from the chat header ends the grant.
 
 - The **main checkout** is the repo's canonical clone (`repos.path`) — the working tree at the primary checkout.
 - The **active worktree** is a linked git worktree the user has switched the connected repo to (`repos.active_worktree_path`, null when none), set via the "Switch worktree" menu.

@@ -42,7 +42,7 @@ export function registerWorkspaceHandlers({
   registerSettingsHandlers(services.settingsService, services.container.appSettings);
   registerCustomThemeHandlers(services.customThemeService);
   registerThemeHandlers();
-  registerPermissionHandlers(services.permissionService);
+  registerPermissionHandlers(services.permissionService, getMainWindow);
   registerArtifactHandlers(getMainWindow, services.artifactService);
   registerTaskPromptTemplateHandlers(services.taskPromptTemplateService);
   registerActionHandlers(services.actionService, services.container.actions, services.container.actionRuns);

@@ -105,6 +105,36 @@ export async function pathResolvesIntoDeniedRoot(
   return false;
 }
 
+export async function pathCanTraverseDeniedRoot(
+  candidatePath: string,
+  baseDir?: string,
+): Promise<boolean> {
+  const expanded = expandTilde(candidatePath);
+  const absolute = path.isAbsolute(expanded)
+    ? expanded
+    : path.resolve(baseDir ?? process.cwd(), expanded);
+  const realpath = await resolveBestEffortRealpath(absolute);
+  for (const denied of await getDeniedRealpathRootsAsync()) {
+    if (isInsideRoot(realpath, denied) || isInsideRoot(denied, realpath)) return true;
+  }
+  return false;
+}
+
+export function getDeniedPathRoots(): string[] {
+  const extras = getConfig().fileExplorer?.deniedRealpathRoots ?? [];
+  const deniedRoots = new Set<string>();
+  for (const candidate of [...defaultDeniedRoots(), ...extras]) {
+    const lexical = path.resolve(expandTilde(candidate));
+    deniedRoots.add(lexical);
+    try {
+      deniedRoots.add(fs.realpathSync(lexical));
+    } catch {
+      continue;
+    }
+  }
+  return Array.from(deniedRoots);
+}
+
 /**
  * Lexical check for a `.git/hooks` path segment. A file whose path passes
  * through a `.git/hooks` directory is an executable git hook — writing one
@@ -128,11 +158,8 @@ export function isGitHooksPath(fullPath: string): boolean {
  * lexically so the list stays useful before any sensitive dir is created.
  */
 export async function getDeniedRealpathRootsAsync(): Promise<string[]> {
-  const extras = getConfig().fileExplorer?.deniedRealpathRoots ?? [];
-  const merged = [...defaultDeniedRoots(), ...extras];
   const normalized = await Promise.all(
-    merged.map(async (p) => {
-      const lexical = path.resolve(p);
+    getDeniedPathRoots().map(async (lexical) => {
       try {
         return await fs.promises.realpath(lexical);
       } catch {

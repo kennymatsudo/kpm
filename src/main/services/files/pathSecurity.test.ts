@@ -6,7 +6,9 @@ import { createTestConfig, setConfig } from '../../config';
 import {
   checkRealpathAccess,
   expandTilde,
+  getDeniedPathRoots,
   isGitHooksPath,
+  pathCanTraverseDeniedRoot,
   pathResolvesIntoDeniedRoot,
 } from './pathSecurity';
 
@@ -66,6 +68,30 @@ describe('pathResolvesIntoDeniedRoot', () => {
 
     expect(await pathResolvesIntoDeniedRoot('token', secretDir)).toBe(true);
     expect(await pathResolvesIntoDeniedRoot('token', tmpRoot)).toBe(false);
+  });
+});
+
+describe('pathCanTraverseDeniedRoot', () => {
+  it('detects both a protected path and a traversal root containing one', async () => {
+    const secretDir = path.join(tmpRoot, 'workspace', 'credentials');
+    fs.mkdirSync(secretDir, { recursive: true });
+    setConfig(createTestConfig({ fileExplorer: { deniedRealpathRoots: [secretDir] } }));
+
+    expect(await pathCanTraverseDeniedRoot(path.join(secretDir, 'token'))).toBe(true);
+    expect(await pathCanTraverseDeniedRoot(path.join(tmpRoot, 'workspace'))).toBe(true);
+    expect(await pathCanTraverseDeniedRoot(path.join(tmpRoot, 'other'))).toBe(false);
+  });
+});
+
+describe('getDeniedPathRoots', () => {
+  it('includes both configured symlink paths and their real targets', () => {
+    const realRoot = path.join(tmpRoot, 'real-credentials');
+    const linkedRoot = path.join(tmpRoot, 'linked-credentials');
+    fs.mkdirSync(realRoot);
+    fs.symlinkSync(realRoot, linkedRoot, process.platform === 'win32' ? 'junction' : 'dir');
+    setConfig(createTestConfig({ fileExplorer: { deniedRealpathRoots: [linkedRoot] } }));
+
+    expect(getDeniedPathRoots()).toEqual(expect.arrayContaining([linkedRoot, fs.realpathSync(linkedRoot)]));
   });
 });
 

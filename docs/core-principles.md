@@ -12,7 +12,7 @@ The commitments a contributor — human or agent — should consult when a featu
 | P4 | Plans live in KPM | SQLite, not files in the repo. |
 | P5 | Extend the dev setup | Inherit the user's MCP tools; don't replace their env. |
 | P6 | Internal stays internal | Translate at every export boundary; refs and spec fields are local-only. |
-| P7 | Reads by default | Chat is read-only against repos; writes are scoped to worktrees. |
+| P7 | Reads by default, writes by consent | Chat reads freely; changing a repo needs the user's per-conversation unlock. Agent writes stay scoped to worktrees. |
 | P8 | Claude proposes, user configures disposal | Plan mutations go through the `PlanAction` approval flow unless the user explicitly enables auto-apply. |
 | P9 | Agent execution is a lifecycle | A bounded, persisted run driven by a chosen playbook (default: implement → opposing review → one address pass → human review) — never a one-shot prompt. |
 | P10 | Sync on your terms | No live feeds. Inbound queues; outbound drafts. |
@@ -69,11 +69,22 @@ KPM has its own internal syntax and references. None of it leaks to external sys
 
 ---
 
-## 7. Claude reads by default; writes are always explicit and scoped
+## 7. Reads by default; writes by consent
 
-In the chat context, repos are read-only by default. Claude can scan, analyze, and reason about any connected repo without risk of accidental modification. Writes require explicit instruction. In agent execution, writes are scoped to an isolated worktree — the developer's actual working branches are not touched until they choose to merge.
+Reads are free. Chat can scan, analyze, and reason about any connected repo with no ceremony, and that stays true — exploration and investigation are the high-frequency use of KPM, and a developer should be able to open the chat and ask anything without worrying about side effects.
 
-**Why:** exploration and investigation are the high-frequency use of KPM. Making reads safe by default means the developer can open the chat and ask anything without worrying about side effects.
+Writes are not free. The first direct file write, shell command, or git operation asks the user to enable writes for the conversation. The grant covers every path except protected credential and secret roots and lasts until the user revokes it or restarts KPM, so it is a decision about trusting the conversation, not a confirmation of one edit. In agent execution, writes remain scoped to an isolated worktree; the developer's working branches are untouched until they merge.
+
+**Why consent rather than a block:** a hard prohibition pushed real work out of KPM and into another window, which is worse for the developer and worse for the plan's fidelity. Consent keeps the work here while keeping the moment of authorization explicit.
+
+**Why per conversation rather than per change:** a prompt on every edit trains the user to click through it, which is not consent. One deliberate decision, visible for as long as it lasts, is a stronger guarantee than many reflexive ones.
+
+**What this obliges us to keep:** the unlock must be visible while it is active and revocable at any time — the chat header shows when its conversation is unlocked and revokes on click. Credential and secret paths stay denied regardless of any grant.
+
+**Providers differ, and we say so rather than pretending otherwise.** Claude and pi can pause a running turn to ask. Codex cannot: its SDK has no approval channel and its permission profile is fixed when the client starts, so its first blocked write fails, the user is asked afterwards, and the grant takes effect when the thread resumes on the next turn. This is recorded as `inTurnWriteApproval` in `src/shared/providerCapabilities.ts` so the difference is declared, not discovered. Claude's sandbox, Codex's permission profile, and pi's sandboxed shell all retain the protected-path deny rules after writes are enabled. If in-turn Codex approvals ever justify it, the path is `codex app-server`, which exposes `execCommandApproval` / `applyPatchApproval` over JSON-RPC — at the cost of owning a protocol client.
+
+**Lean toward:** making the active grant obvious and easy to take back.
+**Lean away from:** widening a grant beyond the conversation that gave it, or granting writes without the user ever seeing a prompt.
 
 ---
 

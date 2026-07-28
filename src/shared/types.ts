@@ -957,9 +957,13 @@ export interface SlashCommandInfo {
 export interface PermissionRequest {
   requestId: string;
   projectId: string;
+  chatSessionId: string | null;
   toolName: string;
   targetPath: string | null;
   preview: string;
+  kind: 'tool' | 'write-access';
+  /** Prompt sentence supplied by the provider, preferred over a reconstructed one. */
+  title?: string;
 }
 
 /** User action for permission request */

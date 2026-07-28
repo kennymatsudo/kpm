@@ -29,6 +29,10 @@ vi.mock('./binary', () => ({
   findCodexBinaryPath: () => '/tmp/codex',
 }));
 
+vi.mock('../services/files/pathSecurity', () => ({
+  getDeniedPathRoots: () => ['/protected/credentials'],
+}));
+
 vi.mock('./KpmCodexMcpServer', () => ({
   registerCodexMcpSession: mcpMocks.registerCodexMcpSession,
   stopCodexMcpServerForTests: mcpMocks.stopCodexMcpServerForTests,
@@ -92,7 +96,7 @@ function isResultMessage(
 interface CodexOptionsForTest {
   codexPathOverride?: unknown;
   env?: Record<string, unknown>;
-  config?: {
+  config?: Record<string, unknown> & {
     mcp_servers?: {
       kpm?: {
         url?: unknown;
@@ -155,17 +159,22 @@ describe('CodexChatSession', () => {
 
     expect(codexMocks.startThread).toHaveBeenCalledWith(expect.objectContaining({
       workingDirectory: '/tmp/project',
-      sandboxMode: 'read-only',
       approvalPolicy: 'never',
-      networkAccessEnabled: false,
       webSearchMode: 'disabled',
     }));
+    const threadOptions = codexMocks.startThread.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(threadOptions).not.toHaveProperty('sandboxMode');
+    expect(threadOptions).not.toHaveProperty('networkAccessEnabled');
     const codexOptions = vi.mocked(Codex).mock.calls[0]?.[0] as CodexOptionsForTest | undefined;
     expect(codexOptions?.codexPathOverride).toBe('/tmp/codex');
     expect(codexOptions?.config?.mcp_servers?.kpm?.url).toBe('http://127.0.0.1:12345/mcp/session-1');
     expect(codexOptions?.config?.mcp_servers?.kpm?.bearer_token_env_var).toBe('KPM_MCP_TOKEN');
     expect(codexOptions?.config?.mcp_servers?.kpm?.required).toBe(true);
     expect(codexOptions?.config?.mcp_servers?.kpm?.default_tools_approval_mode).toBe('approve');
+    expect(codexOptions?.config?.default_permissions).toBe('kpm-chat-read');
+    expect(codexOptions?.config?.['permissions.kpm-chat-read.filesystem.":root"']).toBe('read');
+    expect(codexOptions?.config?.['permissions.kpm-chat-read.filesystem."/protected/credentials"']).toBe('deny');
+    expect(codexOptions?.config?.['permissions.kpm-chat-read.network.enabled']).toBe(false);
     expect(codexOptions?.env?.KPM_MCP_TOKEN).toBe('test-token');
     const firstInput = codexMocks.runStreamed.mock.calls[0]?.[0] as unknown;
     expect(firstInput).toEqual(expect.stringContaining('# User'));
@@ -236,6 +245,170 @@ describe('CodexChatSession', () => {
         message.usage?.input_tokens === 2 &&
         message.usage?.output_tokens === 3
       )).toBe(true);
+    });
+  });
+
+  describe('conversation write consent (grant-then-retry)', () => {
+    it('starts read-only and asks to enable writes after the sandbox refuses a patch', async () => {
+      codexMocks.runStreamed.mockResolvedValue({
+        events: streamEvents([
+          { type: 'thread.started', thread_id: 'thread-1' },
+          {
+            type: 'item.completed',
+            item: {
+              id: 'patch-1',
+              type: 'file_change',
+              status: 'failed',
+              changes: [{ path: '/repos/my-app/src/index.ts', kind: 'update' }],
+            },
+          },
+          { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1, cached_input_tokens: 0 } },
+        ]),
+      });
+      const requestWriteConsent = vi.fn().mockResolvedValue({ allowed: true });
+
+      const session = new CodexChatSession({
+        context: makeContext(),
+        onMessage: vi.fn(),
+        requestWriteConsent,
+        hasWriteAccess: () => false,
+      });
+      await session.start('edit the file');
+
+      await waitFor(() => {
+        expect(requestWriteConsent).toHaveBeenCalledWith();
+      });
+      const codexOptions = vi.mocked(Codex).mock.calls[0]?.[0] as CodexOptionsForTest | undefined;
+      expect(codexOptions?.config?.default_permissions).toBe('kpm-chat-read');
+    });
+
+    it('asks after a command the sandbox blocked, but not after an ordinary command failure', async () => {
+      codexMocks.runStreamed.mockResolvedValue({
+        events: streamEvents([
+          { type: 'thread.started', thread_id: 'thread-1' },
+          {
+            type: 'item.completed',
+            item: {
+              id: 'cmd-1',
+              type: 'command_execution',
+              status: 'failed',
+              command: 'npm test',
+              aggregated_output: '2 tests failed',
+              exit_code: 1,
+            },
+          },
+          {
+            type: 'item.completed',
+            item: {
+              id: 'cmd-2',
+              type: 'command_execution',
+              status: 'failed',
+              command: 'touch out.txt',
+              aggregated_output: 'touch: out.txt: Read-only file system',
+              exit_code: 1,
+            },
+          },
+          { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1, cached_input_tokens: 0 } },
+        ]),
+      });
+      const requestWriteConsent = vi.fn().mockResolvedValue({ allowed: true });
+
+      const session = new CodexChatSession({
+        context: makeContext(),
+        onMessage: vi.fn(),
+        requestWriteConsent,
+        hasWriteAccess: () => false,
+      });
+      await session.start('run the tests then write a file');
+
+      await waitFor(() => {
+        expect(requestWriteConsent).toHaveBeenCalledTimes(1);
+      });
+      expect(requestWriteConsent).toHaveBeenCalledWith();
+    });
+
+    it('opens the thread writable once the conversation has a grant', async () => {
+      codexMocks.runStreamed.mockResolvedValue({
+        events: streamEvents([
+          { type: 'thread.started', thread_id: 'thread-1' },
+          { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1, cached_input_tokens: 0 } },
+        ]),
+      });
+
+      const session = new CodexChatSession({
+        context: makeContext(),
+        onMessage: vi.fn(),
+        hasWriteAccess: () => true,
+      });
+      await session.start('edit the file');
+
+      const codexOptions = vi.mocked(Codex).mock.calls[0]?.[0] as CodexOptionsForTest | undefined;
+      expect(codexOptions?.config?.default_permissions).toBe('kpm-chat-write');
+      expect(codexOptions?.config?.['permissions.kpm-chat-write.filesystem.":root"']).toBe('write');
+      expect(codexOptions?.config?.['permissions.kpm-chat-write.filesystem."/protected/credentials"']).toBe('deny');
+    });
+
+    it('does not ask again once the sandbox is already writable', async () => {
+      codexMocks.runStreamed.mockResolvedValue({
+        events: streamEvents([
+          { type: 'thread.started', thread_id: 'thread-1' },
+          {
+            type: 'item.completed',
+            item: {
+              id: 'patch-1',
+              type: 'file_change',
+              status: 'failed',
+              changes: [{ path: '/repos/my-app/src/index.ts', kind: 'update' }],
+            },
+          },
+          { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1, cached_input_tokens: 0 } },
+        ]),
+      });
+      const requestWriteConsent = vi.fn().mockResolvedValue({ allowed: true });
+
+      const session = new CodexChatSession({
+        context: makeContext(),
+        onMessage: vi.fn(),
+        requestWriteConsent,
+        hasWriteAccess: () => true,
+      });
+      await session.start('edit the file');
+
+      await waitFor(() => {
+        expect(codexMocks.runStreamed).toHaveBeenCalled();
+      });
+      expect(requestWriteConsent).not.toHaveBeenCalled();
+    });
+
+    it('returns to read-only on the turn after write access is revoked', async () => {
+      codexMocks.runStreamed.mockResolvedValue({
+        events: streamEvents([
+          { type: 'thread.started', thread_id: 'thread-1' },
+          { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1, cached_input_tokens: 0 } },
+        ]),
+      });
+      let writesEnabled = true;
+      const session = new CodexChatSession({
+        context: makeContext(),
+        onMessage: vi.fn(),
+        hasWriteAccess: () => writesEnabled,
+      });
+
+      await session.start('edit the file');
+      await waitFor(() => {
+        expect(codexMocks.runStreamed).toHaveBeenCalledTimes(1);
+      });
+
+      writesEnabled = false;
+      session.send('continue');
+
+      await waitFor(() => {
+        expect(codexMocks.resumeThread).toHaveBeenCalledWith('thread-1', expect.any(Object));
+      });
+      expect(vi.mocked(Codex)).toHaveBeenCalledTimes(2);
+      const resumedOptions = vi.mocked(Codex).mock.calls[1]?.[0] as CodexOptionsForTest | undefined;
+      expect(resumedOptions?.config?.default_permissions).toBe('kpm-chat-read');
+      expect(resumedOptions?.config?.['permissions.kpm-chat-read.filesystem."/protected/credentials"']).toBe('deny');
     });
   });
 });

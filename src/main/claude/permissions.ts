@@ -4,19 +4,27 @@
  * Implements fine-grained permission rules:
  * - Auto-allow: All tools in project directory, read tools anywhere (except
  *   credential/secret roots), network reads (WebFetch/WebSearch), MCP tools
- * - Deny: Reads that resolve into a credential root; writes to connected repos
- * - Prompt: Write tools outside the project and any unrecognized tool
+ * - Deny: Reads that resolve into a credential root
+ * - Consent: Direct writes need the conversation's write grant
+ * - Prompt: Any unrecognized tool
  * - Session cache: "Allow Always" decisions persist per session (via clientManager)
  */
 
 import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { promises as fs } from 'fs';
 import os from 'os';
-import { join, normalize, relative, resolve } from 'path';
+import { join, normalize, relative } from 'path';
 import { isContextFile, CONTEXT_FILE_PENDING_CACHE_KEY } from '../../shared/contextFile';
-import { checkRealpathAccess } from '../services/files/pathSecurity';
+import {
+  checkRealpathAccess,
+  pathCanTraverseDeniedRoot,
+} from '../services/files/pathSecurity';
 import { clientManager } from './clientManager';
 import { getConfig } from '../config';
+import {
+  conversationWriteGrants,
+  type ConversationWriteGrants,
+} from '../chat/writeGrants';
 
 /**
  * Per-tool-call permission tracing. Silent unless `claude.debug` is on — this
@@ -29,7 +37,7 @@ function permLog(...args: unknown[]): void {
   }
 }
 const READ_TOOLS = ['Read', 'Grep', 'Glob'];
-const WRITE_TOOLS = ['Edit', 'Write', 'Bash', 'NotebookEdit'];
+const WRITE_TOOLS = ['Edit', 'MultiEdit', 'Write', 'Bash', 'NotebookEdit'];
 const NETWORK_READ_TOOLS = ['WebFetch', 'WebSearch'];
 
 /**
@@ -48,6 +56,9 @@ export type PromptUserFn = (
   input: Record<string, unknown>,
   options: {
     signal?: AbortSignal;
+    chatSessionId?: string;
+    kind?: 'tool' | 'write-access';
+    title?: string;
   }
 ) => Promise<PermissionResult>;
 
@@ -68,8 +79,11 @@ export type ProjectFileInterceptFn = (
 export interface PermissionContext {
   projectPath: string;
   projectId: string;
-  /** Connected repository paths (read-only, writes are denied) */
-  repoPaths?: string[];
+  /**
+   * Identifies the chat session a write grant is scoped to. Absent for
+   * non-chat callers (action runs), which have no session to grant against.
+  */
+  chatSessionId?: string;
   /** Optional callback to intercept project context file edits */
   onContextFileEdit?: ContextFileInterceptFn;
   /** Optional callback to intercept project file writes for approval */
@@ -100,7 +114,7 @@ export interface PermissionContext {
  */
 function extractPath(toolName: string, input: Record<string, unknown>): string | null {
   // File operation tools
-  if (toolName === 'Read' || toolName === 'Edit' || toolName === 'Write') {
+  if (toolName === 'Read' || toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write') {
     return typeof input.file_path === 'string' ? input.file_path : null;
   }
 
@@ -130,18 +144,6 @@ function extractPath(toolName: string, input: Record<string, unknown>): string |
  * Check if a path is within a directory.
  * Handles symlinks and relative paths.
  */
-function isAbsolutePath(p: string): boolean {
-  return p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p);
-}
-
-function resolvePathForScope(targetPath: string, projectPath: string): string {
-  const trimmedPath = targetPath.trim();
-  if (!trimmedPath || trimmedPath.startsWith('~')) {
-    return normalize(trimmedPath);
-  }
-  return isAbsolutePath(trimmedPath) ? normalize(trimmedPath) : resolve(projectPath, trimmedPath);
-}
-
 // realpathSync does not expand a leading ~, so an attacker's `~/.ssh/id_rsa`
 // would otherwise never match a denied home-relative root.
 function expandHomePath(targetPath: string): string {
@@ -230,18 +232,19 @@ function mcpServerNamesMatch(disabledServerName: string, toolServerName: string)
  * Create permission handler for Claude SDK.
  *
  * Rules:
- * -1. Deny: Git write operations (commit, push, merge, etc.) — always blocked
+ * -1. Consent: Raw git in Bash needs the conversation's write grant
  * 0. Intercept: Context file (AGENTS.md/CLAUDE.md) edits are captured and sent for user approval
- * 1. Auto-allow: All other tools in project directory
+ * 1. Auto-allow: Read tools in project directory
  * 1.5. Deny: Reads that resolve into a credential/secret root
  * 2. Auto-allow: Read tools anywhere; network reads (WebFetch/WebSearch)
  * 3. Auto-allow: MCP tools (read-only)
  * 4. Check session cache for "Allow Always" decisions
- * 5. Prompt: Write tools outside project directory, and any unrecognized tool
+ * 5. Prompt: Any unrecognized tool
  */
 export function createPermissionHandler(
   context: PermissionContext,
-  promptUser: PromptUserFn
+  promptUser: PromptUserFn,
+  writeGrants: ConversationWriteGrants = conversationWriteGrants,
 ): CanUseTool {
   return async (toolName, input, options) => {
     // Debug logging for MCP tools
@@ -252,17 +255,24 @@ export function createPermissionHandler(
       permLog(`[Permissions] Input: ${JSON.stringify(input).slice(0, 500)}`);
     }
 
-    // Rule -1: Chat has no raw git access. Git runs only through the read-only
-    // `git_read` MCP tool, which validates the subcommand + args with no shell
-    // to parse (so pipes, redirects, and substitution can't smuggle a write).
-    // Deny any git in Bash and point the agent at git_read.
+    const gateWrites = async (): Promise<PermissionResult> => {
+      const decision = await writeGrants.request(context.chatSessionId, async () => {
+        permLog(`[Permissions] Requesting write access for chat session ${context.chatSessionId}`);
+        const result = await promptUser(toolName, input, {
+          signal: options.signal,
+          title: options.title,
+          chatSessionId: context.chatSessionId,
+          kind: 'write-access',
+        });
+        return result.behavior === 'allow';
+      });
+
+      if (!decision.allowed) return { behavior: 'deny', message: decision.reason };
+      return { behavior: 'allow', updatedInput: input };
+    };
+
     if (toolName === 'Bash' && typeof input.command === 'string' && commandInvokesGit(input.command)) {
-      permLog(`[Permissions] DENIED: git in Bash (use git_read): ${input.command}`);
-      return {
-        behavior: 'deny',
-        message:
-          'Raw git is blocked in KPM chat. Use the git_read tool for read-only git (log, diff, status, show, blame, branches, merge-base, ...). Writes (commit, push, branch/tag creation, merge, rebase, reset, checkout, stash) happen in board agent worktrees, not chat.',
-      };
+      return gateWrites();
     }
 
     const targetPath = extractPath(toolName, input);
@@ -270,6 +280,25 @@ export function createPermissionHandler(
     // Debug logging for Write/Edit tools targeting files
     if ((toolName === 'Write' || toolName === 'Edit') && targetPath) {
       permLog(`[Permissions] ${toolName} tool called for: ${targetPath}`);
+    }
+
+    const traversesDirectories = toolName === 'Grep' || toolName === 'Glob';
+    const pathToCheck = targetPath ?? (traversesDirectories ? context.projectPath : null);
+    if (pathToCheck && [...READ_TOOLS, ...WRITE_TOOLS].includes(toolName)) {
+      const expandedPath = expandHomePath(pathToCheck);
+      const access = await checkRealpathAccess(expandedPath, context.projectPath);
+      if (!access.allowed) {
+        return {
+          behavior: 'deny',
+          message: access.reason ?? 'Access denied: path resolves inside a protected credential location.',
+        };
+      }
+      if (traversesDirectories && await pathCanTraverseDeniedRoot(expandedPath, context.projectPath)) {
+        return {
+          behavior: 'deny',
+          message: 'Access denied: recursive search would traverse a protected credential location.',
+        };
+      }
     }
 
     // Rule 0: Intercept project context file edits (AGENTS.md / CLAUDE.md) for user approval
@@ -430,46 +459,18 @@ export function createPermissionHandler(
           message: 'File update captured by KPM.',
         };
       }
-      // Allow other tools (Read, Grep, etc.) in project directory
-      return { behavior: 'allow', updatedInput: input };
-    }
-
-    // Connected repos are read-only in chat. Writes happen through board
-    // worktrees, not the chat session.
-    if (targetPath && WRITE_TOOLS.includes(toolName)) {
-      const resolvedTargetPath = resolvePathForScope(targetPath, context.projectPath);
-      const isProjectPath = isWithinDirectory(resolvedTargetPath, context.projectPath);
-      const isConnectedRepoPath = (context.repoPaths ?? []).some(dir =>
-        isWithinDirectory(resolvedTargetPath, dir)
-      );
-      if (isConnectedRepoPath && !isProjectPath) {
-        return {
-          behavior: 'deny',
-          message: 'Connected repositories are read-only in KPM chat. Use a board agent worktree for repository changes.',
-        };
+      if (!WRITE_TOOLS.includes(toolName)) {
+        return { behavior: 'allow', updatedInput: input };
       }
     }
 
-    // Rule 1.5: Deny built-in reads whose target resolves into a credential or
-    // secret root (~/.ssh, ~/.aws, ~/.gnupg, keychains, /etc/sudoers, ...).
-    // Reads are otherwise allowed anywhere (Rule 2), but credential exfiltration
-    // is closed off here. Grep/Glob without a path search cwd and are allowed.
-    if (READ_TOOLS.includes(toolName) && targetPath) {
-      const access = await checkRealpathAccess(expandHomePath(targetPath), context.projectPath);
-      if (!access.allowed) {
-        return {
-          behavior: 'deny',
-          message: access.reason ?? 'Access denied: path resolves inside a protected credential location.',
-        };
-      }
+    if (WRITE_TOOLS.includes(toolName)) {
+      return gateWrites();
     }
 
     // Rule 2: Read tools (Read/Grep/Glob) are allowed anywhere on disk.
     // Reads can't mutate state, so chat isn't confined to the project folder or
-    // connected repos for reading — the user can point it at any folder. Writes
-    // stay scoped: connected-repo writes and project-file writes are handled
-    // above, and writes elsewhere still prompt (Rule 5). OS-level file
-    // permissions remain the backstop for genuinely off-limits paths.
+    // connected repos for reading — the user can point it at any folder.
     if (READ_TOOLS.includes(toolName)) {
       return { behavior: 'allow', updatedInput: input };
     }
@@ -527,22 +528,6 @@ export function createPermissionHandler(
     if (clientManager.hasAllowAllRemaining(context.projectId)) {
       permLog(`[Permissions] Auto-allowing ${toolName} (Allow All Remaining active)`);
       return { behavior: 'allow', updatedInput: input };
-    }
-
-    // Rule 5: Prompt for writes outside project directory
-    if (WRITE_TOOLS.includes(toolName)) {
-      if (context.autoApprove) {
-        permLog(`[Permissions] Auto-allowing ${toolName} (autoApprove active)`);
-        return { behavior: 'allow', updatedInput: input };
-      }
-      const result = await promptUser(toolName, input, options);
-
-      // If "Allow Always" was selected, cache it via clientManager
-      if (result.behavior === 'allow' && 'allowAlways' in result && result.allowAlways) {
-        clientManager.cachePermission(context.projectId, cacheKey);
-      }
-
-      return result;
     }
 
     // Default: any tool matching no rule (unrecognized built-ins) prompts the

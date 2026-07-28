@@ -40,6 +40,16 @@ export const permissionEndpoints = {
     result: resultOf<RegistryResponse>(),
   },
   revokeAll: { channel: 'permission:revoke-all', params: z.object({ projectId: uuid }), result: resultOf<RegistryResponse>() },
+  getWriteGrant: {
+    channel: 'permission:write-grant:get',
+    params: z.object({ chatSessionId: z.string().min(1) }),
+    result: resultOf<RegistryResponse<{ granted: boolean }>>(),
+  },
+  revokeWriteGrant: {
+    channel: 'permission:write-grant:revoke',
+    params: z.object({ chatSessionId: z.string().min(1) }),
+    result: resultOf<RegistryResponse>(),
+  },
 } satisfies Record<string, EndpointDefinition>;
 
 export type PermissionEndpoints = typeof permissionEndpoints;

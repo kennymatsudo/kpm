@@ -15,6 +15,7 @@ import { getConfig } from '../config';
 import { getClaudeSdkSpawnOptions } from './findClaude';
 import { promptUser } from '../services/core/PermissionPromptService';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
+import { getDeniedPathRoots } from '../services/files/pathSecurity';
 
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
 
@@ -24,6 +25,11 @@ export interface BuildSdkOptionsParams {
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   resumeSessionId?: string;
   mainWindow: BrowserWindow | null;
+  /**
+   * Scopes the conversation-wide write grant. Omitted by non-chat
+   * callers, which have no session to ask consent in and so cannot write.
+   */
+  chatSessionId?: string;
   /** Callback for intercepted project context file edits */
   onContextFileEdit?: ContextFileInterceptFn;
   /** Callback for intercepted project file writes */
@@ -53,7 +59,7 @@ export interface BuildSdkOptionsParams {
  * Build SDK options for a Claude session.
  */
 export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
-  const { context, model, effort, resumeSessionId, mainWindow, onContextFileEdit, onProjectFileWrite, peekPendingFile, enabledPluginPaths, enabledUserMcpConfigs, disabledMcpTools, disabledMcpServerNames, onElicitation, autoApprove, grantedCapabilities } = params;
+  const { context, model, effort, resumeSessionId, mainWindow, chatSessionId, onContextFileEdit, onProjectFileWrite, peekPendingFile, enabledPluginPaths, enabledUserMcpConfigs, disabledMcpTools, disabledMcpServerNames, onElicitation, autoApprove, grantedCapabilities } = params;
   // Resume restores conversation history only — the SDK applies whatever
   // systemPrompt we pass now and discards the one persisted in the transcript.
   // So always send the full prompt; slimming it on resume silently drops
@@ -64,14 +70,14 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   const systemPrompt = isFocusSession ? buildFocusSystemPrompt(context) : buildSystemPrompt(context);
   const effectiveRepoPaths = context.repos.map(resolveEffectiveRepoPath);
 
-  // Create permission handler. canUseTool scopes file access (repos read-only,
-  // project-file writes intercepted) and gates external MCP servers. It does
-  // NOT gate KPM tools by view — all KPM tools are callable in both plan and
-  // workspace views.
+  // Create permission handler. canUseTool gates direct writes, intercepts
+  // project-file writes, and gates external
+  // MCP servers. It does NOT gate KPM tools by view — all KPM tools are
+  // callable in both plan and workspace views.
   const permissionContext: PermissionContext = {
     projectPath: context.project.folder_path,
     projectId: context.project.id,
-    repoPaths: effectiveRepoPaths,
+    chatSessionId,
     onContextFileEdit,
     onProjectFileWrite,
     peekPendingFile,
@@ -88,19 +94,22 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
 
   // Build options
   const claudeConfig = getConfig().claude;
+  const deniedPathRoots = getDeniedPathRoots();
   const sdkOptions: SDKOptions = {
     // `tools: ['default']` selects the native binary's full built-in preset.
     // 'default' only expands to the preset when it is the sole value: adding
     // names (e.g. ['default','Grep','Glob']) turns the array into an explicit
     // allowlist where 'default' is an unknown no-op, collapsing the built-in set
     // to just the listed names and silently dropping Bash/WebSearch/Read/Edit/etc.
-    // Native builds omit Grep/Glob from the preset in favor of shell grep/find,
-    // which the read-only connected-repo guard rejects — so enable them via
-    // allowedTools. allowedTools is auto-allow only (it does not restrict which
-    // tools are available, so it does not hide external MCP tools like Slack);
-    // availability is restricted via `tools`, and access is governed by
-    // canUseTool. There is no plan/workspace tool gating — view affects prompt
-    // hints only.
+    // Native builds omit Grep/Glob from the preset in favor of shell grep/find.
+    // Bash counts as a write tool (it can always write), so searching a
+    // connected repo through the shell would raise the write-consent
+    // prompt for what is really a read — enable the dedicated read tools via
+    // allowedTools so the common case never asks. allowedTools is auto-allow
+    // only (it does not restrict which tools are available, so it does not hide
+    // external MCP tools like Slack); availability is restricted via `tools`,
+    // and access is governed by canUseTool. There is no plan/workspace tool
+    // gating — view affects prompt hints only.
     tools: ['default'],
     allowedTools: ['Grep', 'Glob'],
     systemPrompt,
@@ -109,9 +118,26 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     // Pin the bundled native Claude binary so the SDK skips its own PATH lookup.
     // See findClaude.ts for platform-specific resolution details.
     ...getClaudeSdkSpawnOptions(),
+    sandbox: {
+      enabled: true,
+      failIfUnavailable: true,
+      autoAllowBashIfSandboxed: false,
+      allowUnsandboxedCommands: false,
+      filesystem: {
+        allowWrite: ['/'],
+        denyWrite: deniedPathRoots,
+        denyRead: deniedPathRoots,
+      },
+      credentials: {
+        files: deniedPathRoots.map((path) => ({ path, mode: 'deny' as const })),
+      },
+    },
     canUseTool: createPermissionHandler(permissionContext, async (toolName, input, opts) => {
       return promptUser(mainWindow, permissionContext.projectId, toolName, input, {
         signal: opts.signal,
+        chatSessionId: permissionContext.chatSessionId,
+        kind: opts.kind,
+        title: opts.title,
       });
     }),
     // Load user settings so claude.ai managed MCP servers (Whimsical, Glean, etc.) connect.

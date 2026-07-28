@@ -126,7 +126,7 @@ The `currentView` ('plan' | 'workspace') sent with each message is injected as a
 
 ### Prompts
 - Repos added via `--add-dir`, not prompts
-- Permissions rebuilt per message from `context.repos`
+- Permissions are built once per SDK session spawn (not per message), so anything they close over must be read live — the conversation write grant is looked up through `chat/writeGrants.ts` for exactly this reason
 - Undocumented behavior = Claude guesses (add concrete examples)
 
 ### Plan Modifications
@@ -142,8 +142,8 @@ The `currentView` ('plan' | 'workspace') sent with each message is injected as a
 |------|---------|
 | `clientManager.ts` | Singleton Claude client |
 | `contextBuilders.ts` | Context fetching for sessions |
-| `permissions.ts` | File access control (repos, files). Denies all raw `git` in Bash (Rule -1) — git goes through the `git_read` tool. |
-| `sdkOptionsBuilder.ts` | SDK config construction (applies `thinking: { type: 'adaptive', display: 'summarized' }` for opus and sonnet so thinking content streams in the response) |
+| `permissions.ts` | File access control. Routes direct file, shell, and git writes through the conversation-wide consent gate, checks the live grant on every write, and denies direct access to protected credential paths. |
+| `sdkOptionsBuilder.ts` | SDK config construction, including the fail-closed shell sandbox that keeps protected credential paths denied after a write grant (also applies `thinking: { type: 'adaptive', display: 'summarized' }` for opus and sonnet so thinking content streams in the response) |
 | `auth.ts` | API key management |
 | `activity.ts` | Activity tracking |
 | `findClaude.ts` | Claude binary discovery |
@@ -154,7 +154,7 @@ The `currentView` ('plan' | 'workspace') sent with each message is injected as a
 | `../kpmTools/tools/review-assessment.ts` | Separate read-only MCP server used by `ReviewAssessmentService` (not part of the main-chat `createKpmServer`) |
 | `../kpmTools/tools/plan-refs.ts` | `extract_plan_items_from_doc` — lift `@plan/<uuid>` tokens out of a project file by path |
 | `../kpmTools/tools/spill-read.ts` | `read_spill_file` — read-only recovery of SDK tool-result spill files in `~/.claude/projects/` |
-| `../kpmTools/tools/git-read.ts` | `git_read` — runs read-only git in a connected repo via `execFile` (no shell). Raw `git` in chat Bash is blocked (`permissions.ts` Rule -1); this is the only git path. Validation lives in `services/repo/gitReadOnly.ts`. |
+| `../kpmTools/tools/git-read.ts` | `git_read` — runs read-only git in a connected repo via `execFile` (no shell). Needs no write grant, so it stays the fast path for reading git state; raw `git` in chat Bash goes through the conversation write gate (`permissions.ts` Rule -1). Validation lives in `services/repo/gitReadOnly.ts`. |
 | `contextRefs.ts` | `formatPlanRefSection` — expand plan refs into agent context |
 | `../chat/prompts/` | Shared chat system prompt builders |
 

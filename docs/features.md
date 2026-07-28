@@ -492,14 +492,14 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Maturity signal:** Mature. Robust edit validation; creation and editing share one proposal→approval shape across both plain documents and the context file.
 
 ### 106. Markdown Focus Reader (Immersive Reading + Per-Document Chat)
-- **What it does:** Users can enter a distraction-free full-screen reading mode for any open markdown file: larger type, a light/dark reading theme independent of the app theme, a table-of-contents rail with scroll-spy, in-document search, and reading-position persistence per document. A companion chat panel can be opened alongside the reader, scoped to that one document — its own persisted thread, separate from the project's main chat sessions. This chat follows the same rules as main chat: connected repos stay read-only, and any document/context-file edit still goes through `propose_document_edit` / `propose_context_edit` and KPM's normal approval flow (or auto-apply, per the global setting) — focus mode does not bypass it.
+- **What it does:** Users can enter a distraction-free full-screen reading mode for any open markdown file: larger type, a light/dark reading theme independent of the app theme, a table-of-contents rail with scroll-spy, in-document search, and reading-position persistence per document. A companion chat panel can be opened alongside the reader, scoped to that one document — its own persisted thread, separate from the project's main chat sessions. This chat follows the same rules as main chat: direct writes need the user's conversation-wide grant, and any document/context-file edit still goes through `propose_document_edit` / `propose_context_edit` and KPM's normal approval flow (or auto-apply, per the global setting) — focus mode does not bypass it.
 - **Key code locations:**
   - Component: `src/renderer/components/focus-mode/FocusMode.tsx` (reader shell: TOC, search, reading theme, scroll-spy)
   - Component: `src/renderer/components/focus-mode/FocusChatPanel.tsx` (per-document chat UI)
   - Hook: `src/renderer/components/focus-mode/useReadingProgress.ts` (active heading + scroll progress)
   - Store: `src/renderer/stores/focusModeStore.ts` (open/close, reading theme and scroll-position persistence in localStorage)
   - Entry point: `src/renderer/components/workspace/FileEditor.tsx` (`handleEnterFocus` — focus button shown only for markdown files)
-  - Prompt: `src/main/chat/prompts/index.ts` (focus-session system prompt: focused document is the implicit subject; repos read-only; document/context changes still require `propose_document_edit`/`propose_context_edit`)
+  - Prompt: `src/main/chat/prompts/index.ts` (focus-session system prompt: focused document is the implicit subject; repo changes need the write unlock; document/context changes still require `propose_document_edit`/`propose_context_edit`)
   - Session plumbing: `src/main/services/core/ChatService.ts` (`focusDocument` param), `src/main/claude/sdkOptionsBuilder.ts` (`isFocusSession`), `getFocusDocumentChatSession` in `src/renderer/services/chatService.ts`
   - DB: `chat_sessions` columns `scope` (`'main' | 'focus_document'`), `focus_document_path`, `focus_document_title`, `focus_document_hash` — migration `091_focus_document_chat_sessions`; one session per (project, document path)
 - **Entry points / surfaces:**

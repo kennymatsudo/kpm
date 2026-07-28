@@ -9,10 +9,14 @@
  * 5. promptUser() resolves with PermissionResult
  */
 
+import type { BrowserWindow } from 'electron';
 import { permissionEndpoints, type PermissionEndpointName } from '../../../shared/ipc/permissionEndpoints';
+import { permissionEvents } from '../../../shared/ipc/permissionEvents';
+import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { PermissionService } from '../../services/core/PermissionService';
 import { resolvePromptResponse } from '../../services/core/PermissionPromptService';
+import { conversationWriteGrants } from '../../chat/writeGrants';
 import { createRegistryIpcHandlers } from '../validation/utils';
 
 /**
@@ -47,12 +51,25 @@ function buildPermissionHandlers(permissionService: PermissionService): Permissi
       const result = permissionService.revokeAll(projectId);
       if (!result.ok) throw new Error(result.error);
     },
+
+    getWriteGrant: ({ chatSessionId }) => ({ granted: conversationWriteGrants.has(chatSessionId) }),
+
+    revokeWriteGrant: ({ chatSessionId }) => {
+      conversationWriteGrants.revoke(chatSessionId);
+    },
   };
 }
 
 /**
  * Register permission IPC handlers.
  */
-export function registerPermissionHandlers(permissionService: PermissionService): void {
+export function registerPermissionHandlers(
+  permissionService: PermissionService,
+  getMainWindow: () => BrowserWindow | null,
+): void {
   createRegistryIpcHandlers(permissionEndpoints, buildPermissionHandlers(permissionService), 'Permission operation failed');
+
+  conversationWriteGrants.subscribe((chatSessionId, granted) => {
+    emitAppEvent(getMainWindow()?.webContents, permissionEvents.writeGrantChanged, { chatSessionId, granted });
+  });
 }

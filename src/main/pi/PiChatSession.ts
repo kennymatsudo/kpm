@@ -10,9 +10,29 @@ import { buildItemReferenceTable } from '../chat/prompts/planFormatting';
 import { buildResponseModesSection } from '../chat/prompts/modes';
 import { resolveRegistryPrompt } from '../chat/prompts/promptRegistry';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
+import {
+  pathCanTraverseDeniedRoot,
+  pathResolvesIntoDeniedRoot,
+} from '../services/files/pathSecurity';
+import { createProtectedBashOperations } from './protectedBash';
 
-/** Built-in pi tools that are read-only against the filesystem. `write`, `edit`, and `bash` are never included (P7). */
+/** Built-in pi tools that are read-only against the filesystem. */
 const READ_ONLY_BUILTIN_TOOLS = ['read', 'grep', 'find', 'ls'] as const;
+
+const WRITE_BUILTIN_TOOLS = ['write', 'edit', 'bash'] as const;
+
+export type PiWriteConsentFn = () => Promise<
+  { allowed: true } | { allowed: false; reason: string }
+>;
+
+/**
+ * The directory a pi session runs in: the first connected repo's working tree,
+ * falling back to the project folder.
+ */
+export function resolvePiCwd(context: PlanContext): string {
+  const repo = context.repos[0];
+  return repo ? resolveEffectiveRepoPath(repo) : context.project.folder_path;
+}
 
 interface PiUsageLike {
   input: number;
@@ -48,6 +68,8 @@ export interface CreatePiSessionOptions {
   thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /** pi's own persisted session id to continue. Unset starts a fresh persisted session. */
   resumeSessionId?: string;
+  /** Gates write builtins on the conversation's write consent. Omitted means no writes. */
+  requestWriteConsent?: PiWriteConsentFn;
 }
 
 export type CreatePiSessionFn = (options: CreatePiSessionOptions) => Promise<PiSessionHandle>;
@@ -64,6 +86,8 @@ export interface PiChatSessionConfig {
   onReady?: (sessionId: string) => void;
   /** KPM tools adapted by the caller for this session. Defaults to building from context for tests/backcompat. */
   kpmTools?: { tools: PiKpmToolDefinition[]; toolNames: string[] };
+  /** Gates write builtins on the conversation's write consent. Omitted means no writes. */
+  requestWriteConsent?: PiWriteConsentFn;
   /** Injectable session factory, defaulting to the real pi SDK. Tests inject a fake to avoid live model calls. */
   createSession?: CreatePiSessionFn;
 }
@@ -74,18 +98,53 @@ interface QueuedTurn {
 }
 
 /**
- * Defensive tool-call gate: blocks anything outside the read-only builtin +
- * KPM tool allowlist. Exported standalone so it is unit-testable without the
- * real pi extension runtime; `createRealPiSession` wires the same function
- * into `pi.on('tool_call', ...)`.
+ * Tool-call gate. Blocks anything outside the allowlist, and routes a write
+ * builtin through the conversation's write consent (P7).
+ *
+ * Exported standalone so it is unit-testable without the real pi extension
+ * runtime; `createRealPiSession` wires the same function into
+ * `pi.on('tool_call', ...)`. pi awaits the handler and fails closed if it
+ * throws, so a consent prompt that never resolves blocks rather than leaks.
  */
 export function buildToolCallGate(
   allowedToolNames: readonly string[],
-): (toolName: string) => { block: true; reason: string } | undefined {
+  requestWriteConsent?: PiWriteConsentFn,
+  pathIsProtected: (
+    path: string,
+    traversal: boolean,
+  ) => Promise<boolean> = (path, traversal) => (
+    traversal
+      ? pathCanTraverseDeniedRoot(path)
+      : pathResolvesIntoDeniedRoot(path)
+  ),
+): (event: { toolName: string; input?: Record<string, unknown> }) => Promise<{ block: true; reason: string } | undefined> {
   const allowed = new Set(allowedToolNames);
-  return (toolName: string) => {
-    if (allowed.has(toolName)) return undefined;
-    return { block: true, reason: `Tool "${toolName}" is not available in this read-only chat session.` };
+  return async ({ toolName, input }) => {
+    if (!allowed.has(toolName)) {
+      return { block: true, reason: `Tool "${toolName}" is not available in this chat session.` };
+    }
+
+    const protectsFilesystem = ['read', 'write', 'edit', 'ls', 'grep', 'find'].includes(toolName);
+    const targetPath = typeof input?.path === 'string'
+      ? input.path
+      : protectsFilesystem
+        ? '.'
+        : undefined;
+    if (
+      targetPath
+      && await pathIsProtected(targetPath, toolName === 'grep' || toolName === 'find')
+    ) {
+      return { block: true, reason: `Tool "${toolName}" cannot access protected credential paths.` };
+    }
+
+    if (!(WRITE_BUILTIN_TOOLS as readonly string[]).includes(toolName)) return undefined;
+
+    if (!requestWriteConsent) {
+      return { block: true, reason: `Tool "${toolName}" cannot change files in this chat session.` };
+    }
+
+    const decision = await requestWriteConsent();
+    return decision.allowed ? undefined : { block: true, reason: decision.reason };
   };
 }
 
@@ -153,7 +212,7 @@ export function buildPiSystemPrompt(context: PlanContext): string {
   const isFocus = Boolean(context.focusDocument);
   const operatingRules = isFocus
     ? `# Operating Rules
-- This is a read-only chat context. Do not modify repo or project files from chat.
+- This session is focused on one document. Direct file, shell, and git writes need conversation-wide consent; project files change through KPM's proposal tools.
 - Jira, Linear, Confluence, and GitHub exports must not leak KPM-local fields or @plan internals.
 - Plan data lives in KPM SQLite, not in connected repos.
 - If the user asks to change the plan, use KPM plan tools so changes flow through KPM's proposal and review path.
@@ -347,8 +406,23 @@ export function createEphemeralPiSettings(pi: typeof PiCodingAgent, cwd: string)
  */
 async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiSessionHandle> {
   const pi = await import('@earendil-works/pi-coding-agent');
-  const allowedToolNames = [...READ_ONLY_BUILTIN_TOOLS, ...options.toolNames];
-  const gate = buildToolCallGate(allowedToolNames);
+  const allowedToolNames = [
+    ...READ_ONLY_BUILTIN_TOOLS,
+    ...(options.requestWriteConsent ? WRITE_BUILTIN_TOOLS : []),
+    ...options.toolNames,
+  ];
+  const gate = buildToolCallGate(
+    allowedToolNames,
+    options.requestWriteConsent,
+    (candidatePath, traversal) => (
+      traversal
+        ? pathCanTraverseDeniedRoot(candidatePath, options.cwd)
+        : pathResolvesIntoDeniedRoot(candidatePath, options.cwd)
+    ),
+  );
+  const bashTool = pi.createBashToolDefinition(options.cwd, {
+    operations: createProtectedBashOperations(),
+  });
 
   const resourceLoader = new pi.DefaultResourceLoader({
     cwd: options.cwd,
@@ -364,7 +438,7 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
     noContextFiles: true,
     extensionFactories: [
       (extensionApi) => {
-        extensionApi.on('tool_call', (event) => gate(event.toolName));
+        extensionApi.on('tool_call', (event) => gate({ toolName: event.toolName, input: event.input }));
       },
     ],
   });
@@ -375,7 +449,7 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
     sessionManager: await resolvePiSessionManager(pi, options.cwd, options.resumeSessionId),
     settingsManager: createEphemeralPiSettings(pi, options.cwd),
     tools: allowedToolNames,
-    customTools: options.tools as unknown as PiSdkToolDefinition[],
+    customTools: [...options.tools, bashTool] as unknown as PiSdkToolDefinition[],
     resourceLoader,
     ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
   });
@@ -438,6 +512,7 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
         model: this.config.model,
         thinkingLevel: this.config.thinkingLevel,
         resumeSessionId: this.config.resumeSessionId,
+        requestWriteConsent: this.config.requestWriteConsent,
       });
     } catch (error) {
       this.config.onSessionEnd?.('error', error as Error);
@@ -493,8 +568,7 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
    * takes a `repoPath` and runs read-only git against any connected repo.
    */
   private resolveCwd(): string {
-    const repo = this.config.context.repos[0];
-    return repo ? resolveEffectiveRepoPath(repo) : this.config.context.project.folder_path;
+    return resolvePiCwd(this.config.context);
   }
 
   protected async executeTurn(turn: QueuedTurn): Promise<void> {

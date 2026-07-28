@@ -108,6 +108,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
       effort?: 'low' | 'medium' | 'high' | 'max';
       resumeSessionId?: string;
       mainWindow: BrowserWindow | null;
+      chatSessionId?: string;
       onContextFileEdit?: (projectId: string, newContent: string) => void;
       onProjectFileWrite?: (projectId: string, filePath: string, content: string) => void;
       peekPendingFile?: (relativeFilePath: string) => string | undefined;
@@ -136,6 +137,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         effort: options.effort,
         resumeSessionId: options.resumeSessionId,
         mainWindow: options.mainWindow,
+        chatSessionId: options.chatSessionId,
         onContextFileEdit: options.onContextFileEdit,
         onProjectFileWrite: options.onProjectFileWrite,
         peekPendingFile: options.peekPendingFile,

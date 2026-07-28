@@ -31,6 +31,7 @@ import {
   type KpmToolProposal,
 } from '../../kpmTools/runtimeRegistry';
 import { buildUserContentBlocks } from '../../claude/attachmentBlocks';
+import { conversationWriteGrants } from '../../chat/writeGrants';
 import { buildFocusedSection } from '../../chat/prompts/focusedResources';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../chat/prompts';
@@ -408,6 +409,7 @@ export interface StreamingSessionServiceDeps {
       effort?: 'low' | 'medium' | 'high' | 'max';
       resumeSessionId?: string;
       mainWindow: BrowserWindow | null;
+      chatSessionId?: string;
       onContextFileEdit?: (projectId: string, newContent: string) => void;
       onProjectFileWrite?: (projectId: string, filePath: string, content: string) => void;
       peekPendingFile?: (relativeFilePath: string) => string | undefined;
@@ -1196,6 +1198,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         effort: claudeEffort,
         resumeSessionId,
         mainWindow,
+        chatSessionId,
         autoApprove: true,
         // Callback for intercepted context file edits from the permission handler
         onContextFileEdit: (editProjectId: string, newContent: string) => {
@@ -1268,6 +1271,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             mode: request.mode,
           }, {
             signal,
+            chatSessionId,
           });
           return result.behavior === 'allow'
             ? { action: 'accept' as const, content: {} }
@@ -1354,6 +1358,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         ? () => registerCodexMcpSession({ projectId, chatSessionId, focus: isFocusDocumentSession })
         : undefined;
 
+      const requestWriteConsent = (): Promise<{ allowed: true } | { allowed: false; reason: string }> =>
+        conversationWriteGrants.request(chatSessionId, async () => {
+          const result = await promptUser(mainWindow, projectId, 'Write', {}, {
+            chatSessionId,
+            kind: 'write-access',
+          });
+          return result.behavior === 'allow';
+        });
+
       // Create streaming session — let required: const can't be referenced in its own initializer closures
       // eslint-disable-next-line prefer-const
       let session!: IChatSession;
@@ -1386,6 +1399,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             onSessionEnd: (reason, error) => handleSessionEnd(key, session, reason, error),
             onReady: onReadyWithoutMcpStatus,
             registerMcpSession: registerCodexKpmMcpSession,
+            requestWriteConsent: async () => ({
+              allowed: (await requestWriteConsent()).allowed,
+            }),
+            hasWriteAccess: () => chatSessionId ? conversationWriteGrants.has(chatSessionId) : false,
           })
         : provider === 'pi'
         ? new PiChatSession({
@@ -1398,6 +1415,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             onSessionEnd: (reason, error) => handleSessionEnd(key, session, reason, error),
             onReady: onReadyWithoutMcpStatus,
             kpmTools: piKpmToolSet,
+            requestWriteConsent,
           })
         : new StreamingSession({
             sdkOptions: createClaudeSdkOptions(),

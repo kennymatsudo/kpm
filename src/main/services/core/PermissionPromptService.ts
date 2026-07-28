@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { BrowserWindow } from 'electron';
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
-import type { PermissionAction } from '../../../shared/types';
+import type { PermissionAction, PermissionRequest } from '../../../shared/types';
 import { extractPath, getToolPreview } from '../../claude/permissions';
 import { getConfig } from '../../config';
 import type { PermissionService } from './PermissionService';
@@ -13,19 +13,28 @@ interface PendingPermission {
   resolve: (result: PermissionResult) => void;
   timeoutId: NodeJS.Timeout;
   projectId: string;
+  kind: PermissionRequest['kind'];
   toolName: string;
   targetPath: string | null;
   preview: string;
+  input: Record<string, unknown>;
 }
 
 const pendingPermissions = new Map<string, PendingPermission>();
+
+interface PromptOptions {
+  signal?: AbortSignal;
+  chatSessionId?: string;
+  kind?: PermissionRequest['kind'];
+  title?: string;
+}
 
 export async function promptUser(
   mainWindow: BrowserWindow | null,
   projectId: string,
   toolName: string,
   input: Record<string, unknown>,
-  options: { signal?: AbortSignal },
+  options: PromptOptions,
 ): Promise<PermissionResult> {
   if (!mainWindow) {
     return {
@@ -34,10 +43,21 @@ export async function promptUser(
     };
   }
 
+  return emitPrompt(mainWindow, projectId, toolName, input, options);
+}
+
+function emitPrompt(
+  mainWindow: BrowserWindow,
+  projectId: string,
+  toolName: string,
+  input: Record<string, unknown>,
+  options: PromptOptions,
+): Promise<PermissionResult> {
   return new Promise((resolve) => {
     const requestId = randomUUID();
     const targetPath = extractPath(toolName, input);
     const preview = getToolPreview(toolName, input);
+    const kind = options.kind ?? 'tool';
     const permissionTimeoutMs = getConfig().session.permissionRequestTimeoutMs;
 
     const timeoutId = setTimeout(() => {
@@ -65,17 +85,22 @@ export async function promptUser(
       resolve,
       timeoutId,
       projectId,
+      kind,
       toolName,
       targetPath,
       preview,
+      input,
     });
 
     emitAppEvent(mainWindow.webContents, permissionEvents.request, {
       requestId,
       projectId,
+      chatSessionId: options.chatSessionId ?? null,
       toolName,
       targetPath,
       preview,
+      kind,
+      title: options.title,
     });
   });
 }
@@ -90,6 +115,17 @@ export function resolvePromptResponse(
   if (!pending) {
     console.warn(`[Permissions] No pending request for ID: ${requestId}`);
     return failure('Permission request not found');
+  }
+
+  if (projectId !== pending.projectId) {
+    return failure('Permission request project does not match');
+  }
+  if (
+    pending.kind === 'write-access'
+    && action !== 'allow'
+    && action !== 'deny'
+  ) {
+    return failure('Write access requests only accept allow or deny');
   }
 
   clearTimeout(pending.timeoutId);
@@ -112,14 +148,16 @@ export function resolvePromptResponse(
 
     pending.resolve({
       behavior: 'allow',
-      updatedInput: {},
+      updatedInput: pending.input,
     });
     return success(undefined);
   }
 
+  // `updatedInput` replaces the tool's arguments, so it has to echo the
+  // original rather than an empty object — returning {} strips the call.
   const result: PermissionResult & { allowAlways?: boolean } = {
     behavior: 'allow',
-    updatedInput: {},
+    updatedInput: pending.input,
   };
 
   if (action === 'allow-always') {

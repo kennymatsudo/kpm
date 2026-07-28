@@ -20,6 +20,8 @@ import { buildResponseModesSection } from '../chat/prompts/modes';
 import { resolveRegistryPrompt } from '../chat/prompts/promptRegistry';
 import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/streaming/BaseTurnQueueChatSession';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
+import { getDeniedPathRoots } from '../services/files/pathSecurity';
+import { buildCodexPermissionConfig } from './permissionProfile';
 
 export interface CodexChatSessionConfig {
   context: PlanContext;
@@ -32,6 +34,8 @@ export interface CodexChatSessionConfig {
   onReady?: (threadId: string) => void;
   /** Injectable KPM MCP registration factory. The streaming shell supplies this so provider setup stays outside the session body. */
   registerMcpSession?: () => Promise<CodexMcpRegistration>;
+  requestWriteConsent?: () => Promise<{ allowed: boolean }>;
+  hasWriteAccess?: () => boolean;
 }
 
 interface QueuedTurn {
@@ -64,7 +68,7 @@ export function buildCodexSystemPrompt(context: PlanContext): string {
   const isFocus = Boolean(context.focusDocument);
   const operatingRules = isFocus
     ? `# Operating Rules
-- This is a read-only chat context. Do not modify repo or project files from chat.
+- This session is focused on one document. Direct file, shell, and git writes need conversation-wide consent; project files change through KPM's proposal tools.
 - Jira, Linear, Confluence, and GitHub exports must not leak KPM-local fields or @plan internals.
 - Plan data lives in KPM SQLite, not in connected repos.
 - If the user asks to change the plan, use KPM plan tools so changes flow through KPM's proposal and review path.
@@ -180,8 +184,12 @@ function codexEnvWithMcpToken(token: string): Record<string, string> {
   return env;
 }
 
-function codexConfigWithKpmMcp(url: string): NonNullable<CodexOptions['config']> {
+function codexConfigWithKpmMcp(
+  url: string,
+  writesEnabled: boolean,
+): NonNullable<CodexOptions['config']> {
   return {
+    ...buildCodexPermissionConfig(writesEnabled, getDeniedPathRoots()),
     mcp_servers: {
       kpm: {
         url,
@@ -194,6 +202,16 @@ function codexConfigWithKpmMcp(url: string): NonNullable<CodexOptions['config']>
   };
 }
 
+/**
+ * Whether a failed command looks like the sandbox refused it rather than the
+ * command itself failing. Codex reports both as `status: 'failed'`, and asking
+ * for write access every time a test run exits non-zero would be noise.
+ */
+function looksLikeSandboxDenial(output: string | undefined): boolean {
+  if (!output) return false;
+  return /read-only file system|operation not permitted|permission denied|sandbox|seatbelt|landlock/i.test(output);
+}
+
 export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   private readonly config: CodexChatSessionConfig;
   private readonly systemPrompt: string;
@@ -202,6 +220,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   private mcpRegistration: CodexMcpRegistration | null = null;
   private abortController: AbortController | null = null;
   private threadId: string | null;
+  private threadWritesEnabled = false;
 
   constructor(config: CodexChatSessionConfig) {
     super(config.onMessage, config.onSessionEnd);
@@ -225,11 +244,8 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
     })))();
 
     try {
-      this.codex = new Codex({
-        codexPathOverride: findCodexBinaryPath(),
-        env: codexEnvWithMcpToken(this.mcpRegistration.token),
-        config: codexConfigWithKpmMcp(this.mcpRegistration.url),
-      });
+      this.threadWritesEnabled = this.desiredWriteAccess();
+      this.codex = this.createCodexClient();
       this.thread = this.threadId
         ? this.codex.resumeThread(this.threadId, this.buildThreadOptions())
         : this.codex.startThread(this.buildThreadOptions());
@@ -272,6 +288,21 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
     this.disposeMcpRegistration();
   }
 
+  private desiredWriteAccess(): boolean {
+    return this.config.hasWriteAccess?.() ?? false;
+  }
+
+  private createCodexClient(): Codex {
+    if (!this.mcpRegistration) {
+      throw new Error('Codex MCP registration is not initialized');
+    }
+    return new Codex({
+      codexPathOverride: findCodexBinaryPath(),
+      env: codexEnvWithMcpToken(this.mcpRegistration.token),
+      config: codexConfigWithKpmMcp(this.mcpRegistration.url, this.threadWritesEnabled),
+    });
+  }
+
   private buildThreadOptions() {
     const additionalDirectories = this.config.context.repos
       .map(resolveEffectiveRepoPath)
@@ -284,11 +315,17 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       workingDirectory: this.config.context.project.folder_path,
       additionalDirectories,
       skipGitRepoCheck: true,
-      sandboxMode: 'read-only' as const,
       approvalPolicy: 'never' as const,
-      networkAccessEnabled: false,
       webSearchMode: 'disabled' as const,
     };
+  }
+
+  private applyPendingWriteAccess(): void {
+    const desired = this.desiredWriteAccess();
+    if (desired === this.threadWritesEnabled || !this.threadId) return;
+    this.threadWritesEnabled = desired;
+    this.codex = this.createCodexClient();
+    this.thread = this.codex.resumeThread(this.threadId, this.buildThreadOptions());
   }
 
   protected async executeTurn(turn: QueuedTurn): Promise<void> {
@@ -297,6 +334,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       const input = turn.prependSystemPrompt
         ? buildInitialPrompt(this.systemPrompt, turn.input)
         : turn.input;
+      this.applyPendingWriteAccess();
       if (!this.thread) {
         throw new Error('Codex thread is not initialized');
       }
@@ -383,6 +421,16 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       return;
     }
 
+    if (item.type === 'file_change' && item.status === 'failed') {
+      this.offerWriteUnlock();
+      return;
+    }
+
+    if (item.type === 'command_execution' && item.status === 'failed' && looksLikeSandboxDenial(item.aggregated_output)) {
+      this.offerWriteUnlock();
+      return;
+    }
+
     if (item.type === 'error') {
       this.config.onMessage({
         type: 'assistant',
@@ -390,6 +438,17 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
         message: { content: [{ type: 'text', text: item.message }] },
       });
     }
+  }
+
+  /**
+   * Ask for write access after a blocked write. The turn cannot pause, so any
+   * grant takes effect on the next turn.
+   */
+  private offerWriteUnlock(): void {
+    if (this.threadWritesEnabled) return;
+    void this.config.requestWriteConsent?.().catch((error) => {
+      console.error('[CodexChatSession] Write consent request failed:', error);
+    });
   }
 
   private disposeMcpRegistration(): void {

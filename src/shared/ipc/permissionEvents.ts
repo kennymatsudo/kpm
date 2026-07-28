@@ -11,8 +11,14 @@
 import { payloadOf, type EventDefinition } from './appEvents';
 import type { PermissionRequest } from '../types';
 
+export interface WriteGrantChanged {
+  chatSessionId: string;
+  granted: boolean;
+}
+
 export const permissionEvents = {
   request: { channel: 'permission:request', payload: payloadOf<PermissionRequest>() },
+  writeGrantChanged: { channel: 'permission:write-grant-changed', payload: payloadOf<WriteGrantChanged>() },
 } satisfies Record<string, EventDefinition>;
 
 export type PermissionEvents = typeof permissionEvents;

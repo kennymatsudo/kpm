@@ -10,40 +10,76 @@ import type { PermissionRequest, PermissionAction } from '../../shared/types';
 import { respondToPermissionRequest } from '../services/permissionService';
 
 interface PermissionStore {
-  /** Current pending permission request (only one at a time) */
-  pendingRequest: PermissionRequest | null;
+  pendingRequests: Map<string, PermissionRequest[]>;
+  unscopedPendingRequests: PermissionRequest[];
+  writeGrants: Map<string, boolean>;
 
-  /** Set pending request (from IPC) */
-  setPendingRequest: (request: PermissionRequest | null) => void;
+  enqueueRequest: (request: PermissionRequest) => void;
+  setWriteGrant: (chatSessionId: string, granted: boolean) => void;
 
-  /** Respond to pending request */
-  respond: (action: PermissionAction) => void;
+  respond: (request: PermissionRequest, action: PermissionAction) => void;
 }
 
-export const usePermissionStore = create<PermissionStore>((set, get) => ({
-  pendingRequest: null,
+export const usePermissionStore = create<PermissionStore>((set) => ({
+  pendingRequests: new Map(),
+  unscopedPendingRequests: [],
+  writeGrants: new Map(),
 
-  setPendingRequest: (request) => {
-    set({ pendingRequest: request });
-  },
-
-  respond: (action) => {
-    const { pendingRequest } = get();
-    if (!pendingRequest) {
-      console.warn('[PermissionStore] No pending request to respond to');
+  enqueueRequest: (request) => {
+    const chatSessionId = request.chatSessionId;
+    if (!chatSessionId) {
+      set((state) => ({
+        unscopedPendingRequests: [...state.unscopedPendingRequests, request],
+      }));
       return;
     }
 
-    // Send response to main process
-    respondToPermissionRequest(pendingRequest.requestId, pendingRequest.projectId, action)
+    set((state) => {
+      const pendingRequests = new Map(state.pendingRequests);
+      const queue = pendingRequests.get(chatSessionId) ?? [];
+      pendingRequests.set(chatSessionId, [...queue, request]);
+      return { pendingRequests };
+    });
+  },
+  setWriteGrant: (chatSessionId, granted) => {
+    set((state) => {
+      const writeGrants = new Map(state.writeGrants);
+      writeGrants.set(chatSessionId, granted);
+      return { writeGrants };
+    });
+  },
+
+  respond: (request, action) => {
+    const removeRequest = (): void => {
+      set((state) => {
+        if (!request.chatSessionId) {
+          return {
+            unscopedPendingRequests: state.unscopedPendingRequests.filter(
+              (pending) => pending.requestId !== request.requestId
+            ),
+          };
+        }
+
+        const pendingRequests = new Map(state.pendingRequests);
+        const remaining = (pendingRequests.get(request.chatSessionId) ?? []).filter(
+          (pending) => pending.requestId !== request.requestId
+        );
+        if (remaining.length === 0) {
+          pendingRequests.delete(request.chatSessionId);
+        } else {
+          pendingRequests.set(request.chatSessionId, remaining);
+        }
+        return { pendingRequests };
+      });
+    };
+
+    respondToPermissionRequest(request.requestId, request.projectId, action)
       .then(() => {
-        // Clear pending request
-        set({ pendingRequest: null });
+        removeRequest();
       })
       .catch((error: unknown) => {
         console.error('[PermissionStore] Failed to send response:', error);
-        // Clear pending request anyway
-        set({ pendingRequest: null });
+        removeRequest();
       });
   },
 }));

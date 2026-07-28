@@ -9,6 +9,7 @@ import {
   resolvePiSessionManager,
   type CreatePiSessionFn,
   type PiModelRuntimeHandle,
+  type PiWriteConsentFn,
   type PiSessionHandle,
 } from './PiChatSession';
 import type { PlanContext } from '../chat/prompts';
@@ -463,22 +464,91 @@ describe('resolvePiSessionManager', () => {
 });
 
 describe('buildToolCallGate', () => {
-  it('blocks tool names outside the allowlist (write, bash)', () => {
-    const gate = buildToolCallGate(['read', 'grep', 'find', 'ls', 'modify_plan']);
+  const readOnly = ['read', 'grep', 'find', 'ls', 'modify_plan'];
+  const withWrites = [...readOnly, 'write', 'edit', 'bash'];
+  const allow: PiWriteConsentFn = async () => ({ allowed: true });
+
+  it('blocks tool names outside the allowlist', async () => {
+    const gate = buildToolCallGate(readOnly);
 
     for (const toolName of ['write', 'bash', 'edit']) {
-      const result = gate(toolName);
+      const result = await gate({ toolName, input: {} });
       expect(result?.block).toBe(true);
       expect(typeof result?.reason).toBe('string');
     }
   });
 
-  it('allows read-only builtins and KPM tools in the allowlist', () => {
-    const gate = buildToolCallGate(['read', 'grep', 'find', 'ls', 'modify_plan']);
+  it('allows read-only builtins and KPM tools in the allowlist', async () => {
+    const gate = buildToolCallGate(readOnly);
 
-    expect(gate('read')).toBeUndefined();
-    expect(gate('grep')).toBeUndefined();
-    expect(gate('modify_plan')).toBeUndefined();
+    await expect(gate({ toolName: 'read', input: {} })).resolves.toBeUndefined();
+    await expect(gate({ toolName: 'grep', input: {} })).resolves.toBeUndefined();
+    await expect(gate({ toolName: 'modify_plan', input: {} })).resolves.toBeUndefined();
+  });
+
+  it('blocks an allowlisted write tool when no consent function is wired', async () => {
+    const gate = buildToolCallGate(withWrites);
+
+    const result = await gate({ toolName: 'write', input: { path: '/repos/my-app/a.ts' } });
+
+    expect(result?.block).toBe(true);
+  });
+
+  it('routes write, edit, and bash through conversation consent', async () => {
+    const requestConsent = vi.fn<PiWriteConsentFn>(allow);
+    const gate = buildToolCallGate(withWrites, requestConsent);
+
+    await gate({ toolName: 'write', input: { path: '/repos/my-app/a.ts' } });
+    await gate({ toolName: 'edit', input: { path: '/repos/my-app/b.ts' } });
+    await gate({ toolName: 'bash', input: { command: 'rm -rf build' } });
+
+    expect(requestConsent).toHaveBeenCalledTimes(3);
+    for (const call of requestConsent.mock.calls) {
+      expect(call).toEqual([]);
+    }
+  });
+
+  it('does not ask consent for read-only builtins', async () => {
+    const requestConsent = vi.fn<PiWriteConsentFn>(allow);
+    const gate = buildToolCallGate(withWrites, requestConsent);
+
+    await gate({ toolName: 'read', input: { path: '/repos/my-app/a.ts' } });
+    await gate({ toolName: 'grep', input: { pattern: 'TODO' } });
+
+    expect(requestConsent).not.toHaveBeenCalled();
+  });
+
+  it('blocks with the consent layer reason when the user declines', async () => {
+    const gate = buildToolCallGate(withWrites, async () => ({ allowed: false, reason: 'user said no' }));
+
+    const result = await gate({ toolName: 'write', input: { path: '/repos/my-app/a.ts' } });
+
+    expect(result).toEqual({ block: true, reason: 'user said no' });
+  });
+
+  it('allows the write once consent is granted', async () => {
+    const gate = buildToolCallGate(withWrites, allow);
+
+    await expect(gate({ toolName: 'write', input: { path: '/repos/my-app/a.ts' } })).resolves.toBeUndefined();
+  });
+
+  it('blocks protected paths before write consent and marks recursive tools as traversal', async () => {
+    const requestConsent = vi.fn<PiWriteConsentFn>(allow);
+    const pathIsProtected = vi.fn(async (targetPath: string) => (
+      targetPath === '.' || targetPath.includes('credentials')
+    ));
+    const gate = buildToolCallGate(withWrites, requestConsent, pathIsProtected);
+
+    await expect(
+      gate({ toolName: 'write', input: { path: '/protected/credentials/token' } }),
+    ).resolves.toMatchObject({ block: true });
+    await expect(
+      gate({ toolName: 'find', input: {} }),
+    ).resolves.toMatchObject({ block: true });
+
+    expect(requestConsent).not.toHaveBeenCalled();
+    expect(pathIsProtected).toHaveBeenNthCalledWith(1, '/protected/credentials/token', false);
+    expect(pathIsProtected).toHaveBeenNthCalledWith(2, '.', true);
   });
 });
 

@@ -246,7 +246,7 @@ export function Chat({ currentView }: ChatProps) {
           </div>
         </div>
       )}
-      <PermissionPrompt />
+      <PermissionPrompt chatSessionId={viewedSessionId} />
       <ChatInput
         onSend={handleSend}
         onCancel={cancel}
