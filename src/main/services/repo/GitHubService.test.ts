@@ -203,7 +203,7 @@ describe('GitHubService PR generation', () => {
     );
 
     const systemPrompt = runGenerationMock.mock.calls[0][0].systemPrompt as string;
-    expect(systemPrompt).toContain('MUST use the repository');
+    expect(systemPrompt).toContain('Use it as the scaffold');
     expect(systemPrompt).toContain('## PR Template');
     expect(systemPrompt).toContain('## Manual Test Plan');
     // The overview must lead the body even when the template has no Description section.

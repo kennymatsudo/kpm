@@ -639,24 +639,16 @@ ${input.commitLog || 'No commit log provided.'}`;
         }
 
         const descriptionGuidance = effectivePrTemplate
-          ? `Your description MUST use the repository's PR template below as its skeleton. Use the template's section headings, in the template's order, and no others — with one exception: a brief lead overview paragraph (see below) may precede the first template heading.
-- Begin the body with a 2-4 sentence overview paragraph that explains, in plain language, what changed and why it matters. Place it at the very top, BEFORE the first template heading, with no heading of its own. This lead paragraph is REQUIRED and is not an "invented section". If feature context is provided, name the larger user-facing feature or workflow and this PR's role in it here.
-- Do NOT repeat this overview inside Risk Impact, Test Plan, or any other section. Those sections answer their own specific prompts; the lead paragraph is the only place for the general "what changed and why" summary.
+          ? `The repository has a PR template. Use it as the scaffold: its section headings, in its order, and no others — with one exception, the lead paragraph below. The repository's requirements take precedence over editorial preference, so preserve required headings, order, checklists, metadata, automation markers, and issue-closing keywords.
+- Begin the body with a required 2-3 sentence overview paragraph: why, then outcome. Place it at the very top, BEFORE the first template heading, with no heading of its own. This is not an "invented section".
+- Do NOT repeat that overview inside Risk Impact, Test Plan, or any other section. Those sections answer their own specific prompts.
+- If the template DOES define a Description (or Summary/Overview) section, put the overview there instead of as a lead paragraph, and follow it with a short reviewer-focus sentence or a few bullets naming what reviewers should inspect. Add a one-line out-of-scope note only where it prevents reviewer confusion.
 - Do NOT invent any other sections the template does not contain (e.g. no "Description", "Acceptance Criteria", "Out of Scope", "Dependencies", "Code References", "Commits", or "Changes" headings unless the template itself defines them).
 - Do NOT omit sections the template contains.
-- Within each section, keep the answer concise. Aim for a description that fits on one screen.
-- If the template DOES define a Description (or Summary/Overview) section, put the overview there instead of as a lead paragraph, and use this shape unless the template explicitly demands another one:
-  1. A short context paragraph (2-4 sentences) explaining the larger user-facing feature or workflow being built, this PR's role in that feature, and the ownership boundary.
-  2. A short reviewer-focus sentence or 3-5 bullets naming what reviewers should inspect.
-  3. At most 3-5 "what changed" bullets, grouped by behavior or risk area rather than by files/classes/endpoints.
-  4. A short out-of-scope sentence only when it prevents reviewer confusion.
-- Prefer reviewer-relevant concepts over implementation inventory. Avoid "What's added" sections that enumerate every endpoint, DTO, field, helper, test, index, or file. Mention a concrete API, table, index, or class only when it changes the review focus, rollout risk, or system behavior.
-- Translate domain jargon into ordinary engineering language where possible. Keep necessary service names, table names, and API names, but explain what role they play.
-- Call out the highest-signal review areas: behavior changes, ownership boundaries, data model or migration implications, authorization/security decisions, idempotency/concurrency behavior, rollout/compatibility risk, and test coverage.
-- If feature context is provided, the opening paragraph must include the larger user-facing feature or workflow when the context supports it. This is reviewer orientation, not roadmap content. Also explain this PR's role in that feature and the boundary around this PR. Do not mention future tickets, phases, or dependencies unless they directly explain the current PR's boundary.
-- Never state non-implemented follow-up work as current behavior. If the diff does not implement cleanup, expiration, routing, rendering, or another process, phrase it as outside this PR or omit it.
+- Fill each required section with its shortest complete answer, never more. Aim for a body that fits on one screen.
 - If a section asks a question that does not apply, answer "N/A" on one line. Do not explain why unless the absence is itself surprising.
 - If a section expects a value after a colon (e.g. "Tested on ondemand (if applicable): "), put the value or "N/A" directly after the colon. One line, no elaboration.
+- Check a checkbox only where the evidence supports it. Leave permitted optional sections empty or absent.
 
 HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and examples — read them to understand what each section expects, then write plain markdown in their place. Your output must not contain any \`<!-- ... -->\`, stray \`-->\`, or stray \`--->\`.
 
