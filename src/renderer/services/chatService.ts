@@ -11,7 +11,8 @@ import type {
   FileUpdateEventData,
   FileMoveEventData,
   FileDeleteEventData,
-  SessionEventData,
+  TurnDoneEventData,
+  SessionLifecycleEventData,
   QueuedEventData,
   QueueClearedEventData,
   ErrorEventData,
@@ -30,7 +31,8 @@ export type {
   FileUpdateEventData,
   FileMoveEventData,
   FileDeleteEventData,
-  SessionEventData,
+  TurnDoneEventData,
+  SessionLifecycleEventData,
   QueuedEventData,
   QueueClearedEventData,
   ErrorEventData,
@@ -137,15 +139,15 @@ export function subscribeToChatEvents(handlers: {
   onFileUpdate?: (data: FileUpdateEventData) => void;
   onFileMove?: (data: FileMoveEventData) => void;
   onFileDelete?: (data: FileDeleteEventData) => void;
-  onDone?: (data: SessionEventData) => void;
+  onDone?: (data: TurnDoneEventData) => void;
   onError?: (data: ErrorEventData) => void;
   onActivity?: (data: ActivityEventData) => void;
   onThinking?: (data: ThinkingEventData) => void;
-  onSessionConnecting?: (data: SessionEventData) => void;
+  onSessionConnecting?: (data: SessionLifecycleEventData) => void;
   onSessionReady?: (data: SessionReadyEventData) => void;
   onSessionTitle?: (data: SessionTitleEventData) => void;
   onSessionError?: (data: ErrorEventData) => void;
-  onSessionDeactivated?: (data: SessionEventData) => void;
+  onSessionDeactivated?: (data: SessionLifecycleEventData) => void;
   onSuggestions?: (data: SuggestionsEventData) => void;
   onSlashCommands?: (data: SlashCommandsEventData) => void;
   onMcpStatus?: (data: McpStatusEventData) => void;

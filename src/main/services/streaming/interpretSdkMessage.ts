@@ -47,9 +47,6 @@ export interface SdkMessageSessionView {
   hasStreamedResponseText: boolean;
   /** True while an interrupt-and-send orchestration is tearing down the old turn. */
   interruptInProgress: boolean;
-  pendingFollowUpClientMessageIds: string[];
-  acceptedFollowUpClientMessageIds: string[];
-  promotedFollowUpClientMessageIds: Set<string>;
   resolvedModel?: string;
   turnErrorSurfaced?: boolean;
 }
@@ -59,7 +56,7 @@ export type InterpretedChatEvent =
   | { kind: 'activity'; activity: Activity }
   | { kind: 'thinking'; text: string }
   | { kind: 'error'; error: string }
-  | { kind: 'queue-cleared'; clientMessageId: string; reason: 'already_sent' }
+  | { kind: 'follow-up-accepted' }
   | { kind: 'suggestions'; suggestions: string[] }
   | {
       kind: 'tool-call-log';
@@ -77,6 +74,8 @@ export interface InterpretSdkMessageOptions {
   /** Config `claude.includePartialMessages`: response text is revealed from stream deltas, complete blocks only accumulate. */
   streamPartialsEnabled: boolean;
   now: number;
+  /** Follow-ups still waiting in the queue when this message arrived. Read-only: acceptance is the caller's job. */
+  queuedFollowUpCount: number;
 }
 
 export function interpretSdkMessage(
@@ -284,16 +283,11 @@ export function interpretSdkMessage(
   // When a plain user turn arrives (no tool_use_result), it means the SDK
   // has dequeued the message and started processing it. Use this as the
   // authoritative "message left the queue" signal to clear the queued badge
-  // in the renderer immediately — earlier than waiting for chat:done.
-  if (sdkMsg.type === 'user' && !sdkMsg.tool_use_result && view.pendingFollowUpClientMessageIds.length > 0) {
-    const acceptedClientMessageId = view.pendingFollowUpClientMessageIds.shift();
-    if (acceptedClientMessageId) {
-      const wasPromoted = view.promotedFollowUpClientMessageIds.delete(acceptedClientMessageId);
-      if (!wasPromoted) {
-        view.acceptedFollowUpClientMessageIds.push(acceptedClientMessageId);
-      }
-      events.push({ kind: 'queue-cleared', clientMessageId: acceptedClientMessageId, reason: 'already_sent' });
-    }
+  // in the renderer immediately — earlier than waiting for chat:done. The
+  // caller owns dequeuing the actual id (accept-vs-promote bookkeeping lives
+  // on the queue, not here) — this only decides whether one happened.
+  if (sdkMsg.type === 'user' && !sdkMsg.tool_use_result && options.queuedFollowUpCount > 0) {
+    events.push({ kind: 'follow-up-accepted' });
   }
 
   // Handle tool_use_result on user messages — attach diff stats to the

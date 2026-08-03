@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { BrowserWindow } from 'electron';
 import { finalizeTurnResult } from './StreamingSessionService';
+import { createFollowUpQueue, type FollowUpQueue } from './followUpQueue';
+import { createTurnLifecycle } from './turnLifecycle';
 
 /**
  * finalizeTurnResult was extracted out of the 700+ line SDK-message handler
@@ -10,6 +12,12 @@ import { finalizeTurnResult } from './StreamingSessionService';
  */
 
 type ManagedSessionArg = Parameters<typeof finalizeTurnResult>[3];
+
+function makeFollowUps(queuedClientMessageIds: string[] = []): FollowUpQueue {
+  const queue = createFollowUpQueue();
+  for (const clientMessageId of queuedClientMessageIds) queue.enqueue(clientMessageId);
+  return queue;
+}
 
 function makeManaged(overrides: Partial<ManagedSessionArg> = {}): ManagedSessionArg {
   return {
@@ -30,12 +38,10 @@ function makeManaged(overrides: Partial<ManagedSessionArg> = {}): ManagedSession
     forceApprovalReview: false,
     accumulatedResponse: 'Here is the answer.',
     hasStreamedResponseText: false,
-    lastTurnFinalized: false,
+    turn: createTurnLifecycle(),
     suppressLifecycleEventsOnEnd: false,
     interruptInProgress: false,
-    pendingFollowUpClientMessageIds: [],
-    acceptedFollowUpClientMessageIds: [],
-    promotedFollowUpClientMessageIds: new Set(),
+    followUps: makeFollowUps(),
     unsubscribeToolProposals: () => {},
     ...overrides,
   };
@@ -79,7 +85,8 @@ describe('finalizeTurnResult', () => {
       'project-1', 'assistant', 'Here is the answer.', 'session-1', undefined, 'claude', 'sonnet',
     );
     expect(managed.accumulatedResponse).toBe('');
-    expect(managed.lastTurnFinalized).toBe(true);
+    expect(managed.turn.settled).toBe(true);
+    expect(managed.turn.settledCause).toBe('result');
     expect(managed.turnErrorSurfaced).toBe(false);
     expect(managed.toolUseActivities.size).toBe(0);
     expect(deps.toolCallLogger!.finalizeTurn).toHaveBeenCalledWith('project-1', 'session-1');
@@ -106,7 +113,7 @@ describe('finalizeTurnResult', () => {
   it('stays processing and skips chat:session-ready when a follow-up is already queued', () => {
     const managed = makeManaged({
       session: { pendingQueuedCount: () => 1 } as unknown as ManagedSessionArg['session'],
-      pendingFollowUpClientMessageIds: ['client-msg-1'],
+      followUps: makeFollowUps(['client-msg-1']),
     });
     const deps = makeDeps();
     const { sent, window } = fakeWindow();
@@ -116,7 +123,8 @@ describe('finalizeTurnResult', () => {
     expect(sent.some((e) => e.channel === 'chat:session-ready')).toBe(false);
     const doneEvent = sent.find((e) => e.channel === 'chat:done');
     expect((doneEvent!.payload as { hasQueuedFollowUp: boolean }).hasQueuedFollowUp).toBe(true);
-    expect(managed.lastTurnFinalized).toBe(false);
+    expect(managed.turn.settled).toBe(false);
+    expect(managed.turn.inFlight).toBe(true);
   });
 
   describe('context window', () => {
@@ -254,7 +262,7 @@ describe('finalizeTurnResult', () => {
     it('preserves turnStartedAt for an already-queued next turn instead of resetting it', () => {
       const managed = makeManaged({
         session: { pendingQueuedCount: () => 1 } as unknown as ManagedSessionArg['session'],
-        pendingFollowUpClientMessageIds: ['client-msg-1'],
+        followUps: makeFollowUps(['client-msg-1']),
         turnStartedAt: 1_000,
         firstContentAt: 1_500,
       });

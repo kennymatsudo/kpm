@@ -41,6 +41,8 @@ import { getConfig } from '../../config';
 import { clientManager } from '../../claude/clientManager';
 import { isMaxTokensReached, isMaxTurnsReached, getTerminalReason } from '../../claude/sdkTypeGuards';
 import { interpretSdkMessage, type SegmentState } from './interpretSdkMessage';
+import { createFollowUpQueue, type FollowUpQueue } from './followUpQueue';
+import { createTurnLifecycle, type TurnLifecycle } from './turnLifecycle';
 import { extractFilePaths } from '../toollog/extractFilePaths';
 import { DEFAULT_CONTEXT_FILENAME, CONTEXT_FILE_PENDING_CACHE_KEY } from '../../../shared/contextFile';
 import { promptUser } from '../core/PermissionPromptService';
@@ -49,7 +51,7 @@ import { selectVisibleSlashCommands } from '../core/SlashCommandService';
 import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import { randomUUID } from 'crypto';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
-import { chatEvents } from '../../../shared/ipc/chatEvents';
+import { chatEvents, type TurnDoneEventData } from '../../../shared/ipc/chatEvents';
 
 /**
  * Internal session-lifecycle race trace. Silent unless `claude.debug` is on —
@@ -165,11 +167,15 @@ function sendChatError(
   emitAppEvent(mainWindow?.webContents, chatEvents.error, { projectId, chatSessionId, error });
 }
 
-/** Roll back a session's optimistic 'processing' transition back to 'ready'. */
-function resetToReady(managed: Pick<ManagedSession, 'state' | 'processingStartTime' | 'lastSdkActivity'>): void {
+/**
+ * Roll back a session's optimistic 'processing' transition back to 'ready'.
+ * Abandons the turn's liveness/timing (it never settled) without touching
+ * settlement itself — handleSessionEnd's suppression reads settlement, and
+ * this path must not change which sessions emit chat:session-deactivated.
+ */
+function resetToReady(managed: Pick<ManagedSession, 'state' | 'turn'>): void {
   managed.state = 'ready';
-  managed.processingStartTime = undefined;
-  managed.lastSdkActivity = undefined;
+  managed.turn.abandon();
 }
 
 function sendQueueCleared(
@@ -180,6 +186,20 @@ function sendQueueCleared(
   reason: 'cancelled' | 'already_sent' | 'session_disconnected',
 ): void {
   emitAppEvent(mainWindow?.webContents, chatEvents.queueCleared, { projectId, chatSessionId, clientMessageId, reason });
+}
+
+/**
+ * The only place that emits `chatEvents.done`. `outcome` carries the
+ * turn-result fields (model, follow-up promotion, token counts, context
+ * window); omitted for the abandonment paths, which send just the two ids.
+ */
+function sendTurnDone(
+  mainWindow: BrowserWindow | null,
+  projectId: string,
+  chatSessionId: string | undefined,
+  outcome?: Omit<TurnDoneEventData, 'projectId' | 'chatSessionId'>,
+): void {
+  emitAppEvent(mainWindow?.webContents, chatEvents.done, { projectId, chatSessionId, ...outcome });
 }
 
 /** Guarded sendChatActivity: no-ops while an interrupted turn is being torn down. */
@@ -256,8 +276,6 @@ interface ManagedSession {
   effort?: ChatChoiceEffort | null;
   lastActivity: number;
   sessionId?: string; // SDK session ID for resume
-  processingStartTime?: number; // Timestamp when processing started (for timeout detection)
-  lastSdkActivity?: number; // Timestamp of most recent SDK message (for idle-while-processing detection)
   mcpHealthStatus: 'healthy' | 'degraded' | 'recovering'; // KPM MCP server health
   mcpRecoveryAttempts: number; // Consecutive failed reconnect attempts
   /** Raw first user message before focused-resource context injection. */
@@ -277,7 +295,8 @@ interface ManagedSession {
   forceApprovalReview: boolean;
   accumulatedResponse: string; // Accumulate assistant response for persistence
   hasStreamedResponseText: boolean; // True after this turn emitted text deltas, so complete blocks shouldn't re-render
-  lastTurnFinalized: boolean; // True after a turn has emitted chat:done
+  /** Single owner of "has this turn already ended" plus its timing (start/last-activity) for hang detection. */
+  turn: TurnLifecycle;
   suppressLifecycleEventsOnEnd: boolean; // Suppress renderer lifecycle events when session ends
   /**
    * Resolver for interrupt-and-send orchestration: fires when the next
@@ -294,12 +313,8 @@ interface ManagedSession {
    * same session and don't interrupt anything.
    */
   interruptInProgress: boolean;
-  /** Client ids for follow-ups sent while a turn is processing and not yet echoed by the SDK. */
-  pendingFollowUpClientMessageIds: string[];
-  /** Client ids for follow-ups accepted into the current turn. Used to anchor the assistant bubble before interjections. */
-  acceptedFollowUpClientMessageIds: string[];
-  /** Follow-ups promoted to a clean next turn; their SDK echo should not be treated as a live interjection. */
-  promotedFollowUpClientMessageIds: Set<string>;
+  /** Client ids for follow-ups sent while a turn is processing, and their acceptance/promotion state. */
+  followUps: FollowUpQueue;
   /** Actual model ID returned by the SDK (e.g. "claude-opus-4-8"). Set from the first assistant message each turn. */
   resolvedModel?: string;
   /**
@@ -570,10 +585,10 @@ export function markSessionReady(
   },
 ): void {
   managed.state = 'processing';
-  managed.processingStartTime = Date.now();
-  managed.lastSdkActivity = Date.now();
+  // The initial user message is already in-flight, so this session's first
+  // turn begins here rather than at a later explicit send.
+  managed.turn.begin(Date.now());
   managed.sessionId = params.sessionId;
-  managed.lastTurnFinalized = false;
   managed.resolvedModel = undefined;
   if (params.chatSessionId && params.persistHistory) {
     CHAT_PROVIDER_CONFIG[params.provider].persistSessionId(
@@ -645,33 +660,27 @@ export function finalizeTurnResult(
   // steering input for THIS turn and answered in place; no second `result`
   // ever arrives. Treat a follow-up as pending only when it is still sitting
   // unconsumed in the SDK input queue.
-  const hasQueuedFollowUp = managed.session.pendingQueuedCount() > 0;
-  const nextQueuedClientMessageId = hasQueuedFollowUp ? managed.pendingFollowUpClientMessageIds[0] : undefined;
+  const settlement = managed.followUps.settleTurn(managed.session.pendingQueuedCount());
+  const hasQueuedFollowUp = settlement.hasQueuedFollowUp;
+  const nextQueuedClientMessageId = settlement.nextQueuedClientMessageId;
   // The first follow-up the SDK consumed as steering input for THIS turn.
   // Surfaced as `consumedQueuedClientMessageId` so the renderer drops the
   // message's optimistic "queued" badge. It is deliberately NOT used to
   // anchor the assistant bubble: this turn answered these interjections, so
   // the finalized bubble must land AFTER them in the transcript, never above
   // the very messages it responded to (see `beforeClientMessageId` below).
-  const firstLiveFollowUpClientMessageId =
-    managed.acceptedFollowUpClientMessageIds[0]
-    ?? (!hasQueuedFollowUp ? managed.pendingFollowUpClientMessageIds[0] : undefined);
+  const firstLiveFollowUpClientMessageId = settlement.firstLiveFollowUpClientMessageId;
 
-  if (!hasQueuedFollowUp && managed.pendingFollowUpClientMessageIds.length > 0) {
-    for (const clientMessageId of managed.pendingFollowUpClientMessageIds) {
-      sendQueueCleared(mainWindow, projectId, chatSessionId, clientMessageId, 'already_sent');
-      managed.acceptedFollowUpClientMessageIds.push(clientMessageId);
-    }
-    managed.pendingFollowUpClientMessageIds = [];
+  for (const clientMessageId of settlement.steeredClientMessageIds) {
+    sendQueueCleared(mainWindow, projectId, chatSessionId, clientMessageId, 'already_sent');
   }
   // A queued follow-up means the SDK is about to pull the next message
   // and start another turn. Stay in 'processing' so concurrent sends
   // still route to the queue path (rather than racing into the brief
-  // 'ready' window). Reset turn-timing fields for the new turn.
+  // 'ready' window). The new turn's lifecycle begins further down, once
+  // this one has been settled below.
   if (hasQueuedFollowUp) {
     if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
-    managed.processingStartTime = Date.now();
-    managed.lastSdkActivity = Date.now();
   } else {
     resetToReady(managed);
     // The SDK consumed any follow-up into this turn (or there was none).
@@ -760,7 +769,7 @@ export function finalizeTurnResult(
   };
   managed.toolUseActivities.clear();
 
-  managed.lastTurnFinalized = true;
+  const settled = managed.turn.settle('result');
   if (!hasQueuedFollowUp) {
     emitAppEvent(mainWindow?.webContents, chatEvents.sessionReady, { projectId, chatSessionId });
   }
@@ -777,48 +786,43 @@ export function finalizeTurnResult(
       : null;
   const ctxSource = lastIter ?? sdkMsg.usage;
 
-  emitAppEvent(mainWindow?.webContents, chatEvents.done, {
-    projectId,
-    chatSessionId,
-    model: managed.resolvedModel ?? getManagedDisplayModel(managed),
-    hasQueuedFollowUp,
-    queuedClientMessageId: nextQueuedClientMessageId,
-    consumedQueuedClientMessageId: firstLiveFollowUpClientMessageId,
-    // Anchor the finalized bubble before the still-queued follow-up that
-    // becomes the NEXT turn (if any) — never before an interjection this
-    // turn already consumed. Undefined when nothing is deferred, so the
-    // bubble simply appends after the consumed follow-ups (chronological).
-    beforeClientMessageId: nextQueuedClientMessageId,
-    inputTokens: ctxSource?.input_tokens ?? undefined,
-    outputTokens: ctxSource?.output_tokens ?? undefined,
-    cacheReadTokens: ctxSource?.cache_read_input_tokens ?? undefined,
-    cacheCreationTokens: ctxSource?.cache_creation_input_tokens ?? undefined,
-    // Occupancy comes from the iteration token counts above; the capacity to
-    // divide it by lives only on modelUsage. Undefined keeps the renderer on
-    // its model table.
-    contextWindow: resolveTurnContextWindow(sdkMsg.modelUsage, managed.resolvedModel),
-  });
+  // settled is always true here (this is the turn's own settlement) — the
+  // guard is defensive, matching the other three settlement paths.
+  if (settled) {
+    sendTurnDone(mainWindow, projectId, chatSessionId, {
+      model: managed.resolvedModel ?? getManagedDisplayModel(managed),
+      hasQueuedFollowUp,
+      queuedClientMessageId: nextQueuedClientMessageId,
+      consumedQueuedClientMessageId: firstLiveFollowUpClientMessageId,
+      // Anchor the finalized bubble before the still-queued follow-up that
+      // becomes the NEXT turn (if any) — never before an interjection this
+      // turn already consumed. Undefined when nothing is deferred, so the
+      // bubble simply appends after the consumed follow-ups (chronological).
+      beforeClientMessageId: nextQueuedClientMessageId,
+      inputTokens: ctxSource?.input_tokens ?? undefined,
+      outputTokens: ctxSource?.output_tokens ?? undefined,
+      cacheReadTokens: ctxSource?.cache_read_input_tokens ?? undefined,
+      cacheCreationTokens: ctxSource?.cache_creation_input_tokens ?? undefined,
+      // Occupancy comes from the iteration token counts above; the capacity to
+      // divide it by lives only on modelUsage. Undefined keeps the renderer on
+      // its model table.
+      contextWindow: resolveTurnContextWindow(sdkMsg.modelUsage, managed.resolvedModel),
+    });
+  }
 
   // Clear the queued envelope now — the SDK has the message and is about
   // to feed it to Claude as the next turn. Any further sends on this
   // session start fresh.
-  if (hasQueuedFollowUp && nextQueuedClientMessageId) {
-    managed.promotedFollowUpClientMessageIds.add(nextQueuedClientMessageId);
-  }
-
   if (hasQueuedFollowUp) {
-    // Reset so that if the session ends before the second turn produces
-    // its own result message, handleSessionEnd will NOT suppress lifecycle
-    // events. Without this reset, lastTurnFinalized=true + state='processing'
-    // triggers the suppression guard and the renderer never receives
+    // Begin the promoted turn's lifecycle now, so that if the session ends
+    // before it produces its own result message, handleSessionEnd's settle()
+    // call still returns true and lifecycle events are not suppressed.
+    // Without this, the turn would still read as settled from the line
+    // above and the renderer would never receive
     // chat:session-deactivated / chat:done — leaving isStreaming stuck.
-    managed.lastTurnFinalized = false;
+    managed.turn.begin(Date.now());
     managed.hasStreamedResponseText = false;
     managed.resolvedModel = undefined;
-    managed.acceptedFollowUpClientMessageIds = [];
-  } else {
-    managed.acceptedFollowUpClientMessageIds = [];
-    managed.promotedFollowUpClientMessageIds.clear();
   }
 
   // Fire-and-forget: fetch the SDK's session summary so the renderer can
@@ -1129,12 +1133,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // in this new message start fresh against on-disk content.
     if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
 
-    managed.lastTurnFinalized = false;
     managed.hasStreamedResponseText = false;
     managed.resolvedModel = undefined;
     managed.state = 'processing';
-    managed.processingStartTime = Date.now();
-    managed.lastSdkActivity = Date.now();
+    managed.turn.begin(Date.now());
     managed.lastActivity = Date.now();
     managed.turnStartedAt = Date.now();
 
@@ -1524,12 +1526,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         forceApprovalReview,
         accumulatedResponse: '',
         hasStreamedResponseText: false,
-        lastTurnFinalized: false,
+        turn: createTurnLifecycle(),
         suppressLifecycleEventsOnEnd: false,
         interruptInProgress: false,
-        pendingFollowUpClientMessageIds: [],
-        acceptedFollowUpClientMessageIds: [],
-        promotedFollowUpClientMessageIds: new Set(),
+        followUps: createFollowUpQueue(),
         unsubscribeToolProposals: unsubscribeToolProposals ?? (() => {}),
       });
 
@@ -1855,8 +1855,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // everything" — if the user wanted the queued message to still go out
     // after Stop, they wouldn't have pressed Stop. Tell the renderer so it
     // can clear the queued bubble.
-    while (managed.pendingFollowUpClientMessageIds.length > 0 && managed.session.cancelLastQueued()) {
-      const cancelledClientMessageId = managed.pendingFollowUpClientMessageIds.pop();
+    const cancelledFollowUps = managed.followUps.cancelAll(() => Boolean(managed.session.cancelLastQueued()));
+    for (const cancelledClientMessageId of cancelledFollowUps) {
       const mainWindow = deps.getMainWindow();
       sendQueueCleared(mainWindow, managed.projectId, managed.chatSessionId, cancelledClientMessageId, 'cancelled');
     }
@@ -1916,9 +1916,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       return failure('Session is not ready to accept messages.');
     }
 
-    if (clientMessageId) {
-      managed.pendingFollowUpClientMessageIds.push(clientMessageId);
-    }
+    managed.followUps.enqueue(clientMessageId);
 
     try {
       if (envelope.attachments && envelope.attachments.length > 0) {
@@ -1928,9 +1926,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         managed.session.send(envelope.text);
       }
     } catch (error) {
-      if (clientMessageId) {
-        managed.pendingFollowUpClientMessageIds = managed.pendingFollowUpClientMessageIds.filter(id => id !== clientMessageId);
-      }
+      managed.followUps.withdraw(clientMessageId);
       return failure(`Failed to add follow-up: ${(error as Error).message}`);
     }
 
@@ -1964,35 +1960,23 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       return failure('No active session');
     }
 
-    if (managed.pendingFollowUpClientMessageIds.length === 0) {
-      const mainWindow = deps.getMainWindow();
-      sendQueueCleared(mainWindow, projectId, chatSessionId, requestedClientMessageId, 'already_sent');
-      return failure('No queued message to cancel');
-    }
-
-    const lastPendingId = managed.pendingFollowUpClientMessageIds[managed.pendingFollowUpClientMessageIds.length - 1];
-    const clientMessageId = requestedClientMessageId ?? lastPendingId;
-    if (requestedClientMessageId && requestedClientMessageId !== lastPendingId) {
-      const mainWindow = deps.getMainWindow();
-      sendQueueCleared(mainWindow, projectId, chatSessionId, clientMessageId, 'already_sent');
-      return failure('Only the most recent unsent follow-up can be cancelled.');
-    }
-
-    const cancelled = managed.session.cancelLastQueued();
-
-    if (!cancelled) {
-      // SDK already pulled it — too late to cancel. Surface so the renderer
-      // can clear the "queued" badge but keep the bubble (it's now in flight).
-      const mainWindow = deps.getMainWindow();
-      sendQueueCleared(mainWindow, projectId, chatSessionId, clientMessageId, 'already_sent');
-      return failure('Message was already sent to the model.');
-    }
-
-    managed.pendingFollowUpClientMessageIds.pop();
-
+    const outcome = managed.followUps.cancelLast(requestedClientMessageId, () => Boolean(managed.session.cancelLastQueued()));
     const mainWindow = deps.getMainWindow();
-    sendQueueCleared(mainWindow, projectId, chatSessionId, clientMessageId, 'cancelled');
-    return success(undefined);
+
+    if (outcome.ok) {
+      sendQueueCleared(mainWindow, projectId, chatSessionId, outcome.clientMessageId, 'cancelled');
+      return success(undefined);
+    }
+
+    // Every failure reason clears the renderer's "queued" badge the same way —
+    // only the returned error message tells the caller why cancellation failed.
+    sendQueueCleared(mainWindow, projectId, chatSessionId, outcome.clientMessageId, 'already_sent');
+    const CANCEL_FAILURE_MESSAGES: Record<typeof outcome.reason, string> = {
+      'none-queued': 'No queued message to cancel',
+      'not-last': 'Only the most recent unsent follow-up can be cancelled.',
+      'already-sent': 'Message was already sent to the model.',
+    };
+    return failure(CANCEL_FAILURE_MESSAGES[outcome.reason]);
   }
 
   /**
@@ -2053,15 +2037,13 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // If a follow-up was queued behind a turn that never got to deliver it,
     // tell the renderer so the queued bubble can clear its pending indicator
     // (the message is lost — the user can resend after reconnect).
-    if (managed.pendingFollowUpClientMessageIds.length > 0 && !options.silent) {
+    const droppedFollowUps = managed.followUps.clear();
+    if (!options.silent) {
       const mainWindow = deps.getMainWindow();
-      for (const clientMessageId of managed.pendingFollowUpClientMessageIds) {
+      for (const clientMessageId of droppedFollowUps) {
         sendQueueCleared(mainWindow, managed.projectId, managed.chatSessionId, clientMessageId, 'session_disconnected');
       }
     }
-    managed.pendingFollowUpClientMessageIds = [];
-    managed.acceptedFollowUpClientMessageIds = [];
-    managed.promotedFollowUpClientMessageIds.clear();
 
     try {
       await managed.session.close();
@@ -2074,6 +2056,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // close() didn't trigger the normal callback chain.
     if (sessions.has(key)) {
       sessions.delete(key);
+      // Bookkeeping only: this path emits unconditionally below regardless of
+      // whether the turn was already settled — an idle session's leftover
+      // activities still need to reach the renderer as a finalized bubble
+      // (see chatStreamReducer's finalize guard), so the return value is
+      // deliberately ignored here.
+      managed.turn.settle('disconnected');
 
       if (!options.silent) {
         const mainWindow = deps.getMainWindow();
@@ -2084,10 +2072,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           source: options.source ?? 'disconnectSession',
           previousState: stateBefore,
         });
-        emitAppEvent(mainWindow?.webContents, chatEvents.done, {
-          projectId: managed.projectId,
-          chatSessionId: managed.chatSessionId,
-        });
+        sendTurnDone(mainWindow, managed.projectId, managed.chatSessionId);
         ssLog(`[StreamingSessionService] Disconnected session (events sent as fallback): ${key}`);
       } else {
         ssLog(`[StreamingSessionService] Disconnected session silently for reconnect: ${key}`);
@@ -2119,7 +2104,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
 
     // Track latest SDK activity for idle-while-processing detection
-    managed.lastSdkActivity = Date.now();
+    managed.turn.noteActivity(Date.now());
 
     // Note: Claude SDK session ID is captured in onReady callback and stored in chat_sessions table
 
@@ -2132,6 +2117,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // only for accumulation/persistence so we don't double-emit each segment.
       streamPartialsEnabled: getConfig().claude.includePartialMessages,
       now: Date.now(),
+      queuedFollowUpCount: managed.followUps.queuedCount,
     });
 
     for (const event of interpretedEvents) {
@@ -2156,9 +2142,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         case 'error':
           sendChatError(mainWindow, projectId, chatSessionId, event.error);
           break;
-        case 'queue-cleared':
-          sendQueueCleared(mainWindow, projectId, chatSessionId, event.clientMessageId, event.reason);
+        case 'follow-up-accepted': {
+          const accepted = managed.followUps.acceptNext();
+          if (accepted) sendQueueCleared(mainWindow, projectId, chatSessionId, accepted.clientMessageId, 'already_sent');
           break;
+        }
         case 'suggestions':
           emitAppEvent(mainWindow?.webContents, chatEvents.suggestions, {
             projectId,
@@ -2226,12 +2214,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     sessions.delete(key);
 
     const mainWindow = deps.getMainWindow();
+    // The turn was already settled (chat:done emitted from result handler) and
+    // this end callback is a post-turn teardown. Avoid emitting duplicate
+    // deactivation/done events that can flip renderer state mid-recovery.
+    const alreadySettled = !managed.turn.settle('session-ended');
     const suppressRendererLifecycle =
-      managed.suppressLifecycleEventsOnEnd ||
-      // The turn was already finalized (chat:done emitted from result handler) and
-      // this end callback is a post-turn teardown. Avoid emitting duplicate
-      // deactivation/done events that can flip renderer state mid-recovery.
-      (managed.lastTurnFinalized && stateBefore !== 'closing');
+      managed.suppressLifecycleEventsOnEnd || (alreadySettled && stateBefore !== 'closing');
 
     if (suppressRendererLifecycle) {
       ssLog(`[StreamingSessionService] Session ended after finalized turn; suppressing redundant lifecycle events: ${key} (${reason})`);
@@ -2248,10 +2236,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     });
 
     // Ensure renderer always clears any pending streaming state for this session.
-    emitAppEvent(mainWindow?.webContents, chatEvents.done, {
-      projectId: managed.projectId,
-      chatSessionId: managed.chatSessionId,
-    });
+    sendTurnDone(mainWindow, managed.projectId, managed.chatSessionId);
 
     if (reason === 'error' && error) {
       emitAppEvent(mainWindow?.webContents, chatEvents.sessionError, {
@@ -2360,17 +2345,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     for (const [key, managed] of sessions) {
       if (managed.state === 'processing') {
         // Check for hung sessions: no SDK messages for processingIdleTimeoutMs
-        const lastSdkMs = managed.lastSdkActivity ?? managed.processingStartTime;
-        const idleSinceLastSdk = lastSdkMs ? now - lastSdkMs : 0;
-        const totalProcessing = managed.processingStartTime ? now - managed.processingStartTime : 0;
+        const hung = managed.turn.hungReason(now, {
+          idleMs: sessionConfig.processingIdleTimeoutMs,
+          hardMs: sessionConfig.processingTimeoutMs,
+        });
 
-        const isIdleHung = idleSinceLastSdk > sessionConfig.processingIdleTimeoutMs;
-        const isHardTimeout = totalProcessing > sessionConfig.processingTimeoutMs;
-
-        if (isIdleHung || isHardTimeout) {
+        if (hung) {
           processingTimeouts++;
-          const reason = isIdleHung
-            ? `no SDK activity for ${Math.round(idleSinceLastSdk / 1000)}s`
+          const reason = hung.kind === 'idle'
+            ? `no SDK activity for ${Math.round(hung.idleMs / 1000)}s`
             : `total processing exceeded ${Math.round(sessionConfig.processingTimeoutMs / 60000)} minutes`;
           console.log(`[StreamingSessionService] Processing timeout for ${key}: ${reason}`);
           resetToReady(managed);
@@ -2379,15 +2362,16 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             console.error(`[StreamingSessionService] Failed to interrupt timed-out session ${key}:`, error);
           });
 
-          const errorMessage = isIdleHung
+          const errorMessage = hung.kind === 'idle'
             ? 'Response appears stuck. Please try again.'
             : `Response timed out after ${Math.round(sessionConfig.processingTimeoutMs / 60000)} minutes. Please try again.`;
           sendChatError(mainWindow, managed.projectId, managed.chatSessionId, errorMessage);
-          // Also send chat:done to ensure isStreaming clears in the renderer
-          emitAppEvent(mainWindow?.webContents, chatEvents.done, {
-            projectId: managed.projectId,
-            chatSessionId: managed.chatSessionId,
-          });
+          // Also send chat:done to ensure isStreaming clears in the renderer.
+          // A turn is in flight in this branch, so settle() returns true;
+          // the guard is defensive, matching the other three settlement paths.
+          if (managed.turn.settle('timed-out')) {
+            sendTurnDone(mainWindow, managed.projectId, managed.chatSessionId);
+          }
         }
         continue; // Skip idle check for processing sessions
       }

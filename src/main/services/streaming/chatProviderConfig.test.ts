@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { BrowserWindow } from 'electron';
 import { CHAT_PROVIDER_CONFIG, markSessionReady } from './StreamingSessionService';
+import { createFollowUpQueue } from './followUpQueue';
+import { createTurnLifecycle } from './turnLifecycle';
 
 /**
  * CHAT_PROVIDER_CONFIG and markSessionReady replace the provider === 'claude'
@@ -28,12 +30,10 @@ function makeManaged(): Parameters<typeof markSessionReady>[0] {
     forceApprovalReview: false,
     accumulatedResponse: '',
     hasStreamedResponseText: false,
-    lastTurnFinalized: false,
+    turn: createTurnLifecycle(),
     suppressLifecycleEventsOnEnd: false,
     interruptInProgress: false,
-    pendingFollowUpClientMessageIds: [],
-    acceptedFollowUpClientMessageIds: [],
-    promotedFollowUpClientMessageIds: new Set(),
+    followUps: createFollowUpQueue(),
     unsubscribeToolProposals: () => {},
   };
 }
@@ -172,9 +172,10 @@ describe('markSessionReady', () => {
 
     expect(managed.state).toBe('processing');
     expect(managed.sessionId).toBe('sdk-session-1');
-    expect(managed.lastTurnFinalized).toBe(false);
-    expect(managed.processingStartTime).toBeDefined();
-    expect(managed.lastSdkActivity).toBeDefined();
+    expect(managed.turn.settled).toBe(false);
+    expect(managed.turn.inFlight).toBe(true);
+    expect(managed.turn.startedAt).toBeDefined();
+    expect(managed.turn.lastActivityAt).toBeDefined();
   });
 
   it('persists via the claude config when persistHistory is true', () => {

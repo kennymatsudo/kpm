@@ -52,12 +52,10 @@ export interface FileDeleteEventData {
   isDirectory: boolean;
 }
 
-export interface SessionEventData {
+/** Payload for `chat:done` — a turn's result fields, no lifecycle metadata. */
+export interface TurnDoneEventData {
   projectId: string;
   chatSessionId?: string;
-  reason?: string;
-  source?: string;
-  previousState?: string;
   model?: string;
   /** True when the SDK is about to pull a queued follow-up as the next turn. */
   hasQueuedFollowUp?: boolean;
@@ -82,6 +80,15 @@ export interface SessionEventData {
   cacheCreationTokens?: number;
   /** Context window size for the model used in this turn (tokens). */
   contextWindow?: number;
+}
+
+/** Payload for `sessionConnecting`/`sessionDeactivated` — session lifecycle metadata, no turn-result fields. */
+export interface SessionLifecycleEventData {
+  projectId: string;
+  chatSessionId?: string;
+  reason?: string;
+  source?: string;
+  previousState?: string;
 }
 
 export interface QueuedEventData {
@@ -160,7 +167,7 @@ export interface McpStatusEventData {
 export const chatEvents = {
   chunk: { channel: 'chat:chunk', payload: payloadOf<ChunkEventData>() },
   planActions: { channel: 'chat:plan-actions', payload: payloadOf<PlanActionsEventData>() },
-  done: { channel: 'chat:done', payload: payloadOf<SessionEventData>() },
+  done: { channel: 'chat:done', payload: payloadOf<TurnDoneEventData>() },
   queued: { channel: 'chat:queued', payload: payloadOf<QueuedEventData>() },
   queueCleared: { channel: 'chat:queue-cleared', payload: payloadOf<QueueClearedEventData>() },
   error: { channel: 'chat:error', payload: payloadOf<ErrorEventData>() },
@@ -169,13 +176,13 @@ export const chatEvents = {
   fileUpdate: { channel: 'chat:file-update', payload: payloadOf<FileUpdateEventData>() },
   fileMove: { channel: 'chat:file-move', payload: payloadOf<FileMoveEventData>() },
   fileDelete: { channel: 'chat:file-delete', payload: payloadOf<FileDeleteEventData>() },
-  sessionConnecting: { channel: 'chat:session-connecting', payload: payloadOf<SessionEventData>() },
+  sessionConnecting: { channel: 'chat:session-connecting', payload: payloadOf<SessionLifecycleEventData>() },
   sessionReady: { channel: 'chat:session-ready', payload: payloadOf<SessionReadyEventData>() },
   sessionTitle: { channel: 'chat:session-title', payload: payloadOf<SessionTitleEventData>() },
   sessionError: { channel: 'chat:session-error', payload: payloadOf<ErrorEventData>() },
   suggestions: { channel: 'chat:suggestions', payload: payloadOf<SuggestionsEventData>() },
   slashCommands: { channel: 'chat:slash-commands', payload: payloadOf<SlashCommandsEventData>() },
-  sessionDeactivated: { channel: 'chat:session-deactivated', payload: payloadOf<SessionEventData>() },
+  sessionDeactivated: { channel: 'chat:session-deactivated', payload: payloadOf<SessionLifecycleEventData>() },
   mcpStatus: { channel: 'chat:mcp-status', payload: payloadOf<McpStatusEventData>() },
   /**
    * Emitted when a turn's response was truncated by hitting the max_tokens

@@ -13,14 +13,11 @@ function makeView(overrides: Partial<SdkMessageSessionView> = {}): SdkMessageSes
     accumulatedResponse: '',
     hasStreamedResponseText: false,
     interruptInProgress: false,
-    pendingFollowUpClientMessageIds: [],
-    acceptedFollowUpClientMessageIds: [],
-    promotedFollowUpClientMessageIds: new Set<string>(),
     ...overrides,
   };
 }
 
-const DEFAULT_OPTIONS = { streamPartialsEnabled: false, now: 1_000_000 };
+const DEFAULT_OPTIONS = { streamPartialsEnabled: false, now: 1_000_000, queuedFollowUpCount: 0 };
 
 function interpret(msg: unknown, view: SdkMessageSessionView, options = DEFAULT_OPTIONS): InterpretedChatEvent[] {
   return interpretSdkMessage(msg, view, options);
@@ -84,7 +81,7 @@ describe('assistant messages', () => {
     const events = interpret(
       { type: 'assistant', message: { content: [{ type: 'text', text: 'answer' }] } },
       view,
-      { streamPartialsEnabled: true, now: 0 },
+      { streamPartialsEnabled: true, now: 0, queuedFollowUpCount: 0 },
     );
 
     expect(view.accumulatedResponse).toBe('answer');
@@ -96,7 +93,7 @@ describe('assistant messages', () => {
     const events = interpret(
       { type: 'assistant', message: { content: [{ type: 'text', text: 'answer' }] } },
       view,
-      { streamPartialsEnabled: true, now: 0 },
+      { streamPartialsEnabled: true, now: 0, queuedFollowUpCount: 0 },
     );
 
     expect(view.accumulatedResponse).toBe('answer');
@@ -224,26 +221,21 @@ describe('assistant messages', () => {
 });
 
 describe('user message echoes', () => {
-  it('clears the queued badge when the SDK dequeues a pending follow-up', () => {
-    const view = makeView({ pendingFollowUpClientMessageIds: ['m1', 'm2'] });
+  it('reports a follow-up accepted when the SDK dequeues a pending follow-up', () => {
+    const view = makeView();
 
-    const events = interpret({ type: 'user' }, view);
+    const events = interpret({ type: 'user' }, view, { ...DEFAULT_OPTIONS, queuedFollowUpCount: 2 });
 
-    expect(events).toEqual([{ kind: 'queue-cleared', clientMessageId: 'm1', reason: 'already_sent' }]);
-    expect(view.pendingFollowUpClientMessageIds).toEqual(['m2']);
-    expect(view.acceptedFollowUpClientMessageIds).toEqual(['m1']);
+    // Which id was dequeued, and whether it counts as a live interjection vs a
+    // promoted continuation, is the queue's job (see followUpQueue.test.ts) —
+    // this only decides that a dequeue happened.
+    expect(events).toEqual([{ kind: 'follow-up-accepted' }]);
   });
 
-  it('does not treat a promoted follow-up echo as a live interjection', () => {
-    const view = makeView({
-      pendingFollowUpClientMessageIds: ['m1'],
-      promotedFollowUpClientMessageIds: new Set(['m1']),
-    });
+  it('does not report a follow-up accepted when nothing is queued', () => {
+    const view = makeView();
 
-    interpret({ type: 'user' }, view);
-
-    expect(view.acceptedFollowUpClientMessageIds).toEqual([]);
-    expect(view.promotedFollowUpClientMessageIds.has('m1')).toBe(false);
+    expect(interpret({ type: 'user' }, view, { ...DEFAULT_OPTIONS, queuedFollowUpCount: 0 })).toEqual([]);
   });
 
   it('attaches diff stats from a tool_use_result to the original activity', () => {

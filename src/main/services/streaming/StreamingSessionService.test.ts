@@ -763,6 +763,96 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     expect(mockSessionInstances).toHaveLength(1);
   });
 
+  it('clears the queued badge when the SDK echoes back a dequeued follow-up', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(firstSend.ok).toBe(true);
+    const session = mockSessionInstances[0];
+
+    const clientMessageId = '66666666-6666-4666-8666-666666666666';
+    const queued = await service.sendChatMessage('project-1', 'second prompt', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+      clientMessageId,
+    });
+    expect(queued.ok).toBe(true);
+
+    sentEvents.length = 0;
+    // The SDK echoes every dequeued user turn back through onMessage ahead of
+    // its `result` message — the authoritative "message left the queue" signal.
+    session.emitMessage({ type: 'user' });
+
+    expect(sentEvents.find((e) => e.channel === 'chat:queue-cleared')?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      clientMessageId,
+      reason: 'already_sent',
+    });
+  });
+
+  it('does not report a promoted follow-up as an interjection consumed by its own turn', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(firstSend.ok).toBe(true);
+    const session = mockSessionInstances[0];
+
+    const clientMessageId = '77777777-7777-4777-8777-777777777777';
+    const queued = await service.sendChatMessage('project-1', 'second prompt', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+      clientMessageId,
+    });
+    expect(queued.ok).toBe(true);
+
+    sentEvents.length = 0;
+    // Turn 1 ends with the follow-up still sitting in the transport queue, so
+    // it survives the turn boundary and is promoted into becoming turn 2's
+    // own prompt.
+    session.emitMessage({ type: 'result' });
+
+    const firstDone = sentEvents.find((e) => e.channel === 'chat:done')?.payload as {
+      hasQueuedFollowUp?: boolean;
+      queuedClientMessageId?: string;
+      beforeClientMessageId?: string;
+      consumedQueuedClientMessageId?: string;
+    };
+    expect(firstDone.hasQueuedFollowUp).toBe(true);
+    expect(firstDone.queuedClientMessageId).toBe(clientMessageId);
+    expect(firstDone.beforeClientMessageId).toBe(clientMessageId);
+    expect(firstDone.consumedQueuedClientMessageId).toBeUndefined();
+
+    sentEvents.length = 0;
+    // The SDK dequeues the promoted follow-up to start turn 2 and echoes it
+    // back first; the transport's own pending count drops in step with it.
+    session.steerPendingIntoCurrentTurn();
+    session.emitMessage({ type: 'user' });
+
+    expect(sentEvents.find((e) => e.channel === 'chat:queue-cleared')?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      clientMessageId,
+      reason: 'already_sent',
+    });
+
+    sentEvents.length = 0;
+    session.emitMessage({ type: 'result' });
+
+    const secondDone = sentEvents.find((e) => e.channel === 'chat:done')?.payload as {
+      consumedQueuedClientMessageId?: string;
+    };
+    // Regression guard: the promoted follow-up was turn 2's own prompt, not an
+    // interjection it answered — it must not be reported as consumed.
+    expect(secondDone.consumedQueuedClientMessageId).toBeUndefined();
+  });
+
   it('finalizes (no phantom turn) when the SDK absorbed the follow-up into this turn', async () => {
     service = createStreamingSessionService(createDeps(sendSpy));
 
