@@ -77,7 +77,7 @@ Don't create abstractions until you have 3+ actual uses of a pattern. Wait until
 - **Sanitize on save, not on edit.** Keep in-progress empty criterion rows while typing; trim, drop empties, and cap at the limits owned by `PLAN_ITEM_FIELDS` in `src/shared/planItemFields.ts` when building the save payload.
 - **Work Brief edits are revision guarded.** `usePlanTaskEdit` sends one atomic action batch through `executePlanActions`: `revise_work_brief` for semantic Work Brief changes, `set_repo_targets` for scope changes, and `update_item` for generic operational fields.
 - **`status_category` is not edited from `TaskEditModal`.** Column placement is handled by the board and tracker sync. Drag on the board to move a card.
-- **Execution revisions stay visible.** Detail and start-agent surfaces show “Brief updated” only when both the captured session revision and current Plan Item revision are known and differ. Resuming preserves the captured brief; legacy null revisions show no warning.
+- **Work Brief reconciliation is automatic.** Start and detail surfaces do not ask users to compare revisions. Reused sessions keep their worktree while the main process refreshes execution context to the latest approved Work Brief.
 
 ## Plan Card Layout & Height Sync
 

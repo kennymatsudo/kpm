@@ -90,7 +90,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Agent context builder (`DevSessionService.buildAgentContext`): the Work Brief defines the captured execution contract
 - **Dependencies / integrations:**
   - Tracker export: title and context can sync; intent, criteria, and Repository Scope stay KPM-local
-  - Dev sessions: new sessions snapshot the Work Brief revision and immutable initial instructions
+  - Dev sessions: new sessions capture the Work Brief revision; reused sessions and follow-up turns automatically reconcile to the latest approved revision
   - PR description generation (feature 25): `GitHubService` includes intent and acceptance criteria in generation context
 - **Maturity signal:** Mature. Follow-on ideas (per-criterion status ticking, doc→plan breadcrumb UI) are deliberately not built.
 
@@ -297,9 +297,9 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ## Agentic Task Execution (Board)
 
 ### 19. Plan-item Dev Sessions (Implementation Workflow, Worktrees, Agent Context)
-- **What it does:** Users start agentic execution for a plan item from the board view. Each new session snapshots the current Work Brief revision and immutable instructions, creates an isolated git worktree, resolves `@plan/<uuid>` refs, prepends meaningful project context, attaches selected context files, and spawns an implementation agent through `AgentSessionManager`. Resuming the latest reusable session preserves its captured instructions; supplemental text is appended only when the user explicitly enters it. When the Plan Item's Work Brief has since changed, the start modal and detail pane show a non-blocking “Brief updated” warning with both revisions; legacy sessions with an unknown revision show nothing. Sessions track status (pending → active → inactive) across app restarts. Board cards show a compact phase badge derived from automation phase, agent liveness, and staleness, and the Activity tab groups tool calls under the narration written immediately before them.
+- **What it does:** Users start agentic execution for a plan item from the board view. Each new session captures the current Work Brief revision, creates an isolated git worktree, resolves `@plan/<uuid>` refs, prepends meaningful project context, attaches selected context files, and spawns an implementation agent through `AgentSessionManager`. Start reuses the latest same-repo session and its worktree. If the approved Work Brief changed, KPM makes the latest revision authoritative automatically: a reused session is refreshed before it starts, follow-up turns receive the current brief, and a completed implementation turn reconciles before the playbook advances to review or completion. Supplemental text is appended only when the user explicitly enters it. Pending proposed changes remain subject to the configured approval or auto-apply policy and do not become execution context until applied. Sessions track status (pending → active → inactive) across app restarts. Board cards show a compact phase badge derived from automation phase, agent liveness, and staleness, and the Activity tab groups tool calls under the narration written immediately before them.
 - **Key code locations:**
-  - Service: `src/main/services/repo/DevSessionService.ts` (`startAgentSession` entrypoint, `buildAgentContext(input: AgentContextInput)` — renders `## Intent`/`## Acceptance Criteria`/`## Context`-or-`## Description`/`## Instructions` based on which spec fields the item carries, `buildPlanRefSection` prepends a `<plan-refs>` block; composes `scaffoldWorktree` from `src/main/services/repo/worktreeScaffold.ts` to create the worktree via `git worktree add`)
+  - Service: `src/main/services/repo/DevSessionService.ts` (`startAgentSession` entrypoint, `buildAgentContext(input: AgentContextInput)` — renders task facts through `## Intent`/`## Acceptance Criteria`/`## Context`-or-`## Description`, while role and harness policy are added separately; `buildPlanRefSection` prepends a `<plan-refs>` block; composes `scaffoldWorktree` from `src/main/services/repo/worktreeScaffold.ts` to create the worktree via `git worktree add`)
   - Orchestration: `src/main/services/agents/BoardAgentOrchestrator.ts` (automation state machine, wired in via `AgentSessionManager`)
   - Agent backends: `ClaudeSdkSession`, `CodexSdkAgentSession`, `PiSdkAgentSession`, `CliAgentSession` (Gemini / legacy Claude via CLI) — dispatched by `AgentSessionManager`
   - Worktree support: `src/main/services/repo/worktreeScaffold.ts` (create via `git worktree add`), `DevSessionService.openInEditor` + `editorLauncher.ts` (open in editor), `devSessionGitInspection.ts` + `gitUtils.ts` (status/diff); worktree state lives on `dev_sessions.worktree_path` — the dead `worktrees` table plus `WorktreeService`/`WorktreeRepository` were removed
@@ -310,8 +310,8 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - DB: `dev_sessions` table (status, worktree_path, branch_name, automation_phase, etc.)
 - **Entry points / surfaces:**
   - Board card: drag to `in_progress` or click `Play` — prefers resuming the latest inactive/pending session over creating a new worktree; `Stop` stops the active run; phase badge on each card face. New sessions default to the Plan Item's primary repo, while the user can select a different repo for that execution without changing the Plan Item.
-  - Board detail pane: Activity (narrative feed) / Changes / Review tabs; the header flags execution against an earlier known Work Brief revision
-  - Start Agent modal: warns before resuming an earlier known Work Brief revision and accepts only explicit supplemental instructions
+  - Board detail pane: Activity (narrative feed) / Changes / Review tabs
+  - Start Agent modal: shows the current Work Brief and accepts only explicit supplemental instructions; reconciliation is automatic
   - Detail pane header overflow menu / plan card menu: "Open in Editor" opens the worktree in the system editor
 - **Dependencies / integrations:**
   - Plan context: `buildAgentContext()` includes item title, intent, acceptance criteria, subtasks, and resolved `@plan/<uuid>` refs without a tool round-trip
@@ -322,7 +322,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Maturity signal:** Mature. Core feature. Board execution state machine is sophisticated; phase badges exist specifically to compensate for sessions going `inactive` between per-turn completions. Known: requires user approval before starting.
 
 ### 23. Review Loop & Automated Addressing (GitHub PR Review + Decision Queue)
-- **What it does:** Dev sessions track linked GitHub PRs. Unresolved review threads become review tasks (`needs_review` → `assessed` → `in_progress` → `ready_to_post` → `done`), each with a disposition (`implement`, `push_back`, `needs_user_input`) that the user can override. The Review tab presents this as a focused decision queue rather than a flat task list: a next-action bar surfaces the most actionable thread, an accordion auto-expands it and collapses the rest to scannable rows, and a deduped per-reviewer verdict strip shows each GitHub reviewer's latest top-level verdict (linking out to GitHub) instead of re-displaying full review bodies. Addressing findings is automatic and bounded, not a manual button: after implementation completes, `BoardAgentOrchestrator` launches one opposing-agent review; if it returns findings, the implementation agent gets one aggregated follow-up turn to address them before the task moves to `In Review` — there is no infinite review/fix loop, and if there are no findings the task moves straight to `In Review`. Users can also reply to threads directly from KPM, optionally delegating the reply to Claude.
+- **What it does:** Dev sessions track linked GitHub PRs. Unresolved review threads become review tasks (`needs_review` → `assessed` → `in_progress` → `ready_to_post` → `done`), each with a disposition (`implement`, `push_back`, `needs_user_input`) that the user can override. The Review tab presents this as a focused decision queue rather than a flat task list: a next-action bar surfaces the most actionable thread, an accordion auto-expands it and collapses the rest to scannable rows, and a deduped per-reviewer verdict strip shows each GitHub reviewer's latest top-level verdict (linking out to GitHub) instead of re-displaying full review bodies. When the selected execution playbook includes opposing review, addressing findings is automatic and bounded: `BoardAgentOrchestrator` launches the configured review step and routes actionable findings back to the implementation agent according to the playbook's pass limits. The default implement-only playbook skips this review. Users can also reply to threads directly from KPM, optionally delegating the reply to Claude.
 - **Key code locations:**
   - Service: `src/main/services/repo/ReviewService.ts` (reconcile threads into tasks, reply orchestration), `GitHubService.ts` (fetch PR/threads/reviews), `ReviewAssessmentService.ts` (assess thread resolution), `ReviewPollService.ts` (poll for updates)
   - Orchestration: `src/main/services/agents/BoardAgentOrchestrator.ts` (`onSessionComplete` review-complete branch; automation phases `reviewing` → `addressing_review` → `ready_for_review`)
@@ -1198,7 +1198,7 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 5 (Plan Views)
 - `BoardCard.tsx`: Card in board column, with phase indicator badge
   - Features: 5 (Plan Views), 19 (Plan-item Dev Sessions — phase indicators)
-- `DetailPane.tsx`: Right-side detail panel (activity, changes, review), with stale Work Brief revision indication in its header
+- `DetailPane.tsx`: Right-side detail panel (activity, changes, review)
   - Features: 19 (Plan-item Dev Sessions), 23 (Review Loop & Automated Addressing), 25 (GitHub PR Integration), 105 (Execution Playbooks)
 - `PhaseStepper.tsx`: Playbook step progress + paused-run actions in the detail pane
   - Features: 105 (Execution Playbooks), 19 (Plan-item Dev Sessions)
@@ -1208,7 +1208,7 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 19, 25
 - `MergeQueuePanel.tsx`: Open-PR ordering with dependency-derived blockers
   - Features: 99 (Merge Queue)
-- `AgentStartModal.tsx`: Start Implementation modal, including the playbook picker, resolved-plan preview, and warning when a reusable session captured an earlier Work Brief revision
+- `AgentStartModal.tsx`: Start Implementation modal, including the current Work Brief, playbook picker, and resolved-plan preview
   - Features: 19 (Plan-item Dev Sessions), 105 (Execution Playbooks)
 
 ### tree-view/ Components

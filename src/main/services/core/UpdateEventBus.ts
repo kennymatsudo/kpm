@@ -20,7 +20,11 @@
 // Event Variants
 // =============================================================================
 
-import type { DevSessionAutomationPhase, DevSessionPausedReason } from '../../../shared/types';
+import type {
+  DevSessionAttentionReason,
+  DevSessionAutomationPhase,
+  DevSessionPausedReason,
+} from '../../../shared/types';
 
 export type UpdateSource = 'github' | 'linear' | 'jira' | 'file' | 'git' | 'action' | 'agent';
 
@@ -128,6 +132,8 @@ export interface BoardAgentEvent extends BaseUpdateEvent {
   phase: BoardAgentNotifyPhase;
   /** Why automation paused; only meaningful when `phase` is 'paused'. */
   pausedReason: DevSessionPausedReason | null;
+  /** Why automation could not continue; only meaningful for `needs_attention`. */
+  attentionReason: DevSessionAttentionReason | null;
 }
 
 export type UpdateEvent =

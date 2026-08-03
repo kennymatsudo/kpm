@@ -179,7 +179,7 @@ The aggregate fields flow from the chat iteration doc → plan item → implemen
 
 Guidance baked into the `modify_plan` tool prompt: prefer `intent` + `acceptance_criteria` for implementation items; rely on context alone for exploratory/research items where criteria cannot be enumerated yet. `revise_work_brief` is a full replacement, so the model fetches current values first. Intent or Acceptance Criteria headings inside context are ordinary context, never a shadow contract.
 
-The fields are normalized by `shared/workBrief.ts`, revised atomically by `PlanItemRepository.compareAndReviseWorkBrief`, and projected to execution by `main/workBrief/projections.ts`. New dev sessions capture the projected prompt in `initial_instructions` and its revision in `dev_sessions.work_brief_revision`; resumed sessions reuse that snapshot.
+The fields are normalized by `shared/workBrief.ts`, revised atomically by `PlanItemRepository.compareAndReviseWorkBrief`, and projected to execution by `main/workBrief/projections.ts`. New dev sessions capture the projected prompt in `initial_instructions` and its revision in `dev_sessions.work_brief_revision`. Reused sessions and follow-up turns automatically refresh to the latest approved revision while preserving the existing worktree and supplemental instructions.
 
 ### Sync boundary
 

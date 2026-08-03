@@ -234,6 +234,8 @@ export async function launchAutoReview(params: {
   agentSessionManager: AgentSessionManager;
   /** Resolves configurable prompt content (override > registry default). */
   getPromptContent: (key: string) => string;
+  /** Playbook step id this review's completion resolves back to. */
+  stepId: string;
 }): Promise<string | null> {
   const {
     implementationSessionId,
@@ -244,6 +246,7 @@ export async function launchAutoReview(params: {
     projectId,
     agentSessionManager,
     getPromptContent,
+    stepId,
   } = params;
 
   // Determine the review agent
@@ -300,7 +303,7 @@ export async function launchAutoReview(params: {
       readOnly: true,
       expectsFindings: true,
       implementationSessionId,
-      stepId: 'review',
+      stepId,
       runIndex: 0,
     });
 
@@ -321,7 +324,7 @@ export async function launchAutoReview(params: {
           readOnly: true,
           expectsFindings: true,
           implementationSessionId,
-          stepId: 'review',
+          stepId,
           runIndex: 0,
         });
         console.log(`${LOG_PREFIX} Started claude fallback review for session ${implementationSessionId}`);

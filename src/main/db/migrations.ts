@@ -4357,6 +4357,15 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1119,
+    name: '119_add_dev_session_attention_reason',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE dev_sessions ADD COLUMN attention_reason TEXT;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

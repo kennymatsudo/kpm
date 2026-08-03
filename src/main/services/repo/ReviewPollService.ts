@@ -26,6 +26,7 @@ import type {
 } from '../../db/interfaces';
 import { isLiveAutomationPhase } from '../../../shared/types';
 import type { DevSession, PrReviewSnapshot, ReviewActionableSummary } from '../../../shared/types';
+import { PR_REVIEW_FOLLOWUP_STEP } from '../../../shared/playbooks';
 import { getConfig } from '../../config';
 import { buildAutomationPrompt } from './ReviewService';
 import type { ReviewService } from './ReviewService';
@@ -516,7 +517,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         });
       }
 
-      deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued' });
+      deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued', stepId: PR_REVIEW_FOLLOWUP_STEP.id });
 
       broadcast(reviewEvents.pollFixStarted, {
         sessionId,

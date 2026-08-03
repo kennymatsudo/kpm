@@ -1053,7 +1053,23 @@ export type DevSessionAutomationPhase =
   | 'ready_for_review'
   | 'needs_attention';
 
-export type DevSessionPausedReason = 'gate' | 'max_passes' | 'stalled';
+export type DevSessionPausedReason = 'gate' | 'max_passes' | 'stalled' | 'stopped';
+
+export type DevSessionAttentionReason =
+  | 'agent-terminated'
+  | 'commit-capture-failed'
+  | 'commit-hook-repair-already-attempted'
+  | 'commit-hook-repair-errored'
+  | 'follow-up-send-failed'
+  | 'move-to-review-failed'
+  | 'queued-review-flush-failed'
+  | 'missing-next-step'
+  | 'missing-resume-step'
+  | 'unknown-completed-step'
+  | 'opposing-review-errored'
+  | `provider-unavailable:${string}`
+  | `skill-unavailable:${string}`
+  | `all-runs-failed:${string}`;
 
 export function isCommitHookRepairPhase(
   phase: DevSessionAutomationPhase | null | undefined,
@@ -1115,10 +1131,11 @@ export interface DevSession {
   step_pass_counts: string | null;
   step_outputs?: string | null;
   paused_reason: DevSessionPausedReason | null;
+  attention_reason?: DevSessionAttentionReason | null;
 
   // Context passed to Claude Code
   initial_instructions: string;
-  /** Work Brief revision captured by initial_instructions; null for legacy sessions. */
+  /** Latest approved Work Brief revision delivered to the session; null for legacy sessions. */
   work_brief_revision: number | null;
 
   // PR tracking

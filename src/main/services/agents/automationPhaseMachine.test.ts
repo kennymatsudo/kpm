@@ -63,8 +63,23 @@ describe('automationPhaseMachine.transition', () => {
   });
 
   it('opposingReviewLaunched always moves to reviewing', () => {
-    expect(transitionFrom('idle', { type: 'opposingReviewLaunched' })).toBe('reviewing');
-    expect(transitionFrom('needs_attention', { type: 'opposingReviewLaunched' })).toBe('reviewing');
+    expect(transitionFrom('idle', { type: 'opposingReviewLaunched', stepId: 'review' })).toBe('reviewing');
+    expect(transitionFrom('needs_attention', { type: 'opposingReviewLaunched', stepId: 'review' })).toBe('reviewing');
+  });
+
+  it('opposingReviewLaunched persists the given stepId as the cursor, not an invented literal', () => {
+    const updateAutomationState = vi.fn();
+    const machine = createAutomationPhaseMachine({
+      devSessions: {
+        get: () => ({ id: 's1', project_id: 'p1', status: 'active', automation_phase: 'idle', current_step_id: null, step_pass_counts: null, paused_reason: null }) as DevSession,
+        updateAutomationPhase: vi.fn(),
+        updateAutomationState,
+      },
+    });
+
+    machine.transition('s1', { type: 'opposingReviewLaunched', stepId: 'ad-hoc-review' });
+
+    expect(updateAutomationState).toHaveBeenCalledWith('s1', expect.objectContaining({ currentStepId: 'ad-hoc-review' }));
   });
 
   it('opposingReviewLaunchAborted always moves to idle', () => {
@@ -81,16 +96,31 @@ describe('automationPhaseMachine.transition', () => {
   it.each(['idle', 'reviewing'] satisfies DevSessionAutomationPhase[])(
     'prReviewThreadsQueued moves %s to addressing_review',
     (phase) => {
-      expect(transitionFrom(phase, { type: 'prReviewThreadsQueued' })).toBe('addressing_review');
+      expect(transitionFrom(phase, { type: 'prReviewThreadsQueued', stepId: 'pr-review-followup' })).toBe('addressing_review');
     },
   );
+
+  it('prReviewThreadsQueued persists the given stepId as the cursor, not an invented literal', () => {
+    const updateAutomationState = vi.fn();
+    const machine = createAutomationPhaseMachine({
+      devSessions: {
+        get: () => ({ id: 's1', project_id: 'p1', status: 'active', automation_phase: 'idle', current_step_id: null, step_pass_counts: null, paused_reason: null }) as DevSession,
+        updateAutomationPhase: vi.fn(),
+        updateAutomationState,
+      },
+    });
+
+    machine.transition('s1', { type: 'prReviewThreadsQueued', stepId: 'pr-review-followup' });
+
+    expect(updateAutomationState).toHaveBeenCalledWith('s1', expect.objectContaining({ currentStepId: 'pr-review-followup' }));
+  });
 
   it('opposingReviewFindingsReady does not clobber needs_attention', () => {
     expect(transitionFrom('needs_attention', { type: 'opposingReviewFindingsReady' })).toBe('needs_attention');
   });
 
   it('prReviewThreadsQueued does not clobber needs_attention (closes the race the two automated paths had)', () => {
-    expect(transitionFrom('needs_attention', { type: 'prReviewThreadsQueued' })).toBe('needs_attention');
+    expect(transitionFrom('needs_attention', { type: 'prReviewThreadsQueued', stepId: 'pr-review-followup' })).toBe('needs_attention');
   });
 
   it('movedToReview always moves to ready_for_review', () => {
@@ -168,7 +198,7 @@ describe('automationPhaseMachine.transition', () => {
     expect(updateAutomationState).toHaveBeenCalledWith('s1', expect.objectContaining({ currentStepId: null }));
   });
 
-  it('automationFailed always moves to needs_attention, carrying a reason for logs', () => {
+  it('automationFailed persists the reason with needs_attention', () => {
     expect(transitionFrom('reviewing', { type: 'automationFailed', reason: 'commit-capture-failed' })).toBe(
       'needs_attention',
     );
@@ -199,7 +229,12 @@ describe('automationPhaseMachine board agent events', () => {
         get: () => session,
         updateAutomationPhase: vi.fn(),
         updateAutomationState: (_id, next) => {
-          session = { ...session, automation_phase: next.phase, paused_reason: next.pausedReason ?? null };
+          session = {
+            ...session,
+            automation_phase: next.phase,
+            paused_reason: next.pausedReason ?? null,
+            attention_reason: next.attentionReason ?? null,
+          };
         },
       },
       eventBus: { emit },
@@ -234,12 +269,22 @@ describe('automationPhaseMachine board agent events', () => {
     const { machine, emit } = notifyingMachine('reviewing');
     machine.transition('session-1', { type: 'automationFailed', reason: 'commit-capture-failed' });
 
-    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ phase: 'needs_attention' }));
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({
+      phase: 'needs_attention',
+      attentionReason: 'commit-capture-failed',
+    }));
+  });
+
+  it('does not notify for an intentional stop', () => {
+    const { machine, emit } = notifyingMachine('reviewing');
+    machine.transition('session-1', { type: 'paused', stepId: 'review', reason: 'stopped' });
+
+    expect(emit).not.toHaveBeenCalled();
   });
 
   it('stays quiet for mid-flight phases', () => {
     const { machine, emit } = notifyingMachine('idle');
-    machine.transition('session-1', { type: 'opposingReviewLaunched' });
+    machine.transition('session-1', { type: 'opposingReviewLaunched', stepId: 'review' });
 
     expect(emit).not.toHaveBeenCalled();
   });
@@ -269,7 +314,7 @@ describe('automationPhaseMachine board agent events', () => {
       resolveTaskName: () => null,
     });
 
-    machine.transition('session-1', { type: 'automationFailed', reason: 'x' });
+    machine.transition('session-1', { type: 'automationFailed', reason: 'follow-up-send-failed' });
 
     expect(emit).toHaveBeenCalledWith(expect.objectContaining({ taskName: 'Session name' }));
   });

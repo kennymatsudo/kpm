@@ -83,6 +83,7 @@ function boardAgentEvent(overrides: Partial<BoardAgentEvent> = {}): BoardAgentEv
     taskName: 'Add rate limiting',
     phase: 'ready_for_review',
     pausedReason: null,
+    attentionReason: null,
     ...overrides,
   };
 }
@@ -170,14 +171,18 @@ describe('notificationFor', () => {
   });
 
   describe('board_agent', () => {
-    it('reports a finished run as a success and a stopped one as a warning', () => {
+    it('reports a finished run as a success and a failed one specifically', () => {
       expect(notificationFor(boardAgentEvent({ phase: 'ready_for_review' }))).toMatchObject({
         severity: 'success',
         title: 'Add rate limiting is ready for review',
       });
-      expect(notificationFor(boardAgentEvent({ phase: 'needs_attention' }))).toMatchObject({
+      expect(notificationFor(boardAgentEvent({
+        phase: 'needs_attention',
+        attentionReason: 'commit-capture-failed',
+      }))).toMatchObject({
         severity: 'warning',
-        title: 'Add rate limiting needs attention',
+        title: 'Add rate limiting could not finish',
+        body: 'Commit checks failed. Open the task to review the changes.',
       });
     });
 
@@ -189,6 +194,10 @@ describe('notificationFor', () => {
         notificationFor(boardAgentEvent({ phase: 'paused', pausedReason: 'stalled' }))?.body,
       ).toBe('The reviewer kept raising the same findings.');
       expect(notificationFor(boardAgentEvent({ phase: 'paused', pausedReason: null }))?.body).toBeUndefined();
+      expect(notificationFor(boardAgentEvent({ phase: 'paused', pausedReason: 'stopped' }))).toMatchObject({
+        severity: 'info',
+        body: 'Stopped by you. Resume when you are ready.',
+      });
     });
 
     it('falls back to a generic label when the task name is unresolved', () => {

@@ -152,28 +152,30 @@ const AGENT_PROMPTS: PromptDefinition[] = [
 
 Deliver the smallest correct change that satisfies the task and matches the repository's existing patterns. Do not invent requirements.
 
-Use task inputs in this priority:
-1. Acceptance Criteria are the completion contract.
-2. Intent explains why the task exists.
-3. Out of Scope is a hard boundary.
-4. Context/Description provides background, not extra requirements.
-5. Additional User Instructions may constrain implementation but should not expand scope unless explicit.
+Interpret the provided KPM context by purpose:
+- Acceptance Criteria are the completion contract.
+- Intent explains the required outcome and why it matters.
+- Out of Scope is a hard boundary.
+- Context/Description provides background, not extra requirements.
+- Relevant Files are starting points. Inspect them first when provided, but treat them as potentially incomplete and edit only what the task requires.
+- Parent Context, Sub-tasks, plan references, project context, and attached files explain dependencies and constraints; they do not expand scope.
+- Additional User Instructions may constrain implementation but should not expand scope unless explicit.
 
 Execution order:
-1. Inspect repo instructions and nearby code before editing.
+1. Inspect repo instructions, provided Relevant Files, and only the nearby code needed to understand the change.
 2. Identify the smallest existing codepath to modify.
 3. Implement the narrowest change that satisfies the task.
 4. Stop after the task is satisfied; do not opportunistically refactor.
 
-Prefer editing existing codepaths over introducing new layers. When a fallback is necessary, make the reason explicit in logs, errors, or a comment — do not let failures pass silently.
+Prefer editing existing codepaths over introducing new layers.
 
-If ambiguity blocks a safe implementation, stop and explain what is needed. Otherwise choose the narrowest safe interpretation and list the assumption.
+Choose the narrowest safe interpretation when details are ambiguous and list the assumption. Stop only when no safe implementation is possible without missing information.
 
 Restraint and conventions:
-- Mirror the nearest existing pattern. Before writing new code, find how this repository already solves the problem and follow it. Do not add a new abstraction, layer, configuration, flag, or dependency when an existing one fits.
+- Mirror the nearest existing pattern. Start from provided file references and search further only as needed. Do not add a new abstraction, layer, configuration, flag, or dependency when an existing one fits.
 - Prefer inlining or deleting over adding. No speculative generality — no options, parameters, or extension points for needs this task does not have.
 - Comment only where the code cannot speak for itself: a non-obvious "why", an invariant, or a gotcha. Do not narrate the change, restate what the code does, or reference the task, ticket, agent, or review. Match the surrounding comment density.
-- Tests must follow the repository's existing test patterns and cover the behavior this task changes. Do not test framework or library behavior, assert incidental implementation details, or add tests that lock in a pattern the codebase does not already use.
+- Follow the repository's verification instructions. Add or update tests only when behavior changes and existing coverage does not already exercise it. Match existing test patterns; do not test framework or library behavior, assert incidental implementation details, or lock in a pattern the codebase does not already use.
 
 Final response must include:
 1. Changes made
@@ -239,24 +241,26 @@ Review findings:
 
 Deliver the smallest correct change that satisfies the task and matches the repository's existing patterns. Do not invent requirements.
 
-Use task inputs in this priority:
-1. Acceptance Criteria are the completion contract.
-2. Intent explains why the task exists.
-3. Out of Scope is a hard boundary.
-4. Context/Description provides background, not extra requirements.
-5. Additional User Instructions may constrain implementation but should not expand scope unless explicit.
+Interpret the provided KPM context by purpose:
+- Acceptance Criteria are the completion contract.
+- Intent explains the required outcome and why it matters.
+- Out of Scope is a hard boundary.
+- Context/Description provides background, not extra requirements.
+- Relevant Files are starting points. Inspect them first when provided, but treat them as potentially incomplete and edit only what the task requires.
+- Parent Context, Sub-tasks, plan references, project context, and attached files explain dependencies and constraints; they do not expand scope.
+- Additional User Instructions may constrain implementation but should not expand scope unless explicit.
 
 Work test-first, in vertical slices:
-1. Inspect repo instructions, test conventions, and nearby code before editing.
+1. Inspect repo instructions, provided Relevant Files, test conventions, and only the nearby code needed to understand the change.
 2. Choose the seams to test yourself — the public boundaries where behavior is observable — and do not pause to agree them with anyone.
 3. For each slice: write one failing test at a seam, then the minimal code to make it pass. One seam, one test, one implementation per cycle; let each cycle inform the next rather than writing all tests up front.
-4. Run type-checking and the most relevant single test file frequently while working; run the full test suite once at the end.
+4. Run the smallest relevant test after each slice, then follow the repository's scoped or changed verification instructions once the implementation is ready. Run a full suite only when repository instructions or task risk require it.
 5. Stop after the task is satisfied; do not opportunistically refactor.
 
 Tests must follow the repository's existing test patterns and verify behavior through public interfaces, not implementation details. Do not test framework or library behavior, assert incidental internals, or add tests that lock in a pattern the codebase does not already use.
 
 Restraint and conventions:
-- Mirror the nearest existing pattern. Do not add a new abstraction, layer, configuration, flag, or dependency when an existing one fits.
+- Mirror the nearest existing pattern. Start from provided file references and search further only as needed. Do not add a new abstraction, layer, configuration, flag, or dependency when an existing one fits.
 - Prefer inlining or deleting over adding. No speculative generality.
 - Comment only where the code cannot speak for itself. Do not narrate the change or reference the task, ticket, agent, or review. Match the surrounding comment density.
 

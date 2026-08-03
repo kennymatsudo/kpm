@@ -85,6 +85,7 @@ const pausedReasonBody: Record<DevSessionPausedReason, string> = {
   gate: 'Waiting for your go-ahead before the next step.',
   max_passes: 'Hit the review pass limit without converging.',
   stalled: 'The reviewer kept raising the same findings.',
+  stopped: 'Stopped by you. Resume when you are ready.',
 };
 
 const boardAgentPresenterByPhase: Record<
@@ -95,13 +96,20 @@ const boardAgentPresenterByPhase: Record<
     severity: 'success',
     title: `${task} is ready for review`,
   }),
-  needs_attention: (_event, task) => ({
+  needs_attention: (event, task) => ({
     severity: 'warning',
-    title: `${task} needs attention`,
-    body: 'Automation stopped before finishing. Open the task to pick it back up.',
+    title: `${task} could not finish`,
+    body: event.attentionReason === 'commit-capture-failed'
+      || event.attentionReason === 'commit-hook-repair-already-attempted'
+      || event.attentionReason === 'commit-hook-repair-errored'
+      ? 'Commit checks failed. Open the task to review the changes.'
+      : event.attentionReason === 'opposing-review-errored'
+        || event.attentionReason?.startsWith('all-runs-failed:')
+        ? 'Automated review failed. Open the task to run it again.'
+        : 'Automation stopped before finishing. Open the task to retry the step.',
   }),
   paused: (event, task) => ({
-    severity: 'warning',
+    severity: event.pausedReason === 'stopped' ? 'info' : 'warning',
     title: `${task} is paused`,
     body: event.pausedReason ? pausedReasonBody[event.pausedReason] : undefined,
   }),

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { DevSession, ReviewTask } from '../../../shared/types';
+import { PR_REVIEW_FOLLOWUP_STEP } from '../../../shared/playbooks';
 import { createReviewService } from './ReviewService';
 
 function createSession(): DevSession {
@@ -271,7 +272,7 @@ describe('ReviewService', () => {
       status: 'in_progress',
       internal_state: 'implementation_queued',
     });
-    expect(phaseMachine.transition).toHaveBeenCalledWith('session-1', { type: 'prReviewThreadsQueued' });
+    expect(phaseMachine.transition).toHaveBeenCalledWith('session-1', { type: 'prReviewThreadsQueued', stepId: PR_REVIEW_FOLLOWUP_STEP.id });
     expect(gitHubService.buildAddressReviewContext).not.toHaveBeenCalled();
     expect(devSessionService.sendAgentFollowUp).not.toHaveBeenCalled();
   });

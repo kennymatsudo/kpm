@@ -6,6 +6,7 @@
  */
 
 import type { AgentEffortLevel, PlanItem, Project } from '../../../shared/types';
+import type { AgentType } from '../../../shared/agent-types';
 import { DEFAULT_CONTEXT_FILENAME, isPlaceholderContext } from '../../../shared/contextFile';
 import { workBriefFromPlanItem } from '../../../shared/workBrief';
 import { projectWorkBriefToExecution } from '../../workBrief/projections';
@@ -19,6 +20,9 @@ export interface AgentContextInput {
 }
 
 export type BoardClaudeModel = 'opus' | 'sonnet' | 'haiku';
+
+const CURRENT_WORK_BRIEF_START = '<current-work-brief>';
+const CURRENT_WORK_BRIEF_END = '</current-work-brief>';
 
 export function resolveBoardEffort(
   model: BoardClaudeModel,
@@ -35,6 +39,16 @@ export function buildBoardSdkSettings(): SDKSettings {
     disableWorkflows: true,
     workflowKeywordTriggerEnabled: false,
   };
+}
+
+export function buildBoardProviderPrompt(
+  agentType: AgentType,
+  roleSystemPrompt: string,
+  taskPrompt: string,
+): string {
+  return agentType === 'claude' || agentType === 'pi'
+    ? taskPrompt
+    : [roleSystemPrompt, taskPrompt].filter(Boolean).join('\n\n');
 }
 
 /**
@@ -68,17 +82,6 @@ export function buildAgentContext(input: AgentContextInput): string {
   if (item.code_refs && item.code_refs.length > 0) {
     sections.push('## Relevant Files');
     sections.push(item.code_refs.map((reference) => `- ${reference}`).join('\n'));
-  }
-
-  sections.push('---');
-  sections.push('## Instructions');
-  sections.push('Task input priority: Acceptance Criteria are the completion contract; Intent explains the required outcome; Context is background, not extra scope; Additional User Instructions may constrain implementation but must not silently replace the captured contract.');
-  sections.push('Execution order: inspect repo instructions and nearby code before editing; identify the smallest existing codepath to modify; implement the narrowest change that satisfies the task; stop after the task is satisfied and do not opportunistically refactor.');
-  sections.push(workBrief.acceptance_criteria.length > 0
-    ? 'Implement this task so that every acceptance criterion above is satisfied. In your final response, include a criterion-by-criterion status, exact verification performed, and any assumptions or follow-ups. Do not commit - I will review and commit the changes myself.'
-    : 'Implement this task. In your final response, include what changed, exact verification performed, and any assumptions or follow-ups. Do not commit - I will review and commit the changes myself.');
-  if (item.external_key) {
-    sections.push(`Ticket reference for commits: **${item.external_key}**`);
   }
 
   return sections.join('\n\n');
@@ -136,11 +139,53 @@ export function buildBoardStartInstructions(
   ].join('\n\n');
 }
 
+export function buildWorkBriefReconciliation(
+  input: AgentContextInput,
+  previousRevision: number | null,
+  planRefSection = '',
+): string {
+  const revisionChange = previousRevision == null
+    ? `The approved Work Brief is now revision ${input.item.work_brief_revision}.`
+    : `The approved Work Brief changed from revision ${previousRevision} to revision ${input.item.work_brief_revision}.`;
+
+  return [
+    CURRENT_WORK_BRIEF_START,
+    '## Current Work Brief',
+    revisionChange,
+    'This is the authoritative task contract. It supersedes conflicting task facts from earlier turns.',
+    planRefSection.trim(),
+    buildAgentContext(input),
+    CURRENT_WORK_BRIEF_END,
+  ].join('\n\n');
+}
+
+export function replaceCurrentWorkBrief(
+  initialInstructions: string,
+  currentWorkBrief: string,
+): string {
+  const start = initialInstructions.indexOf(CURRENT_WORK_BRIEF_START);
+  if (start === -1) {
+    return [initialInstructions.trim(), currentWorkBrief].filter(Boolean).join('\n\n');
+  }
+
+  const end = initialInstructions.indexOf(CURRENT_WORK_BRIEF_END, start);
+  if (end === -1) {
+    return [initialInstructions.slice(0, start).trim(), currentWorkBrief].filter(Boolean).join('\n\n');
+  }
+
+  const suffixStart = end + CURRENT_WORK_BRIEF_END.length;
+  return [
+    initialInstructions.slice(0, start).trim(),
+    currentWorkBrief,
+    initialInstructions.slice(suffixStart).trim(),
+  ].filter(Boolean).join('\n\n');
+}
+
 export function buildCommitHookRepairPrompt(hookOutput: string): string {
   return [
     'The git commit failed while running commit hooks.',
     '',
-    'Fix only the issues shown in the hook output below. Do not commit.',
+    'Fix only the issues shown in the hook output below.',
     'Do not broaden the task or refactor unrelated code.',
     '',
     'In your final response, include:',

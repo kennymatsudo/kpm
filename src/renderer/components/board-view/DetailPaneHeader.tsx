@@ -11,7 +11,6 @@ import { memo, useState, useEffect, useRef } from 'react';
 import type { DevSessionWithPlanItem, AgentSessionState } from '../../../shared/types';
 import type { BackgroundCommitState } from '../../stores/devSessions';
 import { Tooltip } from '../ui';
-import { deriveStaleWorkBriefRevision } from './workBriefRevision';
 
 interface DetailPaneHeaderProps {
   session: DevSessionWithPlanItem;
@@ -110,10 +109,6 @@ export const DetailPaneHeader = memo(function DetailPaneHeader({
   const hasPr = session.pr_number != null && !!session.pr_url;
   const canManagePostRun = (isTerminal || isInactiveSession) && !isCommitting;
   const title = session.plan_item?.title ?? session.name ?? 'Session';
-  const staleBriefRevision = deriveStaleWorkBriefRevision(
-    session.work_brief_revision,
-    session.plan_item?.work_brief_revision,
-  );
 
   const overflowItems: OverflowItem[] = [
     ...(onAddToContext ? [{ label: 'Add to chat context', onClick: onAddToContext }] : []),
@@ -146,20 +141,6 @@ export const DetailPaneHeader = memo(function DetailPaneHeader({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {staleBriefRevision && (
-            <Tooltip
-              content={`This execution uses brief revision ${staleBriefRevision.executionRevision}. The Plan Item is now revision ${staleBriefRevision.itemRevision}.`}
-              side="top"
-            >
-              <span
-                className="text-tiny px-1.5 py-0.5 rounded border border-warning/30 bg-warning/10 text-warning"
-                tabIndex={0}
-                aria-label={`Brief updated. This execution uses brief revision ${staleBriefRevision.executionRevision}. The Plan Item is now revision ${staleBriefRevision.itemRevision}.`}
-              >
-                Brief updated
-              </span>
-            </Tooltip>
-          )}
           {session.reviewer_agents_seen?.includes('codex') && (
             <Tooltip content="Reviewed by Codex" side="top">
               <span

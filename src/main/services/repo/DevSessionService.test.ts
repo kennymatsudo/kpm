@@ -57,23 +57,40 @@ describe('DevSessionService playbook migration boundary', () => {
     });
   });
 
-  it('resumes with stored initial instructions instead of rebuilding the latest Work Brief', async () => {
+  it('refreshes a reused session with the latest approved Work Brief', async () => {
     const existing = {
       id: 'session-1', project_id: 'project-1', plan_item_id: 'item-1', repo_id: 'repo-1',
       status: 'inactive', initial_instructions: 'Captured revision 2 contract',
       work_brief_revision: 2, playbook_snapshot: JSON.stringify(BUILT_IN_PLAYBOOKS.implementOnly),
       current_step_id: 'implement', automation_phase: null,
     };
+    const latestItem = {
+      id: 'item-1',
+      project_id: 'project-1',
+      parent_id: null,
+      title: 'Latest title',
+      description: 'Latest context',
+      intent: 'Latest intent',
+      acceptance_criteria: ['Latest criterion'],
+      external_key: null,
+      code_refs: null,
+      work_brief_revision: 5,
+    };
+    const updateWorkBriefSnapshot = vi.fn();
     const startAgentSession = vi.fn().mockImplementation(async (_id, options) => ({
       ok: true, data: { session: { ...existing, launchedPrompt: options.prompt } },
     }));
     const service = createDevSessionService({
       planItems: {
-        get: vi.fn(() => ({ id: 'item-1', project_id: 'project-1', title: 'Latest title', description: 'Latest context' })),
-        getByProject: vi.fn(() => []),
+        get: vi.fn(() => latestItem),
+        getByProject: vi.fn(() => [latestItem]),
       },
+      projects: { get: vi.fn(() => ({ id: 'project-1', name: 'Project' })) },
       devSessions: {
-        getByPlanItem: vi.fn(() => existing), get: vi.fn(() => existing), updateReviewPolicy: vi.fn(),
+        getByPlanItem: vi.fn(() => existing),
+        get: vi.fn(() => existing),
+        updateReviewPolicy: vi.fn(),
+        updateWorkBriefSnapshot,
       },
       listBoardProviders: vi.fn(async () => [{
         id: 'claude', name: 'Claude', available: true,
@@ -93,7 +110,14 @@ describe('DevSessionService playbook migration boundary', () => {
     expect(startAgentSession).toHaveBeenCalledWith('session-1', expect.objectContaining({
       prompt: expect.stringContaining('Captured revision 2 contract'),
     }));
-    expect(startAgentSession.mock.calls[0][1].prompt).not.toContain('Latest context');
+    expect(startAgentSession.mock.calls[0][1].prompt).toContain('Do not create commits');
+    expect(startAgentSession.mock.calls[0][1].prompt).toContain('Latest context');
+    expect(startAgentSession.mock.calls[0][1].prompt).toContain('authoritative task contract');
+    expect(updateWorkBriefSnapshot).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('Latest criterion'),
+      5,
+    );
   });
 });
 
@@ -121,6 +145,7 @@ describe('DevSessionService.sendAgentFollowUp', () => {
 
     expect(result).toEqual({ ok: true, data: { restarted: false, deferred: true } });
     expect(markLatestCompletedStale).toHaveBeenCalledWith('session-1');
+    expect(followUp).toHaveBeenCalledWith(expect.stringContaining('Do not create commits'));
     expect(startAgentSession).not.toHaveBeenCalled();
   });
 
@@ -151,6 +176,60 @@ describe('DevSessionService.sendAgentFollowUp', () => {
 
     expect(result).toEqual({ ok: true, data: { restarted: true } });
     expect(updateStatus).toHaveBeenCalledWith('session-1', 'inactive');
-    expect(startAgentSession).toHaveBeenCalled();
+    expect(startAgentSession).toHaveBeenCalledWith('session-1', expect.objectContaining({
+      prompt: expect.stringContaining('Do not create commits'),
+    }));
+  });
+
+  it('prepends and persists a changed Work Brief before a follow-up turn', async () => {
+    const session = {
+      id: 'session-1',
+      project_id: 'project-1',
+      plan_item_id: 'item-1',
+      status: 'inactive',
+      initial_instructions: 'Original task',
+      work_brief_revision: 2,
+    };
+    const latestItem = {
+      id: 'item-1',
+      project_id: 'project-1',
+      parent_id: null,
+      title: 'Revised task',
+      description: 'Revised context',
+      intent: null,
+      acceptance_criteria: ['Revised criterion'],
+      external_key: null,
+      code_refs: null,
+      work_brief_revision: 3,
+    };
+    const followUp = vi.fn().mockResolvedValue(undefined);
+    const updateWorkBriefSnapshot = vi.fn();
+    const service = createDevSessionService({
+      agentReviews: { markLatestCompletedStale: vi.fn() },
+      agentSessionManager: {
+        getByDevSession: vi.fn(() => ({ followUp })),
+      },
+      planItems: {
+        get: vi.fn(() => latestItem),
+        getByProject: vi.fn(() => [latestItem]),
+      },
+      projects: { get: vi.fn(() => ({ id: 'project-1', name: 'Project' })) },
+      devSessions: {
+        get: vi.fn(() => session),
+        updateWorkBriefSnapshot,
+      },
+    } as never);
+
+    const result = await service.sendAgentFollowUp('session-1', 'Continue the playbook.');
+
+    expect(result).toEqual({ ok: true, data: { restarted: false } });
+    expect(followUp).toHaveBeenCalledWith(expect.stringContaining('changed from revision 2 to revision 3'));
+    expect(followUp).toHaveBeenCalledWith(expect.stringContaining('Revised criterion'));
+    expect(followUp).toHaveBeenCalledWith(expect.stringContaining('Continue the playbook.'));
+    expect(updateWorkBriefSnapshot).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('Revised criterion'),
+      3,
+    );
   });
 });

@@ -123,10 +123,11 @@ describe('derivePanelStatus — running phases', () => {
     expect(status.nextAction?.busy).toBe(true);
   });
 
-  it('surfaces needs_attention instead of falling through to the completed decision point', () => {
+  it('surfaces a persisted interruption reason instead of falling through to completion', () => {
     const status = derivePanelStatus(makeInputs({
       implAgentState: 'complete',
       automationPhase: 'needs_attention',
+      attentionReason: 'agent-terminated',
       itemStatus: 'in_review',
       diffStats: { files: 4, additions: 162, deletions: 46 },
     }));
@@ -135,12 +136,62 @@ describe('derivePanelStatus — running phases', () => {
     expect(status.step).toBe('build');
     expect(status.nextAction).toEqual({
       tone: 'warning',
-      text: 'Automation interrupted',
-      primary: { label: 'Resume', action: 'resume' },
-      secondary: { label: 'New instructions', action: 'follow_up' },
+      text: 'Agent process ended during automation',
+      primary: { label: 'Retry step', action: 'resume' },
       dismissible: true,
     });
     expect(status.progress).toBeNull();
+  });
+
+  it('does not invent an action when a legacy interruption has no recorded reason', () => {
+    const status = derivePanelStatus(makeInputs({
+      automationPhase: 'needs_attention',
+      attentionReason: null,
+    }));
+
+    expect(status.phase).toBe('needs_attention');
+    expect(status.nextAction).toBeNull();
+  });
+
+  it('treats an intentional stop as a neutral pause', () => {
+    const status = derivePanelStatus(makeInputs({
+      implAgentState: 'stopped',
+      automationPhase: 'paused',
+      pausedReason: 'stopped',
+    }));
+
+    expect(status.phase).toBe('paused');
+    expect(status.nextAction).toEqual({
+      tone: 'neutral',
+      text: 'Paused by you',
+      primary: { label: 'Resume', action: 'resume' },
+    });
+  });
+
+  it('routes commit failures to the changes view', () => {
+    const status = derivePanelStatus(makeInputs({
+      automationPhase: 'needs_attention',
+      attentionReason: 'commit-capture-failed',
+    }));
+
+    expect(status.nextAction).toEqual({
+      tone: 'danger',
+      text: 'Commit checks failed',
+      primary: { label: 'Review changes', action: 'view_changes' },
+    });
+  });
+
+  it('routes review failures to a new review run', () => {
+    const status = derivePanelStatus(makeInputs({
+      automationPhase: 'needs_attention',
+      attentionReason: 'opposing-review-errored',
+    }));
+
+    expect(status.nextAction).toEqual({
+      tone: 'warning',
+      text: 'Automated review failed',
+      primary: { label: 'Run review', action: 'run_review' },
+    });
   });
 });
 

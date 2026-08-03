@@ -40,6 +40,7 @@ interface PreparedStatements {
   updatePrInfo: Statement;
   updateName: Statement;
   updateBaseSha: Statement;
+  updateWorkBriefSnapshot: Statement;
   updateMergeOrder: Statement;
   delete: Statement;
   markActiveAsInactive: Statement;
@@ -88,10 +89,10 @@ export class DevSessionRepository implements IDevSessionRepository {
           id, project_id, plan_item_id, repo_id, name,
           worktree_path, branch_name, base_branch,
           status, agent_type, review_policy, automation_phase,
-          playbook_id, playbook_snapshot, current_step_id, step_pass_counts, paused_reason,
+          playbook_id, playbook_snapshot, current_step_id, step_pass_counts, paused_reason, attention_reason,
           initial_instructions, work_brief_revision
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *
       `),
       updateStatus: db.prepare('UPDATE dev_sessions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
@@ -106,13 +107,14 @@ export class DevSessionRepository implements IDevSessionRepository {
             current_step_id = ?,
             step_pass_counts = ?,
             paused_reason = ?,
+            attention_reason = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `),
       updatePlaybook: db.prepare(`
         UPDATE dev_sessions
         SET playbook_id = ?, playbook_snapshot = ?, current_step_id = ?,
-            step_pass_counts = NULL, paused_reason = NULL, agent_type = ?,
+            step_pass_counts = NULL, paused_reason = NULL, attention_reason = NULL, agent_type = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `),
@@ -132,6 +134,11 @@ export class DevSessionRepository implements IDevSessionRepository {
       `),
       updateName: db.prepare('UPDATE dev_sessions SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
       updateBaseSha: db.prepare('UPDATE dev_sessions SET base_sha = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
+      updateWorkBriefSnapshot: db.prepare(`
+        UPDATE dev_sessions
+        SET initial_instructions = ?, work_brief_revision = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `),
       updateMergeOrder: db.prepare('UPDATE dev_sessions SET merge_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
       delete: db.prepare('DELETE FROM dev_sessions WHERE id = ?'),
       markActiveAsInactive: db.prepare(`
@@ -180,6 +187,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       current_step_id: row.current_step_id ?? null,
       step_pass_counts: row.step_pass_counts ?? null,
       paused_reason: row.paused_reason ?? null,
+      attention_reason: row.attention_reason ?? null,
       step_outputs: row.step_outputs ?? null,
       initial_instructions: row.initial_instructions,
       work_brief_revision: row.work_brief_revision ?? null,
@@ -235,6 +243,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       session.current_step_id ?? null,
       session.step_pass_counts ?? null,
       session.paused_reason ?? null,
+      session.attention_reason ?? null,
       session.initial_instructions,
       session.work_brief_revision ?? null,
     ) as DevSession;
@@ -255,6 +264,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       currentStepId?: string | null;
       stepPassCounts?: string | null;
       pausedReason?: DevSession['paused_reason'] | null;
+      attentionReason?: DevSession['attention_reason'] | null;
     },
   ): void {
     const current = this.get(id);
@@ -263,6 +273,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       state.currentStepId === undefined ? current?.current_step_id ?? null : state.currentStepId,
       state.stepPassCounts === undefined ? current?.step_pass_counts ?? null : state.stepPassCounts,
       state.pausedReason === undefined ? current?.paused_reason ?? null : state.pausedReason,
+      state.attentionReason === undefined ? current?.attention_reason ?? null : state.attentionReason,
       id,
     );
   }
@@ -289,6 +300,10 @@ export class DevSessionRepository implements IDevSessionRepository {
 
   updateBaseSha(id: string, baseSha: string): void {
     this.stmts.updateBaseSha.run(baseSha, id);
+  }
+
+  updateWorkBriefSnapshot(id: string, initialInstructions: string, workBriefRevision: number): void {
+    this.stmts.updateWorkBriefSnapshot.run(initialInstructions, workBriefRevision, id);
   }
 
   updateMergeOrder(id: string, order: number | null): void {

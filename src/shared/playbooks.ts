@@ -380,6 +380,28 @@ export function getPlaybookLoops(playbook: Playbook): PlaybookLoop[] {
   return [...byStart.values()].sort((a, b) => a.startIndex - b.startIndex);
 }
 
+/**
+ * Steps for turns the harness injects outside any playbook's own step list (an
+ * ad-hoc "Run review" click, a PR review follow-up). Deliberately absent from
+ * every playbook's `steps` array: that absence is what makes `advancePlaybook`
+ * end the run when it can't find the completed cursor in the playbook, instead
+ * of falling through to `playbook.steps[0]` and restarting the whole chain.
+ */
+export const AD_HOC_REVIEW_STEP: PlaybookStep = {
+  id: 'ad-hoc-review',
+  session: 'subagent',
+  agents: [{ provider: 'codex' }, { provider: 'gemini' }],
+  systemPromptKey: 'agents.review_system',
+  directive: { kind: 'prompt' },
+  verdict: 'findings',
+};
+
+export const PR_REVIEW_FOLLOWUP_STEP: PlaybookStep = {
+  id: 'pr-review-followup',
+  session: 'main',
+  directive: { kind: 'prompt' },
+};
+
 export const BUILT_IN_PLAYBOOKS = {
   implementOnly: parsePlaybook({
     id: 'builtin.implement_only',

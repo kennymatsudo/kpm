@@ -11,6 +11,7 @@ import type { AutomationPhaseMachine } from '../../services/agents/automationPha
 import type { PromptOverrideService } from '../../services/core/PromptOverrideService';
 import { getAvailableAgents } from '../../services/agents/agentCatalog';
 import { launchAutoReview } from '../../services/agents/autoReview';
+import { playbookForSession, resolveHarnessStep } from '../../services/agents/sessionPlaybook';
 import { unwrapOrThrow } from '../../services/result';
 import { getConfig } from '../../config';
 import { toReviewSessionId } from '../../../shared/agent-types';
@@ -161,7 +162,8 @@ function buildAgentSessionHandlers(
         throw new Error('A review is already running for this session');
       }
 
-      phaseMachine.transition(devSessionId, { type: 'opposingReviewLaunched' });
+      const reviewStep = resolveHarnessStep(playbookForSession(session), 'ad-hoc-review');
+      phaseMachine.transition(devSessionId, { type: 'opposingReviewLaunched', stepId: reviewStep.id });
 
       try {
         const reviewSessionId = await launchAutoReview({
@@ -173,6 +175,7 @@ function buildAgentSessionHandlers(
           projectId: session.project_id,
           agentSessionManager,
           getPromptContent: (key) => unwrapOrThrow(promptOverrideService.getContent(key)),
+          stepId: reviewStep.id,
         });
 
         if (!reviewSessionId) {

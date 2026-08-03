@@ -4,6 +4,8 @@ import { createAutomationPhaseMachine, type AutomationPhaseRepository } from './
 import { launchAutoReview, launchPlaybookSubagent } from './autoReview';
 import type * as AutoReviewModule from './autoReview';
 import type { DevSession } from '../../../shared/types';
+import { BUILT_IN_PLAYBOOKS } from '../../../shared/playbooks';
+import { toReviewSessionId } from '../../../shared/agent-types';
 
 vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: () => [] },
@@ -34,6 +36,7 @@ function createTestPhaseMachine(session: DevSession) {
       if (state.currentStepId !== undefined) session.current_step_id = state.currentStepId;
       if (state.stepPassCounts !== undefined) session.step_pass_counts = state.stepPassCounts;
       if (state.pausedReason !== undefined) session.paused_reason = state.pausedReason;
+      if (state.attentionReason !== undefined) session.attention_reason = state.attentionReason;
     },
   };
   return createAutomationPhaseMachine({ devSessions });
@@ -230,6 +233,55 @@ describe('BoardAgentOrchestrator', () => {
     expect(updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
     expect(session.automation_phase).toBe('ready_for_review');
     expect(requestPlanRefresh).toHaveBeenCalledWith(session.project_id);
+  });
+
+  it('reconciles a changed Work Brief before advancing implementation', async () => {
+    const session = createSession({ review_policy: 'skip' });
+    const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
+    const reconcileWorkBrief = vi.fn().mockResolvedValue({
+      ok: true,
+      data: { reconciled: true },
+    });
+    const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
+    const flushQueuedReviewTasks = vi.fn();
+
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(),
+        persistCompletedReview: vi.fn(),
+        persistFailedReview: vi.fn(),
+        getByReviewSessionIds: vi.fn(() => []),
+      },
+      planService: { updateItem },
+      phaseMachine: createTestPhaseMachine(session),
+      getDevSessionService: () => ({
+        get: vi.fn(() => session),
+        sendAgentFollowUp: vi.fn(),
+        updateStatus: vi.fn(),
+        commitSessionChanges,
+        requestCommitHookRepair: vi.fn(),
+        reconcileWorkBrief,
+      }),
+      getReviewService: () => ({ flushQueuedReviewTasks }),
+      getAgentSessionManager: () => ({
+        getByDevSession: vi.fn(),
+      } as never),
+      getPromptContent: vi.fn(),
+      claudeUsageService: { recordUsage: vi.fn() },
+      requestPlanRefresh: vi.fn(),
+    });
+
+    await callbacks.onSessionComplete?.({
+      devSessionId: session.id,
+      role: 'implement',
+      summary: { filesChanged: 1, additions: 2, deletions: 0 },
+    });
+
+    expect(commitSessionChanges).toHaveBeenCalledWith(session.id, session.name);
+    expect(reconcileWorkBrief).toHaveBeenCalledWith(session.id);
+    expect(flushQueuedReviewTasks).not.toHaveBeenCalled();
+    expect(updateItem).not.toHaveBeenCalled();
+    expect(launchAutoReview).not.toHaveBeenCalled();
   });
 
   it('flushes queued PR review tasks before moving the session forward', async () => {
@@ -645,6 +697,10 @@ describe('BoardAgentOrchestrator', () => {
     });
 
     expect(persistedOutputs.some((value) => value.includes('__harness_worktree_modified'))).toBe(true);
+    expect(launchPlaybookSubagent).toHaveBeenCalledWith(expect.objectContaining({
+      directive: expect.stringContaining('Do not create commits'),
+      writes: true,
+    }));
     expect(sendAgentFollowUp).toHaveBeenCalledWith(session.id, expect.stringContaining('Another agent modified the worktree'));
     expect(persistedOutputs.at(-1)).not.toContain('__harness_worktree_modified');
   });
@@ -698,6 +754,92 @@ describe('BoardAgentOrchestrator', () => {
     expect(sendAgentFollowUp).toHaveBeenCalledWith(session.id, expect.stringContaining('first persisted output'));
     expect(sendAgentFollowUp).toHaveBeenCalledWith(session.id, expect.stringContaining('second persisted output'));
     expect(session.step_pass_counts).toBe('{"critics":0}');
+  });
+
+  it('finishes an ad-hoc review on the fresh-install implement-only playbook instead of failing on an unknown cursor', async () => {
+    const playbook = BUILT_IN_PLAYBOOKS.implementOnly;
+    const session = createSession({
+      playbook_id: playbook.id,
+      playbook_snapshot: JSON.stringify(playbook),
+      current_step_id: 'ad-hoc-review',
+      automation_phase: 'reviewing',
+    });
+    const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
+    const requestPlanRefresh = vi.fn();
+    const phaseMachine = createTestPhaseMachine(session);
+    const transitionSpy = vi.spyOn(phaseMachine, 'transition');
+
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
+        getByReviewSessionIds: vi.fn(() => []),
+      },
+      planService: { updateItem },
+      phaseMachine,
+      getDevSessionService: () => ({
+        get: vi.fn(() => session), sendAgentFollowUp: vi.fn(), updateStatus: vi.fn(),
+        commitSessionChanges: vi.fn(), requestCommitHookRepair: vi.fn(),
+      }),
+      getReviewService: () => null,
+      getAgentSessionManager: () => ({ isSessionBusy: vi.fn(() => false) } as never),
+      getPromptContent: vi.fn(), claudeUsageService: { recordUsage: vi.fn() }, requestPlanRefresh,
+    });
+
+    await callbacks.onSessionComplete?.({
+      devSessionId: toReviewSessionId(session.id),
+      implementationSessionId: session.id,
+      stepId: 'ad-hoc-review',
+      role: 'review',
+      findings: [],
+      summary: { filesChanged: 0, additions: 0, deletions: 0 },
+    });
+
+    expect(transitionSpy).not.toHaveBeenCalledWith(session.id, expect.objectContaining({ type: 'automationFailed' }));
+    expect(updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
+    expect(session.automation_phase).toBe('ready_for_review');
+    expect(requestPlanRefresh).toHaveBeenCalledWith(session.project_id);
+  });
+
+  it('finishes at terminal instead of restarting the playbook when the persisted cursor is a PR review follow-up', async () => {
+    const playbook = BUILT_IN_PLAYBOOKS.implementOpposingReview;
+    const session = createSession({
+      playbook_id: playbook.id,
+      playbook_snapshot: JSON.stringify(playbook),
+      current_step_id: 'pr-review-followup',
+      automation_phase: 'addressing_review',
+    });
+    const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
+    const sendAgentFollowUp = vi.fn();
+    const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
+    const requestPlanRefresh = vi.fn();
+
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
+        getByReviewSessionIds: vi.fn(() => []),
+      },
+      planService: { updateItem },
+      phaseMachine: createTestPhaseMachine(session),
+      getDevSessionService: () => ({
+        get: vi.fn(() => session), sendAgentFollowUp, updateStatus: vi.fn(),
+        commitSessionChanges, requestCommitHookRepair: vi.fn(),
+      }),
+      getReviewService: () => null,
+      getAgentSessionManager: () => ({ isSessionBusy: vi.fn(() => false) } as never),
+      getPromptContent: vi.fn(), claudeUsageService: { recordUsage: vi.fn() }, requestPlanRefresh,
+    });
+
+    await callbacks.onSessionComplete?.({
+      devSessionId: session.id,
+      role: 'implement',
+      summary: { filesChanged: 1, additions: 1, deletions: 0 },
+    });
+
+    expect(sendAgentFollowUp).not.toHaveBeenCalled();
+    expect(launchPlaybookSubagent).not.toHaveBeenCalled();
+    expect(launchAutoReview).not.toHaveBeenCalled();
+    expect(updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
+    expect(session.automation_phase).toBe('ready_for_review');
   });
 });
 

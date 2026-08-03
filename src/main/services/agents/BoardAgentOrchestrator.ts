@@ -1,7 +1,7 @@
 import type { ReviewAxis, ReviewFinding } from '../../../shared/agent-types';
 import { toImplSessionId } from '../../../shared/agent-types';
-import { BUILT_IN_PLAYBOOKS, parsePlaybook, type BoardProvider, type Playbook, type PlaybookStep } from '../../../shared/playbooks';
-import { advancePlaybook, parsePassCounts, renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
+import type { BoardProvider, Playbook, PlaybookStep } from '../../../shared/playbooks';
+import { BOARD_AGENT_WRITE_POLICY, advancePlaybook, parsePassCounts, renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import { isCommitHookRepairPhase, type DevSession } from '../../../shared/types';
 import type { DefaultModel } from '../../../shared/modelDefault';
 import type { IAgentReviewRepository } from '../../db/interfaces/review';
@@ -15,6 +15,7 @@ import { createPlaybookRoundStore, type RunGroup } from './playbookRoundStore';
 import { listBoardProviders as detectBoardProviders } from './boardProviderRegistry';
 import type { ServiceResult } from '../result';
 import { effectivePhase, type AutomationPhaseMachine } from './automationPhaseMachine';
+import { playbookForSession, resolveCursorStep, stepById } from './sessionPlaybook';
 
 const LOG_PREFIX = '[BoardAgentOrchestrator]';
 const WORKTREE_MODIFIED_NOTICE_KEY = '__harness_worktree_modified';
@@ -27,7 +28,10 @@ type DevSessionAutomationService = Pick<
   | 'updateStatus'
   | 'commitSessionChanges'
   | 'requestCommitHookRepair'
-> & Partial<Pick<DevSessionService, 'savePlaybookOutputs'>>;
+> & Partial<Pick<
+  DevSessionService,
+  'savePlaybookOutputs' | 'reconcileWorkBrief' | 'syncWorkBriefSnapshot'
+>>;
 type ReviewQueueService = Pick<ReviewService, 'flushQueuedReviewTasks'>;
 
 interface BoardAgentOrchestratorDeps {
@@ -90,23 +94,6 @@ export function formatFindings(findings: ReviewFinding[]): string {
     .join('\n\n');
 }
 
-function playbookForSession(session: DevSession): Playbook {
-  if (session.playbook_snapshot) {
-    try {
-      return parsePlaybook(JSON.parse(session.playbook_snapshot));
-    } catch (error) {
-      console.warn(`${LOG_PREFIX} Invalid playbook snapshot for ${session.id}; using built-in default`, error);
-    }
-  }
-  // Compatibility boundary only: rows created before migration 103 have no
-  // immutable snapshot. Newly started board sessions are snapshotted and must
-  // use the interpreter path below; do not expand this fallback to new runs.
-  return session.review_policy === 'skip' ? BUILT_IN_PLAYBOOKS.implementOnly : BUILT_IN_PLAYBOOKS.implementOpposingReview;
-}
-
-function stepById(playbook: Playbook, stepId: string): PlaybookStep | undefined {
-  return playbook.steps.find((step) => step.id === stepId);
-}
 
 function nextStep(playbook: Playbook, step: PlaybookStep): PlaybookStep | undefined {
   const index = playbook.steps.findIndex((candidate) => candidate.id === step.id);
@@ -119,6 +106,25 @@ type CaptureWorkOutcome = 'committed' | 'nothing_to_commit' | 'repair_started' |
 /** Both committed and clean-tree outcomes mean the branch capture succeeded. */
 function isCaptured(outcome: CaptureWorkOutcome): boolean {
   return outcome === 'committed' || outcome === 'nothing_to_commit';
+}
+
+async function reconcileWorkBriefBeforeAdvance(
+  service: DevSessionAutomationService,
+  phaseMachine: Pick<AutomationPhaseMachine, 'transition'>,
+  session: DevSession,
+): Promise<boolean> {
+  if (!service.reconcileWorkBrief) {
+    return false;
+  }
+
+  const result = await service.reconcileWorkBrief(session.id);
+  if (!result.ok) {
+    console.error(`${LOG_PREFIX} Failed to reconcile Work Brief for ${session.id}:`, result.error);
+    phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'follow-up-send-failed' });
+    return true;
+  }
+
+  return result.data.reconciled;
 }
 
 /**
@@ -263,6 +269,16 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       return;
     }
 
+    let subagentSession = session;
+    const syncResult = deps.getDevSessionService()?.syncWorkBriefSnapshot?.(session.id);
+    if (syncResult && !syncResult.ok) {
+      deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'follow-up-send-failed' });
+      return;
+    }
+    if (syncResult?.ok) {
+      subagentSession = syncResult.data.session;
+    }
+
     const group = rounds.reconstructRunGroup(session, step, resolved.runs.length);
     rounds.setGroup(session.id, step.id, group);
     if (group.succeeded.size === group.expected) {
@@ -283,21 +299,22 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         promptContent: deps.getPromptContent,
         skillBody: skill?.ok ? skill.data : null,
         resumeNote,
+        harnessNote: step.writes ? BOARD_AGENT_WRITE_POLICY : null,
       });
       return launchPlaybookSubagent({
-        implementationSessionId: session.id,
+        implementationSessionId: subagentSession.id,
         stepId: step.id,
         runIndex,
         attempt: group.attempt,
         agent: agent!,
-        worktreePath: session.worktree_path,
-        baseBranch: session.base_branch,
-        taskContext: session.initial_instructions,
+        worktreePath: subagentSession.worktree_path,
+        baseBranch: subagentSession.base_branch,
+        taskContext: subagentSession.initial_instructions,
         directive,
         systemPrompt: deps.getPromptContent(step.runOverrides?.[runIndex]?.systemPromptKey ?? step.systemPromptKey!),
         verdict: step.verdict === 'findings',
         writes: step.writes === true,
-        projectId: session.project_id,
+        projectId: subagentSession.project_id,
         agentSessionManager: deps.getAgentSessionManager(),
       });
     });
@@ -488,6 +505,9 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           const capture = await captureWorkOnBranch(devSessionService, deps.phaseMachine, session);
           if (!isCaptured(capture)) return;
           const madeProgress = capture === 'committed';
+          if (await reconcileWorkBriefBeforeAdvance(devSessionService, deps.phaseMachine, session)) {
+            return;
+          }
           // A null cursor is the interpreter's terminal halt point. Free-form
           // follow-up is allowed there, but it is an ad-hoc turn — never infer
           // the first step and restart the completed playbook.
@@ -495,7 +515,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
             await finishAtTerminal(session);
             return;
           }
-          const completed = stepById(playbook, session.current_step_id) ?? playbook.steps[0];
+          const completed = resolveCursorStep(playbook, session.current_step_id) ?? playbook.steps[0];
           if (finalText) {
             const sessionOutputs = rounds.outputsFor(session);
             sessionOutputs[completed.id] = [finalText];
@@ -504,7 +524,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           await advanceAfterStep(session, playbook, completed, [], madeProgress);
           return;
         }
-        const completed = stepById(playbook, stepId ?? session.current_step_id ?? 'review');
+        const completed = resolveCursorStep(playbook, stepId ?? session.current_step_id ?? 'review');
         if (!completed) {
           deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'unknown-completed-step' });
           return;
@@ -529,6 +549,9 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           return;
         }
         if (captureOutcome === 'failed') {
+          return;
+        }
+        if (await reconcileWorkBriefBeforeAdvance(devSessionService, deps.phaseMachine, session)) {
           return;
         }
 
@@ -569,7 +592,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           return;
         }
 
-        deps.phaseMachine.transition(implSessionId, { type: 'opposingReviewLaunched' });
+        deps.phaseMachine.transition(implSessionId, { type: 'opposingReviewLaunched', stepId: next.id });
 
         const reviewSessionId = await launchAutoReview({
           implementationSessionId: implSessionId,
@@ -580,6 +603,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           projectId: session.project_id,
           agentSessionManager: deps.getAgentSessionManager(),
           getPromptContent: deps.getPromptContent,
+          stepId: next.id,
         });
 
         if (!reviewSessionId) {
@@ -670,6 +694,15 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         const playbook = playbookForSession(session);
         const step = stepById(playbook, stepId);
         if (step) await settleSubagentRun({ session, playbook, step, runIndex: runIndex ?? 0, failed: true });
+        return;
+      }
+
+      if (state === 'stopped') {
+        deps.phaseMachine.transition(implSessionId, {
+          type: 'paused',
+          stepId: session.current_step_id ?? 'implement',
+          reason: 'stopped',
+        });
         return;
       }
 

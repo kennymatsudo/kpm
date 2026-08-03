@@ -29,6 +29,7 @@
 import {
   isCommitHookRepairPhase,
   type AgentSessionState,
+  type DevSessionAttentionReason,
   type DevSessionAutomationPhase,
   type StatusCategory,
 } from '../../../shared/types';
@@ -139,7 +140,8 @@ export interface PanelStatusInputs {
   /** Opposing-review agent state, if a review session is running. */
   reviewAgentState: AgentSessionState | undefined;
   automationPhase: DevSessionAutomationPhase | null;
-  pausedReason?: 'gate' | 'max_passes' | 'stalled' | null;
+  pausedReason?: 'gate' | 'max_passes' | 'stalled' | 'stopped' | null;
+  attentionReason?: DevSessionAttentionReason | null;
   /** PR linkage / status. */
   hasPr: boolean;
   prState: string | null;      // 'OPEN' | 'CLOSED' | 'MERGED'
@@ -313,6 +315,70 @@ function progressFor(label: string, i: PanelStatusInputs): ProgressInfo {
   };
 }
 
+function interruptedAction(reason: DevSessionAttentionReason): NextAction {
+  if (
+    reason === 'commit-capture-failed'
+    || reason === 'commit-hook-repair-already-attempted'
+    || reason === 'commit-hook-repair-errored'
+  ) {
+    return {
+      tone: 'danger',
+      text: 'Commit checks failed',
+      primary: { label: 'Review changes', action: 'view_changes' },
+    };
+  }
+  if (reason === 'opposing-review-errored' || reason?.startsWith('all-runs-failed:')) {
+    return {
+      tone: 'warning',
+      text: 'Automated review failed',
+      primary: { label: 'Run review', action: 'run_review' },
+    };
+  }
+  if (reason === 'move-to-review-failed') {
+    return {
+      tone: 'warning',
+      text: 'Could not move task to review',
+      primary: { label: 'Ready for Review', action: 'ready_for_review' },
+    };
+  }
+  if (reason === 'queued-review-flush-failed') {
+    return {
+      tone: 'warning',
+      text: 'Could not update the review queue',
+      primary: { label: 'Run review', action: 'run_review' },
+    };
+  }
+  if (
+    reason === 'missing-next-step'
+    || reason === 'missing-resume-step'
+    || reason === 'unknown-completed-step'
+  ) {
+    return {
+      tone: 'danger',
+      text: 'Playbook cannot continue',
+      primary: { label: 'Review changes', action: 'view_changes' },
+      dismissible: true,
+    };
+  }
+  if (reason?.startsWith('provider-unavailable:') || reason?.startsWith('skill-unavailable:')) {
+    return {
+      tone: 'danger',
+      text: reason.startsWith('provider-unavailable:')
+        ? 'Required agent is unavailable'
+        : 'Required skill is unavailable',
+      dismissible: true,
+    };
+  }
+  return {
+    tone: 'warning',
+    text: reason === 'agent-terminated'
+      ? 'Agent process ended during automation'
+      : 'Could not start the next agent step',
+    primary: { label: 'Retry step', action: 'resume' },
+    dismissible: true,
+  };
+}
+
 function withStep(phase: PanelPhase, nextAction: NextAction | null, progress: ProgressInfo | null): PanelStatus {
   const step = PHASE_TO_STEP[phase];
   return { phase, step, stepIndex: STEP_ORDER.indexOf(step), nextAction, progress };
@@ -366,6 +432,13 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
 
   // 6. Persisted automation interruptions outrank quiet decision points.
   if (i.automationPhase === 'paused') {
+    if (i.pausedReason === 'stopped') {
+      return withStep('paused', {
+        tone: 'neutral',
+        text: 'Paused by you',
+        primary: { label: 'Resume', action: 'resume' },
+      }, null);
+    }
     if (i.pausedReason === 'max_passes' || i.pausedReason === 'stalled') {
       return withStep('paused', {
         tone: 'warning',
@@ -384,13 +457,11 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
   }
 
   if (i.automationPhase === 'needs_attention') {
-    return withStep('needs_attention', {
-      tone: 'warning',
-      text: 'Automation interrupted',
-      primary: { label: 'Resume', action: 'resume' },
-      secondary: { label: 'New instructions', action: 'follow_up' },
-      dismissible: true,
-    }, null);
+    return withStep(
+      'needs_attention',
+      i.attentionReason ? interruptedAction(i.attentionReason) : null,
+      null,
+    );
   }
 
   // 7-8. Terminal agent failures outrank quiet decision points.

@@ -51,7 +51,7 @@ interface BoardCardProps {
 
 function buildReviewActionableTooltip(
   counts: { needsInput: number; failed: number; stale: number; errored: number },
-  alsoAutomationInterrupted: boolean,
+  automationFailure: string | null,
 ): string {
   const parts: string[] = [];
   if (counts.needsInput > 0) parts.push(`${counts.needsInput} need your input`);
@@ -61,9 +61,22 @@ function buildReviewActionableTooltip(
   const head = parts.length > 0
     ? `Review: ${parts.join(', ')}`
     : 'Review requires attention';
-  return alsoAutomationInterrupted
-    ? `${head} · Automation interrupted`
+  return automationFailure
+    ? `${head} · ${automationFailure}`
     : `${head} — open Review tab`;
+}
+
+function buildReviewActionableLabel(
+  counts: { needsInput: number; failed: number; stale: number; errored: number },
+): string {
+  const failures = counts.failed + counts.stale + counts.errored;
+  if (failures > 0) {
+    return `${failures} review ${failures === 1 ? 'task needs' : 'tasks need'} reassessment`;
+  }
+  if (counts.needsInput > 0) {
+    return `${counts.needsInput} review ${counts.needsInput === 1 ? 'decision needs' : 'decisions need'} you`;
+  }
+  return 'Review requires a decision';
 }
 
 /**
@@ -74,7 +87,7 @@ function buildReviewActionableTooltip(
  */
 type CardVisualState = 'idle' | 'active' | 'attention' | 'complete' | 'error';
 
-// needs_attention gets its own dedicated orange dot elsewhere on the card
+// Automation failures get their own dedicated orange dot elsewhere on the card
 // (not the amber attention state) — kept as 'idle' here so it doesn't also
 // pick up the attention-only styling (shadow, stop-button eligibility).
 const PHASE_TO_VISUAL_STATE: Record<PanelPhase, CardVisualState> = {
@@ -254,6 +267,7 @@ export const BoardCard = memo(function BoardCard({
   // actually landed in, which can differ from the repo the item was assigned.
   const repoName = repoSession?.repo_name ?? assignedRepoName;
   const automationPhase = activeSession?.automation_phase;
+  const attentionReason = activeSession?.attention_reason ?? null;
   const reviewSessionId = activeSession ? toReviewSessionId(activeSession.id) : undefined;
   const isReviewVisible =
     reviewState === 'starting'
@@ -267,6 +281,7 @@ export const BoardCard = memo(function BoardCard({
     reviewAgentState: reviewState,
     automationPhase: automationPhase ?? null,
     pausedReason: activeSession?.paused_reason,
+    attentionReason,
     hasPr: prSession?.pr_number != null,
     prState: prSession?.pr_state ?? null,
     reviewState: prSession?.review_state ?? null,
@@ -309,8 +324,14 @@ export const BoardCard = memo(function BoardCard({
   //    so a session created moments ago, before any agent-state broadcast
   //    arrives, needs its own label rather than falling through to idle.
   const phaseIndicator: CardPhaseIndicator | null = (() => {
-    if (automationPhase === 'needs_attention' || reviewActionable?.hasActionable) {
-      return { label: 'Needs attention', tone: 'warning' };
+    if (reviewActionable?.hasActionable) {
+      return { label: buildReviewActionableLabel(reviewActionable.counts), tone: 'warning' };
+    }
+    if (automationPhase === 'needs_attention' && attentionReason) {
+      return {
+        label: panelStatus.nextAction?.text ?? 'Automation failed',
+        tone: panelStatus.nextAction?.tone ?? 'warning',
+      };
     }
     if (activeSession?.status === 'pending') {
       return { label: 'Pending', tone: 'neutral' };
@@ -478,19 +499,24 @@ export const BoardCard = memo(function BoardCard({
           </Tooltip>
         )}
 
-        {/* Needs attention indicator: automation interrupted OR review items need user action */}
-        {(automationPhase === 'needs_attention' || reviewActionable?.hasActionable) && visualState !== 'active' && visualState !== 'attention' && (
+        {/* Failure indicator: automation failure or review items requiring user action */}
+        {((automationPhase === 'needs_attention' && attentionReason) || reviewActionable?.hasActionable) && visualState !== 'active' && visualState !== 'attention' && (
           <Tooltip
             content={
               reviewActionable?.hasActionable
-                ? buildReviewActionableTooltip(reviewActionable.counts, automationPhase === 'needs_attention')
-                : 'Automation interrupted — click Play to continue'
+                ? buildReviewActionableTooltip(
+                    reviewActionable.counts,
+                    automationPhase === 'needs_attention' && attentionReason
+                      ? panelStatus.nextAction?.text ?? 'Automation failed'
+                      : null,
+                  )
+                : panelStatus.nextAction?.text ?? 'Automation failed'
             }
             side="top"
           >
             <span
               className="flex-shrink-0 mt-1 w-2 h-2 rounded-full bg-orange-500"
-              aria-label="Needs attention"
+              aria-label={panelStatus.nextAction?.text ?? 'Automation failed'}
             />
           </Tooltip>
         )}

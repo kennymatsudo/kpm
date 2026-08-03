@@ -52,7 +52,7 @@ import { FollowUpNotAllowedError } from '../agents/BaseAgentSession';
 import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
 import type { PlaybookService } from '../core/PlaybookService';
 import { parsePlaybook, type BoardProvider, type Playbook } from '../../../shared/playbooks';
-import { renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
+import { BOARD_AGENT_WRITE_POLICY, renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import { renderBranchName } from '../../../shared/branchNaming';
 import { getSetting, getDefaultModel } from '../../db/appSettingsAccess';
 import {
@@ -61,8 +61,11 @@ import {
   buildAgentContext,
   buildProjectContextPrefix,
   buildBoardStartInstructions,
+  buildWorkBriefReconciliation,
+  replaceCurrentWorkBrief,
   buildCommitHookRepairPrompt,
   buildBoardSdkSettings,
+  buildBoardProviderPrompt,
   resolveBoardEffort,
 } from './devSessionPrompt';
 import {
@@ -110,6 +113,12 @@ export interface DevSessionServiceDeps {
 }
 const broadcastSessionStatusChange = createStatusBroadcaster<DevSession, typeof devSessionEvents.statusChanged>(devSessionEvents.statusChanged);
 
+interface PreparedWorkBriefUpdate {
+  currentWorkBrief: string;
+  initialInstructions: string;
+  revision: number;
+}
+
 export function createDevSessionService(deps: DevSessionServiceDeps) {
   function playbookFromSnapshot(session: DevSession): Playbook | null {
     if (!session.playbook_snapshot) return null;
@@ -151,9 +160,89 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     });
   }
 
+  function prepareWorkBriefUpdate(
+    session: DevSession,
+  ): ServiceResult<PreparedWorkBriefUpdate | null> {
+    if (!session.plan_item_id) {
+      return success(null);
+    }
+
+    const contextResult = getAgentContextInput(session.plan_item_id);
+    if (!contextResult.ok) {
+      return contextResult;
+    }
+
+    const revision = contextResult.data.item.work_brief_revision ?? 1;
+    if (session.work_brief_revision === revision) {
+      return success(null);
+    }
+
+    const unresolvedBrief = buildWorkBriefReconciliation(
+      contextResult.data,
+      session.work_brief_revision,
+    );
+    const planRefSection = formatPlanRefSection(
+      unresolvedBrief,
+      deps.planItems.getByProject(session.project_id),
+    );
+    const currentWorkBrief = buildWorkBriefReconciliation(
+      contextResult.data,
+      session.work_brief_revision,
+      planRefSection,
+    );
+
+    return success({
+      currentWorkBrief,
+      initialInstructions: replaceCurrentWorkBrief(session.initial_instructions, currentWorkBrief),
+      revision,
+    });
+  }
+
+  function persistWorkBriefUpdate(
+    sessionId: string,
+    update: { initialInstructions: string; revision: number },
+  ): void {
+    deps.devSessions.updateWorkBriefSnapshot(
+      sessionId,
+      update.initialInstructions,
+      update.revision,
+    );
+    const updatedSession = deps.devSessions.get(sessionId);
+    if (updatedSession) {
+      broadcastSessionStatusChange(updatedSession);
+    }
+  }
+
   const service = {
     savePlaybookOutputs(sessionId: string, outputs: Record<string, string[]>): void {
       deps.devSessions.updateStepOutputs(sessionId, JSON.stringify(outputs));
+    },
+
+    syncWorkBriefSnapshot(
+      sessionId: string,
+    ): ServiceResult<{ session: DevSession; changed: boolean }> {
+      const session = deps.devSessions.get(sessionId);
+      if (!session) {
+        return failure(`Session not found: ${sessionId}`);
+      }
+
+      const workBriefUpdate = prepareWorkBriefUpdate(session);
+      if (!workBriefUpdate.ok) {
+        return workBriefUpdate;
+      }
+      if (!workBriefUpdate.data) {
+        return success({ session, changed: false });
+      }
+
+      persistWorkBriefUpdate(sessionId, workBriefUpdate.data);
+      return success({
+        session: deps.devSessions.get(sessionId) ?? {
+          ...session,
+          initial_instructions: workBriefUpdate.data.initialInstructions,
+          work_brief_revision: workBriefUpdate.data.revision,
+        },
+        changed: true,
+      });
     },
 
     async resumePlaybook(
@@ -325,8 +414,16 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       const isReusableSession = existing?.repo_id === input.repoId
         && (existing.status === 'inactive' || existing.status === 'pending');
       let instructions: string;
+      let reusableWorkBriefUpdate: PreparedWorkBriefUpdate | null = null;
       if (isReusableSession) {
-        instructions = existing.initial_instructions;
+        const workBriefUpdate = prepareWorkBriefUpdate(existing);
+        if (!workBriefUpdate.ok) return workBriefUpdate;
+        if (workBriefUpdate.data) {
+          instructions = workBriefUpdate.data.initialInstructions;
+          reusableWorkBriefUpdate = workBriefUpdate.data;
+        } else {
+          instructions = existing.initial_instructions;
+        }
         if (input.prompt?.trim()) {
           const contextResult = getAgentContextInput(input.planItemId);
           if (!contextResult.ok) return contextResult;
@@ -410,14 +507,19 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         taskContext: augmentedPrompt,
         promptContent: deps.getPromptContent,
         skillBody: skillBody?.ok ? skillBody.data : null,
+        harnessNote: BOARD_AGENT_WRITE_POLICY,
       });
 
-      return service.startAgentSession(sessionId, {
+      const startResult = await service.startAgentSession(sessionId, {
         prompt: stepPrompt,
         effort: resolvedPlan.main.effort ?? input.effort,
         environmentMode: input.environmentMode,
         model: resolvedPlan.main.model,
       });
+      if (startResult.ok && reusableWorkBriefUpdate) {
+        persistWorkBriefUpdate(sessionId, reusableWorkBriefUpdate);
+      }
+      return startResult;
     },
 
     /**
@@ -651,7 +753,8 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         broadcastSessionStatusChange(updatedSession);
 
         // Start the agent session asynchronously
-        agentSession.start(worktreeCwd, prompt).catch(async (error) => {
+        const providerPrompt = buildBoardProviderPrompt(session.agent_type, roleSystemPrompt, prompt);
+        agentSession.start(worktreeCwd, providerPrompt).catch(async (error) => {
           console.error(`[DevSessionService] Agent session start failed for ${sessionId}:`, error);
           try {
             await agentSession.stop();
@@ -683,11 +786,25 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           return failure('Agent session manager is not available');
         }
 
+        const storedSession = deps.devSessions.get(sessionId);
+        const workBriefUpdate = storedSession
+          ? prepareWorkBriefUpdate(storedSession)
+          : success(null);
+        if (!workBriefUpdate.ok) {
+          return workBriefUpdate;
+        }
+        const requestedFollowUp = workBriefUpdate.data
+          ? `${workBriefUpdate.data.currentWorkBrief}\n\n${text}`
+          : text;
+        const followUpText = `${requestedFollowUp}\n\n${BOARD_AGENT_WRITE_POLICY}`;
         const activeSession = deps.agentSessionManager.getByDevSession(sessionId);
         if (activeSession) {
           deps.agentReviews.markLatestCompletedStale(sessionId);
           try {
-            await activeSession.followUp(text);
+            await activeSession.followUp(followUpText);
+            if (workBriefUpdate.data) {
+              persistWorkBriefUpdate(sessionId, workBriefUpdate.data);
+            }
             return success({ restarted: false });
           } catch (followUpError) {
             // followUp() rejects when the session is in a non-terminal state (e.g. 'working').
@@ -699,7 +816,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           }
         }
 
-        const session = deps.devSessions.get(sessionId);
+        const session = storedSession ?? deps.devSessions.get(sessionId);
         if (!session) {
           return failure(`Session not found: ${sessionId}`);
         }
@@ -712,10 +829,12 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           'Resume work on this existing implementation task.',
           '',
           'Original task:',
-          session.initial_instructions || 'No original task description was stored.',
+          workBriefUpdate.data?.initialInstructions
+            || session.initial_instructions
+            || 'No original task description was stored.',
           '',
           'Follow-up request:',
-          text,
+          followUpText,
         ].join('\n');
 
         const startResult = await service.startAgentSession(sessionId, { prompt: restartPrompt });
@@ -723,10 +842,43 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           return failure(startResult.error);
         }
 
+        if (workBriefUpdate.data) {
+          persistWorkBriefUpdate(sessionId, workBriefUpdate.data);
+        }
         return success({ restarted: true });
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
       }
+    },
+
+    async reconcileWorkBrief(
+      sessionId: string,
+    ): AsyncResult<{ reconciled: boolean }> {
+      const session = deps.devSessions.get(sessionId);
+      if (!session) {
+        return failure(`Session not found: ${sessionId}`);
+      }
+
+      const workBriefUpdate = prepareWorkBriefUpdate(session);
+      if (!workBriefUpdate.ok) {
+        return workBriefUpdate;
+      }
+      if (!workBriefUpdate.data) {
+        return success({ reconciled: false });
+      }
+
+      const followUpResult = await service.sendAgentFollowUp(
+        sessionId,
+        'Reconcile the existing implementation with the Current Work Brief. Preserve compatible work, update conflicting work, and verify the revised acceptance criteria before continuing.',
+      );
+      if (!followUpResult.ok) {
+        return followUpResult;
+      }
+      if (followUpResult.data.deferred) {
+        return failure('Work Brief reconciliation could not start because the agent is busy');
+      }
+
+      return success({ reconciled: true });
     },
 
     async requestCommitHookRepair(

@@ -43,6 +43,7 @@ export interface IDevSessionRepository {
       currentStepId?: string | null;
       stepPassCounts?: string | null;
       pausedReason?: DevSession['paused_reason'] | null;
+      attentionReason?: DevSession['attention_reason'] | null;
     },
   ): void;
   /** Persist the selected immutable playbook snapshot and its initial cursor. */
@@ -56,6 +57,8 @@ export interface IDevSessionRepository {
   updateName(id: string, name: string): void;
   /** Persist the immutable fork-point SHA captured at worktree creation */
   updateBaseSha(id: string, baseSha: string): void;
+  /** Persist the latest approved Work Brief delivered to the session. */
+  updateWorkBriefSnapshot(id: string, initialInstructions: string, workBriefRevision: number): void;
   /** Update user-explicit merge order override (null = derive from plan graph) */
   updateMergeOrder(id: string, order: number | null): void;
   /** Delete a session */

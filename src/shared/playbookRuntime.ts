@@ -8,6 +8,8 @@ import {
   type PlaybookStep,
 } from './playbooks';
 
+export const BOARD_AGENT_WRITE_POLICY = 'KPM harness policy: Do not create commits. Leave changes uncommitted; KPM captures them onto the task branch after the turn.';
+
 export interface ResolvedAgent {
   provider: string;
   model: string;

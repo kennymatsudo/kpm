@@ -7,7 +7,12 @@
  * onto the `UpdateEventBus`, so they reach the notification bell.
  */
 
-import type { DevSession, DevSessionAutomationPhase, DevSessionPausedReason } from '../../../shared/types';
+import type {
+  DevSession,
+  DevSessionAttentionReason,
+  DevSessionAutomationPhase,
+  DevSessionPausedReason,
+} from '../../../shared/types';
 import { isCommitHookRepairPhase } from '../../../shared/types';
 import { createStatusBroadcaster } from '../repo/rendererBroadcast';
 import { devSessionEvents } from '../../../shared/ipc/devSessionEvents';
@@ -25,17 +30,17 @@ export type AutomationPhaseEvent =
       stepPassCounts?: Record<string, number>;
     }
   | { type: 'paused'; stepId: string; reason: DevSessionPausedReason; stepPassCounts?: Record<string, number> }
-  | { type: 'opposingReviewLaunched' }
+  | { type: 'opposingReviewLaunched'; stepId: string }
   | { type: 'opposingReviewLaunchAborted' }
   | { type: 'opposingReviewFindingsReady'; stepId?: string }
-  | { type: 'prReviewThreadsQueued' }
+  | { type: 'prReviewThreadsQueued'; stepId: string }
   | { type: 'movedToReview' }
   | { type: 'agentTerminatedUnexpectedly' }
   | { type: 'commitHookRepairStarted' }
   | { type: 'manualCommitResolved' }
   | { type: 'automationDismissed' }
   | { type: 'sessionStarted' }
-  | { type: 'automationFailed'; reason: string };
+  | { type: 'automationFailed'; reason: DevSessionAttentionReason };
 
 export interface AutomationPhaseRepository {
   get(id: string): DevSession | undefined;
@@ -47,6 +52,7 @@ export interface AutomationPhaseRepository {
       currentStepId?: string | null;
       stepPassCounts?: string | null;
       pausedReason?: DevSessionPausedReason | null;
+      attentionReason?: DevSessionAttentionReason | null;
     },
   ): void;
 }
@@ -94,6 +100,7 @@ function nextState(
   currentStepId?: string | null;
   stepPassCounts?: string | null;
   pausedReason?: DevSessionPausedReason | null;
+  attentionReason?: DevSessionAttentionReason | null;
 } {
   const current = session.automation_phase;
   switch (event.type) {
@@ -102,6 +109,7 @@ function nextState(
         phase: event.phase === undefined ? current : event.phase,
         currentStepId: event.stepId,
         pausedReason: null,
+        attentionReason: null,
       };
 
     case 'stepCompleted':
@@ -112,20 +120,21 @@ function nextState(
         phase: event.nextStepId ? (event.nextPhase ?? current) : 'idle',
         currentStepId: event.nextStepId ?? null,
         pausedReason: null,
+        attentionReason: null,
         ...(event.stepPassCounts ? { stepPassCounts: JSON.stringify(event.stepPassCounts) } : {}),
       };
 
     case 'paused':
       return {
-        phase: 'paused', currentStepId: event.stepId, pausedReason: event.reason,
+        phase: 'paused', currentStepId: event.stepId, pausedReason: event.reason, attentionReason: null,
         ...(event.stepPassCounts ? { stepPassCounts: JSON.stringify(event.stepPassCounts) } : {}),
       };
 
     case 'opposingReviewLaunched':
-      return { phase: 'reviewing', currentStepId: 'review', pausedReason: null };
+      return { phase: 'reviewing', currentStepId: event.stepId, pausedReason: null, attentionReason: null };
 
     case 'opposingReviewLaunchAborted':
-      return { phase: 'idle', currentStepId: null, pausedReason: null };
+      return { phase: 'idle', currentStepId: null, pausedReason: null, attentionReason: null };
 
     case 'opposingReviewFindingsReady': {
       const stepId = event.stepId ?? session.current_step_id ?? 'review';
@@ -134,31 +143,40 @@ function nextState(
         currentStepId: current === 'needs_attention' ? session.current_step_id : 'address',
         stepPassCounts: incrementPass(session.step_pass_counts, stepId),
         pausedReason: null,
+        attentionReason: current === 'needs_attention' ? session.attention_reason ?? null : null,
       };
     }
 
     case 'prReviewThreadsQueued':
       return {
         phase: current === 'needs_attention' ? current : 'addressing_review',
-        currentStepId: current === 'needs_attention' ? session.current_step_id : 'pr-review-followup',
+        currentStepId: current === 'needs_attention' ? session.current_step_id : event.stepId,
         pausedReason: null,
+        attentionReason: current === 'needs_attention' ? session.attention_reason ?? null : null,
       };
 
     case 'movedToReview':
-      return { phase: 'ready_for_review', currentStepId: null, pausedReason: null };
+      return { phase: 'ready_for_review', currentStepId: null, pausedReason: null, attentionReason: null };
 
     case 'agentTerminatedUnexpectedly':
-      return { phase: isTerminationGuardedPhase(current) ? 'needs_attention' : current };
+      return isTerminationGuardedPhase(current)
+        ? { phase: 'needs_attention', attentionReason: 'agent-terminated' }
+        : { phase: current };
 
     case 'commitHookRepairStarted':
-      return { phase: 'fixing_commit_hooks', currentStepId: session.current_step_id, pausedReason: null };
+      return {
+        phase: 'fixing_commit_hooks',
+        currentStepId: session.current_step_id,
+        pausedReason: null,
+        attentionReason: null,
+      };
 
     case 'manualCommitResolved':
       if (effectivePhase(current, session.current_step_id) === 'addressing_review') {
-        return { phase: 'ready_for_review', currentStepId: null, pausedReason: null };
+        return { phase: 'ready_for_review', currentStepId: null, pausedReason: null, attentionReason: null };
       }
       if (current === 'fixing_commit_hooks' || current === 'needs_attention') {
-        return { phase: 'idle', currentStepId: null, pausedReason: null };
+        return { phase: 'idle', currentStepId: null, pausedReason: null, attentionReason: null };
       }
       return { phase: current };
 
@@ -167,6 +185,7 @@ function nextState(
         phase: current === 'needs_attention' || current === 'paused' ? 'idle' : current,
         currentStepId: current === 'needs_attention' || current === 'paused' ? null : session.current_step_id,
         pausedReason: null,
+        attentionReason: null,
       };
 
     case 'sessionStarted':
@@ -177,10 +196,11 @@ function nextState(
         // inventing `implement` here would restart the completed playbook.
         currentStepId: session.current_step_id,
         pausedReason: null,
+        attentionReason: null,
       };
 
     case 'automationFailed':
-      return { phase: 'needs_attention', pausedReason: null };
+      return { phase: 'needs_attention', pausedReason: null, attentionReason: event.reason };
   }
 }
 
@@ -191,7 +211,8 @@ function stateChanged(
   return state.phase !== session.automation_phase
     || (state.currentStepId !== undefined && state.currentStepId !== session.current_step_id)
     || (state.stepPassCounts !== undefined && state.stepPassCounts !== session.step_pass_counts)
-    || (state.pausedReason !== undefined && state.pausedReason !== session.paused_reason);
+    || (state.pausedReason !== undefined && state.pausedReason !== session.paused_reason)
+    || (state.attentionReason !== undefined && state.attentionReason !== (session.attention_reason ?? null));
 }
 
 export function createAutomationPhaseMachine(deps: AutomationPhaseMachineDeps) {
@@ -227,7 +248,11 @@ export function createAutomationPhaseMachine(deps: AutomationPhaseMachineDeps) {
 
       // Only announce a phase the user has to act on, and only when the phase
       // itself moved — a cursor or pass-count write is not news.
-      if (next.phase !== session.automation_phase && isBoardAgentNotifyPhase(next.phase)) {
+      if (
+        next.phase !== session.automation_phase
+        && isBoardAgentNotifyPhase(next.phase)
+        && !(next.phase === 'paused' && next.pausedReason === 'stopped')
+      ) {
         deps.eventBus?.emit({
           kind: 'board_agent',
           source: 'agent',
@@ -238,6 +263,7 @@ export function createAutomationPhaseMachine(deps: AutomationPhaseMachineDeps) {
           taskName: deps.resolveTaskName?.(session) ?? session.name,
           phase: next.phase,
           pausedReason: next.pausedReason ?? null,
+          attentionReason: next.attentionReason ?? null,
         });
       }
 

@@ -26,6 +26,7 @@ import type {
   ReviewTaskStatus,
 } from '../../../shared/types';
 import { failure, success, type AsyncResult, type ServiceResult } from '../result';
+import { PR_REVIEW_FOLLOWUP_STEP } from '../../../shared/playbooks';
 import type { createDevSessionService } from './DevSessionService';
 import type { createGitHubService } from './GitHubService';
 import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
@@ -407,7 +408,7 @@ export function createReviewService(deps: ReviewServiceDeps) {
     const contextResult = await deps.gitHubService.buildAddressReviewContext(sessionId, { threadIds });
     if (!contextResult.ok) return contextResult;
 
-    deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued' });
+    deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued', stepId: PR_REVIEW_FOLLOWUP_STEP.id });
 
     const followUpResult = await deps.devSessionService.sendAgentFollowUp(
       sessionId,
@@ -489,7 +490,7 @@ export function createReviewService(deps: ReviewServiceDeps) {
       return success({ inbox, taskIds: [], context: '' });
     }
 
-    deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued' });
+    deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued', stepId: PR_REVIEW_FOLLOWUP_STEP.id });
 
     if (session.status === 'active') {
       const queuedInbox = await syncSessionReviewState(sessionId);
