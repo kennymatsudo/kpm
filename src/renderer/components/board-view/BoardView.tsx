@@ -15,6 +15,7 @@ import { OPENABLE_SESSION_STATUSES } from '../../../shared/types';
 import type { PlanItem, StatusCategory, DevSessionWithPlanItem } from '../../../shared/types';
 import type { RangeSelectHandler } from '../../utils/rangeSelection';
 import { getBoardDropDecision } from './dropBehavior';
+import { isMergeQueueSession } from './mergeQueue';
 
 /**
  * A board tree node: a plan item with children that share the same status column.
@@ -75,7 +76,7 @@ export const BoardView = memo(function BoardView({
 
   const openPrCount = useDevSessionsStore((state) =>
     state.sessions.reduce((count, session) => (
-      session.pr_url && session.pr_state !== 'MERGED' ? count + 1 : count
+      isMergeQueueSession(session) ? count + 1 : count
     ), 0)
   );
   const detailSession: DevSessionWithPlanItem | undefined = useDevSessionsStore((state) =>
@@ -458,7 +459,11 @@ export const BoardView = memo(function BoardView({
       {/* Detail pane overlays the board instead of resizing columns. */}
       {detailSession && (
         <div className="absolute inset-y-0 right-0 z-30 w-[min(480px,calc(100%-2rem))] shadow-xl">
+          {/* Keyed so switching sessions remounts: the pane's local UI state
+              (open commit composer, active tab, unsent input) is per-session
+              and must not carry over to the next card. */}
           <DetailPane
+            key={detailSession.id}
             session={detailSession}
             onClose={() => onDetailSessionChange(null)}
           />

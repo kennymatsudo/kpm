@@ -1173,6 +1173,7 @@ export interface DevSessionWithPlanItem extends DevSession {
     description: string | null;
     label: string | null;
     external_key: string | null;
+    status_category: StatusCategory | null;
     work_brief_revision: number;
   } | null;
 }

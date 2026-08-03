@@ -14,6 +14,7 @@ import type {
   DevSession,
   DevSessionStatus,
   DevSessionWithPlanItem,
+  StatusCategory,
 } from '../../../../shared/types';
 import type { IDevSessionRepository } from '../../interfaces';
 
@@ -62,6 +63,7 @@ export class DevSessionRepository implements IDevSessionRepository {
           pi.description as pi_description,
           pi.label as pi_label,
           pi.external_key as pi_external_key,
+          pi.status_category as pi_status_category,
           pi.work_brief_revision as pi_work_brief_revision,
           r.path as repo_path
         FROM dev_sessions ds
@@ -164,6 +166,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       pi_description: string | null;
       pi_label: string | null;
       pi_external_key: string | null;
+      pi_status_category: StatusCategory | null;
       pi_work_brief_revision: number | null;
       repo_path: string | null;
     })[];
@@ -206,6 +209,7 @@ export class DevSessionRepository implements IDevSessionRepository {
         description: row.pi_description,
         label: row.pi_label,
         external_key: row.pi_external_key,
+        status_category: row.pi_status_category,
         work_brief_revision: row.pi_work_brief_revision ?? 1,
       } : null,
     }));

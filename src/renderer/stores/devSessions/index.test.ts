@@ -37,6 +37,8 @@ function createDevSession() {
       description: null,
       label: 'task',
       external_key: null,
+      status_category: 'in_review' as const,
+      work_brief_revision: 1,
     },
   };
 }

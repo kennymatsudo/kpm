@@ -11,6 +11,7 @@ import { useDevSessionsStore } from '../../stores/devSessions';
 import { updateDevSessionMergeOrder } from '../../services/devSessionService';
 import { openExternalUrl } from '../../services/shellService';
 import type { DevSessionWithPlanItem } from '../../../shared/types';
+import { isMergeQueueSession } from './mergeQueue';
 
 interface QueueItem {
   session: DevSessionWithPlanItem;
@@ -48,9 +49,7 @@ export const MergeQueuePanel = memo(function MergeQueuePanel({
 
   // Sessions with open (non-merged) PRs
   const queueItems = useMemo((): QueueItem[] => {
-    const withPrs = sessions.filter(
-      (s) => s.pr_url && s.pr_state !== 'MERGED',
-    );
+    const withPrs = sessions.filter(isMergeQueueSession);
 
     return withPrs
       .map((session): QueueItem => {
@@ -58,7 +57,7 @@ export const MergeQueuePanel = memo(function MergeQueuePanel({
         const blockedBy = entry?.blockedBy ?? [];
         const isBlocked = blockedBy.some((blockerId) => {
           const blocker = sessions.find((s) => s.id === blockerId);
-          return blocker?.pr_state !== 'MERGED';
+          return blocker ? isMergeQueueSession(blocker) : false;
         });
         return { session, layer: entry?.layer ?? null, blockedBy, isBlocked };
       })
