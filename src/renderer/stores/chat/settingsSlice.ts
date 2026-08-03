@@ -47,13 +47,19 @@ export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
   | 'setDefaultPiProviderModel' | 'setPiProviderModel' | 'acknowledgeUnsafePiProvider'
   | 'setChatChoice' | 'openChatChoice' | 'changeChatChoice'
 > {
+  const rememberProvider = (provider: ChatState['provider']) => {
+    set({ provider });
+    void setSetting('chatProvider', provider);
+  };
+
   const setChatChoice = (chatSessionId: string, choice: ChatChoiceView) => {
     const state = get();
     const session = state.sessions.get(chatSessionId);
     if (!session) return;
     const sessions = new Map(state.sessions);
     sessions.set(chatSessionId, applyChoiceToSession(session, choice));
-    set({ sessions });
+    set({ sessions, provider: choice.selected.provider });
+    void setSetting('chatProvider', choice.selected.provider);
   };
 
   const changeChoice = async (chatSessionId: string, intent: Parameters<ChatState['changeChatChoice']>[1]) => {
@@ -154,8 +160,7 @@ export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
       }
     },
     setDefaultProvider: (provider) => {
-      set({ provider });
-      void setSetting('chatProvider', provider);
+      rememberProvider(provider);
     },
     setProvider: (chatSessionId, provider) => {
       const state = get();

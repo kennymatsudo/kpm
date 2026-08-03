@@ -73,6 +73,26 @@ describe('settingsSlice', () => {
     expect(store.getState().model).toBe('sonnet');
   });
 
+  it('remembers a per-Chat provider choice as the default for new Chats', async () => {
+    const api = installMockApi();
+    const nextChoice = {
+      ...choice,
+      revision: 2,
+      selected: { provider: 'codex', model: 'gpt-5.6-sol', effort: 'medium' },
+    } satisfies ChatChoiceView;
+    vi.mocked(api.chat.changeChoice).mockResolvedValue({ success: true, choice: nextChoice });
+    const store = createTestStore();
+    store.setState({
+      persistedProjectId: 'project-a',
+      sessions: new Map([['chat-a', { ...createInitialPerSessionState(1), choice }]]),
+    });
+
+    await store.getState().changeChatChoice('chat-a', { type: 'choose_provider', provider: 'codex' });
+
+    expect(store.getState().provider).toBe('codex');
+    expect(api.settings.app.set).toHaveBeenCalledWith({ key: 'chat_provider', value: 'codex' });
+  });
+
   it('retries the pi enumeration in the background when it returns empty while available', async () => {
     vi.useFakeTimers();
     try {
