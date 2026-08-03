@@ -73,6 +73,39 @@ describe('planActionSchema spec field pass-through', () => {
     });
   });
 
+  it('accepts connected repo IDs that are not UUIDs', () => {
+    const createAction = planActionSchema.parse({
+      type: 'create_item',
+      title: 'Example',
+      parent_id: null,
+      primary_repo_id: 'repo-primary',
+      affected_repo_ids: ['repo-affected'],
+    });
+
+    expect(createAction).toMatchObject({
+      type: 'create_item',
+      primary_repo_id: 'repo-primary',
+      affected_repo_ids: ['repo-affected'],
+    });
+
+    const retargetAction = planActionSchema.parse({
+      type: 'set_repo_targets',
+      item_id: 'item-1',
+      repository_scope: {
+        primary_repo_id: 'repo-primary',
+        affected_repo_ids: ['repo-affected'],
+      },
+    });
+
+    expect(retargetAction).toMatchObject({
+      type: 'set_repo_targets',
+      repository_scope: {
+        primary_repo_id: 'repo-primary',
+        affected_repo_ids: ['repo-affected'],
+      },
+    });
+  });
+
   it('rejects create fields that exceed Work Brief authoring limits', () => {
     expect(() => planActionSchema.parse({
       type: 'create_item',

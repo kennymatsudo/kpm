@@ -36,9 +36,11 @@ export const workBriefSchema = workBriefDraftSchema.extend({
 
 export type WorkBrief = z.infer<typeof workBriefSchema>;
 
+export const connectedRepoIdSchema = z.string().trim().min(1).max(200);
+
 export const repositoryScopeSchema = z.object({
-  primary_repo_id: z.string().uuid().nullable(),
-  affected_repo_ids: z.array(z.string().uuid()).max(50),
+  primary_repo_id: connectedRepoIdSchema.nullable(),
+  affected_repo_ids: z.array(connectedRepoIdSchema).max(50),
 }).transform((scope) => ({
   primary_repo_id: scope.primary_repo_id,
   affected_repo_ids: [...new Set(scope.affected_repo_ids)].filter(

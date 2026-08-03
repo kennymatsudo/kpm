@@ -258,7 +258,7 @@ describe('PlanSchemas', () => {
       for (const actions of [
         [],
         [{ type: 'unknown_action' }],
-        [{ type: 'create_item', title: 'Item', parent_id: null, primary_repo_id: 'not-a-uuid' }],
+        [{ type: 'create_item', title: 'Item', parent_id: null, primary_repo_id: '' }],
       ]) {
         expectInvalid(PlanSchemas.executeActions, { projectId: randomUUID(), actions });
       }

@@ -14,7 +14,7 @@
 
 import { z } from 'zod';
 import { canvasPosition, planItemUpdatesType } from './planItemFieldSchemas';
-import { repositoryScopeSchema, WORK_BRIEF_LIMITS, workBriefDraftSchema } from './workBrief';
+import { connectedRepoIdSchema, repositoryScopeSchema, WORK_BRIEF_LIMITS, workBriefDraftSchema } from './workBrief';
 
 const relationType = z.enum(['depends_on', 'blocks', 'relates_to']);
 const planItemLabel = z.string().max(100, 'Label too long');
@@ -48,17 +48,15 @@ export const PLAN_ACTION_REGISTRY = {
     source_document_id: z.string().optional().describe('KPM document ID this item was extracted from, when applicable'),
     label: planItemLabel.optional().describe('Plan item type label'),
     parent_id: z.string().nullable().describe('Parent item ID, placeholder such as $1, or null for root'),
-    primary_repo_id: z
-      .string()
-      .uuid()
+    primary_repo_id: connectedRepoIdSchema
       .nullable()
       .optional()
-      .describe('Primary connected repo UUID inferred from the current chat context, or null when ambiguous'),
+      .describe('Primary connected repo ID inferred from the current chat context, or null when ambiguous'),
     affected_repo_ids: z
-      .array(z.string().uuid())
+      .array(connectedRepoIdSchema)
       .max(50)
       .optional()
-      .describe('Other connected repo UUIDs this item is expected to affect; exclude primary_repo_id'),
+      .describe('Other connected repo IDs this item is expected to affect; exclude primary_repo_id'),
   }),
   reparent: z.object({
     type: z.literal('reparent'),
