@@ -13,7 +13,7 @@ import { ProcessTimeline } from './ProcessTimeline';
 import { Tooltip } from '../ui/Tooltip';
 import { AttachmentChip } from './AttachmentChip';
 import { formatModel } from '../../utils/usageFormatters';
-import { groupSegmentsForRender, type SegmentGroup } from './messageGroups';
+import { groupSegmentsForRender } from './messageGroups';
 import { resolveSessionDisplayModel } from '../../stores/chat/sessionModel';
 
 /** Extract text content from message segments for copy/display */
@@ -212,11 +212,14 @@ const AssistantMessageContent = memo(function AssistantMessageContent({
   segments,
   interrupted,
   startTimestamp,
+  durationMs,
 }: {
   segments: MessageSegment[];
   interrupted?: boolean;
   /** The message's own start time — anchors the gap shown by the first checkpoint divider. */
   startTimestamp?: number;
+  /** Duration of the message's final turn; earlier turns carry theirs on the checkpoint that closed them. */
+  durationMs?: number;
 }) {
   const fullText = useMemo(() => getTextContent(segments), [segments]);
   const processed = useMemo(() => processMessageContent(fullText), [fullText]);
@@ -224,19 +227,36 @@ const AssistantMessageContent = memo(function AssistantMessageContent({
     () => groupSegmentsForRender(segments, startTimestamp),
     [segments, startTimestamp]
   );
+  const lastProcessIndex = useMemo(
+    () => groups.reduce((last, group, idx) => (group.kind === 'process' ? idx : last), -1),
+    [groups]
+  );
 
   return (
     <>
       {groups.map((group, idx) => {
         if (group.kind === 'process') {
-          return <ProcessTimeline key={`p-${idx}`} segments={group.segments} />;
+          return (
+            <ProcessTimeline
+              key={`p-${idx}`}
+              segments={group.segments}
+              hasAnswer={group.hasAnswer}
+              durationMs={
+                group.durationMs ?? (idx === lastProcessIndex ? durationMs : undefined)
+              }
+            />
+          );
         }
         if (group.kind === 'checkpoint') {
           return <CheckpointDivider key={`c-${idx}`} gapMs={group.gapMs} model={group.model} />;
         }
         const segmentProcessed = processMessageContent(group.content);
+        const isNarration = group.kind === 'narration';
         return (
-          <div key={`t-${idx}`} className="prose">
+          <div
+            key={`${isNarration ? 'n' : 't'}-${idx}`}
+            className={isNarration ? 'prose prose-narration mb-3' : 'prose'}
+          >
             <Markdown options={markdownOptions}>
               {transformPlanRefs(segmentProcessed.displayContent)}
             </Markdown>
@@ -288,78 +308,37 @@ const StreamingContent = memo(function StreamingContent({
   activities: Activity[];
   elapsedSeconds: number | null;
 }) {
-  // `checkpoint` segments only ever appear in committed messages (added by
-  // `finalizeMessage` when merging turns) — never in the in-flight streaming
-  // buffer — but filter defensively so the RenderItem union below stays exhaustive.
-  const groups = useMemo(
+  // The strip stays pinned below the prose for the whole turn so no tool batch
+  // ever reflows text that is already on screen. Which trailing text is the
+  // answer only resolves on finalize, where `groupSegmentsForRender` moves the
+  // (by then collapsed) strip above it.
+  const textSegments = useMemo(
     () =>
-      groupSegmentsForRender(segments).filter(
-        (g): g is Extract<SegmentGroup, { kind: 'process' } | { kind: 'text' }> =>
-          g.kind !== 'checkpoint'
+      segments.filter(
+        (segment): segment is Extract<MessageSegment, { type: 'text' }> =>
+          segment.type === 'text' && segment.content.trim().length > 0
       ),
     [segments]
   );
-
-  // The "active" group — the one still receiving live activities/thinking — is
-  // either the trailing process group (if no text has landed after the latest
-  // tool batch) or a synthetic block appended after a trailing text segment.
-  // Earlier process groups auto-collapse via ProcessTimeline's isStreaming flag.
-  type RenderItem =
-    | { kind: 'process'; segments: MessageSegment[]; isActive: boolean; liveActivities?: Activity[]; thinking?: string }
-    | { kind: 'text'; content: string };
-
-  const items: RenderItem[] = groups.map((g) =>
-    g.kind === 'process'
-      ? { kind: 'process', segments: g.segments, isActive: false }
-      : { kind: 'text', content: g.content }
+  const processSegments = useMemo(
+    () => segments.filter((segment) => segment.type === 'activity' || segment.type === 'thinking'),
+    [segments]
   );
-
-  const lastIdx = items.length - 1;
-  const last = items[lastIdx];
-  const liveThinking = thinkingContent?.trim() ? thinkingContent : undefined;
-  const hasLive = activities.length > 0 || !!liveThinking;
-
-  let activeIdx = -1;
-  if (last?.kind === 'process') {
-    activeIdx = lastIdx;
-  } else if (hasLive) {
-    items.push({ kind: 'process', segments: [], isActive: true });
-    activeIdx = items.length - 1;
-  }
-
-  if (activeIdx !== -1) {
-    const active = items[activeIdx] as Extract<RenderItem, { kind: 'process' }>;
-    active.isActive = true;
-    if (activities.length > 0) active.liveActivities = activities;
-  }
-
-  // Streaming thinking has no temporal anchor (it accumulates as one blob),
-  // so attach it to the first process group — matches the prior "thinking
-  // surfaces at the top" behavior.
-  if (liveThinking) {
-    const firstProcess = items.find(
-      (i): i is Extract<RenderItem, { kind: 'process' }> => i.kind === 'process'
-    );
-    if (firstProcess) firstProcess.thinking = liveThinking;
-  }
 
   return (
     <>
-      {items.map((item, idx) => {
-        if (item.kind === 'process') {
-          return (
-            <ProcessTimeline
-              key={`p-${idx}`}
-              segments={item.segments}
-              streamingActivities={item.liveActivities}
-              streamingThinking={item.thinking}
-              isStreaming={item.isActive}
-              elapsedSeconds={item.isActive ? elapsedSeconds : null}
-            />
-          );
-        }
-        return <StreamingMarkdown key={`t-${idx}`} content={item.content} />;
-      })}
+      {textSegments.map((segment, idx) => (
+        <div key={`t-${idx}`} className="mb-3">
+          <StreamingMarkdown content={segment.content} />
+        </div>
+      ))}
+      <ProcessTimeline
+        segments={processSegments}
+        streamingActivities={activities}
+        streamingThinking={thinkingContent}
+        isStreaming
+        elapsedSeconds={elapsedSeconds}
+      />
     </>
   );
 });
@@ -538,6 +517,7 @@ const MessageRow = memo(function MessageRow({
             segments={message.segments}
             interrupted={message.interrupted}
             startTimestamp={message.timestamp.getTime()}
+            durationMs={message.durationMs}
           />
         )}
       </div>

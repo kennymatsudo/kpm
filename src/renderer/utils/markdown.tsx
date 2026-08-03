@@ -12,11 +12,12 @@ import type { JSX } from 'react';
 import { openExternalUrl } from '../services/shellService';
 import { PlanRefChip } from '../components/plan-ref/PlanRefChip';
 import { FileRefLink } from '../components/file-ref/FileRefLink';
+import { WorkspaceLink } from '../components/file-ref/WorkspaceLink';
 import { MermaidDiagramLazy } from '../components/ui/MermaidDiagramLazy';
 import { CheckIcon, CopyIcon } from '../components/icons';
 import { copyToClipboard } from './clipboard';
 import { findRefs, PLAN_REF_REGEX } from '../../shared/planRefs';
-import { isPathLike } from '../../shared/pathRefs';
+import { isPathLike, isWorkspaceLinkHref } from '../../shared/pathRefs';
 import { extractHeadings, slugify, type DocHeading } from './headingOutline';
 
 /**
@@ -32,7 +33,9 @@ const PLAN_REF_PLACEHOLDER = '\u00a0';
  */
 function handleLinkClick(e: React.MouseEvent<HTMLAnchorElement>, href: string | undefined) {
   e.preventDefault();
-  if (href) {
+  // In-document anchors have nothing to open externally; chat markdown emits no
+  // heading ids, so there is nowhere to jump either.
+  if (href && !href.startsWith('#')) {
     openExternalUrl(href);
   }
 }
@@ -66,23 +69,40 @@ export function transformPlanRefs(content: string): string {
 }
 
 /**
- * Render either a `<PlanRefChip>` (for `kpm-plan:` URIs) or an external
- * anchor. Used by every `Markdown` callsite via `markdownOverrides`.
+ * Build the `a` override: a `<PlanRefChip>` for `kpm-plan:` URIs, a
+ * `<WorkspaceLink>` for targets that name a workspace file, an external anchor
+ * for everything else.
+ *
+ * Search-highlighting callsites pass a `processChildren` that wraps matching
+ * text in `<mark>`; the default leaves children untouched.
  */
-function renderAnchor({
-  href,
-  children,
-  ...props
-}: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
-  if (href?.startsWith(PLAN_REF_SCHEME)) {
-    return <PlanRefChip id={href.slice(PLAN_REF_SCHEME.length)} />;
-  }
-  return (
-    <a href={href} onClick={(e) => handleLinkClick(e, href)} {...props}>
-      {children}
-    </a>
-  );
+function createAnchorRenderer(
+  processChildren: (children: React.ReactNode) => React.ReactNode = (children) => children
+) {
+  return function Anchor({
+    href,
+    children,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+    if (href?.startsWith(PLAN_REF_SCHEME)) {
+      return <PlanRefChip id={href.slice(PLAN_REF_SCHEME.length)} />;
+    }
+    if (href && isWorkspaceLinkHref(href)) {
+      return (
+        <WorkspaceLink href={href} {...props}>
+          {processChildren(children)}
+        </WorkspaceLink>
+      );
+    }
+    return (
+      <a href={href} onClick={(e) => handleLinkClick(e, href)} {...props}>
+        {processChildren(children)}
+      </a>
+    );
+  };
 }
+
+const renderAnchor = createAnchorRenderer();
 
 /**
  * Custom overrides for markdown-to-jsx that open links externally and render
@@ -412,18 +432,7 @@ export function createFocusMarkdownOptions({
 
   if (hasSearch) {
     Object.assign(overrides, {
-      a: {
-        component: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
-          if (href?.startsWith(PLAN_REF_SCHEME)) {
-            return <PlanRefChip id={href.slice(PLAN_REF_SCHEME.length)} />;
-          }
-          return (
-            <a href={href} onClick={(e) => handleLinkClick(e, href)} {...props}>
-              {processChildren(children)}
-            </a>
-          );
-        },
-      },
+      a: { component: createAnchorRenderer(processChildren) },
       p: searchableOverride('p'),
       li: searchableOverride('li'),
       td: searchableOverride('td'),
@@ -561,23 +570,7 @@ export function createSearchHighlightOverrides(
   });
 
   return {
-    // Link handling: chip for plan refs, external-open for everything else.
-    a: {
-      component: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
-        if (href?.startsWith(PLAN_REF_SCHEME)) {
-          return <PlanRefChip id={href.slice(PLAN_REF_SCHEME.length)} />;
-        }
-        return (
-          <a
-            href={href}
-            onClick={(e) => handleLinkClick(e, href)}
-            {...props}
-          >
-            {processChildren(children)}
-          </a>
-        );
-      },
-    },
+    a: { component: createAnchorRenderer(processChildren) },
     // Text elements that can contain searchable content
     p: createOverride('p'),
     h1: createOverride('h1'),

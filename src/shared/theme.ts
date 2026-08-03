@@ -381,9 +381,6 @@ export function generateThemeVariables(colors: ThemeColors): Record<string, stri
     '--color-depth-3': depth3,
     '--color-depth-4': depth4,
 
-    // Code background
-    '--color-code-bg': rgba(colors.accent, isDark ? 0.15 : 0.08),
-
     // Shadows — minimal, structural only (layers 0-4 use zero shadows)
     '--shadow-xs': 'none',
     '--shadow-sm': isDark ? `0 1px 2px rgba(0, 0, 0, 0.15)` : `0 1px 2px rgba(0, 0, 0, 0.06)`,

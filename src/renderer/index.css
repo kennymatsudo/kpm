@@ -1460,12 +1460,14 @@ button:focus-visible {
   border: 1px solid var(--color-border-default);
 }
 
+/* Inline code sits raised against the panel; `pre` recesses instead, because
+   small recessed shapes lose their edges on dark surfaces and large ones don't. */
 .prose :where(code):not(:where([class~="not-prose"] *)) {
-  color: var(--color-accent);
+  color: var(--color-text-primary);
   font-weight: 500;
   font-size: 0.875em;
   font-family: var(--font-mono);
-  background: var(--color-surface-code);
+  background: var(--color-surface-2);
   padding: 0.2em 0.4em;
   border-radius: var(--radius-sm);
 }
@@ -1664,6 +1666,16 @@ button:focus-visible {
 
 .prose :where(:last-child):not(:where([class~="not-prose"] *)) {
   margin-bottom: 0;
+}
+
+/* ============================================
+   Prose Narration Variant
+   Findings the model reported mid-turn, ranked below the turn's answer
+   ============================================ */
+
+.prose.prose-narration,
+.prose.prose-narration :where(strong):not(:where([class~="not-prose"] *)) {
+  color: var(--color-text-secondary);
 }
 
 /* ============================================
@@ -1880,11 +1892,11 @@ button:focus-visible {
 }
 
 .prose-document :where(code):not(:where([class~="not-prose"] *)) {
-  color: var(--color-accent);
+  color: var(--color-text-primary);
   font-weight: 500;
   font-size: 0.875em;
   font-family: var(--font-mono);
-  background: var(--color-surface-code);
+  background: var(--color-surface-2);
   padding: 0.2em 0.4em;
   border-radius: var(--radius-sm);
 }

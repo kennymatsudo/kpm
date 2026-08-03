@@ -8,7 +8,6 @@ import {
   resolveSemanticColors,
   withDerivedExtendedTokens,
   type PartialThemeColors,
-  type ThemeColors,
 } from './theme';
 
 const REQUIRED_CSS_VARIABLES = [
@@ -86,33 +85,6 @@ describe('resolveDepthColors', () => {
 });
 
 describe('generateThemeVariables', () => {
-  it('derives light theme inline code backgrounds from the active accent', () => {
-    const colors: ThemeColors = {
-      colorScheme: 'light',
-      surface0: '#f4f6f6',
-      surface1: '#e7f2f3',
-      surface2: '#e0eff1',
-      surface3: '#d1eafa',
-      surface4: '#b6e1e7',
-      surfaceElevated: '#e0eff1',
-      surfaceCode: '#d1eafa',
-      surfaceSelected: 'rgba(0, 153, 153, 0.10)',
-      textPrimary: '#005661',
-      textSecondary: '#71838e',
-      textTertiary: '#8ca6a6',
-      textMuted: '#a0abac',
-      textOnAccent: '#ffffff',
-      accent: '#009999',
-      accentHover: '#008484',
-      accentActive: '#007878',
-      focusRing: 'rgba(0, 153, 153, 0.35)',
-      link: '#009999',
-      linkVisited: '#7a4fa0',
-    };
-
-    expect(generateThemeVariables(colors)['--color-code-bg']).toBe('rgba(0, 153, 153, 0.08)');
-  });
-
   it('emits all core CSS variables for the 22-token system', () => {
     const vars = generateThemeVariables(graphiteColors);
     for (const name of REQUIRED_CSS_VARIABLES) {

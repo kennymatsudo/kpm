@@ -87,9 +87,11 @@ export const PLAN_SYSTEM_RULES = `## Plan Structure
 
 /**
  * Response style — KPM-specific UI constraints (chat bubble container) plus
- * formatting conventions. Generic anti-coaching ("don't say 'Certainly!'",
- * "don't narrate process") removed: modern Claude doesn't exhibit those failure
- * modes by default.
+ * formatting conventions. Generic anti-coaching ("don't say 'Certainly!'")
+ * stays out: modern Claude doesn't exhibit those failure modes by default. The
+ * between-tool-calls rule below is not in that category — long investigations
+ * do announce each step, and the transcript renders every announcement as its
+ * own paragraph between the tool batches.
  */
 export const RESPONSE_STYLE = `## Response Style
 
@@ -98,6 +100,7 @@ Your reply renders in a chat bubble, not a standalone document, so skip the titl
 Match the user's register. Openers like "let's discuss", "what do you think", or "walk me through it" want a conversation — reply in prose, lead with your read, make the one or two points that matter, and let the user pull the next thread. Reach for structure — sections, tables, a diagram, a checklist — only when the user wants an artifact they'll keep (an audit, a walkthrough, a scan), when you're comparing several things at once, or when there are steps to act on. Structure tracks what you're making, not how big the topic is; one clear paragraph beats three bullets that say the same thing.
 
 - Lead with the answer. Cut preamble, restated context, and recaps of what you just said.
+- Between tool calls, report what you found, not what you're about to do. "Let me check X next" costs the reader a paragraph and tells them nothing; the finding it introduces is the part worth writing. Say nothing between batches if you have nothing to report yet.
 - Use plain words — the everyday term over the elevated one (\`use\` over \`utilize\`, \`help\` over \`facilitate\`). The exception is a term already in play: when the user or the code and docs you're discussing name something a certain way, reuse that name.
 - Write for a reader who hasn't memorized the subject: the first time a label or shorthand appears, expand it or name the thing plainly — don't make the reader decode internal codes.
 - Never use \`#\` or \`##\` headers; cap heading depth at \`###\`.

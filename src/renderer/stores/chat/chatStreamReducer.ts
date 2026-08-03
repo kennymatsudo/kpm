@@ -357,9 +357,14 @@ export function applyStreamEvent(session: PerSessionState, event: ChatStreamEven
       };
 
     case 'activity-start':
+      // Uncapped on purpose. A turn that never emits text never ships
+      // `precedingActivities` (those only ride on chunk events), so this list
+      // is the whole record finalize has to commit for tool-only turns.
+      // `flushTextIntoSession` prunes it whenever text does land, and the
+      // strip that renders it is height-capped, so it can't run away visually.
       return {
         ...session,
-        activities: [...session.activities.slice(-5), event.activity],
+        activities: [...session.activities, event.activity],
         isStreaming: true,
         streamStartedAt: session.streamStartedAt ?? now,
         lastStreamUpdateAt: now,

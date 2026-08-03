@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isPathLike, parsePathRef } from './pathRefs';
+import { isPathLike, isWorkspaceLinkHref, parsePathRef, workspaceLinkPath } from './pathRefs';
 
 describe('isPathLike', () => {
   it('matches relative paths with extensions', () => {
@@ -33,6 +33,47 @@ describe('isPathLike', () => {
     expect(isPathLike('console.log()')).toBe(false);
     expect(isPathLike('foo/bar baz.ts')).toBe(false);
     expect(isPathLike('foo/bar.method()')).toBe(false);
+  });
+});
+
+describe('isWorkspaceLinkHref', () => {
+  it('matches project-relative link targets', () => {
+    expect(isWorkspaceLinkHref('docs/spec.md')).toBe(true);
+    expect(isWorkspaceLinkHref('./notes.md')).toBe(true);
+    expect(isWorkspaceLinkHref('docs/adr/0001-seams.md#context')).toBe(true);
+  });
+
+  it('matches root-level documents, unlike the inline-code detector', () => {
+    expect(isWorkspaceLinkHref('spec.md')).toBe(true);
+    expect(isPathLike('spec.md')).toBe(false);
+  });
+
+  it('rejects targets with a scheme', () => {
+    expect(isWorkspaceLinkHref('https://example.com/foo.html')).toBe(false);
+    expect(isWorkspaceLinkHref('mailto:someone@example.com')).toBe(false);
+    expect(isWorkspaceLinkHref('kpm-plan:8f3a')).toBe(false);
+  });
+
+  it('rejects absolute, protocol-relative, and fragment-only targets', () => {
+    expect(isWorkspaceLinkHref('/etc/passwd')).toBe(false);
+    expect(isWorkspaceLinkHref('//example.com/foo.md')).toBe(false);
+    expect(isWorkspaceLinkHref('#heading')).toBe(false);
+  });
+
+  it('rejects traversal out of the workspace', () => {
+    expect(isWorkspaceLinkHref('../../secrets.md')).toBe(false);
+    expect(isWorkspaceLinkHref('docs/../spec.md')).toBe(false);
+  });
+
+  it('rejects targets without an extension', () => {
+    expect(isWorkspaceLinkHref('docs/spec')).toBe(false);
+  });
+});
+
+describe('workspaceLinkPath', () => {
+  it('strips the ./ prefix and the fragment', () => {
+    expect(workspaceLinkPath('./docs/spec.md#context')).toBe('docs/spec.md');
+    expect(workspaceLinkPath('docs/spec.md')).toBe('docs/spec.md');
   });
 });
 

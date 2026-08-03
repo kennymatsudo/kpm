@@ -2,30 +2,14 @@
  * Inline link for path-shaped tokens in rendered markdown (e.g.
  * `src/main/foo.ts` or `bar/baz.py:42`).
  *
- * Click resolves the path in this order:
- *  1) The current project's own files (the "Project Files" tree).
- *  2) Each connected repo.
- *
- * First match opens in the embedded workspace editor (read-only for
- * non-editable file types — `FileEditor` already handles that branching).
- * Repo files don't have a sidebar entry yet; supporting them here is
- * forward-compatible with future repo-file browsing.
- *
  * The `:lineNumber` suffix is preserved in the label but stripped before
  * resolution — the workspace editor opens at the top.
  */
 
-import { useCallback, useState } from 'react';
-import {
-  isEditableFile,
-  toast,
-  useProjectDomainStore,
-  useResourceDomainStore,
-  useWorkspaceStore,
-} from '../../stores';
-import { readWorkspaceFile } from '../../services/workspaceFileService';
+import { useCallback } from 'react';
 import { parsePathRef } from '../../../shared/pathRefs';
 import { FileTextIcon } from '../icons';
+import { useWorkspaceFileOpener } from './useWorkspaceFileOpener';
 
 interface FileRefLinkProps {
   text: string;
@@ -37,40 +21,15 @@ function filename(path: string): string {
 }
 
 export function FileRefLink({ text }: FileRefLinkProps) {
-  const repos = useResourceDomainStore((state) => state.repos);
-  const projectId = useProjectDomainStore((state) => state.currentProjectId);
-  const openFile = useWorkspaceStore((state) => state.openFile);
-  const [pending, setPending] = useState(false);
+  const { openPath } = useWorkspaceFileOpener();
 
   const handleClick = useCallback(
-    async (e: React.MouseEvent) => {
+    (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      if (pending) return;
-
-      const { path } = parsePathRef(text);
-      const readOnly = !isEditableFile(filename(path));
-      setPending(true);
-      try {
-        const sources: { source: string; projectId: string | null }[] = [];
-        if (projectId) sources.push({ source: 'project', projectId });
-        for (const repo of repos) sources.push({ source: repo.id, projectId: null });
-
-        for (const { source, projectId: pid } of sources) {
-          try {
-            const content = await readWorkspaceFile(source, path, pid);
-            openFile(source, path, content, readOnly);
-            return;
-          } catch {
-            // Not in this source — try the next.
-          }
-        }
-        toast.error(`File not found: ${path}`);
-      } finally {
-        setPending(false);
-      }
+      void openPath(parsePathRef(text).path);
     },
-    [pending, projectId, repos, openFile, text]
+    [openPath, text]
   );
 
   const { path, line } = parsePathRef(text);

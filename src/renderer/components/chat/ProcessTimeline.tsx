@@ -1,5 +1,6 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Activity, ActivityType, MessageSegment } from '../../../shared/types';
+import { formatWorkedFor, summarizeActivities } from './processSummary';
 
 type Step =
   | { kind: 'thought'; content: string; key: string }
@@ -25,6 +26,10 @@ interface ProcessTimelineProps {
   streamingActivities?: Activity[];
   isStreaming?: boolean;
   elapsedSeconds?: number | null;
+  /** True when the turn's answer follows this strip, which makes it the process/answer boundary. */
+  hasAnswer?: boolean;
+  /** Wall-clock duration of the finished turn this strip belongs to. */
+  durationMs?: number;
 }
 
 const TOOL_NAME_BY_TYPE: Record<ActivityType, string> = {
@@ -382,13 +387,8 @@ const ToolGlyph = memo(function ToolGlyph() {
   );
 });
 
-function formatDuration(sec: number | null | undefined): string | null {
-  if (sec == null || sec < 0) return null;
-  if (sec < 60) return `${sec}s`;
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return s === 0 ? `${m}m` : `${m}m ${s}s`;
-}
+/** Caps how tall an expanded strip can grow, so collapsing it never moves the answer far. */
+const EXPANDED_BODY_MAX_HEIGHT = 'max-h-80';
 
 export const ProcessTimeline = memo(function ProcessTimeline({
   segments,
@@ -396,6 +396,8 @@ export const ProcessTimeline = memo(function ProcessTimeline({
   streamingActivities,
   isStreaming = false,
   elapsedSeconds,
+  hasAnswer = false,
+  durationMs,
 }: ProcessTimelineProps) {
   const steps = useMemo(
     () => buildSteps({ segments, streamingThinking, streamingActivities }),
@@ -403,77 +405,91 @@ export const ProcessTimeline = memo(function ProcessTimeline({
   );
   const rows = useMemo(() => collapseToolRuns(steps), [steps]);
 
-  // Default-expanded while streaming so the user sees live progress; auto-collapse
-  // once the turn ends — the answer is the headline, the process is the footnote.
-  const [expanded, setExpanded] = useState(isStreaming);
+  const [expanded, setExpanded] = useState(false);
+  const toggleExpanded = useCallback(() => setExpanded((value) => !value), []);
+
+  const bodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    setExpanded(isStreaming);
-  }, [isStreaming]);
+    if (!isStreaming || !expanded) return;
+    const body = bodyRef.current;
+    if (body) body.scrollTop = body.scrollHeight;
+  }, [isStreaming, expanded, rows.length]);
+
+  const summary = useMemo(
+    () => summarizeActivities(steps.flatMap((s) => (s.kind === 'tool' ? [s.activity] : []))),
+    [steps]
+  );
 
   if (steps.length === 0 && !isStreaming) return null;
 
-  // Empty-but-streaming: show a small pulse line so the user sees activity
-  // before the first thought/tool lands.
-  if (steps.length === 0 && isStreaming) {
-    return (
-      <div className="my-2 rounded-md border border-border-subtle/60 bg-surface-2/30 px-3 py-1.5 inline-flex items-center gap-2 text-xs text-text-muted">
-        <span className="pulse-dot" style={{ width: 6, height: 6 }} />
-        <span className="font-mono">Working...</span>
-      </div>
-    );
-  }
-
-  // Build summary parts for the collapsed chip.
-  const toolCount = steps.filter((s) => s.kind === 'tool').length;
-  const hasThought = steps.some((s) => s.kind === 'thought');
-  const summaryParts: string[] = [];
-  if (toolCount > 0) summaryParts.push(`${toolCount} tool${toolCount === 1 ? '' : 's'}`);
-  if (hasThought) summaryParts.push('thinking');
-  const durationLabel = !isStreaming ? formatDuration(elapsedSeconds) : null;
-  if (durationLabel) summaryParts.push(durationLabel);
-  const summaryLabel = summaryParts.join(' · ') || 'Process';
-
-  if (!expanded) {
-    return (
-      <button
-        type="button"
-        onClick={() => setExpanded(true)}
-        className="my-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-border-subtle/60 bg-surface-2/30 hover:bg-surface-2/60 text-xxs text-text-muted hover:text-text-secondary transition-colors max-w-full"
-        aria-expanded={false}
-      >
-        <CheckIcon />
-        <span className="truncate">{summaryLabel}</span>
-        <Chevron expanded={false} />
-      </button>
-    );
-  }
+  const durationSeconds = isStreaming
+    ? elapsedSeconds
+    : durationMs != null
+      ? Math.round(durationMs / 1000)
+      : elapsedSeconds;
+  const phrases =
+    summary.parts.length > 0
+      ? summary.parts
+      : steps.some((s) => s.kind === 'thought')
+        ? ['thinking']
+        : [];
+  const label = [formatWorkedFor(durationSeconds, isStreaming), ...phrases]
+    .filter(Boolean)
+    .join(' · ');
+  const hasDiff = summary.additions > 0 || summary.deletions > 0;
 
   return (
-    <div className="my-2 rounded-md border border-border-subtle/60 bg-surface-2/30 overflow-hidden max-w-full">
-      {!isStreaming && (
-        <button
-          type="button"
-          onClick={() => setExpanded(false)}
-          className="w-full flex items-center gap-1.5 px-3 py-1 text-xxs text-text-muted/70 hover:text-text-secondary border-b border-border-subtle/40"
-          aria-expanded
+    <div
+      className={`rounded-md border border-border-subtle/60 bg-surface-2/30 overflow-hidden ${
+        hasAnswer ? 'mt-2 mb-4' : 'my-2'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={toggleExpanded}
+        disabled={steps.length === 0}
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-xxs text-text-muted hover:text-text-secondary transition-colors text-left"
+        aria-expanded={expanded}
+      >
+        {steps.length === 0 ? (
+          <span className="pulse-dot flex-shrink-0" style={{ width: 6, height: 6 }} />
+        ) : (
+          <Chevron expanded={expanded} />
+        )}
+        <span className="truncate">{label || 'Working'}</span>
+        {hasDiff && (
+          <span className="ml-auto flex-shrink-0 font-mono flex items-center gap-1">
+            {summary.additions > 0 && <span className="text-success">+{summary.additions}</span>}
+            {summary.deletions > 0 && <span className="text-danger">-{summary.deletions}</span>}
+          </span>
+        )}
+        {isStreaming && steps.length > 0 && (
+          <span
+            className={`pulse-dot flex-shrink-0 ${hasDiff ? '' : 'ml-auto'}`}
+            style={{ width: 6, height: 6 }}
+          />
+        )}
+      </button>
+      {expanded && steps.length > 0 && (
+        <div
+          ref={bodyRef}
+          className={`${EXPANDED_BODY_MAX_HEIGHT} overflow-y-auto border-t border-border-subtle/40`}
         >
-          <Chevron expanded />
-          <span className="truncate">{summaryLabel}</span>
-        </button>
+          {rows.map((row, idx) => {
+            const isLast = idx === rows.length - 1;
+            const rowIsActive = isStreaming && isLast;
+            if (row.kind === 'thought') {
+              return <ThoughtRow key={row.key} content={row.content} isActive={rowIsActive} />;
+            }
+            if (row.kind === 'tool') {
+              return <ToolRow key={row.key} activity={row.activity} isActive={rowIsActive} />;
+            }
+            return (
+              <ToolGroupRow key={row.key} activities={row.activities} isActive={rowIsActive} />
+            );
+          })}
+        </div>
       )}
-      {rows.map((row, idx) => {
-        const isLast = idx === rows.length - 1;
-        const rowIsActive = isStreaming && isLast;
-        if (row.kind === 'thought') {
-          return <ThoughtRow key={row.key} content={row.content} isActive={rowIsActive} />;
-        }
-        if (row.kind === 'tool') {
-          return <ToolRow key={row.key} activity={row.activity} isActive={rowIsActive} />;
-        }
-        return (
-          <ToolGroupRow key={row.key} activities={row.activities} isActive={rowIsActive} />
-        );
-      })}
     </div>
   );
 });
