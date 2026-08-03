@@ -122,6 +122,8 @@ export interface NetworkConfig {
 export interface AgentSessionConfig {
   /** Active-session threshold above which the review poller holds off auto-launching more reviews */
   maxConcurrentSessionsPerProject: number;
+  /** Max turns for a bounded playbook subagent run */
+  subagentMaxTurns: number;
   /** How long to keep terminal sessions around for follow-up interactions (ms) */
   terminalSessionTtlMs: number;
   /** Timeout for the initial SDK agent session startup (ms) */
@@ -290,6 +292,7 @@ function createDefaultConfig(): AppConfig {
 
     agentSession: {
       maxConcurrentSessionsPerProject: 3,
+      subagentMaxTurns: 200,
       terminalSessionTtlMs: 30 * 60 * 1000, // 30 minutes
       sessionStartTimeoutMs: 60 * 1000, // 1 minute
       codexModel: 'gpt-5.6-sol',
@@ -307,7 +310,7 @@ function createDefaultConfig(): AppConfig {
 
     reviewAssessment: {
       timeoutMs: 8 * 60 * 1000, // 8 minutes
-      maxTurns: 40,
+      maxTurns: 200,
     },
 
     watcher: {

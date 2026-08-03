@@ -419,7 +419,7 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
         persistSession: false, // Ephemeral one-shot query, no need to persist
         // Room to actually investigate (read the map, Grep/Glob/Read across repos)
         // before writing. The onboardingTimeoutMs is the hard cap.
-        maxTurns: 20,
+        maxTurns: getConfig().claude.maxTurns,
         canUseTool: (toolName, input) => Promise.resolve(
           toolName === 'Write' || toolName === 'Edit' || toolName === 'Bash'
             ? {

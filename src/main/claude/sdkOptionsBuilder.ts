@@ -238,7 +238,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
           'what was asked, say so explicitly rather than guessing.',
         tools: ['Read', 'Grep', 'Glob', 'WebFetch'],
         model: 'sonnet',
-        maxTurns: 50,
+        maxTurns: claudeConfig.maxTurns,
       },
     } }),
     // Adaptive thinking for Opus and Sonnet: Claude decides when and how much to think.

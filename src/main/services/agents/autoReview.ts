@@ -166,7 +166,7 @@ async function startReviewSession(params: {
       systemPrompt: reviewSystemPrompt,
       model: model ?? getConfig().generation.fastModel,
       cwd: worktreePath,
-      maxTurns: 5,
+      maxTurns: getConfig().agentSession.subagentMaxTurns,
       permissionMode: getConfig().claude.defaultPermissionMode,
       // One-shot review agent — disable the built-in option-picker tool.
       disallowedTools: ['AskUserQuestion'],
