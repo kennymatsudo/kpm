@@ -1,7 +1,9 @@
-import { ipcMain, type BrowserWindow } from 'electron';
+import type { BrowserWindow } from 'electron';
 import { terminalEndpoints, type TerminalEndpointName } from '../../../shared/ipc/terminalEndpoints';
 import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import { toIpcResponse } from '../response';
+import { bindRegistryHandlers } from '../validation/utils';
+import { success } from '../../services/result';
 import type { TerminalService } from '../../services/streaming/TerminalService';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { terminalEvents } from '../../../shared/ipc/terminalEvents';
@@ -14,7 +16,9 @@ type TerminalHandlers = { [K in TerminalEndpointName]: HandlerFor<typeof termina
 
 function buildTerminalHandlers(terminalService: TerminalService): TerminalHandlers {
   return {
-    create: (input) => toIpcResponse(terminalService.create(input)),
+    list: () => toIpcResponse(success(terminalService.list())),
+    attach: (input) => toIpcResponse(terminalService.attach(input)),
+    detach: ({ id }) => toIpcResponse(terminalService.detach(id)),
     write: ({ id, data }) => toIpcResponse(terminalService.write(id, data)),
     resize: ({ id, cols, rows }) => toIpcResponse(terminalService.resize(id, cols, rows)),
     kill: ({ id }) => toIpcResponse(terminalService.kill(id)),
@@ -43,19 +47,5 @@ export function registerTerminalHandlers(
     emitAppEvent(win.webContents, terminalEvents.exit, { id, exitCode, signal });
   });
 
-  const handlers = buildTerminalHandlers(terminalService);
-
-  for (const [name, { channel, params }] of Object.entries(terminalEndpoints) as [
-    TerminalEndpointName,
-    (typeof terminalEndpoints)[TerminalEndpointName],
-  ][]) {
-    // Each handler's parameter type was checked once against its own
-    // registry entry in `buildTerminalHandlers`; iterating erases that
-    // per-key correlation into a union, hence the cast here.
-    const handler = handlers[name] as (params: unknown) => unknown;
-    ipcMain.handle(channel, (_event, rawParams: unknown) => {
-      const parsedParams = params ? params.parse(rawParams) : undefined;
-      return handler(parsedParams);
-    });
-  }
+  bindRegistryHandlers(terminalEndpoints, buildTerminalHandlers(terminalService));
 }

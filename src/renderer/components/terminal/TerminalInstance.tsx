@@ -6,12 +6,11 @@ import '@xterm/xterm/css/xterm.css';
 import { useTerminalStore } from '../../stores/terminalStore';
 import { graphiteColors } from '../../../shared/theme';
 import {
-  createTerminal,
+  subscribeToTerminal,
+  attachTerminal,
+  detachTerminal,
   writeToTerminal,
   resizeTerminal,
-  killTerminal,
-  onTerminalData,
-  onTerminalExit,
 } from '../../services/terminalService';
 
 interface TerminalInstanceProps {
@@ -36,10 +35,17 @@ export function TerminalInstance({ id, cwd, hidden }: TerminalInstanceProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
-  const ptyIdRef = useRef<string | null>(null);
   const setTerminalStatus = useTerminalStore((s) => s.setTerminalStatus);
+  const applySessionSnapshot = useTerminalStore((s) => s.applySessionSnapshot);
+  // `cwd` only decides where a new session spawns, and the attach response
+  // writes main's resolved path back onto the entry — so reading the prop
+  // directly below would tear the view down and respawn it whenever the
+  // resolved path differs from the requested one.
+  const initialCwdRef = useRef(cwd);
 
-  // Mount/teardown the xterm instance and PTY for this id.
+  // Mount/teardown the xterm view for this session id. Teardown detaches and
+  // never kills: the session outlives its view, so a remount replays the
+  // scrollback instead of spawning a second shell.
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -65,20 +71,16 @@ export function TerminalInstance({ id, cwd, hidden }: TerminalInstanceProps) {
     }
     const { cols, rows } = term;
 
-    const ptyId = `${id}-${globalThis.crypto.randomUUID()}`;
-    ptyIdRef.current = ptyId;
     let cancelled = false;
-    const dataUnsub = onTerminalData((event) => {
-      if (event.id !== ptyId) return;
-      term.write(event.data);
-    });
-    const exitUnsub = onTerminalExit((event) => {
-      if (event.id !== ptyId) return;
-      setTerminalStatus(id, 'exited', event.exitCode);
-      term.write(`\r\n\x1b[2m[process exited with code ${event.exitCode}]\x1b[0m\r\n`);
+    const unsubscribe = subscribeToTerminal(id, {
+      onData: (chunk) => term.write(chunk),
+      onExit: (exitCode) => {
+        setTerminalStatus(id, 'exited', exitCode);
+        term.write(`\r\n\x1b[2m[process exited with code ${exitCode}]\x1b[0m\r\n`);
+      },
     });
     const inputDisposable = term.onData((data) => {
-      void writeToTerminal(ptyId, data);
+      void writeToTerminal(id, data);
     });
 
     // Shift+Enter → ESC+CR. xterm.js sends plain `\r` for both Enter and
@@ -87,41 +89,53 @@ export function TerminalInstance({ id, cwd, hidden }: TerminalInstanceProps) {
     // which Claude Code reads as "newline within message" rather than submit.
     term.attachCustomKeyEventHandler((event) => {
       if (event.type === 'keydown' && event.key === 'Enter' && event.shiftKey) {
-        void writeToTerminal(ptyId, '\x1b\r');
+        void writeToTerminal(id, '\x1b\r');
         return false;
       }
       return true;
     });
 
-    void createTerminal({ id: ptyId, cwd, cols, rows }).then((res) => {
-      if (cancelled) {
-        if (res.success) void killTerminal(ptyId);
-        return;
-      }
-      if (!res.success) {
-        term.write(`\r\n\x1b[31m[terminal] failed to start: ${res.error ?? 'unknown error'}\x1b[0m\r\n`);
-        setTerminalStatus(id, 'exited', 1);
-        return;
-      }
-      setTerminalStatus(id, 'running');
+    const reportStartFailure = (reason: string) => {
+      term.write(`\r\n\x1b[31m[terminal] failed to start: ${reason}\x1b[0m\r\n`);
+      setTerminalStatus(id, 'exited', 1);
+    };
 
-      term.focus();
-    });
+    void attachTerminal({ id, cwd: initialCwdRef.current, cols, rows })
+      .then((res) => {
+        // `cancelled` means cleanup already ran, and cleanup is this view's only
+        // detach caller. Detaching again here would land after the replacement
+        // view's attach and leave the session running but muted — StrictMode's
+        // mount/unmount/mount makes that the common case, not a rare race.
+        if (cancelled) return;
+        if (!res.success) {
+          reportStartFailure(res.error ?? 'unknown error');
+          return;
+        }
+
+        const { session, scrollback } = res.data;
+        term.write(scrollback);
+        applySessionSnapshot(session);
+        if (session.status === 'exited') {
+          term.write(`\r\n\x1b[2m[process exited with code ${session.exitCode ?? 0}]\x1b[0m\r\n`);
+        } else {
+          term.focus();
+        }
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        reportStartFailure(error instanceof Error ? error.message : String(error));
+      });
 
     return () => {
       cancelled = true;
-      dataUnsub();
-      exitUnsub();
+      unsubscribe();
       inputDisposable.dispose();
-      void killTerminal(ptyId);
+      void detachTerminal(id);
       term.dispose();
-      if (ptyIdRef.current === ptyId) {
-        ptyIdRef.current = null;
-      }
       termRef.current = null;
       fitRef.current = null;
     };
-  }, [id, cwd, setTerminalStatus]);
+  }, [id, setTerminalStatus, applySessionSnapshot]);
 
   // Refit and resize PTY when the container changes size or visibility toggles.
   useEffect(() => {
@@ -131,15 +145,14 @@ export function TerminalInstance({ id, cwd, hidden }: TerminalInstanceProps) {
     const refit = () => {
       const term = termRef.current;
       const fit = fitRef.current;
-      const ptyId = ptyIdRef.current;
-      if (!term || !fit || !ptyId) return;
+      if (!term || !fit) return;
       // Skip when the container is collapsed (display:none on hidden tabs).
       // Fitting a zero-sized container drives cols/rows to a minimum and tells
       // the PTY to wrap at that width, corrupting the buffer with vertical text.
       if (target.offsetWidth === 0 || target.offsetHeight === 0) return;
       try {
         fit.fit();
-        void resizeTerminal(ptyId, term.cols, term.rows);
+        void resizeTerminal(id, term.cols, term.rows);
       } catch {
         // ignore — container not sized yet
       }
@@ -159,11 +172,9 @@ export function TerminalInstance({ id, cwd, hidden }: TerminalInstanceProps) {
     if (!term || !fit || !target) return;
     requestAnimationFrame(() => {
       try {
-        const ptyId = ptyIdRef.current;
-        if (!ptyId) return;
         if (target.offsetWidth === 0 || target.offsetHeight === 0) return;
         fit.fit();
-        void resizeTerminal(ptyId, term.cols, term.rows);
+        void resizeTerminal(id, term.cols, term.rows);
         term.focus();
       } catch {
         // ignore

@@ -44,3 +44,13 @@ A Plan Item's **Repository Scope** is separate from its Work Brief. It records w
 An **unassigned** Plan Item has no primary repo. When work spans multiple connected repos but none is clearly primary, affected repos may remain recorded while the primary repo stays unassigned. Removing a connected repo removes its Repository Scope association and never promotes another repo automatically.
 
 A new dev session snapshots both the execution projection in `initial_instructions` and the corresponding Work Brief revision. Resuming a pending/inactive session reuses that immutable instruction snapshot; a supplemental user prompt may constrain the resumed turn but does not replace the captured contract. Legacy sessions have an unknown (`NULL`) Work Brief revision.
+
+## Terminal session
+
+A **terminal session** is one shell the user runs in the embedded terminal panel. The main process owns it (`TerminalService`, `src/main/services/streaming/TerminalService.ts`): its id, resolved cwd, status (`running` | `exited`), exit code, and **scrollback**. There is exactly one id per session — the view that first opens it supplies the id, and the session record is authoritative for everything else.
+
+A **terminal view** is the xterm.js instance rendered for a session. A view **attaches** to a session by id and holds no session state of its own; **detaching** leaves the session running. A session therefore outlives its view: reloading the window or remounting the panel replays the scrollback instead of spawning a second shell. Only an explicit **kill** ends a session, and it is the only way a session leaves the list — an exited session stays listed, with its scrollback still readable, until the user closes its tab.
+
+Output reaches a view only while it is attached. A detached session keeps appending to its scrollback, which is what makes the replay gapless: a chunk is either already in the scrollback handed over at attach or emitted afterwards, never both.
+
+Distinct from an **agent PTY** (`CliAgentSession`): a hidden, hook-instrumented CLI agent process in a session worktree, never attached to a view.

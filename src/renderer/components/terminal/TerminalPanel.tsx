@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useTerminalStore } from '../../stores/terminalStore';
-import { killTerminal } from '../../services/terminalService';
+import { killTerminal, listTerminals } from '../../services/terminalService';
 import { TerminalInstance } from './TerminalInstance';
 
 interface TerminalPanelProps {
@@ -11,7 +11,7 @@ interface TerminalPanelProps {
 }
 
 function newId() {
-  return `term-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return globalThis.crypto.randomUUID();
 }
 
 const STORAGE_KEY_HEIGHT = 'kpm-terminal-panel-height';
@@ -26,6 +26,7 @@ export function TerminalPanel({ defaultCwd, isOpen }: TerminalPanelProps) {
     removeTerminal,
     setActiveTerminal,
     setPanelOpen,
+    hydrateTerminals,
   } = useTerminalStore(
     useShallow((s) => ({
       panelHeight: s.panelHeight,
@@ -36,6 +37,7 @@ export function TerminalPanel({ defaultCwd, isOpen }: TerminalPanelProps) {
       removeTerminal: s.removeTerminal,
       setActiveTerminal: s.setActiveTerminal,
       setPanelOpen: s.setPanelOpen,
+      hydrateTerminals: s.hydrateTerminals,
     })),
   );
 
@@ -60,16 +62,31 @@ export function TerminalPanel({ defaultCwd, isOpen }: TerminalPanelProps) {
     return () => window.removeEventListener('resize', handleResize);
   }, [panelHeight, setPanelHeight]);
 
-  // Spawn the first terminal on first open. Run only once per mount —
-  // a ref guard avoids the lint suppression and the closure-over-defaultCwd hazard.
-  const seededRef = useRef(false);
+  // Hydrate from sessions that outlived their view (window reload, panel
+  // relocation), then seed a terminal only on a closed->open transition —
+  // never merely because the list is empty while the panel stays open,
+  // or a closed last tab would respawn a shell immediately.
+  const didInitRef = useRef(false);
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (!isOpen || seededRef.current) return;
-    seededRef.current = true;
-    if (terminals.length === 0) {
+    const wasOpen = wasOpenRef.current;
+    wasOpenRef.current = isOpen;
+
+    if (!didInitRef.current) {
+      didInitRef.current = true;
+      void listTerminals().then((res) => {
+        if (res.success) hydrateTerminals(res.data);
+        if (isOpen && useTerminalStore.getState().terminals.length === 0) {
+          addTerminal({ id: newId(), cwd: defaultCwd, status: 'starting' });
+        }
+      });
+      return;
+    }
+
+    if (isOpen && !wasOpen && useTerminalStore.getState().terminals.length === 0) {
       addTerminal({ id: newId(), cwd: defaultCwd, status: 'starting' });
     }
-  }, [addTerminal, defaultCwd, isOpen, terminals.length]);
+  }, [addTerminal, defaultCwd, hydrateTerminals, isOpen]);
 
   const handleNewTerminal = useCallback(() => {
     addTerminal({ id: newId(), cwd: defaultCwd, status: 'starting' });

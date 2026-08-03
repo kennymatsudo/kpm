@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { TerminalSessionSnapshot } from '../services/terminalService';
 
 export interface TerminalEntry {
   id: string;
@@ -21,6 +22,8 @@ interface TerminalState {
   removeTerminal: (id: string) => void;
   setActiveTerminal: (id: string | null) => void;
   setTerminalStatus: (id: string, status: TerminalEntry['status'], exitCode?: number) => void;
+  hydrateTerminals: (sessions: TerminalSessionSnapshot[]) => void;
+  applySessionSnapshot: (snapshot: TerminalSessionSnapshot) => void;
 }
 
 const DEFAULT_HEIGHT = 280;
@@ -75,5 +78,31 @@ export const useTerminalStore = create<TerminalState>((set) => ({
     set((state) => ({
       terminals: state.terminals.map((t) => (t.id === id ? { ...t, status, exitCode } : t)),
     }));
+  },
+
+  hydrateTerminals(sessions) {
+    set((state) => {
+      const terminals: TerminalEntry[] = sessions.map((session) => ({
+        id: session.id,
+        cwd: session.cwd,
+        status: session.status,
+        exitCode: session.exitCode,
+      }));
+      const activeTerminalId = terminals.some((t) => t.id === state.activeTerminalId)
+        ? state.activeTerminalId
+        : (terminals[terminals.length - 1]?.id ?? null);
+      return { terminals, activeTerminalId };
+    });
+  },
+
+  applySessionSnapshot(snapshot) {
+    set((state) => {
+      if (!state.terminals.some((t) => t.id === snapshot.id)) return {};
+      return {
+        terminals: state.terminals.map((t) =>
+          t.id === snapshot.id ? { ...t, cwd: snapshot.cwd, status: snapshot.status, exitCode: snapshot.exitCode } : t,
+        ),
+      };
+    });
   },
 }));

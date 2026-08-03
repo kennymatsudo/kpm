@@ -1,9 +1,11 @@
 /**
- * TerminalService - PTY lifecycle for the embedded developer terminal panel.
+ * TerminalService - single owner of terminal session state for the embedded
+ * developer terminal panel.
  *
  * Distinct from CliAgentSession: this is a generic user-driven shell, not an
- * agent harness. No hook wiring, no activity mapping — raw bytes in, raw bytes
- * out. The renderer hosts the xterm.js instance and bridges via IPC.
+ * agent harness. A session's id, resolved cwd, status, exit code, and
+ * scrollback all live here; the renderer only attaches/detaches a view to a
+ * session id and holds no session state of its own.
  */
 
 import * as pty from 'node-pty';
@@ -12,36 +14,113 @@ import { homedir, platform } from 'os';
 import { statSync } from 'fs';
 import { getCleanEnv } from './envUtils';
 import { type ServiceResult, success, failure } from '../result';
+import type { TerminalSessionStatus, TerminalSessionSnapshot, TerminalAttachment } from '../../../shared/ipc/terminalEndpoints';
 
 const LOG_PREFIX = '[TerminalService]';
 
 /** Max output buffer per session (1MB) — matches CliAgentSession. */
 const MAX_OUTPUT_BUFFER = 1024 * 1024;
 
-export interface CreateTerminalOptions {
+export interface AttachTerminalOptions {
   id: string;
   cwd?: string;
   cols: number;
   rows: number;
-  /** Override shell. Defaults to $SHELL on unix, cmd.exe on win32. */
+  /** Override shell. Defaults to $SHELL on unix, cmd.exe on win32. Ignored if the session already exists. */
   shell?: string;
-  /** Extra env merged over the cleaned process env. */
+  /** Extra env merged over the cleaned process env. Ignored if the session already exists. */
   env?: Record<string, string>;
 }
 
-interface TerminalEntry {
+interface TerminalSession {
   process: pty.IPty;
-  buffer: string;
+  cwd: string;
+  status: TerminalSessionStatus;
+  exitCode?: number;
+  scrollback: string;
+  attached: boolean;
 }
 
 export class TerminalService extends EventEmitter {
-  private terminals = new Map<string, TerminalEntry>();
+  private sessions = new Map<string, TerminalSession>();
 
-  create(opts: CreateTerminalOptions): ServiceResult<void> {
-    if (this.terminals.has(opts.id)) {
-      return failure(`Terminal ${opts.id} already exists`);
+  list(): TerminalSessionSnapshot[] {
+    return Array.from(this.sessions.entries()).map(([id, session]) => toSnapshot(id, session));
+  }
+
+  attach(opts: AttachTerminalOptions): ServiceResult<TerminalAttachment> {
+    let session = this.sessions.get(opts.id);
+    if (!session) {
+      const spawned = this.spawn(opts);
+      if (!spawned.ok) return spawned;
+      session = spawned.data;
     }
 
+    const scrollback = session.scrollback;
+    session.attached = true;
+
+    return success({ session: toSnapshot(opts.id, session), scrollback });
+  }
+
+  detach(id: string): ServiceResult<void> {
+    const session = this.sessions.get(id);
+    if (!session) return failure(`Terminal ${id} not found`);
+    session.attached = false;
+    return success(undefined);
+  }
+
+  write(id: string, data: string): ServiceResult<void> {
+    const session = this.sessions.get(id);
+    if (!session) return failure(`Terminal ${id} not found`);
+    if (session.status === 'exited') return failure(`Terminal ${id} has exited`);
+    try {
+      session.process.write(data);
+      return success(undefined);
+    } catch (e) {
+      return failure(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  resize(id: string, cols: number, rows: number): ServiceResult<void> {
+    const session = this.sessions.get(id);
+    if (!session) return failure(`Terminal ${id} not found`);
+    if (session.status === 'exited') return failure(`Terminal ${id} has exited`);
+    try {
+      session.process.resize(Math.max(1, cols), Math.max(1, rows));
+      return success(undefined);
+    } catch (e) {
+      return failure(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  kill(id: string): ServiceResult<void> {
+    const session = this.sessions.get(id);
+    if (!session) return failure(`Terminal ${id} not found`);
+    if (session.status === 'running') {
+      try {
+        session.process.kill();
+      } catch {
+        // Process may already be dead
+      }
+    }
+    this.sessions.delete(id);
+    return success(undefined);
+  }
+
+  /** Kill every active PTY. Called from AppLifecycleService on shutdown. */
+  shutdown(): void {
+    for (const session of this.sessions.values()) {
+      if (session.status !== 'running') continue;
+      try {
+        session.process.kill();
+      } catch {
+        // best-effort
+      }
+    }
+    this.sessions.clear();
+  }
+
+  private spawn(opts: AttachTerminalOptions): ServiceResult<TerminalSession> {
     const cwd = resolveCwd(opts.cwd);
     const shell = opts.shell ?? defaultShell();
     const env = { ...getCleanEnv(), TERM: 'xterm-256color', COLORTERM: 'truecolor', ...opts.env };
@@ -61,85 +140,29 @@ export class TerminalService extends EventEmitter {
       return failure(`Failed to spawn shell: ${msg}`);
     }
 
-    const entry: TerminalEntry = { process: proc, buffer: '' };
-    this.terminals.set(opts.id, entry);
+    const session: TerminalSession = { process: proc, cwd, status: 'running', scrollback: '', attached: false };
+    this.sessions.set(opts.id, session);
 
     proc.onData((chunk) => {
-      entry.buffer += chunk;
-      if (entry.buffer.length > MAX_OUTPUT_BUFFER) {
-        entry.buffer = entry.buffer.slice(-MAX_OUTPUT_BUFFER);
+      session.scrollback += chunk;
+      if (session.scrollback.length > MAX_OUTPUT_BUFFER) {
+        session.scrollback = session.scrollback.slice(-MAX_OUTPUT_BUFFER);
       }
-      this.emit('data', opts.id, chunk);
+      if (session.attached) this.emit('data', opts.id, chunk);
     });
 
     proc.onExit(({ exitCode, signal }) => {
-      this.terminals.delete(opts.id);
-      this.emit('exit', opts.id, exitCode, signal);
+      session.status = 'exited';
+      session.exitCode = exitCode;
+      if (session.attached) this.emit('exit', opts.id, exitCode, signal);
     });
 
-    return success(undefined);
+    return success(session);
   }
+}
 
-  write(id: string, data: string): ServiceResult<void> {
-    const entry = this.terminals.get(id);
-    if (!entry) return failure(`Terminal ${id} not found`);
-    try {
-      entry.process.write(data);
-      return success(undefined);
-    } catch (e) {
-      return failure(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  resize(id: string, cols: number, rows: number): ServiceResult<void> {
-    const entry = this.terminals.get(id);
-    if (!entry) return failure(`Terminal ${id} not found`);
-    try {
-      entry.process.resize(Math.max(1, cols), Math.max(1, rows));
-      return success(undefined);
-    } catch (e) {
-      return failure(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  kill(id: string): ServiceResult<void> {
-    const entry = this.terminals.get(id);
-    if (!entry) return success(undefined);
-    try {
-      entry.process.kill();
-    } catch {
-      // Process may already be dead
-    }
-    this.terminals.delete(id);
-    return success(undefined);
-  }
-
-  /** Kill every active PTY. Called from AppLifecycleService on shutdown. */
-  shutdown(): void {
-    for (const entry of this.terminals.values()) {
-      try {
-        entry.process.kill();
-      } catch {
-        // best-effort
-      }
-    }
-    this.terminals.clear();
-  }
-
-  /** Test/debug introspection. */
-  has(id: string): boolean {
-    return this.terminals.has(id);
-  }
-
-  /** Test/debug introspection — returns the accumulated buffer for a session. */
-  getBuffer(id: string): string | undefined {
-    return this.terminals.get(id)?.buffer;
-  }
-
-  /** Number of live terminals. */
-  size(): number {
-    return this.terminals.size;
-  }
+function toSnapshot(id: string, session: TerminalSession): TerminalSessionSnapshot {
+  return { id, cwd: session.cwd, status: session.status, exitCode: session.exitCode };
 }
 
 function defaultShell(): string {

@@ -944,7 +944,9 @@ const shell = {
 const terminalInvoke = deriveDomainApi(terminalEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
 const terminalSubscriptions = deriveEventSubscriptions(terminalEvents, ipcRenderer);
 const terminal = {
-  create: terminalInvoke.create,
+  list: terminalInvoke.list,
+  attach: terminalInvoke.attach,
+  detach: terminalInvoke.detach,
   write: terminalInvoke.write,
   resize: terminalInvoke.resize,
   kill: terminalInvoke.kill,

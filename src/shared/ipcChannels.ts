@@ -271,7 +271,9 @@ const chatChannels = toNestedChannels(chatEndpoints) as {
 };
 
 const terminalChannels = toNestedChannels(terminalEndpoints) as {
-  create: string;
+  list: string;
+  attach: string;
+  detach: string;
   write: string;
   resize: string;
   kill: string;

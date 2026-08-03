@@ -77,7 +77,7 @@ Project file system operations, repo file access.
 
 Terminal/PTY and Claude session management.
 
-- `TerminalService` — Create/manage pseudo-terminals (singleton)
+- `TerminalService` — Single owner of the embedded terminal panel's sessions: id, resolved cwd, status, exit code, scrollback, and whether a view is attached. `attach` creates the session if absent and hands back its scrollback, `detach` leaves it running, and `kill` is the only thing that ends a shell (it fails on an unknown id — do not treat a missing session as a successful kill). Output is emitted only to an attached session; a detached one keeps buffering, which is what makes the replay on re-attach gapless. An exited session stays listed until its tab is closed. See "Terminal session" in [`CONTEXT.md`](../../../CONTEXT.md).
 - `StreamingSessionService` — Main chat session lifecycle
 
 ### One-shot generation seam (`src/main/generation/`)
