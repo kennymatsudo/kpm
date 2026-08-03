@@ -119,6 +119,81 @@ describe('finalizeTurnResult', () => {
     expect(managed.lastTurnFinalized).toBe(false);
   });
 
+  describe('context window', () => {
+    function doneContextWindow(managed: ManagedSessionArg, sdkMsg: unknown): number | undefined {
+      const deps = makeDeps();
+      const { sent, window } = fakeWindow();
+      finalizeTurnResult('key', 'project-1', 'session-1', managed, sdkMsg, window, deps);
+      const doneEvent = sent.find((e) => e.channel === 'chat:done');
+      return (doneEvent!.payload as { contextWindow?: number }).contextWindow;
+    }
+
+    it('reports the capacity the SDK gave for the turn model', () => {
+      const contextWindow = doneContextWindow(makeManaged({ resolvedModel: 'claude-sonnet-5' }), {
+        type: 'result',
+        usage: { input_tokens: 10, output_tokens: 20 },
+        modelUsage: { 'claude-sonnet-5': { contextWindow: 1_000_000 } },
+      });
+
+      expect(contextWindow).toBe(1_000_000);
+    });
+
+    it('ignores a subagent entry and reports the main model capacity', () => {
+      const contextWindow = doneContextWindow(makeManaged({ resolvedModel: 'claude-sonnet-5' }), {
+        type: 'result',
+        usage: { input_tokens: 10, output_tokens: 20 },
+        modelUsage: {
+          'claude-sonnet-5': { contextWindow: 1_000_000 },
+          'claude-haiku-4-5': { contextWindow: 200_000 },
+        },
+      });
+
+      expect(contextWindow).toBe(1_000_000);
+    });
+
+    it('uses a lone entry when the turn produced no resolved model', () => {
+      const contextWindow = doneContextWindow(makeManaged({ resolvedModel: undefined }), {
+        type: 'result',
+        usage: undefined,
+        modelUsage: { 'claude-opus-5': { contextWindow: 1_000_000 } },
+      });
+
+      expect(contextWindow).toBe(1_000_000);
+    });
+
+    it('declines to guess between models when the turn produced no resolved model', () => {
+      const contextWindow = doneContextWindow(makeManaged({ resolvedModel: undefined }), {
+        type: 'result',
+        usage: undefined,
+        modelUsage: {
+          'claude-sonnet-5': { contextWindow: 1_000_000 },
+          'claude-haiku-4-5': { contextWindow: 200_000 },
+        },
+      });
+
+      expect(contextWindow).toBeUndefined();
+    });
+
+    it('leaves the renderer on its model table when a provider reports no usage map', () => {
+      const contextWindow = doneContextWindow(makeManaged({ provider: 'codex', resolvedModel: undefined }), {
+        type: 'result',
+        usage: { input_tokens: 10, output_tokens: 20 },
+      });
+
+      expect(contextWindow).toBeUndefined();
+    });
+
+    it('rejects a zero capacity rather than dividing by it', () => {
+      const contextWindow = doneContextWindow(makeManaged({ resolvedModel: 'claude-sonnet-5' }), {
+        type: 'result',
+        usage: undefined,
+        modelUsage: { 'claude-sonnet-5': { contextWindow: 0 } },
+      });
+
+      expect(contextWindow).toBeUndefined();
+    });
+  });
+
   describe('turn latency', () => {
     afterEach(() => {
       vi.restoreAllMocks();

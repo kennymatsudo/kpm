@@ -20,6 +20,7 @@ import { buildResponseModesSection } from '../chat/prompts/modes';
 import { resolveRegistryPrompt } from '../chat/prompts/promptRegistry';
 import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/streaming/BaseTurnQueueChatSession';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
+import type { WriteDecision } from '../chat/writeGrants';
 
 export interface CodexChatSessionConfig {
   context: PlanContext;
@@ -32,7 +33,7 @@ export interface CodexChatSessionConfig {
   onReady?: (threadId: string) => void;
   /** Injectable KPM MCP registration factory. The streaming shell supplies this so provider setup stays outside the session body. */
   registerMcpSession?: () => Promise<CodexMcpRegistration>;
-  requestWriteConsent?: () => Promise<{ allowed: boolean }>;
+  requestWriteConsent?: () => Promise<WriteDecision>;
   hasWriteAccess?: () => boolean;
 }
 
@@ -215,6 +216,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   private abortController: AbortController | null = null;
   private threadId: string | null;
   private threadSandboxMode: 'read-only' | 'workspace-write' = 'read-only';
+  private writeConsentAskedThisTurn = false;
 
   constructor(config: CodexChatSessionConfig) {
     super(config.onMessage, config.onSessionEnd);
@@ -325,6 +327,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
 
   protected async executeTurn(turn: QueuedTurn): Promise<void> {
     this.abortController = new AbortController();
+    this.writeConsentAskedThisTurn = false;
     try {
       const input = turn.prependSystemPrompt
         ? buildInitialPrompt(this.systemPrompt, turn.input)
@@ -417,12 +420,12 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
     }
 
     if (item.type === 'file_change' && item.status === 'failed') {
-      this.offerWriteUnlock();
+      void this.offerWriteUnlock();
       return;
     }
 
     if (item.type === 'command_execution' && item.status === 'failed' && looksLikeSandboxDenial(item.aggregated_output)) {
-      this.offerWriteUnlock();
+      void this.offerWriteUnlock();
       return;
     }
 
@@ -437,13 +440,34 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
 
   /**
    * Ask for write access after a blocked write. The turn cannot pause, so any
-   * grant takes effect on the next turn.
+   * grant takes effect on the next turn; a refusal is reported here since
+   * Codex has no way to learn about it mid-turn. A real decision needs a user
+   * click, so the once-per-turn guard is set before the request is issued,
+   * not after it resolves — otherwise a turn with several failed writes asks
+   * (and reports the refusal) once per failure instead of once per turn. A
+   * fresh turn gets to ask again, since a refusal must not become permanent.
    */
-  private offerWriteUnlock(): void {
+  private async offerWriteUnlock(): Promise<void> {
     if (this.threadSandboxMode === 'workspace-write') return;
-    void this.config.requestWriteConsent?.().catch((error) => {
+    if (this.writeConsentAskedThisTurn) return;
+    if (!this.config.requestWriteConsent) return;
+    this.writeConsentAskedThisTurn = true;
+    try {
+      const decision = await this.config.requestWriteConsent();
+      if (!decision.allowed) {
+        this.config.onMessage({
+          type: 'assistant',
+          message: {
+            content: [{
+              type: 'text',
+              text: 'That change was not made because write access is not enabled for this conversation.',
+            }],
+          },
+        });
+      }
+    } catch (error) {
       console.error('[CodexChatSession] Write consent request failed:', error);
-    });
+    }
   }
 
   private disposeMcpRegistration(): void {

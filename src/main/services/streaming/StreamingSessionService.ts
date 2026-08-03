@@ -482,6 +482,33 @@ function getManagedDisplayModel(managed: Pick<ManagedSession, 'provider' | 'mode
   return managed.provider !== 'claude' && managed.providerModel ? managed.providerModel : managed.model;
 }
 
+/**
+ * Read the turn's context-window capacity out of the SDK's per-model usage map
+ * (`SDKResultMessage.modelUsage`), which is the only place the SDK reports it.
+ *
+ * The map is keyed by raw model string and gains an entry for every model the
+ * turn touched, so a turn that spawned subagents also carries their (smaller)
+ * windows. Key off the main model instead of whatever enumerates first, and
+ * give up rather than guess when a multi-model turn can't be keyed — the
+ * renderer's model table is a better fallback than a subagent's limit.
+ * Non-Claude providers send no map at all, which also lands on undefined.
+ */
+export function resolveTurnContextWindow(
+  modelUsage: unknown,
+  resolvedModel: string | undefined,
+): number | undefined {
+  if (!modelUsage || typeof modelUsage !== 'object') return undefined;
+
+  const byModel = modelUsage as Record<string, { contextWindow?: unknown } | undefined>;
+  const entries = Object.values(byModel);
+  const entry = resolvedModel ? byModel[resolvedModel] : entries.length === 1 ? entries[0] : undefined;
+
+  const contextWindow = entry?.contextWindow;
+  return typeof contextWindow === 'number' && Number.isFinite(contextWindow) && contextWindow > 0
+    ? contextWindow
+    : undefined;
+}
+
 function authErrorMessage(provider: ChatProvider): string {
   const reconnect: Record<ChatProvider, string> = {
     claude: 'Run /login in a terminal',
@@ -766,10 +793,10 @@ export function finalizeTurnResult(
     outputTokens: ctxSource?.output_tokens ?? undefined,
     cacheReadTokens: ctxSource?.cache_read_input_tokens ?? undefined,
     cacheCreationTokens: ctxSource?.cache_creation_input_tokens ?? undefined,
-    // BetaUsage has no context_window field; ModelUsage (sdkMsg.modelUsage)
-    // has it but as the model's max capacity, not current usage. Leave it
-    // undefined so ContextWindowBar falls back to resolveModelContextWindow.
-    contextWindow: undefined,
+    // Occupancy comes from the iteration token counts above; the capacity to
+    // divide it by lives only on modelUsage. Undefined keeps the renderer on
+    // its model table.
+    contextWindow: resolveTurnContextWindow(sdkMsg.modelUsage, managed.resolvedModel),
   });
 
   // Clear the queued envelope now — the SDK has the message and is about
@@ -1399,9 +1426,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             onSessionEnd: (reason, error) => handleSessionEnd(key, session, reason, error),
             onReady: onReadyWithoutMcpStatus,
             registerMcpSession: registerCodexKpmMcpSession,
-            requestWriteConsent: async () => ({
-              allowed: (await requestWriteConsent()).allowed,
-            }),
+            requestWriteConsent,
             hasWriteAccess: () => chatSessionId ? conversationWriteGrants.has(chatSessionId) : false,
           })
         : provider === 'pi'

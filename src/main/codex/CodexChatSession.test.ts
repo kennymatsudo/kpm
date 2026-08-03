@@ -374,6 +374,116 @@ describe('CodexChatSession', () => {
       expect(requestWriteConsent).not.toHaveBeenCalled();
     });
 
+    it('reports the refusal reason to the conversation when the user declines', async () => {
+      codexMocks.runStreamed.mockResolvedValue({
+        events: streamEvents([
+          { type: 'thread.started', thread_id: 'thread-1' },
+          {
+            type: 'item.completed',
+            item: {
+              id: 'patch-1',
+              type: 'file_change',
+              status: 'failed',
+              changes: [{ path: '/repos/my-app/src/index.ts', kind: 'update' }],
+            },
+          },
+          { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1, cached_input_tokens: 0 } },
+        ]),
+      });
+      const requestWriteConsent = vi.fn().mockResolvedValue({
+        allowed: false,
+        reason: 'The user did not allow writes for this conversation.',
+      });
+      const onMessage = vi.fn();
+
+      const session = new CodexChatSession({
+        context: makeContext(),
+        onMessage,
+        requestWriteConsent,
+        hasWriteAccess: () => false,
+      });
+      await session.start('edit the file');
+
+      await waitFor(() => {
+        expect(onMessage).toHaveBeenCalledWith({
+          type: 'assistant',
+          message: {
+            content: [{
+              type: 'text',
+              text: 'That change was not made because write access is not enabled for this conversation.',
+            }],
+          },
+        });
+      });
+      const emittedMessages = (onMessage.mock.calls as unknown[][]).map((call) => call[0]);
+      expect(emittedMessages.some((message) => message !== null && typeof message === 'object' && 'error' in message)).toBe(false);
+      expect(emittedMessages).not.toContainEqual({
+        type: 'assistant',
+        message: {
+          content: [{ type: 'text', text: 'The user did not allow writes for this conversation.' }],
+        },
+      });
+    });
+
+    it('asks for write consent only once per turn across multiple failed writes', async () => {
+      async function* twoFailedWrites() {
+        yield { type: 'thread.started', thread_id: 'thread-1' };
+        yield {
+          type: 'item.completed',
+          item: {
+            id: 'patch-1',
+            type: 'file_change',
+            status: 'failed',
+            changes: [{ path: '/repos/my-app/src/index.ts', kind: 'update' }],
+          },
+        };
+        yield {
+          type: 'item.completed',
+          item: {
+            id: 'patch-2',
+            type: 'file_change',
+            status: 'failed',
+            changes: [{ path: '/repos/my-app/src/other.ts', kind: 'update' }],
+          },
+        };
+        yield { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1, cached_input_tokens: 0 } };
+      }
+      codexMocks.runStreamed.mockResolvedValue({ events: twoFailedWrites() });
+
+      // A real consent decision needs a user click, so it does not resolve on
+      // the same tick as the request — unlike both failed writes, which land
+      // back-to-back within this one turn.
+      const consentDecision = deferred<{ allowed: boolean; reason: string }>();
+      const requestWriteConsent = vi.fn().mockImplementation(() => consentDecision.promise);
+      const onMessage = vi.fn();
+
+      const session = new CodexChatSession({
+        context: makeContext(),
+        onMessage,
+        requestWriteConsent,
+        hasWriteAccess: () => false,
+      });
+      await session.start('edit two files');
+
+      await waitFor(() => {
+        expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'result' }));
+      });
+      expect(requestWriteConsent).toHaveBeenCalledTimes(1);
+
+      consentDecision.resolve({
+        allowed: false,
+        reason: 'The user did not allow writes for this conversation.',
+      });
+
+      await waitFor(() => {
+        const assistantMessages = (onMessage.mock.calls as unknown[][])
+          .map((call) => call[0])
+          .filter((message) => Boolean(message) && typeof message === 'object' && (message as { type?: string }).type === 'assistant');
+        expect(assistantMessages).toHaveLength(1);
+      });
+      expect(requestWriteConsent).toHaveBeenCalledTimes(1);
+    });
+
     it('returns to read-only on the turn after write access is revoked', async () => {
       codexMocks.runStreamed.mockResolvedValue({
         events: streamEvents([

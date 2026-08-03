@@ -65,17 +65,24 @@ export interface ProjectUsageStats {
  * a context window with result usage, so the chat bar infers from the selected
  * provider/model id when the turn payload has no explicit value.
  *
- * The opus alias resolves to a 1M context window. The sonnet alias defaults
- * to the 200k tier (the 1M Sonnet variant requires usage credits and is a
- * separate model selection). Update when model families change.
+ * Current-generation Fable, Opus, and Sonnet are all 1M; Haiku is the only
+ * Claude family still at 200k. Update when model families change.
  */
 const CONTEXT_WINDOW_BY_FAMILY: Record<string, number> = {
+  claudeFable: 1_000_000,
   claudeOpus: 1_000_000,
-  claudeSonnet: 200_000,
+  claudeSonnet: 1_000_000,
   claudeHaiku: 200_000,
-  gpt5: 400_000,
+  gpt5: 372_000,
   gpt4: 128_000,
 };
+
+/**
+ * Applied to model strings no branch recognizes. Deliberately the smallest
+ * current-generation window rather than a family default: overestimating makes
+ * the bar under-report context pressure, which is the harmful direction.
+ */
+const UNKNOWN_MODEL_CONTEXT_WINDOW = 200_000;
 
 const CURSOR_CONTEXT_WINDOW_BY_MODEL: Record<string, number> = {
   default: 200_000,
@@ -131,9 +138,8 @@ function parseExplicitContextWindow(model: string): number | null {
 /**
  * Resolve a model identifier to its context window size in tokens.
  * Accepts SDK aliases ("opus" / "sonnet"), full model IDs
- * ("claude-opus-4-8"), Codex/OpenAI selections ("gpt-5.5"), and pi.dev
+ * ("claude-opus-4-8"), Codex/OpenAI selections ("gpt-5.6-terra"), and pi.dev
  * provider selectors ("cursor/opus-latest@1m", "openai-codex/gpt-5.4").
- * Falls back to Sonnet's 200k for unknown strings.
  */
 export function resolveModelContextWindow(model: string | null | undefined): number {
   const m = (model ?? '').toLowerCase();
@@ -143,12 +149,13 @@ export function resolveModelContextWindow(model: string | null | undefined): num
   const explicit = parseExplicitContextWindow(m);
   if (explicit) return explicit;
 
+  if (m.includes('fable') || m.includes('mythos')) return CONTEXT_WINDOW_BY_FAMILY.claudeFable;
   if (m.includes('opus')) return CONTEXT_WINDOW_BY_FAMILY.claudeOpus;
   if (m.includes('haiku')) return CONTEXT_WINDOW_BY_FAMILY.claudeHaiku;
   if (m.includes('sonnet')) return CONTEXT_WINDOW_BY_FAMILY.claudeSonnet;
   if (m.includes('gpt-5')) return CONTEXT_WINDOW_BY_FAMILY.gpt5;
   if (m.includes('gpt-4')) return CONTEXT_WINDOW_BY_FAMILY.gpt4;
-  return CONTEXT_WINDOW_BY_FAMILY.claudeSonnet;
+  return UNKNOWN_MODEL_CONTEXT_WINDOW;
 }
 
 /**
