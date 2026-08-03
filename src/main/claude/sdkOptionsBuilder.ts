@@ -5,6 +5,7 @@
  * This is used by both the per-query and streaming session patterns.
  */
 
+import path from 'path';
 import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import type { BrowserWindow } from 'electron';
 import { buildFocusSystemPrompt, buildSystemPrompt, type PlanContext } from '../chat/prompts/index';
@@ -15,7 +16,7 @@ import { getConfig } from '../config';
 import { getClaudeSdkSpawnOptions } from './findClaude';
 import { promptUser } from '../services/core/PermissionPromptService';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
-import { getDeniedPathRoots } from '../services/files/pathSecurity';
+import { getDeniedPathRoots, getDockerConfigPathRoots } from '../services/files/pathSecurity';
 
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
 
@@ -95,6 +96,16 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   // Build options
   const claudeConfig = getConfig().claude;
   const deniedPathRoots = getDeniedPathRoots();
+  const dockerConfigPathRoots = getDockerConfigPathRoots();
+  const dockerConfigPathRootSet = new Set(dockerConfigPathRoots);
+  const shellDeniedPathRoots = deniedPathRoots.filter((deniedPathRoot) => !dockerConfigPathRootSet.has(deniedPathRoot));
+  const dockerSocketPaths = Array.from(new Set([
+    '/var/run/docker.sock',
+    ...dockerConfigPathRoots.flatMap((dockerConfigPathRoot) => [
+      path.join(dockerConfigPathRoot, 'run', 'docker.sock'),
+      path.join(dockerConfigPathRoot, 'desktop', 'docker.sock'),
+    ]),
+  ]));
   const sdkOptions: SDKOptions = {
     // `tools: ['default']` selects the native binary's full built-in preset.
     // 'default' only expands to the preset when it is the sole value: adding
@@ -123,13 +134,20 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
       failIfUnavailable: true,
       autoAllowBashIfSandboxed: false,
       allowUnsandboxedCommands: false,
+      excludedCommands: ['docker *'],
+      network: {
+        allowedDomains: ['localhost', '127.0.0.1', '::1'],
+        allowLocalBinding: true,
+        allowUnixSockets: dockerSocketPaths,
+        ...(process.platform !== 'darwin' && { allowAllUnixSockets: true }),
+      },
       filesystem: {
         allowWrite: ['/'],
-        denyWrite: deniedPathRoots,
-        denyRead: deniedPathRoots,
+        denyWrite: shellDeniedPathRoots,
+        denyRead: shellDeniedPathRoots,
       },
       credentials: {
-        files: deniedPathRoots.map((path) => ({ path, mode: 'deny' as const })),
+        files: shellDeniedPathRoots.map((path) => ({ path, mode: 'deny' as const })),
       },
     },
     canUseTool: createPermissionHandler(permissionContext, async (toolName, input, opts) => {

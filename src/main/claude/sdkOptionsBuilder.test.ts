@@ -37,7 +37,8 @@ vi.mock('../services/core/PermissionPromptService', () => ({
 }));
 
 vi.mock('../services/files/pathSecurity', () => ({
-  getDeniedPathRoots: () => ['/protected/credentials'],
+  getDeniedPathRoots: () => ['/protected/credentials', '/home/developer/.docker'],
+  getDockerConfigPathRoots: () => ['/home/developer/.docker'],
 }));
 
 const context = {
@@ -69,10 +70,21 @@ describe('buildSdkOptions', () => {
     expect(options.tools).toEqual(['default']);
     expect(options.allowedTools).toEqual(['Grep', 'Glob']);
     expect(options.mcpServers).toMatchObject({ external: externalMcp });
-    expect(options.sandbox).toMatchObject({
+    expect(options.sandbox).toEqual({
       enabled: true,
       failIfUnavailable: true,
+      autoAllowBashIfSandboxed: false,
       allowUnsandboxedCommands: false,
+      excludedCommands: ['docker *'],
+      network: {
+        allowedDomains: ['localhost', '127.0.0.1', '::1'],
+        allowLocalBinding: true,
+        allowUnixSockets: [
+          '/var/run/docker.sock',
+          '/home/developer/.docker/run/docker.sock',
+          '/home/developer/.docker/desktop/docker.sock',
+        ],
+      },
       filesystem: {
         allowWrite: ['/'],
         denyRead: ['/protected/credentials'],

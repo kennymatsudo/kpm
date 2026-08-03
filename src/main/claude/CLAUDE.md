@@ -143,7 +143,7 @@ The `currentView` ('plan' | 'workspace') sent with each message is injected as a
 | `clientManager.ts` | Singleton Claude client |
 | `contextBuilders.ts` | Context fetching for sessions |
 | `permissions.ts` | File access control. Routes direct file, shell, and git writes through the conversation-wide consent gate, checks the live grant on every write, and denies direct access to protected credential paths. |
-| `sdkOptionsBuilder.ts` | SDK config construction, including the fail-closed shell sandbox that keeps protected credential paths denied after a write grant (also applies `thinking: { type: 'adaptive', display: 'summarized' }` for opus and sonnet so thinking content streams in the response) |
+| `sdkOptionsBuilder.ts` | SDK config construction, including the fail-closed shell sandbox. It keeps protected credential paths denied after a write grant while allowing localhost and Docker; direct file tools still deny Docker client state. It also applies `thinking: { type: 'adaptive', display: 'summarized' }` for opus and sonnet so thinking content streams in the response. |
 | `auth.ts` | API key management |
 | `activity.ts` | Activity tracking |
 | `findClaude.ts` | Claude binary discovery |

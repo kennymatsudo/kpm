@@ -889,6 +889,14 @@ describe('permissions', () => {
         expect(result.behavior).toBe('deny');
       });
 
+      it('keeps denying direct Docker config reads while a grant is active', async () => {
+        await enableWrites('chat-1');
+
+        const result = await handler('Read', { file_path: '~/.docker/config.json' }, createTestOptions());
+
+        expect(result.behavior).toBe('deny');
+      });
+
       it('denies recursive searches whose root contains protected paths', async () => {
         const result = await handler('Glob', { path: '/', pattern: '**/*' }, createTestOptions());
 

@@ -120,19 +120,27 @@ export async function pathCanTraverseDeniedRoot(
   return false;
 }
 
-export function getDeniedPathRoots(): string[] {
-  const extras = getConfig().fileExplorer?.deniedRealpathRoots ?? [];
-  const deniedRoots = new Set<string>();
-  for (const candidate of [...defaultDeniedRoots(), ...extras]) {
+function resolvePathRoots(candidates: string[]): string[] {
+  const pathRoots = new Set<string>();
+  for (const candidate of candidates) {
     const lexical = path.resolve(expandTilde(candidate));
-    deniedRoots.add(lexical);
+    pathRoots.add(lexical);
     try {
-      deniedRoots.add(fs.realpathSync(lexical));
+      pathRoots.add(fs.realpathSync(lexical));
     } catch {
       continue;
     }
   }
-  return Array.from(deniedRoots);
+  return Array.from(pathRoots);
+}
+
+export function getDeniedPathRoots(): string[] {
+  const extras = getConfig().fileExplorer?.deniedRealpathRoots ?? [];
+  return resolvePathRoots([...defaultDeniedRoots(), ...extras]);
+}
+
+export function getDockerConfigPathRoots(): string[] {
+  return resolvePathRoots([path.join(os.homedir(), '.docker')]);
 }
 
 /**
