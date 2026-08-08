@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { MessageSegment } from '../../stores';
-import { groupSegmentsForRender } from './messageGroups';
+import { groupSegmentsForRender, type SegmentGroup } from './messageGroups';
+
+type ProseGroup = Extract<SegmentGroup, { kind: 'narration' | 'text' }>;
+
+const proseGroups = (groups: SegmentGroup[]): ProseGroup[] =>
+  groups.filter((g): g is ProseGroup => g.kind === 'narration' || g.kind === 'text');
 
 describe('groupSegmentsForRender', () => {
   it('collapses a turn into one process group, with earlier text as narration and trailing text as the answer', () => {
@@ -71,6 +76,28 @@ describe('groupSegmentsForRender', () => {
       { kind: 'process', segments: [segments[3]], hasAnswer: true },
       { kind: 'text', content: 'Second answer.' },
     ]);
+  });
+
+  it('settles every prose group but a trailing answer, so streaming prefixes agree with the finalized turn', () => {
+    const segments: MessageSegment[] = [
+      { type: 'text', content: 'Let me read the file.' },
+      { type: 'activity', activities: [{ id: 'a1', type: 'read', label: 'Reading file' }] },
+      { type: 'text', content: 'It uses a webhook.' },
+      { type: 'activity', activities: [{ id: 'a2', type: 'edit', label: 'Editing file' }] },
+      { type: 'text', content: 'Here is the answer.' },
+    ];
+
+    const finalProse = proseGroups(groupSegmentsForRender(segments));
+
+    for (let length = 1; length <= segments.length; length++) {
+      const prose = proseGroups(groupSegmentsForRender(segments.slice(0, length)));
+      // A trailing answer group is still appending; everything before it has
+      // taken its final kind and content and must never be reclassified.
+      const settled =
+        prose.at(-1)?.kind === 'text' ? prose.slice(0, prose.length - 1) : prose.slice();
+
+      expect(settled).toEqual(finalProse.slice(0, settled.length));
+    }
   });
 
   it('drops a whitespace-only/empty process run and computes checkpoint gaps relative to the prior boundary', () => {

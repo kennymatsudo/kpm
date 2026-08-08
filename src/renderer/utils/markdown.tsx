@@ -247,27 +247,60 @@ function renderFocusPre({ children, ...props }: React.HTMLAttributes<HTMLPreElem
   return <pre {...props}>{children}</pre>;
 }
 
-export const markdownOverrides: MarkdownToJSX.Overrides = {
+/** Overrides that are safe on a block still being streamed, i.e. everything but the fence. */
+const inlineMarkdownOverrides = {
   a: {
     component: renderAnchor,
   },
   code: {
     component: renderCode,
   },
+} satisfies MarkdownToJSX.Overrides;
+
+export const markdownOverrides: MarkdownToJSX.Overrides = {
+  ...inlineMarkdownOverrides,
   pre: {
     component: renderPre,
   },
 };
 
 /**
- * Base markdown options with external link handling and HTML parsing disabled.
- * Disabling raw HTML parsing prevents JSX/React code in markdown from being
- * interpreted as actual React elements (e.g. `<ConfirmationModal />` in code examples).
+ * Base for every prose-rendering options object below: `overrides` plus
+ * `disableParsingRawHTML: true` and `forceBlock: true`, overridable via `extra`.
+ *
+ * `forceBlock` because every caller renders prose, never an inline label. Left
+ * to its own heuristic, markdown-to-jsx emits a bare text node for any input
+ * without a blank line, so a paragraph gets no `<p>` and none of the prose
+ * spacing — which is what a streamed message looks like before its last block
+ * arrives. `disableParsingRawHTML` prevents JSX/React code in markdown from
+ * being interpreted as actual React elements (e.g. `<ConfirmationModal />` in
+ * code examples); `githubMarkdownOptions` overrides it back on.
  */
-export const markdownOptions: MarkdownToJSX.Options = {
-  overrides: markdownOverrides,
-  disableParsingRawHTML: true,
-};
+function buildProseMarkdownOptions(
+  overrides: MarkdownToJSX.Overrides,
+  extra?: Partial<MarkdownToJSX.Options>
+): MarkdownToJSX.Options {
+  return {
+    overrides,
+    disableParsingRawHTML: true,
+    forceBlock: true,
+    ...extra,
+  };
+}
+
+export const markdownOptions: MarkdownToJSX.Options = buildProseMarkdownOptions(markdownOverrides);
+
+/**
+ * Options for the one still-growing block of a streamed message.
+ *
+ * Identical to `markdownOptions` except that a fence stays plain code. An
+ * unterminated ```mermaid fence parses as a complete one, so the diagram
+ * renderer would be handed a half-written definition on every flush — and a
+ * mermaid parse failure leaks the temp node it appends to `document.body`.
+ * The diagram renders normally once the block stops growing.
+ */
+export const growingBlockMarkdownOptions: MarkdownToJSX.Options =
+  buildProseMarkdownOptions(inlineMarkdownOverrides);
 
 /**
  * Markdown options for GitHub-sourced content (PR review bodies, review-thread
@@ -332,11 +365,10 @@ function sanitizeGitHubHtml(value: string, _tag: string, attribute: string): str
   return value;
 }
 
-export const githubMarkdownOptions: MarkdownToJSX.Options = {
-  overrides: githubMarkdownOverrides,
-  disableParsingRawHTML: false,
-  sanitizer: sanitizeGitHubHtml,
-};
+export const githubMarkdownOptions: MarkdownToJSX.Options = buildProseMarkdownOptions(
+  githubMarkdownOverrides,
+  { disableParsingRawHTML: false, sanitizer: sanitizeGitHubHtml }
+);
 
 /**
  * Converts single newlines to Markdown hard breaks (two trailing spaces + newline)
@@ -452,10 +484,7 @@ export function createFocusMarkdownOptions({
     });
   }
 
-  return {
-    overrides,
-    disableParsingRawHTML: true,
-  };
+  return buildProseMarkdownOptions(overrides);
 }
 
 /**
@@ -570,6 +599,7 @@ export function createSearchHighlightOverrides(
   });
 
   return {
+    ...markdownOverrides,
     a: { component: createAnchorRenderer(processChildren) },
     // Text elements that can contain searchable content
     p: createOverride('p'),
@@ -591,17 +621,21 @@ export function createSearchHighlightOverrides(
     },
     code: {
       component: ({ children, className, ...props }: React.HTMLAttributes<HTMLElement>) => {
-        // For inline code, highlight; for code blocks, don't process (preserve syntax highlighting)
+        // Path-like inline code renders as a FileRefLink instead — the link
+        // wins over highlighting. Block code keeps its no-processing behavior.
         const isInline = !className;
+        if (isInline) {
+          const text = inlineCodeText(children);
+          if (text && isPathLike(text)) {
+            return <FileRefLink text={text} />;
+          }
+        }
         return (
           <code className={className} {...props}>
             {isInline ? processChildren(children) : children}
           </code>
         );
       },
-    },
-    pre: {
-      component: renderPre,
     },
   };
 }
@@ -613,8 +647,5 @@ export function createSearchHighlightOptions(
   searchQuery: string,
   currentMatchIndex: number
 ): MarkdownToJSX.Options {
-  return {
-    overrides: createSearchHighlightOverrides(searchQuery, currentMatchIndex),
-    disableParsingRawHTML: true,
-  };
+  return buildProseMarkdownOptions(createSearchHighlightOverrides(searchQuery, currentMatchIndex));
 }

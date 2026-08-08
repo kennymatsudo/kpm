@@ -1,11 +1,24 @@
-import { useEffect, useRef, memo, useState, useMemo, useCallback, useLayoutEffect } from 'react';
+import {
+  useEffect,
+  useRef,
+  memo,
+  useState,
+  useMemo,
+  useCallback,
+  useLayoutEffect,
+  type ReactNode,
+} from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useChatStore, type Activity, type MessageSegment } from '../../stores';
 import type { Message } from '../../stores/chat';
 import type { ChatViewMode } from '../../../shared/types';
-import { parseUserMessage, processMessageContent } from '../../utils/messageFormatter';
+import { parseUserMessage } from '../../utils/messageFormatter';
 import { Markdown } from 'markdown-to-jsx';
-import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
+import {
+  growingBlockMarkdownOptions,
+  markdownOptions,
+  transformPlanRefs,
+} from '../../utils/markdown';
 import { splitMarkdownBlocks } from '../../utils/markdownBlocks';
 import { CopyIcon, CheckIcon } from '../icons';
 import { ChatColumn } from './ChatColumn';
@@ -13,7 +26,7 @@ import { ProcessTimeline } from './ProcessTimeline';
 import { Tooltip } from '../ui/Tooltip';
 import { AttachmentChip } from './AttachmentChip';
 import { formatModel } from '../../utils/usageFormatters';
-import { groupSegmentsForRender } from './messageGroups';
+import { buildTurnRenderPlan, type TurnRenderNode } from './turnRenderPlan';
 import { resolveSessionDisplayModel } from '../../stores/chat/sessionModel';
 
 /** Extract text content from message segments for copy/display */
@@ -134,35 +147,6 @@ const StreamingHeader = memo(function StreamingHeader({
   );
 });
 
-const ThinkingIndicator = memo(function ThinkingIndicator({
-  thinkingContent,
-  activities,
-  elapsedSeconds,
-  model,
-  showHeader = true,
-}: {
-  thinkingContent?: string;
-  activities: Activity[];
-  elapsedSeconds: number | null;
-  model?: string;
-  /** False when attaching to the previous message as a continuation rather than starting a new card. */
-  showHeader?: boolean;
-}) {
-  return (
-    <div className={`chat-message-assistant ${showHeader ? 'py-3' : 'pt-0 pb-3'}`} aria-label="Assistant response">
-      {showHeader && <StreamingHeader model={model} elapsedSeconds={elapsedSeconds} />}
-      <div className="pr-2">
-        <ProcessTimeline
-          streamingThinking={thinkingContent}
-          streamingActivities={activities}
-          isStreaming
-          elapsedSeconds={elapsedSeconds}
-        />
-      </div>
-    </div>
-  );
-});
-
 const PLAN_EMPTY_STATE = {
   title: 'What needs to get done?',
   suggestions: [
@@ -208,7 +192,7 @@ const InterruptedIndicator = memo(function InterruptedIndicator() {
 });
 
 /** Render assistant message segments within a single bubble */
-const AssistantMessageContent = memo(function AssistantMessageContent({
+export const AssistantMessageContent = memo(function AssistantMessageContent({
   segments,
   interrupted,
   startTimestamp,
@@ -221,83 +205,140 @@ const AssistantMessageContent = memo(function AssistantMessageContent({
   /** Duration of the message's final turn; earlier turns carry theirs on the checkpoint that closed them. */
   durationMs?: number;
 }) {
-  const fullText = useMemo(() => getTextContent(segments), [segments]);
-  const processed = useMemo(() => processMessageContent(fullText), [fullText]);
-  const groups = useMemo(
-    () => groupSegmentsForRender(segments, startTimestamp),
-    [segments, startTimestamp]
-  );
-  const lastProcessIndex = useMemo(
-    () => groups.reduce((last, group, idx) => (group.kind === 'process' ? idx : last), -1),
-    [groups]
+  const plan = useMemo(
+    () => buildTurnRenderPlan({ segments, startTimestamp, durationMs }),
+    [segments, startTimestamp, durationMs]
   );
 
   return (
-    <>
-      {groups.map((group, idx) => {
-        if (group.kind === 'process') {
-          return (
-            <ProcessTimeline
-              key={`p-${idx}`}
-              segments={group.segments}
-              hasAnswer={group.hasAnswer}
-              durationMs={
-                group.durationMs ?? (idx === lastProcessIndex ? durationMs : undefined)
-              }
-            />
-          );
-        }
-        if (group.kind === 'checkpoint') {
-          return <CheckpointDivider key={`c-${idx}`} gapMs={group.gapMs} model={group.model} />;
-        }
-        const segmentProcessed = processMessageContent(group.content);
-        const isNarration = group.kind === 'narration';
-        return (
-          <div
-            key={`${isNarration ? 'n' : 't'}-${idx}`}
-            className={isNarration ? 'prose prose-narration mb-3' : 'prose'}
-          >
-            <Markdown options={markdownOptions}>
-              {transformPlanRefs(segmentProcessed.displayContent)}
-            </Markdown>
-          </div>
-        );
-      })}
-      <CopyButton content={processed.displayContent} />
+    <AssistantTurnContent nodes={plan.nodes}>
+      <CopyButton content={plan.copyText} />
       {interrupted && <InterruptedIndicator />}
-      {processed.hasPlanUpdate && <PlanUpdateIndicator />}
-    </>
+      {plan.hasPlanUpdate && <PlanUpdateIndicator />}
+    </AssistantTurnContent>
   );
 });
 
 /** One blank-line-delimited markdown block. Memoized so a block whose text
  * hasn't changed since the last flush skips re-parsing — only the growing
  * tail block re-parses as streamed text appends. */
-const MarkdownBlock = memo(function MarkdownBlock({ block }: { block: string }) {
-  return <Markdown options={markdownOptions}>{transformPlanRefs(block)}</Markdown>;
+const MarkdownBlock = memo(function MarkdownBlock({
+  block,
+  growing,
+}: {
+  block: string;
+  growing?: boolean;
+}) {
+  return (
+    <Markdown options={growing ? growingBlockMarkdownOptions : markdownOptions}>
+      {transformPlanRefs(block)}
+    </Markdown>
+  );
 });
 
-/** Streaming markdown for a still-growing text segment. Splits the
- * accumulated content into blocks and renders each through its own memoized
- * `<Markdown>` call, so a buffer flush re-parses only the tail block instead
- * of the full string from scratch. */
+/** Markdown for a still-growing text group. Splits the accumulated content
+ * into blocks and renders each through its own memoized `<Markdown>` call, so
+ * a buffer flush re-parses only the tail block instead of the full string. */
 const StreamingMarkdown = memo(function StreamingMarkdown({ content }: { content: string }) {
-  const blocks = useMemo(() => {
-    const processed = processMessageContent(content);
-    return splitMarkdownBlocks(processed.displayContent);
-  }, [content]);
+  const blocks = useMemo(() => splitMarkdownBlocks(content), [content]);
 
   return (
-    <div className="prose">
+    <>
       {blocks.map((block, idx) => (
-        <MarkdownBlock key={idx} block={block} />
+        <MarkdownBlock key={idx} block={block} growing={idx === blocks.length - 1} />
       ))}
+    </>
+  );
+});
+
+/** Markdown for a text group that has stopped growing. */
+const StaticMarkdown = memo(function StaticMarkdown({ content }: { content: string }) {
+  return <Markdown options={markdownOptions}>{transformPlanRefs(content)}</Markdown>;
+});
+
+/** One prose node. Owns the wrapper both the streaming and the finalized
+ * render share, so a turn's markup does not change shape when it finalizes;
+ * `appending` only picks the block-splitting renderer for the one node that is
+ * still taking text. */
+const ProseGroup = memo(function ProseGroup({
+  content,
+  tone,
+  appending,
+}: {
+  content: string;
+  tone: 'narration' | 'answer';
+  appending: boolean;
+}) {
+  return (
+    <div className={tone === 'narration' ? 'prose prose-narration mb-3' : 'prose'}>
+      {appending ? <StreamingMarkdown content={content} /> : <StaticMarkdown content={content} />}
     </div>
   );
 });
 
-/** Render streaming segments within a single bubble */
-const StreamingContent = memo(function StreamingContent({
+/** Render a turn's plan. The one place assistant nodes become DOM, shared by
+ * the streaming and finalized paths so neither can drift from the other. */
+const TurnNodes = memo(function TurnNodes({ nodes }: { nodes: TurnRenderNode[] }) {
+  return (
+    <>
+      {nodes.map((node) => {
+        if (node.kind === 'prose') {
+          return (
+            <ProseGroup
+              key={node.key}
+              content={node.content}
+              tone={node.tone}
+              appending={node.appending}
+            />
+          );
+        }
+        if (node.kind === 'checkpoint') {
+          return <CheckpointDivider key={node.key} gapMs={node.gapMs} model={node.model} />;
+        }
+        return (
+          <ProcessTimeline
+            key={node.key}
+            segments={node.segments}
+            hasAnswer={node.hasAnswer}
+            durationMs={node.durationMs}
+            isStreaming={node.live !== null}
+            streamingActivities={node.live?.activities}
+            streamingThinking={node.live?.thinking}
+            elapsedSeconds={node.live?.elapsedSeconds ?? null}
+          />
+        );
+      })}
+    </>
+  );
+});
+
+/** Horizontal padding reserves the CopyButton's gutter for the whole turn,
+ * streaming or finalized, so that padding — and thus the prose measure —
+ * never changes when a turn finalizes. */
+const ASSISTANT_TURN_CONTENT_CLASS = 'chat-message-content text-text-primary relative pl-0 pr-8';
+
+/** The one wrapper an assistant turn's content renders through. Both the
+ * streaming and finalized paths go through this, so their padding cannot
+ * drift from each other. */
+const AssistantTurnContent = memo(function AssistantTurnContent({
+  nodes,
+  children,
+}: {
+  nodes: TurnRenderNode[];
+  children?: ReactNode;
+}) {
+  return (
+    <div className={ASSISTANT_TURN_CONTENT_CLASS}>
+      <TurnNodes nodes={nodes} />
+      {children}
+    </div>
+  );
+});
+
+/** Render streaming segments within a single bubble. A segment-free turn
+ * still gets the shared wrapper: `buildTurnRenderPlan` synthesizes a working
+ * indicator for it, so there is no separate "nothing yet" case to render. */
+export const StreamingContent = memo(function StreamingContent({
   segments,
   thinkingContent,
   activities,
@@ -308,38 +349,52 @@ const StreamingContent = memo(function StreamingContent({
   activities: Activity[];
   elapsedSeconds: number | null;
 }) {
-  // The strip stays pinned below the prose for the whole turn so no tool batch
-  // ever reflows text that is already on screen. Which trailing text is the
-  // answer only resolves on finalize, where `groupSegmentsForRender` moves the
-  // (by then collapsed) strip above it.
-  const textSegments = useMemo(
+  const plan = useMemo(
     () =>
-      segments.filter(
-        (segment): segment is Extract<MessageSegment, { type: 'text' }> =>
-          segment.type === 'text' && segment.content.trim().length > 0
-      ),
-    [segments]
-  );
-  const processSegments = useMemo(
-    () => segments.filter((segment) => segment.type === 'activity' || segment.type === 'thinking'),
-    [segments]
+      buildTurnRenderPlan({
+        segments,
+        live: { activities, thinking: thinkingContent, elapsedSeconds },
+      }),
+    [segments, activities, thinkingContent, elapsedSeconds]
   );
 
+  return <AssistantTurnContent nodes={plan.nodes} />;
+});
+
+/** The in-flight turn's own header + wrapper — the real ancestor chain
+ * `StreamingContent` renders inside, mirroring what `MessageRow` is for the
+ * finalized side. Kept as one component so both the app and its tests render
+ * the actual call-site markup rather than `StreamingContent` in isolation. */
+export const StreamingTurn = memo(function StreamingTurn({
+  segments,
+  thinkingContent,
+  activities,
+  elapsedSeconds,
+  model,
+  isMergeableContinuation,
+}: {
+  segments: MessageSegment[];
+  thinkingContent?: string;
+  activities: Activity[];
+  elapsedSeconds: number | null;
+  model?: string;
+  isMergeableContinuation: boolean;
+}) {
   return (
-    <>
-      {textSegments.map((segment, idx) => (
-        <div key={`t-${idx}`} className="mb-3">
-          <StreamingMarkdown content={segment.content} />
-        </div>
-      ))}
-      <ProcessTimeline
-        segments={processSegments}
-        streamingActivities={activities}
-        streamingThinking={thinkingContent}
-        isStreaming
+    <div
+      className={`chat-message-assistant ${isMergeableContinuation ? 'pt-0 pb-3' : 'py-3'}`}
+      aria-label="Assistant response"
+    >
+      {!isMergeableContinuation && (
+        <StreamingHeader model={model} elapsedSeconds={elapsedSeconds} />
+      )}
+      <StreamingContent
+        segments={segments}
+        thinkingContent={thinkingContent}
+        activities={activities}
         elapsedSeconds={elapsedSeconds}
       />
-    </>
+    </div>
   );
 });
 
@@ -405,7 +460,7 @@ const MessageHeader = memo(function MessageHeader({
   );
 });
 
-const MessageRow = memo(function MessageRow({
+export const MessageRow = memo(function MessageRow({
   message,
   onCancelQueued,
 }: {
@@ -465,62 +520,59 @@ const MessageRow = memo(function MessageRow({
         </div>
       )}
 
-      {/* pr-8 / pl-8 reserves space for the absolutely-positioned CopyButton */}
-      <div
-        className={`chat-message-content text-text-primary relative ${
-          isUser ? 'pl-8 pr-0' : 'pl-0 pr-8'
-        }`}
-      >
-        {isUser ? (
-          <>
-            <div className="flex justify-end">
-              <div className="flex flex-col items-end max-w-[80%] gap-1">
-                <div
-                  className={`whitespace-pre-wrap text-right rounded-lg px-3 py-1.5 ${
-                    message.queued
-                      ? 'bg-surface-2/50 ring-1 ring-border-default'
-                      : 'bg-surface-2/60'
-                  }`}
-                >
-                  <UserMessageText content={userParsed?.cleanContent || textContent} />
-                </div>
-                {message.liveFollowUp && (
-                  <div className="flex items-center gap-2 text-xxs text-text-muted">
-                    <span className="inline-flex items-center gap-1">
-                      {message.queued && (
-                        <svg className="w-3 h-3 animate-pulse" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
-                          <circle cx="8" cy="8" r="6" />
-                        </svg>
-                      )}
-                      {message.queued ? 'Adding to current response…' : 'Added while KPM was responding'}
-                    </span>
-                    {message.queued && onCancelQueued && message.clientMessageId && (
-                      <button
-                        type="button"
-                        onClick={() => onCancelQueued(message.clientMessageId!)}
-                        className="underline hover:text-text-primary"
-                      >
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-                )}
+      {isUser ? (
+        // pl-8 reserves space for the absolutely-positioned CopyButton. The
+        // assistant branch has no wrapper here — AssistantMessageContent
+        // supplies its own via AssistantTurnContent, the one place that owns
+        // the assistant content wrapper's padding.
+        <div className="chat-message-content text-text-primary relative pl-8 pr-0">
+          <div className="flex justify-end">
+            <div className="flex flex-col items-end max-w-[80%] gap-1">
+              <div
+                className={`whitespace-pre-wrap text-right rounded-lg px-3 py-1.5 ${
+                  message.queued
+                    ? 'bg-surface-2/50 ring-1 ring-border-default'
+                    : 'bg-surface-2/60'
+                }`}
+              >
+                <UserMessageText content={userParsed?.cleanContent || textContent} />
               </div>
+              {message.liveFollowUp && (
+                <div className="flex items-center gap-2 text-xxs text-text-muted">
+                  <span className="inline-flex items-center gap-1">
+                    {message.queued && (
+                      <svg className="w-3 h-3 animate-pulse" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                        <circle cx="8" cy="8" r="6" />
+                      </svg>
+                    )}
+                    {message.queued ? 'Adding to current response…' : 'Added while KPM was responding'}
+                  </span>
+                  {message.queued && onCancelQueued && message.clientMessageId && (
+                    <button
+                      type="button"
+                      onClick={() => onCancelQueued(message.clientMessageId!)}
+                      className="underline hover:text-text-primary"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-            <CopyButton
-              content={userParsed?.cleanContent || textContent}
-              className="absolute top-2 left-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-surface-3 text-text-muted hover:text-text-primary"
-            />
-          </>
-        ) : (
-          <AssistantMessageContent
-            segments={message.segments}
-            interrupted={message.interrupted}
-            startTimestamp={message.timestamp.getTime()}
-            durationMs={message.durationMs}
+          </div>
+          <CopyButton
+            content={userParsed?.cleanContent || textContent}
+            className="absolute top-2 left-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-surface-3 text-text-muted hover:text-text-primary"
           />
-        )}
-      </div>
+        </div>
+      ) : (
+        <AssistantMessageContent
+          segments={message.segments}
+          interrupted={message.interrupted}
+          startTimestamp={message.timestamp.getTime()}
+          durationMs={message.durationMs}
+        />
+      )}
     </div>
   );
 });
@@ -828,34 +880,18 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
 
         {/* Streaming response — attached without its own header when it will
             merge into the last static message on finalize (see
-            `isMergeableContinuation`), so it reads as a continuation. */}
-        {isStreaming && (streamingSegments.length > 0 || streamingContent) && (
-          <div
-            className={`chat-message-assistant ${isMergeableContinuation ? 'pt-0 pb-3' : 'py-3'}`}
-            aria-label="Assistant response"
-          >
-            {!isMergeableContinuation && (
-              <StreamingHeader model={model} elapsedSeconds={elapsedSeconds} />
-            )}
-            <div className="pr-2 chat-message-content text-text-primary">
-              <StreamingContent
-                segments={streamingSegments}
-                thinkingContent={streamingThinking || undefined}
-                activities={activities}
-                elapsedSeconds={elapsedSeconds}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Waiting for response (no content yet). */}
-        {isStreaming && streamingSegments.length === 0 && !streamingContent && (
-          <ThinkingIndicator
+            `isMergeableContinuation`), so it reads as a continuation. A
+            segment-free turn still renders here: StreamingContent's plan
+            synthesizes the working indicator, so there is no separate
+            "waiting for response" branch. */}
+        {isStreaming && (
+          <StreamingTurn
+            segments={streamingSegments}
             thinkingContent={streamingThinking || undefined}
             activities={activities}
             elapsedSeconds={elapsedSeconds}
             model={model}
-            showHeader={!isMergeableContinuation}
+            isMergeableContinuation={isMergeableContinuation}
           />
         )}
         </ChatColumn>

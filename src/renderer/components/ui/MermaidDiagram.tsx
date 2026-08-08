@@ -17,6 +17,11 @@ const MERMAID_CONFIG = {
   startOnLoad: false,
   securityLevel: 'strict' as const,
   theme: 'base' as const,
+  // Without this, a parse failure throws out of `render` *before* mermaid runs
+  // its own cleanup, permanently leaking the temp <div> it appended to
+  // document.body. We render our own fallback from the catch below, so the
+  // error diagram mermaid would draw instead is of no use to us.
+  suppressErrorRendering: true,
   // Layout font size must match themeVariables.fontSize, or node boxes are
   // measured for larger text than they display.
   fontSize: 14,
