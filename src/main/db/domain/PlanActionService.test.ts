@@ -83,6 +83,9 @@ function createHarness(seed: PlanItem[] = [], connectedRepoIds: string[] = []) {
   });
   const relationAdd = vi.fn((relation: unknown) => relation);
   const queueTrackerUpdateIfNeeded = vi.fn();
+  const getDescendantIds = vi.fn(() => [] as string[]);
+  const deleteWithDescendants = vi.fn();
+  const addDelete = vi.fn();
 
   const planItems = {
     get: (id: string) => store.get(id),
@@ -99,11 +102,17 @@ function createHarness(seed: PlanItem[] = [], connectedRepoIds: string[] = []) {
     compareAndReviseWorkBrief,
     update,
     delete: del,
+    deleteWithDescendants,
+    getDescendantIds,
     updatePosition,
     batchReparent,
   };
 
-  const database = { transaction: (fn: () => void) => fn } as unknown as Database;
+  // Mirrors better-sqlite3's contract enough for `removePlanItem`'s SAVEPOINT
+  // calls: `transaction()` runs the batch synchronously and lets a thrown
+  // error propagate, `exec()` is a no-op recorder (real commit/rollback
+  // semantics are covered by PlanItemRemoval.test.ts against a real db).
+  const database = { transaction: (fn: () => void) => fn, exec: vi.fn() } as unknown as Database;
 
   const deps: PlanActionExecutorDeps = {
     database,
@@ -116,7 +125,7 @@ function createHarness(seed: PlanItem[] = [], connectedRepoIds: string[] = []) {
       delete: vi.fn(),
     } as unknown as PlanActionExecutorDeps['groups'],
     tracker: { getAssociationsByProject: vi.fn(() => []) } as unknown as PlanActionExecutorDeps['tracker'],
-    outboundChanges: { getByProject: vi.fn(() => []) } as unknown as PlanActionExecutorDeps['outboundChanges'],
+    outboundChanges: { getByProject: vi.fn(() => []), getByAssociation: vi.fn(() => []), addDelete } as unknown as PlanActionExecutorDeps['outboundChanges'],
     repos: {
       getByProject: vi.fn(() => connectedRepoIds.map((id) => ({ id, project_id: PROJECT_ID, path: `/tmp/${id}` }))),
     },
@@ -124,7 +133,7 @@ function createHarness(seed: PlanItem[] = [], connectedRepoIds: string[] = []) {
     logger: { log: vi.fn(), warn: vi.fn() },
   };
 
-  return { deps, store, spies: { add, setRepositoryTargets, compareAndReviseWorkBrief, update, del, updatePosition, batchReparent, relationAdd, queueTrackerUpdateIfNeeded } };
+  return { deps, store, spies: { add, setRepositoryTargets, compareAndReviseWorkBrief, update, del, deleteWithDescendants, updatePosition, batchReparent, relationAdd, addDelete, queueTrackerUpdateIfNeeded } };
 }
 
 function run(deps: PlanActionExecutorDeps, actions: PlanAction[]) {
@@ -279,6 +288,29 @@ describe('createPlanActionExecutor', () => {
     expect(result.skippedActions).toEqual([
       { index: 0, type: 'delete_item', reason: 'Item not found: ghost' },
     ]);
+  });
+
+  it('stages a tracker deletion when Claude deletes a linked item', () => {
+    const item = makeItem({
+      id: 'linked',
+      external_key: 'ENG-123',
+      external_id: 'issue-123',
+      external_type: 'linear',
+      association_id: 'association-1',
+    });
+    const { deps, spies } = createHarness([item]);
+
+    const result = run(deps, [{ type: 'delete_item', item_id: 'linked' }]);
+
+    expect(result.success).toBe(true);
+    expect(spies.addDelete).toHaveBeenCalledWith(expect.objectContaining({
+      association_id: 'association-1',
+      external_key: 'ENG-123',
+      external_id: 'issue-123',
+      tracker_type: 'linear',
+      queued_by: 'claude',
+    }));
+    expect(spies.del).toHaveBeenCalledWith('linked');
   });
 
   it('reorders an item between two siblings using the midpoint order', () => {

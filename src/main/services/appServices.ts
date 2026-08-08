@@ -191,6 +191,8 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const planService = createPlanService({
     planItems: container.planItems,
+    outboundChanges: container.outboundChanges,
+    database,
     queueTrackerUpdateIfNeeded: queueTrackerUpdate,
   });
 

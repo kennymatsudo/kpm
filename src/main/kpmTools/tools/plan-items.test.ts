@@ -130,6 +130,10 @@ function createFakePlanItemRepo(db: Database): IPlanItemRepository {
     update: () => {},
     delete: () => {},
     deleteWithDescendants: () => {},
+    getDescendantIds: (id) => {
+      const rows = db.prepare('WITH RECURSIVE descendants(id) AS (SELECT id FROM plan_items WHERE parent_id = ? UNION SELECT p.id FROM plan_items p JOIN descendants d ON p.parent_id = d.id) SELECT id FROM descendants').all(id) as { id: string }[];
+      return rows.map((r) => r.id);
+    },
     getChildCount: () => 0,
     updatePosition: () => {},
     batchUpdatePositions: () => {},

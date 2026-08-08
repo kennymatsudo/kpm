@@ -198,10 +198,12 @@ export class PlanItemRepository implements IPlanItemRepository {
         SELECT MAX(item_order) as max_order FROM plan_items
         WHERE project_id = ? AND parent_id IS NULL
       `),
+      // UNION (not UNION ALL) so a parent_id cycle stops the walk once every
+      // member has been visited once, instead of recursing forever.
       collectDescendants: db.prepare(`
         WITH RECURSIVE descendants(id) AS (
           SELECT id FROM plan_items WHERE parent_id = ?
-          UNION ALL
+          UNION
           SELECT p.id FROM plan_items p
           JOIN descendants d ON p.parent_id = d.id
         )
@@ -268,11 +270,7 @@ export class PlanItemRepository implements IPlanItemRepository {
     };
   }
 
-  /**
-   * Collect all descendant IDs for a given parent using recursive CTE.
-   * Single query instead of O(depth) queries for hierarchical traversal.
-   */
-  private collectDescendantIds(parentId: string): string[] {
+  getDescendantIds(parentId: string): string[] {
     const rows = this.stmts.collectDescendants.all(parentId) as { id: string }[];
     return rows.map(r => r.id);
   }
@@ -509,36 +507,34 @@ export class PlanItemRepository implements IPlanItemRepository {
     stmt.run(...values);
   }
 
+  /**
+   * Orphans descendants (parent_id=null) rather than deleting them.
+   *
+   * Not self-transacting — the caller supplies the transaction, because both
+   * callers need the orphaning and the delete atomic with writes of their own:
+   * `removePlanItem` (`db/domain/PlanItemRemoval.ts`) stages a tracker deletion
+   * first, and `SyncService.applySync` deletes snapshots in the same pass.
+   */
   delete(id: string): void {
-    const transaction = this.db.transaction(() => {
-      const descendantIds = this.collectDescendantIds(id);
+    const descendantIds = this.getDescendantIds(id);
 
-      if (descendantIds.length > 0) {
-        // Orphan all descendants (parent_id=null, keep status as 'planned')
-        const placeholders = descendantIds.map(() => '?').join(',');
-        const updateDescendants = this.db.prepare(
-          `UPDATE plan_items SET parent_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`
-        );
-        updateDescendants.run(...descendantIds);
-      }
+    if (descendantIds.length > 0) {
+      const placeholders = descendantIds.map(() => '?').join(',');
+      const updateDescendants = this.db.prepare(
+        `UPDATE plan_items SET parent_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`
+      );
+      updateDescendants.run(...descendantIds);
+    }
 
-      // Delete the item
-      this.stmts.deleteById.run(id);
-    });
-    transaction();
+    this.stmts.deleteById.run(id);
   }
 
+  /** Not self-transacting — see the note on `delete()` above. */
   deleteWithDescendants(id: string): void {
-    const transaction = this.db.transaction(() => {
-      const descendantIds = this.collectDescendantIds(id);
-      const allIds = [id, ...descendantIds];
-
-      // Delete all items (parent + all descendants)
-      const placeholders = allIds.map(() => '?').join(',');
-      const deleteStmt = this.db.prepare(`DELETE FROM plan_items WHERE id IN (${placeholders})`);
-      deleteStmt.run(...allIds);
-    });
-    transaction();
+    const allIds = [id, ...this.getDescendantIds(id)];
+    const placeholders = allIds.map(() => '?').join(',');
+    const deleteStmt = this.db.prepare(`DELETE FROM plan_items WHERE id IN (${placeholders})`);
+    deleteStmt.run(...allIds);
   }
 
   getChildCount(itemId: string): number {

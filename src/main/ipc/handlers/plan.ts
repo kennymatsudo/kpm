@@ -53,13 +53,13 @@ function buildPlanHandlers(
     },
 
     deleteItem: ({ itemId }) => {
-      requirePlanItem(planItems, itemId);
-      planItems.delete(itemId);
+      const result = planService.deleteItem(itemId);
+      if (!result.ok) throw new Error(result.error);
     },
 
     deleteItemWithDescendants: ({ itemId }) => {
-      requirePlanItem(planItems, itemId);
-      planItems.deleteWithDescendants(itemId);
+      const result = planService.deleteItemWithDescendants(itemId);
+      if (!result.ok) throw new Error(result.error);
     },
 
     getChildCount: ({ itemId }) => {

@@ -14,6 +14,8 @@ interface QueuePolicyItem {
   id: string;
   project_id?: string | null;
   external_key: string | null;
+  external_id?: string | null;
+  external_type?: 'jira' | 'linear' | null;
   association_id: string | null;
   status_category?: string | null;
 }
@@ -91,6 +93,32 @@ export function applyAutoQueue(
       if (getConfig().claude.debug) console.log(`[OutboundChangePolicy] Auto-queued new item for create to Jira (status: ${updates.status_category})`);
     }
   }
+}
+
+/**
+ * Stages a tracker deletion before its linked plan item is removed. The row
+ * snapshots the remote identity because the plan item is gone by export time.
+ */
+export function queueTrackerDeletionIfNeeded(
+  item: QueuePolicyItem,
+  queuedBy: QueueSource,
+  deps: Pick<OutboundChangePolicyDeps, 'outboundChanges'>
+): void {
+  if (!item.project_id || !item.external_key || !item.external_type || !item.association_id) return;
+
+  const alreadyQueued = deps.outboundChanges.getByAssociation(item.association_id).some(
+    (change) => change.operation === 'delete' && change.external_key === item.external_key
+  );
+  if (alreadyQueued) return;
+
+  deps.outboundChanges.addDelete({
+    kpm_project_id: item.project_id,
+    association_id: item.association_id,
+    external_key: item.external_key,
+    external_id: item.external_id ?? null,
+    tracker_type: item.external_type,
+    queued_by: queuedBy,
+  });
 }
 
 interface QueueForTrackerItem {
@@ -172,5 +200,10 @@ export function queueForTracker(input: QueueForTrackerInput): QueueForTrackerRes
 export type QueueTrackerUpdateIfNeeded = (
   item: QueuePolicyItem,
   updates: ExportableUpdates,
+  queuedBy: QueueSource
+) => void;
+
+export type QueueTrackerDeletionIfNeeded = (
+  item: QueuePolicyItem,
   queuedBy: QueueSource
 ) => void;

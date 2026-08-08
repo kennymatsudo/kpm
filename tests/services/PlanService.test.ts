@@ -38,6 +38,7 @@ const baseItem: PlanItem = {
 
 function createMocks(overrides?: Partial<PlanServiceDeps>) {
   const itemStore = new Map<string, PlanItem>([['1', baseItem]]);
+  const descendantsByParent = new Map<string, string[]>();
 
   const planItems = {
     get: vi.fn((id: string) => itemStore.get(id)),
@@ -48,11 +49,15 @@ function createMocks(overrides?: Partial<PlanServiceDeps>) {
     getChildrenByParent: vi.fn(() => [] as PlanItem[]),
     getMany: vi.fn((ids: string[]) => ids.map(id => itemStore.get(id)).filter((i): i is PlanItem => !!i)),
     getExistingIds: vi.fn((ids: string[]) => new Set(ids.filter(id => itemStore.has(id)))),
+    getDescendantIds: vi.fn((id: string) => descendantsByParent.get(id) ?? []),
     add: vi.fn(),
     setRepositoryTargets: vi.fn(),
     compareAndReviseWorkBrief: vi.fn(() => ({ status: 'not_found' as const })),
     delete: vi.fn((id: string) => itemStore.delete(id)),
-    deleteWithDescendants: vi.fn(),
+    deleteWithDescendants: vi.fn((id: string) => {
+      itemStore.delete(id);
+      for (const descendantId of descendantsByParent.get(id) ?? []) itemStore.delete(descendantId);
+    }),
     update: vi.fn(),
     updatePosition: vi.fn(),
     batchUpdatePositions: vi.fn(),
@@ -60,15 +65,27 @@ function createMocks(overrides?: Partial<PlanServiceDeps>) {
     batchUpdateStatus: vi.fn(),
   };
 
+  const outboundChanges = {
+    getByItemId: vi.fn(() => undefined),
+    getByAssociation: vi.fn(() => []),
+    add: vi.fn(),
+    addDelete: vi.fn(),
+    updateStatusCategory: vi.fn(),
+  };
+
+  const database = { exec: vi.fn() };
+
   const queueTrackerUpdateIfNeeded = vi.fn();
 
   const deps: PlanServiceDeps = {
     planItems,
+    outboundChanges: outboundChanges as unknown as PlanServiceDeps['outboundChanges'],
+    database: database as unknown as PlanServiceDeps['database'],
     queueTrackerUpdateIfNeeded,
     ...overrides,
   };
 
-  return { deps, planItems, queueTrackerUpdateIfNeeded };
+  return { deps, planItems, outboundChanges, database, descendantsByParent, itemStore, queueTrackerUpdateIfNeeded };
 }
 
 describe('PlanService', () => {
@@ -125,5 +142,95 @@ describe('PlanService', () => {
 
     expect(result.ok).toBe(false);
     expect(planItems.batchUpdatePositions).not.toHaveBeenCalled();
+  });
+
+  describe('deleteItem', () => {
+    it('stages a tracker deletion before removing a linked item, then deletes (orphaning descendants)', () => {
+      const linkedItem = {
+        ...baseItem,
+        external_key: 'ENG-123',
+        external_id: 'issue-123',
+        external_type: 'linear' as const,
+        association_id: 'association-1',
+      };
+      const { deps, planItems, outboundChanges } = createMocks();
+      planItems.get.mockReturnValue(linkedItem);
+      const service = createPlanService(deps);
+
+      const result = service.deleteItem(linkedItem.id);
+
+      expect(result.ok).toBe(true);
+      expect(outboundChanges.addDelete).toHaveBeenCalledWith(expect.objectContaining({
+        association_id: 'association-1',
+        external_key: 'ENG-123',
+        external_id: 'issue-123',
+        tracker_type: 'linear',
+        queued_by: 'user',
+      }));
+      expect(planItems.delete).toHaveBeenCalledWith(linkedItem.id);
+      expect(planItems.deleteWithDescendants).not.toHaveBeenCalled();
+    });
+
+    it('returns failure when the item is missing', () => {
+      const { deps, planItems } = createMocks();
+      planItems.get.mockReturnValue(undefined);
+      const service = createPlanService(deps);
+
+      const result = service.deleteItem('missing-id');
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toContain('Item not found: missing-id');
+      expect(planItems.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteItemWithDescendants', () => {
+    it('stages a tracker deletion for the root and every descendant, then deletes the whole subtree', () => {
+      const root = { ...baseItem, id: 'root', external_key: 'ENG-1', external_id: 'issue-1', external_type: 'linear' as const, association_id: 'assoc-root' };
+      const child = { ...baseItem, id: 'child', parent_id: 'root', external_key: 'ENG-2', external_id: 'issue-2', external_type: 'linear' as const, association_id: 'assoc-child' };
+      const grandchild = { ...baseItem, id: 'grandchild', parent_id: 'child' };
+
+      const { deps, planItems, outboundChanges, descendantsByParent, itemStore } = createMocks();
+      itemStore.set('root', root);
+      itemStore.set('child', child);
+      itemStore.set('grandchild', grandchild);
+      descendantsByParent.set('root', ['child', 'grandchild']);
+      const service = createPlanService(deps);
+
+      const result = service.deleteItemWithDescendants('root');
+
+      expect(result.ok).toBe(true);
+      expect(outboundChanges.addDelete).toHaveBeenCalledWith(expect.objectContaining({ association_id: 'assoc-root', queued_by: 'user' }));
+      expect(outboundChanges.addDelete).toHaveBeenCalledWith(expect.objectContaining({ association_id: 'assoc-child', queued_by: 'user' }));
+      expect(outboundChanges.addDelete).toHaveBeenCalledTimes(2);
+      expect(planItems.deleteWithDescendants).toHaveBeenCalledWith('root');
+      expect(planItems.delete).not.toHaveBeenCalled();
+      expect(itemStore.has('root')).toBe(false);
+      expect(itemStore.has('child')).toBe(false);
+      expect(itemStore.has('grandchild')).toBe(false);
+    });
+
+    it('returns failure when the item is missing', () => {
+      const { deps, planItems } = createMocks();
+      planItems.get.mockReturnValue(undefined);
+      const service = createPlanService(deps);
+
+      const result = service.deleteItemWithDescendants('missing-id');
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toContain('Item not found: missing-id');
+    });
+
+    it('returns failure when the item has no project', () => {
+      const { deps, planItems } = createMocks();
+      planItems.get.mockReturnValue({ ...baseItem, project_id: undefined });
+      const service = createPlanService(deps);
+
+      const result = service.deleteItemWithDescendants('1');
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toContain('Plan item has no project');
+      expect(planItems.deleteWithDescendants).not.toHaveBeenCalled();
+    });
   });
 });

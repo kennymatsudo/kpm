@@ -3,6 +3,7 @@ import {
   resolveOperation,
   applyAutoQueue,
   queueForTracker,
+  queueTrackerDeletionIfNeeded,
 } from './OutboundChangePolicy';
 import type { TrackerAssociationWithScope } from '../../../shared/types';
 
@@ -270,5 +271,57 @@ describe('queueForTracker', () => {
     expect(outboundChanges.add).not.toHaveBeenCalled();
     expect(result.queuedCount).toBe(0);
     expect(result.skippedReason).toBe('no_association');
+  });
+});
+
+describe('queueTrackerDeletionIfNeeded', () => {
+  it('stages a delete with the linked item\'s remote identity', () => {
+    const outboundChanges = {
+      getByAssociation: vi.fn(() => []),
+      addDelete: vi.fn(),
+    };
+
+    queueTrackerDeletionIfNeeded(
+      {
+        id: 'plan-1',
+        project_id: 'project-1',
+        external_key: 'ENG-123',
+        external_id: 'issue-123',
+        external_type: 'linear',
+        association_id: 'assoc-1',
+      },
+      'user',
+      { outboundChanges } as never
+    );
+
+    expect(outboundChanges.addDelete).toHaveBeenCalledWith({
+      kpm_project_id: 'project-1',
+      association_id: 'assoc-1',
+      external_key: 'ENG-123',
+      external_id: 'issue-123',
+      tracker_type: 'linear',
+      queued_by: 'user',
+    });
+  });
+
+  it('does not stage a duplicate delete', () => {
+    const outboundChanges = {
+      getByAssociation: vi.fn(() => [{ operation: 'delete', external_key: 'ENG-123' }]),
+      addDelete: vi.fn(),
+    };
+
+    queueTrackerDeletionIfNeeded(
+      {
+        id: 'plan-1',
+        project_id: 'project-1',
+        external_key: 'ENG-123',
+        external_type: 'jira',
+        association_id: 'assoc-1',
+      },
+      'user',
+      { outboundChanges } as never
+    );
+
+    expect(outboundChanges.addDelete).not.toHaveBeenCalled();
   });
 });

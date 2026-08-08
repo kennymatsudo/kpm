@@ -12,6 +12,7 @@ import type {
 } from '../interfaces';
 import type { QueueTrackerUpdateIfNeeded } from './PlanItemService';
 import { queueForTracker } from './OutboundChangePolicy';
+import { removePlanItem } from './PlanItemRemoval';
 import { assignItemToGroup } from './GroupAssignmentService';
 import { getConfig } from '../../config';
 import { findUnresolvedRefIds } from '../../../shared/planActionRefs';
@@ -283,12 +284,15 @@ function executeDeleteItem(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'delete_item' }>
 ): void {
-  const itemToDelete = getItem(ctx, action.item_id);
-  if (!itemToDelete) {
+  const result = removePlanItem(action.item_id, { queuedBy: 'claude', cascade: false }, {
+    database: ctx.deps.database,
+    planItems: ctx.deps.planItems,
+    outboundChanges: ctx.deps.outboundChanges,
+  });
+  if (result.status === 'not_found') {
     skip(ctx, 'delete_item', `Item not found: ${action.item_id}`);
     return;
   }
-  ctx.deps.planItems.delete(action.item_id);
   invalidateItem(ctx, action.item_id);
 }
 

@@ -42,6 +42,8 @@ export interface IPlanItemRepository {
   update(id: string, updates: PlanItemUpdates | PlanItemSyncUpdates): void;
   delete(id: string): void;
   deleteWithDescendants(id: string): void;
+  /** All descendant ids reachable from `id` via `parent_id`, via a recursive CTE. */
+  getDescendantIds(id: string): string[];
   getChildCount(itemId: string): number;
   updatePosition(itemId: string, x: number, y: number): void;
   batchUpdatePositions(updates: { id: string; x: number; y: number }[]): void;
