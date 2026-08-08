@@ -19,7 +19,6 @@ export interface EditingFile {
   path: string;
   content: string;
   originalContent: string;
-  isReadOnly: boolean;
 }
 
 interface WorkspaceState {
@@ -49,7 +48,7 @@ interface WorkspaceState {
   setLoadingPath: (source: FileSource, path: string, loading: boolean) => void;
 
   // Actions - Editor
-  openFile: (source: FileSource, path: string, content: string, isReadOnly: boolean) => void;
+  openFile: (source: FileSource, path: string, content: string) => void;
   updateContent: (content: string) => void;
   saveFile: () => Promise<boolean>;
   closeEditor: () => void;
@@ -68,17 +67,6 @@ const initialState = {
   isSaving: false,
   saveError: null as string | null,
 };
-
-/**
- * Editable file extensions - these can be edited in the workspace
- * Code files are read-only
- */
-const EDITABLE_EXTENSIONS = ['.md', '.txt', '.json', '.yaml', '.yml', '.toml'];
-
-export function isEditableFile(filename: string): boolean {
-  const lower = filename.toLowerCase();
-  return EDITABLE_EXTENSIONS.some((ext) => lower.endsWith(ext));
-}
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   ...initialState,
@@ -161,14 +149,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
-  openFile: (source, path, content, isReadOnly) => {
+  openFile: (source, path, content) => {
     set({
       editingFile: {
         source,
         path,
         content,
         originalContent: content,
-        isReadOnly,
       },
       saveError: null,
     });
@@ -176,7 +163,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   updateContent: (content) => {
     const { editingFile } = get();
-    if (!editingFile || editingFile.isReadOnly) return;
+    if (!editingFile) return;
 
     set({
       editingFile: {
@@ -188,7 +175,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   saveFile: async () => {
     const { editingFile, currentProjectId } = get();
-    if (!editingFile || editingFile.isReadOnly) return false;
+    if (!editingFile) return false;
     if (editingFile.content === editingFile.originalContent) return true;
 
     set({ isSaving: true, saveError: null });

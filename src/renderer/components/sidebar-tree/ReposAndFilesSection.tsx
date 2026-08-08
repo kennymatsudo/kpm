@@ -4,7 +4,6 @@ import {
   useResourceDomainStore,
   useProjectUiDomainStore,
   useFileTreeStore,
-  isEditableFile,
   useConfluenceStore,
   useWorkspaceStore,
 } from '../../stores';
@@ -42,7 +41,7 @@ interface ReposAndFilesSectionProps {
    * Called when a file is opened (double-click).
    * If not provided, markdown files open in viewer, others reveal in Finder.
    */
-  onFileOpen?: (source: 'project', path: string, isEditable: boolean) => void;
+  onFileOpen?: (source: 'project', path: string) => void;
 }
 
 /**
@@ -389,8 +388,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
       } else if (isImageFile(node.name)) {
         await fileViewers.openImageViewer(path, node);
       } else if (onFileOpen) {
-        const isEditable = isEditableFile(node.name);
-        onFileOpen('project', path, isEditable);
+        onFileOpen('project', path);
       } else if (node.name.endsWith('.md')) {
         await fileViewers.openMarkdownViewer(path);
       } else {

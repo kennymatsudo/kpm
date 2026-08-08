@@ -63,7 +63,7 @@ export {
 export { resetAllProjectScopedStores, getRegisteredStoreNames } from './projectScopedStores';
 
 // Workspace
-export { useWorkspaceStore, isEditableFile, useHasUnsavedChanges } from './workspaceStore';
+export { useWorkspaceStore, useHasUnsavedChanges } from './workspaceStore';
 export type { FileSource, SelectedFile, EditingFile } from './workspaceStore';
 
 // Proposed Change disposal

@@ -2,26 +2,18 @@
  * Resolves a project-relative path against the workspace and opens it in the
  * embedded editor.
  *
- * Lookup order is the current project's own files first, then each connected
- * repo. Non-editable file types open read-only — `FileEditor` already handles
- * that branching.
+ * Lookup order is the current project's own files first, then each connected repo.
  */
 
 import { useCallback, useState } from 'react';
 import {
   emit,
-  isEditableFile,
   toast,
   useProjectDomainStore,
   useResourceDomainStore,
   useWorkspaceStore,
 } from '../../stores';
 import { readWorkspaceFile } from '../../services/workspaceFileService';
-
-function filename(path: string): string {
-  const slash = path.lastIndexOf('/');
-  return slash === -1 ? path : path.slice(slash + 1);
-}
 
 export function useWorkspaceFileOpener() {
   const repos = useResourceDomainStore((state) => state.repos);
@@ -33,7 +25,6 @@ export function useWorkspaceFileOpener() {
     async (path: string) => {
       if (pending) return;
 
-      const readOnly = !isEditableFile(filename(path));
       setPending(true);
       try {
         const sources: { source: string; projectId: string | null }[] = [];
@@ -43,7 +34,7 @@ export function useWorkspaceFileOpener() {
         for (const { source, projectId: pid } of sources) {
           try {
             const content = await readWorkspaceFile(source, path, pid);
-            openFile(source, path, content, readOnly);
+            openFile(source, path, content);
             // The editor only exists in the workspace view, and chat is
             // reachable from the planning view too, so surface it.
             emit({ type: 'navigate-to-view', payload: { view: 'workspace' } });

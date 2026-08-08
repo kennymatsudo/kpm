@@ -22,7 +22,7 @@ interface UseLayoutNavigationEffectsParams {
 }
 
 export interface UseLayoutNavigationEffectsReturn {
-  handleFileOpen: (source: string, path: string, isEditable: boolean) => Promise<void>;
+  handleFileOpen: (source: string, path: string) => Promise<void>;
 }
 
 export function useLayoutNavigationEffects({
@@ -36,17 +36,13 @@ export function useLayoutNavigationEffects({
   const openFile = useWorkspaceStore((state) => state.openFile);
 
   const handleFileOpen = useCallback(
-    async (source: string, path: string, isEditable: boolean) => {
-      const endOpen = startPerfSpan('workspace.file.open', {
-        source,
-        path,
-        editable: isEditable,
-      });
+    async (source: string, path: string) => {
+      const endOpen = startPerfSpan('workspace.file.open', { source, path });
 
       try {
         const content = await readWorkspaceFile(source, path, currentProjectId);
         endOpen({ contentLength: content.length });
-        openFile(source, path, content, !isEditable);
+        openFile(source, path, content);
       } catch (error) {
         endOpen({ error: true });
         console.error('[Layout] Failed to open file:', error);
@@ -73,7 +69,7 @@ export function useLayoutNavigationEffects({
       if (event.payload.view === 'workspace' && event.payload.filePath) {
         const filePath = event.payload.filePath;
         setTimeout(() => {
-          void handleFileOpen('project', filePath, true);
+          void handleFileOpen('project', filePath);
         }, 50);
       }
 

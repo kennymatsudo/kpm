@@ -11,7 +11,7 @@ interface SidebarProps {
    * If provided, files are opened via this callback (e.g., workspace editor).
    * If not provided, markdown files open in viewer, others reveal in Finder.
    */
-  onFileOpen?: (source: 'project', path: string, isEditable: boolean) => void;
+  onFileOpen?: (source: 'project', path: string) => void;
 }
 
 export function Sidebar({ onDeleteProject: _onDeleteProject, onNewProject, onFileOpen }: SidebarProps) {

@@ -75,7 +75,7 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
         // Only auto-refresh if there are no unsaved changes
         if (!hasUnsavedChanges) {
           readWorkspaceFile(editingFile.source, data.path, projectId).then((content: string) => {
-            openFile(editingFile.source, editingFile.path, content, editingFile.isReadOnly);
+            openFile(editingFile.source, editingFile.path, content);
           }).catch(console.error);
         }
         // If there are unsaved changes, let the user keep editing
@@ -91,7 +91,7 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
       if (data.type === 'renamed' && data.path === editingFile.path && data.newPath) {
         // Re-open with the new path
         readWorkspaceFile(editingFile.source, data.newPath, projectId).then((content: string) => {
-          openFile(editingFile.source, data.newPath!, content, editingFile.isReadOnly);
+          openFile(editingFile.source, data.newPath!, content);
         }).catch(console.error);
       }
     });

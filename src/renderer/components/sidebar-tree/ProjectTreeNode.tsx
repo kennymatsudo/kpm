@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useState } from 'react';
 import type { NodeRendererProps } from 'react-arborist';
 import type { FileNode } from '../../../shared/types';
-import { isEditableFile } from '../../stores';
 import { getParentPath } from '../../utils/path';
 import { FileIcon, FocusIcon } from './FileIcon';
 import { Tooltip } from '../ui/Tooltip';
@@ -147,7 +146,6 @@ const FileTreeRow = memo(function FileTreeRow({
   const isEditingFile = editingPath === node.id;
   const isFocused = isPathFocused(node.id);
   const hasConfluenceLink = isLinkedToConfluence(node.id);
-  const isEditable = !node.data.isDirectory && isEditableFile(node.data.name);
 
   useEffect(() => {
     if (node.isEditing || renamingPath === node.id) {
@@ -379,9 +377,7 @@ const FileTreeRow = memo(function FileTreeRow({
           ) : (
             <span
               className={`
-                flex-1 text-sm truncate transition-colors
-                ${isEditable ? 'text-text-primary' : 'text-text-secondary'}
-                ${node.isSelected || isEditingFile ? 'text-text-primary' : ''}
+                flex-1 text-sm truncate transition-colors text-text-primary
               `}
             >
               {node.data.name}

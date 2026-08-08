@@ -10,7 +10,6 @@ export interface CodeEditorProps {
   content: string;
   path: string;
   onChange?: (content: string) => void;
-  isReadOnly?: boolean;
 }
 
 const EDITOR_OPTIONS: Monaco.editor.IStandaloneEditorConstructionOptions = {
@@ -45,12 +44,7 @@ const EDITOR_OPTIONS: Monaco.editor.IStandaloneEditorConstructionOptions = {
 
 type MonacoInstance = typeof Monaco;
 
-export function CodeEditor({
-  content,
-  path,
-  onChange,
-  isReadOnly = false,
-}: CodeEditorProps) {
+export function CodeEditor({ content, path, onChange }: CodeEditorProps) {
   useMemo(() => configureMonaco(), []);
   const { resolved, resolvedTheme } = useTheme();
   const monacoRef = useRef<MonacoInstance | null>(null);
@@ -94,12 +88,7 @@ export function CodeEditor({
         beforeMount={beforeMount}
         onMount={handleMount}
         onChange={(value) => onChange?.(value ?? '')}
-        options={{
-          ...EDITOR_OPTIONS,
-          readOnly: isReadOnly,
-          domReadOnly: isReadOnly,
-          renderValidationDecorations: isReadOnly ? 'off' : 'editable',
-        }}
+        options={EDITOR_OPTIONS}
       />
     </div>
   );

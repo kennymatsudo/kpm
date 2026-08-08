@@ -83,7 +83,7 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
 
   // Auto-save with debounce
   useEffect(() => {
-    if (!editingFile || editingFile.isReadOnly) return;
+    if (!editingFile) return;
     if (editingFile.content === editingFile.originalContent) {
       setSaveStatus('saved');
       return;
@@ -96,7 +96,7 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [editingFile?.content, editingFile?.originalContent, editingFile?.isReadOnly, saveFile]);
+  }, [editingFile?.content, editingFile?.originalContent, saveFile]);
 
   if (!editingFile) {
     return null;
@@ -160,7 +160,7 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
   ) : null;
 
   // For markdown files, use the full-featured MarkdownEditor
-  if (isMarkdown && !editingFile.isReadOnly) {
+  if (isMarkdown) {
     return (
       <div className="flex flex-col h-full bg-surface-1">
         {/* Header */}
@@ -232,27 +232,19 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
             {filename}
           </span>
 
-          {editingFile.isReadOnly && (
-            <span className="px-2 py-0.5 text-xxs font-medium text-text-muted bg-surface-3 rounded-full shadow-sm">
-              Read-only
+          <div className="flex items-center gap-1.5">
+            <div
+              className={`
+                w-1.5 h-1.5 rounded-full transition-colors duration-200
+                ${saveStatus === 'saved' ? 'bg-success' : ''}
+                ${saveStatus === 'unsaved' ? 'bg-warning' : ''}
+                ${saveStatus === 'saving' ? 'bg-accent animate-pulse' : ''}
+              `}
+            />
+            <span className={`text-xs transition-colors ${saveStatus === 'unsaved' ? 'text-warning' : 'text-text-muted'}`}>
+              {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'unsaved' ? 'Unsaved' : 'Saved'}
             </span>
-          )}
-
-          {!editingFile.isReadOnly && (
-            <div className="flex items-center gap-1.5">
-              <div
-                className={`
-                  w-1.5 h-1.5 rounded-full transition-colors duration-200
-                  ${saveStatus === 'saved' ? 'bg-success' : ''}
-                  ${saveStatus === 'unsaved' ? 'bg-warning' : ''}
-                  ${saveStatus === 'saving' ? 'bg-accent animate-pulse' : ''}
-                `}
-              />
-              <span className={`text-xs transition-colors ${saveStatus === 'unsaved' ? 'text-warning' : 'text-text-muted'}`}>
-                {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'unsaved' ? 'Unsaved' : 'Saved'}
-              </span>
-            </div>
-          )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -295,19 +287,11 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
 
       {/* Content area */}
       <div className="flex-1 overflow-hidden">
-        {editingFile.isReadOnly ? (
-          <CodeEditorLazy
-            path={editingFile.path}
-            content={editingFile.content}
-            isReadOnly
-          />
-        ) : (
-          <CodeEditorLazy
-            path={editingFile.path}
-            content={editingFile.content}
-            onChange={handleContentChange}
-          />
-        )}
+        <CodeEditorLazy
+          path={editingFile.path}
+          content={editingFile.content}
+          onChange={handleContentChange}
+        />
       </div>
 
       {/* Error display */}
