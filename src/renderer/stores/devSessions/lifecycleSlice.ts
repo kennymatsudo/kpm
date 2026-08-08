@@ -52,6 +52,7 @@ function removeSessionFromState(state: DevSessionsState, sessionId: string) {
     questionBySessionId: removeMapEntries(state.questionBySessionId, trackedSessionIds),
     completionBySessionId: removeMapEntries(state.completionBySessionId, trackedSessionIds),
     reviewFindingsBySessionId: removeMapEntries(state.reviewFindingsBySessionId, trackedSessionIds),
+    reviewRunsByImplementationId: removeMapEntries(state.reviewRunsByImplementationId, [sessionId]),
   };
 }
 
@@ -193,6 +194,7 @@ export function createDevSessionsLifecycleSlice(
           activitiesBySessionId: pruneMapByKeys(get().activitiesBySessionId, allTrackedIds),
           latestActivityBySessionId: pruneMapByKeys(get().latestActivityBySessionId, allTrackedIds),
           completionBySessionId: pruneMapByKeys(get().completionBySessionId, allTrackedIds),
+          reviewRunsByImplementationId: pruneMapByKeys(get().reviewRunsByImplementationId, validSessionIds),
         });
 
         // Self-heal agent state: after every load, ask the main process for

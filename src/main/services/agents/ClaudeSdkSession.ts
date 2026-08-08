@@ -24,6 +24,8 @@ import type {
   AgentSessionState,
   AgentSessionRole,
   AgentCompletionSummary,
+  AgentActivity,
+  AgentActivityKind,
 } from '../../../shared/agent-types';
 
 // =============================================================================
@@ -64,6 +66,44 @@ function summarizeToolUse(toolName: string, input: Record<string, unknown>): str
   }
 }
 
+/** Classify a Claude tool by what it does, not by its name, so the renderer can stop pattern-matching. */
+function toActivityKind(shortName: string): AgentActivityKind {
+  switch (shortName) {
+    case 'read_file':
+    case 'Read':
+    case 'grep':
+    case 'Grep':
+    case 'glob':
+    case 'Glob':
+    case 'list_directory':
+      return 'read';
+    case 'edit_file':
+    case 'Edit':
+    case 'write_file':
+    case 'Write':
+      return 'edit';
+    case 'bash':
+    case 'Bash':
+      return 'run';
+    default:
+      return 'other';
+  }
+}
+
+/** Pull the text out of a `tool_result` content block, which may be a plain string or an Anthropic content-block array. */
+function extractToolResultText(content: unknown): string | undefined {
+  if (typeof content === 'string') return content || undefined;
+  if (!Array.isArray(content)) return undefined;
+  const text = content
+    .filter((block): block is { type: 'text'; text: string } =>
+      Boolean(block) && typeof block === 'object'
+      && (block as { type?: unknown }).type === 'text'
+      && typeof (block as { text?: unknown }).text === 'string')
+    .map((block) => block.text)
+    .join('\n');
+  return text || undefined;
+}
+
 // =============================================================================
 // ClaudeSdkSession
 // =============================================================================
@@ -88,6 +128,8 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
   private lastProgressSummary: string | null = null;
   private terminalReason: string | null = null;
   private readonly readOnly: boolean;
+  /** Tool calls awaiting their `tool_result`, keyed by the SDK's own `tool_use` block id — the real correlation id, not a synthesized one. */
+  private readonly pendingToolUses = new Map<string, AgentActivity>();
 
   constructor(config: ClaudeSdkSessionConfig) {
     super(config.id, config.role, config.expectsFindings);
@@ -320,15 +362,21 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
       const content = msg.message?.content || [];
       for (const block of content) {
         if (block.type === 'tool_use') {
-          const summary = summarizeToolUse(block.name, block.input as Record<string, unknown>);
-          this.emitActivity({
+          const shortName = block.name.replace(/^mcp__\w+__/, '');
+          const activity: AgentActivity = {
             type: 'tool_use',
             timestamp: Date.now(),
             toolName: block.name,
             toolInput: this.extractToolInput(block.name, block.input as Record<string, unknown>),
-            summary,
+            summary: summarizeToolUse(block.name, block.input as Record<string, unknown>),
             status: 'running',
-          });
+            kind: toActivityKind(shortName),
+            callId: block.id,
+          };
+          this.emitActivity(activity);
+          if (typeof block.id === 'string') {
+            this.pendingToolUses.set(block.id, activity);
+          }
         }
 
         if (block.type === 'thinking' && block.thinking) {
@@ -351,18 +399,19 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
       }
     }
 
-    // Tool results
-    if (msg.type === 'tool_result') {
+    // Tool results arrive as `tool_result` content blocks inside a `user`
+    // message (keyed by `tool_use_id`), not as a bare top-level message type —
+    // there is no such SDK message. Emit a paired `tool_result` activity
+    // carrying the originating call's id, mirroring how Codex/Pi already work,
+    // so the renderer can correlate exactly instead of guessing by tool name.
+    if (msg.type === 'user') {
       this.markReady();
-      const isError = msg.is_error === true;
-      // Find the most recent running tool_use and update its status
-      for (let i = this._activities.length - 1; i >= 0; i--) {
-        const act = this._activities[i];
-        if (act.type === 'tool_use' && act.status === 'running') {
-          act.status = isError ? 'failed' : 'success';
-          // Emit as update — the activity reference is already in the array
-          this.emit('onActivity', act);
-          break;
+      const content = msg.message?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (block?.type === 'tool_result') {
+            this.handleToolResultBlock(block);
+          }
         }
       }
     }
@@ -420,6 +469,24 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
     }
   }
 
+  /** Emit the `tool_result` counterpart for a pending `tool_use`, paired by the SDK's own `tool_use_id`. */
+  private handleToolResultBlock(block: { tool_use_id?: string; content?: unknown; is_error?: boolean }): void {
+    if (typeof block.tool_use_id !== 'string') return;
+
+    const toolUse = this.pendingToolUses.get(block.tool_use_id);
+    this.pendingToolUses.delete(block.tool_use_id);
+
+    this.emitActivity({
+      type: 'tool_result',
+      timestamp: Date.now(),
+      toolName: toolUse?.toolName,
+      callId: block.tool_use_id,
+      summary: toolUse ? `${toolUse.summary} result` : 'Tool result',
+      content: extractToolResultText(block.content),
+      status: block.is_error === true ? 'failed' : 'success',
+    });
+  }
+
   /** Extract the primary input value for display */
   private extractToolInput(toolName: string, input: Record<string, unknown>): string {
     return (input.file_path as string)
@@ -447,6 +514,7 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
   private resetTurnTracking(): void {
     this.lastProgressSummary = null;
     this.terminalReason = null;
+    this.pendingToolUses.clear();
   }
 
   /** Parse git diff stats from the worktree to build completion summary */

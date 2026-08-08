@@ -326,4 +326,68 @@ describe('ClaudeSdkSession activity mapping', () => {
     const matches = activities.filter((a) => a.summary === 'Analyzing authentication module');
     expect(matches).toHaveLength(1);
   });
+
+  it('classifies each tool by kind and carries the SDK tool_use block id as callId', () => {
+    const session = makeSession();
+
+    const activities: AgentActivity[] = [];
+    session.on('onActivity', (a) => activities.push(a));
+
+    testHarness(session).processMessage({
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id: 'call-read', name: 'Read', input: { file_path: 'src/app.ts' } },
+          { type: 'tool_use', id: 'call-edit', name: 'Edit', input: { file_path: 'src/app.ts' } },
+          { type: 'tool_use', id: 'call-bash', name: 'Bash', input: { command: 'npm test' } },
+        ],
+      },
+    });
+
+    expect(activities).toEqual([
+      expect.objectContaining({ kind: 'read', callId: 'call-read' }),
+      expect.objectContaining({ kind: 'edit', callId: 'call-edit' }),
+      expect.objectContaining({ kind: 'run', callId: 'call-bash' }),
+    ]);
+  });
+
+  it('pairs a tool_result to its tool_use by call id, even for two parallel calls to the same tool', () => {
+    // Regression guard: two concurrent Bash calls sharing a name used to be
+    // paired FIFO by tool name, which mispairs whichever result lands first
+    // with whichever call started first — not necessarily the same one.
+    const session = makeSession();
+
+    const activities: AgentActivity[] = [];
+    session.on('onActivity', (a) => activities.push(a));
+
+    testHarness(session).processMessage({
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id: 'call-1', name: 'Bash', input: { command: 'npm test -- a' } },
+          { type: 'tool_use', id: 'call-2', name: 'Bash', input: { command: 'npm test -- b' } },
+        ],
+      },
+    });
+
+    // The second call's result arrives first, and it failed.
+    testHarness(session).processMessage({
+      type: 'user',
+      message: {
+        content: [{ type: 'tool_result', tool_use_id: 'call-2', content: 'boom', is_error: true }],
+      },
+    });
+    testHarness(session).processMessage({
+      type: 'user',
+      message: {
+        content: [{ type: 'tool_result', tool_use_id: 'call-1', content: 'ok' }],
+      },
+    });
+
+    const results = activities.filter((a) => a.type === 'tool_result');
+    expect(results).toEqual([
+      expect.objectContaining({ callId: 'call-2', status: 'failed', content: 'boom' }),
+      expect.objectContaining({ callId: 'call-1', status: 'success', content: 'ok' }),
+    ]);
+  });
 });

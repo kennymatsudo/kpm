@@ -357,6 +357,9 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         sessionId: agentSession.id,
         devSessionId,
         state,
+        implementationSessionId: tracked.implementationSessionId,
+        role: agentSession.role,
+        ...getStepContext(tracked),
       });
 
       if (state === 'starting' || state === 'working' || state === 'waiting_for_input') {
@@ -394,6 +397,9 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         sessionId: agentSession.id,
         devSessionId,
         activity,
+        implementationSessionId: tracked.implementationSessionId,
+        role: agentSession.role,
+        ...getStepContext(tracked),
       });
     });
 
@@ -446,6 +452,9 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
           sessionId: agentSession.id,
           devSessionId,
           error: reviewError,
+          implementationSessionId: tracked.implementationSessionId,
+          role: agentSession.role,
+          ...getStepContext(tracked),
         });
       }
 
@@ -455,6 +464,8 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         role: agentSession.role,
         summary,
         findings,
+        implementationSessionId: tracked.implementationSessionId,
+        ...getStepContext(tracked),
       });
 
       // Fan-out settlement reconstructs from persisted review rows. Ensure this
@@ -483,6 +494,9 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         sessionId: agentSession.id,
         devSessionId,
         error,
+        implementationSessionId: tracked.implementationSessionId,
+        role: agentSession.role,
+        ...getStepContext(tracked),
       });
     });
   }

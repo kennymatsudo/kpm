@@ -30,6 +30,7 @@ import {
 import { REVIEW_FINDINGS_SCHEMA } from './reviewOutputContract';
 import type {
   AgentCompletionSummary,
+  AgentActivityKind,
   AgentSessionRole,
   AgentType,
   IAgentSession,
@@ -53,6 +54,23 @@ export interface CodexSdkAgentSessionConfig {
 function toCodexReasoningEffort(effort: AgentEffortLevel | undefined): ModelReasoningEffort | undefined {
   if (!effort) return undefined;
   return effort === 'max' ? 'xhigh' : effort;
+}
+
+/** Classify a Codex thread item by what it does, not by its item type name, so the renderer can stop pattern-matching. */
+function activityKindFor(itemType: ThreadItem['type']): AgentActivityKind {
+  switch (itemType) {
+    case 'command_execution':
+      return 'run';
+    case 'file_change':
+      return 'edit';
+    case 'mcp_tool_call':
+    case 'web_search':
+    case 'agent_message':
+    case 'reasoning':
+    case 'todo_list':
+    case 'error':
+      return 'other';
+  }
 }
 
 export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSession {
@@ -192,6 +210,8 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
         toolInput: item.command,
         summary: summarizeThreadItem(item),
         status: 'running',
+        kind: activityKindFor(item.type),
+        callId: item.id,
       });
       return;
     }
@@ -204,6 +224,8 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
         toolInput: JSON.stringify(item.arguments),
         summary: summarizeMcpToolCall(item),
         status: 'running',
+        kind: activityKindFor(item.type),
+        callId: item.id,
       });
       return;
     }
@@ -226,6 +248,8 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
         toolInput: item.query,
         summary: summarizeThreadItem(item),
         status: 'running',
+        kind: activityKindFor(item.type),
+        callId: item.id,
       });
     }
   }
@@ -291,6 +315,8 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
       status: item.status === 'failed' || (typeof item.exit_code === 'number' && item.exit_code !== 0)
         ? 'failed'
         : 'success',
+      kind: activityKindFor(item.type),
+      callId: item.id,
     });
   }
 
@@ -301,6 +327,8 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
       toolName: 'apply_patch',
       summary: summarizeThreadItem(item),
       status: item.status === 'failed' ? 'failed' : 'success',
+      kind: activityKindFor(item.type),
+      callId: item.id,
     });
   }
 
@@ -312,6 +340,8 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
       summary: summarizeMcpToolCall(item),
       content: item.error?.message,
       status: item.status === 'failed' ? 'failed' : 'success',
+      kind: activityKindFor(item.type),
+      callId: item.id,
     });
   }
 

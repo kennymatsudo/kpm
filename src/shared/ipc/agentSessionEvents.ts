@@ -15,12 +15,17 @@ import type {
   AgentSessionActivityPayload,
   AgentSessionQuestionPayload,
   AgentSessionCompletePayload,
+  AgentSessionRole,
 } from '../agent-types';
 
 export interface AgentSessionErrorEventData {
   sessionId: string;
   devSessionId: string;
   error: string;
+  implementationSessionId?: string;
+  role?: AgentSessionRole;
+  stepId?: string;
+  runIndex?: number;
 }
 
 export const agentSessionEvents = {

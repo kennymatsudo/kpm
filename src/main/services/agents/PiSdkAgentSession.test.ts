@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentSessionState, AgentSessionUsage } from '../../../shared/agent-types';
+import type { AgentActivity, AgentSessionState, AgentSessionUsage } from '../../../shared/agent-types';
 import {
   PiSdkAgentSession,
   type CreatePiBoardSessionOptions,
@@ -168,5 +168,52 @@ describe('PiSdkAgentSession', () => {
 
     expect(fake.prompts).toEqual(['First turn', 'Address the review']);
     expect(session.getResult()).toEqual({ finalText: 'Addressed the review' });
+  });
+
+  it('classifies tools by kind and threads the pi toolCallId through start and end', async () => {
+    const fake = createFakePiSession();
+    const session = new PiSdkAgentSession({
+      id: 'dev-2',
+      role: 'implement',
+      systemPrompt: 'Implement carefully.',
+      createSession: async () => fake.handle,
+    });
+    const activities: AgentActivity[] = [];
+    session.on('onActivity', (a) => activities.push(a));
+
+    await session.start('/tmp/worktree', 'Build the feature');
+    fake.emit({ type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'bash', args: { command: 'npm test' } });
+    fake.emit({ type: 'tool_execution_end', toolCallId: 'call-1', toolName: 'bash', result: { content: [] }, isError: false });
+
+    const toolActivities = activities.filter((a) => a.type === 'tool_use' || a.type === 'tool_result');
+    expect(toolActivities).toEqual([
+      expect.objectContaining({ type: 'tool_use', kind: 'run', callId: 'call-1' }),
+      expect.objectContaining({ type: 'tool_result', kind: 'run', callId: 'call-1', status: 'success' }),
+    ]);
+  });
+
+  it('pairs parallel calls to the same tool by callId, not FIFO', async () => {
+    const fake = createFakePiSession();
+    const session = new PiSdkAgentSession({
+      id: 'dev-3',
+      role: 'implement',
+      systemPrompt: 'Implement carefully.',
+      createSession: async () => fake.handle,
+    });
+    const activities: AgentActivity[] = [];
+    session.on('onActivity', (a) => activities.push(a));
+
+    await session.start('/tmp/worktree', 'Build the feature');
+    fake.emit({ type: 'tool_execution_start', toolCallId: 'a', toolName: 'read', args: { path: 'a.ts' } });
+    fake.emit({ type: 'tool_execution_start', toolCallId: 'b', toolName: 'read', args: { path: 'b.ts' } });
+    // b finishes first, and it failed.
+    fake.emit({ type: 'tool_execution_end', toolCallId: 'b', toolName: 'read', result: { content: [] }, isError: true });
+    fake.emit({ type: 'tool_execution_end', toolCallId: 'a', toolName: 'read', result: { content: [] }, isError: false });
+
+    const results = activities.filter((a) => a.type === 'tool_result');
+    expect(results).toEqual([
+      expect.objectContaining({ callId: 'b', status: 'failed', kind: 'read' }),
+      expect.objectContaining({ callId: 'a', status: 'success', kind: 'read' }),
+    ]);
   });
 });

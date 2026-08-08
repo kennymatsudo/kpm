@@ -28,6 +28,14 @@ export type AgentSessionRole = 'implement' | 'review';
 // Activity Feed
 // =============================================================================
 
+/**
+ * Provider-neutral classification of what a `tool_use`/`tool_result` activity
+ * IS, so the renderer can group, filter, and pick an icon without pattern-
+ * matching each provider's raw tool names. Omitted for activity types that
+ * aren't a tool call (`thinking`/`message`/`error`/`system`).
+ */
+export type AgentActivityKind = 'read' | 'edit' | 'run' | 'other';
+
 /** A single activity entry in the agent's execution log */
 export interface AgentActivity {
   /** Activity type — maps to SDK event types */
@@ -44,6 +52,14 @@ export interface AgentActivity {
   content?: string;
   /** Current status of this activity */
   status?: 'running' | 'success' | 'failed';
+  /** Optional so legacy in-flight activities without it still parse. Every adapter populates it for tool_use/tool_result going forward. */
+  kind?: AgentActivityKind;
+  /**
+   * Correlates a `tool_result` to the `tool_use` it answers, sourced from the
+   * provider's own call id (never synthesized). Optional: legacy activities
+   * and providers with no such id fall back to name-based pairing.
+   */
+  callId?: string;
 }
 
 export interface AgentQuestionOption {
@@ -228,15 +244,27 @@ export interface IAgentSession {
 // IPC Payload Types (for renderer consumption)
 // =============================================================================
 
+/**
+ * Fields identifying which implementation session a tracked agent session
+ * (review or playbook subagent) belongs to. Absent on implement-role events,
+ * where the tracked session already IS the implementation session.
+ */
+interface AgentSessionRelationship {
+  implementationSessionId?: string;
+  role?: AgentSessionRole;
+  stepId?: string;
+  runIndex?: number;
+}
+
 /** Payload sent via IPC for agent-session:state-changed */
-export interface AgentSessionStatePayload {
+export interface AgentSessionStatePayload extends AgentSessionRelationship {
   sessionId: string;
   devSessionId: string;
   state: AgentSessionState;
 }
 
 /** Payload sent via IPC for agent-session:activity */
-export interface AgentSessionActivityPayload {
+export interface AgentSessionActivityPayload extends AgentSessionRelationship {
   sessionId: string;
   devSessionId: string;
   activity: AgentActivity;
@@ -250,7 +278,7 @@ export interface AgentSessionQuestionPayload {
 }
 
 /** Payload sent via IPC for agent-session:complete */
-export interface AgentSessionCompletePayload {
+export interface AgentSessionCompletePayload extends AgentSessionRelationship {
   sessionId: string;
   devSessionId: string;
   role: AgentSessionRole;

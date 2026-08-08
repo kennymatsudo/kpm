@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ThreadOptions } from '@openai/codex-sdk';
 import { CodexSdkAgentSession } from './CodexSdkAgentSession';
 import type { AgentEffortLevel } from '../../../shared/types';
+import type { AgentActivity } from '../../../shared/agent-types';
 
 vi.mock('@openai/codex-sdk', () => ({
   Codex: vi.fn(function Codex() {
@@ -94,5 +95,64 @@ describe('CodexSdkAgentSession reasoning effort', () => {
 
   it('omits the field when no effort is configured', () => {
     expect(threadOptions()).not.toHaveProperty('modelReasoningEffort');
+  });
+});
+
+describe('CodexSdkAgentSession activity kind + call id', () => {
+  interface ItemHarness {
+    handleItemStarted(item: unknown): void;
+    handleItemCompleted(item: unknown): void;
+  }
+
+  function itemHarness(session: CodexSdkAgentSession): ItemHarness {
+    return session as unknown as ItemHarness;
+  }
+
+  it('classifies command_execution as kind "run" and threads the thread item id as callId through start and completion', () => {
+    const session = makeSession('implement');
+    const activities: AgentActivity[] = [];
+    session.on('onActivity', (a) => activities.push(a));
+
+    itemHarness(session).handleItemStarted({
+      id: 'item-1', type: 'command_execution', command: 'npm test', aggregated_output: '', status: 'in_progress',
+    });
+    itemHarness(session).handleItemCompleted({
+      id: 'item-1', type: 'command_execution', command: 'npm test', aggregated_output: 'ok', exit_code: 0, status: 'completed',
+    });
+
+    expect(activities).toEqual([
+      expect.objectContaining({ type: 'tool_use', kind: 'run', callId: 'item-1' }),
+      expect.objectContaining({ type: 'tool_result', kind: 'run', callId: 'item-1', status: 'success' }),
+    ]);
+  });
+
+  it('pairs two parallel command_execution items by item id rather than by name', () => {
+    const session = makeSession('implement');
+    const activities: AgentActivity[] = [];
+    session.on('onActivity', (a) => activities.push(a));
+
+    itemHarness(session).handleItemStarted({ id: 'a', type: 'command_execution', command: 'npm test -- a', aggregated_output: '', status: 'in_progress' });
+    itemHarness(session).handleItemStarted({ id: 'b', type: 'command_execution', command: 'npm test -- b', aggregated_output: '', status: 'in_progress' });
+    // b finishes first, and it failed.
+    itemHarness(session).handleItemCompleted({ id: 'b', type: 'command_execution', command: 'npm test -- b', aggregated_output: '', exit_code: 1, status: 'failed' });
+    itemHarness(session).handleItemCompleted({ id: 'a', type: 'command_execution', command: 'npm test -- a', aggregated_output: '', exit_code: 0, status: 'completed' });
+
+    const results = activities.filter((activity) => activity.type === 'tool_result');
+    expect(results).toEqual([
+      expect.objectContaining({ callId: 'b', status: 'failed' }),
+      expect.objectContaining({ callId: 'a', status: 'success' }),
+    ]);
+  });
+
+  it('classifies file_change as kind "edit"', () => {
+    const session = makeSession('implement');
+    const activities: AgentActivity[] = [];
+    session.on('onActivity', (a) => activities.push(a));
+
+    itemHarness(session).handleItemCompleted({ id: 'patch-1', type: 'file_change', changes: [], status: 'completed' });
+
+    expect(activities).toEqual([
+      expect.objectContaining({ type: 'tool_result', kind: 'edit', callId: 'patch-1' }),
+    ]);
   });
 });

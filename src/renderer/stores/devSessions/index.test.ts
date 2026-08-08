@@ -563,6 +563,36 @@ describe('devSessionsStore', () => {
     expect(useDevSessionsStore.getState().selectedSessionId).toBeNull();
   });
 
+  it('records a review run for its implementation session and replaces a stale entry for the same session id', () => {
+    useDevSessionsStore.getState().recordReviewRun('dev-session-1', {
+      sessionId: 'dev-session-1-playbook-review-0-0',
+      stepId: 'review',
+      runIndex: 0,
+    });
+    useDevSessionsStore.getState().recordReviewRun('dev-session-1', {
+      sessionId: 'dev-session-1-playbook-review-0-0',
+      stepId: 'review',
+      runIndex: 0,
+    });
+
+    expect(useDevSessionsStore.getState().reviewRunsByImplementationId.get('dev-session-1')).toEqual([
+      { sessionId: 'dev-session-1-playbook-review-0-0', stepId: 'review', runIndex: 0 },
+    ]);
+  });
+
+  it('drops recorded review runs for a session removed from the loaded project', async () => {
+    useDevSessionsStore.getState().recordReviewRun('dev-session-1', {
+      sessionId: 'dev-session-1-playbook-review-0-0',
+      stepId: 'review',
+      runIndex: 0,
+    });
+    api.devSessions.getByProjectWithPlanItems.mockResolvedValue({ success: true, sessions: [] });
+
+    await useDevSessionsStore.getState().loadSessions('project-1');
+
+    expect(useDevSessionsStore.getState().reviewRunsByImplementationId.has('dev-session-1')).toBe(false);
+  });
+
   it('stores review findings when a review agent completes', () => {
     const findings = [{
       severity: 'warning' as const,

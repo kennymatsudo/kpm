@@ -30,7 +30,7 @@ import { openExternalUrl } from '../../services/shellService';
 import { usePlanDomainStore, useProjectUiDomainStore, toast } from '../../stores';
 import { copyToClipboard } from '../../utils/clipboard';
 import { isCommitHookRepairPhase, type DevSessionWithPlanItem } from '../../../shared/types';
-import { toReviewSessionId } from '../../../shared/agent-types';
+import { reviewSessionIdForDisplay } from './reviewSession';
 
 interface DetailPaneProps {
   session: DevSessionWithPlanItem;
@@ -73,7 +73,12 @@ export const DetailPane = memo(function DetailPane({
   const status = usePanelStatus(session);
 
   const implementationSession = useAgentSession(session.id);
-  const reviewSessionId = toReviewSessionId(session.id);
+  const reviewSessionId = useDevSessionsStore((s) => reviewSessionIdForDisplay(
+    session.id,
+    session.current_step_id,
+    s.agentStateBySessionId,
+    s.reviewRunsByImplementationId.get(session.id) ?? [],
+  ));
   const reviewSession = useAgentSession(reviewSessionId);
   const showReviewSession =
     reviewSession.agentState === 'starting'

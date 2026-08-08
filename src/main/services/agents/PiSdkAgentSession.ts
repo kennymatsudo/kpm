@@ -1,6 +1,7 @@
 import type { AgentEffortLevel } from '../../../shared/types';
 import type {
   AgentCompletionSummary,
+  AgentActivityKind,
   AgentSessionRole,
   AgentSessionUsage,
   AgentType,
@@ -91,6 +92,24 @@ function toolInput(args: unknown): string {
   const input = args as Record<string, unknown>;
   const primary = input.path ?? input.command ?? input.pattern ?? input.query;
   return typeof primary === 'string' ? primary : JSON.stringify(input);
+}
+
+/** Classify a Pi tool by what it does, not by its name, so the renderer can stop pattern-matching. */
+function toActivityKind(toolName: string): AgentActivityKind {
+  switch (toolName) {
+    case 'read':
+    case 'grep':
+    case 'find':
+    case 'ls':
+      return 'read';
+    case 'edit':
+    case 'write':
+      return 'edit';
+    case 'bash':
+      return 'run';
+    default:
+      return 'other';
+  }
 }
 
 function toolSummary(toolName: string, args: unknown): string {
@@ -295,10 +314,10 @@ export class PiSdkAgentSession extends BaseAgentSession implements IAgentSession
         this.handleMessageEnd(event as { message?: unknown });
         return;
       case 'tool_execution_start':
-        this.handleToolStart(event as { toolName?: unknown; args?: unknown });
+        this.handleToolStart(event as { toolCallId?: unknown; toolName?: unknown; args?: unknown });
         return;
       case 'tool_execution_end':
-        this.handleToolEnd(event as { toolName?: unknown; result?: unknown; isError?: unknown });
+        this.handleToolEnd(event as { toolCallId?: unknown; toolName?: unknown; result?: unknown; isError?: unknown });
         return;
       default:
         return;
@@ -341,7 +360,7 @@ export class PiSdkAgentSession extends BaseAgentSession implements IAgentSession
       : null;
   }
 
-  private handleToolStart(event: { toolName?: unknown; args?: unknown }): void {
+  private handleToolStart(event: { toolCallId?: unknown; toolName?: unknown; args?: unknown }): void {
     if (typeof event.toolName !== 'string') return;
     this.emitActivity({
       type: 'tool_use',
@@ -350,10 +369,12 @@ export class PiSdkAgentSession extends BaseAgentSession implements IAgentSession
       toolInput: toolInput(event.args),
       summary: toolSummary(event.toolName, event.args),
       status: 'running',
+      kind: toActivityKind(event.toolName),
+      callId: typeof event.toolCallId === 'string' ? event.toolCallId : undefined,
     });
   }
 
-  private handleToolEnd(event: { toolName?: unknown; result?: unknown; isError?: unknown }): void {
+  private handleToolEnd(event: { toolCallId?: unknown; toolName?: unknown; result?: unknown; isError?: unknown }): void {
     if (typeof event.toolName !== 'string') return;
     this.emitActivity({
       type: 'tool_result',
@@ -362,6 +383,8 @@ export class PiSdkAgentSession extends BaseAgentSession implements IAgentSession
       summary: `${event.toolName} ${event.isError === true ? 'failed' : 'completed'}`,
       content: resultText(event.result),
       status: event.isError === true ? 'failed' : 'success',
+      kind: toActivityKind(event.toolName),
+      callId: typeof event.toolCallId === 'string' ? event.toolCallId : undefined,
     });
   }
 

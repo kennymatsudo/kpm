@@ -13,6 +13,7 @@ function makeStoreView(overrides: Partial<AgentEventStoreView> = {}): AgentEvent
     handleAgentComplete: vi.fn(),
     handleAgentError: vi.fn(),
     setReviewActionable: vi.fn(),
+    recordReviewRun: vi.fn(),
     ...overrides,
   };
 }
@@ -115,6 +116,52 @@ describe('event routing', () => {
       REVIEW_SESSION_ID,
       expect.objectContaining({ summary: 'Review' }),
     );
+  });
+
+  it('routes a playbook subagent event via its tagged implementationSessionId and records the review run', () => {
+    // A playbook subagent's tracked id (`${implId}-playbook-${stepId}-${attempt}-${runIndex}`,
+    // see AgentSessionManager's toPlaybookSubagentSessionId) does not end in
+    // `-review`, so toImplSessionId can't normalize it back to the implementation
+    // session id. Main tags the payload with implementationSessionId instead —
+    // this is what the router must key off of. Against the old string-stripping
+    // filter this event was silently dropped: toImplSessionId left the id
+    // unchanged, it never matched the known-session set, and neither
+    // handleAgentStateChanged nor the review-run relationship ever recorded.
+    const subagentSessionId = `${IMPL_SESSION_ID}-playbook-review-0-0`;
+    const store = makeStoreView();
+    const router = createAgentEventRouter(makeDeps(store, { getKnownSessionIds: () => new Set([IMPL_SESSION_ID]) }));
+
+    router.handlers.onStateChanged({
+      sessionId: subagentSessionId,
+      devSessionId: subagentSessionId,
+      state: 'working',
+      implementationSessionId: IMPL_SESSION_ID,
+      role: 'review',
+      stepId: 'review',
+      runIndex: 0,
+    });
+
+    expect(store.handleAgentStateChanged).toHaveBeenCalledWith(subagentSessionId, 'working');
+    expect(store.recordReviewRun).toHaveBeenCalledWith(IMPL_SESSION_ID, {
+      sessionId: subagentSessionId,
+      stepId: 'review',
+      runIndex: 0,
+    });
+  });
+
+  it('does not record a review run for an implement-role event tagged with its own id', () => {
+    const store = makeStoreView();
+    const router = createAgentEventRouter(makeDeps(store));
+
+    router.handlers.onStateChanged({
+      sessionId: IMPL_SESSION_ID,
+      devSessionId: IMPL_SESSION_ID,
+      state: 'working',
+      implementationSessionId: IMPL_SESSION_ID,
+      role: 'implement',
+    });
+
+    expect(store.recordReviewRun).not.toHaveBeenCalled();
   });
 
   it('stops routing after dispose', () => {

@@ -17,13 +17,13 @@ import { useDevSessionsStore } from '../../stores/devSessions';
 import { usePlanDomainStore } from '../../stores';
 import { resolveStatusCategory } from '../../constants/statusConfig';
 import { getStats, type ReviewStats } from '../development/reviewStats';
-import { toReviewSessionId } from '../../../shared/agent-types';
 import type { DevSessionWithPlanItem } from '../../../shared/types';
 import {
   derivePanelStatus,
   type PanelStatus,
   type ReviewPhaseStats,
 } from './panelStatus';
+import { reviewSessionIdForDisplay } from './reviewSession';
 
 export function toReviewPhaseStats(stats: ReviewStats, assessmentRunning: boolean): ReviewPhaseStats {
   return {
@@ -43,7 +43,13 @@ export function toReviewPhaseStats(stats: ReviewStats, assessmentRunning: boolea
 
 export function usePanelStatus(session: DevSessionWithPlanItem): PanelStatus {
   const impl = useAgentSession(session.id);
-  const review = useAgentSession(toReviewSessionId(session.id));
+  const reviewSessionId = useDevSessionsStore((s) => reviewSessionIdForDisplay(
+    session.id,
+    session.current_step_id,
+    s.agentStateBySessionId,
+    s.reviewRunsByImplementationId.get(session.id) ?? [],
+  ));
+  const review = useAgentSession(reviewSessionId);
 
   const commitStatus = useDevSessionsStore(
     (s) => s.commitStateBySessionId.get(session.id)?.status ?? null,

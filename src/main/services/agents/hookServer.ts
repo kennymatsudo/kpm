@@ -10,7 +10,7 @@
  */
 
 import * as http from 'http';
-import type { AgentActivity } from '../../../shared/agent-types';
+import type { AgentActivity, AgentActivityKind } from '../../../shared/agent-types';
 
 const LOG_PREFIX = '[HookServer]';
 
@@ -21,6 +21,13 @@ export interface HookEvent {
   input?: string;
   error?: string;
   exitCode?: number;
+  /**
+   * Correlation id for the originating tool call, when the CLI agent's hook
+   * payload carries one. No current producer sets this — Claude Code's
+   * hook settings (`hooks/claudeCodeHooks.ts`) only forward `$CLAUDE_TOOL_NAME`
+   * — so callers still fall back to name-based pairing until one does.
+   */
+  callId?: string;
 }
 
 export type HookEventHandler = (sessionId: string, hookEvent: HookEvent) => void;
@@ -35,6 +42,33 @@ export interface HookServer {
 export function parseHookSessionId(url: string | undefined): string | null {
   const match = /^\/hook\/([A-Za-z0-9_-]+)$/.exec(url || '');
   return match?.[1] ?? null;
+}
+
+/** Classify a CLI agent's tool by what it does, not by its name, so the renderer can stop pattern-matching. */
+function toActivityKind(toolName: string | undefined): AgentActivityKind {
+  switch (toolName) {
+    case 'Read':
+    case 'Grep':
+    case 'Glob':
+    case 'read_file':
+    case 'search_file_content':
+    case 'list_directory':
+    case 'glob':
+      return 'read';
+    case 'Edit':
+    case 'Write':
+    case 'write_file':
+    case 'edit_file':
+    case 'replace':
+      return 'edit';
+    case 'Bash':
+    case 'run_shell_command':
+      return 'run';
+    case undefined:
+      return 'other';
+    default:
+      return 'other';
+  }
 }
 
 /**
@@ -52,6 +86,8 @@ export function hookEventToActivity(hookEvent: HookEvent): AgentActivity | null 
         toolInput: hookEvent.input,
         summary: hookEvent.summary || hookEvent.toolName || 'Tool call',
         status: 'running',
+        kind: toActivityKind(hookEvent.toolName),
+        callId: hookEvent.callId,
       };
     case 'post_tool_use':
       return {
@@ -60,6 +96,8 @@ export function hookEventToActivity(hookEvent: HookEvent): AgentActivity | null 
         toolName: hookEvent.toolName,
         summary: hookEvent.summary || hookEvent.toolName || 'Tool result',
         status: hookEvent.error ? 'failed' : 'success',
+        kind: toActivityKind(hookEvent.toolName),
+        callId: hookEvent.callId,
       };
     case 'stop':
       return {

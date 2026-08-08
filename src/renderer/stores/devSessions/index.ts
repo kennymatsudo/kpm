@@ -30,6 +30,13 @@ export interface BackgroundCommitState {
   moveToReviewOnSuccess?: boolean;
 }
 
+/** One review-role runtime observed for an implementation session (opposing review or a playbook subagent). */
+export interface ReviewRunRecord {
+  sessionId: string;
+  stepId?: string;
+  runIndex?: number;
+}
+
 export interface DevSessionsState {
   // Data
   projectId: string | null;
@@ -68,6 +75,8 @@ export interface DevSessionsState {
   completionBySessionId: Map<string, AgentCompletionSummary>;
   reviewFindingsBySessionId: Map<string, ReviewFinding[]>;
   stepCostsBySessionId: Map<string, Record<string, number>>;
+  /** Review-role runtimes seen for each implementation session, keyed by that session's id. */
+  reviewRunsByImplementationId: Map<string, ReviewRunRecord[]>;
 
   // Actions
   setSessions: (sessions: DevSessionWithPlanItem[]) => void;
@@ -124,6 +133,8 @@ export interface DevSessionsState {
   handleAgentQuestion: (devSessionId: string, question: AgentQuestion) => void;
   handleAgentComplete: (devSessionId: string, summary: AgentCompletionSummary, findings?: ReviewFinding[]) => void;
   handleAgentError: (devSessionId: string, error: string) => void;
+  /** Record that `run.sessionId` is a review-role runtime for `implementationSessionId`. Idempotent per session id. */
+  recordReviewRun: (implementationSessionId: string, run: ReviewRunRecord) => void;
   hydrateAgentSnapshot: (
     devSessionId: string,
     snapshot: {
@@ -176,6 +187,7 @@ function createInitialState() {
     completionBySessionId: new Map<string, AgentCompletionSummary>(),
     reviewFindingsBySessionId: new Map<string, ReviewFinding[]>(),
     stepCostsBySessionId: new Map<string, Record<string, number>>(),
+    reviewRunsByImplementationId: new Map<string, ReviewRunRecord[]>(),
   };
 }
 
@@ -288,6 +300,16 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
         latestActivityBySessionId: nextLatest,
         activitiesBySessionId: nextAll,
       };
+    });
+  },
+
+  recordReviewRun: (implementationSessionId, run) => {
+    set((s) => {
+      const existing = s.reviewRunsByImplementationId.get(implementationSessionId) ?? [];
+      const withoutRun = existing.filter((entry) => entry.sessionId !== run.sessionId);
+      const next = new Map(s.reviewRunsByImplementationId);
+      next.set(implementationSessionId, [...withoutRun, run]);
+      return { reviewRunsByImplementationId: next };
     });
   },
 

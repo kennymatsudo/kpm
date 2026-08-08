@@ -43,6 +43,10 @@ interface FileStat {
   content: string;
 }
 
+export function shouldShowDiffLoading(diff: string | null | undefined, isLoading: boolean): boolean {
+  return isLoading && diff === undefined;
+}
+
 /** Parse a unified diff into per-file stats and content */
 function parseDiffStats(diff: string): FileStat[] {
   const files: FileStat[] = [];
@@ -425,7 +429,7 @@ export const ChangesTab = memo(function ChangesTab({
     </button>
   );
 
-  if (isLoading) {
+  if (shouldShowDiffLoading(diff, isLoading)) {
     return (
       <div className="flex items-center justify-center h-32 text-text-muted text-xs">
         Loading diff...
