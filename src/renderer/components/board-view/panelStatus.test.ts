@@ -98,6 +98,27 @@ describe('derivePanelStatus — running phases', () => {
     expect(derivePanelStatus(makeInputs({
       reviewStats: makeStats({ queuedCodeCount: 1 }),
     })).phase).toBe('addressing');
+
+    expect(derivePanelStatus(makeInputs({
+      implAgentState: 'working',
+      reviewStats: makeStats({ updatingCodeCount: 1 }),
+    })).phase).toBe('addressing');
+  });
+
+  it('shows the reply-drafting action after code updates complete', () => {
+    const status = derivePanelStatus(makeInputs({
+      implAgentState: 'complete',
+      hasPr: true,
+      prState: 'OPEN',
+      reviewStats: makeStats({
+        inProgressImplCount: 1,
+        updatingCodeCount: 1,
+      }),
+    }));
+
+    expect(status.phase).toBe('review_open');
+    expect(status.nextAction?.text).toBe('1 addressed thread — draft the replies');
+    expect(status.nextAction?.primary).toEqual({ label: 'Draft replies', action: 'draft_replies' });
   });
 
   it('shows commit-hook repair as a build-phase busy state', () => {

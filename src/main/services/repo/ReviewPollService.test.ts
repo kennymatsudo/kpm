@@ -502,6 +502,7 @@ describe('ReviewPollService', () => {
       error: null,
     });
     const harness = buildHarness({
+      session: createSession({ auto_address_pr_reviews: true }),
       snapshot: createSnapshot({
         state: 'OPEN',
         reviewDecision: 'CHANGES_REQUESTED',
@@ -535,6 +536,34 @@ describe('ReviewPollService', () => {
       error: null,
     }));
     expect(task.internal_state).toBeNull();
+  });
+
+  it('leaves implement findings in the review queue unless the task enables automatic addressing', async () => {
+    const task = createTask({
+      status: 'needs_review',
+      internal_state: null,
+      disposition: null,
+      error: null,
+    });
+    const harness = buildHarness({
+      snapshot: createSnapshot({
+        state: 'OPEN',
+        reviewDecision: 'CHANGES_REQUESTED',
+        threads: [createThread()],
+      }),
+      tasks: [task],
+    });
+    harness.reviewAssessmentService.assessThreads.mockImplementation(() => {
+      task.status = 'assessed';
+      task.disposition = 'implement';
+      return Promise.resolve({ ok: true, data: [] });
+    });
+
+    const result = await harness.service.pollSession('session-1');
+
+    expect(result).toMatchObject({ action: 'assessed', implementCount: 1 });
+    expect(harness.reviewService.queueReviewTasks).not.toHaveBeenCalled();
+    expect(harness.devSessionService.sendAgentFollowUp).not.toHaveBeenCalled();
   });
 
   it('uses linked PR status as a fallback when the review snapshot was unchanged', async () => {

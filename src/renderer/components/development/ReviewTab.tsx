@@ -22,6 +22,7 @@ import { useDevSessionsStore } from '../../stores/devSessions';
 import { useProposedChangeDisposal } from '../../stores/proposedChangeDisposal';
 import { toast } from '../../stores/toastStore';
 import { openExternalUrl } from '../../services/shellService';
+import { updateDevSessionAutoAddressPrReviews } from '../../services/devSessionService';
 import type { ReviewAssessmentOptions } from '../../stores/devSessions/helpers';
 import { githubMarkdownOptions, transformPlanRefs } from '../../utils/markdown';
 import { Badge, DropdownMenu, EmptyState, LoadingButton } from '../ui';
@@ -391,7 +392,9 @@ function ThreadRow({
   const author = getThreadAuthor(thread);
   const taskIsAssessing = isAssessing || task?.internal_state === 'assessment_running';
   const taskQueuedForCode = task ? isReviewTaskQueuedForCode(task) : false;
-  const taskUpdatingCode = task ? isReviewTaskUpdatingCode(task) && !taskQueuedForCode : false;
+  const taskUpdatingCode = task
+    ? isReviewTaskUpdatingCode(task) && isAddressingReview && !taskQueuedForCode
+    : false;
   const hasAttention = taskIsAssessing || (task ? isTaskActionable(task) : !isThreadClosed(thread));
   const pill = getThreadPill(task, thread);
 
@@ -786,11 +789,16 @@ export function ReviewTab({ session }: ReviewTabProps) {
   const [threadView, setThreadView] = useState<ThreadView>('queue');
   const [expandedThreadId, setExpandedThreadId] = useState<string | null>(null);
   const [menuState, setMenuState] = useState<ReviewMenuState | null>(null);
+  const [autoAddressPrReviews, setAutoAddressPrReviews] = useState(Boolean(session.auto_address_pr_reviews));
 
   useEffect(() => {
     if (!hasPr) return;
     void loadReviewInbox(session.id);
   }, [hasPr, loadReviewInbox, session.id]);
+
+  useEffect(() => {
+    setAutoAddressPrReviews(Boolean(session.auto_address_pr_reviews));
+  }, [session.auto_address_pr_reviews]);
 
   useEffect(() => {
     if (inbox && !inbox.ownership && hasPr) {
@@ -915,6 +923,15 @@ export function ReviewTab({ session }: ReviewTabProps) {
       toast.success(result.context ? 'Sent thread to dev session' : 'Queued thread for the current code update');
       return true;
     });
+  }
+
+  async function handleAutoAddressChange(enabled: boolean): Promise<void> {
+    setAutoAddressPrReviews(enabled);
+    const result = await updateDevSessionAutoAddressPrReviews({ sessionId: session.id, enabled });
+    if (!result.success) {
+      setAutoAddressPrReviews(!enabled);
+      toast.error(result.error || 'Could not update automatic addressing');
+    }
   }
 
   async function handleDraftReplies(): Promise<void> {
@@ -1082,6 +1099,14 @@ export function ReviewTab({ session }: ReviewTabProps) {
                   <span className="text-text-tertiary">&middot; synced {formatDateTime(snapshot.fetchedAt)}</span>
                 </div>
               )}
+              <label className="mt-2 flex items-center gap-1.5 text-xxs text-text-muted">
+                <input
+                  type="checkbox"
+                  checked={autoAddressPrReviews}
+                  onChange={(event) => void handleAutoAddressChange(event.target.checked)}
+                />
+                Automatically address new GitHub comments
+              </label>
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5">

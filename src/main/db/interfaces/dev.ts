@@ -51,6 +51,7 @@ export interface IDevSessionRepository {
   updateStepOutputs(id: string, outputs: string): void;
   /** Update the persisted opposing-review policy for a session. */
   updateReviewPolicy(id: string, reviewPolicy: AgentReviewPolicy): void;
+  updateAutoAddressPrReviews(id: string, enabled: boolean): void;
   /** Update PR tracking info on a session */
   updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null): void;
   /** Update session name */

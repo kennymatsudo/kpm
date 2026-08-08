@@ -590,6 +590,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           status: 'pending',
           agent_type: options.agentType ?? 'claude',
           review_policy: options.reviewPolicy ?? 'auto',
+          auto_address_pr_reviews: false,
           automation_phase: null,
           playbook_id: options.playbook.id,
           playbook_snapshot: JSON.stringify(options.playbook),
@@ -1121,6 +1122,12 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
      */
     updateMergeOrder(sessionId: string, order: number | null): void {
       deps.devSessions.updateMergeOrder(sessionId, order);
+    },
+
+    updateAutoAddressPrReviews(sessionId: string, enabled: boolean): ServiceResult<void> {
+      if (!deps.devSessions.get(sessionId)) return failure(`Session not found: ${sessionId}`);
+      deps.devSessions.updateAutoAddressPrReviews(sessionId, enabled);
+      return success(undefined);
     },
 
     /**

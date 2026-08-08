@@ -4366,6 +4366,15 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1120,
+    name: '120_add_dev_session_auto_address_pr_reviews',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE dev_sessions ADD COLUMN auto_address_pr_reviews INTEGER NOT NULL DEFAULT 0;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

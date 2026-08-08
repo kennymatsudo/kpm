@@ -468,6 +468,15 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         };
       }
 
+      if (!session.auto_address_pr_reviews) {
+        return {
+          sessionId,
+          action: 'assessed',
+          newThreadCount: needsReviewTasks.length,
+          implementCount: implementTasks.length,
+        };
+      }
+
       const implementTaskIds = implementTasks.map(t => t.id);
       const threadIds = implementTasks.map(t => t.thread_id);
 

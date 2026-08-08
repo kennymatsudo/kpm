@@ -105,6 +105,11 @@ function buildDevSessionHandlers(devSessionService: DevSessionService): DevSessi
     updateMergeOrder: ({ sessionId, order }) => {
       devSessionService.updateMergeOrder(sessionId, order);
     },
+
+    updateAutoAddressPrReviews: ({ sessionId, enabled }) => {
+      const result = devSessionService.updateAutoAddressPrReviews(sessionId, enabled);
+      if (!result.ok) throw new Error(result.error);
+    },
   };
 }
 

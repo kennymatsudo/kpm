@@ -38,6 +38,7 @@ interface PreparedStatements {
   updatePlaybook: Statement;
   updateStepOutputs: Statement;
   updateReviewPolicy: Statement;
+  updateAutoAddressPrReviews: Statement;
   updatePrInfo: Statement;
   updateName: Statement;
   updateBaseSha: Statement;
@@ -90,11 +91,11 @@ export class DevSessionRepository implements IDevSessionRepository {
         INSERT INTO dev_sessions (
           id, project_id, plan_item_id, repo_id, name,
           worktree_path, branch_name, base_branch,
-          status, agent_type, review_policy, automation_phase,
+          status, agent_type, review_policy, auto_address_pr_reviews, automation_phase,
           playbook_id, playbook_snapshot, current_step_id, step_pass_counts, paused_reason, attention_reason,
           initial_instructions, work_brief_revision
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *
       `),
       updateStatus: db.prepare('UPDATE dev_sessions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
@@ -126,6 +127,11 @@ export class DevSessionRepository implements IDevSessionRepository {
       updateReviewPolicy: db.prepare(`
         UPDATE dev_sessions
         SET review_policy = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `),
+      updateAutoAddressPrReviews: db.prepare(`
+        UPDATE dev_sessions
+        SET auto_address_pr_reviews = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `),
       updatePrInfo: db.prepare(`
@@ -184,6 +190,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       status: row.status,
       agent_type: row.agent_type,
       review_policy: row.review_policy ?? 'auto',
+      auto_address_pr_reviews: Boolean(row.auto_address_pr_reviews),
       automation_phase: row.automation_phase ?? null,
       playbook_id: row.playbook_id ?? null,
       playbook_snapshot: row.playbook_snapshot ?? null,
@@ -241,6 +248,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       session.status,
       session.agent_type,
       session.review_policy,
+      session.auto_address_pr_reviews ? 1 : 0,
       session.automation_phase ?? null,
       session.playbook_id ?? null,
       session.playbook_snapshot ?? null,
@@ -292,6 +300,10 @@ export class DevSessionRepository implements IDevSessionRepository {
 
   updateReviewPolicy(id: string, reviewPolicy: AgentReviewPolicy): void {
     this.stmts.updateReviewPolicy.run(reviewPolicy, id);
+  }
+
+  updateAutoAddressPrReviews(id: string, enabled: boolean): void {
+    this.stmts.updateAutoAddressPrReviews.run(enabled ? 1 : 0, id);
   }
 
   updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null): void {

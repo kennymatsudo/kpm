@@ -106,6 +106,11 @@ export const devSessionEndpoints = {
     params: z.object({ sessionId: uuid, order: z.number().int().min(0).nullable() }),
     result: resultOf<RegistryResponse>(),
   },
+  updateAutoAddressPrReviews: {
+    channel: 'dev-session:update-auto-address-pr-reviews',
+    params: z.object({ sessionId: uuid, enabled: z.boolean() }),
+    result: resultOf<RegistryResponse>(),
+  },
 } satisfies Record<string, EndpointDefinition>;
 
 export type DevSessionEndpoints = typeof devSessionEndpoints;

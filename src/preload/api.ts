@@ -787,6 +787,8 @@ const devSessions = {
   getMergeOrder: devSessionInvoke.getMergeOrder,
 
   updateMergeOrder: devSessionInvoke.updateMergeOrder,
+
+  updateAutoAddressPrReviews: devSessionInvoke.updateAutoAddressPrReviews,
 };
 
 // =============================================================================

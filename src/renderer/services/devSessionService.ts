@@ -83,6 +83,12 @@ export function updateDevSessionMergeOrder(
   return window.api.devSessions.updateMergeOrder(payload);
 }
 
+export function updateDevSessionAutoAddressPrReviews(
+  payload: { sessionId: string; enabled: boolean },
+): Promise<{ success: boolean; error?: string }> {
+  return window.api.devSessions.updateAutoAddressPrReviews(payload);
+}
+
 export function subscribeToSessionStatusChanges(
   callback: (event: SessionStatusChangedEvent) => void
 ): () => void {

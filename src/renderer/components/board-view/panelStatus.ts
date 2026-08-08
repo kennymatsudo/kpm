@@ -203,7 +203,10 @@ function isActive(state: AgentSessionState | undefined): boolean {
 function isAddressing(i: PanelStatusInputs): boolean {
   if (i.automationPhase === 'addressing_review') return true;
   const s = i.reviewStats;
-  return !!s && (s.queuedCodeCount > 0 || s.updatingCodeCount > 0);
+  return !!s && (
+    s.queuedCodeCount > 0
+    || (isActive(i.implAgentState) && s.updatingCodeCount > 0)
+  );
 }
 
 function isReviewing(i: PanelStatusInputs): boolean {

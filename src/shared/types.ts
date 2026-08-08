@@ -1124,6 +1124,7 @@ export interface DevSession {
   // Agent type used for this session
   agent_type: AgentType;
   review_policy: AgentReviewPolicy;
+  auto_address_pr_reviews?: boolean;
   automation_phase: DevSessionAutomationPhase | null;
   playbook_id: string | null;
   playbook_snapshot: string | null;
