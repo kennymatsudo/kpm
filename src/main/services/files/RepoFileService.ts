@@ -9,20 +9,9 @@ import {
   pathExists,
   resolveScopedPath,
 } from './scopedFs';
-import { findEnclosingGitRoot, getIgnoredPaths } from '../repo/gitUtils';
+import { markIgnoredNodes, resolveGitRoot } from '../repo/ignoreSet';
 import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
 import { shouldHideFileTreeEntry } from './fileTreeVisibility';
-
-/** Mark gitignored nodes in-place. */
-async function enrichWithIgnoreStatus(nodes: FileNode[], repoPath: string, gitRoot: string): Promise<void> {
-  const flat: FileNode[] = [];
-  const walk = (ns: FileNode[]) => ns.forEach(n => { flat.push(n); if (n.children) walk(n.children); });
-  walk(nodes);
-  if (flat.length === 0) return;
-  const relToGit = flat.map(n => path.relative(gitRoot, path.join(repoPath, n.path)));
-  const ignored = await getIgnoredPaths(gitRoot, relToGit);
-  flat.forEach((n, i) => { if (ignored.has(relToGit[i])) n.isIgnored = true; });
-}
 
 /**
  * Editable file extensions - these can be written to
@@ -75,8 +64,8 @@ export function createRepoFileService(deps: RepoFileServiceDeps) {
             console.error(`[RepoFileService] Failed to read ${entryPath}:`, error);
           },
         });
-        const gitRoot = findEnclosingGitRoot(repoPath) ?? repoPath;
-        await enrichWithIgnoreStatus(nodes, repoPath, gitRoot);
+        const gitRoot = resolveGitRoot(repoPath) ?? repoPath;
+        await markIgnoredNodes(nodes, repoPath, gitRoot);
         return success(nodes);
       } catch (error) {
         return failure(`Failed to list directory: ${error}`);

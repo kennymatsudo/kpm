@@ -18,6 +18,26 @@ import { toolLogEvents } from '../../../shared/ipc/toolLogEvents';
 /** Maximum entries to keep in memory per session */
 const MAX_ENTRIES_PER_SESSION = 500;
 
+/**
+ * Tool input is logged for inspection, not for replay — a Write or Edit carries
+ * a whole file body, which would otherwise reach the NDJSON file and the
+ * renderer in full.
+ */
+const MAX_INPUT_VALUE_CHARS = 2000;
+const MAX_INPUT_DEPTH = 4;
+
+function truncateLongStrings(value: unknown, depth = 0): unknown {
+  if (typeof value === 'string') {
+    if (value.length <= MAX_INPUT_VALUE_CHARS) return value;
+    return `${value.slice(0, MAX_INPUT_VALUE_CHARS)}… (truncated, ${value.length} chars)`;
+  }
+  if (depth >= MAX_INPUT_DEPTH || value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((item) => truncateLongStrings(item, depth + 1));
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, truncateLongStrings(item, depth + 1)])
+  );
+}
+
 export interface ToolCallLoggerDeps {
   getMainWindow: () => BrowserWindow | null;
 }
@@ -42,7 +62,8 @@ export function createToolCallLogger(deps: ToolCallLoggerDeps): ToolCallLogger {
   const entriesBySession = new Map<string, ToolCallLogEntry[]>();
   const turnIndex = new Map<string, number>();
   let writeChain: Promise<void> = Promise.resolve();
-  let enabled = true;
+  /** Off until a reader attaches: every recorded call costs a serialize, a disk append, and an IPC broadcast. */
+  let enabled = false;
 
   const sessionId = new Date().toISOString().replace(/[:.]/g, '-');
   const tempDir = app.getPath('temp');
@@ -66,27 +87,32 @@ export function createToolCallLogger(deps: ToolCallLoggerDeps): ToolCallLogger {
     logToolCall(entry: ToolCallLogEntry): void {
       if (!enabled) return;
 
+      const recorded: ToolCallLogEntry = {
+        ...entry,
+        input: truncateLongStrings(entry.input) as Record<string, unknown>,
+      };
+
       // Store in memory
-      let entries = entriesBySession.get(entry.chatSessionId);
+      let entries = entriesBySession.get(recorded.chatSessionId);
       if (!entries) {
         entries = [];
-        entriesBySession.set(entry.chatSessionId, entries);
+        entriesBySession.set(recorded.chatSessionId, entries);
       }
 
       // Evict oldest if at capacity
       if (entries.length >= MAX_ENTRIES_PER_SESSION) {
         entries.shift();
       }
-      entries.push(entry);
+      entries.push(recorded);
 
       // Write NDJSON line
       enqueueLine({
         type: 'tool_call',
-        ...entry,
+        ...recorded,
       });
 
       // Broadcast to renderer
-      broadcast(toolLogEvents.call, entry);
+      broadcast(toolLogEvents.call, recorded);
     },
 
     finalizeTurn(projectId: string, chatSessionId: string): ToolCallTurnSummary | null {

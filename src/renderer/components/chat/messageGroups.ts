@@ -8,8 +8,8 @@ export type SegmentGroup =
 
 /**
  * Split segments into render groups, one turn at a time (`checkpoint` segments
- * delimit turns inside a merged message — see `finalizeMessage` in
- * streamingSlice.ts).
+ * delimit turns inside a merged message — see `mergeAssistantTurns` in
+ * `stores/chat/messageMerge.ts`).
  *
  * Within a turn, every activity/thinking segment collapses into a single
  * `process` group positioned where the turn's *last* tool batch ran. Text

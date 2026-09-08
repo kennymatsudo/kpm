@@ -10,10 +10,11 @@ import { useDevSessionsStore } from '../stores/devSessions';
 import { getAgentActivities, getAgentState } from '../services/agentSessionService';
 import type { AgentSessionState } from '../../shared/types';
 import type { AgentActivity, AgentQuestion, AgentCompletionSummary } from '../../shared/agent-types';
+import { createActivityFeed, type ActivityFeed } from '../components/board-view/activityPresentation';
 
 export interface AgentSessionInfo {
   agentState: AgentSessionState | undefined;
-  activities: AgentActivity[];
+  activityFeed: ActivityFeed;
   latestActivity: AgentActivity | undefined;
   question: AgentQuestion | null | undefined;
   completionStats: AgentCompletionSummary | undefined;
@@ -21,8 +22,8 @@ export interface AgentSessionInfo {
   isTerminal: boolean;
 }
 
-/** Stable identity for sessions with no recorded activities, so selectors don't mint a new array reference every render. */
-const EMPTY_ACTIVITIES: AgentActivity[] = [];
+/** Stable identity for sessions with no recorded activities, so selectors don't mint a new feed every render. */
+const EMPTY_FEED = createActivityFeed();
 
 /**
  * Subscribe to agent session data for a specific dev session ID.
@@ -32,8 +33,8 @@ export function useAgentSession(devSessionId: string | null): AgentSessionInfo {
   const agentState = useDevSessionsStore((s) =>
     devSessionId ? s.agentStateBySessionId.get(devSessionId) : undefined
   );
-  const activities = useDevSessionsStore((s) =>
-    devSessionId ? (s.activitiesBySessionId.get(devSessionId) ?? EMPTY_ACTIVITIES) : EMPTY_ACTIVITIES
+  const activityFeed = useDevSessionsStore((s) =>
+    devSessionId ? (s.activityFeedBySessionId.get(devSessionId) ?? EMPTY_FEED) : EMPTY_FEED
   );
   const latestActivity = useDevSessionsStore((s) =>
     devSessionId ? s.latestActivityBySessionId.get(devSessionId) : undefined
@@ -57,8 +58,8 @@ export function useAgentSession(devSessionId: string | null): AgentSessionInfo {
     // Only fetch from main process when there is no in-store state yet.
     const store = useDevSessionsStore.getState();
     const hasState = store.agentStateBySessionId.has(devSessionId);
-    const existingActivities = store.activitiesBySessionId.get(devSessionId);
-    if (hasState && existingActivities && existingActivities.length > 0) {
+    const existingFeed = store.activityFeedBySessionId.get(devSessionId);
+    if (hasState && existingFeed && existingFeed.count > 0) {
       hydratedRef.current.add(devSessionId);
       return;
     }
@@ -90,12 +91,12 @@ export function useAgentSession(devSessionId: string | null): AgentSessionInfo {
 
     return {
       agentState,
-      activities,
+      activityFeed,
       latestActivity,
       question,
       completionStats,
       isActive,
       isTerminal,
     };
-  }, [agentState, activities, latestActivity, question, completionStats]);
+  }, [agentState, activityFeed, latestActivity, question, completionStats]);
 }

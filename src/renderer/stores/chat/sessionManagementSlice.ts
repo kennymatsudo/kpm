@@ -1,6 +1,8 @@
+import { emit } from '../storeEvents';
 import type { ChatState, ChatSet, ChatGet } from './types';
 import { createInitialPerSessionState } from './baseState';
 import { streamingBuffer } from './utils';
+import { applyStreamEvent } from './chatStreamReducer';
 
 export function createSessionManagementSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
   'getOrCreateSession' | 'setViewedSession' | 'markSessionActive' | 'markSessionInactive' | 'removeSession'
@@ -49,7 +51,13 @@ export function createSessionManagementSlice(set: ChatSet, get: ChatGet): Pick<C
     },
 
     markSessionInactive: (chatSessionId) => {
-      streamingBuffer.clear(chatSessionId);
+      // Flush (not clear) any buffered-but-unapplied chunks: teardown can run
+      // without a prior `finalizeMessage` call (see `NewSessionButton`'s
+      // disconnect-then-deactivate sequence), so the throttle buffer may
+      // still hold text that never made it into `streamingSegments`.
+      // Dropping it here would silently lose the tail of a turn `deactivate`
+      // is about to commit.
+      const buffered = streamingBuffer.flush(chatSessionId);
 
       set((state) => {
         const activeSessionIds = new Set(state.activeSessionIds);
@@ -59,16 +67,10 @@ export function createSessionManagementSlice(set: ChatSet, get: ChatGet): Pick<C
         const session = sessions.get(chatSessionId);
         if (session) {
           sessions.set(chatSessionId, {
-            ...session,
-            isStreaming: false,
-            streamingContent: '',
-            streamingThinking: '',
-            streamingSegments: [],
-            pendingActivities: [],
-            activities: [],
+            ...applyStreamEvent(session, { type: 'deactivate', buffered }),
             sessionState: 'idle',
-            streamStartedAt: null,
-            lastStreamUpdateAt: null,
+            // The CLI process is gone, so its background tasks are too.
+            backgroundTasks: [],
           });
         }
 
@@ -93,7 +95,10 @@ export function createSessionManagementSlice(set: ChatSet, get: ChatGet): Pick<C
 
       set({ sessions, activeSessionIds, viewedSessionId });
 
-      if (sessions.size === 0) get().startNewChatSession();
+      // Closing the last tab is a request to be done with chat, so the panel
+      // hides instead of opening a replacement session. The layout owns that
+      // collapse, hence the event.
+      if (sessions.size === 0) emit({ type: 'chat-tabs-emptied' });
     },
   };
 }

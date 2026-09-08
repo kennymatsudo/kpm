@@ -37,6 +37,13 @@ interface TaskPromptTemplateState {
 
   // Reset
   reset: () => void;
+  /**
+   * Clears project-scoped template data on project switch. Global-scope
+   * templates (project_id === null) apply the same to every project, so
+   * they and the `scope` preference are left alone here — only data that
+   * was fetched for the departing project is cleared.
+   */
+  resetProjectState: () => void;
 }
 
 const initialState = {
@@ -191,5 +198,12 @@ export const useTaskPromptTemplateStore = create<TaskPromptTemplateState>((set, 
   reset: () => {
     loadTemplatesRequestId += 1;
     set(initialState);
+  },
+
+  resetProjectState: () => {
+    loadTemplatesRequestId += 1;
+    if (get().scope === 'project') {
+      set({ currentProjectId: null, templates: [], selectedTemplateId: null, isLoading: false });
+    }
   },
 }));

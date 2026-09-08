@@ -22,6 +22,14 @@ const MAX_RENDERER_ENTRIES = 500;
 /** Coarser-grained than entries: one summary per Claude turn */
 const MAX_RENDERER_SUMMARIES = 200;
 
+/**
+ * The main process records nothing unless someone is reading: each call there
+ * costs a serialize, a disk append, and an IPC broadcast.
+ */
+function syncRecording(state: Pick<ToolLogState, 'isPanelOpen' | 'isEnabled'>): void {
+  void setToolLogEnabled(state.isPanelOpen && state.isEnabled);
+}
+
 export const useToolLogStore = create<ToolLogState>((set) => ({
   entries: [],
   summaries: [],
@@ -50,12 +58,19 @@ export const useToolLogStore = create<ToolLogState>((set) => ({
   },
 
   togglePanel() {
-    set((state) => ({ isPanelOpen: !state.isPanelOpen }));
+    set((state) => {
+      const next = { isPanelOpen: !state.isPanelOpen };
+      syncRecording({ ...state, ...next });
+      return next;
+    });
   },
 
   setEnabled(enabled: boolean) {
-    set({ isEnabled: enabled });
-    void setToolLogEnabled(enabled);
+    set((state) => {
+      const next = { isEnabled: enabled };
+      syncRecording({ ...state, ...next });
+      return next;
+    });
   },
 
   setFilterCategory(cat: ActivityType | null) {

@@ -52,7 +52,7 @@ Main process
 devSessionsStore
   ├── session rows
   ├── agentStateBySessionId
-  ├── activitiesBySessionId
+  ├── activityFeedBySessionId
   ├── latestActivityBySessionId
   ├── completionBySessionId
   ├── commitStateBySessionId

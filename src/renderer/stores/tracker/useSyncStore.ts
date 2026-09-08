@@ -133,6 +133,7 @@ interface SyncState {
 
   // Reset
   reset: () => void;
+  resetProjectState: () => void;
 }
 
 const initialState = {
@@ -366,6 +367,10 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   },
 
   reset: () => {
+    clearPreviewCache();
+    set(initialState);
+  },
+  resetProjectState: () => {
     clearPreviewCache();
     set(initialState);
   },

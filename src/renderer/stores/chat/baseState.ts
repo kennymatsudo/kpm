@@ -1,5 +1,6 @@
 import type { ClaudeModel, ChatEffortLevel, ChatProvider, PerSessionState, ChatState, CodexChatModel } from './types';
 import { DEFAULT_CODEX_CHAT_MODEL } from '../../../shared/types';
+import { createIdleStreamingCluster } from './chatStreamReducer';
 
 /** Create initial state for a new session */
 export const createInitialPerSessionState = (
@@ -11,16 +12,12 @@ export const createInitialPerSessionState = (
   codexModel: CodexChatModel = DEFAULT_CODEX_CHAT_MODEL,
 ): PerSessionState => ({
   messages: [],
-  streamingSegments: [],
-  streamingContent: '',
-  streamingThinking: '',
-  pendingActivities: [],
-  isStreaming: false,
+  ...createIdleStreamingCluster(),
+  // Deliberately outside the streaming cluster: background work outlives the
+  // turn, so finalizing a turn must not clear it.
+  backgroundTasks: [],
   error: null,
-  activities: [],
   sessionState: 'idle',
-  streamStartedAt: null,
-  lastStreamUpdateAt: null,
   draftMessage: '',
   pendingAttachments: [],
   suggestions: [],

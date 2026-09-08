@@ -4,13 +4,12 @@ import { streamingBuffer } from './utils';
 import { applyStreamEvent } from './chatStreamReducer';
 
 export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
-  'addUserMessage' | 'clearQueuedFlag' | 'removeQueuedUserMessage' | 'setRetrying' | 'setError' | 'clearError' | 'setDraftMessage' | 'setPendingAttachments' | 'setSuggestions' | 'setClaudeSessionId' | 'setSessionTitle' | 'setMcpStatus' | 'setLastTurnUsage' | 'setSessionState' | 'reset' | 'resetProjectState'
+  'addUserMessage' | 'clearQueuedFlag' | 'removeQueuedUserMessage' | 'setRetrying' | 'setError' | 'clearError' | 'setDraftMessage' | 'setPendingAttachments' | 'setSuggestions' | 'setClaudeSessionId' | 'setSessionTitle' | 'setMcpStatus' | 'setBackgroundTasks' | 'setLastTurnUsage' | 'setSessionState' | 'reset' | 'resetProjectState'
 > {
   return {
     addUserMessage: (chatSessionId, content, attachments, options) => set((state) => {
       const sessions = new Map(state.sessions);
       const session = sessions.get(chatSessionId) ?? createInitialPerSessionState(state.nextSessionNumber);
-      const now = Date.now();
       const isQueued = options?.queued ?? false;
 
       const newUserMessage: Message = {
@@ -24,25 +23,16 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
         ...(options?.liveFollowUp ? { liveFollowUp: true } : {}),
       };
 
+      const sessionWithMessage: PerSessionState = { ...session, messages: [...session.messages, newUserMessage] };
+
       // Live follow-ups slip in behind a still-streaming turn — preserve the
       // in-flight assistant state so the response can finish naturally and
-      // its bubble doesn't get blown away.
-      const nextSession: PerSessionState = isQueued
-        ? { ...session, messages: [...session.messages, newUserMessage] }
-        : {
-            ...session,
-            messages: [...session.messages, newUserMessage],
-            isStreaming: true,
-            streamingContent: '',
-            streamingThinking: '',
-            streamingSegments: [],
-            pendingActivities: [],
-            error: null,
-            activities: [],
-            suggestions: [],
-            streamStartedAt: now,
-            lastStreamUpdateAt: now,
-          };
+      // its bubble doesn't get blown away. A fresh (non-queued) send starts a
+      // new turn; routing that through the reducer's `user-message` event
+      // keeps the streaming cluster it resets owned by `applyStreamEvent`.
+      const nextSession = isQueued
+        ? sessionWithMessage
+        : applyStreamEvent(sessionWithMessage, { type: 'user-message' });
 
       sessions.set(chatSessionId, nextSession);
 
@@ -183,6 +173,19 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
       if (!session) return state;
 
       sessions.set(chatSessionId, { ...session, mcpDegraded: degraded, mcpError: error ?? null });
+      return { sessions };
+    }),
+
+    setBackgroundTasks: (chatSessionId, tasks) => set((state) => {
+      const session = state.sessions.get(chatSessionId);
+      if (!session) return state;
+      // The signal fires on every membership change, most of which repeat an
+      // already-empty set; bail without a new Map so idle sessions don't
+      // re-render.
+      if (session.backgroundTasks.length === 0 && tasks.length === 0) return state;
+
+      const sessions = new Map(state.sessions);
+      sessions.set(chatSessionId, { ...session, backgroundTasks: tasks });
       return { sessions };
     }),
 

@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
-import { CARD_WIDTHS, GROUP_LAYOUT } from '../../../constants/layout';
-import { buildHierarchyWithHeights, buildItemMaps, calculateGroupLayout } from '../../../utils/planHierarchy';
+import { CARD_WIDTHS } from '../../../constants/layout';
+import { buildHierarchyWithHeights, buildHierarchyTree, layoutGroup, type TreeNode } from '../../../utils/planHierarchy';
 import {
   resolveGroupCollisions,
   checkCollisionWithObstacles,
@@ -53,36 +53,20 @@ interface AutoLayoutDeps {
 
 /**
  * Calculate group dimensions based on the items it contains,
- * using the shared utility function.
+ * using the shared utility function. Sizing agrees with the group's
+ * eventual persisted bounds (see the item-repositioning pass below) since
+ * both call layoutGroup with the same group width and plan tree.
  */
 function getGroupDimensions(
   group: Group,
   assignedItems: PlanItem[],
-  childrenMap: Map<string, string[]>,
-  itemMap: Map<string, PlanItem>
+  tree: TreeNode[]
 ): { width: number; height: number } {
   if (assignedItems.length === 0) {
     return { width: group.width, height: group.height };
   }
 
-  // Collapsed groups use single-column width and collapsed height for layout.
-  // This prevents a collapsed group from reserving multi-column space in the grid.
-  if (group.is_collapsed) {
-    return {
-      width: CARD_WIDTHS[0] + GROUP_LAYOUT.PADDING_X * 2,
-      height: GROUP_LAYOUT.COLLAPSED_HEIGHT,
-    };
-  }
-
-  const { bounds } = calculateGroupLayout(
-    group.id,
-    { x: 0, y: 0 },
-    assignedItems,
-    childrenMap,
-    itemMap,
-    undefined,
-    undefined
-  );
+  const { bounds } = layoutGroup(group, assignedItems, tree);
 
   return { width: bounds.width, height: bounds.height };
 }
@@ -94,7 +78,7 @@ function getGroupDimensions(
 /**
  * Hook that provides an auto-layout function for arranging plan items.
  * Macro layout (ungrouped roots + group rectangles) is delegated to elkjs.
- * Group internals continue to use calculateGroupLayout's masonry packing.
+ * Group internals continue to use layoutGroup's masonry packing.
  */
 export function useAutoLayout({
   plannedItems,
@@ -110,7 +94,8 @@ export function useAutoLayout({
       const forceFullLayout = options.forceFullLayout ?? false;
 
       const { rootIds, rootHeights, itemMap } = buildHierarchyWithHeights(plannedItems);
-      const { childrenMap: fullChildrenMap, itemMap: fullItemMap } = buildItemMaps(fullItems);
+      const fullTree: TreeNode[] = buildHierarchyTree(fullItems);
+      const groupsById = new Map(groups.map(group => [group.id, group]));
 
       // Separate ungrouped roots (participate in macro layout) from grouped items
       // (positioned by their group's internal layout).
@@ -129,7 +114,7 @@ export function useAutoLayout({
       const groupDimensionsMap = new Map<string, { width: number; height: number }>();
       for (const group of groups) {
         const groupItems = itemsByGroupId.get(group.id) ?? [];
-        groupDimensionsMap.set(group.id, getGroupDimensions(group, groupItems, fullChildrenMap, fullItemMap));
+        groupDimensionsMap.set(group.id, getGroupDimensions(group, groupItems, fullTree));
       }
 
       const toPosition: SizedItem[] = [];
@@ -307,14 +292,13 @@ export function useAutoLayout({
         const groupItems = itemsByGroupId.get(groupId) ?? [];
         if (groupItems.length === 0) continue;
 
-        const { itemPositions } = calculateGroupLayout(
-          groupId,
-          { x: newGroupPos.x, y: newGroupPos.y },
+        const group = groupsById.get(groupId);
+        if (!group) continue;
+
+        const { itemPositions } = layoutGroup(
+          { ...group, position_x: newGroupPos.x, position_y: newGroupPos.y, width: newGroupPos.width },
           groupItems,
-          fullChildrenMap,
-          fullItemMap,
-          undefined,
-          newGroupPos.width
+          fullTree
         );
 
         for (const [itemId, pos] of itemPositions) {

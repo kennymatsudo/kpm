@@ -102,7 +102,7 @@ describe('applyStreamEvent thinking/activity', () => {
     expect(afterSecond.isStreaming).toBe(true);
   });
 
-  it('activity-start re-enters streaming and keeps only the last 5 plus the new one', () => {
+  it('activity-start re-enters streaming and appends the activity to the (uncapped) list', () => {
     const session = { ...createInitialPerSessionState(1), isStreaming: false, streamStartedAt: null };
 
     const next = applyStreamEvent(session, { type: 'activity-start', activity: makeActivity('a1', 'Running: npm test') });

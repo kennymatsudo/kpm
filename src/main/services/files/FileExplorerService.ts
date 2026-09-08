@@ -20,28 +20,12 @@ import {
 } from './pathSecurity';
 import type { FileSummaryService } from './FileSummaryService';
 import { resolvePlanRefs } from '../../documents/planRefResolver';
-import { findEnclosingGitRoot, getIgnoredPaths } from '../repo/gitUtils';
+import { findEnclosingGitRoot } from '../repo/gitUtils';
+import { markIgnoredNodes, resolveGitRoot } from '../repo/ignoreSet';
 import { getConfig } from '../../config';
 import { shouldHideFileTreeEntry } from './fileTreeVisibility';
 
 const MARKDOWN_EXT_REGEX = /\.(md|mdx|markdown)$/i;
-
-/** Flatten a FileNode tree into a single array (mutates nothing). */
-function flattenNodes(nodes: FileNode[]): FileNode[] {
-  const result: FileNode[] = [];
-  const walk = (ns: FileNode[]) => ns.forEach(n => { result.push(n); if (n.children) walk(n.children); });
-  walk(nodes);
-  return result;
-}
-
-/** Mark gitignored nodes in-place. No-ops gracefully if not in a git repo. */
-async function enrichWithIgnoreStatus(nodes: FileNode[], projectRoot: string, gitRoot: string): Promise<void> {
-  const flat = flattenNodes(nodes);
-  if (flat.length === 0) return;
-  const relToGit = flat.map(n => path.relative(gitRoot, path.join(projectRoot, n.path)));
-  const ignored = await getIgnoredPaths(gitRoot, relToGit);
-  flat.forEach((n, i) => { if (ignored.has(relToGit[i])) n.isIgnored = true; });
-}
 
 const MAX_BINARY_BYTES = 50 * 1024 * 1024; // 50MB
 const MAX_SUMMARY_BACKFILL_PER_LIST = 25;
@@ -279,9 +263,9 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
           },
         });
 
-        const gitRoot = findEnclosingGitRoot(projectFolder);
+        const gitRoot = resolveGitRoot(projectFolder);
         if (gitRoot) {
-          await enrichWithIgnoreStatus(nodes, projectFolder, gitRoot);
+          await markIgnoredNodes(nodes, projectFolder, gitRoot);
         }
 
         const isRootDirectory = relativePath === '' || relativePath === '.';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentActivity } from '../../../shared/agent-types';
-import { presentActivities } from './activityPresentation';
+import { appendActivity, createActivityFeed, presentActivities } from './activityPresentation';
 
 const activity = (overrides: Partial<AgentActivity>): AgentActivity => ({
   type: 'tool_use', timestamp: 1, summary: 'Run command', kind: 'run', ...overrides,
@@ -100,5 +100,73 @@ describe('presentActivities', () => {
       expect(first).toMatchObject({ status: 'Passed' });
       expect(second).toMatchObject({ status: 'Failed' });
     });
+  });
+});
+
+describe('activity feed', () => {
+  const run = (overrides: Partial<AgentActivity> = {}) =>
+    activity({ toolName: 'Bash', toolInput: 'npm test', callId: 'call-1', ...overrides });
+
+  const feedOf = (activities: AgentActivity[]) =>
+    activities.reduce((feed, next) => appendActivity(feed, next), createActivityFeed());
+
+  it('appending one at a time matches grouping the whole history at once', () => {
+    const activities = [
+      activity({ type: 'message', summary: 'Reading the code' }),
+      run({ callId: 'a', toolInput: 'ls -la' }),
+      run({ type: 'tool_result', callId: 'a', status: 'success' }),
+      run({ callId: 'b', toolInput: 'npm test' }),
+      run({ type: 'tool_result', callId: 'b', status: 'failed' }),
+      activity({ type: 'message', summary: 'Fixing the failure' }),
+      activity({ kind: 'edit', toolName: 'Edit', summary: 'Edit src/a.ts', callId: 'c' }),
+      run({ callId: 'd', toolInput: 'sleep 20; npm test' }),
+      run({ type: 'tool_result', callId: 'd', status: 'success' }),
+      run({ callId: 'e', toolInput: 'sleep 20; npm test' }),
+      run({ type: 'tool_result', callId: 'e', status: 'success' }),
+      activity({ type: 'error', summary: 'Agent stopped', kind: undefined }),
+    ];
+
+    expect(feedOf(activities).groups).toEqual(presentActivities(activities));
+  });
+
+  it('leaves untouched groups referentially identical when a later group grows', () => {
+    const feed = feedOf([
+      activity({ type: 'message', summary: 'First' }),
+      run({ callId: 'a', toolInput: 'npm test' }),
+      activity({ type: 'message', summary: 'Second' }),
+    ]);
+    const firstGroup = feed.groups[0];
+
+    const next = appendActivity(feed, run({ callId: 'b', toolInput: 'npm run lint' }));
+
+    expect(next.groups[0]).toBe(firstGroup);
+    expect(next.groups[1]).not.toBe(feed.groups[1]);
+  });
+
+  it('bounds retained activities and keeps the most recent', () => {
+    let feed = createActivityFeed();
+    for (let i = 0; i < 1500; i++) {
+      feed = appendActivity(feed, activity({ type: 'message', summary: `step ${i}`, timestamp: i }));
+    }
+
+    expect(feed.count).toBeLessThanOrEqual(1200);
+    expect(feed.latest?.summary).toBe('step 1499');
+    expect(feed.toArray().at(-1)?.summary).toBe('step 1499');
+  });
+
+  it('pairs a result that arrives after its tool use was already grouped', () => {
+    const feed = feedOf([run({ callId: 'a', toolInput: 'npm test' })]);
+    expect(feed.groups[0].entries[0]).toMatchObject({ status: null });
+
+    const next = appendActivity(feed, run({ type: 'tool_result', callId: 'a', status: 'failed' }));
+
+    expect(next.groups[0].entries[0]).toMatchObject({ status: 'Failed' });
+  });
+
+  it('starts empty', () => {
+    const feed = createActivityFeed();
+    expect(feed.count).toBe(0);
+    expect(feed.groups).toEqual([]);
+    expect(feed.latest).toBeUndefined();
   });
 });

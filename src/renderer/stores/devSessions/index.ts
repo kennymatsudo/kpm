@@ -1,13 +1,13 @@
 import { create, type StoreApi } from 'zustand';
 import type {
   DevSessionWithPlanItem,
-  PrStatus,
   ReviewActionableSummary,
   ReviewDisposition,
   ReviewInboxSnapshot,
   AgentSessionState,
 } from '../../../shared/types';
 import type { AgentActivity, AgentQuestion, AgentCompletionSummary, ReviewFinding } from '../../../shared/agent-types';
+import { appendActivity, createActivityFeed, type ActivityFeed } from '../../components/board-view/activityPresentation';
 import {
   buildSessionIndexes,
   type PrCreationContext,
@@ -61,15 +61,12 @@ export interface DevSessionsState {
   prContextBySessionId: Map<string, PrCreationContext>;
   prContextLoadingIds: Set<string>;
 
-  // PR status cache (transient, keyed by sessionId)
-  prStatusCache: Map<string, PrStatus>;
-
   // Computed merge order (refreshed alongside sessions)
   mergeOrderBySessionId: Map<string, { layer: number | null; blockedBy: string[] }>;
 
   // Agent session state (board-driven execution)
   agentStateBySessionId: Map<string, AgentSessionState>;
-  activitiesBySessionId: Map<string, AgentActivity[]>;
+  activityFeedBySessionId: Map<string, ActivityFeed>;
   latestActivityBySessionId: Map<string, AgentActivity>;
   questionBySessionId: Map<string, AgentQuestion | null>;
   completionBySessionId: Map<string, AgentCompletionSummary>;
@@ -86,7 +83,6 @@ export interface DevSessionsState {
 
   // PR polling
   pollPrStatuses: () => Promise<void>;
-  updatePrStatus: (sessionId: string, status: PrStatus) => void;
 
   // Delete tracking
   markDeleting: (sessionId: string) => void;
@@ -178,10 +174,9 @@ function createInitialState() {
     reviewAssessmentPendingBySessionId: new Map<string, ReviewAssessmentPending>(),
     prContextBySessionId: new Map<string, PrCreationContext>(),
     prContextLoadingIds: new Set<string>(),
-    prStatusCache: new Map<string, PrStatus>(),
     mergeOrderBySessionId: new Map<string, { layer: number | null; blockedBy: string[] }>(),
     agentStateBySessionId: new Map<string, AgentSessionState>(),
-    activitiesBySessionId: new Map<string, AgentActivity[]>(),
+    activityFeedBySessionId: new Map<string, ActivityFeed>(),
     latestActivityBySessionId: new Map<string, AgentActivity>(),
     questionBySessionId: new Map<string, AgentQuestion | null>(),
     completionBySessionId: new Map<string, AgentCompletionSummary>(),
@@ -246,10 +241,9 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
     set((s) => {
       const nextLatest = new Map(s.latestActivityBySessionId);
       nextLatest.set(devSessionId, activity);
-      const nextAll = new Map(s.activitiesBySessionId);
-      const existing = nextAll.get(devSessionId) ?? [];
-      nextAll.set(devSessionId, [...existing, activity]);
-      return { latestActivityBySessionId: nextLatest, activitiesBySessionId: nextAll };
+      const nextFeeds = new Map(s.activityFeedBySessionId);
+      nextFeeds.set(devSessionId, appendActivity(nextFeeds.get(devSessionId) ?? createActivityFeed(), activity));
+      return { latestActivityBySessionId: nextLatest, activityFeedBySessionId: nextFeeds };
     });
   },
 
@@ -292,13 +286,12 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
         content: _error,
       };
       nextLatest.set(devSessionId, errorActivity);
-      const nextAll = new Map(s.activitiesBySessionId);
-      const existing = nextAll.get(devSessionId) ?? [];
-      nextAll.set(devSessionId, [...existing, errorActivity]);
+      const nextFeeds = new Map(s.activityFeedBySessionId);
+      nextFeeds.set(devSessionId, appendActivity(nextFeeds.get(devSessionId) ?? createActivityFeed(), errorActivity));
       return {
         agentStateBySessionId: nextState,
         latestActivityBySessionId: nextLatest,
-        activitiesBySessionId: nextAll,
+        activityFeedBySessionId: nextFeeds,
       };
     });
   },
@@ -320,10 +313,10 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
         nextState.set(devSessionId, snapshot.state);
       }
 
-      const nextActivities = new Map(s.activitiesBySessionId);
+      const nextFeeds = new Map(s.activityFeedBySessionId);
       const nextLatest = new Map(s.latestActivityBySessionId);
       if (snapshot.activities) {
-        nextActivities.set(devSessionId, snapshot.activities);
+        nextFeeds.set(devSessionId, createActivityFeed(snapshot.activities));
         const latest = snapshot.activities.at(-1);
         if (latest) {
           nextLatest.set(devSessionId, latest);
@@ -334,7 +327,7 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
 
       return {
         agentStateBySessionId: nextState,
-        activitiesBySessionId: nextActivities,
+        activityFeedBySessionId: nextFeeds,
         latestActivityBySessionId: nextLatest,
       };
     });

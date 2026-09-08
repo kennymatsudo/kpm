@@ -1,4 +1,4 @@
-import type { PlanItem } from '../../shared/types';
+import type { PlanItem, Group } from '../../shared/types';
 import { CARD_WIDTHS, GROUP_LAYOUT } from '../constants/layout';
 import { CARD_BOX_MODEL, paddingPxForDepth, titleLineHeightPxForDepth } from '../constants/planCardStyles';
 
@@ -320,25 +320,40 @@ export function calculateMasonryLayout(
 }
 
 /**
- * Calculate group bounds and item positions for a group's assigned items.
- * Used by both Canvas.tsx for rendering and useAutoLayout.ts for layout calculations.
- *
- * @param groupId - The group ID
- * @param groupPosition - The group's top-left position
- * @param assignedItems - Items assigned to this group
- * @param childrenMap - Map from parent ID to list of child IDs (for height calculation)
- * @param itemMap - Map from item ID to item (for height calculation)
- * @param groupWidth - Optional group width to derive column count
- * @returns Group bounds and ideal positions for items
+ * Per-tree cache for `buildHeightMapFromTree`, keyed by array identity.
+ * `layoutGroup` is called once per group sharing the same plan tree, and
+ * without this it would re-walk the whole tree for every group.
  */
-export function calculateGroupLayout(
-  groupId: string,
-  groupPosition: { x: number; y: number },
+const heightMapByTree = new WeakMap<TreeNode[], Map<string, number>>();
+
+function heightMapForTree(tree: TreeNode[]): Map<string, number> {
+  let cached = heightMapByTree.get(tree);
+  if (!cached) {
+    cached = buildHeightMapFromTree(tree);
+    heightMapByTree.set(tree, cached);
+  }
+  return cached;
+}
+
+/**
+ * Calculate a group's bounds and its assigned items' ideal positions.
+ *
+ * This is the single policy for group layout: every caller gets depth-aware
+ * card heights (from `tree`, the full plan hierarchy — never the depth-0
+ * fallback `calculateCardHeight` uses on its own), column count derived from
+ * the group's real width, and the collapsed / manual-width-clamp rules
+ * baked in. There is no shorter call that opts out of any of these, so the
+ * render path (`useCanvasHierarchy`) and the persistence paths
+ * (`useGroupCollisionResolution`, `useAutoLayout`) always agree.
+ *
+ * @param group - id, position, width, and collapsed state of the target group
+ * @param assignedItems - Items assigned to this group (`item.group_id === group.id`)
+ * @param tree - The full plan hierarchy tree, used to resolve each item's real depth
+ */
+export function layoutGroup(
+  group: Pick<Group, 'id' | 'position_x' | 'position_y' | 'width' | 'is_collapsed'>,
   assignedItems: PlanItem[],
-  childrenMap: Map<string, string[]>,
-  itemMap: Map<string, PlanItem>,
-  heightMap?: Map<string, number>,
-  groupWidth?: number
+  tree: TreeNode[]
 ): {
   bounds: { x: number; y: number; width: number; height: number };
   itemPositions: Map<string, { x: number; y: number }>;
@@ -348,14 +363,19 @@ export function calculateGroupLayout(
 
   const itemPositions = new Map<string, { x: number; y: number }>();
 
-  // No items assigned - return minimum bounds
+  // No items assigned - return minimum bounds. Every current caller already
+  // guards this case before calling (an empty group keeps its own persisted
+  // size rather than shrinking to this default), so this is a defensive
+  // fallback, not a reachable branch today.
   if (assignedItems.length === 0) {
     return {
       bounds: {
-        x: groupPosition.x,
-        y: groupPosition.y,
+        x: group.position_x,
+        y: group.position_y,
         width: GROUP_LAYOUT.PADDING_X * 2 + CARD_WIDTHS[0],
-        height: GROUP_LAYOUT.HEADER_HEIGHT + GROUP_LAYOUT.PADDING_TOP + GROUP_LAYOUT.PADDING_BOTTOM,
+        height: group.is_collapsed
+          ? GROUP_LAYOUT.COLLAPSED_HEIGHT
+          : GROUP_LAYOUT.HEADER_HEIGHT + GROUP_LAYOUT.PADDING_TOP + GROUP_LAYOUT.PADDING_BOTTOM,
       },
       itemPositions,
     };
@@ -364,24 +384,26 @@ export function calculateGroupLayout(
   // Sort items for consistent, priority-based display order
   const sortedItems = sortGroupItems(assignedItems);
 
-  // Calculate heights for each item (using sorted order)
-  const itemsWithHeights = sortedItems.map(item => ({
-    id: item.id,
-    height: heightMap?.get(item.id) ?? calculateCardHeight(item.id, childrenMap, itemMap),
-  }));
+  // Calculate heights for each item (using sorted order), always from the
+  // depth-aware map so a nested item measures the same here as it renders.
+  const heightMap = heightMapForTree(tree);
+  const itemsWithHeights = sortedItems.map(item => {
+    const height = heightMap.get(item.id);
+    if (height === undefined) {
+      console.error('[layoutGroup] item is not part of the supplied tree, cannot resolve its depth:', item.id);
+    }
+    return { id: item.id, height: height ?? 0 };
+  });
 
-  // Determine column count based on available width, capped by MAX_COLUMNS
+  // Determine column count from the group's actual width, capped by MAX_COLUMNS
   const maxColumns = Math.min(GROUP_LAYOUT.MAX_COLUMNS, sortedItems.length);
-  let numColumns = maxColumns;
+  const availableWidth = group.width - GROUP_LAYOUT.PADDING_X * 2;
+  const columnSpan = CARD_WIDTHS[0] + GROUP_LAYOUT.HORIZONTAL_GAP;
+  const possibleColumns = Math.floor((availableWidth + GROUP_LAYOUT.HORIZONTAL_GAP) / columnSpan);
+  const numColumns = Math.max(1, Math.min(maxColumns, possibleColumns || 1));
 
-  if (groupWidth && groupWidth > 0) {
-    const availableWidth = groupWidth - GROUP_LAYOUT.PADDING_X * 2;
-    const columnSpan = CARD_WIDTHS[0] + GROUP_LAYOUT.HORIZONTAL_GAP;
-    const possibleColumns = Math.floor((availableWidth + GROUP_LAYOUT.HORIZONTAL_GAP) / columnSpan);
-    numColumns = Math.max(1, Math.min(maxColumns, possibleColumns || 1));
-  }
-  const startX = groupPosition.x + GROUP_LAYOUT.PADDING_X;
-  const startY = groupPosition.y + GROUP_LAYOUT.HEADER_HEIGHT + GROUP_LAYOUT.PADDING_TOP;
+  const startX = group.position_x + GROUP_LAYOUT.PADDING_X;
+  const startY = group.position_y + GROUP_LAYOUT.HEADER_HEIGHT + GROUP_LAYOUT.PADDING_TOP;
 
   // Calculate masonry positions
   const { positions, columnHeights } = calculateMasonryLayout(itemsWithHeights, {
@@ -401,31 +423,28 @@ export function calculateGroupLayout(
   // Calculate bounds from column heights
   const maxColumnHeight = Math.max(...columnHeights) - GROUP_LAYOUT.VERTICAL_GAP; // Remove trailing gap
   const contentWidth = CARD_WIDTHS[0] * numColumns + GROUP_LAYOUT.HORIZONTAL_GAP * Math.max(0, numColumns - 1);
+  const naturalWidth = contentWidth + GROUP_LAYOUT.PADDING_X * 2;
 
   const bounds = {
-    x: groupPosition.x,
-    y: groupPosition.y,
-    width: contentWidth + GROUP_LAYOUT.PADDING_X * 2,
-    height: maxColumnHeight + GROUP_LAYOUT.HEADER_HEIGHT + GROUP_LAYOUT.PADDING_TOP + GROUP_LAYOUT.PADDING_BOTTOM,
+    x: group.position_x,
+    y: group.position_y,
+    // Never shrink a group narrower than its current (possibly manually
+    // widened) width.
+    width: Math.max(group.width, naturalWidth),
+    height: group.is_collapsed
+      ? GROUP_LAYOUT.COLLAPSED_HEIGHT
+      : maxColumnHeight + GROUP_LAYOUT.HEADER_HEIGHT + GROUP_LAYOUT.PADDING_TOP + GROUP_LAYOUT.PADDING_BOTTOM,
   };
 
   if (shouldDebug) {
     console.debug('[group-layout]', {
-      groupId,
+      groupId: group.id,
       assignedCount: assignedItems.length,
-      groupWidth,
+      groupWidth: group.width,
       numColumns,
       bounds,
     });
   }
 
-  return {
-    bounds: {
-      x: bounds.x,
-      y: bounds.y,
-      width: bounds.width,
-      height: bounds.height,
-    },
-    itemPositions,
-  };
+  return { bounds, itemPositions };
 }

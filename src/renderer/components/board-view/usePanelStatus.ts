@@ -5,10 +5,6 @@
  * the review inbox, plan item status) from the stores and folds them into one
  * canonical `PanelStatus`. All the logic lives in the pure `derivePanelStatus`;
  * this hook only collects inputs.
- *
- * The `ReviewStats -> ReviewPhaseStats` mapper lives here (board-view) rather
- * than in `development/reviewStats` so the dependency direction stays
- * board -> development.
  */
 
 import { useMemo } from 'react';
@@ -16,40 +12,15 @@ import { useAgentSession } from '../../hooks/useAgentSession';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { usePlanDomainStore } from '../../stores';
 import { resolveStatusCategory } from '../../constants/statusConfig';
-import { getStats, type ReviewStats } from '../development/reviewStats';
+import { getStats } from '../development/reviewStats';
 import type { DevSessionWithPlanItem } from '../../../shared/types';
-import {
-  derivePanelStatus,
-  type PanelStatus,
-  type ReviewPhaseStats,
-} from './panelStatus';
-import { reviewSessionIdForDisplay } from './reviewSession';
-
-export function toReviewPhaseStats(stats: ReviewStats, assessmentRunning: boolean): ReviewPhaseStats {
-  return {
-    queueCount: stats.queueCount,
-    needsReviewCount: stats.needsReviewCount,
-    implementCount: stats.implementCount,
-    inProgressImplCount: stats.inProgressImplCount,
-    readyToPostCount: stats.readyToPostTasks.length,
-    needsInputCount: stats.needsInputCount,
-    failedCount: stats.failedCount,
-    staleCount: stats.staleCount,
-    queuedCodeCount: stats.queuedCodeCount,
-    updatingCodeCount: stats.updatingCodeCount,
-    assessmentRunning,
-  };
-}
+import { derivePanelStatus, type PanelStatus } from './panelStatus';
+import { useReviewRuntime } from './useReviewRuntime';
 
 export function usePanelStatus(session: DevSessionWithPlanItem): PanelStatus {
   const impl = useAgentSession(session.id);
-  const reviewSessionId = useDevSessionsStore((s) => reviewSessionIdForDisplay(
-    session.id,
-    session.current_step_id,
-    s.agentStateBySessionId,
-    s.reviewRunsByImplementationId.get(session.id) ?? [],
-  ));
-  const review = useAgentSession(reviewSessionId);
+  const reviewRuntime = useReviewRuntime(session.id, session.current_step_id);
+  const review = useAgentSession(reviewRuntime.sessionId);
 
   const commitStatus = useDevSessionsStore(
     (s) => s.commitStateBySessionId.get(session.id)?.status ?? null,
@@ -69,8 +40,8 @@ export function usePanelStatus(session: DevSessionWithPlanItem): PanelStatus {
     : null;
 
   const reviewStats = useMemo(
-    () => (inbox ? toReviewPhaseStats(getStats(inbox, session.id), assessmentRunning) : null),
-    [inbox, session.id, assessmentRunning],
+    () => (inbox ? getStats(inbox, session.id) : null),
+    [inbox, session.id],
   );
 
   const mergeBlockedBy = useMemo<string[]>(() => {
@@ -82,8 +53,7 @@ export function usePanelStatus(session: DevSessionWithPlanItem): PanelStatus {
   }, [session.pr_url, session.pr_state, mergeEntry, allSessions]);
 
   // While the review agent is running, its narration is the "current step".
-  const reviewActive = review.agentState === 'starting' || review.agentState === 'working';
-  const latestActivitySummary = (reviewActive ? review.latestActivity : impl.latestActivity)?.summary ?? null;
+  const latestActivitySummary = (reviewRuntime.isActive ? review.latestActivity : impl.latestActivity)?.summary ?? null;
 
   const diffStats = impl.completionStats
     ? {
@@ -107,6 +77,7 @@ export function usePanelStatus(session: DevSessionWithPlanItem): PanelStatus {
         itemStatus,
         commitStatus,
         reviewStats,
+        reviewAssessmentRunning: assessmentRunning,
         latestActivitySummary,
         terminalReason: impl.completionStats?.terminalReason ?? null,
         elapsedMs: null,
@@ -125,6 +96,7 @@ export function usePanelStatus(session: DevSessionWithPlanItem): PanelStatus {
       itemStatus,
       commitStatus,
       reviewStats,
+      assessmentRunning,
       latestActivitySummary,
       impl.completionStats,
       mergeBlockedBy,

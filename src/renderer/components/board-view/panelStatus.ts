@@ -33,6 +33,8 @@ import {
   type DevSessionAutomationPhase,
   type StatusCategory,
 } from '../../../shared/types';
+import type { ReviewWorkFacts } from '../../../shared/reviewThreadSummary';
+import { isAddressingReview, selectReviewLadderRung } from '../development/reviewActions';
 
 /** The canonical, agent-agnostic phase a session sits in. */
 export type PanelPhase =
@@ -114,26 +116,6 @@ export interface DiffStats {
   deletions: number;
 }
 
-/**
- * The subset of the GitHub review inbox the phase model needs. Mirrors the
- * counts produced by the review store's `getStats`; kept as an explicit input
- * so the derivation has no store dependency.
- */
-export interface ReviewPhaseStats {
-  queueCount: number;
-  needsReviewCount: number;
-  implementCount: number;
-  inProgressImplCount: number;
-  readyToPostCount: number;
-  needsInputCount: number;
-  failedCount: number;
-  staleCount: number;
-  queuedCodeCount: number;
-  updatingCodeCount: number;
-  /** A disposition assessment pass is running. */
-  assessmentRunning: boolean;
-}
-
 export interface PanelStatusInputs {
   /** Implementation agent state (undefined = no session yet). */
   implAgentState: AgentSessionState | undefined;
@@ -150,8 +132,10 @@ export interface PanelStatusInputs {
   itemStatus: StatusCategory | null;
   /** Background commit state. */
   commitStatus: 'running' | 'failed' | null;
-  /** Review inbox snapshot counts; null when no PR / not loaded. */
-  reviewStats: ReviewPhaseStats | null;
+  /** Review inbox facts; null when no PR / not loaded. Shared with the Review tab (`shared/reviewThreadSummary.ts`) rather than a hand-copied projection. */
+  reviewStats: ReviewWorkFacts | null;
+  /** A disposition assessment pass is running — not part of `ReviewWorkFacts` since it is renderer-local pending-request state, not a fact about the inbox. */
+  reviewAssessmentRunning: boolean;
   /** Latest agent narration — the "current step" shown while running. */
   latestActivitySummary: string | null;
   /** Terminal reason captured at completion (e.g. 'max turns'), if abnormal. */
@@ -201,29 +185,26 @@ function isActive(state: AgentSessionState | undefined): boolean {
 }
 
 function isAddressing(i: PanelStatusInputs): boolean {
-  if (i.automationPhase === 'addressing_review') return true;
-  const s = i.reviewStats;
-  return !!s && (
-    s.queuedCodeCount > 0
-    || (isActive(i.implAgentState) && s.updatingCodeCount > 0)
-  );
+  return i.reviewStats != null
+    ? isAddressingReview(i.reviewStats, i.automationPhase, isActive(i.implAgentState))
+    : i.automationPhase === 'addressing_review';
 }
 
 function isReviewing(i: PanelStatusInputs): boolean {
   return isActive(i.reviewAgentState) || i.automationPhase === 'reviewing';
 }
 
-function hasReviewWork(s: ReviewPhaseStats): boolean {
+function hasReviewWork(s: ReviewWorkFacts, assessmentRunning: boolean): boolean {
   return (
     s.queueCount > 0 ||
     s.needsReviewCount > 0 ||
     s.implementCount > 0 ||
     s.inProgressImplCount > 0 ||
-    s.readyToPostCount > 0 ||
+    s.readyToPostTasks.length > 0 ||
     s.needsInputCount > 0 ||
     s.failedCount > 0 ||
     s.staleCount > 0 ||
-    s.assessmentRunning
+    assessmentRunning
   );
 }
 
@@ -239,74 +220,75 @@ function doneText(diff: DiffStats | null): string {
 }
 
 /**
- * Next action for an open review, mirroring the review queue's own precedence:
- * attention > drafts ready > decisions needed > fixes ready > addressed-needs-reply
- * > new-to-assess. Returns null when the queue is clear.
+ * Next action for an open review. Branches on `selectReviewLadderRung`
+ * (`development/reviewActions.ts`) so the precedence — attention > drafts
+ * ready > decisions needed > fixes ready > addressed-needs-reply >
+ * new-to-assess — is the same ladder the Review tab's `deriveNextAction`
+ * walks, not a restatement of it. `addressingReview` is always false here:
+ * `derivePanelStatus` already routed that case to the `addressing` phase
+ * before this function is ever called, so the `updating-code` rung is
+ * unreachable and folds into the same fallback as `clear`.
  */
-function reviewNextAction(s: ReviewPhaseStats, mergeBlockedBy: string[]): NextAction {
-  if (s.assessmentRunning) {
-    return { tone: 'accent', busy: true, text: 'Assessing review threads' };
+function reviewNextAction(s: ReviewWorkFacts, mergeBlockedBy: string[], assessmentRunning: boolean): NextAction {
+  const rung = selectReviewLadderRung(s, { assessmentRunning, addressingReview: false });
+  switch (rung) {
+    case 'assessment-running':
+      return { tone: 'accent', busy: true, text: 'Assessing review threads' };
+    case 'needs-attention': {
+      const count = s.failedCount + s.staleCount;
+      return {
+        tone: 'danger',
+        text: `${count} review ${plural(count, 'task')} need attention`,
+        primary: { label: 'Reassess', action: 'reassess_attention' },
+      };
+    }
+    case 'post-drafted-replies': {
+      const count = s.readyToPostTasks.length;
+      return {
+        tone: 'accent',
+        text: `Post ${count} drafted ${plural(count, 'reply', 'replies')}`,
+        primary: { label: 'Post all', action: 'post_all_replies' },
+      };
+    }
+    case 'decisions-need-you':
+      return {
+        tone: 'info',
+        text: `${s.needsInputCount} ${plural(s.needsInputCount, 'decision')} need you`,
+      };
+    case 'fixes-ready':
+      return {
+        tone: 'accent',
+        text: `${s.implementCount} ${plural(s.implementCount, 'fix', 'fixes')} ready for the agent`,
+        primary: { label: 'Address all', action: 'address_all' },
+      };
+    case 'draft-replies':
+      return {
+        tone: 'neutral',
+        text: `${s.inProgressImplCount} addressed ${plural(s.inProgressImplCount, 'thread')} — draft the replies`,
+        primary: { label: 'Draft replies', action: 'draft_replies' },
+      };
+    case 'assess-new':
+      return {
+        tone: 'warning',
+        text: `${s.needsReviewCount} new ${plural(s.needsReviewCount, 'thread')} to assess`,
+        primary: { label: 'Assess', action: 'assess' },
+      };
+    case 'updating-code':
+    case 'clear':
+      // Queue clear, but the PR is still open / awaiting the reviewer.
+      if (mergeBlockedBy.length > 0) {
+        return {
+          tone: 'warning',
+          text: `Merge ${mergeBlockedBy.join(', ')} first`,
+          primary: { label: 'Open PR', action: 'open_pr' },
+        };
+      }
+      return {
+        tone: 'neutral',
+        text: 'Awaiting review',
+        primary: { label: 'Open PR', action: 'open_pr' },
+      };
   }
-  if (s.failedCount > 0 || s.staleCount > 0) {
-    const count = s.failedCount + s.staleCount;
-    return {
-      tone: 'danger',
-      text: `${count} review ${plural(count, 'task')} need attention`,
-      primary: { label: 'Reassess', action: 'reassess_attention' },
-    };
-  }
-  if (
-    s.readyToPostCount > 0 &&
-    s.needsInputCount === 0 &&
-    s.needsReviewCount === 0 &&
-    s.implementCount === 0
-  ) {
-    return {
-      tone: 'accent',
-      text: `Post ${s.readyToPostCount} drafted ${plural(s.readyToPostCount, 'reply', 'replies')}`,
-      primary: { label: 'Post all', action: 'post_all_replies' },
-    };
-  }
-  if (s.needsInputCount > 0) {
-    return {
-      tone: 'info',
-      text: `${s.needsInputCount} ${plural(s.needsInputCount, 'decision')} need you`,
-    };
-  }
-  if (s.implementCount > 0 && s.needsReviewCount === 0) {
-    return {
-      tone: 'accent',
-      text: `${s.implementCount} ${plural(s.implementCount, 'fix', 'fixes')} ready for the agent`,
-      primary: { label: 'Address all', action: 'address_all' },
-    };
-  }
-  if (s.inProgressImplCount > 0 && s.needsReviewCount === 0) {
-    return {
-      tone: 'neutral',
-      text: `${s.inProgressImplCount} addressed ${plural(s.inProgressImplCount, 'thread')} — draft the replies`,
-      primary: { label: 'Draft replies', action: 'draft_replies' },
-    };
-  }
-  if (s.needsReviewCount > 0) {
-    return {
-      tone: 'warning',
-      text: `${s.needsReviewCount} new ${plural(s.needsReviewCount, 'thread')} to assess`,
-      primary: { label: 'Assess', action: 'assess' },
-    };
-  }
-  // Queue clear, but the PR is still open / awaiting the reviewer.
-  if (mergeBlockedBy.length > 0) {
-    return {
-      tone: 'warning',
-      text: `Merge ${mergeBlockedBy.join(', ')} first`,
-      primary: { label: 'Open PR', action: 'open_pr' },
-    };
-  }
-  return {
-    tone: 'neutral',
-    text: 'Awaiting review',
-    primary: { label: 'Open PR', action: 'open_pr' },
-  };
 }
 
 function progressFor(label: string, i: PanelStatusInputs): ProgressInfo {
@@ -494,7 +476,7 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
   }
 
   const stats = i.reviewStats;
-  const reviewWork = stats ? hasReviewWork(stats) : false;
+  const reviewWork = stats ? hasReviewWork(stats, i.reviewAssessmentRunning) : false;
 
   // 10. Approved, unblocked, queue clear — ready to merge.
   if (i.hasPr && i.reviewState === 'APPROVED' && i.mergeBlockedBy.length === 0 && !reviewWork) {
@@ -507,7 +489,7 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
 
   // 11. PR open — surface the review queue's next action (or awaiting/blocked).
   if (i.hasPr) {
-    const action = stats ? reviewNextAction(stats, i.mergeBlockedBy) : {
+    const action = stats ? reviewNextAction(stats, i.mergeBlockedBy, i.reviewAssessmentRunning) : {
       tone: 'neutral' as const,
       text: 'Awaiting review',
       primary: { label: 'Open PR' as const, action: 'open_pr' as const },

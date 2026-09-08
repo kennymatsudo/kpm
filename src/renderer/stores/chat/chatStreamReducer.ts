@@ -1,7 +1,9 @@
 import type { Activity, Message, MessageSegment, PerSessionState } from './types';
 import { resolveSessionDisplayModel } from './sessionModel';
+import { mergeAssistantTurns } from './messageMerge';
 
 export type ChatStreamEvent =
+  | { type: 'user-message' }
   | { type: 'chunk'; text: string }
   | { type: 'queue-activities'; activities: Activity[] }
   | { type: 'thinking'; text: string }
@@ -12,7 +14,39 @@ export type ChatStreamEvent =
   | { type: 'error'; error: string }
   | { type: 'queue-cleared-already-sent'; clientMessageId?: string }
   | { type: 'queue-cleared-dropped'; clientMessageId?: string }
+  | { type: 'deactivate'; buffered?: string }
   | { type: 'done'; options?: FinalizeOptions; buffered?: string };
+
+type StreamingCluster = Pick<
+  PerSessionState,
+  | 'isStreaming'
+  | 'streamingContent'
+  | 'streamingThinking'
+  | 'streamingSegments'
+  | 'pendingActivities'
+  | 'activities'
+  | 'streamStartedAt'
+  | 'lastStreamUpdateAt'
+>;
+
+/**
+ * The streaming cluster's value when no turn is in flight. `baseState.ts`
+ * (a session's initial value) and `historySlice.ts` (a reload that isn't
+ * preserving a live turn) both need "no turn running" as a value rather than
+ * a transition, so this is the one place that shape is spelled out.
+ */
+export function createIdleStreamingCluster(): StreamingCluster {
+  return {
+    isStreaming: false,
+    streamingContent: '',
+    streamingThinking: '',
+    streamingSegments: [],
+    pendingActivities: [],
+    activities: [],
+    streamStartedAt: null,
+    lastStreamUpdateAt: null,
+  };
+}
 
 export interface FinalizeOptions {
   interrupted?: boolean;
@@ -251,34 +285,17 @@ function finalize(session: PerSessionState, options: FinalizeOptions | undefined
   // exchange (e.g. periodic check-ins on a forked background agent) rendering
   // as one continuous card instead of a new bubble per turn. A
   // `beforeClientMessageId` anchor means a user message genuinely landed in
-  // between, so merging is skipped in that case.
+  // between, so merging is skipped in that case. `mergeAssistantTurns` (also
+  // called from `historySlice.ts` and `MessageList.tsx`) owns the merge
+  // predicate and the checkpoint divider it inserts.
   const mergeTarget = baseMessages[baseMessages.length - 1];
-  const canMergeIntoPrevious =
-    !beforeClientMessageId && mergeTarget?.role === 'assistant' && !mergeTarget.interrupted;
+  const mergedMessage = beforeClientMessageId
+    ? null
+    : mergeAssistantTurns(mergeTarget, { segments: finalSegments, timestamp: now, model: displayModel, interrupted });
 
   let nextMessages: Message[];
 
-  if (canMergeIntoPrevious) {
-    // Carries the outgoing turn's own stats forward as a divider inside the
-    // merged message, so per-step timing survives even though the top-level
-    // fields below move on to describe the latest turn.
-    const checkpoint: MessageSegment = {
-      type: 'checkpoint',
-      timestamp: now,
-      ...(mergeTarget.durationMs != null ? { durationMs: mergeTarget.durationMs } : {}),
-      ...(mergeTarget.model ? { model: mergeTarget.model } : {}),
-    };
-
-    const mergedMessage: Message = {
-      ...mergeTarget,
-      segments: [...mergeTarget.segments, checkpoint, ...finalSegments],
-      model: displayModel,
-      // Cumulative since the exchange's first turn — a growing total that
-      // signals ongoing progress across the merged turns, rather than
-      // resetting to just this latest turn's own duration.
-      durationMs: Math.max(0, now - mergeTarget.timestamp.getTime()),
-      ...(interrupted ? { interrupted: true } : {}),
-    };
+  if (mergedMessage) {
     nextMessages = [...baseMessages.slice(0, -1), mergedMessage];
   } else {
     const newMessage: Message = {
@@ -338,6 +355,19 @@ export function applyStreamEvent(session: PerSessionState, event: ChatStreamEven
   const now = Date.now();
 
   switch (event.type) {
+    case 'user-message':
+      // A fresh (non-queued) send starts a new turn: reset the streaming
+      // cluster left over from whatever came before, same as `retry`.
+      return {
+        ...session,
+        ...createIdleStreamingCluster(),
+        isStreaming: true,
+        error: null,
+        suggestions: [],
+        streamStartedAt: now,
+        lastStreamUpdateAt: now,
+      };
+
     case 'chunk':
       return flushTextIntoSession(session, event.text, now);
 
@@ -438,6 +468,15 @@ export function applyStreamEvent(session: PerSessionState, event: ChatStreamEven
       const messages = removeQueuedFollowUp(session.messages, event.clientMessageId);
       return messages === session.messages ? session : { ...session, messages };
     }
+
+    case 'deactivate':
+      // Session teardown (disconnect/close/replace). Commits whatever turn
+      // was in flight instead of discarding it — same commit path as `done`,
+      // just named for what the caller is doing (ending the session) rather
+      // than why the SDK stopped. Marked interrupted: a turn that's still
+      // live when teardown runs was cut short, not completed. Already-
+      // finalized sessions hit `finalize`'s idempotency guard and no-op.
+      return finalize(session, { interrupted: true }, event.buffered ?? '');
 
     case 'done':
       return finalize(session, event.options, event.buffered ?? '');

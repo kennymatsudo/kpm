@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { PlanItem, Group } from '../../../../shared/types';
-import { buildHierarchyTree, buildItemMaps, buildHeightMapFromTree, calculateGroupLayout, type TreeNode } from '../../../utils/planHierarchy';
+import { buildHierarchyTree, buildItemMaps, buildHeightMapFromTree, layoutGroup, type TreeNode } from '../../../utils/planHierarchy';
 import { AUTO_LAYOUT, GROUP_LAYOUT } from '../../../constants/layout';
 
 interface UseCanvasHierarchyDeps {
@@ -89,31 +89,16 @@ export function useCanvasHierarchy({
         continue;
       }
 
-      const { bounds, itemPositions } = calculateGroupLayout(
-        group.id,
-        { x: group.position_x, y: group.position_y },
-        assignedItems,
-        childrenMap,
-        itemMap,
-        heightMap,
-        group.width
-      );
+      const { bounds, itemPositions } = layoutGroup(group, assignedItems, itemsWithPositions);
 
-      boundsMap.set(group.id, {
-        x: bounds.x,
-        y: bounds.y,
-        width: Math.max(group.width, bounds.width),
-        height: group.is_collapsed
-          ? GROUP_LAYOUT.COLLAPSED_HEIGHT
-          : bounds.height,
-      });
+      boundsMap.set(group.id, bounds);
       for (const [itemId, pos] of itemPositions) {
         idealPositions.set(itemId, pos);
       }
     }
 
     return { bounds: boundsMap, idealPositions };
-  }, [groups, itemsByGroupId, childrenMap, itemMap, heightMap]);
+  }, [groups, itemsByGroupId, itemsWithPositions]);
 
   const groupBounds = groupLayoutInfo.bounds;
 

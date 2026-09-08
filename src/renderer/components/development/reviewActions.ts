@@ -158,14 +158,28 @@ export function summarizeReviewers(reviews: PrTopLevelReview[]): ReviewerVerdict
     .map((review) => ({ author: review.author, state: review.state, submittedAt: review.submittedAt, url: review.url }));
 }
 
+/**
+ * True while the implementation agent is addressing opposing-review feedback.
+ *
+ * `implSessionActive` must come from the live `AgentSessionState` (e.g.
+ * `useAgentSession(implSessionId).isActive`), not the persisted
+ * `dev_sessions.status` column. The implementation session's `status` flips
+ * to `'inactive'` the moment its implement turn completes — before review
+ * even runs — and the automated follow-up that starts the address turn
+ * (`DevSessionService.sendAgentFollowUp`'s `activeSession.followUp(...)`
+ * path) does not restore it to `'active'`. Only a full restart does. So for
+ * the entire normal `addressing_review` window, persisted `status` reads
+ * `'inactive'` while the agent is genuinely working — see
+ * `src/main/services/agents/CLAUDE.md`.
+ */
 export function isAddressingReview(
   stats: ReviewStats,
   automationPhase: string | null,
-  sessionStatus: string,
+  implSessionActive: boolean,
 ): boolean {
   return automationPhase === 'addressing_review'
     || stats.queuedCodeCount > 0
-    || (sessionStatus === 'active' && stats.updatingCodeCount > 0);
+    || (implSessionActive && stats.updatingCodeCount > 0);
 }
 
 export type NextActionKind =
@@ -177,6 +191,36 @@ export type NextActionKind =
   | 'fixes-ready'
   | 'draft-replies'
   | 'assess-new';
+
+/**
+ * Which rung of the review-queue ladder applies, in priority order. Shared by
+ * `deriveNextAction` (Review tab) and `panelStatus.ts` (board card /
+ * detail-pane strip) so the two surfaces can't drift on ordering. Each
+ * caller still formats its own tone/text/button for a rung — the two
+ * surfaces render genuinely different shapes (owner-gated buttons vs. a
+ * status strip), so only the precedence is shared, not the presentation.
+ */
+export type ReviewLadderRung = NextActionKind | 'clear';
+
+export function selectReviewLadderRung(
+  stats: ReviewStats,
+  opts: { assessmentRunning: boolean; addressingReview: boolean },
+): ReviewLadderRung {
+  if (opts.assessmentRunning) return 'assessment-running';
+  if (opts.addressingReview) return 'updating-code';
+  if (stats.failedCount > 0 || stats.staleCount > 0) return 'needs-attention';
+  if (
+    stats.readyToPostTasks.length > 0
+    && stats.needsInputCount === 0
+    && stats.needsReviewCount === 0
+    && stats.implementCount === 0
+  ) return 'post-drafted-replies';
+  if (stats.needsInputCount > 0) return 'decisions-need-you';
+  if (stats.implementCount > 0 && stats.needsReviewCount === 0) return 'fixes-ready';
+  if (stats.inProgressImplCount > 0 && stats.needsReviewCount === 0) return 'draft-replies';
+  if (stats.needsReviewCount > 0) return 'assess-new';
+  return 'clear';
+}
 
 export interface NextActionButtonDecision {
   label: string;
@@ -203,123 +247,123 @@ export interface NextActionInputs {
 }
 
 /**
- * The single most important next step. Mirrors the workflow state machine:
- * running work first, then blockers, then the next advancing action.
+ * The single most important next step. Branches on `selectReviewLadderRung`
+ * so the precedence order can't drift from `panelStatus.ts`'s next-action
+ * strip; the formatting here (owner-gated buttons, fuller decision text) is
+ * specific to the Review tab and stays local to this function.
  */
 export function deriveNextAction(inputs: NextActionInputs): NextActionDecision | null {
   const { stats, assessmentPending, addressingReview, isOwner, ownerTitle } = inputs;
+  const rung = selectReviewLadderRung(stats, { assessmentRunning: assessmentPending != null, addressingReview });
 
-  if (assessmentPending) {
-    const isReassessment = assessmentPending.scope === 'selected' || assessmentPending.scope === 'all';
-    const pendingCount = assessmentPending.taskIds.length;
-    const detail = pendingCount > 0
-      ? `${pendingCount} review ${plural(pendingCount, 'task')} running`
-      : 'Assessment is running';
-    return {
-      kind: 'assessment-running',
-      tone: 'accent',
-      busy: true,
-      text: `${isReassessment ? 'Reassessing' : 'Assessing'} — ${detail}`,
-    };
+  switch (rung) {
+    case 'assessment-running': {
+      const isReassessment = assessmentPending?.scope === 'selected' || assessmentPending?.scope === 'all';
+      const pendingCount = assessmentPending?.taskIds.length ?? 0;
+      const detail = pendingCount > 0
+        ? `${pendingCount} review ${plural(pendingCount, 'task')} running`
+        : 'Assessment is running';
+      return {
+        kind: 'assessment-running',
+        tone: 'accent',
+        busy: true,
+        text: `${isReassessment ? 'Reassessing' : 'Assessing'} — ${detail}`,
+      };
+    }
+    case 'updating-code': {
+      const count = Math.max(stats.queuedCodeCount, stats.updatingCodeCount);
+      const detail = stats.queuedCodeCount > 0
+        ? `${stats.queuedCodeCount} ${plural(stats.queuedCodeCount, 'task')} queued for the current update`
+        : `${count} ${plural(count, 'task')} sent to the dev session`;
+      return {
+        kind: 'updating-code',
+        tone: 'accent',
+        busy: true,
+        text: `Updating code for review feedback — ${detail}`,
+      };
+    }
+    case 'needs-attention': {
+      const count = stats.failedCount + stats.staleCount;
+      const retryable = stats.retryableAttentionTaskIds.length;
+      return {
+        kind: 'needs-attention',
+        tone: 'danger',
+        text: `${count} review ${plural(count, 'task')} need attention`,
+        button: {
+          label: 'Reassess',
+          actionKey: 'assess-attention',
+          variant: 'secondary',
+          disabled: !isOwner || retryable === 0,
+          title: !isOwner ? ownerTitle : retryable === 0 ? 'No assessable tasks to retry' : undefined,
+        },
+      };
+    }
+    case 'post-drafted-replies': {
+      const count = stats.readyToPostTasks.length;
+      return {
+        kind: 'post-drafted-replies',
+        tone: 'accent',
+        text: `Post ${count} drafted ${plural(count, 'reply', 'replies')}`,
+        button: {
+          label: 'Post all',
+          actionKey: 'approve',
+          disabled: !isOwner,
+          title: ownerTitle,
+        },
+      };
+    }
+    case 'decisions-need-you':
+      return {
+        kind: 'decisions-need-you',
+        tone: 'info',
+        text: `${stats.needsInputCount} ${plural(stats.needsInputCount, 'decision')} need you — implement, push back, or reply`,
+      };
+    case 'fixes-ready': {
+      const count = stats.implementCount;
+      return {
+        kind: 'fixes-ready',
+        tone: 'accent',
+        text: `${count} ${plural(count, 'fix', 'fixes')} ready for the agent`,
+        button: {
+          label: 'Address all',
+          actionKey: 'address',
+          disabled: !isOwner || addressingReview,
+          title: ownerTitle,
+        },
+      };
+    }
+    case 'draft-replies': {
+      const count = stats.inProgressImplCount;
+      return {
+        kind: 'draft-replies',
+        tone: 'neutral',
+        text: `${count} addressed ${plural(count, 'thread')} — draft the replies`,
+        button: {
+          label: 'Draft replies',
+          actionKey: 'draft',
+          variant: 'secondary',
+          disabled: !isOwner,
+          title: ownerTitle,
+        },
+      };
+    }
+    case 'assess-new': {
+      const count = stats.needsReviewCount;
+      return {
+        kind: 'assess-new',
+        tone: 'warning',
+        text: `${count} new ${plural(count, 'thread')} to assess`,
+        button: {
+          label: 'Assess',
+          actionKey: 'assess',
+          disabled: !isOwner,
+          title: ownerTitle,
+        },
+      };
+    }
+    case 'clear':
+      return null;
   }
-  if (addressingReview) {
-    const count = Math.max(stats.queuedCodeCount, stats.updatingCodeCount);
-    const detail = stats.queuedCodeCount > 0
-      ? `${stats.queuedCodeCount} ${plural(stats.queuedCodeCount, 'task')} queued for the current update`
-      : `${count} ${plural(count, 'task')} sent to the dev session`;
-    return {
-      kind: 'updating-code',
-      tone: 'accent',
-      busy: true,
-      text: `Updating code for review feedback — ${detail}`,
-    };
-  }
-  if (stats.failedCount > 0 || stats.staleCount > 0) {
-    const count = stats.failedCount + stats.staleCount;
-    const retryable = stats.retryableAttentionTaskIds.length;
-    return {
-      kind: 'needs-attention',
-      tone: 'danger',
-      text: `${count} review ${plural(count, 'task')} need attention`,
-      button: {
-        label: 'Reassess',
-        actionKey: 'assess-attention',
-        variant: 'secondary',
-        disabled: !isOwner || retryable === 0,
-        title: !isOwner ? ownerTitle : retryable === 0 ? 'No assessable tasks to retry' : undefined,
-      },
-    };
-  }
-  if (
-    stats.readyToPostTasks.length > 0
-    && stats.needsInputCount === 0
-    && stats.needsReviewCount === 0
-    && stats.implementCount === 0
-  ) {
-    const count = stats.readyToPostTasks.length;
-    return {
-      kind: 'post-drafted-replies',
-      tone: 'accent',
-      text: `Post ${count} drafted ${plural(count, 'reply', 'replies')}`,
-      button: {
-        label: 'Post all',
-        actionKey: 'approve',
-        disabled: !isOwner,
-        title: ownerTitle,
-      },
-    };
-  }
-  if (stats.needsInputCount > 0) {
-    return {
-      kind: 'decisions-need-you',
-      tone: 'info',
-      text: `${stats.needsInputCount} ${plural(stats.needsInputCount, 'decision')} need you — implement, push back, or reply`,
-    };
-  }
-  if (stats.implementCount > 0 && stats.needsReviewCount === 0) {
-    const count = stats.implementCount;
-    return {
-      kind: 'fixes-ready',
-      tone: 'accent',
-      text: `${count} ${plural(count, 'fix', 'fixes')} ready for the agent`,
-      button: {
-        label: 'Address all',
-        actionKey: 'address',
-        disabled: !isOwner || addressingReview,
-        title: ownerTitle,
-      },
-    };
-  }
-  if (stats.inProgressImplCount > 0 && stats.needsReviewCount === 0) {
-    const count = stats.inProgressImplCount;
-    return {
-      kind: 'draft-replies',
-      tone: 'neutral',
-      text: `${count} addressed ${plural(count, 'thread')} — draft the replies`,
-      button: {
-        label: 'Draft replies',
-        actionKey: 'draft',
-        variant: 'secondary',
-        disabled: !isOwner,
-        title: ownerTitle,
-      },
-    };
-  }
-  if (stats.needsReviewCount > 0) {
-    const count = stats.needsReviewCount;
-    return {
-      kind: 'assess-new',
-      tone: 'warning',
-      text: `${count} new ${plural(count, 'thread')} to assess`,
-      button: {
-        label: 'Assess',
-        actionKey: 'assess',
-        disabled: !isOwner,
-        title: ownerTitle,
-      },
-    };
-  }
-  return null;
 }
 
 export function buildReviewReplyProposal(input: {

@@ -19,6 +19,7 @@ import type {
   ReviewTask,
 } from '../../../shared/types';
 import { useDevSessionsStore } from '../../stores/devSessions';
+import { useAgentSession } from '../../hooks/useAgentSession';
 import { useProposedChangeDisposal } from '../../stores/proposedChangeDisposal';
 import { toast } from '../../stores/toastStore';
 import { openExternalUrl } from '../../services/shellService';
@@ -821,7 +822,12 @@ export function ReviewTab({ session }: ReviewTabProps) {
   );
   const isAssessmentPending = assessmentPending != null;
   const stats = useMemo(() => getStats(inbox, session.id), [inbox, session.id]);
-  const addressingReview = isAddressingReview(stats, session.automation_phase, session.status);
+  // Live agent state, not the persisted `session.status`: the implementation
+  // session's status flips to 'inactive' as soon as its implement turn
+  // completes — before review even runs — and the automated follow-up that
+  // starts the address turn does not restore it. See `isAddressingReview`.
+  const implSessionActive = useAgentSession(session.id).isActive;
+  const addressingReview = isAddressingReview(stats, session.automation_phase, implSessionActive);
   const isOwner = inbox?.ownership?.session_id === session.id;
   const ownerTitle = isOwner ? undefined : 'Only the agent session that owns this review can act on it';
   const actionKey = actionState?.sessionId === session.id ? actionState.key : null;

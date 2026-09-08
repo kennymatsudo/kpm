@@ -65,6 +65,7 @@ interface TrackerState {
 
   // Reset
   reset: () => void;
+  resetProjectState: () => void;
 }
 
 const initialState = {
@@ -276,6 +277,7 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
   },
 
   reset: () => set(initialState),
+  resetProjectState: () => set(initialState),
 }));
 
 // Selector for checking if any associations exist (avoids re-renders on association changes)

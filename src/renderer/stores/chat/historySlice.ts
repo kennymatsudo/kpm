@@ -1,8 +1,10 @@
-import type { ChatMessage, ChatSessionSummary, MessageSegment } from '../../../shared/types';
+import type { ChatMessage, ChatSessionSummary } from '../../../shared/types';
 import { getChatSessionHistory, loadChatSession } from '../../services/chatService';
 import type { ChatState, ChatSet, ChatGet, Message, PerSessionState } from './types';
 import { createInitialPerSessionState } from './baseState';
 import { readPersistedTabs } from './persistence';
+import { mergeAssistantTurns } from './messageMerge';
+import { createIdleStreamingCluster } from './chatStreamReducer';
 
 const SESSION_HISTORY_LIMIT = 10;
 
@@ -24,7 +26,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
   | 'hydrateOpenSessions'
 > {
   return {
-    startNewChatSession: (_keepCurrentActive = true) => {
+    startNewChatSession: () => {
       const newSessionId = crypto.randomUUID();
       const state = get();
 
@@ -191,26 +193,26 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
 
         if (result.success && result.messages) {
           // Fold consecutive assistant rows (no user row between them) into one
-          // Message, mirroring the live-session merge in `finalizeMessage`
-          // (streamingSlice.ts) — otherwise reloaded history would show the old
-          // chunky per-turn cards while a live session renders them merged.
-          // Persisted rows carry no duration/model, so the checkpoint here is
-          // timestamp-only; the divider still shows the gap between turns.
+          // Message via `mergeAssistantTurns` (messageMerge.ts) — the same
+          // predicate the live session uses in `chatStreamReducer.ts` —
+          // otherwise reloaded history would show the old chunky per-turn
+          // cards while a live session renders them merged. `interrupted` is
+          // never passed here: `ChatMessage` doesn't persist it, so a
+          // reloaded run always merges as if uninterrupted (see
+          // `messageMerge.ts` for the tradeoff).
           const messages: Message[] = result.messages.reduce<Message[]>((acc, m: ChatMessage) => {
             const timestamp = new Date(m.created_at);
-            const previous = acc[acc.length - 1];
 
-            if (
-              m.role === 'assistant'
-              && previous?.role === 'assistant'
-              && previous.model === (m.model ?? undefined)
-            ) {
-              const checkpoint: MessageSegment = { type: 'checkpoint', timestamp: timestamp.getTime() };
-              acc[acc.length - 1] = {
-                ...previous,
-                segments: [...previous.segments, checkpoint, { type: 'text', content: m.content }],
-              };
-              return acc;
+            if (m.role === 'assistant') {
+              const merged = mergeAssistantTurns(acc[acc.length - 1], {
+                segments: [{ type: 'text', content: m.content }],
+                timestamp: timestamp.getTime(),
+                model: m.model ?? undefined,
+              });
+              if (merged) {
+                acc[acc.length - 1] = merged;
+                return acc;
+              }
             }
 
             acc.push({
@@ -238,13 +240,11 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
           sessions.set(chatSessionId, {
             ...baseSession,
             messages,
-            streamingContent: preserveLiveState ? baseSession.streamingContent : '',
-            streamingThinking: preserveLiveState ? baseSession.streamingThinking : '',
-            streamingSegments: preserveLiveState ? baseSession.streamingSegments : [],
-            pendingActivities: preserveLiveState ? baseSession.pendingActivities : [],
-            isStreaming: preserveLiveState ? baseSession.isStreaming : false,
+            // A live turn's streaming cluster (all 8 fields, as one unit)
+            // survives a history reload untouched; otherwise it resets to
+            // idle — same shape a fresh session starts in.
+            ...(preserveLiveState ? {} : createIdleStreamingCluster()),
             error: null,
-            activities: preserveLiveState ? baseSession.activities : [],
             sessionState: baseSession.sessionState,
             provider: sessionProvider,
             choice: result.choice ?? baseSession.choice,
@@ -255,8 +255,6 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
             piProviderModel: result.choice?.selected.provider === 'pi'
               ? result.choice.selected.model
               : baseSession.piProviderModel,
-            streamStartedAt: preserveLiveState ? baseSession.streamStartedAt : null,
-            lastStreamUpdateAt: preserveLiveState ? baseSession.lastStreamUpdateAt : null,
             hydrated: true,
           });
 

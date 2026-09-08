@@ -41,13 +41,15 @@ describe('ToolCallLogger', () => {
     sendMock = vi.fn();
   });
 
-  function createLogger() {
-    return createToolCallLogger({
+  function createLogger({ enabled = true }: { enabled?: boolean } = {}) {
+    const logger = createToolCallLogger({
       getMainWindow: () => ({
         webContents: { send: sendMock },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any,
     });
+    if (enabled) logger.setEnabled(true);
+    return logger;
   }
 
   it('logs a tool call and broadcasts', () => {
@@ -117,6 +119,29 @@ describe('ToolCallLogger', () => {
 
     expect(sendMock).not.toHaveBeenCalled();
     expect(logger.getEntriesForSession('session-1')).toHaveLength(0);
+  });
+
+  it('records nothing until a reader enables it', () => {
+    const logger = createLogger({ enabled: false });
+
+    logger.logToolCall(makeEntry());
+
+    expect(sendMock).not.toHaveBeenCalled();
+    expect(logger.getEntriesForSession('session-1')).toHaveLength(0);
+    expect(logger.getInfo().enabled).toBe(false);
+  });
+
+  it('truncates long tool input values', () => {
+    const logger = createLogger();
+    const content = 'x'.repeat(30_000);
+
+    logger.logToolCall(makeEntry({ toolName: 'Write', input: { file_path: '/foo/bar.ts', content } }));
+
+    const [logged] = logger.getEntriesForSession('session-1');
+    const recordedContent = logged.input.content as string;
+    expect(recordedContent.length).toBeLessThan(content.length);
+    expect(recordedContent).toContain('truncated, 30000 chars');
+    expect(logged.input.file_path).toBe('/foo/bar.ts');
   });
 
   it('clears session data', () => {

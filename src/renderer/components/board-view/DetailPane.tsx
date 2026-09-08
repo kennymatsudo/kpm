@@ -30,7 +30,7 @@ import { openExternalUrl } from '../../services/shellService';
 import { usePlanDomainStore, useProjectUiDomainStore, toast } from '../../stores';
 import { copyToClipboard } from '../../utils/clipboard';
 import { isCommitHookRepairPhase, type DevSessionWithPlanItem } from '../../../shared/types';
-import { reviewSessionIdForDisplay } from './reviewSession';
+import { useReviewRuntime } from './useReviewRuntime';
 
 interface DetailPaneProps {
   session: DevSessionWithPlanItem;
@@ -73,21 +73,11 @@ export const DetailPane = memo(function DetailPane({
   const status = usePanelStatus(session);
 
   const implementationSession = useAgentSession(session.id);
-  const reviewSessionId = useDevSessionsStore((s) => reviewSessionIdForDisplay(
-    session.id,
-    session.current_step_id,
-    s.agentStateBySessionId,
-    s.reviewRunsByImplementationId.get(session.id) ?? [],
-  ));
-  const reviewSession = useAgentSession(reviewSessionId);
-  const showReviewSession =
-    reviewSession.agentState === 'starting'
-    || reviewSession.agentState === 'working'
-    || reviewSession.agentState === 'waiting_for_input'
-    || reviewSession.agentState === 'failed'
-    || reviewSession.agentState === 'stopped';
+  const reviewRuntime = useReviewRuntime(session.id, session.current_step_id);
+  const reviewSession = useAgentSession(reviewRuntime.sessionId);
+  const showReviewSession = reviewRuntime.isVisible;
   const effectiveAgentState = showReviewSession ? reviewSession.agentState : implementationSession.agentState;
-  const effectiveActivities = showReviewSession ? reviewSession.activities : implementationSession.activities;
+  const effectiveActivityGroups = (showReviewSession ? reviewSession : implementationSession).activityFeed.groups;
 
   useEffect(() => {
     void loadStepCosts(session.id);
@@ -288,6 +278,7 @@ export const DetailPane = memo(function DetailPane({
         handleStop();
         break;
       case 'resume':
+      case 'retry':
         handleResume();
         break;
       case 'proceed':
@@ -314,7 +305,6 @@ export const DetailPane = memo(function DetailPane({
         break;
       case 'focus_input':
       case 'follow_up':
-      case 'retry':
         chatInputRef.current?.focus();
         break;
       case 'assess':
@@ -478,7 +468,7 @@ export const DetailPane = memo(function DetailPane({
       <div className="flex-1 overflow-hidden flex flex-col min-h-0">
         {activeTab === 'activity' && (
           <ActivityTab
-            activities={effectiveActivities}
+            groups={effectiveActivityGroups}
             agentState={effectiveAgentState}
             sessionLabel={showReviewSession ? 'Auto-review' : undefined}
             emptyActiveLabel={status.progress?.label ?? status.nextAction?.text}

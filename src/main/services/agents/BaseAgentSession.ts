@@ -51,6 +51,23 @@ const GIT_DIFF_STAT_PATTERN =
  */
 const MAX_ACTIVITIES_BUFFER = 500;
 
+/**
+ * Cap on a single activity's `content`. A `Read` of a large file or a `Bash`
+ * running a test suite otherwise carries its whole output into the buffer above,
+ * across IPC, and into the renderer's feed. The detail pane only ever renders
+ * this as a preview.
+ */
+const MAX_ACTIVITY_CONTENT_CHARS = 4000;
+
+function withBoundedContent(activity: AgentActivity): AgentActivity {
+  const { content } = activity;
+  if (typeof content !== 'string' || content.length <= MAX_ACTIVITY_CONTENT_CHARS) return activity;
+  return {
+    ...activity,
+    content: `${content.slice(0, MAX_ACTIVITY_CONTENT_CHARS)}\n… (truncated, ${content.length} chars)`,
+  };
+}
+
 export abstract class BaseAgentSession {
   readonly id: string;
   readonly role: AgentSessionRole;
@@ -161,13 +178,14 @@ export abstract class BaseAgentSession {
   }
 
   protected emitActivity(activity: AgentActivity): void {
-    this._activities.push(activity);
+    const bounded = withBoundedContent(activity);
+    this._activities.push(bounded);
     if (this._activities.length > MAX_ACTIVITIES_BUFFER) {
       // Evict oldest entries in one batch. splice keeps a contiguous array and
       // is cheaper than repeated shift() calls.
       this._activities.splice(0, this._activities.length - MAX_ACTIVITIES_BUFFER);
     }
-    this.emit('onActivity', activity);
+    this.emit('onActivity', bounded);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { buildItemMaps, calculateGroupLayout } from '../../../utils/planHierarchy';
+import { buildHierarchyTree, layoutGroup, type TreeNode } from '../../../utils/planHierarchy';
 import { checkCollisionWithObstacles, resolveGroupCollisions, type PositionableGroup, type Rect } from '../../../utils/collision';
 import { GROUP_LAYOUT } from '../../../constants/layout';
 import type { PlanItem, Group } from '../../../../shared/types';
@@ -18,8 +18,7 @@ interface UseGroupCollisionResolutionDeps {
 function calculateGroupDimensions(
   group: Group,
   items: PlanItem[],
-  childrenMap: Map<string, string[]>,
-  itemMap: Map<string, PlanItem>
+  tree: TreeNode[]
 ): { width: number; height: number } {
   const assignedItems = items.filter(item => item.group_id === group.id);
 
@@ -27,15 +26,7 @@ function calculateGroupDimensions(
     return { width: group.width, height: group.height };
   }
 
-  const { bounds } = calculateGroupLayout(
-    group.id,
-    { x: group.position_x ?? 0, y: group.position_y ?? 0 },
-    assignedItems,
-    childrenMap,
-    itemMap,
-    undefined,
-    group.width
-  );
+  const { bounds } = layoutGroup(group, assignedItems, tree);
 
   return { width: bounds.width, height: bounds.height };
 }
@@ -59,33 +50,24 @@ export function useGroupCollisionResolution({
       const shouldDebug = typeof window !== 'undefined' &&
         (window as unknown as { __DEBUG_GROUP_LAYOUT?: boolean }).__DEBUG_GROUP_LAYOUT === true;
 
-      // Build item maps for hierarchy calculations
-      const { childrenMap, itemMap } = buildItemMaps(plannedItems);
+      // Build the full plan tree once for depth-aware height lookups
+      const tree = buildHierarchyTree(plannedItems);
 
       // Find the changed group
       const changedGroup = groups.find(g => g.id === changedGroupId);
       if (!changedGroup) return;
 
-      // Calculate new dimensions for the changed group
-      const newDims = calculateGroupDimensions(changedGroup, plannedItems, childrenMap, itemMap);
-      const currentWidth = changedGroup.width ?? newDims.width;
-      const currentHeight = changedGroup.height ?? newDims.height;
-      const effectiveDims = {
-        // Preserve manual/previously-persisted width, but allow height to shrink
-        // when filtered/hidden items are removed from the visible layout.
-        width: Math.max(currentWidth, newDims.width),
-        height: newDims.height,
-      };
+      // Calculate new dimensions for the changed group. layoutGroup already
+      // preserves a manually widened group's width and applies the
+      // collapsed-height rule, so this is the group's final persisted size.
+      const newDims = calculateGroupDimensions(changedGroup, plannedItems, tree);
       const assignedCount = plannedItems.filter(item => item.group_id === changedGroupId).length;
 
-      const collisionHeight = changedGroup.is_collapsed
-        ? GROUP_LAYOUT.COLLAPSED_HEIGHT
-        : effectiveDims.height;
       const changedRect: Rect = {
         x: changedGroup.position_x ?? 0,
         y: changedGroup.position_y ?? 0,
-        width: effectiveDims.width,
-        height: collisionHeight,
+        width: newDims.width,
+        height: newDims.height,
       };
       const obstacles: Rect[] = groups
         .filter((group) => group.id !== changedGroupId)
@@ -101,9 +83,8 @@ export function useGroupCollisionResolution({
         console.debug('[group-collision]', {
           groupId: changedGroupId,
           assignedCount,
-          currentSize: { width: currentWidth, height: currentHeight },
+          currentSize: { width: changedGroup.width, height: changedGroup.height },
           newDims,
-          effectiveDims,
           hasCollision,
         });
       }
@@ -114,15 +95,15 @@ export function useGroupCollisionResolution({
           id: group.id,
           x: group.position_x ?? 0,
           y: group.position_y ?? 0,
-          width: group.id === changedGroupId ? effectiveDims.width : group.width,
+          width: group.id === changedGroupId ? newDims.width : group.width,
           height: group.id === changedGroupId
-            ? collisionHeight
+            ? newDims.height
             : (group.is_collapsed ? GROUP_LAYOUT.COLLAPSED_HEIGHT : group.height),
         };
       });
 
       if (!hasCollision) {
-        await updateGroupSize(changedGroupId, effectiveDims.width, effectiveDims.height);
+        await updateGroupSize(changedGroupId, newDims.width, newDims.height);
         return;
       }
 
@@ -133,7 +114,7 @@ export function useGroupCollisionResolution({
       const updatePromises: Promise<unknown>[] = [];
 
       // Update the changed group's size
-      updatePromises.push(updateGroupSize(changedGroupId, effectiveDims.width, effectiveDims.height));
+      updatePromises.push(updateGroupSize(changedGroupId, newDims.width, newDims.height));
 
       // Update positions for any groups that needed to move due to collision
       for (const [groupId, newPos] of collisionResolutions) {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { sortGroupItems, calculateCardHeight, buildHeightMapFromTree, type TreeNode } from './planHierarchy';
-import type { PlanItem } from '../../shared/types';
+import { sortGroupItems, calculateCardHeight, buildHeightMapFromTree, layoutGroup, type TreeNode } from './planHierarchy';
+import type { PlanItem, Group } from '../../shared/types';
 
 /** Create a minimal PlanItem for testing */
 function createTestItem(overrides: Partial<PlanItem> = {}): PlanItem {
@@ -214,6 +214,24 @@ function toTreeNode(item: PlanItem, children: TreeNode[] = []): TreeNode {
   return { ...item, children };
 }
 
+/** Create a minimal Group for testing */
+function createTestGroup(overrides: Partial<Group> = {}): Group {
+  return {
+    id: overrides.id ?? 'group-1',
+    project_id: 'project-1',
+    name: 'Test Group',
+    color: '#000000',
+    position_x: 0,
+    position_y: 0,
+    width: 292,
+    height: 200,
+    is_collapsed: false,
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
 describe('calculateCardHeight', () => {
   it('depth 0 leaf card is 87px (padding 16 + title 21 + metadata 26 + description 24)', () => {
     const itemMap = new Map<string, PlanItem>([['a', createTestItem({ id: 'a' })]]);
@@ -346,5 +364,63 @@ describe('buildHeightMapFromTree', () => {
     // Height calc doesn't model expand/collapse UI state; it always reserves
     // space for the toggle row when children.length > 0.
     expect(heightMap.get('parent')).toBe(193);
+  });
+});
+
+describe('layoutGroup', () => {
+  it('keeps a manually widened group at its own width when collapsed, and collapses only the height', () => {
+    const item = createTestItem({ id: 'a' });
+    const tree: TreeNode[] = [toTreeNode(item)];
+    // Natural masonry width for a single item is 292 (2*16 padding + 260 card).
+    // 600 is a manual widening that must survive the collapse.
+    const group = createTestGroup({ width: 600, is_collapsed: true });
+
+    const { bounds } = layoutGroup(group, [item], tree);
+
+    expect(bounds.width).toBe(600);
+    expect(bounds.height).toBe(40); // GROUP_LAYOUT.COLLAPSED_HEIGHT
+  });
+
+  it('uses an item\'s real depth in the plan tree, not depth 0, when it is the only item assigned to a group', () => {
+    // leaf sits two levels deep in the full plan hierarchy (root -> mid -> leaf)
+    // even though it is the only item directly assigned to this group.
+    const leaf = createTestItem({ id: 'leaf' });
+    const mid = toTreeNode(createTestItem({ id: 'mid' }), [toTreeNode(leaf)]);
+    const root = toTreeNode(createTestItem({ id: 'root' }), [mid]);
+    const tree: TreeNode[] = [root];
+    const group = createTestGroup({ width: 292 });
+
+    const { bounds } = layoutGroup(group, [leaf], tree);
+
+    // Depth-aware: leaf @ depth 2 = 56px, not depth 0's 87px.
+    // height = 56 (card) + 36 (header) + 16 (padding top) + 16 (padding bottom)
+    expect(bounds.height).toBe(124);
+  });
+
+  it('sizes a group identically whether its position is the placeholder elk-sizing origin or its final persisted position', () => {
+    // useAutoLayout sizes a group's elk rectangle at an arbitrary position
+    // before layout has run, then repositions its items once the real
+    // position is known. Both calls share group.width, so width, height,
+    // and column assignment must agree.
+    const items = [
+      createTestItem({ id: 'a' }),
+      createTestItem({ id: 'b' }),
+      createTestItem({ id: 'c' }),
+    ];
+    const tree: TreeNode[] = items.map((item) => toTreeNode(item));
+    const group = createTestGroup({ width: 600 }); // wide enough for 2 columns, not all 3
+
+    const sizingCall = layoutGroup({ ...group, position_x: 0, position_y: 0 }, items, tree);
+    const persistCall = layoutGroup({ ...group, position_x: 500, position_y: 300 }, items, tree);
+
+    expect(persistCall.bounds.width).toBe(sizingCall.bounds.width);
+    expect(persistCall.bounds.height).toBe(sizingCall.bounds.height);
+
+    const relativeX = (call: typeof sizingCall, groupX: number) =>
+      items
+        .map((item) => call.itemPositions.get(item.id)!.x - groupX)
+        .sort((a, b) => a - b);
+
+    expect(relativeX(persistCall, 500)).toEqual(relativeX(sizingCall, 0));
   });
 });

@@ -3,6 +3,8 @@ import { createStore } from 'zustand/vanilla';
 import { getChatSessionHistory, loadChatSession } from '../../services/chatService';
 import { createInitialChatState, createInitialPerSessionState } from './baseState';
 import { createHistorySlice } from './historySlice';
+import { applyStreamEvent } from './chatStreamReducer';
+import type { Message } from './types';
 
 vi.mock('../../services/chatService', () => ({
   getChatSessionHistory: vi.fn(),
@@ -132,6 +134,7 @@ describe('historySlice.restoreLastSession', () => {
       viewedSessionId: 'chat-a',
       sessions: new Map([
         ['chat-a', {
+          backgroundTasks: [],
           messages: [],
           streamingSegments: [],
           streamingContent: '',
@@ -201,6 +204,7 @@ describe('historySlice.restoreLastSession', () => {
       viewedSessionId: 'chat-a',
       sessions: new Map([
         ['chat-a', {
+          backgroundTasks: [],
           messages: [{
             id: 'm1',
             role: 'user',
@@ -313,7 +317,7 @@ describe('historySlice.loadFromHistory turn merging', () => {
     vi.mocked(loadChatSession).mockReset();
   });
 
-  // Mirrors the live-session merge in `finalizeMessage` (streamingSlice.ts):
+  // Mirrors the live-session merge in `mergeAssistantTurns` (messageMerge.ts):
   // consecutive assistant rows with no user row between them are turns from
   // the same merged exchange (e.g. periodic check-ins on a forked background
   // agent) and must render as one card on reload too, not the old chunky
@@ -368,6 +372,123 @@ describe('historySlice.loadFromHistory turn merging', () => {
       { type: 'checkpoint', timestamp: new Date('2026-01-01T00:01:20.000Z').getTime() },
       { type: 'text', content: 'The research agent finished — here is what it found.' },
     ]);
+  });
+
+  // A model switch mid-thread does not break the merge — it only annotates
+  // the checkpoint divider — so the transcript looks the same on reload as
+  // it did live (see `mergeAssistantTurns`'s doc comment in messageMerge.ts).
+  it('still merges consecutive assistant rows when the model changed between them', async () => {
+    const store = createTestStore();
+
+    vi.mocked(loadChatSession).mockResolvedValue({
+      success: true,
+      messages: [
+        {
+          id: 'message-1',
+          session_id: 'project-a',
+          chat_session_id: 'chat-a',
+          provider: 'claude',
+          role: 'assistant',
+          content: 'turn one text',
+          model: 'model-a',
+          created_at: '2026-01-01T00:00:00.000Z',
+        },
+        {
+          id: 'message-2',
+          session_id: 'project-a',
+          chat_session_id: 'chat-a',
+          provider: 'claude',
+          role: 'assistant',
+          content: 'turn two text',
+          model: 'model-b',
+          created_at: '2026-01-01T00:01:20.000Z',
+        },
+      ],
+      chatSessionId: 'chat-a',
+    });
+
+    await store.getState().loadFromHistory('project-a', 'chat-a', () => true);
+
+    const messages = store.getState().sessions.get('chat-a')?.messages ?? [];
+    expect(messages).toHaveLength(1);
+    expect(messages[0].model).toBe('model-b');
+    expect(messages[0].segments).toEqual([
+      { type: 'text', content: 'turn one text' },
+      { type: 'checkpoint', timestamp: new Date('2026-01-01T00:01:20.000Z').getTime(), model: 'model-a' },
+      { type: 'text', content: 'turn two text' },
+    ]);
+  });
+});
+
+describe('parity: finalize (live) vs. loadFromHistory (reload) merge the same turn sequence identically', () => {
+  beforeEach(() => {
+    vi.mocked(loadChatSession).mockReset();
+  });
+
+  it('produces the same merged segment structure through both paths', async () => {
+    const t0 = new Date('2026-01-01T00:00:00.000Z').getTime();
+    const t1 = new Date('2026-01-01T00:01:20.000Z').getTime();
+
+    vi.useFakeTimers();
+    let liveMessages: Message[];
+    try {
+      vi.setSystemTime(t0);
+      const firstTurn = {
+        ...createInitialPerSessionState(1),
+        isStreaming: true,
+        streamingSegments: [{ type: 'text' as const, content: 'turn one text' }],
+        streamingContent: 'turn one text',
+      };
+      const afterFirst = applyStreamEvent(firstTurn, { type: 'done', options: { model: 'model-a' } });
+
+      vi.setSystemTime(t1);
+      const secondTurn = {
+        ...afterFirst,
+        isStreaming: true,
+        streamStartedAt: null,
+        streamingSegments: [{ type: 'text' as const, content: 'turn two text' }],
+        streamingContent: 'turn two text',
+      };
+      liveMessages = applyStreamEvent(secondTurn, { type: 'done', options: { model: 'model-b' } }).messages;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(liveMessages).toHaveLength(1);
+
+    vi.mocked(loadChatSession).mockResolvedValue({
+      success: true,
+      messages: [
+        {
+          id: 'message-1',
+          session_id: 'project-a',
+          chat_session_id: 'chat-a',
+          provider: 'claude',
+          role: 'assistant',
+          content: 'turn one text',
+          model: 'model-a',
+          created_at: new Date(t0).toISOString(),
+        },
+        {
+          id: 'message-2',
+          session_id: 'project-a',
+          chat_session_id: 'chat-a',
+          provider: 'claude',
+          role: 'assistant',
+          content: 'turn two text',
+          model: 'model-b',
+          created_at: new Date(t1).toISOString(),
+        },
+      ],
+      chatSessionId: 'chat-a',
+    });
+
+    const store = createTestStore();
+    await store.getState().loadFromHistory('project-a', 'chat-a', () => true);
+    const reloadedMessages = store.getState().sessions.get('chat-a')?.messages ?? [];
+
+    expect(reloadedMessages).toHaveLength(1);
+    expect(reloadedMessages[0].segments).toEqual(liveMessages[0].segments);
   });
 });
 

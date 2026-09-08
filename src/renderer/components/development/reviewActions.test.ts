@@ -9,6 +9,7 @@ import {
   getThreadPill,
   getThreadRailClass,
   isAddressingReview,
+  selectReviewLadderRung,
   sortThreads,
   summarizeReviewers,
 } from './reviewActions';
@@ -237,13 +238,34 @@ describe('summarizeReviewers', () => {
 
 describe('isAddressingReview', () => {
   it('is true while the session is in addressing_review phase', () => {
-    expect(isAddressingReview(makeStats(), 'addressing_review', 'active')).toBe(true);
+    expect(isAddressingReview(makeStats(), 'addressing_review', true)).toBe(true);
   });
 
-  it('is true when code updates are queued or running on an active session', () => {
-    expect(isAddressingReview(makeStats({ queuedCodeCount: 1 }), 'idle', 'inactive')).toBe(true);
-    expect(isAddressingReview(makeStats({ updatingCodeCount: 1 }), 'idle', 'active')).toBe(true);
-    expect(isAddressingReview(makeStats({ updatingCodeCount: 1 }), 'idle', 'inactive')).toBe(false);
+  it('is true when code updates are queued regardless of live agent state', () => {
+    expect(isAddressingReview(makeStats({ queuedCodeCount: 1 }), 'idle', false)).toBe(true);
+  });
+
+  it('is true when code is updating only while the implementation agent is live-active', () => {
+    // Live `AgentSessionState`, not persisted `dev_sessions.status`: the
+    // implementation session's persisted status stays 'inactive' for this
+    // entire window (see the doc comment on `isAddressingReview`).
+    expect(isAddressingReview(makeStats({ updatingCodeCount: 1 }), 'idle', true)).toBe(true);
+    expect(isAddressingReview(makeStats({ updatingCodeCount: 1 }), 'idle', false)).toBe(false);
+  });
+});
+
+describe('selectReviewLadderRung', () => {
+  it('walks the same precedence order deriveNextAction uses, as an explicit rung', () => {
+    expect(selectReviewLadderRung(makeStats(), { assessmentRunning: true, addressingReview: false })).toBe('assessment-running');
+    expect(selectReviewLadderRung(makeStats(), { assessmentRunning: false, addressingReview: true })).toBe('updating-code');
+    expect(selectReviewLadderRung(makeStats({ failedCount: 1 }), { assessmentRunning: false, addressingReview: false })).toBe('needs-attention');
+    expect(selectReviewLadderRung(makeStats(), { assessmentRunning: false, addressingReview: false })).toBe('clear');
+  });
+
+  it('assessment running outranks an in-flight code update', () => {
+    expect(
+      selectReviewLadderRung(makeStats(), { assessmentRunning: true, addressingReview: true }),
+    ).toBe('assessment-running');
   });
 });
 

@@ -10,7 +10,8 @@ import * as pty from 'node-pty';
 import { getAgentBinary } from './agentCatalog';
 import { generateClaudeCodeHookSettings, cleanupClaudeCodeHookSettings } from './hooks/claudeCodeHooks';
 import { hookEventToActivity, type HookEvent } from './hookServer';
-import { getCleanEnv } from '../streaming/envUtils';
+import { getAgentEnv } from '../streaming/envUtils';
+import { createBoundedOutputBuffer, type BoundedOutputBuffer } from '../streaming/outputBuffer';
 import { BaseAgentSession } from './BaseAgentSession';
 import type {
   IAgentSession,
@@ -41,7 +42,7 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
 
   private ptyProcess: pty.IPty | null = null;
   private worktreePath: string | null = null;
-  private outputBuffer = '';
+  private outputBuffer: BoundedOutputBuffer = createBoundedOutputBuffer(MAX_OUTPUT_BUFFER);
   private lastAssistantMessage = '';
   private hookPort: number;
 
@@ -75,15 +76,12 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
       cols: 120,
       rows: 40,
       cwd: worktreePath,
-      env: { ...getCleanEnv(), ...env, KPM_HOOK_PORT: String(this.hookPort) },
+      env: { ...getAgentEnv(), ...env, KPM_HOOK_PORT: String(this.hookPort) },
     });
 
     // Buffer output (not rendered — available for debugging)
     this.ptyProcess.onData((data) => {
-      this.outputBuffer += data;
-      if (this.outputBuffer.length > MAX_OUTPUT_BUFFER) {
-        this.outputBuffer = this.outputBuffer.slice(-MAX_OUTPUT_BUFFER);
-      }
+      this.outputBuffer.append(data);
     });
 
     // Handle exit
@@ -216,7 +214,7 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
 
   /** Get the raw PTY output buffer (for debugging) */
   getOutput(): string {
-    return this.lastAssistantMessage || this.outputBuffer;
+    return this.lastAssistantMessage || this.outputBuffer.read();
   }
 
   protected finalOutput(): string | null {

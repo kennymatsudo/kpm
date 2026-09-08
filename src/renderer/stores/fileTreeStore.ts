@@ -79,6 +79,7 @@ interface FileTreeState {
 
   // Reset
   reset: () => void;
+  resetProjectState: () => void;
 }
 
 const initialState = {
@@ -595,6 +596,13 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   },
 
   reset: () => set({
+    ...initialState,
+    expandedPaths: new Set<string>(),
+    focusedPaths: new Set<string>(),
+    loadingPaths: new Set<string>(),
+    recentlyChangedPaths: new Map<string, RecentlyChangedInfo>(),
+  }),
+  resetProjectState: () => set({
     ...initialState,
     expandedPaths: new Set<string>(),
     focusedPaths: new Set<string>(),

@@ -1,10 +1,10 @@
 import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { AgentActivity } from '../../../shared/agent-types';
 import type { AgentSessionState } from '../../../shared/types';
-import { presentActivities, type ActivityIconKind, type ActivityPresentationEntry } from './activityPresentation';
+import type { ActivityIconKind, ActivityPresentationEntry, ActivityPresentationGroup } from './activityPresentation';
 
 interface ActivityTabProps {
-  activities: AgentActivity[];
+  groups: readonly ActivityPresentationGroup[];
   agentState?: AgentSessionState;
   sessionLabel?: string;
   emptyActiveLabel?: string;
@@ -16,7 +16,7 @@ function formatTime(timestamp: number): string {
 
 function ActivityIcon({ icon }: { icon: ActivityIconKind }) {
   if (icon === 'error') {
-    return <svg className="w-3.5 h-3.5 text-red-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm-.5 3a.5.5 0 0 1 1 0v4a.5.5 0 0 1-1 0V4Zm.5 7.5a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" /></svg>;
+    return <svg className="w-3.5 h-3.5 text-danger shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm-.5 3a.5.5 0 0 1 1 0v4a.5.5 0 0 1-1 0V4Zm.5 7.5a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" /></svg>;
   }
   if (icon === 'system') {
     return <svg className="w-3.5 h-3.5 text-text-muted shrink-0" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="3" opacity="0.5" /></svg>;
@@ -59,10 +59,10 @@ const ActivityEntry = memo(function ActivityEntry({ entry }: { entry: ActivityPr
         </span>
         <span className="mt-0.5"><ActivityIcon icon={entry.icon} /></span>
         <span className="flex-1 min-w-0">
-          <span className={`text-xs leading-relaxed truncate block ${activity.type === 'error' || status === 'Failed' ? 'text-red-400' : 'text-text-secondary'}`}>{entry.label}</span>
+          <span className={`text-xs leading-relaxed truncate block ${activity.type === 'error' || status === 'Failed' ? 'text-danger' : 'text-text-secondary'}`}>{entry.label}</span>
           {count && <span className="text-tiny text-text-muted">{count} status checks</span>}
         </span>
-        {status && <span className={`text-tiny tabular-nums shrink-0 mt-0.5 ${status === 'Failed' ? 'text-red-400' : status === 'Passed' ? 'text-green-500' : 'text-text-muted'}`}>{status}</span>}
+        {status && <span className={`text-tiny tabular-nums shrink-0 mt-0.5 ${status === 'Failed' ? 'text-danger' : status === 'Passed' ? 'text-success' : 'text-text-muted'}`}>{status}</span>}
         <span className="text-tiny text-text-muted tabular-nums shrink-0 mt-0.5">{formatTime(activity.timestamp)}</span>
       </button>
       {isExpanded && <RawDetails entry={entry} />}
@@ -74,14 +74,13 @@ const NarrationHeader = memo(function NarrationHeader({ activity }: { activity: 
   return <div className="flex items-start justify-between gap-3 px-4 pt-3 pb-1.5"><p className="text-xs text-text-primary leading-relaxed line-clamp-3 flex-1 min-w-0">{activity.content || activity.summary}</p><span className="text-tiny text-text-muted tabular-nums shrink-0 mt-0.5">{formatTime(activity.timestamp)}</span></div>;
 });
 
-const ActivityGroupView = memo(function ActivityGroupView({ group }: { group: ReturnType<typeof presentActivities>[number] }) {
+const ActivityGroupView = memo(function ActivityGroupView({ group }: { group: ActivityPresentationGroup }) {
   return <div className="border-b border-border-subtle/40 last:border-0 py-0.5">{group.narration && <NarrationHeader activity={group.narration} />}{group.entries.length > 0 && <div className={group.narration ? 'ml-3 border-l border-border-subtle/50' : ''}>{group.entries.map((entry, index) => <ActivityEntry key={`${entry.kind}-${entry.kind === 'collapsed' ? entry.activities[0].timestamp : entry.activity.timestamp}-${index}`} entry={entry} />)}</div>}</div>;
 });
 
-export const ActivityTab = memo(function ActivityTab({ activities, agentState, sessionLabel, emptyActiveLabel }: ActivityTabProps) {
+export const ActivityTab = memo(function ActivityTab({ groups, agentState, sessionLabel, emptyActiveLabel }: ActivityTabProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldFollowRef = useRef(true);
-  const groups = useMemo(() => presentActivities(activities), [activities]);
   const totalItems = useMemo(() => groups.reduce((total, group) => total + (group.narration ? 1 : 0) + group.entries.length, 0), [groups]);
 
   const handleScroll = useCallback(() => {
@@ -101,5 +100,5 @@ export const ActivityTab = memo(function ActivityTab({ activities, agentState, s
   }
 
   const latestEntry = groups.at(-1)?.entries.at(-1);
-  return <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto">{sessionLabel && <div className="flex items-center gap-2 px-4 py-1.5 bg-surface-0/90 border-b border-border-subtle/40"><div className="flex-1 h-px bg-border-subtle/60" /><span className="text-tiny text-amber-500/80 font-medium uppercase tracking-wide">{sessionLabel}</span><div className="flex-1 h-px bg-border-subtle/60" /></div>}<div className="sticky top-0 z-10 px-4 py-2 bg-surface-0/90 backdrop-blur-sm border-b border-border-subtle/40 text-xs text-text-secondary"><span className="text-text-primary font-medium">{agentState === 'working' ? 'Working' : agentState === 'complete' ? 'Completed' : 'Activity'}</span>{latestEntry && <span className="ml-2 text-text-muted truncate">{latestEntry.label}</span>}</div><div className="py-1">{groups.map((group, index) => <ActivityGroupView key={`${group.narration?.timestamp ?? 'orphan'}-${index}`} group={group} />)}</div></div>;
+  return <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto">{sessionLabel && <div className="flex items-center gap-2 px-4 py-1.5 bg-surface-0/90 border-b border-border-subtle/40"><div className="flex-1 h-px bg-border-subtle/60" /><span className="text-tiny text-warning/80 font-medium uppercase tracking-wide">{sessionLabel}</span><div className="flex-1 h-px bg-border-subtle/60" /></div>}<div className="sticky top-0 z-10 px-4 py-2 bg-surface-0/90 backdrop-blur-sm border-b border-border-subtle/40 text-xs text-text-secondary"><span className="text-text-primary font-medium">{agentState === 'working' ? 'Working' : agentState === 'complete' ? 'Completed' : 'Activity'}</span>{latestEntry && <span className="ml-2 text-text-muted truncate">{latestEntry.label}</span>}</div><div className="py-1">{groups.map((group, index) => <ActivityGroupView key={`${group.narration?.timestamp ?? 'orphan'}-${index}`} group={group} />)}</div></div>;
 });

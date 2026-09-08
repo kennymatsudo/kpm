@@ -18,6 +18,7 @@ import { getConfig } from '../../config';
 import { containsHiddenFileTreeSegment, getNativeWatcherIgnoreGlobs } from './fileTreeVisibility';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { fileExplorerEvents } from '../../../shared/ipc/fileExplorerEvents';
+import { invalidateIgnoreCache } from '../repo/ignoreSet';
 
 /**
  * Watcher setup/teardown trace. Silent unless `claude.debug` is on — fires once
@@ -95,6 +96,8 @@ export function createProjectWatcherService(deps: ProjectWatcherServiceDeps) {
       const relativePath = path.relative(projectFolder, event.path);
       if (!relativePath || relativePath.startsWith('..')) continue;
       if (containsHiddenFileTreeSegment(relativePath)) continue;
+
+      if (path.basename(relativePath) === '.gitignore') invalidateIgnoreCache();
 
       const changeType: ChangeType =
         event.type === 'create' ? 'created' : event.type === 'update' ? 'updated' : 'deleted';

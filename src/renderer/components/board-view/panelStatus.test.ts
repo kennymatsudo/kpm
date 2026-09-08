@@ -1,24 +1,34 @@
 import { describe, it, expect } from 'vitest';
+import type { ReviewWorkFacts } from '../../../shared/reviewThreadSummary';
+import type { ReviewTask } from '../../../shared/types';
 import {
   derivePanelStatus,
   type PanelStatusInputs,
-  type ReviewPhaseStats,
 } from './panelStatus';
+import { isAddressingReview, deriveNextAction } from '../development/reviewActions';
 
-function makeStats(overrides: Partial<ReviewPhaseStats> = {}): ReviewPhaseStats {
+/** `readyToPostCount` is sugar for `readyToPostTasks` of that length — production code only reads `.length`. */
+function makeStats(overrides: Partial<ReviewWorkFacts> & { readyToPostCount?: number } = {}): ReviewWorkFacts {
+  const { readyToPostCount, readyToPostTasks, ...rest } = overrides;
   return {
     queueCount: 0,
+    openThreadCount: 0,
+    closedThreadCount: 0,
     needsReviewCount: 0,
     implementCount: 0,
     inProgressImplCount: 0,
-    readyToPostCount: 0,
+    readyToPostTasks: readyToPostTasks ?? Array.from(
+      { length: readyToPostCount ?? 0 },
+      (_, i) => ({ id: `ready-${i}` }) as ReviewTask,
+    ),
     needsInputCount: 0,
     failedCount: 0,
     staleCount: 0,
+    assessableCount: 0,
     queuedCodeCount: 0,
     updatingCodeCount: 0,
-    assessmentRunning: false,
-    ...overrides,
+    retryableAttentionTaskIds: [],
+    ...rest,
   };
 }
 
@@ -33,6 +43,7 @@ function makeInputs(overrides: Partial<PanelStatusInputs> = {}): PanelStatusInpu
     itemStatus: null,
     commitStatus: null,
     reviewStats: null,
+    reviewAssessmentRunning: false,
     latestActivitySummary: null,
     terminalReason: null,
     elapsedMs: null,
@@ -347,8 +358,15 @@ describe('derivePanelStatus — review queue precedence (review_open)', () => {
     prState: 'OPEN',
   });
 
-  function withStats(overrides: Partial<ReviewPhaseStats>) {
-    return derivePanelStatus({ ...base, reviewStats: makeStats(overrides) }).nextAction;
+  function withStats(
+    overrides: Partial<ReviewWorkFacts> & { readyToPostCount?: number; assessmentRunning?: boolean },
+  ) {
+    const { assessmentRunning, ...statsOverrides } = overrides;
+    return derivePanelStatus({
+      ...base,
+      reviewStats: makeStats(statsOverrides),
+      reviewAssessmentRunning: assessmentRunning ?? false,
+    }).nextAction;
   }
 
   it('assessment running outranks everything', () => {
@@ -433,5 +451,69 @@ describe('derivePanelStatus — precedence between dimensions', () => {
       automationPhase: 'addressing_review',
     }));
     expect(status.phase).toBe('addressing');
+  });
+});
+
+// These cross-check `derivePanelStatus` (board card / detail-pane strip)
+// against `reviewActions.ts` (Review tab) given the *same* underlying facts.
+// Before both routed through `isAddressingReview` / `selectReviewLadderRung`,
+// each surface restated its own ladder and could silently disagree — see
+// `panelStatus.ts:246`'s "mirroring the review queue's own precedence"
+// comment, which described an aspiration neither side actually enforced.
+describe('derivePanelStatus agrees with reviewActions.ts (Review tab) given identical facts', () => {
+  it('addressing state agrees using live agent state, not persisted session status', () => {
+    // The implementation agent is genuinely running an address turn right now.
+    // `dev_sessions.status` stays 'inactive' for this entire window (the
+    // implement turn already completed before review even ran, and the
+    // automated follow-up that starts the address turn never restores it —
+    // see src/main/services/agents/CLAUDE.md). Only the live AgentSessionState
+    // is trustworthy here. `automationPhase` is left null to simulate the
+    // in-between moment before the persisted phase catches up.
+    const stats = makeStats({ updatingCodeCount: 2 });
+    const implLiveActive = true; // what `useAgentSession(id).isActive` reports
+
+    const panel = derivePanelStatus(makeInputs({
+      implAgentState: 'working',
+      automationPhase: null,
+      reviewStats: stats,
+    }));
+    expect(panel.phase).toBe('addressing');
+
+    const addressingReview = isAddressingReview(stats, null, implLiveActive);
+    expect(addressingReview).toBe(true);
+
+    const reviewTabAction = deriveNextAction({
+      stats,
+      assessmentPending: null,
+      addressingReview,
+      isOwner: true,
+      ownerTitle: undefined,
+    });
+    expect(reviewTabAction?.kind).toBe('updating-code');
+  });
+
+  it('picks the same review-queue rung as the Review tab for every ladder case', () => {
+    const base = makeInputs({ implAgentState: 'complete', hasPr: true, prState: 'OPEN' });
+    const cases: (Partial<ReviewWorkFacts> & { readyToPostCount?: number })[] = [
+      { failedCount: 1, staleCount: 1 },
+      { readyToPostCount: 2 },
+      { needsInputCount: 1 },
+      { implementCount: 1 },
+      { inProgressImplCount: 1 },
+      { needsReviewCount: 1 },
+    ];
+
+    for (const overrides of cases) {
+      const stats = makeStats(overrides);
+      const panelAction = derivePanelStatus({ ...base, reviewStats: stats }).nextAction;
+      const tabAction = deriveNextAction({
+        stats,
+        assessmentPending: null,
+        addressingReview: false,
+        isOwner: true,
+        ownerTitle: undefined,
+      });
+      expect(panelAction?.tone).toBe(tabAction?.tone);
+    }
   });
 });
