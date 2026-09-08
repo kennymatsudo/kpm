@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
   useCredentialStore,
@@ -12,6 +12,9 @@ import type {
   TrackerAssociationWithScope,
   TrackerType,
 } from '../../../../shared/types';
+
+/** Ceiling on skipped availability polls, so an outage backs off to ~30 min, not forever. */
+const MAX_AVAILABILITY_BACKOFF_TICKS = 15;
 
 interface TrackerTopBarDeps {
   currentProjectId: string | null;
@@ -99,6 +102,12 @@ export function useTrackerTopBarIntegration({
 
   const refreshPlanItems = usePlanDomainStore((state) => state.refreshPlanItems);
 
+  // Per-association poll backoff: association id -> ticks left to skip, and the
+  // consecutive-failure count that sizes the next skip. Refs, so a re-render or
+  // a change in the association list doesn't reset an in-progress backoff.
+  const availabilityBackoffRef = useRef<Map<string, number>>(new Map());
+  const consecutiveFailuresRef = useRef<Map<string, number>>(new Map());
+
   const trackerCredential = credentials.find((credential) => credential.type === trackerType);
   const hasTrackerCredentials = Boolean(trackerCredential);
   const trackerAssociations = associations.filter(
@@ -135,6 +144,8 @@ export function useTrackerTopBarIntegration({
     if (!currentProjectId || trackerAssociations.length === 0) return;
 
     let disposed = false;
+    const backoff = availabilityBackoffRef.current;
+    const failures = consecutiveFailuresRef.current;
 
     const runCheck = async () => {
       if (disposed || document.visibilityState !== 'visible') return;
@@ -152,10 +163,30 @@ export function useTrackerTopBarIntegration({
         importedResults.map(async ({ association, isImported }) => {
           if (!isImported) {
             clearSyncAvailability(association.id);
+            backoff.delete(association.id);
+            failures.delete(association.id);
             return;
           }
 
-          await checkForUpdates(currentProjectId, association.id);
+          const skipped = backoff.get(association.id) ?? 0;
+          if (skipped > 0) {
+            backoff.set(association.id, skipped - 1);
+            return;
+          }
+
+          const availability = await checkForUpdates(currentProjectId, association.id);
+          if (availability) {
+            backoff.delete(association.id);
+            failures.delete(association.id);
+            return;
+          }
+          // A failed check means a full preview generation round-tripped to the
+          // tracker and timed out, so retrying on every 2-minute tick during an
+          // outage buys nothing and floods the main-process log. Double the
+          // ticks skipped per consecutive failure.
+          const consecutive = (failures.get(association.id) ?? 0) + 1;
+          failures.set(association.id, consecutive);
+          backoff.set(association.id, Math.min(2 ** (consecutive - 1), MAX_AVAILABILITY_BACKOFF_TICKS));
         })
       );
     };
@@ -204,6 +235,10 @@ export function useTrackerTopBarIntegration({
       return;
     }
     if (trackerAssociations[0]) {
+      // Opening the panel is the user's explicit "check now", so drop any
+      // outage backoff rather than making them wait out the skip window.
+      availabilityBackoffRef.current.clear();
+      consecutiveFailuresRef.current.clear();
       setSyncPanelAssociationId(trackerAssociations[0].id);
     }
   }, [

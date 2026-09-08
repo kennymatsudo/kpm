@@ -2,18 +2,65 @@ import type { KeyboardEvent, RefObject } from 'react';
 import { MainViewSwitcher, type MainView } from './MainViewSwitcher';
 import { useContextRegenerationStore } from '../../stores';
 import { DropdownMenu } from '../ui/DropdownMenu';
+import { Tooltip } from '../ui';
 
 interface ProjectOption {
   id: string;
   name: string;
   /** 1..10 for projects bound to ⌥⌘1..9 / ⌥⌘0; null when out of range. */
   shortcutPosition: number | null;
+  /** Live work in this project, or null when it is idle. */
+  activity: { summary: string; needsAttention: boolean } | null;
+}
+
+/**
+ * Marks a project in the switcher that still has work running. Amber when
+ * something in there is blocked waiting on the user, accent when it is just
+ * busy — the switcher is the only place that distinguishes the two, since a
+ * project's own UI isn't on screen.
+ */
+function ActivityDot({ activity }: { activity: NonNullable<ProjectOption['activity']> }) {
+  return (
+    <span
+      className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+        activity.needsAttention ? 'bg-warning' : 'bg-accent animate-pulse'
+      }`}
+      title={activity.summary}
+      aria-label={activity.summary}
+    />
+  );
 }
 
 function formatProjectShortcut(position: number | null): string | null {
   if (position == null || position < 1 || position > 10) return null;
   const digit = position === 10 ? '0' : String(position);
   return `⌥⌘${digit}`;
+}
+
+function ProjectMenuItem({
+  project,
+  selected = false,
+  onOpen,
+}: {
+  project: ProjectOption;
+  selected?: boolean;
+  onOpen?: (projectId: string) => void;
+}) {
+  const shortcut = formatProjectShortcut(project.shortcutPosition);
+
+  return (
+    <DropdownMenu.SubmenuItem selected={selected} onClick={onOpen ? () => onOpen(project.id) : undefined}>
+      <span className="project-avatar">{project.name.slice(0, 2)}</span>
+      <span className="flex-1">{project.name}</span>
+      {selected && <span className="sr-only">(current project)</span>}
+      {project.activity && <ActivityDot activity={project.activity} />}
+      {shortcut && (
+        <kbd className="text-xxs px-1 py-0.5 rounded bg-surface-3 text-text-muted font-mono">
+          {shortcut}
+        </kbd>
+      )}
+    </DropdownMenu.SubmenuItem>
+  );
 }
 
 interface TopBarProjectSectionProps {
@@ -69,32 +116,41 @@ export function TopBarProjectSection({
   mainView,
   onMainViewChange,
 }: TopBarProjectSectionProps) {
-  const currentProjectShortcut = currentProject
-    ? formatProjectShortcut(currentProject.shortcutPosition)
-    : null;
+  const busyOtherProjects = otherProjects.filter((project) => project.activity);
+  const otherProjectsActivity = busyOtherProjects.length === 0
+    ? null
+    : {
+        summary: busyOtherProjects
+          .map((project) => `${project.name}: ${project.activity!.summary}`)
+          .join('; '),
+        needsAttention: busyOtherProjects.some((project) => project.activity!.needsAttention),
+      };
 
   return (
     <>
       <div className="flex items-center gap-1.5 no-drag" style={{ paddingLeft: 'var(--traffic-light-inset)' }}>
-        <button
-          onClick={onToggleSidebar}
-          className={`p-1.5 rounded-lg transition-colors ${
-            sidebarCollapsed
-              ? 'text-text-muted hover:text-text-primary hover:bg-surface-3'
-              : 'text-accent bg-accent/10 hover:bg-accent/20'
-          }`}
-          title={sidebarCollapsed ? 'Show sidebar (Cmd+B)' : 'Hide sidebar (Cmd+B)'}
-          aria-label={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M3 4h18v16H3V4zm6 0v16"
-            />
-          </svg>
-        </button>
+        {/* Neutral when on, not accent: the open sidebar already reports itself. */}
+        <Tooltip content={sidebarCollapsed ? 'Show sidebar (Cmd+B)' : 'Hide sidebar (Cmd+B)'} side="bottom">
+          <button
+            onClick={onToggleSidebar}
+            className={`p-1.5 rounded-lg transition-colors ${
+              sidebarCollapsed
+                ? 'text-text-muted hover:text-text-primary hover:bg-surface-3'
+                : 'text-text-primary bg-surface-3 hover:bg-surface-4'
+            }`}
+            aria-pressed={!sidebarCollapsed}
+            aria-label={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M3 4h18v16H3V4zm6 0v16"
+              />
+            </svg>
+          </button>
+        </Tooltip>
 
         {currentProject ? (
           isEditing ? (
@@ -117,9 +173,16 @@ export function TopBarProjectSection({
                 }`}
                 aria-expanded={showMenu}
                 aria-haspopup="menu"
-                aria-label={`Project menu for ${currentProject.name}`}
+                aria-label={
+                  otherProjectsActivity
+                    ? `Project menu for ${currentProject.name}. ${otherProjectsActivity.summary}`
+                    : `Project menu for ${currentProject.name}`
+                }
               >
                 <span>{currentProject.name}</span>
+                {/* The menu is the only place that names which other project is
+                    busy, so the closed button has to say that one of them is. */}
+                {otherProjectsActivity && <ActivityDot activity={otherProjectsActivity} />}
                 <svg className="w-3 h-3 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
@@ -142,34 +205,11 @@ export function TopBarProjectSection({
                       }
                       minWidth={200}
                     >
-                      <DropdownMenu.SubmenuItem selected>
-                        <span className="project-avatar">{currentProject.name.slice(0, 2)}</span>
-                        <span className="flex-1">{currentProject.name}</span>
-                        <span className="sr-only">(current project)</span>
-                        {currentProjectShortcut && (
-                          <kbd className="text-xxs px-1 py-0.5 rounded bg-surface-3 text-text-muted font-mono">
-                            {currentProjectShortcut}
-                          </kbd>
-                        )}
-                      </DropdownMenu.SubmenuItem>
+                      <ProjectMenuItem project={currentProject} selected />
                       <DropdownMenu.Separator />
-                      {otherProjects.map((project) => {
-                        const shortcut = formatProjectShortcut(project.shortcutPosition);
-                        return (
-                          <DropdownMenu.SubmenuItem
-                            key={project.id}
-                            onClick={() => handleOpenProject(project.id)}
-                          >
-                            <span className="project-avatar">{project.name.slice(0, 2)}</span>
-                            <span className="flex-1">{project.name}</span>
-                            {shortcut && (
-                              <kbd className="text-xxs px-1 py-0.5 rounded bg-surface-3 text-text-muted font-mono">
-                                {shortcut}
-                              </kbd>
-                            )}
-                          </DropdownMenu.SubmenuItem>
-                        );
-                      })}
+                      {otherProjects.map((project) => (
+                        <ProjectMenuItem key={project.id} project={project} onOpen={handleOpenProject} />
+                      ))}
                     </DropdownMenu.Submenu>
                     <DropdownMenu.Separator />
                   </>

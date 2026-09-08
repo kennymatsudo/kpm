@@ -18,7 +18,7 @@ import { ToolLogPanel } from '../tool-log';
 import { SettingsModal } from '../settings';
 import { Z_INDEX } from '../../constants/zIndex';
 import {
-  useArtifactsStore,
+  useCommandPaletteStore,
   useProjectDomainStore,
   usePlanDomainStore,
   useProjectUiDomainStore,
@@ -82,8 +82,7 @@ export const Layout = memo(function Layout({
   // Create item handler registered by PlanView (for Cmd+Shift+I)
   const [createItemHandler, setCreateItemHandler] = useState<(() => void) | null>(null);
 
-  // Command palette state from artifacts store
-  const openCommandPalette = useArtifactsStore((state) => state.openCommandPalette);
+  const openCommandPalette = useCommandPaletteStore((state) => state.openCommandPalette);
 
   const planItems = usePlanDomainStore((state) => state.planItems);
   const isSwitchingProject = useProjectUiDomainStore((state) => state.isSwitchingProject);
@@ -98,6 +97,8 @@ export const Layout = memo(function Layout({
     workspaceChatCollapsed,
     handleToggleChat,
     showWorkspaceChat,
+    showChatForCurrentView,
+    hideChatForCurrentView,
   } = usePersistedChatCollapseState(currentProjectId, mainView);
   const {
     searchQuery,
@@ -171,6 +172,8 @@ export const Layout = memo(function Layout({
     handleMainViewChange,
     showBoardView,
     showWorkspaceChat,
+    showChatForCurrentView,
+    hideChatForCurrentView,
   });
 
   const handleToggleToolLog = useCallback(() => {
@@ -193,7 +196,7 @@ export const Layout = memo(function Layout({
 
   // Cmd+W: close focused context (overlays > file editor > chat session)
   const handleClose = useCallback(() => {
-    const { isCommandPaletteOpen, closeCommandPalette } = useArtifactsStore.getState();
+    const { isCommandPaletteOpen, closeCommandPalette } = useCommandPaletteStore.getState();
     if (isCommandPaletteOpen) {
       closeCommandPalette();
       return;
@@ -211,9 +214,11 @@ export const Layout = memo(function Layout({
       return;
     }
 
-    const { editingFile, closeEditor } = useWorkspaceStore.getState();
-    if (mainView === 'workspace' && editingFile !== null) {
-      closeEditor();
+    // Cmd+W closes one document at a time, and only reaches the chat session
+    // once the strip is empty.
+    const { activeDocumentId, closeDocument } = useWorkspaceStore.getState();
+    if (mainView === 'workspace' && activeDocumentId !== null) {
+      void closeDocument(activeDocumentId);
       return;
     }
 
@@ -250,14 +255,38 @@ export const Layout = memo(function Layout({
       focus.close();
       return;
     }
-    const editing = useWorkspaceStore.getState().editingFile;
-    if (editing?.path.toLowerCase().endsWith('.md')) {
+    const { openDocuments, activeDocumentId } = useWorkspaceStore.getState();
+    const active = openDocuments.find((document) => document.id === activeDocumentId);
+    if (active?.path.toLowerCase().endsWith('.md')) {
       focus.open({
-        path: editing.path,
-        title: getBaseName(editing.path, 'Untitled'),
-        content: editing.content,
+        path: active.path,
+        title: getBaseName(active.path, 'Untitled'),
+        content: active.content,
       });
     }
+  }, []);
+
+  // Tabs are ordered by session number, the same order the tab strip renders,
+  // so cycling matches what the user sees. Wraps at both ends.
+  const handleCycleChatSession = useCallback((direction: -1 | 1) => {
+    const { sessions, viewedSessionId, setViewedSession } = useChatStore.getState();
+    const ordered = Array.from(sessions.entries())
+      .sort((a, b) => a[1].sessionNumber - b[1].sessionNumber)
+      .map(([id]) => id);
+    if (ordered.length < 2) return;
+    const current = viewedSessionId ? ordered.indexOf(viewedSessionId) : -1;
+    const next = ordered[(current + direction + ordered.length) % ordered.length];
+    if (next) setViewedSession(next);
+  }, []);
+
+  // The strip renders in array order, so cycling matches what the user sees.
+  // Wraps at both ends.
+  const handleCycleDocument = useCallback((direction: -1 | 1) => {
+    const { openDocuments, activeDocumentId, setActiveDocument } = useWorkspaceStore.getState();
+    if (openDocuments.length < 2) return;
+    const current = openDocuments.findIndex((document) => document.id === activeDocumentId);
+    const next = openDocuments[(current + direction + openDocuments.length) % openDocuments.length];
+    if (next) setActiveDocument(next.id);
   }, []);
 
   // Keyboard shortcuts
@@ -273,6 +302,8 @@ export const Layout = memo(function Layout({
     onSwitchProjectByPosition: handleSwitchProjectByPosition,
     onToggleFocusMode: handleToggleFocusMode,
     onClose: handleClose,
+    onCycleChatSession: handleCycleChatSession,
+    onCycleDocument: handleCycleDocument,
   });
 
   return (
@@ -307,13 +338,20 @@ export const Layout = memo(function Layout({
 
         {/* Main content area - flex row with sidebar pushing content */}
         <div className="flex flex-1 overflow-hidden">
-          {/* Project switching overlay */}
+          {/*
+            Project switch progress. Deliberately a non-blocking bar rather than
+            a modal scrim: the new project's data is fetched before the store
+            swap, so the outgoing project stays usable and interruptible for the
+            whole load — including going back to it.
+          */}
           {isSwitchingProject && (
-            <div className="project-switch-overlay absolute inset-0 bg-surface-0/50 backdrop-blur-sm flex items-center justify-center" style={{ zIndex: 100 }}>
-              <div className="project-switch-content flex items-center gap-3 px-4 py-3 bg-surface-elevated rounded border border-border-strong">
-                <div className="w-5 h-5 rounded-full border-2 border-accent/30 border-t-accent spinner-refined" />
-                <span className="text-sm font-medium text-text-primary tracking-tight">Loading project</span>
-              </div>
+            <div
+              className="project-switch-progress absolute top-0 left-0 right-0 h-0.5 pointer-events-none overflow-hidden"
+              style={{ zIndex: 100 }}
+              role="status"
+              aria-label="Loading project"
+            >
+              <div className="project-switch-progress-bar h-full w-1/3 bg-accent" />
             </div>
           )}
 
@@ -403,7 +441,9 @@ export const Layout = memo(function Layout({
           )}
         </div>
 
-        <TerminalPanel defaultCwd={terminalCwd} isOpen={isTerminalOpen} />
+        {currentProjectId && (
+          <TerminalPanel projectId={currentProjectId} defaultCwd={terminalCwd} isOpen={isTerminalOpen} />
+        )}
 
       </div>
       <LayoutOverlays currentProjectId={currentProjectId} />
@@ -417,7 +457,7 @@ const LayoutOverlays = memo(function LayoutOverlays({
   currentProjectId: string | null;
 }) {
   const isToolLogOpen = useToolLogStore((state) => state.isPanelOpen);
-  const { isCommandPaletteOpen, closeCommandPalette } = useArtifactsStore(
+  const { isCommandPaletteOpen, closeCommandPalette } = useCommandPaletteStore(
     useShallow((state) => ({
       isCommandPaletteOpen: state.isCommandPaletteOpen,
       closeCommandPalette: state.closeCommandPalette,

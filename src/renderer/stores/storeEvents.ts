@@ -42,7 +42,12 @@ export interface PlanItemCreatedEvent {
 export interface NavigateToViewEvent {
   type: 'navigate-to-view';
   payload: {
-    view: 'planning' | 'workspace';
+    /**
+     * Omit to stay in whatever view is showing. Used when the target isn't
+     * view-specific (a chat tab exists in both) and switching views would be a
+     * gratuitous surprise.
+     */
+    view?: 'planning' | 'workspace';
     /** Optional request to reveal the chat surface for views that can hide it. */
     showChat?: boolean;
     /** Optional file path to open after navigation (for workspace view) */
@@ -54,7 +59,38 @@ export interface NavigateToViewEvent {
      * view into board mode, since that is the only mode with a detail pane.
      */
     boardSessionId?: string;
+    /**
+     * Optional chat tab to focus, revealing the chat panel. Used to land the
+     * user on the session that is blocked waiting for them.
+     */
+    chatSessionId?: string;
   };
+}
+
+/**
+ * Open a different project, optionally landing somewhere specific once it has
+ * loaded. `useProjectLoader` is the only subscriber; it owns the load and
+ * re-emits `then` as a `navigate-to-view` afterwards, because the target
+ * (a plan item, a chat tab) only exists in the store once the project is in.
+ *
+ * Emitters that already know the project is open should emit
+ * `navigate-to-view` directly rather than a same-project switch.
+ */
+export interface SwitchProjectEvent {
+  type: 'switch-project';
+  payload: {
+    projectId: string;
+    then?: NavigateToViewEvent['payload'];
+  };
+}
+
+/**
+ * The user closed the last chat tab. Chat has nothing left to show, so the
+ * panel hides rather than conjuring a replacement session the user did not ask
+ * for. Reopening it starts a conversation again.
+ */
+export interface ChatTabsEmptiedEvent {
+  type: 'chat-tabs-emptied';
 }
 
 export interface RevealBoardColumnEvent {
@@ -116,6 +152,8 @@ export type StoreEvent =
   | StatusChangedEvent
   | PlanItemCreatedEvent
   | NavigateToViewEvent
+  | SwitchProjectEvent
+  | ChatTabsEmptiedEvent
   | RevealBoardColumnEvent
   | FileExplorerChangedEvent
   | ChatFileUpdatedEvent

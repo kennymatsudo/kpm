@@ -40,6 +40,8 @@ export interface BaseUpdateEvent {
 export interface PrChangedEvent extends BaseUpdateEvent {
   kind: 'pr_changed';
   source: 'github';
+  /** Owning project. Notifications need it to say (and reach) where this happened. */
+  projectId: string;
   /** KPM dev session id, when the PR is linked to one. */
   sessionId?: string;
   prNumber: number;
@@ -60,6 +62,8 @@ export interface PrChangedEvent extends BaseUpdateEvent {
 export interface TicketChangedEvent extends BaseUpdateEvent {
   kind: 'ticket_changed';
   source: 'linear' | 'jira';
+  /** Owning project. Notifications need it to say (and reach) where this happened. */
+  projectId: string;
   /** External ticket id (e.g. "ENG-1234"). */
   externalKey: string;
   /** KPM plan item id, when linked. */
@@ -79,13 +83,6 @@ export interface BranchChangedEvent extends BaseUpdateEvent {
   repoId: string;
   repoPath: string;
   branch: string | null;
-}
-
-/** Generic escape hatch for sources we haven't formalized yet. */
-export interface GenericUpdateEvent extends BaseUpdateEvent {
-  kind: 'generic_update';
-  summary: string;
-  payload?: Record<string, unknown>;
 }
 
 /** A finding produced by an action run. */
@@ -140,7 +137,6 @@ export type UpdateEvent =
   | PrChangedEvent
   | TicketChangedEvent
   | BranchChangedEvent
-  | GenericUpdateEvent
   | ActionFindingEvent
   | BoardAgentEvent;
 

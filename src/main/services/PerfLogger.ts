@@ -81,10 +81,6 @@ class PerfLogger {
   }
 }
 
-export function isPerfEnabled(): boolean {
-  return perfEnabled;
-}
-
 export function getPerfLogger(): PerfLogger | null {
   if (!perfEnabled) return null;
   if (!perfLogger) {

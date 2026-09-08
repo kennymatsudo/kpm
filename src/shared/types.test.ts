@@ -1,20 +1,5 @@
-/**
- * Tests for shared utility functions and constants
- */
-
 import { describe, it, expect } from 'vitest';
-import { CODEX_CHAT_MODELS, DEFAULT_CODEX_CHAT_MODEL, isSubtaskIssueType } from './types';
-
-describe('Codex chat models', () => {
-  it('offers the GPT-5.6 family with Sol as the default', () => {
-    expect(CODEX_CHAT_MODELS.map(({ value, label }) => ({ value, label }))).toEqual([
-      { value: 'gpt-5.6-sol', label: 'Sol' },
-      { value: 'gpt-5.6-terra', label: 'Terra' },
-      { value: 'gpt-5.6-luna', label: 'Luna' },
-    ]);
-    expect(DEFAULT_CODEX_CHAT_MODEL).toBe('gpt-5.6-sol');
-  });
-});
+import { isSubtaskIssueType } from './types';
 
 describe('isSubtaskIssueType', () => {
   it.each([

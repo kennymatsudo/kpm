@@ -19,12 +19,6 @@
  *   return toIpcResponse(planService.updateItem(itemId, updates));
  * });
  *
- * // Async ServiceResult
- * ipcMain.handle('artifact:generate', async (_event, params) => {
- *   const validated = artifactEndpoints.generate.params.parse(params);
- *   return toIpcResponseAsync(artifactService.generate(validated));
- * });
- *
  * // Direct success/error
  * ipcMain.handle('project:list', () => {
  *   const projects = projectService.list();
@@ -110,42 +104,3 @@ export function toIpcResponse<T>(result: ServiceResult<T>): IpcResponse<T> {
     ? { success: true, data: result.data }
     : { success: false, error: result.error };
 }
-
-/**
- * Convert an async ServiceResult to an IpcResponse.
- * Use this for asynchronous service methods.
- *
- * @example
- * ```ts
- * ipcMain.handle('attachment:add', async (_event, params) => {
- *   const validated = AttachmentSchemas.add.parse(params);
- *   return toIpcResponseAsync(attachmentService.add(validated));
- * });
- * ```
- */
-export async function toIpcResponseAsync<T>(
-  resultPromise: Promise<ServiceResult<T>>
-): Promise<IpcResponse<T>> {
-  const result = await resultPromise;
-  return toIpcResponse(result);
-}
-
-// =============================================================================
-// Async Result Type
-// =============================================================================
-
-/**
- * Async version of ServiceResult.
- * Use this as return type for async service methods.
- *
- * @example
- * ```ts
- * async function generateArtifact(params: Params): AsyncResult<string> {
- *   return wrapAsync(async () => {
- *     const result = await claude.generate(...);
- *     return result.taskId;
- *   }, 'Failed to generate artifact');
- * }
- * ```
- */
-export type AsyncResult<T> = Promise<ServiceResult<T>>;

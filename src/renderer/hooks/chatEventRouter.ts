@@ -1,4 +1,4 @@
-import type { SessionState } from '../../shared/types';
+import type { Activity, SessionState } from '../../shared/types';
 import type { ProposedChangeInput, DisposalPolicy } from '../stores/proposedChangeDisposal';
 import { isContextFile } from '../../shared/contextFile';
 import type { ChatState } from '../stores/chat/types';
@@ -19,6 +19,7 @@ import type {
   SessionReadyEventData,
   SessionTitleEventData,
   ThinkingEventData,
+  BackgroundTasksEventData,
   SuggestionsEventData,
   SlashCommandsEventData,
   McpStatusEventData,
@@ -37,6 +38,7 @@ export interface ChatEventHandlers {
   onError: (data: ErrorEventData) => void;
   onActivity: (data: ActivityEventData) => void;
   onThinking: (data: ThinkingEventData) => void;
+  onBackgroundTasks: (data: BackgroundTasksEventData) => void;
   onSessionConnecting: (data: SessionLifecycleEventData) => void;
   onSessionReady: (data: SessionReadyEventData) => void;
   onSessionTitle: (data: SessionTitleEventData) => void;
@@ -70,6 +72,7 @@ export type ChatStoreView = Pick<
   | 'setClaudeSessionId'
   | 'setSessionTitle'
   | 'setMcpStatus'
+  | 'setBackgroundTasks'
   | 'setLastTurnUsage'
   | 'clearQueuedFlag'
   | 'removeQueuedUserMessage'
@@ -88,6 +91,8 @@ export interface ChatEventRouterServices {
       scope: string;
       state: SessionState;
       title?: string | null;
+      partialResponse?: string;
+      partialActivities?: Activity[];
     }[];
   }>;
   getChatSessionState: (
@@ -202,6 +207,11 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
    * Restore live session tabs after a reload or project switch. Backend
    * sessions may still be processing; renderer state must align with them so
    * switching back mid-run shows prior messages and doesn't double-send.
+   *
+   * Chunks that streamed while another project was open were dropped on
+   * arrival (they had nowhere to land), so a mid-turn session also replays
+   * main's accumulated text. Without it, rejoining shows an empty bubble that
+   * picks up from wherever the stream happens to be.
    */
   const rehydrateActiveSessions = async (): Promise<void> => {
     const result = await services.getActiveChatSessions(projectId);
@@ -227,6 +237,18 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
 
       if (session.state === 'processing' || session.state === 'connecting') {
         state.setRetrying(session.chatSessionId);
+
+        // Replay the in-flight turn. Ordering between the tool cards and the
+        // text isn't recorded, so activities all land first; the turn's own
+        // `chat:done` reconciles the final bubble from the DB regardless.
+        if (session.partialResponse || session.partialActivities?.length) {
+          state.appendChunk(
+            session.chatSessionId,
+            session.partialResponse ?? '',
+            undefined,
+            session.partialActivities,
+          );
+        }
 
         if (!preferredSessionId) {
           preferredSessionId = session.chatSessionId;
@@ -384,12 +406,21 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
         getChatState().appendThinking(sessionId, data.text);
       }
     },
+    onBackgroundTasks: (data) => {
+      if (!isActiveForProject(data.projectId)) return;
+      const sessionId = data.chatSessionId;
+      if (!isKnownChatSession(sessionId)) return;
+      getChatState().setBackgroundTasks(sessionId, data.tasks);
+    },
     onSessionConnecting: (data) => {
       if (!isActiveForProject(data.projectId)) return;
       const sessionId = data.chatSessionId;
       if (isKnownChatSession(sessionId)) {
         getChatState().setSessionState(sessionId, 'connecting');
         getChatState().markSessionActive(sessionId);
+        // The signal is per-CLI-process and emits nothing at startup, so a set
+        // left over from the previous process would show phantom work forever.
+        getChatState().setBackgroundTasks(sessionId, []);
       }
     },
     onSessionReady: (data) => {

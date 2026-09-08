@@ -24,6 +24,7 @@ import { trackerEvents } from './trackerEvents';
 import { onboardingEvents } from './onboardingEvents';
 import { toolLogEvents } from './toolLogEvents';
 import { actionEvents } from './actionEvents';
+import { activityEvents } from './activityEvents';
 
 const domainRegistries = {
   chat: chatEvents,
@@ -42,6 +43,7 @@ const domainRegistries = {
   onboarding: onboardingEvents,
   action: actionEvents,
   toolLog: toolLogEvents,
+  activity: activityEvents,
 } satisfies Record<string, Record<string, EventDefinition>>;
 
 /**

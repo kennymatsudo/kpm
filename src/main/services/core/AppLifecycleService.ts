@@ -6,6 +6,7 @@ import type { ProjectWatcherService } from '../files/ProjectWatcherService';
 import type { PollScheduler } from './PollScheduler';
 import type { NotificationService } from './NotificationService';
 import type { TerminalService } from '../streaming/TerminalService';
+import type { ActivityService } from './ActivityService';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
 import type { HookServer } from '../agents/hookServer';
 import type { FileSummaryService } from '../files/FileSummaryService';
@@ -18,6 +19,7 @@ export interface AppLifecycleServiceDeps {
   projectWatcherService?: Pick<ProjectWatcherService, 'unwatchProject'>;
   notificationService?: Pick<NotificationService, 'stop'>;
   terminalService?: Pick<TerminalService, 'shutdown'>;
+  activityService?: Pick<ActivityService, 'stop'>;
   agentSessionManager?: Pick<AgentSessionManager, 'stopAll'>;
   hookServer?: Pick<HookServer, 'stop'>;
   fileSummaryService?: Pick<FileSummaryService, 'dispose'>;
@@ -106,6 +108,12 @@ export function createAppLifecycleService(deps: AppLifecycleServiceDeps) {
         deps.terminalService?.shutdown();
       } catch (err) {
         console.error('[AppLifecycleService] Error shutting down terminal service:', err);
+      }
+
+      try {
+        deps.activityService?.stop();
+      } catch (err) {
+        console.error('[AppLifecycleService] Error stopping activity service:', err);
       }
 
       deps.disposeClaudeClients();

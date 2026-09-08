@@ -22,17 +22,18 @@ import { planEndpoints } from './ipc/planEndpoints';
 import { groupEndpoints } from './ipc/groupEndpoints';
 import { exportEndpoints } from './ipc/exportEndpoints';
 import { confluenceEndpoints } from './ipc/confluenceEndpoints';
+import { linearDocumentsEndpoints } from './ipc/linearDocumentsEndpoints';
 import { actionEndpoints } from './ipc/actionEndpoints';
 import { trackerEndpoints } from './ipc/trackerEndpoints';
 import { fileExplorerEndpoints } from './ipc/fileExplorerEndpoints';
 import { repoFilesEndpoints } from './ipc/repoFilesEndpoints';
 import { attachmentEndpoints } from './ipc/attachmentEndpoints';
 import { tempImageEndpoints } from './ipc/tempImageEndpoints';
-import { artifactEndpoints } from './ipc/artifactEndpoints';
 import { contextEndpoints } from './ipc/contextEndpoints';
 import { searchEndpoints } from './ipc/searchEndpoints';
 import { mcpServersEndpoints } from './ipc/mcpServersEndpoints';
 import { usageEndpoints } from './ipc/usageEndpoints';
+import { activityEndpoints } from './ipc/activityEndpoints';
 import { chatEndpoints } from './ipc/chatEndpoints';
 import { terminalEndpoints } from './ipc/terminalEndpoints';
 import { settingsEndpoints } from './ipc/settingsEndpoints';
@@ -52,7 +53,6 @@ import { customThemeEndpoints } from './ipc/customThemeEndpoints';
 import { themeEndpoints } from './ipc/themeEndpoints';
 import { onboardingEndpoints } from './ipc/onboardingEndpoints';
 import { perfEndpoints } from './ipc/perfEndpoints';
-import { debugEndpoints } from './ipc/debugEndpoints';
 import { testingEndpoints } from './ipc/testingEndpoints';
 import { shellEndpoints } from './ipc/shellEndpoints';
 
@@ -119,6 +119,17 @@ const confluenceChannels = toNestedChannels(confluenceEndpoints) as {
   parseUrl: string;
 };
 
+const linearDocumentChannels = toNestedChannels(linearDocumentsEndpoints) as {
+  publish: string;
+  unlink: string;
+  getLinks: string;
+  getLinkForDocument: string;
+  setDirection: string;
+  syncPreview: string;
+  pushExecute: string;
+  pullExecute: string;
+};
+
 const actionChannels = toNestedChannels(actionEndpoints) as {
   list: string;
   get: string;
@@ -165,8 +176,8 @@ const trackerChannels = toNestedChannels(trackerEndpoints) as {
 };
 
 /**
- * File explorer, repo files, attachment, temp image, artifact, context, and
- * search channels are similarly derived from their own endpoint registries
+ * File explorer, repo files, attachment, temp image, context, and search
+ * channels are similarly derived from their own endpoint registries
  * in `shared/ipc/`, rather than hand-declared here.
  */
 const fileExplorerChannels = toNestedChannels(fileExplorerEndpoints) as {
@@ -214,14 +225,6 @@ const tempImageChannels = toNestedChannels(tempImageEndpoints) as {
   delete: string;
 };
 
-const artifactChannels = toNestedChannels(artifactEndpoints) as {
-  list: string;
-  read: string;
-  delete: string;
-  import: string;
-  selectDialog: string;
-};
-
 const contextEndpointChannels = toNestedChannels(contextEndpoints) as {
   contextFile: { read: string; write: string };
   context: {
@@ -242,6 +245,10 @@ const mcpServersChannels = toNestedChannels(mcpServersEndpoints) as {
   listAvailable: string;
   getPreferences: string;
   setEnabled: string;
+};
+
+const activityChannels = toNestedChannels(activityEndpoints) as {
+  snapshot: string;
 };
 
 const usageChannels = toNestedChannels(usageEndpoints) as {
@@ -395,6 +402,7 @@ const projectChannels = toNestedChannels(projectEndpoints) as {
   delete: string;
   openFolder: string;
   getDefaultLocation: string;
+  inspectFolder: string;
 };
 
 const repoChannels = toNestedChannels(repoEndpoints) as {
@@ -447,11 +455,6 @@ const onboardingEndpointChannels = toNestedChannels(onboardingEndpoints) as {
 const perfChannels = toNestedChannels(perfEndpoints) as {
   log: string;
   getLogInfo: string;
-};
-
-const debugChannels = toNestedChannels(debugEndpoints) as {
-  setEnabled: string;
-  isEnabled: string;
 };
 
 const testingChannels = toNestedChannels(testingEndpoints) as {
@@ -519,11 +522,6 @@ export const IPC_CHANNELS = {
   // Export (Sync to Tracker)
   // ===========================================================================
   export: exportChannels,
-
-  // ===========================================================================
-  // Artifacts
-  // ===========================================================================
-  artifact: artifactChannels,
 
   // ===========================================================================
   // Temp Images
@@ -625,16 +623,12 @@ export const IPC_CHANNELS = {
   // Confluence Document Sync
   // ===========================================================================
   confluence: confluenceChannels,
+  linearDocuments: linearDocumentChannels,
 
   // ===========================================================================
   // MCP Servers
   // ===========================================================================
   mcpServers: mcpServersChannels,
-
-  // ===========================================================================
-  // Debug
-  // ===========================================================================
-  debug: debugChannels,
 
   // ===========================================================================
   // Onboarding
@@ -654,6 +648,11 @@ export const IPC_CHANNELS = {
   // Claude Usage Tracking
   // ===========================================================================
   usage: usageChannels,
+
+  // ===========================================================================
+  // Cross-Project Activity
+  // ===========================================================================
+  activity: activityChannels,
 
   // ===========================================================================
   // Testing

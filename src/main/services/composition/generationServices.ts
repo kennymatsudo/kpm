@@ -1,7 +1,4 @@
-import * as path from 'path';
-import * as nodeFs from 'fs';
 import type { IRepositoryContainer } from '../../db/interfaces';
-import { createArtifactService } from '../core/ArtifactService';
 import { createOnboardingService } from '../generation/OnboardingService';
 import type { ClaudeUsageService } from '../core/ClaudeUsageService';
 
@@ -28,16 +25,7 @@ export function createGenerationServices({
       : undefined,
   });
 
-  const artifactService = createArtifactService({
-    projects: container.projects,
-    fs: nodeFs,
-    path,
-  });
-
   return {
     onboardingService,
-    artifactService,
   };
 }
-
-export type GenerationServicesComposition = ReturnType<typeof createGenerationServices>;

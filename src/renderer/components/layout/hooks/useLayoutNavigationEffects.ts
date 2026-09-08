@@ -10,7 +10,9 @@ import {
   useWorkspaceStore,
 } from '../../../stores';
 import { readWorkspaceFile } from '../../../services/workspaceFileService';
+import { useChatStore } from '../../../stores/chat';
 import { startPerfSpan } from '../../../utils/perfLogger';
+import { scrollBehavior } from '../../../utils/reducedMotion';
 
 interface UseLayoutNavigationEffectsParams {
   currentProjectId: string | null;
@@ -19,6 +21,8 @@ interface UseLayoutNavigationEffectsParams {
   handleMainViewChange: (view: 'planning' | 'workspace') => void;
   showBoardView: () => void;
   showWorkspaceChat: () => void;
+  showChatForCurrentView: () => void;
+  hideChatForCurrentView: () => void;
 }
 
 export interface UseLayoutNavigationEffectsReturn {
@@ -32,8 +36,10 @@ export function useLayoutNavigationEffects({
   handleMainViewChange,
   showBoardView,
   showWorkspaceChat,
+  showChatForCurrentView,
+  hideChatForCurrentView,
 }: UseLayoutNavigationEffectsParams): UseLayoutNavigationEffectsReturn {
-  const openFile = useWorkspaceStore((state) => state.openFile);
+  const openDocument = useWorkspaceStore((state) => state.openDocument);
 
   const handleFileOpen = useCallback(
     async (source: string, path: string) => {
@@ -42,21 +48,30 @@ export function useLayoutNavigationEffects({
       try {
         const content = await readWorkspaceFile(source, path, currentProjectId);
         endOpen({ contentLength: content.length });
-        openFile(source, path, content);
+        openDocument(source, path, content);
       } catch (error) {
         endOpen({ error: true });
         console.error('[Layout] Failed to open file:', error);
       }
     },
-    [currentProjectId, openFile]
+    [currentProjectId, openDocument]
   );
 
   useEffect(() => {
     const unsubscribe = subscribeToStoreEvent('navigate-to-view', (event) => {
-      handleMainViewChange(event.payload.view);
+      if (event.payload.view) {
+        handleMainViewChange(event.payload.view);
+      }
 
       if (event.payload.view === 'workspace' && event.payload.showChat) {
         showWorkspaceChat();
+      }
+
+      // A chat tab exists in both views, so reveal chat where the user already
+      // is rather than moving them.
+      if (event.payload.chatSessionId) {
+        showChatForCurrentView();
+        useChatStore.getState().setViewedSession(event.payload.chatSessionId);
       }
 
       // The detail pane only exists in board mode, and PlanView may not be
@@ -103,7 +118,7 @@ export function useLayoutNavigationEffects({
             const element = document.querySelector(`[data-plan-item-id="${itemId}"]`);
             if (!element) return;
 
-            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            element.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
             element.classList.add('plan-item-reveal');
             setTimeout(() => element.classList.remove('plan-item-reveal'), 2000);
           });
@@ -112,7 +127,13 @@ export function useLayoutNavigationEffects({
     });
 
     return unsubscribe;
-  }, [handleFileOpen, handleMainViewChange, hiddenStatusCategoriesRef, setHiddenStatusCategories, showBoardView, showWorkspaceChat]);
+  }, [handleFileOpen, handleMainViewChange, hiddenStatusCategoriesRef, setHiddenStatusCategories, showBoardView, showChatForCurrentView, showWorkspaceChat]);
+
+  // The chat store deletes the tab; hiding the panel is the layout's call.
+  useEffect(
+    () => subscribeToStoreEvent('chat-tabs-emptied', hideChatForCurrentView),
+    [hideChatForCurrentView]
+  );
 
   return { handleFileOpen };
 }

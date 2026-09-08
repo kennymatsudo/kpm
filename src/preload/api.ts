@@ -7,6 +7,7 @@ import { reviewEvents } from '../shared/ipc/reviewEvents';
 import { devSessionEvents } from '../shared/ipc/devSessionEvents';
 import { agentSessionEvents } from '../shared/ipc/agentSessionEvents';
 import { usageEvents } from '../shared/ipc/usageEvents';
+import { activityEvents } from '../shared/ipc/activityEvents';
 import { permissionEvents } from '../shared/ipc/permissionEvents';
 import { terminalEvents } from '../shared/ipc/terminalEvents';
 import { menuEvents } from '../shared/ipc/menuEvents';
@@ -21,6 +22,7 @@ import { planEndpoints } from '../shared/ipc/planEndpoints';
 import { groupEndpoints } from '../shared/ipc/groupEndpoints';
 import { exportEndpoints } from '../shared/ipc/exportEndpoints';
 import { confluenceEndpoints } from '../shared/ipc/confluenceEndpoints';
+import { linearDocumentsEndpoints } from '../shared/ipc/linearDocumentsEndpoints';
 import { actionEndpoints } from '../shared/ipc/actionEndpoints';
 import { actionEvents } from '../shared/ipc/actionEvents';
 import type { ActionDefinition, ActionEditable, ActionRun } from '../shared/actions';
@@ -29,10 +31,10 @@ import { fileExplorerEndpoints } from '../shared/ipc/fileExplorerEndpoints';
 import { repoFilesEndpoints } from '../shared/ipc/repoFilesEndpoints';
 import { attachmentEndpoints } from '../shared/ipc/attachmentEndpoints';
 import { tempImageEndpoints } from '../shared/ipc/tempImageEndpoints';
-import { artifactEndpoints } from '../shared/ipc/artifactEndpoints';
 import { searchEndpoints } from '../shared/ipc/searchEndpoints';
 import { mcpServersEndpoints } from '../shared/ipc/mcpServersEndpoints';
 import { usageEndpoints } from '../shared/ipc/usageEndpoints';
+import { activityEndpoints } from '../shared/ipc/activityEndpoints';
 import { chatEndpoints } from '../shared/ipc/chatEndpoints';
 import { terminalEndpoints } from '../shared/ipc/terminalEndpoints';
 import { settingsEndpoints } from '../shared/ipc/settingsEndpoints';
@@ -54,6 +56,7 @@ import { perfEndpoints } from '../shared/ipc/perfEndpoints';
 import { shellEndpoints } from '../shared/ipc/shellEndpoints';
 import type {
   ChatChoiceView,
+  FolderInspection,
   Project,
   Repo,
   RepoEnvironmentMode,
@@ -80,7 +83,7 @@ import type {
   ConflictResolution,
   DeletedItemAction,
   TrackerTypeMapping,
-  OutboundChangeWithPlanItem,
+  OutboundChange,
   ExportPreview,
   ExportResult,
   SyncReviewData,
@@ -104,7 +107,6 @@ import type {
   SearchResult,
   PromptDefinitionInfo,
   PromptCategory,
-  ToolPermission,
   FocusChatDocument,
   ReviewInboxSnapshot,
   AgentReviewPolicy,
@@ -142,6 +144,7 @@ async function invokeOrThrow<T extends object, TResult>(
 // Re-export shared types for renderer consumers
 export type {
   ChatChoiceView,
+  FolderInspection,
   Project,
   Repo,
   RepoEnvironmentMode,
@@ -167,7 +170,7 @@ export type {
   ConflictResolution,
   DeletedItemAction,
   TrackerTypeMapping,
-  OutboundChangeWithPlanItem,
+  OutboundChange,
   ExportPreview,
   ExportResult,
   SyncReviewData,
@@ -188,7 +191,6 @@ export type {
   SearchResult,
   PromptDefinitionInfo,
   PromptCategory,
-  ToolPermission,
   ReviewInboxSnapshot,
   CustomTheme,
   ImportedCustomThemeResult,
@@ -233,6 +235,9 @@ const chat = {
     ),
   getSlashCommands: chatInvoke.getSlashCommands,
   piProviders: chatInvoke.piProviders,
+  codexMcpStatus: chatInvoke.codexMcpStatus,
+  reloadCodexMcpServers: chatInvoke.reloadCodexMcpServers,
+  loginCodexMcpServer: chatInvoke.loginCodexMcpServer,
   getSessionHistory: (projectId: string, limit?: number): Promise<{ success: boolean; sessions?: ChatSessionSummary[]; error?: string }> =>
     invokeFlat<{ sessions: ChatSessionSummary[] }>(IPC_CHANNELS.chat.getSessionHistory, { projectId, limit }).then((result) =>
       result.success ? { success: true, sessions: result.sessions } : result
@@ -255,6 +260,7 @@ const chat = {
   onError: chatSubscriptions.error,
   onActivity: chatSubscriptions.activity,
   onThinking: chatSubscriptions.thinking,
+  onBackgroundTasks: chatSubscriptions.backgroundTasks,
   onFileUpdate: chatSubscriptions.fileUpdate,
   onFileMove: chatSubscriptions.fileMove,
   onFileDelete: chatSubscriptions.fileDelete,
@@ -331,6 +337,12 @@ const projects = {
     invokeOrThrow<{ project: Project | undefined }, Project | undefined>(IPC_CHANNELS.project.update, payload, ({ project }) => project),
   delete: projectInvoke.delete,
   openFolder: projectInvoke.openFolder,
+  inspectFolder: (payload: { folderPath: string }): Promise<FolderInspection> =>
+    invokeOrThrow<{ inspection: FolderInspection }, FolderInspection>(
+      IPC_CHANNELS.project.inspectFolder,
+      payload,
+      ({ inspection }) => inspection,
+    ),
 };
 
 const repoInvoke = deriveDomainApi(repoEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
@@ -498,7 +510,6 @@ const tracker = {
     updateStatus: exportInvoke['queue.updateStatus'],
     updateCustomFieldOverrides: exportInvoke['queue.updateCustomFields'],
     clear: exportInvoke['queue.clear'],
-    count: exportInvoke['queue.count'],
   },
   export: {
     getPreview: exportInvoke.preview,
@@ -623,29 +634,10 @@ const permission = {
   respond: permissionInvoke.respond,
   onRequest: permissionSubscriptions.request,
   getWriteGrant: permissionInvoke.getWriteGrant,
+  grantWriteGrant: permissionInvoke.grantWriteGrant,
   revokeWriteGrant: permissionInvoke.revokeWriteGrant,
   onWriteGrantChanged: permissionSubscriptions.writeGrantChanged,
-};
-
-const permissions = {
-  list: (projectId: string): Promise<ToolPermission[]> =>
-    invokeOrThrow<{ permissions: ToolPermission[] }, ToolPermission[]>(
-      IPC_CHANNELS.permission.list,
-      { projectId },
-      ({ permissions }) => permissions,
-    ),
-  revoke: permissionInvoke.revoke,
-  revokeAll: permissionInvoke.revokeAll,
-};
-
-const artifactInvoke = deriveDomainApi(artifactEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
-
-const artifacts = {
-  list: artifactInvoke.list,
-  read: artifactInvoke.read,
-  delete: artifactInvoke.delete,
-  import: artifactInvoke.import,
-  selectDialog: (): Promise<string[]> => artifactInvoke.selectDialog().then(({ paths }) => paths),
+  onSettled: permissionSubscriptions.settled,
 };
 
 const taskPromptTemplateInvoke = deriveDomainApi(taskPromptTemplateEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
@@ -952,6 +944,7 @@ const terminal = {
   write: terminalInvoke.write,
   resize: terminalInvoke.resize,
   kill: terminalInvoke.kill,
+  killForProject: terminalInvoke.killForProject,
   onData: terminalSubscriptions.data,
   onExit: terminalSubscriptions.exit,
 };
@@ -975,6 +968,19 @@ const confluence = {
   push: confluenceInvoke.pushExecute,
   pull: confluenceInvoke.pullExecute,
   parseUrl: confluenceInvoke.parseUrl,
+};
+
+const linearDocumentsInvoke = deriveDomainApi(linearDocumentsEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+
+const linearDocuments = {
+  publish: linearDocumentsInvoke.publish,
+  unlink: linearDocumentsInvoke.unlink,
+  getLinks: linearDocumentsInvoke.getLinks,
+  getLinkForDocument: linearDocumentsInvoke.getLinkForDocument,
+  setDirection: linearDocumentsInvoke.setDirection,
+  getSyncPreview: linearDocumentsInvoke.syncPreview,
+  push: linearDocumentsInvoke.pushExecute,
+  pull: linearDocumentsInvoke.pullExecute,
 };
 
 // Tool Call Logging API (DevTools panel)
@@ -1021,6 +1027,14 @@ const usage = {
   onUsageEvent: usageSubscriptions.event,
 };
 
+// Cross-project activity (what is running in projects other than the open one)
+const activityInvoke = deriveDomainApi(activityEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+const activitySubscriptions = deriveEventSubscriptions(activityEvents, ipcRenderer);
+const activity = {
+  snapshot: activityInvoke.snapshot,
+  onChanged: activitySubscriptions.changed,
+};
+
 // MCP Servers API
 const mcpServersInvoke = deriveDomainApi(mcpServersEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
 const mcpServers = {
@@ -1038,15 +1052,6 @@ const testing = {
   // Report which database file the app actually opened (isolation check)
   getDbPath: (): Promise<{ dbPath: string | null }> =>
     ipcRenderer.invoke(IPC_CHANNELS.testing.getDbPath),
-};
-
-// Debug API - console-only toggle used to gate other diagnostic handlers.
-// Usage in console:
-//   await window.api.debug.enable()
-const debug = {
-  enable: (): Promise<{ enabled: boolean }> => ipcRenderer.invoke(IPC_CHANNELS.debug.setEnabled, true),
-  disable: (): Promise<{ enabled: boolean }> => ipcRenderer.invoke(IPC_CHANNELS.debug.setEnabled, false),
-  isEnabled: (): Promise<{ enabled: boolean }> => ipcRenderer.invoke(IPC_CHANNELS.debug.isEnabled),
 };
 
 // Onboarding API (project setup wizard)
@@ -1094,8 +1099,6 @@ export const api = {
   customThemes,
   theme,
   permission,
-  permissions,
-  artifacts,
   taskPromptTemplates,
   actions,
   notifications,
@@ -1110,12 +1113,13 @@ export const api = {
   terminal,
   perf,
   confluence,
-  debug,
+  linearDocuments,
   testing,
   toolLog,
   search,
   promptOverrides,
   usage,
+  activity,
   mcpServers,
   onboarding,
 };

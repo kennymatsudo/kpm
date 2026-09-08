@@ -11,7 +11,6 @@ import { registerSettingsHandlers } from '../handlers/settings';
 import { registerCustomThemeHandlers } from '../handlers/customThemes';
 import { registerThemeHandlers } from '../handlers/theme';
 import { registerPermissionHandlers } from '../handlers/permission';
-import { registerArtifactHandlers } from '../handlers/artifacts';
 import { registerTaskPromptTemplateHandlers } from '../handlers/taskPromptTemplates';
 import { registerActionHandlers } from '../handlers/actions';
 import { registerOnboardingHandlers } from '../handlers/onboarding';
@@ -30,20 +29,18 @@ export function registerWorkspaceHandlers({
   registerChatHandlers({
     chatService: chatRuntime.chatService,
     slashCommandService: services.slashCommandService,
-    permissionService: services.permissionService,
     streamingSessionService: chatRuntime.streamingSessionService,
     projects: services.container.projects,
     chatMessages: services.container.chatMessages,
     modelChoice: chatRuntime.modelChoice,
   });
   registerFileHandlers(getMainWindow, services.contextFileService);
-  registerExportHandlers(services.exportService, services.typeMappingService);
+  registerExportHandlers(services.exportService, services.typeMappingService, services.container.outboundChanges);
   registerTrackerHandlers(getMainWindow, services.trackerService);
   registerSettingsHandlers(services.settingsService, services.container.appSettings);
   registerCustomThemeHandlers(services.customThemeService);
   registerThemeHandlers();
   registerPermissionHandlers(services.permissionService, getMainWindow);
-  registerArtifactHandlers(getMainWindow, services.artifactService);
   registerTaskPromptTemplateHandlers(services.taskPromptTemplateService);
   registerActionHandlers(services.actionService, services.container.actions, services.container.actionRuns);
   registerOnboardingHandlers(getMainWindow, services.onboardingService);

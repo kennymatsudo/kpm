@@ -49,53 +49,6 @@ export function DiffRenderer({ diff, className = '' }: DiffRendererProps) {
   );
 }
 
-interface FieldDiffViewProps {
-  label: string;
-  diff: FieldDiff | null;
-  oldValue?: string | null;
-  newValue?: string | null;
-  isCreate?: boolean;
-  grow?: boolean;
-}
-
-/**
- * Displays a labeled diff for a single field.
- * Shows "no changes" if diff is null or has no changes.
- * For creates, just shows the new value without diff styling.
- */
-export function FieldDiffView({ label, diff, oldValue, newValue, isCreate, grow }: FieldDiffViewProps) {
-  const hasChanges = diff?.hasChanges ?? false;
-
-  return (
-    <div className={`mb-4 ${grow ? 'flex-1 flex flex-col min-h-0' : ''}`}>
-      <div className="flex items-center gap-2.5 mb-2">
-        <span className="text-tiny font-semibold text-text-muted uppercase tracking-wider">{label}</span>
-        {!isCreate && !hasChanges && (
-          <span className="text-xxs text-text-tertiary px-1.5 py-0.5 rounded bg-surface-3">(no changes)</span>
-        )}
-      </div>
-      <div
-        className={`p-4 rounded-xl bg-surface-2 border border-border-default ${grow ? 'flex-1 overflow-y-auto' : ''}`}
-      >
-        {isCreate ? (
-          // For creates, just show the value
-          <span className="font-mono text-sm text-text-secondary whitespace-pre-wrap break-words leading-relaxed">
-            {newValue || <span className="text-text-tertiary italic">Empty</span>}
-          </span>
-        ) : hasChanges && diff ? (
-          // For updates with changes, show the diff
-          <DiffRenderer diff={diff} />
-        ) : (
-          // No changes - show current value
-          <span className="font-mono text-sm text-text-muted whitespace-pre-wrap break-words leading-relaxed">
-            {oldValue || newValue || <span className="text-text-tertiary italic">Empty</span>}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 interface StatusTransitionViewProps {
   transition: StatusTransitionInfo;
   onConfigureMappings?: () => void;

@@ -7,6 +7,8 @@ import { TerminalInstance } from './TerminalInstance';
 interface TerminalPanelProps {
   /** Resolved cwd for newly created terminals. Falls back to home if undefined. */
   defaultCwd?: string;
+  /** Project the panel's shells belong to. Sessions never cross projects. */
+  projectId: string;
   isOpen: boolean;
 }
 
@@ -16,7 +18,7 @@ function newId() {
 
 const STORAGE_KEY_HEIGHT = 'kpm-terminal-panel-height';
 
-export function TerminalPanel({ defaultCwd, isOpen }: TerminalPanelProps) {
+export function TerminalPanel({ defaultCwd, projectId, isOpen }: TerminalPanelProps) {
   const {
     panelHeight,
     setPanelHeight,
@@ -63,34 +65,36 @@ export function TerminalPanel({ defaultCwd, isOpen }: TerminalPanelProps) {
   }, [panelHeight, setPanelHeight]);
 
   // Hydrate from sessions that outlived their view (window reload, panel
-  // relocation), then seed a terminal only on a closed->open transition —
-  // never merely because the list is empty while the panel stays open,
-  // or a closed last tab would respawn a shell immediately.
-  const didInitRef = useRef(false);
+  // relocation, a switch to another project and back), then seed a terminal
+  // only on a closed->open transition — never merely because the list is empty
+  // while the panel stays open, or a closed last tab would respawn a shell
+  // immediately. Re-runs per project, since main's list is project-filtered.
+  const hydratedProjectRef = useRef<string | null>(null);
   const wasOpenRef = useRef(false);
   useEffect(() => {
     const wasOpen = wasOpenRef.current;
     wasOpenRef.current = isOpen;
 
-    if (!didInitRef.current) {
-      didInitRef.current = true;
-      void listTerminals().then((res) => {
+    if (hydratedProjectRef.current !== projectId) {
+      hydratedProjectRef.current = projectId;
+      void listTerminals(projectId).then((res) => {
+        if (hydratedProjectRef.current !== projectId) return;
         if (res.success) hydrateTerminals(res.data);
         if (isOpen && useTerminalStore.getState().terminals.length === 0) {
-          addTerminal({ id: newId(), cwd: defaultCwd, status: 'starting' });
+          addTerminal({ id: newId(), projectId, cwd: defaultCwd, status: 'starting' });
         }
       });
       return;
     }
 
     if (isOpen && !wasOpen && useTerminalStore.getState().terminals.length === 0) {
-      addTerminal({ id: newId(), cwd: defaultCwd, status: 'starting' });
+      addTerminal({ id: newId(), projectId, cwd: defaultCwd, status: 'starting' });
     }
-  }, [addTerminal, defaultCwd, hydrateTerminals, isOpen]);
+  }, [addTerminal, defaultCwd, hydrateTerminals, isOpen, projectId]);
 
   const handleNewTerminal = useCallback(() => {
-    addTerminal({ id: newId(), cwd: defaultCwd, status: 'starting' });
-  }, [addTerminal, defaultCwd]);
+    addTerminal({ id: newId(), projectId, cwd: defaultCwd, status: 'starting' });
+  }, [addTerminal, defaultCwd, projectId]);
 
   const handleCloseTerminal = useCallback(
     (id: string) => {
@@ -219,7 +223,7 @@ export function TerminalPanel({ defaultCwd, isOpen }: TerminalPanelProps) {
               style={{ display: hidden ? 'none' : 'block' }}
               aria-hidden={hidden}
             >
-              <TerminalInstance id={t.id} cwd={t.cwd} hidden={hidden} />
+              <TerminalInstance id={t.id} projectId={t.projectId} cwd={t.cwd} hidden={hidden} />
             </div>
           );
         })}

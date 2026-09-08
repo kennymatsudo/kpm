@@ -8,6 +8,10 @@ export interface UsePersistedChatCollapseStateReturn {
   workspaceChatCollapsed: boolean;
   handleToggleChat: () => void;
   showWorkspaceChat: () => void;
+  /** Reveal chat without changing which main view is showing. */
+  showChatForCurrentView: () => void;
+  /** Hide chat without changing which main view is showing. */
+  hideChatForCurrentView: () => void;
 }
 
 function readStoredChatCollapsed(projectId: string | null, view: ChatCollapseView): boolean {
@@ -78,10 +82,26 @@ export function usePersistedChatCollapseState(
     persistChatCollapsed(projectId, 'workspace', false);
   }, [projectId]);
 
+  const showChatForCurrentView = useCallback(() => {
+    const view: ChatCollapseView = mainView === 'workspace' ? 'workspace' : 'planning';
+    if (view === 'workspace') setWorkspaceChatCollapsed(false);
+    else setPlanChatCollapsed(false);
+    persistChatCollapsed(projectId, view, false);
+  }, [mainView, projectId]);
+
+  const hideChatForCurrentView = useCallback(() => {
+    const view: ChatCollapseView = mainView === 'workspace' ? 'workspace' : 'planning';
+    if (view === 'workspace') setWorkspaceChatCollapsed(true);
+    else setPlanChatCollapsed(true);
+    persistChatCollapsed(projectId, view, true);
+  }, [mainView, projectId]);
+
   return {
     chatCollapsed: mainView === 'workspace' ? workspaceChatCollapsed : planChatCollapsed,
     workspaceChatCollapsed,
     handleToggleChat,
     showWorkspaceChat,
+    showChatForCurrentView,
+    hideChatForCurrentView,
   };
 }

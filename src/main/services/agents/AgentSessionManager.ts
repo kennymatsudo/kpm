@@ -266,6 +266,24 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     return getActiveForProject(projectId).length;
   }
 
+  /**
+   * Board agents working, and board agents blocked on the user, keyed by
+   * project. Feeds the cross-project activity snapshot, so it counts every
+   * project at once rather than taking one id.
+   */
+  function activityCountsByProject(): Map<string, { working: number; awaitingInput: number }> {
+    const counts = new Map<string, { working: number; awaitingInput: number }>();
+    for (const tracked of sessions.values()) {
+      const state = tracked.agentSession.state;
+      if (!isActiveState(state)) continue;
+      const entry = counts.get(tracked.projectId) ?? { working: 0, awaitingInput: 0 };
+      if (state === 'waiting_for_input') entry.awaitingInput += 1;
+      else entry.working += 1;
+      counts.set(tracked.projectId, entry);
+    }
+    return counts;
+  }
+
   /** Whether the session tracked for this dev session is still busy (starting/working/waiting_for_input). False if no session is registered. */
   function isSessionBusy(devSessionId: string): boolean {
     const session = getByDevSession(devSessionId);
@@ -301,12 +319,6 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     if (matching.length === 0) return false;
     await Promise.allSettled(matching.map((tracked) => tracked.agentSession.stop()));
     return true;
-  }
-
-  /** Stop all sessions for a project (e.g., on project switch) */
-  async function stopAllForProject(projectId: string): Promise<void> {
-    const toStop = getActiveForProject(projectId);
-    await Promise.allSettled(toStop.map(s => s.stop()));
   }
 
   /** Stop and remove all sessions (e.g., on app quit) */
@@ -596,10 +608,10 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     getByDevSession,
     getActiveForProject,
     getActiveCountForProject,
+    activityCountsByProject,
     isSessionBusy,
     stopForImplementationSession,
     remove,
-    stopAllForProject,
     stopAll,
     handleHookEvent,
     setHookPort,

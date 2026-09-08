@@ -36,11 +36,11 @@ export function subscribeToTerminal(id: string, handlers: TerminalSubscriptionHa
   };
 }
 
-export function listTerminals() {
-  return window.api.terminal.list();
+export function listTerminals(projectId: string) {
+  return window.api.terminal.list({ projectId });
 }
 
-export function attachTerminal(params: { id: string; cwd?: string; cols: number; rows: number }) {
+export function attachTerminal(params: { id: string; projectId: string; cwd?: string; cols: number; rows: number }) {
   return window.api.terminal.attach(params);
 }
 
@@ -58,4 +58,8 @@ export function resizeTerminal(id: string, cols: number, rows: number) {
 
 export function killTerminal(id: string) {
   return window.api.terminal.kill({ id });
+}
+
+export function killProjectTerminals(projectId: string) {
+  return window.api.terminal.killForProject({ projectId });
 }

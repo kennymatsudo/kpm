@@ -21,6 +21,7 @@ import { createPlanService } from './core/PlanService';
 import { createAppLifecycleService } from './core/AppLifecycleService';
 import { createProjectService } from './core/ProjectService';
 import { createChatRuntimeService } from './core/ChatRuntimeService';
+import { createActivityService } from './core/ActivityService';
 import { createContextFileService } from './core/ContextFileService';
 import { createPermissionService } from './core/PermissionService';
 import { createSettingsService } from './core/SettingsService';
@@ -62,6 +63,7 @@ const GENERATION_PURPOSE_TO_USAGE_SOURCE: Record<GenerationPurpose, UsageSource>
 
 // Confluence services
 import { createConfluenceSyncService } from './confluence';
+import { createLinearDocumentService } from './linearDocuments';
 import { unwrapOrThrow } from './result';
 import { TrackerClientService } from '../trackers/TrackerClientService';
 import { AnthropicAuth } from '../claude/auth';
@@ -199,6 +201,7 @@ export function createAppServices(container: IRepositoryContainer) {
   const projectService = createProjectService({
     projects: container.projects,
     appSettings: container.appSettings,
+    userDataPath: getUserDataPath(),
     openPath: (targetPath: string) => shell.openPath(targetPath),
   });
 
@@ -215,8 +218,10 @@ export function createAppServices(container: IRepositoryContainer) {
   });
 
   const permissionService = createPermissionService({
-    toolPermissions: container.toolPermissions,
+    projectWriteGrantRepository: container.projectWriteGrants,
   });
+  // Before any session can request a tool, so the grant check is a memory read.
+  permissionService.hydrate();
 
   const taskPromptTemplateService = createTaskPromptTemplateService({
     taskPromptTemplates: container.taskPromptTemplates,
@@ -272,6 +277,7 @@ export function createAppServices(container: IRepositoryContainer) {
     sync: container.sync,
     typeMappings: container.typeMappings,
     trackerClientService: TrackerClientService,
+    shouldAssignExportsToMe: () => getSetting(container.appSettings, 'assignExportedIssuesToMe'),
   });
 
   const typeMappingService = createTypeMappingService({
@@ -392,6 +398,22 @@ export function createAppServices(container: IRepositoryContainer) {
     reviewPollService.start();
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Cross-project activity
+  //
+  // The chat runtime is built after this factory returns (it needs the main
+  // window), so its count source is wired in later via `setActivityChatSource`
+  // rather than read directly here.
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  let activityChatSource: (() => Map<string, number>) | null = null;
+  const activityService = createActivityService({
+    chatTurnsByProject: () => activityChatSource?.() ?? new Map(),
+    agentsByProject: () => agentSessionManager.activityCountsByProject(),
+    terminalsByProject: () => terminalService.runningCountsByProject(),
+    broadcastToWindows,
+  });
+
   const appLifecycleService = createAppLifecycleService({
     searchService,
     devSessionService,
@@ -400,6 +422,7 @@ export function createAppServices(container: IRepositoryContainer) {
     projectWatcherService,
     notificationService,
     terminalService,
+    activityService,
     agentSessionManager,
     hookServer,
     fileSummaryService,
@@ -408,7 +431,6 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const {
     onboardingService,
-    artifactService,
   } = createGenerationServices({
     container,
     getProjectFolder,
@@ -421,6 +443,12 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const confluenceSyncService = createConfluenceSyncService({
     confluenceLinks: container.confluenceLinks,
+    projects: container.projects,
+    planItems: container.planItems,
+  });
+
+  const linearDocumentService = createLinearDocumentService({
+    linearDocumentLinks: container.linearDocumentLinks,
     projects: container.projects,
     planItems: container.planItems,
   });
@@ -497,6 +525,7 @@ export function createAppServices(container: IRepositoryContainer) {
     updateEventBus,
     notificationService,
     terminalService,
+    activityService,
 
     // Repo
     repoService,
@@ -514,7 +543,6 @@ export function createAppServices(container: IRepositoryContainer) {
     repoFileService,
 
     // Generation
-    artifactService,
     onboardingService,
 
     // Prompt overrides
@@ -522,6 +550,7 @@ export function createAppServices(container: IRepositoryContainer) {
 
     // Confluence
     confluenceSyncService,
+    linearDocumentService,
 
     // Claude usage tracking
     claudeUsageService,
@@ -543,6 +572,14 @@ export function createAppServices(container: IRepositoryContainer) {
       services,
       container,
     }),
+
+    /**
+     * Hand the activity service its chat-session counts. Called once the chat
+     * runtime exists; until then the snapshot simply reports no chat turns.
+     */
+    setActivityChatSource: (source: () => Map<string, number>) => {
+      activityChatSource = source;
+    },
   };
 
   return services;

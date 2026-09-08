@@ -29,7 +29,8 @@ import {
   CustomThemeRepository as CustomThemeRepositoryClass,
   DevSessionRepository as DevSessionRepositoryClass,
   ConfluenceLinkRepository as ConfluenceLinkRepositoryClass,
-  ToolPermissionRepository as ToolPermissionRepositoryClass,
+  LinearDocumentLinkRepository as LinearDocumentLinkRepositoryClass,
+  ProjectWriteGrantRepository as ProjectWriteGrantRepositoryClass,
   ReviewTaskRepository as ReviewTaskRepositoryClass,
   AgentReviewRepository as AgentReviewRepositoryClass,
   ReviewOwnershipRepository as ReviewOwnershipRepositoryClass,
@@ -81,7 +82,6 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
     existsSync: (...args) => fs.existsSync(...args),
     mkdirSync: (...args) => fs.mkdirSync(...args),
     writeFileSync: (...args) => fs.writeFileSync(...args),
-    rmSync: (...args) => fs.rmSync(...args),
     lstatSync: (...args) => fs.lstatSync(...args),
     readlinkSync: (...args) => fs.readlinkSync(...args),
     unlinkSync: (...args) => fs.unlinkSync(...args),
@@ -114,7 +114,8 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
     customThemes: new CustomThemeRepositoryClass(database),
     devSessions: new DevSessionRepositoryClass(database),
     confluenceLinks: new ConfluenceLinkRepositoryClass(database),
-    toolPermissions: new ToolPermissionRepositoryClass(database),
+    linearDocumentLinks: new LinearDocumentLinkRepositoryClass(database),
+    projectWriteGrants: new ProjectWriteGrantRepositoryClass(database),
     reviewTasks: new ReviewTaskRepositoryClass(database),
     agentReviews: new AgentReviewRepositoryClass(database),
     reviewOwnership: new ReviewOwnershipRepositoryClass(database),
@@ -143,20 +144,6 @@ export function initializeRepositoryContainer(): IRepositoryContainer {
       database: getDatabase(),
       userDataPath: getUserDataPath(),
     });
-  }
-  return _container;
-}
-
-/**
- * Get the singleton repository container for production use.
- *
- * @throws Error if called before app startup initialization
- */
-export function getRepositoryContainer(): IRepositoryContainer {
-  if (!_container) {
-    throw new Error(
-      'Repository container not initialized. Call initializeRepositoryContainer() at app startup.'
-    );
   }
   return _container;
 }

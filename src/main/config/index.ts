@@ -9,6 +9,7 @@
 
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import type { GenerationProvider, GenerationPurpose, GenerationTier } from '../generation/types';
+import type { AgentEffortLevel } from '../../shared/types';
 
 type ClaudeModel = 'opus' | 'sonnet' | 'haiku';
 
@@ -41,8 +42,6 @@ export interface WindowConfig {
 }
 
 export interface ClaudeConfig {
-  /** Setting sources for SDK */
-  settingSources: ('project' | 'user')[];
   /** Enable SDK debug output */
   debug: boolean;
   /** Path to debug log file (optional) */
@@ -102,21 +101,10 @@ export interface GenerationConfig {
   providerByPurpose: Partial<Record<GenerationPurpose, GenerationProvider>>;
   /** Codex tier → model id. The Claude tiers use fastModel/deepModel/cheapModel above. */
   codexModels: Record<GenerationTier, string>;
-  /** Note refinement timeout (ms) */
-  noteRefinementTimeoutMs: number;
-  /** Artifact generation timeout (ms) */
-  artifactGenerationTimeoutMs: number;
   /** Project onboarding context generation timeout (ms) */
   onboardingTimeoutMs: number;
   /** PR description generation timeout (ms) */
   prGenerationTimeoutMs: number;
-}
-
-export interface NetworkConfig {
-  /** Timeout for fetching URLs (e.g., favicons) */
-  fetchTimeoutMs: number;
-  /** Timeout for git operations */
-  gitTimeoutMs: number;
 }
 
 export interface AgentSessionConfig {
@@ -128,8 +116,10 @@ export interface AgentSessionConfig {
   terminalSessionTtlMs: number;
   /** Timeout for the initial SDK agent session startup (ms) */
   sessionStartTimeoutMs: number;
-  /** Model for Codex agent sessions (e.g. 'gpt-5.6-sol', 'gpt-5.6-terra'). If omitted, Codex uses its own default. */
+  /** Model for Codex agent sessions (e.g. 'gpt-5.6-terra', 'gpt-5.6-sol'). If omitted, Codex uses its own default. */
   codexModel?: string;
+  /** Reasoning effort for Codex agent sessions KPM launches on its own (auto-review). */
+  codexEffort?: AgentEffortLevel;
 }
 
 export interface ReviewAssessmentConfig {
@@ -142,8 +132,6 @@ export interface ReviewAssessmentConfig {
 export interface ReviewPollConfig {
   /** Polling interval in milliseconds */
   pollIntervalMs: number;
-  /** Whether to auto-post draft replies without human approval */
-  autoPostReplies: boolean;
   /** Maximum sessions to process per poll tick */
   maxSessionsPerTick: number;
   /** Whether the poller is enabled */
@@ -212,7 +200,6 @@ export interface AppConfig {
   claude: ClaudeConfig;
   session: SessionConfig;
   generation: GenerationConfig;
-  network: NetworkConfig;
   agentSession: AgentSessionConfig;
   reviewAssessment: ReviewAssessmentConfig;
   reviewPoll: ReviewPollConfig;
@@ -244,7 +231,6 @@ function createDefaultConfig(): AppConfig {
     },
 
     claude: {
-      settingSources: ['project'],
       debug: false,
       debugFile: null,
       maxTurns: 200,
@@ -276,18 +262,11 @@ function createDefaultConfig(): AppConfig {
       providerByPurpose: {},
       codexModels: {
         fast: 'gpt-5.6-terra',
-        deep: 'gpt-5.6-sol',
+        deep: 'gpt-5.6-terra',
         cheap: 'gpt-5.6-luna',
       },
-      noteRefinementTimeoutMs: 2 * 60 * 1000, // 2 minutes
-      artifactGenerationTimeoutMs: 5 * 60 * 1000, // 5 minutes
       onboardingTimeoutMs: 10 * 60 * 1000, // 10 minutes (multi-repo scan + agent investigation)
       prGenerationTimeoutMs: 60 * 1000, // 1 minute
-    },
-
-    network: {
-      fetchTimeoutMs: 10 * 1000, // 10 seconds
-      gitTimeoutMs: 5 * 1000, // 5 seconds
     },
 
     agentSession: {
@@ -295,12 +274,12 @@ function createDefaultConfig(): AppConfig {
       subagentMaxTurns: 200,
       terminalSessionTtlMs: 30 * 60 * 1000, // 30 minutes
       sessionStartTimeoutMs: 60 * 1000, // 1 minute
-      codexModel: 'gpt-5.6-sol',
+      codexModel: 'gpt-5.6-terra',
+      codexEffort: 'xhigh',
     },
 
     reviewPoll: {
       pollIntervalMs: 2 * 60 * 1000, // 2 minutes
-      autoPostReplies: false,
       maxSessionsPerTick: 5,
       enabled: true,
       errorBackoffTicks: 3,

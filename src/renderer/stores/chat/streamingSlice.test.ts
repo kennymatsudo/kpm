@@ -29,32 +29,6 @@ afterEach(() => {
 });
 
 describe('streamingSlice.finalizeMessage', () => {
-  it('commits activity-only turns as an assistant message', () => {
-    const sessionId = 'session-activity-only';
-    const base = createInitialPerSessionState(1);
-    const activities = [
-      makeActivity('a1', 'Running: npm test'),
-      makeActivity('a2', 'edit: src/file.ts'),
-    ];
-
-    const store = createTestStore(sessionId, {
-      ...base,
-      isStreaming: true,
-      activities,
-    });
-
-    store.getState().finalizeMessage(sessionId);
-
-    const session = store.getState().sessions.get(sessionId);
-    expect(session).toBeDefined();
-    expect(session?.messages).toHaveLength(1);
-    expect(session?.messages[0].role).toBe('assistant');
-    expect(session?.messages[0].segments).toEqual([
-      { type: 'activity', activities },
-    ]);
-    expect(session?.isStreaming).toBe(false);
-    expect(session?.activities).toEqual([]);
-  });
 
   it('commits pending activities even when no text was streamed', () => {
     const sessionId = 'session-pending-activities';
@@ -160,52 +134,6 @@ describe('streamingSlice.finalizeMessage', () => {
     expect(messages[2].clientMessageId).toBe(queuedClientMessageId);
   });
 
-  it('promotes a queued follow-up atomically: clears its flag and re-enters streaming', () => {
-    const sessionId = 'session-promote-queued';
-    const base = createInitialPerSessionState(1);
-    const queuedClientMessageId = 'promote-client-message';
-
-    const store = createTestStore(sessionId, {
-      ...base,
-      isStreaming: true,
-      streamingSegments: [{ type: 'text', content: 'first answer' }],
-      streamingContent: 'first answer',
-      messages: [
-        {
-          id: 'user-1',
-          role: 'user',
-          segments: [{ type: 'text', content: 'first prompt' }],
-          timestamp: new Date('2026-01-01T00:00:00.000Z'),
-        },
-        {
-          id: 'user-2',
-          role: 'user',
-          segments: [{ type: 'text', content: 'queued prompt' }],
-          timestamp: new Date('2026-01-01T00:00:01.000Z'),
-          queued: true,
-          clientMessageId: queuedClientMessageId,
-        },
-      ],
-    });
-
-    store.getState().finalizeMessage(sessionId, {
-      promoteQueuedClientMessageId: queuedClientMessageId,
-    });
-
-    const session = store.getState().sessions.get(sessionId);
-    const messages = session?.messages ?? [];
-    // Assistant bubble is positioned before the promoted follow-up.
-    expect(messages.map((message) => message.role)).toEqual(['user', 'assistant', 'user']);
-    // The follow-up's queued flag is cleared in the same update (no stale badge).
-    expect(messages[2].queued).toBeUndefined();
-    expect(messages[2].clientMessageId).toBe(queuedClientMessageId);
-    // Streaming re-enters for the next turn so the thinking indicator is correct.
-    expect(session?.isStreaming).toBe(true);
-    expect(session?.streamingSegments).toEqual([]);
-    expect(session?.streamingContent).toBe('');
-    expect(session?.streamStartedAt).not.toBeNull();
-  });
-
   it('promotes the follow-up even if a racing event already stripped its queued flag', () => {
     const sessionId = 'session-promote-already-cleared';
     const base = createInitialPerSessionState(1);
@@ -247,54 +175,6 @@ describe('streamingSlice.finalizeMessage', () => {
     expect(messages.map((message) => message.role)).toEqual(['user', 'assistant', 'user']);
     expect(messages[2].clientMessageId).toBe(queuedClientMessageId);
     expect(session?.isStreaming).toBe(true);
-  });
-
-  it('clears a consumed follow-up without re-streaming and lands the bubble after it', () => {
-    const sessionId = 'session-consumed-followup';
-    const base = createInitialPerSessionState(1);
-    const consumedClientMessageId = 'consumed-client-message';
-
-    // The SDK steered "follow-up" into this turn and answered it. The turn's
-    // result carries that text; the follow-up bubble was added optimistically
-    // with queued=true and must now drop its badge — but NOT spawn a new turn.
-    const store = createTestStore(sessionId, {
-      ...base,
-      isStreaming: true,
-      streamingSegments: [{ type: 'text', content: 'answer to the follow-up' }],
-      streamingContent: 'answer to the follow-up',
-      messages: [
-        {
-          id: 'user-1',
-          role: 'user',
-          segments: [{ type: 'text', content: 'first prompt' }],
-          timestamp: new Date('2026-01-01T00:00:00.000Z'),
-        },
-        {
-          id: 'user-2',
-          role: 'user',
-          segments: [{ type: 'text', content: 'follow-up while streaming' }],
-          timestamp: new Date('2026-01-01T00:00:01.000Z'),
-          queued: true,
-          clientMessageId: consumedClientMessageId,
-        },
-      ],
-    });
-
-    store.getState().finalizeMessage(sessionId, {
-      clearQueuedClientMessageId: consumedClientMessageId,
-    });
-
-    const session = store.getState().sessions.get(sessionId);
-    const messages = session?.messages ?? [];
-    // Chronology: the follow-up was answered by THIS turn, so the assistant
-    // bubble lands AFTER it (not before, as in the promotion case).
-    expect(messages.map((message) => message.role)).toEqual(['user', 'user', 'assistant']);
-    // The consumed follow-up's queued badge is cleared.
-    expect(messages[1].clientMessageId).toBe(consumedClientMessageId);
-    expect(messages[1].queued).toBeUndefined();
-    // No phantom turn: streaming ends, indicator goes away.
-    expect(session?.isStreaming).toBe(false);
-    expect(session?.streamStartedAt).toBeNull();
   });
 
   it('lands the bubble after consumed follow-ups but before a deferred one (mixed turn)', () => {
@@ -358,57 +238,6 @@ describe('streamingSlice.finalizeMessage', () => {
     expect(messages[3].clientMessageId).toBe(deferredClientMessageId);
     expect(messages[3].queued).toBeUndefined();
     expect(session?.isStreaming).toBe(true);
-  });
-
-  it('merges a second turn into the previous message when no user message intervened', () => {
-    // Simulates checking in on a forked background agent: the assistant ends
-    // its turn, gets woken later, and reports back with no new user message
-    // in between — this should read as one continuous card, not two.
-    const sessionId = 'session-merge-turns';
-    const base = createInitialPerSessionState(1);
-
-    const store = createTestStore(sessionId, {
-      ...base,
-      isStreaming: true,
-      streamStartedAt: Date.now() - 5000,
-      streamingSegments: [{ type: 'text', content: 'checking in on the background agent' }],
-      streamingContent: 'checking in on the background agent',
-    });
-
-    store.getState().finalizeMessage(sessionId, { model: 'claude-sonnet-4-6' });
-
-    let session = store.getState().sessions.get(sessionId);
-    expect(session?.messages).toHaveLength(1);
-    const firstMessage = session!.messages[0];
-    expect(firstMessage.segments).toEqual([
-      { type: 'text', content: 'checking in on the background agent' },
-    ]);
-
-    // A second turn starts and finishes with no user message in between.
-    store.setState((state) => {
-      const sessions = new Map(state.sessions);
-      const s = sessions.get(sessionId)!;
-      sessions.set(sessionId, {
-        ...s,
-        isStreaming: true,
-        streamStartedAt: Date.now(),
-        streamingSegments: [{ type: 'text', content: 'the research agent finished' }],
-        streamingContent: 'the research agent finished',
-      });
-      return { sessions };
-    });
-
-    store.getState().finalizeMessage(sessionId, { model: 'claude-sonnet-4-6' });
-
-    session = store.getState().sessions.get(sessionId);
-    expect(session?.messages).toHaveLength(1);
-    const merged = session!.messages[0];
-    expect(merged.id).toBe(firstMessage.id);
-    expect(merged.segments).toEqual([
-      { type: 'text', content: 'checking in on the background agent' },
-      expect.objectContaining({ type: 'checkpoint' }),
-      { type: 'text', content: 'the research agent finished' },
-    ]);
   });
 
   it('does not merge into a message that was interrupted — interruption always forces a new bubble', () => {

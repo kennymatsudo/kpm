@@ -34,13 +34,13 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 3. [Agentic Task Execution (Board)](#agentic-task-execution-board) (19, 23, 25, 105)
 4. [Tracker Integration](#tracker-integration-jiralinear) (27, 31, 33, 35)
 5. [Documents & Context](#documents--context) (38, 40, 106)
-6. [Artifacts & Generation](#artifacts--generation) (43, 46)
+6. [Artifacts & Generation](#artifacts--generation) (43)
 7. [Global Search & Navigation](#global-search--navigation) (50–52)
 8. [Confluence Integration](#confluence-integration) (53)
 9. [Agent Sessions & Orchestration](#agent-sessions--orchestration) (57, 59, 104)
 10. [Settings & Configuration](#settings--configuration) (61, 62, 64, 65)
 11. [File & Workspace Management](#file--workspace-management) (68, 69, 73)
-12. [Notifications & Updates](#notifications--updates) (74, 107)
+12. [Notifications & Updates](#notifications--updates) (74, 107, 110)
 13. [Onboarding & Initial Setup](#onboarding--initial-setup) (76)
 14. [Debugging & Monitoring](#debugging--monitoring) (77, 79)
 15. [Recently Audited Additions](#recently-audited-additions) (96, 97, 99, 101, 102)
@@ -77,8 +77,8 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Claude SDK: in-process tools for querying, creating, updating plan items (with user approval gate)
 - **Maturity signal:** Mature. Core to app. Full CRUD, multi-view rendering, performance optimized with perf logging.
 
-### 2. Work Brief and Repository Scope (Intent, Context, Acceptance Criteria, Repos)
-- **What it does:** Treats title, context, intent, and acceptance criteria as one revisioned Work Brief while keeping Repository Scope separate. Expanded create and edit forms use the same controlled editors; edits submit one atomic action batch with a revision guard for Work Brief changes. Context can sync to Jira/Linear, while intent and acceptance criteria guide execution. `source_document_id` remains a non-UI breadcrumb to discovery context.
+### 2. Work Brief and Repository Scope (Intent, Description, Acceptance Criteria, Repos)
+- **What it does:** Treats title, description, intent, and acceptance criteria as one revisioned Work Brief while keeping Repository Scope separate. Expanded create and edit forms use the same controlled editors; edits submit one atomic action batch with a revision guard for Work Brief changes. Description can sync to Jira/Linear, while intent and acceptance criteria guide execution. `source_document_id` remains a non-UI breadcrumb to discovery context.
 - **Key code locations:**
   - DB: `src/main/db/repositories/impl/PlanItemRepository.ts` (Work Brief compare-and-revise and repo target persistence)
   - Types and schemas: `src/shared/base-types.ts`, `src/shared/workBrief.ts`, `src/shared/planActionSchema.ts`
@@ -171,7 +171,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Key code locations:**
   - Component: `src/renderer/components/planning/BulkActionsMenu.tsx`
   - Dialog: `src/renderer/components/planning/BulkDeleteConfirmDialog.tsx`
-  - Service/approval: Handled by `PlanActionService` and `approvalQueueStore`
+  - Service/approval: Handled by `PlanActionService` and `useProposedChangeDisposal`
   - Store: `src/renderer/stores/project/planSlice.ts` (multi-select state)
 - **Entry points / surfaces:**
   - Canvas: Cmd+click (or Shift+click) to multi-select, right-click for bulk menu
@@ -184,7 +184,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **What it does:** By default, all plan modifications proposed by Claude are queued for user review before execution. Unified approval queue handles plan actions, document updates, and implementation proposals. Users review diff and approve/reject. A global setting (`chat_approval_mode`: `manual` | `auto_apply`) lets a user turn off the review step entirely — in `auto_apply` mode the same proposals are applied atomically as soon as they arrive instead of queuing, and the system prompt tells Claude not to mention an approval step.
 - **Key code locations:**
   - Service: `src/main/db/domain/PlanActionService.ts` (action execution after approval)
-  - Store: `src/renderer/stores/approvalQueueStore.ts` (unified queue for all approval types; `shouldAutoApplyApprovals()` gates whether items queue or apply immediately)
+  - Store: `src/renderer/stores/proposedChangeDisposal.ts` (unified queue for all proposal types; the global approval mode determines whether a proposal queues or applies immediately)
   - Setting: `src/shared/appSettings.ts` (`CHAT_APPROVAL_MODE_KEY = 'chat_approval_mode'`)
   - Component: `src/renderer/components/planning/PendingActionsPanel.tsx`
   - Component: `src/renderer/components/layout/ApprovalOverlays.tsx` (modal for reviewing)
@@ -276,8 +276,8 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ### 17. In-Process MCP Tools (Claude Tool Integration)
 - **What it does:** KPM provides Claude with direct function calls to query and modify plan items, manage documents, and more — roughly 20 tools spanning plan/relations/groups, Jira, documents, GitHub, Confluence, files, git, and Storybook. Tools are implemented as direct function calls (not a subprocess MCP server), reducing latency, and run in the main process with full database access. Modification tools go through the approval flow before executing. When a tool result exceeds the SDK's token budget, the SDK spills the full payload to a file under `~/.claude/projects/` instead of returning it inline; the `read_spill_file` tool lets Claude page through that file (up to 50,000 characters per chunk via `offset`/`length`) since the spill directory sits outside the sandboxed Read/Grep/Glob scope — it's the only path back to that content.
 - **Key code locations:**
-  - Factory: `src/main/kpmTools/tools/createKpmServer.ts` (creates MCP server from tool functions; `runWithToolExecutionContext`)
-  - Tool modules: `src/main/kpmTools/tools/*.ts` (plan-items, plan-changes, jira, relations, document-read, document-update, document-edit, groups, confluence, github, storybook, context-file-update, file-move, file-delete, list-project-files, plan-refs, review-assessment, spill-read, git-read)
+  - Factory: `src/main/kpmTools/createKpmServer.ts` (creates MCP server from tool functions; `runWithToolExecutionContext`)
+  - Tool modules: `src/main/kpmTools/tools/*.ts` (plan-items, plan-changes, jira, relations, document-read, document-update, document-edit, groups, confluence, github, storybook, context-file-update, file-move, file-delete, list-project-files, plan-refs, review-assessment, spill-read, git-read, git-push)
   - Spill recovery: `src/main/kpmTools/tools/spill-read.ts` (`read_spill_file`, validates the path stays under `~/.claude/projects/`); tool docs in `toolDocs.ts` instruct calling with just `file_path` first to get `totalChars`, then paging until `hasMore` is false
   - Tool logging: `src/main/services/toollog/ToolCallLogger.ts` (logs all tool calls)
   - Permission prompting: `src/main/claude/permissions.ts` (permission model via SDK)
@@ -422,10 +422,10 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Maturity signal:** Mature for Jira. Linear query tools exist at the client layer but aren't wired into chat — parity would require dedicated Linear tool wrappers, not reuse of `jira.ts`.
 
 ### 33. Sync Pipeline (Preview, Queue, Execute)
-- **What it does:** Changes destined for the tracker move through three stages. A **preview** step shows which items will be created/updated/deleted and detects three-way conflicts (item changed locally, tracker changed externally, and KPM's cached snapshot differs from both) so the user can pick a resolution (keep local / take tracker version) per conflicting row. Approved changes move into a persisted **sync queue** — it survives an app restart before the user syncs, and custom field values can still be edited there. **Executing** the sync posts create/update/delete calls to the tracker API, updates the sync snapshot as the new baseline, and reports progress via notification. Diffing at every stage reads a cache of each tracker issue's last-known state, stored directly on the linked `plan_items` row (`external_key`, `external_status`, `last_synced_at`, etc.) rather than a separate cache table.
+- **What it does:** Changes destined for the tracker move through three stages. A **preview** step shows which items will be created/updated/deleted and detects three-way conflicts (item changed locally, tracker changed externally, and KPM's cached snapshot differs from both) so the user can pick a resolution (keep local / take tracker version) per conflicting row. Approved changes move into a persisted **sync queue** — it survives an app restart before the user syncs, and custom field values can still be edited there. **Executing** the sync posts create/update/delete calls to the tracker API, updates the sync snapshot as the new baseline, and reports progress via notification. Newly created issues are assigned to the user's own tracker account unless the "Assign issues I export to me" setting (Settings → Workflow → Tracker) is turned off; existing issues are never reassigned, and a tracker that refuses the assignee still gets the issue, with a warning on the completion screen. Diffing at every stage reads a cache of each tracker issue's last-known state, stored directly on the linked `plan_items` row (`external_key`, `external_status`, `last_synced_at`, etc.) rather than a separate cache table.
 - **Key code locations:**
   - Service: `src/main/db/domain/SyncService.ts` (`generateSyncPreview`, `applySyncChanges`, queuing logic, populates the issue-state cache after a successful sync), `src/main/db/domain/ExportService.ts` (formats KPM data for tracker APIs)
-  - Repository: `src/main/db/repositories/impl/SyncQueueRepository.ts`, `src/main/db/repositories/impl/ExternalPlanItemRepository.ts` (reads the cached fields off `plan_items` where `external_key IS NOT NULL`)
+  - Repositories: `src/main/db/repositories/impl/OutboundChangeRepository.ts` (persisted sync queue), `SyncRepository.ts` (sync snapshots), and `ExternalPlanItemRepository.ts` (reads cached fields off `plan_items` where `external_key IS NOT NULL`)
   - Stores: `src/renderer/stores/tracker/useSyncStore.ts` (preview state), `useSyncReviewStore.ts` (review state)
   - Components: `src/renderer/components/tracker/sync/TrackerSyncPanel.tsx` (preview table), `SyncConflictCard.tsx`
   - IPC handlers: `src/main/ipc/handlers/tracker.ts` (`getSyncPreview`, `applySyncChanges`), `src/main/ipc/handlers/export.ts`
@@ -481,7 +481,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **What it does:** Claude proposes markdown changes through three tools that share one approval mechanism. Creating a document proposes a brand-new file — the diff shows full new content. Editing an existing document uses `old_string` → `new_string` matching, with a batched multi-hunk mode (`edits[]`) that validates and applies all hunks atomically as one combined diff and a single approval entry. The context-file tool uses the same edit mechanism but targets CLAUDE.md/AGENTS.md specifically, tracked as a distinct approval type from other documents. All three queue through the approval system (or apply immediately in auto-apply mode).
 - **Key code locations:**
   - Claude tools: `src/main/kpmTools/tools/document-update.ts` (create), `document-edit.ts` (edit, single- and multi-hunk), `context-file-update.ts` (context-file edit)
-  - Approval queue: `src/renderer/stores/approvalQueueStore.ts` (`PendingDocumentItem`, `PendingContextFileItem` types)
+  - Approval queue: `src/renderer/stores/proposedChangeDisposal.ts` (`ProposedChange` discriminated union)
   - Components: `src/renderer/components/planning/PendingDocumentPanel.tsx`, `src/renderer/components/ui/DiffViewer.tsx` (shared diff rendering)
 - **Entry points / surfaces:**
   - Pending document panel / pending actions panel (approval overlay): diff view with Accept/Reject
@@ -492,7 +492,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Maturity signal:** Mature. Robust edit validation; creation and editing share one proposal→approval shape across both plain documents and the context file.
 
 ### 106. Markdown Focus Reader (Immersive Reading + Per-Document Chat)
-- **What it does:** Users can enter a distraction-free full-screen reading mode for any open markdown file: larger type, a light/dark reading theme independent of the app theme, a table-of-contents rail with scroll-spy, in-document search, and reading-position persistence per document. A companion chat panel can be opened alongside the reader, scoped to that one document — its own persisted thread, separate from the project's main chat sessions. This chat follows the same rules as main chat: direct writes need the user's conversation-wide grant, and any document/context-file edit still goes through `propose_document_edit` / `propose_context_edit` and KPM's normal approval flow (or auto-apply, per the global setting) — focus mode does not bypass it.
+- **What it does:** Users can enter a distraction-free full-screen reading mode for any open markdown file: larger type, a light/dark reading theme independent of the app theme, a table-of-contents rail with scroll-spy, in-document search, and reading-position persistence per document. A companion chat panel can be opened alongside the reader, scoped to that one document — its own persisted thread, separate from the project's main chat sessions. This chat follows the same rules as main chat: direct writes need the project's write grant, and any document/context-file edit still goes through `propose_document_edit` / `propose_context_edit` and KPM's normal approval flow (or auto-apply, per the global setting) — focus mode does not bypass it.
 - **Key code locations:**
   - Component: `src/renderer/components/focus-mode/FocusMode.tsx` (reader shell: TOC, search, reading theme, scroll-spy)
   - Component: `src/renderer/components/focus-mode/FocusChatPanel.tsx` (per-document chat UI)
@@ -519,30 +519,18 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ### 43. Artifact Generation (Weekly Updates, Test Plans, Custom Outputs)
 - **What it does:** Claude-generated markdown documents saved to a project's `outputs/` folder. There are no built-in generators: a hardcoded weekly-update/test-plan pipeline was replaced by user-configurable prompts, and the seeded "Weekly Update"/"Test Plan" built-ins were later removed. Generating a weekly update, a test plan, or any other stakeholder-facing doc means creating an action (see Actions, feature 109) granted `write_outputs` and running it — `ActionRunnerService` writes the file. PR descriptions are generated through the GitHub/dev-session flow instead (see GitHub PR Integration).
 - **Key code locations:**
-  - Execution: `src/main/services/generation/CustomPromptGenerationService.ts` (`executePrompt` — model is `getConfig().generation.deepModel`, defaulting to Sonnet, with adaptive extended thinking and access to the KPM MCP server's tools)
-  - Built-in cleanup: `src/main/db/repositories/impl/CustomPromptRepository.ts` (`ensureBuiltinsExist` deletes legacy "Weekly Update"/"Test Plan" rows; no built-ins are seeded)
-  - IPC handlers: `src/main/ipc/handlers/customPrompts.ts` (`execute` streams `progress`/`complete`/`error` events)
-  - UI: `src/renderer/components/command-palette/CommandPalette.tsx` (execution), `src/renderer/components/layout/CustomPromptTaskBadge.tsx` + `src/renderer/stores/customPromptTaskStore.ts` (in-flight indicator; reveals the file in the OS file manager on completion)
+  - Definition and validation: `src/main/services/core/ActionService.ts`, `src/shared/actions.ts`, `src/main/db/repositories/impl/ActionRepository.ts`, `ActionRunRepository.ts`
+  - Execution: `src/main/services/repo/ActionRunnerService.ts` (one capability-gated run path for manual and triggered actions)
+  - IPC: `src/main/ipc/handlers/actions.ts` (`runNow` starts a headless run; history is stored in `action_runs`)
+  - UI: `src/renderer/components/command-palette/CommandPalette.tsx`, `src/renderer/components/settings/ActionsSettings.tsx`, and `src/renderer/stores/actionStore.ts`
 - **Entry points / surfaces:**
   - Command palette (Cmd+K): run any action granted `write_outputs`
-  - Top-bar badge shows in-flight generations with elapsed time; on completion the output file is revealed in the OS file manager
+  - Settings → Actions: create, configure, run, and inspect recent output-producing actions
 - **Dependencies / integrations:**
   - Actions (feature 109): the only current way to define what gets generated — there is no chat tool or board-detail button that triggers generation directly
-  - File system: writes `.md` to `project/outputs/`
-  - Artifacts Manager (feature 46): the backend for the files this pipeline writes, independent of how they were generated
-- **Maturity signal:** Functional. The specific "weekly update" and "test plan" artifact types no longer exist as built-ins — producing either now requires the user to author their own action. Note the writing path changed with feature 109: an action's output file is written by `ActionRunnerService`, not by `CustomPromptGenerationService`, which is no longer reachable from the palette.
-
-### 46. Artifacts Manager (File List + Open)
-- **What it does:** Backend file management for markdown files in a project's `outputs/` folder — list, read, delete, and import, exposed over IPC as `window.api.artifacts`. No renderer component currently calls any of these methods: there is no "Artifacts" tab in the board detail pane (its tabs are Activity/Changes/Review — see Plan-item Dev Sessions, feature 19) and `artifactsStore.ts`'s `artifacts`/`isLoadingArtifacts`/`artifactsError` state is unread and unset anywhere. The store's command-palette open/close state (unrelated to artifact listing) is the only part of it actually in use. In practice, files written to `outputs/` are reached via the File Explorer (feature 68), which does not hide the `outputs/` folder, or via the OS file manager, which opens automatically to the new file right after a custom-prompt generation completes (see Artifact Generation, feature 43).
-- **Key code locations:**
-  - Service: `src/main/services/core/ArtifactService.ts` (`list`, `read`, `delete`, `import`)
-  - IPC handlers: `src/main/ipc/handlers/artifacts.ts`; endpoints: `src/shared/ipc/artifactEndpoints.ts`
-  - Store: `src/renderer/stores/artifactsStore.ts` (artifact list/loading/error state defined but unused; only command-palette open state is read)
-- **Entry points / surfaces:**
-  - None in-app today. Files are reachable via the File Explorer (feature 68) or the OS file manager.
-- **Dependencies / integrations:**
-  - File system: lists/reads/deletes/imports files in `outputs/`
-- **Maturity signal:** Backend is implemented and IPC-wired but has no current renderer caller — the in-app artifact-management UI this backend was built for does not exist today.
+  - File system: writes Markdown to `project/outputs/actions/<action-name>.md`
+  - File Explorer (feature 68): how the written files are reached in-app — `outputs/` is not hidden
+- **Maturity signal:** Functional. The specific "weekly update" and "test plan" artifact types no longer exist as built-ins — producing either now requires the user to author their own action.
 
 ---
 
@@ -583,7 +571,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Execute command or navigate
   - For targeted prompts (`target_type: 'document'` or `'repo'`): second picker page lists available targets; Backspace returns to command list
 - **Dependencies / integrations:**
-  - Custom prompts: listed as executables in palette; targeted prompts attach selected entity as focused resource before sending
+  - Actions: listed as executables in the palette; targeted chat actions attach the selected entity as a focused resource before sending
   - Plan navigation: can search and navigate to plan items
   - Project actions: create new project, etc.
 - **Maturity signal:** Mature. Command palette functional. Extensible via actions.
@@ -717,22 +705,23 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - File MCP: filesystem tools via MCP
 - **Maturity signal:** Mature. MCP discovery and registration working.
 
-### 64. Tool Permissions (Grant/Revoke + Runtime Prompting)
-- **What it does:** When Claude uses a tool for the first time in a project, KPM checks whether the user has already granted permission; if not, a runtime modal prompts allow-once / allow-always / deny. Permissions persist to SQLite and cache in memory so repeat calls skip the prompt. Settings → Permissions lists everything granted for the current project, with a "Revoke" button per tool and an "Allow All Remaining" button to suppress future prompts.
+### 64. Project Write Grant
+- **What it does:** The first direct file, shell, or git write in a project prompts inline in chat with two answers: "Don't allow" or "Always allow in this project". Allowing persists a row in `project_write_grants` and covers every chat in that project — plus scheduled and Cmd+K action runs, which have no chat to ask in — until the user turns it off under Settings → Writes, which is also where writes can be turned on ahead of time. That matters for Codex, which reports read-only without attempting a write, so the prompt may never fire on its own. Nothing else prompts: reads, network reads, and MCP tools are allowed outright, credential and secret paths are denied outright, and project file and AGENTS.md edits are intercepted into the approval queue rather than asked about. The one other prompt is MCP form elicitation, answered for that call only.
 - **Key code locations:**
-  - Service: `src/main/services/core/PermissionService.ts` (load, persist, revoke on project open), `PermissionPromptService.ts` (`promptUser()` — runtime prompting logic)
-  - Client manager: `src/main/claude/clientManager.ts` (caches and enforces permissions in memory)
-  - Store: `src/renderer/stores/toolPermissionStore.ts`
-  - Components: `src/renderer/components/settings/PermissionsSettings.tsx`, `src/renderer/components/permission/PermissionPrompt.tsx` (runtime modal)
-  - DB: `tool_permissions` table (project_id, tool_name, cache_key, label)
+  - Grant: `src/main/chat/writeGrants.ts` (project-scoped, hydrated at startup, coalesces concurrent asks)
+  - Service: `src/main/services/core/PermissionService.ts` (hydrate / read / grant / revoke), `PermissionPromptService.ts` (`promptUser()` — runtime prompting logic)
+  - Rules: `src/main/claude/permissions.ts` (`canUseTool`)
+  - Components: `src/renderer/components/settings/PermissionsSettings.tsx` (toggle) and `useProjectWriteGrant.ts`, `src/renderer/components/permission/PermissionPrompt.tsx` (inline prompt)
+  - DB: `project_write_grants` table (project_id, granted_at)
   - IPC handlers: `src/main/ipc/handlers/permission.ts`
 - **Entry points / surfaces:**
-  - Runtime: modal pops up when a tool needs approval for the first time
-  - Settings → Permissions tab: list of allowed tools per project, "Revoke" per tool, "Allow All Remaining"
+  - Runtime: inline prompt in chat on the first write the project has not granted
+  - Settings → Writes tab: on/off toggle for the current project, with what the grant covers
 - **Dependencies / integrations:**
   - Claude Agent SDK: permission check runs before every tool execution
-  - Approval queue: a deferred permission request surfaces there while pending
-- **Maturity signal:** Mature. Permission model is clean, user-friendly, and non-intrusive once tools are approved.
+  - Codex / pi: the same grant selects Codex's `workspace-write` sandbox mode and gates pi's write builtins
+  - Approval queue: project file and context file edits go there instead of prompting
+- **Maturity signal:** Mature. One question, asked once per project, persisted.
 
 
 ---
@@ -760,20 +749,23 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Maturity signal:** Mature. File tree and watcher both responsive and robust.
 
 ### 69. Workspace View & File Editor
-- **What it does:** The default main view is chat-first — full-width chat until a file is opened, at which point the layout splits into a center editor with chat narrowed to the side; closing the editor returns to chat-only. Markdown files open in the dedicated Markdown editor (Monaco-backed edit pane plus preview/toolbar); other text/code files use Monaco directly for editing and read-only viewing. Multiple files can be open in tabs, with an unsaved-changes indicator per tab.
+- **What it does:** The default main view is chat-first — full-width chat until a file is opened, at which point the layout splits into a center editor with chat narrowed to the side; closing the last file returns to chat-only. Markdown files open in the dedicated Markdown editor (Monaco-backed edit pane plus preview/toolbar); other text/code files use Monaco directly for editing and read-only viewing. Every file opened stays open as a tab, so reopening one is a click in the strip rather than another hunt through the file tree. There is no save action: edits autosave a second after typing stops, for background tabs as much as the visible one, and closing a tab inside that window writes it out first. Which tabs were open is remembered per project across restarts; the file tree marks them with an accent rail, full strength for the tab on screen and faded for the rest.
 - **Key code locations:**
-  - Component: `src/renderer/components/workspace/WorkspaceView.tsx` (layout), `FileEditor.tsx` (editor router), `useWorkspaceResize.ts` (resizable panels)
-  - Store: `src/renderer/stores/workspaceStore.ts` (editing state, unsaved files)
+  - Component: `src/renderer/components/workspace/WorkspaceView.tsx` (layout), `DocumentTabStrip.tsx` (the strip), `FileEditor.tsx` (editor router), `documentTabLabels.ts` (labels, disambiguated only when names collide)
+  - Autosave: `src/renderer/components/workspace/documentAutosave.ts` (timer logic) + `useDocumentAutosave.ts` (mounted above the editor, which is why a background tab still saves)
+  - Store: `src/renderer/stores/workspaceStore.ts` (`openDocuments` + `activeDocumentId`, per-document dirty state and save errors), `workspaceDocumentPersistence.ts` (tab arrangement in localStorage)
   - Service: `src/main/services/files/RepoFileService.ts` (read/write files)
   - IPC handlers: `src/main/ipc/handlers/repoFiles.ts`
 - **Entry points / surfaces:**
   - Workspace tab in main navigation (default view); click a file in the tree to open it and shift to split layout
-  - Tab bar for multiple files; unsaved indicator (dot on tab title); Cmd+S to save
+  - Tab strip above the editor: click to switch, dirty dot per tab, close button on hover; arrow keys, Home/End, and Delete work within the strip
+  - Cmd+W closes one tab and only reaches the chat session once the strip is empty; Cmd+Option+[ / ] cycles tabs
 - **Dependencies / integrations:**
   - Markdown editor: toolbar, preview, markdown-specific editing flow; also the entry point for the Markdown Focus Reader (feature 106)
   - Monaco editor: syntax highlighting, read-only code viewing, basic language support for non-markdown files
   - Approval queue: file changes can be queued if from a Claude proposal
-- **Maturity signal:** Mature. Layout adaptive and responsive. No advanced editor features (debugger, terminal integration).
+  - File watcher: every open tab follows an external update, rename, or deletion, not just the visible one
+- **Maturity signal:** Mature. Layout adaptive and responsive. No drag-to-reorder or split panes. No advanced editor features (debugger, terminal integration).
 
 ### 73. Attachment Management (Upload & Link Files)
 - **What it does:** Users can upload files (documents, images, etc.) and link them to plan items. Attachments stored in project folder or app cache.
@@ -811,28 +803,56 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ---
 
 ### 107. Notification Bell (Background Event Feed)
-- **What it does:** A topbar bell collects events the user should know about while they were doing something else, with an unread count and a dropdown of the 50 most recent. Each entry carries a severity, a relative timestamp, and — where a target can be resolved — a click-through. Producers run in the main process and funnel through one event bus, so every source presents identically. Today those are: scheduled loop findings, pull request changes picked up by review polling, and board agent automation reaching a phase that needs the user (`ready_for_review`, `needs_attention`, `paused`). Identical events inside a 30-second window collapse into one so a fast poller can't spam the feed. Notifications are in-memory only — the list resets on restart — and there is no OS-level delivery, so the app must be open to see them.
+- **What it does:** A topbar bell collects events the user should know about while they were doing something else, with an unread count and a dropdown of the 50 most recent. Each entry carries a severity, a relative timestamp, and — where a target can be resolved — a click-through. Producers run in the main process and funnel through one event bus, so every source presents identically. Today those are: action findings, pull request changes picked up by review polling, and board agent automation reaching a phase that needs the user (`ready_for_review`, `needs_attention`, `paused`). Identical events inside a 30-second window collapse into one so a fast poller can't spam the feed. Notifications are in-memory only — the list resets on restart — and there is no OS-level delivery, so the app must be open to see them.
 - **Key code locations:**
   - Bus: `src/main/services/core/UpdateEventBus.ts` (`UpdateEvent` union — one variant per source)
   - Service: `src/main/services/core/NotificationService.ts` (`NOTIFY_RULES`, one rule per event kind, owning its dedupe key and presentation; `present()` returning null suppresses)
-  - Producers: `ScheduledLoopRunnerService` (`loop_finding`), `ReviewPollService` (`pr_changed`), `automationPhaseMachine` (`board_agent`)
+  - Producers: `ActionRunnerService` (`action_finding`), `ReviewPollService` (`pr_changed`), `automationPhaseMachine` (`board_agent`)
   - IPC: `src/shared/ipc/notificationEvents.ts` (`notification:new` push event; no invoke surface)
   - Store: `src/renderer/stores/notificationStore.ts` (unread/read, 50-entry cap)
   - Component: `src/renderer/components/notifications/NotificationBadge.tsx` (bell, dropdown, link resolution)
 - **Entry points / surfaces:**
   - Topbar bell → unread count → dropdown → click an entry to navigate, or dismiss it
   - `dev_session` links reveal the board session's detail pane; `plan_item` focuses the item; `pr`/`session`/`external` open the relevant URL
+  - An entry from a project that isn't open names that project and switches to it before navigating, via the `switch-project` store event
 - **Dependencies / integrations:**
   - Board automation: `automationPhaseMachine` is the sole writer of `dev_sessions.automation_phase`, which is why it is also the single place board notifications are emitted from
-  - Unresolvable links (a session in a project that isn't open, a PR never linked) are deliberate no-ops
+  - Cross-project concurrency (feature 110) owns the switch-then-navigate path these links use
+  - `pr`/`session`/`external` links read a URL off a record in the open project's stores, so they remain resolvable only while that project is open — no notification kind produces one for another project today
 - **Maturity signal:** Developing. The pipeline and the board/loop/PR producers work, but there is no persistence, no per-source settings, no OS delivery, and the toast system is entirely separate.
+
+---
+
+### 110. Cross-Project Concurrency (Work Keeps Running, and Says So)
+- **What it does:** Work started in one project keeps running when the user opens another, and the UI says what is still running and what is blocked on them. Chat sessions, board agents, and terminal shells all live in the main process keyed by session id, so a project switch never stops them — the switch only resets the renderer's project-scoped stores. On top of that: the project switcher marks every project with live work (amber when something there is waiting on the user, pulsing accent when it is just busy); a topbar pill surfaces permission requests the user cannot see from where they are, including ones in another project, and clicking a row switches project and focuses the blocked chat tab; a background chat tab with a pending request marks itself; rejoining a session mid-turn replays the text and tool activity that streamed while the user was elsewhere; and the switch itself is a non-blocking progress sliver, so the outgoing project stays usable (and returnable) for the whole load.
+- **Key code locations:**
+  - Cross-project counts: `src/main/services/core/ActivityService.ts` (samples chat/agent/terminal registries, broadcasts only on change), `src/shared/ipc/activityEndpoints.ts` + `activityEvents.ts`
+  - Count sources: `StreamingSessionService.processingCountsByProject`, `AgentSessionManager.activityCountsByProject`, `TerminalService.runningCountsByProject`
+  - Renderer state: `src/renderer/stores/activityStore.ts`, `src/renderer/hooks/useActivitySync.ts` (both deliberately app-lifetime, not project-scoped)
+  - Blocked requests: `src/renderer/stores/permissionStore.ts` (`selectUnseenRequests`, `settleRequest`), `src/renderer/components/permission/PendingRequestsBadge.tsx`, `permission:settled` in `src/shared/ipc/permissionEvents.ts`
+  - Switching from anywhere: `switch-project` in `src/renderer/stores/storeEvents.ts`, subscribed only by `src/renderer/hooks/useProjectLoader.ts`
+  - Mid-turn rejoin: `ActiveSessionInfo.partialResponse`/`partialActivities` in `StreamingSessionService`, replayed by `rehydrateActiveSessions` in `src/renderer/hooks/chatEventRouter.ts`
+  - Terminal scoping: `src/main/services/streaming/TerminalService.ts` (project-tagged sessions, project-filtered `list`, `killForProject`)
+- **Entry points / surfaces:**
+  - Project switcher → dot beside each busy project, and beside the closed project button when another project is busy; tooltip names what is running
+  - Topbar "N waiting" pill → dropdown of blocked requests with their project → click to go answer it
+  - Chat tab strip → amber dot on a background tab whose turn is waiting for approval
+- **Dependencies / integrations:**
+  - `projectScopedStores.ts` is the boundary: `permissionStore` and `activityStore` are deliberately absent from it, since resetting them on switch is the bug they exist to fix
+  - Terminal sessions are project-scoped but never killed on switch; a project delete is the only thing that reaps them (`killForProject`, called from `useProjectLoader.deleteCurrentProject`)
+  - Notification bell (feature 107) reuses `switch-project` for cross-project click-through
+- **Known gaps:**
+  - Board agent question *text* raised while another project is open is still dropped by `agentEventRouter`'s `isKnownTrackedId` filter. The `waiting_for_input` agent state that drives the UI is reconciled from main on switch back, and the activity snapshot counts it, so nothing is silently stuck — but no surface renders the question text today, in any project.
+  - Replayed in-flight activities all land before the replayed text; main does not record their original interleaving.
+  - Only one window, so "concurrently" means switching between projects, not viewing two at once.
+- **Maturity signal:** Developing. The backend never interrupted anything; what is new is the renderer no longer hiding it. No per-project notification muting, no OS-level delivery, no multi-window.
 
 ---
 
 ## Onboarding & Initial Setup
 
 ### 76. Project Onboarding & Context Generation (AGENTS.md Generation)
-- **What it does:** First launch (or any time no project is open) shows a welcome pane in the main content area: open a repository (creates a project instantly, named after the folder), start a blank project, open an existing one, and a Claude Code availability line. Creating a project via the modal is a single instant form (name, optional project folder, connect repositories) — no generation step blocks it. Once created, the workspace home screen offers a dismissible nudge to generate the project's AGENTS.md context file if one is missing or still the placeholder written at creation. Accepting the nudge (or invoking "Regenerate Context" once a real file exists) opens a modal that configures scope, runs Claude against the connected repos as a background task, and shows a diff-reviewed preview before saving. The generated file targets non-discoverable content (cross-repo relationships, verified commands, boundaries, doc pointers, ≤80 lines) rather than restating searchable architecture. If generation completes while the modal is closed, the result routes into the standard approval queue (or auto-applies, per the global setting) instead of requiring a badge-click back into the modal. Reads an existing AGENTS.md or CLAUDE.md if either is present in the repo.
+- **What it does:** First launch (or any time no project is open) shows a welcome pane in the main content area: open a repository (creates a project instantly, named after the folder), start a blank project, open an existing one, and a Claude Code availability line. Creating a project via the modal is a single instant form (name, code repositories, optional notes-and-context folder) — no generation step blocks it. The folder field is optional because a project that names none lands in a KPM-managed folder under `<userData>/projects/`, the location `project:get-default-location` reports; naming one adopts it as-is, creating it if it doesn't exist yet, and `project:inspect-folder` warns first when the chosen folder is a git repository (KPM's AGENTS.md would land in its `git status`). Once created, the workspace home screen offers a dismissible nudge to generate the project's AGENTS.md context file if one is missing or still the placeholder written at creation. Accepting the nudge (or invoking "Regenerate Context" once a real file exists) opens a modal that configures scope, runs Claude against the connected repos as a background task, and shows a diff-reviewed preview before saving. The generated file targets non-discoverable content (cross-repo relationships, verified commands, boundaries, doc pointers, ≤80 lines) rather than restating searchable architecture. If generation completes while the modal is closed, the result routes into the standard approval queue (or auto-applies, per the global setting) instead of requiring a badge-click back into the modal. Reads an existing AGENTS.md or CLAUDE.md if either is present in the repo.
 - **Key code locations:**
   - Service: `src/main/services/generation/OnboardingService.ts` (scan + generation, plus `startGeneration`/`saveContext`/context-directory persistence called directly by the IPC handler)
   - Component: `src/renderer/components/welcome/WelcomePane.tsx` (no-project landing surface)
@@ -894,7 +914,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ## Cross-Cutting Infrastructure & Patterns
 
 ### 83. Service Container & Dependency Injection
-- **Architecture:** All services created via factory functions with dependencies injected. Single composition root in `appServices.ts`. Services returned via `getServices()` getter. Testable with `setServices()` / `resetServices()`.
+- **Architecture:** All services created via factory functions with dependencies injected. Single composition root in `appServices.ts`, instantiated once through `initializeServices()`.
 - **Key code locations:**
   - Composition root: `src/main/services/appServices.ts`
   - Container: `src/main/services/container.ts`
@@ -905,9 +925,9 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ### 84. Approval Queue (Unified Pending Actions)
 - **Architecture:** Single queue for plan actions, document updates, implementation proposals, context file edits, and review replies. Items processed one at a time. Approval UI shows diffs and context. User can approve/reject. Rejected items don't execute.
 - **Key code locations:**
-  - Store: `src/renderer/stores/approvalQueueStore.ts` (unified queue)
+  - Store: `src/renderer/stores/proposedChangeDisposal.ts` (unified queue)
   - Component: `src/renderer/components/planning/PendingActionsPanel.tsx`, approval overlays
-  - Discriminated union types: `PendingPlanActionsItem`, `PendingDocumentItem`, `PendingContextFileItem`, `PendingImplementationItem`, `PendingReviewReplyItem`
+  - Discriminated union: `ProposedChange` (`plan-actions`, `document`, `context-file`, `move`, `delete`, and `review-reply`)
 - **Why it matters:** Prevents Claude from making changes unilaterally. Single approval model for all change types. Reduces user confusion.
 
 ### 85. Store Events (Cross-Store Communication)
@@ -1147,7 +1167,7 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 - Agentic Task Execution (Board) (4)
 - Tracker Integration (4)
 - Documents & Context (3)
-- Artifacts & Generation (2)
+- Artifacts & Generation (1)
 - Global Search & Navigation (3)
 - Confluence Integration (1)
 - Agent Sessions & Orchestration (3)
@@ -1167,7 +1187,9 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 - `Layout.tsx`: Overall app shell; hosts sidebar, main view, chat panel
   - Features: 52 (Sidebar Navigation), 74 (Toast Notifications)
 - `TopBar.tsx`: Header bar with project name, view switcher, search
-  - Features: 52 (Sidebar Navigation), 50 (Global Search), 107 (Notification Bell)
+  - Features: 52 (Sidebar Navigation), 50 (Global Search), 107 (Notification Bell), 110 (Cross-Project Concurrency)
+- `TopBarProjectSection.tsx`: Project name button + switcher submenu, with per-project activity dots
+  - Features: 110 (Cross-Project Concurrency)
 - `Resize` hooks: Resizable panels
   - Features: 69 (Workspace View & File Editor)
 
@@ -1222,8 +1244,8 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 11 (Main Chat Interface), 12 (Focused Resources)
 - `ChatHeader.tsx`: Session id + history dropdown
   - Features: 11 (Main Chat Interface), 13 (System Prompts)
-- `SessionList.tsx`: List of chat sessions
-  - Features: 11 (Main Chat Interface)
+- `SessionList.tsx`: List of chat sessions; marks a background tab awaiting approval
+  - Features: 11 (Main Chat Interface), 110 (Cross-Project Concurrency)
 - `ModelSelector.tsx`: Choose chat provider (Claude/Codex/pi) and model
   - Features: 11 (Main Chat Interface)
 - `SessionHistory.tsx`: Past messages in session
@@ -1252,6 +1274,8 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 69 (Workspace View & File Editor), 11 (Main Chat Interface)
 - `FileEditor.tsx`: workspace file editor router (Markdown editor + Monaco); also the focus-mode entry point
   - Features: 69 (Workspace View & File Editor), 106 (Markdown Focus Reader)
+- `DocumentTabStrip.tsx`: the open-document tab strip above the editor
+  - Features: 69 (Workspace View & File Editor)
 - `WorkspaceHome.tsx`: Default workspace landing page; also surfaces the post-create context-generation nudge
   - Features: 69 (Workspace View & File Editor), 76 (Project Onboarding & Context Generation)
 
@@ -1316,8 +1340,10 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 53 (Confluence Integration)
 
 ### permission/ Components
-- `PermissionPrompt.tsx`: Runtime permission prompt
+- `PermissionPrompt.tsx`: Runtime permission prompt, inline in the viewed session
   - Features: 64 (Tool Permissions)
+- `PendingRequestsBadge.tsx`: Topbar pill for requests the user can't see from here (background tab, other project)
+  - Features: 64 (Tool Permissions), 110 (Cross-Project Concurrency)
 
 ### global-search/ Components
 - `GlobalSearch.tsx`: Search UI and results
@@ -1379,7 +1405,6 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 ## Gaps & Orphaned Features
 
 - **Orphaned:** The Tree view (one of the three Plan Views, feature 5) is well-implemented but rarely used (canvas and board are preferred).
-- **Dead/unreachable:** The artifacts-manager backend (`ArtifactService` list/read/delete/import, the `artifacts.*` IPC endpoints, and the `window.api.artifacts` preload surface) is fully wired but has no renderer caller — no component lists, opens, or deletes `outputs/` files through it (see feature 46).
 - **Optional:** Confluence integration (53) depends on Jira/Atlassian credentials and linked pages, so it is mature in code but not always visible in day-to-day project work.
 - **Experimental:** Custom prompts (65) are lightweight; prompt editor UI is basic.
 - **Known limitations:**

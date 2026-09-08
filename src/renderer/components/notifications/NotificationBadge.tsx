@@ -5,6 +5,10 @@
  * agnostic — today's only source is scheduled loops, but any future event
  * (tracker sync, PR review, etc.) that reaches `notificationStore` via
  * `notification:new` shows up here without further wiring.
+ *
+ * Notifications are global while the stores they resolve against hold one
+ * project, so a row for another project names that project and switches to it
+ * before navigating. Clicking used to be a silent no-op in that case.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -14,7 +18,8 @@ import {
   selectUnreadCount,
   type NotificationRecord,
 } from '../../stores/notificationStore';
-import { emit, useDevSessionsStore, usePlanDomainStore } from '../../stores';
+import { emit, useDevSessionsStore, usePlanDomainStore, useProjectDomainStore } from '../../stores';
+import type { NavigateToViewEvent } from '../../stores/storeEvents';
 import type { AppNotification, NotificationSeverity } from '../../../shared/types';
 import { BellIcon, CloseIcon } from '../icons';
 import { Z_INDEX } from '../../constants/zIndex';
@@ -29,14 +34,56 @@ const severityDotClass: Record<NotificationSeverity, string> = {
 };
 
 /**
- * Resolves a notification's link against whatever's already loaded in the
- * project/session stores and takes the corresponding action. Kinds with no
- * resolvable target today (e.g. a 'pr' link when the PR was never linked to a
- * session, or an 'external' ticket not imported into the current project) are
- * silent no-ops — there is nothing to navigate to. That includes a
- * 'dev_session' link for a session belonging to a project that isn't open.
+ * In-app navigation payload for a link, or null when the link points somewhere
+ * external (or nowhere). Board sessions and plan items live in the open
+ * project's stores; a PR or ticket URL comes off a record in those same stores,
+ * which is why only the first two survive a project switch.
  */
-function navigateToNotificationLink(link: NonNullable<AppNotification['link']>): void {
+function navigationPayloadFor(
+  link: NonNullable<AppNotification['link']>,
+): NavigateToViewEvent['payload'] | null {
+  switch (link.kind) {
+    case 'dev_session':
+      return { view: 'planning', boardSessionId: link.id };
+    case 'plan_item':
+      return { view: 'planning', planItemId: link.id };
+    case 'session':
+    case 'pr':
+    case 'external':
+      return null;
+  }
+}
+
+/**
+ * Opens whatever a notification points at, switching projects first when the
+ * notification belongs to one that isn't open — the target only exists in the
+ * stores once its project has loaded, which is why the switch carries the
+ * navigation as a follow-up rather than emitting it here.
+ *
+ * External links (a PR on GitHub, a ticket in the tracker) still resolve
+ * against the open project only; they read a URL off a session or plan item
+ * that a switch would have to load first, and no notification kind produces
+ * one for a project other than the open one today.
+ */
+function openNotificationLink(
+  link: NonNullable<AppNotification['link']>,
+  notificationProjectId: string | undefined,
+): void {
+  const navigation = navigationPayloadFor(link);
+
+  if (navigation) {
+    const currentProjectId = useProjectDomainStore.getState().currentProjectId;
+    if (notificationProjectId && notificationProjectId !== currentProjectId) {
+      emit({
+        type: 'switch-project',
+        payload: { projectId: notificationProjectId, then: navigation },
+      });
+      return;
+    }
+    emit({ type: 'navigate-to-view', payload: navigation });
+    return;
+  }
+
   switch (link.kind) {
     case 'session': {
       const session = useDevSessionsStore.getState().sessions.find((s) => s.id === link.id);
@@ -52,30 +99,27 @@ function navigateToNotificationLink(link: NonNullable<AppNotification['link']>):
       if (session?.pr_url) openExternalUrl(session.pr_url);
       break;
     }
-    case 'dev_session': {
-      const session = useDevSessionsStore.getState().sessions.find((s) => s.id === link.id);
-      if (!session) break;
-      emit({ type: 'navigate-to-view', payload: { view: 'planning', boardSessionId: session.id } });
-      break;
-    }
-    case 'plan_item': {
-      emit({ type: 'navigate-to-view', payload: { view: 'planning', planItemId: link.id } });
-      break;
-    }
     case 'external': {
       const item = usePlanDomainStore.getState().planItems.find((i) => i.external_key === link.id);
       if (item?.external_url) openExternalUrl(item.external_url);
       break;
     }
+    // Both are handled above by `navigationPayloadFor`.
+    case 'dev_session':
+    case 'plan_item':
+      break;
   }
 }
 
 function NotificationRow({
   notification,
+  otherProjectName,
   onSelect,
   onDismiss,
 }: {
   notification: NotificationRecord;
+  /** Project name when the notification is from a project that isn't open. */
+  otherProjectName: string | null;
   onSelect: () => void;
   onDismiss: () => void;
 }) {
@@ -94,7 +138,10 @@ function NotificationRow({
         {notification.body && (
           <div className="text-xs text-text-muted mt-0.5 line-clamp-2">{notification.body}</div>
         )}
-        <div className="text-tiny text-text-muted mt-1">{formatRelativeTime(notification.at)}</div>
+        <div className="text-tiny text-text-muted mt-1">
+          {otherProjectName ? `${otherProjectName} · ` : ''}
+          {formatRelativeTime(notification.at)}
+        </div>
       </button>
       <button
         onClick={onDismiss}
@@ -109,6 +156,9 @@ function NotificationRow({
 
 export function NotificationBadge() {
   const notifications = useNotificationStore((state) => state.notifications);
+  const { projects, currentProjectId } = useProjectDomainStore(
+    useShallow((state) => ({ projects: state.projects, currentProjectId: state.currentProjectId })),
+  );
   const unreadCount = useNotificationStore(useShallow(selectUnreadCount));
   const { markRead, markAllRead, dismiss } = useNotificationStore(
     useShallow((state) => ({
@@ -131,9 +181,16 @@ export function NotificationBadge() {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  // Only name the project when it isn't the open one — labelling every row
+  // with the project the user is already looking at is noise.
+  const otherProjectNameFor = (projectId: string | undefined): string | null => {
+    if (!projectId || projectId === currentProjectId) return null;
+    return projects.find((project) => project.id === projectId)?.name ?? 'Another project';
+  };
+
   const handleSelect = (notification: NotificationRecord) => {
     markRead(notification.id);
-    if (notification.link) navigateToNotificationLink(notification.link);
+    if (notification.link) openNotificationLink(notification.link, notification.projectId);
     setOpen(false);
   };
 
@@ -181,6 +238,7 @@ export function NotificationBadge() {
                 <NotificationRow
                   key={notification.id}
                   notification={notification}
+                  otherProjectName={otherProjectNameFor(notification.projectId)}
                   onSelect={() => handleSelect(notification)}
                   onDismiss={() => dismiss(notification.id)}
                 />

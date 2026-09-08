@@ -1,5 +1,4 @@
 import type { ActionEditable } from '../../shared/actions';
-import type { ActionRunEventData } from '../../shared/ipc/actionEvents';
 
 export function listActions(projectId: string) {
   return window.api.actions.list({ projectId });
@@ -31,10 +30,4 @@ export function runActionNow(id: string) {
 
 export function getActionHistory(actionId: string, limit?: number) {
   return window.api.actions.history({ actionId, limit });
-}
-
-export function subscribeToActionRun(
-  callback: (data: ActionRunEventData) => void
-): () => void {
-  return window.api.actions.onRun(callback);
 }

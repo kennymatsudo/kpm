@@ -7,6 +7,7 @@ import {
   type ChatStoreView,
 } from './chatEventRouter';
 import type { PerSessionState } from '../stores/chat/types';
+import type { Activity } from '../../shared/types';
 
 const PROJECT_ID = 'project-1';
 const OTHER_PROJECT_ID = 'project-2';
@@ -15,6 +16,7 @@ const SESSION_ID = 'session-1';
 function makeSession(overrides: Partial<PerSessionState> = {}): PerSessionState {
   return {
     messages: [],
+    backgroundTasks: [],
     streamingSegments: [],
     streamingContent: '',
     pendingActivities: [],
@@ -66,6 +68,7 @@ function makeChatState(overrides: Partial<ChatStoreView> = {}): ChatStoreView {
     setClaudeSessionId: vi.fn(),
     setSessionTitle: vi.fn(),
     setMcpStatus: vi.fn(),
+    setBackgroundTasks: vi.fn(),
     setLastTurnUsage: vi.fn(),
     clearQueuedFlag: vi.fn(),
     removeQueuedUserMessage: vi.fn(),
@@ -455,6 +458,44 @@ describe('initialize', () => {
     expect(chatState.setRetrying).toHaveBeenCalledWith('s-live');
     expect(chatState.setSessionState).toHaveBeenCalledWith('s-live', 'processing');
     expect(chatState.setViewedSession).toHaveBeenCalledWith('s-live');
+  });
+
+  it('replays the in-flight turn so a mid-turn rejoin is not missing text', async () => {
+    const chatState = makeChatState({ viewedSessionId: null });
+    const { deps, services } = makeDeps(chatState);
+    const activity: Activity = { id: 'act-1', type: 'read', label: 'Read src/a.ts' };
+    services.getActiveChatSessions.mockResolvedValue({
+      success: true,
+      sessions: [
+        {
+          chatSessionId: 's-live',
+          scope: 'main',
+          state: 'processing',
+          title: null,
+          partialResponse: 'Half an answ',
+          partialActivities: [activity],
+        },
+      ],
+    });
+    const router = createChatEventRouter(deps);
+
+    await router.initialize();
+
+    expect(chatState.appendChunk).toHaveBeenCalledWith('s-live', 'Half an answ', undefined, [activity]);
+  });
+
+  it('replays nothing for a session that is not mid-turn', async () => {
+    const chatState = makeChatState({ viewedSessionId: null });
+    const { deps, services } = makeDeps(chatState);
+    services.getActiveChatSessions.mockResolvedValue({
+      success: true,
+      sessions: [{ chatSessionId: 's-idle', scope: 'main', state: 'ready', title: null }],
+    });
+    const router = createChatEventRouter(deps);
+
+    await router.initialize();
+
+    expect(chatState.appendChunk).not.toHaveBeenCalled();
   });
 
   it('does not steal the viewed session when one is already focused', async () => {

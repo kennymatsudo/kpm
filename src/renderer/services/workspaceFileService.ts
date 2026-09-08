@@ -22,21 +22,6 @@ export function readProjectBinaryFile(
   return window.api.fileExplorer.readBinaryFile({ projectId, path });
 }
 
-export function showWorkspaceFileInFolder(
-  source: WorkspaceFileSource,
-  path: string,
-  projectId?: string | null
-): Promise<{ success: boolean; error?: string }> {
-  if (source === 'project') {
-    if (!projectId) {
-      throw new Error('No project selected');
-    }
-    return window.api.fileExplorer.showItemInFolder({ projectId, path });
-  }
-
-  return window.api.repoFiles.showItemInFolder({ repoId: source, path });
-}
-
 export async function writeWorkspaceFile(
   source: WorkspaceFileSource,
   path: string,

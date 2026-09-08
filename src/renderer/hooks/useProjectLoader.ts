@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useChatStore, useGroupStore, useProjectDomainStore, useResourceDomainStore, selectProjectSummary } from '../stores';
+import { emit, subscribe as subscribeToStoreEvent, useChatStore, useGroupStore, useProjectDomainStore, useResourceDomainStore, useWorkspaceStore, selectProjectSummary } from '../stores';
 import { applyLoadedProjectData, setProjectSwitching } from '../stores/project/domainService';
 import { resetAllProjectScopedStores } from '../stores/projectScopedStores';
 import {
@@ -24,6 +24,7 @@ import {
   unwatchProjectRepos,
   watchProjectRepos,
 } from '../services/projectLoaderService';
+import { killProjectTerminals } from '../services/terminalService';
 
 interface UseProjectLoaderOptions {
   onRequestNewProject?: () => void;
@@ -160,10 +161,13 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       // the focused tab's messages. Fire-and-forget, but guarded against stale
       // async writes when another project load starts before the hydration
       // round-trip returns.
-      const shouldRestoreChat = () =>
+      const isStillThisProject = () =>
         isCurrentLoad() &&
         useProjectDomainStore.getState().currentProjectId === projectId;
-      void useChatStore.getState().hydrateOpenSessions(projectId, shouldRestoreChat);
+      void useChatStore.getState().hydrateOpenSessions(projectId, isStillThisProject);
+
+      // Same deal for the documents that were open in the editor.
+      void useWorkspaceStore.getState().hydrateOpenDocuments(projectId, isStillThisProject);
 
       const scheduleRepoTasks = () => {
         scheduledRepoTaskRef.current = null;
@@ -257,6 +261,12 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       previousConnectedProjectId = null;
     }
 
+    // Main keeps a project's shells alive across switches on purpose, so a
+    // delete is the only thing that reaps them.
+    await killProjectTerminals(currentProjectId).catch(() => {
+      // Best effort - continue with delete
+    });
+
     // Delete via API
     await deleteProjectRecord(currentProjectId);
 
@@ -313,6 +323,28 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       onOpenProject: loadProjectData,
     });
   }, [loadProjectData, onRequestNewProject]);
+
+  // Switch projects on request from anywhere in the app (a notification for
+  // another project, a permission request blocking work in another project).
+  // The follow-up navigation waits for the load, since its target only exists
+  // in the stores once the project's data is in.
+  useEffect(() => {
+    return subscribeToStoreEvent('switch-project', (event) => {
+      const { projectId, then } = event.payload;
+      const alreadyOpen = useProjectDomainStore.getState().currentProjectId === projectId;
+
+      if (alreadyOpen) {
+        if (then) emit({ type: 'navigate-to-view', payload: then });
+        return;
+      }
+
+      void loadProjectData(projectId).then(() => {
+        if (!isMountedRef.current) return;
+        if (useProjectDomainStore.getState().currentProjectId !== projectId) return;
+        if (then) emit({ type: 'navigate-to-view', payload: then });
+      });
+    });
+  }, [loadProjectData]);
 
   // Listen for repo branch changes
   useEffect(() => {

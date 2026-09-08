@@ -33,14 +33,14 @@ src/main/ipc/
 │                         #   the registry (`src/shared/ipc/{domain}Endpoints.ts`) is their only schema owner
 ├── handlers/             # IPC handler implementations (one per domain)
 └── register/             # Handler registration groups (three files, called from index.ts)
-    ├── workspace.ts      # Project/repo/attachment, plan/group, chat, files/export, tracker, settings, themes, permissions, artifacts, task prompt templates, actions, onboarding
+    ├── workspace.ts      # Project/repo/attachment, plan/group, chat, files/export, tracker, settings, themes, permissions, task prompt templates, actions, onboarding
     ├── development.ts    # GitHub, review, dev sessions, file explorer, repo files, agent sessions
-    └── platform.ts       # Shell, terminal, temp images, perf, confluence, debug, testing, tool log, prompt overrides, search, MCP servers, usage handlers
+    └── platform.ts       # Shell, terminal, temp images, perf, confluence, testing, tool log, prompt overrides, search, MCP servers, usage handlers
 
 src/shared/ipc/
 ├── endpoints.ts           # Generic registry helpers (EndpointDefinition, EndpointPayload, toNestedChannels, deriveDomainApi)
 ├── relativePath.ts        # Shared pure-string relative-path safety check (normalizePosixPath + relativePath schema) reused by fileExplorer, repoFiles, github, confluence
-├── {domain}Endpoints.ts   # One per domain (tracker, fileExplorer, repoFiles, attachment, tempImage, artifact, context, search, chat, terminal, settings, permission, promptOverrides, toolLog, storybook, mcpServers, usage, devSession, agentSession, review, github, plan, group, export, confluence, action, scheduledLoop, project, repo, customPrompt, taskPromptTemplate, customTheme, theme, onboarding, perf, debug, testing, shell) — every invoke domain is on the registry; see "Endpoint Registries" below
+├── {domain}Endpoints.ts   # One per domain (tracker, fileExplorer, repoFiles, attachment, tempImage, context, search, chat, terminal, settings, permission, promptOverrides, toolLog, storybook, mcpServers, usage, devSession, agentSession, review, github, plan, group, export, confluence, action, playbook, project, repo, taskPromptTemplate, customTheme, theme, onboarding, perf, testing, shell) — every invoke domain is on the registry; see "Endpoint Registries" below
 ├── appEvents.ts           # Generic event-registry helpers (EventDefinition, EventPayload, payloadOf, emitAppEvent, deriveEventSubscriptions, toNestedEventChannels)
 ├── allAppEvents.ts        # Flattened aggregate of every domain's event registry, walked by registration.test.ts
 └── {domain}Events.ts      # One per domain with push events (chat, review, devSession, agentSession, usage, permission, terminal, menu, notification, plan, repo, fileExplorer, tracker, customPrompt, onboarding, scheduledLoop, action, toolLog) — see "Main→Renderer Event Registry" below
@@ -94,20 +94,19 @@ Each registry key's `params` schema is parsed once by `bindRegistryHandlers` bef
 
 ```typescript
 createRegistryIpcHandlers(
-  artifactEndpoints,
+  customThemeEndpoints,
   {
-    list: ({ projectId }) => {
-      const result = artifactService.list(projectId);
+    delete: ({ themeId }) => {
+      const result = customThemeService.delete(themeId);
       if (!result.ok) throw new Error(result.error);
-      return result.data;
     },
     // ...one entry per registry key
   },
-  'Failed to list artifacts'
+  'Custom theme operation failed'
 );
 ```
 
-See `handlers/settings.ts` or `handlers/customPrompts.ts` for full files using this pattern.
+See `handlers/customThemes.ts` or `handlers/settings.ts` for full files using this pattern.
 
 `createIpcHandler`/`createSimpleIpcHandler` (`validation/utils.ts`) are the pre-registry hand-rolled wrapper this pattern superseded — no handler calls them anymore, but they're kept for the same `{success, ...}` envelope shape if a future non-registry endpoint needs it standalone.
 
@@ -126,7 +125,7 @@ Every domain's Zod payload schema lives in `src/shared/ipc/{domain}Endpoints.ts`
 
 Every invoke domain is on the endpoint registry — see the `{domain}Endpoints.ts` line in Directory Structure above for the full list. Follow the registry recipe below. The old 4-file recipe (hand-declared channel + `validation/{domain}.ts` schema + `handlers/{domain}.ts` + register call) no longer applies to any domain — new endpoints are added to an existing `{domain}Endpoints.ts` registry, or a new one following "Adding a New Domain Registry" below.
 
-Every domain's registration loop binds off the same criterion: a uniform `{success, ...}` envelope across every entry goes through `createRegistryIpcHandlers`; a heterogeneous mix of response shapes (raw values, `toIpcResponse`, `unwrapOrThrow`, `ipcSuccess`/`ipcError`) goes through `bindRegistryHandlers` instead, which wires the same per-key params schema and dispatch without imposing an envelope. Both live next to each other in `validation/utils.ts`. `groups`, `confluence`, `tracker`, and `attachments` use `bindRegistryHandlers` for this reason; `handlers/debug.ts` also uses it since its response shape is a bare `{ enabled }`. `handlers/testing.ts` (test-only, env-gated, mixed response shapes; channels still come from `testingEndpoints`) hand-declares each `ipcMain.handle` call individually rather than looping — it doesn't fit either helper since some of its handlers need per-call setup beyond a channel + params + handler triple. `handlers/customPrompts.ts` execution progress (`custom-prompt:progress`/`complete`/`error`) and `handlers/onboarding.ts` generation progress (`onboarding:progress`/`thinking`/`complete`/`error`) are main-to-renderer events — see "Main→Renderer Event Registry" below for how those (and every other domain's streaming callbacks) are wired.
+Every domain's registration loop binds off the same criterion: a uniform `{success, ...}` envelope across every entry goes through `createRegistryIpcHandlers`; a heterogeneous mix of response shapes (raw values, `toIpcResponse`, `unwrapOrThrow`, `ipcSuccess`/`ipcError`) goes through `bindRegistryHandlers` instead, which wires the same per-key params schema and dispatch without imposing an envelope. Both live next to each other in `validation/utils.ts`. `groups`, `confluence`, `tracker`, and `attachments` use `bindRegistryHandlers` for this reason. `handlers/testing.ts` (test-only, env-gated, mixed response shapes; channels still come from `testingEndpoints`) hand-declares each `ipcMain.handle` call individually rather than looping — it doesn't fit either helper since some of its handlers need per-call setup beyond a channel + params + handler triple. `handlers/customPrompts.ts` execution progress (`custom-prompt:progress`/`complete`/`error`) and `handlers/onboarding.ts` generation progress (`onboarding:progress`/`thinking`/`complete`/`error`) are main-to-renderer events — see "Main→Renderer Event Registry" below for how those (and every other domain's streaming callbacks) are wired.
 
 ## Main→Renderer Event Registry
 

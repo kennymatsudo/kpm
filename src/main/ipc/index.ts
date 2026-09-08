@@ -19,6 +19,11 @@ export function registerAllIpcHandlers(
   const chatRuntime = services.createChatRuntime(getMainWindow);
   services.appLifecycleService.attachChatRuntime(chatRuntime);
 
+  // The cross-project activity snapshot can only see chat turns once the chat
+  // runtime exists, which is here — not inside `createAppServices`.
+  services.setActivityChatSource(() => chatRuntime.streamingSessionService.processingCountsByProject());
+  services.activityService.start();
+
   const context = {
     getMainWindow,
     services,

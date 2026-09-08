@@ -12,9 +12,8 @@ import type {
   SDKSessionStateChangedMessage,
   SDKRateLimitEvent,
   SDKRateLimitInfo,
-  SDKPermissionDeniedMessage,
-  SDKToolUseSummaryMessage,
   SDKToolProgressMessage,
+  SDKBackgroundTasksChangedMessage,
   SDKInformationalMessage,
   SDKAssistantMessageError,
   SDKPartialAssistantMessage,
@@ -24,7 +23,7 @@ import type {
   TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
 
-export type { TerminalReason, SDKRateLimitInfo, SDKPermissionDeniedMessage, SDKToolUseSummaryMessage, SDKInformationalMessage };
+export type { TerminalReason, SDKRateLimitInfo, SDKInformationalMessage };
 
 /**
  * Check if a message is an init system message (sent when SDK initializes).
@@ -92,30 +91,24 @@ export function isRateLimitEvent(msg: SDKMessage): msg is SDKRateLimitEvent {
 }
 
 /**
- * Check if a message is a permission denied notification (SDK v0.3.144+).
- * Emitted when canUseTool denies a tool call. Carries tool_name, tool_use_id,
- * and optionally agent_id (if the denial originated inside a subagent).
- */
-export function isPermissionDeniedMessage(msg: SDKMessage): msg is SDKPermissionDeniedMessage {
-  return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'permission_denied';
-}
-
-/**
- * Check if a message is a tool-use summary (SDK v0.3.144+).
- * Emitted after a batch of tool calls to summarise what ran. Carries a
- * human-readable summary string and the IDs of the tool calls it covers.
- */
-export function isToolUseSummary(msg: SDKMessage): msg is SDKToolUseSummaryMessage {
-  return msg.type === 'tool_use_summary';
-}
-
-/**
  * Check if a message is a tool-progress heartbeat. Emitted periodically for a
  * still-running tool, carrying `tool_use_id`, `tool_name`, and
  * `elapsed_time_seconds` — lets the UI show a live timer on long calls.
  */
 export function isToolProgressMessage(msg: SDKMessage): msg is SDKToolProgressMessage {
   return msg.type === 'tool_progress';
+}
+
+/**
+ * Check if a message is the background-task level signal. Carries the complete
+ * set of live background tasks after every membership change, so consumers
+ * replace their set with `tasks` rather than pairing the task_started /
+ * task_notification edges — a dropped edge can't then wedge a stale "still
+ * running" indicator. Nothing is emitted at startup, so the set must be reset
+ * to empty whenever the session's CLI process restarts.
+ */
+export function isBackgroundTasksChangedMessage(msg: SDKMessage): msg is SDKBackgroundTasksChangedMessage {
+  return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'background_tasks_changed';
 }
 
 /**
@@ -203,6 +196,8 @@ export function describeAssistantError(error: SDKAssistantMessageError): string 
       return 'The request was invalid and could not be processed.';
     case 'oauth_org_not_allowed':
       return 'Your organization is not permitted to use this Claude Code session.';
+    case 'account_on_hold':
+      return 'Your Claude account is on hold. Resolve it at claude.ai, then send another message.';
     case 'unknown':
       return 'The response stopped due to an unexpected error. Send another message to retry.';
     case 'authentication_failed':

@@ -3,7 +3,6 @@ import { createNotificationService, dedupeKeyFor, notificationFor } from './Noti
 import type {
   BoardAgentEvent,
   BranchChangedEvent,
-  GenericUpdateEvent,
   ActionFindingEvent,
   PrChangedEvent,
   TicketChangedEvent,
@@ -17,6 +16,7 @@ function prEvent(overrides: Partial<PrChangedEvent> = {}): PrChangedEvent {
     kind: 'pr_changed',
     source: 'github',
     detectedAt: AT,
+    projectId: 'project-1',
     prNumber: 42,
     repoId: 'repo-1',
     change: 'new_review_threads',
@@ -30,6 +30,7 @@ function ticketEvent(overrides: Partial<TicketChangedEvent> = {}): TicketChanged
     kind: 'ticket_changed',
     source: 'linear',
     detectedAt: AT,
+    projectId: 'project-1',
     externalKey: 'ENG-1234',
     change: 'status_changed',
     ...overrides,
@@ -44,16 +45,6 @@ function branchEvent(overrides: Partial<BranchChangedEvent> = {}): BranchChanged
     repoId: 'repo-1',
     repoPath: '/tmp/repo-1',
     branch: 'main',
-    ...overrides,
-  };
-}
-
-function genericEvent(overrides: Partial<GenericUpdateEvent> = {}): GenericUpdateEvent {
-  return {
-    kind: 'generic_update',
-    source: 'github',
-    detectedAt: AT,
-    summary: 'Something happened',
     ...overrides,
   };
 }
@@ -150,13 +141,7 @@ describe('notificationFor', () => {
     });
   });
 
-  describe('generic_update and loop_finding', () => {
-    it('uses the summary as a generic update title', () => {
-      const n = notificationFor(genericEvent({ summary: 'Cache warmed' }));
-      expect(n).toMatchObject({ severity: 'info', title: 'Cache warmed' });
-      expect(n?.link).toBeUndefined();
-    });
-
+  describe('loop_finding', () => {
     it('uses the loop finding title and body', () => {
       expect(notificationFor(actionFindingEvent())).toMatchObject({
         severity: 'info',

@@ -1,8 +1,18 @@
+/**
+ * Terminal panel view state.
+ *
+ * `terminals` holds only the current project's sessions — main owns the shells
+ * and keeps another project's running, so `resetProjectState` clears the list
+ * without killing anything. Panel geometry (`isPanelOpen`, `panelHeight`) is a
+ * global UI preference and deliberately survives a project switch.
+ */
+
 import { create } from 'zustand';
 import type { TerminalSessionSnapshot } from '../services/terminalService';
 
 export interface TerminalEntry {
   id: string;
+  projectId: string;
   cwd?: string;
   status: 'starting' | 'running' | 'exited';
   exitCode?: number;
@@ -24,6 +34,7 @@ interface TerminalState {
   setTerminalStatus: (id: string, status: TerminalEntry['status'], exitCode?: number) => void;
   hydrateTerminals: (sessions: TerminalSessionSnapshot[]) => void;
   applySessionSnapshot: (snapshot: TerminalSessionSnapshot) => void;
+  resetProjectState: () => void;
 }
 
 const DEFAULT_HEIGHT = 280;
@@ -84,6 +95,7 @@ export const useTerminalStore = create<TerminalState>((set) => ({
     set((state) => {
       const terminals: TerminalEntry[] = sessions.map((session) => ({
         id: session.id,
+        projectId: session.projectId,
         cwd: session.cwd,
         status: session.status,
         exitCode: session.exitCode,
@@ -104,5 +116,9 @@ export const useTerminalStore = create<TerminalState>((set) => ({
         ),
       };
     });
+  },
+
+  resetProjectState() {
+    set({ terminals: [], activeTerminalId: null });
   },
 }));

@@ -276,10 +276,6 @@ function validateActionStructure(
   }
 }
 
-export function parseAction(input: unknown): ActionEditable {
-  return actionEditableSchema.parse(input);
-}
-
 export function getActionValidationIssues(input: unknown): ActionValidationIssue[] {
   const result = actionEditableSchema.safeParse(input);
   if (result.success) return [];

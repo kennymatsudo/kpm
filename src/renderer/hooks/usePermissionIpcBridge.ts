@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import {
   subscribeToPermissionRequests,
+  subscribeToPermissionSettled,
   subscribeToWriteGrantChanges,
 } from '../services/permissionService';
 import { usePermissionStore } from '../stores';
@@ -15,12 +16,18 @@ export function usePermissionIpcBridge(): void {
       usePermissionStore.getState().enqueueRequest(request);
     });
     const unsubscribeWriteGrants = subscribeToWriteGrantChanges((change) => {
-      usePermissionStore.getState().setWriteGrant(change.chatSessionId, change.granted);
+      usePermissionStore.getState().setWriteGrant(change.projectId, change.granted);
+    });
+    // Requests main gave up on (timeout, aborted turn) must leave the queue,
+    // or the pending-request badge keeps advertising work nobody can unblock.
+    const unsubscribeSettled = subscribeToPermissionSettled((settled) => {
+      usePermissionStore.getState().settleRequest(settled.requestId);
     });
 
     return () => {
       unsubscribeRequests();
       unsubscribeWriteGrants();
+      unsubscribeSettled();
     };
   }, []);
 }

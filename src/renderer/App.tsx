@@ -16,6 +16,7 @@ import {
 } from './stores';
 import { ThemeProvider } from './contexts';
 import { useProjectLoader } from './hooks/useProjectLoader';
+import { useActivitySync } from './hooks/useActivitySync';
 import { subscribeToRefreshRequested } from './services/planService';
 import { initOnboardingTaskBridge } from './services/onboardingTaskBridge';
 import { getBaseName } from './utils/path';
@@ -23,6 +24,9 @@ import { getBaseName } from './utils/path';
 export default function App() {
   // Initialize cross-store event subscriptions
   useStoreSubscriptions();
+
+  // Track what's running in projects other than the open one
+  useActivitySync();
 
   // Track in-flight Cmd+K custom prompt generations
   useEffect(() => {

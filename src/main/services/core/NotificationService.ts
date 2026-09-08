@@ -128,6 +128,7 @@ const NOTIFY_RULES: { [K in UpdateEventKind]: NotifyRule<K> } = {
         severity: event.change === 'merged' ? 'success' : 'info',
         title,
         body: event.summary,
+        projectId: event.projectId,
         link: event.sessionId
           ? { kind: 'session', id: event.sessionId }
           : { kind: 'pr', id: `${event.repoId}#${event.prNumber}` },
@@ -140,6 +141,7 @@ const NOTIFY_RULES: { [K in UpdateEventKind]: NotifyRule<K> } = {
       severity: 'info',
       title: ticketTitleByChange[event.change](event.externalKey),
       body: event.summary,
+      projectId: event.projectId,
       link: event.planItemId
         ? { kind: 'plan_item', id: event.planItemId }
         : { kind: 'external', id: event.externalKey },
@@ -149,10 +151,6 @@ const NOTIFY_RULES: { [K in UpdateEventKind]: NotifyRule<K> } = {
     // Observability-only — branch changes don't warrant a user notification.
     dedupeKey: (event) => `branch:${event.repoId}:${event.branch ?? 'null'}`,
     present: () => null,
-  },
-  generic_update: {
-    dedupeKey: (event) => `generic:${event.source}:${event.summary}`,
-    present: (event) => ({ severity: 'info', title: event.summary }),
   },
   action_finding: {
     dedupeKey: (event) => `action:${event.actionId}:${event.title}`,

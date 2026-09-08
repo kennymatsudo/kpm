@@ -161,12 +161,6 @@ export const anthropicApiKey = z
     'Invalid API key format (should start with sk-ant-)'
   );
 
-/** Filename for notes (no path separators allowed) */
-export const noteFilename = z.string().min(1).max(255).refine(
-  (val) => !val.includes('/') && !val.includes('\\') && !val.startsWith('.'),
-  { message: 'Invalid note filename' }
-);
-
 /** Supported image MIME types for paste */
 export const supportedImageFormat = z.enum([
   'image/png',

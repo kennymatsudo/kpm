@@ -16,12 +16,13 @@ type TerminalHandlers = { [K in TerminalEndpointName]: HandlerFor<typeof termina
 
 function buildTerminalHandlers(terminalService: TerminalService): TerminalHandlers {
   return {
-    list: () => toIpcResponse(success(terminalService.list())),
+    list: ({ projectId }) => toIpcResponse(success(terminalService.list(projectId))),
     attach: (input) => toIpcResponse(terminalService.attach(input)),
     detach: ({ id }) => toIpcResponse(terminalService.detach(id)),
     write: ({ id, data }) => toIpcResponse(terminalService.write(id, data)),
     resize: ({ id, cols, rows }) => toIpcResponse(terminalService.resize(id, cols, rows)),
     kill: ({ id }) => toIpcResponse(terminalService.kill(id)),
+    killForProject: ({ projectId }) => toIpcResponse(terminalService.killForProject(projectId)),
   };
 }
 
