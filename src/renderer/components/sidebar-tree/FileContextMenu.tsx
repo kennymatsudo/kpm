@@ -23,6 +23,13 @@ interface FileContextMenuProps {
   onSyncConfluence?: () => void;
   onUnlinkFromConfluence?: () => void;
   isLinkedToConfluence?: boolean;
+  onPublishToLinear?: () => void;
+  onSyncLinear?: () => void;
+  onUnlinkFromLinear?: () => void;
+  isPublishedToLinear?: boolean;
+  /** Whether each provider is set up for this project. */
+  isLinearConfigured?: boolean;
+  isConfluenceConfigured?: boolean;
 }
 
 export function FileContextMenu({
@@ -46,9 +53,20 @@ export function FileContextMenu({
   onSyncConfluence,
   onUnlinkFromConfluence,
   isLinkedToConfluence,
+  onPublishToLinear,
+  onSyncLinear,
+  onUnlinkFromLinear,
+  isPublishedToLinear,
+  isLinearConfigured,
+  isConfluenceConfigured,
 }: FileContextMenuProps) {
   const isProjectContextFile = isContextFile(node.name);
   const isMarkdown = node.name.endsWith('.md');
+
+  // An already-published document keeps its entries even if that tracker was
+  // since disconnected, otherwise it would be stranded with no way to unlink.
+  const showLinear = isLinearConfigured || isPublishedToLinear;
+  const showConfluence = isConfluenceConfigured || isLinkedToConfluence;
 
   return (
     <DropdownMenu
@@ -141,87 +159,63 @@ export function FileContextMenu({
         {isFocused ? 'Remove from context' : 'Add to context'}
       </DropdownMenu.Item>
 
-      {/* Confluence sync options (markdown files) */}
-      {isMarkdown && (
+      {/* Publishing targets, grouped so a second provider does not stack another
+          flat block above the file operations. */}
+      {isMarkdown && (showLinear || showConfluence) && (
         <>
           <DropdownMenu.Separator />
-          {isLinkedToConfluence ? (
-            <>
-              <DropdownMenu.Item
-                onClick={() => {
-                  onSyncConfluence?.();
-                  onClose();
-                }}
-                closeOnClick={false}
-                icon={
-                  <svg
-                    className="w-4 h-4 text-text-tertiary"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                    />
-                  </svg>
-                }
+          <DropdownMenu.Submenu
+            trigger="Publish & sync"
+            icon={
+              <svg
+                className="w-4 h-4 text-text-tertiary"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                Sync with Confluence
-              </DropdownMenu.Item>
-              <DropdownMenu.Item
-                onClick={() => {
-                  onUnlinkFromConfluence?.();
-                  onClose();
-                }}
-                closeOnClick={false}
-                icon={
-                  <svg
-                    className="w-4 h-4 text-text-tertiary"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                    />
-                  </svg>
-                }
-              >
-                Unlink from Confluence
-              </DropdownMenu.Item>
-            </>
-          ) : (
-            <DropdownMenu.Item
-              onClick={() => {
-                onLinkToConfluence?.();
-                onClose();
-              }}
-              closeOnClick={false}
-              icon={
-                <svg
-                  className="w-4 h-4 text-text-tertiary"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
-                  />
-                </svg>
-              }
-            >
-              Link to Confluence
-            </DropdownMenu.Item>
-          )}
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                />
+              </svg>
+            }
+          >
+            {showLinear &&
+              (isPublishedToLinear ? (
+                <>
+                  <DropdownMenu.SubmenuItem onClick={() => onSyncLinear?.()}>
+                    Sync with Linear…
+                  </DropdownMenu.SubmenuItem>
+                  <DropdownMenu.SubmenuItem onClick={() => onUnlinkFromLinear?.()}>
+                    Unlink from Linear
+                  </DropdownMenu.SubmenuItem>
+                </>
+              ) : (
+                <DropdownMenu.SubmenuItem onClick={() => onPublishToLinear?.()}>
+                  Publish to Linear…
+                </DropdownMenu.SubmenuItem>
+              ))}
+
+            {showLinear && showConfluence && <DropdownMenu.Separator />}
+
+            {showConfluence &&
+              (isLinkedToConfluence ? (
+                <>
+                  <DropdownMenu.SubmenuItem onClick={() => onSyncConfluence?.()}>
+                    Sync with Confluence
+                  </DropdownMenu.SubmenuItem>
+                  <DropdownMenu.SubmenuItem onClick={() => onUnlinkFromConfluence?.()}>
+                    Unlink from Confluence
+                  </DropdownMenu.SubmenuItem>
+                </>
+              ) : (
+                <DropdownMenu.SubmenuItem onClick={() => onLinkToConfluence?.()}>
+                  Link to Confluence…
+                </DropdownMenu.SubmenuItem>
+              ))}
+          </DropdownMenu.Submenu>
         </>
       )}
 

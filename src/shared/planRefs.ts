@@ -80,6 +80,37 @@ export function findRefs(text: string): PlanRefMatch[] {
   return out;
 }
 
+/** A markdown inline link `[label](target)` located in the source string. */
+export interface MarkdownLinkMatch {
+  label: string;
+  target: string;
+  /** Inclusive start offset of the leading `[`. */
+  start: number;
+  /** Exclusive end offset (one past the closing `)`). */
+  end: number;
+}
+
+const MARKDOWN_LINK_REGEX = /\[([^\]]*)\]\(([^()]+)\)/g;
+
+/**
+ * Find every `[label](target)` in `text`, skipping fenced code blocks. A
+ * target carrying a markdown title (`[x](url "title")`) is returned verbatim,
+ * so callers matching against known URLs won't match it.
+ */
+export function findMarkdownLinks(text: string): MarkdownLinkMatch[] {
+  const skipRanges = computeFencedCodeRanges(text);
+  const out: MarkdownLinkMatch[] = [];
+
+  MARKDOWN_LINK_REGEX.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = MARKDOWN_LINK_REGEX.exec(text)) !== null) {
+    const start = m.index;
+    if (isInRanges(start, skipRanges)) continue;
+    out.push({ label: m[1], target: m[2], start, end: start + m[0].length });
+  }
+  return out;
+}
+
 /**
  * Split `text` into an alternating sequence of text and ref segments. Useful
  * for rendering: walk the array, emit a text node or a chip for each entry.

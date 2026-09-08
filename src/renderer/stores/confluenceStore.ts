@@ -5,7 +5,7 @@
  */
 
 import { create } from 'zustand';
-import type { ConfluencePageLink, ConfluenceSyncPreview } from '../../shared/types';
+import type { ConfluencePageLink } from '../../shared/types';
 import {
   getConfluenceSyncPreview,
   linkConfluenceDocument,
@@ -14,31 +14,26 @@ import {
   pushConfluenceDocument,
   unlinkConfluenceDocument,
 } from '../services/confluenceService';
+import {
+  createDocumentSyncState,
+  initialDocumentSyncState,
+  type DocumentSyncState,
+} from './documentSyncState';
 
-interface ConfluenceState {
+interface ConfluenceState extends DocumentSyncState {
   // Links state
   links: ConfluencePageLink[];
   isLoading: boolean;
   error: string | null;
 
-  // Sync preview state
-  syncPreview: ConfluenceSyncPreview | null;
-  isSyncing: boolean;
-  syncError: string | null;
-
   // Actions
   setLinks: (links: ConfluencePageLink[]) => void;
   setError: (error: string | null) => void;
-  setSyncPreview: (preview: ConfluenceSyncPreview | null) => void;
-  setSyncError: (error: string | null) => void;
 
   // Async operations
   loadLinks: (projectId: string) => Promise<void>;
   linkDocument: (projectId: string, documentPath: string, confluenceUrl: string) => Promise<{ success: boolean; error?: string }>;
   unlinkDocument: (projectId: string, documentPath: string) => Promise<boolean>;
-  loadSyncPreview: (projectId: string, documentPath: string) => Promise<void>;
-  executePush: (projectId: string, documentPath: string) => Promise<{ success: boolean; pageUrl?: string; error?: string }>;
-  executePull: (projectId: string, documentPath: string) => Promise<boolean>;
   isDocumentLinked: (documentPath: string) => boolean;
   getLinkForDocument: (documentPath: string) => ConfluencePageLink | null;
 
@@ -50,9 +45,6 @@ const initialState = {
   links: [],
   isLoading: false,
   error: null,
-  syncPreview: null,
-  isSyncing: false,
-  syncError: null,
 };
 
 export const useConfluenceStore = create<ConfluenceState>((set, get) => ({
@@ -61,14 +53,20 @@ export const useConfluenceStore = create<ConfluenceState>((set, get) => ({
   // State setters
   setLinks: (links) => set({ links }),
   setError: (error) => set({ error }),
-  setSyncPreview: (syncPreview) => set({ syncPreview }),
-  setSyncError: (syncError) => set({ syncError }),
+  ...createDocumentSyncState(set, {
+    getPreview: getConfluenceSyncPreview,
+    push: pushConfluenceDocument,
+    pull: pullConfluenceDocument,
+    previewFailureMessage: 'Failed to load sync preview',
+    pushFailureMessage: 'Failed to push to Confluence',
+    pullFailureMessage: 'Failed to pull from Confluence',
+  }),
 
   // Async operations
   loadLinks: async (projectId) => {
     set({ isLoading: true, error: null });
     try {
-      const result = await listConfluenceLinks(projectId);
+      const result = await listConfluenceLinks({ projectId });
       set({ links: result.data, isLoading: false });
     } catch (error) {
       set({
@@ -80,7 +78,7 @@ export const useConfluenceStore = create<ConfluenceState>((set, get) => ({
 
   linkDocument: async (projectId, documentPath, confluenceUrl) => {
     try {
-      const result = await linkConfluenceDocument(projectId, documentPath, confluenceUrl);
+      const result = await linkConfluenceDocument({ projectId, documentPath, confluenceUrl });
       if (result.success) {
         const linked = result.data;
         set((state) => ({
@@ -99,7 +97,7 @@ export const useConfluenceStore = create<ConfluenceState>((set, get) => ({
 
   unlinkDocument: async (projectId, documentPath) => {
     try {
-      const result = await unlinkConfluenceDocument(projectId, documentPath);
+      const result = await unlinkConfluenceDocument({ projectId, documentPath });
       if (result.success) {
         set((state) => ({
           links: state.links.filter((l) => l.document_path !== documentPath),
@@ -107,53 +105,6 @@ export const useConfluenceStore = create<ConfluenceState>((set, get) => ({
       }
       return result.success;
     } catch {
-      return false;
-    }
-  },
-
-  loadSyncPreview: async (projectId, documentPath) => {
-    set({ isSyncing: true, syncError: null, syncPreview: null });
-    try {
-      const result = await getConfluenceSyncPreview(projectId, documentPath);
-      if (result.success) {
-        set({ syncPreview: result.data, isSyncing: false });
-      } else {
-        set({ syncError: result.error ?? 'Failed to load sync preview', isSyncing: false });
-      }
-    } catch (error) {
-      set({
-        syncError: error instanceof Error ? error.message : 'Failed to load sync preview',
-        isSyncing: false,
-      });
-    }
-  },
-
-  executePush: async (projectId, documentPath) => {
-    set({ isSyncing: true, syncError: null });
-    try {
-      const result = await pushConfluenceDocument(projectId, documentPath);
-      set({ isSyncing: false });
-      if (result.success) {
-        return { success: true, pageUrl: result.data.pageUrl };
-      }
-      return { success: false, error: result.error ?? 'Failed to push to Confluence' };
-    } catch (error) {
-      set({ isSyncing: false });
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to push to Confluence',
-      };
-    }
-  },
-
-  executePull: async (projectId, documentPath) => {
-    set({ isSyncing: true, syncError: null });
-    try {
-      const result = await pullConfluenceDocument(projectId, documentPath);
-      set({ isSyncing: false });
-      return result.success;
-    } catch {
-      set({ isSyncing: false });
       return false;
     }
   },
@@ -166,5 +117,5 @@ export const useConfluenceStore = create<ConfluenceState>((set, get) => ({
     return get().links.find((l) => l.document_path === documentPath) ?? null;
   },
 
-  reset: () => set(initialState),
+  reset: () => set({ ...initialState, ...initialDocumentSyncState }),
 }));

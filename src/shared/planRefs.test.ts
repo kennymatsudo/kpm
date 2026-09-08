@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   PLAN_REF_REGEX,
   expandPlanRefs,
+  findMarkdownLinks,
   findRefs,
   serializeRef,
   tokenizeRefs,
@@ -302,5 +303,40 @@ describe('PLAN_REF_REGEX', () => {
   it('is a global, case-insensitive regex', () => {
     expect(PLAN_REF_REGEX.flags).toContain('g');
     expect(PLAN_REF_REGEX.flags).toContain('i');
+  });
+});
+
+describe('findMarkdownLinks', () => {
+  it('returns an empty array when there are no links', () => {
+    expect(findMarkdownLinks('plain text (not a link)')).toEqual([]);
+  });
+
+  it('captures label, target and offsets', () => {
+    const link = '[ENG-451](https://corp.atlassian.net/browse/ENG-451)';
+    const text = `see ${link} now`;
+    expect(findMarkdownLinks(text)).toEqual([
+      {
+        label: 'ENG-451',
+        target: 'https://corp.atlassian.net/browse/ENG-451',
+        start: 4,
+        end: 4 + link.length,
+      },
+    ]);
+  });
+
+  it('returns matches in document order', () => {
+    const links = findMarkdownLinks('[one](https://a.test) then [two](https://b.test)');
+    expect(links.map((link) => link.label)).toEqual(['one', 'two']);
+  });
+
+  it('skips links inside a fenced code block', () => {
+    const text = ['[out](https://a.test)', '```', '[in](https://b.test)', '```'].join('\n');
+    expect(findMarkdownLinks(text).map((link) => link.label)).toEqual(['out']);
+  });
+
+  it('captures a target carrying a markdown title verbatim', () => {
+    expect(findMarkdownLinks('[x](https://a.test "Title")')[0].target).toBe(
+      'https://a.test "Title"',
+    );
   });
 });

@@ -1,27 +1,35 @@
-export function listConfluenceLinks(projectId: string) {
-  return window.api.confluence.getLinks({ projectId });
+export function listConfluenceLinks(params: { projectId: string }) {
+  return window.api.confluence.getLinks(params);
 }
 
-export function linkConfluenceDocument(
-  projectId: string,
-  documentPath: string,
-  confluenceUrl: string
-) {
-  return window.api.confluence.link({ projectId, documentPath, confluenceUrl });
+export function linkConfluenceDocument(params: {
+  projectId: string;
+  documentPath: string;
+  confluenceUrl: string;
+}) {
+  return window.api.confluence.link(params);
 }
 
-export function unlinkConfluenceDocument(projectId: string, documentPath: string) {
-  return window.api.confluence.unlink({ projectId, documentPath });
+export function unlinkConfluenceDocument(params: { projectId: string; documentPath: string }) {
+  return window.api.confluence.unlink(params);
 }
 
-export function getConfluenceSyncPreview(projectId: string, documentPath: string) {
-  return window.api.confluence.getSyncPreview({ projectId, documentPath });
+export function getConfluenceSyncPreview(params: { projectId: string; documentPath: string }) {
+  return window.api.confluence.getSyncPreview(params);
 }
 
-export function pushConfluenceDocument(projectId: string, documentPath: string) {
-  return window.api.confluence.push({ projectId, documentPath });
+export function pushConfluenceDocument(params: {
+  projectId: string;
+  documentPath: string;
+  syncReceipt: string;
+}) {
+  return window.api.confluence.push(params);
 }
 
-export function pullConfluenceDocument(projectId: string, documentPath: string) {
-  return window.api.confluence.pull({ projectId, documentPath });
+export function pullConfluenceDocument(params: {
+  projectId: string;
+  documentPath: string;
+  syncReceipt: string;
+}) {
+  return window.api.confluence.pull(params);
 }

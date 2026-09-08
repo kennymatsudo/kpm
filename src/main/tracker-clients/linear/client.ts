@@ -10,6 +10,7 @@ import type {
   UpdateIssueParams,
 } from '../common/types';
 import { TrackerError } from '../common/errors';
+import { LINEAR_SYNTHETIC_ISSUE_TYPE_ID } from '../../../shared/types';
 import { linearMarkdownCodec } from '../../documents';
 import {
   buildLinearIssueFilter,
@@ -91,6 +92,28 @@ interface LinearIssue {
   labels?: { nodes: { id: string; name: string }[] };
 }
 
+const DOCUMENT_FIELDS = 'id title content url slugId updatedAt trashed';
+
+export interface LinearDocument {
+  id: string;
+  title: string;
+  content: string | null;
+  url: string;
+  slugId: string;
+  updatedAt: string;
+  trashed: boolean | null;
+}
+
+/** A document hangs off exactly one parent; only these are settable via the public API. */
+export interface CreateLinearDocumentInput {
+  title: string;
+  content: string;
+  projectId?: string;
+  issueId?: string;
+  /** Client-supplied so a retried create cannot produce a duplicate document. */
+  id?: string;
+}
+
 interface PageInfo { hasNextPage: boolean; endCursor: string | null }
 interface Connection<T> { nodes: T[]; pageInfo: PageInfo }
 type IssueConnection = Connection<LinearIssue>;
@@ -101,6 +124,7 @@ export class LinearClient implements TrackerClient {
   readonly type = 'linear' as const;
   readonly documentCodec = linearMarkdownCodec;
   private client: GraphQLClient;
+  private viewerIdPromise: Promise<string | null> | null = null;
 
   constructor(credentials: LinearCredentials) {
     this.client = new GraphQLClient(LINEAR_ENDPOINT, {
@@ -115,6 +139,22 @@ export class LinearClient implements TrackerClient {
     } catch (e) {
       return { success: false, error: toErrorMessage(e) };
     }
+  }
+
+  /**
+   * The user behind this API token, resolved once per client. Returns null if
+   * the lookup fails, so a self-assignment preference can degrade to an
+   * unassigned issue instead of failing the export.
+   */
+  private async getViewerId(): Promise<string | null> {
+    this.viewerIdPromise ??= this.client
+      .request<{ viewer: { id: string } }>(gql`query { viewer { id } }`)
+      .then((data) => data.viewer.id)
+      .catch((error: unknown) => {
+        console.warn('[LinearClient] Could not resolve viewer id for assignment:', error);
+        return null;
+      });
+    return this.viewerIdPromise;
   }
 
   async getAvailableProjects(): Promise<{ key: string; name: string }[]> {
@@ -223,7 +263,7 @@ export class LinearClient implements TrackerClient {
    * Templates are a richer analogue if we want to surface them later.
    */
   getIssueTypes(_projectKey: string): Promise<TrackerIssueType[]> {
-    return Promise.resolve([{ id: 'linear-issue', name: 'Issue', subtask: false }]);
+    return Promise.resolve([{ id: LINEAR_SYNTHETIC_ISSUE_TYPE_ID, name: 'Issue', subtask: false }]);
   }
 
   /**
@@ -320,24 +360,49 @@ export class LinearClient implements TrackerClient {
         input.parentId = parent.issue.id;
       }
 
-      const data = await this.client.request<{
-        issueCreate: { success: boolean; issue: { id: string; identifier: string; url: string } | null };
-      }>(
-        gql`
-          mutation CreateIssue($input: IssueCreateInput!) {
-            issueCreate(input: $input) { success issue { id identifier url } }
-          }
-        `,
-        { input }
-      );
+      let assigneeSkippedReason: string | undefined;
+      if (params.assignToSelf) {
+        const viewerId = await this.getViewerId();
+        if (viewerId) {
+          input.assigneeId = viewerId;
+        } else {
+          assigneeSkippedReason = 'Could not resolve your Linear account';
+        }
+      }
+
+      let data;
+      try {
+        data = await this.runCreateIssue(input);
+      } catch (error) {
+        // A rejected assignee means the mutation never ran, so retrying without
+        // it cannot duplicate the issue. Anything else is a real failure.
+        if (!input.assigneeId || !mentionsAssignee(error)) throw error;
+        console.warn('[LinearClient] Linear rejected the assignee for a new issue; creating it unassigned.');
+        delete input.assigneeId;
+        data = await this.runCreateIssue(input);
+        assigneeSkippedReason = toErrorMessage(error);
+      }
       if (!data.issueCreate.success || !data.issueCreate.issue) {
         throw new Error('Linear issueCreate returned success=false');
       }
       const created = data.issueCreate.issue;
-      return { id: created.id, key: created.identifier, url: created.url };
+      return { id: created.id, key: created.identifier, url: created.url, assigneeSkippedReason };
     } catch (e) {
       throw linearError(e);
     }
+  }
+
+  private runCreateIssue(input: Record<string, unknown>) {
+    return this.client.request<{
+      issueCreate: { success: boolean; issue: { id: string; identifier: string; url: string } | null };
+    }>(
+      gql`
+        mutation CreateIssue($input: IssueCreateInput!) {
+          issueCreate(input: $input) { success issue { id identifier url } }
+        }
+      `,
+      { input }
+    );
   }
 
   /** Extract the Linear Project UUID from a stored association filter, if present. */
@@ -395,6 +460,29 @@ export class LinearClient implements TrackerClient {
       );
       if (!data.issueUpdate.success) {
         throw new Error('Linear issueUpdate returned success=false');
+      }
+    } catch (e) {
+      throw linearError(e);
+    }
+  }
+
+  async deleteIssue(issueKey: string): Promise<void> {
+    try {
+      const issue = await this.client.request<{ issue: { id: string } }>(
+        gql`query DeleteTargetId($id: String!) { issue(id: $id) { id } }`,
+        { id: issueKey }
+      );
+
+      const data = await this.client.request<{ issueDelete: { success: boolean } }>(
+        gql`
+          mutation DeleteIssue($id: String!) {
+            issueDelete(id: $id) { success }
+          }
+        `,
+        { id: issue.issue.id }
+      );
+      if (!data.issueDelete.success) {
+        throw new Error('Linear issueDelete returned success=false');
       }
     } catch (e) {
       throw linearError(e);
@@ -542,6 +630,73 @@ export class LinearClient implements TrackerClient {
       url: issue.url,
     };
   }
+
+  async getDocument(documentId: string): Promise<LinearDocument> {
+    try {
+      const data = await this.client.request<{ document: LinearDocument | null }>(
+        gql`
+          query GetDocument($id: String!) {
+            document(id: $id) { ${DOCUMENT_FIELDS} }
+          }
+        `,
+        { id: documentId }
+      );
+      if (!data.document) throw new Error(`Linear document ${documentId} not found`);
+      return data.document;
+    } catch (e) {
+      throw linearError(e);
+    }
+  }
+
+  async createDocument(input: CreateLinearDocumentInput): Promise<LinearDocument> {
+    try {
+      const data = await this.client.request<{
+        documentCreate: { success: boolean; document: LinearDocument | null };
+      }>(
+        gql`
+          mutation CreateDocument($input: DocumentCreateInput!) {
+            documentCreate(input: $input) { success document { ${DOCUMENT_FIELDS} } }
+          }
+        `,
+        { input }
+      );
+      const document = data.documentCreate.document;
+      if (!data.documentCreate.success || !document) {
+        throw new Error('Linear rejected the document creation');
+      }
+      return document;
+    } catch (e) {
+      throw linearError(e);
+    }
+  }
+
+  /**
+   * Returns the document as Linear re-serialized it. Content is a projection of
+   * the collaborative document model, so the stored markdown routinely differs
+   * from what was sent and callers must trust the response over their input.
+   */
+  async updateDocument(documentId: string, content: string): Promise<LinearDocument> {
+    try {
+      const data = await this.client.request<{
+        documentUpdate: { success: boolean; document: LinearDocument | null };
+      }>(
+        gql`
+          mutation UpdateDocument($id: String!, $input: DocumentUpdateInput!) {
+            documentUpdate(id: $id, input: $input) { success document { ${DOCUMENT_FIELDS} } }
+          }
+        `,
+        { id: documentId, input: { content } }
+      );
+      const document = data.documentUpdate.document;
+      if (!data.documentUpdate.success || !document) {
+        throw new Error('Linear rejected the document update');
+      }
+      return document;
+    } catch (e) {
+      throw linearError(e);
+    }
+  }
+
 }
 
 function mapLinearPerson(person: LinearPerson | null | undefined): ExternalIssue['assignee'] {
@@ -557,6 +712,11 @@ function toErrorMessage(e: unknown): string {
     if (msgs) return msgs;
   }
   return e instanceof Error ? e.message : String(e);
+}
+
+/** Did Linear blame the assignee for rejecting a mutation? */
+function mentionsAssignee(e: unknown): boolean {
+  return toErrorMessage(e).toLowerCase().includes('assignee');
 }
 
 function linearError(e: unknown): TrackerError {

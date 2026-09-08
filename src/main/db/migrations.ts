@@ -4375,6 +4375,79 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1121,
+    name: '121_add_dev_session_pr_is_draft',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        ALTER TABLE dev_sessions ADD COLUMN pr_is_draft INTEGER NOT NULL DEFAULT 0;
+      `);
+    },
+  },
+  {
+    id: 1122,
+    name: '122_linear_document_links',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- LINEAR DOCUMENT LINKS: Document-to-document sync
+        -- Links KPM documents to Linear Documents.
+        -- direction 'push-only' keeps the local file canonical and the Linear
+        -- copy a published mirror, so a pull can never overwrite the owner.
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS linear_document_links (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          document_path TEXT NOT NULL,
+          linear_document_id TEXT NOT NULL,
+          slug_id TEXT,
+          document_title TEXT,
+          document_url TEXT,
+          parent_kind TEXT NOT NULL CHECK(parent_kind IN ('project', 'issue')),
+          parent_id TEXT NOT NULL,
+          direction TEXT NOT NULL DEFAULT 'two-way' CHECK(direction IN ('two-way', 'push-only')),
+          last_synced_at DATETIME,
+          local_content_hash TEXT,
+          remote_content_hash TEXT,
+          remote_version INTEGER,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(project_id, document_path),
+          UNIQUE(linear_document_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_linear_document_links_project ON linear_document_links(project_id);
+      `);
+    },
+  },
+
+  {
+    id: 1123,
+    name: '123_project_write_grants',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        -- ============================================
+        -- PROJECT WRITE GRANTS: the user's standing consent for direct
+        -- file, shell, and git writes in a project. One row means granted;
+        -- absence means denied. Replaces the per-tool, per-conversation
+        -- grants, which could not outlive a restart.
+        -- ============================================
+        CREATE TABLE IF NOT EXISTS project_write_grants (
+          project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+          granted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      // The per-tool grants this replaces were already unreachable: every
+      // Claude call site passed autoApprove, which allowed the tools that
+      // would have prompted. Nothing maps a stale per-tool row onto a
+      // project-wide write grant, so they are dropped rather than migrated.
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+        DROP TABLE IF EXISTS tool_permissions;
+        PRAGMA foreign_keys = ON;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

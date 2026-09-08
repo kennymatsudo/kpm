@@ -48,12 +48,12 @@ export const confluenceEndpoints = {
   },
   pushExecute: {
     channel: 'confluence:push:execute',
-    params: z.object({ projectId: uuid, documentPath }),
+    params: z.object({ projectId: uuid, documentPath, syncReceipt: z.string().uuid() }),
     result: resultOf<ToIpcResponse<{ pageUrl: string }>>(),
   },
   pullExecute: {
     channel: 'confluence:pull:execute',
-    params: z.object({ projectId: uuid, documentPath }),
+    params: z.object({ projectId: uuid, documentPath, syncReceipt: z.string().uuid() }),
     result: resultOf<ToIpcResponse>(),
   },
   parseUrl: {

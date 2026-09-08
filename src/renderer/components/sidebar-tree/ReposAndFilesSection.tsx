@@ -1,10 +1,13 @@
-import { useState, useCallback, useEffect, memo, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, memo, useRef } from 'react';
+import { readWorkspaceFile } from '../../services/workspaceFileService';
 import { useShallow } from 'zustand/react/shallow';
 import {
   useResourceDomainStore,
   useProjectUiDomainStore,
   useFileTreeStore,
   useConfluenceStore,
+  useLinearDocumentsStore,
+  useTrackerStore,
   useWorkspaceStore,
 } from '../../stores';
 import { useResourceDomainActions } from '../../hooks/useStoreActions';
@@ -29,6 +32,7 @@ import {
   useFileViewers,
   useFileContextMenus,
   useConfluenceLinks,
+  useLinearDocumentLinks,
   useAddMenu,
 } from './hooks';
 
@@ -78,6 +82,23 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     }))
   );
 
+  // A project uses exactly one tracker, so only that one's destination is
+  // offered. Confluence rides the Jira connection, which is what enables it.
+  const trackerAssociations = useTrackerStore((state) => state.associations);
+  const projectTrackerType = useMemo(
+    () =>
+      trackerAssociations.find((association) => association.kpm_project_id === projectId)
+        ?.tracker_type ?? null,
+    [trackerAssociations, projectId]
+  );
+
+  const { loadLinearLinks, getLinearLinkForDocument } = useLinearDocumentsStore(
+    useShallow((s) => ({
+      loadLinearLinks: s.loadLinks,
+      getLinearLinkForDocument: s.getLinkForDocument,
+    }))
+  );
+
   const repos = useResourceDomainStore((state) => state.repos);
   const repoBranches = useResourceDomainStore((state) => state.repoBranches);
   const { focusedResources, addFocusedResource, removeFocusedResource } = useProjectUiDomainStore(
@@ -119,9 +140,29 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     expandToPath,
   } = useFileTreeStore();
 
-  // Workspace editing state (only relevant when onFileOpen is provided, i.e. workspace mode)
-  const editingFile = useWorkspaceStore((state) => state.editingFile);
-  const editingPath = onFileOpen && editingFile?.source === 'project' ? editingFile.path : null;
+  // Which files are open in the editor, and which of them is on screen. Both
+  // are read as strings rather than as the documents themselves: subscribing to
+  // a document would re-render the whole tree on every keystroke, and a
+  // selector that built a Set fresh each call would never compare equal.
+  const activeDocumentPath = useWorkspaceStore((state) => {
+    const active = state.openDocuments.find((document) => document.id === state.activeDocumentId);
+    return active?.source === 'project' ? active.path : null;
+  });
+  const openProjectPaths = useWorkspaceStore((state) =>
+    state.openDocuments
+      .filter((document) => document.source === 'project')
+      .map((document) => document.path)
+      .join('\u0000')
+  );
+
+  // Files only open in the editor in workspace mode; the planning view opens
+  // them in a dialog, where "open" is not a state the tree can usefully show.
+  const activePath = onFileOpen ? activeDocumentPath : null;
+  const openPaths = useMemo(
+    () =>
+      new Set(onFileOpen && openProjectPaths ? openProjectPaths.split('\u0000') : []),
+    [onFileOpen, openProjectPaths]
+  );
 
   // ==========================================================================
   // Extracted hooks
@@ -142,6 +183,12 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     projectId,
     contextMenuPath: fileContextMenus.contextMenu?.path ?? null,
     unlinkDocument,
+    setContextMenu: fileContextMenus.setContextMenu,
+  });
+
+  const linearDocumentLinks = useLinearDocumentLinks({
+    projectId,
+    contextMenuPath: fileContextMenus.contextMenu?.path ?? null,
     setContextMenu: fileContextMenus.setContextMenu,
   });
 
@@ -179,12 +226,12 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
   // Effects
   // ==========================================================================
 
-  // Auto-expand folders to reveal the currently editing file
+  // Auto-expand folders to reveal the file the editor is showing
   useEffect(() => {
-    if (editingPath && projectId) {
-      void expandToPath(projectId, editingPath);
+    if (activePath && projectId) {
+      void expandToPath(projectId, activePath);
     }
-  }, [editingPath, projectId, expandToPath]);
+  }, [activePath, projectId, expandToPath]);
 
   // Load project files and Confluence links on mount.
   // Skip the directory load when the tree is already populated for this project so
@@ -200,8 +247,9 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         void loadProjectDirectory(projectId);
       }
       void loadLinks(projectId);
+      void loadLinearLinks(projectId);
     }
-  }, [projectId, loadProjectDirectory, loadLinks]);
+  }, [projectId, loadProjectDirectory, loadLinks, loadLinearLinks]);
 
   // Start/stop watching project folder for external file changes
   useEffect(() => {
@@ -515,6 +563,32 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     : null;
 
   // Confluence link info for context menu
+  const contextMenuLinearLink = fileContextMenus.contextMenu?.path
+    ? getLinearLinkForDocument(fileContextMenus.contextMenu.path)
+    : null;
+
+  const syncLinearLink = linearDocumentLinks.syncPath
+    ? getLinearLinkForDocument(linearDocumentLinks.syncPath)
+    : null;
+
+  // A pull rewrites the file underneath any open buffer; without the reload the
+  // next autosave would put the stale buffer straight back.
+  const handleSyncedContentUpdated = useCallback(
+    (documentPath: string) => {
+      void loadProjectDirectory(projectId);
+      const open = useWorkspaceStore
+        .getState()
+        .openDocuments.find(
+          (candidate) => candidate.source === 'project' && candidate.path === documentPath
+        );
+      if (!open) return;
+      void readWorkspaceFile('project', documentPath, projectId).then((content) => {
+        useWorkspaceStore.getState().reloadDocument(open.id, content);
+      });
+    },
+    [projectId, loadProjectDirectory]
+  );
+
   const contextMenuConfluenceLink = fileContextMenus.contextMenu?.path
     ? getLinkForDocument(fileContextMenus.contextMenu.path)
     : null;
@@ -546,16 +620,19 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         }}
         isRepoFocused={isRepoFocused}
         onToggleRepoFocus={handleToggleRepoFocus}
-        onRepoContextMenu={fileContextMenus.handleRepoContextMenu}
+        onOpenRepoMenu={fileContextMenus.openRepoContextMenu}
       />
-      <div className="divider mx-4 my-2 flex-none" />
+      {/* Full-bleed so the two sections read as separate families rather than
+          one list with a break in it. */}
+      <div className="divider flex-none" />
 
       <ProjectFilesTreeSection
         projectNodes={projectNodes}
         expandedPaths={projectExpanded}
         loadingPaths={projectLoading}
         selectedPaths={projectSelectedPaths}
-        editingPath={editingPath}
+        activePath={activePath}
+        openPaths={openPaths}
         renamingPath={renamingPath}
         creatingItem={creatingItem}
         isCollapsed={filesCollapsed}
@@ -644,6 +721,17 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         onSyncConfluence={confluenceLinks.handleSyncConfluence}
         onUnlinkFromConfluence={confluenceLinks.handleRequestUnlink}
         isContextFileLinkedToConfluence={contextMenuConfluenceLink !== null}
+        onPublishToLinear={linearDocumentLinks.handlePublishToLinear}
+        onSyncLinear={linearDocumentLinks.handleSyncLinear}
+        onUnlinkFromLinear={() => void linearDocumentLinks.handleUnlinkFromLinear()}
+        isContextFilePublishedToLinear={contextMenuLinearLink !== null}
+        isLinearConfigured={projectTrackerType === 'linear'}
+        isConfluenceConfigured={projectTrackerType === 'jira'}
+        linearPublishPath={linearDocumentLinks.publishPath}
+        onCloseLinearPublishModal={linearDocumentLinks.handleClosePublishModal}
+        linearSyncPath={linearDocumentLinks.syncPath}
+        linearSyncLink={syncLinearLink}
+        onCloseLinearSyncModal={linearDocumentLinks.handleCloseSyncModal}
         repoContextMenu={fileContextMenus.repoContextMenu}
         repoContextRepo={repoContextRepo}
         repoWorktrees={repoWorktrees}
@@ -693,7 +781,7 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
         syncConfluenceLink={syncConfluenceLink}
         confluenceSyncPath={confluenceLinks.confluenceSyncPath}
         onCloseSyncModal={confluenceLinks.handleCloseSyncModal}
-        onConfluenceContentUpdated={() => void loadProjectDirectory(projectId)}
+        onSyncedContentUpdated={handleSyncedContentUpdated}
       />
     </div>
   );

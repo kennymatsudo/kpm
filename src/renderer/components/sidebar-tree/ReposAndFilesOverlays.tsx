@@ -1,13 +1,16 @@
 import type { RefObject } from 'react';
 import { isContextFile } from '../../../shared/contextFile';
-import type { ConfluencePageLink, FileNode } from '../../../shared/types';
+import type { ConfluencePageLink, FileNode, LinearDocumentLink } from '../../../shared/types';
 import type { RepoWorktree } from './RepoContextMenu';
 import { DropdownMenu } from '../ui/DropdownMenu';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { MarkdownDocumentModal } from '../markdown-document-modal';
+import { FileTextIcon } from '../icons';
 import { useFocusModeStore } from '../../stores/focusModeStore';
 import { ImageViewerModal } from '../image-viewer-modal';
 import { LinkToConfluenceModal, ConfluenceSyncPreviewModal } from '../confluence';
+import { PublishToLinearModal, LinearSyncPreviewModal } from '../linearDocuments';
+import { getBaseName } from '../../utils/path';
 import { FileContextMenu } from './FileContextMenu';
 import { RepoContextMenu } from './RepoContextMenu';
 
@@ -75,6 +78,17 @@ interface ReposAndFilesOverlaysProps {
   onViewContextFile?: () => void;
   onDeleteContextFile: () => void;
   onLinkToConfluence: () => void;
+  onPublishToLinear: () => void;
+  onSyncLinear: () => void;
+  onUnlinkFromLinear: () => void;
+  isContextFilePublishedToLinear: boolean;
+  isLinearConfigured: boolean;
+  isConfluenceConfigured: boolean;
+  linearPublishPath: string | null;
+  onCloseLinearPublishModal: () => void;
+  linearSyncPath: string | null;
+  linearSyncLink: LinearDocumentLink | null;
+  onCloseLinearSyncModal: () => void;
   onSyncConfluence: () => void;
   onUnlinkFromConfluence: () => void;
   isContextFileLinkedToConfluence: boolean;
@@ -117,7 +131,7 @@ interface ReposAndFilesOverlaysProps {
   syncConfluenceLink: ConfluencePageLink | null;
   confluenceSyncPath: string | null;
   onCloseSyncModal: () => void;
-  onConfluenceContentUpdated: () => void;
+  onSyncedContentUpdated: (documentPath: string) => void;
 }
 
 export function ReposAndFilesOverlays({
@@ -143,6 +157,17 @@ export function ReposAndFilesOverlays({
   onViewContextFile,
   onDeleteContextFile,
   onLinkToConfluence,
+  onPublishToLinear,
+  onSyncLinear,
+  onUnlinkFromLinear,
+  isContextFilePublishedToLinear,
+  isLinearConfigured,
+  isConfluenceConfigured,
+  linearPublishPath,
+  onCloseLinearPublishModal,
+  linearSyncPath,
+  linearSyncLink,
+  onCloseLinearSyncModal,
   onSyncConfluence,
   onUnlinkFromConfluence,
   isContextFileLinkedToConfluence,
@@ -177,7 +202,7 @@ export function ReposAndFilesOverlays({
   syncConfluenceLink,
   confluenceSyncPath,
   onCloseSyncModal,
-  onConfluenceContentUpdated,
+  onSyncedContentUpdated,
 }: ReposAndFilesOverlaysProps) {
   const isViewingProjectContextFile = isContextFile(viewingFilename);
   const openFocusMode = useFocusModeStore((s) => s.open);
@@ -228,6 +253,12 @@ export function ReposAndFilesOverlays({
           onSyncConfluence={onSyncConfluence}
           onUnlinkFromConfluence={onUnlinkFromConfluence}
           isLinkedToConfluence={isContextFileLinkedToConfluence}
+          onPublishToLinear={onPublishToLinear}
+          onSyncLinear={onSyncLinear}
+          onUnlinkFromLinear={onUnlinkFromLinear}
+          isPublishedToLinear={isContextFilePublishedToLinear}
+          isLinearConfigured={isLinearConfigured}
+          isConfluenceConfigured={isConfluenceConfigured}
         />
       )}
 
@@ -303,7 +334,6 @@ export function ReposAndFilesOverlays({
         title={viewingFilename.replace(/\.md$/, '')}
         subtitle={isViewingProjectContextFile ? 'Project context for AI agents' : 'Markdown document'}
         content={viewingContent}
-        placeholder="Start writing..."
         onEnterFocusMode={
           viewingPath
             ? () => {
@@ -318,23 +348,13 @@ export function ReposAndFilesOverlays({
         }
         icon={
           <div
-            className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-              isViewingProjectContextFile ? 'bg-accent/15' : 'bg-surface-2'
+            className={`w-8 h-8 rounded-sm flex items-center justify-center flex-shrink-0 ${
+              isViewingProjectContextFile ? 'bg-accent-muted' : 'bg-surface-2'
             }`}
           >
-            <svg
+            <FileTextIcon
               className={`w-4 h-4 ${isViewingProjectContextFile ? 'text-accent' : 'text-text-muted'}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-              />
-            </svg>
+            />
           </div>
         }
       />
@@ -346,6 +366,26 @@ export function ReposAndFilesOverlays({
           filename={viewingImage.filename}
           dataUrl={viewingImage.dataUrl}
           fileSize={viewingImage.size}
+        />
+      )}
+
+      {linearPublishPath && (
+        <PublishToLinearModal
+          isOpen={true}
+          onClose={onCloseLinearPublishModal}
+          projectId={projectId}
+          documentPath={linearPublishPath}
+          defaultTitle={getBaseName(linearPublishPath, linearPublishPath).replace(/\.md$/i, '')}
+        />
+      )}
+
+      {linearSyncLink && linearSyncPath && (
+        <LinearSyncPreviewModal
+          isOpen={true}
+          onClose={onCloseLinearSyncModal}
+          projectId={projectId}
+          link={linearSyncLink}
+          onContentUpdated={() => onSyncedContentUpdated(linearSyncLink.document_path)}
         />
       )}
 
@@ -365,7 +405,7 @@ export function ReposAndFilesOverlays({
           onClose={onCloseSyncModal}
           projectId={projectId}
           link={syncConfluenceLink}
-          onContentUpdated={onConfluenceContentUpdated}
+          onContentUpdated={() => onSyncedContentUpdated(syncConfluenceLink.document_path)}
         />
       )}
     </>

@@ -6,7 +6,6 @@
 
 import { confluenceEndpoints, type ConfluenceEndpointName } from '../../../shared/ipc/confluenceEndpoints';
 import type { HandlerFor } from '../../../shared/ipc/endpoints';
-import type { ConfluenceSyncPreview } from '../../../shared/types';
 import { toIpcResponse, ipcSuccess, ipcError } from '../response';
 import type { ConfluenceSyncService } from '../../services/confluence';
 import { bindRegistryHandlers } from '../validation/utils';
@@ -38,23 +37,18 @@ function buildConfluenceHandlers(confluenceSyncService: ConfluenceSyncService): 
     getLinkForDocument: ({ projectId, documentPath }) =>
       ipcSuccess(confluenceSyncService.getLinkForDocument(projectId, documentPath)),
 
-    // `generateSyncPreview`'s declared `AsyncResult<SyncPreview>` return type
-    // is narrower than the object it actually constructs (also includes
-    // `isInitialSync`/`hasContentDifference`, which the renderer's
-    // `ConfluenceSyncPreviewModal` reads) — cast to the real, wider shape
-    // rather than the stale declared one.
     syncPreview: async ({ projectId, documentPath }) =>
+      toIpcResponse(await confluenceSyncService.generateSyncPreview(projectId, documentPath)),
+
+    pushExecute: async ({ projectId, documentPath, syncReceipt }) =>
       toIpcResponse(
-        (await confluenceSyncService.generateSyncPreview(projectId, documentPath)) as
-          | { ok: true; data: ConfluenceSyncPreview }
-          | { ok: false; error: string }
+        await confluenceSyncService.executePush(projectId, documentPath, syncReceipt)
       ),
 
-    pushExecute: async ({ projectId, documentPath }) =>
-      toIpcResponse(await confluenceSyncService.executePush(projectId, documentPath)),
-
-    pullExecute: async ({ projectId, documentPath }) =>
-      toIpcResponse(await confluenceSyncService.executePull(projectId, documentPath)),
+    pullExecute: async ({ projectId, documentPath, syncReceipt }) =>
+      toIpcResponse(
+        await confluenceSyncService.executePull(projectId, documentPath, syncReceipt)
+      ),
 
     parseUrl: ({ url }) => {
       const parsed = confluenceSyncService.parseUrl(url);

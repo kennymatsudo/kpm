@@ -3,6 +3,7 @@ import {
   collectLinkedRefKeys,
   countUnlinkedRefs,
   resolvePlanRefs,
+  restorePlanRefs,
 } from './planRefResolver';
 import type { PlanItem } from '../../shared/types';
 
@@ -207,5 +208,75 @@ describe('resolvePlanRefs(shared-doc)', () => {
     const items = [makeItem(A, { title: 'X' })];
     const input = '```\n@plan/' + A + '\n```';
     expect(resolvePlanRefs(input, items, 'shared-doc')).toBe(input);
+  });
+});
+
+describe('restorePlanRefs', () => {
+  const LINKED_ITEM = makeItem(A, {
+    title: 'Ship the export pipeline',
+    external_key: 'ENG-451',
+    external_url: 'https://corp.atlassian.net/browse/ENG-451',
+  });
+
+  it.each(['jira', 'linear', 'confluence'] as const)(
+    'round-trips a linked ref through %s',
+    (destination) => {
+      const local = `Closes @plan/${A} today.`;
+      const external = resolvePlanRefs(local, [LINKED_ITEM], destination);
+      expect(external).not.toContain('@plan/');
+      expect(restorePlanRefs(external, [LINKED_ITEM], destination)).toBe(local);
+    },
+  );
+
+  it('restores a link whose label was edited away from the issue key', () => {
+    const external = 'see [the export work](https://corp.atlassian.net/browse/ENG-451).';
+    expect(restorePlanRefs(external, [LINKED_ITEM], 'linear')).toBe(
+      `see @plan/${A}.`,
+    );
+  });
+
+  it('matches a target that differs only by a trailing slash', () => {
+    const external = '[ENG-451](https://corp.atlassian.net/browse/ENG-451/)';
+    expect(restorePlanRefs(external, [LINKED_ITEM], 'linear')).toBe(`@plan/${A}`);
+  });
+
+  it('leaves links to unrelated URLs untouched', () => {
+    const external = 'see [the docs](https://docs.example.com/guide).';
+    expect(restorePlanRefs(external, [LINKED_ITEM], 'linear')).toBe(external);
+  });
+
+  it('restores only the linked refs when a document mixes both', () => {
+    const external =
+      '[ENG-451](https://corp.atlassian.net/browse/ENG-451) and [docs](https://docs.example.com)';
+    expect(restorePlanRefs(external, [LINKED_ITEM], 'linear')).toBe(
+      `@plan/${A} and [docs](https://docs.example.com)`,
+    );
+  });
+
+  it('does not restore links inside fenced code blocks', () => {
+    const link = '[ENG-451](https://corp.atlassian.net/browse/ENG-451)';
+    const external = [link, '```', link, '```'].join('\n');
+    const lines = restorePlanRefs(external, [LINKED_ITEM], 'linear').split('\n');
+    expect(lines[0]).toBe(`@plan/${A}`);
+    expect(lines[2]).toBe(link);
+  });
+
+  it('leaves github output unchanged because a bare key is ambiguous', () => {
+    const external = resolvePlanRefs(`See @plan/${A}.`, [LINKED_ITEM], 'github');
+    expect(external).toBe('See ENG-451.');
+    expect(restorePlanRefs(external, [LINKED_ITEM], 'github')).toBe(external);
+  });
+
+  it('cannot restore a ref whose item had no tracker linkage', () => {
+    const items = [makeItem(A, { title: 'Local only' })];
+    const external = resolvePlanRefs(`See @plan/${A}.`, items, 'linear');
+    expect(external).toBe('See Local only.');
+    expect(restorePlanRefs(external, items, 'linear')).toBe('See Local only.');
+  });
+
+  it('leaves an unknown ref alone, which keeps it round-tripping as a literal', () => {
+    const local = `See @plan/${B}.`;
+    const external = resolvePlanRefs(local, [LINKED_ITEM], 'linear');
+    expect(restorePlanRefs(external, [LINKED_ITEM], 'linear')).toBe(local);
   });
 });

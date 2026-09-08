@@ -11,7 +11,7 @@
  */
 
 import type { PlanItem } from '../../shared/types';
-import { resolvePlanRefs, type RefDestination } from './planRefResolver';
+import { resolvePlanRefs, restorePlanRefs, type RefDestination } from './planRefResolver';
 
 declare const externalMarkdownBrand: unique symbol;
 
@@ -29,4 +29,18 @@ export function toExternalMarkdown(
   destination: ExternalDestination,
 ): ExternalMarkdown {
   return resolvePlanRefs(markdown, planItems, destination) as ExternalMarkdown;
+}
+
+/**
+ * Inverse of `toExternalMarkdown`, for content pulled back from a destination
+ * KPM syncs in both directions. Returns plain markdown rather than
+ * `ExternalMarkdown`: the rewrite is only partial (see `restorePlanRefs`), so
+ * the result is a local document, never a payload to send back out.
+ */
+export function fromExternalMarkdown(
+  external: string,
+  planItems: readonly PlanItem[],
+  destination: ExternalDestination,
+): string {
+  return restorePlanRefs(external, planItems, destination);
 }

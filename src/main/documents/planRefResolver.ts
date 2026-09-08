@@ -12,7 +12,7 @@
  */
 
 import type { PlanItem } from '../../shared/types';
-import { findRefs } from '../../shared/planRefs';
+import { findMarkdownLinks, findRefs, serializeRef } from '../../shared/planRefs';
 
 export type RefDestination =
   | 'jira'
@@ -121,6 +121,57 @@ function renderRef(
     case 'plain':
       return item.external_key;
   }
+}
+
+const LINK_FORM_DESTINATIONS: ReadonlySet<RefDestination> = new Set([
+  'jira',
+  'linear',
+  'confluence',
+]);
+
+/**
+ * Inverse of `resolvePlanRefs` for the destinations that render a ref as a
+ * markdown link: rewrite `[<key>](<url>)` back to `@plan/<uuid>` when the URL
+ * matches a plan item's tracker link. Matching ignores the label, which is the
+ * issue key on the way out but may have been retitled by whoever edited the
+ * document in Jira or Linear.
+ *
+ * Only partially invertible, by design. A ref whose item had no tracker
+ * linkage went out as bare title text that cannot be told apart from prose, so
+ * it stays lost; `countUnlinkedRefs` is the pre-export check for that. The
+ * `github` and `plain` forms emit a bare key for the same reason and are left
+ * untouched here.
+ */
+export function restorePlanRefs(
+  markdown: string,
+  planItems: readonly PlanItem[],
+  destination: RefDestination,
+): string {
+  if (!markdown || !LINK_FORM_DESTINATIONS.has(destination)) return markdown;
+  const links = findMarkdownLinks(markdown);
+  if (links.length === 0) return markdown;
+
+  const byUrl = new Map<string, PlanItem>();
+  for (const item of planItems) {
+    if (item.external_url) byUrl.set(canonicalUrl(item.external_url), item);
+  }
+  if (byUrl.size === 0) return markdown;
+
+  let out = '';
+  let cursor = 0;
+  for (const link of links) {
+    const item = byUrl.get(canonicalUrl(link.target));
+    if (!item) continue;
+    out += markdown.slice(cursor, link.start);
+    out += serializeRef(item.id);
+    cursor = link.end;
+  }
+  out += markdown.slice(cursor);
+  return out;
+}
+
+function canonicalUrl(url: string): string {
+  return url.trim().replace(/\/+$/, '');
 }
 
 /**
