@@ -1,18 +1,29 @@
 import fs from 'fs';
-import os from 'os';
-import path from 'path';
-import type { Project } from '../../../shared/types';
+import type { Stats } from 'fs';
+import type { FolderInspection, Project } from '../../../shared/types';
 import type { IAppSettingsRepository, IProjectRepository } from '../../db/interfaces';
+import { projectsRootPath } from '../../project-context/projectFolder';
+import { expandTilde } from '../files/pathSecurity';
 import { failure, success, wrap, type AsyncResult, type ServiceResult } from '../result';
 
 type ProjectUpdates = Partial<Pick<Project, 'name' | 'phase'>>;
 
+/** `stat` without the throw: `null` means nothing exists at that path. */
+async function statOrNull(targetPath: string): Promise<Stats | null> {
+  try {
+    return await fs.promises.stat(targetPath);
+  } catch {
+    return null;
+  }
+}
+
 export interface CreateProjectInput {
   name: string;
   /**
-   * Absolute path where the project folder lives. When omitted, the repository
-   * falls back to its legacy `<userData>/projects/` location — used by tests
-   * and any internal caller that doesn't care about the on-disk location.
+   * Where the project folder lives. Accepts a `~`-relative path. The folder is
+   * created if it doesn't exist yet, so this can name a folder the user only
+   * intends. When omitted, the project lands in the KPM-managed
+   * `<userData>/projects/` location reported by `getDefaultLocation`.
    */
   folderPath?: string;
 }
@@ -20,6 +31,8 @@ export interface CreateProjectInput {
 export interface ProjectServiceDeps {
   projects: IProjectRepository;
   appSettings: IAppSettingsRepository;
+  /** Electron's userData directory — the root of KPM-managed project folders. */
+  userDataPath: string;
   openPath: (targetPath: string) => Promise<string>;
   fetchFn?: typeof fetch;
 }
@@ -29,24 +42,43 @@ export function createProjectService(deps: ProjectServiceDeps) {
 
   return {
     async create(input: CreateProjectInput): AsyncResult<Project> {
-      const { name, folderPath } = input;
+      const { name } = input;
+      const folderPath = input.folderPath === undefined ? undefined : expandTilde(input.folderPath);
 
+      // A missing folder is not an error: the repository mkdirs it, so the user
+      // can name a folder they only intend. An existing *file* still can't host
+      // a project, and silently creating the folder next to it would surprise.
       if (folderPath !== undefined) {
-        try {
-          const stat = await fs.promises.stat(folderPath);
-          if (!stat.isDirectory()) return failure(`${folderPath} is not a directory`);
-        } catch {
-          return failure(`${folderPath} does not exist`);
-        }
+        const stat = await statOrNull(folderPath);
+        if (stat && !stat.isDirectory()) return failure(`${folderPath} is not a folder`);
       }
 
       return wrap(() => deps.projects.create({ name, folderPath }));
     },
 
+    async inspectFolder(folderPath: string): AsyncResult<FolderInspection> {
+      const resolvedPath = expandTilde(folderPath);
+      const stat = await statOrNull(resolvedPath);
+
+      if (!stat) {
+        return success({ resolvedPath, exists: false, isDirectory: false, isGitRepo: false, isEmpty: true });
+      }
+      if (!stat.isDirectory()) {
+        return success({ resolvedPath, exists: true, isDirectory: false, isGitRepo: false, isEmpty: false });
+      }
+
+      const entries = await fs.promises.readdir(resolvedPath).catch(() => [] as string[]);
+      return success({
+        resolvedPath,
+        exists: true,
+        isDirectory: true,
+        isGitRepo: entries.includes('.git'),
+        isEmpty: entries.length === 0,
+      });
+    },
+
     getDefaultLocation(): ServiceResult<{ defaultLocation: string }> {
-      return wrap(() => ({
-        defaultLocation: path.join(os.homedir(), 'Documents', 'KPM Projects'),
-      }));
+      return wrap(() => ({ defaultLocation: projectsRootPath(deps.userDataPath) }));
     },
 
     get(projectId: string): ServiceResult<Project | undefined> {

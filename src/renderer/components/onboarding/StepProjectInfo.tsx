@@ -1,8 +1,9 @@
 import { useRef, useCallback, useState } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
-import { CloseIcon } from '../icons';
+import type { FolderInspection } from '../../../shared/types';
+import { CloseIcon, FileTextIcon, GitBranchIcon, WarningTriangleIcon } from '../icons';
 import { selectRepoPaths } from '../../services/repoService';
-import { selectProjectParentFolder } from '../../services/projectLoaderService';
+import { selectProjectWorkspaceFolder } from '../../services/projectLoaderService';
 
 interface StepProjectInfoProps {
   name: string;
@@ -11,8 +12,17 @@ interface StepProjectInfoProps {
   onExistingFolderPathChange: (path: string) => void;
   repoPaths: string[];
   onRepoPathsChange: (paths: string[]) => void;
+  /** Where a project lands when no folder is picked; null until it loads. */
+  managedProjectsRoot: string | null;
+  /** Facts about the picked folder, or null when the field is empty. */
+  folderInspection: FolderInspection | null;
   error: string | null;
   onErrorClear: () => void;
+}
+
+function shortenPath(path: string): string {
+  const parts = path.split(/[/\\]/);
+  return parts.length >= 2 ? `~/${parts.slice(-2).join('/')}` : path;
 }
 
 export function StepProjectInfo({
@@ -22,6 +32,8 @@ export function StepProjectInfo({
   onExistingFolderPathChange,
   repoPaths,
   onRepoPathsChange,
+  managedProjectsRoot,
+  folderInspection,
   error,
   onErrorClear,
 }: StepProjectInfoProps) {
@@ -39,7 +51,7 @@ export function StepProjectInfo({
   }, [repoPaths, onRepoPathsChange]);
 
   const handleBrowseExisting = useCallback(async () => {
-    const picked = await selectProjectParentFolder('Choose project folder');
+    const picked = await selectProjectWorkspaceFolder('Choose a folder for this project');
     if (picked) onExistingFolderPathChange(picked);
   }, [onExistingFolderPathChange]);
 
@@ -51,16 +63,12 @@ export function StepProjectInfo({
     onRepoPathsChange(repoPaths.filter(p => p !== pathToRemove));
   }, [repoPaths, onRepoPathsChange]);
 
-  const shortenPath = (path: string) => {
-    const parts = path.split(/[/\\]/);
-    if (parts.length >= 2) {
-      return `~/${parts.slice(-2).join('/')}`;
-    }
-    return path;
-  };
+  const managedPathPreview = managedProjectsRoot
+    ? `${managedProjectsRoot}/${(name.trim() || 'project').replace(/[^a-zA-Z0-9-_]/g, '-')}-…`
+    : null;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Project Name */}
       <div className="space-y-2">
         <label
@@ -79,69 +87,17 @@ export function StepProjectInfo({
             if (error) onErrorClear();
           }}
           placeholder="My Feature"
-          className="input input-bordered"
+          className="input"
           autoFocus
         />
       </div>
 
-      {/* Project folder (optional) */}
-      <div className="space-y-2">
-        <button
-          type="button"
-          onClick={handleToggleFolderSection}
-          className="text-xs font-medium text-text-secondary uppercase tracking-wide flex items-center gap-1.5 hover:text-text-primary transition-colors"
-          aria-expanded={folderSectionOpen}
-        >
-          <svg
-            className={`w-3 h-3 transition-transform ${folderSectionOpen ? 'rotate-90' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-          </svg>
-          Project folder
-        </button>
-
-        {folderSectionOpen && (
-          <div className="space-y-3 pl-4">
-            <div className="space-y-1.5">
-              <label
-                htmlFor="project-existing-folder"
-                className="block text-[11px] font-medium text-text-secondary uppercase tracking-wide"
-              >
-                Folder
-              </label>
-              <div className="flex gap-2">
-                <input
-                  id="project-existing-folder"
-                  type="text"
-                  value={existingFolderPath}
-                  onChange={e => onExistingFolderPathChange(e.target.value)}
-                  placeholder="Path to an existing folder on your machine"
-                  className="input input-bordered flex-1 font-mono text-sm"
-                  spellCheck={false}
-                  autoComplete="off"
-                />
-                <button
-                  type="button"
-                  onClick={handleBrowseExisting}
-                  className="btn btn-secondary shrink-0"
-                >
-                  Browse...
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Repositories */}
+      {/* Repositories — the code KPM works against */}
       <div className="space-y-2">
         <div>
-          <span className="text-xs font-medium text-text-secondary uppercase tracking-wide">
-            Connect repositories
+          <span className="text-xs font-medium text-text-secondary uppercase tracking-wide flex items-center gap-1.5">
+            <GitBranchIcon className="w-3.5 h-3.5 text-text-muted" />
+            Code repositories
           </span>
           <p className="text-xs text-text-muted mt-0.5 normal-case">
             Claude scans these folders locally, then sends selected context to the configured model.
@@ -158,19 +114,7 @@ export function StepProjectInfo({
                 exit={{ opacity: 0, x: -8 }}
                 className="flex items-center gap-2 px-3 py-1.5 bg-accent-subtle/60 rounded-lg"
               >
-                <svg
-                  className="w-4 h-4 text-accent flex-shrink-0"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"
-                  />
-                </svg>
+                <GitBranchIcon className="w-4 h-4 text-accent flex-shrink-0" />
                 <span
                   className="flex-1 text-sm text-text-primary truncate font-mono"
                   title={path}
@@ -197,9 +141,89 @@ export function StepProjectInfo({
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
-            {repoPaths.length > 0 ? 'Add more folders...' : 'Browse folders...'}
+            {repoPaths.length > 0 ? 'Add another repository...' : 'Add a repository...'}
           </button>
         </div>
+      </div>
+
+      {/* Where the project's own notes live — has a working default */}
+      <div className="space-y-2 pt-1 border-t border-border-subtle">
+        <button
+          type="button"
+          onClick={handleToggleFolderSection}
+          className="mt-3 text-xs font-medium text-text-secondary uppercase tracking-wide flex items-center gap-1.5 hover:text-text-primary transition-colors"
+          aria-expanded={folderSectionOpen}
+        >
+          <svg
+            className={`w-3 h-3 transition-transform ${folderSectionOpen ? 'rotate-90' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+          </svg>
+          <FileTextIcon className="w-3.5 h-3.5 text-text-muted" />
+          Notes &amp; context
+        </button>
+
+        <p className="text-xs text-text-muted pl-[1.15rem]">
+          Where this project&apos;s notes and its AGENTS.md live. Your code stays in the
+          repositories above.
+        </p>
+
+        {!folderSectionOpen && managedPathPreview && (
+          <p className="pl-[1.15rem] text-[11px] font-mono text-text-muted truncate" title={managedPathPreview}>
+            {existingFolderPath.trim() || managedPathPreview}
+          </p>
+        )}
+
+        {folderSectionOpen && (
+          <div className="space-y-2 pl-[1.15rem] pt-1">
+            <div className="flex gap-2">
+              <input
+                id="project-existing-folder"
+                type="text"
+                value={existingFolderPath}
+                onChange={e => onExistingFolderPathChange(e.target.value)}
+                placeholder={managedPathPreview ?? 'Leave empty to let KPM manage it'}
+                className="input flex-1 font-mono text-sm"
+                spellCheck={false}
+                autoComplete="off"
+                aria-describedby="project-folder-hint"
+              />
+              <button
+                type="button"
+                onClick={handleBrowseExisting}
+                className="btn btn-secondary shrink-0"
+              >
+                Browse...
+              </button>
+            </div>
+
+            <p id="project-folder-hint" className="text-[11px] text-text-muted">
+              {folderInspectionHint(existingFolderPath, folderInspection)}
+            </p>
+
+            <AnimatePresence>
+              {folderInspection?.isGitRepo && (
+                <m.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  className="flex items-start gap-2 px-3 py-2 rounded-lg bg-warning-muted text-warning text-xs"
+                >
+                  <WarningTriangleIcon className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  <span>
+                    This folder is a git repository, so KPM&apos;s AGENTS.md and CLAUDE.md will
+                    show up in its <span className="font-mono">git status</span>. To work on its
+                    code, add it as a repository above instead.
+                  </span>
+                </m.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
 
       {/* Error */}
@@ -220,4 +244,14 @@ export function StepProjectInfo({
       </AnimatePresence>
     </div>
   );
+}
+
+/** Tells the user what will happen to the folder they named, before they commit to it. */
+function folderInspectionHint(rawPath: string, inspection: FolderInspection | null): string {
+  if (!rawPath.trim()) return 'Empty means KPM creates and manages the folder for you.';
+  if (!inspection) return 'Checking folder...';
+  if (!inspection.exists) return 'Does not exist yet. KPM will create it.';
+  if (!inspection.isDirectory) return 'This path is a file, not a folder. Pick a folder.';
+  if (inspection.isEmpty) return 'Empty folder. KPM will add an AGENTS.md here.';
+  return 'KPM will add an AGENTS.md here and leave your existing files alone.';
 }

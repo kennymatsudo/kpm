@@ -1,6 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import type { FolderInspection } from '../../../shared/types';
 import { Modal, ModalBody, ModalFooter } from '../ui/Modal';
 import { LoadingSpinner } from '../ui/LoadingButton';
+import {
+  getManagedProjectsRoot,
+  inspectProjectFolder,
+} from '../../services/projectLoaderService';
 import { StepProjectInfo } from './StepProjectInfo';
 
 export interface CreateProjectInput {
@@ -31,6 +36,38 @@ export function CreateProjectModal({
   const [repoPaths, setRepoPaths] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [managedProjectsRoot, setManagedProjectsRoot] = useState<string | null>(null);
+  const [folderInspection, setFolderInspection] = useState<FolderInspection | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    void getManagedProjectsRoot().then(root => {
+      if (!cancelled) setManagedProjectsRoot(root);
+    });
+    return () => { cancelled = true; };
+  }, [isOpen]);
+
+  // Debounced so a typed path is inspected once the user pauses, not per keystroke.
+  useEffect(() => {
+    const trimmed = existingFolderPath.trim();
+    if (!trimmed) {
+      setFolderInspection(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void inspectProjectFolder(trimmed)
+        .then(inspection => { if (!cancelled) setFolderInspection(inspection); })
+        .catch(() => { if (!cancelled) setFolderInspection(null); });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [existingFolderPath]);
 
   const resetForm = useCallback(() => {
     setName('');
@@ -39,6 +76,7 @@ export function CreateProjectModal({
     setRepoPaths([]);
     setError(null);
     setIsCreating(false);
+    setFolderInspection(null);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -85,6 +123,11 @@ export function CreateProjectModal({
     };
   }, [name, existingFolderPath, repoPaths]);
 
+  // The one folder state main will refuse: a path that exists as a file.
+  const folderIsNotADirectory = folderInspection !== null
+    && folderInspection.exists
+    && !folderInspection.isDirectory;
+
   const handleCreate = useCallback(async () => {
     const input = buildCreateInput();
     if (!input) return;
@@ -107,7 +150,6 @@ export function CreateProjectModal({
       size="xl"
       preventClose={isCreating}
       aria-labelledby="create-project-title"
-      className="!flex !flex-col !overflow-hidden"
     >
       <div className="px-5 py-4 flex items-center justify-between border-b border-border-default shrink-0">
         <div className="flex items-center gap-3">
@@ -142,7 +184,7 @@ export function CreateProjectModal({
         </button>
       </div>
 
-      <ModalBody className="flex-1 min-h-0 overflow-y-auto">
+      <ModalBody>
         <StepProjectInfo
           name={name}
           onNameChange={handleNameChange}
@@ -150,18 +192,20 @@ export function CreateProjectModal({
           onExistingFolderPathChange={handleExistingFolderChange}
           repoPaths={repoPaths}
           onRepoPathsChange={handleRepoPathsChange}
+          managedProjectsRoot={managedProjectsRoot}
+          folderInspection={folderInspection}
           error={error}
           onErrorClear={() => setError(null)}
         />
       </ModalBody>
 
-      <ModalFooter className="shrink-0">
+      <ModalFooter>
         <button onClick={handleClose} disabled={isCreating} className="btn btn-secondary">
           Cancel
         </button>
         <button
           onClick={handleCreate}
-          disabled={!name.trim() || isCreating}
+          disabled={!name.trim() || isCreating || folderIsNotADirectory}
           className="btn btn-primary"
         >
           {isCreating ? (

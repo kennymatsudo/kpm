@@ -2,15 +2,25 @@
  * Project domain endpoint registry.
  *
  * One entry per `project:*` IPC endpoint, keyed by the dotted method path
- * used on `window.api.projects`. `folderPath` only needs an absolute-path
- * format check here — the pre-migration schema never checked existence for
- * this field (a project can point at a folder that will be created).
+ * used on `window.api.projects`. `folderPath` only gets a format check here —
+ * existence is deliberately not required, because a project can point at a
+ * folder that will be created.
  */
 
 import { z } from 'zod';
 import { resultOf, type EndpointDefinition } from './endpoints';
 import { absolutePath, uuid } from './sharedSchemas';
-import type { Project } from '../types';
+import type { FolderInspection, Project } from '../types';
+
+/**
+ * A folder the user typed or picked. Absolute, or `~`-relative — main expands
+ * the `~` (`expandTilde`), so rejecting it here would fail a path users
+ * reasonably type by hand.
+ */
+const projectFolderPath = z.union([
+  absolutePath,
+  z.string().refine((p) => p === '~' || p.startsWith('~/'), 'Path must be absolute or start with ~/'),
+]);
 
 const projectName = z
   .string()
@@ -35,7 +45,7 @@ type RegistryResponse<T = void> =
 export const projectEndpoints = {
   create: {
     channel: 'project:create',
-    params: z.object({ name: projectName, folderPath: absolutePath.optional() }),
+    params: z.object({ name: projectName, folderPath: projectFolderPath.optional() }),
     result: resultOf<RegistryResponse<{ project: Project }>>(),
   },
   get: {
@@ -72,6 +82,11 @@ export const projectEndpoints = {
     channel: 'project:get-default-location',
     params: null,
     result: resultOf<RegistryResponse<{ defaultLocation: string }>>(),
+  },
+  inspectFolder: {
+    channel: 'project:inspect-folder',
+    params: z.object({ folderPath: projectFolderPath }),
+    result: resultOf<RegistryResponse<{ inspection: FolderInspection }>>(),
   },
 } satisfies Record<string, EndpointDefinition>;
 

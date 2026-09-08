@@ -1,5 +1,6 @@
 import type {
   Attachment,
+  FolderInspection,
   PlanItem,
   Project,
   Repo,
@@ -77,12 +78,21 @@ export function createProjectRecord(input: {
   return window.api.projects.create(input);
 }
 
-export function getDefaultProjectLocation(): Promise<string> {
-  return window.api.projects.getDefaultLocation();
+/**
+ * Picks the folder a project's notes and context live in. The folder is
+ * adopted as-is, not created inside a parent the user chooses.
+ */
+export function selectProjectWorkspaceFolder(title?: string): Promise<string | null> {
+  return window.api.fileExplorer.selectFolderDialog({ title });
 }
 
-export function selectProjectParentFolder(title?: string): Promise<string | null> {
-  return window.api.fileExplorer.selectFolderDialog({ title });
+export function inspectProjectFolder(folderPath: string): Promise<FolderInspection> {
+  return window.api.projects.inspectFolder({ folderPath });
+}
+
+/** Where a project lands when the user doesn't pick a folder. */
+export function getManagedProjectsRoot(): Promise<string> {
+  return window.api.projects.getDefaultLocation();
 }
 
 export async function deleteProjectRecord(projectId: string): Promise<void> {

@@ -37,6 +37,18 @@ export interface Project {
   updated_at?: string;
 }
 
+/** What the create-project modal needs to know about a folder before adopting it. */
+export interface FolderInspection {
+  /** The folder path after `~` expansion — what KPM would actually use. */
+  resolvedPath: string;
+  exists: boolean;
+  /** False when the path exists but is a file, which cannot host a project. */
+  isDirectory: boolean;
+  /** A `.git` entry at the root: adopting it drops AGENTS.md into a tracked tree. */
+  isGitRepo: boolean;
+  isEmpty: boolean;
+}
+
 export interface PlanItem {
   id: string;
   project_id?: string;
@@ -47,7 +59,7 @@ export interface PlanItem {
   intent: string | null;
   /** Structured agent contract: each entry is one testable criterion. Serialized as JSON in SQLite. */
   acceptance_criteria: string[] | null;
-  /** Monotonic revision of the aggregate title/context/intent/acceptance criteria Work Brief. */
+  /** Monotonic revision of the aggregate title/description/intent/acceptance criteria Work Brief. */
   work_brief_revision: number;
   /** Loose reference to the project document this item was extracted from. No FK — docs can be deleted without cascading. */
   source_document_id: string | null;

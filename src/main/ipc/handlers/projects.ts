@@ -42,6 +42,12 @@ function buildProjectHandlers(projectService: ProjectService): ProjectHandlers {
       return result.data;
     },
 
+    inspectFolder: async ({ folderPath }) => {
+      const result = await projectService.inspectFolder(folderPath);
+      if (!result.ok) throw new Error(result.error);
+      return { inspection: result.data };
+    },
+
     update: ({ projectId, updates }) => {
       const result = projectService.update(projectId, updates);
       if (!result.ok) throw new Error(result.error);
