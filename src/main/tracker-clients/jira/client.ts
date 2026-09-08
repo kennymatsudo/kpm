@@ -1,4 +1,5 @@
-import { Version3Client } from 'jira.js';
+import { createCloudClient, type CloudClient } from 'jira.js';
+import type { Issue } from 'jira.js/cloud';
 import type {
   TrackerClient,
   ExternalIssue,
@@ -15,6 +16,7 @@ import { jiraAdfCodec } from '../../documents';
 import { getConfig } from '../../config';
 
 const DEFAULT_BATCH_SIZE = 50;
+const CREATE_META_PAGE_SIZE = 100;
 
 /**
  * Per-issue create/update trace. Silent unless `claude.debug` is on — it fires
@@ -44,7 +46,8 @@ function wrapJiraCustomFieldValues(values: Record<string, string>): Record<strin
 
 /**
  * Jira issue shape from API response.
- * Only includes fields we actually use (jira.js types are overly complex).
+ * Only includes fields we actually use (jira.js types are overly complex, and
+ * mark almost everything optional because the OpenAPI spec does).
  */
 interface JiraIssueResponse {
   key: string;
@@ -85,18 +88,16 @@ function getJiraFieldErrors(error: unknown): Record<string, string> | undefined 
     return error.errors as Record<string, string>;
   }
 
+  // jira.js 6 keeps Atlassian's payload on ApiError.body instead of hoisting it.
   if (
-    'response' in error &&
-    error.response &&
-    typeof error.response === 'object' &&
-    'data' in error.response &&
-    error.response.data &&
-    typeof error.response.data === 'object' &&
-    'errors' in error.response.data &&
-    error.response.data.errors &&
-    typeof error.response.data.errors === 'object'
+    'body' in error &&
+    error.body &&
+    typeof error.body === 'object' &&
+    'errors' in error.body &&
+    error.body.errors &&
+    typeof error.body.errors === 'object'
   ) {
-    return error.response.data.errors as Record<string, string>;
+    return error.body.errors as Record<string, string>;
   }
 
   return undefined;
@@ -107,22 +108,38 @@ function isResolutionScreenError(error: unknown): boolean {
   return typeof resolutionError === 'string' && resolutionError.includes('cannot be set');
 }
 
+/**
+ * Jira rejects the whole create when `assignee` isn't on the project's create
+ * screen or the user isn't assignable there. It reports that as a field error,
+ * which also tells us nothing was created — so a retry cannot duplicate the
+ * issue. Keep this narrow: a broader match would retry real failures.
+ */
+function assigneeFieldError(error: unknown): string | undefined {
+  const assigneeError = getJiraFieldErrors(error)?.assignee;
+  return typeof assigneeError === 'string' ? assigneeError : undefined;
+}
+
 export class JiraClient implements TrackerClient {
   readonly type = 'jira' as const;
   readonly documentCodec = jiraAdfCodec;
-  private client: Version3Client;
+  private client: CloudClient;
   private siteUrl: string;
+  private accountIdPromise: Promise<string | null> | null = null;
 
   constructor(credentials: JiraCredentials) {
     this.siteUrl = credentials.siteUrl;
-    this.client = new Version3Client({
+    this.client = createCloudClient({
       host: `https://${credentials.siteUrl}`,
-      authentication: {
-        basic: {
-          email: credentials.email,
-          apiToken: credentials.apiToken,
-        },
+      auth: {
+        type: 'basic',
+        email: credentials.email,
+        apiToken: credentials.apiToken,
       },
+      // Jira's response shapes vary by tenant config, so a mismatch is routine
+      // and the body still comes back unvalidated. Route it through the debug
+      // gate rather than silencing it: a shape change is worth seeing when a
+      // sync starts returning nonsense.
+      onSchemaMismatch: (report) => jiraLog('[JiraClient] Jira response shape drift:', report),
     });
   }
 
@@ -143,6 +160,22 @@ export class JiraClient implements TrackerClient {
     return wrapJiraCustomFieldValues(values);
   }
 
+  /**
+   * The account id behind these credentials, resolved once per client. Returns
+   * null if the lookup fails, so a self-assignment preference can degrade to an
+   * unassigned issue instead of failing the export.
+   */
+  private async getOwnAccountId(): Promise<string | null> {
+    this.accountIdPromise ??= this.client.myself
+      .getCurrentUser()
+      .then((user) => user.accountId ?? null)
+      .catch((error: unknown) => {
+        console.warn('[JiraClient] Could not resolve own account id for assignment:', error);
+        return null;
+      });
+    return this.accountIdPromise;
+  }
+
   async testConnection(): Promise<{ success: boolean; error?: string }> {
     try {
       await this.client.myself.getCurrentUser();
@@ -156,7 +189,7 @@ export class JiraClient implements TrackerClient {
   async getAvailableProjects(): Promise<{ key: string; name: string }[]> {
     try {
       const result = await this.client.projects.searchProjects();
-      return result.values?.map(p => ({ key: p.key, name: p.name })) ?? [];
+      return result.values?.map(p => ({ key: p.key!, name: p.name! })) ?? [];
     } catch (error) {
       throw TrackerError.fromJiraError(error);
     }
@@ -167,7 +200,7 @@ export class JiraClient implements TrackerClient {
       const baseJql = `project = ${projectKey}`;
       const fullJql = jql ? `${baseJql} AND ${jql}` : baseJql;
 
-      const result = await this.client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
+      const result = await this.client.issueSearch.searchAndReconsileIssuesUsingJql({
         jql: fullJql,
         maxResults: 100,
         fields: ['*navigable'],
@@ -190,7 +223,7 @@ export class JiraClient implements TrackerClient {
     while (true) {
       let result;
       try {
-        result = await this.client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
+        result = await this.client.issueSearch.searchAndReconsileIssuesUsingJql({
           jql,
           maxResults,
           nextPageToken,
@@ -219,7 +252,8 @@ export class JiraClient implements TrackerClient {
     }
   }
 
-  private mapIssue(issue: JiraIssueResponse): ExternalIssue {
+  private mapIssue(raw: Issue): ExternalIssue {
+    const issue = raw as unknown as JiraIssueResponse;
     return {
       key: issue.key,
       id: issue.id,
@@ -275,7 +309,7 @@ export class JiraClient implements TrackerClient {
         jql = `project = ${projectKey} AND summary ~ "${escapedText}" ORDER BY updated DESC`;
       }
 
-      const result = await this.client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
+      const result = await this.client.issueSearch.searchAndReconsileIssuesUsingJql({
         jql,
         maxResults,
         fields: ['*navigable'],
@@ -295,7 +329,7 @@ export class JiraClient implements TrackerClient {
       // Simple query - just get recently updated issues from the project
       const jql = `project = ${projectKey} ORDER BY updated DESC`;
 
-      const result = await this.client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
+      const result = await this.client.issueSearch.searchAndReconsileIssuesUsingJql({
         jql,
         maxResults,
         fields: ['*navigable'],
@@ -316,7 +350,7 @@ export class JiraClient implements TrackerClient {
       // We fetch issues and collect unique labels
       const jql = `project = ${projectKey} AND labels IS NOT EMPTY ORDER BY updated DESC`;
 
-      const result = await this.client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
+      const result = await this.client.issueSearch.searchAndReconsileIssuesUsingJql({
         jql,
         maxResults: 100,
         fields: ['labels'],
@@ -404,25 +438,28 @@ export class JiraClient implements TrackerClient {
    */
   async getCustomFields(projectKey: string, issueTypeId: string): Promise<JiraCustomField[]> {
     try {
-      // Use the createmeta endpoint to get field info including allowed values
-      const result = await this.client.issues.getCreateIssueMeta({
-        projectKeys: [projectKey],
-        issuetypeIds: [issueTypeId],
-        expand: 'projects.issuetypes.fields',
-      });
-
-      const fields: JiraCustomField[] = [];
-      const project = result.projects?.find(p => p.key === projectKey);
-      const issueType = project?.issuetypes?.find(it => it.id === issueTypeId);
-
-      if (!issueType?.fields) {
-        return [];
+      // Atlassian retired the single createmeta call; the replacement returns
+      // one issue type's fields as a page, so drain it before mapping.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fieldMetas: any[] = [];
+      let startAt = 0;
+      while (true) {
+        const page = await this.client.issues.getCreateIssueMetaIssueTypeId({
+          projectIdOrKey: projectKey,
+          issueTypeId,
+          startAt,
+          maxResults: CREATE_META_PAGE_SIZE,
+        });
+        const batch = page.fields ?? [];
+        fieldMetas.push(...batch);
+        startAt += batch.length;
+        if (batch.length === 0 || startAt >= (page.total ?? startAt)) break;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const fieldMap = issueType.fields as Record<string, any>;
+      const fields: JiraCustomField[] = [];
 
-      for (const [fieldId, fieldData] of Object.entries(fieldMap)) {
+      for (const fieldData of fieldMetas) {
+        const fieldId: string = fieldData.fieldId;
         // Only include custom fields (start with 'customfield_')
         if (!fieldId.startsWith('customfield_')) continue;
 
@@ -520,16 +557,39 @@ export class JiraClient implements TrackerClient {
         Object.assign(fields, params.customFields);
       }
 
+      let assigneeSkippedReason: string | undefined;
+      if (params.assignToSelf) {
+        const accountId = await this.getOwnAccountId();
+        if (accountId) {
+          fields.assignee = { accountId };
+        } else {
+          assigneeSkippedReason = 'Could not resolve your Jira account';
+        }
+      }
+
       // `issueFilter` and `initialStatusName` are honored by trackers that can
       // create in a chosen project/state (Linear). Jira has no create-time state
       // control, so the queued status is reached by a post-create transition.
       jiraLog('[JiraClient] Creating issue with fields:', JSON.stringify(fields, null, 2));
-      const result = await this.client.issues.createIssue({ fields });
+      let result;
+      try {
+        result = await this.client.issues.createIssue({ fields });
+      } catch (error) {
+        const rejectedAssignee = fields.assignee ? assigneeFieldError(error) : undefined;
+        if (!rejectedAssignee) throw error;
+        console.warn(
+          `[JiraClient] Jira rejected the assignee for a new issue; creating it unassigned. ${rejectedAssignee}`
+        );
+        delete fields.assignee;
+        result = await this.client.issues.createIssue({ fields });
+        assigneeSkippedReason = rejectedAssignee;
+      }
       jiraLog('[JiraClient] Issue created successfully:', result?.key);
       return {
         id: result.id,
         key: result.key,
         url: `https://${this.siteUrl}/browse/${result.key}`,
+        assigneeSkippedReason,
       };
     } catch (error) {
       console.error('[JiraClient] createIssue failed. Full error:', JSON.stringify(error, null, 2));
@@ -569,6 +629,17 @@ export class JiraClient implements TrackerClient {
       jiraLog('[JiraClient] Issue updated successfully:', issueKey);
     } catch (error) {
       console.error('[JiraClient] updateIssue failed for', issueKey, '. Full error:', JSON.stringify(error, null, 2));
+      throw TrackerError.fromJiraError(error);
+    }
+  }
+
+  async deleteIssue(issueKey: string): Promise<void> {
+    try {
+      jiraLog('[JiraClient] Deleting issue:', issueKey);
+      await this.client.issues.deleteIssue({ issueIdOrKey: issueKey });
+      jiraLog('[JiraClient] Issue deleted successfully:', issueKey);
+    } catch (error) {
+      console.error('[JiraClient] deleteIssue failed for', issueKey, '. Full error:', JSON.stringify(error, null, 2));
       throw TrackerError.fromJiraError(error);
     }
   }

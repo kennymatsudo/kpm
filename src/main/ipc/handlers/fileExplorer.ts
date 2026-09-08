@@ -9,9 +9,6 @@ import { openDirectoryInCodeEditor } from '../../services/repo/editorLauncher';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { fileExplorerEvents, type FileExplorerFileChangedEventData } from '../../../shared/ipc/fileExplorerEvents';
 
-/** File change event types for real-time UI updates */
-export type FileChangeType = FileExplorerFileChangedEventData['type'];
-
 export type FileChangeEvent = FileExplorerFileChangedEventData;
 
 /**

@@ -19,6 +19,6 @@
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "types": ["node"]
   },
-  "include": ["src/**/*", "*.config.ts", "e2e/**/*", "tests/**/*"],
+  "include": ["src/**/*", "*.config.ts", "*.config.mts", "e2e/**/*", "tests/**/*"],
   "exclude": ["node_modules"]
 }

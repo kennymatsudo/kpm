@@ -89,8 +89,8 @@ describe('CodexSdkAgentSession reasoning effort', () => {
     expect(threadOptions('high').modelReasoningEffort).toBe('high');
   });
 
-  it('clamps max to xhigh, the highest level Codex accepts', () => {
-    expect(threadOptions('max').modelReasoningEffort).toBe('xhigh');
+  it('forwards max, which Codex accepts natively', () => {
+    expect(threadOptions('max').modelReasoningEffort).toBe('max');
   });
 
   it('omits the field when no effort is configured', () => {

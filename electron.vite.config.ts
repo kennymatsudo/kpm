@@ -51,7 +51,11 @@ export default defineConfig({
       // registers the `cursor` provider and its models — fails to load with
       // "Cannot find module 'typebox'". Externalized, pi runs from node_modules
       // with its dependency tree intact.
-      externalizeDeps: { exclude: ['@openai/codex-sdk'] },
+      //
+      // jira.js is bundled because v6 is ESM-only and this bundle is CJS, so
+      // left external it would be reached by require(). It is plain fetch code
+      // with nothing to resolve at runtime.
+      externalizeDeps: { exclude: ['@openai/codex-sdk', 'jira.js'] },
       // Compile to V8 bytecode in production for source protection
       bytecode: isProduction,
       rollupOptions: {
@@ -119,6 +123,22 @@ export default defineConfig({
           }
         }
       }
+    },
+    // Dev-server only. These packages are reached exclusively through a lazy
+    // `import()`, so the first optimize pass at server start doesn't cover
+    // them: Vite discovers them the moment the feature is first used, re-bundles
+    // every dependency, and the import that triggered the discovery fails with
+    // "Failed to fetch dynamically imported module" — taking down whichever
+    // panel rendered it. Naming them here puts them in the first pass instead.
+    // A package only belongs on this list while nothing imports it statically.
+    optimizeDeps: {
+      include: [
+        'mermaid',
+        'dompurify',
+        'monaco-editor',
+        '@monaco-editor/react',
+        'elkjs/lib/elk.bundled.js'
+      ]
     },
     plugins: [
       tailwindcss(),

@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import path from 'path';
+import path from 'node:path';
 
 export default defineConfig({
   test: {
@@ -49,10 +49,10 @@ export default defineConfig({
 
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
-      '@shared': path.resolve(__dirname, './src/shared'),
-      '@main': path.resolve(__dirname, './src/main'),
-      '@tests': path.resolve(__dirname, './tests'),
+      '@': path.resolve(import.meta.dirname, './src'),
+      '@shared': path.resolve(import.meta.dirname, './src/shared'),
+      '@main': path.resolve(import.meta.dirname, './src/main'),
+      '@tests': path.resolve(import.meta.dirname, './tests'),
     },
   },
 });

@@ -1,7 +1,8 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import type { MarkdownEditorProps } from './MarkdownEditor';
+import { lazyWithRetry } from '../../utils/lazyWithRetry';
 
-const MarkdownEditor = lazy(() =>
+const MarkdownEditor = lazyWithRetry(() =>
   import('./MarkdownEditor').then((m) => ({ default: m.MarkdownEditor })),
 );
 

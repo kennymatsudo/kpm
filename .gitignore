@@ -127,3 +127,16 @@ dist/
 
 # Performance profiling output
 scripts/profiles/
+
+# Local design references (impeccable skill output — kept out of the repo on purpose)
+/PRODUCT.md
+/DESIGN.md
+/.impeccable/
+
+# Locally installed agent skills: the skill payload, its lockfile, and the
+# symlinks Claude Code reads them through. Personal tooling, not project code.
+# Not all of `/.claude/`, deliberately — an ignored directory can't have a file
+# re-included with a `!` rule, so a shared `settings.json` would be unreachable.
+/.agents/
+/skills-lock.json
+/.claude/skills/

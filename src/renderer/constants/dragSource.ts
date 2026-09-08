@@ -5,5 +5,3 @@
 export const DragSource = {
   CANVAS: 'canvas',
 } as const;
-
-export type DragSourceType = typeof DragSource[keyof typeof DragSource];

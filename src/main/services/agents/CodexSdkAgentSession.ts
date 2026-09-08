@@ -46,16 +46,6 @@ export interface CodexSdkAgentSessionConfig {
   readOnly?: boolean;
 }
 
-/**
- * Codex tops out at `xhigh`; `max` exists only in KPM's provider-neutral
- * vocabulary, so it resolves to the highest level Codex actually accepts rather
- * than being dropped for an unrecognized value.
- */
-function toCodexReasoningEffort(effort: AgentEffortLevel | undefined): ModelReasoningEffort | undefined {
-  if (!effort) return undefined;
-  return effort === 'max' ? 'xhigh' : effort;
-}
-
 /** Classify a Codex thread item by what it does, not by its item type name, so the renderer can stop pattern-matching. */
 function activityKindFor(itemType: ThreadItem['type']): AgentActivityKind {
   switch (itemType) {
@@ -88,7 +78,7 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
   constructor(config: CodexSdkAgentSessionConfig) {
     super(config.id, config.role, config.expectsFindings);
     this.model = config.model;
-    this.reasoningEffort = toCodexReasoningEffort(config.effort);
+    this.reasoningEffort = config.effort;
     this.structuredFindings = config.expectsFindings ?? config.role === 'review';
     this.readOnly = config.readOnly ?? config.role === 'review';
     this.codex = new Codex({ codexPathOverride: findCodexBinaryPath() });

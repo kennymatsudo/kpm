@@ -9,13 +9,20 @@ export type TrackerErrorCode =
 
 /**
  * Shape of error responses from Jira API (via jira.js).
- * Jira puts error info in different places depending on the error type.
+ * Jira puts error info in different places depending on the error type, and
+ * jira.js 6 keeps Atlassian's payload nested under `body` rather than hoisting
+ * its fields onto the error.
  */
 interface JiraErrorResponse {
   status: number;
   errorMessages?: string[];
   errors?: Record<string, string>;
   message?: string;
+  body?: {
+    errorMessages?: string[];
+    errors?: Record<string, string>;
+    message?: string;
+  };
 }
 
 function isJiraErrorResponse(error: unknown): error is JiraErrorResponse {
@@ -37,9 +44,9 @@ export class TrackerError extends Error {
     if (isJiraErrorResponse(error)) {
       const status = error.status;
       // Try to extract error message from response - Jira puts it in different places
-      const errorMessages = error.errorMessages;
-      const errors = error.errors;
-      const responseMessage = error.message;
+      const errorMessages = error.errorMessages ?? error.body?.errorMessages;
+      const errors = error.errors ?? error.body?.errors;
+      const responseMessage = error.body?.message ?? error.message;
 
       let message: string | undefined;
       if (Array.isArray(errorMessages) && errorMessages.length > 0) {

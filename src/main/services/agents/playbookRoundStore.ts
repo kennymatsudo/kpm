@@ -90,5 +90,3 @@ export function createPlaybookRoundStore(deps: PlaybookRoundStoreDeps) {
     deleteGroup: (sessionId: string, stepId: string) => runGroups.delete(groupKey(sessionId, stepId)),
   };
 }
-
-export type PlaybookRoundStore = ReturnType<typeof createPlaybookRoundStore>;

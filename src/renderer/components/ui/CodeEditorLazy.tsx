@@ -1,7 +1,8 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import type { CodeEditorProps } from './CodeEditor';
+import { lazyWithRetry } from '../../utils/lazyWithRetry';
 
-const CodeEditor = lazy(() =>
+const CodeEditor = lazyWithRetry(() =>
   import('./CodeEditor').then((m) => ({ default: m.CodeEditor })),
 );
 

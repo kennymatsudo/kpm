@@ -25,8 +25,6 @@ import { useModalLayer } from './ModalLayerContext';
 
 export const Popover = RadixPopover.Root;
 export const PopoverTrigger = RadixPopover.Trigger;
-export const PopoverAnchor = RadixPopover.Anchor;
-export const PopoverClose = RadixPopover.Close;
 
 type PopoverContentProps = ComponentPropsWithoutRef<typeof RadixPopover.Content> & {
   /** Override the modal-layer-derived z-index. Rarely needed. */

@@ -16,18 +16,20 @@ src/
 │   │   ├── handlers/        # Handler implementations by domain
 │   │   ├── register/        # Handler registration by domain (workspace, development, platform)
 │   │   └── validation/      # Shared validators, handler wiring utils, registry-schema refines
-│   ├── claude/              # Claude SDK integration
-│   │   ├── tools/           # In-process MCP tools
-│   │   ├── prompts/         # System prompt modules
-│   │   └── streaming/       # Streaming session classes
+│   ├── chat/                # Chat runtime, prompts, and write-consent policy
+│   ├── claude/              # Claude SDK integration and streaming session classes
 │   ├── codex/               # Codex auth, binary, and error helpers
 │   ├── config/              # Runtime configuration and defaults
 │   ├── documents/           # Plan-ref resolver + markdown codecs (used at every export boundary)
 │   │   └── codecs/          # Per-format markdown codecs
+│   ├── kpmTools/            # In-process MCP tool server shared by providers
+│   │   └── tools/           # KPM-aware tool implementations
+│   ├── pi/                  # pi chat-provider session
+│   ├── providers/           # Provider capability and readiness resolution
 │   ├── project-context/     # Project context file compatibility helpers
 │   ├── security/            # URL and app-navigation safety helpers
 │   ├── services/            # Application services (DI pattern)
-│   │   ├── core/            # Plan, Project, Chat, Tracker, Onboarding, settings
+│   │   ├── core/            # Plan, Project, Chat, Tracker, Onboarding, settings, cross-project activity
 │   │   ├── repo/            # Repo, DevSession, GitHub, Environment, Review, ScheduledLoopRunner
 │   │   ├── files/           # FileExplorer, FileSummary, TempImage, RepoFile, watchers, scoped FS
 │   │   ├── streaming/       # Terminal and Claude StreamingSession
@@ -166,8 +168,7 @@ Repositories live in `src/main/db/repositories/impl/` — read the directory for
 - Single point of service instantiation
 
 **Service Container** (`src/main/services/container.ts`):
-- Global access to services via `getServices()`
-- Test injection via `setServices()` / `resetServices()`
+- `initializeServices(container)`, called once at app startup, holds the single `AppServices` instance
 
 ## Frontend Architecture
 
@@ -230,7 +231,7 @@ For the tool-by-tool and file-by-file map, see the File Organization table in [`
 
 **Chat Provider Abstraction**: the main chat runs on one provider per session — Claude (`ClaudeSdkSession`, streaming-input), Codex (`CodexChatSession`), or pi (`src/main/pi/PiChatSession.ts`). All implement `IChatSession` (`src/main/services/streaming/IChatSession.ts`); Codex and pi share `BaseTurnQueueChatSession`, while Claude steers mid-turn on its own base. Per-provider feature support is declared in `src/shared/providerCapabilities.ts` (`PROVIDER_CAPABILITIES`) and readiness is resolved via `src/shared/providerResolution.ts`. `ChatProvider = 'claude' | 'codex' | 'pi'` is defined in `src/shared/types.ts`. `StreamingSessionService.createSession` dispatches to the backend.
 
-**Chat Write Consent**: `src/main/chat/writeGrants.ts` owns the in-memory, per-conversation grant and coalesces concurrent requests for the same Chat. Permission requests carry `chatSessionId`; the renderer queues them by Chat so concurrent sessions cannot display or answer each other's prompt. Provider adapters translate the shared decision into native behavior: Claude uses `canUseTool` plus its filesystem sandbox, Codex switches between native `read-only` and `workspace-write` modes at turn boundaries, and pi gates its native write tools. Claude's sandbox allows localhost and Docker so an approved shell can use the developer's running services; Docker remains subject to the conversation write grant. KPM-controlled file tools preserve the denied credential roots from `src/main/services/files/pathSecurity.ts`, including Docker client state.
+**Chat Write Consent**: `src/main/chat/writeGrants.ts` owns the project write grant and coalesces concurrent requests for the same project. It is hydrated from `project_write_grants` at startup so the hot-path check stays a synchronous memory read, and every change writes through. Permission requests still carry `chatSessionId` for display; the renderer queues them by Chat so concurrent sessions cannot display or answer each other's prompt, and a request from a run with no chat session lands in the unscoped queue behind the pending-requests badge. Provider adapters translate the shared decision into native behavior: Claude uses `canUseTool` plus its filesystem sandbox, Codex switches between native `read-only` and `workspace-write` modes at turn boundaries, and pi gates its native write tools. Claude's sandbox allows localhost and Docker so an approved shell can use the developer's running services; Docker remains subject to the conversation write grant. KPM-controlled file tools preserve the denied credential roots from `src/main/services/files/pathSecurity.ts`, including Docker client state.
 
 **System Prompt Organization**: prompt modules live in `src/main/chat/prompts/` with `buildSystemPrompt()` / `buildFocusSystemPrompt()` as entry points — see [`src/main/claude/CLAUDE.md`](../src/main/claude/CLAUDE.md).
 

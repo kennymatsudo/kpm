@@ -21,7 +21,6 @@ export const SelectTrigger = RadixSelect.Trigger;
 export const SelectValue = RadixSelect.Value;
 export const SelectGroup = RadixSelect.Group;
 export const SelectLabel = RadixSelect.Label;
-export const SelectSeparator = RadixSelect.Separator;
 export const SelectIcon = RadixSelect.Icon;
 export const SelectItemText = RadixSelect.ItemText;
 export const SelectItemIndicator = RadixSelect.ItemIndicator;

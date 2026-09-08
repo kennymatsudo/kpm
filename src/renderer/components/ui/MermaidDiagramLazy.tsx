@@ -1,10 +1,11 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
+import { lazyWithRetry } from '../../utils/lazyWithRetry';
 
 interface MermaidDiagramLazyProps {
   source: string;
 }
 
-const MermaidDiagram = lazy(() =>
+const MermaidDiagram = lazyWithRetry(() =>
   import('./MermaidDiagram').then((m) => ({ default: m.MermaidDiagram })),
 );
 

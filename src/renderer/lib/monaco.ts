@@ -1,15 +1,15 @@
 import { loader } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';
-// Vite worker modules export a worker constructor default at build time.
+// Monaco 0.56 added an `exports` map, so the workers are reached through the
+// package's public subpaths — the old `monaco-editor/esm/vs/...` deep paths no
+// longer resolve. The `?worker` suffix is Vite's worker-constructor import: it
+// synthesizes the default export that the module itself does not declare.
 // eslint-disable-next-line import-x/default
-import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
-// eslint-disable-next-line import-x/default
-import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
-// eslint-disable-next-line import-x/default
-import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
-// eslint-disable-next-line import-x/default
-import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
-import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
+import editorWorker from 'monaco-editor/editor/editor.worker.js?worker';
+import jsonWorker from 'monaco-editor/language/json/json.worker.js?worker';
+import cssWorker from 'monaco-editor/language/css/css.worker.js?worker';
+import htmlWorker from 'monaco-editor/language/html/html.worker.js?worker';
+import tsWorker from 'monaco-editor/language/typescript/ts.worker.js?worker';
 
 declare global {
   interface Window {

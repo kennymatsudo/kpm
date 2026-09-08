@@ -183,5 +183,3 @@ export function createRepoServices({
     getProjectFolder,
   };
 }
-
-export type RepoServicesComposition = ReturnType<typeof createRepoServices>;

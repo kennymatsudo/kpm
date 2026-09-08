@@ -7,7 +7,7 @@ import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescrip
 export default tseslint.config(
   // Global ignores
   {
-    ignores: ['**/dist/**', '.vite/**', '.claude/**', 'packages/**', 'scripts/**', 'release/**', 'coverage/**', 'playwright-report/**', 'test-results/**', 'v4-backup/**'],
+    ignores: ['**/dist/**', '.vite/**', '.claude/**', '.agents/**', 'packages/**', 'scripts/**', 'release/**', 'coverage/**', 'playwright-report/**', 'test-results/**', 'v4-backup/**'],
   },
 
   // Base JS recommended rules
@@ -24,7 +24,7 @@ export default tseslint.config(
 
   // Main config — applies to all TS/TSX files
   {
-    files: ['**/*.ts', '**/*.tsx'],
+    files: ['**/*.ts', '**/*.mts', '**/*.tsx'],
     languageOptions: {
       globals: {
         ...globals.browser,
@@ -74,7 +74,7 @@ export default tseslint.config(
 
   // Config files — import resolver doesn't know about vite/electron-vite internals
   {
-    files: ['*.config.ts'],
+    files: ['*.config.ts', '*.config.mts'],
     rules: {
       'import-x/no-unresolved': 'off',
       'import-x/no-named-as-default-member': 'off',
