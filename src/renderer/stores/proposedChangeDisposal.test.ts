@@ -240,7 +240,7 @@ describe('Proposed Change disposal', () => {
         { type: 'update_item', item_id: 'item-1', updates: { label: 'task' } },
         {
           type: 'revise_work_brief', item_id: 'item-1', expected_revision: 1,
-          work_brief: { title: 'First', context: null, intent: null, acceptance_criteria: [] },
+          work_brief: { title: 'First', description: null, intent: null, acceptance_criteria: [] },
         },
       ],
     });
@@ -252,7 +252,7 @@ describe('Proposed Change disposal', () => {
         },
         {
           type: 'revise_work_brief', item_id: 'item-1', expected_revision: 1,
-          work_brief: { title: 'Latest', context: null, intent: null, acceptance_criteria: [] },
+          work_brief: { title: 'Latest', description: null, intent: null, acceptance_criteria: [] },
         },
       ],
     });

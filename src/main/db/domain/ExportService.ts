@@ -11,8 +11,7 @@ import { resolveOperation } from './OutboundChangePolicy';
 import { diffWords } from 'diff';
 import { getConfig } from '../../config';
 import type {
-  OutboundChangeWithPlanItem,
-  OutboundChange,
+  OutboundItemChange,
   PlanItem,
   PlanItemSyncUpdates,
   ExportPreview,
@@ -31,7 +30,8 @@ import type {
   StatusMapping,
   TrackerAssociationWithScope,
 } from '../../../shared/types';
-import { hasLivePlanItem } from '../../../shared/types';
+import { isOutboundDeletion, isOutboundItemChange } from '../../../shared/types';
+import { describeDeletions, drainDeletions } from './TrackerDeletionDrain';
 import type { JiraClient, TrackerClient } from '../../tracker-clients';
 import {
   findTransitionWithMapping,
@@ -45,6 +45,7 @@ import { normalizeMarkdown } from '../../documents';
 import { workBriefFromPlanItem } from '../../../shared/workBrief';
 import { projectWorkBriefToTracker, projectWorkBriefToTrackerUpdate } from '../../workBrief/projections';
 import { hasRemoteFieldDrifted } from './trackerReconciliation';
+import { externalPeopleFields } from './externalPeopleFields';
 import { suggestStatusMapping } from '../../../shared/statusMappingSuggest';
 
 interface TrackerClientServiceLike {
@@ -62,6 +63,12 @@ export interface ExportServiceDeps {
   sync: ISyncRepository;
   typeMappings: ITypeMappingRepository;
   trackerClientService: TrackerClientServiceLike;
+  /**
+   * Whether newly created tracker issues should be assigned to the user. Read
+   * per export rather than captured, so a settings change takes effect without
+   * a restart.
+   */
+  shouldAssignExportsToMe: () => boolean;
 }
 
 /**
@@ -96,7 +103,7 @@ function resolveExportDescription(
     workBriefFromPlanItem(planItem),
     planItems,
     refDestinationForTracker(trackerType),
-  ).context;
+  ).description;
 }
 
 const STATUS_CATEGORY_LABELS: Record<StatusCategory, string> = {
@@ -130,7 +137,7 @@ function resolveInitialStatusName(
 
 async function bootstrapStatusMappingForQueuedTargets(
   association: TrackerAssociationWithScope,
-  queueEntries: readonly Pick<OutboundChange, 'target_status_category'>[],
+  queueEntries: readonly Pick<OutboundItemChange, 'target_status_category'>[],
   client: TrackerClient,
   updateStatusMapping: ITrackerRepository['updateStatusMapping']
 ): Promise<TrackerAssociationWithScope> {
@@ -289,20 +296,6 @@ export function createExportService(deps: ExportServiceDeps) {
   },
 
   /**
-   * Get all queued items for a project with plan item data.
-   */
-  getQueuedItems(kpmProjectId: string): OutboundChangeWithPlanItem[] {
-    return OutboundChangeRepository.getQueuedItemsWithPlanData(kpmProjectId);
-  },
-
-  /**
-   * Get queue count for a project.
-   */
-  getQueueCount(kpmProjectId: string): number {
-    return OutboundChangeRepository.getQueueCount(kpmProjectId);
-  },
-
-  /**
    * Remove an item from the queue.
    */
   removeFromQueue(queueEntryId: string): void {
@@ -377,37 +370,45 @@ export function createExportService(deps: ExportServiceDeps) {
     if (!association) {
       return {
         items: [],
+        deleteItems: [],
         warnings: ['Association not found'],
         canProceed: false,
       };
     }
     const trackerLabel = trackerLabelFor(association.tracker_type);
 
-    // Issue types are a Jira concept; Linear returns a synthetic "Issue" entry.
-    // Either way we defer to the tracker-specific client.
-    let availableTypes: TrackerIssueType[];
-    try {
-      const client = await TrackerClientService.getClient(association.tracker_type);
-      availableTypes = await client.getIssueTypes(association.project_key);
-    } catch (e) {
+    // Create/update entries need a live plan item; deletions are detached and
+    // stay whole through the drain, independent of anything resolved below.
+    const allQueueEntries = OutboundChangeRepository.getByAssociation(associationId);
+    const deleteItems = allQueueEntries.filter(isOutboundDeletion).map(queueEntry => ({ queueEntry }));
+    const queueEntries = allQueueEntries.filter(isOutboundItemChange);
+
+    if (queueEntries.length === 0 && deleteItems.length === 0) {
       return {
         items: [],
-        warnings: [`Failed to fetch issue types from ${trackerLabel}: ${e instanceof Error ? e.message : 'Unknown error'}`],
+        deleteItems: [],
+        warnings: ['No items in queue'],
         canProceed: false,
       };
     }
 
-    // Get all queued items for this association. The create/update export
-    // pipeline only handles rows with a live plan item; detached delete rows are
-    // drained separately.
-    const queueEntries = OutboundChangeRepository.getByAssociation(associationId)
-      .filter(hasLivePlanItem);
-    if (queueEntries.length === 0) {
-      return {
-        items: [],
-        warnings: ['No items in queue'],
-        canProceed: false,
-      };
+    // Issue types are a Jira concept; Linear returns a synthetic "Issue" entry.
+    // Only needed when there are live create/update entries to resolve types for.
+    let availableTypes: TrackerIssueType[] = [];
+    if (queueEntries.length > 0) {
+      try {
+        const client = await TrackerClientService.getClient(association.tracker_type);
+        availableTypes = await client.getIssueTypes(association.project_key);
+      } catch (e) {
+        // A deletion needs no issue type, so it survives this failure and stays
+        // reviewable — dropping it here left the row queued with nothing on screen.
+        return {
+          items: [],
+          deleteItems,
+          warnings: [`Failed to fetch issue types from ${trackerLabel}: ${e instanceof Error ? e.message : 'Unknown error'}`],
+          canProceed: deleteItems.length > 0,
+        };
+      }
     }
 
     // Build map of all plan items for depth calculation
@@ -531,7 +532,7 @@ export function createExportService(deps: ExportServiceDeps) {
       warnings.push(`${itemsWithoutLabel.length} item(s) using depth-based type fallback (no label set)`);
     }
 
-    return { items, warnings, canProceed };
+    return { items, deleteItems, warnings, canProceed };
   },
 
   /**
@@ -546,9 +547,10 @@ export function createExportService(deps: ExportServiceDeps) {
     // First get the base export preview
     const preview = await service.generateExportPreview(kpmProjectId, associationId);
 
-    if (!preview.canProceed && preview.items.length === 0) {
+    if (!preview.canProceed && preview.items.length === 0 && preview.deleteItems.length === 0) {
       return {
         items: [],
+        deleteItems: [],
         warnings: preview.warnings,
         canProceed: false,
       };
@@ -773,8 +775,14 @@ export function createExportService(deps: ExportServiceDeps) {
       };
     });
 
+    const reviewDeleteItems = await describeDeletions(
+      preview.deleteItems.map(d => d.queueEntry),
+      client
+    );
+
     return {
       items: reviewItems,
+      deleteItems: reviewDeleteItems,
       warnings: preview.warnings,
       canProceed: preview.canProceed,
     };
@@ -788,23 +796,27 @@ export function createExportService(deps: ExportServiceDeps) {
   async executeApprovedExport(
     kpmProjectId: string,
     associationId: string,
-    approvedItemIds: string[]
+    approvedItemIds: string[],
+    approvedDeleteIds: string[] = []
   ): Promise<ExportResult> {
     const result: ExportResult = {
       success: true,
       created: [],
       updated: [],
+      deleted: [],
       errors: [],
+      deleteErrors: [],
+      warnings: [],
     };
 
-    if (approvedItemIds.length === 0) {
+    if (approvedItemIds.length === 0 && approvedDeleteIds.length === 0) {
       return result;
     }
 
     // Get association
     let association = TrackerRepository.getAssociationById(associationId);
     if (!association) {
-      return { success: false, created: [], updated: [], errors: [{ plan_item_id: '', error: 'Association not found' }] };
+      return { success: false, created: [], updated: [], deleted: [], deleteErrors: [], warnings: [], errors: [{ plan_item_id: '', error: 'Association not found' }] };
     }
 
     // Get tracker client for this association's tracker type.
@@ -812,13 +824,14 @@ export function createExportService(deps: ExportServiceDeps) {
     try {
       client = await TrackerClientService.getClient(association.tracker_type);
     } catch (e) {
-      return { success: false, created: [], updated: [], errors: [{ plan_item_id: '', error: `Failed to get ${association.tracker_type} client: ${e instanceof Error ? e.message : 'Unknown'}` }] };
+      return { success: false, created: [], updated: [], deleted: [], deleteErrors: [], warnings: [], errors: [{ plan_item_id: '', error: `Failed to get ${association.tracker_type} client: ${e instanceof Error ? e.message : 'Unknown'}` }] };
     }
 
     // Get queued items - filter to approved ones, but force-include unsynced
     // parents so subtasks don't get orphaned under the epic fallback.
-    const allQueueEntries = OutboundChangeRepository.getByAssociation(associationId)
-      .filter(hasLivePlanItem);
+    const rawQueueEntries = OutboundChangeRepository.getByAssociation(associationId);
+    const allQueueEntries = rawQueueEntries.filter(isOutboundItemChange);
+    const deletions = rawQueueEntries.filter(isOutboundDeletion);
     association = await bootstrapStatusMappingForQueuedTargets(
       association,
       allQueueEntries,
@@ -855,7 +868,7 @@ export function createExportService(deps: ExportServiceDeps) {
 
     const queueEntries = allQueueEntries.filter(e => approvedSet.has(e.plan_item_id));
 
-    if (queueEntries.length === 0) {
+    if (queueEntries.length === 0 && !deletions.some(d => approvedDeleteIds.includes(d.id))) {
       return result;
     }
 
@@ -873,6 +886,12 @@ export function createExportService(deps: ExportServiceDeps) {
 
     // Map to track newly created external keys for parent resolution
     const createdKeys = new Map<string, string>();
+    // Keep the initial projection for each created item. A reference to a
+    // sibling created later in this batch has no tracker key during the first
+    // create call, so it is exported as plain title text. Once every create
+    // has returned its tracker linkage, we can update only those descriptions
+    // whose projection gained a real tracker reference.
+    const createdDescriptions = new Map<string, ExternalMarkdown | null>();
 
     // The transition-and-verify flow is identical across trackers; the reconciler
     // owns it so neither this method nor the adapters branch on tracker type.
@@ -929,14 +948,15 @@ export function createExportService(deps: ExportServiceDeps) {
         // items degrade to the title.
         const trackerBrief = projectWorkBriefToTracker(
           workBriefFromPlanItem(planItem),
-          allItems,
+          [...itemMap.values()],
           refDestinationForTracker(association.tracker_type),
         );
+        createdDescriptions.set(planItem.id, trackerBrief.description);
         const created = await client.createIssue({
           projectKey: association.project_key,
           issueTypeId: entry.target_issue_type_id!,
           summary: trackerBrief.title,
-          description: trackerBrief.context ?? undefined,
+          description: trackerBrief.description ?? undefined,
           parentKey,
           customFields,
           issueFilter: association.issue_filter,
@@ -944,7 +964,13 @@ export function createExportService(deps: ExportServiceDeps) {
             association.status_mapping,
             entry.target_status_category
           ),
+          assignToSelf: deps.shouldAssignExportsToMe(),
         });
+        if (created.assigneeSkippedReason) {
+          result.warnings.push(
+            `${created.key} was created unassigned: ${created.assigneeSkippedReason}`
+          );
+        }
 
         // Fetch the created issue so we record the tracker-assigned status.
         // Prevents sync from showing spurious status updates on the next pass.
@@ -975,6 +1001,7 @@ export function createExportService(deps: ExportServiceDeps) {
           external_type: association.tracker_type,
           external_status: trackerStatus,
           external_url: created.url,
+          ...externalPeopleFields(createdIssue),
           association_id: associationId,
           sync_source: 'local',
           last_synced_at: new Date().toISOString(),
@@ -982,6 +1009,7 @@ export function createExportService(deps: ExportServiceDeps) {
         };
         if (getConfig().claude.debug) console.log('[ExportService] Updating plan item with external_key:', { planItemId: planItem.id, external_key: created.key, external_url: syncUpdate.external_url });
         PlanItemRepository.update(planItem.id, syncUpdate);
+        itemMap.set(planItem.id, { ...planItem, ...syncUpdate });
 
         // Create sync snapshot using the actual Jira data (after ADF roundtrip)
         // This ensures subsequent syncs don't show false changes due to markdown conversion
@@ -1003,6 +1031,58 @@ export function createExportService(deps: ExportServiceDeps) {
         OutboundChangeRepository.setError(entry.id, errorMsg);
         result.success = false;
       }
+    }
+
+    // The create response is KPM's local acknowledgement of the new tracker
+    // item, not an inbound sync. Re-project the just-created descriptions now
+    // that all successful creates have external keys, then make one narrow
+    // outbound update for descriptions that gained a linked reference.
+    const currentItems = [...itemMap.values()];
+    const referenceUpdates = [...createdDescriptions.entries()].flatMap(([planItemId, initialDescription]) => {
+      const planItem = itemMap.get(planItemId);
+      if (!planItem?.external_key) return [];
+
+      const description = projectWorkBriefToTracker(
+        workBriefFromPlanItem(planItem),
+        currentItems,
+        refDestinationForTracker(association.tracker_type),
+      ).description;
+      return normalizeMarkdown(description) === normalizeMarkdown(initialDescription)
+        ? []
+        : [{ planItem, description }];
+    });
+
+    const referenceUpdateResults = await Promise.all(referenceUpdates.map(async ({ planItem, description }) => {
+      try {
+        await client.updateIssue(planItem.external_key!, { description });
+        const updatedIssue = await client.fetchIssue(planItem.external_key!);
+        return { success: true as const, planItem, updatedIssue };
+      } catch (e) {
+        return {
+          success: false as const,
+          planItem,
+          error: e instanceof Error ? e.message : 'Unknown error',
+        };
+      }
+    }));
+
+    const now = new Date().toISOString();
+    for (const referenceUpdate of referenceUpdateResults) {
+      if (!referenceUpdate.success) {
+        result.errors.push({ plan_item_id: referenceUpdate.planItem.id, error: referenceUpdate.error });
+        result.success = false;
+        continue;
+      }
+
+      PlanItemRepository.update(referenceUpdate.planItem.id, { last_synced_at: now });
+      SyncRepository.upsertSnapshot({
+        plan_item_id: referenceUpdate.planItem.id,
+        snapshot_title: referenceUpdate.updatedIssue.title,
+        snapshot_description: referenceUpdate.updatedIssue.description,
+        snapshot_label: referenceUpdate.planItem.label,
+        snapshot_release_tag: referenceUpdate.planItem.release_tag,
+        external_updated_at: referenceUpdate.updatedIssue.updatedAt,
+      });
     }
 
     // Process updates in parallel (they are independent)
@@ -1042,7 +1122,7 @@ export function createExportService(deps: ExportServiceDeps) {
         // Plan refs in the description are resolved to native syntax for the tracker.
         const trackerBriefUpdate = projectWorkBriefToTrackerUpdate(
           workBriefFromPlanItem(planItem),
-          allItems,
+          currentItems,
           refDestinationForTracker(association.tracker_type),
         );
         await client.updateIssue(planItem.external_key!, {
@@ -1098,6 +1178,9 @@ export function createExportService(deps: ExportServiceDeps) {
           if (updateResult.newExternalStatus) {
             updateSyncFields.external_status = updateResult.newExternalStatus;
           }
+          if (updateResult.updatedIssue) {
+            Object.assign(updateSyncFields, externalPeopleFields(updateResult.updatedIssue));
+          }
           PlanItemRepository.update(updateResult.planItem.id, updateSyncFields);
 
           // Create sync snapshot using the actual Jira data (after ADF roundtrip)
@@ -1125,10 +1208,18 @@ export function createExportService(deps: ExportServiceDeps) {
         }
       }
 
-      if (result.created.length > 0 || result.updated.length > 0) {
-        TrackerRepository.updateAssociationLastSynced(associationId);
-      }
     })();
+
+    const drained = await drainDeletions(deletions, approvedDeleteIds, client, {
+      outboundChanges: OutboundChangeRepository,
+    });
+    result.deleted.push(...drained.deleted);
+    result.deleteErrors.push(...drained.errors);
+    if (drained.errors.length > 0) result.success = false;
+
+    if (result.created.length > 0 || result.updated.length > 0 || result.deleted.length > 0) {
+      TrackerRepository.updateAssociationLastSynced(associationId);
+    }
 
     return result;
   },

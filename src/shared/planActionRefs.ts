@@ -31,7 +31,7 @@ export function collectRefIdsInActions(actions: PlanAction[]): string[] {
       }
     } else if (action.type === 'revise_work_brief') {
       consume(action.work_brief.title);
-      consume(action.work_brief.context);
+      consume(action.work_brief.description);
       consume(action.work_brief.intent);
       for (const criterion of action.work_brief.acceptance_criteria) consume(criterion);
     }

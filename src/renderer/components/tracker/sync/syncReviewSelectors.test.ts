@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PlanItem, OutboundChange, SyncReviewItem } from '../../../../shared/types';
+import type { PlanItem, OutboundItemChange, SyncReviewItem } from '../../../../shared/types';
 import {
   buildItemMap,
   buildItemTree,
@@ -49,7 +49,7 @@ function makePlanItem(overrides: Partial<PlanItem> = {}): PlanItem {
   };
 }
 
-function makeQueueEntry(overrides: Partial<OutboundChange> = {}): OutboundChange {
+function makeQueueEntry(overrides: Partial<OutboundItemChange> = {}): OutboundItemChange {
   return {
     id: 'queue-1',
     kpm_project_id: 'proj-1',

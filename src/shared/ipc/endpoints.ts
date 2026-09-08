@@ -103,10 +103,12 @@ export type HandlerFor<R extends EndpointRegistry, K extends keyof R> = (
  * `createRegistryIpcHandlers`, which adds the envelope itself — the handler
  * only returns (or throws on failure) the unwrapped `T`.
  */
-export type UnwrappedResult<E extends EndpointDefinition> = Extract<
-  EndpointResult<E>,
-  { success: true }
-> extends { success: true } & infer TData
+export type UnwrappedResult<E extends EndpointDefinition> = StripSuccessEnvelope<
+  Extract<EndpointResult<E>, { success: true }>
+>;
+
+/** Distributive so a discriminated-union payload unwraps arm by arm instead of inferring the whole envelope. */
+type StripSuccessEnvelope<TResponse> = TResponse extends { success: true } & infer TData
   ? TData
   : never;
 

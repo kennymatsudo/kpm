@@ -23,6 +23,9 @@ interface GeneralSettingsState {
   respectGlobalClaudeMd: boolean;
   isLoadingRespectGlobalClaudeMd: boolean;
   respectGlobalClaudeMdLoaded: boolean;
+  assignExportedIssuesToMe: boolean;
+  isLoadingAssignExportedIssuesToMe: boolean;
+  assignExportedIssuesToMeLoaded: boolean;
   error: string | null;
   loadGeneralSettings: () => Promise<void>;
   loadAnthropicKeyStatus: () => Promise<{ success: boolean; hasKey?: boolean; error?: string }>;
@@ -34,6 +37,8 @@ interface GeneralSettingsState {
   saveApprovalMode: (approvalMode: ChatApprovalMode) => Promise<{ success: boolean; error?: string }>;
   loadRespectGlobalClaudeMd: () => Promise<boolean>;
   saveRespectGlobalClaudeMd: (respectGlobalClaudeMd: boolean) => Promise<{ success: boolean; error?: string }>;
+  loadAssignExportedIssuesToMe: () => Promise<boolean>;
+  saveAssignExportedIssuesToMe: (assignExportedIssuesToMe: boolean) => Promise<{ success: boolean; error?: string }>;
   clearError: () => void;
   reset: () => void;
 }
@@ -52,6 +57,9 @@ const initialState = {
   respectGlobalClaudeMd: true,
   isLoadingRespectGlobalClaudeMd: true,
   respectGlobalClaudeMdLoaded: false,
+  assignExportedIssuesToMe: true,
+  isLoadingAssignExportedIssuesToMe: true,
+  assignExportedIssuesToMeLoaded: false,
   error: null as string | null,
 };
 
@@ -274,6 +282,50 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>((set, get) =
       return { success: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save global instructions setting';
+      set({ error: message });
+      return { success: false, error: message };
+    }
+  },
+
+  loadAssignExportedIssuesToMe: async () => {
+    const state = get();
+    if (state.assignExportedIssuesToMeLoaded) return state.assignExportedIssuesToMe;
+
+    set({ isLoadingAssignExportedIssuesToMe: true, error: null });
+    try {
+      const assignExportedIssuesToMe = await getSetting('assignExportedIssuesToMe');
+      set({
+        assignExportedIssuesToMe,
+        isLoadingAssignExportedIssuesToMe: false,
+        assignExportedIssuesToMeLoaded: true,
+      });
+      return assignExportedIssuesToMe;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load issue assignment setting';
+      set({
+        assignExportedIssuesToMe: true,
+        isLoadingAssignExportedIssuesToMe: false,
+        assignExportedIssuesToMeLoaded: true,
+        error: message,
+      });
+      return true;
+    }
+  },
+
+  saveAssignExportedIssuesToMe: async (assignExportedIssuesToMe) => {
+    set({ error: null });
+    try {
+      const result = await setSetting('assignExportedIssuesToMe', assignExportedIssuesToMe);
+      if (!result.success) {
+        const error = result.error || 'Failed to save issue assignment setting';
+        set({ error });
+        return { success: false, error };
+      }
+
+      set({ assignExportedIssuesToMe, assignExportedIssuesToMeLoaded: true });
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save issue assignment setting';
       set({ error: message });
       return { success: false, error: message };
     }

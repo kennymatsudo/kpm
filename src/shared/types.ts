@@ -21,6 +21,7 @@ export type {
   ChatProvider,
 } from './base-types';
 export { STATUS_CATEGORIES, CHAT_PROVIDERS } from './base-types';
+export type { FolderInspection } from './base-types';
 export type { AgentType, AgentSessionState, AgentSessionRole } from './base-types';
 export type {
   CustomTheme,
@@ -79,7 +80,8 @@ export const CODEX_CHAT_MODELS = [
 ] as const;
 
 export type CodexChatModel = typeof CODEX_CHAT_MODELS[number]['value'];
-export const DEFAULT_CODEX_CHAT_MODEL: CodexChatModel = CODEX_CHAT_MODELS[0].value;
+/** Terra, not the first list entry: the list is ordered by depth, this is the everyday pick. */
+export const DEFAULT_CODEX_CHAT_MODEL: CodexChatModel = 'gpt-5.6-terra';
 
 /** Codex SDK availability/auth status */
 export interface CodexStatus {
@@ -587,6 +589,19 @@ export interface Activity {
   elapsedSeconds?: number;
 }
 
+/**
+ * One unit of work still running after the turn that started it has finished —
+ * a backgrounded shell command or a backgrounded subagent. A turn's `result`
+ * arrives while these are alive, so they are the reason a session can be
+ * "still working" with `isStreaming` false.
+ */
+export interface AgentBackgroundTask {
+  taskId: string;
+  /** Provider's own classification (e.g. `bash`, `agent`); shown only as a fallback when `description` is blank. */
+  taskType: string;
+  description: string;
+}
+
 // =============================================================================
 // Tool Call Logging - structured observability for Claude tool usage
 // =============================================================================
@@ -695,57 +710,72 @@ export interface TrackerTypeMapping {
 /** The three tracker mutations an Outbound Change can carry. */
 export type OutboundChangeOperation = 'create' | 'update' | 'delete';
 
-/**
- * Outbound Change: a pending tracker mutation staged for push. Create and
- * update carry a live plan item (`plan_item_id`); delete rows are detached
- * (`plan_item_id` is null) and snapshot the external identity being removed.
- */
-export interface OutboundChange {
+/** What every Outbound Change carries, whichever mutation it is. */
+interface OutboundChangeBase {
   id: string;
   kpm_project_id: string;
-  plan_item_id: string | null;
   association_id: string;
-  operation: OutboundChangeOperation;
-  target_issue_type_id: string | null;
-  target_issue_type_name: string | null;
-  target_parent_key: string | null;
-  target_status_category: StatusCategory | null;  // Status to sync to Jira
-  custom_field_overrides: CustomFieldValues | null; // Per-item field overrides for export
   queued_by: 'user' | 'claude';
   queued_at: string;
   error_message: string | null;
-  external_key: string | null;   // Snapshot of the target issue key (delete rows)
-  external_id: string | null;    // Snapshot of the target issue id (delete rows)
-  tracker_type: string | null;   // Snapshot of the tracker (delete rows)
 }
 
 /**
- * Narrows to create/update Outbound Changes — those carrying a live plan item —
- * and excludes detached delete rows. The create/update export path uses this to
- * drop delete rows, which are drained separately.
+ * A create or update staged against a live plan item. The plan item still owns
+ * the external identity, so the snapshot columns are null on these rows.
  */
-export function hasLivePlanItem<T extends { plan_item_id: string | null }>(
-  change: T
-): change is T & { plan_item_id: string } {
-  return change.plan_item_id !== null;
-}
-
-/**
- * Outbound Change joined with its live plan item, for display. Only create and
- * update rows join, so `plan_item_id` is always present here.
- */
-export interface OutboundChangeWithPlanItem extends Omit<OutboundChange, 'plan_item_id'> {
+export interface OutboundItemChange extends OutboundChangeBase {
+  operation: 'create' | 'update';
   plan_item_id: string;
-  plan_item: {
-    id: string;
-    title: string;
-    description: string | null;
-    label: string | null;
-    parent_id: string | null;
-    external_key: string | null;
-    external_type: string | null;
-  };
+  target_issue_type_id: string | null;
+  target_issue_type_name: string | null;
+  target_parent_key: string | null;
+  target_status_category: StatusCategory | null;  // Status to sync to the tracker
+  custom_field_overrides: CustomFieldValues | null; // Per-item field overrides for export
+  external_key: null;
+  external_id: null;
+  tracker_type: null;
 }
+
+/**
+ * A staged deletion. Detached, because the plan item is already gone — so the
+ * row snapshots the external identity to remove and carries no export targets.
+ */
+export interface OutboundDeletion extends OutboundChangeBase {
+  operation: 'delete';
+  plan_item_id: null;
+  target_issue_type_id: null;
+  target_issue_type_name: null;
+  target_parent_key: null;
+  target_status_category: null;
+  custom_field_overrides: null;
+  external_key: string;
+  external_id: string | null;
+  tracker_type: string;
+}
+
+/**
+ * Outbound Change: a pending tracker mutation staged for push. Discriminated on
+ * `operation`, so which fields are live is a fact about the type rather than a
+ * convention each reader has to remember.
+ */
+export type OutboundChange = OutboundItemChange | OutboundDeletion;
+
+/** `filter` needs a predicate to narrow a union, hence these two. */
+export function isOutboundDeletion(change: OutboundChange): change is OutboundDeletion {
+  return change.operation === 'delete';
+}
+
+export function isOutboundItemChange(change: OutboundChange): change is OutboundItemChange {
+  return change.operation !== 'delete';
+}
+
+/**
+ * The id Linear's client reports for its one synthetic issue type. Shared so
+ * Jira-only paths can recognize a Linear id instead of forwarding it to Jira,
+ * which answers with a locale-dependent "not a valid ID" error.
+ */
+export const LINEAR_SYNTHETIC_ISSUE_TYPE_ID = 'linear-issue';
 
 /** An issue type from a tracker (Jira issue types; Linear synthesizes a single "Issue"). */
 export interface TrackerIssueType {
@@ -758,7 +788,7 @@ export interface TrackerIssueType {
 
 /** Export preview item with validation status */
 export interface ExportPreviewItem {
-  queueEntry: OutboundChange;
+  queueEntry: OutboundItemChange;
   planItem: PlanItem;
   resolvedType: {
     id: string;
@@ -770,19 +800,29 @@ export interface ExportPreviewItem {
   validationErrors: string[];
 }
 
+/** A staged tracker deletion, ready for review. Detached — no live plan item. */
+export interface ExportDeleteItem {
+  queueEntry: OutboundDeletion;
+}
+
 /** Full export preview */
 export interface ExportPreview {
   items: ExportPreviewItem[];
+  deleteItems: ExportDeleteItem[];
   warnings: string[];
   canProceed: boolean;
 }
 
-/** Export result after pushing to Jira */
+/** Export result after pushing to Jira/Linear */
 export interface ExportResult {
   success: boolean;
   created: { plan_item_id: string; jira_key: string }[];
   updated: { plan_item_id: string; jira_key: string }[];
+  deleted: { external_key: string }[];
   errors: { plan_item_id: string; error: string }[];
+  deleteErrors: { external_key: string; error: string }[];
+  /** Non-fatal notes about issues that were still created or updated. */
+  warnings: string[];
 }
 
 // =============================================================================
@@ -853,9 +893,19 @@ export interface SyncReviewItem extends ExportPreviewItem {
   hasConflict: boolean;
 }
 
+/** A staged tracker deletion under review. Always opt-in — never pre-approved. */
+export interface SyncReviewDeleteItem extends ExportDeleteItem {
+  decision: 'pending' | 'approved' | 'skipped';
+  /** Fetched live so the user sees what they're deleting, not just the key. */
+  currentIssue: { title: string; description: string | null; status: string; url: string } | null;
+  /** Set when the live fetch above failed (e.g. already deleted externally, or offline). */
+  fetchError: string | null;
+}
+
 /** Full sync review data */
 export interface SyncReviewData {
   items: SyncReviewItem[];
+  deleteItems: SyncReviewDeleteItem[];
   warnings: string[];
   canProceed: boolean;
 }
@@ -961,13 +1011,21 @@ export interface PermissionRequest {
   toolName: string;
   targetPath: string | null;
   preview: string;
-  kind: 'tool' | 'write-access';
+  /**
+   * 'write-access' asks for the project's standing write grant; answering yes
+   * persists it. 'elicitation' is an MCP server asking the user for input,
+   * which is answered for that call only and never persisted.
+   */
+  kind: 'write-access' | 'elicitation';
   /** Prompt sentence supplied by the provider, preferred over a reconstructed one. */
   title?: string;
 }
 
-/** User action for permission request */
-export type PermissionAction = 'allow' | 'deny' | 'allow-always' | 'allow-all-remaining';
+/**
+ * User action for a permission request. Scope is carried by the request's
+ * `kind`, not by the answer, so there is nothing to pick between here.
+ */
+export type PermissionAction = 'allow' | 'deny';
 
 /** Permission response sent from renderer to main */
 export interface PermissionResponse {
@@ -976,13 +1034,9 @@ export interface PermissionResponse {
   action: PermissionAction;
 }
 
-/** A persisted "Allow Always" tool permission for a project */
-export interface ToolPermission {
-  id: string;
+/** The user's standing consent for direct writes in a project. */
+export interface ProjectWriteGrant {
   project_id: string;
-  cache_key: string;
-  tool_name: string;
-  label: string;
   granted_at: string;
 }
 
@@ -1144,6 +1198,7 @@ export interface DevSession {
   pr_url: string | null;
   pr_state: string | null;      // 'OPEN' | 'CLOSED' | 'MERGED'
   review_state: string | null;  // 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED'
+  pr_is_draft: boolean;
 
   // Merge ordering (null = derive from plan dependency graph; integer = user explicit override)
   merge_order: number | null;
@@ -1194,6 +1249,7 @@ export interface PrStatus {
   additions: number;
   deletions: number;
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
+  isDraft: boolean;
 }
 
 /** A review comment on a PR (line-level or top-level) */
@@ -1342,6 +1398,7 @@ export interface PrReviewSnapshot {
   baseRefName: string;
   headRefName: string;
   updatedAt: string;
+  isDraft: boolean;
   fetchedAt: string;
   summary: PrReviewSummary;
   threads: PrReviewThread[];
@@ -1483,10 +1540,30 @@ export interface ConfluencePageLink {
   created_at: string;
 }
 
+export type SyncDirection = 'two-way' | 'push-only';
+
+export interface LinearDocumentLink {
+  id: string;
+  project_id: string;
+  document_path: string;
+  linear_document_id: string;
+  slug_id: string | null;
+  document_title: string | null;
+  document_url: string | null;
+  parent_kind: 'project' | 'issue';
+  parent_id: string;
+  direction: SyncDirection;
+  last_synced_at: string | null;
+  local_content_hash: string | null;
+  remote_content_hash: string | null;
+  remote_version: number | null;
+  created_at: string;
+}
+
 /**
- * Preview of sync state between local document and Confluence page.
+ * Preview of sync state between a local document and its published copy.
  */
-export interface ConfluenceSyncPreview {
+export interface DocumentSyncPreview {
   hasConflict: boolean;
   localChanged: boolean;
   remoteChanged: boolean;
@@ -1497,7 +1574,11 @@ export interface ConfluenceSyncPreview {
   localContent: string;
   remoteContent: string;
   remoteVersion: number;
+  pushReceipt: string;
+  pullReceipt: string;
 }
+
+export type ConfluenceSyncPreview = DocumentSyncPreview;
 
 // =============================================================================
 // Global Search Types

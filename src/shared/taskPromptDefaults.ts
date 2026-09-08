@@ -6,51 +6,34 @@
  */
 
 export const TASK_DESCRIPTION_TEMPLATE = `\`\`\`
-[Why this matters. What problem it solves. 1-2 sentences. Start directly with the content — no "Context" or "Summary" header.]
+[Two to four sentences of plain prose. What is wrong or missing today, who it affects, and what changes for them. Start directly with the content — no headings, no "Context" or "Summary" label.]
 
-## Acceptance Criteria
-- [ ] [Observable behavior 1]
-- [ ] [Observable behavior 2]
-
-## Out of Scope
-[Optional. What this ticket explicitly does NOT include.]
-
-## Dependencies
-[Optional. Related tickets, blocking work, or parallel efforts. Reference plan items as \`@plan/<uuid>\` — they render as live chips locally and rewrite to native tracker links on sync.]
-
-## Code References
-[Optional. File paths and specific functions/classes from repos. Include what's relevant about each reference.]
-
-## Verification
-[Optional. Test file paths, commands, or observable system state the implementing agent can use to confirm the work is complete.]
+[Optional closing sentence: what this deliberately does not cover.]
 \`\`\``;
 
-export const TASK_SECTION_RULES = `**Section rules:**
-- Use only the sections above — no extra sections (Tests, Deployment, Metrics, etc.)
-- Required: Acceptance Criteria
-- Optional: Out of Scope, Dependencies, Code References, Verification
-- Omit optional sections if no meaningful content
+export const TASK_WRITING_RULES = `**Altitude:**
+- Describe the problem and the outcome. Never the implementation.
+- No file paths, function or class names, database columns, or library and framework names.
+- No headings. \`## Acceptance Criteria\`, \`## Verification\`, and \`## Code References\` do not belong in a description.
+- If a sentence would only make sense to someone who has read the diff, cut it.
 
-**Acceptance Criteria rules:**
-- 3-5 items maximum — more means the ticket should be broken down
-- Behavioral, not technical — describe observable outcomes, not internal implementation
-- From the user/system perspective — what can be seen, measured, or verified externally
+**Voice:**
+- Plain English, present tense, concrete. The word a smart colleague would use.
+- Do not write: leverage, robust, seamless, streamline, comprehensive, holistic, best-in-class, ensure that, in order to, it is important to note.
+- No meta-commentary about the item itself — "This ticket will…", "As discussed…", "Note that…", "The goal of this task is to…". State the thing directly.
+- No closing sentence that restates what the description already said.
+
+**Acceptance criteria** — the \`acceptance_criteria\` field, never a section in the description:
+- 3-5 items maximum. More means the item should be broken down.
+- Behavioral, not technical — observable outcomes, not internal implementation.
 - Good: "Debug messages containing variable dumps are not stored in Redis"
 - Bad: "The is_debug_variable_dump function returns True for matching patterns"
+- What the implementing agent needs but a stakeholder does not — file paths, functions to preserve, test commands like \`npm test -- src/auth/reset.test.ts\` — belongs in \`intent\` or \`acceptance_criteria\`. Both stay local to KPM.
 
-**Code References rules:**
-- Include specific function or class names, not just file paths — "src/auth/jwt.ts (verifyToken)" is more useful than "src/auth/jwt.ts"
-- Note what's relevant: "src/payments/client.ts (parseResponse) — contains legacy branching to preserve"
-
-**Verification rules:**
-- Use when the ticket will be executed by an agent
-- Prefer runnable commands: \`npm test -- src/auth/reset.test.ts\`, \`make lint\`
-- Or observable system state: "POST /api/reset returns 200 with valid token in body"
-- Omit if acceptance criteria are already self-evident from existing tests
-
-**Document references:**
-- Do not reference any KPM project files or documents (attachments/, notes/, AGENTS.md, CLAUDE.md, or any file in the KPM project folder). These are local to KPM and won't exist when tickets sync to Jira/Linear.
-- Only reference: file paths in connected repos, external URLs (Figma, Confluence, etc.)`;
+**References:**
+- Do not reference KPM project files or documents (attachments/, notes/, AGENTS.md, CLAUDE.md, or any file in the KPM project folder). They do not exist once an item syncs to Jira or Linear.
+- External URLs (Figma, Confluence) are fine in a description when a reader outside KPM can open them.
+- Reference other plan items as \`@plan/<uuid>\`; KPM rewrites them to native tracker links on export.`;
 
 export const DEFAULT_TASK_PROMPT = `### Item Titles
 **Verb-first imperative** — start with an action verb, be specific, under 60 characters.
@@ -58,8 +41,8 @@ export const DEFAULT_TASK_PROMPT = `### Item Titles
 - Bad: "Password reset" *(no verb, too vague)*
 
 ### Item Descriptions
-Use this structure:
+\`description\` is the only field that syncs to Jira and Linear. Write it for a product manager or a developer who has never opened the codebase.
 
 ${TASK_DESCRIPTION_TEMPLATE}
 
-${TASK_SECTION_RULES}`;
+${TASK_WRITING_RULES}`;

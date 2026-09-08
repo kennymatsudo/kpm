@@ -116,7 +116,7 @@ describe('planActionSchema spec field pass-through', () => {
     expect(() => planActionSchema.parse({
       type: 'create_item',
       title: 'Example',
-      description: 'x'.repeat(WORK_BRIEF_LIMITS.context + 1),
+      description: 'x'.repeat(WORK_BRIEF_LIMITS.description + 1),
       parent_id: null,
     })).toThrow();
   });
@@ -128,7 +128,7 @@ describe('planActionSchema spec field pass-through', () => {
       expected_revision: 2,
       work_brief: {
         title: ' Revised title ',
-        context: ' ',
+        description: ' ',
         intent: null,
         acceptance_criteria: [' Criterion '],
       },
@@ -139,7 +139,7 @@ describe('planActionSchema spec field pass-through', () => {
       expected_revision: 2,
       work_brief: {
         title: 'Revised title',
-        context: null,
+        description: null,
         intent: null,
         acceptance_criteria: ['Criterion'],
       },

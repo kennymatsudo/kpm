@@ -1,7 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import type { PlanAction, PlanActionResult, PlanItem } from '../../../shared/types';
-import { hasLivePlanItem } from '../../../shared/types';
+import { isOutboundItemChange } from '../../../shared/types';
 import type {
   IPlanItemRepository,
   IPlanRelationRepository,
@@ -110,7 +110,7 @@ function executeCreateItem(
   const parentId = resolveId(ctx, action.parent_id);
   const workBrief = normalizeWorkBriefDraft({
     title: action.title,
-    context: action.description ?? null,
+    description: action.description ?? null,
     intent: action.intent ?? null,
     acceptance_criteria: action.acceptance_criteria ?? [],
   });
@@ -119,7 +119,7 @@ function executeCreateItem(
     id,
     project_id: ctx.projectId,
     title: workBrief.title,
-    description: workBrief.context,
+    description: workBrief.description,
     intent: workBrief.intent,
     acceptance_criteria: workBrief.acceptance_criteria.length > 0 ? workBrief.acceptance_criteria : null,
     source_document_id: action.source_document_id ?? null,
@@ -250,7 +250,7 @@ function executeReviseWorkBrief(
   const nextBrief = workBriefFromPlanItem(result.item);
   const trackerUpdates: { title?: string; description?: string | null } = {};
   if (previousBrief.title !== nextBrief.title) trackerUpdates.title = nextBrief.title;
-  if (previousBrief.context !== nextBrief.context) trackerUpdates.description = nextBrief.context;
+  if (previousBrief.description !== nextBrief.description) trackerUpdates.description = nextBrief.description;
   if (Object.keys(trackerUpdates).length > 0) {
     ctx.deps.queueTrackerUpdateIfNeeded(previousItem, trackerUpdates, 'claude');
   }
@@ -319,7 +319,7 @@ function executeQueueForTracker(
   const alreadyQueuedItemIds = new Map(
     ctx.deps.outboundChanges
       .getByProject(ctx.projectId)
-      .filter(hasLivePlanItem)
+      .filter(isOutboundItemChange)
       .map((entry) => [entry.plan_item_id, entry.id])
   );
 

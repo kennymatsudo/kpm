@@ -49,7 +49,7 @@ function editDraft(overrides: Partial<PlanTaskEditDraft> = {}): PlanTaskEditDraf
   return {
     workBrief: {
       title: 'Original title',
-      context: 'Original context',
+      description: 'Original context',
       intent: 'Original intent',
       acceptance_criteria: ['Original criterion'],
     },
@@ -66,7 +66,7 @@ describe('buildPlanTaskEditActions', () => {
   it('constructs only a revision-guarded full Work Brief replacement for a brief-only change', () => {
     const workBrief = {
       title: 'Revised title',
-      context: 'Revised context',
+      description: 'Revised context',
       intent: 'Revised intent',
       acceptance_criteria: ['First revised criterion', 'Second revised criterion'],
     };
@@ -100,7 +100,7 @@ describe('buildPlanTaskEditActions', () => {
     expect(buildPlanTaskEditActions(planItem(), editDraft({
       workBrief: {
         title: 'Revised title',
-        context: null,
+        description: null,
         intent: null,
         acceptance_criteria: [],
       },
@@ -116,7 +116,7 @@ describe('buildPlanTaskEditActions', () => {
         expected_revision: 4,
         work_brief: {
           title: 'Revised title',
-          context: null,
+          description: null,
           intent: null,
           acceptance_criteria: [],
         },

@@ -1,8 +1,13 @@
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
+import { trackerDeletionWarning } from '../tracker/shared/trackerDisplay';
 
 interface BulkDeleteConfirmDialogProps {
   itemCount: number;
   descendantCount: number;
+  /** Count of selected/descendant items linked to a tracker issue. */
+  trackerLinkedCount: number;
+  /** Single tracker type if the linked items share one; null/mixed falls back to generic copy. */
+  trackerType?: string | null;
   onDeleteOrphan: () => void;
   onDeleteAll: () => void;
   onCancel: () => void;
@@ -11,12 +16,20 @@ interface BulkDeleteConfirmDialogProps {
 export function BulkDeleteConfirmDialog({
   itemCount,
   descendantCount,
+  trackerLinkedCount,
+  trackerType,
   onDeleteOrphan,
   onDeleteAll,
   onCancel,
 }: BulkDeleteConfirmDialogProps) {
   const hasDescendants = descendantCount > 0;
   const totalToDelete = itemCount + descendantCount;
+
+  const trackerWarning = trackerLinkedCount > 0 ? (
+    <div className="text-warning mt-2">
+      {trackerLinkedCount} linked tracker issue{trackerLinkedCount > 1 ? 's' : ''} {trackerDeletionWarning(trackerType)}
+    </div>
+  ) : null;
 
   const message = hasDescendants ? (
     <>
@@ -25,6 +38,7 @@ export function BulkDeleteConfirmDialog({
         {descendantCount} child item{descendantCount > 1 ? 's' : ''}
       </span>
       . Choose how to handle them:
+      {trackerWarning}
     </>
   ) : (
     <>
@@ -33,6 +47,7 @@ export function BulkDeleteConfirmDialog({
         {itemCount} item{itemCount > 1 ? 's' : ''}
       </span>
       ?
+      {trackerWarning}
     </>
   );
 

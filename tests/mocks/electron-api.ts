@@ -17,7 +17,7 @@ import type {
   TrackerConnection,
   TrackerProjectScope,
   TrackerAssociationWithScope,
-  OutboundChangeWithPlanItem,
+  OutboundChange,
   TrackerTypeMapping,
   ExportPreview,
   ExportResult,
@@ -171,7 +171,7 @@ export function createMockApi() {
         onProgress: noopUnsub,
       },
       exportQueue: {
-        get: vi.fn().mockResolvedValue({ success: true, entries: [] as OutboundChangeWithPlanItem[] }),
+        get: vi.fn().mockResolvedValue({ success: true, entries: [] as OutboundChange[] }),
         add: vi.fn().mockResolvedValue({ success: true }),
         remove: vi.fn().mockResolvedValue({ success: true }),
         updateStatus: vi.fn().mockResolvedValue({ success: true }),

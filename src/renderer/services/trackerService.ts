@@ -213,7 +213,8 @@ export function getTrackerExportReview(projectId: string, associationId: string)
 export function executeApprovedTrackerExport(
   projectId: string,
   associationId: string,
-  approvedItemIds: string[]
+  approvedItemIds: string[],
+  approvedDeleteIds: string[] = []
 ) {
-  return window.api.tracker.export.executeApproved({ projectId, associationId, approvedItemIds });
+  return window.api.tracker.export.executeApproved({ projectId, associationId, approvedItemIds, approvedDeleteIds });
 }

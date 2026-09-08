@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTrackerConfigStore } from '../../../../stores';
-import type { CustomFieldValues, JiraCustomField, SyncReviewItem } from '../../../../../shared/types';
+import type { CustomFieldValues, JiraCustomField, SyncReviewItem, TrackerType } from '../../../../../shared/types';
 
 interface CustomFieldManagementDeps {
   projectKey: string | null;
+  trackerType: TrackerType | null;
   selectedItem: SyncReviewItem | null;
   updateCustomFieldOverrides: (queueEntryId: string, overrides: CustomFieldValues | null) => Promise<void>;
 }
@@ -22,6 +23,7 @@ interface CustomFieldManagementResult {
 
 export function useCustomFieldManagement({
   projectKey,
+  trackerType,
   selectedItem,
   updateCustomFieldOverrides,
 }: CustomFieldManagementDeps): CustomFieldManagementResult {
@@ -47,7 +49,7 @@ export function useCustomFieldManagement({
   // Load custom fields for the selected issue type
   useEffect(() => {
     const loadFields = async () => {
-      if (!projectKey || !selectedIssueTypeId) {
+      if (trackerType !== 'jira' || !projectKey || !selectedIssueTypeId) {
         setCustomFields([]);
         setCustomFieldsError(null);
         setIsLoadingCustomFields(false);
@@ -77,7 +79,7 @@ export function useCustomFieldManagement({
     };
 
     void loadFields();
-  }, [loadAvailableCustomFields, projectKey, selectedIssueTypeId, selectedOverrides]);
+  }, [loadAvailableCustomFields, projectKey, selectedIssueTypeId, selectedOverrides, trackerType]);
 
   const handleCustomFieldChange = (fieldId: string, value: string) => {
     setCustomFieldDraft((prev) => {

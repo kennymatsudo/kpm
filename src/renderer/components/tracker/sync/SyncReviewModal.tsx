@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSyncReviewStore, useTrackerStore } from '../../../stores';
 import { DiffRenderer, StatusTransitionView } from '../DiffRenderer';
 import { StatusMappingForm } from '../mapping/StatusMappingForm';
-import type { CustomFieldValues, JiraCustomField, StatusMapping, SyncReviewItem, TrackerType } from '../../../../shared/types';
+import type { CustomFieldValues, JiraCustomField, StatusMapping, SyncReviewItem, SyncReviewDeleteItem, TrackerType } from '../../../../shared/types';
 import { CloseIcon } from '../../icons';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 import { useFocusTrap } from '../../../hooks/useFocusTrap';
@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from '../../ui/Select';
 import { useAssociationData, useCustomFieldManagement, useSyncItemSelection } from './hooks';
-import { trackerLabelFor } from '../shared/trackerDisplay';
+import { TrackerIcon, trackerDeletionWarning, trackerLabelFor } from '../shared/trackerDisplay';
 import { buildItemMap, buildItemTree, selectCheckedItems, selectValidItems } from './syncReviewSelectors';
 
 interface Props {
@@ -53,13 +53,16 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
   const {
     phase,
     items,
+    deleteItems,
     exportResult,
     error,
     startReview,
     setDecision,
     setDecisions,
+    setDeleteDecision,
     executeApproved,
     removeFromReview,
+    removeDeleteFromReview,
     updateCustomFieldOverrides,
     reset,
   } = useSyncReviewStore();
@@ -70,6 +73,14 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
   const [mappingMode, setMappingMode] = useState(false);
   const trackerLabel = trackerLabelFor(trackerType);
   const { selectedItemId, setSelectedItemId, selectedItem } = useSyncItemSelection({ items });
+  // activePane tracks which side owns the detail view; kept separate from
+  // selectedItemId so it doesn't fight useSyncItemSelection's auto-select-first-item effect.
+  const [activePane, setActivePane] = useState<'item' | 'delete'>('item');
+  const [selectedDeleteId, setSelectedDeleteId] = useState<string | null>(null);
+  const selectedDeleteItem = useMemo(
+    () => (activePane === 'delete' ? deleteItems.find(d => d.queueEntry.id === selectedDeleteId) ?? null : null),
+    [activePane, deleteItems, selectedDeleteId]
+  );
   const {
     customFields,
     isLoadingCustomFields,
@@ -80,7 +91,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
     handleCustomFieldChange,
     handleSaveCustomFields,
     handleClearCustomFields,
-  } = useCustomFieldManagement({ projectKey, selectedItem, updateCustomFieldOverrides });
+  } = useCustomFieldManagement({ projectKey, trackerType, selectedItem, updateCustomFieldOverrides });
 
   // Start review on mount
   useEffect(() => {
@@ -88,9 +99,10 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
     return () => reset();
   }, [projectId, associationId, startReview, reset]);
 
-  // Auto-close modal after export completes successfully
+  // Auto-close modal after export completes successfully. Warnings stay on
+  // screen until dismissed — 1.5s is not enough to read one.
   useEffect(() => {
-    if (phase === 'complete' && exportResult) {
+    if (phase === 'complete' && exportResult?.warnings.length === 0) {
       const timer = setTimeout(() => {
         handleClose();
       }, 1500); // Brief delay to show success message
@@ -99,6 +111,10 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
   }, [phase, exportResult]);
 
   const checkedItems = useMemo(() => selectCheckedItems(items), [items]);
+  const checkedDeleteItems = useMemo(
+    () => deleteItems.filter(item => item.decision === 'approved'),
+    [deleteItems]
+  );
 
   const validItems = useMemo(() => selectValidItems(items), [items]);
 
@@ -191,7 +207,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
   }
 
   // Error with no items
-  if (error && items.length === 0) {
+  if (error && items.length === 0 && deleteItems.length === 0) {
     const hint = syncErrorHint(error, trackerLabel);
     return (
       <ModalShell onClose={handleClose} trackerLabel={trackerLabel}>
@@ -222,7 +238,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
   }
 
   // Empty queue
-  if (items.length === 0) {
+  if (items.length === 0 && deleteItems.length === 0) {
     return (
       <ModalShell onClose={handleClose} trackerLabel={trackerLabel}>
         <div className="flex-1 flex flex-col items-center justify-center px-6">
@@ -243,8 +259,8 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
 
   // Complete state
   if (phase === 'complete' && exportResult) {
-    const successCount = exportResult.created.length + exportResult.updated.length;
-    const failureCount = exportResult.errors.length;
+    const successCount = exportResult.created.length + exportResult.updated.length + exportResult.deleted.length;
+    const failureCount = exportResult.errors.length + exportResult.deleteErrors.length;
 
     return (
       <ModalShell onClose={handleClose} trackerLabel={trackerLabel}>
@@ -263,7 +279,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
             <p className="text-danger text-sm mb-4">{failureCount} failed</p>
           )}
 
-          {(exportResult.created.length > 0 || exportResult.updated.length > 0) && (
+          {(exportResult.created.length > 0 || exportResult.updated.length > 0 || exportResult.deleted.length > 0) && (
             <div className="w-full max-w-sm mt-4 mb-6 p-4 rounded-xl bg-surface-2 border border-border-default space-y-3">
               {exportResult.created.length > 0 && (
                 <div className="flex items-start gap-3">
@@ -281,10 +297,41 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
                   </span>
                 </div>
               )}
+              {exportResult.deleted.length > 0 && (
+                <div className="flex items-start gap-3">
+                  <span className="text-xxs font-semibold uppercase tracking-wide px-2 py-0.5 rounded bg-danger/15 text-danger">Deleted</span>
+                  <span className="text-sm text-text-secondary font-mono flex-1">
+                    {exportResult.deleted.map(d => d.external_key).join(', ')}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          {exportResult.deleteErrors.length > 0 && (
+            <p className="text-danger text-xs mb-4">
+              {exportResult.deleteErrors.length} deletion{exportResult.deleteErrors.length !== 1 ? 's' : ''} failed
+            </p>
+          )}
+
+          {exportResult.warnings.length > 0 && (
+            <div className="w-full max-w-sm mb-6 p-4 rounded-xl bg-warning/10 border border-warning/30 space-y-1">
+              {exportResult.warnings.map((warning) => (
+                <p key={warning} className="text-warning text-xs">{warning}</p>
+              ))}
             </div>
           )}
 
-          <p className="text-text-muted text-xs">Closing automatically...</p>
+          {exportResult.warnings.length > 0 ? (
+            <button
+              type="button"
+              onClick={handleClose}
+              className="px-3 py-1.5 rounded-md text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface-2 transition-colors cursor-pointer"
+            >
+              Close
+            </button>
+          ) : (
+            <p className="text-text-muted text-xs">Closing automatically...</p>
+          )}
         </div>
       </ModalShell>
     );
@@ -354,13 +401,28 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
                   item={item}
                   depth={0}
                   childrenOf={itemTree.childrenOf}
-                  selectedItemId={selectedItemId}
-                  onSelect={setSelectedItemId}
+                  selectedItemId={activePane === 'item' ? selectedItemId : null}
+                  onSelect={(id) => {
+                    setActivePane('item');
+                    setSelectedItemId(id);
+                  }}
                   onToggle={handleToggleItem}
                   trackerLabel={trackerLabel}
                 />
               ))}
             </div>
+
+            {deleteItems.length > 0 && (
+              <DeletionsSection
+                deleteItems={deleteItems}
+                selectedDeleteId={activePane === 'delete' ? selectedDeleteId : null}
+                onSelect={(queueEntryId) => {
+                  setActivePane('delete');
+                  setSelectedDeleteId(queueEntryId);
+                }}
+                onToggle={(queueEntryId, decision) => setDeleteDecision(queueEntryId, decision)}
+              />
+            )}
           </div>
         </div>
 
@@ -376,10 +438,16 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
               onSaved={(saved) => void handleMappingSaved(saved)}
               onBack={() => setMappingMode(false)}
             />
+          ) : selectedDeleteItem ? (
+            <DeletionDetailPanel
+              item={selectedDeleteItem}
+              onRemove={() => void removeDeleteFromReview(selectedDeleteItem.queueEntry.id)}
+            />
           ) : selectedItem ? (
             <DetailPanel
               item={selectedItem}
               onRemove={() => handleRemove(selectedItem.planItem.id)}
+              supportsCustomFields={trackerType === 'jira'}
               hasIssueType={!!selectedIssueTypeId}
               issueTypeId={selectedIssueTypeId}
               customFields={customFields}
@@ -419,10 +487,10 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
           </button>
           <button
             onClick={handleExecute}
-            disabled={checkedItems.length === 0 || isExporting}
+            disabled={checkedItems.length === 0 && checkedDeleteItems.length === 0 || isExporting}
             className={`
               px-4 py-2 text-xs font-semibold rounded-lg transition-all duration-150 flex items-center gap-2
-              ${checkedItems.length > 0 && !isExporting
+              ${(checkedItems.length > 0 || checkedDeleteItems.length > 0) && !isExporting
                 ? 'bg-accent text-white hover:bg-accent-hover active:scale-[0.98] cursor-pointer'
                 : 'bg-surface-3 text-text-muted cursor-not-allowed'
               }
@@ -438,7 +506,12 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
-                <span>Export {checkedItems.length} item{checkedItems.length !== 1 ? 's' : ''}</span>
+                <span>
+                  {(() => {
+                    const total = checkedItems.length + checkedDeleteItems.length;
+                    return `Export ${total} item${total !== 1 ? 's' : ''}`;
+                  })()}
+                </span>
               </>
             )}
           </button>
@@ -693,9 +766,169 @@ function ItemRow({ item, depth = 0, isSelected, onSelect, onToggle, trackerLabel
   );
 }
 
+interface DeletionsSectionProps {
+  deleteItems: SyncReviewDeleteItem[];
+  selectedDeleteId: string | null;
+  onSelect: (queueEntryId: string) => void;
+  onToggle: (queueEntryId: string, decision: SyncReviewDeleteItem['decision']) => void;
+}
+
+// Each deletion is an explicit, unchecked-by-default opt-in, separate from the
+// create/update tree's "select all" — Jira deletes are permanent, Linear trashes are slow to undo.
+function DeletionsSection({ deleteItems, selectedDeleteId, onSelect, onToggle }: DeletionsSectionProps) {
+  return (
+    <div className="mt-3 pt-2 border-t border-danger/20">
+      <p className="px-2 pb-1.5 text-xxs font-bold uppercase tracking-wider text-danger/80">
+        Deletions ({deleteItems.length})
+      </p>
+      <div className="space-y-0.5">
+        {deleteItems.map((item) => (
+          <DeletionRow
+            key={item.queueEntry.id}
+            item={item}
+            isSelected={selectedDeleteId === item.queueEntry.id}
+            onSelect={() => onSelect(item.queueEntry.id)}
+            onToggle={(decision) => onToggle(item.queueEntry.id, decision)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface DeletionRowProps {
+  item: SyncReviewDeleteItem;
+  isSelected: boolean;
+  onSelect: () => void;
+  onToggle: (decision: SyncReviewDeleteItem['decision']) => void;
+}
+
+function DeletionRow({ item, isSelected, onSelect, onToggle }: DeletionRowProps) {
+  const isChecked = item.decision === 'approved';
+  const { tracker_type: trackerType, external_key: externalKey } = item.queueEntry;
+
+  return (
+    <div
+      onClick={onSelect}
+      className={`
+        flex items-start gap-2.5 py-2 px-2.5 rounded-lg cursor-pointer transition-all duration-100 bg-danger/5
+        ${isSelected ? 'ring-1 ring-danger/30' : 'hover:bg-danger/8'}
+      `}
+    >
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle(isChecked ? 'pending' : 'approved');
+        }}
+        className={`
+          w-4 h-4 mt-0.5 rounded border-[1.5px] flex-shrink-0 flex items-center justify-center transition-all duration-100 cursor-pointer
+          ${isChecked ? 'bg-danger border-danger' : 'border-danger/40 hover:border-danger'}
+        `}
+      >
+        {isChecked && (
+          <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+          </svg>
+        )}
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <TrackerIcon trackerType={trackerType} className="w-3 h-3 flex-shrink-0" />
+          <span className="text-tiny font-mono text-text-secondary">{externalKey}</span>
+        </div>
+        <p className="text-xxs text-danger/90 mt-0.5 leading-snug">
+          {externalKey} {trackerDeletionWarning(trackerType)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+interface DeletionDetailPanelProps {
+  item: SyncReviewDeleteItem;
+  onRemove: () => void;
+}
+
+/** Read-only counterpart to DetailPanel: nothing here is editable, only reviewable. */
+function DeletionDetailPanel({ item, onRemove }: DeletionDetailPanelProps) {
+  const { tracker_type: trackerType, external_key: externalKey } = item.queueEntry;
+  const trackerLabel = trackerLabelFor(trackerType);
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="px-4 py-3 border-b border-border-subtle flex-shrink-0" style={{ background: 'var(--surface-1)' }}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xxs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-danger/15 text-danger">
+            Delete
+          </span>
+          <TrackerIcon trackerType={trackerType} className="w-3.5 h-3.5" />
+          <span className="text-xxs font-mono text-text-muted/80">{externalKey}</span>
+        </div>
+        <h3 className="text-sm font-semibold text-text-primary leading-snug line-clamp-2">
+          {item.currentIssue?.title ?? externalKey}
+        </h3>
+      </div>
+
+      <div className="mx-4 mt-3 p-2.5 rounded-lg bg-danger/8 border border-danger/15 flex-shrink-0">
+        <p className="text-tiny text-danger leading-snug">
+          {externalKey} {trackerDeletionWarning(trackerType)}
+        </p>
+      </div>
+
+      <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="p-4 space-y-4">
+          {item.fetchError ? (
+            <p className="text-xxs text-text-muted italic">
+              Couldn't load current {trackerLabel} details: {item.fetchError}
+            </p>
+          ) : item.currentIssue ? (
+            <>
+              <div>
+                <span className="text-xxs font-semibold text-text-muted uppercase tracking-wider">Status</span>
+                <p className="text-xs text-text-secondary mt-1">{item.currentIssue.status}</p>
+              </div>
+              <div>
+                <span className="text-xxs font-semibold text-text-muted uppercase tracking-wider">Description</span>
+                <div className="mt-1.5 p-3 rounded-lg bg-surface-1 border border-border-subtle max-h-64 overflow-y-auto">
+                  <span className="font-mono text-xs text-text-secondary whitespace-pre-wrap break-words leading-relaxed">
+                    {item.currentIssue.description || <span className="text-text-tertiary italic">No description</span>}
+                  </span>
+                </div>
+              </div>
+              <a
+                href={item.currentIssue.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xxs font-medium text-accent hover:text-accent-hover"
+              >
+                Open in {trackerLabel}
+              </a>
+            </>
+          ) : (
+            <p className="text-xxs text-text-muted italic">Current {trackerLabel} details unavailable.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="px-4 py-2 border-t border-border-subtle flex-shrink-0" style={{ background: 'var(--surface-1)' }}>
+        <button
+          onClick={onRemove}
+          className="flex items-center gap-1.5 px-2 py-1 text-xxs font-medium text-danger/70 hover:text-danger hover:bg-danger/8 rounded transition-all cursor-pointer"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          <span>Cancel this deletion</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 interface DetailPanelProps {
   item: SyncReviewItem;
   onRemove: () => void;
+  supportsCustomFields: boolean;
   hasIssueType: boolean;
   issueTypeId: string | null;
   customFields: JiraCustomField[];
@@ -714,6 +947,7 @@ interface DetailPanelProps {
 function DetailPanel({
   item,
   onRemove,
+  supportsCustomFields,
   hasIssueType,
   issueTypeId: _issueTypeId,
   customFields,
@@ -860,8 +1094,8 @@ function DetailPanel({
             />
           )}
 
-          {/* Custom Fields - Collapsible Section */}
-          <div className="border border-border-subtle rounded-lg overflow-hidden" style={{ background: 'var(--surface-1)' }}>
+          {supportsCustomFields && (
+            <div className="border border-border-subtle rounded-lg overflow-hidden" style={{ background: 'var(--surface-1)' }}>
             <button
               onClick={() => setCustomFieldsExpanded(!customFieldsExpanded)}
               className="w-full px-3 py-2 flex items-center justify-between text-left hover:bg-surface-2 transition-colors cursor-pointer"
@@ -996,7 +1230,8 @@ function DetailPanel({
                 )}
               </div>
             )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -114,7 +114,7 @@ describe('PlanActionExecutor — create_item with spec fields', () => {
         expected_revision: 1,
         work_brief: {
           title: 'Item to refine',
-          context: null,
+          description: null,
           intent: 'Make X reliable',
           acceptance_criteria: ['X never throws under condition Y'],
         },

@@ -159,7 +159,7 @@ export function TaskEditModal({
   const draft = useMemo<PlanTaskEditDraft>(() => ({
     workBrief: {
       title: title.trim(),
-      context: description.trim() || null,
+      description: description.trim() || null,
       intent: intent.trim() || null,
       acceptance_criteria: sanitizedCriteria,
     },
@@ -232,7 +232,6 @@ export function TaskEditModal({
         isOpen={isOpen}
         onClose={handleRequestClose}
         size="xl"
-        className="flex flex-col overflow-hidden"
         closeOnBackdropClick={!isDirty}
         preventClose={isSaving}
         onAnimationComplete={handleAnimationComplete}
@@ -240,7 +239,7 @@ export function TaskEditModal({
       >
         {/* Accent gradient line */}
         <div
-          className="h-[2px] opacity-60"
+          className="h-[2px] shrink-0 opacity-60"
           style={{
             background: 'linear-gradient(90deg, transparent, var(--color-accent) 20%, var(--color-accent) 80%, transparent)',
           }}
@@ -249,7 +248,6 @@ export function TaskEditModal({
         <ModalHeader
           id="task-edit-title"
           onClose={handleRequestClose}
-          className="shrink-0"
           icon={
             <svg className="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -281,12 +279,12 @@ export function TaskEditModal({
 
           <WorkBriefEditor
             value={{
-              context: description,
+              description,
               intent,
               acceptance_criteria: criteria,
             }}
             onChange={(workBrief) => {
-              setDescription(workBrief.context ?? '');
+              setDescription(workBrief.description ?? '');
               setIntent(workBrief.intent ?? '');
               setCriteria(workBrief.acceptance_criteria);
             }}

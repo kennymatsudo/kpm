@@ -104,7 +104,7 @@ export function createPlanChangeTools(
 Plan items carry structured fields that flow to the agent, the reviewer, and generated artifacts:
 - **intent** (one sentence, local-only): what "done" means at a glance. The decided outcome.
 - **acceptance_criteria** (string[], local-only): testable checklist the agent will satisfy. Each entry is one criterion.
-- **description** (markdown, **synced to Jira/Linear**): rationale, context, rejected alternatives. Not the contract — the story.
+- **description** (markdown, **synced to Jira/Linear**): why the work matters, in two to four sentences of plain prose. Written for a product manager or a developer who has never opened the codebase: the problem, who it affects, what changes for them, and any alternative already rejected. Keep implementation out of it — no file paths, function or class names, or library and framework names.
 - **source_document_id** (local-only): if this item was extracted from an iteration doc, carry the breadcrumb here.
 - **primary_repo_id** (local-only): the connected repo ID most likely to own implementation. Use the repo IDs shown in Project Context. Set null when multiple repos are plausible and none is clearly primary.
 - **affected_repo_ids** (local-only): other connected repo IDs the item is expected to affect. Do not repeat primary_repo_id.
@@ -115,23 +115,24 @@ Repo targeting:
 - Never guess an opaque repo ID. Use only IDs shown in Project Context.
 - Leave primary_repo_id null when the evidence is ambiguous. The user can change it during review.
 
-Together, title + description/context + intent + acceptance_criteria are the item's **Work Brief**. After creation, **revise_work_brief is the only chat action allowed to change any Work Brief field**. First fetch the full current item, then submit the complete replacement Work Brief with its current work_brief_revision as expected_revision. Never send a partial brief. A revision conflict means you must fetch again before proposing another revision.
+Together, title + description + intent + acceptance_criteria are the item's **Work Brief**. After creation, **revise_work_brief is the only chat action allowed to change any Work Brief field**. First fetch the full current item, then submit the complete replacement Work Brief with its current work_brief_revision as expected_revision. Never send a partial brief. A revision conflict means you must fetch again before proposing another revision.
 
-Use intent + acceptance_criteria as the primary shape for implementation items. Use description for discovery/research items where criteria cannot be enumerated yet. Never put **Intent** or **Acceptance Criteria** headings inside description/context; headings there are ordinary context and do not define the execution contract.
+Use intent + acceptance_criteria as the primary shape for implementation items. Use description for discovery/research items where criteria cannot be enumerated yet. Never put **Intent** or **Acceptance Criteria** headings inside description; headings there are ordinary context and do not define the execution contract.
 
 **Sync boundary — critical.** When an item has a Jira/Linear association, its \`description\` is pushed to the external tracker as-is. Keep description sync-clean:
 - **Never** mention KPM document IDs (e.g., \`doc-42\`, \`source_document_id: ...\`) or other local-only resources inside description. Those references are dead outside the developer's machine.
 - **Never** cite iteration-doc filenames or local project-folder paths unless they correspond to files actually in the synced code repo.
 - Breadcrumbs to iteration docs live in the \`source_document_id\` field, never in prose.
-- Code references (repo-relative paths like \`src/auth/session.ts\`) are fine in description — they exist wherever the code does.
+- **Never** put code references in description — file paths, function names, and test commands read as noise to a stakeholder. They belong in intent or acceptance_criteria.
 - intent and acceptance_criteria are local-only and not synced today, so they can reference local context freely.
 
 To reference another plan item from a description, intent, or criterion, follow **Plan References** in the system prompt.
 
 Item actions:
 - create_item: see full example below
-- revise_work_brief: { "type": "revise_work_brief", "item_id": "...", "expected_revision": 3, "work_brief": { "title": "Complete title", "context": "Complete context or null", "intent": "Complete intent or null", "acceptance_criteria": ["Complete criterion list"] } }
-  - Fetch the item first and replace all four fields. Never use update_item for title, description/context, intent, or acceptance_criteria.
+- revise_work_brief: { "type": "revise_work_brief", "item_id": "...", "expected_revision": 3, "work_brief": { "title": "Complete title", "description": "Complete description or null", "intent": "Complete intent or null", "acceptance_criteria": ["Complete criterion list"] } }
+  - Fetch the item first and replace all four fields. Never use update_item for title, description, intent, or acceptance_criteria.
+  - create_item may omit description entirely; revise_work_brief may not. Send every Work Brief field, using null for the empty ones.
 - set_repo_targets: { "type": "set_repo_targets", "item_id": "...", "repository_scope": { "primary_repo_id": null, "affected_repo_ids": [] } }
   - Replaces the complete Repository Scope. Use only connected repo IDs from Project Context.
 - update_item: { "type": "update_item", "item_id": "...", "updates": { "status_category": "done" } }
@@ -159,7 +160,7 @@ Full create_item example (implementation item):
     "Warning does not interrupt active form input (e.g., typing in a textarea)",
     "Dismissing the modal still lets the session expire on schedule"
   ],
-  "description": "Users report losing draft work when sessions time out silently. Rejected: auto-extending the session without asking — conflicts with session-fixation mitigations.",
+  "description": "Users lose draft work when their session times out with no warning. Support sees this weekly on long forms. Extending the session automatically was rejected because it weakens the protections that make timeouts worth having.",
   "parent_id": null,
   "primary_repo_id": null,
   "affected_repo_ids": []
@@ -169,8 +170,8 @@ Exploratory item example (no criteria yet):
 {
   "type": "create_item",
   "title": "Investigate storage budget for offline mode",
-  "intent": "Decide whether IndexedDB is a viable target for offline plan caching.",
-  "description": "Open question: are per-origin quotas predictable enough to rely on? Compare against OPFS.",
+  "intent": "Decide whether IndexedDB is a viable target for offline plan caching, measured against OPFS.",
+  "description": "We do not yet know how much plan data a browser will reliably hold offline, so we cannot commit to an offline mode. This item settles that question before any offline work is scoped.",
   "parent_id": null
 }
 

@@ -1,6 +1,7 @@
 import { exportEndpoints, type ExportEndpointName } from '../../../shared/ipc/exportEndpoints';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { ExportService, TypeMappingService } from '../../db/domain';
+import type { IOutboundChangeRepository } from '../../db/interfaces';
 import { TrackerClientService } from '../../trackers/TrackerClientService';
 import { createRegistryIpcHandlers } from '../validation/utils';
 
@@ -13,13 +14,14 @@ type ExportHandlers = { [K in ExportEndpointName]: UnwrappedHandlerFor<typeof ex
 function buildExportHandlers(
   exportService: ExportService,
   typeMappingService: TypeMappingService,
+  outboundChanges: IOutboundChangeRepository,
 ): ExportHandlers {
   return {
     // ==========================================================================
     // Sync Queue Operations
     // ==========================================================================
 
-    'queue.get': ({ projectId }) => ({ entries: exportService.getQueuedItems(projectId) }),
+    'queue.get': ({ projectId }) => ({ entries: outboundChanges.getByProject(projectId) }),
 
     'queue.add': ({ projectId, itemIds, associationId }) =>
       exportService.queueItems(projectId, itemIds, 'user', associationId),
@@ -39,8 +41,6 @@ function buildExportHandlers(
       exportService.updateQueueCustomFieldOverrides(queueEntryId, customFieldOverrides);
     },
 
-    'queue.count': ({ projectId }) => ({ count: exportService.getQueueCount(projectId) }),
-
     // ==========================================================================
     // Export Preview and Execute
     // ==========================================================================
@@ -55,8 +55,8 @@ function buildExportHandlers(
       return { reviewData };
     },
 
-    executeApproved: async ({ projectId, associationId, approvedItemIds }) => {
-      const result = await exportService.executeApprovedExport(projectId, associationId, approvedItemIds);
+    executeApproved: async ({ projectId, associationId, approvedItemIds, approvedDeleteIds }) => {
+      const result = await exportService.executeApprovedExport(projectId, associationId, approvedItemIds, approvedDeleteIds);
       return { result };
     },
 
@@ -105,7 +105,8 @@ function buildExportHandlers(
 export function registerExportHandlers(
   exportService: ExportService,
   typeMappingService: TypeMappingService,
+  outboundChanges: IOutboundChangeRepository,
 ): void {
-  const handlers = buildExportHandlers(exportService, typeMappingService);
+  const handlers = buildExportHandlers(exportService, typeMappingService, outboundChanges);
   createRegistryIpcHandlers(exportEndpoints, handlers, 'Export operation failed');
 }

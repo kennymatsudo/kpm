@@ -60,13 +60,70 @@ export function WorkflowSettings({ currentProjectId }: Props) {
       <div className="px-5 py-4">
         {activeSubTab === 'git' && <GitSubTab />}
         {activeSubTab === 'tracker' && (
-          currentProjectId ? <TrackerSettings currentProjectId={currentProjectId} /> : <ProjectGatedMessage />
+          <div className="space-y-4">
+            <IssueAssignmentSection />
+            {currentProjectId ? <TrackerSettings currentProjectId={currentProjectId} /> : <ProjectGatedMessage />}
+          </div>
         )}
         {activeSubTab === 'storybook' && (
           currentProjectId ? <StorybookSettings currentProjectId={currentProjectId} /> : <ProjectGatedMessage />
         )}
       </div>
     </div>
+  );
+}
+
+function IssueAssignmentSection() {
+  const {
+    assignExportedIssuesToMe,
+    isLoadingAssignExportedIssuesToMe,
+    loadAssignExportedIssuesToMe,
+    saveAssignExportedIssuesToMe,
+  } = useGeneralSettingsStore();
+
+  useEffect(() => {
+    void loadAssignExportedIssuesToMe();
+  }, [loadAssignExportedIssuesToMe]);
+
+  const handleToggle = async (next: boolean) => {
+    const result = await saveAssignExportedIssuesToMe(next);
+    if (!result.success) toast.error(result.error || 'Failed to save issue assignment setting');
+  };
+
+  return (
+    <SettingsSection
+      icon={
+        <svg className="w-4 h-4 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+        </svg>
+      }
+      title="Issue Assignment"
+      description="Choose who new issues are assigned to when you export them."
+      collapsible={false}
+      statusBadge={assignExportedIssuesToMe ? <StatusBadge variant="success">On</StatusBadge> : <StatusBadge variant="warning">Off</StatusBadge>}
+    >
+      <div className="flex items-center justify-between gap-4 rounded-lg border border-border-subtle bg-surface-2/60 px-3 py-3">
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-text-primary">Assign issues I export to me</p>
+          <p className="text-xs text-text-muted">
+            New Jira and Linear issues are assigned to your connected tracker account. Existing issues are never
+            reassigned, so a change you make in the tracker stays put.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={assignExportedIssuesToMe}
+          disabled={isLoadingAssignExportedIssuesToMe}
+          onClick={() => void handleToggle(!assignExportedIssuesToMe)}
+          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${assignExportedIssuesToMe ? 'bg-accent' : 'bg-surface-4'}`}
+        >
+          <span
+            className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${assignExportedIssuesToMe ? 'translate-x-5' : 'translate-x-0.5'}`}
+          />
+        </button>
+      </div>
+    </SettingsSection>
   );
 }
 

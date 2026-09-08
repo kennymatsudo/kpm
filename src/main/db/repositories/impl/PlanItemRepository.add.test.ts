@@ -142,7 +142,7 @@ describe('PlanItemRepository.add (registry-generated INSERT)', () => {
 
     const result = repo.compareAndReviseWorkBrief('item-brief', 1, {
       title: ' Revised ',
-      context: ' Context ',
+      description: ' Context ',
       intent: ' Intent ',
       acceptance_criteria: [],
     });
@@ -161,10 +161,10 @@ describe('PlanItemRepository.add (registry-generated INSERT)', () => {
     repo.add({ id: 'item-brief', project_id: 'project-1', title: 'Original', item_order: 0 });
 
     expect(repo.compareAndReviseWorkBrief('item-brief', 1, {
-      title: ' Original ', context: null, intent: null, acceptance_criteria: [],
+      title: ' Original ', description: null, intent: null, acceptance_criteria: [],
     }).status).toBe('unchanged');
     expect(repo.compareAndReviseWorkBrief('item-brief', 2, {
-      title: 'Changed', context: null, intent: null, acceptance_criteria: [],
+      title: 'Changed', description: null, intent: null, acceptance_criteria: [],
     }).status).toBe('conflict');
     expect(repo.get('item-brief')?.work_brief_revision).toBe(1);
   });

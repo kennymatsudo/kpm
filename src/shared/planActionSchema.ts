@@ -32,7 +32,7 @@ export const PLAN_ACTION_REGISTRY = {
       .describe('Concise title for the plan item'),
     description: z
       .string()
-      .max(WORK_BRIEF_LIMITS.context)
+      .max(WORK_BRIEF_LIMITS.description)
       .optional()
       .describe('Rationale and context; synced to Jira or Linear when linked'),
     intent: z

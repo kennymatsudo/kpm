@@ -4,7 +4,7 @@ import { subscribe } from './storeEvents';
 import { useExportStore } from './tracker/useExportStore';
 import { useSyncReviewStore } from './tracker/useSyncReviewStore';
 import type { TrackerExportCompletedEvent } from './storeEvents';
-import type { SyncReviewItem } from '../../shared/types';
+import type { SyncReviewItem, SyncReviewDeleteItem } from '../../shared/types';
 
 function createReviewItem(planItemId: string, queueEntryId: string): SyncReviewItem {
   return {
@@ -69,6 +69,32 @@ function createReviewItem(planItemId: string, queueEntryId: string): SyncReviewI
     statusTransition: null,
     decision: 'pending',
     hasConflict: false,
+  };
+}
+
+function createDeleteReviewItem(queueEntryId: string): SyncReviewDeleteItem {
+  return {
+    queueEntry: {
+      id: queueEntryId,
+      kpm_project_id: 'project-1',
+      plan_item_id: null,
+      association_id: 'assoc-1',
+      operation: 'delete',
+      target_issue_type_id: null,
+      target_issue_type_name: null,
+      target_parent_key: null,
+      target_status_category: null,
+      custom_field_overrides: null,
+      queued_by: 'user',
+      queued_at: '2024-01-01T00:00:00.000Z',
+      error_message: null,
+      external_key: 'ENG-99',
+      external_id: 'issue-99',
+      tracker_type: 'linear',
+    },
+    decision: 'pending',
+    currentIssue: null,
+    fetchError: null,
   };
 }
 
@@ -139,7 +165,7 @@ describe('useSyncReviewStore', () => {
     });
     api.tracker.export.executeApproved.mockResolvedValue({
       success: true,
-      result: { success: true, created: [], updated: [], errors: [] },
+      result: { success: true, created: [], updated: [], deleted: [], errors: [], deleteErrors: [] },
     });
     useSyncReviewStore.setState({
       items: [{ ...createReviewItem('plan-1', 'queue-1'), decision: 'approved' }],
@@ -153,7 +179,43 @@ describe('useSyncReviewStore', () => {
       projectId: 'project-1',
       associationId: 'assoc-1',
       approvedItemIds: ['plan-1'],
+      approvedDeleteIds: [],
     });
     expect(events).toEqual([{ projectId: 'project-1', associationId: 'assoc-1' }]);
+  });
+
+  it('sends only the approved deletes, leaving the pending ones queued', async () => {
+    api.tracker.export.executeApproved.mockResolvedValue({
+      success: true,
+      result: { success: true, created: [], updated: [], deleted: [], errors: [], deleteErrors: [] },
+    });
+    useSyncReviewStore.setState({
+      items: [],
+      deleteItems: [createDeleteReviewItem('queue-del-1'), createDeleteReviewItem('queue-del-2')],
+      phase: 'reviewing',
+    });
+
+    useSyncReviewStore.getState().setDeleteDecision('queue-del-1', 'approved');
+    await useSyncReviewStore.getState().executeApproved('project-1', 'assoc-1');
+
+    expect(api.tracker.export.executeApproved).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      associationId: 'assoc-1',
+      approvedItemIds: [],
+      approvedDeleteIds: ['queue-del-1'],
+    });
+  });
+
+  it('does not call the export IPC when nothing is approved, including pending deletes', async () => {
+    useSyncReviewStore.setState({
+      items: [],
+      deleteItems: [createDeleteReviewItem('queue-del-1')],
+      phase: 'reviewing',
+    });
+
+    const result = await useSyncReviewStore.getState().executeApproved('project-1', 'assoc-1');
+
+    expect(result).toBeNull();
+    expect(api.tracker.export.executeApproved).not.toHaveBeenCalled();
   });
 });

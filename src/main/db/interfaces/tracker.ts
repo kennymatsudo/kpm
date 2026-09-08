@@ -8,7 +8,7 @@ import type {
   CustomFieldValues,
   StatusMapping,
   OutboundChange,
-  OutboundChangeWithPlanItem,
+  OutboundItemChange,
   SyncSnapshot,
   TrackerAssociation,
   TrackerAssociationWithScope,
@@ -78,13 +78,10 @@ export interface ISyncRepository {
 export interface IOutboundChangeRepository {
   get(id: string): OutboundChange | undefined;
   getByProject(projectId: string): OutboundChange[];
-  getByProjectWithPlanItems(projectId: string): OutboundChangeWithPlanItem[];
   getByPlanItem(planItemId: string): OutboundChange | undefined;
   getByItemId(planItemId: string): OutboundChange | undefined;
   getByAssociation(associationId: string): OutboundChange[];
-  getQueuedItemsWithPlanData(projectId: string): OutboundChangeWithPlanItem[];
-  getQueueCount(projectId: string): number;
-  add(entry: Omit<OutboundChange, 'id' | 'plan_item_id' | 'operation' | 'queued_at' | 'error_message' | 'custom_field_overrides' | 'external_key' | 'external_id' | 'tracker_type'> & { plan_item_id: string; operation: 'create' | 'update'; custom_field_overrides?: CustomFieldValues | null }): OutboundChange;
+  add(entry: Omit<OutboundItemChange, 'id' | 'plan_item_id' | 'operation' | 'queued_at' | 'error_message' | 'custom_field_overrides' | 'external_key' | 'external_id' | 'tracker_type'> & { plan_item_id: string; operation: 'create' | 'update'; custom_field_overrides?: CustomFieldValues | null }): OutboundChange;
   add(projectId: string, planItemId: string, associationId: string, operation: 'create' | 'update', queuedBy: 'user' | 'claude'): OutboundChange | null;
   addDelete(entry: { kpm_project_id: string; association_id: string; external_key: string; external_id: string | null; tracker_type: string; queued_by: 'user' | 'claude' }): OutboundChange;
   update(id: string, updates: Partial<Pick<OutboundChange, 'target_issue_type_id' | 'target_issue_type_name' | 'target_parent_key' | 'target_status_category' | 'custom_field_overrides' | 'error_message'>>): void;

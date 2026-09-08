@@ -5,7 +5,7 @@ import { projectWorkBriefToExecution, projectWorkBriefToTracker } from './projec
 
 const brief: WorkBrief = {
   title: 'Ship feature',
-  context: 'Context for @plan/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  description: 'Context for @plan/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   intent: 'Keep the contract local',
   acceptance_criteria: ['Criterion stays local'],
   revision: 2,
@@ -17,12 +17,12 @@ const referencedItem = {
 } as PlanItem;
 
 describe('Work Brief projections', () => {
-  it('projects only title and translated context to trackers', () => {
+  it('projects only title and translated description to trackers', () => {
     const projected = projectWorkBriefToTracker(brief, [referencedItem], 'jira');
 
     expect(projected.title).toBe('Ship feature');
-    expect(projected.context).toContain('Referenced item');
-    expect(projected.context).not.toContain('@plan/');
+    expect(projected.description).toContain('Referenced item');
+    expect(projected.description).not.toContain('@plan/');
     expect(projected).not.toHaveProperty('intent');
     expect(projected).not.toHaveProperty('acceptance_criteria');
   });
@@ -30,7 +30,7 @@ describe('Work Brief projections', () => {
   it('renders the structured execution contract without parsing context headings', () => {
     const execution = projectWorkBriefToExecution({
       ...brief,
-      context: 'Background\n\n## Intent\n\nThis remains context.',
+      description: 'Background\n\n## Intent\n\nThis remains context.',
     });
 
     expect(execution).toContain('## Intent\n\nKeep the contract local');

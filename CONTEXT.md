@@ -33,17 +33,35 @@ A **connected repo** is a git repository attached to a project (the `Repo` type 
 - The **active worktree** is a linked git worktree the user has switched the connected repo to (`repos.active_worktree_path`, null when none), set via the "Switch worktree" menu.
 - The **effective path** is where the connected repo currently resolves on disk: the active worktree if set, otherwise the main checkout. `resolveEffectiveRepoPath` (`src/shared/repoPath.ts`) is the one resolver both processes read it through; every connected-repo read — chat tools, system prompts, workspace file access, add-dir scoping, branch watching — resolves through it so the switch is honored consistently.
 
+**Branch facts** are the git questions KPM asks a checkout repeatedly, each with exactly one resolver in `src/main/services/repo/branchFacts.ts`: which branch is checked out (`resolveCurrentBranch`), which branch is the repo's default (`resolveDefaultBranch`), which base branch to compare against (`resolveBaseBranch`), whether a branch is off limits to an agent (`protectedBranchReason` / `classifyPushTarget`), and whether a branch has an upstream (`hasUpstream`). "No branch" is always `null`. The one irreducible difference: on an unborn branch `.git/HEAD` names the branch while `rev-parse` fails, so the pure `normalizeHeadRef` the watcher uses answers where `resolveCurrentBranch` returns `null`.
+
+A **git write** is an invocation that moves a branch ref, locally or on a remote. All of them go through `src/main/services/repo/gitWrites.ts` (`publishBranch`, `deleteRemoteBranch`, `deleteLocalBranch`), which owns the policy, the argv, and the invocation. Each takes a **write authorization** saying why the caller may move the ref: `chatWriteGrant` (chat, which must request the conversation's write grant) or `boardSession` (the user's own action on a session they started). Reads are not git writes and keep their own paths.
+
 Distinct from a **session worktree** (`dev_sessions.worktree_path`): a throwaway worktree scaffolded per board agent execution for isolated writes. The two never cross — switching a connected repo's active worktree does not touch session worktrees, and board execution does not read `active_worktree_path`.
 
 ## Work Brief and Repository Scope
 
-A Plan Item's **Work Brief** is the revisioned aggregate that defines the work: `title`, optional **context** (persisted in the legacy `description` column), optional `intent`, and structured `acceptance_criteria`. Chat replaces the complete aggregate through `revise_work_brief` with an expected revision; semantic changes increment `work_brief_revision` once. Empty criteria are represented as `[]` in the aggregate and persisted as SQL `NULL`. Context headings are ordinary prose and are never parsed into execution fields.
+A Plan Item's **Work Brief** is the revisioned aggregate that defines the work: `title`, optional `description`, optional `intent`, and structured `acceptance_criteria`. Chat replaces the complete aggregate through `revise_work_brief` with an expected revision; semantic changes increment `work_brief_revision` once. Empty criteria are represented as `[]` in the aggregate and persisted as SQL `NULL`. Headings inside `description` are ordinary prose and are never parsed into execution fields.
 
 A Plan Item's **Repository Scope** is separate from its Work Brief. It records which connected repos the item is expected to affect: one optional **primary repo** and any number of **affected repos**. Changing scope does not revise the Work Brief and does not trigger tracker sync. The primary repo is the default when board execution starts; a dev session may still run against a different connected repo without changing the Plan Item's Repository Scope.
 
 An **unassigned** Plan Item has no primary repo. When work spans multiple connected repos but none is clearly primary, affected repos may remain recorded while the primary repo stays unassigned. Removing a connected repo removes its Repository Scope association and never promotes another repo automatically.
 
 A new dev session snapshots both the execution projection in `initial_instructions` and the corresponding Work Brief revision. Resuming a pending/inactive session reuses that immutable instruction snapshot; a supplemental user prompt may constrain the resumed turn but does not replace the captured contract. Legacy sessions have an unknown (`NULL`) Work Brief revision.
+
+## Outbound Change
+
+An **Outbound Change** is one pending tracker mutation staged for push (the `outbound_changes` table). It comes in two shapes, discriminated on `operation`:
+
+- An **Outbound Item Change** (`create` | `update`) is staged against a live plan item. The plan item still owns the external identity, so the snapshot columns are null.
+- An **Outbound Deletion** (`delete`) is **detached**: the plan item is already gone, so the row snapshots the external identity to remove (`external_key`, `external_id`, `tracker_type`) and carries no export targets. `isOutboundDeletion` / `isOutboundItemChange` (`src/shared/types.ts`) are how callers narrow, and `toOutboundChange` in `OutboundChangeRepository` is the one place a SQL row becomes either variant.
+
+Staging and draining are two adjacent owners, and nothing else drives a deletion:
+
+- `removePlanItem` (`db/domain/PlanItemRemoval.ts`) **stages**: every item about to disappear gets a deletion queued in the same unit of work as the delete.
+- The **deletion drain** (`db/domain/TrackerDeletionDrain.ts`) **describes and drains**: `describeDeletions` attaches each row's current tracker state for review, `drainDeletions` deletes the approved rows and clears them from the queue. A row that fails keeps its place with the error recorded, so the next drain retries it.
+
+A deletion needs no issue type, plan item, parent, or status mapping, so it is deliberately independent of everything the create/update export path resolves — a failure there cannot take the staged deletions with it.
 
 ## Terminal session
 

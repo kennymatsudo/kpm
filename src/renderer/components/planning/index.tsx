@@ -194,6 +194,18 @@ export function PlanView({
     [planItems, selectedItemIds]
   );
 
+  const trackerLinkedDeletion = useMemo(() => {
+    const combinedIds = new Set([...selectedItemIds, ...descendantIds]);
+    const linked = planItems.filter(
+      (item) => combinedIds.has(item.id) && item.external_key && item.external_type
+    );
+    const trackerTypes = new Set(linked.map((item) => item.external_type));
+    return {
+      count: linked.length,
+      trackerType: trackerTypes.size === 1 ? [...trackerTypes][0] : null,
+    };
+  }, [planItems, selectedItemIds, descendantIds]);
+
   const handleReparent = useCallback(
     async (itemIds: string[], newParentId: string | null) => {
       const actions = itemIds.map((id) => ({
@@ -625,6 +637,8 @@ export function PlanView({
         <BulkDeleteConfirmDialog
           itemCount={selectedItemIds.size}
           descendantCount={descendantIds.size}
+          trackerLinkedCount={trackerLinkedDeletion.count}
+          trackerType={trackerLinkedDeletion.trackerType}
           onDeleteOrphan={handleBulkDeleteOrphan}
           onDeleteAll={handleBulkDeleteAll}
           onCancel={closeBulkDeleteDialog}

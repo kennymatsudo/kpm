@@ -18,6 +18,17 @@ describe('settings registry codecs', () => {
     });
   });
 
+  describe('assignExportedIssuesToMe', () => {
+    const def = SETTINGS.assignExportedIssuesToMe;
+    it('defaults to on for installs that never set it', () => {
+      expect(def.decode(null)).toBe(true);
+      expect(def.decode(undefined)).toBe(true);
+    });
+    it('respects an explicit opt-out', () => {
+      expect(def.decode(def.encode(false))).toBe(false);
+    });
+  });
+
   describe('chatProvider', () => {
     const def = SETTINGS.chatProvider;
     it('decodes known providers', () => {
@@ -63,11 +74,11 @@ describe('settings registry codecs', () => {
   describe('chatCodexModel', () => {
     const def = SETTINGS.chatCodexModel;
     it('decodes a known codex model', () => {
-      expect(def.decode('gpt-5.6-terra')).toBe('gpt-5.6-terra');
+      expect(def.decode('gpt-5.6-sol')).toBe('gpt-5.6-sol');
     });
     it('folds unknown/unset to the default codex model', () => {
-      expect(def.decode(null)).toBe('gpt-5.6-sol');
-      expect(def.decode('gpt-5.5')).toBe('gpt-5.6-sol');
+      expect(def.decode(null)).toBe('gpt-5.6-terra');
+      expect(def.decode('gpt-5.5')).toBe('gpt-5.6-terra');
     });
   });
 

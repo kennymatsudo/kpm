@@ -9,7 +9,7 @@ import {
 
 export interface TrackerWorkBriefProjection {
   title: string;
-  context: ExternalMarkdown | null;
+  description: ExternalMarkdown | null;
 }
 
 export function projectWorkBriefToTracker(
@@ -19,8 +19,8 @@ export function projectWorkBriefToTracker(
 ): TrackerWorkBriefProjection {
   return {
     title: workBrief.title,
-    context: workBrief.context
-      ? toExternalMarkdown(workBrief.context, planItems, destination)
+    description: workBrief.description
+      ? toExternalMarkdown(workBrief.description, planItems, destination)
       : null,
   };
 }
@@ -33,7 +33,7 @@ export function projectWorkBriefToTrackerUpdate(
   const projected = projectWorkBriefToTracker(workBrief, planItems, destination);
   return {
     summary: projected.title,
-    description: projected.context ?? EMPTY_EXTERNAL_MARKDOWN,
+    description: projected.description ?? EMPTY_EXTERNAL_MARKDOWN,
   };
 }
 
@@ -49,8 +49,8 @@ export function projectWorkBriefToExecution(workBrief: WorkBrief): string {
       workBrief.acceptance_criteria.map((criterion) => `- [ ] ${criterion}`).join('\n'),
     );
   }
-  if (workBrief.context) {
-    sections.push('## Context', workBrief.context);
+  if (workBrief.description) {
+    sections.push('## Context', workBrief.description);
   } else if (!workBrief.intent && workBrief.acceptance_criteria.length === 0) {
     sections.push('## Context', 'No context provided.');
   }

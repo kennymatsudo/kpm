@@ -7,6 +7,7 @@ import type {
   ImportResult,
   TrackerProgressCallback,
 } from '../../../shared/types';
+import { externalPeopleFields } from './externalPeopleFields';
 
 export interface ImportServiceDeps {
   tracker: ITrackerRepository;
@@ -137,12 +138,7 @@ export function createImportService(deps: ImportServiceDeps) {
         external_url: issue.url,
         external_parent_key: issue.parentKey,
         external_epic_key: issue.epicKey,
-        external_assignee_id: issue.assignee?.id ?? null,
-        external_assignee_name: issue.assignee?.name ?? null,
-        external_assignee_avatar_url: issue.assignee?.avatarUrl ?? null,
-        external_creator_id: issue.creator?.id ?? null,
-        external_creator_name: issue.creator?.name ?? null,
-        external_creator_avatar_url: issue.creator?.avatarUrl ?? null,
+        ...externalPeopleFields(issue),
       }));
 
       try {

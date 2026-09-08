@@ -13,6 +13,7 @@ import type {
   TrackerProjectScope,
   TrackerType,
 } from '../../../shared/types';
+import { LINEAR_SYNTHETIC_ISSUE_TYPE_ID } from '../../../shared/types';
 import type { ITrackerRepository } from '../../db/interfaces';
 import { failure, success, wrap, type AsyncResult, type ServiceResult, wrapAsync } from '../result';
 import type { ImportService, SyncService } from '../../db/domain';
@@ -189,6 +190,12 @@ export function createTrackerService(deps: TrackerServiceDeps) {
 
     // ---- Jira-specific project queries (no Linear equivalent) -------------
     getCustomFields(projectKey: string, issueTypeId: string): AsyncResult<JiraCustomField[]> {
+      // Linear has no custom fields, and forwarding its synthetic issue-type id
+      // to Jira surfaces a locale-dependent "not a valid ID" error that reads
+      // like a Jira outage. Fail here with something the caller can act on.
+      if (issueTypeId === LINEAR_SYNTHETIC_ISSUE_TYPE_ID) {
+        return Promise.resolve(failure('Custom fields are a Jira feature; this project is linked to Linear.'));
+      }
       return wrapAsync(async () => {
         const client = await deps.clientService.getJiraClient();
         return client.getCustomFields(projectKey, issueTypeId);

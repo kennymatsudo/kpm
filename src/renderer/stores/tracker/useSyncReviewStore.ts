@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import type { CustomFieldValues, SyncReviewData, SyncReviewItem, ExportResult } from '../../../shared/types';
+import type {
+  CustomFieldValues,
+  SyncReviewData,
+  SyncReviewItem,
+  SyncReviewDeleteItem,
+  ExportResult,
+} from '../../../shared/types';
 import {
   executeApprovedTrackerExport,
   getTrackerExportReview,
@@ -12,6 +18,7 @@ interface SyncReviewState {
   // Review data
   reviewData: SyncReviewData | null;
   items: SyncReviewItem[];
+  deleteItems: SyncReviewDeleteItem[];
 
   // Navigation state
   phase: ReviewPhase;
@@ -25,15 +32,20 @@ interface SyncReviewState {
   startReview: (projectId: string, associationId: string) => Promise<void>;
   setDecision: (itemId: string, decision: SyncReviewItem['decision']) => void;
   setDecisions: (itemIds: string[], decision: SyncReviewItem['decision']) => void;
+  /** Deletes are keyed by queue entry id (no plan item) and never touched by setDecisions. */
+  setDeleteDecision: (queueEntryId: string, decision: SyncReviewDeleteItem['decision']) => void;
   executeApproved: (projectId: string, associationId: string) => Promise<ExportResult | null>;
   removeFromReview: (itemId: string) => Promise<void>;
+  removeDeleteFromReview: (queueEntryId: string) => Promise<void>;
   updateCustomFieldOverrides: (queueEntryId: string, overrides: CustomFieldValues | null) => Promise<void>;
   reset: () => void;
+  resetProjectState: () => void;
 }
 
 export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
   reviewData: null,
   items: [],
+  deleteItems: [],
   phase: 'idle',
   currentIndex: 0,
   exportResult: null,
@@ -44,10 +56,12 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
     try {
       const result = await getTrackerExportReview(projectId, associationId);
       if (result.success) {
+        const hasReviewable = result.reviewData.items.length > 0 || result.reviewData.deleteItems.length > 0;
         set({
           reviewData: result.reviewData,
           items: result.reviewData.items,
-          phase: result.reviewData.items.length > 0 ? 'reviewing' : 'summary',
+          deleteItems: result.reviewData.deleteItems,
+          phase: hasReviewable ? 'reviewing' : 'summary',
           currentIndex: 0,
         });
       } else {
@@ -75,19 +89,30 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
     }));
   },
 
+  setDeleteDecision: (queueEntryId, decision) => {
+    set((state) => ({
+      deleteItems: state.deleteItems.map((item) =>
+        item.queueEntry.id === queueEntryId ? { ...item, decision } : item
+      ),
+    }));
+  },
+
   executeApproved: async (projectId, associationId) => {
-    const { items } = get();
+    const { items, deleteItems } = get();
     const approvedItemIds = items
       .filter((item) => item.decision === 'approved')
       .map((item) => item.planItem.id);
+    const approvedDeleteIds = deleteItems
+      .filter((item) => item.decision === 'approved')
+      .map((item) => item.queueEntry.id);
 
-    if (approvedItemIds.length === 0) {
+    if (approvedItemIds.length === 0 && approvedDeleteIds.length === 0) {
       return null;
     }
 
     set({ phase: 'exporting', error: null });
     try {
-      const result = await executeApprovedTrackerExport(projectId, associationId, approvedItemIds);
+      const result = await executeApprovedTrackerExport(projectId, associationId, approvedItemIds, approvedDeleteIds);
       if (result.success) {
         emit({
           type: 'tracker-export-completed',
@@ -125,6 +150,19 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
     return Promise.resolve();
   },
 
+  removeDeleteFromReview: (queueEntryId) => {
+    emit({
+      type: 'sync-review-item-removed',
+      payload: { queueEntryId },
+    });
+
+    set((state) => ({
+      deleteItems: state.deleteItems.filter((i) => i.queueEntry.id !== queueEntryId),
+    }));
+
+    return Promise.resolve();
+  },
+
   updateCustomFieldOverrides: (queueEntryId, overrides) => {
     emit({
       type: 'sync-review-custom-field-overrides-updated',
@@ -146,6 +184,18 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
     set({
       reviewData: null,
       items: [],
+      deleteItems: [],
+      phase: 'idle',
+      currentIndex: 0,
+      exportResult: null,
+      error: null,
+    });
+  },
+  resetProjectState: () => {
+    set({
+      reviewData: null,
+      items: [],
+      deleteItems: [],
       phase: 'idle',
       currentIndex: 0,
       exportResult: null,

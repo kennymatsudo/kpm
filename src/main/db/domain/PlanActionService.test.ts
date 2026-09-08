@@ -52,20 +52,20 @@ function createHarness(seed: PlanItem[] = [], connectedRepoIds: string[] = []) {
   });
   const del = vi.fn((id: string) => store.delete(id));
   const compareAndReviseWorkBrief = vi.fn((id: string, expectedRevision: number, brief: {
-    title: string; context: string | null; intent: string | null; acceptance_criteria: string[];
+    title: string; description: string | null; intent: string | null; acceptance_criteria: string[];
   }) => {
     const existing = store.get(id);
     if (!existing) return { status: 'not_found' as const };
     if (existing.work_brief_revision !== expectedRevision) return { status: 'conflict' as const, item: existing };
     const unchanged = existing.title === brief.title
-      && existing.description === brief.context
+      && existing.description === brief.description
       && existing.intent === brief.intent
       && JSON.stringify(existing.acceptance_criteria ?? []) === JSON.stringify(brief.acceptance_criteria);
     if (unchanged) return { status: 'unchanged' as const, item: existing };
     const item = {
       ...existing,
       title: brief.title,
-      description: brief.context,
+      description: brief.description,
       intent: brief.intent,
       acceptance_criteria: brief.acceptance_criteria.length > 0 ? brief.acceptance_criteria : null,
       work_brief_revision: existing.work_brief_revision + 1,
@@ -226,7 +226,7 @@ describe('createPlanActionExecutor', () => {
     expect(spies.queueTrackerUpdateIfNeeded).toHaveBeenCalledTimes(1);
   });
 
-  it('revises the full Work Brief and queues tracker sync only for title/context changes', () => {
+  it('revises the full Work Brief and queues tracker sync only for title/description changes', () => {
     const { deps, store, spies } = createHarness([makeItem({ id: 'a', title: 'Old', intent: 'Old intent' })]);
 
     const result = run(deps, [{
@@ -235,7 +235,7 @@ describe('createPlanActionExecutor', () => {
       expected_revision: 1,
       work_brief: {
         title: 'New',
-        context: 'Context',
+        description: 'Context',
         intent: 'New intent',
         acceptance_criteria: ['Done'],
       },
@@ -255,7 +255,7 @@ describe('createPlanActionExecutor', () => {
 
     const result = run(deps, [{
       type: 'revise_work_brief', item_id: 'a', expected_revision: 1,
-      work_brief: { title: 'New', context: null, intent: null, acceptance_criteria: [] },
+      work_brief: { title: 'New', description: null, intent: null, acceptance_criteria: [] },
     }]);
 
     expect(result.success).toBe(false);
@@ -377,7 +377,7 @@ describe('createPlanActionExecutor', () => {
     const result = run(deps, [{
       type: 'revise_work_brief', item_id: 'a', expected_revision: 1,
       work_brief: {
-        title: 'Task', context: null, intent: null,
+        title: 'Task', description: null, intent: null,
         acceptance_criteria: ['Depends on @plan/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
       },
     }]);

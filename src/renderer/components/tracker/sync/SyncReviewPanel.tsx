@@ -53,7 +53,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
         isOpen={true}
         onClose={handleClose}
         size={isAnalyzing ? '2xl' : 'lg'}
-        className={isAnalyzing ? 'flex flex-col max-h-[80vh]' : ''}
+        className={isAnalyzing ? 'h-[720px]' : ''}
         zIndex={Z_INDEX.panel}
       >
         {isAnalyzing ? (
@@ -65,7 +65,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
                 Analyzing changes... {syncProgress.current}/{syncProgress.total}
               </p>
             </ModalHeader>
-            <div className="flex-1 overflow-y-auto p-5">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
               <SyncReviewSkeleton />
             </div>
           </>
@@ -88,7 +88,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
   if (syncError && !syncPreview) {
     return (
       <Modal isOpen={true} onClose={handleClose} size="lg" zIndex={Z_INDEX.panel}>
-        <div className="p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
           <div className="text-center py-6">
             <div className="w-12 h-12 rounded-xl bg-danger-muted flex items-center justify-center mx-auto mb-3">
               <svg className="w-6 h-6 text-danger" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -139,7 +139,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
       isOpen={true}
       onClose={handleClose}
       size="2xl"
-      className="flex flex-col max-h-[80vh]"
+      className="h-[760px]"
       zIndex={Z_INDEX.panel}
       preventClose={isSyncing}
       aria-labelledby="sync-review-title"
@@ -153,7 +153,7 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
       </ModalHeader>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-6">
+      <div className="min-h-0 flex-1 overflow-y-auto p-5 space-y-6">
         {/* Up to date state */}
         {isUpToDate && (
           <div className="text-center py-8">

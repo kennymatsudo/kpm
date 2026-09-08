@@ -15,7 +15,7 @@ import { STATUS_CATEGORIES } from '../types';
 import type {
   ExportPreview,
   ExportResult,
-  OutboundChangeWithPlanItem,
+  OutboundChange,
   SyncReviewData,
   TrackerTypeMapping,
 } from '../types';
@@ -51,7 +51,7 @@ export const exportEndpoints = {
   'queue.get': {
     channel: 'export:queue:get',
     params: z.object({ projectId: uuid }),
-    result: resultOf<RegistryResponse<{ entries: OutboundChangeWithPlanItem[] }>>(),
+    result: resultOf<RegistryResponse<{ entries: OutboundChange[] }>>(),
   },
   'queue.add': {
     channel: 'export:queue:add',
@@ -82,12 +82,6 @@ export const exportEndpoints = {
     params: z.object({ queueEntryId: uuid, customFieldOverrides: z.record(z.string(), z.string()).nullable() }),
     result: resultOf<RegistryResponse>(),
   },
-  'queue.count': {
-    channel: 'export:queue:count',
-    params: z.object({ projectId: uuid }),
-    result: resultOf<RegistryResponse<{ count: number }>>(),
-  },
-
   preview: {
     channel: 'export:preview',
     params: z.object({ projectId: uuid, associationId: uuid }),
@@ -100,7 +94,12 @@ export const exportEndpoints = {
   },
   executeApproved: {
     channel: 'export:execute-approved',
-    params: z.object({ projectId: uuid, associationId: uuid, approvedItemIds: z.array(uuid) }),
+    params: z.object({
+      projectId: uuid,
+      associationId: uuid,
+      approvedItemIds: z.array(uuid),
+      approvedDeleteIds: z.array(uuid).default([]),
+    }),
     result: resultOf<RegistryResponse<{ result: ExportResult }>>(),
   },
 

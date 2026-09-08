@@ -354,13 +354,13 @@ export class PlanItemRepository implements IPlanItemRepository {
       : null;
     const row = this.stmts.reviseWorkBrief.get(
       normalized.title,
-      normalized.context,
+      normalized.description,
       normalized.intent,
       encodedCriteria,
       itemId,
       expectedRevision,
       normalized.title,
-      normalized.context,
+      normalized.description,
       normalized.intent,
       encodedCriteria,
     ) as Record<string, unknown> | undefined;

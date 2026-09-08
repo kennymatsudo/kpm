@@ -40,6 +40,13 @@ export function ReviseWorkBriefDetail({ action, item }: ReviseWorkBriefDetailPro
 
       <div>
         <div className="text-xxs font-semibold text-text-muted uppercase tracking-wider mb-1">
+          Description
+        </div>
+        <DiffViewer oldContent={item?.description ?? ''} newContent={nextBrief.description ?? ''} />
+      </div>
+
+      <div>
+        <div className="text-xxs font-semibold text-text-muted uppercase tracking-wider mb-1">
           Acceptance Criteria
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -56,13 +63,6 @@ export function ReviseWorkBriefDetail({ action, item }: ReviseWorkBriefDetailPro
             tone="added"
           />
         </div>
-      </div>
-
-      <div>
-        <div className="text-xxs font-semibold text-text-muted uppercase tracking-wider mb-1">
-          Context
-        </div>
-        <DiffViewer oldContent={item?.description ?? ''} newContent={nextBrief.context ?? ''} />
       </div>
     </div>
   );

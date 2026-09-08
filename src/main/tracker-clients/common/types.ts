@@ -65,6 +65,13 @@ export interface CreateIssueParams {
    * post-create transition instead.
    */
   initialStatusName?: string;
+  /**
+   * Assign the new issue to the account behind this client's credentials.
+   * Each client resolves its own viewer id, since only it knows how its
+   * tracker names a user. A tracker that cannot assign at create time ignores
+   * this and reports why via `CreatedIssue.assigneeSkippedReason`.
+   */
+  assignToSelf?: boolean;
 }
 
 export interface CreatedIssue {
@@ -72,6 +79,12 @@ export interface CreatedIssue {
   key: string;
   /** User-facing browse URL for the created issue. */
   url: string;
+  /**
+   * Set when `assignToSelf` was requested but the tracker refused the assignee
+   * and the issue was created unassigned instead. The issue exists either way,
+   * so this is a warning to surface, not an error.
+   */
+  assigneeSkippedReason?: string;
 }
 
 export interface UpdateIssueParams {
@@ -127,6 +140,8 @@ export interface TrackerClient {
   getIssueTypes(projectKey: string): Promise<TrackerIssueType[]>;
   createIssue(params: CreateIssueParams): Promise<CreatedIssue>;
   updateIssue(issueKey: string, params: UpdateIssueParams): Promise<void>;
+  /** Delete the issue outright. Jira: permanent. Linear: moves to trash (~30-day recovery). */
+  deleteIssue(issueKey: string): Promise<void>;
   getTransitions(issueKey: string): Promise<TrackerTransition[]>;
   transitionIssue(issueKey: string, transitionId: string, toDoneCategory?: boolean): Promise<void>;
   /** All workflow states/statuses for the project. Used to seed status mappings. */

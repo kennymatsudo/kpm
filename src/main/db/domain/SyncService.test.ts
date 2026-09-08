@@ -43,6 +43,7 @@ function createClient(issue: ExternalIssue): TrackerClient {
     getIssueTypes: vi.fn(),
     createIssue: vi.fn(),
     updateIssue: vi.fn(),
+    deleteIssue: vi.fn(),
     getTransitions: vi.fn(),
     transitionIssue: vi.fn(),
     getProjectStatuses: vi.fn(),

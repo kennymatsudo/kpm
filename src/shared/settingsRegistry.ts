@@ -157,6 +157,7 @@ export const SETTINGS = {
   lastOpenedProjectId,
   connectPromptSeen: booleanSetting('connect_prompt_seen', false),
   respectGlobalClaudeMd: booleanSetting('respect_global_claude_md', true),
+  assignExportedIssuesToMe: booleanSetting('assign_exported_issues_to_me', true),
   windowBounds,
 } as const;
 

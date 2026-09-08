@@ -2,11 +2,12 @@ import { create } from 'zustand';
 import type {
   CustomFieldValues,
   TrackerTypeMapping,
-  OutboundChangeWithPlanItem,
+  OutboundChange,
   ExportPreview,
   ExportResult,
   StatusCategory,
 } from '../../../shared/types';
+import { isOutboundItemChange } from '../../../shared/types';
 import { subscribe } from '../storeEvents';
 import {
   addTrackerExportQueue,
@@ -23,7 +24,7 @@ import {
   updateTrackerExportQueueStatus,
 } from '../../services/trackerService';
 
-function getQueueCountsByAssociation(entries: OutboundChangeWithPlanItem[]): Record<string, number> {
+function getQueueCountsByAssociation(entries: OutboundChange[]): Record<string, number> {
   return entries.reduce<Record<string, number>>((counts, entry) => {
     if (!entry.association_id) return counts;
     counts[entry.association_id] = (counts[entry.association_id] ?? 0) + 1;
@@ -33,7 +34,7 @@ function getQueueCountsByAssociation(entries: OutboundChangeWithPlanItem[]): Rec
 
 interface ExportState {
   // Queue state
-  queueEntries: OutboundChangeWithPlanItem[];
+  queueEntries: OutboundChange[];
   queueCount: number;
   queueCountsByAssociation: Record<string, number>;
   isLoadingQueue: boolean;
@@ -97,10 +98,11 @@ interface ExportState {
 
   // Reset
   reset: () => void;
+  resetProjectState: () => void;
 }
 
 const initialState = {
-  queueEntries: [] as OutboundChangeWithPlanItem[],
+  queueEntries: [] as OutboundChange[],
   queueCount: 0,
   queueCountsByAssociation: {} as Record<string, number>,
   isLoadingQueue: false,
@@ -126,7 +128,11 @@ export const useExportStore = create<ExportState>((set, get) => ({
     try {
       const result = await getTrackerExportQueue(projectId);
       if (result.success) {
-        const itemIds = new Set<string>(result.entries.map((entry: OutboundChangeWithPlanItem) => entry.plan_item_id));
+        const itemIds = new Set<string>(
+          result.entries
+            .map((entry: OutboundChange) => entry.plan_item_id)
+            .filter((id): id is string => id !== null)
+        );
         set({
           queueEntries: result.entries,
           queueCount: result.entries.length,
@@ -174,7 +180,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
       if (queueResult.success && queueResult.entries) {
         const itemIdSet = new Set(itemIds);
         for (const entry of queueResult.entries) {
-          if (itemIdSet.has(entry.plan_item_id)) {
+          if (entry.plan_item_id !== null && itemIdSet.has(entry.plan_item_id)) {
             await updateTrackerExportQueueStatus(entry.id, statusCategory);
           }
         }
@@ -198,7 +204,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
         return;
       }
       const entries = get().queueEntries.filter(e => e.id !== queueEntryId);
-      const itemIds = new Set(entries.map(e => e.plan_item_id));
+      const itemIds = new Set(entries.map(e => e.plan_item_id).filter((id): id is string => id !== null));
       set({
         queueEntries: entries,
         queueCount: entries.length,
@@ -224,7 +230,8 @@ export const useExportStore = create<ExportState>((set, get) => ({
 
       set((state) => ({
         queueEntries: state.queueEntries.map((entry) =>
-          entry.id === queueEntryId
+          // Only a create/update carries custom fields; a staged deletion has no payload to override.
+          entry.id === queueEntryId && isOutboundItemChange(entry)
             ? { ...entry, custom_field_overrides: overrides }
             : entry
         ),
@@ -396,6 +403,11 @@ export const useExportStore = create<ExportState>((set, get) => ({
   },
 
   reset: () => set({
+    ...initialState,
+    queuedItemIds: new Set<string>(),
+    recentlyImportedIds: new Set<string>(),
+  }),
+  resetProjectState: () => set({
     ...initialState,
     queuedItemIds: new Set<string>(),
     recentlyImportedIds: new Set<string>(),

@@ -4,7 +4,7 @@ import { PLAN_ITEM_FIELDS } from './planItemFields';
 
 export const WORK_BRIEF_LIMITS = {
   title: PLAN_ITEM_FIELDS.title.fieldKind.maxLength,
-  context: PLAN_ITEM_FIELDS.description.fieldKind.maxLength,
+  description: PLAN_ITEM_FIELDS.description.fieldKind.maxLength,
   intent: PLAN_ITEM_FIELDS.intent.fieldKind.maxLength,
   criteria: PLAN_ITEM_FIELDS.acceptance_criteria.fieldKind.maxItems,
   criterion: PLAN_ITEM_FIELDS.acceptance_criteria.fieldKind.maxItemLength,
@@ -19,18 +19,31 @@ const normalizedNullableText = (maxLength: number) => z
     return normalized.length > 0 ? normalized : null;
   });
 
-export const workBriefDraftSchema = z.object({
+const workBriefDraftObject = z.object({
   title: z.string().trim().min(1, 'Title cannot be empty').max(WORK_BRIEF_LIMITS.title),
-  context: normalizedNullableText(WORK_BRIEF_LIMITS.context),
+  description: normalizedNullableText(WORK_BRIEF_LIMITS.description),
   intent: normalizedNullableText(WORK_BRIEF_LIMITS.intent),
   acceptance_criteria: z
     .array(z.string().trim().min(1, 'Criterion cannot be empty').max(WORK_BRIEF_LIMITS.criterion))
     .max(WORK_BRIEF_LIMITS.criteria),
 });
 
+// This field was called `context` until the rename to `description`. A resumed SDK
+// session still has the old key in its transcript and will copy it back, so accept
+// it once here rather than failing the action. Drop after a release.
+function aliasLegacyContextKey(input: unknown): unknown {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) return input;
+  const draft = input as Record<string, unknown>;
+  if (!('context' in draft) || 'description' in draft) return input;
+  const { context, ...rest } = draft;
+  return { ...rest, description: context };
+}
+
+export const workBriefDraftSchema = z.preprocess(aliasLegacyContextKey, workBriefDraftObject);
+
 export type WorkBriefDraft = z.infer<typeof workBriefDraftSchema>;
 
-export const workBriefSchema = workBriefDraftSchema.extend({
+export const workBriefSchema = workBriefDraftObject.extend({
   revision: z.number().int().positive(),
 });
 
@@ -62,7 +75,7 @@ export function workBriefFromPlanItem(item: Pick<PlanItem,
   // a caller creates or revises the Work Brief.
   return {
     title: item.title,
-    context: item.description,
+    description: item.description,
     intent: item.intent,
     acceptance_criteria: item.acceptance_criteria ?? [],
     revision: item.work_brief_revision ?? 1,
@@ -83,7 +96,7 @@ export function workBriefDraftsEqual(left: WorkBriefDraft, right: WorkBriefDraft
   const normalizedRight = normalizeWorkBriefDraft(right);
   return (
     normalizedLeft.title === normalizedRight.title
-    && normalizedLeft.context === normalizedRight.context
+    && normalizedLeft.description === normalizedRight.description
     && normalizedLeft.intent === normalizedRight.intent
     && normalizedLeft.acceptance_criteria.length === normalizedRight.acceptance_criteria.length
     && normalizedLeft.acceptance_criteria.every(

@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { createPlanItem, createTestRepositoryContext, type TestRepositoryContext } from '../';
+import { isOutboundDeletion } from '../../src/shared/types';
 
 describe('OutboundChangeRepository', () => {
   let ctx: TestRepositoryContext;
@@ -66,6 +67,10 @@ describe('OutboundChangeRepository', () => {
     expect(deleteRow.external_key).toBe('ENG-99');
     expect(deleteRow.external_id).toBe('issue-99');
     expect(deleteRow.tracker_type).toBe('linear');
+
+    const refetched = ctx.repos.outboundChanges.getByProject(projectId).find(r => r.id === deleteRow.id);
+    if (!refetched || !isOutboundDeletion(refetched)) throw new Error('expected the row to read back as a deletion');
+    expect(refetched).toEqual(deleteRow);
   });
 
   it('rejects a second pending delete for the same association and external key', () => {

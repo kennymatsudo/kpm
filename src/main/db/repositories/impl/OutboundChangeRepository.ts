@@ -6,7 +6,13 @@
 
 import type { Database, Statement } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
-import type { CustomFieldValues, OutboundChange, OutboundChangeWithPlanItem } from '../../../../shared/types';
+import type {
+  CustomFieldValues,
+  OutboundChange,
+  OutboundChangeOperation,
+  OutboundItemChange,
+  StatusCategory,
+} from '../../../../shared/types';
 import type { IOutboundChangeRepository } from '../../interfaces';
 
 function parseCustomFieldOverrides(raw: string | null): CustomFieldValues | null {
@@ -37,10 +43,8 @@ interface PreparedStatements {
   // Read operations
   getById: Statement;
   getByProject: Statement;
-  getByProjectWithPlanItems: Statement;
   getByPlanItem: Statement;
   getByAssociation: Statement;
-  getQueueCount: Statement;
 
   // Write operations
   insert: Statement;
@@ -52,18 +56,86 @@ interface PreparedStatements {
   setError: Statement;
 }
 
-type OutboundChangeRow = Omit<OutboundChange, 'custom_field_overrides'> & {
+/**
+ * What SQLite hands back: every column nullable, `custom_field_overrides` still
+ * JSON text. `toOutboundChange` is the one place this becomes a typed variant.
+ */
+interface OutboundChangeRow {
+  id: string;
+  kpm_project_id: string;
+  plan_item_id: string | null;
+  association_id: string;
+  operation: OutboundChangeOperation;
+  target_issue_type_id: string | null;
+  target_issue_type_name: string | null;
+  target_parent_key: string | null;
+  target_status_category: StatusCategory | null;
   custom_field_overrides: string | null;
-};
+  queued_by: 'user' | 'claude';
+  queued_at: string;
+  error_message: string | null;
+  external_key: string | null;
+  external_id: string | null;
+  tracker_type: string | null;
+}
 
 type OutboundChangeInsert = Omit<
-  OutboundChange,
+  OutboundItemChange,
   'id' | 'plan_item_id' | 'operation' | 'queued_at' | 'error_message' | 'custom_field_overrides' | 'external_key' | 'external_id' | 'tracker_type'
 > & {
   plan_item_id: string;
   operation: 'create' | 'update';
   custom_field_overrides?: CustomFieldValues | null;
 };
+
+/**
+ * The only place a row becomes an Outbound Change. A delete row without an
+ * `external_key` cannot be pushed anywhere, so it is a corrupt row rather than
+ * a case for callers to defend against — hence the throw.
+ */
+function toOutboundChange(row: OutboundChangeRow): OutboundChange {
+  const base = {
+    id: row.id,
+    kpm_project_id: row.kpm_project_id,
+    association_id: row.association_id,
+    queued_by: row.queued_by,
+    queued_at: row.queued_at,
+    error_message: row.error_message,
+  };
+
+  if (row.operation === 'delete') {
+    if (!row.external_key || !row.tracker_type) {
+      throw new Error(`Outbound Change ${row.id} is a delete with no external target`);
+    }
+    return {
+      ...base,
+      operation: 'delete',
+      plan_item_id: null,
+      target_issue_type_id: null,
+      target_issue_type_name: null,
+      target_parent_key: null,
+      target_status_category: null,
+      custom_field_overrides: null,
+      external_key: row.external_key,
+      external_id: row.external_id,
+      tracker_type: row.tracker_type,
+    };
+  }
+
+  return {
+    ...base,
+    operation: row.operation,
+    plan_item_id: row.plan_item_id!,
+    target_issue_type_id: row.target_issue_type_id,
+    target_issue_type_name: row.target_issue_type_name,
+    target_parent_key: row.target_parent_key,
+    target_status_category: row.target_status_category,
+    custom_field_overrides: parseCustomFieldOverrides(row.custom_field_overrides),
+    external_key: null,
+    external_id: null,
+    tracker_type: null,
+  };
+}
 
 /** Detached delete row: no live plan item, snapshots the external identity being removed. */
 interface OutboundChangeDeleteInsert {
@@ -89,30 +161,8 @@ export class OutboundChangeRepository implements IOutboundChangeRepository {
       // Read operations
       getById: db.prepare(`SELECT ${cols} FROM outbound_changes WHERE id = ?`),
       getByProject: db.prepare(`SELECT ${cols} FROM outbound_changes WHERE kpm_project_id = ? ORDER BY queued_at`),
-      getByProjectWithPlanItems: db.prepare(`
-        SELECT
-          oc.id, oc.kpm_project_id, oc.plan_item_id, oc.association_id, oc.operation,
-          oc.target_issue_type_id, oc.target_issue_type_name, oc.target_parent_key,
-          oc.target_status_category, oc.custom_field_overrides, oc.queued_by, oc.queued_at, oc.error_message,
-          oc.external_key, oc.external_id, oc.tracker_type,
-          pi.title as plan_item_title,
-          pi.description as plan_item_description,
-          pi.label as plan_item_label,
-          pi.parent_id as plan_item_parent_id,
-          pi.external_key as plan_item_external_key,
-          pi.external_type as plan_item_external_type
-        FROM outbound_changes oc
-        JOIN plan_items pi ON oc.plan_item_id = pi.id
-        WHERE oc.kpm_project_id = ?
-        ORDER BY oc.queued_at
-      `),
       getByPlanItem: db.prepare(`SELECT ${cols} FROM outbound_changes WHERE plan_item_id = ?`),
       getByAssociation: db.prepare(`SELECT ${cols} FROM outbound_changes WHERE association_id = ? ORDER BY queued_at`),
-      getQueueCount: db.prepare(`
-        SELECT COUNT(*) as count FROM outbound_changes oc
-        JOIN plan_items pi ON oc.plan_item_id = pi.id
-        WHERE oc.kpm_project_id = ? AND (pi.status_category IS NULL OR pi.status_category != 'none')
-      `),
 
       // Write operations - use RETURNING to avoid re-query
       insert: db.prepare(`
@@ -146,60 +196,12 @@ export class OutboundChangeRepository implements IOutboundChangeRepository {
 
   getByProject(projectId: string): OutboundChange[] {
     const rows = this.stmts.getByProject.all(projectId) as OutboundChangeRow[];
-    return rows.map((row) => ({
-      ...row,
-      custom_field_overrides: parseCustomFieldOverrides(row.custom_field_overrides),
-    }));
-  }
-
-  getByProjectWithPlanItems(projectId: string): OutboundChangeWithPlanItem[] {
-    // The JOIN drops detached delete rows, so plan_item_id is always present here.
-    const rows = this.stmts.getByProjectWithPlanItems.all(projectId) as (Omit<OutboundChangeRow, 'plan_item_id'> & {
-      plan_item_id: string;
-      plan_item_title: string;
-      plan_item_description: string | null;
-      plan_item_label: string | null;
-      plan_item_parent_id: string | null;
-      plan_item_external_key: string | null;
-      plan_item_external_type: string | null;
-    })[];
-
-    return rows.map(row => ({
-      id: row.id,
-      kpm_project_id: row.kpm_project_id,
-      plan_item_id: row.plan_item_id,
-      association_id: row.association_id,
-      operation: row.operation,
-      target_issue_type_id: row.target_issue_type_id,
-      target_issue_type_name: row.target_issue_type_name,
-      target_parent_key: row.target_parent_key,
-      target_status_category: row.target_status_category,
-      custom_field_overrides: parseCustomFieldOverrides(row.custom_field_overrides ?? null),
-      queued_by: row.queued_by,
-      queued_at: row.queued_at,
-      error_message: row.error_message,
-      external_key: row.external_key,
-      external_id: row.external_id,
-      tracker_type: row.tracker_type,
-      plan_item: {
-        id: row.plan_item_id,
-        title: row.plan_item_title,
-        description: row.plan_item_description,
-        label: row.plan_item_label,
-        parent_id: row.plan_item_parent_id,
-        external_key: row.plan_item_external_key,
-        external_type: row.plan_item_external_type,
-      },
-    }));
+    return rows.map(toOutboundChange);
   }
 
   getByPlanItem(planItemId: string): OutboundChange | undefined {
     const row = this.stmts.getByPlanItem.get(planItemId) as OutboundChangeRow | undefined;
-    if (!row) return undefined;
-    return {
-      ...row,
-      custom_field_overrides: parseCustomFieldOverrides(row.custom_field_overrides),
-    };
+    return row ? toOutboundChange(row) : undefined;
   }
 
   getByItemId(planItemId: string): OutboundChange | undefined {
@@ -208,19 +210,7 @@ export class OutboundChangeRepository implements IOutboundChangeRepository {
 
   getByAssociation(associationId: string): OutboundChange[] {
     const rows = this.stmts.getByAssociation.all(associationId) as OutboundChangeRow[];
-    return rows.map((row) => ({
-      ...row,
-      custom_field_overrides: parseCustomFieldOverrides(row.custom_field_overrides),
-    }));
-  }
-
-  getQueuedItemsWithPlanData(projectId: string): OutboundChangeWithPlanItem[] {
-    return this.getByProjectWithPlanItems(projectId);
-  }
-
-  getQueueCount(projectId: string): number {
-    const result = this.stmts.getQueueCount.get(projectId) as { count: number };
-    return result.count;
+    return rows.map(toOutboundChange);
   }
 
   // Overload signatures to match interface
@@ -289,10 +279,7 @@ export class OutboundChangeRepository implements IOutboundChangeRepository {
       entry.queued_by
     ) as OutboundChangeRow;
 
-    return {
-      ...inserted,
-      custom_field_overrides: overrides,
-    };
+    return toOutboundChange(inserted);
   }
 
   /**
@@ -311,19 +298,12 @@ export class OutboundChangeRepository implements IOutboundChangeRepository {
       entry.queued_by
     ) as OutboundChangeRow;
 
-    return {
-      ...inserted,
-      custom_field_overrides: null,
-    };
+    return toOutboundChange(inserted);
   }
 
   get(id: string): OutboundChange | undefined {
     const row = this.stmts.getById.get(id) as OutboundChangeRow | undefined;
-    if (!row) return undefined;
-    return {
-      ...row,
-      custom_field_overrides: parseCustomFieldOverrides(row.custom_field_overrides),
-    };
+    return row ? toOutboundChange(row) : undefined;
   }
 
   update(id: string, updates: Partial<Pick<OutboundChange, 'target_issue_type_id' | 'target_issue_type_name' | 'target_parent_key' | 'target_status_category' | 'custom_field_overrides' | 'error_message'>>): void {

@@ -15,11 +15,15 @@ export function trackerLabelFor(trackerType: string | null | undefined): string 
   return 'Tracker';
 }
 
-export function trackerProjectEntityFor(trackerType: string | null | undefined): string {
+export function trackerDeletionWarning(trackerType: string | null | undefined): string {
   const normalized = normalizeTrackerType(trackerType);
-  if (normalized === 'linear') return 'team';
-  if (normalized === 'jira') return 'project';
-  return 'Tracker';
+  if (normalized === 'linear') {
+    return "will be moved to Linear's trash (recoverable for about 30 days).";
+  }
+  if (normalized === 'jira') {
+    return 'will be permanently deleted from Jira and cannot be recovered.';
+  }
+  return 'will be permanently deleted from the linked tracker.';
 }
 
 export function TrackerIcon({

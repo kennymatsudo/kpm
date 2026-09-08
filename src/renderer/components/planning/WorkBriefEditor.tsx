@@ -13,7 +13,7 @@ interface WorkBriefEditorProps {
 }
 
 const INTENT_MAX_CHARS = PLAN_ITEM_FIELDS.intent.fieldKind.maxLength;
-const CONTEXT_MAX_CHARS = PLAN_ITEM_FIELDS.description.fieldKind.maxLength;
+const DESCRIPTION_MAX_CHARS = PLAN_ITEM_FIELDS.description.fieldKind.maxLength;
 const CRITERION_MAX_CHARS = PLAN_ITEM_FIELDS.acceptance_criteria.fieldKind.maxItemLength;
 const MAX_CRITERIA = PLAN_ITEM_FIELDS.acceptance_criteria.fieldKind.maxItems;
 
@@ -46,7 +46,7 @@ export function WorkBriefEditor({
           Work Brief
         </h3>
         <p className="mt-1 text-xs leading-relaxed text-text-muted">
-          Context is shared with {trackerLabel}. Intent and Acceptance Criteria guide execution.
+          Description syncs to {trackerLabel}. Intent and Acceptance Criteria stay in KPM and guide execution.
         </p>
       </div>
 
@@ -72,19 +72,19 @@ export function WorkBriefEditor({
 
       <div>
         <label
-          htmlFor={`${idPrefix}-context`}
+          htmlFor={`${idPrefix}-description`}
           className="flex items-center justify-between mb-1"
         >
-          <span className="text-xxs font-medium text-text-muted uppercase tracking-wide">Context</span>
+          <span className="text-xxs font-medium text-text-muted uppercase tracking-wide">Description</span>
           <span className="text-xxs text-text-muted opacity-60">Markdown</span>
         </label>
         <textarea
-          id={`${idPrefix}-context`}
-          value={value.context ?? ''}
-          onChange={(event) => onChange({ ...value, context: event.target.value })}
+          id={`${idPrefix}-description`}
+          value={value.description ?? ''}
+          onChange={(event) => onChange({ ...value, description: event.target.value })}
           placeholder="Add rationale, background, or constraints."
           rows={5}
-          maxLength={CONTEXT_MAX_CHARS}
+          maxLength={DESCRIPTION_MAX_CHARS}
           disabled={disabled}
           className="input w-full min-h-[120px] resize-y text-sm font-mono leading-relaxed"
         />
