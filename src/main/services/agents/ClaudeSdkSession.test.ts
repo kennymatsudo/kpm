@@ -391,3 +391,35 @@ describe('ClaudeSdkSession activity mapping', () => {
     ]);
   });
 });
+
+describe('ClaudeSdkSession review findings', () => {
+  it('parses findings JSON longer than the activity-content cap', () => {
+    const session = new ClaudeSdkSession({
+      id: 'test-review-session',
+      role: 'review',
+      sdkOptions: { cwd: '/tmp', systemPrompt: 'test' },
+    });
+
+    // Well past MAX_ACTIVITY_CONTENT_CHARS (4000), which the activity buffer
+    // truncates for the renderer's feed.
+    const findings = Array.from({ length: 20 }, (_, i) => ({
+      severity: 'warning',
+      file: `src/file-${i}.ts`,
+      line: i + 1,
+      description: `Finding ${i}. ${'padding '.repeat(30)}`,
+    }));
+    const json = JSON.stringify({ findings });
+    expect(json.length).toBeGreaterThan(4000);
+
+    testHarness(session).processMessage({
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: json }] },
+    });
+
+    const review = session.getResult().review;
+    expect(review).toEqual({ findings: expect.arrayContaining([
+      expect.objectContaining({ file: 'src/file-19.ts', severity: 'warning' }),
+    ]) });
+    expect(review && 'findings' in review ? review.findings : []).toHaveLength(20);
+  });
+});

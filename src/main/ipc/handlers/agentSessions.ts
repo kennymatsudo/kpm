@@ -11,7 +11,13 @@ import type { AutomationPhaseMachine } from '../../services/agents/automationPha
 import type { PromptOverrideService } from '../../services/core/PromptOverrideService';
 import { getAvailableAgents } from '../../services/agents/agentCatalog';
 import { launchAutoReview } from '../../services/agents/autoReview';
-import { playbookForSession, resolveHarnessStep } from '../../services/agents/sessionPlaybook';
+import { playbookForSession, resolveHarnessStep, stepById } from '../../services/agents/sessionPlaybook';
+import { listBoardProviders } from '../../services/agents/boardProviderRegistry';
+import { resolvePlaybookPlan } from '../../../shared/playbookRuntime';
+import type { DefaultModel } from '../../../shared/modelDefault';
+import type { AgentType } from '../../../shared/agent-types';
+import type { Playbook } from '../../../shared/playbooks';
+import type { AgentEffortLevel } from '../../../shared/types';
 import { unwrapOrThrow } from '../../services/result';
 import { getConfig } from '../../config';
 import { toReviewSessionId } from '../../../shared/agent-types';
@@ -56,11 +62,31 @@ function assertInterpreterAllowsInteraction(devSessionService: DevSessionService
   }
 }
 
+/**
+ * The provider + model the playbook's own review step resolves to right now.
+ * Undefined when the step names no runnable provider, which leaves the caller
+ * on the opposing-agent default rather than failing the review outright.
+ */
+async function resolveStepReviewer(
+  stepId: string,
+  playbook: Playbook,
+  defaultModel: DefaultModel,
+): Promise<{ provider: AgentType; model?: string; effort?: AgentEffortLevel } | undefined> {
+  const plan = resolvePlaybookPlan(playbook, await listBoardProviders(), defaultModel);
+  const agent = plan.steps.find((entry) => entry.stepId === stepId)?.runs[0];
+  if (!agent) return undefined;
+  if (agent.provider !== 'claude' && agent.provider !== 'codex' && agent.provider !== 'gemini' && agent.provider !== 'pi') {
+    return undefined;
+  }
+  return { provider: agent.provider, model: agent.model, ...(agent.effort ? { effort: agent.effort } : {}) };
+}
+
 function buildAgentSessionHandlers(
   agentSessionManager: AgentSessionManager,
   devSessionService: DevSessionService,
   promptOverrideService: PromptOverrideService,
   phaseMachine: Pick<AutomationPhaseMachine, 'transition'>,
+  getDefaultModel: () => DefaultModel,
 ): AgentSessionHandlers {
   return {
     // Create pending session + start agent in one atomic call.
@@ -162,11 +188,21 @@ function buildAgentSessionHandlers(
         throw new Error('A review is already running for this session');
       }
 
-      const reviewStep = resolveHarnessStep(playbookForSession(session), 'ad-hoc-review');
+      const playbook = playbookForSession(session);
+      const reviewStep = resolveHarnessStep(playbook, 'ad-hoc-review');
       phaseMachine.transition(devSessionId, { type: 'opposingReviewLaunched', stepId: reviewStep.id });
+
+      // When the review step belongs to the playbook, run the reviewer the user
+      // configured on it. Only the harness's own ad-hoc step — the fallback for
+      // a playbook with no review step of its own — leaves the choice to the
+      // opposing-agent default.
+      const reviewer = stepById(playbook, reviewStep.id)
+        ? await resolveStepReviewer(reviewStep.id, playbook, getDefaultModel())
+        : undefined;
 
       try {
         const reviewSessionId = await launchAutoReview({
+          reviewer,
           implementationSessionId: devSessionId,
           implementationAgentType: session.agent_type,
           worktreePath: session.worktree_path,
@@ -301,6 +337,7 @@ export function registerAgentSessionHandlers(
   devSessionService: DevSessionService,
   promptOverrideService: PromptOverrideService,
   phaseMachine: Pick<AutomationPhaseMachine, 'transition'>,
+  getDefaultModel: () => DefaultModel,
 ): void {
   createRegistryIpcHandlers(
     agentSessionEndpoints,
@@ -309,6 +346,7 @@ export function registerAgentSessionHandlers(
       devSessionService,
       promptOverrideService,
       phaseMachine,
+      getDefaultModel,
     ),
     'Agent session operation failed'
   );

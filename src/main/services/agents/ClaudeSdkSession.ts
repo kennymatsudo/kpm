@@ -15,6 +15,7 @@ import {
   type Options as SDKOptions,
 } from '@anthropic-ai/claude-agent-sdk';
 import { isInitMessage, isSessionStateChanged } from '../../claude/sdkTypeGuards';
+import { declineHostDialogs } from '../../claude/hostDialogs';
 import { BaseAgentSession } from './BaseAgentSession';
 import { createCredentialGuardMatcher } from './credentialGuardHook';
 import { getConfig } from '../../config';
@@ -130,6 +131,12 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
   private readonly readOnly: boolean;
   /** Tool calls awaiting their `tool_result`, keyed by the SDK's own `tool_use` block id — the real correlation id, not a synthesized one. */
   private readonly pendingToolUses = new Map<string, AgentActivity>();
+  /**
+   * The last assistant text, kept unbounded. The activity buffer caps `content`
+   * at 4000 chars for memory and IPC, which silently clipped review findings
+   * JSON mid-object and made every large review fail to parse.
+   */
+  private lastMessageText: string | null = null;
 
   constructor(config: ClaudeSdkSessionConfig) {
     super(config.id, config.role, config.expectsFindings);
@@ -198,12 +205,13 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
     );
   }
 
-  /** The most recent non-empty assistant text, used to extract review findings. */
+  /**
+   * The most recent non-empty assistant text, used to extract review findings.
+   * Reads the unbounded copy; the activity buffer's truncated `content` would
+   * hand the findings parser invalid JSON.
+   */
   protected finalOutput(): string | null {
-    const latestMessage = [...this._activities]
-      .reverse()
-      .find((activity) => activity.type === 'message' && typeof activity.content === 'string' && activity.content.trim().length > 0);
-    return latestMessage?.content ?? null;
+    return this.lastMessageText;
   }
 
   // ===========================================================================
@@ -261,6 +269,7 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
         this.queryInstance = query({
           prompt,
           options: {
+            onUserDialog: declineHostDialogs,
             ...this.sdkOptions,
             abortController: this.abortController!,
             // Board sessions run under bypassPermissions, which skips canUseTool.
@@ -389,6 +398,9 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
         }
 
         if (block.type === 'text' && block.text) {
+          if (block.text.trim()) {
+            this.lastMessageText = block.text;
+          }
           this.emitActivity({
             type: 'message',
             timestamp: Date.now(),

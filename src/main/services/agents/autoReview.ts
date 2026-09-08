@@ -21,6 +21,7 @@ import type { AgentEffortLevel } from '../../../shared/types';
 import { toReviewSessionId } from '../../../shared/agent-types';
 import { getReviewOpponent, isAgentAvailable } from './agentCatalog';
 import { hasCodexAuth } from '../../codex/auth';
+import { getAgentEnv } from '../streaming/envUtils';
 import type { AgentSessionManager } from './AgentSessionManager';
 
 const LOG_PREFIX = '[AutoReview]';
@@ -116,7 +117,7 @@ export async function getWorktreeDiff(worktreePath: string, baseBranch?: string 
   const excludes = [...REVIEW_DIFF_EXCLUDES];
   try {
     if (baseBranch) {
-      const diff = await getDiff(worktreePath, baseBranch, maxBuffer, excludes);
+      const diff = await getDiff(worktreePath, baseBranch, { excludePathspecs: excludes });
       if (diff.trim()) return diff;
     }
     // Fall back to uncommitted-only diff when no base branch or branch diff is empty
@@ -168,10 +169,11 @@ async function startReviewSession(params: {
       cwd: worktreePath,
       maxTurns: getConfig().agentSession.subagentMaxTurns,
       permissionMode: getConfig().claude.defaultPermissionMode,
-      // One-shot review agent — disable the built-in option-picker tool.
-      disallowedTools: ['AskUserQuestion'],
+      // One-shot review agent — disable the built-in tools that stop to ask the
+      // user something (option picker, goal approval); it has no one to ask.
+      disallowedTools: ['AskUserQuestion', 'ProposeGoal'],
       settingSources: ['user'],
-      env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
+      env: { ...getAgentEnv(), CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
       thinking: { type: 'adaptive' as const, display: 'summarized' as const },
       ...getClaudeSdkSpawnOptions(),
     };
@@ -236,6 +238,12 @@ export async function launchAutoReview(params: {
   getPromptContent: (key: string) => string;
   /** Playbook step id this review's completion resolves back to. */
   stepId: string;
+  /**
+   * The reviewer the playbook step resolved to. Given one, it wins over the
+   * opposing-agent default: a user who configured the review step expects that
+   * provider and model to be what runs. Availability fallbacks still apply.
+   */
+  reviewer?: { provider: AgentType; model?: string; effort?: AgentEffortLevel };
 }): Promise<string | null> {
   const {
     implementationSessionId,
@@ -247,10 +255,11 @@ export async function launchAutoReview(params: {
     agentSessionManager,
     getPromptContent,
     stepId,
+    reviewer,
   } = params;
 
   // Determine the review agent
-  let reviewAgentType = getReviewOpponent(implementationAgentType);
+  let reviewAgentType = reviewer?.provider ?? getReviewOpponent(implementationAgentType);
 
   // Check if the review agent is available; fall back to claude
   if (!await isReviewAgentAvailable(reviewAgentType)) {
@@ -288,7 +297,17 @@ export async function launchAutoReview(params: {
   // Create a review session ID (derived from implementation session)
   const reviewSessionId = toReviewSessionId(implementationSessionId);
 
-  const codexModel = getConfig().agentSession.codexModel;
+  // A model id only means something to the provider it belongs to. Handing the
+  // Codex model to a Claude reviewer (the usual opponent for a Codex
+  // implementation) fails the run with "issue with the selected model". The
+  // resolved reviewer's model only survives an unchanged provider for the same
+  // reason.
+  const model = reviewAgentType === reviewer?.provider
+    ? reviewer.model
+    : reviewAgentType === 'codex' ? getConfig().agentSession.codexModel : undefined;
+  const effort = reviewAgentType === reviewer?.provider
+    ? reviewer.effort
+    : reviewAgentType === 'codex' ? getConfig().agentSession.codexEffort : undefined;
 
   try {
     await startReviewSession({
@@ -299,7 +318,8 @@ export async function launchAutoReview(params: {
       reviewPrompt,
       reviewSystemPrompt,
       agentSessionManager,
-      model: codexModel,
+      model,
+      effort,
       readOnly: true,
       expectsFindings: true,
       implementationSessionId,

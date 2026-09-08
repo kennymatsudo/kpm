@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentSessionManager } from './AgentSessionManager';
+import { getConfig } from '../../config';
 import { launchAutoReview } from './autoReview';
 
 const mocks = vi.hoisted(() => ({
@@ -57,5 +58,49 @@ describe('launchAutoReview', () => {
     expect(createParams.sdkOptions.maxTurns).toBe(200);
     expect(createParams.readOnly).toBe(true);
     expect(createParams.expectsFindings).toBe(true);
+  });
+
+  it('does not hand the Codex model to a Claude reviewer', async () => {
+    const agentSessionManager = {
+      create: mocks.create,
+    } as unknown as AgentSessionManager;
+
+    await launchAutoReview({
+      implementationSessionId: 'session-1',
+      implementationAgentType: 'codex',
+      worktreePath: '/tmp/worktree',
+      baseBranch: 'main',
+      taskDescription: 'Implement the requested change',
+      projectId: 'project-1',
+      agentSessionManager,
+      getPromptContent: () => 'Review the implementation.',
+      stepId: 'review',
+    });
+
+    const createParams = mocks.create.mock.calls[0]?.[0];
+    expect(createParams.sdkOptions.model).toBe(getConfig().generation.fastModel);
+  });
+
+  it('runs the reviewer the playbook step resolved to instead of the opposing default', async () => {
+    const agentSessionManager = {
+      create: mocks.create,
+    } as unknown as AgentSessionManager;
+
+    await launchAutoReview({
+      implementationSessionId: 'session-1',
+      implementationAgentType: 'claude',
+      worktreePath: '/tmp/worktree',
+      baseBranch: 'main',
+      taskDescription: 'Implement the requested change',
+      projectId: 'project-1',
+      agentSessionManager,
+      getPromptContent: () => 'Review the implementation.',
+      stepId: 'review',
+      reviewer: { provider: 'claude', model: 'opus' },
+    });
+
+    const createParams = mocks.create.mock.calls[0]?.[0];
+    expect(createParams.agentType).toBe('claude');
+    expect(createParams.sdkOptions.model).toBe('opus');
   });
 });
