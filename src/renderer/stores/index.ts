@@ -32,13 +32,12 @@ export { useProviderReadinessStore } from './providerReadinessStore';
 
 export { useFileTreeStore } from './fileTreeStore';
 
-export { useArtifactsStore } from './artifactsStore';
+export { useCommandPaletteStore } from './commandPaletteStore';
 
 export { useFocusModeStore } from './focusModeStore';
 export type { FocusModeDoc } from './focusModeStore';
 
 export { usePermissionStore } from './permissionStore';
-export { useToolPermissionStore } from './toolPermissionStore';
 
 export { useGroupStore } from './groupStore';
 export type { GroupUpdates } from './groupStore';
@@ -63,8 +62,13 @@ export {
 export { resetAllProjectScopedStores, getRegisteredStoreNames } from './projectScopedStores';
 
 // Workspace
-export { useWorkspaceStore, useHasUnsavedChanges } from './workspaceStore';
-export type { FileSource, SelectedFile, EditingFile } from './workspaceStore';
+export {
+  useWorkspaceStore,
+  useSaveStatus,
+  documentId,
+  isDocumentDirty,
+} from './workspaceStore';
+export type { FileSource, SelectedFile, OpenDocument, SaveStatus } from './workspaceStore';
 
 // Proposed Change disposal
 export { useProposedChangeDisposal, getProposedChangePresentation } from './proposedChangeDisposal';
@@ -76,6 +80,7 @@ export type { Toast, ToastType } from './toastStore';
 
 // Confluence
 export { useConfluenceStore } from './confluenceStore';
+export { useLinearDocumentsStore } from './linearDocumentsStore';
 
 // Settings UI
 export { useSettingsUIStore } from './settingsUIStore';

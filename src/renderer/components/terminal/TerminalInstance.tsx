@@ -12,9 +12,12 @@ import {
   writeToTerminal,
   resizeTerminal,
 } from '../../services/terminalService';
+import { canResizeTerminal } from './terminalDimensions';
+import { createRefitScheduler } from './refitScheduler';
 
 interface TerminalInstanceProps {
   id: string;
+  projectId: string;
   cwd?: string;
   hidden: boolean;
 }
@@ -31,10 +34,34 @@ function resolveTheme() {
   };
 }
 
-export function TerminalInstance({ id, cwd, hidden }: TerminalInstanceProps) {
+const REFIT_DEBOUNCE_MS = 100;
+const REFIT_RETRY_MS = 250;
+const MAX_REFIT_RETRIES = 20;
+
+/** True when the container is on screen with a real box, so a fit can succeed. */
+function isMeasurable(target: HTMLElement): boolean {
+  return target.isConnected && target.offsetParent !== null && target.clientWidth > 0;
+}
+
+/** Reflow the terminal and keep the PTY's dimensions in sync when it is visible. */
+function fitAndResizeTerminal(id: string, fit: FitAddon): boolean {
+  try {
+    const dimensions = fit.proposeDimensions();
+    if (!canResizeTerminal(dimensions, document.visibilityState === 'visible')) return false;
+    fit.fit();
+    void resizeTerminal(id, dimensions.cols, dimensions.rows);
+    return true;
+  } catch {
+    // The container may not be sized yet; a later resize will try again.
+    return false;
+  }
+}
+
+export function TerminalInstance({ id, projectId, cwd, hidden }: TerminalInstanceProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const scheduleRefitRef = useRef<(() => void) | null>(null);
   const setTerminalStatus = useTerminalStore((s) => s.setTerminalStatus);
   const applySessionSnapshot = useTerminalStore((s) => s.applySessionSnapshot);
   // `cwd` only decides where a new session spawns, and the attach response
@@ -65,18 +92,36 @@ export function TerminalInstance({ id, cwd, hidden }: TerminalInstanceProps) {
     fitRef.current = fit;
 
     try {
-      fit.fit();
+      if (canResizeTerminal(fit.proposeDimensions(), document.visibilityState === 'visible')) {
+        fit.fit();
+      }
     } catch {
       // container may not be sized yet; resize observer will handle it
     }
     const { cols, rows } = term;
 
     let cancelled = false;
+    // Live output can beat the attach response across the IPC boundary: main
+    // starts emitting the moment it has read the scrollback snapshot, but that
+    // snapshot still has to make the trip back. Writing those chunks straight
+    // through puts them *ahead* of the older scrollback that lands a moment
+    // later, so hold them until the replay is done.
+    let queuedChunks: string[] | null = [];
+    const writeToView = (chunk: string) => {
+      if (queuedChunks) queuedChunks.push(chunk);
+      else term.write(chunk);
+    };
+    const flushQueuedChunks = () => {
+      const queued = queuedChunks;
+      queuedChunks = null;
+      queued?.forEach((chunk) => term.write(chunk));
+    };
+
     const unsubscribe = subscribeToTerminal(id, {
-      onData: (chunk) => term.write(chunk),
+      onData: writeToView,
       onExit: (exitCode) => {
         setTerminalStatus(id, 'exited', exitCode);
-        term.write(`\r\n\x1b[2m[process exited with code ${exitCode}]\x1b[0m\r\n`);
+        writeToView(`\r\n\x1b[2m[process exited with code ${exitCode}]\x1b[0m\r\n`);
       },
     });
     const inputDisposable = term.onData((data) => {
@@ -96,11 +141,12 @@ export function TerminalInstance({ id, cwd, hidden }: TerminalInstanceProps) {
     });
 
     const reportStartFailure = (reason: string) => {
+      flushQueuedChunks();
       term.write(`\r\n\x1b[31m[terminal] failed to start: ${reason}\x1b[0m\r\n`);
       setTerminalStatus(id, 'exited', 1);
     };
 
-    void attachTerminal({ id, cwd: initialCwdRef.current, cols, rows })
+    void attachTerminal({ id, projectId, cwd: initialCwdRef.current, cols, rows })
       .then((res) => {
         // `cancelled` means cleanup already ran, and cleanup is this view's only
         // detach caller. Detaching again here would land after the replacement
@@ -114,12 +160,17 @@ export function TerminalInstance({ id, cwd, hidden }: TerminalInstanceProps) {
 
         const { session, scrollback } = res.data;
         term.write(scrollback);
+        flushQueuedChunks();
         applySessionSnapshot(session);
         if (session.status === 'exited') {
           term.write(`\r\n\x1b[2m[process exited with code ${session.exitCode ?? 0}]\x1b[0m\r\n`);
         } else {
           term.focus();
         }
+        // The inline fit above can run before xterm has measured the font, in
+        // which case the shell just spawned at xterm's 80x24 default. Now that
+        // main knows the id, a corrective resize will land.
+        scheduleRefitRef.current?.();
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -135,51 +186,45 @@ export function TerminalInstance({ id, cwd, hidden }: TerminalInstanceProps) {
       termRef.current = null;
       fitRef.current = null;
     };
-  }, [id, setTerminalStatus, applySessionSnapshot]);
+    // `projectId` is part of the entry's identity and never changes for a
+    // given id, so it can't cause a spurious teardown.
+  }, [id, projectId, setTerminalStatus, applySessionSnapshot]);
 
-  // Refit and resize PTY when the container changes size or visibility toggles.
+  // Refit and resize PTY when the container or document becomes usable again.
   useEffect(() => {
     if (!containerRef.current) return;
     const target = containerRef.current;
 
-    const refit = () => {
-      const term = termRef.current;
-      const fit = fitRef.current;
-      if (!term || !fit) return;
-      // Skip when the container is collapsed (display:none on hidden tabs).
-      // Fitting a zero-sized container drives cols/rows to a minimum and tells
-      // the PTY to wrap at that width, corrupting the buffer with vertical text.
-      if (target.offsetWidth === 0 || target.offsetHeight === 0) return;
-      try {
-        fit.fit();
-        void resizeTerminal(id, term.cols, term.rows);
-      } catch {
-        // ignore — container not sized yet
-      }
-    };
+    const scheduler = createRefitScheduler({
+      attempt: () => {
+        const fit = fitRef.current;
+        return fit ? fitAndResizeTerminal(id, fit) : false;
+      },
+      canRetry: () => isMeasurable(target),
+      debounceMs: REFIT_DEBOUNCE_MS,
+      retryMs: REFIT_RETRY_MS,
+      maxRetries: MAX_REFIT_RETRIES,
+    });
+    scheduleRefitRef.current = scheduler.schedule;
 
-    const ro = new ResizeObserver(() => refit());
+    const ro = new ResizeObserver(scheduler.schedule);
     ro.observe(target);
-    return () => ro.disconnect();
+    document.addEventListener('visibilitychange', scheduler.schedule);
+    return () => {
+      scheduler.cancel();
+      scheduleRefitRef.current = null;
+      ro.disconnect();
+      document.removeEventListener('visibilitychange', scheduler.schedule);
+    };
   }, [id]);
 
   // When this tab becomes visible, focus and refit (offscreen xterms can't measure).
   useEffect(() => {
     if (hidden) return;
     const term = termRef.current;
-    const fit = fitRef.current;
-    const target = containerRef.current;
-    if (!term || !fit || !target) return;
-    requestAnimationFrame(() => {
-      try {
-        if (target.offsetWidth === 0 || target.offsetHeight === 0) return;
-        fit.fit();
-        void resizeTerminal(id, term.cols, term.rows);
-        term.focus();
-      } catch {
-        // ignore
-      }
-    });
+    if (!term) return;
+    scheduleRefitRef.current?.();
+    term.focus();
   }, [hidden, id]);
 
   return (

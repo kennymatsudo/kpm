@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useWorkspaceStore, useHasUnsavedChanges, useFileTreeStore } from '../../stores';
+import { useFileTreeStore } from '../../stores';
+import { documentId, isDocumentDirty, useWorkspaceStore } from '../../stores/workspaceStore';
 import { ChatPanel } from '../chat/ChatPanel';
 import { ErrorBoundary } from '../app/ErrorBoundary';
+import { DocumentTabStrip } from './DocumentTabStrip';
 import { FileEditor } from './FileEditor';
+import { useDocumentAutosave } from './useDocumentAutosave';
 import { WorkspaceHome } from './WorkspaceHome';
 import { getParentPath } from '../../utils/path';
 import { subscribe as subscribeToStoreEvent } from '../../stores/storeEvents';
@@ -29,21 +32,14 @@ interface WorkspaceViewProps {
  * by ApprovalOverlays via Proposed Change disposal.
  */
 export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: WorkspaceViewProps) {
-  const {
-    editingFile,
-    closeEditor,
-    openFile,
-    setCurrentProjectId,
-  } = useWorkspaceStore(
-    useShallow((state) => ({
-      editingFile: state.editingFile,
-      closeEditor: state.closeEditor,
-      openFile: state.openFile,
-      setCurrentProjectId: state.setCurrentProjectId,
-    }))
-  );
+  // Deliberately the id and not the document: content lives in the store, so
+  // subscribing to the object here would re-render the workspace and the chat
+  // panel on every keystroke. The editor subscribes to its own document.
+  const activeDocumentId = useWorkspaceStore((state) => state.activeDocumentId);
+  const hasOpenDocuments = useWorkspaceStore((state) => state.openDocuments.length > 0);
+  const setCurrentProjectId = useWorkspaceStore((state) => state.setCurrentProjectId);
 
-  const hasUnsavedChanges = useHasUnsavedChanges();
+  useDocumentAutosave();
 
   // File tree store for highlighting recently changed files
   const { markRecentlyChanged, expandToPath, refreshDirectory } = useFileTreeStore(
@@ -63,40 +59,47 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
     return () => setCurrentProjectId(null);
   }, [projectId, setCurrentProjectId]);
 
-  // Subscribe to bridged file changes for real-time editor updates
+  // Subscribe to bridged file changes for real-time editor updates. Every open
+  // document listens, not just the visible one, so a background tab is never
+  // left showing a file that moved or was deleted under it.
   useEffect(() => {
     const unsubscribe = subscribeToStoreEvent('file-explorer-changed', (event) => {
       const data = event.payload;
       if (data.projectId !== projectId) return;
-      if (!editingFile?.source || editingFile.source !== 'project') return;
 
-      // Handle file being updated externally
-      if (data.type === 'updated' && data.path === editingFile.path) {
-        // Only auto-refresh if there are no unsaved changes
-        if (!hasUnsavedChanges) {
-          readWorkspaceFile(editingFile.source, data.path, projectId).then((content: string) => {
-            openFile(editingFile.source, editingFile.path, content);
-          }).catch(console.error);
-        }
-        // If there are unsaved changes, let the user keep editing
-        // They will see the saved status indicator
+      const store = useWorkspaceStore.getState();
+      const id = documentId('project', data.path);
+      const document = store.openDocuments.find((candidate) => candidate.id === id);
+      if (!document) return;
+
+      if (data.type === 'updated') {
+        // With unsaved changes the buffer is the newer version, so leave the
+        // user editing; the save indicator already says it has not landed.
+        if (isDocumentDirty(document)) return;
+        readWorkspaceFile(document.source, data.path, projectId)
+          .then((content: string) => useWorkspaceStore.getState().reloadDocument(id, content))
+          .catch(console.error);
+        return;
       }
 
-      // Handle file being deleted - close editor
-      if (data.type === 'deleted' && data.path === editingFile.path) {
-        closeEditor();
+      if (data.type === 'deleted') {
+        // Not closeDocument: flushing an unsaved buffer here would write the
+        // file back into existence.
+        store.discardDocument(id);
+        return;
       }
 
-      // Handle file being renamed - update the editing path
-      if (data.type === 'renamed' && data.path === editingFile.path && data.newPath) {
-        // Re-open with the new path
-        readWorkspaceFile(editingFile.source, data.newPath, projectId).then((content: string) => {
-          openFile(editingFile.source, data.newPath!, content);
-        }).catch(console.error);
+      if (data.type === 'renamed' && data.newPath) {
+        store.renameDocument(id, data.newPath);
+        readWorkspaceFile(document.source, data.newPath, projectId)
+          .then((content: string) =>
+            useWorkspaceStore.getState().reloadDocument(documentId(document.source, data.newPath!), content)
+          )
+          .catch(console.error);
       }
     });
     return unsubscribe;
-  }, [projectId, editingFile, hasUnsavedChanges, openFile, closeEditor]);
+  }, [projectId]);
 
   // Subscribe to bridged Claude file updates for file tree highlighting
   useEffect(() => {
@@ -122,13 +125,58 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
 
   // Workspace chat resize — pass containerRef so the max chat width accounts for sidebar space
   const containerRef = useRef<HTMLDivElement>(null);
+  const editorPanelRef = useRef<HTMLDivElement>(null);
+  const resizeHandleRef = useRef<HTMLDivElement>(null);
   const { width: workspaceChatWidth, handleResizeStart } = useResizablePanel(
     PANEL_SIZES.workspaceChat,
     { containerRef }
   );
 
-  // Track if we're in editing mode for layout transitions
-  const isEditing = editingFile !== null;
+  // Track if the editor panel is showing, for layout transitions
+  const isEditing = hasOpenDocuments;
+
+  // Which of the two prose columns the user is actually reading. The document
+  // and the chat answer are the same size and the same color, so side by side
+  // neither one leads. Styling reads this off the root element and quiets the
+  // column that is not being read.
+  const [readingFocus, setReadingFocus] = useState<'document' | 'chat' | 'none'>('none');
+
+  // Engagement is reading, not hovering: a pointer crossing the panel on its
+  // way elsewhere means nothing, but a scroll, a click, or a focus does.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const engage = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      // Dragging the seam between the columns is not reading either of them.
+      if (resizeHandleRef.current?.contains(target)) return;
+
+      const inEditor = editorPanelRef.current?.contains(target) ?? false;
+      const next = inEditor ? 'document' : chatCollapsed ? 'none' : 'chat';
+      // Only write on a real change, so one scroll gesture is one update.
+      setReadingFocus((current) => (current === next ? current : next));
+    };
+
+    container.addEventListener('focusin', engage);
+    container.addEventListener('pointerdown', engage);
+    container.addEventListener('wheel', engage, { passive: true });
+    return () => {
+      container.removeEventListener('focusin', engage);
+      container.removeEventListener('pointerdown', engage);
+      container.removeEventListener('wheel', engage);
+    };
+  }, [chatCollapsed]);
+
+  // A column that left the screen cannot be the one being read.
+  useEffect(() => {
+    setReadingFocus((current) => {
+      if (current === 'document' && !isEditing) return 'none';
+      if (current === 'chat' && chatCollapsed) return 'none';
+      return current;
+    });
+  }, [isEditing, chatCollapsed]);
 
   // Animate editor panel in/out
   useEffect(() => {
@@ -140,40 +188,55 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
     }
   }, [isEditing]);
 
-  // Handle editor close
-  const handleCloseEditor = useCallback(() => {
-    closeEditor();
-  }, [closeEditor]);
+  const handleCloseActiveDocument = useCallback(() => {
+    const { activeDocumentId, closeDocument } = useWorkspaceStore.getState();
+    if (activeDocumentId) void closeDocument(activeDocumentId);
+  }, []);
 
   return (
-    <div ref={containerRef} className="flex flex-1 h-full overflow-hidden bg-surface-0">
+    <div
+      ref={containerRef}
+      // Names the column being read — "document", "chat", or "none" before the
+      // user has touched either. Styling keys the reading register to it.
+      data-reading-focus={readingFocus}
+      className="flex flex-1 h-full overflow-hidden bg-surface-0"
+    >
       {/* Editor Panel (only shown when editing) */}
       {isEditing && (
         <div
+          ref={editorPanelRef}
           className={`
             flex-1 min-w-0 bg-surface-1 relative
-            transition-all duration-300 ease-out
+            border-r border-border-subtle
+            transition-[opacity,transform] duration-250 ease-out
             ${editorVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'}
           `}
-          style={{
-            boxShadow: 'inset -1px 0 0 var(--color-border-subtle)',
-          }}
         >
-          <ErrorBoundary name="FileEditor">
-            {editingFile && (
-              <FileEditor
-                source={editingFile.source}
-                path={editingFile.path}
-                onClose={handleCloseEditor}
-              />
-            )}
-          </ErrorBoundary>
+          <div className="flex flex-col h-full">
+            <DocumentTabStrip />
+            <div className="flex-1 min-h-0">
+              <ErrorBoundary name="FileEditor">
+                {activeDocumentId && (
+                  <FileEditor
+                    // Remounting per document is deliberate: the markdown editor
+                    // keeps its own buffer, view mode, and a live Monaco model,
+                    // so reusing one instance bleeds a file's undo history into
+                    // the next tab.
+                    key={activeDocumentId}
+                    documentId={activeDocumentId}
+                    onClose={handleCloseActiveDocument}
+                  />
+                )}
+              </ErrorBoundary>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Workspace resize handle (only when editor is open) */}
       {isEditing && (
         <div
+          ref={resizeHandleRef}
           onMouseDown={handleResizeStart}
           className="relative w-1.5 cursor-col-resize flex-shrink-0 bg-border-subtle/70 hover:bg-accent/35 active:bg-accent/45 transition-colors"
         >
@@ -189,7 +252,6 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
       {!chatCollapsed && (
         <ChatPanel
           view="workspace"
-          showDivider
           className={isEditing ? 'flex-shrink-0' : 'flex-1'}
           style={isEditing ? { width: workspaceChatWidth } : undefined}
         />
