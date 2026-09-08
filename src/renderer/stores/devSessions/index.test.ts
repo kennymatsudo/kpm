@@ -101,6 +101,7 @@ function createReviewInbox(sessionId = 'dev-session-1') {
       headRefName: 'kpm/test-branch',
       fetchedAt: '2024-01-02T00:00:00.000Z',
       updatedAt: '2024-01-02T00:00:00.000Z',
+      isDraft: false,
       summary: {
         totalThreads: 1,
         unresolvedThreads: 1,
@@ -514,6 +515,46 @@ describe('devSessionsStore', () => {
       number: 17,
       url: 'https://github.com/test/repo/pull/17',
     });
+  });
+
+  it('blames the environment token when PR creation is rejected for bad credentials', async () => {
+    api.github.createPr.mockResolvedValue({
+      success: false,
+      error: 'HTTP 401: Bad credentials (https://api.github.com/graphql)',
+    });
+    api.github.checkAuth.mockResolvedValue({
+      success: true,
+      authenticated: true,
+      account: 'octocat',
+      tokenEnvVar: 'GITHUB_TOKEN',
+    });
+
+    const result = await useDevSessionsStore.getState().createPullRequest(
+      'dev-session-1',
+      'Implement feature',
+      '## Summary',
+      false
+    );
+
+    expect(api.github.checkAuth).toHaveBeenCalledWith({ sessionId: 'dev-session-1' });
+    expect(result.error).toContain('GITHUB_TOKEN');
+  });
+
+  it('passes a non-credential PR creation failure through untouched', async () => {
+    api.github.createPr.mockResolvedValue({
+      success: false,
+      error: 'No commits ahead of main. Commit your changes before creating a PR.',
+    });
+
+    const result = await useDevSessionsStore.getState().createPullRequest(
+      'dev-session-1',
+      'Implement feature',
+      '## Summary',
+      false
+    );
+
+    expect(api.github.checkAuth).not.toHaveBeenCalled();
+    expect(result.error).toBe('No commits ahead of main. Commit your changes before creating a PR.');
   });
 
   it('does not request another detail pane when PR creation refreshes sessions', async () => {

@@ -17,6 +17,7 @@ import type {
   PrReviewThreadComment,
   PrTopLevelReview,
 } from '../../../shared/types';
+import type { GhAuthState } from '../../../shared/ghAuth';
 import { gitExec } from './gitUtils';
 
 const execFileAsync = promisify(execFile);
@@ -24,11 +25,6 @@ const execFileAsync = promisify(execFile);
 // =============================================================================
 // Types
 // =============================================================================
-
-export interface GhAuthResult {
-  authenticated: boolean;
-  account?: string;
-}
 
 export interface GhPrCreateResult {
   number: number;
@@ -45,6 +41,23 @@ export interface GhPrStatus {
   additions: number;
   deletions: number;
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
+  isDraft: boolean;
+}
+
+export interface GhPrDetails {
+  number: number;
+  url: string;
+  title: string;
+  state: GhPrStatus['state'];
+  isDraft: boolean;
+  author: string | null;
+  baseRefName: string | null;
+  headRefName: string | null;
+  body: string;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  files: { path: string; additions: number; deletions: number }[];
 }
 
 export interface GhReviewThreadState {
@@ -120,32 +133,87 @@ async function ghGraphQL<T>(
 // Auth
 // =============================================================================
 
+// gh prints the credential source in parentheses after the account name, e.g.
+// "Logged in to github.com account octocat (keyring)" or "(GITHUB_TOKEN)".
+const GH_LOGGED_IN = /Logged in to github\.com account (\S+)(?: \(([^)]+)\))?/;
+
+/** gh's documented token variables, highest precedence first. */
+const GH_TOKEN_ENV_VARS = ['GH_TOKEN', 'GITHUB_TOKEN'] as const;
+
+// gh's own wording for a genuine logged-out answer, covering both the
+// no-hosts-at-all form ("...any GitHub hosts") and the per-host form
+// ("...any accounts on github.com").
+const GH_NOT_LOGGED_IN = /you are not logged into/i;
+
+export function parseGhAuthOutput(
+  output: string,
+  env: NodeJS.ProcessEnv = process.env
+): GhAuthState | null {
+  const match = GH_LOGGED_IN.exec(output);
+  if (!match) return null;
+
+  const source = match[2];
+  const named = GH_TOKEN_ENV_VARS.find((name) => name === source);
+
+  return {
+    authenticated: true,
+    account: match[1],
+    // gh names the env var as the source when set; otherwise probe our own environment for builds that print a config path.
+    tokenEnvVar: named ?? GH_TOKEN_ENV_VARS.find((name) => env[name]),
+  };
+}
+
 /**
- * Check if the user is authenticated with GitHub CLI.
+ * Only gh's explicit "you are not logged into…" answer means logged out.
+ * Everything else it can print while failing — an invalid token, an unreachable
+ * network — arrives as the same "Failed to log in to github.com" block, so those
+ * are indistinguishable from each other and must not be reported as logged out;
+ * `gh auth login` is not the remedy for a dropped connection.
  */
-export async function checkGhAuth(cwd: string): Promise<GhAuthResult> {
+function interpretGhAuthOutput(
+  output: string,
+  env: NodeJS.ProcessEnv = process.env
+): GhAuthState {
+  const parsed = parseGhAuthOutput(output, env);
+  if (parsed) return parsed;
+  return GH_NOT_LOGGED_IN.test(output)
+    ? { authenticated: false, reason: 'not_authenticated' }
+    : { authenticated: false, reason: 'check_failed' };
+}
+
+function ghErrorOutput(error: unknown): string {
+  if (typeof error !== 'object' || error === null) return String(error);
+  const { stderr, stdout, message } = error as {
+    stderr?: unknown;
+    stdout?: unknown;
+    message?: unknown;
+  };
+  return [stderr, stdout, message].filter((part) => typeof part === 'string').join('\n');
+}
+
+/** gh exits non-zero both when absent and when merely logged out, and still reports a usable account on stderr in some logged-in-but-degraded states. */
+export function classifyGhAuthError(
+  error: unknown,
+  env: NodeJS.ProcessEnv = process.env
+): GhAuthState {
+  if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') {
+    return { authenticated: false, reason: 'not_installed' };
+  }
+
+  return interpretGhAuthOutput(ghErrorOutput(error), env);
+}
+
+/** Distinguishes gh missing from gh not-logged-in since the remedies differ, and reports an env-supplied token so an expired one can be identified rather than guessed at. */
+export async function checkGhAuth(cwd: string): Promise<GhAuthState> {
   try {
     const { stdout, stderr } = await ghExec(
       ['auth', 'status', '--hostname', 'github.com'],
       { cwd }
     );
     // gh auth status writes account info to stderr (not stdout)
-    const output = stdout + stderr;
-    const accountMatch = /Logged in to github\.com account (\S+)/.exec(output);
-    return {
-      authenticated: true,
-      account: accountMatch?.[1],
-    };
+    return interpretGhAuthOutput(stdout + stderr);
   } catch (error) {
-    // gh auth status exits non-zero when not authenticated
-    if (error instanceof Error && 'stderr' in error) {
-      const stderr = (error as { stderr: string }).stderr;
-      const accountMatch = /Logged in to github\.com account (\S+)/.exec(stderr);
-      if (accountMatch) {
-        return { authenticated: true, account: accountMatch[1] };
-      }
-    }
-    return { authenticated: false };
+    return classifyGhAuthError(error);
   }
 }
 
@@ -239,7 +307,7 @@ export async function getPrForBranch(
     const { stdout } = await ghExec(
       [
         'pr', 'view', branch,
-        '--json', 'number,url,state,reviewDecision,baseRefName,statusCheckRollup,additions,deletions,mergeable',
+        '--json', 'number,url,state,reviewDecision,baseRefName,statusCheckRollup,additions,deletions,mergeable,isDraft',
       ],
       { cwd }
     );
@@ -262,7 +330,7 @@ export async function getPrByNumber(
     const { stdout } = await ghExec(
       [
         'pr', 'view', String(prNumber),
-        '--json', 'number,url,state,reviewDecision,baseRefName,statusCheckRollup,additions,deletions,mergeable',
+        '--json', 'number,url,state,reviewDecision,baseRefName,statusCheckRollup,additions,deletions,mergeable,isDraft',
       ],
       { cwd }
     );
@@ -271,6 +339,83 @@ export async function getPrByNumber(
   } catch {
     return null;
   }
+}
+
+/**
+ * Full PR contents for reading a pull request that is not the current branch's.
+ *
+ * Unlike `getPrByNumber`, this throws instead of returning null: the caller needs
+ * to tell "no such PR" apart from "gh is not authenticated", and only the error
+ * carries that.
+ */
+export async function getPrDetails(cwd: string, prRef: string): Promise<GhPrDetails> {
+  const { stdout } = await ghExec(
+    [
+      'pr', 'view', prRef,
+      '--json', 'number,url,title,state,isDraft,author,baseRefName,headRefName,body,additions,deletions,changedFiles,files',
+    ],
+    { cwd, maxBuffer: 10 * 1024 * 1024 }
+  );
+  return parsePrDetailsOutput(stdout);
+}
+
+/**
+ * The PR's unified diff against its base, as GitHub computes it — no local
+ * checkout of the head branch required.
+ */
+export async function getPrDiff(cwd: string, prRef: string): Promise<string> {
+  const { stdout } = await ghExec(['pr', 'diff', prRef], { cwd, maxBuffer: 20 * 1024 * 1024 });
+  return stdout;
+}
+
+/**
+ * Normalize a user-supplied PR reference into a single `gh` argument.
+ *
+ * A URL is passed through rather than reduced to its number, because gh resolves
+ * it against the repo in the URL — that is what lets a PR in an unconnected repo
+ * be read from a connected repo's directory. Anything that is not a bare number
+ * or a github.com pull URL is rejected so a stray value can never arrive as a
+ * `gh` flag.
+ */
+export function parsePrRef(input: string): string | null {
+  const trimmed = input.trim();
+  if (/^#?\d+$/.test(trimmed)) return trimmed.replace(/^#/, '');
+  if (/^https:\/\/([\w-]+\.)*github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+(\/|$)/.test(trimmed)) return trimmed;
+  return null;
+}
+
+function parsePrDetailsOutput(stdout: string): GhPrDetails {
+  const raw = JSON.parse(stdout) as {
+    number: number;
+    url: string;
+    title: string;
+    state: string;
+    isDraft: boolean;
+    author?: { login?: string | null } | null;
+    baseRefName?: string | null;
+    headRefName?: string | null;
+    body?: string | null;
+    additions: number;
+    deletions: number;
+    changedFiles: number;
+    files?: { path: string; additions: number; deletions: number }[] | null;
+  };
+
+  return {
+    number: raw.number,
+    url: raw.url,
+    title: raw.title,
+    state: raw.state as GhPrStatus['state'],
+    isDraft: Boolean(raw.isDraft),
+    author: raw.author?.login ?? null,
+    baseRefName: raw.baseRefName ?? null,
+    headRefName: raw.headRefName ?? null,
+    body: raw.body ?? '',
+    additions: raw.additions,
+    deletions: raw.deletions,
+    changedFiles: raw.changedFiles,
+    files: raw.files ?? [],
+  };
 }
 
 function truncatePreview(body: string, maxLength = 160): string {
@@ -740,6 +885,7 @@ export interface PrReviewProbe {
   reviewDecision: PrReviewSnapshot['reviewDecision'];
   headOid: string;
   updatedAt: string;
+  isDraft: boolean;
   threadCount: number;
   reviewCount: number;
   conversationCommentCount: number;
@@ -770,6 +916,7 @@ export async function probePrReviewState(
         reviewDecision: PrReviewSnapshot['reviewDecision'];
         headRefOid: string;
         updatedAt: string;
+        isDraft: boolean;
         reviewThreads: { totalCount: number };
         reviews: { totalCount: number };
         comments: { totalCount: number };
@@ -785,6 +932,7 @@ export async function probePrReviewState(
           reviewDecision
           headRefOid
           updatedAt
+          isDraft
           reviewThreads(first: 0) { totalCount }
           reviews(first: 0) { totalCount }
           comments(first: 0) { totalCount }
@@ -808,6 +956,7 @@ export async function probePrReviewState(
     reviewDecision ?? 'NONE',
     pullRequest.headRefOid,
     pullRequest.updatedAt,
+    pullRequest.isDraft,
     threadCount,
     reviewCount,
     conversationCommentCount,
@@ -819,6 +968,7 @@ export async function probePrReviewState(
     reviewDecision,
     headOid: pullRequest.headRefOid,
     updatedAt: pullRequest.updatedAt,
+    isDraft: pullRequest.isDraft,
     threadCount,
     reviewCount,
     conversationCommentCount,
@@ -845,6 +995,7 @@ export async function getPrReviewSnapshot(
         baseRefName: string;
         headRefName: string;
         updatedAt: string;
+        isDraft: boolean;
       } | null;
     } | null;
   }>(
@@ -861,6 +1012,7 @@ export async function getPrReviewSnapshot(
           baseRefName
           headRefName
           updatedAt
+          isDraft
         }
       }
     }`,
@@ -888,6 +1040,7 @@ export async function getPrReviewSnapshot(
     baseRefName: pullRequest.baseRefName,
     headRefName: pullRequest.headRefName,
     updatedAt: pullRequest.updatedAt,
+    isDraft: pullRequest.isDraft,
     fetchedAt: new Date().toISOString(),
     summary: buildReviewSummary(threads, topLevelReviews, conversationComments),
     threads,
@@ -1040,6 +1193,7 @@ function parsePrViewOutput(stdout: string): GhPrStatus {
     additions: number;
     deletions: number;
     mergeable: string;
+    isDraft: boolean;
   };
 
   let checksStatus: GhPrStatus['checksStatus'] = null;
@@ -1064,6 +1218,7 @@ function parsePrViewOutput(stdout: string): GhPrStatus {
     additions: raw.additions,
     deletions: raw.deletions,
     mergeable: (raw.mergeable || 'UNKNOWN') as GhPrStatus['mergeable'],
+    isDraft: Boolean(raw.isDraft),
   };
 }
 
@@ -1072,14 +1227,12 @@ function parsePrViewOutput(stdout: string): GhPrStatus {
 // =============================================================================
 
 /**
- * Push a branch to origin with upstream tracking.
- */
-export async function pushBranch(cwd: string, branch: string): Promise<void> {
-  await gitExec(['push', '-u', 'origin', '--', branch], { cwd });
-}
-
-/**
- * Check if a branch has been pushed to the remote.
+ * Whether a branch has been pushed to the remote.
+ *
+ * Reads the local remote-tracking ref, which only moves on fetch or push — a
+ * branch deleted on the remote still reads as pushed until the next fetch. Use
+ * `hasUpstream` (branchFacts) for the different question of whether a push needs
+ * `--set-upstream`.
  */
 export async function isBranchPushed(cwd: string, branch: string): Promise<boolean> {
   try {

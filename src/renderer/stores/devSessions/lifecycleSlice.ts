@@ -1,4 +1,4 @@
-import type { PrStatus, ReviewActionableSummary, ReviewInboxSnapshot } from '../../../shared/types';
+import type { ReviewActionableSummary, ReviewInboxSnapshot } from '../../../shared/types';
 import {
   addToSet,
   buildSessionIndexes,
@@ -47,7 +47,7 @@ function removeSessionFromState(state: DevSessionsState, sessionId: string) {
     ...dropSessionCacheEntries(state, sessionId),
     diffErrorBySessionId: removeMapEntries(state.diffErrorBySessionId, trackedSessionIds),
     agentStateBySessionId: removeMapEntries(state.agentStateBySessionId, trackedSessionIds),
-    activitiesBySessionId: removeMapEntries(state.activitiesBySessionId, trackedSessionIds),
+    activityFeedBySessionId: removeMapEntries(state.activityFeedBySessionId, trackedSessionIds),
     latestActivityBySessionId: removeMapEntries(state.latestActivityBySessionId, trackedSessionIds),
     questionBySessionId: removeMapEntries(state.questionBySessionId, trackedSessionIds),
     completionBySessionId: removeMapEntries(state.completionBySessionId, trackedSessionIds),
@@ -101,7 +101,6 @@ export function createDevSessionsLifecycleSlice(
           reviewAssessmentPendingBySessionId: new Map(),
           prContextBySessionId: new Map<string, PrCreationContext>(),
           prContextLoadingIds: new Set<string>(),
-          prStatusCache: new Map<string, PrStatus>(),
         });
         return;
       }
@@ -187,11 +186,10 @@ export function createDevSessionsLifecycleSlice(
           reviewAssessmentPendingBySessionId: pruneMapByKeys(get().reviewAssessmentPendingBySessionId, validSessionIds),
           prContextBySessionId: pruneMapByKeys(get().prContextBySessionId, validSessionIds),
           prContextLoadingIds: pruneSetByKeys(get().prContextLoadingIds, validSessionIds),
-          prStatusCache: pruneMapByKeys(get().prStatusCache, validSessionIds),
           reviewFindingsBySessionId: nextReviewFindings,
           mergeOrderBySessionId,
           agentStateBySessionId: pruneMapByKeys(get().agentStateBySessionId, allTrackedIds),
-          activitiesBySessionId: pruneMapByKeys(get().activitiesBySessionId, allTrackedIds),
+          activityFeedBySessionId: pruneMapByKeys(get().activityFeedBySessionId, allTrackedIds),
           latestActivityBySessionId: pruneMapByKeys(get().latestActivityBySessionId, allTrackedIds),
           completionBySessionId: pruneMapByKeys(get().completionBySessionId, allTrackedIds),
           reviewRunsByImplementationId: pruneMapByKeys(get().reviewRunsByImplementationId, validSessionIds),

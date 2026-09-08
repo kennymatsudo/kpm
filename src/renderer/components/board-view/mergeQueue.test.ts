@@ -29,6 +29,7 @@ function session(overrides: Partial<DevSessionWithPlanItem> = {}): DevSessionWit
     pr_url: 'https://github.com/test/repo/pull/42',
     pr_state: 'OPEN',
     review_state: null,
+    pr_is_draft: false,
     merge_order: null,
     created_at: '2026-01-01T10:00:00.000Z',
     updated_at: '2026-01-01T10:00:00.000Z',
@@ -64,5 +65,9 @@ describe('isMergeQueueSession', () => {
 
   it('includes open PR sessions that are not done', () => {
     expect(isMergeQueueSession(session())).toBe(true);
+  });
+
+  it('excludes draft PR sessions', () => {
+    expect(isMergeQueueSession(session({ pr_is_draft: true }))).toBe(false);
   });
 });

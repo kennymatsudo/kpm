@@ -137,6 +137,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       updatePrInfo: db.prepare(`
         UPDATE dev_sessions
         SET pr_number = ?, pr_url = ?, pr_state = ?, review_state = ?,
+            pr_is_draft = COALESCE(?, pr_is_draft),
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `),
@@ -205,6 +206,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       pr_url: row.pr_url ?? null,
       pr_state: row.pr_state ?? null,
       review_state: row.review_state ?? null,
+      pr_is_draft: Boolean(row.pr_is_draft),
       merge_order: row.merge_order ?? null,
       created_at: row.created_at,
       updated_at: row.updated_at,
@@ -306,8 +308,8 @@ export class DevSessionRepository implements IDevSessionRepository {
     this.stmts.updateAutoAddressPrReviews.run(enabled ? 1 : 0, id);
   }
 
-  updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null): void {
-    this.stmts.updatePrInfo.run(prNumber, prUrl, prState, reviewState, id);
+  updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null, isDraft: boolean | null): void {
+    this.stmts.updatePrInfo.run(prNumber, prUrl, prState, reviewState, isDraft === null ? null : (isDraft ? 1 : 0), id);
   }
 
   updateName(id: string, name: string): void {

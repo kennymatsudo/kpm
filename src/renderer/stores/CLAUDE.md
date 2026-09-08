@@ -73,7 +73,13 @@ Direct cross-store imports are fine for simple reads (e.g. Proposed Change dispo
 - **Optimistic Updates:** Update UI immediately, revert on error. See `planSlice.ts` for examples.
 - **Project-Scoped Lifecycle:** `projectScopedStores.ts` clears relevant stores on project switch
 
-## Selectors (Prevent Re-renders)
+## Selectors (Must Return Stable Values)
+
+**A selector that mints a fresh object or array on every call crashes the screen it's on.** zustand v5 passes the selector straight to React's `useSyncExternalStore`, so a result that never compares equal reads as a changed snapshot on every render and React aborts the tree with "Maximum update depth exceeded". This is a correctness rule, not a performance tip.
+
+Safe returns: a primitive, or a reference the store already holds (`map.get(id)`, `array.find(...)`).
+
+For a derived object, wrap the selector in `useShallow` — and note it compares **one level deep only**, so every field must itself be a primitive or a stored reference. A field built inline (`.map(...)`, `.filter(...)`, `?? []`, a helper returning a new object) loops just as hard as an unwrapped selector: return a primitive key instead and rebuild the value in a `useMemo` (see `board-view/BoardCard.tsx`), or move the whole derivation into a `useShallow` hook of its own (see `board-view/useReviewRuntime.ts`).
 
 ```typescript
 import { useShallow } from 'zustand/react/shallow';
@@ -125,7 +131,7 @@ export const useMyStore = create<MyState>((set) => ({ /* ... */ }));
 - **Use slices for large stores** — Split by concern, not by line count
 - **Dependency injection** — Pass `deps` to allow mocking
 - **Error handling** — Always set `error` state on failures
-- **Selectors** — Use `useShallow` to avoid re-renders
+- **Selectors** — Return stable values; a freshly-built object or array crashes the render loop. See "Selectors" above
 - **Events instead of imports** — No circular dependencies
 - **Optimistic updates** — Update UI immediately, revert on error
 

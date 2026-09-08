@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { resultOf, type EndpointDefinition } from './endpoints';
 import { relativePath } from './relativePath';
 import { uuid } from './sharedSchemas';
+import type { GhAuthState } from '../ghAuth';
 import type { PrComment, PrStatus } from '../types';
 
 /**
@@ -20,15 +21,6 @@ import type { PrComment, PrStatus } from '../types';
 type RegistryResponse<T = void> =
   | (T extends void ? { success: true } : { success: true } & T)
   | { success: false; error: string };
-
-/**
- * Mirrors `GhAuthResult` from `main/services/repo/ghUtils.ts` — not
- * re-imported from there to avoid a shared/ -> main/ dependency.
- */
-interface GhAuthResult {
-  authenticated: boolean;
-  account?: string;
-}
 
 /**
  * Mirrors `PrContextResult` from `main/services/repo/GitHubService.ts` — not
@@ -47,7 +39,7 @@ export const githubEndpoints = {
   checkAuth: {
     channel: 'github:check-auth',
     params: z.object({ sessionId: uuid }),
-    result: resultOf<RegistryResponse<GhAuthResult>>(),
+    result: resultOf<RegistryResponse<GhAuthState>>(),
   },
   createPr: {
     channel: 'github:create-pr',

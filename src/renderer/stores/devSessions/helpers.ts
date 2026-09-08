@@ -1,6 +1,5 @@
 import type {
   DevSessionWithPlanItem,
-  PrStatus,
   ReviewActionableSummary,
   ReviewInboxSnapshot,
 } from '../../../shared/types';
@@ -109,7 +108,6 @@ interface SessionCacheState {
   reviewAssessmentPendingBySessionId: Map<string, ReviewAssessmentPending>;
   prContextBySessionId: Map<string, PrCreationContext>;
   prContextLoadingIds: Set<string>;
-  prStatusCache: Map<string, PrStatus>;
 }
 
 export function dropSessionCacheEntries<State extends SessionCacheState>(
@@ -140,9 +138,6 @@ export function dropSessionCacheEntries<State extends SessionCacheState>(
   const prContextBySessionId = new Map(state.prContextBySessionId);
   prContextBySessionId.delete(sessionId);
 
-  const prStatusCache = new Map(state.prStatusCache);
-  prStatusCache.delete(sessionId);
-
   return {
     diffBySessionId,
     diffLoadingIds: removeFromSet(state.diffLoadingIds, sessionId),
@@ -155,7 +150,6 @@ export function dropSessionCacheEntries<State extends SessionCacheState>(
     reviewAssessmentPendingBySessionId,
     prContextBySessionId,
     prContextLoadingIds: removeFromSet(state.prContextLoadingIds, sessionId),
-    prStatusCache,
   };
 }
 

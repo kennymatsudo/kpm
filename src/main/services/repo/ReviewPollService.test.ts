@@ -53,6 +53,7 @@ function createSession(overrides: Partial<DevSession> = {}): DevSession {
     pr_url: 'https://github.com/acme/repo/pull/42',
     pr_state: 'OPEN',
     review_state: 'APPROVED',
+    pr_is_draft: false,
     merge_order: null,
     created_at: NOW,
     updated_at: NOW,
@@ -141,6 +142,7 @@ function createSnapshot(overrides: Partial<PrReviewSnapshot> = {}): PrReviewSnap
     baseRefName: 'main',
     headRefName: 'feature/test',
     updatedAt: NOW,
+    isDraft: false,
     fetchedAt: NOW,
     summary: {
       totalThreads: 0,
@@ -483,6 +485,19 @@ describe('ReviewPollService', () => {
     expect(harness.reviewService.syncSessionReviewState).not.toHaveBeenCalled();
   });
 
+  it('carries the failure reason on the tick summary, not just an error count', async () => {
+    // The per-session `review-poll:error` broadcast has no subscriber, so the
+    // tick summary is the only place a persistently failing session explains
+    // itself in the log.
+    const harness = buildHarness({ session: createSession({ automation_phase: 'idle' }) });
+    harness.reviewService.syncSessionReviewState.mockResolvedValue({ ok: false, error: 'gh: could not resolve host' });
+
+    const summary = await harness.service.pollNow();
+
+    expect(summary.errors).toBe(1);
+    expect(summary.errorMessages).toEqual(['gh: could not resolve host']);
+  });
+
   it('does not discover a session that is actively mid-automation', async () => {
     const harness = buildHarness({
       session: createSession({ automation_phase: 'addressing_review' }),
@@ -492,6 +507,22 @@ describe('ReviewPollService', () => {
 
     expect(summary.processed).toBe(0);
     expect(harness.reviewService.syncSessionReviewState).not.toHaveBeenCalled();
+  });
+
+  it('refreshes cached PR fields for a needs_attention session without resuming assessment', async () => {
+    // needs_attention means stopped-for-the-user: cached PR fields must keep
+    // refreshing (or the queue freezes) but assessment must not resume.
+    const harness = buildHarness({
+      session: createSession({ automation_phase: 'needs_attention', current_step_id: 'review' }),
+      snapshot: createSnapshot({ state: 'OPEN' }),
+      tasks: [createTask({ status: 'needs_review' })],
+    });
+
+    const summary = await harness.service.pollNow();
+
+    expect(summary.processed).toBe(1);
+    expect(harness.reviewService.syncSessionReviewState).toHaveBeenCalledWith('session-1', { skipIfUnchanged: true });
+    expect(harness.reviewAssessmentService.assessThreads).not.toHaveBeenCalled();
   });
 
   it('clears implementation_queued state after the poller successfully sends a follow-up', async () => {

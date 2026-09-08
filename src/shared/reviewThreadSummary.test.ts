@@ -69,6 +69,7 @@ function makeSnapshot(threads: PrReviewThread[]): PrReviewSnapshot {
     baseRefName: 'main',
     headRefName: 'feature/test',
     updatedAt: NOW,
+    isDraft: false,
     fetchedAt: NOW,
     summary: {
       totalThreads: threads.length,

@@ -52,8 +52,8 @@ export interface IDevSessionRepository {
   /** Update the persisted opposing-review policy for a session. */
   updateReviewPolicy(id: string, reviewPolicy: AgentReviewPolicy): void;
   updateAutoAddressPrReviews(id: string, enabled: boolean): void;
-  /** Update PR tracking info on a session */
-  updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null): void;
+  /** Pass `null` for isDraft to leave the stored value untouched when the caller doesn't know it. */
+  updatePrInfo(id: string, prNumber: number, prUrl: string, prState: string, reviewState: string | null, isDraft: boolean | null): void;
   /** Update session name */
   updateName(id: string, name: string): void;
   /** Persist the immutable fork-point SHA captured at worktree creation */

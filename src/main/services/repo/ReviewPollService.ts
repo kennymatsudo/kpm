@@ -72,6 +72,13 @@ export interface PollTickSummary {
   needsAttention: number;
   completed: number;
   errors: number;
+  /**
+   * Distinct failure messages from this tick, deduped. Without these the tick
+   * log reports a bare error count: a session that fails every tick for hours
+   * is visible but undiagnosable, since the per-session `review-poll:error`
+   * broadcast has no subscriber.
+   */
+  errorMessages: string[];
   timestamp: string;
 }
 
@@ -119,6 +126,11 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
   // ---------------------------------------------------------------------------
 
   function hasLiveAutomation(session: DevSession): boolean {
+    // needs_attention is stalled, not busy — no agent turn is in flight, so
+    // polling can't race one. Excluding it here would freeze cached PR
+    // fields (state, review, draft) forever; processSession separately
+    // blocks assessment/auto-follow-up for it, so only the field refresh resumes.
+    if (session.automation_phase === 'needs_attention') return false;
     return isLiveAutomationPhase(session.automation_phase)
       || Boolean(session.playbook_snapshot && session.current_step_id);
   }
@@ -136,10 +148,9 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         if (!session.pr_number) continue;
         if (session.status !== 'inactive') continue;
         // Skip sessions actively mid-automation (reviewing, addressing review,
-        // needing attention, commit-hook repair), plus every persisted playbook
-        // cursor regardless of its phase. The cursor is the explicit liveness
-        // signal during async completion, provider resolution, and dispatch.
-        // Treat null the same as
+        // commit-hook repair), plus every persisted playbook cursor regardless
+        // of its phase. The cursor is the explicit liveness signal during async
+        // completion, provider resolution, and dispatch. Treat null the same as
         // 'idle' — every session starts life with a null phase and only
         // flips to 'idle' once its agent actually starts; a session whose PR
         // was created and merged without that transition should still be
@@ -362,6 +373,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       kind: 'pr_changed',
       source: 'github',
       detectedAt: new Date().toISOString(),
+      projectId: session.project_id,
       sessionId: session.id,
       prNumber: session.pr_number,
       repoId: session.repo_id,
@@ -408,6 +420,13 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         return completionResult;
       }
 
+      // Cached fields are already refreshed above — stop here so a poll tick
+      // can't resume assessment/auto-follow-up on a session parked for the user.
+      if (session.automation_phase === 'needs_attention') {
+        recordQuietTick(sessionId);
+        return { sessionId, action: 'synced', newThreadCount: 0, implementCount: 0 };
+      }
+
       const tasks = deps.reviewTasks.getByRepoPr(session.repo_id, session.pr_number!);
       const needsReviewTasks = tasks.filter(t => t.session_id === sessionId && t.status === 'needs_review');
 
@@ -424,6 +443,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         kind: 'pr_changed',
         source: 'github',
         detectedAt: new Date().toISOString(),
+        projectId: session.project_id,
         sessionId,
         prNumber: session.pr_number!,
         repoId: session.repo_id,
@@ -567,6 +587,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       needsAttention: 0,
       completed: 0,
       errors: 0,
+      errorMessages: [],
       timestamp: new Date().toISOString(),
     };
 
@@ -596,6 +617,9 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
           break;
         case 'error':
           summary.errors++;
+          if (result.error && !summary.errorMessages.includes(result.error)) {
+            summary.errorMessages.push(result.error);
+          }
           break;
         case 'synced':
         case 'skipped':
@@ -625,12 +649,14 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         }
         const message =
           `${summary.processed} processed, ${summary.fixesStarted} fix(es), ` +
-          `${summary.assessmentsRun} assessed, ${summary.completed} completed, ${summary.errors} error(s)`;
+          `${summary.assessmentsRun} assessed, ${summary.completed} completed, ${summary.errors} error(s)` +
+          (summary.errorMessages.length > 0 ? `: ${summary.errorMessages.join('; ')}` : '');
         ctx.logger.info(message, {
           processed: summary.processed,
           fixesStarted: summary.fixesStarted,
           completed: summary.completed,
           errors: summary.errors,
+          errorMessages: summary.errorMessages,
         });
         return {
           outcome: summary.errors > 0 && summary.fixesStarted === 0 ? 'error' : 'ok',

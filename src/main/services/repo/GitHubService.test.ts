@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { IDevSessionRepository, IPlanItemRepository, IRepoRepository } from '../../db/interfaces';
@@ -8,10 +8,16 @@ const runGenerationMock = vi.hoisted(() => vi.fn());
 const gitMocks = vi.hoisted(() => ({
   getCommittedDiff: vi.fn(),
   getCommitLog: vi.fn(),
-  getCurrentBranch: vi.fn(),
-  resolveBaseBranch: vi.fn(),
-  hasCommitsAhead: vi.fn(),
+  countCommitsAhead: vi.fn(),
   readPrTemplate: vi.fn(),
+}));
+const branchMocks = vi.hoisted(() => ({
+  resolveCurrentBranch: vi.fn(),
+  resolveBaseBranch: vi.fn(),
+  classifyPushTarget: vi.fn(),
+}));
+const ghMocks = vi.hoisted(() => ({
+  probePrReviewState: vi.fn(),
 }));
 
 vi.mock('../../generation', () => ({
@@ -30,6 +36,13 @@ vi.mock('../../config', () => ({
 }));
 
 vi.mock('./gitUtils', () => gitMocks);
+
+vi.mock('./branchFacts', () => branchMocks);
+
+vi.mock('./ghUtils', async (importOriginal) => ({
+  ...(await importOriginal()),
+  ...ghMocks,
+}));
 
 import { createGitHubService } from './GitHubService';
 
@@ -92,15 +105,16 @@ function buildService(overrides: Partial<Parameters<typeof createGitHubService>[
 describe('GitHubService PR generation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    gitMocks.resolveBaseBranch.mockResolvedValue('main');
-    gitMocks.getCurrentBranch.mockResolvedValue('feature/support-attachments');
+    branchMocks.resolveBaseBranch.mockResolvedValue('main');
+    branchMocks.resolveCurrentBranch.mockResolvedValue('feature/support-attachments');
+    branchMocks.classifyPushTarget.mockResolvedValue({ ok: true, branch: 'feature/support-attachments' });
     gitMocks.getCommittedDiff.mockResolvedValue([
       'diff --git a/service.py b/service.py',
       '-old behavior',
       '+new committed behavior',
     ].join('\n'));
     gitMocks.getCommitLog.mockResolvedValue('abc123 Add attachment records');
-    gitMocks.hasCommitsAhead.mockResolvedValue(true);
+    gitMocks.countCommitsAhead.mockResolvedValue(3);
     gitMocks.readPrTemplate.mockResolvedValue(null);
     runGenerationMock.mockResolvedValue({
       text: 'TITLE: PROJ-184: Add attachment records\nBODY:\nThis adds attachment records for the media service upload flow.',
@@ -213,6 +227,7 @@ describe('GitHubService PR generation', () => {
   it('falls back to the primary checkout PR template when a worktree lacks one', async () => {
     const worktreePath = mkdtempSync(join(tmpdir(), 'kpm-pr-template-'));
     try {
+      mkdirSync(join(worktreePath, '.git'));
       gitMocks.readPrTemplate
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce('## Description\n\n## Manual Test Plan');
@@ -242,6 +257,36 @@ describe('GitHubService PR generation', () => {
       expect(result.data.prTemplate).toBe('## Description\n\n## Manual Test Plan');
     } finally {
       rmSync(worktreePath, { recursive: true, force: true });
+    }
+  });
+
+  it('uses the primary checkout when an existing session path is not a Git worktree', async () => {
+    const staleWorktreePath = mkdtempSync(join(tmpdir(), 'kpm-stale-worktree-'));
+    try {
+      ghMocks.probePrReviewState.mockResolvedValue({ digest: 'unchanged' });
+      const session = {
+        id: 'session-1',
+        project_id: 'project-1',
+        plan_item_id: 'plan-1',
+        repo_id: 'repo-1',
+        worktree_path: staleWorktreePath,
+        branch_name: 'feature/support-attachments',
+        base_branch: 'main',
+        pr_number: 42,
+      };
+      const { service } = buildService({
+        devSessions: {
+          get: vi.fn(() => session),
+          updatePrInfo: vi.fn(),
+        } as unknown as IDevSessionRepository,
+      });
+
+      const result = await service.probePrReviewState('session-1');
+
+      expect(result).toEqual({ ok: true, data: { digest: 'unchanged' } });
+      expect(ghMocks.probePrReviewState).toHaveBeenCalledWith('/repo', 42);
+    } finally {
+      rmSync(staleWorktreePath, { recursive: true, force: true });
     }
   });
 

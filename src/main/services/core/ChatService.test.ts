@@ -91,6 +91,14 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
       get: vi.fn((id: string) => (id === project.id ? project : undefined)),
       // Other methods aren't called by sendMessage; cast to satisfy the interface.
     } as unknown as ChatServiceDeps['projects'],
+    repos: {
+      getByProject: vi.fn(() => [{
+        id: 'repo-1',
+        project_id: project.id,
+        path: '/repos/k-repo',
+        active_worktree_path: '/repos/.kpm-worktrees/k-repo/feature',
+      }]),
+    },
     chatMessages: {
       addMessage,
       getMessagesByChatSession: vi.fn(() => []),
@@ -115,7 +123,6 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
       clearProviderSessionIdsByProject: vi.fn(),
       delete: vi.fn(),
     },
-    clearSessionCache: vi.fn(),
     streamingSessionService: {
       sendChatMessage,
       disconnectChatSession,
@@ -165,6 +172,27 @@ describe('ChatService.sendMessage', () => {
         filename: 'kpm-paste-2.jpeg',
         mediaType: 'image/jpeg',
       },
+    ]);
+  });
+
+  it('resolves a pathless focused repo to its active worktree', async () => {
+    const { deps, spies } = makeDeps();
+    const service = createChatService(deps);
+
+    await service.sendMessage(
+      {
+        projectId: 'project-1',
+        message: 'inspect this repository',
+        chatSessionId: 'session-1',
+      },
+      {
+        focusedResources: [{ type: 'repo', id: 'repo-1' }],
+      },
+    );
+
+    const [, , options] = spies.sendChatMessage.mock.calls[0];
+    expect(options.focusedResources).toEqual([
+      { type: 'repo', id: 'repo-1', path: '/repos/.kpm-worktrees/k-repo/feature' },
     ]);
   });
 

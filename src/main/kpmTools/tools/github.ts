@@ -1,23 +1,60 @@
 /**
  * GitHub Integration Tools
  *
- * Phase 1: PR description generation using project context.
- * Generates high-quality PR descriptions by combining net git diff, commit log,
- * plan item context, and cross-repo awareness.
+ * PR description generation from project context, and reading a pull request
+ * that is not the current branch's.
+ *
+ * Both run `gh` from the main process. That is the whole point of `read_pull_request`:
+ * chat's Bash is sandboxed away from `~/.config/gh` and from every host but
+ * localhost, so `gh` in the shell can never see a PR, whatever the user's gh
+ * login says. See sdkOptionsBuilder.ts.
  */
 
 import { z } from 'zod';
 import * as path from 'path';
-import { tool, jsonResult, toolError } from './index';
+import { tool, jsonResult, toolError, toolLog } from './index';
 import type { IPlanItemRepository, IRepoRepository, IDevSessionRepository } from '../../db/interfaces';
 import {
   getCommittedDiff,
   getCommitLog,
-  getCurrentBranch,
-  detectBaseBranch,
   getRecentCommits,
 } from '../../services/repo/gitUtils';
+import { resolveCurrentBranch, resolveDefaultBranch } from '../../services/repo/branchFacts';
+import { checkGhAuth, getPrDetails, getPrDiff, parsePrRef } from '../../services/repo/ghUtils';
+import { describeGhAuth } from '../../../shared/ghAuth';
+import { resolveConnectedRepoPath } from './connectedRepo';
 import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
+
+const MAX_DIFF_CHARS = 100_000;
+
+const READ_PR_DESCRIPTION = `Read a pull request from GitHub: title, body, state, author, base/head branches, changed files, and the full diff.
+
+## When to use
+Any time the user names a PR — a URL, \`#123\`, or a bare number — including PRs in repos that are not connected to this project. This is the only way to reach GitHub: \`gh\` and \`git fetch\` in Bash are sandboxed away from your credentials and from the network, so they fail no matter how the user is authenticated. Do not report a PR as unreachable until this tool has failed.
+
+## Parameters
+- \`projectId\`: The project UUID.
+- \`pr\`: PR URL, \`#123\`, or \`123\`. A bare number resolves against the connected repo's remote; a URL resolves against the repo it names.
+- \`repoPath\`: Absolute path of the connected repo to run from. Optional when exactly one repo is connected. Only decides which \`gh\` config and remote are used, not which PR is read.
+- \`includeDiff\`: Include the unified diff (default true). Set false when only the metadata matters.
+
+## Notes
+- The diff is truncated past ${MAX_DIFF_CHARS.toLocaleString()} characters; the response says so and lists every changed file with its line counts, so report the truncation rather than treating the visible part as the whole PR.
+- Review comments and threads are not included.`;
+
+/**
+ * A gh failure is either "that PR isn't readable" or "gh can't talk to GitHub at
+ * all", and the two have different remedies. gh's own stderr says which PR it
+ * failed on; only an auth probe can say the credential is the problem, so it runs
+ * on the failure path rather than before every read.
+ */
+async function describePrReadFailure(cwd: string, error: unknown): Promise<string> {
+  const stderr = (error as { stderr?: string })?.stderr?.trim();
+  const detail = stderr || (error instanceof Error ? error.message : String(error));
+  const auth = await checkGhAuth(cwd);
+  const credentialsAreClean = auth.authenticated && !auth.tokenEnvVar;
+  return credentialsAreClean ? detail : `${detail}\n\n${describeGhAuth(auth)}`;
+}
 
 /**
  * Create GitHub integration tools.
@@ -83,8 +120,8 @@ Requires at least a plan_item_id (to find the repo and context) or a repo_id.`,
 
           // Gather context
           const repoPath = resolveEffectiveRepoPath(repo);
-          const baseBranch = base_branch || await detectBaseBranch(repoPath);
-          const currentBranch = await getCurrentBranch(repoPath);
+          const baseBranch = base_branch || await resolveDefaultBranch(repoPath);
+          const currentBranch = await resolveCurrentBranch(repoPath);
           const diff = await getCommittedDiff(repoPath, baseBranch, 80_000);
           const commitLog = await getCommitLog(repoPath, baseBranch);
 
@@ -155,6 +192,56 @@ Requires at least a plan_item_id (to find the repo and context) or a repo_id.`,
           });
         } catch (error) {
           return toolError(error instanceof Error ? error.message : String(error));
+        }
+      },
+      { annotations: { readOnlyHint: true, openWorldHint: true } }
+    ),
+    tool(
+      'read_pull_request',
+      READ_PR_DESCRIPTION,
+      {
+        projectId: z.string().uuid().describe('The project UUID'),
+        pr: z.string().describe('PR URL, "#123", or "123".'),
+        repoPath: z
+          .string()
+          .optional()
+          .describe('Absolute path of a connected repo (or a path inside it). Optional when exactly one repo is connected.'),
+        includeDiff: z.boolean().default(true).describe('Include the unified diff.'),
+      },
+      async ({ projectId, pr, repoPath, includeDiff }) => {
+        const resolution = resolveConnectedRepoPath(repoRepo.getByProject(projectId), repoPath);
+        if (!resolution.ok) return toolError(resolution.reason);
+        const cwd = resolution.repoPath;
+
+        const prRef = parsePrRef(pr);
+        if (!prRef) {
+          return toolError(`"${pr}" is not a PR number or a github.com pull request URL.`);
+        }
+
+        toolLog(`[KPM Tools] read_pull_request ${prRef} @ ${cwd}`);
+
+        try {
+          const details = await getPrDetails(cwd, prRef);
+          if (!includeDiff) {
+            return jsonResult({ success: true, ...details });
+          }
+
+          const diff = await getPrDiff(cwd, prRef);
+          const truncated = diff.length > MAX_DIFF_CHARS;
+          return jsonResult({
+            success: true,
+            ...details,
+            diff: truncated ? diff.slice(0, MAX_DIFF_CHARS) : diff,
+            diffTruncated: truncated,
+            ...(truncated && {
+              truncationNote:
+                `Diff cut at ${MAX_DIFF_CHARS.toLocaleString()} characters; the file list is complete. ` +
+                `If this repo is the PR's, read one file in full with git_read fetch ["origin", "pull/${details.number}/head"] ` +
+                `then git_read diff ["origin/${details.baseRefName}...FETCH_HEAD", "--", "<path>"].`,
+            }),
+          });
+        } catch (error) {
+          return toolError(await describePrReadFailure(cwd, error));
         }
       },
       { annotations: { readOnlyHint: true, openWorldHint: true } }

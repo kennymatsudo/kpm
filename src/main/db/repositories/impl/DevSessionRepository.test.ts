@@ -23,7 +23,7 @@ describe('DevSessionRepository Work Brief revision', () => {
       status: 'pending' as const, agent_type: 'claude' as const, review_policy: 'auto' as const,
       automation_phase: null, playbook_id: null, playbook_snapshot: null, current_step_id: null,
       step_pass_counts: null, step_outputs: null, paused_reason: null, initial_instructions: 'Contract',
-      pr_number: null, pr_url: null, pr_state: null, review_state: null, merge_order: null,
+      pr_number: null, pr_url: null, pr_state: null, review_state: null, pr_is_draft: false, merge_order: null,
     };
 
     repository.create({ id: 'session-known', ...base, work_brief_revision: 3 });
@@ -60,6 +60,7 @@ describe('DevSessionRepository Work Brief revision', () => {
       pr_url: null,
       pr_state: null,
       review_state: null,
+      pr_is_draft: false,
       merge_order: null,
     });
 
@@ -99,6 +100,7 @@ describe('DevSessionRepository Work Brief revision', () => {
       pr_url: null,
       pr_state: null,
       review_state: null,
+      pr_is_draft: false,
       merge_order: null,
     });
 

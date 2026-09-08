@@ -1,9 +1,6 @@
 import { randomUUID } from 'crypto';
 import * as path from 'path';
-import {
-  clearSessionCache as clearPermissionSessionCache,
-} from '../../claude/permissions';
-import type { IChatMessageRepository, IChatSessionRepository, IProjectRepository } from '../../db/interfaces';
+import type { IChatMessageRepository, IChatSessionRepository, IProjectRepository, IRepoRepository } from '../../db/interfaces';
 import type {
   ChatAttachment,
   ChatChoiceView,
@@ -18,14 +15,15 @@ import { failure, success, wrap, type AsyncResult, type ServiceResult } from '..
 import type { StreamingSessionService } from '../streaming/StreamingSessionService';
 import type { SlashCommandService } from './SlashCommandService';
 import type { ChatModelChoiceService } from '../../chat/modelChoice';
+import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
 
 export interface ChatServiceDeps {
   projects: IProjectRepository;
+  repos: Pick<IRepoRepository, 'getByProject'>;
   chatMessages: IChatMessageRepository;
   chatSessions: IChatSessionRepository;
   modelChoice?: ChatModelChoiceService;
   getDefaultChatProvider?: () => ChatProvider;
-  clearSessionCache?: (projectId: string) => void;
   streamingSessionService: Pick<
     StreamingSessionService,
     'sendChatMessage' | 'disconnectChatSession'
@@ -136,8 +134,6 @@ function buildAttachments(
  * StreamingSessionService — do not add forwarding methods for them here.
  */
 export function createChatService(deps: ChatServiceDeps) {
-  const clearSessionCache = deps.clearSessionCache ?? clearPermissionSessionCache;
-
   function emitError(projectId: string, chatSessionId: string | undefined, error: string): void {
     deps.emitChatError?.({ projectId, chatSessionId, error });
   }
@@ -163,6 +159,20 @@ export function createChatService(deps: ChatServiceDeps) {
     } catch (error) {
       console.error('[ChatService] Failed to persist accepted user message:', error);
     }
+  }
+
+  function resolveFocusedResources(
+    projectId: string,
+    focusedResources: FocusedResource[],
+  ): FocusedResource[] {
+    const reposById = new Map(deps.repos.getByProject(projectId).map((repo) => [repo.id, repo]));
+    return focusedResources.map((resource) => {
+      if (resource.type !== 'repo') return resource;
+      const repo = reposById.get(resource.id);
+      return repo
+        ? { type: 'repo', id: resource.id, path: resolveEffectiveRepoPath(repo) }
+        : { type: 'repo', id: resource.id };
+    });
   }
 
   return {
@@ -243,7 +253,7 @@ export function createChatService(deps: ChatServiceDeps) {
               providerModel: input.providerModel,
               effort: input.effort,
             } : {}),
-            focusedResources: promptContext?.focusedResources ?? [],
+            focusedResources: resolveFocusedResources(projectId, promptContext?.focusedResources ?? []),
             chatSessionId,
             currentView: promptContext?.currentView,
             focusDocument: promptContext?.focusDocument,
@@ -277,7 +287,6 @@ export function createChatService(deps: ChatServiceDeps) {
       return wrap(() => {
         deps.projects.resetTokens(projectId);
         deps.chatMessages.pruneOldSessions(projectId, 10);
-        clearSessionCache(projectId);
       });
     },
 
@@ -287,7 +296,6 @@ export function createChatService(deps: ChatServiceDeps) {
         return failure(result.error);
       }
 
-      clearSessionCache(projectId);
       return success(undefined);
     },
 

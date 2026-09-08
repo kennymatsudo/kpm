@@ -69,6 +69,7 @@ function createSession(overrides: Partial<DevSession> = {}): DevSession {
     pr_url: null,
     pr_state: null,
     review_state: null,
+    pr_is_draft: false,
     merge_order: null,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',

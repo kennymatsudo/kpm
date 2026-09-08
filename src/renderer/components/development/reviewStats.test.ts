@@ -72,6 +72,7 @@ function makeInbox(thread: PrReviewThread | null, task: ReviewTask): ReviewInbox
         baseRefName: 'main',
         headRefName: 'feature/test',
         updatedAt: NOW,
+        isDraft: false,
         fetchedAt: NOW,
         summary: {
           totalThreads: 1,
